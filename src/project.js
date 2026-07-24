@@ -276,6 +276,24 @@ module.exports = class Project extends Model {
     return this.repositoryRegistry.resolveDirectory(directory);
   }
 
+  // Public: Get the repository that contains a given file or directory path
+  // asynchronously.
+  //
+  // This is a convenience over {::repositoryForDirectory} for callers that have
+  // a path {String} rather than a {Directory}. The path is resolved to its
+  // containing {Directory} (a file path resolves to its parent directory), so
+  // callers no longer need to construct a {Directory} themselves.
+  //
+  // * `filePath` {String} path of a file or directory.
+  //
+  // Returns a {Promise} that resolves with either:
+  // * {GitRepository} if a repository can be created for the given path
+  // * `null` if no repository can be created for the given path.
+  repositoryForPath(filePath) {
+    if (!filePath) return Promise.resolve(null);
+    return this.repositoryForDirectory(this.getDirectoryForProjectPath(filePath));
+  }
+
   repositoryForDirectoryFromProviders(directory) {
     const pathForDirectory = directory.getRealPathSync();
     let promise = this.repositoryPromisesByPath.get(pathForDirectory);

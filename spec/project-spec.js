@@ -659,6 +659,29 @@ describe("Project", () => {
     });
   });
 
+  describe(".repositoryForPath(filePath)", () => {
+    it("resolves to null for a falsy path", async () => {
+      expect(await atom.project.repositoryForPath("")).toBeNull();
+      expect(await atom.project.repositoryForPath(null)).toBeNull();
+    });
+
+    it("resolves to null when the path is not inside a repository", async () => {
+      const dir = temp.mkdirSync("linter-no-repo");
+      expect(await atom.project.repositoryForPath(path.join(dir, "file.txt"))).toBeNull();
+    });
+
+    it("resolves the repository that contains a given file path", async () => {
+      // The caller passes a file path (not a Directory); it resolves to the
+      // repository containing that file, mirroring repositoryForDirectory.
+      const filePath = path.join(__dirname, "project-spec.js");
+      const result = await atom.project.repositoryForPath(filePath);
+
+      expect(result).toEqual(jasmine.any(GitRepository));
+      const dirPath = new ProjectDirectory(path.join(__dirname, "..")).getRealPathSync();
+      expect(result.getPath()).toBe(path.join(dirPath, ".git"));
+    });
+  });
+
   describe(".setPaths(paths, options)", () => {
     describe("when path is a file", () => {
       it("sets its path to the file's parent directory and updates the root directory", () => {
