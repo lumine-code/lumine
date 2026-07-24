@@ -163,6 +163,41 @@ describe("PackageManager", function () {
     });
   });
 
+  describe("::getInstalled()", function () {
+    beforeEach(function () {
+      jasmine.useRealClock();
+      const configDirPath = path.join(os.tmpdir(), "settings-view-config");
+      spyOn(atom, "getConfigDirPath").andReturn(configDirPath);
+      spyOn(atom.packages, "loadPackageMetadata").andCallFake(
+        (pack) => pack.metadata || { name: pack.name },
+      );
+      spyOn(atom.packages, "isBundledPackage").andReturn(false);
+      spyOn(atom.packages, "getBundledPackageDescriptors").andReturn([]);
+
+      // More than one batch (BATCH_SIZE = 20) so the async path exercises its
+      // yield-between-chunks loop rather than only the single-batch fast path.
+      this.packs = [];
+      for (let i = 0; i < 45; i++) {
+        this.packs.push({
+          name: `community-${i}`,
+          path: path.join(configDirPath, "packages", `community-${i}`),
+          isBundled: false,
+        });
+      }
+      spyOn(atom.packages, "getAvailablePackages").andReturn(this.packs);
+    });
+
+    it("resolves to the same structure the synchronous getLocalPackages() returns", function () {
+      const sync = packageManager.getLocalPackages();
+      waitsForPromise(() =>
+        packageManager.getInstalled().then((installed) => {
+          expect(installed).toEqual(sync);
+          expect(installed.user.length).toBe(45);
+        }),
+      );
+    });
+  });
+
   describe("::getFeatured()", () =>
     it("does not query a package registry", function () {
       waitsForPromise(() =>

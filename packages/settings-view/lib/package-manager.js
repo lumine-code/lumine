@@ -134,15 +134,10 @@ module.exports = class PackageManager {
   }
 
   getInstalled() {
-    return new Promise((resolve, reject) => {
-      this.loadInstalled(function (error, result) {
-        if (error) {
-          reject(error);
-        } else {
-          resolve(result);
-        }
-      });
-    });
+    // Enumerate off the render path in chunks so opening the Packages/Themes
+    // panels stays smooth even with a large install set. The result is identical
+    // to the synchronous getLocalPackages(); only the timing differs.
+    return this.loadInstalledPackages();
   }
 
   getFeatured(loadThemes) {
@@ -578,72 +573,111 @@ module.exports = class PackageManager {
     }
   }
 
+  getDevPackagesPath() {
+    const configDirPath = atom.getConfigDirPath ? atom.getConfigDirPath() : process.env.LUMINE_HOME;
+    return path.join(configDirPath, "dev", "packages");
+  }
+
+  // Buckets a single available package into dev/user/core/git on `packages`.
+  // Shared by the synchronous getLocalPackages() and the chunked async
+  // loadInstalledPackages() so both classify identically.
+  classifyLocalPackage(packages, availablePackage, metadata, devPackagesPath) {
+    metadata = metadata || {};
+    const packageInfo = _.extend({}, metadata, {
+      name: metadata.name || availablePackage.name,
+      path: availablePackage.path,
+    });
+    if (metadata.apmInstallSource && metadata.apmInstallSource.type === "git") {
+      const installedOrigin = packageOriginKey(metadata.apmInstallSource.origin);
+      const manifestOrigin = packageOriginKey(metadata.repository);
+      if (!installedOrigin || !manifestOrigin || installedOrigin !== manifestOrigin) {
+        packageInfo.originWarning =
+          "This legacy installation has a missing or mismatched repository origin. It remains active, but its next update must pass strict origin validation.";
+      }
+    }
+
+    // Determine "bundled" from the package name rather than pack.isBundled.
+    // The per-package flag is false for everything under packages/ when
+    // running in dev mode from a source checkout, which would misfile every
+    // bundled package as a community package. isBundledPackage() checks
+    // packageDependencies membership and is mode-independent.
+    const isBundled = atom.packages.isBundledPackage(availablePackage.name);
+
+    // Record the install directory's own name so the UI can flag a package
+    // whose folder does not match its package.json "name" — the folder IS the
+    // install slot, so a mismatch breaks require, commands, config, and
+    // activation. Bundled packages are curated and always match; skip them.
+    if (!isBundled && availablePackage.path) {
+      packageInfo.directoryName = path.basename(availablePackage.path);
+    }
+
+    // Order matters: a bundled package shadowed by a copy in dev/packages
+    // must be filed under Development, so the dev-path check precedes the
+    // bundled check.
+    if (packageInfo.apmInstallSource && packageInfo.apmInstallSource.type === "git") {
+      packages.git.push(packageInfo);
+    } else if (availablePackage.path && availablePackage.path.startsWith(devPackagesPath)) {
+      packages.dev.push(packageInfo);
+    } else if (isBundled) {
+      packages.core.push(packageInfo);
+    } else {
+      packages.user.push(packageInfo);
+    }
+  }
+
+  // Adds a shadow entry for every bundled package that a same-named community
+  // package is currently overriding, so the detail UI can still reach it.
+  appendShadowedBundledDescriptors(packages) {
+    if (typeof atom.packages.getBundledPackageDescriptors !== "function") return;
+    const visibleNames = new Set(packages.core.map((pack) => pack.name));
+    const communityNames = new Set(
+      [...packages.dev, ...packages.user, ...packages.git].map((pack) => pack.name),
+    );
+    for (const descriptor of atom.packages.getBundledPackageDescriptors()) {
+      if (!communityNames.has(descriptor.name) || visibleNames.has(descriptor.name)) continue;
+      packages.core.push(
+        _.extend({}, descriptor.metadata, descriptor, {
+          isShadowed: true,
+          packageKind: "builtin",
+        }),
+      );
+      visibleNames.add(descriptor.name);
+    }
+  }
+
   getLocalPackages() {
     const packages = { dev: [], user: [], core: [], git: [] };
-    const configDirPath = atom.getConfigDirPath ? atom.getConfigDirPath() : process.env.LUMINE_HOME;
-    const devPackagesPath = path.join(configDirPath, "dev", "packages");
+    const devPackagesPath = this.getDevPackagesPath();
 
     for (const pack of atom.packages.getAvailablePackages()) {
       const metadata = atom.packages.loadPackageMetadata(pack, true) || {};
-      const packageInfo = _.extend({}, metadata, {
-        name: metadata.name || pack.name,
-        path: pack.path,
-      });
-      if (metadata.apmInstallSource && metadata.apmInstallSource.type === "git") {
-        const installedOrigin = packageOriginKey(metadata.apmInstallSource.origin);
-        const manifestOrigin = packageOriginKey(metadata.repository);
-        if (!installedOrigin || !manifestOrigin || installedOrigin !== manifestOrigin) {
-          packageInfo.originWarning =
-            "This legacy installation has a missing or mismatched repository origin. It remains active, but its next update must pass strict origin validation.";
-        }
-      }
+      this.classifyLocalPackage(packages, pack, metadata, devPackagesPath);
+    }
 
-      // Determine "bundled" from the package name rather than pack.isBundled.
-      // The per-package flag is false for everything under packages/ when
-      // running in dev mode from a source checkout, which would misfile every
-      // bundled package as a community package. isBundledPackage() checks
-      // packageDependencies membership and is mode-independent.
-      const isBundled = atom.packages.isBundledPackage(pack.name);
+    this.appendShadowedBundledDescriptors(packages);
+    return packages;
+  }
 
-      // Record the install directory's own name so the UI can flag a package
-      // whose folder does not match its package.json "name" — the folder IS the
-      // install slot, so a mismatch breaks require, commands, config, and
-      // activation. Bundled packages are curated and always match; skip them.
-      if (!isBundled && pack.path) {
-        packageInfo.directoryName = path.basename(pack.path);
-      }
+  // Asynchronous, chunked twin of getLocalPackages(). Yields to the event loop
+  // between batches so enumerating a large install set — each uncached
+  // package.json is read synchronously by loadPackageMetadata — never blocks the
+  // renderer long enough to drop frames or freeze input. Returns the same shape.
+  async loadInstalledPackages() {
+    const packages = { dev: [], user: [], core: [], git: [] };
+    const devPackagesPath = this.getDevPackagesPath();
+    const available = atom.packages.getAvailablePackages();
+    const BATCH_SIZE = 20;
 
-      // Order matters: a bundled package shadowed by a copy in dev/packages
-      // must be filed under Development, so the dev-path check precedes the
-      // bundled check.
-      if (packageInfo.apmInstallSource && packageInfo.apmInstallSource.type === "git") {
-        packages.git.push(packageInfo);
-      } else if (pack.path && pack.path.startsWith(devPackagesPath)) {
-        packages.dev.push(packageInfo);
-      } else if (isBundled) {
-        packages.core.push(packageInfo);
-      } else {
-        packages.user.push(packageInfo);
+    for (let i = 0; i < available.length; i++) {
+      const pack = available[i];
+      const metadata = atom.packages.loadPackageMetadata(pack, true) || {};
+      this.classifyLocalPackage(packages, pack, metadata, devPackagesPath);
+      if ((i + 1) % BATCH_SIZE === 0 && i + 1 < available.length) {
+        await new Promise((resolve) => setTimeout(resolve));
       }
     }
 
-    if (typeof atom.packages.getBundledPackageDescriptors === "function") {
-      const visibleNames = new Set(packages.core.map((pack) => pack.name));
-      const communityNames = new Set(
-        [...packages.dev, ...packages.user, ...packages.git].map((pack) => pack.name),
-      );
-      for (const descriptor of atom.packages.getBundledPackageDescriptors()) {
-        if (!communityNames.has(descriptor.name) || visibleNames.has(descriptor.name)) continue;
-        packages.core.push(
-          _.extend({}, descriptor.metadata, descriptor, {
-            isShadowed: true,
-            packageKind: "builtin",
-          }),
-        );
-        visibleNames.add(descriptor.name);
-      }
-    }
-
+    this.appendShadowedBundledDescriptors(packages);
     return packages;
   }
 
