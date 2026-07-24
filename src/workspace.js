@@ -533,9 +533,6 @@ module.exports = class Workspace extends Model {
       deserializer: "Workspace",
       packagesWithActiveGrammars: this.getPackageNamesWithActiveGrammars(),
       destroyedItemURIs: this.destroyedItemURIs.slice(),
-      // Ensure deserializing 1.17 state with pre 1.17 Lumine does not error
-      // TODO: Remove after 1.17 has been on stable for a while
-      paneContainer: { version: 2 },
       paneContainers: {
         center: this.paneContainers.center.serialize(),
         left: this.paneContainers.left.serialize(),
@@ -561,7 +558,7 @@ module.exports = class Workspace extends Model {
     // Carry persistent items over to the restored layout instead of destroying
     // them with the current one. The detach, teardown, restore, and re-attach
     // all happen in the same tick so the swap causes no visible flicker.
-    const restoringLayout = state.paneContainers || state.paneContainer;
+    const restoringLayout = state.paneContainers;
     const persistentItems = [];
     if (restoringLayout) {
       for (const item of this.getPaneItems()) {
@@ -586,9 +583,6 @@ module.exports = class Workspace extends Model {
       this.paneContainers.left.deserialize(state.paneContainers.left, deserializerManager);
       this.paneContainers.right.deserialize(state.paneContainers.right, deserializerManager);
       this.paneContainers.bottom.deserialize(state.paneContainers.bottom, deserializerManager);
-    } else if (state.paneContainer) {
-      // TODO: Remove this fallback once a lot of time has passed since 1.17 was released
-      this.paneContainers.center.deserialize(state.paneContainer, deserializerManager);
     }
 
     for (const { item, location, visible } of persistentItems) {

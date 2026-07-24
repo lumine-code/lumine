@@ -17,14 +17,11 @@ export default class DeprecationCopView {
         etch.update(this);
       }),
     );
-    // TODO: Remove conditional when the new StyleManager deprecation APIs reach stable.
-    if (atom.styles.onDidUpdateDeprecations) {
-      this.subscriptions.add(
-        atom.styles.onDidUpdateDeprecations(() => {
-          etch.update(this);
-        }),
-      );
-    }
+    this.subscriptions.add(
+      atom.styles.onDidUpdateDeprecations(() => {
+        etch.update(this);
+      }),
+    );
     etch.initialize(this);
     this.subscriptions.add(
       atom.commands.add(this.element, {

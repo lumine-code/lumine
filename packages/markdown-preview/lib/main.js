@@ -17,12 +17,7 @@ module.exports = {
     this.commandSubscriptions = new CompositeDisposable();
 
     this.style = new CSSStyleSheet();
-
-    // TODO: When we upgrade Electron, we can push onto `adoptedStyleSheets`
-    // directly. For now, we have to do this silly thing.
-    let styleSheets = Array.from(document.adoptedStyleSheets ?? []);
-    styleSheets.push(this.style);
-    document.adoptedStyleSheets = styleSheets;
+    document.adoptedStyleSheets.push(this.style);
 
     this.disposables.add(
       atom.config.observe("markdown-preview.grammars", (grammars) => {

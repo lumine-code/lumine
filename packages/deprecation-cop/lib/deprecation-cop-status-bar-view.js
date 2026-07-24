@@ -37,12 +37,9 @@ module.exports = class DeprecationCopStatusBarView {
     const debouncedUpdateDeprecatedSelectorCount = _.debounce(this.update, 1000);
 
     this.subscriptions.add(Grim.on("updated", this.update));
-    // TODO: Remove conditional when the new StyleManager deprecation APIs reach stable.
-    if (atom.styles.onDidUpdateDeprecations != null) {
-      this.subscriptions.add(
-        atom.styles.onDidUpdateDeprecations(debouncedUpdateDeprecatedSelectorCount),
-      );
-    }
+    this.subscriptions.add(
+      atom.styles.onDidUpdateDeprecations(debouncedUpdateDeprecatedSelectorCount),
+    );
   }
 
   destroy() {
@@ -57,12 +54,7 @@ module.exports = class DeprecationCopStatusBarView {
   }
 
   getDeprecatedStyleSheetsCount() {
-    // TODO: Remove conditional when the new StyleManager deprecation APIs reach stable.
-    if (atom.styles.getDeprecations != null) {
-      return Object.keys(atom.styles.getDeprecations()).length;
-    } else {
-      return 0;
-    }
+    return Object.keys(atom.styles.getDeprecations()).length;
   }
 
   update() {

@@ -130,7 +130,6 @@ export default class SystemPanel {
                     </div>
                   </div>
                 </div>
-                {this.getPathUI()}
               </div>
             </div>
           </div>
@@ -145,27 +144,6 @@ export default class SystemPanel {
     } else {
       return option.deregister(function () {});
     }
-  }
-
-  getPathUI() {
-    // TODO: This section is no longer useful. Should be removed a few versions
-    // after v1.120.0 to allow users to be informed.
-    return (
-      <div className="control-group">
-        <div className="controls">
-          <div className="checkbox">
-            <label for="system.windows.add-to-path">
-              <div className="setting-title">Add Lumine to PATH</div>
-              <div className="setting-description">
-                Settings for adding Lumine to the PATH have now been exclusively moved to the Lumine
-                windows installer. If you'd like to change your PATH addition options please rerun
-                your original, or a new installer.
-              </div>
-            </label>
-          </div>
-        </div>
-      </div>
-    );
   }
 
   focus() {

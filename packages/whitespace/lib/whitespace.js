@@ -1,4 +1,4 @@
-const { CompositeDisposable, Point, Range } = require("atom");
+const { CompositeDisposable } = require("atom");
 
 const TRAILING_WHITESPACE_REGEX = /[ \t]+(?=\r?$)/g;
 
@@ -167,36 +167,18 @@ module.exports = class Whitespace {
       atom.config.get("whitespace.keepMarkdownLineBreakWhitespace");
 
     buffer.transact(() => {
-      // TODO - remove this conditional after Atom 1.19 stable is released.
-      if (buffer.findAllSync) {
-        const ranges = buffer.findAllSync(TRAILING_WHITESPACE_REGEX);
-        for (let i = 0, n = ranges.length; i < n; i++) {
-          const range = ranges[i];
-          const row = range.start.row;
-          const trailingWhitespaceStart = ranges[i].start.column;
-          if (ignoreCurrentLine && cursorRows.has(row)) continue;
-          if (ignoreWhitespaceOnlyLines && trailingWhitespaceStart === 0) continue;
-          if (keepMarkdownLineBreakWhitespace) {
-            const whitespaceLength = range.end.column - range.start.column;
-            if (trailingWhitespaceStart > 0 && whitespaceLength >= 2) continue;
-          }
-          buffer.delete(ranges[i]);
+      const ranges = buffer.findAllSync(TRAILING_WHITESPACE_REGEX);
+      for (let i = 0, n = ranges.length; i < n; i++) {
+        const range = ranges[i];
+        const row = range.start.row;
+        const trailingWhitespaceStart = ranges[i].start.column;
+        if (ignoreCurrentLine && cursorRows.has(row)) continue;
+        if (ignoreWhitespaceOnlyLines && trailingWhitespaceStart === 0) continue;
+        if (keepMarkdownLineBreakWhitespace) {
+          const whitespaceLength = range.end.column - range.start.column;
+          if (trailingWhitespaceStart > 0 && whitespaceLength >= 2) continue;
         }
-      } else {
-        for (let row = 0, lineCount = buffer.getLineCount(); row < lineCount; row++) {
-          const line = buffer.lineForRow(row);
-          const lastCharacter = line[line.length - 1];
-          if (lastCharacter === " " || lastCharacter === "\t") {
-            const trailingWhitespaceStart = line.search(TRAILING_WHITESPACE_REGEX);
-            if (ignoreCurrentLine && cursorRows.has(row)) continue;
-            if (ignoreWhitespaceOnlyLines && trailingWhitespaceStart === 0) continue;
-            if (keepMarkdownLineBreakWhitespace) {
-              const whitespaceLength = line.length - trailingWhitespaceStart;
-              if (trailingWhitespaceStart > 0 && whitespaceLength >= 2) continue;
-            }
-            buffer.delete(Range(Point(row, trailingWhitespaceStart), Point(row, line.length)));
-          }
-        }
+        buffer.delete(ranges[i]);
       }
     });
   }

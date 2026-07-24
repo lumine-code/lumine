@@ -181,12 +181,7 @@ module.exports = class MarkdownPreviewView {
   handleEvents() {
     const lazyRenderMarkdown = _.debounce(() => this.renderMarkdown(), 250);
     this.disposables.add(atom.grammars.onDidAddGrammar(() => lazyRenderMarkdown()));
-    if (typeof atom.grammars.onDidRemoveGrammar === "function") {
-      this.disposables.add(atom.grammars.onDidRemoveGrammar(() => lazyRenderMarkdown()));
-    } else {
-      // TODO: Remove onDidUpdateGrammar hook once onDidRemoveGrammar is released
-      this.disposables.add(atom.grammars.onDidUpdateGrammar(() => lazyRenderMarkdown()));
-    }
+    this.disposables.add(atom.grammars.onDidUpdateGrammar(() => lazyRenderMarkdown()));
 
     atom.commands.add(this.element, {
       "core:copy": (event) => {
