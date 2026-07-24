@@ -22,8 +22,9 @@
  *                          exit 1 if any falls outside the supported window
  *   --dry-run              build and verify but do not touch the repo
  *
- * Requires an emscripten-activated shell (`emcc` on PATH); if `emcc` is not
- * found, the script tries the local emsdk at EMSDK or C:\Data\Develop\Various\emsdk.
+ * Requires emscripten: `emcc` on PATH, or an emsdk checkout at $EMSDK or
+ * ~/.lumine-grammar-build/emsdk (clone emscripten-core/emsdk there and run
+ * `emsdk install latest && emsdk activate latest`).
  */
 
 const cp = require("node:child_process");
@@ -35,7 +36,11 @@ const CSON = require("@lumine-code/season");
 const DEFAULT_TREE_SITTER_CLI = "0.26.11";
 const REPO_ROOT = path.resolve(__dirname, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
-const DEFAULT_EMSDK_DIR = process.env.EMSDK || "C:\\Data\\Develop\\Various\\emsdk";
+// An emsdk checkout inside the build cache keeps the whole toolchain
+// self-contained: `git clone https://github.com/emscripten-core/emsdk` there,
+// then `emsdk install latest && emsdk activate latest`.
+const DEFAULT_EMSDK_DIR =
+  process.env.EMSDK || path.join(os.homedir(), ".lumine-grammar-build", "emsdk");
 
 function fail(message) {
   console.error(`ERROR: ${message}`);
@@ -267,8 +272,9 @@ function ensureEmscripten() {
     }
   }
   fail(
-    "emcc not found. Run in an emscripten-activated shell " +
-      "(e.g. `. C:\\Data\\Develop\\Various\\emsdk\\emsdk_env.ps1`) or install emsdk.",
+    "emcc not found. Run in an emscripten-activated shell, or clone " +
+      "emscripten-core/emsdk to ~/.lumine-grammar-build/emsdk (or $EMSDK) and " +
+      "run `emsdk install latest && emsdk activate latest` there.",
   );
   return null;
 }
