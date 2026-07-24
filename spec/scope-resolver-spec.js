@@ -384,7 +384,7 @@ describe("ScopeResolver", () => {
       expect(buffer.getTextInRange(rangeFromDescriptor(range))).toBe(`from: 'x', to: 'y'`);
     });
 
-    it("prevents adjustments outside the original capture", async () => {
+    it("warns about adjustments outside the original capture without throwing", async () => {
       await grammar.setQueryForTest(
         "highlightsQuery",
         `
@@ -406,18 +406,24 @@ describe("ScopeResolver", () => {
         // this is a comment that wants to fly too close to the sun
         let bar = "this is a line below a comment"
       `);
-      // Prevent an exception from being thrown before we can even check the
-      // scopeResolver.
       spyOn(languageMode, "isRowCommented").and.returnValue(false);
       await languageMode.ready;
 
       let { scopeResolver, captures } = await getAllCaptures(grammar, languageMode);
 
+      // Exceeding the capture's range warns — it used to throw in dev mode,
+      // killing the whole highlight pass — but the adjustment is still
+      // honored, matching what production always did.
+      spyOn(console, "warn");
       for (let capture of captures) {
         expect(() => {
           scopeResolver.store(capture);
-        }).toThrow();
+        }).not.toThrow();
       }
+      let exceededWarnings = console.warn.calls
+        .allArgs()
+        .filter((args) => String(args[0]).includes("Cannot extend past original range"));
+      expect(exceededWarnings.length).toBe(captures.length);
     });
 
     it("adjusts a range around a regex match with `adjust.startAndEndAroundFirstMatchOf`", async () => {
