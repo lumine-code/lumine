@@ -1360,8 +1360,13 @@ export default class PackageCard {
   isSameOriginEvent(pack) {
     const cardOrigin = packageOrigin(this.pack);
     const eventOrigin = packageOrigin(pack);
-    if (!cardOrigin || !eventOrigin) return true;
-    return cardOrigin === eventOrigin;
+    if (cardOrigin && eventOrigin) return cardOrigin === eventOrigin;
+    // At least one side has no recorded origin. They are the same package only
+    // when NEITHER does — a local/unpublished package, already matched by name in
+    // subscribeToPackageEvent. If one side has an origin and the other does not,
+    // a shared name is a coincidence (e.g. a community card and a same-named
+    // bundled or hand-placed package), so one must not drive the other's state.
+    return !cardOrigin && !eventOrigin;
   }
 
   isInstalled() {

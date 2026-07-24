@@ -640,6 +640,16 @@ describe("PackageCard", function () {
       expect(card.installBlocked).toBe(true);
     });
 
+    it("does not claim a same-named event that carries no origin", function () {
+      // The event pack has no recorded origin while this card does; a shared name
+      // alone must not make this card show its own install spinner for what is an
+      // unrelated (e.g. bundled or hand-placed) package.
+      packageManager.emitter.emit("package-installing", { pack: { name: "hydrogen-next" } });
+      expect(card.refs.installButton).toHaveClass("disabled");
+      expect(card.refs.installButton).not.toHaveClass("is-installing");
+      expect(card.installBlocked).toBe(true);
+    });
+
     it("reverts to installable if that install fails", function () {
       emitFor("package-installing");
       expect(card.refs.installButton).toHaveClass("disabled");
@@ -1227,8 +1237,14 @@ describe("PackageCard", function () {
       let packageUpdated = false;
 
       packageManager.on("package-updated", () => (packageUpdated = true));
+      // installGitHubPackage resolves with the installed package's metadata,
+      // which carries the apmInstallSource (and thus the origin) — mirror that so
+      // the "updated" event is recognized as this card's own package.
       spyOn(packageManager, "installGitHubPackage").andReturn(
-        Promise.resolve({ name: "package-with-config" }),
+        Promise.resolve({
+          name: "package-with-config",
+          apmInstallSource: { type: "git", source: "example/package-with-config" },
+        }),
       );
 
       const originalLoadPackage = atom.packages.loadPackage;
@@ -1319,8 +1335,12 @@ describe("PackageCard", function () {
       let packageUpdated = false;
 
       packageManager.on("package-updated", () => (packageUpdated = true));
+      // See "can be updated": the resolved pack keeps its apmInstallSource/origin.
       spyOn(packageManager, "installGitHubPackage").andReturn(
-        Promise.resolve({ name: "package-with-config" }),
+        Promise.resolve({
+          name: "package-with-config",
+          apmInstallSource: { type: "git", source: "example/package-with-config" },
+        }),
       );
 
       const originalLoadPackage = atom.packages.loadPackage;
