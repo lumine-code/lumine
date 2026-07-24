@@ -494,11 +494,19 @@
         margin: 0;
       }
 
-      /* Nav supplies the padding/hover; only truncate long headers. */
+      /* Nav supplies the padding/hover; only truncate long headers. The panel
+         menu above uses `a.icon` (var(--text-color)); these TOC anchors have no
+         .icon class, so match that color explicitly instead of falling through
+         to the base `a` link color. */
       .config-toc-item > a {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
+        color: var(--text-color);
+
+        &:hover {
+          color: var(--text-color-highlight);
+        }
       }
 
       /* Indent nested headers past the base 15px nav padding. */
