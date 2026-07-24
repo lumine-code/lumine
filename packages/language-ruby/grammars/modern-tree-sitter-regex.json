@@ -4,8 +4,8 @@
   "parser": "tree-sitter-regex",
   "injectionRegex": "^(rb-regex)$",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-regex#2354482d7e2e8f8ff33c1ef6c8aa5690410fbc96",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-regex#v1.0.0",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-regex/tree-sitter-regex.wasm",
     "highlightsQuery": "tree-sitter-regex/highlights.scm"
   }
