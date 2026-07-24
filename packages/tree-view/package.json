@@ -53,15 +53,9 @@
   },
   "providedServices": {
     "tree-view": {
-      "description": "A tree-like view of directories and files",
+      "description": "Tree view API with path selection, entry lookup, and reveal support",
       "versions": {
         "1.0.0": "provideTreeView"
-      }
-    },
-    "tree-view": {
-      "description": "Extended tree view API with reveal and navigation support",
-      "versions": {
-        "1.0.0": "provideTreeViewPlus"
       }
     },
     "tree-view-roots": {

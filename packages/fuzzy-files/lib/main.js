@@ -551,8 +551,8 @@ module.exports = {
       }
     } else if (mode === "reveal-in-tree-view") {
       if (!this.treeViewService) {
-        atom.notifications.addWarning("tree-view-plus service not available", {
-          detail: "The tree-view-plus package is required for reveal in tree view",
+        atom.notifications.addWarning("tree-view service not available", {
+          detail: "The tree-view package is required for reveal in tree view",
         });
         return;
       }
@@ -626,7 +626,7 @@ module.exports = {
     };
   },
 
-  consumeTreeViewPlus(service) {
+  consumeTreeView(service) {
     this.treeViewService = service;
     return {
       dispose: () => {

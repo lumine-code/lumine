@@ -43,9 +43,9 @@
         "1.0.0": "consumeClaudeChat"
       }
     },
-    "tree-view-plus": {
+    "tree-view": {
       "versions": {
-        "1.0.0": "consumeTreeViewPlus"
+        "^1.0.0": "consumeTreeView"
       }
     }
   },

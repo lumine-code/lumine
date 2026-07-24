@@ -115,13 +115,6 @@ module.exports = class TreeViewPackage {
     return {
       selectedPaths: () => this.getTreeViewInstance().selectedPaths(),
       entryForPath: (entryPath) => this.getTreeViewInstance().entryForPath(entryPath),
-    };
-  }
-
-  provideTreeViewPlus() {
-    return {
-      selectedPaths: () => this.getTreeViewInstance().selectedPaths(),
-      entryForPath: (entryPath) => this.getTreeViewInstance().entryForPath(entryPath),
       revealPath: (filePath, options) => this.getTreeViewInstance().revealPath(filePath, options),
     };
   }
