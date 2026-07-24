@@ -8,8 +8,8 @@
     "start": "// "
   },
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-java#e10607b45ff745f5f876bfa3e94fbcc6b44bdc11",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-java#v0.23.5",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-java/tree-sitter-java.wasm",
     "highlightsQuery": "tree-sitter-java/highlights.scm",
     "tagsQuery": "tree-sitter-java/tags.scm",
