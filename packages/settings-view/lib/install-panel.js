@@ -11,7 +11,7 @@ const { cloneUrlForRepository, parsePackageSource } = require("../../../src/pack
 import { CompositeDisposable, Disposable, TextEditor } from "atom";
 
 import PackageCard from "./package-card";
-import ErrorView from "./error-view";
+import notifyPackageError from "./notify-error";
 import { packageOrigin } from "./utils";
 const { normalizeCatalogSource } = require("./community-package-catalog-client");
 
@@ -45,11 +45,10 @@ export default class InstallPanel {
     this.refs.catalogEditor.setPlaceholderText("owner/catalog or index.json URL");
 
     this.disposables.add(atom.tooltips.add(this.refs.addCatalogButton, { title: "Add catalog" }));
-    this.disposables.add(
-      this.packageManager.on("package-install-failed", ({ error }) => {
-        this.refs.searchErrors.appendChild(new ErrorView(this.packageManager, error).element);
-      }),
-    );
+    // Install failures are surfaced as notifications centrally (see SettingsView).
+    // Catalog fetch and Pulsar search failures below are panel-local; those still
+    // raise their own notifications, tracked here so a re-run can dismiss a stale one.
+    this.catalogFetchNotifications = [];
     this.disposables.add(
       this.packageManager.on("package-installed theme-installed", ({ pack }) => {
         const gitUrlInfo =
@@ -233,7 +232,6 @@ export default class InstallPanel {
                 </label>
               </div>
               <div ref="catalogProgress" className="catalog-progress text-subtle" />
-              <div ref="catalogFetchErrors" />
               <div
                 ref="catalogSourceError"
                 className="alert alert-danger alert-dismissable"
@@ -285,7 +283,6 @@ export default class InstallPanel {
               </div>
             </div>
 
-            <div ref="searchErrors" />
             <div ref="searchMessage" className="alert alert-info search-message icon icon-search" />
             <div ref="resultsContainer" className="container package-container" />
 
@@ -509,7 +506,7 @@ export default class InstallPanel {
     const generation = (this.catalogGeneration = (this.catalogGeneration || 0) + 1);
     if (!cacheOnly) this.catalogIndexing = true;
     const sources = this.getCatalogSources();
-    this.refs.catalogFetchErrors.innerHTML = "";
+    this.dismissCatalogFetchNotifications();
     if (refresh) {
       this.refs.fetchButton.classList.add("is-checking");
       this.refs.cancelFetchButton.style.display = "";
@@ -579,14 +576,23 @@ export default class InstallPanel {
           ? ` · ${result.pendingSources.length} source(s) pending Fetch`
           : ""
       }`;
-      for (const catalogError of result.errors || []) {
-        const error = new Error(`${catalogError.source}: ${catalogError.message}`);
-        this.refs.catalogFetchErrors.appendChild(new ErrorView(this.packageManager, error).element);
+      if (result.errors && result.errors.length) {
+        // One notification for the whole fetch, listing each failed source, so a
+        // catalog with many bad entries doesn't bury the screen in toasts.
+        const detail = result.errors.map((e) => `${e.source}: ${e.message}`).join("\n");
+        this.catalogFetchNotifications.push(
+          atom.notifications.addWarning(
+            `${result.errors.length} catalog source(s) failed to load.`,
+            { dismissable: true, detail },
+          ),
+        );
       }
       return { schemaVersion: 2, packages: this.catalogPackages };
     } catch (error) {
       if (generation === this.catalogGeneration) {
-        this.refs.catalogFetchErrors.appendChild(new ErrorView(this.packageManager, error).element);
+        this.catalogFetchNotifications.push(
+          notifyPackageError(this.packageManager, error, "Failed to load the package catalog."),
+        );
       }
       return { schemaVersion: 2, packages: this.catalogPackages };
     } finally {
@@ -796,10 +802,16 @@ export default class InstallPanel {
   }
 
   clearPulsarError() {
-    if (this.pulsarErrorElement) {
-      this.pulsarErrorElement.remove();
-      this.pulsarErrorElement = null;
+    if (this.pulsarErrorNotification) {
+      this.pulsarErrorNotification.dismiss();
+      this.pulsarErrorNotification = null;
     }
+  }
+
+  dismissCatalogFetchNotifications() {
+    if (!this.catalogFetchNotifications) return;
+    for (const notification of this.catalogFetchNotifications) notification.dismiss();
+    this.catalogFetchNotifications = [];
   }
 
   async searchCatalog(query) {
@@ -841,11 +853,10 @@ export default class InstallPanel {
         ).filter(Boolean);
       } catch (error) {
         if (generation === this.searchGeneration) {
-          this.pulsarErrorElement = new ErrorView(
-            this.packageManager,
-            new Error(`Pulsar registry: ${error.message}`),
-          ).element;
-          this.refs.searchErrors.appendChild(this.pulsarErrorElement);
+          this.pulsarErrorNotification = atom.notifications.addError(
+            "Pulsar registry search failed.",
+            { dismissable: true, detail: error.message },
+          );
         }
       }
       if (generation !== this.searchGeneration) return results;

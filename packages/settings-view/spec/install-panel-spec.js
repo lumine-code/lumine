@@ -121,13 +121,16 @@ describe("InstallPanel", function () {
     expect(panel.refs.catalogSourceError.style.display).toBe("none");
   });
 
-  it("shows catalog fetch failures in the catalog sources zone", function () {
+  it("reports catalog fetch failures as a notification", function () {
+    spyOn(atom.notifications, "addError").andCallThrough();
     catalogClient.loadAll.andReturn(Promise.reject(new Error("boom")));
     panel.refs.fetchButton.click();
 
     waitsForPromise(() =>
       panel.catalogPromise.then(() => {
-        expect(panel.refs.catalogFetchErrors.querySelector(".error-message")).toBeTruthy();
+        expect(atom.notifications.addError).toHaveBeenCalled();
+        const [message] = atom.notifications.addError.mostRecentCall.args;
+        expect(message).toContain("boom");
       }),
     );
   });
@@ -405,13 +408,16 @@ describe("InstallPanel", function () {
     });
 
     it("surfaces a Pulsar search failure without dropping catalog results", function () {
+      spyOn(atom.notifications, "addError").andCallThrough();
       atom.config.set("settings-view.includePulsarPackageResults", true);
       pulsarClient.search.andReturn(Promise.reject(new Error("offline")));
 
       waitsForPromise(() =>
         panel.search("shared").then((results) => {
           expect(results.map(({ name }) => name)).toEqual(["shared"]);
-          expect(panel.refs.searchErrors.textContent).toContain("Pulsar registry");
+          expect(atom.notifications.addError).toHaveBeenCalled();
+          const [message] = atom.notifications.addError.mostRecentCall.args;
+          expect(message).toContain("Pulsar registry");
         }),
       );
     });

@@ -6,7 +6,6 @@ import etch from "@lumine-code/etch";
 
 import CollapsibleSectionPanel from "./collapsible-section-panel";
 import PackageCard from "./package-card";
-import ErrorView from "./error-view";
 
 import List from "./list";
 import ListView from "./list-view";
@@ -47,15 +46,6 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
         this.matchPackages();
       }),
     );
-    this.subscriptions.add(
-      this.packageManager.on(
-        "package-install-failed theme-install-failed package-uninstall-failed theme-uninstall-failed package-update-failed theme-update-failed",
-        ({ error }) => {
-          this.refs.updateErrors.appendChild(new ErrorView(this.packageManager, error).element);
-        },
-      ),
-    );
-
     let loadPackagesTimeout;
     // Rebuild the list when a package is installed or updated. Uninstalls are
     // deliberately excluded: the card flips itself to the not-installed state
@@ -134,8 +124,6 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
             <div className="editor-container">
               <TextEditor ref="filterEditor" mini placeholderText="Filter packages by name" />
             </div>
-
-            <div ref="updateErrors" />
 
             <section className="sub-section installed-packages">
               <h3 ref="communityPackagesHeader" className="sub-section-heading icon icon-package">

@@ -181,43 +181,6 @@
     }
   }
 
-  .error-message {
-    .alert {
-      margin-bottom: 0;
-    }
-
-    .close {
-      top: -6px; /* magic number... for now */
-    }
-
-    .error-details {
-      /* .alert-type(@text-color-error; @background-color-error) */
-      --alert-background-color: color-mix(
-        in srgb,
-        var(--background-color-error) 10%,
-        var(--base-background-color)
-      );
-      color: hsl(from var(--text-color-error) h s calc(l - 20));
-      border-color: hsl(from var(--alert-background-color) h s calc(l - 10));
-      background-color: var(--alert-background-color);
-
-      @container style(--settings-view-alert-error-dark-flag: white) {
-        color: hsl(from var(--text-color-error) h s calc(l + 20));
-      }
-
-      .alert-link {
-        color: inherit;
-        text-decoration: underline;
-      }
-    }
-
-    .error-link {
-      color: inherit;
-      text-decoration: underline;
-      margin-left: calc(var(--component-padding) / 2);
-    }
-  }
-
   select.form-control {
     color: var(--text-color);
     border-color: var(--button-border-color);
@@ -907,10 +870,6 @@
     .search-message {
       margin: var(--component-padding) 0 0;
     }
-
-    .error-message {
-      padding: var(--component-padding) 0;
-    }
   }
 
   .btn-retry {
@@ -994,20 +953,6 @@
 
     col.selector {
       width: 33%; /* 35% - 2% */
-    }
-  }
-
-  .compile-tools-heading {
-    font-weight: bold;
-  }
-
-  .compile-tools-message {
-    padding-top: var(--component-padding);
-
-    code {
-      text-shadow: none;
-      border-width: 1px;
-      border-style: solid;
     }
   }
 

@@ -5,7 +5,6 @@ import { CompositeDisposable } from "atom";
 import etch from "@lumine-code/etch";
 
 import PackageCard from "./package-card";
-import ErrorView from "./error-view";
 
 // Lists the installed Git packages that have a newer version available (from
 // their install receipts, not the catalog). This is its own panel rather than a
@@ -24,11 +23,6 @@ export default class UpdatesPanel {
         "package-installed theme-installed package-updated theme-updated package-uninstalled theme-uninstalled",
         () => this.loadUpdates(),
       ),
-    );
-    this.subscriptions.add(
-      this.packageManager.on("package-update-failed theme-update-failed", ({ error }) => {
-        this.refs.updateErrors.appendChild(new ErrorView(this.packageManager, error).element);
-      }),
     );
 
     this.subscriptions.add(
@@ -62,7 +56,6 @@ export default class UpdatesPanel {
                 onclick={() => this.loadUpdates()}
               />
             </div>
-            <div ref="updateErrors" />
             <div ref="updatesContainer" className="container package-container" />
             <div ref="statusMessage" className="alert alert-info icon icon-hourglass">
               Checking installed packages for updates…
@@ -77,7 +70,6 @@ export default class UpdatesPanel {
     if (this.loading) return;
     this.loading = true;
     this.clearCards();
-    this.refs.updateErrors.innerHTML = "";
     this.refs.updateCount.textContent = "…";
     this.refs.statusMessage.textContent = "Checking installed packages for updates…";
     this.refs.statusMessage.style.display = "";

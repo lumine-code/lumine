@@ -7,7 +7,7 @@ import { CompositeDisposable, TextEditor } from "atom";
 
 import CollapsibleSectionPanel from "./collapsible-section-panel";
 import PackageCard from "./package-card";
-import ErrorView from "./error-view";
+import notifyPackageError from "./notify-error";
 
 import List from "./list";
 import ListView from "./list-view";
@@ -44,11 +44,6 @@ export default class ThemesPanel extends CollapsibleSectionPanel {
     };
 
     this.disposables = new CompositeDisposable();
-    this.disposables.add(
-      this.packageManager.on("theme-install-failed theme-uninstall-failed", ({ error }) => {
-        this.refs.themeErrors.appendChild(new ErrorView(this.packageManager, error).element);
-      }),
-    );
     this.disposables.add(this.handleEvents());
     this.disposables.add(
       atom.commands.add(this.element, {
@@ -279,8 +274,6 @@ export default class ThemesPanel extends CollapsibleSectionPanel {
               <TextEditor ref="filterEditor" mini placeholderText="Filter themes by name" />
             </div>
 
-            <div ref="themeErrors" />
-
             <section className="sub-section installed-packages">
               <h3 ref="communityThemesHeader" className="sub-section-heading icon icon-paintcan">
                 Community Themes
@@ -383,7 +376,7 @@ export default class ThemesPanel extends CollapsibleSectionPanel {
         this.updateSectionCounts();
       })
       .catch((error) => {
-        this.refs.themeErrors.appendChild(new ErrorView(this.packageManager, error).element);
+        notifyPackageError(this.packageManager, error, "Failed to load the installed themes.");
       });
   }
 

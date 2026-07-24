@@ -20,6 +20,20 @@ describe("SettingsView", function () {
     waitsFor(() => settingsView.initializePanels.callCount > 0);
   });
 
+  describe("when a package operation fails", function () {
+    it("surfaces the failure as a single editor notification with the stderr detail", function () {
+      spyOn(atom.notifications, "addError").andCallThrough();
+      const error = new Error("Installing “broken” failed.");
+      error.stderr = "npm ERR! boom";
+      settingsView.packageManager.emitPackageEvent("install-failed", { name: "broken" }, error);
+
+      expect(atom.notifications.addError.callCount).toBe(1);
+      const [message, options] = atom.notifications.addError.mostRecentCall.args;
+      expect(message).toBe("Installing “broken” failed.");
+      expect(options.detail).toBe("npm ERR! boom");
+    });
+  });
+
   describe("serialization", function () {
     it("remembers which panel was visible", function () {
       settingsView.showPanel("Themes");

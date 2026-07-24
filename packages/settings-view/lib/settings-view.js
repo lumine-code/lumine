@@ -18,6 +18,7 @@ import ThemesPanel from "./themes-panel";
 import InstalledPackagesPanel from "./installed-packages-panel";
 import UriHandlerPanel from "./uri-handler-panel";
 import SearchSettingsPanel from "./search-settings-panel";
+import notifyPackageError from "./notify-error";
 
 export default class SettingsView {
   constructor({ uri, packageManager, snippetsProvider, activePanel } = {}) {
@@ -31,6 +32,21 @@ export default class SettingsView {
 
     etch.initialize(this);
     this.disposables = new CompositeDisposable();
+
+    // Surface every package install/uninstall/update failure as a single editor
+    // notification. Centralized here — the PackageManager is shared across all
+    // panels — so a failure raises exactly one notification instead of one per
+    // panel that happens to be listening, and it can't be missed behind a
+    // scrolled panel the way the old in-panel error boxes could.
+    if (this.packageManager && typeof this.packageManager.on === "function") {
+      this.disposables.add(
+        this.packageManager.on(
+          "package-install-failed theme-install-failed package-uninstall-failed theme-uninstall-failed package-update-failed theme-update-failed",
+          ({ error }) => notifyPackageError(this.packageManager, error),
+        ),
+      );
+    }
+
     this.disposables.add(
       atom.commands.add(this.element, {
         "core:move-up": () => {
