@@ -402,8 +402,23 @@ describe("TextBuffer IO", () => {
         await buffer.save();
         await buffer.getFileWatchStartPromise();
         buffer.setText("ab");
-        buffer.onDidConflict(done);
-        fs.writeFileSync(buffer.getPath(), "c");
+        // The watch-start promise confirms the watch handle exists, but events
+        // can still be dropped in its start-up window. Retry the conflicting
+        // write (with fresh content each attempt) until the conflict event
+        // proves the watch is delivering.
+        let probeCount = 0;
+        let probeTimer;
+        const subscription = buffer.onDidConflict(() => {
+          subscription.dispose();
+          clearInterval(probeTimer);
+          done();
+        });
+        const probe = () => {
+          probeCount++;
+          fs.writeFileSync(buffer.getPath(), `c${probeCount}`);
+        };
+        probeTimer = setInterval(probe, 500);
+        probe();
       });
 
       it("no longer reports being in conflict when the buffer is saved again", async (done) => {
