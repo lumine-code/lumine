@@ -57,7 +57,7 @@ describe("Async providers", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "2.0.0",
+        "1.0.0",
         testAsyncProvider,
       );
     });
@@ -97,7 +97,7 @@ describe("Async providers", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "2.0.0",
+        "1.0.0",
         testAsyncProvider,
       );
     });

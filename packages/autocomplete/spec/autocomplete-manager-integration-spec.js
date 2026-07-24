@@ -518,7 +518,7 @@ describe("Autocomplete Manager", () => {
         editor.insertText("h");
         await suggestionsPromise;
 
-        expect(prefix).toBe("abc-okyeah");
+        expect(prefix).toBe("okyeah");
       });
 
       it("calls with word prefix containing a number", async () => {
@@ -533,7 +533,7 @@ describe("Autocomplete Manager", () => {
         editor.insertText(" ");
         await suggestionsPromise;
 
-        expect(prefix).toBe(" ");
+        expect(prefix).toBe("");
       });
 
       it("calls with non-word prefix", async () => {
@@ -541,21 +541,21 @@ describe("Autocomplete Manager", () => {
         editor.insertText(":");
         await suggestionsPromise;
 
-        expect(prefix).toBe("::");
+        expect(prefix).toBe("");
       });
 
       it("calls with non-word bracket", async () => {
         editor.insertText("[");
         await suggestionsPromise;
 
-        expect(prefix).toBe("[");
+        expect(prefix).toBe("");
       });
 
       it("calls with dot prefix", async () => {
         editor.insertText(".");
         await suggestionsPromise;
 
-        expect(prefix).toBe(".");
+        expect(prefix).toBe("");
       });
 
       it("calls with prefix after non \\b word break", async () => {
@@ -563,7 +563,7 @@ describe("Autocomplete Manager", () => {
         editor.insertText(" ");
         await suggestionsPromise;
 
-        expect(prefix).toBe(" ");
+        expect(prefix).toBe("");
       });
 
       it("calls with prefix after non \\b word break", async () => {
@@ -571,7 +571,7 @@ describe("Autocomplete Manager", () => {
         editor.insertText(" ");
         await suggestionsPromise;
 
-        expect(prefix).toBe(" ");
+        expect(prefix).toBe("");
       });
 
       describe("providers using the 4.0 API", () => {

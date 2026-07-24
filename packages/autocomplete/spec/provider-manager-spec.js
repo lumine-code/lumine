@@ -65,10 +65,8 @@ describe("Provider Manager", () => {
       expect(providerManager.isProviderRegistered(testProvider)).toEqual(false);
       expect(hasDisposable(providerManager.subscriptions, testProvider)).toBe(false);
 
-      providerManager.addProvider(testProvider, 3);
+      providerManager.addProvider(testProvider);
       expect(providerManager.isProviderRegistered(testProvider)).toEqual(true);
-      let apiVersion = providerManager.apiVersionForProvider(testProvider);
-      expect(apiVersion).toEqual(3);
       expect(hasDisposable(providerManager.subscriptions, testProvider)).toBe(true);
     });
 
@@ -133,23 +131,6 @@ describe("Provider Manager", () => {
       };
 
       expect(providerManager.isValidProvider(bogusProvider, 3)).toEqual(false);
-    });
-
-    it("correctly identifies a 1.0 provider", () => {
-      let bogusProvider = {
-        selector: ".source.js",
-        requestHandler: "yo, this is a bad handler",
-        dispose() {},
-      };
-      expect(providerManager.isValidProvider({}, 1)).toEqual(false);
-      expect(providerManager.isValidProvider(bogusProvider, 1)).toEqual(false);
-
-      let legitProvider = {
-        selector: ".source.js",
-        requestHandler() {},
-        dispose() {},
-      };
-      expect(providerManager.isValidProvider(legitProvider, 1)).toEqual(true);
     });
 
     it("registers a valid provider", () => {
@@ -357,9 +338,6 @@ describe("Provider Manager", () => {
       testProvider2 = {
         scopeSelector: ".source.js .variable.js",
         disableForScopeSelector: ".source.js .variable.js .comment2",
-        providerblacklist: {
-          "autocomplete-plus-fuzzyprovider": ".source.js .variable.js .comment3",
-        },
         getSuggestions(_options) {
           return [
             {
@@ -529,27 +507,6 @@ describe("Provider Manager", () => {
       expect(providers[0]).toEqual(testProvider1);
       expect(providers[1]).toEqual(testProvider3);
       expect(providers[2]).toEqual(defaultProvider);
-    });
-
-    it("filters a provider if the scopeChain matches a provider providerblacklist item", () => {
-      let providers = providerManager.applicableProviders(
-        ["workspace-center"],
-        ".source.js .variable.js .other.js",
-      );
-      expect(providers).toHaveLength(4);
-      expect(providers[0]).toEqual(testProvider2);
-      expect(providers[1]).toEqual(testProvider1);
-      expect(providers[2]).toEqual(testProvider3);
-      expect(providers[3]).toEqual(providerManager.defaultProvider);
-
-      providers = providerManager.applicableProviders(
-        ["workspace-center"],
-        ".source.js .variable.js .comment3.js",
-      );
-      expect(providers).toHaveLength(3);
-      expect(providers[0]).toEqual(testProvider2);
-      expect(providers[1]).toEqual(testProvider1);
-      expect(providers[2]).toEqual(testProvider3);
     });
   });
 

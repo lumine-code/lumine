@@ -2,8 +2,8 @@ const getSuggestionsWithTreeSitter = require("./tree-sitter-provider");
 const getSuggestionsWithTextMate = require("./text-mate-provider");
 
 const provider = {
-  selector: ".text.html",
-  disableForSelector: ".text.html .comment",
+  scopeSelector: ".text.html",
+  disableForScopeSelector: ".text.html .comment",
   priority: 1,
   filterSuggestions: true,
 

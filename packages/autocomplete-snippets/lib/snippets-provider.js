@@ -1,6 +1,6 @@
 module.exports = class SnippetsProvider {
   constructor() {
-    this.selector = "*";
+    this.scopeSelector = "*";
     this.inclusionPriority = 1;
     this.suggestionPriority = 2;
     this.filterSuggestions = true;

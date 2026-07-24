@@ -34,67 +34,20 @@ module.exports = {
   Section: Provider API
   */
 
-  // 1.0.0 API
-  // service - {provider: provider1}
-  consumeProvider_1(service) {
-    if (!service || !service.provider) {
-      return;
-    }
-    return this.consumeProvider([service.provider], 1);
-  },
-
-  // 1.1.0 API
-  // service - {providers: [provider1, provider2, ...]}
-  consumeProvider_1_1(service) {
-    if (!service || !service.providers) {
-      return;
-    }
-    return this.consumeProvider(service.providers, 1);
-  },
-
-  // 2.0.0 API
-  consumeProvider_2(providers) {
-    return this.consumeProvider(providers, 2);
-  },
-
-  // 3.0.0 API
-  consumeProvider_3(providers) {
-    return this.consumeProvider(providers, 3);
-  },
-
-  // 4.0.0 API – Simplifies prefix computation
-  consumeProvider_4(providers) {
-    return this.consumeProvider(providers, 4);
-  },
-
-  // 5.0.0 API – Make autocomplete play nicer with LSP using the same API
-  consumeProvider_5(providers) {
-    return this.consumeProvider(providers, 5);
-  },
-
-  // 5.1.0 API – Further LSP-driven additions. No behavior change, but worth
-  // bumping the version just to signify the additions.
-  consumeProvider_5_1(providers) {
-    return this.consumeProvider(providers, 5);
-  },
-
-  consumeProvider(providers, apiVersion = 3) {
+  consumeProvider(providers) {
     if (!providers) {
       return;
     }
-    if (providers && !Array.isArray(providers)) {
+    if (!Array.isArray(providers)) {
       providers = [providers];
     }
-    if (!providers.length > 0) {
+    if (providers.length === 0) {
       return;
     }
 
     const registrations = new CompositeDisposable();
-    for (let i = 0; i < providers.length; i++) {
-      const provider = providers[i];
-      registrations.add(
-        this.autocompleteManager.providerManager.registerProvider(provider, apiVersion),
-      );
+    for (const provider of providers) {
+      registrations.add(this.autocompleteManager.providerManager.registerProvider(provider));
     }
     return registrations;
   },

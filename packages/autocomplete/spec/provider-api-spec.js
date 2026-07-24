@@ -49,7 +49,7 @@ describe("Provider API", () => {
     testProvider = null;
   });
 
-  describe("Provider API v2.0.0", () => {
+  describe("registration and suggestions", () => {
     describe("common functionality", () => {
       it("registers the provider specified by [provider]", () => {
         testProvider = {
@@ -65,7 +65,7 @@ describe("Provider API", () => {
             ".source.js",
           ).length,
         ).toEqual(1);
-        registration = atom.packages.serviceHub.provide("autocomplete.provider", "2.0.0", [
+        registration = atom.packages.serviceHub.provide("autocomplete.provider", "1.0.0", [
           testProvider,
         ]);
         return expect(
@@ -92,7 +92,7 @@ describe("Provider API", () => {
         ).toEqual(1);
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
         expect(
@@ -126,7 +126,7 @@ describe("Provider API", () => {
         ).toEqual(1);
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
         expect(
@@ -137,7 +137,7 @@ describe("Provider API", () => {
         ).toEqual(2);
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider2,
         );
         expect(
@@ -162,7 +162,7 @@ describe("Provider API", () => {
 
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -198,7 +198,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -237,7 +237,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -265,7 +265,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -299,7 +299,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -332,7 +332,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -360,7 +360,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -390,7 +390,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "2.0.0",
+          "1.0.0",
           testProvider,
         );
 
@@ -403,7 +403,7 @@ describe("Provider API", () => {
     });
   });
 
-  describe("Provider API v5.0.0", () => {
+  describe("range-based replacement", () => {
     const triggerAutocompletion = () => {
       atom.commands.dispatch(atom.views.getView(editor), "autocomplete:activate");
       return waitForAutocomplete(editor);
@@ -441,7 +441,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.0.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("hello, world\n");
@@ -478,7 +478,7 @@ describe("Provider API", () => {
         };
         registration = atom.packages.serviceHub.provide(
           "autocomplete.provider",
-          "5.0.0",
+          "1.0.0",
           testProvider,
         );
         editor.insertText("foololohai");
@@ -523,7 +523,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.0.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("foololohai");
@@ -547,7 +547,7 @@ describe("Provider API", () => {
     });
   });
 
-  describe("Provider API v5.1.0", () => {
+  describe("text edits", () => {
     function triggerAutocompletion() {
       atom.commands.dispatch(atom.views.getView(editor), "autocomplete:activate");
       return waitForAutocomplete(editor);
@@ -586,7 +586,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.0.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("hello, world\n");
@@ -621,7 +621,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.0.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("hello, world\n");
@@ -659,7 +659,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.0.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("hello, world\n");
@@ -695,7 +695,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.1.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("\nlorem\nhello, world\ndolor\n");
@@ -741,7 +741,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.1.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("\nlorem\nhello, world\ndolor\n");
@@ -791,7 +791,7 @@ describe("Provider API", () => {
       };
       registration = atom.packages.serviceHub.provide(
         "autocomplete.provider",
-        "5.0.0",
+        "1.0.0",
         testProvider,
       );
       editor.insertText("\nlorem\nhello, world\ndolor\n");

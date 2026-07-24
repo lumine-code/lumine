@@ -4,7 +4,6 @@ const getAdditionalWordCharacters = require("./get-additional-word-characters");
 
 module.exports = class SubsequenceProvider {
   constructor(options = {}) {
-    this.apiVersion = 4;
     this.defaults();
 
     this.subscriptions = new CompositeDisposable();

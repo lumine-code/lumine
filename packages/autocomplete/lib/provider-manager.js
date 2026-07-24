@@ -1,9 +1,7 @@
 const { CompositeDisposable, Disposable } = require("atom");
 const { isFunction, isString } = require("./type-helpers");
 const { Selector } = require("selector-kit");
-const grim = require("grim");
 const { selectorsMatchScopeChain } = require("./scope-helpers");
-const { API_VERSION } = require("./private-symbols");
 const SubsequenceProvider = require("./subsequence-provider");
 const ProviderMetadata = require("./provider-metadata");
 
@@ -19,7 +17,6 @@ module.exports = class ProviderManager {
     this.toggleDefaultProvider = this.toggleDefaultProvider.bind(this);
     this.setGlobalBlacklist = this.setGlobalBlacklist.bind(this);
     this.metadataForProvider = this.metadataForProvider.bind(this);
-    this.apiVersionForProvider = this.apiVersionForProvider.bind(this);
     this.addProvider = this.addProvider.bind(this);
     this.removeProvider = this.removeProvider.bind(this);
     this.registerProvider = this.registerProvider.bind(this);
@@ -156,10 +153,7 @@ module.exports = class ProviderManager {
     if (enabled) {
       if (this.defaultProvider != null || this.defaultProviderRegistration != null) return;
       this.defaultProvider = new SubsequenceProvider();
-      this.defaultProviderRegistration = this.registerProvider(
-        this.defaultProvider,
-        this.defaultProvider.apiVersion,
-      );
+      this.defaultProviderRegistration = this.registerProvider(this.defaultProvider);
     } else {
       if (this.defaultProviderRegistration) this.defaultProviderRegistration.dispose();
       if (this.defaultProvider) this.defaultProvider.dispose();
@@ -175,22 +169,13 @@ module.exports = class ProviderManager {
     }
   }
 
-  isValidProvider(provider, apiVersion) {
-    if (apiVersion >= 2) {
-      return (
-        provider != null &&
-        isFunction(provider.getSuggestions) &&
-        ((isString(provider.selector) && !!provider.selector.length) ||
-          (isString(provider.scopeSelector) && !!provider.scopeSelector.length))
-      );
-    } else {
-      return (
-        provider != null &&
-        isFunction(provider.requestHandler) &&
-        isString(provider.selector) &&
-        !!provider.selector.length
-      );
-    }
+  isValidProvider(provider) {
+    return (
+      provider != null &&
+      isFunction(provider.getSuggestions) &&
+      isString(provider.scopeSelector) &&
+      !!provider.scopeSelector.length
+    );
   }
 
   metadataForProvider(provider) {
@@ -205,21 +190,15 @@ module.exports = class ProviderManager {
     return null;
   }
 
-  apiVersionForProvider(provider) {
-    if (this.metadataForProvider(provider) && this.metadataForProvider(provider).apiVersion) {
-      return this.metadataForProvider(provider).apiVersion;
-    }
-  }
-
   isProviderRegistered(provider) {
     return this.metadataForProvider(provider) != null;
   }
 
-  addProvider(provider, apiVersion = 3) {
+  addProvider(provider) {
     if (this.isProviderRegistered(provider)) {
       return;
     }
-    let providerMetadata = new ProviderMetadata(provider, apiVersion);
+    let providerMetadata = new ProviderMetadata(provider);
     let labels = providerMetadata.getLabels();
     for (var label of labels) {
       if (!this.providers.has(label)) {
@@ -252,51 +231,12 @@ module.exports = class ProviderManager {
     }
   }
 
-  registerProvider(provider, apiVersion = 3) {
+  registerProvider(provider) {
     if (provider == null) {
       return;
     }
 
-    provider[API_VERSION] = apiVersion;
-
-    switch (apiVersion) {
-      case 2:
-        if (provider.id != null && provider !== this.defaultProvider) {
-          grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-  contains an \`id\` property.
-  An \`id\` attribute on your provider is no longer necessary.
-  See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-        }
-        if (provider.requestHandler != null) {
-          grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-  contains a \`requestHandler\` property.
-  \`requestHandler\` has been renamed to \`getSuggestions\`.
-  See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-        }
-        if (provider.blacklist != null) {
-          grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-  contains a \`blacklist\` property.
-  \`blacklist\` has been renamed to \`disableForScopeSelector\`.
-  See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-        }
-        break;
-      case 3:
-        if (provider.selector != null) {
-          throw new Error(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-  specifies \`selector\` instead of the \`scopeSelector\` attribute.
-  See https://github.com/atom/autocomplete-plus/wiki/Provider-API.`);
-        }
-
-        if (provider.disableForSelector != null) {
-          throw new Error(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-  specifies \`disableForSelector\` instead of the \`disableForScopeSelector\`
-  attribute.
-  See https://github.com/atom/autocomplete-plus/wiki/Provider-API.`);
-        }
-        break;
-    }
-
-    if (!this.isValidProvider(provider, apiVersion)) {
+    if (!this.isValidProvider(provider)) {
       console.warn(`Provider ${provider.constructor.name} is not valid`, provider);
       return new Disposable();
     }
@@ -305,7 +245,7 @@ module.exports = class ProviderManager {
       return;
     }
 
-    this.addProvider(provider, apiVersion);
+    this.addProvider(provider);
 
     const disposable = new Disposable(() => {
       this.removeProvider(provider);

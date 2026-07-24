@@ -4,34 +4,13 @@ import { Selector } from "selector-kit";
 import { selectorForScopeChain, selectorsMatchScopeChain } from "./scope-helpers";
 
 export default class ProviderMetadata {
-  constructor(provider, apiVersion) {
+  constructor(provider) {
     this.provider = provider;
-    this.apiVersion = apiVersion;
 
-    // TODO API: remove this when 2.0 support is removed
-    if (this.provider.selector != null) {
-      this.scopeSelectors = Selector.create(this.provider.selector);
-    } else {
-      this.scopeSelectors = Selector.create(this.provider.scopeSelector);
-    }
+    this.scopeSelectors = Selector.create(this.provider.scopeSelector);
 
-    // TODO API: remove this when 2.0 support is removed
-    if (this.provider.disableForSelector != null) {
-      this.disableForScopeSelectors = Selector.create(this.provider.disableForSelector);
-    } else if (this.provider.disableForScopeSelector != null) {
+    if (this.provider.disableForScopeSelector != null) {
       this.disableForScopeSelectors = Selector.create(this.provider.disableForScopeSelector);
-    }
-
-    // TODO API: remove this when 1.0 support is removed
-    let providerBlacklist;
-    if (
-      this.provider.providerblacklist &&
-      this.provider.providerblacklist["autocomplete-plus-fuzzyprovider"]
-    ) {
-      providerBlacklist = this.provider.providerblacklist["autocomplete-plus-fuzzyprovider"];
-    }
-    if (providerBlacklist) {
-      this.disableDefaultProviderSelectors = Selector.create(providerBlacklist);
     }
   }
 

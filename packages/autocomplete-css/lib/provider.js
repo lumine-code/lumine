@@ -10,8 +10,8 @@ const importantPrefixPattern = /(![a-z]+)$/;
 const cssDocsURL = "https://developer.mozilla.org/en-US/docs/Web/CSS";
 
 module.exports = {
-  selector: ".source.css, .source.sass, .source.css.postcss",
-  disableForSelector:
+  scopeSelector: ".source.css, .source.sass, .source.css.postcss",
+  disableForScopeSelector:
     ".source.css .comment, .source.css .string, .source.sass .comment, .source.sass .string, .source.css.postcss .comment, source.css.postcss .string",
   properties: COMPLETIONS.properties,
   pseudoSelectors: COMPLETIONS.pseudoSelectors,

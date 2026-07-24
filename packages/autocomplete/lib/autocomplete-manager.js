@@ -32,7 +32,6 @@ function sortTextEdits(textEdits) {
 
 // Deferred requires
 let minimatch = null;
-let grim = null;
 
 module.exports = class AutocompleteManager {
   constructor() {
@@ -178,16 +177,7 @@ module.exports = class AutocompleteManager {
   }
 
   editorIsValid(editor) {
-    // TODO: remove conditional when `isTextEditor` is shipped.
-    if (typeof atom.workspace.isTextEditor === "function") {
-      return atom.workspace.isTextEditor(editor);
-    } else {
-      if (!editor) {
-        return false;
-      }
-      // Should we disqualify TextEditors with the Grammar text.plain.null-grammar?
-      return editor.getText != null;
-    }
+    return atom.workspace.isTextEditor(editor);
   }
 
   // Makes the autocomplete manager watch the `editor`.
@@ -372,66 +362,14 @@ module.exports = class AutocompleteManager {
 
     const providerPromises = [];
     providers.forEach((provider) => {
-      const apiVersion = this.providerManager.apiVersionForProvider(provider);
-
-      let getSuggestions;
-      let upgradedOptions;
-
-      if (apiVersion === 1) {
-        getSuggestions = provider.requestHandler.bind(provider);
-        upgradedOptions = {
-          editor: options.editor,
-          prefix: options.prefix,
-          bufferPosition: options.bufferPosition,
-          position: options.bufferPosition,
-          scope: options.scopeDescriptor,
-          scopeChain: options.scopeDescriptor.getScopeChain(),
-          buffer: options.editor.getBuffer(),
-          cursor: options.editor.getLastCursor(),
-        };
-      } else {
-        getSuggestions = provider.getSuggestions.bind(provider);
-        if (apiVersion < 4) {
-          upgradedOptions = Object.assign({}, options);
-          upgradedOptions.prefix = options.legacyPrefix;
-        } else {
-          upgradedOptions = Object.assign({}, options);
-          delete upgradedOptions.legacyPrefix;
-        }
-      }
+      const getSuggestions = provider.getSuggestions.bind(provider);
+      const upgradedOptions = Object.assign({}, options);
+      delete upgradedOptions.legacyPrefix;
 
       return providerPromises.push(
         Promise.resolve(getSuggestions(upgradedOptions)).then((providerSuggestions) => {
           if (providerSuggestions == null) {
             return;
-          }
-
-          // TODO API: remove upgrading when 1.0 support is removed
-          let hasDeprecations = false;
-          if (apiVersion > 1 && providerSuggestions.length) {
-            hasDeprecations = this.deprecateForSuggestion(provider, providerSuggestions[0]);
-          }
-
-          if (hasDeprecations || apiVersion === 1) {
-            providerSuggestions = providerSuggestions.map((suggestion) => {
-              const newSuggestion = {
-                text: suggestion.text != null ? suggestion.text : suggestion.word,
-                snippet: suggestion.snippet,
-                replacementPrefix:
-                  suggestion.replacementPrefix != null
-                    ? suggestion.replacementPrefix
-                    : suggestion.prefix,
-                className: suggestion.className,
-                type: suggestion.type,
-              };
-              if (newSuggestion.rightLabelHTML == null && suggestion.renderLabelAsHtml) {
-                newSuggestion.rightLabelHTML = suggestion.label;
-              }
-              if (newSuggestion.rightLabel == null && !suggestion.renderLabelAsHtml) {
-                newSuggestion.rightLabel = suggestion.label;
-              }
-              return newSuggestion;
-            });
           }
 
           let hasEmpty = false; // Optimization: only create another array when there are empty items
@@ -444,13 +382,7 @@ module.exports = class AutocompleteManager {
             // distinguish between suggestion that had original prefix and assigned one, we use
             // `isPrefixModified` flag. If it is `true`, we reset replacement prefix.
             if (suggestion.replacementPrefix == null || !!suggestion.isPrefixModified) {
-              if (apiVersion < 4) {
-                suggestion.replacementPrefix = this.wordPrefixRegex.test(options.prefix)
-                  ? options.prefix
-                  : "";
-              } else {
-                suggestion.replacementPrefix = options.prefix;
-              }
+              suggestion.replacementPrefix = options.prefix;
               suggestion.isPrefixModified = true;
             }
             suggestion.provider = provider;
@@ -582,61 +514,6 @@ module.exports = class AutocompleteManager {
     }, []);
   }
 
-  deprecateForSuggestion(provider, suggestion) {
-    let hasDeprecations = false;
-    if (suggestion.word != null) {
-      hasDeprecations = true;
-      if (typeof grim === "undefined" || grim === null) {
-        grim = require("grim");
-      }
-      grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-returns suggestions with a \`word\` attribute.
-The \`word\` attribute is now \`text\`.
-See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-    }
-    if (suggestion.prefix != null) {
-      hasDeprecations = true;
-      if (typeof grim === "undefined" || grim === null) {
-        grim = require("grim");
-      }
-      grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-returns suggestions with a \`prefix\` attribute.
-The \`prefix\` attribute is now \`replacementPrefix\` and is optional.
-See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-    }
-    if (suggestion.label != null) {
-      hasDeprecations = true;
-      if (typeof grim === "undefined" || grim === null) {
-        grim = require("grim");
-      }
-      grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-returns suggestions with a \`label\` attribute.
-The \`label\` attribute is now \`rightLabel\` or \`rightLabelHTML\`.
-See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-    }
-    if (suggestion.onWillConfirm != null) {
-      hasDeprecations = true;
-      if (typeof grim === "undefined" || grim === null) {
-        grim = require("grim");
-      }
-      grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-returns suggestions with a \`onWillConfirm\` callback.
-The \`onWillConfirm\` callback is no longer supported.
-See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-    }
-    if (suggestion.onDidConfirm != null) {
-      hasDeprecations = true;
-      if (typeof grim === "undefined" || grim === null) {
-        grim = require("grim");
-      }
-      grim.deprecate(`Autocomplete provider '${provider.constructor.name}(${provider.id})'
-returns suggestions with a \`onDidConfirm\` callback.
-The \`onDidConfirm\` callback is now a \`onDidInsertSuggestion\` callback on the provider itself.
-See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
-    }
-    return hasDeprecations;
-  }
-
   displaySuggestions(suggestions, options) {
     switch (atom.config.get("autocomplete.similarSuggestionRemoval")) {
       case "textOrSnippet": {
@@ -714,13 +591,7 @@ See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
       return;
     }
 
-    const apiVersion = this.providerManager.apiVersionForProvider(suggestion.provider);
     const triggerPosition = this.editor.getLastCursor().getBufferPosition();
-
-    // TODO API: Remove as this is no longer used
-    if (suggestion.onWillConfirm) {
-      suggestion.onWillConfirm();
-    }
 
     const selections = this.editor.getSelections();
     if (selections && selections.length) {
@@ -735,18 +606,12 @@ See https://github.com/atom/autocomplete-plus/wiki/Provider-API`);
 
     this.replaceTextWithMatch(suggestion);
 
-    if (apiVersion > 1) {
-      if (suggestion.provider && suggestion.provider.onDidInsertSuggestion) {
-        suggestion.provider.onDidInsertSuggestion({
-          editor: this.editor,
-          suggestion,
-          triggerPosition,
-        });
-      }
-    } else {
-      if (suggestion.onDidConfirm) {
-        suggestion.onDidConfirm();
-      }
+    if (suggestion.provider && suggestion.provider.onDidInsertSuggestion) {
+      suggestion.provider.onDidInsertSuggestion({
+        editor: this.editor,
+        suggestion,
+        triggerPosition,
+      });
     }
   }
 
