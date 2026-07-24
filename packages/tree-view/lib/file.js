@@ -22,8 +22,13 @@ module.exports = class File {
       this.realPath = fs.realpathSync(this.path);
     } else {
       fs.realpath(this.path, (error, realPath) => {
-        // FIXME: Add actual error handling
-        if (error || this.destroyed) return;
+        if (this.destroyed) return;
+        if (error) {
+          // Resolving the real path is best-effort; keep the original path and
+          // carry on rather than dropping the entry.
+          console.warn(`tree-view: could not resolve real path for ${this.path}: ${error.message}`);
+          return;
+        }
         if (realPath && realPath !== this.path) {
           this.realPath = realPath;
           this.updateStatus();

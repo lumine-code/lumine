@@ -1,5 +1,12 @@
 const { CompositeDisposable, Emitter } = require("atom");
 const Config = require("./config");
+const { timeout } = require("./util");
+
+// How long to wait for a provider to answer `canProvideSymbols` before treating
+// it as unavailable. Language clients may need to ask their servers about
+// capabilities, so we can't wait indefinitely for a slow or stuck provider.
+const CAN_PROVIDE_SYMBOLS_TIMEOUT = 500;
+const TIMED_OUT = Symbol("timed-out");
 
 /**
  * An error thrown when a newly added symbol provider does not conform to its
@@ -188,13 +195,11 @@ module.exports = class ProviderBroker {
     }
 
     let answers = this.providers.map((provider) => {
-      // TODO: This method can reluctantly go async because language clients
-      // might have to ask their servers about capabilities. We must introduce
-      // a timeout value here so that we don't wait indefinitely for providers
-      // to respond.
       if (shouldLog) console.debug(`Asking provider:`, provider.name, provider);
-      return provider.canProvideSymbols(meta);
-      // return timeout(provider.canProvideSymbols(meta), 500);
+      return Promise.race([
+        Promise.resolve(provider.canProvideSymbols(meta)),
+        timeout(CAN_PROVIDE_SYMBOLS_TIMEOUT).then(() => TIMED_OUT),
+      ]);
     });
 
     let outcomes = await Promise.allSettled(answers);
@@ -206,6 +211,11 @@ module.exports = class ProviderBroker {
 
       if (outcome.status === "rejected") continue;
       let { value: score } = outcome;
+      if (score === TIMED_OUT) {
+        if (shouldLog)
+          console.debug(`Provider timed out answering canProvideSymbols:`, provider.name);
+        continue;
+      }
       let name = provider.name ?? "unknown";
       let packageName = provider?.packageName ?? "unknown";
 

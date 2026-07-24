@@ -70,17 +70,16 @@ export default class InstallPanel {
         }
       }),
     );
-    const searchBuffer = this.refs.searchEditor.getBuffer();
-    searchBuffer.debouncedEmitDidStopChangingEvent = ((timer) => () => {
-      clearTimeout(timer);
-      timer = setTimeout(searchBuffer.emitDidStopChangingEvent.bind(searchBuffer), 700);
-    })();
-    // TODO remove hack to extend stop changing delay
+    // Debounce the search so it runs shortly after the user stops typing rather
+    // than on every keystroke.
+    let searchTimer = null;
     this.disposables.add(
-      this.refs.searchEditor.onDidStopChanging(() => {
-        this.performSearch();
+      this.refs.searchEditor.getBuffer().onDidChange(() => {
+        clearTimeout(searchTimer);
+        searchTimer = setTimeout(() => this.performSearch(), 700);
       }),
     );
+    this.disposables.add(new Disposable(() => clearTimeout(searchTimer)));
     this.disposables.add(
       atom.commands.add(this.refs.searchEditor.element, "core:confirm", () => {
         this.performSearch();

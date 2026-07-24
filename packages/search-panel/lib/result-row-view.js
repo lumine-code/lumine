@@ -109,12 +109,11 @@ class MatchRowView {
     let prevMatchEnd = matches[0].lineTextOffset;
     for (const match of matches) {
       const range = Range.fromObject(match.range);
+      // When the previous match ended on an earlier line than this one,
+      // `prevMatchEnd - match.lineTextOffset` is negative; the Math.max clamp
+      // then correctly slices this match's prefix from the start of its line.
       const prefixStart = Math.max(0, prevMatchEnd - match.lineTextOffset);
       const matchStart = range.start.column - match.lineTextOffset;
-
-      // TODO - Handle case where (prevMatchEnd < match.lineTextOffset)
-      // The solution probably needs Workspace.scan to be reworked to account
-      // for multiple matches lines first
 
       const prefix = match.lineText.slice(prefixStart, matchStart);
 

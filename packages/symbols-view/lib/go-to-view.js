@@ -15,7 +15,6 @@ module.exports = class GoToView extends SymbolsView {
   }
 
   detached() {
-    // TODO
     this.abortController?.abort();
   }
 
@@ -26,8 +25,7 @@ module.exports = class GoToView extends SymbolsView {
     let symbols = await this.generateSymbols(editor);
 
     if (symbols?.length === 0) {
-      // TODO
-      console.warn("No symbols!");
+      console.warn("symbols-view: no symbols found for the active editor");
       return;
     }
 
@@ -63,7 +61,6 @@ module.exports = class GoToView extends SymbolsView {
 
     let providers = await this.broker.select(meta);
     if (providers?.length === 0) {
-      // TODO
       return [];
     }
 

@@ -12,6 +12,7 @@ const AsyncDummyProvider = require("./fixtures/providers/async-provider");
 const ProgressiveProjectProvider = require("./fixtures/providers/progressive-project-provider.js");
 const QuicksortProvider = require("./fixtures/providers/quicksort-provider.js");
 const VerySlowProvider = require("./fixtures/providers/very-slow-provider");
+const HangingProvider = require("./fixtures/providers/hanging-provider");
 const UselessProvider = require("./fixtures/providers/useless-provider.js");
 const EmptyProvider = require("./fixtures/providers/empty-provider.js");
 const TaggedProvider = require("./fixtures/providers/tagged-provider.js");
@@ -236,6 +237,23 @@ describe("SymbolsView", () => {
       expect(symbolsView.element.querySelector("li:last-child .secondary-line")).toHaveText(
         "Line 13",
       );
+    });
+
+    it("skips providers that hang while answering canProvideSymbols", async () => {
+      // `VerySlowProvider` answers `canProvideSymbols` instantly; only its
+      // `getSymbols` is slow. `HangingProvider` never resolves
+      // `canProvideSymbols`, so the broker must time it out and still return the
+      // responsive provider rather than waiting forever.
+      registerProvider(VerySlowProvider, HangingProvider);
+      await activationPromise;
+      expect(mainModule.broker.providers.length).toBe(2);
+
+      let meta = { type: "file", editor, paths: atom.project.getPaths() };
+      let selected = await mainModule.broker.select(meta);
+      let names = selected.map((provider) => provider.name);
+
+      expect(names).toContain("Very Slow");
+      expect(names).not.toContain("Hanging");
     });
 
     it("allows the exclusive provider to control certain UI aspects", async () => {
