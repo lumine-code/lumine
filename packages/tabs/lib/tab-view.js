@@ -100,16 +100,6 @@ class TabView {
       } else {
         console.warn("::onDidChangeTitle does not return a valid Disposable!", this.item);
       }
-    } else if (typeof this.item.on === "function") {
-      //TODO Remove once old events are no longer supported
-      this.item.on("title-changed", titleChangedHandler);
-      this.subscriptions.add({
-        dispose: () => {
-          return typeof this.item.off === "function"
-            ? this.item.off("title-changed", titleChangedHandler)
-            : undefined;
-        },
-      });
     }
 
     const pathChangedHandler = (path1) => {
@@ -131,21 +121,7 @@ class TabView {
       } else {
         console.warn("::onDidChangePath does not return a valid Disposable!", this.item);
       }
-    } else if (typeof this.item.on === "function") {
-      //TODO Remove once old events are no longer supported
-      this.item.on("path-changed", pathChangedHandler);
-      this.subscriptions.add({
-        dispose: () => {
-          return typeof this.item.off === "function"
-            ? this.item.off("path-changed", pathChangedHandler)
-            : undefined;
-        },
-      });
     }
-
-    const iconChangedHandler = () => {
-      return this.updateIcon();
-    };
 
     this.subscriptions.add(getIconServices().onDidChange(() => this.updateIcon()));
 
@@ -161,16 +137,6 @@ class TabView {
       } else {
         console.warn("::onDidChangeIcon does not return a valid Disposable!", this.item);
       }
-    } else if (typeof this.item.on === "function") {
-      //TODO Remove once old events are no longer supported
-      this.item.on("icon-changed", iconChangedHandler);
-      this.subscriptions.add({
-        dispose: () => {
-          return typeof this.item.off === "function"
-            ? this.item.off("icon-changed", iconChangedHandler)
-            : undefined;
-        },
-      });
     }
 
     const modifiedHandler = () => {
@@ -189,16 +155,6 @@ class TabView {
       } else {
         console.warn("::onDidChangeModified does not return a valid Disposable!", this.item);
       }
-    } else if (typeof this.item.on === "function") {
-      //TODO Remove once old events are no longer supported
-      this.item.on("modified-status-changed", modifiedHandler);
-      this.subscriptions.add({
-        dispose: () => {
-          return typeof this.item.off === "function"
-            ? this.item.off("modified-status-changed", modifiedHandler)
-            : undefined;
-        },
-      });
     }
 
     if (typeof this.item.onDidConflict === "function") {

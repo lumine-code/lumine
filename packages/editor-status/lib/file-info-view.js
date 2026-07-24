@@ -98,14 +98,6 @@ module.exports = class FileInfoView {
 
       if (typeof activeItem.onDidChangeTitle === "function") {
         this.titleSubscription = activeItem.onDidChangeTitle(this.updateCallback);
-      } else if (typeof activeItem.on === "function") {
-        //TODO Remove once title-changed event support is removed
-        activeItem.on("title-changed", this.updateCallback);
-        this.titleSubscription = {
-          dispose: () => {
-            return activeItem.off?.("title-changed", this.updateCallback);
-          },
-        };
       }
 
       this.modifiedSubscription = activeItem.onDidChangeModified?.(this.updateCallback);

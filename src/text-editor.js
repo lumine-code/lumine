@@ -1259,7 +1259,6 @@ module.exports = class TextEditor {
     return this.emitter.on("did-request-autoscroll", callback);
   }
 
-  // TODO Remove once the tabs package no longer uses .on subscriptions
   onDidChangeIcon(callback) {
     return this.emitter.on("did-change-icon", callback);
   }

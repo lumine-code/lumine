@@ -118,16 +118,6 @@ module.exports = {
     const activeItem = atom.workspace.getActivePaneItem();
     if (activeItem && typeof activeItem.onDidChangeTitle === "function") {
       this.activeItemSubscription = activeItem.onDidChangeTitle(() => this.updateTitle());
-    } else if (activeItem && typeof activeItem.on === "function") {
-      const updateTitle = () => this.updateTitle();
-      const subscription = activeItem.on("title-changed", updateTitle);
-      if (subscription && typeof subscription.dispose === "function") {
-        this.activeItemSubscription = subscription;
-      } else if (typeof activeItem.off === "function") {
-        this.activeItemSubscription = new Disposable(() => {
-          activeItem.off("title-changed", updateTitle);
-        });
-      }
     }
 
     this.subscribeToRepository();

@@ -1,5 +1,4 @@
 const { CompositeDisposable, Emitter } = require("atom");
-const Grim = require("grim");
 const StatusBarView = require("./status-bar-view");
 
 module.exports = {
@@ -80,33 +79,5 @@ module.exports = {
     } else {
       this.statusBarPanel = atom.workspace.addBottomPanel(panelArgs);
     }
-  },
-
-  // Deprecated
-  //
-  // Wrap deprecation calls on the methods returned rather than
-  // Services API method which would be registered and trigger
-  // a deprecation call
-  legacyProvideStatusBar() {
-    const statusbar = this.provideStatusBar();
-
-    return {
-      addLeftTile(...args) {
-        Grim.deprecate("Use version ^1.0.0 of the status-bar Service API.");
-        statusbar.addLeftTile(...args);
-      },
-      addRightTile(...args) {
-        Grim.deprecate("Use version ^1.0.0 of the status-bar Service API.");
-        statusbar.addRightTile(...args);
-      },
-      getLeftTiles() {
-        Grim.deprecate("Use version ^1.0.0 of the status-bar Service API.");
-        statusbar.getLeftTiles();
-      },
-      getRightTiles() {
-        Grim.deprecate("Use version ^1.0.0 of the status-bar Service API.");
-        statusbar.getRightTiles();
-      },
-    };
   },
 };

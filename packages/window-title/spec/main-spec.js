@@ -1,7 +1,6 @@
-const { EventEmitter } = require("events");
 const os = require("os");
 const path = require("path");
-const { Disposable } = require("atom");
+const { Disposable, Emitter } = require("atom");
 
 describe("Window Title package", () => {
   let setRepresentedFilename;
@@ -74,25 +73,28 @@ describe("Window Title package", () => {
     expect(document.title).toBe(path.basename(projectPath));
   });
 
-  it("updates for legacy pane items and removes their listener on deactivation", async () => {
-    let itemTitle = "Legacy Item";
-    const item = new EventEmitter();
-    item.element = document.createElement("div");
-    item.getTitle = () => itemTitle;
+  it("updates for pane items with a title API and removes their listener on deactivation", async () => {
+    let itemTitle = "Titled Item";
+    const emitter = new Emitter();
+    const item = {
+      element: document.createElement("div"),
+      getTitle: () => itemTitle,
+      onDidChangeTitle: (callback) => emitter.on("did-change-title", callback),
+    };
 
     await activate("{{ fileName }}");
     atom.workspace.getActivePane().activateItem(item);
 
-    expect(document.title).toBe("Legacy Item");
+    expect(document.title).toBe("Titled Item");
 
-    itemTitle = "Renamed Legacy Item";
-    item.emit("title-changed");
+    itemTitle = "Renamed Item";
+    emitter.emit("did-change-title");
 
-    expect(document.title).toBe("Renamed Legacy Item");
+    expect(document.title).toBe("Renamed Item");
 
     await atom.packages.deactivatePackage("window-title");
     itemTitle = "Ignored Title";
-    item.emit("title-changed");
+    emitter.emit("did-change-title");
 
     expect(document.title).toBe("Lumine");
     expect(setRepresentedFilename).toHaveBeenCalledWith("");
