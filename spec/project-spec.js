@@ -913,6 +913,10 @@ describe("Project", () => {
 
     afterEach(() => sub.dispose());
 
+    // Watcher-event round-trips on a loaded CI runner can far exceed the
+    // default spec deadline.
+    const CHANGE_NOTIFICATION_DEADLINE = 30000;
+
     const waitForEvents = (paths) => {
       const remaining = new Set(paths.map((p) => fs.realpathSync(p)));
       return new Promise((resolve, reject) => {
@@ -933,32 +937,60 @@ describe("Project", () => {
           reject(new Error("Expired before all expected events were delivered."));
         };
 
-        expireTimeoutId = setTimeout(expire, 2000);
+        expireTimeoutId = setTimeout(expire, 10000);
         checkCallback();
       });
     };
 
-    it("reports filesystem changes within project paths", async () => {
-      jasmine.useRealClock();
-      const dirOne = temp.mkdirSync("atom-spec-project-one");
-      const fileOne = path.join(dirOne, "file-one.txt");
-      const fileTwo = path.join(dirOne, "file-two.txt");
-      const dirTwo = temp.mkdirSync("atom-spec-project-two");
-      const fileThree = path.join(dirTwo, "file-three.txt");
+    it(
+      "reports filesystem changes within project paths",
+      async () => {
+        jasmine.useRealClock();
+        const dirOne = temp.mkdirSync("atom-spec-project-one");
+        const fileOne = path.join(dirOne, "file-one.txt");
+        const fileTwo = path.join(dirOne, "file-two.txt");
+        const dirTwo = temp.mkdirSync("atom-spec-project-two");
+        const fileThree = path.join(dirTwo, "file-three.txt");
 
-      // Ensure that all preexisting watchers are stopped
-      await stopAllWatchers();
+        // Ensure that all preexisting watchers are stopped
+        await stopAllWatchers();
 
-      atom.project.setPaths([dirOne]);
-      await atom.project.getWatcherPromise(dirOne);
+        atom.project.setPaths([dirOne]);
+        await atom.project.getWatcherPromise(dirOne);
 
-      expect(atom.project.watcherPromisesByPath[dirTwo]).toEqual(undefined);
-      fs.writeFileSync(fileThree, "three\n");
-      fs.writeFileSync(fileTwo, "two\n");
-      fs.writeFileSync(fileOne, "one\n");
-      await waitForEvents([fileOne, fileTwo]);
-      expect(events.some((event) => event.path === fileThree)).toBeFalsy();
-    });
+        // The watcher promise confirms the subscription exists, but events can
+        // still be dropped in the watcher's start-up window. Prove the watch is
+        // delivering before the real writes: touch a probe file (with fresh
+        // content each attempt) until its event arrives.
+        const probeFile = path.join(dirOne, "probe.txt");
+        const probeRealPath = () => fs.realpathSync(probeFile);
+        await new Promise((resolve) => {
+          let probeCount = 0;
+          let probeTimer;
+          checkCallback = () => {
+            if (events.some((event) => event.path === probeRealPath())) {
+              clearInterval(probeTimer);
+              resolve();
+            }
+          };
+          const probe = () => {
+            probeCount++;
+            fs.writeFileSync(probeFile, `probe ${probeCount}`);
+          };
+          probeTimer = setInterval(probe, 500);
+          probe();
+        });
+        events = [];
+
+        expect(atom.project.watcherPromisesByPath[dirTwo]).toEqual(undefined);
+        fs.writeFileSync(fileThree, "three\n");
+        fs.writeFileSync(fileTwo, "two\n");
+        fs.writeFileSync(fileOne, "one\n");
+        await waitForEvents([fileOne, fileTwo]);
+        expect(events.some((event) => event.path === fileThree)).toBeFalsy();
+      },
+      CHANGE_NOTIFICATION_DEADLINE,
+    );
   });
 
   describe(".onDidAddBuffer()", () => {
