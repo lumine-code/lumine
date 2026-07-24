@@ -21,7 +21,7 @@ const NORMALIZE_PACKAGE_DATA_README_ERROR = "ERROR: No README data found!";
 
 // The chapters of the detail view, in tab order. Each maps to a section that is
 // appended to `refs.sections`; only one chapter is shown at a time, selected by
-// the icon-only tab buttons beside the action buttons.
+// the labeled tab buttons beside the action buttons.
 const CHAPTER_ORDER = ["readme", "settings", "keymap", "grammars", "snippets", "license"];
 const CHAPTER_META = {
   readme: { label: "README", icon: "icon-book" },
@@ -279,7 +279,7 @@ export default class PackageDetailView {
     this.disposables.add(new Disposable(() => this.sectionsObserver.disconnect()));
   }
 
-  // (Re)builds the icon-only chapter tabs from the sections currently present and
+  // (Re)builds the labeled chapter tabs from the sections currently present and
   // shows only the active chapter. Idempotent: safe to call on every mutation.
   rebuildChapters() {
     if (!this.refs || !this.refs.chapterTabs) return;
@@ -435,7 +435,6 @@ export default class PackageDetailView {
         <div className="panels-item">
           <section className="section">
             <form className="section-container package-detail-view">
-
               <div className="container package-container">{packageCardView}</div>
 
               <div className="package-detail-actions">

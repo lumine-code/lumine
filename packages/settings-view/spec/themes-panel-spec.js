@@ -206,9 +206,13 @@ describe("ThemesPanel", function () {
     });
 
     it("adds newly installed themes to the list", async () => {
-      spyOn(packageManager, "installGitHubPackage").andReturn(
-        Promise.resolve({ name: "another-user-theme", theme: "ui" }),
-      );
+      // installGitHubPackage now loads the freshly installed package itself (via
+      // its afterSwap hook → activateInstalledPackage); mirror that here so the
+      // new theme shows up the next time the panel reads getInstalled().
+      spyOn(packageManager, "installGitHubPackage").andCallFake((pack) => {
+        packageManager.activateInstalledPackage(pack.name, { theme: "ui" });
+        return Promise.resolve({ name: pack.name, theme: "ui" });
+      });
       spyOn(atom.packages, "loadPackage").andCallFake((name) =>
         installed.user.push({ name, theme: "ui" }),
       );

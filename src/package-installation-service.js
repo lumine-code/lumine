@@ -140,7 +140,9 @@ class PackageInstallationService {
       }
       try {
         // No package-controlled process executes before all validation above.
-        await this.run(this.npmCommand, ["install", "--omit=dev", "--legacy-peer-deps"], { cwd: stage });
+        await this.run(this.npmCommand, ["install", "--omit=dev", "--legacy-peer-deps"], {
+          cwd: stage,
+        });
       } finally {
         if (temporaryNpmManifest) await this.remove(npmMetadataPath);
       }

@@ -64,17 +64,25 @@ describe("PackageDetailView", function () {
     expect(view.refs.title.textContent).toBe("Package With Config");
   });
 
-  it("renders icon-only chapter tabs and shows one chapter at a time", () => {
+  it("renders labeled chapter tabs and shows one chapter at a time", () => {
     atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
     const pack = atom.packages.getLoadedPackage("package-with-config");
     view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
 
+    const chapterLabels = {
+      readme: "README",
+      settings: "Settings",
+      keymap: "Keybindings",
+      grammars: "Grammars",
+      snippets: "Snippets",
+      license: "License",
+    };
     const tabs = view.refs.chapterTabs.querySelectorAll("[data-chapter-tab]");
     expect(tabs.length).toBeGreaterThan(1);
     for (const tab of tabs) {
       expect(tab.tagName).toBe("BUTTON");
       expect(tab).toHaveClass("icon");
-      expect(tab.textContent).toBe(""); // icons only, no label text
+      expect(tab.textContent).toBe(chapterLabels[tab.dataset.chapterTab]); // icon + label
     }
 
     // README is the default chapter: its section is shown, the others hidden,
