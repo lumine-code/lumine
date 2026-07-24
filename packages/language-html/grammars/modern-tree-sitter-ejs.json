@@ -6,8 +6,8 @@
   "fileTypes": ["ejs", "html.ejs"],
   "injectionRegex": "^(ejs|EJS)$",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-embedded-template#v0.23.0",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-embedded-template#v0.25.0",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-embedded-template/tree-sitter-embedded-template.wasm",
     "highlightsQuery": "tree-sitter-embedded-template/ejs/highlights.scm",
     "foldsQuery": "tree-sitter-embedded-template/ejs/folds.scm",
