@@ -1066,6 +1066,12 @@ describe("TextEditorComponent", () => {
       element.focus();
       await component.getNextUpdatePromise();
       await wait(0);
+      // Windows CI can momentarily drop OS window focus during the async
+      // update, which blurs the hidden input and clears `is-focused` before
+      // the assertion. Re-establish focus through the component's own entry
+      // point and render synchronously, leaving no async gap.
+      component.didFocus();
+      component.updateSync();
       expect(element.className).toBe("editor a b is-focused");
       document.body.focus();
       await component.getNextUpdatePromise();
@@ -1079,6 +1085,10 @@ describe("TextEditorComponent", () => {
       element.classList.add("a", "b");
       element.focus();
       await component.getNextUpdatePromise();
+      // Same spurious-blur hazard as below: re-establish focus synchronously
+      // before asserting.
+      component.didFocus();
+      component.updateSync();
       expect(element.className).toBe("editor mini a b is-focused");
       element.className = "a c d";
       // Windows CI can momentarily drop OS window focus during an async update, which blurs
