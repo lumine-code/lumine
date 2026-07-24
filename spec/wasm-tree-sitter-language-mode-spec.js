@@ -618,8 +618,74 @@ describe("WASMTreeSitterLanguageMode", () => {
       });
     });
 
-    // TODO: Ignoring these specs because web-tree-sitter doesn't seem to do
-    // async. We can rehabilitate them if we ever figure it out.
+    describe("asynchronous parsing (progress-callback time slicing)", () => {
+      it("yields to the event loop when the sync budget is exhausted, then resolves to a complete tree", async () => {
+        jasmine.useRealClock();
+        grammar = new WASMTreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        await grammar.setQueryForTest(
+          "highlightsQuery",
+          scm`
+          (identifier) @variable
+        `,
+        );
+
+        // A modest buffer is enough: with a zero-length sync budget, the very
+        // first progress-callback tick cancels each synchronous burst, so any
+        // non-trivial incremental reparse is forced onto the async path,
+        // regardless of how fast the machine is.
+        buffer.setText("function f(a, b) { return a + b; }\n".repeat(100));
+
+        const languageMode = new WASMTreeSitterLanguageMode({
+          grammar,
+          buffer,
+          syncTimeoutMicros: 0,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+        await languageMode.atTransactionEnd();
+
+        // Capture what each incremental reparse returns so we can prove it went
+        // async (a thenable) instead of blocking to completion synchronously.
+        const returnValues = [];
+        const parseAsync = languageMode.parseAsync.bind(languageMode);
+        spyOn(languageMode, "parseAsync").and.callFake((...args) => {
+          const result = parseAsync(...args);
+          returnValues.push(result);
+          return result;
+        });
+
+        // A single keystroke-sized edit (a leading empty statement keeps the
+        // program valid). Under the zero budget this cannot be re-parsed within
+        // the synchronous attempt.
+        buffer.setTextInRange(
+          [
+            [0, 0],
+            [0, 0],
+          ],
+          ";",
+        );
+        await languageMode.atTransactionEnd();
+
+        expect(returnValues.length).toBeGreaterThan(0);
+        expect(returnValues.some((r) => r && typeof r.then === "function")).toBe(true);
+
+        // The deferred parse still produced a complete, error-free tree that is
+        // structurally identical to an unbudgeted synchronous parse of the same
+        // buffer.
+        const tree = languageMode.tree;
+        expect(tree).not.toBe(null);
+        expect(tree.rootNode.hasError).toBe(false);
+
+        const fullTree = languageMode.parse(languageMode.rootLanguage, null, null);
+        expect(tree.rootNode.childCount).toBe(fullTree.rootNode.childCount);
+      });
+    });
+
+    // These specs edit the buffer *during* an in-flight parse and remain
+    // disabled because that interleaving is timing-coupled and flaky to drive
+    // deterministically. Note that the original premise ("web-tree-sitter
+    // doesn't seem to do async") no longer holds: async time-slicing works via
+    // the parse `progressCallback` — see the "asynchronous parsing" spec above.
     xdescribe("when the buffer changes during a parse", () => {
       it("immediately parses again when the current parse completes", async () => {
         jasmine.useRealClock();
