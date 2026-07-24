@@ -21,3 +21,6 @@ spec/fixtures/sample.txt text eol=lf
 # Bundled package spec fixtures assert exact byte content (line endings,
 # character offsets); check them out verbatim on every platform.
 packages/*/spec/fixtures/** -text
+
+# Grammar wasm files are binary; never attempt text merges or EOL conversion
+*.wasm binary
