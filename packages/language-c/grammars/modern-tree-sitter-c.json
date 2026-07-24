@@ -6,8 +6,8 @@
   "firstLineRegex": "-\\*-[^*]*(Mode:\\s*)?C(\\s*;.*?)?\\s*-\\*-",
   "injectionRegex": "^(c|C)$",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-c#212a80f86452bb1316324fa0db730cf52f29e05a",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-c#v0.24.2",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-c/tree-sitter-c.wasm",
     "languageSegment": "c",
     "highlightsQuery": ["common/highlights.scm", "tree-sitter-c/highlights.scm"],
