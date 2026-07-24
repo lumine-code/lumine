@@ -68,4 +68,48 @@ describe("TextEditorComponent hidden input", () => {
 
     editor.destroy();
   });
+
+  it("resets a browser-forced scroll offset when the hidden input regains focus", async () => {
+    const editor = new TextEditor({ autoHeight: false });
+    editor.setText(Array.from({ length: 400 }, (_, i) => `line ${i}`).join("\n"));
+
+    const component = new TextEditorComponent({
+      model: editor,
+      updatedSynchronously: true,
+    });
+    const element = component.element;
+    element.style.height = "200px";
+    element.style.width = "400px";
+    element.style.font = "14px monospace";
+    jasmine.attachToDOM(element);
+
+    const frame = () => new Promise((resolve) => requestAnimationFrame(() => resolve()));
+    for (let i = 0; i < 10; i++) await frame();
+    component.updateSync();
+
+    const hiddenInput = component.refs.cursorsAndInput.refs.hiddenInput;
+    const { scrollContainer } = component.refs;
+
+    // Park the hidden input far below the viewport: it tracks the last
+    // cursor's content-coordinate position, so move the cursor to the bottom
+    // and then synthetically scroll back to the top.
+    editor.setCursorBufferPosition([399, 0]);
+    component.updateSync();
+    component.setScrollTop(0);
+    component.updateSync();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    expect(hiddenInput.getBoundingClientRect().top).toBeGreaterThan(containerRect.bottom);
+
+    // Browser-initiated focus (window refocus, IME, execCommand) bypasses the
+    // preventScroll option our own focus() calls pass, and natively scrolls
+    // the overflow:hidden scroll container to reveal the off-screen input,
+    // shearing the transform-scrolled lines ("half screen" bug).
+    hiddenInput.focus();
+    for (let i = 0; i < 5; i++) await frame();
+
+    expect(scrollContainer.scrollTop).toBe(0);
+    expect(scrollContainer.scrollLeft).toBe(0);
+
+    editor.destroy();
+  });
 });

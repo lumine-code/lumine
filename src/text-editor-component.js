@@ -1981,6 +1981,15 @@ module.exports = class TextEditorComponent {
   }
 
   didFocusHiddenInput() {
+    // Focusing the hidden input while it sits outside the viewport can make
+    // the browser scroll the scroll container to reveal it. Our own focus()
+    // calls pass preventScroll, but browser-initiated focus (window refocus,
+    // IME, execCommand) does not, and since scrolling here is synthetic and
+    // transform-based, any native scroll offset shears the rendered lines
+    // ("half screen" bug). Always reset it.
+    this.refs.scrollContainer.scrollTop = 0;
+    this.refs.scrollContainer.scrollLeft = 0;
+
     if (!this.focused) {
       this.focused = true;
       this.startCursorBlinking();
