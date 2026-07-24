@@ -1523,6 +1523,61 @@ class WASMTreeSitterLanguageMode {
     return results;
   }
 
+  // Extended: Re-compiles every query of every grammar in use in this buffer —
+  // the root grammar plus any injected grammars — from its current source and
+  // reports an error notification for each query that fails to compile.
+  //
+  // Compilation is done freshly rather than through the query cache, so this
+  // validates edits made to query files after the grammar first loaded.
+  //
+  // Returns an {Array} of failure descriptors (see
+  // {WASMTreeSitterGrammar::describeQueryError}); the array is empty when
+  // every query compiled.
+  validateGrammarQueries() {
+    const queryTypes = [
+      "highlightsQuery",
+      "foldsQuery",
+      "indentsQuery",
+      "localsQuery",
+      "tagsQuery",
+    ];
+    let failures = [];
+    let grammars = new Set();
+    for (let layer of this.getAllLanguageLayers()) {
+      if (layer?.grammar) grammars.add(layer.grammar);
+    }
+
+    let validatedCount = 0;
+    for (let grammar of grammars) {
+      // A grammar whose language hasn't loaded yet can't compile anything
+      // synchronously; skip it rather than misreport it as broken.
+      if (!grammar.getLanguageSync()) continue;
+      for (let queryType of queryTypes) {
+        let source = grammar[queryType];
+        if (typeof source !== "string") continue;
+        try {
+          let query = grammar.createQuerySync(source);
+          query.delete();
+          validatedCount++;
+        } catch (error) {
+          let descriptor = error.queryDescriptor ?? grammar.describeQueryError(error, queryType);
+          failures.push(descriptor);
+          atom.notifications.addError(`Tree-sitter query error in ${grammar.scopeName}`, {
+            detail: grammar.constructor.formatQueryErrorDescriptor(descriptor),
+            dismissable: true,
+          });
+        }
+      }
+    }
+
+    if (failures.length === 0) {
+      atom.notifications.addSuccess(
+        `All Tree-sitter queries compiled (${grammars.size} grammar${grammars.size === 1 ? "" : "s"}, ${validatedCount} quer${validatedCount === 1 ? "y" : "ies"})`,
+      );
+    }
+    return failures;
+  }
+
   // Given a {Point}, returns all injection {LanguageLayer}s that include that
   // point. Does not include the root language layer.
   //
@@ -2715,12 +2770,13 @@ class LayerHighlightIterator {
 }
 
 class GrammarLoadError extends Error {
-  constructor(grammar, queryType) {
+  constructor(grammar, queryType, originalError = null) {
     super(
       `Grammar ${grammar.scopeName} failed to load its ${queryType}. Please fix this error or contact the maintainer.`,
     );
     this.name = "GrammarLoadError";
     this.queryType = queryType;
+    this.originalError = originalError;
   }
 }
 
@@ -2797,6 +2853,7 @@ class LanguageLayer {
         // `highlightsQuery`.
         let queries = ["highlightsQuery", "foldsQuery", "indentsQuery", "localsQuery", "tagsQuery"];
         let promises = [];
+        let failures = [];
 
         for (let queryType of queries) {
           if (grammar[queryType]) {
@@ -2805,27 +2862,25 @@ class LanguageLayer {
               .then((query) => {
                 this.queries[queryType] = query;
               })
-              .catch(() => {
-                throw new GrammarLoadError(grammar, queryType);
+              .catch((error) => {
+                // Collect every failure instead of letting `Promise.all`
+                // reject on the first one; each broken query is reported
+                // individually below, and the layer still activates.
+                failures.push(new GrammarLoadError(grammar, queryType, error));
               });
             promises.push(promise);
           }
         }
-        return Promise.all(promises);
-      })
-      .catch((err) => {
-        if (err.name === "GrammarLoadError") {
-          console.warn(err.message);
-          if (err.queryType === "highlightsQuery") {
+        return Promise.all(promises).then(() => {
+          for (let failure of failures) {
+            grammar.reportQueryError(failure.originalError ?? failure, failure.queryType);
+          }
+          if (failures.some((failure) => failure.queryType === "highlightsQuery")) {
             // Recover by setting an empty `highlightsQuery` so that we don't
             // propagate errors.
-            //
-            // TODO: Warning?
             grammar.setQueryForTest("highlightsQuery", `; (placeholder)`);
           }
-        } else {
-          throw err;
-        }
+        });
       })
       .then(() => {
         // This used to be called only in dev mode. But there are other use cases

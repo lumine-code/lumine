@@ -674,6 +674,14 @@ module.exports = function ({
       "editor:log-cursor-scope": function () {
         return showCursorScope(this.getCursorScope(), notificationManager);
       },
+      "editor:validate-grammar-queries": function () {
+        let languageMode = this.getBuffer().getLanguageMode();
+        if (typeof languageMode.validateGrammarQueries !== "function") {
+          notificationManager.addInfo("This buffer does not use a Tree-sitter grammar.");
+          return;
+        }
+        return languageMode.validateGrammarQueries();
+      },
       "editor:log-cursor-syntax-tree-scope": function () {
         return showSyntaxTree(this.getCursorSyntaxTreeScope(), notificationManager);
       },

@@ -7,6 +7,7 @@ const CSON = require("@lumine-code/season");
 const TextEditor = require("../src/text-editor");
 const WASMTreeSitterGrammar = require("../src/wasm-tree-sitter-grammar");
 const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mode");
+const ScopeResolver = require("../src/scope-resolver");
 const Random = require("random-seed");
 const { getRandomBufferRange, buildRandomLines } = require("./helpers/random");
 
@@ -678,6 +679,139 @@ describe("WASMTreeSitterLanguageMode", () => {
 
         const fullTree = languageMode.parse(languageMode.rootLanguage, null, null);
         expect(tree.rootNode.childCount).toBe(fullTree.rootNode.childCount);
+      });
+    });
+
+    describe("predicate robustness", () => {
+      let languageMode;
+
+      beforeEach(() => {
+        jasmine.useRealClock();
+        ScopeResolver._clearPredicateWarnings();
+        spyOn(atom, "inDevMode").and.returnValue(true);
+        spyOn(console, "warn");
+        grammar = new WASMTreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      });
+
+      async function useHighlightsQuery(query) {
+        await grammar.setQueryForTest("highlightsQuery", query);
+        languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+      }
+
+      function resolverWarnings() {
+        return console.warn.calls
+          .allArgs()
+          .filter((args) => String(args[0]).includes("ScopeResolver"));
+      }
+
+      it("warns once about unknown test/capture/adjustment keys without affecting rendering", async () => {
+        buffer.setText("abc;");
+        await useHighlightsQuery(scm`
+          ((identifier) @variable
+            (#set! test.bogusThing true))
+        `);
+
+        expectTokensToEqual(editor, [
+          [
+            { text: "abc", scopes: ["variable"] },
+            { text: ";", scopes: [] },
+          ],
+        ]);
+        expect(resolverWarnings().length).toBe(1);
+        expect(resolverWarnings()[0][0]).toContain('unknown scope test "test.bogusThing"');
+
+        // A re-highlight does not warn again.
+        buffer.append(" def;");
+        await languageMode.atTransactionEnd();
+        expect(resolverWarnings().length).toBe(1);
+      });
+
+      it("warns about unknown un-namespaced #is? tests and keeps the capture", async () => {
+        buffer.setText("abc;");
+        await useHighlightsQuery(scm`
+          ((identifier) @variable
+            (#is? test.bogusThing))
+        `);
+
+        expectTokensToEqual(editor, [
+          [
+            { text: "abc", scopes: ["variable"] },
+            { text: ";", scopes: [] },
+          ],
+        ]);
+        expect(resolverWarnings().length).toBe(1);
+        expect(resolverWarnings()[0][0]).toContain("#is? predicate");
+      });
+
+      it("drops only the captures of an invalid adjustment regex", async () => {
+        buffer.setText("abc; 123;");
+        await useHighlightsQuery(scm`
+          ((identifier) @variable
+            (#set! adjust.startAndEndAroundFirstMatchOf "(?"))
+          ((number) @constant)
+        `);
+
+        expectTokensToEqual(editor, [
+          [
+            { text: "abc; ", scopes: [] },
+            { text: "123", scopes: ["constant"] },
+            { text: ";", scopes: [] },
+          ],
+        ]);
+        expect(resolverWarnings().length).toBe(1);
+        expect(resolverWarnings()[0][0]).toContain("invalid regular expression");
+      });
+
+      it("treats a valueless test predicate as a failed test instead of crashing", async () => {
+        buffer.setText("abc;");
+        await useHighlightsQuery(scm`
+          ((identifier) @variable
+            (#is? test.type))
+        `);
+
+        expectTokensToEqual(editor, [[{ text: "abc;", scopes: [] }]]);
+        expect(resolverWarnings().length).toBe(1);
+        expect(resolverWarnings()[0][0]).toContain('scope test "test.type" threw');
+      });
+
+      it("drops the capture of a valueless adjustment instead of crashing", async () => {
+        buffer.setText("abc;");
+        await useHighlightsQuery(scm`
+          ((identifier) @variable
+            (#set! adjust.startAt))
+        `);
+
+        expectTokensToEqual(editor, [[{ text: "abc;", scopes: [] }]]);
+        expect(resolverWarnings().length).toBe(1);
+        expect(resolverWarnings()[0][0]).toContain('adjustment "adjust.startAt" threw');
+      });
+
+      it("warns about (and honors) a range that exceeds its capture, even in dev mode", async () => {
+        buffer.setText("abc;");
+        await useHighlightsQuery(scm`
+          ((identifier) @variable
+            (#set! adjust.offsetEnd 1))
+        `);
+
+        // Dev mode used to throw from inside the highlight pass here; now it
+        // warns and proceeds exactly like production.
+        expectTokensToEqual(editor, [[{ text: "abc;", scopes: ["variable"] }]]);
+        let exceededWarnings = console.warn.calls
+          .allArgs()
+          .filter((args) => String(args[0]).includes("Cannot extend past original range"));
+        expect(exceededWarnings.length).toBeGreaterThan(0);
+      });
+
+      it("drops captures whose adjusted range degenerates to invalid", async () => {
+        buffer.setText("abc;");
+        await useHighlightsQuery(scm`
+          ((identifier) @variable
+            (#set! adjust.offsetEnd -9999))
+        `);
+
+        expectTokensToEqual(editor, [[{ text: "abc;", scopes: [] }]]);
       });
     });
 

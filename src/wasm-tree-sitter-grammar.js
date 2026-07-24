@@ -70,6 +70,16 @@ function wrapQueryCaptures(QueryPrototype) {
 
 wrapQueryCaptures(Query.prototype);
 
+// `QueryError.kind` values from `web-tree-sitter`. (The `QueryError` class
+// itself is not exported, so we duck-type it and translate its `kind` here.)
+const QUERY_ERROR_KIND_LABELS = {
+  1: "syntax error",
+  2: "unknown node type",
+  3: "unknown field name",
+  4: "bad capture name",
+  5: "pattern structure error",
+};
+
 // Extended: This class holds an instance of a Tree-sitter grammar.
 module.exports = class WASMTreeSitterGrammar {
   // Cache each `Language` instance at its own path.
@@ -121,8 +131,10 @@ module.exports = class WASMTreeSitterGrammar {
     this.subscriptions = new CompositeDisposable();
 
     this.queryCache = new Map();
+    this.querySourceMaps = new Map();
     this.promisesForQueryFiles = new Map();
     this.promisesForQueries = new Map();
+    this.reportedQueryErrors = new Set();
 
     this.treeSitterGrammarPath = path.join(dirName, params.treeSitter.grammar);
     this.fileTypes = params.fileTypes || [];
@@ -299,6 +311,7 @@ module.exports = class WASMTreeSitterGrammar {
     let promise = Promise.all(readFilePromises)
       .then((allResults) => {
         let output = "";
+        let sourceMap = [];
         for (let result of allResults) {
           let { contents, path } = result;
           if (contents === "") {
@@ -321,11 +334,24 @@ module.exports = class WASMTreeSitterGrammar {
               );
             }
           }
+          // Remember which span of the concatenated source came from which
+          // file so that query compilation errors — whose offsets refer to the
+          // concatenated string — can be traced back to a file and line.
+          let start = output.length + 1;
           output += `\n${contents}`;
+          sourceMap.push({ filePath: path, start, end: output.length });
         }
+        this.querySourceMaps.set(queryType, sourceMap);
         if (this[queryType] !== output) {
           this[queryType] = output;
           this.queryCache.delete(queryType);
+          // The source changed, so any previously reported errors for this
+          // query type are stale; allow them to be reported afresh.
+          for (let reportedKey of this.reportedQueryErrors) {
+            if (reportedKey.startsWith(`${queryType}:`)) {
+              this.reportedQueryErrors.delete(reportedKey);
+            }
+          }
         }
       })
       .finally(() => {
@@ -343,10 +369,131 @@ module.exports = class WASMTreeSitterGrammar {
     }
     let query = this.queryCache.get(queryType);
     if (!query) {
-      query = new Query(language, this[queryType]);
+      try {
+        query = new Query(language, this[queryType]);
+      } catch (error) {
+        error.queryDescriptor ??= this.describeQueryError(error, queryType);
+        throw error;
+      }
       this.queryCache.set(queryType, query);
     }
     return query;
+  }
+
+  // Describes a query compilation error in terms useful to a grammar author.
+  //
+  // The source handed to the Tree-sitter `Query` constructor is a
+  // concatenation of one or more `.scm` files (after `._LANG_` substitution),
+  // so the raw character offset carried by a `QueryError` doesn't identify a
+  // file or line on its own. This maps it back through the source map recorded
+  // at load time.
+  //
+  // Returns an {Object} with `scopeName`, `queryType`, and `message`
+  // properties, plus — when the error is a Tree-sitter `QueryError` —
+  // `filePath`, `line` (1-based, within that file), `lineText`, `kindLabel`,
+  // and `word` (the unknown node type, field name, or capture name, if any).
+  // Column information is deliberately omitted: `._LANG_` substitution shifts
+  // columns, so only line numbers are reliable.
+  describeQueryError(error, queryType) {
+    let descriptor = {
+      scopeName: this.scopeName,
+      queryType,
+      message: error.message,
+      filePath: null,
+      line: null,
+      lineText: null,
+      word: null,
+      kindLabel: null,
+      candidateFiles: null,
+    };
+    // The mapping is best-effort; a failure here must never mask the original
+    // compilation error.
+    try {
+      let source = this[queryType];
+      let sourceMap = this.querySourceMaps.get(queryType);
+      // `web-tree-sitter` does not export its `QueryError` class, so
+      // duck-type it. `index` is a character offset into the compiled source.
+      let isQueryError = error.name === "QueryError" && typeof error.index === "number";
+      if (isQueryError && typeof source === "string") {
+        descriptor.kindLabel = QUERY_ERROR_KIND_LABELS[error.kind] ?? null;
+        descriptor.word = error.info?.word || null;
+
+        let entry = null;
+        if (sourceMap) {
+          for (let candidate of sourceMap) {
+            if (candidate.start <= error.index) entry = candidate;
+          }
+        }
+        let fileStart = 0;
+        if (entry) {
+          descriptor.filePath = entry.filePath;
+          fileStart = entry.start;
+        }
+        let line = 1;
+        for (let i = fileStart; i < error.index; i++) {
+          if (source.charCodeAt(i) === 10) line++;
+        }
+        descriptor.line = line;
+
+        let lineStart = source.lastIndexOf("\n", Math.max(0, error.index - 1)) + 1;
+        let lineEnd = source.indexOf("\n", error.index);
+        if (lineEnd === -1) lineEnd = source.length;
+        descriptor.lineText = source.slice(lineStart, lineEnd).trim() || null;
+      } else if (sourceMap) {
+        // Predicate errors (bad `#match?` regex, wrong argument counts) are
+        // plain `Error`s with no offset; the best we can do is name the files
+        // the query came from.
+        descriptor.candidateFiles = sourceMap.map((mapEntry) => mapEntry.filePath);
+      }
+    } catch {
+      // Fall through with whatever fields were filled in.
+    }
+    return descriptor;
+  }
+
+  // Renders a descriptor from {::describeQueryError} as a human-readable
+  // multi-line string.
+  static formatQueryErrorDescriptor(descriptor) {
+    let parts = [`Error compiling ${descriptor.queryType} for grammar ${descriptor.scopeName}`];
+    if (descriptor.filePath) {
+      let location =
+        descriptor.line != null ? `${descriptor.filePath}:${descriptor.line}` : descriptor.filePath;
+      parts.push(`at ${location}`);
+    } else if (descriptor.candidateFiles?.length > 0) {
+      parts.push(`in one of: ${descriptor.candidateFiles.join(", ")}`);
+    }
+    if (descriptor.kindLabel) {
+      parts.push(
+        descriptor.word ? `${descriptor.kindLabel}: '${descriptor.word}'` : descriptor.kindLabel,
+      );
+    } else {
+      parts.push(descriptor.message);
+    }
+    if (descriptor.lineText) {
+      parts.push(`> ${descriptor.lineText}`);
+    }
+    return parts.join("\n");
+  }
+
+  // Reports a query compilation error to the console — and, in dev mode, as a
+  // notification — at most once per distinct error. The dedupe re-arms when
+  // the query's source changes, so a fixed-then-rebroken query reports again.
+  reportQueryError(error, queryType) {
+    let dedupeKey = `${queryType}:${error.message}`;
+    if (this.reportedQueryErrors.has(dedupeKey)) {
+      return;
+    }
+    this.reportedQueryErrors.add(dedupeKey);
+
+    let descriptor = error.queryDescriptor ?? this.describeQueryError(error, queryType);
+    let formatted = WASMTreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
+    console.error(formatted, error);
+    if (atom.inDevMode() && !atom.inSpecMode()) {
+      atom.notifications.addError(`Tree-sitter query error in ${this.scopeName}`, {
+        detail: formatted,
+        dismissable: true,
+      });
+    }
   }
 
   // Extended: Given a kind of query, retrieves a Tree-sitter `Query` object
@@ -385,6 +532,7 @@ module.exports = class WASMTreeSitterGrammar {
           resolve(query);
         } catch (error) {
           // if (inDevMode) { console.timeEnd(timeTag); }
+          error.queryDescriptor ??= this.describeQueryError(error, queryType);
           reject(error);
         }
         // Propagate a failed language load; otherwise this promise never
@@ -431,6 +579,8 @@ module.exports = class WASMTreeSitterGrammar {
   async setQueryForTest(queryType, contents) {
     await this.getLanguage();
     this.queryCache.delete(queryType);
+    // The programmatic source no longer corresponds to any file on disk.
+    this.querySourceMaps.delete(queryType);
     this[queryType] = contents;
     let query = await this.getQuery(queryType);
     this.emitter.emit("did-change-query", { filePath: "", queryType });
@@ -452,8 +602,7 @@ module.exports = class WASMTreeSitterGrammar {
             await this.getQuery(queryType);
           } catch (error) {
             atom.beep();
-            console.error(`Error parsing query file: ${queryType}`);
-            console.error(error);
+            this.reportQueryError(error, queryType);
             this[queryType] = existingQuery;
             this.queryCache.delete(queryType);
             return;

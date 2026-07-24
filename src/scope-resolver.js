@@ -58,6 +58,11 @@ function interpretPredicateValue(value) {
   return value;
 }
 
+// Tracks which predicate problems have already been warned about so that a
+// busted community query can't flood the console on every re-highlight. Keyed
+// by grammar scope name plus a problem-specific key.
+const predicateWarningRegistry = new Set();
+
 function interpretPossibleKeyValuePair(rawValue, coerceValue = false) {
   if (!rawValue.includes(" ")) {
     return [rawValue, null];
@@ -166,12 +171,30 @@ class ScopeResolver {
   }
 
   getOrCompilePattern(pattern) {
-    let regex = this.patternCache.get(pattern);
-    if (!regex) {
-      regex = new RegExp(pattern);
-      this.patternCache.set(pattern, regex);
+    if (this.patternCache.has(pattern)) {
+      return this.patternCache.get(pattern);
     }
+    // An invalid pattern is cached as `null` — and each adjustment that uses
+    // patterns treats `null` as “drop this capture” — so one bad regex in a
+    // query costs its own captures without crashing the whole highlight pass.
+    let regex = null;
+    try {
+      regex = new RegExp(pattern);
+    } catch {
+      this.warnOncePerGrammar(`pattern:${pattern}`, `invalid regular expression: ${pattern}`);
+    }
+    this.patternCache.set(pattern, regex);
     return regex;
+  }
+
+  // Logs a warning about a problematic predicate at most once per grammar and
+  // key, and only in dev mode.
+  warnOncePerGrammar(key, message) {
+    if (!atom.inDevMode()) return;
+    let warningKey = `${this.grammar.scopeName}:${key}`;
+    if (predicateWarningRegistry.has(warningKey)) return;
+    predicateWarningRegistry.add(warningKey);
+    console.warn(`ScopeResolver (grammar ${this.grammar.scopeName}): ${message}`);
   }
 
   getConfig(key) {
@@ -361,10 +384,6 @@ class ScopeResolver {
     msg.push(`Original range: ${rangeSpecToString(capture.node)}`);
     msg.push(`Adjusted range: ${rangeSpecToString(range)}`);
 
-    if (atom.inDevMode()) {
-      throw new Error(msg.join("\n"));
-    }
-
     console.warn(msg.join("\n"));
   }
 
@@ -393,8 +412,15 @@ class ScopeResolver {
 
         // Transform the range successively. Later adjustments can optionally
         // act on earlier adjustments, or they can ignore the current position
-        // and inspect the original node instead.
-        range = this.applyAdjustment(key, capture.node, value, range, this);
+        // and inspect the original node instead. An adjustment that throws —
+        // e.g. a valueless `(#set! adjust.startAt)` — drops the capture
+        // rather than aborting the entire pass.
+        try {
+          range = this.applyAdjustment(key, capture.node, value, range, this);
+        } catch (error) {
+          this.warnOncePerGrammar(`error:${key}`, `adjustment "${key}" threw: ${error.message}`);
+          return null;
+        }
 
         // If any single adjustment returns `null`, we shouldn't store this
         // capture.
@@ -444,6 +470,16 @@ class ScopeResolver {
       let isCaptureSettingProperty = this.capturePropertyIsCaptureSetting(key);
       let isTest = this.capturePropertyIsTest(key);
       if (!(isCaptureSettingProperty || isTest)) {
+        // Most `#set!` keys are plain data, or belong to other resolvers
+        // (`indent.*`, `fold.*`, `highlight.*`) — but a key that claims one of
+        // our namespaces and matches nothing is almost certainly a typo.
+        if (key.startsWith("test.")) {
+          this.warnOncePerGrammar(key, `unknown scope test "${key}"`);
+        } else if (key.startsWith("capture.")) {
+          this.warnOncePerGrammar(key, `unknown capture setting "${key}"`);
+        } else if (key.startsWith("adjust.") && !this.capturePropertyIsAdjustment(key)) {
+          this.warnOncePerGrammar(key, `unknown adjustment "${key}"`);
+        }
         continue;
       }
       let value = props[key] ?? true;
@@ -454,7 +490,7 @@ class ScopeResolver {
       } else {
         // TODO: Remove this once third-party grammars have had time to adapt to
         // the migration of tests to `#is?` and `#is-not?`.
-        if (!this.applyTest(key, node, value, existingData, this)) {
+        if (!this.applyTestGuarded(key, node, value, existingData)) {
           return false;
         }
       }
@@ -463,24 +499,50 @@ class ScopeResolver {
     // Apply tests of the form `(#is? foo)`.
     for (let key in asserted) {
       if (!this.capturePropertyIsTest(key)) {
+        if (!key.includes(".") || key.startsWith("test.")) {
+          this.warnOncePerGrammar(key, `unknown scope test "${key}" in #is? predicate`);
+        }
         continue;
       }
       let value = asserted[key] ?? true;
-      let result = this.applyTest(key, node, value, existingData, this);
+      let result = this.applyTestGuarded(key, node, value, existingData);
       if (!result) return false;
     }
 
     // Apply tests of the form `(#is-not? foo)`.
     for (let key in refuted) {
       if (!this.capturePropertyIsTest(key)) {
+        if (!key.includes(".") || key.startsWith("test.")) {
+          this.warnOncePerGrammar(key, `unknown scope test "${key}" in #is-not? predicate`);
+        }
         continue;
       }
       let value = refuted[key] ?? true;
-      let result = this.applyTest(key, node, value, existingData, this);
+      let result;
+      try {
+        result = this.applyTest(key, node, value, existingData, this);
+      } catch (error) {
+        this.warnOncePerGrammar(`error:${key}`, `scope test "${key}" threw: ${error.message}`);
+        // A test that can't run at all should drop the capture, matching the
+        // guarded behavior of `#is?` tests.
+        return false;
+      }
       if (result) return false;
     }
 
     return true;
+  }
+
+  // Applies a scope test, treating a thrown error — e.g. from a valueless
+  // predicate like `(#is? test.type)` — as a failed test rather than letting
+  // it abort the entire highlight, fold, or indent pass.
+  applyTestGuarded(key, node, value, existingData) {
+    try {
+      return this.applyTest(key, node, value, existingData, this);
+    } catch (error) {
+      this.warnOncePerGrammar(`error:${key}`, `scope test "${key}" threw: ${error.message}`);
+      return false;
+    }
   }
 
   // Attempt to add a syntax capture to the boundary data, along with its scope
@@ -1005,6 +1067,9 @@ ScopeResolver.ADJUSTMENTS = {
   // the capture's node.
   startAndEndAroundFirstMatchOf(node, value, position, resolver) {
     let regex = resolver.getOrCompilePattern(value);
+    if (!regex) {
+      return null;
+    }
     let match = node.text.match(regex);
     if (!match) {
       return null;
@@ -1027,6 +1092,9 @@ ScopeResolver.ADJUSTMENTS = {
   // node.
   startBeforeFirstMatchOf(node, value, position, resolver) {
     let regex = resolver.getOrCompilePattern(value);
+    if (!regex) {
+      return null;
+    }
     let match = node.text.match(regex);
 
     if (!match) {
@@ -1047,6 +1115,9 @@ ScopeResolver.ADJUSTMENTS = {
   // node.
   startAfterFirstMatchOf(node, value, position, resolver) {
     let regex = resolver.getOrCompilePattern(value);
+    if (!regex) {
+      return null;
+    }
     let match = node.text.match(regex);
 
     if (!match) {
@@ -1067,6 +1138,9 @@ ScopeResolver.ADJUSTMENTS = {
   // node.
   endBeforeFirstMatchOf(node, value, position, resolver) {
     let regex = resolver.getOrCompilePattern(value);
+    if (!regex) {
+      return null;
+    }
     let match = node.text.match(regex);
 
     if (!match) {
@@ -1086,6 +1160,9 @@ ScopeResolver.ADJUSTMENTS = {
   // node.
   endAfterFirstMatchOf(node, value, position, resolver) {
     let regex = resolver.getOrCompilePattern(value);
+    if (!regex) {
+      return null;
+    }
     let match = node.text.match(regex);
 
     if (!match) {
@@ -1103,6 +1180,11 @@ ScopeResolver.ADJUSTMENTS = {
 
 ScopeResolver.clearConfigCache = () => {
   ConfigCache.clear();
+};
+
+// Resets the warn-once registry for predicate warnings. Intended for specs.
+ScopeResolver._clearPredicateWarnings = () => {
+  predicateWarningRegistry.clear();
 };
 
 module.exports = ScopeResolver;
