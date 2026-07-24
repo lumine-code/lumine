@@ -14,7 +14,7 @@
 
 (string) @string.quoted.double.json
 
-(string_content (escape_sequence) @constant.character.escape.json)
+(string (escape_sequence) @constant.character.escape.json)
 
 
 ; VALUES
