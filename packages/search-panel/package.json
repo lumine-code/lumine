@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/find",
   "description": "Find and replace within buffers and across the project.",
-  "version": "2.0.1",
+  "version": "1.0.0",
   "license": "MIT",
   "activationCommands": {
     "atom-workspace": [
@@ -61,7 +61,7 @@
     "search-panel": {
       "description": "Search panel service with find options, panel controls, and search triggers",
       "versions": {
-        "0.0.1": "provideService"
+        "1.0.0": "provideService"
       }
     }
   },

@@ -85,7 +85,7 @@
   "providedServices": {
     "hyperclick": {
       "versions": {
-        "0.1.0": "provideHyperclick"
+        "1.0.0": "provideHyperclick"
       }
     }
   },

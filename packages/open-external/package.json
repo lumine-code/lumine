@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "description": "Open files and directories with external applications",
   "repository": "https://github.com/lumine-code/lumine",
-  "version": "2.2.0",
+  "version": "1.0.0",
   "license": "MIT",
   "engines": {
     "atom": "*"

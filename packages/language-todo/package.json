@@ -13,7 +13,7 @@
   "providedServices": {
     "todo.injection": {
       "versions": {
-        "0.1.0": "provideTodoInjection"
+        "1.0.0": "provideTodoInjection"
       }
     }
   }
