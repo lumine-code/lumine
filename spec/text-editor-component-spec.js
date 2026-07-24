@@ -1323,7 +1323,11 @@ describe("TextEditorComponent", () => {
       expect(document.activeElement).not.toBe(hiddenInput);
       element.focus();
       expect(document.activeElement).toBe(hiddenInput);
-      await component.getNextUpdatePromise();
+      // element.focus() sets `focused` synchronously through the hidden input's
+      // focus event, so render synchronously. An async wait here would let
+      // Windows CI momentarily drop OS window focus and blur the input, clearing
+      // `is-focused` before the assertion.
+      component.updateSync();
       expect(element.classList.contains("is-focused")).toBe(true);
 
       element.focus(); // focusing back to the element does not blur
@@ -1343,7 +1347,9 @@ describe("TextEditorComponent", () => {
       expect(document.activeElement).not.toBe(hiddenInput);
 
       hiddenInput.focus();
-      await component.getNextUpdatePromise();
+      // Focusing the hidden input sets `focused` synchronously; render
+      // synchronously so no async gap lets a spurious OS-window blur clear it.
+      component.updateSync();
       expect(element.classList.contains("is-focused")).toBe(true);
     });
 
