@@ -145,4 +145,28 @@ describe("Python folding (modern Tree-sitter)", () => {
         pass
     `);
   });
+
+  it("folds multiline triple-quoted strings from their first line", async () => {
+    await expectToFoldInto(
+      dedent`
+        doc.x('''
+        11
+        ''')
+      `,
+      dedent`
+        doc.x('''…)
+      `,
+    );
+
+    await expectToFoldInto(
+      dedent`
+        x = '''
+        11
+        '''
+      `,
+      dedent`
+        x = '''…
+      `,
+    );
+  });
 });
