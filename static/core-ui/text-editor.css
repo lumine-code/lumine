@@ -173,12 +173,6 @@ atom-text-editor {
     font-style: normal !important;
   }
 
-  .indent-guide {
-    contain: paint style; /* contain_except_layout_size */
-    display: inline-block;
-    box-shadow: inset 1px 0;
-  }
-
   .cursor {
     contain: layout size paint style; /* contain_all */
     z-index: 4;

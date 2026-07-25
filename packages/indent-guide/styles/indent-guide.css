@@ -1,0 +1,20 @@
+.indent-guide {
+  width: 0.1px;
+  z-index: 100;
+  position: absolute;
+  background-color: var(--syntax-indent-guide-color);
+  &.indent-guide-stack {
+    background-color: color-mix(
+      in srgb,
+      var(--syntax-indent-guide-color) 80%,
+      var(--syntax-text-color)
+    );
+    &.indent-guide-active {
+      background-color: color-mix(
+        in srgb,
+        var(--syntax-indent-guide-color) 10%,
+        var(--syntax-text-color)
+      );
+    }
+  }
+}

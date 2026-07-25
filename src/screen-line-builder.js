@@ -4,7 +4,6 @@ const HARD_TAB = 1 << 0;
 const LEADING_WHITESPACE = 1 << 2;
 const TRAILING_WHITESPACE = 1 << 3;
 const INVISIBLE_CHARACTER = 1 << 4;
-const INDENT_GUIDE = 1 << 5;
 const LINE_ENDING = 1 << 6;
 const FOLD = 1 << 7;
 
@@ -193,7 +192,6 @@ module.exports = class ScreenLineBuilder {
       if (flags & LEADING_WHITESPACE) className += "leading-whitespace ";
       if (flags & TRAILING_WHITESPACE) className += "trailing-whitespace ";
       if (flags & LINE_ENDING) className += "eol ";
-      if (flags & INDENT_GUIDE) className += "indent-guide ";
       if (flags & FOLD) className += "fold-marker ";
       className = className.trim();
       scopeId = this.displayLayer.registerBuiltInScope(flags, className);
@@ -214,9 +212,6 @@ module.exports = class ScreenLineBuilder {
     this.emitBuiltInTagBoundary = false;
 
     if (nextCharacter === " " || nextCharacter === "\t") {
-      const showIndentGuides =
-        this.displayLayer.showIndentGuides &&
-        (this.inLeadingWhitespace || this.trailingWhitespaceStartColumn === 0);
       if (this.inLeadingWhitespace) this.currentBuiltInClassNameFlags |= LEADING_WHITESPACE;
       if (this.inTrailingWhitespace) this.currentBuiltInClassNameFlags |= TRAILING_WHITESPACE;
 
@@ -227,20 +222,11 @@ module.exports = class ScreenLineBuilder {
         ) {
           this.currentBuiltInClassNameFlags |= INVISIBLE_CHARACTER;
         }
-
-        if (showIndentGuides) {
-          this.currentBuiltInClassNameFlags |= INDENT_GUIDE;
-          if (this.screenColumn % this.displayLayer.tabLength === 0)
-            this.emitBuiltInTagBoundary = true;
-        }
       } else {
         // nextCharacter === \t
         this.currentBuiltInClassNameFlags |= HARD_TAB;
         if (this.displayLayer.invisibles.tab)
           this.currentBuiltInClassNameFlags |= INVISIBLE_CHARACTER;
-        if (showIndentGuides && this.screenColumn % this.displayLayer.tabLength === 0) {
-          this.currentBuiltInClassNameFlags |= INDENT_GUIDE;
-        }
 
         this.emitBuiltInTagBoundary = true;
       }
@@ -303,19 +289,10 @@ module.exports = class ScreenLineBuilder {
     let lineEnding = this.displayLayer.buffer.lineEndingForRow(this.bufferPosition.row);
     const eolInvisible = this.displayLayer.eolInvisibles[lineEnding];
     if (eolInvisible) {
-      let eolFlags = INVISIBLE_CHARACTER | LINE_ENDING;
-      if (this.bufferLineLength === 0 && this.displayLayer.showIndentGuides)
-        eolFlags |= INDENT_GUIDE;
+      const eolFlags = INVISIBLE_CHARACTER | LINE_ENDING;
       this.emitOpenTag(this.getBuiltInScopeId(eolFlags));
       this.emitText(eolInvisible, false);
       this.emitCloseTag(this.getBuiltInScopeId(eolFlags));
-    }
-
-    if (this.bufferLineLength === 0 && this.displayLayer.showIndentGuides) {
-      let whitespaceLength = this.displayLayer.leadingWhitespaceLengthForSurroundingLines(
-        this.bufferPosition.row,
-      );
-      this.emitIndentWhitespace(whitespaceLength);
     }
 
     this.closeContainingScopes();
@@ -342,24 +319,7 @@ module.exports = class ScreenLineBuilder {
   }
 
   emitIndentWhitespace(endColumn) {
-    if (this.displayLayer.showIndentGuides) {
-      let openedIndentGuide = false;
-      while (this.screenColumn < endColumn) {
-        if (this.screenColumn % this.displayLayer.tabLength === 0) {
-          if (openedIndentGuide) {
-            this.emitCloseTag(this.getBuiltInScopeId(INDENT_GUIDE));
-          }
-
-          this.emitOpenTag(this.getBuiltInScopeId(INDENT_GUIDE));
-          openedIndentGuide = true;
-        }
-        this.emitText(" ", false);
-      }
-
-      if (openedIndentGuide) this.emitCloseTag(this.getBuiltInScopeId(INDENT_GUIDE));
-    } else {
-      this.emitText(" ".repeat(endColumn - this.screenColumn), false);
-    }
+    this.emitText(" ".repeat(endColumn - this.screenColumn), false);
   }
 
   emitHardTab() {

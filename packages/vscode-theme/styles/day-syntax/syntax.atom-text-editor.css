@@ -33,10 +33,6 @@ atom-text-editor {
     color: var(--syntax-invisible-character-color);
   }
 
-  .indent-guide {
-    color: var(--syntax-indent-guide-color);
-  }
-
   .wrap-guide {
     background-color: var(--syntax-wrap-guide-color);
   }

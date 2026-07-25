@@ -9,7 +9,6 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
   ["language.showInvisibles", "showInvisibles"],
   ["language.tabLength", "tabLength"],
   ["editor.invisibles", "invisibles"],
-  ["language.showIndentGuide", "showIndentGuide"],
   ["editor.showLineNumbers", "showLineNumbers"],
   ["language.softWrap", "softWrapped"],
   ["language.softWrapHangingIndent", "softWrapHangingIndentLength"],

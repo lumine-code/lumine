@@ -442,19 +442,6 @@ describe("TextEditorRegistry", function () {
       expect(editor.getInvisibles()).toEqual({});
     });
 
-    it("enables or disables the indent guide based on the config", async function () {
-      editor.update({ showIndentGuide: true });
-      expect(editor.doesShowIndentGuide()).toBe(true);
-
-      atom.config.set("language.showIndentGuide", false);
-      registry.maintainConfig(editor);
-      await initialPackageActivation;
-      expect(editor.doesShowIndentGuide()).toBe(false);
-
-      atom.config.set("language.showIndentGuide", true);
-      expect(editor.doesShowIndentGuide()).toBe(true);
-    });
-
     it("enables or disables soft wrap based on the config", async function () {
       editor.update({ softWrapped: true });
       expect(editor.isSoftWrapped()).toBe(true);

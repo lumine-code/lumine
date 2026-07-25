@@ -30,7 +30,6 @@ describe("DisplayLayer", () => {
         tabLength: 3,
         softWrapColumn: 20,
         softWrapHangingIndent: 2,
-        showIndentGuides: true,
         foldCharacter: "Y",
         atomicSoftTabs: false,
         ratioForCharacter: () => 3,
@@ -47,7 +46,6 @@ describe("DisplayLayer", () => {
       expect(displayLayer2.tabLength).toEqual(displayLayer1.tabLength);
       expect(displayLayer2.softWrapColumn).toEqual(displayLayer1.softWrapColumn);
       expect(displayLayer2.softWrapHangingIndent).toEqual(displayLayer1.softWrapHangingIndent);
-      expect(displayLayer2.showIndentGuides).toEqual(displayLayer1.showIndentGuides);
       expect(displayLayer2.foldCharacter).toEqual(displayLayer1.foldCharacter);
       expect(displayLayer2.atomicSoftTabs).toEqual(displayLayer1.atomicSoftTabs);
       expect(displayLayer2.ratioForCharacter).toBe(displayLayer1.ratioForCharacter);
@@ -884,7 +882,6 @@ describe("DisplayLayer", () => {
 
       const displayLayer = buffer.addDisplayLayer({
         softWrapColumn: 9,
-        showIndentGuides: true,
         tabLength: 2,
 
         invisibles: {
@@ -899,104 +896,28 @@ describe("DisplayLayer", () => {
       expectTokenBoundaries(displayLayer, [
         {
           close: [],
-          open: ["invisible-character leading-whitespace indent-guide"],
-          text: "••",
+          open: ["invisible-character leading-whitespace"],
+          text: "•••••",
         },
         {
-          close: ["invisible-character leading-whitespace indent-guide"],
-          open: ["invisible-character leading-whitespace indent-guide"],
-          text: "••",
-        },
-        {
-          close: ["invisible-character leading-whitespace indent-guide"],
-          open: ["invisible-character leading-whitespace indent-guide"],
-          text: "•",
-        },
-        {
-          close: ["invisible-character leading-whitespace indent-guide"],
+          close: ["invisible-character leading-whitespace"],
           open: [],
           text: "abc ",
         },
+        { close: [], open: [], text: "     de " },
+        { close: [], open: [], text: "     fgh " },
+        { close: [], open: [], text: "     ijk" },
         {
           close: [],
-          open: ["indent-guide"],
-          text: "  ",
-        },
-        {
-          close: ["indent-guide"],
-          open: ["indent-guide"],
-          text: "  ",
-        },
-        {
-          close: ["indent-guide"],
-          open: ["indent-guide"],
-          text: " ",
-        },
-        {
-          close: ["indent-guide"],
-          open: [],
-          text: "de ",
-        },
-        {
-          close: [],
-          open: ["indent-guide"],
-          text: "  ",
-        },
-        {
-          close: ["indent-guide"],
-          open: ["indent-guide"],
-          text: "  ",
-        },
-        {
-          close: ["indent-guide"],
-          open: ["indent-guide"],
-          text: " ",
-        },
-        {
-          close: ["indent-guide"],
-          open: [],
-          text: "fgh ",
-        },
-        {
-          close: [],
-          open: ["indent-guide"],
-          text: "  ",
-        },
-        {
-          close: ["indent-guide"],
-          open: ["indent-guide"],
-          text: "  ",
-        },
-        {
-          close: ["indent-guide"],
-          open: ["indent-guide"],
-          text: " ",
-        },
-        {
-          close: ["indent-guide"],
-          open: [],
-          text: "ijk",
-        },
-        {
-          close: [],
-          open: ["invisible-character leading-whitespace indent-guide"],
+          open: ["invisible-character leading-whitespace"],
           text: "••",
         },
         {
-          close: ["invisible-character leading-whitespace indent-guide"],
+          close: ["invisible-character leading-whitespace"],
           open: [],
           text: "lmnopqr",
         },
-        {
-          close: [],
-          open: ["indent-guide"],
-          text: "  ",
-        },
-        {
-          close: ["indent-guide"],
-          open: [],
-          text: "st",
-        },
+        { close: [], open: [], text: "  st" },
       ]);
     });
 
@@ -1842,314 +1763,6 @@ describe("DisplayLayer", () => {
     });
   });
 
-  describe("indent guides", () => {
-    it("decorates tab-stop-aligned regions of leading whitespace with indent guides", () => {
-      const buffer = new TextBuffer({
-        text: "         a      \t  \n  \t\t b\n  \t\t",
-      });
-
-      const displayLayer = buffer.addDisplayLayer({
-        showIndentGuides: true,
-        tabLength: 4,
-      });
-
-      expect(displayLayer.getText()).toBe("         a            \n         b\n        ");
-
-      expectTokenBoundaries(displayLayer, [
-        {
-          text: "    ",
-          close: [],
-          open: ["leading-whitespace indent-guide"],
-        },
-        {
-          text: "    ",
-          close: ["leading-whitespace indent-guide"],
-          open: ["leading-whitespace indent-guide"],
-        },
-        {
-          text: " ",
-          close: ["leading-whitespace indent-guide"],
-          open: ["leading-whitespace indent-guide"],
-        },
-        {
-          text: "a",
-          close: ["leading-whitespace indent-guide"],
-          open: [],
-        },
-        {
-          text: "      ",
-          close: [],
-          open: ["trailing-whitespace"],
-        },
-        {
-          text: "    ",
-          close: ["trailing-whitespace"],
-          open: ["hard-tab trailing-whitespace"],
-        },
-        {
-          text: "  ",
-          close: ["hard-tab trailing-whitespace"],
-          open: ["trailing-whitespace"],
-        },
-        {
-          text: "",
-          close: ["trailing-whitespace"],
-          open: [],
-        },
-        {
-          text: "  ",
-          close: [],
-          open: ["leading-whitespace indent-guide"],
-        },
-        {
-          text: "  ",
-          close: ["leading-whitespace indent-guide"],
-          open: ["hard-tab leading-whitespace"],
-        },
-        {
-          text: "    ",
-          close: ["hard-tab leading-whitespace"],
-          open: ["hard-tab leading-whitespace indent-guide"],
-        },
-        {
-          text: " ",
-          close: ["hard-tab leading-whitespace indent-guide"],
-          open: ["leading-whitespace indent-guide"],
-        },
-        {
-          text: "b",
-          close: ["leading-whitespace indent-guide"],
-          open: [],
-        },
-        {
-          text: "  ",
-          close: [],
-          open: ["trailing-whitespace indent-guide"],
-        },
-        {
-          text: "  ",
-          close: ["trailing-whitespace indent-guide"],
-          open: ["hard-tab trailing-whitespace"],
-        },
-        {
-          text: "    ",
-          close: ["hard-tab trailing-whitespace"],
-          open: ["hard-tab trailing-whitespace indent-guide"],
-        },
-        {
-          text: "",
-          close: ["hard-tab trailing-whitespace indent-guide"],
-          open: [],
-        },
-      ]);
-    });
-
-    it("decorates empty lines with the max number of indent guides found on the surrounding non-empty lines", () => {
-      const buffer = new TextBuffer({
-        text: "\n\n          a\n\n\t \t b\n\n\n",
-      });
-
-      const displayLayer = buffer.addDisplayLayer({
-        showIndentGuides: true,
-        tabLength: 4,
-
-        invisibles: {
-          eol: "¬",
-        },
-      });
-
-      expect(displayLayer.getText()).toBe(
-        "¬         \n¬         \n          a¬\n¬         \n         b¬\n¬        \n¬        \n         ",
-      );
-
-      expectTokenBoundaries(displayLayer, [
-        { text: "¬", close: [], open: ["invisible-character eol indent-guide"] },
-        { text: "   ", close: ["invisible-character eol indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["indent-guide"] },
-        { text: "  ", close: ["indent-guide"], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-        { text: "¬", close: [], open: ["invisible-character eol indent-guide"] },
-        { text: "   ", close: ["invisible-character eol indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["indent-guide"] },
-        { text: "  ", close: ["indent-guide"], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["leading-whitespace indent-guide"] },
-        {
-          text: "    ",
-          close: ["leading-whitespace indent-guide"],
-          open: ["leading-whitespace indent-guide"],
-        },
-        {
-          text: "  ",
-          close: ["leading-whitespace indent-guide"],
-          open: ["leading-whitespace indent-guide"],
-        },
-        { text: "a", close: ["leading-whitespace indent-guide"], open: [] },
-        { text: "¬", close: [], open: ["invisible-character eol"] },
-        { text: "", close: ["invisible-character eol"], open: [] },
-        { text: "¬", close: [], open: ["invisible-character eol indent-guide"] },
-        { text: "   ", close: ["invisible-character eol indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["indent-guide"] },
-        { text: "  ", close: ["indent-guide"], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["hard-tab leading-whitespace indent-guide"] },
-        {
-          text: " ",
-          close: ["hard-tab leading-whitespace indent-guide"],
-          open: ["leading-whitespace indent-guide"],
-        },
-        {
-          text: "   ",
-          close: ["leading-whitespace indent-guide"],
-          open: ["hard-tab leading-whitespace"],
-        },
-        {
-          text: " ",
-          close: ["hard-tab leading-whitespace"],
-          open: ["leading-whitespace indent-guide"],
-        },
-        { text: "b", close: ["leading-whitespace indent-guide"], open: [] },
-        { text: "¬", close: [], open: ["invisible-character eol"] },
-        { text: "", close: ["invisible-character eol"], open: [] },
-        { text: "¬", close: [], open: ["invisible-character eol indent-guide"] },
-        { text: "   ", close: ["invisible-character eol indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["indent-guide"] },
-        { text: " ", close: ["indent-guide"], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-        { text: "¬", close: [], open: ["invisible-character eol indent-guide"] },
-        { text: "   ", close: ["invisible-character eol indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["indent-guide"] },
-        { text: " ", close: ["indent-guide"], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-        { text: "    ", close: [], open: ["indent-guide"] },
-        { text: "    ", close: ["indent-guide"], open: ["indent-guide"] },
-        { text: " ", close: ["indent-guide"], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-      ]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 0], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 0], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 1], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 1], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([1, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 2], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 2], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([1, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 4], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 4], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([1, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 6], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 6], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([1, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 8], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 8], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([1, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 9], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([0, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([0, 9], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([1, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([7, 3], {
-          clipDirection: "backward",
-        }),
-      ).toEqual([7, 0]);
-
-      expect(
-        displayLayer.clipScreenPosition([7, 3], {
-          clipDirection: "forward",
-        }),
-      ).toEqual([7, 0]);
-    });
-
-    it("renders a single indent guide on empty lines surrounded by lines with leading whitespace less than the tab length", () => {
-      const buffer = new TextBuffer({
-        text: "a\n\nb\n  c\n\n",
-      });
-
-      const displayLayer = buffer.addDisplayLayer({
-        showIndentGuides: true,
-        tabLength: 4,
-      });
-
-      expect(JSON.stringify(displayLayer.getText())).toBe(JSON.stringify("a\n\nb\n  c\n  \n  "));
-
-      expectTokenBoundaries(displayLayer, [
-        { text: "a", close: [], open: [] },
-        { text: "", close: [], open: [] },
-        { text: "b", close: [], open: [] },
-        { text: "  ", close: [], open: ["leading-whitespace indent-guide"] },
-        { text: "c", close: ["leading-whitespace indent-guide"], open: [] },
-        { text: "  ", close: [], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-        { text: "  ", close: [], open: ["indent-guide"] },
-        { text: "", close: ["indent-guide"], open: [] },
-      ]);
-    });
-  });
-
   describe("text decorations", () => {
     it("exposes open and close tags from the language mode in the token iterator", () => {
       const buffer = new TextBuffer({
@@ -2215,22 +1828,21 @@ describe("DisplayLayer", () => {
       ]);
     });
 
-    it("includes indent guides and EOL characters within containing decoration tags", function () {
+    it("includes EOL characters within containing decoration tags", function () {
       const buffer = new TextBuffer({
         text: [
-          "", // empty line with no indent guide
+          "", // empty line
           "1",
           "  ", // whitespace-only line
-          "", // empty line with an indent guide
+          "", // trailing empty line
         ].join("\n"),
       });
 
       const displayLayer = buffer.addDisplayLayer({
-        showIndentGuides: true,
         invisibles: { eol: "¬" },
       });
 
-      expect(displayLayer.getText().split("\n")).toEqual(["¬", "1¬", "  ¬", "  "]);
+      expect(displayLayer.getText().split("\n")).toEqual(["¬", "1¬", "  ¬", ""]);
 
       buffer.setLanguageMode(
         new TestLanguageMode([
@@ -2245,20 +1857,19 @@ describe("DisplayLayer", () => {
       );
 
       expectTokenBoundaries(displayLayer, [
-        { text: "¬", close: [], open: ["a", "invisible-character eol indent-guide"] },
-        { text: "", close: ["invisible-character eol indent-guide", "a"], open: [] },
+        { text: "¬", close: [], open: ["a", "invisible-character eol"] },
+        { text: "", close: ["invisible-character eol", "a"], open: [] },
         { text: "1", close: [], open: ["a"] },
         { text: "¬", close: [], open: ["invisible-character eol"] },
         { text: "", close: ["invisible-character eol", "a"], open: [] },
-        { text: "  ", close: [], open: ["a", "trailing-whitespace indent-guide"] },
+        { text: "  ", close: [], open: ["a", "trailing-whitespace"] },
         {
           text: "¬",
-          close: ["trailing-whitespace indent-guide"],
+          close: ["trailing-whitespace"],
           open: ["invisible-character eol"],
         },
         { text: "", close: ["invisible-character eol", "a"], open: [] },
-        { text: "  ", close: [], open: ["a", "indent-guide"] },
-        { text: "", close: ["indent-guide", "a"], open: [] },
+        { text: "", close: [], open: [] },
       ]);
     });
 
@@ -3096,14 +2707,12 @@ describe("DisplayLayer", () => {
         }
 
         const foldIds = [];
-        const showIndentGuides = Boolean(random(2));
         const softWrapColumn = random(2) ? random.intBetween(5, 80) : null;
         const foldsMarkerLayer = random(2) ? createFoldsMarkerLayer(random, buffer, foldIds) : null;
 
         const displayLayer = buffer.addDisplayLayer({
           tabLength: 4,
           invisibles: invisibles,
-          showIndentGuides: showIndentGuides,
           softWrapColumn: softWrapColumn,
           foldsMarkerLayer: foldsMarkerLayer,
         });
@@ -3149,7 +2758,7 @@ describe("DisplayLayer", () => {
 
           const freshDisplayLayer = displayLayer.copy();
           freshDisplayLayer.getScreenLines();
-          if (!Number.isFinite(displayLayer.softWrapColumn) && !displayLayer.showIndentGuides) {
+          if (!Number.isFinite(displayLayer.softWrapColumn)) {
             verifyLineLengths(displayLayer);
           }
           verifyTokenConsistency(displayLayer);

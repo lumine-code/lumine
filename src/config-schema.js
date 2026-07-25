@@ -703,12 +703,6 @@ const configSchema = {
         minimum: 0,
         default: 0,
       },
-      showIndentGuide: {
-        title: "Show Indent Guide",
-        description: "Show indentation indicators in the editor.",
-        type: "boolean",
-        default: false,
-      },
       showInvisibles: {
         title: "Show Invisibles",
         description:

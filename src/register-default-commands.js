@@ -691,9 +691,6 @@ module.exports = function ({
       "editor:copy-project-path": function () {
         return copyPathToClipboard(this, project, clipboard, true);
       },
-      "editor:toggle-indent-guide": function () {
-        return config.set("language.showIndentGuide", !config.get("language.showIndentGuide"));
-      },
       "editor:toggle-line-numbers": function () {
         return config.set("editor.showLineNumbers", !config.get("editor.showLineNumbers"));
       },

@@ -34,7 +34,6 @@ class DisplayLayer {
       params.softWrapColumn != null ? Math.max(1, params.softWrapColumn) : Infinity;
     this.softWrapHangingIndent =
       params.softWrapHangingIndent != null ? params.softWrapHangingIndent : 0;
-    this.showIndentGuides = params.showIndentGuides != null ? params.showIndentGuides : false;
     this.ratioForCharacter =
       params.ratioForCharacter != null ? params.ratioForCharacter : unitRatio;
     this.isWrapBoundary = params.isWrapBoundary != null ? params.isWrapBoundary : isWordStart;
@@ -118,7 +117,6 @@ class DisplayLayer {
       tabLength: this.tabLength,
       softWrapColumn: this.softWrapColumn,
       softWrapHangingIndent: this.softWrapHangingIndent,
-      showIndentGuides: this.showIndentGuides,
       ratioForCharacter: this.ratioForCharacter,
       isWrapBoundary: this.isWrapBoundary,
       foldCharacter: this.foldCharacter,
@@ -737,43 +735,6 @@ class DisplayLayer {
     return bufferRows;
   }
 
-  leadingWhitespaceLengthForSurroundingLines(startBufferRow) {
-    let length = 0;
-    for (let bufferRow = startBufferRow - 1; bufferRow >= 0; bufferRow--) {
-      const line = this.buffer.lineForRow(bufferRow);
-      if (line.length > 0) {
-        length = this.leadingWhitespaceLengthForNonEmptyLine(line);
-        break;
-      }
-    }
-
-    const lineCount = this.buffer.getLineCount();
-    for (let bufferRow = startBufferRow + 1; bufferRow < lineCount; bufferRow++) {
-      const line = this.buffer.lineForRow(bufferRow);
-      if (line.length > 0) {
-        length = Math.max(length, this.leadingWhitespaceLengthForNonEmptyLine(line));
-        break;
-      }
-    }
-
-    return length;
-  }
-
-  leadingWhitespaceLengthForNonEmptyLine(line) {
-    let length = 0;
-    for (let i = 0; i < line.length; i++) {
-      const character = line[i];
-      if (character === " ") {
-        length++;
-      } else if (character === "\t") {
-        length += this.tabLength - (length % this.tabLength);
-      } else {
-        break;
-      }
-    }
-    return length;
-  }
-
   findTrailingWhitespaceStartColumn(bufferRow) {
     let position;
     for (
@@ -856,24 +817,9 @@ class DisplayLayer {
   }
 
   bufferDidChange({ oldRange, newRange }) {
-    let startRow = oldRange.start.row;
-    let oldEndRow = oldRange.end.row;
-    let newEndRow = newRange.end.row;
-
-    // Indent guides on sequences of blank lines are affected by the content of
-    // adjacent lines.
-    if (this.showIndentGuides) {
-      while (startRow > 0) {
-        if (this.buffer.lineLengthForRow(startRow - 1) > 0) break;
-        startRow--;
-      }
-
-      while (newEndRow < this.buffer.getLastRow()) {
-        if (this.buffer.lineLengthForRow(newEndRow + 1) > 0) break;
-        oldEndRow++;
-        newEndRow++;
-      }
-    }
+    const startRow = oldRange.start.row;
+    const oldEndRow = oldRange.end.row;
+    const newEndRow = newRange.end.row;
 
     this.indexedBufferRowCount += newEndRow - oldEndRow;
     this.didChange(this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity));
@@ -1355,13 +1301,6 @@ class DisplayLayer {
         "\n": this.invisibles.eol,
         "\r\n": this.invisibles.cr + this.invisibles.eol,
       };
-    }
-    if (
-      Object.hasOwn(params, "showIndentGuides") &&
-      params.showIndentGuides !== this.showIndentGuides
-    ) {
-      paramsChanged = true;
-      this.showIndentGuides = params.showIndentGuides;
     }
     if (Object.hasOwn(params, "softWrapColumn")) {
       let softWrapColumn =

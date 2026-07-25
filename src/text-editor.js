@@ -128,6 +128,9 @@ module.exports = class TextEditor {
     state.readOnly = state.readOnly2;
     delete state.readOnly2;
 
+    // Indent guides moved from the editor core to the indent-guide package.
+    delete state.showIndentGuide;
+
     const editor = new TextEditor(state);
     if (state.registered) {
       const disposable = atomEnvironment.textEditors.add(editor);
@@ -181,7 +184,6 @@ module.exports = class TextEditor {
       params.softWrapDebounceInterval != null ? params.softWrapDebounceInterval : 0;
     this.editorWidthInChars = params.editorWidthInChars;
     this.invisibles = params.invisibles;
-    this.showIndentGuide = params.showIndentGuide;
     this.softWrapped = params.softWrapped;
     this.softWrapAtPreferredLineLength = params.softWrapAtPreferredLineLength;
     this.preferredLineLength = params.preferredLineLength;
@@ -249,7 +251,6 @@ module.exports = class TextEditor {
       const displayLayerParams = {
         invisibles: this.getInvisibles(),
         softWrapColumn: this.getSoftWrapColumn(),
-        showIndentGuides: this.doesShowIndentGuide(),
         atomicSoftTabs: params.atomicSoftTabs != null ? params.atomicSoftTabs : true,
         tabLength,
         ratioForCharacter: this.ratioForCharacter.bind(this),
@@ -485,10 +486,6 @@ module.exports = class TextEditor {
           this.updateLineNumberGutterVisible(value, false);
           break;
 
-        case "showIndentGuide":
-          this.updateShowIndentGuide(value, false, displayLayerParams);
-          break;
-
         case "showLineNumbers":
           this.updateShowLineNumbers(value, false);
           break;
@@ -668,7 +665,6 @@ module.exports = class TextEditor {
       this.emitter.emit("did-change-mini", value);
       displayLayerParams.invisibles = this.getInvisibles();
       displayLayerParams.softWrapColumn = this.getSoftWrapColumn();
-      displayLayerParams.showIndentGuides = this.doesShowIndentGuide();
       if (this.mini) {
         for (let decoration of this.cursorLineDecorations) {
           decoration.destroy();
@@ -722,14 +718,6 @@ module.exports = class TextEditor {
       this.emitter.emit("did-change-line-number-gutter-visible", this.lineNumberGutter.isVisible());
     }
     if (finish) this.finishUpdate();
-  }
-
-  updateShowIndentGuide(value, finish, displayLayerParams = {}) {
-    if (value !== this.showIndentGuide) {
-      this.showIndentGuide = value;
-      displayLayerParams.showIndentGuides = this.doesShowIndentGuide();
-    }
-    if (finish) this.finishUpdate(displayLayerParams);
   }
 
   updateShowLineNumbers(value, finish) {
@@ -830,7 +818,6 @@ module.exports = class TextEditor {
       registered: this.registered,
       invisibles: this.invisibles,
       showInvisibles: this.showInvisibles,
-      showIndentGuide: this.showIndentGuide,
       autoHeight: this.autoHeight,
       autoWidth: this.autoWidth,
     };
@@ -4187,10 +4174,6 @@ module.exports = class TextEditor {
     } else {
       return {};
     }
-  }
-
-  doesShowIndentGuide() {
-    return this.showIndentGuide && !this.mini;
   }
 
   getSoftWrapHangingIndentLength() {
