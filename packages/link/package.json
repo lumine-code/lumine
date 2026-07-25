@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/link",
-  "description": "Opens http(s) links under the cursor",
+  "description": "Open the http(s) link under the cursor in your default browser.",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {

@@ -1,6 +1,6 @@
 # language-shellscript
 
-Shell script support for Lumine.
+Shell script language support.
 
 ## Features
 

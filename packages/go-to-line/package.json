@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/go-to-line-view",
-  "description": "Jump to a specific editor line number with `ctrl-g`.",
+  "description": "Jump the cursor to a specific line number.",
   "license": "MIT",
   "activationCommands": {
     "atom-text-editor": [

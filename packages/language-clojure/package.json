@@ -2,7 +2,7 @@
   "name": "language-clojure",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Clojure language support in Lumine",
+  "description": "Clojure language support.",
   "main": "lib/main",
   "engines": {
     "atom": "*",

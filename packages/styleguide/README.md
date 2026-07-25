@@ -1,6 +1,6 @@
 # styleguide
 
-A visual styleguide of Lumine's UI components.
+A visual styleguide of the editor's UI components.
 
 ## Features
 

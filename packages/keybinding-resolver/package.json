@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/main",
   "version": "1.0.0",
-  "description": "Show what commands a keybinding resolves to",
+  "description": "Show what commands a keybinding resolves to.",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {

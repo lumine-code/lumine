@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "View the active file and repository on its Git host's website",
+  "description": "View the active file and its repository on its Git host's website.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "activationCommands": {

@@ -1,6 +1,6 @@
 # language-sass
 
-Sass/SCSS support for Lumine.
+Sass and SCSS language support.
 
 ## Features
 

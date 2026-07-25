@@ -2,7 +2,7 @@
   "name": "autocomplete-lumine",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Lumine API autocompletions",
+  "description": "Autocompletions for the Lumine API.",
   "main": "./lib/main",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",

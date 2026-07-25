@@ -2,7 +2,7 @@
   "name": "language-sql",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "SQL language support in Lumine",
+  "description": "SQL language support.",
   "engines": {
     "atom": "*",
     "node": "*"

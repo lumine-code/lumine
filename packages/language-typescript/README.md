@@ -1,6 +1,6 @@
 # language-typescript
 
-TypeScript support for Lumine.
+TypeScript language support.
 
 ## Features
 

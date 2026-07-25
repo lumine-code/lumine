@@ -1,6 +1,6 @@
 # lumine-updater
 
-Detect new Lumine releases on launch and notify you when an update is available.
+Detect new Lumine releases on launch and notify when an update is available.
 
 ## Features
 

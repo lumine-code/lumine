@@ -1,6 +1,6 @@
 # language-objective-c
 
-Objective-C support for Lumine.
+Objective-C language support.
 
 ## Features
 

@@ -1,6 +1,6 @@
 # language-hyperlink
 
-Hyperlink colorization for Lumine.
+Hyperlink colorization.
 
 ## Features
 

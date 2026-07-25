@@ -1,6 +1,6 @@
 # language-python
 
-Python support for Lumine.
+Python language support.
 
 ## Features
 

@@ -2,7 +2,7 @@
   "name": "language-xml",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "XML language support in Lumine",
+  "description": "XML language support.",
   "engines": {
     "atom": "*",
     "node": "*"

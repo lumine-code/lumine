@@ -7,7 +7,7 @@
     "atom": "*",
     "node": ">=12"
   },
-  "description": "Python language support in Lumine",
+  "description": "Python language support.",
   "keywords": [
     "tree-sitter"
   ],

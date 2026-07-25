@@ -2,7 +2,7 @@
   "name": "language-mustache",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Mustache language support in Lumine",
+  "description": "Mustache and Handlebars language support.",
   "license": "MIT",
   "engines": {
     "atom": "*",

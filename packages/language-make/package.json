@@ -2,7 +2,7 @@
   "name": "language-make",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Make language support in Lumine",
+  "description": "Make language support.",
   "engines": {
     "atom": "*",
     "node": "*"

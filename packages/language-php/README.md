@@ -1,6 +1,6 @@
 # language-php
 
-PHP support for Lumine.
+PHP language support.
 
 ## Features
 

@@ -1,6 +1,6 @@
 # one-theme
 
-The One themes for Lumine: day and night UI and syntax themes.
+The One day and night UI and syntax themes.
 
 ## Features
 

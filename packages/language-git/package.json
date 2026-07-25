@@ -2,7 +2,7 @@
   "name": "language-git",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Git editing support in Lumine",
+  "description": "Git editing support.",
   "engines": {
     "atom": "*",
     "node": "*"

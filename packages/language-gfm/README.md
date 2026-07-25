@@ -1,6 +1,6 @@
 # language-gfm
 
-GitHub Flavored Markdown (GFM) support for Lumine.
+GitHub Flavored Markdown language support.
 
 ## Features
 

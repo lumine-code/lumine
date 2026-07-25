@@ -1,6 +1,6 @@
 # language-text
 
-Plain text support for Lumine.
+Plain text support.
 
 ## Features
 

@@ -1,6 +1,6 @@
 # language-coffee-script
 
-CoffeeScript support for Lumine.
+CoffeeScript language support.
 
 ## Features
 

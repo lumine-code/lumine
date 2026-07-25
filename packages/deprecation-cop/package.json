@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/main",
   "version": "1.0.0",
-  "description": "Shows a list of deprecated calls",
+  "description": "Shows deprecated calls used by the editor and installed packages.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

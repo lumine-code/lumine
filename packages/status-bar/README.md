@@ -1,6 +1,6 @@
 # status-bar
 
-Host the status bar at the bottom of the workspace and provide a service other packages add indicator tiles to.
+Host the status bar at the bottom of the workspace and provide a tile service.
 
 ## Features
 

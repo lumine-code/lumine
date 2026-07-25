@@ -1,6 +1,6 @@
 # autocomplete
 
-Display possible completions in the Lumine editor while you type.
+Display possible completions while you type.
 
 ## Features
 

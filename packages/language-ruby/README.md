@@ -1,6 +1,6 @@
 # language-ruby
 
-Ruby support for Lumine.
+Ruby language support.
 
 ## Features
 

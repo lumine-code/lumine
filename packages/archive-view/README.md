@@ -1,6 +1,6 @@
 # archive-view
 
-Browse the files and folders inside archive files in Lumine.
+Browse the files and folders inside archive files.
 
 ## Features
 

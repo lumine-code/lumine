@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "lib/main",
-  "description": "Sass/SCSS language support in Lumine",
+  "description": "Sass and SCSS language support.",
   "license": "MIT",
   "engines": {
     "atom": "*",

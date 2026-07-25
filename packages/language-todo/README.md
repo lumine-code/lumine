@@ -1,6 +1,6 @@
 # language-todo
 
-TODO/FIXME highlighting for Lumine.
+TODO and FIXME keyword highlighting.
 
 ## Features
 

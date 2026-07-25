@@ -2,7 +2,7 @@
   "name": "language-perl",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Perl language support in Lumine",
+  "description": "Perl language support.",
   "engines": {
     "atom": "*",
     "node": "*"

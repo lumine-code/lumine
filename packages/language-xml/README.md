@@ -1,6 +1,6 @@
 # language-xml
 
-XML support for Lumine.
+XML language support.
 
 ## Features
 

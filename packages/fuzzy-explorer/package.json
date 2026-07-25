@@ -1,7 +1,7 @@
 {
   "name": "fuzzy-explorer",
   "author": "lumine-code",
-  "description": "Fuzzy search files across user-defined directories",
+  "description": "Fuzzy search files across user-defined directories.",
   "repository": "https://github.com/lumine-code/lumine",
   "version": "1.0.0",
   "license": "MIT",

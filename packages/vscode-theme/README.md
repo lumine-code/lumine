@@ -1,6 +1,6 @@
 # vscode-theme
 
-The VSCode themes for Lumine: day and night UI and syntax themes following the VS Code Modern look.
+The VSCode day and night UI and syntax themes following the VS Code Modern look.
 
 ## Features
 

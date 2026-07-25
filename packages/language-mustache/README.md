@@ -1,6 +1,6 @@
 # language-mustache
 
-Mustache and Handlebars support for Lumine.
+Mustache and Handlebars language support.
 
 ## Features
 

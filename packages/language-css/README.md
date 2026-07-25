@@ -1,6 +1,6 @@
 # language-css
 
-CSS support for Lumine.
+CSS language support.
 
 ## Features
 

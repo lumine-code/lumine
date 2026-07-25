@@ -2,7 +2,7 @@
   "version": "1.0.0",
   "name": "language-coffee-script",
   "author": "lumine-code",
-  "description": "CoffeeScript language support in Lumine",
+  "description": "CoffeeScript language support.",
   "license": "MIT",
   "engines": {
     "atom": "*",

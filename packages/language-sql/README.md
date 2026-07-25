@@ -1,6 +1,6 @@
 # language-sql
 
-SQL support for Lumine.
+SQL language support.
 
 ## Features
 

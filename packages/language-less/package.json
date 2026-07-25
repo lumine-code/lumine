@@ -2,7 +2,7 @@
   "name": "language-less",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Less language support in Lumine",
+  "description": "Less language support.",
   "license": "MIT",
   "engines": {
     "atom": "*",

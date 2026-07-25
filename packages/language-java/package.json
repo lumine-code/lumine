@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "lib/main",
   "version": "1.0.0",
-  "description": "Java language support in Lumine",
+  "description": "Java language support.",
   "engines": {
     "atom": "*",
     "node": ">=14"

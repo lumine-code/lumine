@@ -2,7 +2,7 @@
   "name": "language-typescript",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "TypeScript language support in Lumine",
+  "description": "TypeScript language support.",
   "keywords": [
     "tree-sitter"
   ],

@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "lib/main",
   "version": "1.0.0",
-  "description": "HTML language support in Lumine",
+  "description": "HTML language support.",
   "keywords": [
     "tree-sitter"
   ],

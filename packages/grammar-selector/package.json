@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Select the grammar to use for the current editor with `ctrl-shift-L`.",
+  "description": "Pick the grammar used for syntax highlighting in the current editor.",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {

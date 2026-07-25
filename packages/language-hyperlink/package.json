@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "lib/main",
-  "description": "Hyperlink colorization in Lumine",
+  "description": "Hyperlink colorization.",
   "engines": {
     "atom": "*",
     "node": ">=14"

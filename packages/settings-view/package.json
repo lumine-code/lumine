@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Edit config settings, install packages, and change themes",
+  "description": "Edit config settings, install packages, and change themes.",
   "license": "MIT",
   "uriHandler": {
     "method": "handleURI",

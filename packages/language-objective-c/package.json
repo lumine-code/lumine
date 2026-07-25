@@ -2,7 +2,7 @@
   "name": "language-objective-c",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Objective-C language support in Lumine",
+  "description": "Objective-C language support.",
   "engines": {
     "atom": "*",
     "node": "*"

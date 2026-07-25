@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "lib/main",
-  "description": "ShellScript language support in Lumine",
+  "description": "Shell script language support.",
   "keywords": [
     "tree-sitter"
   ],

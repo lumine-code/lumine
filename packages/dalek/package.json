@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/main",
   "version": "1.0.0",
-  "description": "EXTERMINATEs built-in packages installed in ~/.lumine/packages",
+  "description": "EXTERMINATEs core packages installed as community packages.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

@@ -1,6 +1,6 @@
 # language-git
 
-Git editing support for Lumine.
+Git editing support.
 
 ## Features
 

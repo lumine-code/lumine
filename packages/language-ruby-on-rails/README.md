@@ -1,6 +1,6 @@
 # language-ruby-on-rails
 
-Ruby on Rails support for Lumine.
+Ruby on Rails language support.
 
 ## Features
 

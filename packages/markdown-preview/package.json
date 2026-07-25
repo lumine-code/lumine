@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Open a rendered version of the Markdown in the current editor.",
+  "description": "Open a live, rendered preview of the Markdown in the current editor.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

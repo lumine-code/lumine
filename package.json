@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "productName": "Lumine",
   "version": "1.132.1-dev",
-  "description": "A Community-led Hyper-Hackable Text Editor",
+  "description": "A modern, extensible text editor built on the Pulsar and Atom legacy.",
   "branding": {
     "id": "lumine",
     "name": "Lumine",

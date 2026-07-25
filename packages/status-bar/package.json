@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Host the status bar at the bottom of the workspace and provide a service other packages add indicator tiles to.",
+  "description": "Host the status bar at the bottom of the workspace and provide a tile service.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

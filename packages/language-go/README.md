@@ -1,6 +1,6 @@
 # language-go
 
-Go support for Lumine.
+Go language support.
 
 ## Features
 

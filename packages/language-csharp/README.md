@@ -1,6 +1,6 @@
 # language-csharp
 
-C# support for Lumine.
+C# language support.
 
 ## Features
 

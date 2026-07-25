@@ -6,7 +6,7 @@
     "atom": "*",
     "node": "*"
   },
-  "description": "Source code support in Lumine",
+  "description": "Base source file support.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT"
 }

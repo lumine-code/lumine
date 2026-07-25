@@ -2,7 +2,7 @@
   "name": "language-ruby-on-rails",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Ruby on Rails language support in Lumine",
+  "description": "Ruby on Rails language support.",
   "license": "MIT",
   "engines": {
     "atom": "*",

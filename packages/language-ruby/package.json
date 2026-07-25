@@ -2,7 +2,7 @@
   "name": "language-ruby",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Ruby language support in Lumine",
+  "description": "Ruby language support.",
   "keywords": [
     "tree-sitter"
   ],

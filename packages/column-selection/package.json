@@ -1,7 +1,7 @@
 {
   "name": "column-selection",
   "author": "lumine-code",
-  "description": "Create rectangular selections across lines by dragging",
+  "description": "Create rectangular selections across lines by dragging.",
   "version": "1.0.0",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",

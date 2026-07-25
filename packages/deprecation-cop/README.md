@@ -1,6 +1,6 @@
 # deprecation-cop
 
-Shows a list of deprecated calls used by Lumine and installed packages.
+Shows deprecated calls used by the editor and installed packages.
 
 ## Features
 

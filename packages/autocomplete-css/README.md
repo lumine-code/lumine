@@ -1,6 +1,6 @@
 # autocomplete-css
 
-CSS property name and value autocompletions in Lumine.
+CSS property name and value autocompletions.
 
 ## Features
 

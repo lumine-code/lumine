@@ -1,6 +1,6 @@
 # editor-status
 
-Show the active file path and a Liquid-templated cursor position, selection range, and cursor count in the status bar.
+Show the active file path, cursor position, and selection range in the status bar.
 
 ## Features
 

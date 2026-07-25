@@ -1,6 +1,6 @@
 # overtype-mode
 
-Replace existing text as you type instead of inserting, with a visual block cursor and a status bar indicator.
+Replace existing text as you type instead of inserting.
 
 ## Features
 

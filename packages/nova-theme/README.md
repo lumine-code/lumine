@@ -1,6 +1,6 @@
 # nova-theme
 
-The Nova themes for Lumine: modern day and night UI and syntax themes.
+The Nova day and night UI and syntax themes.
 
 ## Features
 

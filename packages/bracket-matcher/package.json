@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Highlight the matching bracket for the `(){}[]` character under the cursor. Move the cursor to the matching bracket with `ctrl-m`.",
+  "description": "Highlights and jumps between matching brackets, and autocompletes brackets and quotes.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

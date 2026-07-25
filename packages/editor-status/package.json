@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Show the active file path and a Liquid-templated cursor position, selection range, and cursor count in the status bar.",
+  "description": "Show the active file path, cursor position, and selection range in the status bar.",
   "repository": "https://github.com/lumine-code/lumine",
   "bugs": "https://github.com/lumine-code/lumine/issues",
   "license": "MIT",

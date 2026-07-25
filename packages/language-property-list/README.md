@@ -1,6 +1,6 @@
 # language-property-list
 
-Property list support for Lumine.
+Property list language support.
 
 ## Features
 

@@ -1,6 +1,6 @@
 # language-javascript
 
-JavaScript support for Lumine.
+JavaScript language support.
 
 ## Features
 

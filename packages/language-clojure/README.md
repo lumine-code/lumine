@@ -1,6 +1,6 @@
 # language-clojure
 
-Clojure support for Lumine.
+Clojure language support.
 
 ## Features
 

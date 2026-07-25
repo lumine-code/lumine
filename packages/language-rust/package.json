@@ -2,7 +2,7 @@
   "name": "language-rust",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Rust support for Lumine",
+  "description": "Rust language support.",
   "keywords": [
     "language",
     "grammar",

@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/main",
   "version": "1.0.0",
-  "description": "Provides symbols to symbols-view based on tree-sitter queries",
+  "description": "Provides symbols to symbols-view based on tree-sitter queries.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

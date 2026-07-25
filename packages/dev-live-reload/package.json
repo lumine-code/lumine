@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/main",
   "version": "1.0.0",
-  "description": "Live reload Lumine themes and packages.",
+  "description": "Live reload themes and packages as you edit their stylesheets.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "dependencies": {

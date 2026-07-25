@@ -1,6 +1,6 @@
 # settings-view
 
-Edit config settings, install packages, and change themes in Lumine.
+Edit config settings, install packages, and change themes.
 
 ## Features
 

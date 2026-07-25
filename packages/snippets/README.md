@@ -1,6 +1,6 @@
 # snippets
 
-Expand snippets matching the current prefix with `tab`.
+Expand snippets matching the current prefix with the tab key.
 
 ## Features
 

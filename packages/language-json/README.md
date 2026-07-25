@@ -1,6 +1,6 @@
 # language-json
 
-JSON support for Lumine.
+JSON language support.
 
 ## Features
 

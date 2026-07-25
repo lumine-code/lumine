@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Find and run available commands with fuzzy search using `cmd-shift-p` (macOS) or `ctrl-shift-p` (Linux/Windows).",
+  "description": "Find and run available commands with fuzzy search.",
   "activationCommands": {
     "atom-workspace": [
       "command-palette:toggle",

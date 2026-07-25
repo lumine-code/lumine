@@ -1,6 +1,6 @@
 # language-source
 
-Base source file support for Lumine.
+Base source file support.
 
 ## Features
 

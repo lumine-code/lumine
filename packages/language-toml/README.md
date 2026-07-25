@@ -1,6 +1,6 @@
 # language-toml
 
-TOML support for Lumine.
+TOML language support.
 
 ## Features
 

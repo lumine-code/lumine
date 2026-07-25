@@ -1,6 +1,6 @@
 # language-less
 
-Less support for Lumine.
+Less language support.
 
 ## Features
 

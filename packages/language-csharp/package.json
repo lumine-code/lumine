@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "private": true,
-  "description": "C# language support for Lumine",
+  "description": "C# language support.",
   "repository": "https://github.com/lumine-code/lumine",
   "keywords": [
     "C#",

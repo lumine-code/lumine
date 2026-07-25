@@ -1,6 +1,6 @@
 # language-yaml
 
-YAML support for Lumine.
+YAML language support.
 
 ## Features
 

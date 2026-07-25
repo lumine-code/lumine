@@ -1,6 +1,6 @@
 # background-tips
 
-Displays tips about Lumine in the background when there are no editors open.
+Displays tips about Lumine in the background when no editors are open.
 
 ## Features
 

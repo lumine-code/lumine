@@ -1,7 +1,7 @@
 {
   "name": "language-go",
   "author": "lumine-code",
-  "description": "Go language support in Lumine",
+  "description": "Go language support.",
   "main": "lib/main",
   "keywords": [
     "tree-sitter"

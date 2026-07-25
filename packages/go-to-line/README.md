@@ -1,6 +1,6 @@
 # go-to-line
 
-Jump the cursor to a specific line number in the editor.
+Jump the cursor to a specific line number.
 
 ## Features
 

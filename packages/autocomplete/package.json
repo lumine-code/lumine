@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main.js",
-  "description": "Display possible completions in the Lumine editor while typing",
+  "description": "Display possible completions while you type.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

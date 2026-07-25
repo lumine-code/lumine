@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "lib/main",
-  "description": "YAML language support in Lumine",
+  "description": "YAML language support.",
   "engines": {
     "atom": "*",
     "node": ">=12"

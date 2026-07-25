@@ -2,7 +2,7 @@
   "name": "timecop",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "Displays information about where time is spent while Lumine loads.",
+  "description": "Display information about where time is spent while Lumine loads.",
   "main": "./lib/main",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",

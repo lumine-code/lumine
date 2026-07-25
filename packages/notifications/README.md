@@ -1,6 +1,6 @@
 # notifications
 
-A tidy way to display Lumine notifications.
+A tidy way to display notifications.
 
 ## Features
 

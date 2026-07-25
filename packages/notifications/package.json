@@ -4,7 +4,7 @@
   "main": "./lib/main",
   "version": "1.0.0",
   "repository": "https://github.com/lumine-code/lumine",
-  "description": "A tidy way to display Lumine notifications.",
+  "description": "A tidy way to display notifications.",
   "license": "MIT",
   "engines": {
     "atom": "*"

@@ -2,7 +2,7 @@
   "name": "archive-view",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "View the files and folders inside archive files",
+  "description": "Browse the files and folders inside archive files.",
   "main": "./lib/archive-editor",
   "dependencies": {
     "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74",

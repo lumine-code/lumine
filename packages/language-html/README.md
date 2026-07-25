@@ -1,6 +1,6 @@
 # language-html
 
-HTML support for Lumine.
+HTML language support.
 
 ## Features
 

@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/styleguide",
   "version": "1.0.0",
-  "description": "A visual styleguide of the Lumines's UI components.",
+  "description": "A visual styleguide of the editor's UI components.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "dependencies": {

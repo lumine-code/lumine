@@ -1,7 +1,7 @@
 {
   "name": "lumine-updater",
   "version": "1.0.0",
-  "description": "Detect Lumine updates on launch.",
+  "description": "Detect new Lumine releases on launch and notify when an update is available.",
   "main": "./src/main.js",
   "scripts": {
     "test": "lumine --test spec"

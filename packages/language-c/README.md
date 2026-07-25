@@ -1,6 +1,6 @@
 # language-c
 
-C and C++ support for Lumine.
+C and C++ language support.
 
 ## Features
 

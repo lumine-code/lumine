@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Select the line ending to use for the current editor.",
+  "description": "Show and change the line ending used by the current editor.",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {

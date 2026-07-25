@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/autocomplete-snippets",
   "version": "1.0.0",
-  "description": "Adds snippets to autocomplete+ suggestions",
+  "description": "Adds snippets to autocomplete suggestions.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

@@ -1,6 +1,6 @@
 # language-make
 
-Make support for Lumine.
+Make language support.
 
 ## Features
 

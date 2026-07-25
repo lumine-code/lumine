@@ -1,6 +1,6 @@
 # language-rust
 
-Rust support for Lumine.
+Rust language support.
 
 ## Features
 

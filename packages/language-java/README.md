@@ -1,6 +1,6 @@
 # language-java
 
-Java support for Lumine.
+Java language support.
 
 ## Features
 

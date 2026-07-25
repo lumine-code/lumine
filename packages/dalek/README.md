@@ -1,6 +1,6 @@
 # dalek
 
-EXTERMINATEs core packages that have been installed as community packages in `~/.lumine/packages`.
+EXTERMINATEs core packages installed as community packages.
 
 ## Features
 

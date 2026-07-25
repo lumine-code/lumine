@@ -1,6 +1,6 @@
 # open-external
 
-Open files and directories with their system applications from Lumine.
+Open files and directories with their system applications.
 
 ## Features
 

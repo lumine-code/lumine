@@ -2,7 +2,7 @@
   "name": "language-javascript",
   "author": "lumine-code",
   "version": "1.0.0",
-  "description": "JavaScript language support in Lumine",
+  "description": "JavaScript language support.",
   "engines": {
     "atom": "*",
     "node": ">=16"

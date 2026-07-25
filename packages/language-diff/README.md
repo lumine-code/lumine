@@ -1,6 +1,6 @@
 # language-diff
 
-Diff and patch file support for Lumine.
+Diff and patch file support.
 
 ## Features
 

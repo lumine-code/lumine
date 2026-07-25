@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "main": "./lib/main",
   "version": "1.0.0",
-  "description": "Show incompatible packages",
+  "description": "Show installed packages whose native modules are incompatible with the current version.",
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

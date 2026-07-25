@@ -1,6 +1,6 @@
 # incompatible-packages
 
-Show installed Lumine packages whose native modules are incompatible with the current version.
+Show installed packages whose native modules are incompatible with the current version.
 
 ## Features
 

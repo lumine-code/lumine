@@ -1,6 +1,6 @@
 # autocomplete-lumine
 
-Autocompletions for the Lumine API available from the `atom.` global.
+Autocompletions for the Lumine API.
 
 ## Features
 

@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "lib/main",
-  "description": "TODO/FIXME highlighting support in Lumine",
+  "description": "TODO and FIXME keyword highlighting.",
   "engines": {
     "atom": "*",
     "node": ">=14"

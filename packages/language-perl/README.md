@@ -1,6 +1,6 @@
 # language-perl
 
-Perl support for Lumine.
+Perl language support.
 
 ## Features
 

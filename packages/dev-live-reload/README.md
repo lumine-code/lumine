@@ -1,6 +1,6 @@
 # dev-live-reload
 
-Live reload Lumine themes and packages as you edit their stylesheets.
+Live reload themes and packages as you edit their stylesheets.
 
 ## Features
 

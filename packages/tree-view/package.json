@@ -3,7 +3,7 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Enhanced tree view for exploring and opening project files in Lumine",
+  "description": "Explore and open project files in a tree-like view of your directories.",
   "repository": "https://github.com/lumine-code/lumine",
   "bugs": {
     "url": "https://github.com/lumine-code/lumine/issues"

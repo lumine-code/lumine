@@ -1,7 +1,7 @@
 {
   "name": "overtype-mode",
   "author": "lumine-code",
-  "description": "Replace existing text as you type instead of inserting",
+  "description": "Replace existing text as you type instead of inserting.",
   "version": "1.0.0",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",

@@ -1,6 +1,6 @@
 # autocomplete-html
 
-HTML element and attribute autocompletions in Lumine.
+HTML element and attribute autocompletions.
 
 ## Features
 

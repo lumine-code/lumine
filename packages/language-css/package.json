@@ -1,7 +1,7 @@
 {
   "name": "language-css",
   "author": "lumine-code",
-  "description": "CSS support in Lumine",
+  "description": "CSS language support.",
   "keywords": [
     "tree-sitter"
   ],
