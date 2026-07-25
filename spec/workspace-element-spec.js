@@ -1158,6 +1158,17 @@ describe("WorkspaceElement", () => {
     });
   });
 
+  describe("the 'git:colorize-toggle' command", () => {
+    it("toggles git-status colorization for this window only", () => {
+      const workspaceElement = atom.workspace.getElement();
+      expect(document.body.classList.contains("git-colorize-disabled")).toBe(false);
+      atom.commands.dispatch(workspaceElement, "git:colorize-toggle");
+      expect(document.body.classList.contains("git-colorize-disabled")).toBe(true);
+      atom.commands.dispatch(workspaceElement, "git:colorize-toggle");
+      expect(document.body.classList.contains("git-colorize-disabled")).toBe(false);
+    });
+  });
+
   describe("the 'window:run-package-specs' command", () => {
     it("runs the package specs for the active item's project path, or the first project path", () => {
       const workspaceElement = atom.workspace.getElement();

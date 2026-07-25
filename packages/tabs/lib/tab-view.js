@@ -110,7 +110,7 @@ class TabView {
       // A path change means the file exists again (e.g. saved or followed to a
       // new location), so re-evaluate the deleted indicator.
       this.updateDeletedStatus();
-      if (atom.config.get("tabs.enableVcsColoring")) this.setupVcsStatus();
+      this.setupVcsStatus();
       return this.updateIcon();
     };
 
@@ -186,9 +186,7 @@ class TabView {
         this.updateDeletedStatus();
         if (event.path !== this.path) {
           this.path = event.path;
-          if (atom.config.get("tabs.enableVcsColoring")) {
-            return this.setupVcsStatus();
-          }
+          return this.setupVcsStatus();
         }
       });
 
@@ -203,21 +201,11 @@ class TabView {
         return this.updateIconVisibility();
       }),
       atom.repositories.onDidChange(() => {
-        if (atom.config.get("tabs.enableVcsColoring") && this.path != null) {
-          this.setupVcsStatus();
-        }
+        this.setupVcsStatus();
       }),
     );
 
-    return this.subscriptions.add(
-      atom.config.observe("tabs.enableVcsColoring", (isEnabled) => {
-        if (isEnabled && this.path != null) {
-          return this.setupVcsStatus();
-        } else {
-          return this.unsetVcsStatus();
-        }
-      }),
-    );
+    return this.setupVcsStatus();
   }
 
   setupTooltip() {
@@ -515,7 +503,7 @@ class TabView {
       "status-added",
       "status-conflicted",
     );
-    if (this.status && atom.config.get("tabs.enableVcsColoring")) {
+    if (this.status) {
       return this.itemTitle.classList.add(`status-${this.status}`);
     }
   }

@@ -9,7 +9,7 @@ Display a selectable tab for each open item in a pane.
 - **Split from a tab**: split the active tab up, down, left, or right into a new pane.
 - **File icons**: shows a file-type icon on each tab when an icon service is available.
 - **MRU switching**: cycle tabs in most-recently-used order with an optional overlay list.
-- **VCS coloring**: optionally color tab file names based on their version control status.
+- **VCS coloring**: color tab file names based on their version control status.
 
 ## Commands
 

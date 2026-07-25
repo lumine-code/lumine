@@ -64,14 +64,6 @@
       margin: 0 1.8em 0 0.66em;
     }
 
-    /* VCS coloring ---------------------- */
-    &:not(.active) .status-added {
-      color: var(--tab-inactive-status-added);
-    }
-    &:not(.active) .status-modified {
-      color: var(--tab-inactive-status-modified);
-    }
-
     /* Icons ---------------------- */
 
     .title.title:before {

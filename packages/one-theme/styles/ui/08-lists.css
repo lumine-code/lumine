@@ -34,56 +34,6 @@
     color: var(--text-color-highlight);
   }
 
-  /* .generate-list-item-status-color() mixin, expanded per status */
-  li:not(.list-nested-item).status-added,
-  li.list-nested-item.status-added > .list-item {
-    color: var(--text-color-added);
-  }
-  li:not(.list-nested-item).selected.status-added,
-  li.list-nested-item.selected.status-added > .list-item {
-    color: var(--text-color-added);
-  }
-
-  li:not(.list-nested-item).status-ignored,
-  li:not(.list-nested-item).status-ignored-name,
-  li.list-nested-item.status-ignored > .list-item,
-  li.list-nested-item.status-ignored-name > .list-item {
-    color: var(--text-color-ignored);
-  }
-  li:not(.list-nested-item).selected.status-ignored,
-  li:not(.list-nested-item).selected.status-ignored-name,
-  li.list-nested-item.selected.status-ignored > .list-item,
-  li.list-nested-item.selected.status-ignored-name > .list-item {
-    color: var(--text-color-ignored);
-  }
-
-  li:not(.list-nested-item).status-modified,
-  li.list-nested-item.status-modified > .list-item {
-    color: var(--text-color-modified);
-  }
-  li:not(.list-nested-item).selected.status-modified,
-  li.list-nested-item.selected.status-modified > .list-item {
-    color: var(--text-color-modified);
-  }
-
-  li:not(.list-nested-item).status-removed,
-  li.list-nested-item.status-removed > .list-item {
-    color: var(--text-color-removed);
-  }
-  li:not(.list-nested-item).selected.status-removed,
-  li.list-nested-item.selected.status-removed > .list-item {
-    color: var(--text-color-removed);
-  }
-
-  li:not(.list-nested-item).status-renamed,
-  li.list-nested-item.status-renamed > .list-item {
-    color: var(--text-color-renamed);
-  }
-  li:not(.list-nested-item).selected.status-renamed,
-  li.list-nested-item.selected.status-renamed > .list-item {
-    color: var(--text-color-renamed);
-  }
-
   li:not(.list-nested-item).selected,
   li.list-nested-item.selected > .list-item {
     font-weight: normal;

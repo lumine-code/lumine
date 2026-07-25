@@ -97,6 +97,7 @@ const UI_VARIABLES_EXTENDED = [
   "text-color-modified",
   "text-color-removed",
   "text-color-renamed",
+  "text-color-conflicted",
 
   // Readable text on colored backgrounds (replaces Less contrast())
   "text-color-on-info",

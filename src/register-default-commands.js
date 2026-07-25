@@ -246,6 +246,9 @@ module.exports = function ({
       "window:toggle-invisibles": function () {
         return config.set("language.showInvisibles", !config.get("language.showInvisibles"));
       },
+      "git:colorize-toggle": function () {
+        document.body.classList.toggle("git-colorize-disabled");
+      },
       "window:log-deprecation-warnings": function () {
         return Grim.logDeprecations();
       },

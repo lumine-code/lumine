@@ -93,6 +93,7 @@
   --text-color-modified: var(--text-color-warning);
   --text-color-removed: var(--text-color-error);
   --text-color-renamed: var(--text-color-info);
+  --text-color-conflicted: var(--text-color-error);
 
   /* --- ui extended: readable text on colored backgrounds --- */
   --text-color-on-info: lch(from var(--background-color-info) calc((49.44 - l) * infinity) 0 0);

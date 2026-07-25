@@ -2005,7 +2005,9 @@ describe("TabBarView", () => {
         Promise.resolve(filePath === tab1.path ? null : repository),
       );
 
-      atom.config.set("tabs.enableVcsColoring", true);
+      // Re-resolve against the mocked registry (the tabs were constructed
+      // against the real one).
+      tab.setupVcsStatus();
 
       return waitsFor(
         () =>
@@ -2117,53 +2119,6 @@ describe("TabBarView", () => {
         tab.setupVcsStatus.reset();
         tab.item.buffer.emitter.emit("did-save", { path: "/some/other/path" });
         expect(tab.setupVcsStatus.calls.count()).toBe(1);
-      });
-    });
-
-    describe("when enableVcsColoring changes in package settings", () => {
-      it("removes status from the tab if enableVcsColoring is set to false", () => {
-        repository.getPathStatusSummary.andReturn({
-          source: "cache",
-          conflicted: false,
-          modified: false,
-          added: true,
-        });
-        repository.emitDidChangeStatus({ path: tab.path });
-
-        expect(tabBar.element.querySelectorAll(".tab")[1].querySelector(".title")).toHaveClass(
-          "status-added",
-        );
-        atom.config.set("tabs.enableVcsColoring", false);
-        expect(tabBar.element.querySelectorAll(".tab")[1].querySelector(".title")).not.toHaveClass(
-          "status-added",
-        );
-      });
-
-      it("adds status to the tab if enableVcsColoring is set to true", () => {
-        atom.config.set("tabs.enableVcsColoring", false);
-        repository.getPathStatusSummary.andReturn({
-          source: "cache",
-          conflicted: false,
-          modified: true,
-          added: false,
-        });
-        expect(tabBar.element.querySelectorAll(".tab")[1].querySelector(".title")).not.toHaveClass(
-          "status-modified",
-        );
-        atom.config.set("tabs.enableVcsColoring", true);
-
-        waitsFor(
-          () =>
-            (repository.changeStatusCallbacks != null
-              ? repository.changeStatusCallbacks.length
-              : undefined) > 0,
-        );
-
-        runs(() =>
-          expect(tabBar.element.querySelectorAll(".tab")[1].querySelector(".title")).toHaveClass(
-            "status-modified",
-          ),
-        );
       });
     });
 

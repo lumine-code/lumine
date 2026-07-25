@@ -1,25 +1,100 @@
 /*
  * Git Status
  * --------------------------------------------------
- * (Less `&-suffix` concatenation expanded to full selectors.)
+ * Single source of git-status colorization for the whole UI: generic
+ * `.status-*` elements, list items (tree-view and friends), and tab titles.
+ * The zero-specificity `:where()` guard lets `git:colorize-toggle` switch
+ * coloring off per window (by toggling `git-colorize-disabled` on the body)
+ * without changing how any selector competes with theme rules.
  */
 
-.status-ignored,
-.status-ignored-name {
-  color: var(--text-color-subtle);
+.status {
+  font-weight: normal;
+  color: var(--text-color);
 }
-.status-added {
-  color: var(--text-color-success);
-}
-.status-modified {
-  color: var(--text-color-warning);
-}
-.status-removed {
-  color: var(--text-color-error);
-}
-.status-renamed {
-  color: var(--text-color-info);
-}
-.status-conflicted {
-  color: var(--text-color-error);
+
+:where(body:not(.git-colorize-disabled)) {
+  .status-added {
+    color: var(--text-color-added);
+  }
+  .status-ignored,
+  .status-ignored-name {
+    font-weight: normal;
+    color: var(--text-color-ignored);
+  }
+  .status-modified {
+    color: var(--text-color-modified);
+  }
+  .status-removed {
+    color: var(--text-color-removed);
+  }
+  .status-renamed {
+    color: var(--text-color-renamed);
+  }
+  .status-conflicted {
+    color: var(--text-color-conflicted);
+  }
+
+  /* List items keep their status color while selected, hence the doubled
+     selectors: the `.selected` variants outweigh the themes' selected-item
+     text rules. */
+  .list-group,
+  .list-tree {
+    li:not(.list-nested-item).status-added,
+    li.list-nested-item.status-added > .list-item,
+    li:not(.list-nested-item).selected.status-added,
+    li.list-nested-item.selected.status-added > .list-item {
+      color: var(--text-color-added);
+    }
+
+    li:not(.list-nested-item).status-ignored,
+    li:not(.list-nested-item).status-ignored-name,
+    li.list-nested-item.status-ignored > .list-item,
+    li.list-nested-item.status-ignored-name > .list-item,
+    li:not(.list-nested-item).selected.status-ignored,
+    li:not(.list-nested-item).selected.status-ignored-name,
+    li.list-nested-item.selected.status-ignored > .list-item,
+    li.list-nested-item.selected.status-ignored-name > .list-item {
+      color: var(--text-color-ignored);
+    }
+
+    li:not(.list-nested-item).status-modified,
+    li.list-nested-item.status-modified > .list-item,
+    li:not(.list-nested-item).selected.status-modified,
+    li.list-nested-item.selected.status-modified > .list-item {
+      color: var(--text-color-modified);
+    }
+
+    li:not(.list-nested-item).status-removed,
+    li.list-nested-item.status-removed > .list-item,
+    li:not(.list-nested-item).selected.status-removed,
+    li.list-nested-item.selected.status-removed > .list-item {
+      color: var(--text-color-removed);
+    }
+
+    li:not(.list-nested-item).status-renamed,
+    li.list-nested-item.status-renamed > .list-item,
+    li:not(.list-nested-item).selected.status-renamed,
+    li.list-nested-item.selected.status-renamed > .list-item {
+      color: var(--text-color-renamed);
+    }
+
+    li:not(.list-nested-item).status-conflicted,
+    li.list-nested-item.status-conflicted > .list-item,
+    li:not(.list-nested-item).selected.status-conflicted,
+    li.list-nested-item.selected.status-conflicted > .list-item {
+      color: var(--text-color-conflicted);
+    }
+  }
+
+  /* Dim status colors on inactive tabs. */
+  .tab-bar .tab:not(.active) .status-added {
+    color: var(--tab-inactive-status-added);
+  }
+  .tab-bar .tab:not(.active) .status-modified {
+    color: var(--tab-inactive-status-modified);
+  }
+  .tab-bar .tab:not(.active) .status-conflicted {
+    color: var(--tab-inactive-status-conflicted);
+  }
 }
