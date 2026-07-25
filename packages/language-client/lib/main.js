@@ -1,6 +1,9 @@
 const LanguageServerManager = require("./language-server-manager");
 const CompletionProvider = require("./completion-provider");
 const SymbolProvider = require("./symbol-provider");
+const HoverProvider = require("./hover-provider");
+const SignatureProvider = require("./signature-provider");
+const OutlineProvider = require("./outline-provider");
 const DiagnosticsView = require("./diagnostics-view");
 const SessionMenuView = require("./session-menu-view");
 const { toLinterMessages } = require("./linter-messages");
@@ -12,6 +15,9 @@ module.exports = {
     this.manager.activate();
     this.completionProvider = new CompletionProvider(this.manager);
     this.symbolProvider = new SymbolProvider(this.manager);
+    this.hoverProvider = new HoverProvider(this.manager);
+    this.signatureProvider = new SignatureProvider(this.manager);
+    this.outlineProvider = new OutlineProvider(this.manager);
     this.uiSubscriptions = new CompositeDisposable();
     this.panel = null;
     this.statusElement = document.createElement("span");
@@ -85,6 +91,15 @@ module.exports = {
   },
   provideSymbols() {
     return this.symbolProvider;
+  },
+  provideHover() {
+    return this.hoverProvider;
+  },
+  provideSignature() {
+    return this.signatureProvider;
+  },
+  provideOutline() {
+    return this.outlineProvider;
   },
   consumeStatusBar(statusBar) {
     const tile = statusBar.addRightTile({ item: this.statusElement, priority: 500 });
