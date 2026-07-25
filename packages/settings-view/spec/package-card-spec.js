@@ -1450,4 +1450,112 @@ describe("PackageCard", function () {
       expect(card.refs.enablementButton.textContent).toBe("Disable");
     });
   });
+
+  describe("when a catalog record failed hydration for an installed package", function () {
+    // The bare record a failed fetch leaves in the catalog: no manifest fields.
+    const brokenRecord = () => ({
+      name: "x-pkg",
+      originKey: "github.com/lumine-code/x-pkg",
+      repository: "lumine-code/x-pkg",
+      installSource: "lumine-code/x-pkg",
+      unverifiedName: true,
+      status: "error",
+      error: "Package repository origin does not match install origin.",
+    });
+
+    beforeEach(function () {
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      spyOn(PackageCard.prototype, "getInstalledMetadata").andReturn({
+        name: "x-pkg",
+        version: "1.2.3",
+        description: "Colors the cursor.",
+        license: "MIT",
+        repository: "https://github.com/lumine-code/x-pkg",
+      });
+    });
+
+    it("fills the card from the installed package's metadata", function () {
+      card = new PackageCard(brokenRecord(), new SettingsView(), packageManager);
+      jasmine.attachToDOM(card.element);
+
+      expect(card.refs.packageDescription.textContent).toBe("Colors the cursor.");
+      expect(card.refs.versionValue.textContent).toBe("1.2.3");
+      expect(card.element.querySelector(".package-license").textContent).toBe("MIT");
+    });
+
+    it("does not adopt local metadata for a same-named package from another origin", function () {
+      PackageCard.prototype.getInstalledMetadata.andReturn({
+        name: "x-pkg",
+        version: "9.9.9",
+        description: "An unrelated package.",
+        apmInstallSource: { type: "git", origin: "github.com/someone-else/x-pkg" },
+      });
+      card = new PackageCard(brokenRecord(), new SettingsView(), packageManager);
+      jasmine.attachToDOM(card.element);
+
+      expect(card.refs.packageDescription.textContent).toBe("");
+      expect(card.refs.versionValue.textContent).toBe("");
+    });
+  });
+
+  describe("status dot", function () {
+    it("shows an error dot for a record whose catalog fetch failed", function () {
+      setPackageStatusSpies({ installed: false, disabled: false });
+      card = new PackageCard(
+        {
+          name: "x-pkg",
+          originKey: "github.com/lumine-code/x-pkg",
+          repository: "lumine-code/x-pkg",
+          status: "error",
+          error: "boom",
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      const dot = card.refs.badges.querySelector(".package-badge-dot");
+      expect(dot).not.toBeNull();
+      expect(dot.classList.contains("badge-dot-error")).toBe(true);
+    });
+
+    it("shows a warning dot for a stale record", function () {
+      setPackageStatusSpies({ installed: false, disabled: false });
+      card = new PackageCard(
+        {
+          name: "x-pkg",
+          originKey: "github.com/lumine-code/x-pkg",
+          repository: "lumine-code/x-pkg",
+          version: "1.0.0",
+          status: "stale",
+          error: "boom",
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      const dot = card.refs.badges.querySelector(".package-badge-dot");
+      expect(dot).not.toBeNull();
+      expect(dot.classList.contains("badge-dot-warn")).toBe(true);
+    });
+
+    it("shows an informational dot for a Pulsar-registry listing", function () {
+      setPackageStatusSpies({ installed: false, disabled: false });
+      card = new PackageCard(
+        { name: "x-pkg", repository: "owner/x-pkg", version: "1.0.0", source: "pulsar" },
+        new SettingsView(),
+        packageManager,
+      );
+      const dot = card.refs.badges.querySelector(".package-badge-dot");
+      expect(dot).not.toBeNull();
+      expect(dot.classList.contains("badge-dot-info")).toBe(true);
+    });
+
+    it("shows no dot for a healthy record", function () {
+      setPackageStatusSpies({ installed: false, disabled: false });
+      card = new PackageCard(
+        { name: "x-pkg", repository: "owner/x-pkg", version: "1.0.0", status: "ready" },
+        new SettingsView(),
+        packageManager,
+      );
+      expect(card.refs.badges.querySelector(".package-badge-dot")).toBeNull();
+    });
+  });
 });

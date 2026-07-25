@@ -45,6 +45,10 @@ export default class PackageCard {
     // of malformed package metadata are handled here and in ::content but belt
     // and suspenders, you know
     this.client = this.packageManager.getClient();
+    // A catalog record that failed hydration carries no manifest. When the
+    // package is installed anyway, its local package.json knows everything the
+    // card shows, so fill the gaps from it rather than presenting a bare card.
+    this.adoptInstalledMetadata();
     this.type = this.pack.theme ? "theme" : "package";
     this.name = this.pack.name;
     this.onSettingsView = options.onSettingsView;
@@ -920,15 +924,48 @@ export default class PackageCard {
 
   addBadges() {
     this.badgeViews = [];
+    const badges = [];
+    const statusBadge = this.statusBadge();
+    if (statusBadge) badges.push(statusBadge);
     if (Array.isArray(this.pack.badges)) {
       // This safety check is especially needed, as any cached package
       // data will not contain the badges field
-      for (const badge of this.pack.badges) {
-        const badgeView = new BadgeView(badge);
-        this.badgeViews.push(badgeView);
-        this.refs.badges.appendChild(badgeView.element);
-      }
+      badges.push(...this.pack.badges);
     }
+    for (const badge of badges) {
+      const badgeView = new BadgeView(badge);
+      this.badgeViews.push(badgeView);
+      this.refs.badges.appendChild(badgeView.element);
+    }
+  }
+
+  // The card's own status dot, shown ahead of any registry badges: red for a
+  // record whose catalog fetch failed, yellow for one showing data from an
+  // earlier fetch, and an informational dot for a Pulsar-registry listing. The
+  // details are in the dot's hover tooltip.
+  statusBadge() {
+    if (this.pack.status === "error") {
+      return {
+        type: "error",
+        title: "Problem",
+        text: this.pack.error || "This package could not be loaded from its catalog.",
+      };
+    }
+    if (this.pack.status === "stale") {
+      return {
+        type: "warn",
+        title: "Stale",
+        text: this.pack.error || "The newest catalog fetch failed; showing the last good data.",
+      };
+    }
+    if (this.pack.source === "pulsar") {
+      return {
+        type: "info",
+        title: "Pulsar registry",
+        text: "Listed by the Pulsar package registry.",
+      };
+    }
+    return null;
   }
 
   // Section: disabled state updates
@@ -1064,6 +1101,20 @@ export default class PackageCard {
     if (!this.originConflict) return;
     this.originConflict = false;
     this.clearInstallNote();
+  }
+
+  // Fills the manifest fields a failed hydration left missing — version,
+  // description, license — from the locally installed package's metadata.
+  // Fields the record does carry stay untouched.
+  adoptInstalledMetadata() {
+    if (this.pack.version || !this.isInstalled() || this.installedOriginDiffers()) return;
+    const metadata = this.getInstalledMetadata();
+    if (!metadata) return;
+    for (const key of ["version", "description", "license", "licenses", "theme"]) {
+      if (this.pack[key] == null && metadata[key] != null) {
+        this.pack[key] = metadata[key];
+      }
+    }
   }
 
   // When the card's package is already installed from the same origin, adopt
