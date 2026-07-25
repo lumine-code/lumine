@@ -6,15 +6,27 @@ const root = document.documentElement;
 
 let subscriptions = null;
 
+function applyVariant(variant) {
+  if (variant === "Pure") {
+    root.setAttribute("ui-variant", "pure");
+  } else {
+    root.removeAttribute("ui-variant");
+  }
+}
+
 module.exports = {
   activate() {
+    // The variant is the one setting here that repaints the window rather than
+    // rearranging it, so it goes through `updateAppearance`: the swap
+    // cross-fades like a theme switch, and packages that cache resolved colors
+    // instead of reading them from CSS — the terminal's canvas, say — are told
+    // to re-read them. Applied directly the first time, since there is nothing
+    // to transition from at activation.
+    applyVariant(atom.config.get("one-theme.variant"));
+
     subscriptions = new CompositeDisposable(
-      atom.config.observe("one-theme.variant", (variant) => {
-        if (variant === "Pure") {
-          root.setAttribute("ui-variant", "pure");
-        } else {
-          root.removeAttribute("ui-variant");
-        }
+      atom.config.onDidChange("one-theme.variant", ({ newValue }) => {
+        atom.themes.updateAppearance(() => applyVariant(newValue));
       }),
       atom.config.observe("one-theme.tabSizing", (tabSizing) => {
         root.setAttribute("ui-tabsizing", tabSizing.toLowerCase());

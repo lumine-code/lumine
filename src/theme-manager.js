@@ -722,35 +722,7 @@ On Linux there are currently problems with watch sizes. See [this document][watc
       }
     };
 
-    // Cross-fade between the two themes; the compositor snapshots the old
-    // rendering before `applyStyles` mutates the page. Never in spec mode:
-    // the spec harness fakes `setTimeout`, freezing the escape timer below,
-    // and a pending transition suppresses rendering — animation-frame
-    // callbacks stop for every spec that runs after the switch.
-    if (
-      this.initialLoadComplete &&
-      !document.hidden &&
-      typeof document.startViewTransition === "function" &&
-      (typeof atom === "undefined" || !atom.inSpecMode())
-    ) {
-      const transition = document.startViewTransition(applyStyles);
-      // A skipped transition rejects `ready` and `finished`; that's expected,
-      // not an error.
-      transition.ready.catch(() => {});
-      transition.finished.catch(() => {});
-      // Hidden, occluded, or otherwise render-throttled windows may never get
-      // the rendering opportunity the transition callback waits for; force the
-      // swap through rather than stalling the switch. Skipping still invokes
-      // the update callback.
-      const timer = setTimeout(() => transition.skipTransition(), 100);
-      try {
-        await transition.updateCallbackDone;
-      } finally {
-        clearTimeout(timer);
-      }
-    } else {
-      applyStyles();
-    }
+    await this.applyWithCrossFade(applyStyles);
 
     // Complete the package lifecycle switch. Themes present in both sets stay
     // active; their recompiled styles were already re-attached above, and
@@ -777,6 +749,61 @@ On Linux there are currently problems with watch sizes. See [this document][watc
     await this.watchUserStylesheet();
     this.initialLoadComplete = true;
     this.emitter.emit("did-change-active-themes");
+  }
+
+  // Run `apply` inside a View Transition so the window cross-fades from its
+  // old rendering to its new one; the compositor snapshots the old rendering
+  // before `apply` mutates the page.
+  //
+  // Never in spec mode: the spec harness fakes `setTimeout`, freezing the
+  // escape timer below, and a pending transition suppresses rendering —
+  // animation-frame callbacks stop for every spec that runs after the switch.
+  async applyWithCrossFade(apply) {
+    if (
+      !this.initialLoadComplete ||
+      document.hidden ||
+      typeof document.startViewTransition !== "function" ||
+      (typeof atom !== "undefined" && atom.inSpecMode())
+    ) {
+      apply();
+      return;
+    }
+
+    const transition = document.startViewTransition(apply);
+    // A skipped transition rejects `ready` and `finished`; that's expected,
+    // not an error.
+    transition.ready.catch(() => {});
+    transition.finished.catch(() => {});
+    // Hidden, occluded, or otherwise render-throttled windows may never get
+    // the rendering opportunity the transition callback waits for; force the
+    // swap through rather than stalling the switch. Skipping still invokes the
+    // update callback.
+    const timer = setTimeout(() => transition.skipTransition(), 100);
+    try {
+      await transition.updateCallbackDone;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Public: Apply an appearance change that restyles the window without
+  // changing which themes are active — a theme package toggling a variant
+  // attribute on the document root, say.
+  //
+  // Mutating the document directly would leave anything that caches resolved
+  // colors — every package that paints to a canvas — showing the old palette
+  // until something unrelated made it redraw. This runs the mutation inside
+  // the same cross-fade a theme switch uses and notifies those consumers from
+  // within it, so they repaint as part of the same transition.
+  //
+  // * `mutate` {Function} applying the change to the document.
+  //
+  // Returns a {Promise} that resolves once the change has been applied.
+  updateAppearance(mutate) {
+    return this.applyWithCrossFade(() => {
+      mutate();
+      this.emitter.emit("did-change-active-themes");
+    });
   }
 
   deactivateThemes() {

@@ -203,6 +203,34 @@ describe("atom.themes", () => {
     });
   });
 
+  describe("::updateAppearance(mutate)", () => {
+    it("applies the mutation and notifies theme consumers", async () => {
+      let didChangeActiveThemesHandler = jasmine.createSpy();
+      atom.themes.onDidChangeActiveThemes(didChangeActiveThemesHandler);
+
+      let mutated = false;
+      await atom.themes.updateAppearance(() => {
+        // The notification has to come *after* the document is mutated, or
+        // consumers re-read the palette they already had.
+        mutated = true;
+        expect(didChangeActiveThemesHandler).not.toHaveBeenCalled();
+      });
+
+      expect(mutated).toBe(true);
+      expect(didChangeActiveThemesHandler.calls.count()).toBe(1);
+    });
+
+    it("leaves the active themes alone", async () => {
+      await atom.themes.activateThemes();
+      setActiveThemes(["theme-with-ui-variables"]);
+      await waitForCondition(() => atom.themes.getActiveThemeNames().length === 1);
+
+      await atom.themes.updateAppearance(() => {});
+
+      expect(atom.themes.getActiveThemeNames()).toEqual(["theme-with-ui-variables"]);
+    });
+  });
+
   describe("when the theme.mode config value changes", () => {
     let systemThemeQuery, systemThemeListeners;
 
