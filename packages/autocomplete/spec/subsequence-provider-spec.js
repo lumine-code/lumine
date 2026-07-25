@@ -441,18 +441,19 @@ describe("SubsequenceProvider", () => {
   });
 
   describe("when using a non-workspace editor", () => {
-    it("does not crash when getting suggestions for an editor not in watchedBuffers", async () => {
+    it("completes from the editor's own buffer and the open workspace buffers", async () => {
       // Create a TextEditor that is NOT part of the workspace
-      // (e.g., like watch pane editors in hydrogen-next)
+      // (e.g., a search field or a watch pane editor)
       const nonWorkspaceEditor = new TextEditor();
       nonWorkspaceEditor.setText("function testWord() {}");
 
-      // The buffer of this editor is not tracked in watchedBuffers,
-      // so getSuggestions should handle this gracefully without crashing
       const suggestions = await suggestionsForPrefix(provider, nonWorkspaceEditor, "test");
+      expect(suggestions).toContain("testWord");
 
-      // Should return empty array instead of crashing
-      expect(Array.isArray(suggestions)).toBe(true);
+      // Words from open workspace buffers are offered too, since the panel
+      // editor's own buffer holds only the entry being typed.
+      const workspaceSuggestions = await suggestionsForPrefix(provider, nonWorkspaceEditor, "quick");
+      expect(workspaceSuggestions).toContain("quicksort");
     });
 
     it("does not crash when includeCompletionsFromAllBuffers includes untracked buffers", async () => {
@@ -475,16 +476,25 @@ describe("SubsequenceProvider", () => {
       const nonWorkspaceEditor = new TextEditor();
       nonWorkspaceEditor.setText("function anotherTestWord() {}");
 
-      // Directly call the internal method with an untracked buffer
+      // An untracked buffer that does not belong to the requesting editor
+      // yields no matches instead of throwing
       const matches = await provider.bufferToSubsequenceMatches(
         "another",
         "",
+        editor,
         nonWorkspaceEditor.getBuffer(),
       );
-
-      // Should return empty array instead of throwing
       expect(Array.isArray(matches)).toBe(true);
       expect(matches.length).toBe(0);
+
+      // The requesting editor's own untracked buffer is searched directly
+      const ownMatches = await provider.bufferToSubsequenceMatches(
+        "another",
+        "",
+        nonWorkspaceEditor,
+        nonWorkspaceEditor.getBuffer(),
+      );
+      expect(ownMatches.map((m) => m.word)).toContain("anotherTestWord");
     });
   });
 });

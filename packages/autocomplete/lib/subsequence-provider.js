@@ -134,9 +134,12 @@ module.exports = class SubsequenceProvider {
     };
   }
 
-  bufferToSubsequenceMatches(prefix, additionalWordCharacters, buffer) {
-    const editor = this.watchedBuffers.get(buffer);
-    // Guard against buffers that aren't in watchedBuffers (e.g., non-workspace editors)
+  bufferToSubsequenceMatches(prefix, additionalWordCharacters, currentEditor, buffer) {
+    // Non-workspace editors (search fields, watch expressions) aren't tracked
+    // in watchedBuffers; their own buffer is searched via the requesting editor.
+    const editor =
+      this.watchedBuffers.get(buffer) ??
+      (buffer === currentEditor.getBuffer() ? currentEditor : null);
     if (!editor) {
       return Promise.resolve([]);
     }
@@ -167,15 +170,16 @@ module.exports = class SubsequenceProvider {
       return;
     }
 
-    // Get buffers to search for completions
-    // Filter to only include buffers that are in watchedBuffers to avoid errors
-    // with non-workspace editors (like watch pane editors)
-    const requestedBuffers = this.includeCompletionsFromAllBuffers
-      ? Array.from(this.watchedBuffers.keys())
-      : [editor.getBuffer()];
-    const buffers = requestedBuffers.filter((buffer) => this.watchedBuffers.has(buffer));
-
+    // Get buffers to search for completions. A non-workspace editor (a search
+    // field, a watch expression, a panel input) isn't tracked in
+    // watchedBuffers and its own buffer holds only the entry being typed, so
+    // it completes from the open workspace buffers as well.
     const currentEditorBuffer = editor.getBuffer();
+    const searchAllBuffers =
+      this.includeCompletionsFromAllBuffers || !this.watchedBuffers.has(currentEditorBuffer);
+    const bufferSet = new Set(searchAllBuffers ? this.watchedBuffers.keys() : []);
+    bufferSet.add(currentEditorBuffer);
+    const buffers = Array.from(bufferSet);
 
     const lastCursorPosition = editor.getLastCursor().getBufferPosition();
 
@@ -186,9 +190,11 @@ module.exports = class SubsequenceProvider {
     const configMatches = this.configSuggestionsToSubsequenceMatches(configSuggestions, prefix);
 
     const subsequenceMatchToType = (match) => {
-      const editor = this.watchedBuffers.get(match.buffer);
-      if (!editor) return null;
-      const scopeDescriptor = editor.scopeDescriptorForBufferPosition(match.positions[0]);
+      const matchEditor =
+        this.watchedBuffers.get(match.buffer) ??
+        (match.buffer === currentEditorBuffer ? editor : null);
+      if (!matchEditor) return null;
+      const scopeDescriptor = matchEditor.scopeDescriptorForBufferPosition(match.positions[0]);
       return this.providerConfig.scopeDescriptorToType(scopeDescriptor);
     };
 
@@ -263,7 +269,7 @@ module.exports = class SubsequenceProvider {
 
     return Promise.all(
       buffers
-        .map(this.bufferToSubsequenceMatches.bind(this, prefix, additionalWordCharacters))
+        .map(this.bufferToSubsequenceMatches.bind(this, prefix, additionalWordCharacters, editor))
         .concat(configMatches),
     ).then(bufferResultsToSuggestions);
   }
