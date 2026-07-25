@@ -434,7 +434,7 @@ describe("PackageCard", function () {
     });
   });
 
-  it("marks Pulsar-sourced packages with a purple install action", function () {
+  it("marks Pulsar-sourced packages with a purple dot", function () {
     setPackageStatusSpies({ installed: false, disabled: false });
     card = new PackageCard(
       { name: "hydrogen", repository: "nteract/hydrogen", source: "pulsar" },
@@ -442,7 +442,9 @@ describe("PackageCard", function () {
       packageManager,
     );
     jasmine.attachToDOM(card.element);
-    expect(card.element).toHaveClass("pulsar-source");
+    const dot = card.refs.badges.querySelector(".package-badge-dot");
+    expect(dot).not.toBeNull();
+    expect(dot.classList.contains("badge-dot-pulsar")).toBe(true);
   });
 
   it("shows the owner/repo reference so same-named packages are distinguishable", function () {
@@ -1538,7 +1540,7 @@ describe("PackageCard", function () {
       expect(dot.classList.contains("badge-dot-warn")).toBe(true);
     });
 
-    it("shows an informational dot for a Pulsar-registry listing", function () {
+    it("shows a purple dot for a Pulsar-registry listing", function () {
       setPackageStatusSpies({ installed: false, disabled: false });
       card = new PackageCard(
         { name: "x-pkg", repository: "owner/x-pkg", version: "1.0.0", source: "pulsar" },
@@ -1547,7 +1549,7 @@ describe("PackageCard", function () {
       );
       const dot = card.refs.badges.querySelector(".package-badge-dot");
       expect(dot).not.toBeNull();
-      expect(dot.classList.contains("badge-dot-info")).toBe(true);
+      expect(dot.classList.contains("badge-dot-pulsar")).toBe(true);
     });
 
     it("shows no dot for a healthy record", function () {
@@ -1621,10 +1623,9 @@ describe("PackageCard", function () {
         new SettingsView(),
         packageManager,
       );
-      expect(card.element).toHaveClass("pulsar-source");
       const dot = card.refs.badges.querySelector(".package-badge-dot");
       expect(dot).not.toBeNull();
-      expect(dot.classList.contains("badge-dot-info")).toBe(true);
+      expect(dot.classList.contains("badge-dot-pulsar")).toBe(true);
     });
 
     it("shows every applicable dot at once", function () {

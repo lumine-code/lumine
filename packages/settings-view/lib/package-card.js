@@ -153,7 +153,7 @@ export default class PackageCard {
     // the detail view's LICENSE button.
     const licenseLabel = licenseLabelFromMetadata(this.pack);
     const description = this.pack.description || "";
-    const cardClasses = `package-card col-lg-8${this.isPulsarSourced() ? " pulsar-source" : ""}`;
+    const cardClasses = "package-card col-lg-8";
 
     return (
       <div className={cardClasses}>
@@ -975,7 +975,7 @@ export default class PackageCard {
     }
     if (this.isPulsarSourced()) {
       badges.push({
-        type: "info",
+        type: "pulsar",
         title: "Pulsar registry",
         text: "Listed by the Pulsar package registry.",
       });

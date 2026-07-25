@@ -64,6 +64,8 @@ export default class BadgeView {
         return "badge-dot-info";
       case "error":
         return "badge-dot-error";
+      case "pulsar":
+        return "badge-dot-pulsar";
       default:
         return "badge-dot-default";
     }

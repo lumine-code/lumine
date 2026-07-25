@@ -74,17 +74,6 @@
       color: var(--text-color-subtle);
     }
 
-    /* Packages sourced from the Pulsar registry get a purple install action. */
-    &.pulsar-source .install-button {
-      color: white;
-      border-color: hsl(266, 55%, 42%);
-      background-color: hsl(266, 55%, 50%);
-      background-image: linear-gradient(hsl(266, 55%, 53%), hsl(266, 55%, 50%));
-      &:hover {
-        background-image: linear-gradient(hsl(266, 55%, 58%), hsl(266, 55%, 55%));
-      }
-    }
-
     /* The repository reference sits next to the avatar (in place of the author). */
     .package-repo {
       font-weight: normal;
@@ -208,6 +197,10 @@
       }
       &.badge-dot-error {
         background-color: var(--background-color-error);
+      }
+      /* Pulsar-registry provenance, in the registry's purple. */
+      &.badge-dot-pulsar {
+        background-color: hsl(266, 55%, 50%);
       }
     }
 
