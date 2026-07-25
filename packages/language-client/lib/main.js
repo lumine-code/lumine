@@ -9,6 +9,7 @@ const ReferencesProvider = require("./references-provider");
 const RefactorProvider = require("./refactor-provider");
 const IntentionsProvider = require("./intentions-provider");
 const SessionMenuView = require("./session-menu-view");
+const CustomServers = require("./custom-servers");
 const { toLinterMessages } = require("./linter-messages");
 const { CompositeDisposable, Disposable } = require("atom");
 
@@ -25,6 +26,8 @@ module.exports = {
     this.refactorProvider = new RefactorProvider(this.manager);
     this.intentionsProvider = new IntentionsProvider(this.manager);
     this.manager.activate();
+    this.customServers = new CustomServers(this.manager);
+    this.customServers.activate();
     this.uiSubscriptions = new CompositeDisposable();
     this.statusElement = document.createElement("span");
     this.statusElement.className = "language-client-status inline-block";
@@ -50,10 +53,13 @@ module.exports = {
         "language-client:restart": () => this.restart(),
         "language-client:format": () => this.format(),
         "language-client:show-log": () => this.showLog(),
+        "language-client:open-custom-servers-file": () => this.customServers.openFile(),
       }),
     );
   },
   async deactivate() {
+    this.customServers?.dispose();
+    this.customServers = null;
     this.sessionMenu?.destroy();
     this.indieSubscription?.dispose();
     this.disposeIndieDelegates();

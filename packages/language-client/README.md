@@ -22,7 +22,8 @@ Commands available in `atom-workspace`:
 - `language-client:restart`: restart the language server for the active editor,
 - `language-client:toggle-problems`: open the linter panel with the server diagnostics,
 - `language-client:format`: format the active document,
-- `language-client:show-log`: open the active server's log in a new editor.
+- `language-client:show-log`: open the active server's log in a new editor,
+- `language-client:open-custom-servers-file`: open the custom servers configuration file.
 
 ## Usage
 
@@ -42,6 +43,23 @@ consumeLanguageServer(languageServer) {
 ```
 
 Commands are spawned directly with `shell: false`; arguments belong in `args`. The default session scope is one server per project root; set `sessionScope: "workspace"` only for servers that correctly support multi-root workspaces. Editors without a file path are not attached to language servers. The complete public shapes are documented in `lib/main.d.ts`.
+
+## Configuration
+
+Any language server can be wired without an adapter package through `language-servers.json` in the configuration directory (open it with `language-client:open-custom-servers-file`). Each entry needs a `command` and grammar `scopes`; `args`, `languageId`, `sessionScope`, `transport`, `env`, `initializationOptions`, and `settings` are optional. `settings` feeds both `workspace/configuration` lookups and the configuration push after startup:
+
+```json
+{
+  "gopls": {
+    "command": "gopls",
+    "args": ["serve"],
+    "scopes": ["source.go"],
+    "settings": { "gopls": { "usePlaceholders": true } }
+  }
+}
+```
+
+Saving the file restarts exactly the servers whose entries changed.
 
 ## Customization
 
