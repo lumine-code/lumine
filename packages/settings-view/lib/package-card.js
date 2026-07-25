@@ -153,9 +153,7 @@ export default class PackageCard {
     // the detail view's LICENSE button.
     const licenseLabel = licenseLabelFromMetadata(this.pack);
     const description = this.pack.description || "";
-    const cardClasses = `package-card col-lg-8${
-      this.pack.source === "pulsar" ? " pulsar-source" : ""
-    }`;
+    const cardClasses = `package-card col-lg-8${this.isPulsarSourced() ? " pulsar-source" : ""}`;
 
     return (
       <div className={cardClasses}>
@@ -201,9 +199,6 @@ export default class PackageCard {
           <span ref="packageDescription" className="package-description">
             {description}
           </span>
-          {this.pack.originWarning ? (
-            <span className="package-catalog-status status-stale">{this.pack.originWarning}</span>
-          ) : null}
           <span
             ref="originRenameWarning"
             className="package-catalog-status status-stale"
@@ -924,11 +919,7 @@ export default class PackageCard {
 
   addBadges() {
     this.badgeViews = [];
-    const badges = [];
-    const statusBadge = this.statusBadge();
-    if (statusBadge) badges.push(statusBadge);
-    const symlinkBadge = this.symlinkBadge();
-    if (symlinkBadge) badges.push(symlinkBadge);
+    const badges = this.statusBadges();
     if (Array.isArray(this.pack.badges)) {
       // This safety check is especially needed, as any cached package
       // data will not contain the badges field
@@ -941,33 +932,65 @@ export default class PackageCard {
     }
   }
 
-  // The card's own status dot, shown ahead of any registry badges: red for a
-  // record whose catalog fetch failed, yellow for one showing data from an
-  // earlier fetch, and an informational dot for a Pulsar-registry listing. The
-  // details are in the dot's hover tooltip.
-  statusBadge() {
+  // The card's own status dots, shown ahead of any registry badges. States can
+  // coexist (e.g. a stale record from the Pulsar registry, installed as a
+  // symlink); each dot carries its details in a hover tooltip.
+  statusBadges() {
+    const badges = [];
     if (this.pack.status === "error") {
-      return {
+      badges.push({
         type: "error",
         title: "Problem",
         text: this.pack.error || "This package could not be loaded from its catalog.",
-      };
-    }
-    if (this.pack.status === "stale") {
-      return {
+      });
+    } else if (this.pack.status === "stale") {
+      badges.push({
         type: "warn",
         title: "Stale",
         text: this.pack.error || "The newest catalog fetch failed; showing the last good data.",
-      };
+      });
+    } else if (this.pack.status === "validating") {
+      badges.push({
+        type: "default",
+        title: "Validating",
+        text: "The package's manifest is being fetched and validated.",
+      });
     }
-    if (this.pack.source === "pulsar") {
-      return {
+    if (this.isShadowed) {
+      badges.push({
+        type: "warn",
+        title: "Overridden",
+        text: `An installed community package overrides the bundled “${this.pack.name}”.`,
+      });
+    }
+    if (this.pack.originWarning) {
+      badges.push({ type: "warn", title: "Origin", text: this.pack.originWarning });
+    }
+    if (this.pack.selectorConflict) {
+      badges.push({
+        type: "warn",
+        title: "Selector conflict",
+        text: "The catalogs disagree about which version to track; the first one wins.",
+      });
+    }
+    if (this.isPulsarSourced()) {
+      badges.push({
         type: "info",
         title: "Pulsar registry",
         text: "Listed by the Pulsar package registry.",
-      };
+      });
     }
-    return null;
+    const symlinkBadge = this.symlinkBadge();
+    if (symlinkBadge) badges.push(symlinkBadge);
+    return badges;
+  }
+
+  // A Pulsar-registry result carries `source: "pulsar"` directly from the
+  // search client, or "pulsar" among its catalog sources once it has been
+  // hydrated into a catalog-shaped record.
+  isPulsarSourced() {
+    if (this.pack.source === "pulsar") return true;
+    return (this.pack.catalogSources || []).includes("pulsar");
   }
 
   // A dot for a package whose install directory is a symbolic link — a

@@ -1559,6 +1559,92 @@ describe("PackageCard", function () {
       );
       expect(card.refs.badges.querySelector(".package-badge-dot")).toBeNull();
     });
+
+    it("shows a warning dot for an install-origin mismatch", function () {
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      card = new PackageCard(
+        {
+          name: "x-pkg",
+          repository: "owner/x-pkg",
+          version: "1.0.0",
+          originWarning: "Package repository origin is missing or mismatched.",
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      const badge = card.badgeViews.find((view) => view.badge.title === "Origin");
+      expect(badge).toBeTruthy();
+      expect(badge.badge.type).toBe("warn");
+      expect(badge.badge.text).toContain("missing or mismatched");
+    });
+
+    it("shows a warning dot for a catalog selector conflict", function () {
+      setPackageStatusSpies({ installed: false, disabled: false });
+      card = new PackageCard(
+        {
+          name: "x-pkg",
+          repository: "owner/x-pkg",
+          version: "1.0.0",
+          status: "ready",
+          selectorConflict: true,
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      const badge = card.badgeViews.find((view) => view.badge.title === "Selector conflict");
+      expect(badge).toBeTruthy();
+      expect(badge.badge.type).toBe("warn");
+    });
+
+    it("shows a warning dot on the shadowed bundled card", function () {
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      card = new PackageCard(
+        { name: "x-pkg", repository: "owner/x-pkg", version: "1.0.0", isShadowed: true },
+        new SettingsView(),
+        packageManager,
+      );
+      const badge = card.badgeViews.find((view) => view.badge.title === "Overridden");
+      expect(badge).toBeTruthy();
+      expect(badge.badge.type).toBe("warn");
+    });
+
+    it("treats a record hydrated from the Pulsar registry as Pulsar-sourced", function () {
+      setPackageStatusSpies({ installed: false, disabled: false });
+      card = new PackageCard(
+        {
+          name: "x-pkg",
+          repository: "owner/x-pkg",
+          version: "1.0.0",
+          status: "ready",
+          catalogSources: ["pulsar"],
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      expect(card.element).toHaveClass("pulsar-source");
+      const dot = card.refs.badges.querySelector(".package-badge-dot");
+      expect(dot).not.toBeNull();
+      expect(dot.classList.contains("badge-dot-info")).toBe(true);
+    });
+
+    it("shows every applicable dot at once", function () {
+      setPackageStatusSpies({ installed: false, disabled: false });
+      card = new PackageCard(
+        {
+          name: "x-pkg",
+          repository: "owner/x-pkg",
+          version: "1.0.0",
+          status: "stale",
+          error: "boom",
+          source: "pulsar",
+          selectorConflict: true,
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      const titles = card.badgeViews.map((view) => view.badge.title);
+      expect(titles).toEqual(["Stale", "Selector conflict", "Pulsar registry"]);
+    });
   });
 
   describe("symlink dot", function () {
