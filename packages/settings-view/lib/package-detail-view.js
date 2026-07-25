@@ -722,6 +722,9 @@ export default class PackageDetailView {
       if (!label) continue;
       entries.push({
         label,
+        // A uniform sub-item marker, so every TOC row carries an icon and the
+        // labels align with the section entries above.
+        icon: "icon-chevron-right",
         level: Math.min((Number(heading.tagName.slice(1)) || 1) + 1, 6),
         onClick: () => heading.scrollIntoView(),
       });

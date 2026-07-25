@@ -293,6 +293,11 @@ describe("PackageDetailView", function () {
     expect(header("Features").level).toBe(3);
     expect(header("Usage").level).toBe(3);
 
+    // Every entry carries an icon: the sections their own, the headers a
+    // uniform marker.
+    expect(entries.every((entry) => entry.icon)).toBe(true);
+    expect(header("Features").icon).toBe("icon-chevron-right");
+
     // Clicking a header scrolls to it in the list.
     const heading = view.readmeView.packageReadme.querySelector("h2");
     const scrollIntoView = spyOn(heading, "scrollIntoView");
