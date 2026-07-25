@@ -7,7 +7,13 @@
 }
 
 atom-text-editor {
-  contain: layout paint style; /* contain_except_size */
+  /* No layout/paint containment here: the editor hosts position-fixed overlay
+     decorations (atom-overlay) that must position and paint in viewport space.
+     Layout or paint containment would re-root and clip them — which is why
+     autocomplete overlays never showed in mini/panel editors (auto-height
+     editors keep this stylesheet value; pane editors get an inline
+     contain: size from the component). */
+  contain: style;
   display: flex;
   cursor: text;
   font-family: var(--editor-font-family);
@@ -197,7 +203,7 @@ atom-text-editor {
 }
 
 atom-text-editor[mini] {
-  contain: layout paint style; /* contain_except_size */
+  contain: style; /* see the atom-text-editor rule: overlays must escape */
   font-size: var(--input-font-size);
   line-height: var(--component-line-height);
   max-height: calc(var(--component-line-height) + 2px); /* +2 for borders */

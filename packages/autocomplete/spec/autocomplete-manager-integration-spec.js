@@ -2611,5 +2611,40 @@ defm`);
       await timeoutPromise(100);
       expect(bottomEditorView.querySelector(".autocomplete")).not.toExist();
     });
+
+    it("shows the suggestion overlay on screen for a mini editor in a panel.", async () => {
+      // Regression test: mini editors keep the stylesheet `contain` value
+      // (pane editors get an inline `contain: size` from the component). With
+      // layout/paint containment on atom-text-editor, the editor became the
+      // containing block for its position-fixed atom-overlay child and
+      // paint-clipped it, so the suggestion list of a panel editor (e.g. the
+      // search-panel find field) was confirmed "blind" — active but invisible.
+      const miniEditor = new TextEditor({ mini: true });
+      const miniView = atom.views.getView(miniEditor);
+      const container = document.createElement("div");
+      container.appendChild(miniView);
+      atom.workspace.addBottomPanel({ item: container, visible: true });
+      autocompleteManager.watchEditor(miniEditor, ["bottom-label"]);
+
+      miniView.focus();
+      triggerAutocompletion(miniEditor, false, "b");
+      await waitForAutocomplete(miniEditor);
+
+      const contain = getComputedStyle(miniView).contain;
+      expect(contain.includes("layout")).toBe(false);
+      expect(contain.includes("paint")).toBe(false);
+      expect(contain.includes("content")).toBe(false); // content = layout paint
+
+      // The overlay wrapper is position: fixed with viewport coordinates; the
+      // editor must not re-root it, so its client rect matches its style.
+      const overlay = miniView.querySelector("atom-overlay");
+      expect(overlay).toExist();
+      const overlayRect = overlay.getBoundingClientRect();
+      expect(overlayRect.height).toBeGreaterThan(0);
+      expect(Math.abs(overlayRect.top - parseFloat(overlay.style.top))).toBeLessThan(2);
+      expect(Math.abs(overlayRect.left - parseFloat(overlay.style.left))).toBeLessThan(2);
+      expect(overlayRect.top).toBeGreaterThanOrEqual(0);
+      expect(overlayRect.bottom).toBeLessThanOrEqual(window.innerHeight);
+    });
   });
 });
