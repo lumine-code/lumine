@@ -5,7 +5,11 @@
   "description": "Theme-aware custom title bar with integrated menu.",
   "main": "./lib/main.js",
   "keywords": [
-    "title bar"
+    "frameless",
+    "menu",
+    "window-controls",
+    "custom",
+    "menubar"
   ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",

@@ -4,6 +4,12 @@
   "version": "1.0.0",
   "main": "lib/main",
   "description": "Sass and SCSS language support.",
+  "keywords": [
+    "scss",
+    "stylesheet",
+    "css-preprocessor",
+    "tree-sitter"
+  ],
   "license": "MIT",
   "engines": {
     "atom": "*",

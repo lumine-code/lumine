@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "lib/main",
   "description": "TOML language support.",
+  "keywords": [
+    "ini",
+    "configuration",
+    "cargo",
+    "settings",
+    "tree-sitter"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

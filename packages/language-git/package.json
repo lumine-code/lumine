@@ -3,6 +3,13 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Git editing support.",
+  "keywords": [
+    "commit",
+    "gitconfig",
+    "gitmodules",
+    "rebase",
+    "merge"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

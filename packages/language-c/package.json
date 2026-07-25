@@ -4,6 +4,12 @@
   "author": "lumine-code",
   "description": "C and C++ language support.",
   "keywords": [
+    "cpp",
+    "c++",
+    "cuda",
+    "header",
+    "arduino",
+    "objective-c",
     "tree-sitter"
   ],
   "main": "lib/main",

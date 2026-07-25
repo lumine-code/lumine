@@ -4,6 +4,13 @@
   "main": "./lib/main",
   "version": "1.0.0",
   "description": "EXTERMINATEs core packages installed as community packages.",
+  "keywords": [
+    "duplicate",
+    "conflict",
+    "cleanup",
+    "detection",
+    "bundled"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Pick the grammar used for syntax highlighting in the current editor.",
+  "keywords": [
+    "syntax",
+    "highlighting",
+    "language",
+    "scope",
+    "detection"
+  ],
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {

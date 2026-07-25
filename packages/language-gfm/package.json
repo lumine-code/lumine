@@ -4,6 +4,14 @@
   "version": "1.0.0",
   "main": "lib/main",
   "description": "GitHub Flavored Markdown language support.",
+  "keywords": [
+    "markdown",
+    "md",
+    "commonmark",
+    "github",
+    "rmd",
+    "tree-sitter"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

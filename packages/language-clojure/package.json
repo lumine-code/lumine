@@ -3,6 +3,16 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Clojure language support.",
+  "keywords": [
+    "clj",
+    "cljs",
+    "cljc",
+    "edn",
+    "lisp",
+    "babashka",
+    "joker",
+    "tree-sitter"
+  ],
   "main": "lib/main",
   "engines": {
     "atom": "*",

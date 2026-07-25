@@ -5,6 +5,12 @@
   "version": "1.0.0",
   "private": true,
   "description": "Save editors when they lose focus or are closed.",
+  "keywords": [
+    "persist",
+    "focus",
+    "backup",
+    "save-on-blur"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
     "atom": "*"

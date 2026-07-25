@@ -3,6 +3,14 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Perl language support.",
+  "keywords": [
+    "pl",
+    "pm",
+    "pod",
+    "raku",
+    "p6",
+    "psgi"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

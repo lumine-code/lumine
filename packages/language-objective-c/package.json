@@ -3,6 +3,14 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Objective-C language support.",
+  "keywords": [
+    "objc",
+    "obj-c",
+    "cocoa",
+    "ios",
+    "macos",
+    "mm"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

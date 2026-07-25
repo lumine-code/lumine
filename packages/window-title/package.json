@@ -2,6 +2,13 @@
   "name": "window-title",
   "author": "lumine-code",
   "description": "Choose a preset or customize the window title with a Liquid template.",
+  "keywords": [
+    "liquid",
+    "template",
+    "caption",
+    "project-name",
+    "titlebar"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "version": "1.0.0",
   "license": "MIT",

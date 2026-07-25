@@ -11,6 +11,13 @@
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "keywords": [
+    "js",
+    "jsx",
+    "mjs",
+    "cjs",
+    "es6",
+    "ecmascript",
+    "node",
     "tree-sitter"
   ],
   "configSchema": {

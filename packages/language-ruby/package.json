@@ -4,6 +4,12 @@
   "version": "1.0.0",
   "description": "Ruby language support.",
   "keywords": [
+    "rb",
+    "gem",
+    "rake",
+    "gemfile",
+    "rails",
+    "bundler",
     "tree-sitter"
   ],
   "engines": {

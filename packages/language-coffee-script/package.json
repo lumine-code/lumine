@@ -3,6 +3,13 @@
   "name": "language-coffee-script",
   "author": "lumine-code",
   "description": "CoffeeScript language support.",
+  "keywords": [
+    "coffeescript",
+    "litcoffee",
+    "cson",
+    "cakefile",
+    "cjsx"
+  ],
   "license": "MIT",
   "engines": {
     "atom": "*",

@@ -4,6 +4,14 @@
   "version": "1.0.0",
   "main": "lib/main",
   "description": "PHP language support.",
+  "keywords": [
+    "phtml",
+    "laravel",
+    "drupal",
+    "wordpress",
+    "inc",
+    "tree-sitter"
+  ],
   "engines": {
     "atom": "*",
     "node": ">=12"

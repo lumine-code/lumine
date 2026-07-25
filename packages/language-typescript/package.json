@@ -4,6 +4,11 @@
   "version": "1.0.0",
   "description": "TypeScript language support.",
   "keywords": [
+    "ts",
+    "tsx",
+    "mts",
+    "cts",
+    "deno",
     "tree-sitter"
   ],
   "engines": {

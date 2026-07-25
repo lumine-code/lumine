@@ -4,6 +4,13 @@
   "main": "./lib/main",
   "version": "1.0.0",
   "description": "Live reload themes and packages as you edit their stylesheets.",
+  "keywords": [
+    "hot-reload",
+    "stylesheet",
+    "watch",
+    "developer",
+    "package-dev"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "dependencies": {

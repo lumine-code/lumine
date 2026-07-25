@@ -7,6 +7,11 @@
     "node": "*"
   },
   "description": "Base source file support.",
+  "keywords": [
+    "base-grammar",
+    "fallback",
+    "generic"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT"
 }

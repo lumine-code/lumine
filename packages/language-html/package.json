@@ -5,6 +5,9 @@
   "version": "1.0.0",
   "description": "HTML language support.",
   "keywords": [
+    "erb",
+    "ejs",
+    "xhtml",
     "tree-sitter"
   ],
   "engines": {

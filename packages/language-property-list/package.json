@@ -3,6 +3,13 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Property list language support.",
+  "keywords": [
+    "plist",
+    "apple",
+    "ios",
+    "macos",
+    "dict"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

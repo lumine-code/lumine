@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Host the status bar at the bottom of the workspace and provide a tile service.",
+  "keywords": [
+    "tile",
+    "indicator",
+    "workspace",
+    "bottom",
+    "footer"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

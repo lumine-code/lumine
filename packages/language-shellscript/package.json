@@ -5,6 +5,10 @@
   "main": "lib/main",
   "description": "Shell script language support.",
   "keywords": [
+    "bash",
+    "zsh",
+    "ksh",
+    "posix",
     "tree-sitter"
   ],
   "engines": {

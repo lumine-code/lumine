@@ -4,6 +4,13 @@
   "main": "./lib/main",
   "version": "1.0.0",
   "description": "View useful information about your Lumine installation.",
+  "keywords": [
+    "version",
+    "release-notes",
+    "credits",
+    "license",
+    "installation"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

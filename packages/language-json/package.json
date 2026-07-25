@@ -4,6 +4,14 @@
   "main": "lib/main",
   "version": "1.0.0",
   "description": "JSON language support.",
+  "keywords": [
+    "jsonl",
+    "jsonc",
+    "geojson",
+    "ipynb",
+    "jsonld",
+    "tree-sitter"
+  ],
   "engines": {
     "atom": "*",
     "node": ">=12"

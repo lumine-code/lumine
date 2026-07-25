@@ -3,6 +3,13 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Make language support.",
+  "keywords": [
+    "makefile",
+    "gnumake",
+    "mk",
+    "build",
+    "automake"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

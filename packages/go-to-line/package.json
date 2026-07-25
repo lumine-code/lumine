@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/go-to-line-view",
   "description": "Jump the cursor to a specific line number.",
+  "keywords": [
+    "navigation",
+    "jump",
+    "cursor",
+    "number",
+    "location"
+  ],
   "license": "MIT",
   "activationCommands": {
     "atom-text-editor": [

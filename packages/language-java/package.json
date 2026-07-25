@@ -4,6 +4,13 @@
   "main": "lib/main",
   "version": "1.0.0",
   "description": "Java language support.",
+  "keywords": [
+    "jsp",
+    "bsh",
+    "properties",
+    "jvm",
+    "tree-sitter"
+  ],
   "engines": {
     "atom": "*",
     "node": ">=14"

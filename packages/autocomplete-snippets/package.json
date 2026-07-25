@@ -4,6 +4,13 @@
   "main": "./lib/autocomplete-snippets",
   "version": "1.0.0",
   "description": "Adds snippets to autocomplete suggestions.",
+  "keywords": [
+    "template",
+    "expansion",
+    "completion",
+    "suggestion",
+    "tab-stop"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

@@ -3,6 +3,12 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Diff and patch file support.",
+  "keywords": [
+    "patch",
+    "unified",
+    "rej",
+    "tree-sitter"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

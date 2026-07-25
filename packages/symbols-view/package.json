@@ -5,6 +5,13 @@
   "main": "./lib/main",
   "types": "./lib/main.d.ts",
   "description": "Jump to a function, method, or symbol in the current editor or across the project.",
+  "keywords": [
+    "navigation",
+    "declaration",
+    "outline",
+    "function",
+    "method"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
     "atom": "*",

@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Explore and open project files in a tree-like view of your directories.",
+  "keywords": [
+    "sidebar",
+    "filetree",
+    "directory",
+    "explorer",
+    "file-manager"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "bugs": {
     "url": "https://github.com/lumine-code/lumine/issues"

@@ -3,6 +3,14 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "SQL language support.",
+  "keywords": [
+    "ddl",
+    "dml",
+    "pgsql",
+    "hql",
+    "database",
+    "query"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

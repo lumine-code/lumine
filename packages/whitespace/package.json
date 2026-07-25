@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Strips trailing whitespace and adds a trailing newline when an editor is saved.",
+  "keywords": [
+    "trailing",
+    "newline",
+    "indentation",
+    "formatting",
+    "tabs"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

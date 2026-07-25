@@ -3,6 +3,11 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Plain text support.",
+  "keywords": [
+    "txt",
+    "plaintext",
+    "prose"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

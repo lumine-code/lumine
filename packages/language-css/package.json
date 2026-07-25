@@ -3,6 +3,8 @@
   "author": "lumine-code",
   "description": "CSS language support.",
   "keywords": [
+    "stylesheet",
+    "cascade",
     "tree-sitter"
   ],
   "version": "1.0.0",

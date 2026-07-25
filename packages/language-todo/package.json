@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "lib/main",
   "description": "TODO and FIXME keyword highlighting.",
+  "keywords": [
+    "fixme",
+    "hack",
+    "note",
+    "annotation",
+    "tree-sitter"
+  ],
   "engines": {
     "atom": "*",
     "node": ">=14"

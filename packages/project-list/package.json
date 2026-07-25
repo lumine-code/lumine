@@ -2,6 +2,13 @@
   "name": "project-list",
   "author": "lumine-code",
   "description": "Quick access and switching between projects.",
+  "keywords": [
+    "workspace",
+    "switcher",
+    "session",
+    "manager",
+    "glob"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "version": "1.0.0",
   "license": "MIT",

@@ -2,6 +2,13 @@
   "name": "fuzzy-workspace",
   "author": "lumine-code",
   "description": "Quickly find and focus any open item across the workspace.",
+  "keywords": [
+    "switcher",
+    "pane",
+    "focus",
+    "open-item",
+    "navigation"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "version": "1.0.0",
   "license": "MIT",

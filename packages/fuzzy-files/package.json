@@ -2,6 +2,13 @@
   "name": "fuzzy-files",
   "author": "lumine-code",
   "description": "Quickly find and take an action over project files.",
+  "keywords": [
+    "finder",
+    "quick-open",
+    "search",
+    "navigation",
+    "project"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "version": "1.0.0",
   "license": "MIT",

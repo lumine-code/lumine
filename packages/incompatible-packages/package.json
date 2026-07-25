@@ -4,6 +4,13 @@
   "main": "./lib/main",
   "version": "1.0.0",
   "description": "Show installed packages whose native modules are incompatible with the current version.",
+  "keywords": [
+    "native-module",
+    "warning",
+    "broken",
+    "mismatch",
+    "node"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

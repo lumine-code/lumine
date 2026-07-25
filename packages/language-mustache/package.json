@@ -3,6 +3,12 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Mustache and Handlebars language support.",
+  "keywords": [
+    "handlebars",
+    "hbs",
+    "template",
+    "ractive"
+  ],
   "license": "MIT",
   "engines": {
     "atom": "*",

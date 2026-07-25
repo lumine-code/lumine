@@ -33,11 +33,12 @@
   "version": "1.0.0",
   "description": "The Nova day and night UI and syntax themes.",
   "keywords": [
-    "theme",
-    "ui",
-    "syntax",
     "light",
-    "dark"
+    "dark",
+    "syntax",
+    "day-night",
+    "color-scheme",
+    "violet"
   ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",

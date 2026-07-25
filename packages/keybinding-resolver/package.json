@@ -4,6 +4,13 @@
   "main": "./lib/main",
   "version": "1.0.0",
   "description": "Show what commands a keybinding resolves to.",
+  "keywords": [
+    "keyboard",
+    "shortcut",
+    "dispatch",
+    "conflict",
+    "debug"
+  ],
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {

@@ -2,6 +2,13 @@
   "name": "open-external",
   "author": "lumine-code",
   "description": "Open files and directories with their system applications.",
+  "keywords": [
+    "system",
+    "application",
+    "launch",
+    "default",
+    "browser"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "version": "1.0.0",
   "license": "MIT",

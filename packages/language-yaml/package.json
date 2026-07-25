@@ -4,6 +4,14 @@
   "version": "1.0.0",
   "main": "lib/main",
   "description": "YAML language support.",
+  "keywords": [
+    "yml",
+    "eyaml",
+    "ansible",
+    "kubernetes",
+    "saltstack",
+    "tree-sitter"
+  ],
   "engines": {
     "atom": "*",
     "node": ">=12"

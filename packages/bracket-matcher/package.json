@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Highlights and jumps between matching brackets, and autocompletes brackets and quotes.",
+  "keywords": [
+    "delimiter",
+    "pair",
+    "highlight",
+    "quote",
+    "autoclosing"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

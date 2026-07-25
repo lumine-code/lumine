@@ -3,6 +3,13 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Ruby on Rails language support.",
+  "keywords": [
+    "erb",
+    "rhtml",
+    "activerecord",
+    "rb",
+    "jbuilder"
+  ],
   "license": "MIT",
   "engines": {
     "atom": "*",

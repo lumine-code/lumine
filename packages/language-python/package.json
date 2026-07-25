@@ -9,6 +9,11 @@
   },
   "description": "Python language support.",
   "keywords": [
+    "pyi",
+    "pyw",
+    "ipython",
+    "snakemake",
+    "wsgi",
     "tree-sitter"
   ],
   "repository": "https://github.com/lumine-code/lumine",

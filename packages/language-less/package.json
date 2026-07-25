@@ -3,6 +3,11 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Less language support.",
+  "keywords": [
+    "stylesheet",
+    "css-preprocessor",
+    "mixin"
+  ],
   "license": "MIT",
   "engines": {
     "atom": "*",

@@ -4,6 +4,12 @@
   "version": "1.0.0",
   "main": "lib/main",
   "description": "Hyperlink colorization.",
+  "keywords": [
+    "url",
+    "uri",
+    "http",
+    "tree-sitter"
+  ],
   "engines": {
     "atom": "*",
     "node": ">=14"

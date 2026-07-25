@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Open a live, rendered preview of the Markdown in the current editor.",
+  "keywords": [
+    "md",
+    "render",
+    "html",
+    "live",
+    "github"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

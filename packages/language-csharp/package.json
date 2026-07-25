@@ -6,9 +6,12 @@
   "description": "C# language support.",
   "repository": "https://github.com/lumine-code/lumine",
   "keywords": [
-    "C#",
-    "csharp",
-    ".Net"
+    "c#",
+    ".net",
+    "cake",
+    "csx",
+    "dotnet",
+    "tree-sitter"
   ],
   "license": "MIT",
   "engines": {

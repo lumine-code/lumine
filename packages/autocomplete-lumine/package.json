@@ -3,6 +3,12 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "Autocompletions for the Lumine API.",
+  "keywords": [
+    "api",
+    "completion",
+    "suggestion",
+    "package-dev"
+  ],
   "main": "./lib/main",
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",

@@ -4,6 +4,14 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Marks lines in the editor gutter that have been added, edited, or deleted since the last commit.",
+  "keywords": [
+    "gutter",
+    "change",
+    "hunk",
+    "vcs",
+    "delta",
+    "marker"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

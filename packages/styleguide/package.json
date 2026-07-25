@@ -4,6 +4,13 @@
   "main": "./lib/styleguide",
   "version": "1.0.0",
   "description": "A visual styleguide of the editor's UI components.",
+  "keywords": [
+    "component",
+    "reference",
+    "showcase",
+    "design-system",
+    "package-dev"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "dependencies": {

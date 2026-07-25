@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Pick the character encoding used for the current editor.",
+  "keywords": [
+    "charset",
+    "utf-8",
+    "unicode",
+    "conversion",
+    "latin"
+  ],
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {

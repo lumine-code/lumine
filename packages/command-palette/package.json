@@ -4,6 +4,14 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Find and run available commands with fuzzy search.",
+  "keywords": [
+    "fuzzy",
+    "shortcut",
+    "action",
+    "dispatch",
+    "launcher",
+    "keybinding"
+  ],
   "activationCommands": {
     "atom-workspace": [
       "command-palette:toggle",

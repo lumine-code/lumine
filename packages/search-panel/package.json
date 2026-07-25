@@ -3,6 +3,13 @@
   "author": "lumine-code",
   "main": "./lib/find",
   "description": "Find and replace within buffers and across the project.",
+  "keywords": [
+    "find",
+    "replace",
+    "ripgrep",
+    "regex",
+    "grep"
+  ],
   "version": "1.0.0",
   "license": "MIT",
   "activationCommands": {

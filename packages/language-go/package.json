@@ -4,6 +4,9 @@
   "description": "Go language support.",
   "main": "lib/main",
   "keywords": [
+    "golang",
+    "mod",
+    "gohtml",
     "tree-sitter"
   ],
   "version": "1.0.0",

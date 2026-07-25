@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Indentation guides with active scope highlighting.",
+  "keywords": [
+    "indentation",
+    "scope",
+    "highlight",
+    "ruler",
+    "depth"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {

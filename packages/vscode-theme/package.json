@@ -33,11 +33,12 @@
   "version": "1.0.0",
   "description": "The VSCode day and night UI and syntax themes following the VS Code Modern look.",
   "keywords": [
-    "theme",
-    "ui",
-    "syntax",
     "light",
-    "dark"
+    "dark",
+    "syntax",
+    "day-night",
+    "dark-modern",
+    "light-modern"
   ],
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",

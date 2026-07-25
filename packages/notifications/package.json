@@ -5,6 +5,13 @@
   "version": "1.0.0",
   "repository": "https://github.com/lumine-code/lumine",
   "description": "A tidy way to display notifications.",
+  "keywords": [
+    "alert",
+    "message",
+    "toast",
+    "warning",
+    "error"
+  ],
   "license": "MIT",
   "engines": {
     "atom": "*"

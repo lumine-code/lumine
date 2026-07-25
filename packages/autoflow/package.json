@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/autoflow",
   "description": "Reflow the current selection so that no line is longer than the preferred line length.",
+  "keywords": [
+    "reflow",
+    "word-wrap",
+    "reformat",
+    "paragraph",
+    "line-length"
+  ],
   "activationCommands": {
     "atom-text-editor": [
       "autoflow:reflow-selection"

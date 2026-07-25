@@ -2,6 +2,13 @@
   "name": "recent-list",
   "author": "lumine-code",
   "description": "Quick access to recently opened projects.",
+  "keywords": [
+    "history",
+    "workspace",
+    "last-opened",
+    "switcher",
+    "mru"
+  ],
   "repository": "https://github.com/lumine-code/lumine",
   "version": "1.0.0",
   "license": "MIT",

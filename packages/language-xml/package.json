@@ -3,6 +3,15 @@
   "author": "lumine-code",
   "version": "1.0.0",
   "description": "XML language support.",
+  "keywords": [
+    "svg",
+    "xsl",
+    "xslt",
+    "xaml",
+    "xsd",
+    "rss",
+    "kml"
+  ],
   "engines": {
     "atom": "*",
     "node": "*"

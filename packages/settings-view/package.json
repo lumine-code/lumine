@@ -4,6 +4,13 @@
   "version": "1.0.0",
   "main": "./lib/main",
   "description": "Edit config settings, install packages, and change themes.",
+  "keywords": [
+    "preferences",
+    "configuration",
+    "install",
+    "themes",
+    "package-manager"
+  ],
   "license": "MIT",
   "uriHandler": {
     "method": "handleURI",
