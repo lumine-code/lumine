@@ -52,16 +52,14 @@ jobs:
       - name: Use HTTPS for GitHub git dependencies
         shell: bash
         run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
-      # Same install sequence as ci.yml's test job: skip the failing/wasted
-      # install scripts, then reproduce the pieces we need. Retry to absorb the
+      # Same install sequence as ci.yml's test job: skip the wasted install
+      # scripts, then reproduce the pieces we need. Retry to absorb the
       # occasionally flaky git-dependency fetches on Windows.
       - name: Install dependencies
         shell: bash
         run: |
           install() { npm ci --ignore-scripts; }
           install || install || install
-      - name: Apply patches
-        run: npx patch-package
       - name: Download the Electron binary
         run: node ./node_modules/electron/install.js
       - name: Rebuild native modules for Electron

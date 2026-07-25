@@ -47,7 +47,7 @@ jobs:
       - name: Use HTTPS for GitHub git dependencies
         run: git config --global url."https://github.com/".insteadOf "ssh://git@github.com/"
       # Linting needs the dev dependencies but no native builds, so skip install
-      # scripts (Electron download, node-gyp, patch-package) for a fast job.
+      # scripts (Electron download, node-gyp) for a fast job.
       - name: Install dependencies
         run: npm ci --ignore-scripts
       - name: Lint
@@ -87,10 +87,9 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libx11-dev libxkbfile-dev libsecret-1-dev fonts-noto-cjk
-      # `postinstall` (patch-package) and several native install scripts fail or
-      # are wasted here: node-pty's Windows build is broken until patched, and
-      # the native modules are rebuilt for Electron below regardless. Install
-      # without scripts, then reproduce the pieces we actually need.
+      # The native install scripts are wasted here: the native modules are
+      # rebuilt for Electron below regardless. Install without scripts, then
+      # reproduce the pieces we actually need.
       #
       # npm records the @lumine-code git forks with ssh URLs, but the runners
       # have no ssh key. Rewrite them to anonymous HTTPS (the forks are public).
@@ -105,8 +104,6 @@ jobs:
         run: |
           install() { npm ci --ignore-scripts; }
           install || install || install
-      - name: Apply patches
-        run: npx patch-package
       - name: Download the Electron binary
         run: node ./node_modules/electron/install.js
       - name: Rebuild native modules for Electron
