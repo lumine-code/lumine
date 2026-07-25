@@ -196,6 +196,7 @@ export default class PackageCard {
                 {licenseLabel}
               </span>
             ) : null}
+            <span ref="badges" className="package-badges"></span>
           </h4>
           <span ref="packageDescription" className="package-description">
             {description}
@@ -229,7 +230,6 @@ export default class PackageCard {
           </div>
           <div className="meta-controls">
             <div className="btn-toolbar">
-              <span ref="badges" className="package-badges"></span>
               <div ref="updateButtonGroup" className="btn-group">
                 <button
                   type="button"

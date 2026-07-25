@@ -179,10 +179,11 @@
       line-height: 1.4;
     }
 
+    /* The status/registry dots, pushed to the far end of the card-name row. */
     .package-badges {
       display: inline-flex;
       align-items: center;
-      margin: calc(var(--component-padding) / 2) 0 0 calc(var(--component-padding) / 2);
+      margin-left: auto;
     }
 
     .package-badge-dot {

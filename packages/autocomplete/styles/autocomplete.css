@@ -27,6 +27,11 @@ autocomplete-suggestion-list.select-list.popover-list {
 
   .suggestion-list-scroller {
     overflow-y: auto;
+    /* Never scroll horizontally: long entries are already capped by the
+       max-width + ellipsis rules on .word and the labels. (With only
+       overflow-y set, overflow-x would compute to auto and show a stray
+       horizontal scrollbar.) */
+    overflow-x: hidden;
   }
 
   .suggestion-description {
@@ -67,7 +72,6 @@ autocomplete-suggestion-list.select-list.popover-list {
     margin-top: 0;
     display: table;
     width: 100%;
-    margin-right: 10px; /* Needed to prevent horizontal scrolling when right label is too long */
 
     li {
       display: table-row;
