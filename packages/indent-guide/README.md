@@ -19,15 +19,13 @@ Commands available in `atom-workspace`:
 
 ## Customization
 
-Guides are rendered as `indent-guide` elements layered over the editor. Adjust their appearance by adding CSS to your `styles.css`:
+Guides are rendered as `indent-guide` elements layered over the editor. Their colors are exposed as custom properties — the base color follows the theme's `--syntax-indent-guide-color`, the stack color is derived from it, and the active guide defaults to a soft blue. Adjust them in your `styles.css`:
 
 ```css
-.indent-guide {
-  width: 1px;
-  background-color: var(--syntax-indent-guide-color);
-  &.indent-guide-active {
-    background-color: var(--text-color-info);
-  }
+atom-text-editor {
+  --indent-guide-color: rgba(158, 158, 158, 0.15);
+  --indent-guide-stack-color: rgba(158, 158, 158, 0.3);
+  --indent-guide-active-color: var(--text-color-info);
 }
 ```
 
