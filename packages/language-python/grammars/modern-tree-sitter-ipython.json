@@ -4,6 +4,14 @@
   "type": "modern-tree-sitter",
   "parser": "tree-sitter-python",
   "injectionRegex": "^(ipy|IPY|ipython|IPython|IPYTHON)$",
+  // `\bpython` in the Python grammar's patterns cannot match inside "ipython",
+  // so these never compete with it.
+  "firstLineRegex": [
+    // shebang line
+    "^#![ \\t]*/.*\\bipython[\\d\\.]*\\b",
+    // vim modeline
+    "vim\\b.*\\bset\\b.*\\b(filetype|ft|syntax)=ipython"
+  ],
   "fileTypes": ["ipy"],
   "treeSitter": {
     // The lumine-code fork extends upstream v0.25.0 with IPython-only

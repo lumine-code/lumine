@@ -2,6 +2,7 @@
   "scopeName": "source.python.ipy",
   "name": "IPython",
   "fileTypes": ["ipy"],
+  "firstLineMatch": "^#![ \\t]*/.*\\bipython[\\d\\.]*\\b",
   "patterns": [
     {
       // Line and cell magics: %matplotlib inline, %%timeit. The name char

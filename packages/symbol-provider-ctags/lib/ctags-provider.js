@@ -213,6 +213,7 @@ class CtagsProvider {
       case "source.objcpp":
         return "C++";
       case "source.python":
+      case "source.python.ipy":
         return "Python";
       case "source.ruby":
         return "Ruby";

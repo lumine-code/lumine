@@ -19,12 +19,21 @@ exports.activate = function () {
   // });
 };
 
+// IPython is a separate grammar with its own scope, so every injection has to
+// name it alongside plain Python. Both run the same parser, so the node types
+// are identical.
+const SCOPES = ["source.python", "source.python.ipy"];
+
 exports.consumeHyperlinkInjection = (hyperlink) => {
-  hyperlink.addInjectionPoint("source.python", {
-    types: ["comment", "string_content"],
-  });
+  for (const scope of SCOPES) {
+    hyperlink.addInjectionPoint(scope, {
+      types: ["comment", "string_content"],
+    });
+  }
 };
 
 exports.consumeTodoInjection = (todo) => {
-  todo.addInjectionPoint("source.python", { types: ["comment"] });
+  for (const scope of SCOPES) {
+    todo.addInjectionPoint(scope, { types: ["comment"] });
+  }
 };
