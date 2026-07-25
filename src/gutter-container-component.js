@@ -22,7 +22,11 @@ module.exports = class GutterContainerComponent {
     this.refs.gutterContainer = this.element;
 
     this.innerElement = document.createElement("div");
-    this.innerElement.style.willChange = "transform";
+    // No `will-change: transform`; see the note in
+    // TextEditorComponent::updateContentElement. A compositing layer here would
+    // cost the line numbers their subpixel antialiasing. Themes that set
+    // `-webkit-font-smoothing: antialiased` on `.line-number` opt out of it
+    // anyway, but that should be the theme's call, not the component's.
     this.innerElement.style.display = "flex";
     this.element.appendChild(this.innerElement);
 

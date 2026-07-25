@@ -833,10 +833,15 @@ module.exports = class TextEditorComponent {
         style.height = height;
         cache.height = height;
       }
-      if (!cache.willChange) {
-        style.willChange = "transform";
-        cache.willChange = true;
-      }
+      // Deliberately no `will-change: transform` here. It would promote the
+      // content to its own compositing layer, and Chromium refuses subpixel
+      // (ClearType) antialiasing on such a layer — a `will-change` layer may be
+      // given an arbitrary transform at any time, so an opaque background does
+      // not buy it back. The editor's text would then render grayscale-
+      // antialiased while the rest of the UI renders with ClearType, which
+      // reads as thin and blurry on Windows. Scrolling a full-window
+      // 5000-line editor holds the display's refresh rate either way, because
+      // the translate here only moves already-rasterized tiles.
       if (transform !== cache.transform) {
         style.transform = transform;
         cache.transform = transform;
