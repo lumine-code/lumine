@@ -191,5 +191,12 @@ describe("command-palette", () => {
       palette.show();
       expect(selectListView.getQuery()).toBe("noop");
     });
+
+    it("matches spaced display names when the query uses hyphens", async () => {
+      const selectListView = await openPalette();
+      selectListView.refs.queryEditor.setText("palette-spec-noop");
+      await SelectListView.getScheduler().getNextUpdatePromise();
+      expect(listedCommandNames()).toEqual(["command-palette-spec:noop"]);
+    });
   });
 });

@@ -41,6 +41,10 @@ class CommandPalette {
         return 0;
       },
 
+      // Command names are hyphenated (`editor:fold-all`) while their display
+      // names are spaced (`Editor: Fold All`), so treat a typed `-` as a space.
+      filterQuery: (query) => query.replace(/-/g, " "),
+
       filterKeyForItem: (item) => {
         let key = item.displayName;
         if (item.tags) {
