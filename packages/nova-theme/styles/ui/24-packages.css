@@ -152,10 +152,12 @@
   }
 }
 
-/* Command Palette + Fuzzy Files --------------------------- */
+/* Fuzzy match highlighting --------------------------- */
 
 .command-palette .list-group .character-match,
-.fuzzy-files .list-group .character-match {
+.fuzzy-files .list-group .character-match,
+.symbols-view .list-group .character-match,
+autocomplete-suggestion-list .list-group .character-match {
   color: var(--accent-only-text-color);
 }
 

@@ -93,9 +93,9 @@ autocomplete-suggestion-list.select-list.popover-list {
         .word {
           color: rgb(from var(--text-color-selected) r g b / calc(alpha - 0.2));
         }
-        .character-match {
-          color: var(--text-color-selected);
-        }
+        /* .character-match keeps its base/theme highlight color on the
+           selected row, matching the select-list consumers (command palette,
+           fuzzy files). */
         .left-label,
         .right-label,
         .snippet-completion {
