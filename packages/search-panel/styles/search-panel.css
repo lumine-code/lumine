@@ -1,18 +1,18 @@
 /* result markers */
 atom-text-editor {
-  .find-result .region {
-    background-color: transparent;
-    border-radius: var(--component-border-radius);
-    border: 1px solid var(--syntax-result-marker-color);
+  .find-result .region,
+  .current-result .region {
+    background-color: var(--syntax-result-marker-color);
+    border-radius: 2px;
+    border: 2px solid transparent;
     box-sizing: border-box;
+    transition: border-color 0.4s;
     z-index: 0;
   }
 
   .current-result .region {
-    border-radius: var(--component-border-radius);
-    border: 1px solid var(--syntax-result-marker-color-selected);
-    box-sizing: border-box;
-    z-index: 0;
+    border-color: var(--syntax-result-marker-color-selected);
+    transition-duration: 0.1s;
   }
 
   .find-result,

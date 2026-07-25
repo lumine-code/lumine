@@ -44,21 +44,6 @@ atom-text-editor {
     background-color: var(--syntax-wrap-guide-color);
   }
 
-  /* find + replace */
-  .find-result .region.region.region,
-  .current-result .region.region.region {
-    border-radius: 2px;
-    background-color: var(--syntax-result-marker-color);
-    transition: border-color 0.4s;
-  }
-  .find-result .region.region.region {
-    border: 2px solid transparent;
-  }
-  .current-result .region.region.region {
-    border: 2px solid var(--syntax-result-marker-color-selected);
-    transition-duration: 0.1s;
-  }
-
   .gutter {
     .line-number {
       color: var(--syntax-gutter-text-color);
