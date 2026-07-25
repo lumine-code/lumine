@@ -33,13 +33,13 @@ Priorities are grouped into bands of 100, numbered from the outer edge inwards, 
 
 Left panel, from the left edge inwards:
 
-| Priority | Band             | Tiles                                                         |
-| -------- | ---------------- | ------------------------------------------------------------- |
-| 110      | Diagnostics      | linter                                                        |
-| 210, 220 | Repository       | git-switcher repository, git-switcher branch                  |
-| 310, 320 | File identity    | editor-status path, grammar-selector (when shown on the left) |
+| Priority | Band             | Tiles                                                            |
+| -------- | ---------------- | ---------------------------------------------------------------- |
+| 110      | Diagnostics      | linter                                                           |
+| 210, 220 | Repository       | git-switcher repository, git-switcher branch                     |
+| 310, 320 | File identity    | editor-status path, grammar-selector (when shown on the left)    |
 | 410–450  | Language tooling | jupyter-repl, latex-tools, typst-tools, tasklist-tools, prettier |
-| 510, 520 | View info        | editor-status cursor position, image-editor size              |
+| 510, 520 | View info        | editor-status cursor position, image-editor size                 |
 
 Right panel, from the right edge inwards:
 
