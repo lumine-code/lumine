@@ -1,0 +1,195 @@
+const { SelectListView } = require("@lumine-code/select-list");
+
+describe("command-palette", () => {
+  let workspaceElement, mainModule, palette, commandDisposables;
+
+  beforeEach(async () => {
+    workspaceElement = atom.views.getView(atom.workspace);
+    jasmine.attachToDOM(workspaceElement);
+    commandDisposables = [];
+    commandDisposables.push(
+      atom.commands.add("atom-workspace", "command-palette-spec:noop", {
+        didDispatch() {},
+      }),
+      atom.commands.add("atom-workspace", "command-palette-spec:hidden", {
+        didDispatch() {},
+        hiddenInCommandPalette: true,
+      }),
+    );
+    // The package defers activation until one of its commands is dispatched,
+    // so trigger it with the side-effect-free clear-recent command.
+    const activation = atom.packages.activatePackage("command-palette");
+    atom.commands.dispatch(workspaceElement, "command-palette:clear-recent");
+    const pack = await activation;
+    mainModule = pack.mainModule;
+    palette = mainModule.list;
+  });
+
+  afterEach(() => {
+    palette?.hide();
+    for (const disposable of commandDisposables) disposable.dispose();
+  });
+
+  async function openPalette(command = "command-palette:toggle") {
+    atom.commands.dispatch(workspaceElement, command);
+    await SelectListView.getScheduler().getNextUpdatePromise();
+    return palette.selectListView;
+  }
+
+  function listedCommandNames() {
+    const items = palette.selectListView.element.querySelectorAll("li[data-event-name]");
+    return Array.from(items, (li) => li.dataset.eventName);
+  }
+
+  describe("command-palette:toggle", () => {
+    it("shows the palette with the commands available for the focused element", async () => {
+      const selectListView = await openPalette();
+      expect(selectListView.isVisible()).toBe(true);
+
+      const names = listedCommandNames();
+      expect(names.length).toBeGreaterThan(0);
+      expect(names).toContain("command-palette-spec:noop");
+
+      const visibleCommands = atom.commands
+        .findCommands({ target: palette.activeElement })
+        .filter((command) => !command.hiddenInCommandPalette);
+      expect(names.length).toBe(visibleCommands.length);
+    });
+
+    it("hides the palette when it is already visible", async () => {
+      const selectListView = await openPalette();
+      expect(selectListView.isVisible()).toBe(true);
+      atom.commands.dispatch(workspaceElement, "command-palette:toggle");
+      expect(selectListView.isVisible()).toBe(false);
+    });
+
+    it("shows the keybindings bound to the listed commands", async () => {
+      await openPalette();
+      const toggleItem = palette.selectListView.element.querySelector(
+        "li[data-event-name='command-palette:toggle']",
+      );
+      expect(toggleItem).not.toBeNull();
+      const binding = atom.keymaps
+        .findKeyBindings({ target: workspaceElement })
+        .find((keyBinding) => keyBinding.command === "command-palette:toggle");
+      if (binding) {
+        expect(toggleItem.querySelector("kbd.key-binding")).not.toBeNull();
+      }
+    });
+  });
+
+  describe("command-palette:show-hidden-commands", () => {
+    it("lists only the commands hidden from the palette", async () => {
+      await openPalette("command-palette:show-hidden-commands");
+      const names = listedCommandNames();
+      expect(names).toContain("command-palette-spec:hidden");
+      expect(names).not.toContain("command-palette-spec:noop");
+    });
+
+    it("recomputes the list when toggling between hidden and visible commands", async () => {
+      await openPalette();
+      expect(listedCommandNames()).toContain("command-palette-spec:noop");
+      palette.hide();
+
+      await openPalette("command-palette:show-hidden-commands");
+      expect(listedCommandNames()).toContain("command-palette-spec:hidden");
+      palette.hide();
+
+      await openPalette();
+      const names = listedCommandNames();
+      expect(names).toContain("command-palette-spec:noop");
+      expect(names).not.toContain("command-palette-spec:hidden");
+    });
+  });
+
+  describe("recently used commands", () => {
+    it("records confirmed commands and serializes them", async () => {
+      await openPalette();
+      const item = palette.commands.find((command) => command.name === "command-palette-spec:noop");
+      expect(item).toBeDefined();
+      palette.selectListView.props.didConfirmSelection(item);
+
+      expect(palette.recentlyUsed[0]).toBe("command-palette-spec:noop");
+      expect(mainModule.serialize()).toEqual({ recentlyUsed: ["command-palette-spec:noop"] });
+    });
+
+    it("dispatches the confirmed command on the previously focused element", async () => {
+      let dispatched = false;
+      commandDisposables.push(
+        atom.commands.add("atom-workspace", "command-palette-spec:confirm-me", {
+          didDispatch() {
+            dispatched = true;
+          },
+        }),
+      );
+      // Focus a fresh element so the cached command list is recomputed.
+      palette.lastActiveElement = null;
+      await openPalette();
+      const item = palette.commands.find(
+        (command) => command.name === "command-palette-spec:confirm-me",
+      );
+      expect(item).toBeDefined();
+      palette.selectListView.props.didConfirmSelection(item);
+      expect(dispatched).toBe(true);
+    });
+
+    it("caps the list at the configured recent count", async () => {
+      atom.config.set("command-palette.recentCount", 2);
+      await openPalette();
+      for (const name of ["a", "b", "c"]) {
+        palette.selectListView.props.didConfirmSelection({ name: `command-palette-spec:${name}` });
+      }
+      expect(palette.recentlyUsed).toEqual(["command-palette-spec:c", "command-palette-spec:b"]);
+    });
+
+    it("marks recent commands in the rendered list", async () => {
+      await openPalette();
+      const item = palette.commands.find((command) => command.name === "command-palette-spec:noop");
+      palette.selectListView.props.didConfirmSelection(item);
+
+      await openPalette();
+      const li = palette.selectListView.element.querySelector(
+        "li[data-event-name='command-palette-spec:noop']",
+      );
+      expect(li.classList.contains("recent")).toBe(true);
+      expect(listedCommandNames()[0]).toBe("command-palette-spec:noop");
+    });
+
+    it("clears the list with command-palette:clear-recent", async () => {
+      await openPalette();
+      const item = palette.commands.find((command) => command.name === "command-palette-spec:noop");
+      palette.selectListView.props.didConfirmSelection(item);
+      expect(palette.recentlyUsed.length).toBe(1);
+
+      atom.commands.dispatch(workspaceElement, "command-palette:clear-recent");
+      expect(palette.recentlyUsed).toEqual([]);
+    });
+
+    it("restores recently used commands from serialized state", async () => {
+      const CommandPalette = require("../lib/list");
+      const restored = new CommandPalette(["command-palette-spec:noop"]);
+      expect(restored.recentlyUsed).toEqual(["command-palette-spec:noop"]);
+      await restored.destroy();
+    });
+  });
+
+  describe("query handling", () => {
+    it("resets the query on reopen by default", async () => {
+      const selectListView = await openPalette();
+      selectListView.refs.queryEditor.setText("noop");
+      palette.hide();
+      // The query is reset synchronously by the willShow hook.
+      palette.show();
+      expect(selectListView.getQuery()).toBe("");
+    });
+
+    it("preserves the query when preserveQuery is enabled", async () => {
+      atom.config.set("command-palette.preserveQuery", true);
+      const selectListView = await openPalette();
+      selectListView.refs.queryEditor.setText("noop");
+      palette.hide();
+      palette.show();
+      expect(selectListView.getQuery()).toBe("noop");
+    });
+  });
+});

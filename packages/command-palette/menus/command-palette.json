@@ -18,6 +18,14 @@
             {
               "label": "Toggle",
               "command": "command-palette:toggle"
+            },
+            {
+              "label": "Show Hidden Commands",
+              "command": "command-palette:show-hidden-commands"
+            },
+            {
+              "label": "Clear Recent",
+              "command": "command-palette:clear-recent"
             }
           ]
         }

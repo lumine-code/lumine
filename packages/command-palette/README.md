@@ -1,30 +1,37 @@
 # command-palette
 
-Find and run available commands from a searchable list.
+Find and run available commands with fuzzy search.
+
+The palette lists every command available for the focused element, so it always reflects the current context of the workspace.
 
 ## Features
 
-- **Command search**: fuzzy-search every available command by name.
-- **Hidden commands**: optionally include commands normally hidden from the palette.
-- **Keybinding hints**: shows the keybinding bound to each command.
-- **Persistent search**: optionally preserves the last search when reopening the palette.
+- **Fuzzy search**: filter commands by name, description, and tags with fuzzy matching.
+- **Recent commands**: recently used commands stay on top of the list while the query is empty.
+- **Keybinding hints**: each command shows its current keybindings for the focused element.
+- **Hidden commands**: inspect commands excluded from the palette on demand.
+- **Query preservation**: optionally keep the previous search when reopening the palette.
 
 ## Commands
 
 Commands available in `atom-workspace`:
 
-- `command-palette:toggle`: open the command palette,
-- `command-palette:show-hidden-commands`: open the palette including hidden commands.
+- `command-palette:toggle`: open or close the command palette,
+- `command-palette:show-hidden-commands`: open the palette listing only commands hidden from it,
+- `command-palette:clear-recent`: forget the recently used commands.
 
 ## Customization
 
-Adjust the palette's size by adding CSS to your `styles.css`:
+The palette is rendered inside a modal panel with the `command-palette` class. Adjust its appearance by adding CSS to your `styles.css`:
 
 ```css
 .command-palette {
   font-size: 14px;
   .list-group {
     max-height: 20em;
+  }
+  .recent {
+    background: transparent;
   }
 }
 ```
