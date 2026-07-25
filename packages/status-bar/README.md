@@ -38,7 +38,7 @@ Left panel, from the left edge inwards:
 | 110      | Diagnostics      | linter                                                        |
 | 210, 220 | Repository       | git-switcher repository, git-switcher branch                  |
 | 310, 320 | File identity    | editor-status path, grammar-selector (when shown on the left) |
-| 410–450  | Language tooling | jove-repl, latex-tools, typst-tools, tasklist-tools, prettier |
+| 410–450  | Language tooling | jupyter-repl, latex-tools, typst-tools, tasklist-tools, prettier |
 | 510, 520 | View info        | editor-status cursor position, image-editor size              |
 
 Right panel, from the right edge inwards:
