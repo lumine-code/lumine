@@ -138,6 +138,7 @@ module.exports = class TextEditorComponent {
       longestLineWidth: 0,
     };
     this.derivedDimensionsCache = {};
+    this.observingClientContainer = false;
     this.visible = false;
     this.cursorsBlinking = false;
     this.cursorsBlinkedOff = false;
@@ -740,6 +741,9 @@ module.exports = class TextEditorComponent {
       style.width = clientContainerWidth;
       cache.width = clientContainerWidth;
     }
+
+    // An editor can be switched to and from auto sizing at any time.
+    this.updateClientContainerObservation();
   }
 
   syncGutterContainer() {
@@ -1874,7 +1878,7 @@ module.exports = class TextEditorComponent {
       this.intersectionObserver.observe(this.element);
 
       this.resizeObserver = new ResizeObserver(this.didResize.bind(this));
-      this.resizeObserver.observe(this.element);
+      this.observeResizeTargets();
 
       if (this.refs.gutterContainer) {
         this.gutterContainerResizeObserver = new ResizeObserver(
@@ -1898,6 +1902,34 @@ module.exports = class TextEditorComponent {
       }
       this.constructor.attachedComponents.add(this);
     }
+  }
+
+  // Observes the boxes whose size the component's measurements depend on.
+  //
+  // The client container is observed alongside the editor element because it is the box that is
+  // actually measured, and a package can resize it on its own: the minimap attaches as a flex
+  // sibling of the client container and takes a tenth of the editor's width without the element
+  // itself ever changing size. Auto-sized editors are left out, since there the component writes
+  // that box on every update and would only measure back the size it just set.
+  observeResizeTargets() {
+    this.resizeObserver.observe(this.element);
+    this.observingClientContainer = false;
+    this.updateClientContainerObservation();
+  }
+
+  updateClientContainerObservation() {
+    if (!this.attached) return;
+
+    const { model } = this.props;
+    const shouldObserve = !model.getAutoHeight() && !model.getAutoWidth();
+    if (shouldObserve === this.observingClientContainer) return;
+
+    if (shouldObserve) {
+      this.resizeObserver.observe(this.refs.clientContainer);
+    } else {
+      this.resizeObserver.unobserve(this.refs.clientContainer);
+    }
+    this.observingClientContainer = shouldObserve;
   }
 
   didDetach() {
@@ -2102,7 +2134,7 @@ module.exports = class TextEditorComponent {
         // run at the next frame's rAF, after this frame painted.
         this.updateSync();
         process.nextTick(() => {
-          this.resizeObserver.observe(this.element);
+          if (this.attached) this.observeResizeTargets();
         });
       }
     }

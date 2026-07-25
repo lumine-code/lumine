@@ -1133,6 +1133,48 @@ describe("TextEditorComponent", () => {
       expect(component.getLineNumberGutterWidth()).toBe(originalLineNumberGutterWidth);
     });
 
+    it("re-measures when the client container is resized without the element", async () => {
+      const { component, element } = buildComponent({ autoHeight: false });
+      const initialWidth = component.getClientContainerWidth();
+      expect(initialWidth).toBe(element.offsetWidth);
+
+      // This is how the minimap resizes an editor: it attaches itself as a flex
+      // sibling of the client container, so the container gets narrower while
+      // the element the component lives in keeps its size.
+      element.style.display = "flex";
+      component.refs.clientContainer.style.flex = "0 0 75%";
+      const sibling = document.createElement("div");
+      sibling.style.flex = "0 0 25%";
+      element.appendChild(sibling);
+
+      await conditionPromise(() => component.getClientContainerWidth() < initialWidth);
+      expect(component.getClientContainerWidth()).toBe(component.refs.clientContainer.offsetWidth);
+      expect(element.offsetWidth).toBe(initialWidth);
+
+      sibling.remove();
+      component.refs.clientContainer.style.flex = "";
+
+      await conditionPromise(() => component.getClientContainerWidth() === initialWidth);
+    });
+
+    it("leaves the client container of auto-sized editors unobserved", async () => {
+      // The component sizes that container itself on every update when the
+      // editor is auto-sized, so observing it would measure back the size the
+      // component just wrote.
+      const { component, element, editor } = buildComponent({ autoHeight: true });
+      await component.getNextUpdatePromise();
+      expect(component.observingClientContainer).toBe(false);
+
+      editor.update({ autoHeight: false });
+      element.style.height = "300px";
+      component.updateSync();
+      expect(component.observingClientContainer).toBe(true);
+
+      editor.update({ autoHeight: true });
+      component.updateSync();
+      expect(component.observingClientContainer).toBe(false);
+    });
+
     describe("randomized tests", () => {
       let originalTimeout;
 
