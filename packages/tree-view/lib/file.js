@@ -3,10 +3,9 @@ const { CompositeDisposable, Emitter } = require("atom");
 const { repoForPath } = require("./helpers");
 
 module.exports = class File {
-  constructor({ name, fullPath, symlink, ignoredNames, useSyncFS, stats }) {
+  constructor({ name, fullPath, symlink, useSyncFS, stats }) {
     this.name = name;
     this.symlink = symlink;
-    this.ignoredNames = ignoredNames;
     this.stats = stats;
     this.destroyed = false;
     this.emitter = new Emitter();
@@ -81,8 +80,6 @@ module.exports = class File {
     const repo = repoForPath(this.path);
     if (repo != null && repo.isPathIgnoredCached(this.path)) {
       newStatus = "ignored";
-    } else if (this.ignoredNames.matches(this.path)) {
-      newStatus = "ignored-name";
     } else if (repo != null) {
       const summary = repo.getPathStatusSummary(this.path);
       if (summary != null) {

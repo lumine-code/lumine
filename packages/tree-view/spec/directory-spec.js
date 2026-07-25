@@ -99,7 +99,7 @@ describe("TreeView Directory Git status", () => {
     expect(repository.getDirectoryStatusSummary).toHaveBeenCalledWith(directoryPath);
   });
 
-  it("marks a directory whose path matches core.ignoredNames", () => {
+  it("does not mark a directory whose path matches core.ignoredNames", () => {
     const directoryPath = makeTemporaryDirectory("ignored-name-directory");
     const repository = repositoryFor({ directoryStatusSummary: null });
 
@@ -107,16 +107,19 @@ describe("TreeView Directory Git status", () => {
       ignoredNames: { matches: (candidate) => candidate === directoryPath },
     });
 
-    expect(directory.status).toBe("ignored-name");
+    expect(directory.status).toBeNull();
   });
 
-  it("marks ignored names even when the path is not in a repository", () => {
-    const directoryPath = makeTemporaryDirectory("ignored-name-no-repo");
+  it("keeps the Git status of a directory whose path matches core.ignoredNames", () => {
+    const directoryPath = makeTemporaryDirectory("ignored-name-modified-directory");
+    const repository = repositoryFor({
+      directoryStatusSummary: { source: "cache", conflicted: false, modified: true, added: false },
+    });
 
-    directory = createDirectory(directoryPath, null, {
+    directory = createDirectory(directoryPath, repository, {
       ignoredNames: { matches: (candidate) => candidate === directoryPath },
     });
 
-    expect(directory.status).toBe("ignored-name");
+    expect(directory.status).toBe("modified");
   });
 });

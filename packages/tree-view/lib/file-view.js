@@ -39,7 +39,6 @@ module.exports = class FileView {
   updateStatus() {
     this.element.classList.remove(
       "status-ignored",
-      "status-ignored-name",
       "status-modified",
       "status-added",
       "status-conflicted",

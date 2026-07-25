@@ -149,8 +149,6 @@ module.exports = class Directory {
     const repo = repoForPath(this.path);
     if (repo != null && repo.isPathIgnoredCached(this.path)) {
       newStatus = "ignored";
-    } else if (this.ignoredNames.matches(this.path)) {
-      newStatus = "ignored-name";
     } else if (repo != null) {
       const summary = repo.getDirectoryStatusSummary(this.path);
       if (summary != null) {
@@ -355,7 +353,6 @@ module.exports = class Directory {
               name,
               fullPath,
               symlink,
-              ignoredNames: this.ignoredNames,
               useSyncFS: this.useSyncFS,
               stats: statFlat,
             }),

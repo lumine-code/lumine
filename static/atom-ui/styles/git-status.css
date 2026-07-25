@@ -17,8 +17,7 @@
   .status-added {
     color: var(--text-color-added);
   }
-  .status-ignored,
-  .status-ignored-name {
+  .status-ignored {
     font-weight: normal;
     color: var(--text-color-ignored);
   }
@@ -48,13 +47,9 @@
     }
 
     li:not(.list-nested-item).status-ignored,
-    li:not(.list-nested-item).status-ignored-name,
     li.list-nested-item.status-ignored > .list-item,
-    li.list-nested-item.status-ignored-name > .list-item,
     li:not(.list-nested-item).selected.status-ignored,
-    li:not(.list-nested-item).selected.status-ignored-name,
-    li.list-nested-item.selected.status-ignored > .list-item,
-    li.list-nested-item.selected.status-ignored-name > .list-item {
+    li.list-nested-item.selected.status-ignored > .list-item {
       color: var(--text-color-ignored);
     }
 

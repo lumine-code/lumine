@@ -81,7 +81,6 @@ module.exports = class DirectoryView {
   updateStatus() {
     this.element.classList.remove(
       "status-ignored",
-      "status-ignored-name",
       "status-modified",
       "status-added",
       "status-conflicted",
