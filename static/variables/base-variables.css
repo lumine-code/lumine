@@ -141,7 +141,13 @@
   --overlay-backdrop-color: hsl(from var(--base-background-color) h s calc(l * 0.2));
   --overlay-backdrop-opacity: 0.75;
   --progress-background-color: var(--accent-color);
-  --scrollbar-color-editor: hsl(from var(--syntax-background-color) h s calc(l + 16));
+  /* Mix toward the text color so the thumb contrasts on light AND dark syntax
+     themes; adding lightness would shoot past white on light backgrounds. */
+  --scrollbar-color-editor: color-mix(
+    in srgb,
+    var(--syntax-background-color) 78%,
+    var(--syntax-text-color)
+  );
   --scrollbar-background-color-editor: var(--syntax-background-color);
   --tab-text-color: var(--text-color-subtle);
   --tab-text-color-active: var(--text-color-highlight);
