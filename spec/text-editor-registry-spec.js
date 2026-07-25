@@ -38,11 +38,22 @@ describe("TextEditorRegistry", function () {
   });
 
   describe(".add", function () {
-    it("adds an editor to the list of registered editors", function () {
+    it("adds an editor to the list of registered editors with the document role", function () {
       registry.add(editor);
-      expect(editor.registered).toBe(true);
+      expect(editor.registered).toBe("document");
+      expect(registry.roleFor(editor)).toBe("document");
       expect(registry.editors.size).toBe(1);
       expect(registry.editors.has(editor)).toBe(true);
+    });
+
+    it("registers an editor with an explicit role", function () {
+      registry.add(editor, { role: "fragment" });
+      expect(editor.registered).toBe("fragment");
+      expect(registry.roleFor(editor)).toBe("fragment");
+    });
+
+    it("rejects unknown roles", function () {
+      expect(() => registry.add(editor, { role: "sidekick" })).toThrowError(TypeError);
     });
 
     it("returns a Disposable that can unregister the editor", function () {
@@ -51,7 +62,30 @@ describe("TextEditorRegistry", function () {
       disposable.dispose();
       expect(registry.editors.size).toBe(0);
       expect(editor.registered).toBe(false);
+      expect(registry.roleFor(editor)).toBe(null);
       expect(retainedEditorCount(registry)).toBe(0);
+    });
+
+    it("emits did-remove-editor when an editor is unregistered", function () {
+      const spy = jasmine.createSpy();
+      registry.onDidRemoveEditor(spy);
+      const disposable = registry.add(editor);
+      disposable.dispose();
+      expect(spy.calls.count()).toBe(1);
+      expect(spy.calls.argsFor(0)[0]).toBe(editor);
+      // Removing an unregistered editor emits nothing
+      registry.remove(editor);
+      expect(spy.calls.count()).toBe(1);
+    });
+  });
+
+  describe(".getEditors", function () {
+    it("returns all registered editors", function () {
+      const other = new TextEditor({ autoHeight: false });
+      registry.add(editor);
+      registry.add(other, { role: "fragment" });
+      expect(registry.getEditors()).toEqual([editor, other]);
+      other.destroy();
     });
   });
 
@@ -615,7 +649,9 @@ function getSubscriptionCount(editor) {
 
 function retainedEditorCount(registry) {
   const editors = new Set();
-  registry.editors.forEach((e) => editors.add(e));
+  for (const e of registry.editors.keys()) {
+    editors.add(e);
+  }
   registry.editorsWithMaintainedConfig.forEach((e) => editors.add(e));
   return editors.size;
 }

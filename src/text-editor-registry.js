@@ -28,7 +28,22 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
   ["editor.scrollCommandDistance", "scrollCommandDistance"],
 ];
 
-// Experimental: This global registry tracks registered `TextEditors`.
+// The role of a registered editor describes how it relates to the user's
+// documents, so cross-editor features (completion sourcing, linting, …) can
+// treat it appropriately:
+//
+// - "document": a standalone document editor — workspace pane items and
+//   embedded editors that hold complete content of their own. The default.
+// - "fragment": a piece of a larger, composite document — a notebook cell, a
+//   watch expression, a REPL input. Fragments share context with the other
+//   open editors.
+// - "background": an infrastructure editor mirroring content the user works
+//   on through another view (e.g. the JSON source backing a notebook).
+//   Registered so configuration and services apply, but excluded from
+//   cross-editor features like completion sourcing.
+const ROLES = new Set(["document", "fragment", "background"]);
+
+// This global registry tracks registered `TextEditors`.
 //
 // If you want to add functionality to a wider set of text editors than just
 // those appearing within workspace panes, use `atom.textEditors.observe` to
@@ -54,7 +69,7 @@ module.exports = class TextEditorRegistry {
     }
 
     this.subscriptions = new CompositeDisposable();
-    this.editors = new Set();
+    this.editors = new Map(); // editor -> { role }
     this.emitter = new Emitter();
     this.scopesWithConfigSubscriptions = new Set();
     this.editorsWithMaintainedConfig = new Set();
@@ -68,13 +83,19 @@ module.exports = class TextEditorRegistry {
   // Register a `TextEditor`.
   //
   // * `editor` The editor to register.
+  // * `options` (optional) {Object}
+  //   * `role` (optional) {String} one of `"document"` (default),
+  //     `"fragment"`, or `"background"` — see the role description above.
   //
   // Returns a {Disposable} on which `.dispose()` can be called to remove the
   // added editor. To avoid any memory leaks this should be called when the
   // editor is destroyed.
-  add(editor) {
-    this.editors.add(editor);
-    editor.registered = true;
+  add(editor, { role = "document" } = {}) {
+    if (!ROLES.has(role)) {
+      throw new TypeError(`Unknown text editor role: ${role}`);
+    }
+    this.editors.set(editor, { role });
+    editor.registered = role;
     this.emitter.emit("did-add-editor", editor);
 
     return new Disposable(() => this.remove(editor));
@@ -104,14 +125,34 @@ module.exports = class TextEditorRegistry {
   remove(editor) {
     const removed = this.editors.delete(editor);
     editor.registered = false;
+    if (removed) {
+      this.emitter.emit("did-remove-editor", editor);
+    }
     return removed;
+  }
+
+  // Get the role a `TextEditor` was registered with.
+  //
+  // * `editor` The editor.
+  //
+  // Returns a {String} role, or `null` if the editor is not registered.
+  roleFor(editor) {
+    const meta = this.editors.get(editor);
+    return meta ? meta.role : null;
+  }
+
+  // Get all registered editors.
+  //
+  // Returns an {Array} of `TextEditor`s.
+  getEditors() {
+    return Array.from(this.editors.keys());
   }
 
   // Gets the currently active text editor.
   //
   // Returns the currently active text editor, or `null` if there is none.
   getActiveTextEditor() {
-    for (let ed of this.editors) {
+    for (const ed of this.editors.keys()) {
       if (ed.getElement().contains(document.activeElement)) {
         return ed;
       }
@@ -126,8 +167,19 @@ module.exports = class TextEditorRegistry {
   //
   // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
   observe(callback) {
-    this.editors.forEach(callback);
+    for (const editor of this.editors.keys()) {
+      callback(editor);
+    }
     return this.emitter.on("did-add-editor", callback);
+  }
+
+  // Invoke the given callback whenever an editor is removed from the registry.
+  //
+  // * `callback` {Function} to be called with the removed editor.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  onDidRemoveEditor(callback) {
+    return this.emitter.on("did-remove-editor", callback);
   }
 
   // Keep a {TextEditor}'s configuration in sync with Lumine's settings.

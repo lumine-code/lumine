@@ -133,7 +133,9 @@ module.exports = class TextEditor {
 
     const editor = new TextEditor(state);
     if (state.registered) {
-      const disposable = atomEnvironment.textEditors.add(editor);
+      // `registered` serializes the registry role; older states stored `true`.
+      const role = state.registered === true ? "document" : state.registered;
+      const disposable = atomEnvironment.textEditors.add(editor, { role });
       editor.onDidDestroy(() => disposable.dispose());
     }
     return editor;

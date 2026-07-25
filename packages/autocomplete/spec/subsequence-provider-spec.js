@@ -476,6 +476,58 @@ describe("SubsequenceProvider", () => {
       atom.config.set("autocomplete.includeCompletionsFromAllBuffers", false);
     });
 
+    it("shares words between fragment editors, like notebook cells", async () => {
+      const cellA = new TextEditor();
+      cellA.setText("cable = 1");
+      const registrationA = atom.textEditors.add(cellA, { role: "fragment" });
+      const cellB = new TextEditor();
+      const registrationB = atom.textEditors.add(cellB, { role: "fragment" });
+
+      const suggestions = await suggestionsForPrefix(provider, cellB, "cab");
+      expect(suggestions).toContain("cable");
+
+      registrationA.dispose();
+      registrationB.dispose();
+      cellA.destroy();
+      cellB.destroy();
+    });
+
+    it("does not source completions from background or mini editors", async () => {
+      const background = new TextEditor();
+      background.setText("backstageword = 1");
+      const backgroundRegistration = atom.textEditors.add(background, { role: "background" });
+      const mini = new TextEditor({ mini: true });
+      mini.setText("minifiedword");
+      const miniRegistration = atom.textEditors.add(mini);
+
+      const asker = new TextEditor();
+      expect(await suggestionsForPrefix(provider, asker, "backstage")).not.toContain(
+        "backstageword",
+      );
+      expect(await suggestionsForPrefix(provider, asker, "minified")).not.toContain("minifiedword");
+
+      backgroundRegistration.dispose();
+      miniRegistration.dispose();
+      background.destroy();
+      mini.destroy();
+      asker.destroy();
+    });
+
+    it("stops sourcing a fragment's buffer when it is unregistered", async () => {
+      const cell = new TextEditor();
+      cell.setText("cadence = 1");
+      const registration = atom.textEditors.add(cell, { role: "fragment" });
+
+      const asker = new TextEditor();
+      expect(await suggestionsForPrefix(provider, asker, "caden")).toContain("cadence");
+
+      registration.dispose();
+      expect(await suggestionsForPrefix(provider, asker, "caden")).not.toContain("cadence");
+
+      cell.destroy();
+      asker.destroy();
+    });
+
     it("handles bufferToSubsequenceMatches gracefully for an untracked buffer", async () => {
       const nonWorkspaceEditor = new TextEditor();
       nonWorkspaceEditor.setText("function anotherTestWord() {}");

@@ -8,13 +8,14 @@ module.exports = class SubsequenceProvider {
 
     this.subscriptions = new CompositeDisposable();
     this.watchedBuffers = new Map();
+    this.documentBuffers = new Set();
 
     if (options.atomConfig) {
       this.atomConfig = options.atomConfig;
     }
 
-    if (options.atomWorkspace) {
-      this.atomWorkspace = options.atomWorkspace;
+    if (options.atomTextEditors) {
+      this.atomTextEditors = options.atomTextEditors;
     }
 
     this.providerConfig = new ProviderConfig({
@@ -37,9 +38,15 @@ module.exports = class SubsequenceProvider {
       );
     });
 
+    // Watch every registered editor — pane items and the editors packages
+    // register (notebook cells, panel inputs) alike — so their buffers can
+    // serve as completion sources.
     this.subscriptions.add(
-      this.atomWorkspace.observeTextEditors((e) => {
+      this.atomTextEditors.observe((e) => {
         this.watchBuffer(e);
+      }),
+      this.atomTextEditors.onDidRemoveEditor((e) => {
+        this.unwatchBuffer(e);
       }),
     );
 
@@ -52,7 +59,7 @@ module.exports = class SubsequenceProvider {
 
   defaults() {
     this.atomConfig = atom.config;
-    this.atomWorkspace = atom.workspace;
+    this.atomTextEditors = atom.textEditors;
 
     this.possibleWordCharacters = "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?_-…".split("");
     this.enableExtendedUnicodeSupport = false;
@@ -66,6 +73,7 @@ module.exports = class SubsequenceProvider {
     this.suggestionPriority = 0;
 
     this.watchedBuffers = null;
+    this.documentBuffers = null;
   }
 
   dispose() {
@@ -73,6 +81,11 @@ module.exports = class SubsequenceProvider {
   }
 
   watchBuffer(editor) {
+    // Mini editors (search fields, one-line inputs) and background editors
+    // (e.g. the JSON source backing a notebook) are not completion sources.
+    if (editor.isMini() || this.atomTextEditors.roleFor(editor) === "background") {
+      return;
+    }
     const buffer = editor.getBuffer();
 
     if (!this.watchedBuffers.has(buffer)) {
@@ -81,11 +94,47 @@ module.exports = class SubsequenceProvider {
         buffer.onDidDestroy(() => {
           bufferSubscriptions.dispose();
           this.watchedBuffers.delete(buffer);
+          this.documentBuffers.delete(buffer);
         }),
       );
     }
 
     this.watchedBuffers.set(buffer, editor);
+    // Editors registered as documents are self-contained: they complete from
+    // their own buffer. Fragments (notebook cells, watch expressions) and
+    // unregistered editors complete from the whole pool instead.
+    if (this.atomTextEditors.roleFor(editor) === "document") {
+      this.documentBuffers.add(buffer);
+    }
+  }
+
+  unwatchBuffer(editor) {
+    const buffer = editor.getBuffer();
+    if (this.watchedBuffers.get(buffer) !== editor) {
+      return;
+    }
+    // Another registered editor may still expose this buffer (split panes);
+    // keep the buffer as a source through it.
+    const replacement = this.atomTextEditors
+      .getEditors()
+      .find(
+        (other) =>
+          other !== editor &&
+          !other.isMini() &&
+          this.atomTextEditors.roleFor(other) !== "background" &&
+          other.getBuffer() === buffer,
+      );
+    if (replacement) {
+      this.watchedBuffers.set(buffer, replacement);
+      if (this.atomTextEditors.roleFor(replacement) === "document") {
+        this.documentBuffers.add(buffer);
+      } else {
+        this.documentBuffers.delete(buffer);
+      }
+    } else {
+      this.watchedBuffers.delete(buffer);
+      this.documentBuffers.delete(buffer);
+    }
   }
 
   // This is kind of a hack. We throw the config suggestions in a buffer, so
@@ -170,13 +219,13 @@ module.exports = class SubsequenceProvider {
       return;
     }
 
-    // Get buffers to search for completions. A non-workspace editor (a search
-    // field, a watch expression, a panel input) isn't tracked in
-    // watchedBuffers and its own buffer holds only the entry being typed, so
-    // it completes from the open workspace buffers as well.
+    // Get buffers to search for completions. Only a document editor is
+    // self-contained; fragments (notebook cells, watch expressions), inputs
+    // (search fields), and unregistered editors hold just a piece of what the
+    // user works on, so they complete from all open sources as well.
     const currentEditorBuffer = editor.getBuffer();
     const searchAllBuffers =
-      this.includeCompletionsFromAllBuffers || !this.watchedBuffers.has(currentEditorBuffer);
+      this.includeCompletionsFromAllBuffers || !this.documentBuffers.has(currentEditorBuffer);
     const bufferSet = new Set(searchAllBuffers ? this.watchedBuffers.keys() : []);
     bufferSet.add(currentEditorBuffer);
     const buffers = Array.from(bufferSet);
