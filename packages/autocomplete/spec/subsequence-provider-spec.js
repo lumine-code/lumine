@@ -452,7 +452,11 @@ describe("SubsequenceProvider", () => {
 
       // Words from open workspace buffers are offered too, since the panel
       // editor's own buffer holds only the entry being typed.
-      const workspaceSuggestions = await suggestionsForPrefix(provider, nonWorkspaceEditor, "quick");
+      const workspaceSuggestions = await suggestionsForPrefix(
+        provider,
+        nonWorkspaceEditor,
+        "quick",
+      );
       expect(workspaceSuggestions).toContain("quicksort");
     });
 
