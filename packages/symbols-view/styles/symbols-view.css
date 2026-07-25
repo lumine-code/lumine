@@ -60,8 +60,8 @@
 
 /* Highlight matched text */
 .symbols-view .list-group .character-match {
+  /* Color only — bold glyphs are wider and make rows shift. */
   color: var(--text-color-highlight);
-  font-weight: bold;
 }
 
 atom-panel.modal .symbols-view {

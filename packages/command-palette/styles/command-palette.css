@@ -1,7 +1,7 @@
 /* Highlight matched text */
 .command-palette .list-group .character-match {
+  /* Color only — bold glyphs are wider and make rows shift. */
   color: var(--text-color-highlight);
-  font-weight: bold;
 }
 
 /* Recently used commands listed on top while the query is empty */

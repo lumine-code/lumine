@@ -178,7 +178,7 @@ autocomplete-suggestion-list {
   }
 
   .character-match {
-    font-weight: bold;
+    /* Color only — bold glyphs are wider and make rows shift. */
     color: var(--text-color-highlight);
   }
 
