@@ -4,23 +4,3 @@
 .language-client-status:focus {
   outline: 1px solid var(--base-border-color);
 }
-.language-client-problems {
-  max-height: 16em;
-  overflow: auto;
-  padding: 0.5em 1em;
-}
-.language-client-problems table {
-  width: 100%;
-}
-.language-client-problems td {
-  padding: 0.2em 0.5em;
-}
-.language-client-diagnostic-error {
-  border-bottom: 2px dotted var(--text-color-error);
-}
-.language-client-diagnostic-warning {
-  border-bottom: 2px dotted var(--text-color-warning);
-}
-.language-client-diagnostic-info {
-  border-bottom: 2px dotted var(--text-color-info);
-}

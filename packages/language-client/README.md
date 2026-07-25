@@ -20,11 +20,8 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 Commands available in `atom-workspace`:
 
 - `language-client:restart`: restart the language server for the active editor,
-- `language-client:toggle-problems`: toggle the diagnostics panel,
-- `language-client:hover`: show language information at the cursor,
+- `language-client:toggle-problems`: open the linter panel with the server diagnostics,
 - `language-client:format`: format the active document,
-- `language-client:rename`: rename the symbol under the cursor,
-- `language-client:code-actions`: list code actions for the selection,
 - `language-client:show-log`: open the active server's log in a new editor.
 
 ## Usage
@@ -67,6 +64,10 @@ Tweak the status-bar item from your stylesheet:
 - **hover** (`1.0.0`): provided to hover UIs to serve documentation at a buffer position.
 - **signature** (`1.0.0`): provided to signature-help UIs to serve call signatures while typing.
 - **outline-view** (`1.0.0`): provided to outline UIs to serve the hierarchical document outline.
+- **code-format.range**, **code-format.file**, **code-format.onType**, **code-format.onSave** (`1.0.0`): provided to formatting orchestrators; each resolves to text edits from the server.
+- **find-references** (`1.0.0`): provided to reference UIs to list occurrences of the symbol at a position.
+- **refactor** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
+- **intentions.list** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.
 - **linter-indie** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
 - **busy-signal** (`^1.0.0`): consumed to surface server work-done progress in the status bar.
 - **status-bar** (`^1.0.0`): consumed to show the active server state and session menu.

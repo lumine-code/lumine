@@ -4,7 +4,10 @@ const SymbolProvider = require("./symbol-provider");
 const HoverProvider = require("./hover-provider");
 const SignatureProvider = require("./signature-provider");
 const OutlineProvider = require("./outline-provider");
-const DiagnosticsView = require("./diagnostics-view");
+const CodeFormatProvider = require("./code-format-provider");
+const ReferencesProvider = require("./references-provider");
+const RefactorProvider = require("./refactor-provider");
+const IntentionsProvider = require("./intentions-provider");
 const SessionMenuView = require("./session-menu-view");
 const { toLinterMessages } = require("./linter-messages");
 const { CompositeDisposable, Disposable } = require("atom");
@@ -12,21 +15,23 @@ const { CompositeDisposable, Disposable } = require("atom");
 module.exports = {
   activate() {
     this.manager = new LanguageServerManager();
-    this.manager.activate();
     this.completionProvider = new CompletionProvider(this.manager);
     this.symbolProvider = new SymbolProvider(this.manager);
     this.hoverProvider = new HoverProvider(this.manager);
     this.signatureProvider = new SignatureProvider(this.manager);
     this.outlineProvider = new OutlineProvider(this.manager);
+    this.codeFormatProvider = new CodeFormatProvider(this.manager);
+    this.referencesProvider = new ReferencesProvider(this.manager);
+    this.refactorProvider = new RefactorProvider(this.manager);
+    this.intentionsProvider = new IntentionsProvider(this.manager);
+    this.manager.activate();
     this.uiSubscriptions = new CompositeDisposable();
-    this.panel = null;
     this.statusElement = document.createElement("span");
     this.statusElement.className = "language-client-status inline-block";
     this.statusElement.textContent = "LSP: idle";
     this.statusElement.tabIndex = 0;
     this.statusElement.setAttribute("role", "button");
     this.statusElement.setAttribute("aria-label", "Language server actions");
-    this.diagnosticsView = new DiagnosticsView(this.manager);
     this.sessionMenu = new SessionMenuView(this);
     this.statusElement.addEventListener("click", () => this.sessionMenu.toggle());
     this.statusElement.addEventListener("keydown", (event) => {
@@ -41,19 +46,14 @@ module.exports = {
     );
     this.uiSubscriptions.add(
       atom.commands.add("atom-workspace", {
-        "language-client:toggle-problems": () => this.toggleProblems(),
+        "language-client:toggle-problems": () => this.showProblems(),
         "language-client:restart": () => this.restart(),
-        "language-client:hover": () => this.hover(),
         "language-client:format": () => this.format(),
-        "language-client:rename": () => this.rename(),
-        "language-client:code-actions": () => this.codeActions(),
         "language-client:show-log": () => this.showLog(),
       }),
     );
   },
   async deactivate() {
-    this.panel?.destroy();
-    this.diagnosticsView?.destroy();
     this.sessionMenu?.destroy();
     this.indieSubscription?.dispose();
     this.disposeIndieDelegates();
@@ -101,6 +101,27 @@ module.exports = {
   provideOutline() {
     return this.outlineProvider;
   },
+  provideCodeFormatRange() {
+    return this.codeFormatProvider.rangeProvider();
+  },
+  provideCodeFormatFile() {
+    return this.codeFormatProvider.fileProvider();
+  },
+  provideCodeFormatOnType() {
+    return this.codeFormatProvider.onTypeProvider();
+  },
+  provideCodeFormatOnSave() {
+    return this.codeFormatProvider.onSaveProvider();
+  },
+  provideFindReferences() {
+    return this.referencesProvider;
+  },
+  provideRefactor() {
+    return this.refactorProvider;
+  },
+  provideIntentions() {
+    return this.intentionsProvider;
+  },
   consumeStatusBar(statusBar) {
     const tile = statusBar.addRightTile({ item: this.statusElement, priority: 500 });
     return { dispose: () => tile.destroy() };
@@ -109,7 +130,6 @@ module.exports = {
     this.indieSubscription?.dispose();
     this.disposeIndieDelegates();
     this.indieDelegates = new Map();
-    this.diagnosticsView.setExternalProvider(true);
     const publish = ({ session, uri, diagnostics }) => {
       const batch = toLinterMessages(uri, diagnostics);
       if (!batch.filePath) return;
@@ -129,7 +149,6 @@ module.exports = {
         this.indieSubscription?.dispose();
         this.indieSubscription = null;
         this.disposeIndieDelegates();
-        this.diagnosticsView?.setExternalProvider(false);
       },
     };
   },
@@ -181,27 +200,13 @@ module.exports = {
       ? `${background.length} language server${background.length === 1 ? "" : "s"} running in the background`
       : "";
   },
-  toggleProblems() {
-    if (!this.panel)
-      this.panel = atom.workspace.addBottomPanel({
-        item: this.diagnosticsView.element,
-        visible: false,
-        priority: 200,
-      });
-    this.panel.isVisible() ? this.panel.hide() : this.panel.show();
-  },
+  // Diagnostics render through the linter package; this only opens its panel.
   showProblems() {
-    if (this.indieDiagnostics) {
+    if (this.indieDelegates) {
       atom.commands.dispatch(atom.views.getView(atom.workspace), "linter:toggle-panel");
-      return;
+    } else {
+      atom.notifications.addInfo("Install the linter package to browse language-server problems.");
     }
-    if (!this.panel)
-      this.panel = atom.workspace.addBottomPanel({
-        item: this.diagnosticsView.element,
-        visible: false,
-        priority: 200,
-      });
-    this.panel.show();
   },
   active() {
     const editor = atom.workspace.getActiveTextEditor();
@@ -211,74 +216,17 @@ module.exports = {
     const { session } = this.active();
     if (session) await this.manager.restart(session);
   },
-  params(editor) {
-    const point = editor.getLastCursor().getBufferPosition();
-    return {
-      textDocument: { uri: require("url").pathToFileURL(editor.getPath()).href },
-      position: { line: point.row, character: point.column },
-    };
-  },
-  async hover() {
-    const { editor, session } = this.active();
-    if (!session?.capabilities.hoverProvider) return;
-    const result = await session.request("textDocument/hover", this.params(editor));
-    const value =
-      typeof result?.contents === "string"
-        ? result.contents
-        : result?.contents?.value ||
-          (Array.isArray(result?.contents)
-            ? result.contents
-                .map((part) => (typeof part === "string" ? part : part.value))
-                .join("\n")
-            : "");
-    if (value)
-      atom.notifications.addInfo("Language information", { description: value, dismissable: true });
-  },
   async format() {
-    const { editor, session } = this.active();
-    if (!session?.capabilities.documentFormattingProvider) return;
-    const uri = this.params(editor).textDocument.uri;
-    const edits = await session.request("textDocument/formatting", {
-      textDocument: { uri },
-      options: { tabSize: editor.getTabLength(), insertSpaces: !editor.getSoftTabs() },
+    const editor = atom.workspace.getActiveTextEditor();
+    if (!editor) return;
+    const edits = await this.codeFormatProvider.formatFile(editor);
+    if (!edits.length) return;
+    editor.transact(() => {
+      for (const edit of [...edits].sort(
+        (a, b) => b.oldRange[0][0] - a.oldRange[0][0] || b.oldRange[0][1] - a.oldRange[0][1],
+      ))
+        editor.setTextInBufferRange(edit.oldRange, edit.newText);
     });
-    if (edits?.length)
-      await this.manager.applyWorkspaceEdit({ changes: { [uri]: edits } }, "Format document");
-  },
-  async rename() {
-    const { editor, session } = this.active();
-    if (!session?.capabilities.renameProvider) return;
-    const newName = window.prompt("New symbol name");
-    if (!newName) return;
-    const edit = await session.request("textDocument/rename", { ...this.params(editor), newName });
-    if (edit) await this.manager.applyWorkspaceEdit(edit, `Rename to ${newName}`);
-  },
-  async codeActions() {
-    const { editor, session } = this.active();
-    if (!session?.capabilities.codeActionProvider) return;
-    const range = editor.getSelectedBufferRange();
-    const actions = await session.request("textDocument/codeAction", {
-      textDocument: this.params(editor).textDocument,
-      range: {
-        start: { line: range.start.row, character: range.start.column },
-        end: { line: range.end.row, character: range.end.column },
-      },
-      context: { diagnostics: [] },
-    });
-    if (!actions?.length) return;
-    const index = await atom.confirm({
-      message: "Language server code actions",
-      buttons: actions.map((a) => a.title).concat("Cancel"),
-    });
-    const action = actions[index];
-    if (action?.edit) await this.manager.applyWorkspaceEdit(action.edit, action.title);
-    if (action?.command)
-      session.request(
-        "workspace/executeCommand",
-        action.command.command
-          ? action.command
-          : { command: action.command, arguments: action.arguments },
-      );
   },
   async showLog() {
     const { session } = this.active();

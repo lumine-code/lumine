@@ -52,6 +52,41 @@
       "versions": {
         "1.0.0": "provideOutline"
       }
+    },
+    "code-format.range": {
+      "versions": {
+        "1.0.0": "provideCodeFormatRange"
+      }
+    },
+    "code-format.file": {
+      "versions": {
+        "1.0.0": "provideCodeFormatFile"
+      }
+    },
+    "code-format.onType": {
+      "versions": {
+        "1.0.0": "provideCodeFormatOnType"
+      }
+    },
+    "code-format.onSave": {
+      "versions": {
+        "1.0.0": "provideCodeFormatOnSave"
+      }
+    },
+    "find-references": {
+      "versions": {
+        "1.0.0": "provideFindReferences"
+      }
+    },
+    "refactor": {
+      "versions": {
+        "1.0.0": "provideRefactor"
+      }
+    },
+    "intentions.list": {
+      "versions": {
+        "1.0.0": "provideIntentions"
+      }
     }
   },
   "consumedServices": {
