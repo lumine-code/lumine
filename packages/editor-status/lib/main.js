@@ -5,12 +5,13 @@ const EditorPositionView = require("./editor-position-view");
 module.exports = {
   consumeStatusBar(statusBar) {
     this.fileInfo = new FileInfoView();
-    this.fileInfoTile = statusBar.addLeftTile({ item: this.fileInfo.element, priority: 40 });
+    // See the priority convention in packages/status-bar/README.md.
+    this.fileInfoTile = statusBar.addLeftTile({ item: this.fileInfo.element, priority: 310 });
 
     this.editorPosition = new EditorPositionView();
     this.editorPositionTile = statusBar.addLeftTile({
       item: this.editorPosition.element,
-      priority: 50,
+      priority: 510,
     });
 
     return new Disposable(() => this.teardown());

@@ -18,6 +18,7 @@ module.exports = {
   activate() {
     this.global = false;
     this.switch = null;
+    this.statusBarTile = null;
     this.disposables = new CompositeDisposable();
     this.editorSubs = new CompositeDisposable();
     this.disposables.add(this.editorSubs);
@@ -118,7 +119,8 @@ module.exports = {
     }
     this.switch = this.createSwitch();
     this.switch.update();
-    this.statusBar.addRightTile({ item: this.switch, priority: -80 });
+    // Editor-mode band, see packages/status-bar/README.md.
+    this.statusBarTile = this.statusBar.addRightTile({ item: this.switch, priority: 230 });
     this.tooltipDisposable = atom.tooltips.add(this.switch, {
       title: () => `Overtype mode is ${this.global ? "enabled" : "disabled"}`,
       keyBindingCommand: "overtype-mode:toggle-global",
@@ -135,7 +137,11 @@ module.exports = {
     }
     this.tooltipDisposable?.dispose();
     this.tooltipDisposable = null;
-    this.switch.remove();
+    // Destroy the tile rather than just the element: the status bar keeps the
+    // tile in its ordered collection and inserts later tiles relative to it, so
+    // a detached element left behind there breaks the next insertion.
+    this.statusBarTile?.destroy();
+    this.statusBarTile = null;
     this.switch = null;
   },
 

@@ -26,9 +26,11 @@ export default class SettingsIconStatusView {
   }
 
   attach() {
+    // Application band — the outermost tile on the right edge.
+    // See packages/status-bar/README.md.
     this.tile = this.statusBar.addRightTile({
       item: this,
-      priority: -99,
+      priority: 110,
     });
   }
 

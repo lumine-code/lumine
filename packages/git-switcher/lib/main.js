@@ -65,15 +65,14 @@ module.exports = {
     this.repositoryStatusView.update();
     this.branchStatusView.update();
 
-    // Lower priorities sit closer to the left edge. File info uses priority 0,
-    // so place the repository immediately before it and the branch after it.
+    // Repository band, see the priority convention in packages/status-bar/README.md.
     this.repositoryTile = statusBar.addLeftTile({
       item: this.repositoryStatusView.element,
-      priority: 10,
+      priority: 210,
     });
     this.branchTile = statusBar.addLeftTile({
       item: this.branchStatusView.element,
-      priority: 20,
+      priority: 220,
     });
   },
 

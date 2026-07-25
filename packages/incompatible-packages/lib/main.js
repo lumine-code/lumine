@@ -37,7 +37,8 @@ export function consumeStatusBar(statusBar) {
 
   if (incompatibleCount > 0) {
     let icon = createIcon(incompatibleCount);
-    let tile = statusBar.addRightTile({ item: icon, priority: 200 });
+    // Warnings band, see packages/status-bar/README.md.
+    let tile = statusBar.addRightTile({ item: icon, priority: 720 });
     icon.element.addEventListener("click", () => {
       atom.commands.dispatch(icon.element, "incompatible-packages:view");
     });

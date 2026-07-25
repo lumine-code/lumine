@@ -35,9 +35,10 @@ module.exports = class GrammarStatusView {
       this.tile.destroy();
     }
 
+    // File-identity band on either side, see packages/status-bar/README.md.
     this.tile = atom.config.get("grammar-selector.showOnRightSideOfStatusBar")
-      ? this.statusBar.addRightTile({ item: this.element, priority: 10 })
-      : this.statusBar.addLeftTile({ item: this.element, priority: 10 });
+      ? this.statusBar.addRightTile({ item: this.element, priority: 410 })
+      : this.statusBar.addLeftTile({ item: this.element, priority: 320 });
   }
 
   destroy() {

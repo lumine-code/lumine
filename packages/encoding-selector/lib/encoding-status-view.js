@@ -54,7 +54,8 @@ module.exports = class EncodingStatusView {
   }
 
   attach() {
-    this.tile = this.statusBar.addRightTile({ priority: 11, item: this.element });
+    // File-identity band, see packages/status-bar/README.md.
+    this.tile = this.statusBar.addRightTile({ priority: 420, item: this.element });
   }
 
   subscribeToActiveTextEditor() {

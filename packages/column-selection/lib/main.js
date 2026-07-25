@@ -358,9 +358,10 @@ module.exports = {
     this.switch = this.createSwitch();
     this.switch.updateSticky();
     this.switch.updatePicker();
+    // Editor-mode band, see packages/status-bar/README.md.
     this.statusBarTile = this.statusBar.addRightTile({
       item: this.switch,
-      priority: -90,
+      priority: 220,
     });
     this.tooltipDisposable = atom.tooltips.add(this.switch, {
       title: () => {

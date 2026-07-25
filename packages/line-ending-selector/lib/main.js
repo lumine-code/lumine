@@ -123,7 +123,8 @@ export function consumeStatusBar(statusBar) {
     atom.commands.dispatch(atom.views.getView(editor), "line-ending-selector:show");
   });
 
-  let tile = statusBar.addRightTile({ item: statusBarItem, priority: 200 });
+  // File-identity band, see packages/status-bar/README.md.
+  let tile = statusBar.addRightTile({ item: statusBarItem, priority: 430 });
   disposables.add(new Disposable(() => tile.destroy()));
 }
 

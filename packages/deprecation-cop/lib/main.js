@@ -34,9 +34,10 @@ class DeprecationCopPackage {
 
   consumeStatusBar(statusBar) {
     const statusBarView = new DeprecationCopStatusBarView();
+    // Warnings band, see packages/status-bar/README.md.
     const statusBarTile = statusBar.addRightTile({
       item: statusBarView,
-      priority: 150,
+      priority: 710,
     });
     this.disposables.add(
       new Disposable(() => {
