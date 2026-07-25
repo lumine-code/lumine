@@ -1,3 +1,5 @@
+const fs = require("fs");
+const os = require("os");
 const path = require("path");
 const PackageCard = require("../lib/package-card");
 const PackageManager = require("../lib/package-manager");
@@ -1556,6 +1558,52 @@ describe("PackageCard", function () {
         packageManager,
       );
       expect(card.refs.badges.querySelector(".package-badge-dot")).toBeNull();
+    });
+  });
+
+  describe("symlink dot", function () {
+    let tmpDir = null;
+
+    afterEach(function () {
+      if (tmpDir) fs.rmSync(tmpDir, { recursive: true, force: true });
+      tmpDir = null;
+    });
+
+    it("shows an 'Installed as symlink' dot for a linked install", function () {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "card-symlink-"));
+      const target = path.join(tmpDir, "x-pkg-src");
+      fs.mkdirSync(target);
+      const link = path.join(tmpDir, "x-pkg");
+      // A junction, so the spec needs no elevated rights on Windows.
+      fs.symlinkSync(target, link, "junction");
+
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      card = new PackageCard(
+        { name: "x-pkg", version: "1.0.0", repository: "owner/x-pkg", path: link },
+        new SettingsView(),
+        packageManager,
+      );
+
+      const badge = card.badgeViews.find((view) => view.badge.title === "Installed as symlink");
+      expect(badge).toBeTruthy();
+      expect(card.refs.badges.querySelectorAll(".package-badge-dot").length).toBe(1);
+    });
+
+    it("shows no symlink dot for a real install directory", function () {
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "card-symlink-"));
+      const dir = path.join(tmpDir, "x-pkg");
+      fs.mkdirSync(dir);
+
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      card = new PackageCard(
+        { name: "x-pkg", version: "1.0.0", repository: "owner/x-pkg", path: dir },
+        new SettingsView(),
+        packageManager,
+      );
+
+      expect(card.badgeViews.some((view) => view.badge.title === "Installed as symlink")).toBe(
+        false,
+      );
     });
   });
 });

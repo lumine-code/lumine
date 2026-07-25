@@ -927,6 +927,8 @@ export default class PackageCard {
     const badges = [];
     const statusBadge = this.statusBadge();
     if (statusBadge) badges.push(statusBadge);
+    const symlinkBadge = this.symlinkBadge();
+    if (symlinkBadge) badges.push(symlinkBadge);
     if (Array.isArray(this.pack.badges)) {
       // This safety check is especially needed, as any cached package
       // data will not contain the badges field
@@ -966,6 +968,39 @@ export default class PackageCard {
       };
     }
     return null;
+  }
+
+  // A dot for a package whose install directory is a symbolic link — a
+  // development install pointing at a working copy elsewhere. The tooltip
+  // names the link's target.
+  symlinkBadge() {
+    const linkPath = this.installedPackagePath();
+    if (!linkPath) return null;
+    try {
+      if (!fs.lstatSync(linkPath).isSymbolicLink()) return null;
+      return { type: "info", title: "Installed as symlink", text: fs.realpathSync(linkPath) };
+    } catch {
+      return null;
+    }
+  }
+
+  // The directory the installed package occupies — the symlink itself for
+  // linked installs — whether or not this card was built from the installed
+  // metadata.
+  installedPackagePath() {
+    if (this.pack.path) return this.pack.path;
+    if (!this.isInstalled() || this.installedOriginDiffers()) return null;
+    for (const dirPath of atom.packages.getPackageDirPaths()) {
+      const candidate = path.join(dirPath, this.pack.name);
+      try {
+        fs.lstatSync(candidate);
+        return candidate;
+      } catch {
+        // not installed in this directory; keep looking
+      }
+    }
+    const loaded = atom.packages.getLoadedPackage(this.pack.name);
+    return loaded ? loaded.path : null;
   }
 
   // Section: disabled state updates
