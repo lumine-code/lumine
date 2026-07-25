@@ -26,8 +26,6 @@
   --syntax-gutter-background-color-selected: hsl(0, 0%, 92%);
   --syntax-color-property: hsl(0, 8%, 24%);
   --syntax-color-value: hsl(0, 8%, 24%);
-  --terminal-text-color: hsl(0, 8%, 24%);
-  --terminal-background-color: hsl(0, 0%, 100%);
   --terminal-selection-background-color: hsl(0, 0%, 92%);
   --terminal-selection-text-color: hsl(0, 8%, 24%);
   --terminal-cursor-color: hsl(220, 100%, 66%);

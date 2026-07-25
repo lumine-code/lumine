@@ -224,11 +224,15 @@
   --syntax-color-comment: #888;
 
   /* --- terminal --- */
-  --terminal-text-color: var(--syntax-text-color);
-  --terminal-background-color: var(--syntax-background-color);
-  --terminal-selection-background-color: var(--syntax-selection-color);
-  --terminal-selection-text-color: var(--syntax-text-color);
-  --terminal-cursor-color: var(--syntax-cursor-color);
+  /* Terminals sit in docks, so their surface defaults to panel colors and
+     blends with the surrounding chrome; themes tint selection, cursor, and
+     the ANSI palette. */
+  --terminal-text-color: var(--text-color);
+  --terminal-background-color: var(--tool-panel-background-color);
+  --terminal-selection-background-color: var(--background-color-selected);
+  --terminal-selection-text-color: var(--text-color-highlight);
+  --terminal-cursor-color: var(--text-color-highlight);
+  --terminal-scrollbar-color: var(--scrollbar-color);
   --terminal-result-marker-color: var(--syntax-result-marker-color);
   --terminal-result-marker-color-selected: var(--syntax-result-marker-color-selected);
   --terminal-color-black: hsl(from var(--syntax-text-color) h s calc(l + 10));

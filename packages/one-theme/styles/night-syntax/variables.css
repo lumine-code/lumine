@@ -41,8 +41,6 @@
   --syntax-color-snippet: hsl(95, 38%, 62%);
   --syntax-color-string: #97c378;
   --syntax-color-comment: #888;
-  --terminal-text-color: hsl(220, 14%, 71%);
-  --terminal-background-color: hsl(220, 13%, 18%);
   --terminal-selection-background-color: hsl(220, 13%, 28%);
   --terminal-selection-text-color: hsl(220, 14%, 71%);
   --terminal-cursor-color: hsl(220, 100%, 66%);
