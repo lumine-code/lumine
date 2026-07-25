@@ -237,25 +237,27 @@ module.exports = {
     if (this.findView == null) {
       return;
     }
+    this.autocompleteSubscriptions?.dispose();
+    this.autocompleteSubscriptions = null;
     if (value) {
       this.autocompleteSubscriptions = new CompositeDisposable();
       const disposable = this.autocompleteWatchEditor?.(this.findView.findEditor, ["default"]);
       if (disposable != null) {
-        return this.autocompleteSubscriptions.add(disposable);
+        this.autocompleteSubscriptions.add(disposable);
       }
-    } else {
-      return this.autocompleteSubscriptions?.dispose();
     }
   },
 
   consumeAutocompleteWatchEditor(watchEditor) {
     this.autocompleteWatchEditor = watchEditor;
-    atom.config.observe("search-panel.autocompleteSearches", (value) =>
+    const configObserver = atom.config.observe("search-panel.autocompleteSearches", (value) =>
       this.toggleAutocompletions(value),
     );
     return new Disposable(() => {
+      configObserver.dispose();
       this.autocompleteSubscriptions?.dispose();
-      return (this.autocompleteWatchEditor = null);
+      this.autocompleteSubscriptions = null;
+      this.autocompleteWatchEditor = null;
     });
   },
 
