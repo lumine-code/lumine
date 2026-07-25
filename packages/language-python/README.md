@@ -6,6 +6,7 @@ Python support for Lumine.
 
 - **Grammars**: provides both Tree-sitter and TextMate grammars.
 - **Syntax highlighting**: full grammar coverage for Python files, consoles, tracebacks, and regular expressions.
+- **IPython support**: a dedicated Tree-sitter grammar for `.ipy` files that parses IPython-only statements — magics (`%m`, `%%m`), shell escapes (`!cmd`), and help requests (`?obj`, `obj?`) — without syntax errors.
 - **Snippets**: shortcuts for common Python constructs.
 
 ## Services
