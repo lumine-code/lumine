@@ -27,6 +27,15 @@ const atomExport = {
   watchFile,
 };
 
+// Absolute path to the bundled ripgrep binary, for packages that spawn their
+// own searches or crawlers. Resolved lazily to stay snapshot-safe.
+Object.defineProperty(atomExport, "ripgrepPath", {
+  enumerable: true,
+  get() {
+    return require("../src/ripgrep").rgPath;
+  },
+});
+
 // Shell integration is required by both Squirrel and Settings-View
 if (process.platform === "win32") {
   Object.defineProperty(atomExport, "WinShell", {
