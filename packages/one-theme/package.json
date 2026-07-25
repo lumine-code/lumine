@@ -14,10 +14,7 @@
     {
       "name": "one-day-syntax",
       "theme": "syntax",
-      "styles": [
-        "styles/syntax",
-        "styles/day-syntax"
-      ]
+      "styles": "styles/day-syntax"
     },
     {
       "name": "one-night-ui",
@@ -30,10 +27,7 @@
     {
       "name": "one-night-syntax",
       "theme": "syntax",
-      "styles": [
-        "styles/syntax",
-        "styles/night-syntax"
-      ]
+      "styles": "styles/night-syntax"
     }
   ],
   "version": "1.0.0",
