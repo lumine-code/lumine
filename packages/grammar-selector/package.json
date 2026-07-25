@@ -32,7 +32,7 @@
       "title": "Hide Duplicate Grammars",
       "description": "Hides non-preferred grammars when there is more than one grammar. When checked, whichever grammar is preferred for a given scope name (TextMate or Tree-sitter) will be the only one shown. When unchecked, all grammars will always be shown in the list, regardless of the user’s settings.",
       "type": "boolean",
-      "default": true
+      "default": false
     }
   }
 }
