@@ -64,63 +64,45 @@ describe("PackageDetailView", function () {
     expect(view.refs.title.textContent).toBe("Package With Config");
   });
 
-  it("renders labeled chapter tabs and shows one chapter at a time", () => {
+  it("shows every section at once and lists them in the table of contents", () => {
     atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
     const pack = atom.packages.getLoadedPackage("package-with-config");
-    view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
+    const settingsView = new SettingsView();
+    const showToc = spyOn(settingsView, "showTableOfContents").andCallThrough();
+    view = new PackageDetailView(pack, settingsView, packageManager, SnippetsProvider);
 
-    const chapterLabels = {
-      readme: "README",
-      settings: "Settings",
-      keymap: "Keybindings",
-      grammars: "Grammars",
-      snippets: "Snippets",
-      license: "License",
-    };
-    const tabs = view.refs.chapterTabs.querySelectorAll("[data-chapter-tab]");
-    expect(tabs.length).toBeGreaterThan(1);
-    for (const tab of tabs) {
-      expect(tab.tagName).toBe("BUTTON");
-      expect(tab).toHaveClass("icon");
-      expect(tab.textContent).toBe(chapterLabels[tab.dataset.chapterTab]); // icon + label
-    }
-
-    // README is the default chapter: its section is shown, the others hidden,
-    // and exactly one tab is selected.
-    expect(view.activeChapter).toBe("readme");
-    expect(view.refs.chapterTabs.querySelectorAll(".selected").length).toBe(1);
-
-    const readmeSection = view.refs.sections.querySelector('[data-chapter="readme"]');
-    const settingsSection = view.refs.sections.querySelector('[data-chapter="settings"]');
-    expect(readmeSection.style.display).toBe("");
-    expect(settingsSection.style.display).toBe("none");
-
-    // Switching to the Settings tab reveals only that chapter.
-    view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]').click();
-    expect(view.activeChapter).toBe("settings");
+    // Sections stack in one long scrolling list, so nothing is hidden…
+    const settingsSection = view.refs.sections.querySelector('[data-section="settings"]');
+    const readmeSection = view.refs.sections.querySelector('[data-section="readme"]');
     expect(settingsSection.style.display).toBe("");
-    expect(readmeSection.style.display).toBe("none");
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]')).toHaveClass(
-      "selected",
-    );
+    expect(readmeSection.style.display).toBe("");
+
+    // …except a section with nothing in it: this package registers no keybindings.
+    expect(view.refs.sections.querySelector('[data-section="keymap"]').style.display).toBe("none");
+
+    // The sidebar table of contents is the navigation: one entry per section, in
+    // list order, and clicking it scrolls there.
+    const sections = showToc.mostRecentCall.args[0].filter((entry) => entry.level === 1);
+    expect(sections.map((entry) => entry.label)).toEqual(["Settings", "README"]);
+    const scrollIntoView = spyOn(settingsSection, "scrollIntoView");
+    sections[0].onClick();
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 
-  it("keeps the active chapter when the sections refresh", () => {
+  it("keeps every section listed when the sections refresh", () => {
     atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
     const pack = atom.packages.getLoadedPackage("package-with-config");
-    view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
-
-    view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]').click();
-    expect(view.activeChapter).toBe("settings");
+    const settingsView = new SettingsView();
+    const showToc = spyOn(settingsView, "showTableOfContents").andCallThrough();
+    view = new PackageDetailView(pack, settingsView, packageManager, SnippetsProvider);
 
     view.updateInstalledState();
 
-    expect(view.activeChapter).toBe("settings");
-    const settingsSection = view.refs.sections.querySelector('[data-chapter="settings"]');
+    const settingsSection = view.refs.sections.querySelector('[data-section="settings"]');
     expect(settingsSection.style.display).toBe("");
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]')).toHaveClass(
-      "selected",
-    );
+    const labels = showToc.mostRecentCall.args[0].map((entry) => entry.label);
+    expect(labels).toContain("Settings");
+    expect(labels).toContain("README");
   });
 
   it("renders an installed package README with its file path", function () {
@@ -140,39 +122,36 @@ describe("PackageDetailView", function () {
     const pack = atom.packages.getLoadedPackage("package-with-config");
     view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
 
-    const readmeSection = view.refs.sections.querySelector('[data-chapter="readme"]');
-    const settingsSection = view.refs.sections.querySelector('[data-chapter="settings"]');
-    // The Settings chapter is available for the installed version.
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]')).not.toBeNull();
+    const readmeSection = view.refs.sections.querySelector('[data-section="readme"]');
+    const settingsSection = view.refs.sections.querySelector('[data-section="settings"]');
+    // The settings belong to the installed version, so they are listed for it.
+    expect(settingsSection.style.display).toBe("");
 
-    // Previewing a different version restricts the view to just the README: the
-    // config chapters are removed and their sections hidden.
+    // Previewing a different version restricts the list to just the README: the
+    // config sections describe the installed copy, so they are hidden.
     view.applySelectedRef({ previewVersion: true });
-    expect(view.activeChapter).toBe("readme");
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]')).toBeNull();
     expect(readmeSection.style.display).not.toBe("none");
     expect(settingsSection.style.display).toBe("none");
 
-    // Returning to the installed version brings the config chapters back.
+    // Returning to the installed version brings the config sections back.
     view.applySelectedRef({ previewVersion: false });
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]')).not.toBeNull();
+    expect(settingsSection.style.display).toBe("");
   });
 
-  it("renders a License chapter and keeps it while previewing another version", function () {
+  it("names the license on the card and links the LICENSE button to GitHub", function () {
+    const sha = "a".repeat(40);
     const metadata = {
       name: "pkg-with-license",
       version: "1.0.0",
       repository: "owner/pkg-with-license",
       owner: "owner",
       engines: { atom: "*" },
-      originKey: "github.com/owner/pkg-with-license",
-      resolvedSha: "a".repeat(40),
+      originKey: `github.com/owner/pkg-with-license`,
+      resolvedSha: sha,
       readme: "# pkg-with-license",
-      // `license` is the package.json SPDX id and must NOT be shown as the body;
-      // the full text lives in `licenseText`.
+      // The SPDX id is all the card shows; the text itself stays on GitHub.
       license: "MIT",
-      licenseText: "MIT License\n\nPermission is hereby granted, free of charge...",
-      licenseIsMarkdown: false,
+      licenseSource: `https://github.com/owner/pkg-with-license/blob/${sha}/LICENSE`,
     };
     view = new PackageDetailView(
       { ...metadata, metadata },
@@ -181,24 +160,24 @@ describe("PackageDetailView", function () {
       SnippetsProvider,
     );
 
-    // The license text is already on the metadata, so the chapter renders now.
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="license"]')).not.toBeNull();
-    const licenseSection = view.refs.sections.querySelector('[data-chapter="license"]');
-    expect(licenseSection).not.toBeNull();
-    // Shows the full license text, not the bare SPDX identifier.
-    expect(licenseSection.textContent).toContain("Permission is hereby granted");
-    expect(licenseSection.querySelector(".package-license-text").textContent).not.toBe("MIT");
+    expect(view.packageCard.element.querySelector(".package-license").textContent).toBe("MIT");
+    // The license is no longer a section of its own in the list.
+    expect(view.refs.sections.querySelector('[data-section="license"]')).toBeNull();
 
-    // README and License both belong to the version, so both survive a preview.
-    view.applySelectedRef({ previewVersion: true });
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="readme"]')).not.toBeNull();
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="license"]')).not.toBeNull();
+    expect(view.refs.licenseButton.style.display).not.toBe("none");
+    spyOn(atom, "openExternal");
+    view.refs.licenseButton.click();
+    expect(atom.openExternal).toHaveBeenCalledWith(metadata.licenseSource);
   });
 
-  it("lazily fetches the LICENSE for a browsed version", function () {
+  it("asks the catalog where the LICENSE is only once the button is clicked", function () {
     const client = packageManager.getCatalogClient();
-    const loadLicense = spyOn(client, "loadLicense").andReturn(Promise.resolve(null));
+    const source = `https://github.com/owner/pkg-lazy-license/blob/${"b".repeat(40)}/LICENSE.md`;
+    const loadLicense = spyOn(client, "loadLicense").andReturn(
+      Promise.resolve({ body: "MIT License…", source }),
+    );
     spyOn(client, "loadReadme").andReturn(Promise.resolve(null));
+    spyOn(atom, "openExternal");
 
     const metadata = {
       name: "pkg-lazy-license",
@@ -209,7 +188,6 @@ describe("PackageDetailView", function () {
       originKey: "github.com/owner/pkg-lazy-license",
       resolvedSha: "b".repeat(40),
       readme: "# pkg-lazy-license",
-      // A bare SPDX `license` must not suppress fetching the real LICENSE text.
       license: "MIT",
     };
     view = new PackageDetailView(
@@ -219,25 +197,48 @@ describe("PackageDetailView", function () {
       SnippetsProvider,
     );
 
-    // No local file and no cached text, so the LICENSE is fetched for the commit.
-    expect(loadLicense).toHaveBeenCalled();
+    // Merely opening the package fetches nothing: the SPDX id is on the card and
+    // the file name is only needed when the button is used.
+    expect(loadLicense).not.toHaveBeenCalled();
+    expect(view.refs.licenseButton.style.display).not.toBe("none");
+
+    waitsForPromise(() => view.openLicense());
+    runs(() => {
+      expect(loadLicense).toHaveBeenCalled();
+      expect(atom.openExternal).toHaveBeenCalledWith(source);
+    });
   });
 
-  it("opens on README by default and on Settings when the Settings button asks", () => {
+  it("hides the LICENSE button for a package with no license at all", function () {
     atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
     const pack = atom.packages.getLoadedPackage("package-with-config");
     view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
 
-    // Opening via the card's Settings button jumps straight to the Settings chapter.
-    view.beforeShow({ initialChapter: "settings" });
-    expect(view.activeChapter).toBe("settings");
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="settings"]')).toHaveClass(
-      "selected",
-    );
+    expect(view.licensePath).toBeNull();
+    expect(view.refs.licenseButton.style.display).toBe("none");
+  });
 
-    // Any other open resets to the default README chapter.
+  it("scrolls to the Settings section when the Settings button opens it", () => {
+    atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
+    const pack = atom.packages.getLoadedPackage("package-with-config");
+    view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
+
+    // Opening via the card's Settings button scrolls straight to that section,
+    // beating the scroll position the panel was last left at.
+    const settingsSection = view.refs.sections.querySelector('[data-section="settings"]');
+    const scrollIntoView = spyOn(settingsSection, "scrollIntoView");
+    view.scrollPosition = 120;
+    view.beforeShow({ initialSection: "settings" });
+    view.show();
+    expect(scrollIntoView.callCount).toBe(1);
+    expect(view.scrollPosition).toBeUndefined();
+
+    // Any other open leaves the list where the reader left it.
+    view.scrollPosition = 120;
     view.beforeShow({});
-    expect(view.activeChapter).toBe("readme");
+    view.show();
+    expect(scrollIntoView.callCount).toBe(1);
+    expect(view.scrollPosition).toBe(120);
   });
 
   it("keeps the overridden bundled card shadowed in its detail view", function () {
@@ -262,18 +263,7 @@ describe("PackageDetailView", function () {
     expect(view.packageCard.element.querySelector(".replace-button")).toBeNull();
   });
 
-  it("always offers README and License chapters, even without a LICENSE file", function () {
-    atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
-    const pack = atom.packages.getLoadedPackage("package-with-config");
-    view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
-
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="readme"]')).not.toBeNull();
-    expect(view.refs.chapterTabs.querySelector('[data-chapter-tab="license"]')).not.toBeNull();
-    // The tab bar is shown even though this package ships no LICENSE file.
-    expect(view.refs.chapterTabs.style.display).not.toBe("none");
-  });
-
-  it("publishes the README headers to the sidebar table of contents", function () {
+  it("nests the README headers under its entry in the table of contents", function () {
     const settingsView = new SettingsView();
     const showToc = spyOn(settingsView, "showTableOfContents").andCallThrough();
     const metadata = {
@@ -292,14 +282,22 @@ describe("PackageDetailView", function () {
     );
 
     expect(showToc).toHaveBeenCalled();
-    const labels = showToc.mostRecentCall.args[0].map((entry) => entry.label);
-    expect(labels.some((label) => label.includes("Features"))).toBe(true);
-    expect(labels.some((label) => label.includes("Usage"))).toBe(true);
+    const entries = showToc.mostRecentCall.args[0];
 
-    // Switching away from the README chapter clears the TOC.
-    const clearToc = spyOn(settingsView, "clearTableOfContents").andCallThrough();
-    view.setActiveChapter("license");
-    expect(clearToc).toHaveBeenCalled();
+    // The README section heads the list, and its own headers follow, indented
+    // one level below it.
+    expect(entries[0].label).toBe("README");
+    expect(entries[0].level).toBe(1);
+    const header = (label) => entries.find((entry) => entry.label.includes(label));
+    expect(header("Title").level).toBe(2);
+    expect(header("Features").level).toBe(3);
+    expect(header("Usage").level).toBe(3);
+
+    // Clicking a header scrolls to it in the list.
+    const heading = view.readmeView.packageReadme.querySelector("h2");
+    const scrollIntoView = spyOn(heading, "scrollIntoView");
+    header("Features").onClick();
+    expect(scrollIntoView).toHaveBeenCalled();
   });
 
   it("does not call the atom.io api for package metadata when present", function () {

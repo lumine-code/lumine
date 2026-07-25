@@ -12,6 +12,7 @@ import {
   ownerFromRepository,
   repoUrlFromRepository,
   repoReferenceFromRepository,
+  licenseLabelFromMetadata,
   packageOrigin,
   packagePanelKey,
   getInstalledPackageMetadata,
@@ -144,6 +145,9 @@ export default class PackageCard {
       (this.pack.gitUrlInfo && !knowsRealName ? this.pack.gitUrlInfo.project : this.pack.name) ||
       "";
     const repoReference = repoReferenceFromRepository(this.pack.repository);
+    // The license is named here and only here; its text is one click away behind
+    // the detail view's LICENSE button.
+    const licenseLabel = licenseLabelFromMetadata(this.pack);
     const description = this.pack.description || "";
     const cardClasses = `package-card col-lg-8${
       this.pack.source === "pulsar" ? " pulsar-source" : ""
@@ -212,6 +216,11 @@ export default class PackageCard {
               <a ref="repoLink" className="package-repo">
                 {repoReference}
               </a>
+            ) : null}
+            {licenseLabel ? (
+              <span className="package-license" title="License">
+                {licenseLabel}
+              </span>
             ) : null}
           </div>
           <div className="meta-controls">
@@ -615,18 +624,18 @@ export default class PackageCard {
     if (options && options.onSettingsView) {
       this.refs.settingsButton.style.display = "none";
     } else {
-      const openDetail = (initialChapter) => {
+      const openDetail = (initialSection) => {
         // The installed package merely shares its name — don't link to it.
         if (this.originConflict) return;
         this.settingsView.showPanel(packagePanelKey(this.pack), {
           back: options ? options.back : null,
           pack: this.pack,
-          initialChapter,
+          initialSection,
         });
       };
 
-      // Clicking the card opens the detail view on its default (README) chapter;
-      // the Settings button opens it straight on the Settings chapter.
+      // Clicking the card opens the detail view at the top; the Settings button
+      // opens it scrolled to the Settings section.
       const cardClickHandler = (event) => {
         event.stopPropagation();
         openDetail();

@@ -479,8 +479,9 @@
       text-align: center;
     }
 
-    /* README table of contents, published by the package detail view. It uses
-       the sidebar nav (nav-pills nav-stacked) styling, like the panels menu. */
+    /* Table of contents, published by the package detail view: its sections, and
+       the README's own headers nested under it. Uses the sidebar nav (nav-pills
+       nav-stacked) styling, like the panels menu. */
     .config-toc {
       border-top: 1px solid var(--base-border-color);
       padding-top: calc(var(--component-padding) / 2);
@@ -507,6 +508,12 @@
         &:hover {
           color: var(--text-color-highlight);
         }
+      }
+
+      /* The section entries carry an icon and head the headers that belong to
+         them, so they stand out from the README's own headers below. */
+      .config-toc-level-1 > a {
+        color: var(--text-color-highlight);
       }
 
       /* Indent nested headers past the base 15px nav padding. */
@@ -655,27 +662,6 @@
     display: flex;
     flex-direction: column;
     height: 100%;
-
-    .package-detail-actions {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: calc(var(--component-padding) / 2);
-    }
-
-    .package-chapter-tabs {
-      margin-left: auto; /* push the chapter tabs to the right side */
-    }
-
-    .package-license {
-      padding-top: var(--component-padding);
-
-      .package-license-text {
-        font-size: 1.25em;
-        white-space: pre-wrap;
-        word-break: break-word;
-      }
-    }
 
     .package-keymap-table,
     .package-grammars-table,

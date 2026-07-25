@@ -501,7 +501,8 @@ export default class SettingsView {
   }
 
   // Renders a table of contents in the sidebar (used by the package detail view
-  // for the current README's headers). Entries are { label, level, onClick }.
+  // for its sections and the current README's headers). Entries are
+  // { label, level, onClick, icon? }.
   showTableOfContents(entries) {
     const container = this.refs.tableOfContents;
     if (!container) return;
@@ -518,6 +519,7 @@ export default class SettingsView {
       const item = document.createElement("li");
       item.className = `config-toc-item config-toc-level-${entry.level}`;
       const link = document.createElement("a");
+      if (entry.icon) link.classList.add("icon", entry.icon);
       link.textContent = entry.label;
       link.title = entry.label;
       link.addEventListener("click", (event) => {

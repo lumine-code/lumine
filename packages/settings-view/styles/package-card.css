@@ -90,6 +90,14 @@
       }
     }
 
+    /* The SPDX identifier (e.g. "MIT"), next to the repository reference. */
+    .package-license {
+      font-weight: normal;
+      color: var(--text-color-subtle);
+      margin-left: var(--component-padding);
+      vertical-align: middle;
+    }
+
     .install-button.disabled {
       opacity: 0.55;
       cursor: not-allowed;

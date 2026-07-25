@@ -53,6 +53,27 @@ const repoUrlFromRepository = (repository) => {
   return repo;
 };
 
+// The short license name shown on a package card: the SPDX identifier from
+// package.json. Modern manifests carry it as a string; legacy ones use an object
+// or a `licenses` array, which npm has deprecated but old packages still ship.
+const licenseLabelFromMetadata = (metadata) => {
+  if (!metadata) return "";
+
+  const { license, licenses } = metadata;
+  const identifier = (value) => {
+    if (typeof value === "string") return value.trim();
+    if (value && typeof value.type === "string") return value.type.trim();
+    return "";
+  };
+
+  const single = identifier(license);
+  if (single) return single;
+  if (Array.isArray(licenses)) {
+    return licenses.map(identifier).filter(Boolean).join(", ");
+  }
+  return identifier(licenses);
+};
+
 // The comparable identity includes the host. GitHub shorthand is displayed as
 // owner/repo, while generic hosts remain explicit.
 const packageOriginKey = (repository) => normalizeRepositoryOrigin(repository);
@@ -156,6 +177,7 @@ module.exports = {
   repoUrlFromRepository,
   packageOriginKey,
   repoReferenceFromRepository,
+  licenseLabelFromMetadata,
   packageOrigin,
   packageCoordinate,
   packagePanelKey,
