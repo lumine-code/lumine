@@ -170,12 +170,29 @@ module.exports = class ProviderManager {
   }
 
   isValidProvider(provider) {
-    return (
-      provider != null &&
-      isFunction(provider.getSuggestions) &&
-      isString(provider.scopeSelector) &&
-      !!provider.scopeSelector.length
-    );
+    return provider != null && this.providerValidationErrors(provider).length === 0;
+  }
+
+  // Returns a human-readable list of contract violations, naming the legacy
+  // field when a provider still uses the pre-5.0 API so the fix is obvious.
+  providerValidationErrors(provider) {
+    const errors = [];
+    if (!isFunction(provider.getSuggestions)) {
+      errors.push("`getSuggestions` must be a function");
+    }
+    if (!isString(provider.scopeSelector) || !provider.scopeSelector.length) {
+      if (isString(provider.selector)) {
+        errors.push("`selector` is no longer supported; rename it to `scopeSelector`");
+      } else {
+        errors.push("`scopeSelector` must be a non-empty string");
+      }
+    }
+    if (provider.disableForSelector != null && provider.disableForScopeSelector == null) {
+      errors.push(
+        "`disableForSelector` is no longer supported; rename it to `disableForScopeSelector`",
+      );
+    }
+    return errors;
   }
 
   metadataForProvider(provider) {
@@ -236,8 +253,17 @@ module.exports = class ProviderManager {
       return;
     }
 
-    if (!this.isValidProvider(provider)) {
-      console.warn(`Provider ${provider.constructor.name} is not valid`, provider);
+    const validationErrors = this.providerValidationErrors(provider);
+    if (validationErrors.length > 0) {
+      const name = provider.constructor?.name || "Object";
+      atom.notifications.addError(`Invalid autocomplete provider rejected: ${name}`, {
+        description:
+          "A package registered an autocomplete provider that does not satisfy " +
+          "the `autocomplete.provider` service contract:\n\n" +
+          validationErrors.map((error) => `- ${error}`).join("\n"),
+        dismissable: true,
+      });
+      console.error(`Invalid autocomplete provider ${name}`, validationErrors, provider);
       return new Disposable();
     }
 

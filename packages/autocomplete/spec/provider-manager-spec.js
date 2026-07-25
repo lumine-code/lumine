@@ -133,6 +133,37 @@ describe("Provider Manager", () => {
       expect(providerManager.isValidProvider(bogusProvider, 3)).toEqual(false);
     });
 
+    it("names the legacy fields when a pre-5.0 provider is rejected", () => {
+      const legacyProvider = {
+        getSuggestions(_options) {},
+        selector: ".source.python",
+        disableForSelector: ".source.python .comment",
+        dispose() {},
+      };
+      const errors = providerManager.providerValidationErrors(legacyProvider);
+      expect(errors.some((error) => error.includes("rename it to `scopeSelector`"))).toBe(true);
+      expect(errors.some((error) => error.includes("rename it to `disableForScopeSelector`"))).toBe(
+        true,
+      );
+    });
+
+    it("rejects an invalid provider with an error notification", () => {
+      atom.notifications.clear();
+      const legacyProvider = {
+        getSuggestions(_options) {},
+        selector: ".source.python",
+        dispose() {},
+      };
+      const disposable = providerManager.registerProvider(legacyProvider);
+      expect(providerManager.metadataForProvider(legacyProvider)).toBeFalsy();
+      expect(typeof disposable.dispose).toBe("function");
+
+      const notifications = atom.notifications.getNotifications();
+      expect(notifications.length).toBe(1);
+      expect(notifications[0].getType()).toBe("error");
+      expect(notifications[0].getMessage()).toContain("Invalid autocomplete provider");
+    });
+
     it("registers a valid provider", () => {
       expect(
         providerManager.applicableProviders(["workspace-center"], ".source.js").length,
