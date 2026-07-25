@@ -150,12 +150,19 @@ module.exports = class TextEditorRegistry {
 
   // Gets the currently active text editor.
   //
+  // The active editor is resolved from the DOM focus upward, so this never
+  // touches (or lazily instantiates) the views of other registered editors,
+  // and the innermost registered editor wins when editors are nested.
+  //
   // Returns the currently active text editor, or `null` if there is none.
   getActiveTextEditor() {
-    for (const ed of this.editors.keys()) {
-      if (ed.getElement().contains(document.activeElement)) {
-        return ed;
+    let element = document.activeElement?.closest?.("atom-text-editor");
+    while (element) {
+      const editor = typeof element.getModel === "function" ? element.getModel() : null;
+      if (editor && this.editors.has(editor)) {
+        return editor;
       }
+      element = element.parentElement?.closest?.("atom-text-editor");
     }
     return null;
   }

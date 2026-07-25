@@ -89,6 +89,32 @@ describe("TextEditorRegistry", function () {
     });
   });
 
+  describe(".getActiveTextEditor", function () {
+    it("returns the registered editor containing the DOM focus", function () {
+      registry.add(editor);
+      const element = editor.getElement();
+      jasmine.attachToDOM(element);
+      element.focus();
+      expect(registry.getActiveTextEditor()).toBe(editor);
+    });
+
+    it("returns null when the focused editor is not registered", function () {
+      const other = new TextEditor({ autoHeight: false });
+      const element = other.getElement();
+      jasmine.attachToDOM(element);
+      element.focus();
+      expect(registry.getActiveTextEditor()).toBe(null);
+      other.destroy();
+    });
+
+    it("does not instantiate views of other registered editors", function () {
+      registry.add(editor); // never given an element
+      expect(editor.component).toBeUndefined();
+      registry.getActiveTextEditor();
+      expect(editor.component).toBeUndefined();
+    });
+  });
+
   describe(".observe", function () {
     it("calls the callback for current and future editors until unsubscribed", function () {
       const spy = jasmine.createSpy();
