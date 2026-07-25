@@ -4189,6 +4189,30 @@ describe("TextEditorComponent", () => {
       }
     });
 
+    it("does not leak placeholder text nodes when text decorations change on an empty line", async () => {
+      const { component, editor } = buildComponent({ text: "a\n\nb" });
+      const markerLayer = editor.addMarkerLayer();
+      editor.decorateMarkerLayer(markerLayer, { type: "text", class: "a" });
+
+      // Toggle a layer-level text decoration across the empty line without
+      // ever editing it, so the screen line id — and therefore the line
+      // component — is reused (an async linter republishing diagnostics).
+      for (let i = 0; i < 3; i++) {
+        const marker = markerLayer.markBufferRange([
+          [0, 0],
+          [2, 1],
+        ]);
+        await component.getNextUpdatePromise();
+        marker.destroy();
+        await component.getNextUpdatePromise();
+      }
+
+      const lineNode = lineNodeForScreenRow(component, 1);
+      expect(lineNode.textContent).toBe(" ");
+      expect(lineNode.childNodes.length).toBe(2);
+      expect(clientLeftForCharacter(component, 1, 0)).toBe(lineNode.getBoundingClientRect().left);
+    });
+
     function textContentOnRowMatchingSelector(component, row, selector) {
       return Array.from(lineNodeForScreenRow(component, row).querySelectorAll(selector))
         .map((span) => span.textContent)

@@ -34,7 +34,10 @@ module.exports = class LineComponent {
 
     if (!textDecorationsEqual(this.props.textDecorations, newProps.textDecorations)) {
       this.props.textDecorations = newProps.textDecorations;
-      this.element.firstChild.remove();
+      // Remove every child, not just the scope span: appendContents() adds
+      // the empty-line placeholder and fold-marker text nodes directly to
+      // the element, and any survivor shifts all subsequent renders right.
+      while (this.element.firstChild) this.element.firstChild.remove();
       this.appendContents();
     }
   }
