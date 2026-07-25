@@ -8,9 +8,9 @@
 .show {
   display: block !important;
 }
-.invisible {
-  visibility: hidden;
-}
+/* No global `.invisible` utility: it collided with third-party widgets that
+   use "invisible" as a state class (e.g. xterm's scrollbar), hiding them via
+   `visibility`. Packages that need it define it scoped (see title-bar). */
 .text-hide {
   /* (.text-hide() / .hide-text() inlined) */
   font: 0/0 a;
