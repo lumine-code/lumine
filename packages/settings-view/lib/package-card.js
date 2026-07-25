@@ -187,6 +187,11 @@ export default class PackageCard {
                 </span>
               )}
             </span>
+            {licenseLabel ? (
+              <span className="package-license" title="License">
+                {licenseLabel}
+              </span>
+            ) : null}
           </h4>
           <span ref="packageDescription" className="package-description">
             {description}
@@ -216,11 +221,6 @@ export default class PackageCard {
               <a ref="repoLink" className="package-repo">
                 {repoReference}
               </a>
-            ) : null}
-            {licenseLabel ? (
-              <span className="package-license" title="License">
-                {licenseLabel}
-              </span>
             ) : null}
           </div>
           <div className="meta-controls">
