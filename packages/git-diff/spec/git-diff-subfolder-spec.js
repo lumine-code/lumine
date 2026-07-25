@@ -4,13 +4,11 @@ const temp = require("@lumine-code/temp").track();
 const { stopAllWatchers } = require("../../../src/path-watcher");
 
 describe("GitDiff when targeting nested repository", () => {
-  let editor, editorElement, projectPath, screenUpdates;
+  let editor, editorElement, projectPath;
 
   beforeEach(() => {
-    screenUpdates = 0;
     spyOn(window, "requestAnimationFrame").andCallFake((fn) => {
       fn();
-      screenUpdates++;
     });
     spyOn(window, "cancelAnimationFrame").andCallFake((_i) => null);
 
@@ -70,7 +68,11 @@ describe("GitDiff when targeting nested repository", () => {
      */
     it("uses the innermost repository", () => {
       editor.insertText("a");
-      waitsFor(() => screenUpdates > 0);
+      advanceClock(editor.getBuffer().stoppedChangingDelay);
+      // The diff is computed off-thread by the git-host worker; against the
+      // ancestor repository the file is untracked and never gains a marker,
+      // so waiting for one still discriminates the two repositories.
+      waitsFor(() => editorElement.querySelectorAll(".git-line-modified").length > 0);
       runs(() => {
         expect(editorElement.querySelectorAll(".git-line-modified").length).toBe(1);
       });
