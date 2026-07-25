@@ -4,7 +4,7 @@ const SymbolProvider = require("./symbol-provider");
 const DiagnosticsView = require("./diagnostics-view");
 const SessionMenuView = require("./session-menu-view");
 const { toLinterMessages } = require("./linter-messages");
-const { CompositeDisposable } = require("atom");
+const { CompositeDisposable, Disposable } = require("atom");
 
 module.exports = {
   activate() {
@@ -50,7 +50,9 @@ module.exports = {
     this.diagnosticsView?.destroy();
     this.sessionMenu?.destroy();
     this.indieSubscription?.dispose();
-    this.indieDiagnostics?.dispose();
+    this.disposeIndieDelegates();
+    this.busyProvider?.dispose();
+    this.busyProvider = null;
     this.statusEditorSubscriptions?.dispose();
     this.uiSubscriptions?.dispose();
     this.statusElement?.remove();
@@ -61,6 +63,7 @@ module.exports = {
     return {
       registerAdapter: (adapter) => this.manager.registerAdapter(adapter),
       sessionForEditor: (editor) => this.manager.sessionForEditor(editor),
+      activeSessionForEditor: (editor) => this.manager.activeSessionForEditor(editor),
       getSessions: () => [...this.manager.sessions.values()],
       onDidChangeSession: (fn) => this.manager.onDidChangeSession(fn),
       onDidPublishDiagnostics: (fn) => this.manager.onDidPublishDiagnostics(fn),
@@ -89,12 +92,20 @@ module.exports = {
   },
   consumeIndie(registerIndie) {
     this.indieSubscription?.dispose();
-    this.indieDiagnostics?.dispose();
-    this.indieDiagnostics = registerIndie({ name: "Lumine LSP" });
+    this.disposeIndieDelegates();
+    this.indieDelegates = new Map();
     this.diagnosticsView.setExternalProvider(true);
-    const publish = ({ uri, diagnostics }) => {
+    const publish = ({ session, uri, diagnostics }) => {
       const batch = toLinterMessages(uri, diagnostics);
-      if (batch.filePath) this.indieDiagnostics.setMessages(batch.filePath, batch.messages);
+      if (!batch.filePath) return;
+      const adapter = session?.adapter;
+      const key = adapter?.id || "unknown";
+      let delegate = this.indieDelegates.get(key);
+      if (!delegate) {
+        delegate = registerIndie({ name: adapter?.displayName || "Language Server" });
+        this.indieDelegates.set(key, delegate);
+      }
+      delegate.setMessages(batch.filePath, batch.messages);
     };
     for (const entry of this.manager.diagnostics.values()) publish(entry);
     this.indieSubscription = this.manager.onDidPublishDiagnostics(publish);
@@ -102,11 +113,25 @@ module.exports = {
       dispose: () => {
         this.indieSubscription?.dispose();
         this.indieSubscription = null;
-        this.indieDiagnostics?.dispose();
-        this.indieDiagnostics = null;
+        this.disposeIndieDelegates();
         this.diagnosticsView?.setExternalProvider(false);
       },
     };
+  },
+  disposeIndieDelegates() {
+    for (const delegate of this.indieDelegates?.values() || []) delegate.dispose();
+    this.indieDelegates = null;
+  },
+  consumeBusySignal(registry) {
+    this.busyProvider?.dispose();
+    this.busyProvider = registry.create();
+    this.manager.setBusyProvider(this.busyProvider);
+    return new Disposable(() => {
+      if (!this.busyProvider) return;
+      this.manager.setBusyProvider(null);
+      this.busyProvider.dispose();
+      this.busyProvider = null;
+    });
   },
   observeStatusEditor(editor) {
     this.statusEditorSubscriptions?.dispose();

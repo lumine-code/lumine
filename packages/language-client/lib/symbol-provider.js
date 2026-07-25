@@ -1,41 +1,69 @@
 const C = require("./converters");
+
+const SYMBOL_CAPABILITIES = {
+  workspace: {
+    symbol: {
+      dynamicRegistration: true,
+      symbolKind: { valueSet: Array.from({ length: 26 }, (_, i) => i + 1) },
+    },
+  },
+  textDocument: {
+    documentSymbol: {
+      dynamicRegistration: true,
+      hierarchicalDocumentSymbolSupport: true,
+      symbolKind: { valueSet: Array.from({ length: 26 }, (_, i) => i + 1) },
+    },
+    declaration: { dynamicRegistration: true, linkSupport: true },
+    definition: { dynamicRegistration: true, linkSupport: true },
+    references: { dynamicRegistration: true },
+  },
+};
+
 module.exports = class LspSymbolProvider {
+  static capabilities = SYMBOL_CAPABILITIES;
   constructor(manager) {
     this.manager = manager;
+    manager.addCapabilityFragment(SYMBOL_CAPABILITIES);
     this.name = "Language Server";
     this.packageName = "language-client";
     this.isExclusive = true;
   }
-  canProvideSymbols(meta) {
-    const session = this.manager.sessionForEditor(meta.editor);
+  async canProvideSymbols(meta) {
+    const session = await this.manager.activeSessionForEditor(meta.editor);
     if (!session) return false;
-    if (meta.type === "project") return !!session.capabilities.workspaceSymbolProvider;
+    if (meta.type === "project") return session.supports("workspace/symbol", meta.editor);
     return (
-      !!session.capabilities.documentSymbolProvider ||
-      !!session.capabilities.definitionProvider ||
-      !!session.capabilities.referencesProvider
+      session.supports("textDocument/documentSymbol", meta.editor) ||
+      session.supports("textDocument/definition", meta.editor) ||
+      session.supports("textDocument/references", meta.editor)
     );
   }
   async getSymbols(meta) {
-    const session = this.manager.sessionForEditor(meta.editor);
+    const session = await this.manager.activeSessionForEditor(meta.editor);
     if (!session) return [];
+    const options = { signal: meta.signal };
     if (meta.type === "project")
-      return this.convert(await session.request("workspace/symbol", { query: meta.query || "" }));
+      return this.convert(
+        await session.request("workspace/symbol", { query: meta.query || "" }, options),
+      );
     if (meta.type === "reference")
       return this.locations(
         await session.request(
           "textDocument/references",
           this.positionParams(meta, { context: { includeDeclaration: true } }),
+          options,
         ),
       );
     if (meta.type === "project-find" || meta.type === "declaration")
       return this.locations(
-        await session.request("textDocument/definition", this.positionParams(meta)),
+        await session.request("textDocument/definition", this.positionParams(meta), options),
       );
     return this.convert(
-      await session.request("textDocument/documentSymbol", {
-        textDocument: { uri: C.pathToUri(meta.editor.getPath()) },
-      }),
+      await session.request(
+        "textDocument/documentSymbol",
+        { textDocument: { uri: C.pathToUri(meta.editor.getPath()) } },
+        options,
+      ),
       meta.editor.getPath(),
     );
   }

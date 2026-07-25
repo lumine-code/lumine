@@ -1,25 +1,125 @@
 const C = require("./converters");
 
+const COMPLETION_CAPABILITIES = {
+  textDocument: {
+    completion: {
+      dynamicRegistration: true,
+      contextSupport: true,
+      completionItem: {
+        snippetSupport: true,
+        documentationFormat: ["markdown", "plaintext"],
+        deprecatedSupport: true,
+        preselectSupport: true,
+        insertReplaceSupport: true,
+        resolveSupport: {
+          properties: ["documentation", "detail", "additionalTextEdits", "command"],
+        },
+      },
+      completionItemKind: { valueSet: Array.from({ length: 25 }, (_, i) => i + 1) },
+      completionList: { itemDefaults: ["editRange", "insertTextFormat", "data"] },
+    },
+  },
+};
+
 module.exports = class CompletionProvider {
+  static capabilities = COMPLETION_CAPABILITIES;
   constructor(manager) {
     this.manager = manager;
-    this.selector = ".source";
-    this.disableForSelector = ".comment";
+    manager.addCapabilityFragment(COMPLETION_CAPABILITIES);
+    this.selector = ".source, .text";
     this.inclusionPriority = 2;
     this.suggestionPriority = 2;
     this.excludeLowerPriority = false;
     this.filterSuggestions = false;
+    this.cache = null;
+    this.abortController = null;
   }
-  async getSuggestions({ editor, bufferPosition, activatedManually }) {
-    const session = this.manager.sessionForEditor(editor);
-    if (!session?.capabilities.completionProvider) return [];
-    const result = await session.request("textDocument/completion", {
-      textDocument: { uri: C.pathToUri(editor.getPath()) },
-      position: C.pointToPosition(bufferPosition),
-      context: { triggerKind: activatedManually ? 1 : 1 },
-    });
+  async getSuggestions({ editor, bufferPosition, prefix, activatedManually }) {
+    const session = await this.manager.activeSessionForEditor(editor);
+    if (!session?.supports("textDocument/completion", editor)) return [];
+    const wordStart = bufferPosition.column - (prefix?.length || 0);
+    const cache = this.cache;
+    if (
+      cache &&
+      !activatedManually &&
+      cache.editor === editor &&
+      cache.session === session &&
+      cache.row === bufferPosition.row &&
+      cache.wordStart === wordStart &&
+      !cache.isIncomplete &&
+      prefix.startsWith(cache.prefix)
+    ) {
+      return this.filterCached(cache.items, prefix);
+    }
+    const provider = session.capabilities.completionProvider || {};
+    const lastCharacter = editor.getTextInBufferRange([
+      [bufferPosition.row, Math.max(0, bufferPosition.column - 1)],
+      bufferPosition,
+    ]);
+    let context;
+    if (!activatedManually && (provider.triggerCharacters || []).includes(lastCharacter))
+      context = { triggerKind: 2, triggerCharacter: lastCharacter };
+    else if (cache?.isIncomplete && cache.editor === editor && cache.row === bufferPosition.row)
+      context = { triggerKind: 3 };
+    else context = { triggerKind: 1 };
+    this.abortController?.abort();
+    this.abortController = new AbortController();
+    let result;
+    try {
+      result = await session.request(
+        "textDocument/completion",
+        {
+          textDocument: { uri: C.pathToUri(editor.getPath()) },
+          position: C.pointToPosition(bufferPosition),
+          context,
+        },
+        { signal: this.abortController.signal },
+      );
+    } catch {
+      return [];
+    }
     const items = Array.isArray(result) ? result : result?.items || [];
-    return items.map((item) => this.toSuggestion(session, item));
+    const defaults = Array.isArray(result) ? null : result?.itemDefaults;
+    const mapped = items.map((item) =>
+      this.toSuggestion(session, this.applyDefaults(item, defaults)),
+    );
+    mapped.sort((a, b) =>
+      (a._lspItem.sortText ?? a._lspItem.label).localeCompare(
+        b._lspItem.sortText ?? b._lspItem.label,
+      ),
+    );
+    this.cache = {
+      editor,
+      session,
+      row: bufferPosition.row,
+      wordStart,
+      prefix: prefix || "",
+      isIncomplete: !Array.isArray(result) && !!result?.isIncomplete,
+      items: mapped,
+    };
+    return mapped;
+  }
+  filterCached(items, prefix) {
+    const query = prefix.toLowerCase();
+    return items.filter((suggestion) => {
+      const item = suggestion._lspItem;
+      const haystack = (item.filterText ?? item.label).toLowerCase();
+      return haystack.startsWith(query) || haystack.includes(query);
+    });
+  }
+  applyDefaults(item, defaults) {
+    if (!defaults) return item;
+    const merged = { ...item };
+    if (merged.insertTextFormat == null && defaults.insertTextFormat != null)
+      merged.insertTextFormat = defaults.insertTextFormat;
+    if (merged.data == null && defaults.data != null) merged.data = defaults.data;
+    if (!merged.textEdit && defaults.editRange) {
+      const newText = merged.textEditText ?? merged.insertText ?? merged.label;
+      merged.textEdit = defaults.editRange.start
+        ? { range: defaults.editRange, newText }
+        : { insert: defaults.editRange.insert, replace: defaults.editRange.replace, newText };
+    }
+    return merged;
   }
   toSuggestion(session, item) {
     const suggestion = {
@@ -36,7 +136,7 @@ module.exports = class CompletionProvider {
       suggestion.snippet = item.insertText || item.textEdit?.newText || item.label;
       delete suggestion.text;
     }
-    const editRange = item.textEdit?.range || item.textEdit?.replace || item.textEdit?.insert;
+    const editRange = item.textEdit?.range || item.textEdit?.insert || item.textEdit?.replace;
     if (editRange)
       suggestion.textEdit = { range: C.rangeFromLsp(editRange), newText: item.textEdit.newText };
     suggestion.additionalTextEdits = item.additionalTextEdits?.map((edit) => ({
@@ -48,10 +148,24 @@ module.exports = class CompletionProvider {
   async getSuggestionDetailsOnSelect(suggestion) {
     const provider = suggestion._lspSession?.capabilities.completionProvider;
     if (!provider?.resolveProvider) return suggestion;
-    const item = await suggestion._lspSession.request(
-      "completionItem/resolve",
-      suggestion._lspItem,
-    );
-    return { ...suggestion, ...this.toSuggestion(suggestion._lspSession, item) };
+    try {
+      const item = await suggestion._lspSession.request(
+        "completionItem/resolve",
+        suggestion._lspItem,
+      );
+      return { ...suggestion, ...this.toSuggestion(suggestion._lspSession, item) };
+    } catch {
+      return suggestion;
+    }
+  }
+  onDidInsertSuggestion({ suggestion }) {
+    const command = suggestion._lspItem?.command;
+    if (!command) return;
+    suggestion._lspSession
+      ?.request("workspace/executeCommand", {
+        command: command.command,
+        arguments: command.arguments,
+      })
+      .catch(() => {});
   }
 };

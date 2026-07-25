@@ -45,6 +45,11 @@
         "^1.0.0": "consumeIndie"
       }
     },
+    "busy-signal": {
+      "versions": {
+        "^1.0.0": "consumeBusySignal"
+      }
+    },
     "status-bar": {
       "versions": {
         "^1.0.0": "consumeStatusBar"

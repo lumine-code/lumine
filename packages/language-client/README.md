@@ -64,7 +64,8 @@ Tweak the status-bar item from your stylesheet:
 - **lumine.languageServer** (`1.0.0`): provided to adapter packages to register language servers and reach sessions.
 - **autocomplete.provider** (`1.0.0`): provided to autocomplete to serve language-server completions.
 - **symbol.provider** (`1.0.0`): provided to symbols-view to serve document and project symbols.
-- **linter-indie** (`^1.0.0`): consumed to push server diagnostics into the linter UI.
+- **linter-indie** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
+- **busy-signal** (`^1.0.0`): consumed to surface server work-done progress in the status bar.
 - **status-bar** (`^1.0.0`): consumed to show the active server state and session menu.
 
 ## Contributing

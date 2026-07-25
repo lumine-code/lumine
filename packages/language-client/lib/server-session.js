@@ -4,128 +4,8 @@ const { Emitter, CompositeDisposable } = require("atom");
 const JsonRpcConnection = require("./json-rpc-connection");
 const IpcConnection = require("./ipc-connection");
 const C = require("./converters");
-
-const CLIENT_CAPABILITIES = {
-  workspace: {
-    applyEdit: true,
-    workspaceFolders: true,
-    configuration: true,
-    didChangeWatchedFiles: { dynamicRegistration: true, relativePatternSupport: true },
-    workspaceEdit: {
-      documentChanges: true,
-      resourceOperations: ["create", "rename", "delete"],
-      changeAnnotationSupport: { groupsOnLabel: true },
-    },
-    symbol: { dynamicRegistration: true, resolveSupport: { properties: ["location.range"] } },
-    semanticTokens: { refreshSupport: true },
-    codeLens: { refreshSupport: true },
-    inlayHint: { refreshSupport: true },
-    diagnostics: { refreshSupport: true },
-    fileOperations: {
-      dynamicRegistration: true,
-      didCreate: true,
-      didRename: true,
-      didDelete: true,
-      willCreate: true,
-      willRename: true,
-      willDelete: true,
-    },
-  },
-  textDocument: {
-    synchronization: {
-      dynamicRegistration: true,
-      willSave: true,
-      willSaveWaitUntil: true,
-      didSave: true,
-    },
-    completion: {
-      dynamicRegistration: true,
-      contextSupport: true,
-      completionItem: {
-        snippetSupport: true,
-        commitCharactersSupport: true,
-        documentationFormat: ["markdown", "plaintext"],
-        deprecatedSupport: true,
-        preselectSupport: true,
-        insertReplaceSupport: true,
-        resolveSupport: {
-          properties: ["documentation", "detail", "additionalTextEdits", "command"],
-        },
-      },
-    },
-    hover: { dynamicRegistration: true, contentFormat: ["markdown", "plaintext"] },
-    signatureHelp: {
-      dynamicRegistration: true,
-      contextSupport: true,
-      signatureInformation: {
-        documentationFormat: ["markdown", "plaintext"],
-        activeParameterSupport: true,
-      },
-    },
-    declaration: { dynamicRegistration: true, linkSupport: true },
-    definition: { dynamicRegistration: true, linkSupport: true },
-    typeDefinition: { dynamicRegistration: true, linkSupport: true },
-    implementation: { dynamicRegistration: true, linkSupport: true },
-    references: { dynamicRegistration: true },
-    documentHighlight: { dynamicRegistration: true },
-    documentSymbol: { dynamicRegistration: true, hierarchicalDocumentSymbolSupport: true },
-    codeAction: {
-      dynamicRegistration: true,
-      isPreferredSupport: true,
-      disabledSupport: true,
-      dataSupport: true,
-      resolveSupport: { properties: ["edit", "command"] },
-    },
-    codeLens: { dynamicRegistration: true },
-    formatting: { dynamicRegistration: true },
-    rangeFormatting: { dynamicRegistration: true },
-    onTypeFormatting: { dynamicRegistration: true },
-    rename: { dynamicRegistration: true, prepareSupport: true, honorsChangeAnnotations: true },
-    foldingRange: { dynamicRegistration: true, lineFoldingOnly: false },
-    selectionRange: { dynamicRegistration: true },
-    linkedEditingRange: { dynamicRegistration: true },
-    semanticTokens: {
-      dynamicRegistration: true,
-      requests: { range: true, full: { delta: true } },
-      tokenTypes: [],
-      tokenModifiers: [],
-      formats: ["relative"],
-      overlappingTokenSupport: true,
-      multilineTokenSupport: true,
-    },
-    inlayHint: {
-      dynamicRegistration: true,
-      resolveSupport: {
-        properties: ["tooltip", "textEdits", "label.tooltip", "label.location", "label.command"],
-      },
-    },
-    callHierarchy: { dynamicRegistration: true },
-    typeHierarchy: { dynamicRegistration: true },
-    inlineValue: { dynamicRegistration: true },
-    colorProvider: { dynamicRegistration: true },
-    moniker: { dynamicRegistration: true },
-    publishDiagnostics: {
-      relatedInformation: true,
-      versionSupport: true,
-      codeDescriptionSupport: true,
-      dataSupport: true,
-    },
-  },
-  notebookDocument: {
-    synchronization: { dynamicRegistration: true, executionSummarySupport: true },
-  },
-  window: {
-    workDoneProgress: true,
-    showMessage: { messageActionItem: { additionalPropertiesSupport: true } },
-    showDocument: { support: true },
-  },
-  general: {
-    positionEncodings: ["utf-16", "utf-8", "utf-32"],
-    markdown: { parser: "markdown-it", version: "14" },
-    staleRequestSupport: { cancel: true, retryOnContentModified: [] },
-    regularExpressions: { engine: "ECMAScript", version: "2024" },
-  },
-};
+const { STATIC_CAPABILITIES } = require("./capabilities");
+const { languageIdForEditor } = require("./language-ids");
 
 module.exports = class ServerSession {
   constructor(manager, adapter, rootPath, launch) {
@@ -134,6 +14,7 @@ module.exports = class ServerSession {
     this.rootPath = rootPath;
     this.launch = launch;
     this.documents = new Map();
+    this.progressTitles = new Map();
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
     this.state = "starting";
@@ -190,7 +71,7 @@ module.exports = class ServerSession {
       workspaceFolders: atom.project
         .getPaths()
         .map((p) => ({ uri: C.pathToUri(p), name: require("path").basename(p) })),
-      capabilities: CLIENT_CAPABILITIES,
+      capabilities: this.manager.buildClientCapabilities(),
       initializationOptions: await this.adapter.getInitializationOptions?.({
         rootPath: this.rootPath,
         rootUri,
@@ -198,9 +79,30 @@ module.exports = class ServerSession {
     });
     this.capabilities =
       this.adapter.transformServerCapabilities?.(result.capabilities) || result.capabilities || {};
+    const encoding = this.capabilities.positionEncoding;
+    if (encoding && encoding !== "utf-16")
+      throw new Error(
+        `${this.adapter.displayName} chose unsupported position encoding '${encoding}'`,
+      );
     this.serverInfo = result.serverInfo;
     this.connection.notify("initialized", {});
+    this.pushSettings();
     this.setState("running");
+  }
+  async pushSettings() {
+    const settings =
+      (await this.adapter.getSettings?.()) ??
+      (await this.adapter.getWorkspaceConfiguration?.(undefined)) ??
+      {};
+    if (this.connection) this.connection.notify("workspace/didChangeConfiguration", { settings });
+  }
+  // True when the session can serve the given request method for the editor.
+  // Dynamic registrations take precedence over the static server capability.
+  supports(method, editor) {
+    const dynamic = this.manager.dynamicSupport(this, method, editor);
+    if (dynamic !== undefined) return dynamic;
+    const field = STATIC_CAPABILITIES[method];
+    return field ? !!this.capabilities[field] : true;
   }
   installClientHandlers() {
     this.connection.on("notification", (method, params) =>
@@ -214,6 +116,9 @@ module.exports = class ServerSession {
     );
     this.connection.onNotification("window/showMessage", ({ type, message }) =>
       this.manager.showMessage(type, message),
+    );
+    this.connection.onNotification("$/progress", (params) =>
+      this.manager.handleProgress(this, params),
     );
     this.connection.onRequest("workspace/configuration", (params) =>
       Promise.all(
@@ -249,7 +154,7 @@ module.exports = class ServerSession {
     this.connection.notify("textDocument/didOpen", {
       textDocument: {
         uri,
-        languageId: this.adapter.languageId || editor.getGrammar().name.toLowerCase(),
+        languageId: languageIdForEditor(this.adapter, editor),
         version: 1,
         text: editor.getText(),
       },
@@ -285,6 +190,10 @@ module.exports = class ServerSession {
       contentChanges,
     });
   }
+  detachEditor(editor) {
+    for (const [uri, document] of this.documents)
+      if (document.editor === editor) this.closeDocument(uri);
+  }
   closeDocument(uri) {
     const doc = this.documents.get(uri);
     if (!doc) return;
@@ -313,6 +222,7 @@ module.exports = class ServerSession {
     this.notify("notebookDocument/didClose", { notebookDocument, cellTextDocuments });
   }
   onExit(code, signal) {
+    this.manager.clearProgress(this);
     if (this.state === "stopping" || this.state === "stopped") return;
     this.setState("failed", new Error(`Server exited (${code ?? signal})`));
     this.manager.scheduleRestart(this);
@@ -332,8 +242,7 @@ module.exports = class ServerSession {
     for (const doc of this.documents.values()) doc.subscriptions.dispose();
     this.documents.clear();
     this.manager.clearDiagnosticsForSession(this);
+    this.manager.clearProgress(this);
     this.setState("stopped");
   }
 };
-
-module.exports.CLIENT_CAPABILITIES = CLIENT_CAPABILITIES;
