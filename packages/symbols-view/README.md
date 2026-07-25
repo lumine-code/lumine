@@ -26,8 +26,8 @@ Commands available in `atom-text-editor:not([mini])`:
 
 ## Services
 
-- **hyperclick** (`0.1.0`): provided to let you follow a symbol to its declaration with a click.
-- **symbol.provider** (`1.0.0`): consumed to allow external sources to suggest symbols for a given file or project.
+- **hyperclick** (`1.0.0`): provided to let you follow a symbol to its declaration with a click.
+- **symbol.provider** (`^1.0.0`): consumed to allow external sources to suggest symbols for a given file or project.
 
 ## Customization
 

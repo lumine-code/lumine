@@ -38,22 +38,22 @@
   "consumedServices": {
     "atom.file-icons": {
       "versions": {
-        "1.0.0": "consumeFileIcons"
+        "^1.0.0": "consumeFileIcons"
       }
     },
     "autocomplete.watchEditor": {
       "versions": {
-        "1.0.0": "consumeAutocompleteWatchEditor"
+        "^1.0.0": "consumeAutocompleteWatchEditor"
       }
     },
     "file-icons.element-icons": {
       "versions": {
-        "1.0.0": "consumeElementIcons"
+        "^1.0.0": "consumeElementIcons"
       }
     },
     "search-adapter": {
       "versions": {
-        "1.0.0": "consumeSearchAdapter"
+        "^1.0.0": "consumeSearchAdapter"
       }
     }
   },

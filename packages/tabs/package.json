@@ -19,12 +19,12 @@
   "consumedServices": {
     "atom.file-icons": {
       "versions": {
-        "1.0.0": "consumeFileIcons"
+        "^1.0.0": "consumeFileIcons"
       }
     },
     "file-icons.element-icons": {
       "versions": {
-        "1.0.0": "consumeElementIcons"
+        "^1.0.0": "consumeElementIcons"
       }
     }
   },

@@ -12,7 +12,7 @@
   "consumedServices": {
     "hyperlink.injection": {
       "versions": {
-        "1.0.0": "consumeHyperlinkInjection"
+        "^1.0.0": "consumeHyperlinkInjection"
       }
     }
   }

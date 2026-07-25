@@ -10,7 +10,7 @@ TODO/FIXME highlighting for Lumine.
 
 ## Services
 
-- **todo.injection** (`0.1.0`): provided to highlight `TODO`-style markers inside other languages' comments.
+- **todo.injection** (`1.0.0`): provided to highlight `TODO`-style markers inside other languages' comments.
 
 ## Contributing
 

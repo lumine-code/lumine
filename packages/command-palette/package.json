@@ -1,7 +1,7 @@
 {
   "name": "command-palette",
   "author": "lumine-code",
-  "version": "2.0.0",
+  "version": "1.0.0",
   "main": "./lib/main",
   "description": "Find and run available commands with fuzzy search using `cmd-shift-p` (macOS) or `ctrl-shift-p` (Linux/Windows).",
   "activationCommands": {

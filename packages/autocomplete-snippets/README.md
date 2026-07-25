@@ -9,8 +9,8 @@ Adds snippets to autocomplete suggestions.
 
 ## Services
 
-- **autocomplete.provider** (`2.0.0`): provided to supply snippet suggestions to autocomplete.
-- **snippets** (`0.1.0`): consumed to read the available snippets to build suggestions.
+- **autocomplete.provider** (`1.0.0`): provided to supply snippet suggestions to autocomplete.
+- **snippets** (`^1.0.0`): consumed to read the available snippets to build suggestions.
 
 ## Contributing
 

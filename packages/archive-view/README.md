@@ -11,8 +11,8 @@ Browse the files and folders inside archive files in Lumine.
 
 ## Services
 
-- **atom.file-icons** (`1.0.0`): consumed to supply file-type icon classes for archive entries.
-- **file-icons.element-icons** (`1.0.0`): consumed to supply element-based file icons for archive entries.
+- **atom.file-icons** (`^1.0.0`): consumed to supply file-type icon classes for archive entries.
+- **file-icons.element-icons** (`^1.0.0`): consumed to supply element-based file icons for archive entries.
 
 ## Customization
 

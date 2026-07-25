@@ -9,7 +9,7 @@ Hyperlink colorization for Lumine.
 
 ## Services
 
-- **hyperlink.injection** (`0.1.0`): provided to let other language packages highlight URLs inside their strings and comments as clickable links.
+- **hyperlink.injection** (`1.0.0`): provided to let other language packages highlight URLs inside their strings and comments as clickable links.
 
 ## Contributing
 

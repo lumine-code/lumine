@@ -11,8 +11,8 @@ CSS support for Lumine.
 
 ## Services
 
-- **hyperlink.injection** (`0.1.0`): consumed to highlight URLs inside stylesheets as clickable links.
-- **todo.injection** (`0.1.0`): consumed to highlight `TODO`-style markers inside comments.
+- **hyperlink.injection** (`^1.0.0`): consumed to highlight URLs inside stylesheets as clickable links.
+- **todo.injection** (`^1.0.0`): consumed to highlight `TODO`-style markers inside comments.
 
 ## Contributing
 

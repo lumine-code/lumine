@@ -33,7 +33,7 @@ Commands available in `atom-workspace`:
 ## Services
 
 - **status-bar** (`^1.0.0`): consumed to add a settings icon and a package-updates indicator to the status bar.
-- **snippets** (`0.1.0`): consumed to read user snippets so they can be displayed alongside settings.
+- **snippets** (`^1.0.0`): consumed to read user snippets so they can be displayed alongside settings.
 
 ## Customization
 

@@ -19,7 +19,7 @@
   "consumedServices": {
     "atom.file-icons": {
       "versions": {
-        "1.0.0": "consumeClassIcons"
+        "^1.0.0": "consumeClassIcons"
       }
     },
     "open-external": {

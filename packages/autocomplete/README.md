@@ -27,8 +27,8 @@ Commands available in `atom-text-editor.autocomplete-active`:
 ## Services
 
 - **autocomplete.watchEditor** (`1.0.0`): provided to let other packages register an editor to be watched for autocompletion along with the set of providers to use for it.
-- **autocomplete.provider** (`1.0.0`, `1.1.0`, `2.0.0`, `3.0.0`, `4.0.0`, `5.0.0`, `5.1.0`): consumed to register external suggestion providers that contribute completions.
-- **snippets** (`0.1.0`): consumed to expand snippet-based suggestions when confirmed.
+- **autocomplete.provider** (`^1.0.0`): consumed to register external suggestion providers that contribute completions.
+- **snippets** (`^1.0.0`): consumed to expand snippet-based suggestions when confirmed.
 
 ## Contributing
 

@@ -25,22 +25,22 @@
   "consumedServices": {
     "atom.file-icons": {
       "versions": {
-        "1.0.0": "consumeClassIcons"
+        "^1.0.0": "consumeClassIcons"
       }
     },
     "open-external": {
       "versions": {
-        "1.0.0": "consumeOpenExternalService"
+        "^1.0.0": "consumeOpenExternalService"
       }
     },
     "windows-clip": {
       "versions": {
-        "1.0.0": "consumeWindowsClip"
+        "^1.0.0": "consumeWindowsClip"
       }
     },
     "claude-chat": {
       "versions": {
-        "1.0.0": "consumeClaudeChat"
+        "^1.0.0": "consumeClaudeChat"
       }
     },
     "tree-view": {
