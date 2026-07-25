@@ -161,6 +161,12 @@ autocomplete-suggestion-list .list-group .character-match {
   color: var(--accent-only-text-color);
 }
 
+/* Autocomplete suggestions: hover highlight matching the modal lists */
+
+autocomplete-suggestion-list ol.list-group li:hover:not(.selected) {
+  background-color: var(--background-color-highlight);
+}
+
 /* Deprecation Cop --------------------------- */
 
 .deprecation-cop {
