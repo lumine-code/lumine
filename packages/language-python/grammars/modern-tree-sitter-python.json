@@ -14,6 +14,7 @@
     "py",
     "pyi",
     "pyw",
+    "ipy",
     "gyp",
     "gypi",
     "SConstruct",
