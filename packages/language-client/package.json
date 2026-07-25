@@ -1,0 +1,76 @@
+{
+  "name": "language-client",
+  "author": "lumine-code",
+  "version": "1.0.0",
+  "main": "./lib/main",
+  "types": "./lib/main.d.ts",
+  "description": "Language Server Protocol client infrastructure.",
+  "keywords": [
+    "lsp",
+    "language-server",
+    "intellisense",
+    "diagnostics",
+    "completion"
+  ],
+  "repository": "https://github.com/lumine-code/lumine",
+  "license": "MIT",
+  "engines": {
+    "atom": "*",
+    "node": ">=24"
+  },
+  "dependencies": {
+    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#fbbc2d9660db6a2ff676c7a3baf7536f96ec34e6",
+    "minimatch": "^10.2.5"
+  },
+  "providedServices": {
+    "lumine.languageServer": {
+      "versions": {
+        "1.0.0": "provideLanguageServer"
+      }
+    },
+    "autocomplete.provider": {
+      "versions": {
+        "1.0.0": "provideAutocomplete"
+      }
+    },
+    "symbol.provider": {
+      "versions": {
+        "1.0.0": "provideSymbols"
+      }
+    }
+  },
+  "consumedServices": {
+    "linter-indie": {
+      "versions": {
+        "^1.0.0": "consumeIndie"
+      }
+    },
+    "status-bar": {
+      "versions": {
+        "^1.0.0": "consumeStatusBar"
+      }
+    }
+  },
+  "configSchema": {
+    "trace": {
+      "order": 1,
+      "title": "Protocol Trace",
+      "description": "Log the traffic between the editor and language servers to the per-server log buffer.",
+      "type": "string",
+      "enum": [
+        "off",
+        "messages",
+        "verbose"
+      ],
+      "default": "off"
+    },
+    "restartLimit": {
+      "order": 2,
+      "title": "Maximum Automatic Restarts",
+      "description": "How many times a crashed language server is restarted automatically before giving up.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 3
+    }
+  }
+}
