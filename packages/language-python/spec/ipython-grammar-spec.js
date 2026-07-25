@@ -71,3 +71,60 @@ describe("IPython grammar (modern Tree-sitter)", () => {
     expect(editor.isFoldableAtBufferRow(0)).toBe(true);
   });
 });
+
+// The TextMate twin of the grammar above, used when tree-sitter parsers are
+// disabled. IPython lines get the same scopes; everything else delegates to
+// the TextMate python grammar via `include source.python`.
+describe("IPython grammar (TextMate)", () => {
+  let grammar;
+
+  beforeEach(async () => {
+    atom.config.set("language.useTreeSitterParsers", false);
+    await atom.packages.activatePackage("language-python");
+    grammar = atom.grammars.grammarForScopeName("source.python.ipy");
+  });
+
+  afterEach(() => {
+    atom.config.set("language.useTreeSitterParsers", true);
+  });
+
+  it("is the TextMate grammar when tree-sitter is disabled", () => {
+    expect(grammar).toBeDefined();
+    expect(grammar.name).toBe("IPython");
+    expect(grammar.constructor.name).not.toBe("WASMTreeSitterGrammar");
+  });
+
+  it("tokenizes IPython statements with the dedicated scopes", () => {
+    expect(grammar.tokenizeLine("%matplotlib inline").tokens[0].scopes).toContain(
+      "support.function.magic.ipython",
+    );
+    expect(grammar.tokenizeLine("%%timeit").tokens[0].scopes).toContain(
+      "support.function.magic.ipython",
+    );
+    expect(grammar.tokenizeLine("!pip install numpy").tokens[0].scopes).toContain(
+      "string.unquoted.shell.ipython",
+    );
+    expect(grammar.tokenizeLine("?np.mean").tokens[0].scopes).toContain(
+      "keyword.operator.help.ipython",
+    );
+    expect(grammar.tokenizeLine("np.mean??").tokens[0].scopes).toContain(
+      "keyword.operator.help.ipython",
+    );
+  });
+
+  it("delegates plain python lines to source.python", () => {
+    const { tokens } = grammar.tokenizeLine("def foo():");
+    expect(tokens[0].value).toBe("def");
+    expect(tokens[0].scopes).toContain("storage.type.function.python");
+  });
+
+  it("leaves continuation-style operator lines untouched", () => {
+    // Break-before-operator formatting must not be mistaken for IPython.
+    expect(grammar.tokenizeLine("!= b").tokens[0].scopes).not.toContain(
+      "string.unquoted.shell.ipython",
+    );
+    expect(grammar.tokenizeLine("% b").tokens[0].scopes).not.toContain(
+      "support.function.magic.ipython",
+    );
+  });
+});

@@ -25,10 +25,15 @@ describe("Python grammar selection", () => {
     expect(grammar.constructor.name).toBe("WASMTreeSitterGrammar");
   });
 
-  it("falls back to the TextMate grammar when tree-sitter is disabled", () => {
+  it("falls back to the TextMate grammars when tree-sitter is disabled", () => {
     atom.config.set("language.useTreeSitterParsers", false);
-    const grammar = atom.grammars.selectGrammar("main.ipy", "");
-    expect(grammar.scopeName).toBe("source.python");
-    expect(grammar.constructor.name).not.toBe("WASMTreeSitterGrammar");
+    const python = atom.grammars.selectGrammar("main.py", "");
+    expect(python.scopeName).toBe("source.python");
+    expect(python.constructor.name).not.toBe("WASMTreeSitterGrammar");
+
+    const ipython = atom.grammars.selectGrammar("main.ipy", "");
+    expect(ipython.name).toBe("IPython");
+    expect(ipython.scopeName).toBe("source.python.ipy");
+    expect(ipython.constructor.name).not.toBe("WASMTreeSitterGrammar");
   });
 });
