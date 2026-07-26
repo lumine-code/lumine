@@ -195,11 +195,16 @@ function writeBackMetadata(configPath, { parserSource, wasmBuildTool }) {
       const lineMatch = /^([ \t]*)("parserSource"\s*:\s*"[^"]*",?)\s*$/m.exec(text);
       if (!lineMatch) fail(`Cannot find a "parserSource" line in ${configPath}`);
       const [line, indent, entry] = lineMatch;
-      const comma = entry.endsWith(",") ? "," : "";
-      const entryWithComma = comma ? entry : `${entry},`;
+      // A comma on the parserSource line means more keys follow it, so the
+      // inserted line needs one too. Without it the object is invalid JSON.
+      // When parserSource is the last key the comma moves onto it instead,
+      // because the inserted line becomes the last one.
+      const trailingComma = entry.endsWith(",") ? "," : "";
+      const entryWithComma = trailingComma ? entry : `${entry},`;
+      const newline = text.includes("\r\n") ? "\r\n" : "\n";
       text = text.replace(
         line,
-        `${indent}${entryWithComma}\n${indent}"wasmBuildTool": "${wasmBuildTool}"${comma ? "" : ""}`,
+        `${indent}${entryWithComma}${newline}${indent}"wasmBuildTool": "${wasmBuildTool}"${trailingComma}`,
       );
     }
   }
