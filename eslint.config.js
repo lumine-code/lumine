@@ -108,11 +108,11 @@ module.exports = [
     },
   },
   {
-    // Test files — jasmine (Atom test runner) plus a few mocha/jest-style
-    // suites (dalek's `test/`, the completion-update `*.test.js`) and Atom's
-    // async helpers. Also relax dependency-resolution rules: specs require
+    // Test files — jasmine (Atom test runner) plus the mocha/jest-style
+    // `*.test.js` suites (the main-process specs, the completion updaters) and
+    // Atom's async helpers. Also relax dependency-resolution rules: specs require
     // devDependencies and load fixture modules by path the resolver can't follow.
-    files: ["spec/**", "**/spec/**", "**/*-spec.js", "**/*.test.js", "packages/*/test/**"],
+    files: ["spec/**", "**/spec/**", "**/*-spec.js", "**/*.test.js"],
     languageOptions: {
       globals: {
         ...globals.jasmine,
