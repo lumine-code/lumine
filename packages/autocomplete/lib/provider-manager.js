@@ -77,30 +77,10 @@ module.exports = class ProviderManager {
       return [];
     }
 
-    const matchingProviders = [];
-    let disableDefaultProvider = false;
-    let defaultProviderMetadata = null;
-    for (let i = 0; i < providers.length; i++) {
-      const providerMetadata = providers[i];
-      const { provider } = providerMetadata;
-      if (provider === this.defaultProvider) {
-        defaultProviderMetadata = providerMetadata;
-      }
-      if (providerMetadata.matchesScopeChain(scopeChain)) {
-        matchingProviders.push(providerMetadata);
-        if (providerMetadata.shouldDisableDefaultProvider(scopeChain)) {
-          disableDefaultProvider = true;
-        }
-      }
-    }
-
-    if (disableDefaultProvider) {
-      const index = matchingProviders.indexOf(defaultProviderMetadata);
-      if (index > -1) {
-        matchingProviders.splice(index, 1);
-      }
-    }
-    return matchingProviders;
+    // A provider suppresses the built-in one through `excludeLowerPriority`
+    // with an `inclusionPriority` above its zero — the documented route, and
+    // the only one there has ever been an implementation for.
+    return providers.filter((providerMetadata) => providerMetadata.matchesScopeChain(scopeChain));
   }
 
   sortProviders(providers, scopeDescriptor) {

@@ -34,14 +34,6 @@ export default class ProviderMetadata {
     }
   }
 
-  shouldDisableDefaultProvider(scopeChain) {
-    if (this.disableDefaultProviderSelectors != null) {
-      return selectorsMatchScopeChain(this.disableDefaultProviderSelectors, scopeChain);
-    } else {
-      return false;
-    }
-  }
-
   getSpecificity(scopeChain) {
     const selector = selectorForScopeChain(this.scopeSelectors, scopeChain);
     if (selector) {
