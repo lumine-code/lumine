@@ -3,7 +3,7 @@ const C = require("../lib/converters");
 const { toLinterMessages } = require("../lib/linter-messages");
 
 describe("LSP diagnostics linter mapping", () => {
-  it("maps diagnostics to linter-indie messages", () => {
+  it("maps diagnostics to linter.registry messages", () => {
     const filePath = path.resolve("project", "main.ts");
     const result = toLinterMessages(C.pathToUri(filePath), [
       {

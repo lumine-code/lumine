@@ -80,7 +80,7 @@ describe("ide-client package", () => {
     registration.dispose();
   });
 
-  it("publishes LSP diagnostics through linter-indie", () => {
+  it("publishes LSP diagnostics through linter.registry", () => {
     const main = atom.packages.getActivePackage("ide-client").mainModule;
     const delegate = {
       batches: [],

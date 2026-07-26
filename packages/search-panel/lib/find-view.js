@@ -236,7 +236,7 @@ module.exports = class FindView {
 
   // Subscribe to the active SearchTarget's result events. Kept separate from the
   // main subscriptions so the target can be swapped (e.g. when the active pane
-  // item changes from a text editor to a search-adapter view) without tearing
+  // item changes from a text editor to a search.adapter view) without tearing
   // down the rest of the view.
   subscribeToTarget() {
     if (this.targetSubscriptions) this.targetSubscriptions.dispose();

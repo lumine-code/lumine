@@ -1,7 +1,7 @@
 // A SearchTarget is the thing FindView searches and navigates. It abstracts away
 // "what is being searched" so the buffer find UI can drive either a real text
 // editor (EditorSearchTarget, below) or a custom view supplied by another
-// package through the search-adapter contract (AdapterSearchTarget).
+// package through the search.adapter contract (AdapterSearchTarget).
 //
 // The interface FindView depends on:
 //   isUsable(): boolean
@@ -220,7 +220,7 @@ class EditorSearchTarget {
   }
 }
 
-// Wraps a search adapter supplied by another package through the search-adapter
+// Wraps a search adapter supplied by another package through the search.adapter
 // service. The adapter owns matching, navigation, highlight
 // and replace inside its own view; this target adapts it to the SearchTarget
 // interface and supplies the shared FindOptions + regex helpers so the adapter
