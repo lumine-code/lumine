@@ -48,6 +48,10 @@ const SnippetStart = 1;
 const SnippetEnd = 2;
 const SnippetStartAndEnd = 3;
 
+// How many deferred rows are rendered per frame. `maxItems` is 200, so a full
+// list finishes in a handful of frames while no single one carries the lot.
+const EXTRA_ITEM_CHUNK_SIZE = 50;
+
 // Maps a fenced code block's language to a grammar scope. Providers write
 // either a bare language id (`python`) or a full scope (`source.python`).
 const scopeForFenceName = (fenceName) => {
@@ -73,6 +77,9 @@ module.exports = class SuggestionListElement {
     this.emptySnippetGroupRegex = /(\$\{\d+:\})|(\$\{\d+\})|(\$\d+)/gi;
     this.slashesInSnippetRegex = /\\\\/g;
     this.nodePool = null;
+    this.extraItems = null;
+    this.extraItemsIndex = 0;
+    this.extraItemsFrame = null;
     this.subscriptions = new CompositeDisposable();
     this.element.classList.add("popover-list", "select-list", "autocomplete-suggestion-list");
     this.registerMouseHandling();
@@ -238,6 +245,7 @@ module.exports = class SuggestionListElement {
     if (this.model && this.model.items && this.model.items.length) {
       return this.render();
     } else {
+      this.cancelExtraItems();
       return atom.views.updateDocument(this.returnItemsToPool.bind(this, 0));
     }
   }
@@ -333,7 +341,10 @@ module.exports = class SuggestionListElement {
 
     this.model.select(this.getSelectedItem());
 
-    if (index > this.maxVisibleSuggestions + 1) {
+    // `renderItems` stops after `maxVisibleSuggestions + 1` rows, so index
+    // `maxVisibleSuggestions + 1` is the first one that does not exist yet.
+    // With a strict `>` it stayed unrendered and the highlight vanished.
+    if (index >= this.maxVisibleSuggestions + 1) {
       atom.views.updateDocument(this.renderExtraItems.bind(this));
     }
 
@@ -400,23 +411,56 @@ module.exports = class SuggestionListElement {
     }
 
     // Defer the rendering of suggestions that are not initially visible
+    this.cancelExtraItems();
     if (items.length > this.maxVisibleSuggestions + 1) {
       this.extraItems = items.slice(this.maxVisibleSuggestions + 1);
-    } else {
-      this.extraItems = null;
+      this.extraItemsIndex = this.maxVisibleSuggestions + 1;
     }
 
     this.updateDescription(items[longestDescIndex]);
     return atom.views.updateDocument(this.returnItemsToPool.bind(this, items.length));
   }
 
+  // The tail of the list, rendered a chunk at a time. Building all of it in
+  // one pass is up to `maxItems` DOM writes in the frame the user scrolled,
+  // and the list is scrolled while they are still typing into it. The rest is
+  // handed to the next frame — `atom.views.updateDocument` alone would not do,
+  // since writes queued during a document update are drained in the same one.
   renderExtraItems() {
-    if (this.extraItems) {
-      this.extraItems.forEach((item, index) => {
-        this.renderItem(item, index + this.maxVisibleSuggestions + 1);
-      });
+    if (!this.extraItems) {
+      return;
     }
 
+    // Never stop short of the selected row: `renderSelectedItem` runs straight
+    // after this when a jump caused it, and needs the node to exist to move the
+    // highlight onto it.
+    const count = Math.max(
+      EXTRA_ITEM_CHUNK_SIZE,
+      this.selectedIndex - this.extraItemsIndex + 1 || 0,
+    );
+    const chunk = this.extraItems.splice(0, count);
+    for (let index = 0; index < chunk.length; index++) {
+      this.renderItem(chunk[index], this.extraItemsIndex + index);
+    }
+    this.extraItemsIndex += chunk.length;
+
+    if (this.extraItems.length) {
+      this.extraItemsFrame = requestAnimationFrame(() => {
+        this.extraItemsFrame = null;
+        atom.views.updateDocument(this.renderExtraItems.bind(this));
+      });
+    } else {
+      this.extraItems = null;
+    }
+  }
+
+  // Drops the pending tail. A frame left in flight would otherwise render the
+  // previous list's items into the new one.
+  cancelExtraItems() {
+    if (this.extraItemsFrame != null) {
+      cancelAnimationFrame(this.extraItemsFrame);
+      this.extraItemsFrame = null;
+    }
     this.extraItems = null;
   }
 
@@ -558,7 +602,7 @@ module.exports = class SuggestionListElement {
   ) {
     let li = this.ol.childNodes[index];
     if (!li) {
-      if (this.nodepool && this.nodePool.length > 0) {
+      if (this.nodePool && this.nodePool.length > 0) {
         li = this.nodePool.pop();
       } else {
         li = document.createElement("li");
@@ -799,6 +843,7 @@ module.exports = class SuggestionListElement {
   }
 
   dispose() {
+    this.cancelExtraItems();
     this.subscriptions.dispose();
     if (this.parentNode) {
       this.parentNode.removeChild(this);

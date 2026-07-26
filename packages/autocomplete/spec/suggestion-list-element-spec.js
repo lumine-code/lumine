@@ -118,6 +118,21 @@ describe("Suggestion List Element", () => {
       expect(suggestionListElement.selectedIndex).toBe(0);
     });
 
+    it("reuses pooled list items instead of building new ones", () => {
+      suggestionListElement.renderItem({ text: "one" }, 0);
+      const li = suggestionListElement.ol.childNodes[0];
+
+      suggestionListElement.returnItemsToPool(0);
+      expect(suggestionListElement.nodePool.length).toBe(1);
+
+      // The pool exists to keep the list from allocating a row per keystroke;
+      // a misspelled read of it made every render build fresh nodes and let
+      // the pool grow without bound.
+      suggestionListElement.renderItem({ text: "two" }, 0);
+      expect(suggestionListElement.ol.childNodes[0]).toBe(li);
+      expect(suggestionListElement.nodePool.length).toBe(0);
+    });
+
     it("HTML escapes labels", () => {
       let suggestion = { text: "something", leftLabel: "Animal<Cat>", rightLabel: "Animal<Dog>" };
       suggestionListElement.renderItem(suggestion);
@@ -127,6 +142,77 @@ describe("Suggestion List Element", () => {
       return expect(
         suggestionListElement.selectedLi.querySelector(".right-label").innerHTML,
       ).toContain("Animal&lt;Dog&gt;");
+    });
+  });
+
+  describe("deferred rendering", () => {
+    const modelWith = (count) => ({
+      items: Array.from({ length: count }, (_, index) => ({ text: `item${index}` })),
+      select() {},
+    });
+
+    beforeEach(() => {
+      jasmine.attachToDOM(suggestionListElement.element);
+      suggestionListElement.maxVisibleSuggestions = 2;
+    });
+
+    it("renders the deferred rows when the selection lands on the first of them", () => {
+      suggestionListElement.model = modelWith(5);
+      suggestionListElement.render();
+      // Rows 0 through `maxVisibleSuggestions` are rendered eagerly; the rest
+      // wait for a scroll or a selection.
+      expect(suggestionListElement.ol.childNodes.length).toBe(3);
+
+      // Exactly `maxVisibleSuggestions + 1` is the first unrendered row, so a
+      // strict `>` here left the selection with no node to highlight.
+      suggestionListElement.setSelectedIndex(3);
+      expect(suggestionListElement.ol.childNodes.length).toBe(5);
+      expect(suggestionListElement.ol.childNodes[3].classList.contains("selected")).toBe(true);
+    });
+
+    it("renders the deferred rows a chunk at a time", () => {
+      suggestionListElement.model = modelWith(120);
+      suggestionListElement.render();
+      expect(suggestionListElement.ol.childNodes.length).toBe(3);
+
+      suggestionListElement.renderExtraItems();
+      // One frame's worth. Writing all 117 remaining rows in the frame the
+      // user scrolled in is what this avoids.
+      expect(suggestionListElement.ol.childNodes.length).toBe(53);
+      expect(suggestionListElement.extraItems.length).toBe(67);
+    });
+
+    it("keeps rendering until every deferred row exists", async () => {
+      jasmine.useRealClock();
+      suggestionListElement.model = modelWith(120);
+      suggestionListElement.render();
+
+      suggestionListElement.renderExtraItems();
+      await conditionPromise(() => suggestionListElement.extraItems == null);
+      expect(suggestionListElement.ol.childNodes.length).toBe(120);
+    });
+
+    it("renders far enough to reach a selection beyond the first chunk", () => {
+      suggestionListElement.model = modelWith(120);
+      suggestionListElement.render();
+
+      // A page-down or an end key jumps past a chunk boundary, and
+      // `renderSelectedItem` runs before the next frame arrives.
+      suggestionListElement.setSelectedIndex(119);
+      expect(suggestionListElement.ol.childNodes.length).toBe(120);
+      expect(suggestionListElement.ol.childNodes[119].classList.contains("selected")).toBe(true);
+    });
+
+    it("drops the pending tail when the list is replaced", () => {
+      suggestionListElement.model = modelWith(120);
+      suggestionListElement.render();
+      suggestionListElement.renderExtraItems();
+      expect(suggestionListElement.extraItemsFrame).not.toBeNull();
+
+      suggestionListElement.model = modelWith(4);
+      suggestionListElement.render();
+      expect(suggestionListElement.extraItemsFrame).toBeNull();
+      expect(suggestionListElement.extraItems.length).toBe(1);
     });
   });
 
