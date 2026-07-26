@@ -19,6 +19,40 @@ describe("ide-client package", () => {
     const commands = atom.commands.findCommands({ target: atom.views.getView(atom.workspace) });
     expect(commands.map(({ name }) => name)).toContain("ide-client:toggle-problems");
     expect(commands.map(({ name }) => name)).toContain("ide-client:restart");
+    expect(commands.map(({ name }) => name)).toContain("ide-client:servers");
+  });
+
+  it("reports its sessions to the background zone", () => {
+    const main = atom.packages.getActivePackage("ide-client").mainModule;
+    const entries = new Map();
+    const provider = {
+      set: (id, entry) => entries.set(id, entry),
+      remove: (id) => entries.delete(id),
+      dispose() {},
+    };
+    const session = {
+      adapter: { id: "stub", displayName: "Stub Server" },
+      rootPath: "/project",
+      state: "starting",
+    };
+    main.manager.sessions.set("stub:/project", session);
+    const registration = main.consumeBackgroundSignal({ create: () => provider });
+    expect(entries.get("ide-client:stub:/project")).toEqual({
+      title: "Stub Server",
+      detail: "/project",
+      status: "starting",
+    });
+
+    // The entry is upserted in place as the server's state changes.
+    session.state = "running";
+    main.manager.didChangeSession(session);
+    expect(entries.get("ide-client:stub:/project").status).toBe("running");
+
+    // A session that goes away takes its entry with it.
+    main.manager.sessions.delete("stub:/project");
+    main.publishSessions();
+    expect(entries.size).toBe(0);
+    registration.dispose();
   });
 
   it("publishes LSP diagnostics through linter-indie", () => {
