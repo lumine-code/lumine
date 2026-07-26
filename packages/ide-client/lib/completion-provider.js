@@ -52,15 +52,15 @@ module.exports = class CompletionProvider {
       !cache.isIncomplete &&
       prefix.startsWith(cache.prefix)
     ) {
-      return this.filterCached(cache.items, prefix);
+      return this.filterCached(cache, prefix);
     }
     const lastCharacter = editor.getTextInBufferRange([
       [bufferPosition.row, Math.max(0, bufferPosition.column - 1)],
       bufferPosition,
     ]);
     this.abortController?.abort();
-    this.abortController = new AbortController();
-    const { signal } = this.abortController;
+    const controller = (this.abortController = new AbortController());
+    const { signal } = controller;
     const responses = await Promise.all(
       sessions.map(async (session) => {
         const provider = session.capabilities.completionProvider || {};
@@ -87,9 +87,17 @@ module.exports = class CompletionProvider {
         }
       }),
     );
+    // A superseded request must not publish a cache: its empty result would be
+    // recorded as a complete answer, and every later keystroke of the word
+    // would then filter that emptiness instead of asking the server again.
+    if (signal.aborted) return [];
+    // Likewise when every server errored: caching "no completions here" would
+    // suppress the next request for the rest of the word.
+    const answered = responses.filter(Boolean);
+    if (!answered.length) return [];
     const mapped = [];
     let isIncomplete = false;
-    for (const response of responses.filter(Boolean)) {
+    for (const response of answered) {
       const { session, result } = response;
       const items = Array.isArray(result) ? result : result?.items || [];
       const defaults = Array.isArray(result) ? null : result?.itemDefaults;
@@ -116,13 +124,34 @@ module.exports = class CompletionProvider {
   sameSessions(a, b) {
     return a.length === b.length && a.every((session, index) => session === b[index]);
   }
-  filterCached(items, prefix) {
+  filterCached(cache, prefix) {
     const query = prefix.toLowerCase();
-    return items.filter((suggestion) => {
-      const item = suggestion._lspItem;
-      const haystack = (item.filterText ?? item.label).toLowerCase();
-      return haystack.startsWith(query) || haystack.includes(query);
-    });
+    // The cached edits were computed at the column the request was made from.
+    // The user has typed since, so every replaced span has to grow by the same
+    // number of characters; otherwise accepting `console` after typing `con`
+    // replaces only `co` and leaves the tail behind as `consolen`.
+    const growth = prefix.length - cache.prefix.length;
+    return cache.items
+      .filter((suggestion) => {
+        const item = suggestion._lspItem;
+        const haystack = (item.filterText ?? item.label).toLowerCase();
+        return haystack.startsWith(query) || haystack.includes(query);
+      })
+      .map((suggestion) => this.reanchor(suggestion, growth));
+  }
+  // Returns a copy whose edit range ends `growth` characters later. The cached
+  // suggestion itself is left alone so a later, shorter prefix re-anchors from
+  // the original range rather than compounding.
+  reanchor(suggestion, growth) {
+    if (!growth || !suggestion.textEdit) return suggestion;
+    const [start, end] = suggestion.textEdit.range;
+    return {
+      ...suggestion,
+      textEdit: {
+        range: [start, [end[0], end[1] + growth]],
+        newText: suggestion.textEdit.newText,
+      },
+    };
   }
   applyDefaults(item, defaults) {
     if (!defaults) return item;
