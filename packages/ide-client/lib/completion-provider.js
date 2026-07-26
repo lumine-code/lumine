@@ -25,6 +25,13 @@ const COMPLETION_CAPABILITIES = {
   },
 };
 
+// Commands a server may attach to a completion item that the editor answers
+// itself rather than handing back over the protocol.
+const CLIENT_COMMANDS = new Map([
+  ["editor.action.triggerSuggest", "autocomplete:activate"],
+  ["editor.action.triggerParameterHints", "hover:toggle-signature-help"],
+]);
+
 module.exports = class CompletionProvider {
   static capabilities = COMPLETION_CAPABILITIES;
   constructor(manager) {
@@ -245,14 +252,22 @@ module.exports = class CompletionProvider {
   async getSuggestionDetailsOnSelect(suggestion) {
     const provider = suggestion._lspSession?.capabilities.completionProvider;
     if (!provider?.resolveProvider || suggestion._resolved) return suggestion;
+    // Selection moves once per arrow key, so without a cancel the backlog of
+    // resolves queues up behind the next completion request.
+    this.resolveController?.abort();
+    const controller = (this.resolveController = new AbortController());
     try {
       const item = await suggestion._lspSession.request(
         "completionItem/resolve",
         suggestion._lspItem,
+        { signal: controller.signal },
       );
       const detailed = {
         ...suggestion,
-        ...this.toSuggestion(suggestion._lspSession, item),
+        // A server may answer with only the fields it filled in; spreading
+        // those blanks over the original would wipe `additionalTextEdits` and
+        // the labels that came with the initial item.
+        ...this.defined(this.toSuggestion(suggestion._lspSession, item)),
         _resolved: true,
       };
       // Swap the resolved item into the cache: the next keystroke filters the
@@ -265,14 +280,33 @@ module.exports = class CompletionProvider {
       return suggestion;
     }
   }
-  onDidInsertSuggestion({ suggestion }) {
+  defined(suggestion) {
+    return Object.fromEntries(
+      Object.entries(suggestion).filter(([, value]) => value !== undefined),
+    );
+  }
+  onDidInsertSuggestion({ editor, suggestion }) {
     const command = suggestion._lspItem?.command;
     if (!command) return;
+    // Servers ask for this one after inserting a member or an import, expecting
+    // the client to reopen the list. Sending it on to the server would only
+    // produce a "command not found" that nobody sees.
+    if (CLIENT_COMMANDS.has(command.command)) {
+      atom.commands.dispatch(atom.views.getView(editor), CLIENT_COMMANDS.get(command.command));
+      return;
+    }
     suggestion._lspSession
       ?.request("workspace/executeCommand", {
         command: command.command,
         arguments: command.arguments,
       })
-      .catch(() => {});
+      // A command the server declared and then failed is worth surfacing;
+      // swallowing it left auto-import failures invisible.
+      .catch((error) =>
+        atom.notifications.addWarning(`Language server command failed: ${command.command}`, {
+          detail: error.message,
+          dismissable: true,
+        }),
+      );
   }
 };

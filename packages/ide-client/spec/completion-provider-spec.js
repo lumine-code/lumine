@@ -169,6 +169,114 @@ describe("CompletionProvider trigger characters", () => {
   });
 });
 
+describe("CompletionProvider resolve and commands", () => {
+  const resolvingProvider = (respond) => {
+    const session = sessionWith(respond, {
+      completionProvider: { resolveProvider: true },
+    });
+    return { session, provider: new CompletionProvider(managerWith(session)) };
+  };
+
+  const selectFirst = async (provider, session) => {
+    const suggestions = await provider.getSuggestions({
+      editor: stubEditor("con"),
+      bufferPosition: { row: 0, column: 2 },
+      prefix: "co",
+    });
+    session.requests.length = 0;
+    return suggestions[0];
+  };
+
+  it("keeps fields the resolve response leaves out", async () => {
+    const { session, provider } = resolvingProvider((method) =>
+      method === "completionItem/resolve"
+        ? // A sparse response: only documentation came back.
+          { label: "console", documentation: "docs" }
+        : {
+            items: [
+              {
+                label: "console",
+                detail: "the console",
+                additionalTextEdits: [
+                  {
+                    range: { start: { line: 0, character: 0 }, end: { line: 0, character: 0 } },
+                    newText: "import x\n",
+                  },
+                ],
+              },
+            ],
+          },
+    );
+    const first = await selectFirst(provider, session);
+    expect(first.additionalTextEdits.length).toBe(1);
+
+    const detailed = await provider.getSuggestionDetailsOnSelect(first);
+    expect(detailed.description).toBe("docs");
+    // Spreading the sparse response wholesale would drop both of these.
+    expect(detailed.leftLabel).toBe("the console");
+    expect(detailed.additionalTextEdits.length).toBe(1);
+  });
+
+  it("resolves an item only once", async () => {
+    const { session, provider } = resolvingProvider((method) =>
+      method === "completionItem/resolve"
+        ? { label: "console", documentation: "docs" }
+        : { items: [{ label: "console" }] },
+    );
+    const first = await selectFirst(provider, session);
+    const detailed = await provider.getSuggestionDetailsOnSelect(first);
+    await provider.getSuggestionDetailsOnSelect(detailed);
+    expect(session.requests.length).toBe(1);
+  });
+
+  it("cancels a resolve that the next selection supersedes", async () => {
+    const { session, provider } = resolvingProvider(async (method, _params, options) => {
+      if (method !== "completionItem/resolve") return { items: [{ label: "console" }] };
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      if (options?.signal?.aborted) throw new Error("cancelled");
+      return { label: "console", documentation: "docs" };
+    });
+    const first = await selectFirst(provider, session);
+    jasmine.useRealClock();
+
+    const stale = provider.getSuggestionDetailsOnSelect(first);
+    const fresh = provider.getSuggestionDetailsOnSelect({ ...first });
+    // The superseded request resolves to the item it was given, unchanged.
+    expect((await stale).description).toBeUndefined();
+    expect((await fresh).description).toBe("docs");
+  });
+
+  it("answers a client-side command in the editor instead of the server", async () => {
+    const { session, provider } = resolvingProvider(() => ({
+      items: [{ label: "console", command: { command: "editor.action.triggerSuggest" } }],
+    }));
+    const suggestion = await selectFirst(provider, session);
+    const editor = { getPath: () => filePath };
+    spyOn(atom.commands, "dispatch");
+    spyOn(atom.views, "getView").and.returnValue("view");
+
+    provider.onDidInsertSuggestion({ editor, suggestion });
+    expect(atom.commands.dispatch).toHaveBeenCalledWith("view", "autocomplete:activate");
+    expect(session.requests.length).toBe(0);
+  });
+
+  it("reports a server command that fails", async () => {
+    const { session, provider } = resolvingProvider((method) => {
+      if (method === "workspace/executeCommand") throw new Error("no such command");
+      return { items: [{ label: "console", command: { command: "server.doThing" } }] };
+    });
+    const suggestion = await selectFirst(provider, session);
+    jasmine.useRealClock();
+
+    provider.onDidInsertSuggestion({ editor: stubEditor("con"), suggestion });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    const warning = atom.notifications
+      .getNotifications()
+      .find((n) => n.getMessage().includes("server.doThing"));
+    expect(warning).toBeDefined();
+  });
+});
+
 describe("CompletionProvider caching", () => {
   it("grows the cached edit range as the user keeps typing", async () => {
     const session = sessionWith(() => ({
