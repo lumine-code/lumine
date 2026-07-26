@@ -438,6 +438,93 @@ describe("Provider API", () => {
         ]);
       });
 
+      it("ranks a literal prefix match above what the provider prefers", async () => {
+        testProvider = {
+          scopeSelector: ".source.js",
+          filterSuggestions: true,
+          getSuggestions(_options) {
+            // "sFooNo" contains s, f, n in order, so it matches as a
+            // subsequence; only "sfn" starts with what was typed. The provider
+            // ranks the subsequence first, and must not win: what the user
+            // typed outranks a provider's opinion, and only decides between
+            // items that answer it equally well.
+            return [
+              { text: "sFooNo", sortText: "a" },
+              { text: "sfn", sortText: "b" },
+            ];
+          },
+        };
+        registration = atom.packages.serviceHub.provide(
+          "autocomplete.provider",
+          "1.0.0",
+          testProvider,
+        );
+
+        editor.insertText("s");
+        editor.insertText("f");
+        editor.insertText("n");
+        await waitForAutocomplete(editor);
+
+        expect(getSuggestions()[0]).toEqual({ text: "sfn" });
+      });
+
+      it("uses sortText to order suggestions that match equally well", async () => {
+        testProvider = {
+          scopeSelector: ".source.js",
+          filterSuggestions: true,
+          getSuggestions(_options) {
+            // Both are exact prefix matches of "op", so the provider's own
+            // preference decides.
+            return [
+              { text: "opBeta", sortText: "z" },
+              { text: "opAlpha", sortText: "a" },
+            ];
+          },
+        };
+        registration = atom.packages.serviceHub.provide(
+          "autocomplete.provider",
+          "1.0.0",
+          testProvider,
+        );
+
+        editor.insertText("o");
+        editor.insertText("p");
+        await waitForAutocomplete(editor);
+
+        expect(getSuggestions()).toEqual([{ text: "opAlpha" }, { text: "opBeta" }]);
+      });
+
+      it("filters suggestions carrying a textEdit like any other", async () => {
+        testProvider = {
+          scopeSelector: ".source.js",
+          filterSuggestions: true,
+          getSuggestions(_options) {
+            // A textEdit replaces the word being typed, so the prefix is
+            // meaningful; exempting these from filtering left an entire LSP
+            // list unfiltered.
+            const range = [
+              [0, 0],
+              [0, 2],
+            ];
+            return [
+              { text: "okay", textEdit: { range, newText: "okay" } },
+              { text: "nope", textEdit: { range, newText: "nope" } },
+            ];
+          },
+        };
+        registration = atom.packages.serviceHub.provide(
+          "autocomplete.provider",
+          "1.0.0",
+          testProvider,
+        );
+
+        editor.insertText("o");
+        editor.insertText("k");
+        await waitForAutocomplete(editor);
+
+        expect(getSuggestions()).toEqual([{ text: "okay" }]);
+      });
+
       it("allows all suggestions when the prefix is an empty string / space", async () => {
         testProvider = {
           scopeSelector: ".source.js",

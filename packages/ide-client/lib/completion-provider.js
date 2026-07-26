@@ -31,7 +31,10 @@ module.exports = class CompletionProvider {
     this.inclusionPriority = 2;
     this.suggestionPriority = 2;
     this.excludeLowerPriority = false;
-    this.filterSuggestions = false;
+    // Let autocomplete score and rank: a server sends the whole visible scope
+    // and expects the client to narrow it, and its ranking understands
+    // subsequence matches that a prefix test cannot.
+    this.filterSuggestions = true;
     this.cache = null;
     this.abortController = null;
   }
@@ -103,8 +106,13 @@ module.exports = class CompletionProvider {
       const items = Array.isArray(result) ? result : result?.items || [];
       const defaults = Array.isArray(result) ? null : result?.itemDefaults;
       if (!Array.isArray(result) && result?.isIncomplete) isIncomplete = true;
-      for (const item of items)
-        mapped.push(this.toSuggestion(session, this.applyDefaults(item, defaults)));
+      for (const item of items) {
+        const suggestion = this.toSuggestion(session, this.applyDefaults(item, defaults));
+        // The server's own relevance ordering, which autocomplete uses to break
+        // ties between items that match the typed prefix equally well.
+        suggestion.sortText = item.sortText ?? item.label;
+        mapped.push(suggestion);
+      }
     }
     mapped.sort((a, b) =>
       (a._lspItem.sortText ?? a._lspItem.label).localeCompare(
@@ -125,20 +133,16 @@ module.exports = class CompletionProvider {
   sameSessions(a, b) {
     return a.length === b.length && a.every((session, index) => session === b[index]);
   }
+  // Narrowing is autocomplete's job now, so this only re-anchors. Filtering
+  // here as well would reject subsequence matches (`sfn` for `setFontName`)
+  // before the scorer ever saw them.
   filterCached(cache, prefix) {
-    const query = prefix.toLowerCase();
     // The cached edits were computed at the column the request was made from.
     // The user has typed since, so every replaced span has to grow by the same
     // number of characters; otherwise accepting `console` after typing `con`
     // replaces only `co` and leaves the tail behind as `consolen`.
     const growth = prefix.length - cache.prefix.length;
-    return cache.items
-      .filter((suggestion) => {
-        const item = suggestion._lspItem;
-        const haystack = (item.filterText ?? item.label).toLowerCase();
-        return haystack.startsWith(query) || haystack.includes(query);
-      })
-      .map((suggestion) => this.reanchor(suggestion, growth));
+    return cache.items.map((suggestion) => this.reanchor(suggestion, growth));
   }
   // Returns a copy whose edit range ends `growth` characters later. The cached
   // suggestion itself is left alone so a later, shorter prefix re-anchors from

@@ -231,6 +231,36 @@ describe("CompletionProvider caching", () => {
     expect(result[0].textEdit.range[1]).toEqual([0, 2]);
   });
 
+  it("delegates narrowing to autocomplete and supplies the server's order", async () => {
+    const session = sessionWith(() => ({
+      items: [
+        { label: "setFontName", sortText: "b" },
+        { label: "unrelated", sortText: "a" },
+      ],
+    }));
+    const provider = new CompletionProvider(managerWith(session));
+    expect(provider.filterSuggestions).toBe(true);
+    const editor = stubEditor("sfn");
+
+    const first = await provider.getSuggestions({
+      editor,
+      bufferPosition: { row: 0, column: 1 },
+      prefix: "s",
+    });
+    expect(first.map((s) => s.sortText)).toEqual(["a", "b"]);
+
+    // The cache path must hand back everything: filtering here on a substring
+    // would drop `setFontName` for the subsequence query `sfn`, which the
+    // scorer in autocomplete is what should judge.
+    const cached = await provider.getSuggestions({
+      editor,
+      bufferPosition: { row: 0, column: 3 },
+      prefix: "sfn",
+    });
+    expect(session.requests.length).toBe(1);
+    expect(cached.length).toBe(2);
+  });
+
   it("does not cache when every server failed", async () => {
     const session = sessionWith(() => {
       throw new Error("server exploded");

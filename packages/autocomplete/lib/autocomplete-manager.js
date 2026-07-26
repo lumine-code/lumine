@@ -35,6 +35,42 @@ function sortTextEdits(textEdits) {
 // answer with its auto-import edits, short enough not to feel like lag.
 const DETAILS_TIMEOUT_MS = 200;
 
+// How well a suggestion answers what the user typed. Ranking by tier first
+// keeps a literal prefix match above a scattered subsequence one, which a
+// single blended score cannot guarantee.
+const MATCH_EXACT_PREFIX = 3;
+const MATCH_PREFIX = 2;
+const MATCH_SUBSEQUENCE = 1;
+
+// What the typed prefix is matched against. `filterText` wins where a provider
+// supplies one (the LSP field for exactly this), then the visible label, and
+// only then the inserted text. Scoring the raw snippet body, as this used to,
+// matched placeholder names like `${1:name}` rather than the snippet's prefix.
+const matchTextFor = (suggestion) =>
+  suggestion.filterText || suggestion.displayText || suggestion.text || suggestion.snippet || "";
+
+const matchTierFor = (text, prefix) => {
+  if (text.startsWith(prefix)) return MATCH_EXACT_PREFIX;
+  if (text.toLowerCase().startsWith(prefix.toLowerCase())) return MATCH_PREFIX;
+  return MATCH_SUBSEQUENCE;
+};
+
+// Tier, then the provider's own preference (`sortText`, which LSP servers use
+// to express relevance), then match strength, then original order. The user's
+// typing always outranks the server's opinion; the server decides among items
+// that match it equally well.
+const compareSuggestions = (a, b) => {
+  if (a.matchTier !== b.matchTier) return b.matchTier - a.matchTier;
+  if (a.sortText != null || b.sortText != null) {
+    const left = a.sortText ?? "";
+    const right = b.sortText ?? "";
+    // Compared as opaque strings, per the LSP spec — not by locale.
+    if (left !== right) return left < right ? -1 : 1;
+  }
+  if (a.score !== b.score) return b.score - a.score;
+  return a.sortIndex - b.sortIndex;
+};
+
 // Deferred requires
 let minimatch = null;
 
@@ -461,57 +497,43 @@ module.exports = class AutocompleteManager {
     let firstCharacterMustMatch = atom.config.get("autocomplete.firstCharacterMustMatch");
 
     for (let i = 0; i < suggestions.length; i++) {
-      // `sortScore` mostly preserves in the original sorting. The function is
-      // chosen such that suggestions with a very high match score can break
-      // out.
       const suggestion = suggestions[i];
-      suggestion.sortScore = Math.max(-i / 10 + 3, 0) + 1;
-      suggestion.score = null;
+      // Ties fall back to the order the provider supplied them in.
+      suggestion.sortIndex = i;
+      suggestion.score = 0;
+      suggestion.matchTier = MATCH_SUBSEQUENCE;
 
-      const text = suggestion.snippet || suggestion.text;
       const suggestionPrefix =
         suggestion.replacementPrefix != null ? suggestion.replacementPrefix : prefix;
       const prefixIsEmpty = !suggestionPrefix || suggestionPrefix === " ";
 
-      if (prefixIsEmpty) {
+      // Nothing typed yet, so nothing to rank by: keep the provider's order.
+      // `ranges` replaces arbitrary spans of the buffer, so the typed prefix
+      // says nothing about whether the suggestion applies. A `textEdit` is
+      // different — it replaces the word being typed, so the prefix is exactly
+      // the right thing to filter on, and exempting it (as this used to) meant
+      // an LSP list was never filtered at all.
+      if (prefixIsEmpty || suggestion.ranges) {
         results.push(suggestion);
-      } else {
-        const keepMatching = firstCharacterMustMatch
-          ? suggestionPrefix[0].toLowerCase() === text[0].toLowerCase()
-          : true;
-        let score = atom.ui.fuzzyMatcher.score(text, suggestionPrefix);
-
-        // Suggestions are removed from the list if their fuzzy-matching score
-        // is `0` — unless they have `ranges` or `textEdit`. Both of these
-        // properties imply that the suggestion operates on an arbitrary buffer
-        // range, meaning that traditional filter heuristics are unlikely to be
-        // accurate.
-        //
-        // In situations where such suggestions fail fuzzy matching, they will
-        // have their scores reduced to `0`. This may deprioritize them
-        // relative to other options. Hence, though they remain in the result
-        // set, they may be deprioritized relative to other suggestions.
-        if (!!suggestion.ranges || !!suggestion.textEdit || (keepMatching && score > 0)) {
-          suggestion.score = score * suggestion.sortScore;
-          results.push(suggestion);
-        }
+        continue;
       }
+
+      const text = matchTextFor(suggestion);
+      if (firstCharacterMustMatch && text[0]?.toLowerCase() !== suggestionPrefix[0].toLowerCase()) {
+        continue;
+      }
+
+      const score = atom.ui.fuzzyMatcher.score(text, suggestionPrefix);
+      if (!score) {
+        continue;
+      }
+      suggestion.score = score;
+      suggestion.matchTier = matchTierFor(text, suggestionPrefix);
+      results.push(suggestion);
     }
 
-    results.sort(this.reverseSortOnScoreComparator);
+    results.sort(compareSuggestions);
     return results;
-  }
-
-  reverseSortOnScoreComparator(a, b) {
-    let bscore = b.score;
-    if (!bscore) {
-      bscore = b.sortScore;
-    }
-    let ascore = a.score;
-    if (!ascore) {
-      ascore = b.sortScore;
-    }
-    return bscore - ascore;
   }
 
   // providerSuggestions - array of arrays of suggestions provided by all called providers
