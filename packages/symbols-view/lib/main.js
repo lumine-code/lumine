@@ -13,17 +13,6 @@ At minimum, we recommend you install the following packages to get an experience
 * \`symbol-provider-ctags\`
 `;
 
-const NO_PROVIDERS_BUTTONS = [
-  {
-    text: "Find providers",
-    onDidClick: () => {
-      atom.openExternal(
-        `https://web.pulsar-edit.dev/packages?service=symbol.provider&serviceType=provided`,
-      );
-    },
-  },
-];
-
 module.exports = {
   activate() {
     Config.activate();
@@ -189,7 +178,6 @@ module.exports = {
 
     atom.notifications.addWarning(NO_PROVIDERS_MESSAGE, {
       description: NO_PROVIDERS_DESCRIPTION,
-      buttons: NO_PROVIDERS_BUTTONS,
       dismissable: true,
     });
 

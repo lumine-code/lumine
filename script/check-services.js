@@ -422,16 +422,18 @@ function checkReadmeServices(pkg) {
   }
 }
 
-function checkGraph(graph, packageNames) {
+function checkGraph(graph, packageNames, hasCommunityTree) {
   for (const [name, edge] of graph) {
     if (edge.consumers.length === 0) continue;
     if (edge.providers.length === 0) {
       if (EXTERNAL_SERVICES.has(name)) continue;
       // Core consuming something nothing provides is an open extension point,
       // not broken wiring — a package supplies it or none does. A *package*
-      // consuming an unprovided service is a rename that landed on one side.
+      // consuming an unprovided service is a rename that landed on one side,
+      // but only when the whole graph is visible: without pkg_lumine checked
+      // out beside this repo, half the providers are simply absent.
       const consumedOnlyByCore = edge.consumers.every((c) => c.label.startsWith("src/"));
-      const report = consumedOnlyByCore ? warn : error;
+      const report = consumedOnlyByCore || !hasCommunityTree ? warn : error;
       report(
         "graph",
         `"${name}" is consumed by ${edge.consumers.map((c) => c.label).join(", ")} but nothing provides it`,
@@ -489,9 +491,11 @@ function main() {
   const lumineRoot = path.resolve(__dirname, "..");
   const workspaceRoot = path.resolve(process.argv[2] ?? path.join(lumineRoot, ".."));
 
+  const communityRoot = path.join(workspaceRoot, "pkg_lumine");
+  const hasCommunityTree = fs.existsSync(communityRoot);
   const packages = [
     ...readPackages(path.join(lumineRoot, "packages")),
-    ...readPackages(path.join(workspaceRoot, "pkg_lumine")),
+    ...readPackages(communityRoot),
   ];
   const packageNames = new Set(packages.map((p) => p.name));
 
@@ -523,7 +527,7 @@ function main() {
     edge(name).consumers.push({ label: where, range: version });
   }
 
-  checkGraph(graph, packageNames);
+  checkGraph(graph, packageNames, hasCommunityTree);
 
   for (const message of warnings) console.log(`warn  ${message}`);
   for (const message of errors) console.log(`ERROR ${message}`);

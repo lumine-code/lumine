@@ -54,6 +54,12 @@ jobs:
         run: npm run lint
       - name: Check formatting
         run: npm run format:check
+      # Service wiring fails silently at runtime — a declared method that does
+      # not exist, or a consumer whose service name no longer matches any
+      # provider, produces no error and no failing spec. Only the bundled
+      # packages are visible here; pkg_lumine repos are checked in their own CI.
+      - name: Check services
+        run: npm run check:services
 
   test:
     name: Test on ${{ matrix.os }}
