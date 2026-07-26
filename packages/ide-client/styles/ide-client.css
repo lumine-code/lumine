@@ -1,6 +1,6 @@
-.language-client-status {
+.ide-client-status {
   padding: 0 0.5em;
 }
-.language-client-status:focus {
+.ide-client-status:focus {
   outline: 1px solid var(--base-border-color);
 }

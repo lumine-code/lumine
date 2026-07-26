@@ -44,7 +44,7 @@ describe("ServerSession against a fake server", () => {
     jasmine.useRealClock();
     manager = new LanguageServerManager();
     sessions = [];
-    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "language-client-"));
+    tempDir = fs.mkdtempSync(path.join(os.tmpdir(), "ide-client-"));
   });
 
   afterEach(async () => {

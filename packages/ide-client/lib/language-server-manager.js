@@ -264,7 +264,7 @@ module.exports = class LanguageServerManager {
     if (!relative || relative.startsWith("..")) return false;
     return minimatch(relative.replaceAll("\\", "/"), globPattern.pattern, { dot: true });
   }
-  // Watched-file events are limited to paths under the project roots — that is
+  // Watched-file events are limited to paths under the project roots â€” that is
   // the scope of atom.project.onDidChangeFiles.
   routeFileEvents(events) {
     for (const [session, registrations] of this.dynamicCapabilities) {
@@ -343,7 +343,7 @@ module.exports = class LanguageServerManager {
     session.progressTitles.clear();
   }
   trace(session, direction, message) {
-    const level = atom.config.get("language-client.trace");
+    const level = atom.config.get("ide-client.trace");
     if (level === "off") return;
     const copy =
       level === "verbose"
@@ -457,7 +457,7 @@ module.exports = class LanguageServerManager {
     }
   }
   scheduleRestart(session) {
-    const limit = atom.config.get("language-client.restartLimit");
+    const limit = atom.config.get("ide-client.restartLimit");
     if (session.restartCount >= limit) return;
     const delay = Math.min(1000 * 2 ** session.restartCount++, 30000);
     setTimeout(async () => {

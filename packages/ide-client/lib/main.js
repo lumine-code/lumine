@@ -30,7 +30,7 @@ module.exports = {
     this.customServers.activate();
     this.uiSubscriptions = new CompositeDisposable();
     this.statusElement = document.createElement("span");
-    this.statusElement.className = "language-client-status inline-block";
+    this.statusElement.className = "ide-client-status inline-block";
     this.statusElement.textContent = "LSP: idle";
     this.statusElement.tabIndex = 0;
     this.statusElement.setAttribute("role", "button");
@@ -49,11 +49,11 @@ module.exports = {
     );
     this.uiSubscriptions.add(
       atom.commands.add("atom-workspace", {
-        "language-client:toggle-problems": () => this.showProblems(),
-        "language-client:restart": () => this.restart(),
-        "language-client:format": () => this.format(),
-        "language-client:show-log": () => this.showLog(),
-        "language-client:open-custom-servers-file": () => this.customServers.openFile(),
+        "ide-client:toggle-problems": () => this.showProblems(),
+        "ide-client:restart": () => this.restart(),
+        "ide-client:format": () => this.format(),
+        "ide-client:show-log": () => this.showLog(),
+        "ide-client:open-custom-servers-file": () => this.customServers.openFile(),
       }),
     );
   },
@@ -191,13 +191,13 @@ module.exports = {
     const adapter = editor && this.manager.adapterForEditor(editor);
     if (!adapter) {
       this.statusElement.textContent = "LSP Idle";
-      this.statusElement.className = "language-client-status inline-block status-idle";
+      this.statusElement.className = "ide-client-status inline-block status-idle";
     } else if (!session) {
       this.statusElement.textContent = `${adapter.displayName} starting...`;
-      this.statusElement.className = "language-client-status inline-block status-starting";
+      this.statusElement.className = "ide-client-status inline-block status-starting";
     } else {
       this.statusElement.textContent = `${adapter.displayName}`;
-      this.statusElement.className = `language-client-status inline-block status-${session.state}`;
+      this.statusElement.className = `ide-client-status inline-block status-${session.state}`;
     }
     const background = [...this.manager.sessions.values()].filter(
       (candidate) => candidate !== session && candidate.state === "running",

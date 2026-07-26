@@ -20,7 +20,7 @@ module.exports = class CodeFormatProvider {
     const self = this;
     return {
       priority: 2,
-      packageName: "language-client",
+      packageName: "ide-client",
       get grammarScopes() {
         return self.manager.allGrammarScopes();
       },

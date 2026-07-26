@@ -1,5 +1,5 @@
 {
-  "name": "language-client",
+  "name": "ide-client",
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",

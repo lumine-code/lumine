@@ -10,7 +10,7 @@ module.exports = class ReferencesProvider {
     this.manager = manager;
     manager.addCapabilityFragment(REFERENCES_CAPABILITIES);
     this.name = "Language Server";
-    this.packageName = "language-client";
+    this.packageName = "ide-client";
     this.abortController = null;
   }
   get grammarScopes() {

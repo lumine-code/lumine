@@ -1,4 +1,4 @@
-# language-client
+# ide-client
 
 Language Server Protocol client infrastructure.
 
@@ -19,11 +19,11 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 
 Commands available in `atom-workspace`:
 
-- `language-client:restart`: restart the language server for the active editor,
-- `language-client:toggle-problems`: open the linter panel with the server diagnostics,
-- `language-client:format`: format the active document,
-- `language-client:show-log`: open the active server's log in a new editor,
-- `language-client:open-custom-servers-file`: open the custom servers configuration file.
+- `ide-client:restart`: restart the language server for the active editor,
+- `ide-client:toggle-problems`: open the linter panel with the server diagnostics,
+- `ide-client:format`: format the active document,
+- `ide-client:show-log`: open the active server's log in a new editor,
+- `ide-client:open-custom-servers-file`: open the custom servers configuration file.
 
 ## Usage
 
@@ -46,7 +46,7 @@ Commands are spawned directly with `shell: false`; arguments belong in `args`. T
 
 ## Configuration
 
-Any language server can be wired without an adapter package through `language-servers.json` in the configuration directory (open it with `language-client:open-custom-servers-file`). Each entry needs a `command` and grammar `scopes`; `args`, `languageId`, `sessionScope`, `transport`, `env`, `initializationOptions`, and `settings` are optional. `settings` feeds both `workspace/configuration` lookups and the configuration push after startup:
+Any language server can be wired without an adapter package through `language-servers.json` in the configuration directory (open it with `ide-client:open-custom-servers-file`). Each entry needs a `command` and grammar `scopes`; `args`, `languageId`, `sessionScope`, `transport`, `env`, `initializationOptions`, and `settings` are optional. `settings` feeds both `workspace/configuration` lookups and the configuration push after startup:
 
 ```json
 {
@@ -66,7 +66,7 @@ Saving the file restarts exactly the servers whose entries changed.
 Tweak the status-bar item from your stylesheet:
 
 ```less
-.language-client-status {
+.ide-client-status {
   font-weight: bold;
   &.status-failed {
     color: var(--text-color-error);

@@ -20,7 +20,7 @@ module.exports = class SignatureProvider {
     this.manager = manager;
     manager.addCapabilityFragment(SIGNATURE_CAPABILITIES);
     this.name = "Language Server";
-    this.packageName = "language-client";
+    this.packageName = "ide-client";
     this.priority = 2;
   }
   get grammarScopes() {

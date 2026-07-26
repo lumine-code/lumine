@@ -19,7 +19,7 @@ module.exports = class HoverProvider {
     this.manager = manager;
     manager.addCapabilityFragment(HOVER_CAPABILITIES);
     this.name = "Language Server";
-    this.packageName = "language-client";
+    this.packageName = "ide-client";
     this.priority = 2;
     this.abortController = null;
   }

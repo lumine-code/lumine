@@ -17,7 +17,7 @@ module.exports = class RefactorProvider {
     this.manager = manager;
     manager.addCapabilityFragment(REFACTOR_CAPABILITIES);
     this.priority = 2;
-    this.packageName = "language-client";
+    this.packageName = "ide-client";
   }
   get grammarScopes() {
     return this.manager.allGrammarScopes();

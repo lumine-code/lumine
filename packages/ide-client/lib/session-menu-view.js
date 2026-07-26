@@ -31,7 +31,7 @@ module.exports = class SessionMenuView {
       },
       didCancelSelection: () => this.cancel(),
     });
-    this.selectList.element.classList.add("language-client-session-menu");
+    this.selectList.element.classList.add("ide-client-session-menu");
   }
 
   async toggle() {

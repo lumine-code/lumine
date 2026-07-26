@@ -25,7 +25,7 @@ module.exports = class LspSymbolProvider {
     this.manager = manager;
     manager.addCapabilityFragment(SYMBOL_CAPABILITIES);
     this.name = "Language Server";
-    this.packageName = "language-client";
+    this.packageName = "ide-client";
     this.isExclusive = true;
   }
   async canProvideSymbols(meta) {
