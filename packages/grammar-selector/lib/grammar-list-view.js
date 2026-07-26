@@ -49,10 +49,15 @@ module.exports = class GrammarListView {
         }
 
         if (grammar.scopeName) {
-          const scopeName = document.createElement("scopeName");
+          const scopeName = document.createElement("span");
           scopeName.classList.add("badge", "badge-info");
           scopeName.textContent = grammar.scopeName;
           div.appendChild(scopeName);
+        }
+
+        // Appended outside the scope-name branch: a grammar without one still
+        // has a parser badge to show when duplicates are listed.
+        if (div.childElementCount > 0) {
           element.appendChild(div);
         }
 
