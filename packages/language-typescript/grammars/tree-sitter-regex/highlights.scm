@@ -1,4 +1,3 @@
-
 (non_capturing_group) @meta.group.non-capturing.regexp
 
 [

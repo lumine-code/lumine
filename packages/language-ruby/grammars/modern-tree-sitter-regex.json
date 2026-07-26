@@ -4,7 +4,7 @@
   "parser": "tree-sitter-regex",
   "injectionRegex": "^(rb-regex)$",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-regex#v1.0.0",
+    "parserSource": "github:tree-sitter/tree-sitter-regex#v0.25.0",
     "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-regex/tree-sitter-regex.wasm",
     "highlightsQuery": "tree-sitter-regex/highlights.scm"
