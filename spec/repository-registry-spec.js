@@ -5,6 +5,7 @@ const { Disposable, Emitter } = require("event-kit");
 const temp = require("@lumine-code/temp").track();
 
 const RepositoryRegistry = require("../src/repository-registry");
+const ServiceHub = require("../src/service-hub");
 
 class FakeRepository {
   constructor(workingDirectory) {
@@ -1063,5 +1064,38 @@ describe("RepositoryRegistry", () => {
     project.emitFileChanges([{ path: repository.getPath() }]);
     expect(registry.getForPath(nestedPath)).toBeNull();
     expect(repository.isDestroyed()).toBe(true);
+  });
+
+  // Resetting the window runs PackageManager#reset, which clears every consumer
+  // off the service hub. A registry that subscribed only in its constructor
+  // keeps that subscription in name alone afterwards, and no provider ever
+  // reaches it again — silently, which is why this is pinned.
+  describe("consumeServices", () => {
+    const fakeProvider = () => ({ initializeRepository: async () => null });
+
+    it("receives providers registered on the hub", () => {
+      const serviceHub = new ServiceHub();
+      const registry = new RepositoryRegistry({ packageManager: { serviceHub } });
+      const before = registry.operationProviders.length;
+
+      serviceHub.provide("repositories.operations-provider", "1.0.0", fakeProvider());
+      expect(registry.operationProviders.length).toBe(before + 1);
+
+      registry.destroy();
+    });
+
+    it("reconnects after the hub has been cleared", () => {
+      const serviceHub = new ServiceHub();
+      const registry = new RepositoryRegistry({ packageManager: { serviceHub } });
+      const before = registry.operationProviders.length;
+
+      serviceHub.clear();
+      registry.consumeServices({ serviceHub });
+      serviceHub.provide("repositories.operations-provider", "1.0.0", fakeProvider());
+
+      expect(registry.operationProviders.length).toBe(before + 1);
+
+      registry.destroy();
+    });
   });
 });

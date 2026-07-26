@@ -107,8 +107,8 @@ describe("ServiceHub", () => {
     it("delivers the highest version satisfying the consumer's range", () => {
       const consume = jasmine.createSpy("consume");
 
-      hub.provide("icons.classes", { "1.0.0": "v1", "1.2.0": "v1.2", "2.0.0": "v2" });
-      hub.consume("icons.classes", "^1.0.0", consume);
+      hub.provide("example.service", { "1.0.0": "v1", "1.2.0": "v1.2", "2.0.0": "v2" });
+      hub.consume("example.service", "^1.0.0", consume);
 
       expect(consume.calls.count()).toBe(1);
       expect(consume).toHaveBeenCalledWith("v1.2");
@@ -117,8 +117,8 @@ describe("ServiceHub", () => {
     it("does not deliver when no version satisfies the range", () => {
       const consume = jasmine.createSpy("consume");
 
-      hub.provide("icons.classes", "1.0.0", {});
-      hub.consume("icons.classes", "^2.0.0", consume);
+      hub.provide("example.service", "1.0.0", {});
+      hub.consume("example.service", "^2.0.0", consume);
 
       expect(consume).not.toHaveBeenCalled();
     });

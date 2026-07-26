@@ -77,17 +77,23 @@ module.exports = class RepositoryRegistry {
       );
     }
 
-    if (packageManager?.serviceHub) {
-      this.subscriptions.add(
-        packageManager.serviceHub.consume(
-          "repositories.operations-provider",
-          "^1.0.0",
-          (provider) => this.addOperationProvider(provider),
-        ),
-      );
-    }
+    this.consumeServices(packageManager);
 
     if (project) this.attachProject(project);
+  }
+
+  // Resetting the window runs `PackageManager#reset`, which clears every
+  // consumer off the service hub. A subscription made only in the constructor
+  // would survive that in name alone and no provider would reach the registry
+  // again, so this is re-run from `AtomEnvironment#reset` the same way Project
+  // and Workspace re-run theirs.
+  consumeServices(packageManager) {
+    this.serviceSubscription?.dispose();
+    this.serviceSubscription = packageManager?.serviceHub?.consume(
+      "repositories.operations-provider",
+      "^1.0.0",
+      (provider) => this.addOperationProvider(provider),
+    );
   }
 
   attachProject(project) {
@@ -374,6 +380,7 @@ module.exports = class RepositoryRegistry {
     this.destroyed = true;
     this.scanGeneration++;
     this.subscriptions.dispose();
+    this.serviceSubscription?.dispose();
     this.projectSubscriptions.dispose();
     this.workspaceSubscriptions.dispose();
     this.workspace = null;

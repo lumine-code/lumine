@@ -454,6 +454,30 @@ describe("IconRegistry", () => {
         expect(node.classList.contains("two")).toBe(false);
       });
 
+      // A select-list row is rebuilt on every keystroke and nothing disposes
+      // it, so the registry must not be the thing keeping it alive. Held
+      // strongly, every row ever rendered would stay until something happened
+      // to invalidate its key.
+      it("holds its live bindings weakly", () => {
+        const application = registry.applyTo(element(), { path: "/a" });
+        const bound = registry.applications.get(application.key);
+        expect(bound.size).toBe(1);
+        for (const ref of bound) expect(ref instanceof WeakRef).toBe(true);
+      });
+
+      it("drops a binding whose application has been collected", () => {
+        const application = registry.applyTo(element(), { path: "/a" });
+        const key = application.key;
+
+        // Stands in for a collected application: the registry cannot tell the
+        // difference, and this is the branch that would otherwise accumulate.
+        registry.applications.get(key).add({ deref: () => undefined });
+        expect(registry.applications.get(key).size).toBe(2);
+
+        registry.invalidate({ paths: ["/a"] });
+        expect(registry.applications.get(key).size).toBe(1);
+      });
+
       it("stops tracking a detached element without stripping its icon", () => {
         let classes = ["one"];
         registry.addProvider(provider(() => Icon.classes(classes)));
@@ -524,6 +548,36 @@ describe("IconRegistry", () => {
       registry.clear();
       expect(registry.iconFor({ path: "/a/b.png" }).classes).toEqual(["icon-file-media"]);
       expect(registry.iconFor({ name: "gear" }).classes).toEqual(["icon-gear"]);
+    });
+  });
+
+  // Resetting the window runs PackageManager#reset, which clears every consumer
+  // off the service hub. Subscribing only in the constructor would keep that
+  // subscription in name alone and no provider would reach the chain again.
+  describe("consuming icons.provider from the hub", () => {
+    const ServiceHub = require("../src/service-hub");
+
+    it("receives providers registered on the hub", () => {
+      const serviceHub = new ServiceHub();
+      const hubRegistry = new IconRegistry({ packageManager: { serviceHub } });
+
+      serviceHub.provide("icons.provider", "1.0.0", { iconFor: () => "from-hub" });
+      expect(hubRegistry.iconFor({ path: "/a" }).classes).toEqual(["from-hub"]);
+
+      hubRegistry.destroy();
+    });
+
+    it("reconnects after clear, which the window reset relies on", () => {
+      const serviceHub = new ServiceHub();
+      const hubRegistry = new IconRegistry({ packageManager: { serviceHub } });
+
+      serviceHub.clear();
+      hubRegistry.clear();
+      serviceHub.provide("icons.provider", "1.0.0", { iconFor: () => "after-reset" });
+
+      expect(hubRegistry.iconFor({ path: "/a" }).classes).toEqual(["after-reset"]);
+
+      hubRegistry.destroy();
     });
   });
 

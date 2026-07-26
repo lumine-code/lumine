@@ -495,6 +495,7 @@ class AtomEnvironment {
     // The reset recreated the pane containers, so the registry's active-item
     // subscription must be rebuilt against the new center.
     this.repositories.attachWorkspace(this.workspace);
+    this.repositories.consumeServices(this.packages);
     this.icons.clear();
     this.icons.attachProject(this.project);
     this.grammars.clear();
