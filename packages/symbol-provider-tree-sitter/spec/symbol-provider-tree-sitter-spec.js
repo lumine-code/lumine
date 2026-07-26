@@ -375,11 +375,11 @@ describe("TreeSitterProvider", () => {
         let symbols = await getSymbols(editor, "file");
 
         expect(symbols[0].tag).toBe("class");
-        expect(symbols[0].icon).toBe("icon-puzzle");
+        expect(symbols[0].icon).toBeNull();
         expect(symbols[0].position.row).toEqual(0);
 
         expect(symbols[1].tag).toBe("class");
-        expect(symbols[1].icon).toBe("icon-puzzle");
+        expect(symbols[1].icon).toBeNull();
         expect(symbols[1].position.row).toEqual(1);
       });
 
@@ -400,11 +400,11 @@ describe("TreeSitterProvider", () => {
         let symbols = await getSymbols(editor, "file");
 
         expect(symbols[0].tag).toBe("class");
-        expect(symbols[0].icon).toBe("icon-puzzle");
+        expect(symbols[0].icon).toBeNull();
         expect(symbols[0].position.row).toEqual(0);
 
         expect(symbols[1].tag).toBe("class");
-        expect(symbols[1].icon).toBe("icon-puzzle");
+        expect(symbols[1].icon).toBeNull();
         expect(symbols[1].position.row).toEqual(1);
       });
     });

@@ -20,70 +20,6 @@ function validateListControllerProps(props) {
   return Object.keys(props).every((k) => ALLOWED_PROPS_IN_LIST_CONTROLLER.has(k));
 }
 
-// Assign a default icon type for each tag — or what LSP calls “kind.” This
-// list is copied directly from the LSP spec's exhaustive list of potential
-// symbol kinds:
-//
-// https://microsoft.github.io/language-server-protocol/specifications/lsp/3.17/specification/#symbolKind
-function iconForTag(tag) {
-  switch (tag) {
-    case "file":
-      return "icon-file";
-    case "module":
-      return "icon-database";
-    case "namespace":
-      return "icon-tag";
-    case "package":
-      return "icon-package";
-    case "class":
-      return "icon-puzzle";
-    case "method":
-      return "icon-gear";
-    case "property":
-      return "icon-primitive-dot";
-    case "field":
-      return "icon-primitive-dot";
-    case "constructor":
-      return "icon-tools";
-    case "enum":
-      return "icon-list-unordered";
-    case "interface":
-      return "icon-key";
-    case "function":
-      return "icon-gear";
-    case "variable":
-      return "icon-code";
-    case "constant":
-      return "icon-primitive-square";
-    case "string":
-      return "icon-quote";
-    case "number":
-      return "icon-plus";
-    case "boolean":
-      return "icon-question";
-    case "array":
-      return "icon-list-ordered";
-    case "object":
-      return "icon-file-code";
-    case "key":
-      return "icon-key";
-    case "null":
-      return null;
-    case "enum-member":
-      return "icon-primitive-dot";
-    case "struct":
-      return "icon-book";
-    case "event":
-      return "icon-calendar";
-    case "operator":
-      return "icon-plus";
-    case "type-parameter":
-      return null;
-    default:
-      return null;
-  }
-}
-
 /**
  * A class for setting various UI properties on a symbol list palette. This is a
  * privilege given to the “main” (or _exclusive_) provider for a given task.
@@ -186,13 +122,10 @@ class SymbolsView {
     if (tag) badges.push(tag);
 
     let primaryLineClasses = ["primary-line"];
-    if (this.showIconsInSymbolsView) {
-      if (icon) {
-        primaryLineClasses.push("icon", icon);
-      } else {
-        primaryLineClasses.push("no-icon");
-      }
-    }
+    // A provider naming its own icon still wins; everything else is the
+    // registry's kind vocabulary, which badges a kind it has no glyph for
+    // rather than showing nothing.
+    if (this.showIconsInSymbolsView && icon) primaryLineClasses.push("icon", icon);
 
     let primary = el(
       `div.${primaryLineClasses.join(".")}`,
@@ -200,6 +133,13 @@ class SymbolsView {
       badges &&
         el("div.badge-container", ...badges.map((b) => badge(b, { variant: this.useBadgeColors }))),
     );
+
+    if (this.showIconsInSymbolsView) {
+      if (!icon) {
+        atom.icons.applyTo(primary, { kind: tag, context: "symbols-view" }, { setData: false });
+      }
+      if (!primary.classList.contains("icon")) primary.classList.add("no-icon");
+    }
 
     let secondaryLineClasses = ["secondary-line"];
     if (this.showIconsInSymbolsView) {
@@ -340,10 +280,6 @@ class SymbolsView {
       symbol.file = parts.base;
     }
     symbol.name = symbol.name.replace(/[\n\r\t]/, " ");
-
-    if (symbol.tag && !symbol.icon) {
-      symbol.icon = iconForTag(symbol.tag);
-    }
   }
 
   addSymbols(allSymbols, newSymbols, provider) {

@@ -67,6 +67,9 @@ class Application {
     this.child = null;
     this.disconnectedFlushes = 0;
     this.disposed = false;
+    // Held by the registry's bindings, so it must not close over anything the
+    // application does not already own.
+    this.ref = new WeakRef(this);
   }
 
   apply() {
@@ -263,7 +266,7 @@ module.exports = class IconRegistry {
   clear() {
     for (const registration of this.registrations ?? []) registration.subscription?.dispose();
     for (const set of this.applications?.values() ?? []) {
-      for (const application of Array.from(set)) application.dispose();
+      for (const ref of Array.from(set)) ref.deref()?.dispose();
     }
     this.applications = new Map();
     this.keysByPath = new Map();
@@ -439,14 +442,31 @@ module.exports = class IconRegistry {
     if (application.key == null) return;
     let set = this.applications.get(application.key);
     if (!set) this.applications.set(application.key, (set = new Set()));
-    set.add(application);
+    // Weakly, so a transient row — a fuzzy-finder result, a symbol in a list
+    // rebuilt on every keystroke — is collected with its element instead of
+    // being pinned here until something happens to invalidate its key. A
+    // consumer that wants a definite lifetime holds the returned Disposable.
+    set.add(application.ref);
   }
 
   unbind(application) {
     const set = this.applications.get(application.key);
     if (!set) return;
-    set.delete(application);
+    set.delete(application.ref);
     if (set.size === 0) this.applications.delete(application.key);
+  }
+
+  // Resolve a bound set, dropping the entries whose application has been
+  // collected.
+  liveApplications(key, into) {
+    const set = this.applications.get(key);
+    if (!set) return;
+    for (const ref of set) {
+      const application = ref.deref();
+      if (application) into.add(application);
+      else set.delete(ref);
+    }
+    if (set.size === 0) this.applications.delete(key);
   }
 
   // Extended: Drop cached answers and repaint what they were rendered into.
@@ -461,8 +481,8 @@ module.exports = class IconRegistry {
     if (scope == null) {
       for (const cache of Object.values(this.caches)) cache.clear();
       this.keysByPath.clear();
-      for (const set of this.applications.values()) {
-        for (const application of set) affected.add(application);
+      for (const key of Array.from(this.applications.keys())) {
+        this.liveApplications(key, affected);
       }
     } else {
       for (const type of scope.types ?? []) this.dropType(type, affected);
@@ -509,9 +529,7 @@ module.exports = class IconRegistry {
   }
 
   collect(key, affected) {
-    const set = this.applications.get(key);
-    if (!set) return;
-    for (const application of set) affected.add(application);
+    this.liveApplications(key, affected);
   }
 
   flush(affected) {
@@ -573,7 +591,7 @@ module.exports = class IconRegistry {
     if (this.destroyed) return;
     this.destroyed = true;
     for (const set of Array.from(this.applications.values())) {
-      for (const application of Array.from(set)) application.dispose();
+      for (const ref of Array.from(set)) ref.deref()?.dispose();
     }
     for (const registration of this.registrations) registration.subscription?.dispose();
     this.registrations = [];

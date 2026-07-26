@@ -102,13 +102,10 @@ class FileView extends SymbolsView {
     }
 
     let primaryLineClasses = ["primary-line"];
-    if (this.showIconsInSymbolsView) {
-      if (icon) {
-        primaryLineClasses.push("icon", icon);
-      } else {
-        primaryLineClasses.push("no-icon");
-      }
-    }
+    // A provider naming its own icon still wins; everything else is the
+    // registry's kind vocabulary, which badges a kind it has no glyph for
+    // rather than showing nothing.
+    if (this.showIconsInSymbolsView && icon) primaryLineClasses.push("icon", icon);
 
     // The “primary” results line shows the symbol's name and its tag, if any.
     let primary = el(
@@ -117,6 +114,13 @@ class FileView extends SymbolsView {
       badges &&
         el("div.badge-container", ...badges.map((b) => badge(b, { variant: this.useBadgeColors }))),
     );
+
+    if (this.showIconsInSymbolsView) {
+      if (!icon) {
+        atom.icons.applyTo(primary, { kind: tag, context: "symbols-view" }, { setData: false });
+      }
+      if (!primary.classList.contains("icon")) primary.classList.add("no-icon");
+    }
 
     // The “secondary” results line shows the symbol’s row number and its
     // context, if any.

@@ -6,10 +6,10 @@ const { Icon } = require("./icon-descriptor");
 // `atom.notifications.add*({icon})` takes — a bare octicon name the consumer
 // used to prefix with `icon-` by hand.
 //
-// A *kind* is an LSP SymbolKind or a completion type. Its table merges the two
-// that used to live in symbols-view and autocomplete; a kind with no entry
-// falls back to a single-letter badge so an unrecognized symbol still reads as
-// something.
+// A *kind* is an LSP SymbolKind or something like one. Its table is the one
+// that used to be duplicated between symbols-view and symbol-provider-tree-sitter;
+// a kind with no entry falls back to a single-letter badge so an unrecognized
+// symbol still reads as something.
 
 // Deliberately not a hard-coded list of the 242 octicon names: that would
 // duplicate the generated `static/icons/octicons.css` and rot against it. Any
@@ -50,9 +50,10 @@ const DEFAULT_KINDS = new Map([
   ["event", "icon-calendar"],
   ["operator", "icon-plus"],
   ["type-parameter", null],
-  // Completion types that are not symbol kinds. `module` and `package` are
-  // shared with the list above; the symbol vocabulary wins because it tells
-  // the two apart, where autocomplete collapsed them onto one glyph.
+  // Kinds that are not LSP symbol kinds but that a list of code entities can
+  // still be asked about. Autocomplete keeps its own small table: there the
+  // type string doubles as the colour token, so the class has to stay whatever
+  // the syntax theme keys on.
   ["snippet", "icon-move-right"],
   ["import", "icon-package"],
   ["require", "icon-package"],
