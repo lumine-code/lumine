@@ -607,9 +607,15 @@ describe("TextEditorComponent", () => {
         });
         spyOn(window, "clearInterval");
 
-        // Leave cursorBlinkResumeDelay at its default so the post-movement
-        // assertions at the end cannot race a resumed blink cycle.
-        const { component, element, editor } = buildComponent({ cursorBlinkPeriod: 40 });
+        // Every selection change here schedules a blink resume on a real timer,
+        // and a resume blinks the cursors back off. At the default 300ms that is
+        // a race the assertions below lose whenever a frame runs long under
+        // full-suite load. No spec covers resumption, so push it out of reach
+        // rather than depending on the wall clock.
+        const { component, element, editor } = buildComponent({
+          cursorBlinkPeriod: 40,
+          cursorBlinkResumeDelay: 10000,
+        });
         editor.addCursorAtScreenPosition([1, 0]);
 
         element.focus();
