@@ -6,8 +6,8 @@
   "injectionRegex": "(HTML|html|Html)$",
   "firstLineRegex": "<(?:!DOCTYPE\\s*)?html|-\\*-(?:\\s*(?=[^:;\\s]+\\s*-\\*-)|(?:.*?[;\\s]|(?<=-\\*-))mode\\s*:\\s*)html(?=[\\s;]|(?<![-*])-\\*-).*?-\\*-|(?:(?:\\s|^)vi(?:m[<=>]?\\d+|m)?|\\sex)(?=:(?=\\s*set?\\s[^\\n:]+:)|:(?!\\s*set?\\s))(?:(?:\\s|\\s*:\\s*)\\w*(?:\\s*=(?:[^\\n\\\\\\s]|\\\\.)*)?)*[\\s:](?:filetype|ft|syntax)\\s*=x?html(?=\\s|:|$)",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-html#v0.23.0",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-html#v0.23.2",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-html/tree-sitter-html.wasm",
     "highlightsQuery": "tree-sitter-html/highlights.scm",
     "foldsQuery": "tree-sitter-html/folds.scm",
