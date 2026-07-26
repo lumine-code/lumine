@@ -1,5 +1,16 @@
-const DefaultFileIcons = require("./default-file-icons");
 const { Emitter, CompositeDisposable } = require("atom");
+
+// The fallback when no package provides `atom.file-icons`. Core owns the
+// octicon mapping so every consumer answers identically and shares its cache.
+// Tabs only want a default icon in the MRU switcher — a plain tab keeps its
+// title unadorned unless a real icon provider is installed.
+const DefaultFileIcons = {
+  iconClassForPath(filePath, caller) {
+    if (caller !== "tabs-mru-switcher") return "";
+    if (typeof filePath !== "string") return "icon-file-text";
+    return atom.ui.iconClassForPath(filePath);
+  },
+};
 
 let iconServices;
 module.exports = function () {
@@ -13,6 +24,7 @@ class IconServices {
     this.elementIcons = null;
     this.elementIconDisposables = new CompositeDisposable();
     this.fileIcons = DefaultFileIcons;
+    this.fileIconSubscription = null;
   }
 
   onDidChange(callback) {
@@ -42,7 +54,17 @@ class IconServices {
 
   setFileIcons(service) {
     if (service !== this.fileIcons) {
+      if (this.fileIconSubscription) {
+        this.fileIconSubscription.dispose();
+        this.fileIconSubscription = null;
+      }
       this.fileIcons = service;
+      // A provider that can change its answers for paths it has already been
+      // asked about — a different icon set, or a light/dark switch — says so
+      // here. Without it, views keep the classes they were first given.
+      if (service && typeof service.onDidChange === "function") {
+        this.fileIconSubscription = service.onDidChange(() => this.emitter.emit("did-change"));
+      }
       return this.emitter.emit("did-change");
     }
   }

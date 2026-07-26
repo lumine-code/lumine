@@ -1,6 +1,11 @@
-const DefaultFileIcons = require("./default-file-icons");
 const { Emitter, CompositeDisposable } = require("atom");
 const { repoForPath } = require("./helpers");
+
+// The fallback when no package provides `atom.file-icons`. Core owns the
+// octicon mapping so every consumer answers identically and shares its cache.
+const DefaultFileIcons = {
+  iconClassForPath: (filePath) => atom.ui.iconClassForPath(filePath),
+};
 
 let iconServices;
 module.exports = function getIconServices() {
@@ -14,6 +19,7 @@ class IconServices {
     this.elementIcons = null;
     this.elementIconDisposables = new CompositeDisposable();
     this.fileIcons = DefaultFileIcons;
+    this.fileIconSubscription = null;
   }
 
   onDidChange(callback) {
@@ -43,7 +49,17 @@ class IconServices {
 
   setFileIcons(service) {
     if (service !== this.fileIcons) {
+      if (this.fileIconSubscription) {
+        this.fileIconSubscription.dispose();
+        this.fileIconSubscription = null;
+      }
       this.fileIcons = service;
+      // A provider that can change its answers for paths it has already been
+      // asked about — a different icon set, or a light/dark switch — says so
+      // here. Without it, views keep the classes they were first given.
+      if (service && typeof service.onDidChange === "function") {
+        this.fileIconSubscription = service.onDidChange(() => this.emitter.emit("did-change"));
+      }
       this.emitter.emit("did-change");
     }
   }

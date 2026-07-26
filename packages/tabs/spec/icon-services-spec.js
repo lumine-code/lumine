@@ -1,14 +1,16 @@
 const path = require("path");
 const { Disposable } = require("atom");
 
-const DefaultFileIcons = require("../lib/default-file-icons");
 const getIconServices = require("../lib/get-icon-services");
 
 describe("icon services", () => {
-  let iconServices, tab;
+  let iconServices, tab, DefaultFileIcons;
 
   beforeEach(() => {
     iconServices = getIconServices();
+    // The default is private to get-icon-services; capture it before any
+    // provider replaces it so identity assertions still work.
+    DefaultFileIcons = iconServices.fileIcons;
 
     waitsForPromise(() => atom.workspace.open(path.join(__dirname, "fixtures", "sample.js")));
 
@@ -37,6 +39,35 @@ describe("icon services", () => {
       expect(DefaultFileIcons.iconClassForPath("foo.png")).toEqual("");
       expect(DefaultFileIcons.iconClassForPath("foo.pdf")).toEqual("");
       expect(DefaultFileIcons.iconClassForPath("foo.exe")).toEqual("");
+    });
+
+    it("falls back to the core icon classes in the MRU switcher", () => {
+      const forCaller = (filePath) =>
+        DefaultFileIcons.iconClassForPath(filePath, "tabs-mru-switcher");
+      expect(forCaller("foo.zip")).toEqual(atom.ui.iconClassForPath("foo.zip"));
+      expect(forCaller("foo.png")).toEqual(["icon-file-media"]);
+      expect(forCaller("foo.pdf")).toEqual(["icon-file-pdf"]);
+      expect(forCaller(null)).toEqual("icon-file-text");
+    });
+
+    it("repaints when the provider reports its classes changed", () => {
+      let notify;
+      const provider = {
+        iconClassForPath: () => "first",
+        onDidChange(callback) {
+          notify = callback;
+          return new Disposable(() => (notify = null));
+        },
+      };
+      const disposable = atom.packages.serviceHub.provide("atom.file-icons", "1.0.0", provider);
+      expect(tab.itemTitle.className).toBe("title icon first");
+
+      provider.iconClassForPath = () => "second";
+      notify();
+      expect(tab.itemTitle.className).toBe("title icon second");
+
+      disposable.dispose();
+      expect(notify).toBe(null);
     });
 
     it("allows a service to replace the default", () => {

@@ -42,13 +42,23 @@ function iconClassForPath(filePath) {
   const extension = path.extname(filePath);
   let result;
 
+  // Only directories and symlinks need the file to exist. Everything else is
+  // decided from the name, so paths that cannot be stat'd — entries inside an
+  // archive, remote items, results for a file that has since been deleted —
+  // still get a meaningful icon rather than the generic one.
   try {
     const lstat = fs.lstatSync(filePath);
     if (lstat.isDirectory()) {
       result = lstat.isSymbolicLink() ? ["icon-file-symlink-directory"] : ["icon-file-directory"];
     } else if (lstat.isSymbolicLink()) {
       result = ["icon-file-symlink-file"];
-    } else if (isReadmePath(extension, filePath)) {
+    }
+  } catch {
+    // Not on disk; fall through to name-based classification.
+  }
+
+  if (!result) {
+    if (isReadmePath(extension, filePath)) {
       result = ["icon-book"];
     } else if (isCompressedExtension(extension)) {
       result = ["icon-file-zip"];
@@ -61,8 +71,6 @@ function iconClassForPath(filePath) {
     } else {
       result = ["icon-file-text"];
     }
-  } catch {
-    result = ["icon-file-text"];
   }
 
   iconCache.set(filePath, result);

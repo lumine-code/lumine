@@ -1,5 +1,4 @@
 const fs = require("fs");
-const path = require("path");
 
 /**
  * Binary search with insertion point.
@@ -58,45 +57,6 @@ function isEqual(a, b) {
   return keysA.every((key) => isEqual(a[key], b[key]));
 }
 
-// File type extension sets (replacing fs-plus)
-const COMPRESSED_EXTS = new Set([
-  ".gz",
-  ".bz2",
-  ".zip",
-  ".tar",
-  ".rar",
-  ".7z",
-  ".xz",
-  ".lz",
-  ".lzma",
-  ".tgz",
-  ".tbz2",
-]);
-const IMAGE_EXTS = new Set([
-  ".png",
-  ".jpg",
-  ".jpeg",
-  ".gif",
-  ".svg",
-  ".webp",
-  ".ico",
-  ".bmp",
-  ".tiff",
-  ".tif",
-]);
-const BINARY_EXTS = new Set([
-  ".exe",
-  ".dll",
-  ".bin",
-  ".so",
-  ".dylib",
-  ".o",
-  ".obj",
-  ".a",
-  ".lib",
-  ".pdb",
-]);
-
 function isSymbolicLinkSync(filePath) {
   try {
     return fs.lstatSync(filePath).isSymbolicLink();
@@ -105,35 +65,10 @@ function isSymbolicLinkSync(filePath) {
   }
 }
 
-function isReadmePath(filePath) {
-  return /^readme/i.test(path.basename(filePath));
-}
-
-function isCompressedExtension(ext) {
-  return COMPRESSED_EXTS.has(ext.toLowerCase());
-}
-
-function isImageExtension(ext) {
-  return IMAGE_EXTS.has(ext.toLowerCase());
-}
-
-function isPdfExtension(ext) {
-  return ext.toLowerCase() === ".pdf";
-}
-
-function isBinaryExtension(ext) {
-  return BINARY_EXTS.has(ext.toLowerCase());
-}
-
 module.exports = {
   binarySearch,
   escapeRegExp,
   pluralize,
   isEqual,
   isSymbolicLinkSync,
-  isReadmePath,
-  isCompressedExtension,
-  isImageExtension,
-  isPdfExtension,
-  isBinaryExtension,
 };
