@@ -143,6 +143,40 @@ describe("CompletionProvider caching", () => {
     expect(next.length).toBe(1);
   });
 
+  it("picks the insert or replace range according to consumeSuffix", async () => {
+    const insertReplace = {
+      label: "console",
+      textEdit: {
+        insert: { start: { line: 0, character: 0 }, end: { line: 0, character: 2 } },
+        replace: { start: { line: 0, character: 0 }, end: { line: 0, character: 7 } },
+        newText: "console",
+      },
+    };
+    const editor = stubEditor("console");
+
+    atom.config.set("autocomplete.consumeSuffix", true);
+    let provider = new CompletionProvider(
+      managerWith(sessionWith(() => ({ items: [insertReplace] }))),
+    );
+    let result = await provider.getSuggestions({
+      editor,
+      bufferPosition: { row: 0, column: 2 },
+      prefix: "co",
+    });
+    // Replacing the whole identifier is what consuming the suffix means;
+    // taking `insert` here strands "nsole" and yields "consolensole".
+    expect(result[0].textEdit.range[1]).toEqual([0, 7]);
+
+    atom.config.set("autocomplete.consumeSuffix", false);
+    provider = new CompletionProvider(managerWith(sessionWith(() => ({ items: [insertReplace] }))));
+    result = await provider.getSuggestions({
+      editor,
+      bufferPosition: { row: 0, column: 2 },
+      prefix: "co",
+    });
+    expect(result[0].textEdit.range[1]).toEqual([0, 2]);
+  });
+
   it("does not cache when every server failed", async () => {
     const session = sessionWith(() => {
       throw new Error("server exploded");

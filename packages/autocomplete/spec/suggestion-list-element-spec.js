@@ -55,6 +55,24 @@ describe("Suggestion List Element", () => {
       expect(suggestionListElement.selectedLi.innerHTML).toContain("ok&lt;yeah&gt;");
     });
 
+    it("renders a letter icon for types that only exist on Object.prototype", () => {
+      // "constructor" resolves through the prototype of the icon-class map, so
+      // a truthiness check set the class name to the source of Object itself.
+      suggestionListElement.renderItem({ text: "Thing", type: "constructor" });
+      const icon = suggestionListElement.selectedLi.querySelector(".icon");
+      expect(icon.classList.contains("constructor")).toBe(true);
+      expect(icon.innerHTML).not.toContain("native code");
+      const letter = icon.querySelector(".icon-letter");
+      expect(letter).not.toBeNull();
+      expect(letter.textContent).toBe("c");
+    });
+
+    it("still maps the types that do have an icon class", () => {
+      suggestionListElement.renderItem({ text: "Thing", type: "snippet" });
+      const icon = suggestionListElement.selectedLi.querySelector(".icon");
+      expect(icon.querySelector(".icon-move-right")).not.toBeNull();
+    });
+
     it("HTML escapes labels", () => {
       let suggestion = { text: "something", leftLabel: "Animal<Cat>", rightLabel: "Animal<Dog>" };
       suggestionListElement.renderItem(suggestion);

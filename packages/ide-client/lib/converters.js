@@ -43,8 +43,12 @@ exports.symbolKind = (kind) =>
     26: "type-parameter",
   })[kind] || "unknown";
 
+// The full LSP 3.17 CompletionItemKind table. Every value is listed: the map
+// used to skip seven kinds and was shifted by one from 20 onward, so a
+// constant rendered as a struct and an enum member as a constant.
 exports.completionKind = (kind) =>
   ({
+    1: "text",
     2: "method",
     3: "function",
     4: "constructor",
@@ -54,13 +58,19 @@ exports.completionKind = (kind) =>
     8: "interface",
     9: "module",
     10: "property",
+    11: "unit",
     12: "value",
     13: "enum",
     14: "keyword",
     15: "snippet",
+    16: "color",
     17: "file",
-    20: "constant",
-    21: "struct",
-    22: "event",
-    25: "type",
+    18: "reference",
+    19: "folder",
+    20: "enum-member",
+    21: "constant",
+    22: "struct",
+    23: "event",
+    24: "operator",
+    25: "type-parameter",
   })[kind] || "value";

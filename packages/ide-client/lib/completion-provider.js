@@ -182,9 +182,19 @@ module.exports = class CompletionProvider {
       suggestion.snippet = item.insertText || item.textEdit?.newText || item.label;
       delete suggestion.text;
     }
-    const editRange = item.textEdit?.range || item.textEdit?.insert || item.textEdit?.replace;
+    // An InsertReplaceEdit offers two ranges: `insert` stops at the cursor,
+    // `replace` covers the whole identifier being edited. Honour the user's
+    // consume-suffix preference rather than always taking the shorter one,
+    // which duplicated the tail (`console` + accept → `consolesole`).
+    const edit = item.textEdit;
+    const editRange =
+      edit?.range ||
+      (atom.config.get("autocomplete.consumeSuffix")
+        ? edit?.replace || edit?.insert
+        : edit?.insert) ||
+      edit?.replace;
     if (editRange)
-      suggestion.textEdit = { range: C.rangeFromLsp(editRange), newText: item.textEdit.newText };
+      suggestion.textEdit = { range: C.rangeFromLsp(editRange), newText: edit.newText };
     suggestion.additionalTextEdits = item.additionalTextEdits?.map((edit) => ({
       range: C.rangeFromLsp(edit.range),
       newText: edit.newText,

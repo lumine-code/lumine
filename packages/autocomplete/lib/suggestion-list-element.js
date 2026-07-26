@@ -524,7 +524,10 @@ module.exports = class SuggestionListElement {
       } else {
         let defaultIcon;
 
-        if (iconTypeToClass[sanitizedType] != null) {
+        // `hasOwn`, not a truthiness check: a suggestion of type
+        // "constructor" would otherwise resolve through Object.prototype and
+        // set the class name to the source of the Object function.
+        if (Object.hasOwn(iconTypeToClass, sanitizedType)) {
           defaultIcon = document.createElement("i");
           defaultIcon.className = iconTypeToClass[sanitizedType];
         } else if (sanitizedType) {
