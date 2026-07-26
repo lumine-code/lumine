@@ -90,9 +90,9 @@
     }
   },
   "consumedServices": {
-    "linter-indie": {
+    "linter.registry": {
       "versions": {
-        "^1.0.0": "consumeIndie"
+        "^1.0.0": "consumeLinterRegistry"
       }
     },
     "busy-signal.registry": {

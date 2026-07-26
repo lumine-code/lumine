@@ -89,7 +89,7 @@ describe("ide-client package", () => {
       },
       dispose() {},
     };
-    const registration = main.consumeIndie(() => delegate);
+    const registration = main.consumeLinterRegistry(() => delegate);
     const filePath = require("path").resolve("project", "main.ts");
     main.manager.publishDiagnostics(
       {},

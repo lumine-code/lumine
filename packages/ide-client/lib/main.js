@@ -159,7 +159,7 @@ module.exports = {
       if (!live.has(key)) this.backgroundProvider.remove(`ide-client:${key}`);
     this.publishedSessions = live;
   },
-  consumeIndie(registerIndie) {
+  consumeLinterRegistry(registerIndie) {
     this.indieSubscription?.dispose();
     this.disposeIndieDelegates();
     this.indieDelegates = new Map();

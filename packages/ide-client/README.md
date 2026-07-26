@@ -92,7 +92,7 @@ Tweak the server list from your stylesheet:
 - **find-references.provider** (`1.0.0`): provided to reference UIs to list occurrences of the symbol at a position.
 - **refactor.provider** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
 - **intentions.list** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.
-- **linter-indie** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
+- **linter.registry** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
 - **busy-signal.registry** (`^1.0.0`): consumed to surface server work-done progress while it runs.
 - **busy-signal.background-registry** (`^1.0.0`): consumed to list the running servers apart from transient tasks.
 
