@@ -261,7 +261,7 @@ module.exports = {
     });
   },
 
-  provideService() {
+  provideSearchControl() {
     return {
       resultsMarkerLayerForTextEditor: this.findModel.resultsMarkerLayerForTextEditor.bind(
         this.findModel,

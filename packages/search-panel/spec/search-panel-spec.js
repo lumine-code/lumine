@@ -15,7 +15,7 @@ describe("search-panel integration", () => {
 
   describe("activation and services", () => {
     it("exposes the search-panel service", () => {
-      const service = mainModule.provideService();
+      const service = mainModule.provideSearchControl();
       expect(typeof service.search).toBe("function");
       expect(typeof service.projectSearch).toBe("function");
       expect(typeof service.showFind).toBe("function");

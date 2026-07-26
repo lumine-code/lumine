@@ -58,17 +58,17 @@
         "^1.0.0": "consumeIconsElement"
       }
     },
-    "search-adapter": {
+    "search.adapter": {
       "versions": {
         "^1.0.0": "consumeSearchAdapter"
       }
     }
   },
   "providedServices": {
-    "search-panel": {
+    "search.control": {
       "description": "Search panel service with find options, panel controls, and search triggers",
       "versions": {
-        "1.0.0": "provideService"
+        "1.0.0": "provideSearchControl"
       }
     }
   },
