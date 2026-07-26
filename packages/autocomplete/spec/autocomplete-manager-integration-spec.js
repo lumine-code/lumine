@@ -1671,6 +1671,30 @@ describe("Autocomplete Manager", () => {
 
           expect(editor.getText()).toBe("(oneomgtwo())three");
         });
+
+        it("reads the word characters of the language at the cursor", async () => {
+          // `)` is a non-word character globally, but not in this language's
+          // set. Reading the setting unscoped ignored the override and left
+          // the suffix untouched.
+          const scopeSelector = `.${editor.getRootScopeDescriptor().getScopesArray()[0]}`;
+          atom.config.set("language.nonWordCharacters", "(", { scopeSelector });
+
+          spyOn(provider, "getSuggestions").andCallFake(() => [
+            { text: "oneomgtwo()", replacementPrefix: "one" },
+          ]);
+
+          editor.setText("(on)three");
+          editor.setCursorBufferPosition([0, 3]);
+          triggerAutocompletion(editor, false, "e");
+          await waitForAutocomplete(editor);
+
+          let suggestionListView = editorView.querySelector(
+            ".autocomplete autocomplete-suggestion-list",
+          );
+          atom.commands.dispatch(suggestionListView, "autocomplete:confirm");
+
+          expect(editor.getText()).toBe("(oneomgtwo()three");
+        });
       });
 
       describe("when the cursor suffix does not match the replacement", () => {

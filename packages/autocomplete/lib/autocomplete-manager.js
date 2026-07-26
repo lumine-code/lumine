@@ -920,7 +920,16 @@ module.exports = class AutocompleteManager {
     let suffix = suggestion.snippet != null ? suggestion.snippet : suggestion.text;
     const endPosition = [bufferPosition.row, bufferPosition.column + suffix.length];
     const endOfLineText = editor.getTextInBufferRange([bufferPosition, endPosition]);
-    const nonWordCharacters = new Set(atom.config.get("language.nonWordCharacters").split(""));
+    // Scoped, like every other read of this setting: what counts as a word
+    // character is the language's business, and reading the global value here
+    // let the prefix and the suffix disagree about the same character.
+    const nonWordCharacters = new Set(
+      atom.config
+        .get("language.nonWordCharacters", {
+          scope: editor.scopeDescriptorForBufferPosition(bufferPosition),
+        })
+        .split(""),
+    );
     while (suffix) {
       if (endOfLineText.startsWith(suffix) && !nonWordCharacters.has(suffix[0])) {
         break;
