@@ -229,10 +229,15 @@ function checkCoreServiceDocs(graph, packageNames, workspaceRoot) {
 function checkGraph(graph, packageNames, hasCommunityTree) {
   for (const [name, edge] of graph) {
     // Every service needs exactly one package responsible for documenting it.
-    // A name that resolves to nobody is a naming-rule violation regardless of
-    // what is checked out, so this is not gated on hasCommunityTree.
+    // A name resolves through `packageNames`, so without pkg_lumine checked out
+    // beside this repo every service a community package owns — `linter.*`,
+    // `hover.*`, `code-format.*` — resolves to nobody for want of the package
+    // rather than for want of a name. Only the full workspace can tell those
+    // two apart, so degrade to a warning here and let the workspace run (and
+    // pkg_lumine's own CI) fail on it.
     if (ownerFor(name, packageNames) === null) {
-      error(
+      const report = hasCommunityTree ? error : warn;
+      report(
         "graph",
         `"${name}" resolves to no documentation owner; ` +
           `add it to SERVICE_OWNERS in script/service-graph.js`,
