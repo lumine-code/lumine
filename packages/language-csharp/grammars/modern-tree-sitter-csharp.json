@@ -5,8 +5,8 @@
   "parser": "tree-sitter-c-sharp",
   "injectionRegex": "^(csharp|CSHARP|cs|CS)$",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-c-sharp#f05a2ca99d329de2e6c32f26a21c6169b2bfcbb7",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-c-sharp#v0.23.5",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-c-sharp/tree-sitter-c-sharp.wasm",
     "highlightsQuery": ["tree-sitter-c-sharp/highlights.scm"],
     "tagsQuery": "tree-sitter-c-sharp/tags.scm",
