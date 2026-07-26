@@ -220,19 +220,19 @@
 ; ==========
 
 ; The "Foo" in `use Bar as Foo;`
-(namespace_aliasing_clause
-  (name) @entity.name.type.namespace.alias.php)
+(namespace_use_clause
+  alias: (name) @entity.name.type.namespace.alias.php)
 
 ; The "Bar" in `use Bar as Foo;`
 (namespace_use_clause
-  (name) @entity.name.type.namespace.aliased.php
-  . (namespace_aliasing_clause)
+  . (name) @entity.name.type.namespace.aliased.php
+  alias: (name)
   (#set! capture.final true)
 )
 
 ; The "Foo" and "Bar" in `use Foo\Bar\Baz;`.
-(namespace_name_as_prefix
-  (namespace_name) @support.other.namespace.php)
+(qualified_name
+  prefix: (namespace_name) @support.other.namespace.php)
 
 ; The last segment of a namespace; the "Baz" in `Foo\Bar\Baz;`.
 (qualified_name (name) @entity.name.type.namespace.php)
@@ -678,4 +678,4 @@
 "]" @punctuation.definition.end.bracket.square.php
 
 (php_tag) @punctuation.section.embedded.begin.php
-"?>" @punctuation.section.embedded.end.php
+(php_end_tag) @punctuation.section.embedded.end.php
