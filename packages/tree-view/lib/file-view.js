@@ -1,5 +1,4 @@
 const { CompositeDisposable } = require("atom");
-const getIconServices = require("./get-icon-services");
 
 module.exports = class FileView {
   constructor(file) {
@@ -13,12 +12,9 @@ module.exports = class FileView {
     this.element.classList.add("file", "entry", "list-item");
 
     this.fileName = document.createElement("span");
-    this.fileName.classList.add("name", "icon");
     this.element.appendChild(this.fileName);
     this.fileName.textContent = this.file.name;
     this.fileName.title = this.file.name;
-    this.fileName.dataset.name = this.file.name;
-    this.fileName.dataset.path = this.file.path;
 
     this.element.getPath = this.getPath.bind(this);
     this.element.isPathEqual = this.isPathEqual.bind(this);
@@ -28,12 +24,24 @@ module.exports = class FileView {
 
     this.updateIcon();
     this.subscriptions.add(this.file.onDidStatusChange(() => this.updateStatus()));
-    this.subscriptions.add(getIconServices().onDidChange(() => this.updateIcon()));
     this.updateStatus();
   }
 
+  // The registry keeps the icon current on its own, so there is nothing to
+  // subscribe to here — and it writes `data-name`/`data-path`, which the
+  // `[data-name$=".md"]` selectors packages register commands on depend on.
   updateIcon() {
-    getIconServices().updateFileIcon(this);
+    this.subscriptions.add(
+      atom.icons.applyTo(
+        this.fileName,
+        {
+          path: this.file.path,
+          context: "tree-view",
+          hints: { directory: false, symlink: this.file.symlink },
+        },
+        { classes: ["name"], name: this.file.name },
+      ),
+    );
   }
 
   updateStatus() {

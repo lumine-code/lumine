@@ -6,7 +6,6 @@ import fs from "fs";
 import temp from "@lumine-code/temp";
 
 import archive from "./archive";
-import getIconServices from "./get-icon-services";
 
 export default class FileView {
   constructor(parentView, indexInParentView, archivePath, entry) {
@@ -21,8 +20,20 @@ export default class FileView {
     this.element.tabIndex = -1;
 
     this.name = document.createElement("span");
-    getIconServices().updateFileIcon(this);
     this.name.textContent = this.entry.getName();
+    // An entry inside an archive is not on disk, so `virtual` keeps the
+    // built-in provider from stat'ing a path that can never resolve.
+    this.disposables.add(
+      atom.icons.applyTo(
+        this.name,
+        {
+          path: path.join(this.archivePath, this.entry.getPath()),
+          context: "archive-view",
+          hints: { directory: false, virtual: true },
+        },
+        { classes: ["file"], name: this.entry.getName() },
+      ),
+    );
     this.element.appendChild(this.name);
 
     const clickHandler = () => {

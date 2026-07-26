@@ -30,11 +30,6 @@
     }
   },
   "consumedServices": {
-    "icons.class": {
-      "versions": {
-        "^1.0.0": "consumeIconsClass"
-      }
-    },
     "open-external": {
       "versions": {
         "^1.0.0": "consumeOpenExternal"

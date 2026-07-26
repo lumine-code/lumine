@@ -32,16 +32,6 @@
     "TreeView": "getTreeViewInstance"
   },
   "consumedServices": {
-    "icons.class": {
-      "versions": {
-        "^1.0.0": "consumeIconsClass"
-      }
-    },
-    "icons.element": {
-      "versions": {
-        "^1.0.0": "consumeIconsElement"
-      }
-    },
     "open-external": {
       "versions": {
         "^1.0.0": "consumeOpenExternal"

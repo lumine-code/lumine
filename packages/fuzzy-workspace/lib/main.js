@@ -62,7 +62,6 @@ module.exports = {
             active: paneItem === pane.getActiveItem(),
             title: this.titleFor(paneItem),
             uri,
-            icon: this.iconFor(paneItem, uri),
           });
         }
       }
@@ -88,23 +87,20 @@ module.exports = {
     return undefined;
   },
 
-  iconFor(paneItem, uri) {
-    if (paneItem && typeof paneItem.getIconName === "function") {
-      const name = paneItem.getIconName();
-      if (name) return ["icon-" + name];
-    }
-    if (uri && !uri.includes("://")) {
-      return this.iconClassForPath(uri);
-    }
-    return ["icon-file-text"];
-  },
-
   elementForItem(item, { matchIndices }) {
     const li = createTwoLineItem({
       primary: highlightMatches(item.title, matchIndices),
       secondary: item.uri || item.container,
-      icon: item.icon,
     });
+
+    // The item's own icon name wins over its path — `normalizeTarget` settles
+    // that. Only a real path is offered as one; a `scheme://` URI is not. An
+    // item with neither still reads as a file.
+    const uri = item.uri && !item.uri.includes("://") ? item.uri : null;
+    let target = { item: item.paneItem, path: uri, context: "fuzzy-workspace" };
+    if (atom.icons.iconFor(target).render === "none") target = { name: "file-text" };
+    atom.icons.applyTo(li.firstChild, target, { setData: false });
+
     if (item.active) li.classList.add("active-item");
     li.firstChild.dataset.container = item.container;
     return li;
@@ -170,9 +166,5 @@ module.exports = {
       const el = typeof item.paneItem.getElement === "function" ? item.paneItem.getElement() : null;
       if (el && typeof el.focus === "function") el.focus();
     }
-  },
-
-  iconClassForPath(filePath) {
-    return atom.ui.iconClassForPath(filePath);
   },
 };

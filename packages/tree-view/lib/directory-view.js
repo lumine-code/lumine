@@ -1,5 +1,5 @@
 const { CompositeDisposable } = require("atom");
-const getIconServices = require("./get-icon-services");
+const { repoForPath } = require("./helpers");
 const Directory = require("./directory");
 const FileView = require("./file-view");
 
@@ -18,29 +18,32 @@ module.exports = class DirectoryView {
     this.header.classList.add("header", "list-item");
 
     this.directoryName = document.createElement("span");
-    this.directoryName.classList.add("name", "icon");
 
     this.entries = document.createElement("ol");
     this.entries.classList.add("entries", "list-tree");
 
-    this.updateIcon();
-    this.subscriptions.add(getIconServices().onDidChange(() => this.updateIcon()));
-    this.directoryName.dataset.path = this.directory.path;
+    // A squashed directory reads as the joined path, and that is what has to
+    // land in `data-name` — the basename would be wrong for both the title and
+    // any selector matching on it.
+    const displayName =
+      this.directory.squashedNames != null
+        ? this.directory.squashedNames.join("")
+        : this.directory.name;
+    this.directoryName.title = displayName;
 
     if (this.directory.squashedNames != null) {
-      this.directoryName.dataset.name = this.directory.squashedNames.join("");
-      this.directoryName.title = this.directory.squashedNames.join("");
-
       const squashedDirectoryNameNode = document.createElement("span");
       squashedDirectoryNameNode.classList.add("squashed-dir");
       squashedDirectoryNameNode.textContent = this.directory.squashedNames[0];
       this.directoryName.appendChild(squashedDirectoryNameNode);
       this.directoryName.appendChild(document.createTextNode(this.directory.squashedNames[1]));
     } else {
-      this.directoryName.dataset.name = this.directory.name;
-      this.directoryName.title = this.directory.name;
       this.directoryName.textContent = this.directory.name;
     }
+
+    // After the name is in place: an icon rendered as a child element would be
+    // wiped by writing `textContent` over it.
+    this.updateIcon(displayName);
 
     this.element.appendChild(this.header);
     this.header.appendChild(this.directoryName);
@@ -74,8 +77,26 @@ module.exports = class DirectoryView {
     this.element.directoryName = this.directoryName;
   }
 
-  updateIcon() {
-    getIconServices().updateDirectoryIcon(this);
+  // Everything the registry needs to pick a folder glyph travels on the target.
+  // The repository lookup is skipped for symlinks, which outrank it anyway.
+  updateIcon(displayName) {
+    const hints = {
+      directory: true,
+      symlink: this.directory.symlink,
+      submodule: this.directory.submodule,
+    };
+    if (!this.directory.symlink) {
+      const repo = repoForPath(this.directory.path);
+      hints.repositoryRoot = repo != null && repo.relativize(this.directory.path) === "";
+    }
+
+    this.subscriptions.add(
+      atom.icons.applyTo(
+        this.directoryName,
+        { path: this.directory.path, context: "tree-view", hints },
+        { classes: ["name"], name: displayName },
+      ),
+    );
   }
 
   updateStatus() {

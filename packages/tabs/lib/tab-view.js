@@ -1,6 +1,5 @@
 const path = require("path");
 const { Disposable, CompositeDisposable } = require("atom");
-const getIconServices = require("./get-icon-services");
 
 const layout = require("./layout");
 
@@ -122,8 +121,6 @@ class TabView {
         console.warn("::onDidChangePath does not return a valid Disposable!", this.item);
       }
     }
-
-    this.subscriptions.add(getIconServices().onDidChange(() => this.updateIcon()));
 
     if (typeof this.item.onDidChangeIcon === "function") {
       const onDidChangeIconDisposable =
@@ -338,8 +335,25 @@ class TabView {
     return (this.updatingTitle = false);
   }
 
+  // A tab shows an icon only when something has an opinion about it: an item
+  // that names one, or an installed icon provider. `skipFallback` is what keeps
+  // a plain text tab's title unadorned rather than growing the built-in
+  // `icon-file-text` glyph.
+  //
+  // `updateDataAttributes` owns `data-name`/`data-path` here — it deletes them
+  // when there is no path — so the registry must not also write them.
   updateIcon() {
-    return getIconServices().updateTabIcon(this);
+    this.iconDisposable?.dispose();
+
+    const iconName = typeof this.item.getIconName === "function" ? this.item.getIconName() : null;
+    if (!iconName && this.path == null) return;
+
+    this.iconDisposable = atom.icons.applyTo(
+      this.itemTitle,
+      iconName ? { name: iconName } : { path: this.path, context: "tabs" },
+      { setData: false, skipFallback: !iconName },
+    );
+    this.subscriptions.add(this.iconDisposable);
   }
 
   isItemPending() {

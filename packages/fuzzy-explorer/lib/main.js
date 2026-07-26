@@ -8,7 +8,6 @@ const CSON = require("@lumine-code/season");
 const CACHE_UPDATED_CHANNEL = "fuzzy-explorer:cache-updated";
 
 module.exports = {
-  fileIconsService: null,
   openExternalService: null,
   claudeChatService: null,
   ignores: [],
@@ -325,9 +324,12 @@ module.exports = {
   elementForItem(item, { matchIndices }) {
     const li = createTwoLineItem({
       primary: highlightMatches(item, matchIndices || []),
-      icon: this.iconClassForPath(item),
     });
-    li.firstChild.dataset.name = path.basename(item);
+    atom.icons.applyTo(
+      li.firstChild,
+      { path: item, context: "fuzzy-explorer" },
+      { name: path.basename(item) },
+    );
     return li;
   },
 
@@ -438,14 +440,6 @@ module.exports = {
       };
       this.claudeChatService.setAttachContext(context);
     }
-  },
-
-  iconClassForPath(filePath) {
-    return (this.fileIconsService || atom.ui.iconClassForPath)(filePath);
-  },
-
-  consumeIconsClass(object) {
-    this.fileIconsService = object.iconClassForPath;
   },
 
   consumeOpenExternal(service) {

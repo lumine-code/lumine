@@ -1,8 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { Disposable } = require("atom");
 
-const getIconServices = require("./get-icon-services");
 const ArchiveEditorView = require("./archive-editor-view");
 
 module.exports = {
@@ -29,16 +27,6 @@ module.exports = {
         item.destroy();
       }
     }
-  },
-
-  consumeIconsElement(service) {
-    getIconServices().setElementIcons(service);
-    return new Disposable(() => getIconServices().resetElementIcons());
-  },
-
-  consumeIconsClass(service) {
-    getIconServices().setFileIcons(service);
-    return new Disposable(() => getIconServices().resetFileIcons());
   },
 
   deserialize(params = {}) {

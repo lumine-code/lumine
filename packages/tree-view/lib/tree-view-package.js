@@ -1,6 +1,5 @@
 const { Disposable, CompositeDisposable } = require("atom");
 
-const getIconServices = require("./get-icon-services");
 const TreeView = require("./tree-view");
 
 module.exports = class TreeViewPackage {
@@ -56,20 +55,6 @@ module.exports = class TreeViewPackage {
     await this.treeViewOpenPromise; // Wait for Tree View to finish opening before destroying it
     if (this.treeView) this.treeView.destroy();
     this.treeView = null;
-  }
-
-  consumeIconsElement(service) {
-    getIconServices().setElementIcons(service);
-    return new Disposable(() => {
-      getIconServices().resetElementIcons();
-    });
-  }
-
-  consumeIconsClass(service) {
-    getIconServices().setFileIcons(service);
-    return new Disposable(() => {
-      getIconServices().resetFileIcons();
-    });
   }
 
   consumeOpenExternal(service) {

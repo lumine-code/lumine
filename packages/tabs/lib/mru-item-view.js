@@ -1,7 +1,5 @@
 "use babel";
 
-import getIconServices from "./get-icon-services";
-
 export default class MRUItemView {
   initialize(listView, item) {
     this.listView = listView;
@@ -34,14 +32,24 @@ export default class MRUItemView {
 
     this.firstLineDiv = this.element.appendChild(document.createElement("div"));
     this.firstLineDiv.classList.add("primary-line", "file");
-    if (typeof item.getIconName === "function") {
-      if (atom.config.get("tabs.showIcons"))
-        this.firstLineDiv.classList.add("icon", "icon-" + item.getIconName());
-    } else {
-      getIconServices().updateMRUIcon(this);
-    }
     this.firstLineDiv.setAttribute("data-name", item.getTitle());
     this.firstLineDiv.innerText = item.getTitle();
+
+    // After the text: an icon rendered as a child element would be wiped by
+    // writing `innerText` over it. The switcher owns its own data attributes —
+    // `data-name` is the item's title here, not a basename.
+    const iconName = typeof item.getIconName === "function" ? item.getIconName() : null;
+    if (iconName) {
+      if (atom.config.get("tabs.showIcons")) {
+        atom.icons.applyTo(this.firstLineDiv, { name: iconName }, { setData: false });
+      }
+    } else {
+      // Unlike a tab, the switcher does want the built-in file icons.
+      const target = this.itemPath
+        ? { path: this.itemPath, context: "tabs-mru-switcher" }
+        : { name: "file-text" };
+      atom.icons.applyTo(this.firstLineDiv, target, { setData: false });
+    }
 
     if (this.itemPath) {
       this.firstLineDiv.setAttribute("data-path", this.itemPath);

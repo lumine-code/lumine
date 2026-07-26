@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("./fs-compat");
-const getIconServices = require("./get-icon-services");
+const { repoForPath } = require("./helpers");
 const { CompositeDisposable } = require("atom");
 
 class SpecialRootEntry {
@@ -20,14 +20,11 @@ class SpecialRootEntry {
     );
 
     this.fileName = document.createElement("span");
-    this.fileName.classList.add("name", "icon");
     this.element.appendChild(this.fileName);
 
-    const name = path.basename(filePath);
-    this.fileName.textContent = name;
+    this.name = path.basename(filePath);
+    this.fileName.textContent = this.name;
     this.fileName.title = filePath;
-    this.fileName.dataset.name = name;
-    this.fileName.dataset.path = filePath;
 
     this.file = { path: filePath };
 
@@ -48,16 +45,23 @@ class SpecialRootEntry {
     }
 
     this.updateIcon();
-    this.subscriptions.add(getIconServices().onDidChange(() => this.updateIcon()));
     this.checkExists();
   }
 
   updateIcon() {
+    const hints = { directory: this.isDirectory };
     if (this.isDirectory) {
-      getIconServices().updateDirectoryIcon(this);
-    } else {
-      getIconServices().updateFileIcon(this);
+      const repo = repoForPath(this.filePath);
+      hints.repositoryRoot = repo != null && repo.relativize(this.filePath) === "";
     }
+
+    this.subscriptions.add(
+      atom.icons.applyTo(
+        this.fileName,
+        { path: this.filePath, context: "tree-view", hints },
+        { classes: ["name"], name: this.name },
+      ),
+    );
   }
 
   checkExists() {

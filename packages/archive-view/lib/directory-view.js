@@ -2,8 +2,9 @@
 
 import { CompositeDisposable, Disposable } from "atom";
 
+import path from "path";
+
 import FileView from "./file-view";
-import getIconServices from "./get-icon-services";
 
 export default class DirectoryView {
   constructor(parentView, indexInParentView, archivePath, entry) {
@@ -36,7 +37,17 @@ export default class DirectoryView {
 
     this.entry = entry;
     this.entrySpan = entrySpan;
-    getIconServices().updateDirectoryIcon(this);
+    this.disposables.add(
+      atom.icons.applyTo(
+        entrySpan,
+        {
+          path: path.join(archivePath, entry.path),
+          context: "archive-view",
+          hints: { directory: true, virtual: true },
+        },
+        { classes: ["directory"], name: entry.getName() },
+      ),
+    );
 
     this.entriesTree = document.createElement("ol");
     this.entriesTree.classList.add("list-tree");

@@ -11,7 +11,6 @@ const metricsReporter = {
 };
 
 module.exports = {
-  fileIconsService: null,
   openExternalService: null,
   windowsClipService: null,
   claudeChatService: null,
@@ -268,7 +267,7 @@ module.exports = {
       } else if (e.action === "deleted") {
         [pPath, fPath] = atom.project.relativizePath(e.path);
         if (!pPath) continue;
-        this.invalidateIcon(e.path);
+        atom.icons.invalidate({ paths: [e.path] });
         this.items = this.items.filter(
           (item) =>
             !(
@@ -279,7 +278,7 @@ module.exports = {
       } else if (e.action === "renamed") {
         let [pOldPath, fOldPath] = atom.project.relativizePath(e.oldPath);
         let [pNewPath, fNewPath] = atom.project.relativizePath(e.path);
-        this.invalidateIcon(e.oldPath);
+        atom.icons.invalidate({ paths: [e.oldPath] });
         for (let item of this.items) {
           if (
             pOldPath === item.pPath &&
@@ -330,9 +329,12 @@ module.exports = {
   elementForItem(item, { matchIndices }) {
     const li = createTwoLineItem({
       primary: highlightMatches(this.displayPath(item), matchIndices),
-      icon: this.iconClassForPath(item.aPath),
     });
-    li.firstChild.dataset.name = path.basename(item.aPath);
+    atom.icons.applyTo(
+      li.firstChild,
+      { path: item.aPath, context: "fuzzy-files", hints: { directory: false } },
+      { name: path.basename(item.aPath) },
+    );
     return li;
   },
 
@@ -572,17 +574,6 @@ module.exports = {
     }
   },
 
-  iconClassForPath(filePath) {
-    return (this.fileIconsService || atom.ui.iconClassForPath)(filePath);
-  },
-
-  invalidateIcon(filePath) {
-    const iconClassForPath = this.fileIconsService || atom.ui.iconClassForPath;
-    if (iconClassForPath.invalidate) {
-      iconClassForPath.invalidate(filePath);
-    }
-  },
-
   provideFuzzyFilesScoreModifier() {
     return {
       add: (fn) => {
@@ -593,10 +584,6 @@ module.exports = {
         });
       },
     };
-  },
-
-  consumeIconsClass(object) {
-    this.fileIconsService = object.iconClassForPath;
   },
 
   consumeOpenExternal(service) {

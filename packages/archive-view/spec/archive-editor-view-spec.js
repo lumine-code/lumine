@@ -1,6 +1,5 @@
 const { Disposable } = require("atom");
 const atomAPI = require("atom");
-const getIconServices = require("../lib/get-icon-services");
 const { conditionPromise } = require("./async-spec-helpers");
 
 async function condition(handler) {
@@ -191,35 +190,19 @@ describe("ArchiveEditorView", () => {
   });
 
   describe("FileIcons", () => {
-    beforeEach(() => getIconServices().resetFileIcons());
-    afterEach(() => getIconServices().resetFileIcons());
+    let iconProvider;
+
+    afterEach(() => iconProvider?.dispose());
+
+    function provideIcons(iconFor) {
+      iconProvider = atom.packages.serviceHub.provide("icons.provider", "1.0.0", { iconFor });
+    }
 
     async function openFile() {
       await atom.workspace.open("file-icons.zip");
       archiveEditorView = atom.workspace.getActivePaneItem();
       jasmine.attachToDOM(atom.views.getView(atom.workspace));
     }
-
-    describe("Icon service", () => {
-      const service = { iconClassForPath() {} };
-      beforeEach(() => openFile());
-
-      it("provides a default service", () => {
-        expect(getIconServices().fileIcons).toBeDefined();
-        expect(getIconServices().fileIcons).not.toBeNull();
-      });
-
-      it("allows the default to be overridden", () => {
-        getIconServices().setFileIcons(service);
-        expect(getIconServices().fileIcons).toBe(service);
-      });
-
-      it("allows service to be reset without hassle", () => {
-        getIconServices().setFileIcons(service);
-        getIconServices().resetFileIcons();
-        expect(getIconServices().fileIcons).not.toBe(service);
-      });
-    });
 
     describe("Class handling", () => {
       function findEntryContainingText(text) {
@@ -258,17 +241,16 @@ describe("ArchiveEditorView", () => {
       });
 
       it("allows multiple classes to be passed", async () => {
-        getIconServices().setFileIcons({
-          iconClassForPath: (path) => {
-            switch (path.match(/\w*$/)[0]) {
-              case "pdf":
-                return "text pdf-icon document";
-              case "ttf":
-                return "binary ttf-icon font";
-              case "gif":
-                return "binary gif-icon image";
-            }
-          },
+        provideIcons((target) => {
+          switch (target.path.match(/\w*$/)[0]) {
+            case "pdf":
+              return "text pdf-icon document";
+            case "ttf":
+              return "binary ttf-icon font";
+            case "gif":
+              return "binary gif-icon image";
+          }
+          return null;
         });
         await openFile();
         await condition(() => archiveEditorView.element.querySelectorAll(".entry").length > 0);
@@ -276,32 +258,48 @@ describe("ArchiveEditorView", () => {
       });
 
       it("allows an array of classes to be passed", async () => {
-        getIconServices().setFileIcons({
-          iconClassForPath: (path) => {
-            switch (path.match(/\w*$/)[0]) {
-              case "pdf":
-                return ["text", "pdf-icon", "document"];
-              case "ttf":
-                return ["binary", "ttf-icon", "font"];
-              case "gif":
-                return ["binary", "gif-icon", "image"];
-            }
-          },
+        provideIcons((target) => {
+          switch (target.path.match(/\w*$/)[0]) {
+            case "pdf":
+              return ["text", "pdf-icon", "document"];
+            case "ttf":
+              return ["binary", "ttf-icon", "font"];
+            case "gif":
+              return ["binary", "gif-icon", "image"];
+          }
+          return null;
         });
         await openFile();
         await condition(() => archiveEditorView.element.querySelectorAll(".entry").length > 0);
         checkMultiClass();
       });
 
-      it("identifies context to icon-service providers", async () => {
-        getIconServices().setFileIcons({
-          iconClassForPath: (path, context) => `icon-${context}`,
-        });
+      it("identifies context to icon providers", async () => {
+        provideIcons((target) => `icon-${target.context}`);
         await openFile();
         await condition(() => archiveEditorView.element.querySelectorAll(".entry").length > 0);
         const icons =
           findEntryContainingText("adobe.pdf").querySelectorAll(".file.icon-archive-view");
         expect(icons.length).not.toBe(0);
+      });
+
+      // Archive entries never carried these before, so the CSS conventions
+      // packages hook on could not reach them.
+      it("writes data attributes on every entry", async () => {
+        await openFile();
+        await condition(() => archiveEditorView.element.querySelectorAll(".entry").length > 0);
+        const icon = findEntryContainingText("adobe.pdf").querySelector(".file.icon");
+        expect(icon.dataset.name).toBe("adobe.pdf");
+        expect(icon.dataset.path).toContain("adobe.pdf");
+      });
+
+      // Installing a provider used to leave an already-open archive stale
+      // until it was reopened.
+      it("repaints an archive that is already open", async () => {
+        await openFile();
+        await condition(() => archiveEditorView.element.querySelectorAll(".entry").length > 0);
+        provideIcons(() => "late-arrival");
+        expect(findEntryContainingText("adobe.pdf").querySelector(".file.late-arrival")).toExist();
       });
     });
   });

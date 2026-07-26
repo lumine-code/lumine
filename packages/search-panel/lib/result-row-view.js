@@ -1,4 +1,3 @@
-const getIconServices = require("./get-icon-services");
 const { Range } = require("atom");
 const { LeadingContextRow, TrailingContextRow, ResultPathRow, MatchRow } = require("./result-row");
 const { showIf } = require("./util");
@@ -14,11 +13,28 @@ class ResultPathRowView {
     this.props = Object.assign({}, props);
 
     etch.initialize(this);
-    getIconServices().updateIcon(this, groupData.filePath);
+    this.updateIcon();
   }
 
   destroy() {
+    this.iconDisposable?.dispose();
     return etch.destroy(this);
+  }
+
+  // etch owns `refs.icon` and rewrites its className and dataset on every
+  // update, so the previous application is disposed rather than reused — a
+  // reused one would short-circuit as unchanged and leave the element bare.
+  updateIcon() {
+    this.iconDisposable?.dispose();
+    this.iconDisposable = atom.icons.applyTo(
+      this.refs.icon,
+      {
+        path: this.props.groupData.filePath,
+        context: "search-panel",
+        hints: { directory: false },
+      },
+      { setData: false },
+    );
   }
 
   update({ groupData, isSelected }) {
@@ -31,7 +47,7 @@ class ResultPathRowView {
   }
 
   writeAfterUpdate() {
-    getIconServices().updateIcon(this, this.props.groupData.filePath);
+    this.updateIcon();
   }
 
   render() {
@@ -63,7 +79,7 @@ class ResultPathRowView {
           dataset: { filePath: groupData.filePath },
         },
         $.span({
-          dataset: { name: path.basename(groupData.filePath) },
+          dataset: { name: path.basename(groupData.filePath), path: groupData.filePath },
           ref: "icon",
           className: "icon",
         }),

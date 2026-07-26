@@ -5,7 +5,6 @@ const { History, HistoryCycler } = require("./history");
 const FindOptions = require("./find-options");
 const BufferSearch = require("./buffer-search");
 const { EditorSearchTarget, AdapterSearchTarget } = require("./search-target");
-const getIconServices = require("./get-icon-services");
 const FindView = require("./find-view");
 const ProjectFindView = require("./project-find-view");
 const ResultsModel = require("./results-model");
@@ -210,16 +209,6 @@ module.exports = {
         },
       }),
     );
-  },
-
-  consumeIconsElement(service) {
-    getIconServices().setElementIcons(service);
-    return new Disposable(() => getIconServices().resetElementIcons());
-  },
-
-  consumeIconsClass(service) {
-    getIconServices().setFileIcons(service);
-    return new Disposable(() => getIconServices().resetFileIcons());
   },
 
   consumeSearchAdapter(service) {

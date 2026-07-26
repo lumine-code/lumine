@@ -26,17 +26,5 @@
   "deserializers": {
     "ArchiveEditor": "deserialize",
     "ArchiveEditorView": "deserialize"
-  },
-  "consumedServices": {
-    "icons.class": {
-      "versions": {
-        "^1.0.0": "consumeIconsClass"
-      }
-    },
-    "icons.element": {
-      "versions": {
-        "^1.0.0": "consumeIconsElement"
-      }
-    }
   }
 }

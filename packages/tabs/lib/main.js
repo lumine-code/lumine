@@ -1,5 +1,4 @@
-const { CompositeDisposable, Disposable } = require("atom");
-const getIconServices = require("./get-icon-services");
+const { CompositeDisposable } = require("atom");
 const layout = require("./layout");
 const TabBarView = require("./tab-bar-view.js");
 const MRUListView = require("./mru-list-view");
@@ -103,41 +102,12 @@ module.exports = {
   deactivate() {
     layout.deactivate();
     this.subscriptions.dispose();
-    if (this.fileIconsDisposable != null) {
-      this.fileIconsDisposable.dispose();
-    }
 
     for (let tabBarView of this.tabBarViews) {
       tabBarView.destroy();
     }
     for (let mruListView of this.mruListViews) {
       mruListView.destroy();
-    }
-  },
-
-  consumeIconsElement(service) {
-    getIconServices().setElementIcons(service);
-    this.updateFileIcons();
-    return new Disposable(() => {
-      getIconServices().resetElementIcons();
-      this.updateFileIcons();
-    });
-  },
-
-  consumeIconsClass(service) {
-    getIconServices().setFileIcons(service);
-    this.updateFileIcons();
-    return new Disposable(() => {
-      getIconServices().resetFileIcons();
-      this.updateFileIcons();
-    });
-  },
-
-  updateFileIcons() {
-    for (let tabBarView of this.tabBarViews) {
-      for (let tabView of tabBarView.getTabs()) {
-        tabView.updateIcon();
-      }
     }
   },
 };
