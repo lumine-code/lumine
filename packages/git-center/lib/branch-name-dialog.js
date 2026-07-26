@@ -5,7 +5,7 @@ const { InputDialogView } = require("@lumine-code/select-list");
 module.exports = class BranchNameDialog {
   constructor() {
     this.inputDialogView = new InputDialogView({
-      className: "git-switcher-branch-name-dialog",
+      className: "git-center-branch-name-dialog",
       didChangeQuery: () => this.inputDialogView.update({ errorMessage: null }),
       didConfirm: () => this.confirm(),
       didCancel: () => this.hide(),

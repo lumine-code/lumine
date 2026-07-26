@@ -1,13 +1,15 @@
 {
-  "name": "git-switcher",
+  "name": "git-center",
   "author": "lumine-code",
   "version": "1.0.0",
   "main": "./lib/main",
-  "description": "Status bar controls for switching the active Git repository and branch.",
+  "description": "Show the active Git repository, branch, and working-tree status in the status bar.",
   "keywords": [
     "branch",
     "repository",
     "checkout",
+    "upstream",
+    "dirty",
     "indicator",
     "vcs"
   ],

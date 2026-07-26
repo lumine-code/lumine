@@ -9,8 +9,8 @@ const { repositoryDisplayName, repositoryWorkingDirectory } = require("./helpers
 // dimmed "no repo" state instead of hiding.
 module.exports = class RepositoryStatusView {
   constructor({ onDidClick } = {}) {
-    this.element = document.createElement("git-switcher-repository");
-    this.element.classList.add("git-switcher-repository", "inline-block");
+    this.element = document.createElement("git-center-repository");
+    this.element.classList.add("git-center-repository", "inline-block");
 
     this.link = document.createElement("a");
     this.link.classList.add("inline-block");

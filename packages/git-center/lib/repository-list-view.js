@@ -7,14 +7,14 @@ const { applySwitchItem, buildSwitchItems } = require("./helpers");
 module.exports = class RepositoryListView {
   constructor() {
     this.selectListView = new SelectListView({
-      className: "git-switcher-repository-list",
+      className: "git-center-repository-list",
       items: [],
       emptyMessage: "No repositories in this window",
       filterKeyForItem: (item) => item.repoName,
       elementForItem: (item, { matchIndices }) => {
         const element = document.createElement("li");
         if (item.auto) {
-          element.classList.add("git-switcher-item", "two-lines");
+          element.classList.add("git-center-item", "two-lines");
           const line = document.createElement("div");
           line.classList.add("primary-line", "icon", "icon-sync");
           line.appendChild(highlightMatches(item.repoName, matchIndices));
@@ -27,7 +27,7 @@ module.exports = class RepositoryListView {
           return element;
         }
 
-        element.classList.add("git-switcher-item", "two-lines");
+        element.classList.add("git-center-item", "two-lines");
         const primary = document.createElement("div");
         primary.classList.add("primary-line", "icon", "icon-repo");
         primary.appendChild(highlightMatches(item.repoName, matchIndices));

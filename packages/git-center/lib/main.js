@@ -15,9 +15,9 @@ module.exports = {
     // which is the switching workflow git-panel's removed header used to offer.
     this.subscriptions.add(
       atom.commands.add("atom-workspace", {
-        "git-switcher:select-repository": () => this.getRepositoryListView().toggle(),
-        "git-switcher:select-branch": () => this.getBranchListView().toggle(),
-        "git-switcher:toggle-lock": () => this.toggleActiveRepositoryLock(),
+        "git-center:select-repository": () => this.getRepositoryListView().toggle(),
+        "git-center:select-branch": () => this.getBranchListView().toggle(),
+        "git-center:toggle-lock": () => this.toggleActiveRepositoryLock(),
       }),
     );
   },

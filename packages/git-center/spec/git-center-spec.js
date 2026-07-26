@@ -12,7 +12,7 @@ async function initializeRepository(prefix) {
     initialBranch: "main",
   });
   const operations = repository.getOperations();
-  await operations.setConfig("user.name", "Git Switcher Specs");
+  await operations.setConfig("user.name", "Git Center Specs");
   await operations.setConfig("user.email", "specs@lumine.invalid");
   fs.writeFileSync(path.join(workingDirectory, "file.txt"), "content\n");
   await operations.stageFiles(["file.txt"]);
@@ -20,17 +20,17 @@ async function initializeRepository(prefix) {
   return { workingDirectory, repository };
 }
 
-describe("git-switcher", () => {
+describe("git-center", () => {
   let mainModule;
   let repoA;
   let repoB;
 
   beforeEach(async () => {
     await atom.packages.activatePackage("status-bar");
-    mainModule = (await atom.packages.activatePackage("git-switcher")).mainModule;
+    mainModule = (await atom.packages.activatePackage("git-center")).mainModule;
 
-    repoA = await initializeRepository("git-switcher-a-");
-    repoB = await initializeRepository("git-switcher-b-");
+    repoA = await initializeRepository("git-center-a-");
+    repoB = await initializeRepository("git-center-b-");
     atom.repositories.setActiveRepository(repoA.repository);
     await repoA.repository.refreshStatusSnapshot();
     await repoB.repository.refreshStatusSnapshot();
@@ -40,7 +40,7 @@ describe("git-switcher", () => {
     atom.repositories.setActiveRepository(null);
     atom.repositories.forget(repoA.repository);
     atom.repositories.forget(repoB.repository);
-    await atom.packages.deactivatePackage("git-switcher");
+    await atom.packages.deactivatePackage("git-center");
     await atom.packages.deactivatePackage("status-bar");
   });
 
@@ -66,7 +66,7 @@ describe("git-switcher", () => {
   it("keeps the repository tile visible but hides the branch tile without a repository", () => {
     const repositoryView = mainModule.repositoryStatusView;
     const branchView = mainModule.branchStatusView;
-    const outsideDir = makeWorkdir("git-switcher-outside-");
+    const outsideDir = makeWorkdir("git-center-outside-");
     spyOn(atom.repositories, "getActiveRepository").andReturn(null);
     spyOn(atom.repositories, "getActiveRepositoryContext").andReturn({
       repository: null,

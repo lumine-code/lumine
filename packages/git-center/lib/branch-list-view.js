@@ -15,16 +15,16 @@ module.exports = class BranchListView {
   constructor() {
     this.branchNameDialog = new BranchNameDialog();
     this.selectListView = new SelectListView({
-      className: "git-switcher-branch-list",
+      className: "git-center-branch-list",
       items: [],
       emptyMessage: "No branches yet",
       filterKeyForItem: (item) => item.branch,
       elementForItem: (item, { matchIndices }) => {
         const element = document.createElement("li");
-        element.classList.add("git-switcher-item");
+        element.classList.add("git-center-item");
         if (item.action) {
-          element.classList.add("git-switcher-branch-action");
-          if (item.action === "detach") element.classList.add("git-switcher-branch-action-last");
+          element.classList.add("git-center-branch-action");
+          if (item.action === "detach") element.classList.add("git-center-branch-action-last");
         }
         const line = document.createElement("div");
         line.classList.add("primary-line", "icon", item.icon || "icon-git-branch");
@@ -49,13 +49,13 @@ module.exports = class BranchListView {
     });
 
     this.referenceListView = new SelectListView({
-      className: "git-switcher-reference-list",
+      className: "git-center-reference-list",
       items: [],
       emptyMessage: "No references yet",
       filterKeyForItem: (item) => `${item.label} ${item.detail}`,
       elementForItem: (item, { matchIndices }) => {
         const element = document.createElement("li");
-        element.classList.add("git-switcher-item");
+        element.classList.add("git-center-item");
         if (item.detail) element.classList.add("two-lines");
 
         const primary = document.createElement("div");

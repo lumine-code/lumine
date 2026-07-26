@@ -75,7 +75,7 @@ Left panel, from the left edge inwards:
 | Priority | Band             | Tiles                                                            |
 | -------- | ---------------- | ---------------------------------------------------------------- |
 | 110      | Diagnostics      | linter                                                           |
-| 210, 220 | Repository       | git-switcher repository, git-switcher branch                     |
+| 210, 220 | Repository       | git-center repository, git-center branch                         |
 | 310, 320 | File identity    | editor-status path, grammar-selector (when shown on the left)    |
 | 410–450  | Language tooling | jupyter-repl, latex-tools, typst-tools, tasklist-tools, prettier |
 | 510, 520 | View info        | editor-status cursor position, image-editor size                 |

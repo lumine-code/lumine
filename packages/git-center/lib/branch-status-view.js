@@ -6,8 +6,8 @@ const { headLabel } = require("./helpers");
 // status snapshot is what keeps it refreshed.
 module.exports = class BranchStatusView {
   constructor({ onDidClick } = {}) {
-    this.element = document.createElement("git-switcher-branch");
-    this.element.classList.add("git-switcher-branch", "inline-block");
+    this.element = document.createElement("git-center-branch");
+    this.element.classList.add("git-center-branch", "inline-block");
 
     this.branchArea = document.createElement("a");
     this.branchArea.classList.add("git-branch", "inline-block");
