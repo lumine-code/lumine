@@ -1980,10 +1980,11 @@ describe("WASMTreeSitterLanguageMode", () => {
       atom.grammars.assignLanguageMode(buffer, "source.js");
       // buffer.getLanguageMode().syncTimeoutMicros = 0;
 
-      const initialSeed = Date.now();
+      // Seeded by the clock so each run explores different edits. Set
+      // `LUMINE_SPEC_SEED` to replay the seed reported by a failure.
+      const initialSeed = Number(process.env.LUMINE_SPEC_SEED) || Date.now();
       for (let i = 0, trialCount = 10; i < trialCount; i++) {
         let seed = initialSeed + i;
-        // seed = 1541201470759
         const random = Random(seed);
 
         // Parse the initial content and render all of the screen lines.
@@ -2028,19 +2029,24 @@ describe("WASMTreeSitterLanguageMode", () => {
           /* revert every edit */
         }
 
+        // Each undo queues another parse. Wait for them to settle, or the
+        // incremental highlighting below is read while it is still catching up
+        // and reports scopes that simply have not been applied yet.
+        await languageModeA.parseCompletePromise();
+
         // Create a fresh buffer and editor with the same text.
         const buffer2 = new TextBuffer(buffer.getText());
         const editor2 = new TextEditor({ buffer: buffer2 });
         atom.grammars.assignLanguageMode(buffer2, "source.js");
 
-        // Verify that the the two buffers have the same syntax highlighting.
-        let languageModeB = buffer.getLanguageMode();
+        // Verify that the two buffers have the same syntax highlighting.
+        let languageModeB = buffer2.getLanguageMode();
         expect(languageModeB instanceof WASMTreeSitterLanguageMode).toBe(true);
         await languageModeB.ready;
-        expect(languageModeA.tree.rootNode.toString()).toEqual(
-          languageModeB.tree.rootNode.toString(),
-          `Seed: ${seed}`,
-        );
+        await languageModeB.parseCompletePromise();
+        expect(languageModeA.tree.rootNode.toString())
+          .withContext(`Seed: ${seed}`)
+          .toEqual(languageModeB.tree.rootNode.toString());
 
         // TODO: `wait(0)` works here when awaiting the next transaction
         // doesn't. Not sure why.
@@ -2049,7 +2055,7 @@ describe("WASMTreeSitterLanguageMode", () => {
         for (let j = 0, n = editor.getScreenLineCount(); j < n; j++) {
           const tokens1 = editor.tokensForScreenRow(j);
           const tokens2 = editor2.tokensForScreenRow(j);
-          expect(tokens1).toEqual(tokens2, `Seed: ${seed}, screen line: ${j}`);
+          expect(tokens1).withContext(`Seed: ${seed}, screen line: ${j}`).toEqual(tokens2);
         }
       }
     });
