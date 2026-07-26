@@ -30,5 +30,18 @@
 
 (identifier) @variable.other.jsdoc.js
 
+; Fenced code blocks inside a description, scoped the way the GFM grammar
+; scopes its own fences.
+(code_block) @meta.embedded.block.fenced-code.jsdoc.js
+
+(code_block
+  "```" @punctuation.definition.raw.jsdoc.js
+  ; The closing fence carries the line's leading ` * ` with it.
+  (#set! adjust.startBeforeFirstMatchOf "```"))
+
+(code_block_language) @storage.modifier.language._TEXT_.jsdoc.js
+
+(code_block_line) @markup.raw.block.fenced.jsdoc.js
+
 "{" @punctuation.definition.begin.bracket.curly.jsdoc.js
 "}" @punctuation.definition.end.bracket.curly.jsdoc.js
