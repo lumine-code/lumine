@@ -34,6 +34,14 @@
 ((single_line_comment) @punctuation.definition.comment.scss
   (#set! adjust.startAndEndAroundFirstMatchOf "^//"))
 
+; SassDoc comments parse into their own nodes rather than into
+; `single_line_comment`, so without these a `///` comment carries no comment
+; scope at all and renders as ordinary text.
+(sassdoc_line) @comment.line.documentation.scss
+
+((sassdoc_line) @punctuation.definition.comment.scss
+  (#set! adjust.startAndEndAroundFirstMatchOf "^///"))
+
 
 ; SELECTORS
 ; =========
@@ -247,6 +255,19 @@
 "@property" @keyword.control.at-rule.property.css.scss
 "@layer" @keyword.control.at-rule.layer.css.scss
 "@scope" @keyword.control.at-rule.scope.css.scss
+
+; These four parse into dedicated statement nodes whose keyword is an
+; anonymous token rather than an `at_keyword`, so the permissive
+; `(at_keyword)` fallback below never sees them and they need naming here.
+"@page" @keyword.control.at-rule.page.css.scss
+"@starting-style" @keyword.control.at-rule.starting-style.css.scss
+"@position-try" @keyword.control.at-rule.position-try.css.scss
+"@view-transition" @keyword.control.at-rule.view-transition.css.scss
+
+; `@page` takes its own pseudo-classes — `:first`, `:left`, `:blank` — which
+; are a distinct node from the ordinary `pseudo_class_selector`, and a leaf,
+; so the colon cannot be scoped separately the way it is for those.
+(page_pseudo_class) @entity.other.attribute-name.pseudo-class.scss
 
 "@include" @keyword.control.at-rule.include.scss
 "@mixin" @keyword.control.at-rule.mixin.scss
