@@ -105,7 +105,12 @@ module.exports = class SuggestionListElement {
     this.element.onmousedown = (event) => {
       const item = this.findItem(event);
       if (item && item.dataset && item.dataset.index) {
-        this.selectedIndex = item.dataset.index;
+        // Go through setSelectedIndex rather than assigning: it is what emits
+        // `did-select`, without which the clicked row never has its detail
+        // resolved and its auto-import edits are lost. `Number` matters too —
+        // dataset values are strings, and a string index makes
+        // moveSelectionDown compute "1" + 1 === "11".
+        this.setSelectedIndex(Number(item.dataset.index));
         event.stopPropagation();
       }
     };

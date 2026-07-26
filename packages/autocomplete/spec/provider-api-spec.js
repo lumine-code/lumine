@@ -308,6 +308,69 @@ describe("Provider API", () => {
 
         expect(autocompleteManager.suggestionList.items[0].description).toBe("foo");
       });
+
+      it("waits for an in-flight detail request before inserting", async () => {
+        let releaseDetail;
+        const detailArrived = new Promise((resolve) => {
+          releaseDetail = resolve;
+        });
+        testProvider = {
+          scopeSelector: ".source.js, .source.coffee",
+          getSuggestions(_options) {
+            return [{ text: "ohai" }];
+          },
+          getSuggestionDetailsOnSelect(suggestion) {
+            // The edits an auto-import would carry only exist after resolve.
+            return detailArrived.then(() =>
+              Object.assign({}, suggestion, {
+                additionalTextEdits: [
+                  { newText: "// imported\n", range: new Range([0, 0], [0, 0]) },
+                ],
+              }),
+            );
+          },
+        };
+        registration = atom.packages.serviceHub.provide(
+          "autocomplete.provider",
+          "1.0.0",
+          testProvider,
+        );
+
+        triggerAutocompletion(editor, true, "o");
+        await waitForAutocomplete(editor);
+
+        // Confirm while the detail is still pending, then let it land.
+        const confirmed = autocompleteManager.confirm(autocompleteManager.suggestionList.items[0]);
+        releaseDetail();
+        await confirmed;
+
+        expect(editor.getText()).toContain("// imported");
+      });
+
+      it("inserts without the detail when the provider is too slow", async () => {
+        testProvider = {
+          scopeSelector: ".source.js, .source.coffee",
+          getSuggestions(_options) {
+            return [{ text: "ohai" }];
+          },
+          // Never resolves: confirming must fall back to the plain suggestion
+          // rather than hanging on it.
+          getSuggestionDetailsOnSelect(_suggestion) {
+            return new Promise(() => {});
+          },
+        };
+        registration = atom.packages.serviceHub.provide(
+          "autocomplete.provider",
+          "1.0.0",
+          testProvider,
+        );
+
+        triggerAutocompletion(editor, true, "o");
+        await waitForAutocomplete(editor);
+
+        await autocompleteManager.confirm(autocompleteManager.suggestionList.items[0]);
+        expect(editor.getText()).toContain("ohai");
+      });
     });
 
     describe("when the filterSuggestions option is set to true", () => {

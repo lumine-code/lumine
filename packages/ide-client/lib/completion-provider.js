@@ -203,13 +203,23 @@ module.exports = class CompletionProvider {
   }
   async getSuggestionDetailsOnSelect(suggestion) {
     const provider = suggestion._lspSession?.capabilities.completionProvider;
-    if (!provider?.resolveProvider) return suggestion;
+    if (!provider?.resolveProvider || suggestion._resolved) return suggestion;
     try {
       const item = await suggestion._lspSession.request(
         "completionItem/resolve",
         suggestion._lspItem,
       );
-      return { ...suggestion, ...this.toSuggestion(suggestion._lspSession, item) };
+      const detailed = {
+        ...suggestion,
+        ...this.toSuggestion(suggestion._lspSession, item),
+        _resolved: true,
+      };
+      // Swap the resolved item into the cache: the next keystroke filters the
+      // cached list, and without this it would hand back the unresolved object
+      // and re-request detail that has already been fetched.
+      const index = this.cache?.items.indexOf(suggestion);
+      if (index != null && index >= 0) this.cache.items[index] = detailed;
+      return detailed;
     } catch {
       return suggestion;
     }

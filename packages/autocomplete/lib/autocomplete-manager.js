@@ -30,6 +30,11 @@ function sortTextEdits(textEdits) {
   return textEdits.sort((a, b) => compareRanges(a.range, b.range));
 }
 
+// How long confirming waits for a provider's in-flight detail request before
+// inserting what it already has. Long enough for a warm language server to
+// answer with its auto-import edits, short enough not to feel like lag.
+const DETAILS_TIMEOUT_MS = 200;
+
 // Deferred requires
 let minimatch = null;
 
@@ -66,6 +71,9 @@ module.exports = class AutocompleteManager {
     this.providerManager = new ProviderManager();
     this.suggestionList = new SuggestionList();
     this.watchedEditors = new WeakSet();
+    // In-flight `getSuggestionDetailsOnSelect` results, so confirming can wait
+    // for the detail a provider is still fetching.
+    this.pendingDetails = new WeakMap();
   }
 
   initialize() {
@@ -424,7 +432,10 @@ module.exports = class AutocompleteManager {
           this.autoConfirmSingleSuggestionEnabled &&
           suggestions.length === 1
         ) {
-          // When there is one suggestion in manual mode, just confirm it
+          // When there is one suggestion in manual mode, just confirm it. The
+          // list is never shown, so `did-select` never fires — ask for the
+          // detail explicitly or this path silently skips resolution.
+          this.getDetailsOnSelect(suggestions[0]);
           return this.confirm(suggestions[0]);
         } else {
           return this.displaySuggestions(suggestions, options);
@@ -592,7 +603,29 @@ module.exports = class AutocompleteManager {
     }
 
     const triggerPosition = this.editor.getLastCursor().getBufferPosition();
+    const pending = this.pendingDetails.get(suggestion);
 
+    // Stay synchronous unless a provider actually has detail in flight. Most
+    // providers implement no `getSuggestionDetailsOnSelect` at all, and
+    // deferring their insertion by a microtask changes observable behavior for
+    // no benefit.
+    if (!pending) {
+      return this.insertSuggestion(suggestion, triggerPosition);
+    }
+
+    // Wait for the detail *before* hiding the list. `hideSuggestionList`
+    // empties the model, after which a late `replaceItem` is dropped on the
+    // floor — so resolving afterwards would silently discard the very edits
+    // (auto-imports) we are waiting for.
+    return this.awaitDetails(suggestion, pending).then((resolved) => {
+      if (this.editor == null || !!this.disposed) {
+        return;
+      }
+      this.insertSuggestion(resolved, triggerPosition);
+    });
+  }
+
+  insertSuggestion(resolved, triggerPosition) {
     const selections = this.editor.getSelections();
     if (selections && selections.length) {
       for (const s of selections) {
@@ -604,15 +637,31 @@ module.exports = class AutocompleteManager {
 
     this.hideSuggestionList();
 
-    this.replaceTextWithMatch(suggestion);
+    this.replaceTextWithMatch(resolved);
 
-    if (suggestion.provider && suggestion.provider.onDidInsertSuggestion) {
-      suggestion.provider.onDidInsertSuggestion({
+    if (resolved.provider && resolved.provider.onDidInsertSuggestion) {
+      resolved.provider.onDidInsertSuggestion({
         editor: this.editor,
-        suggestion,
+        suggestion: resolved,
         triggerPosition,
       });
     }
+  }
+
+  // Resolves to the detailed suggestion when the provider answers in time, and
+  // to the original otherwise: a slow provider may delay insertion briefly but
+  // must never block it.
+  awaitDetails(suggestion, pending) {
+    let timer = null;
+    const deadline = new Promise((resolve) => {
+      timer = setTimeout(() => resolve(suggestion), DETAILS_TIMEOUT_MS);
+    });
+    return Promise.race([pending, deadline]).then((result) => {
+      if (timer) {
+        clearTimeout(timer);
+      }
+      return result || suggestion;
+    });
   }
 
   getDetailsOnSelect(suggestion) {
@@ -621,11 +670,15 @@ module.exports = class AutocompleteManager {
       suggestion.provider &&
       suggestion.provider.getSuggestionDetailsOnSelect
     ) {
-      Promise.resolve(suggestion.provider.getSuggestionDetailsOnSelect(suggestion)).then(
-        (detailedSuggestion) => {
+      const pending = Promise.resolve(suggestion.provider.getSuggestionDetailsOnSelect(suggestion))
+        .then((detailedSuggestion) => {
           this.suggestionList.replaceItem(suggestion, detailedSuggestion);
-        },
-      );
+          return detailedSuggestion || suggestion;
+        })
+        // A provider failing to resolve detail must not prevent insertion.
+        .catch(() => suggestion);
+      this.pendingDetails.set(suggestion, pending);
+      return pending;
     }
   }
 
