@@ -95,14 +95,14 @@
         "^1.0.0": "consumeIndie"
       }
     },
-    "busy-signal": {
+    "busy-signal.registry": {
       "versions": {
-        "^1.0.0": "consumeBusySignal"
+        "^1.0.0": "consumeBusySignalRegistry"
       }
     },
-    "background-signal": {
+    "busy-signal.background-registry": {
       "versions": {
-        "^1.0.0": "consumeBackgroundSignal"
+        "^1.0.0": "consumeBusySignalBackgroundRegistry"
       }
     }
   },

@@ -133,7 +133,7 @@ module.exports = {
   provideIntentions() {
     return this.intentionsProvider;
   },
-  consumeBackgroundSignal(registry) {
+  consumeBusySignalBackgroundRegistry(registry) {
     this.backgroundProvider?.dispose();
     this.backgroundProvider = registry.create();
     this.publishSessions();
@@ -189,7 +189,7 @@ module.exports = {
     for (const delegate of this.indieDelegates?.values() || []) delegate.dispose();
     this.indieDelegates = null;
   },
-  consumeBusySignal(registry) {
+  consumeBusySignalRegistry(registry) {
     this.busyProvider?.dispose();
     this.busyProvider = registry.create();
     this.manager.setBusyProvider(this.busyProvider);
