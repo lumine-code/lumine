@@ -50,12 +50,13 @@ module.exports = async function ({ blobStore }) {
       // The window must still be shown: this Chromium serves a natively hidden
       // window's requestAnimationFrame from a ~1 Hz synthetic tick source
       // (regardless of `backgroundThrottling: false`), which starves specs that
-      // await real animation frames. Locally, show without stealing focus —
-      // focus-dependent specs already tolerate an unfocused document when the
-      // developer is working elsewhere. On CI there is no user to disturb, and
-      // since Electron 43.2 an inactive window's document no longer reports
-      // itself focused, which fails every focus-dependent spec on Linux and
-      // Windows runners; take focus there so those specs stay meaningful.
+      // await real animation frames. On CI there is no user to disturb, so take
+      // focus: since Electron 43.2 an inactive window's document no longer
+      // reports itself focused, and without it every focus-dependent spec fails
+      // on the Linux and Windows runners. Locally, show without stealing focus
+      // from whatever the developer is doing; the specs that genuinely need it
+      // call `jasmine.requireDocumentFocus()` and report themselves pending
+      // instead of failing (see spec/helpers/document-focus.js).
       const currentWindow = remote.getCurrentWindow();
       if (process.env.CI) {
         currentWindow.show();

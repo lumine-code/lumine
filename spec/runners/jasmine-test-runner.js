@@ -53,6 +53,7 @@ module.exports = function ({ logFile, headless, testPaths, buildAtomEnvironment 
   require("../helpers/attach-to-dom");
   require("../helpers/deprecation-snapshots");
   require("../helpers/platform-filter");
+  require("../helpers/document-focus");
 
   const jasmineContent = document.createElement("div");
   jasmineContent.setAttribute("id", "jasmine-content");
@@ -67,6 +68,8 @@ module.exports = function ({ logFile, headless, testPaths, buildAtomEnvironment 
   }
 
   return loadSpecsAndRunThem(logFile, headless, testPaths).then((result) => {
+    reportDocumentFocusSkips();
+
     // A spec failed: exit non-zero on the first run. Failures are deliberately
     // not retried - a flaky spec must be fixed at its source, not masked by
     // re-running it until it happens to pass.
@@ -523,6 +526,20 @@ const configureJasmineEnv = (config) => {
     Object.assign(jasmineEnv, config);
   }
 };
+
+// Jasmine reports the skipped groups as pending, but only as a count buried in
+// the summary. Name the reason so a green local run is never mistaken for a run
+// that covered everything.
+function reportDocumentFocusSkips() {
+  const skipped = jasmine.getDocumentFocusSkips();
+  if (skipped.length === 0) return;
+
+  console.log(
+    `\nSkipped ${skipped.length} focus-dependent spec group(s): the spec window is not focused.\n` +
+      skipped.map((description) => `  - ${description}`).join("\n") +
+      "\nRe-run with CI=1 in the environment to take focus and include them.\n",
+  );
+}
 
 function disableFocusMethods() {
   for (let methodName of ["fdescribe", "fit"]) {

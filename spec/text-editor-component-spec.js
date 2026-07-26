@@ -597,44 +597,46 @@ describe("TextEditorComponent", () => {
       expect(cursorNodes.length).toBe(0);
     });
 
-    it("blinks cursors when the editor is focused and the cursors are not moving", async () => {
-      assertDocumentFocused();
-      let blink;
-      spyOn(window, "setInterval").and.callFake((callback) => {
-        blink = callback;
-        return 1;
-      });
-      spyOn(window, "clearInterval");
+    jasmine.itWithDocumentFocus(
+      "blinks cursors when the editor is focused and the cursors are not moving",
+      async () => {
+        let blink;
+        spyOn(window, "setInterval").and.callFake((callback) => {
+          blink = callback;
+          return 1;
+        });
+        spyOn(window, "clearInterval");
 
-      // Leave cursorBlinkResumeDelay at its default so the post-movement
-      // assertions at the end cannot race a resumed blink cycle.
-      const { component, element, editor } = buildComponent({ cursorBlinkPeriod: 40 });
-      editor.addCursorAtScreenPosition([1, 0]);
+        // Leave cursorBlinkResumeDelay at its default so the post-movement
+        // assertions at the end cannot race a resumed blink cycle.
+        const { component, element, editor } = buildComponent({ cursorBlinkPeriod: 40 });
+        editor.addCursorAtScreenPosition([1, 0]);
 
-      element.focus();
-      await component.getNextUpdatePromise();
-      const [cursor1, cursor2] = element.querySelectorAll(".cursor");
+        element.focus();
+        await component.getNextUpdatePromise();
+        const [cursor1, cursor2] = element.querySelectorAll(".cursor");
 
-      expect(getComputedStyle(cursor1).opacity).toBe("1");
-      expect(getComputedStyle(cursor2).opacity).toBe("1");
+        expect(getComputedStyle(cursor1).opacity).toBe("1");
+        expect(getComputedStyle(cursor2).opacity).toBe("1");
 
-      blink();
-      await component.getNextUpdatePromise();
-      expect(getComputedStyle(cursor1).opacity).toBe("0");
-      expect(getComputedStyle(cursor2).opacity).toBe("0");
+        blink();
+        await component.getNextUpdatePromise();
+        expect(getComputedStyle(cursor1).opacity).toBe("0");
+        expect(getComputedStyle(cursor2).opacity).toBe("0");
 
-      blink();
-      await component.getNextUpdatePromise();
-      expect(getComputedStyle(cursor1).opacity).toBe("1");
-      expect(getComputedStyle(cursor2).opacity).toBe("1");
+        blink();
+        await component.getNextUpdatePromise();
+        expect(getComputedStyle(cursor1).opacity).toBe("1");
+        expect(getComputedStyle(cursor2).opacity).toBe("1");
 
-      editor.moveRight();
-      await component.getNextUpdatePromise();
+        editor.moveRight();
+        await component.getNextUpdatePromise();
 
-      expect(getComputedStyle(cursor1).opacity).toBe("1");
-      expect(getComputedStyle(cursor2).opacity).toBe("1");
-      expect(window.clearInterval).toHaveBeenCalledWith(1);
-    });
+        expect(getComputedStyle(cursor1).opacity).toBe("1");
+        expect(getComputedStyle(cursor2).opacity).toBe("1");
+        expect(window.clearInterval).toHaveBeenCalledWith(1);
+      },
+    );
 
     it('gives cursors at the end of lines the width of an "x" character', async () => {
       const { component, element, editor } = buildComponent();
@@ -1058,48 +1060,52 @@ describe("TextEditorComponent", () => {
       }
     });
 
-    it("does not blow away class names added to the element by packages when changing the class name", async () => {
-      assertDocumentFocused();
-      const { component, element } = buildComponent();
-      element.classList.add("a", "b");
-      expect(element.className).toBe("editor a b");
-      element.focus();
-      await component.getNextUpdatePromise();
-      await wait(0);
-      // Windows CI can momentarily drop OS window focus during the async
-      // update, which blurs the hidden input and clears `is-focused` before
-      // the assertion. Re-establish focus through the component's own entry
-      // point and render synchronously, leaving no async gap.
-      component.didFocus();
-      component.updateSync();
-      expect(element.className).toBe("editor a b is-focused");
-      document.body.focus();
-      await component.getNextUpdatePromise();
-      await wait(0);
-      expect(element.className).toBe("editor a b");
-    });
+    jasmine.itWithDocumentFocus(
+      "does not blow away class names added to the element by packages when changing the class name",
+      async () => {
+        const { component, element } = buildComponent();
+        element.classList.add("a", "b");
+        expect(element.className).toBe("editor a b");
+        element.focus();
+        await component.getNextUpdatePromise();
+        await wait(0);
+        // Windows CI can momentarily drop OS window focus during the async
+        // update, which blurs the hidden input and clears `is-focused` before
+        // the assertion. Re-establish focus through the component's own entry
+        // point and render synchronously, leaving no async gap.
+        component.didFocus();
+        component.updateSync();
+        expect(element.className).toBe("editor a b is-focused");
+        document.body.focus();
+        await component.getNextUpdatePromise();
+        await wait(0);
+        expect(element.className).toBe("editor a b");
+      },
+    );
 
-    it("does not blow away class names managed by the component when packages change the element class name", async () => {
-      assertDocumentFocused();
-      const { component, element } = buildComponent({ mini: true });
-      element.classList.add("a", "b");
-      element.focus();
-      await component.getNextUpdatePromise();
-      // Same spurious-blur hazard as below: re-establish focus synchronously
-      // before asserting.
-      component.didFocus();
-      component.updateSync();
-      expect(element.className).toBe("editor mini a b is-focused");
-      element.className = "a c d";
-      // Windows CI can momentarily drop OS window focus during an async update, which blurs
-      // the hidden input and clears `focused`, dropping `is-focused` from the re-render.
-      // Re-establish focus through the component's own entry point (which sets `focused`
-      // directly rather than depending on OS focus) and render synchronously so no async gap
-      // remains for a spurious blur to clear it before the assertion.
-      component.didFocus();
-      component.updateSync();
-      expect(element.className).toBe("a c d editor is-focused mini");
-    });
+    jasmine.itWithDocumentFocus(
+      "does not blow away class names managed by the component when packages change the element class name",
+      async () => {
+        const { component, element } = buildComponent({ mini: true });
+        element.classList.add("a", "b");
+        element.focus();
+        await component.getNextUpdatePromise();
+        // Same spurious-blur hazard as below: re-establish focus synchronously
+        // before asserting.
+        component.didFocus();
+        component.updateSync();
+        expect(element.className).toBe("editor mini a b is-focused");
+        element.className = "a c d";
+        // Windows CI can momentarily drop OS window focus during an async update, which blurs
+        // the hidden input and clears `focused`, dropping `is-focused` from the re-render.
+        // Re-establish focus through the component's own entry point (which sets `focused`
+        // directly rather than depending on OS focus) and render synchronously so no async gap
+        // remains for a spurious blur to clear it before the assertion.
+        component.didFocus();
+        component.updateSync();
+        expect(element.className).toBe("a c d editor is-focused mini");
+      },
+    );
 
     it("ignores resize events when the editor is hidden", async () => {
       const { component, element } = buildComponent({
@@ -1353,11 +1359,7 @@ describe("TextEditorComponent", () => {
     });
   });
 
-  describe("focus", () => {
-    beforeEach(() => {
-      assertDocumentFocused();
-    });
-
+  jasmine.describeWithDocumentFocus("focus", () => {
     it("focuses the hidden input element and adds the is-focused class when focused", async () => {
       const { component, element } = buildComponent();
       const { hiddenInput } = component.refs.cursorsAndInput.refs;
@@ -7405,12 +7407,6 @@ function getHorizontalScrollbarHeight(component) {
 function getVerticalScrollbarWidth(component) {
   const element = component.refs.verticalScrollbar.element;
   return element.offsetWidth - element.clientWidth;
-}
-
-function assertDocumentFocused() {
-  if (!document.hasFocus()) {
-    throw new Error("The document needs to be focused to run this test");
-  }
 }
 
 function getElementHeight(element) {

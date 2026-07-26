@@ -162,21 +162,24 @@ describe("TextEditorElement", () => {
       expect(element.querySelectorAll(".decoration").length).toBe(initialDecorationCount);
     });
 
-    it("can be re-focused using the previous `document.activeElement`", () => {
-      const editorElement = buildTextEditorElement();
-      editorElement.focus();
+    jasmine.itWithDocumentFocus(
+      "can be re-focused using the previous `document.activeElement`",
+      () => {
+        const editorElement = buildTextEditorElement();
+        editorElement.focus();
 
-      const { activeElement } = document;
+        const { activeElement } = document;
 
-      editorElement.remove();
-      jasmine.attachToDOM(editorElement);
-      activeElement.focus();
+        editorElement.remove();
+        jasmine.attachToDOM(editorElement);
+        activeElement.focus();
 
-      expect(editorElement.hasFocus()).toBe(true);
-    });
+        expect(editorElement.hasFocus()).toBe(true);
+      },
+    );
   });
 
-  describe("focus and blur handling", () => {
+  jasmine.describeWithDocumentFocus("focus and blur handling", () => {
     it("proxies focus/blur events to/from the hidden input", () => {
       const element = buildTextEditorElement();
       jasmineContent.appendChild(element);
