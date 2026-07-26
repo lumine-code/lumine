@@ -1,4 +1,4 @@
-const { timeoutPromise: wait, conditionPromise } = require("./helpers/async-spec-helpers");
+const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 const { CompositeDisposable } = require("atom");
 const fs = require("fs");
@@ -10076,8 +10076,6 @@ describe("TextEditor", () => {
   describe(".shouldPromptToSave()", () => {
     beforeEach(async () => {
       jasmine.useRealClock();
-      // Allow for some breathing room to accommodate `pathwatcher`.
-      await wait(process.env.CI ? 500 : 0);
       editor = await atom.workspace.open("sample.js");
       jasmine.unspy(editor, "shouldPromptToSave");
       spyOn(atom.stateStore, "isConnected").and.returnValue(true);

@@ -6,14 +6,14 @@ const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 temp.track();
 
-function wait(ms) {
-  return new Promise((r) => setTimeout(r, ms));
-}
-
 // The non-recursive watcher backs single-file and non-recursive directory
 // watching inside the watcher worker. The key property is that a file is
 // watched via its containing directory so atomic saves (write-temp + rename)
 // are reported as changes rather than a delete followed by a create.
+//
+// Nothing here waits for the watcher to settle before mutating the filesystem:
+// `watch()` is required to return armed, so every spec below doubles as a check
+// on that guarantee.
 describe("NodejsWatcher", () => {
   let dir;
   let watchers;
@@ -42,12 +42,11 @@ describe("NodejsWatcher", () => {
     let file;
     let events;
 
-    beforeEach(async () => {
+    beforeEach(() => {
       file = path.join(dir, "target.txt");
       fs.writeFileSync(file, "one\n");
       events = [];
       watchFor(file, events);
-      await wait(150);
     });
 
     it("reports content changes", async () => {
@@ -98,10 +97,9 @@ describe("NodejsWatcher", () => {
   describe("watching a directory (non-recursive)", () => {
     let events;
 
-    beforeEach(async () => {
+    beforeEach(() => {
       events = [];
       watchFor(dir, events);
-      await wait(150);
     });
 
     it("reports a direct child being created", async () => {
@@ -133,6 +131,24 @@ describe("NodejsWatcher", () => {
         "child delete",
       );
     });
+  });
+
+  // Regression: macOS arms `fs.watch` on libuv's CoreFoundation run-loop
+  // thread, so `watch()` used to return before the OS was watching and a write
+  // issued in the same tick was dropped for good — nothing replays a missed
+  // FSEvents notification. Repeat the race so a regression can't pass by luck.
+  it("reports a change made in the same tick the watch is created", async () => {
+    for (let i = 0; i < 10; i++) {
+      const file = path.join(dir, `immediate-${i}.txt`);
+      fs.writeFileSync(file, "one\n");
+      const events = [];
+      watchFor(file, events);
+      fs.writeFileSync(file, "two\n");
+      await conditionPromise(
+        () => events.some((e) => e.type === "change"),
+        `change event on attempt ${i + 1}`,
+      );
+    }
   });
 
   it("tracks and releases live watchers", () => {

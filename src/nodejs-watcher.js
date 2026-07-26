@@ -20,6 +20,10 @@
 //
 // The callback is invoked with `(eventType, eventPath, oldPath)` where
 // `eventType` is one of `'change'`, `'create'`, `'delete'`, or `'rename'`.
+//
+// `watch()` returns only once the OS is genuinely watching, so a change made
+// immediately afterwards is always reported. See `waitForArm` for why that
+// needs help on macOS.
 
 const fs = require("fs");
 const path = require("path");
@@ -30,6 +34,44 @@ const ACTIVE = new Set();
 // Delay before deciding whether a vanished file was truly deleted or merely
 // atomically replaced. VS Code uses ~100ms for the same purpose.
 const RENAME_VERIFY_DELAY = 60;
+
+// Block until the `fs.watch` handles created so far are actually armed.
+//
+// On Linux and Windows `uv_fs_event_start` arms the OS watch inline
+// (`inotify_add_watch`, `ReadDirectoryChangesW`), so `fs.watch` returning means
+// the watch is live. macOS is different: `uv_fs_event_start` only appends a
+// request to a queue drained by libuv's CoreFoundation run-loop thread, which
+// rebuilds one process-wide `FSEventStream` from the full handle list. That
+// stream is created with `kFSEventStreamEventIdSinceNow`, so anything that
+// happens before the run-loop thread gets to it is invisible — permanently,
+// since nothing replays it. `fs.watch` returning therefore promises nothing,
+// and every layer above it inherits the lie: the worker replies to
+// `watcher:watch`, `PathWatcher::getStartPromise()` resolves, and
+// `TextBuffer::getFileWatchStartPromise()` resolves, all while the OS may still
+// not be watching. A write issued right after that await is then lost.
+//
+// Closing a handle, by contrast, is synchronous: `uv__fsevents_close` queues a
+// "closing" request and blocks on a semaphore that the run-loop thread posts
+// only after it has rebuilt *and started* the replacement stream. The request
+// queue is drained in order, so opening a throwaway watch and closing it right
+// away is a rendezvous — when `close()` returns, every handle registered before
+// it, including the one we just created, is live in the current stream.
+//
+// The throwaway watch targets the path we just armed, so the stream's path set
+// is unchanged and the barrier costs one round trip to the run-loop thread
+// (sub-millisecond) rather than any filesystem access.
+function waitForArm(watchRoot) {
+  if (process.platform !== "darwin") return;
+  let barrier;
+  try {
+    barrier = fs.watch(watchRoot, { persistent: false }, () => {});
+  } catch {
+    // Out of watch descriptors, or the root vanished between the two calls.
+    // The real watcher reports its own failures; don't mask them with ours.
+    return;
+  }
+  barrier.close();
+}
 
 function isCaseInsensitive() {
   return process.platform === "win32" || process.platform === "darwin";
@@ -122,6 +164,7 @@ class NodejsWatcher {
         this.handleRawEvent(eventType, fileName);
       });
       this.handle.on("error", (err) => this.handleError(err));
+      waitForArm(this.watchRoot);
     } catch (err) {
       this.handleError(err);
     }
@@ -328,6 +371,9 @@ class NodejsWatcher {
 // Watch a single file or a directory (non-recursively). The `callback` receives
 // `(eventType, eventPath, oldPath)`. Returns the watcher, which exposes
 // `close()` and `unsubscribe()`.
+//
+// The OS watch is live by the time this returns (see `waitForArm`), so a change
+// made immediately afterwards is reported; callers need no settling delay.
 function watch(pathToWatch, callback) {
   const watcher = new NodejsWatcher(pathToWatch);
   watcher.onDidChange(callback);
