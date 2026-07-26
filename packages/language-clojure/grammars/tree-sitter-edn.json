@@ -6,8 +6,8 @@
   "parser": "tree-sitter-clojure",
   "fileTypes": [],
   "treeSitter": {
-    "parserSource": "github:mauricioszabo/tree-sitter-clojure#inner-strings",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:mauricioszabo/tree-sitter-clojure#59051aa9c4344d9f8d81264b423b7fd5199cc2d6",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "ts/grammar.wasm",
     "highlightsQuery": ["ts/edn-only-highlights.scm", "ts/edn-highlights.scm"],
     "foldsQuery": "ts/folds.scm"
