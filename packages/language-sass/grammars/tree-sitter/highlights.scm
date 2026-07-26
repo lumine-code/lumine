@@ -362,10 +362,9 @@
 
 (nesting_value) @entity.other.tag.reference.scss
 
-; Tailwind's `@utility` extension.
-"@utility" @keyword.control.at-rule.utility.css.scss
-(utility_statement
-  (name) @entity.name.utility.css.scss)
+; Tailwind's `@utility` extension has no dedicated node upstream any more;
+; it parses as an ordinary at-rule, so the `(at_keyword)` fallback above and
+; the `(keyword_query)` rule below already cover it.
 
 (property_statement
   (property_name) @entity.name.property.css.scss)
