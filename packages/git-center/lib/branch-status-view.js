@@ -1,6 +1,7 @@
 const { CompositeDisposable, Disposable } = require("atom");
 
 const { headLabel } = require("./helpers");
+const { divergenceChips, divergenceTooltipLine, renderChips } = require("./status-summary");
 
 // Status bar tile showing the active repository's head. Subscribing to the
 // status snapshot is what keeps it refreshed.
@@ -20,6 +21,10 @@ module.exports = class BranchStatusView {
     this.branchLabel = document.createElement("span");
     this.branchLabel.classList.add("branch-label");
     this.branchArea.appendChild(this.branchLabel);
+
+    this.divergenceLabel = document.createElement("span");
+    this.divergenceLabel.classList.add("git-center-status");
+    this.branchArea.appendChild(this.divergenceLabel);
 
     const clickHandler = (event) => {
       event.preventDefault();
@@ -78,14 +83,22 @@ module.exports = class BranchStatusView {
     this.branchLabel.textContent = head;
     this.branchArea.style.display = head ? "" : "none";
 
+    // The tile reports drift from upstream; the repository tile carries the
+    // working-tree counts. A detached or unborn head has no upstream to report.
+    const upstream = snapshot.initialized ? snapshot.upstream : null;
+    renderChips(this.divergenceLabel, divergenceChips(upstream));
+
     let tooltip = `On branch ${head}`;
     if (snapshot.initialized && snapshot.head.detached) {
       tooltip = `Detached at ${head}`;
     } else if (snapshot.initialized && snapshot.head.unborn) {
       tooltip = `On unborn branch ${head}`;
     }
+    const divergence = divergenceTooltipLine(upstream);
     this.branchTooltipDisposable?.dispose();
-    this.branchTooltipDisposable = atom.tooltips.add(this.branchArea, { title: tooltip });
+    this.branchTooltipDisposable = atom.tooltips.add(this.branchArea, {
+      title: [tooltip, divergence].filter(Boolean).join("\n"),
+    });
   }
 
   destroy() {

@@ -1,5 +1,7 @@
 const path = require("path");
 
+const { summarizeStatus } = require("./status-summary");
+
 function repositoryWorkingDirectory(repository) {
   try {
     return repository?.getWorkingDirectory?.() || null;
@@ -52,16 +54,25 @@ function checkoutBranch(repository, branchName, options = {}) {
 // row per repository × local branch, ordered with the active repository first
 // and each repository's current branch first. Unborn or detached repositories
 // get a synthetic current row so they stay reachable.
+//
+// Both snapshots load per repository, concurrently. `ensureStatusSnapshot` is
+// called without options on purpose: the snapshot is shared, and asking for one
+// without ignored entries would strip the ignore state tree-view and tabs read
+// from it. `summarizeStatus` filters those entries instead.
 async function buildSwitchItems() {
   const repositories = atom.repositories.getRepositories();
   const active = atom.repositories.getActiveRepository();
 
   const groups = await Promise.all(
     repositories.map(async (repository) => {
-      const refs = await repository.ensureRefsSnapshot?.().catch(() => null);
+      const [refs, snapshot] = await Promise.all([
+        repository.ensureRefsSnapshot?.().catch(() => null),
+        repository.ensureStatusSnapshot?.().catch(() => null),
+      ]);
       const repoName = repositoryDisplayName(repository);
       const workingDirectory = repositoryWorkingDirectory(repository) || "";
       const isActive = repository === active;
+      const status = summarizeStatus(snapshot);
 
       const rows = (refs?.branches || []).map((branch) => ({
         repository,
@@ -70,6 +81,8 @@ async function buildSwitchItems() {
         branch: branch.name,
         current: branch.isHead,
         active: isActive,
+        status,
+        upstream: branch.upstream || null,
       }));
       if (!rows.some((row) => row.current)) {
         const head = refs?.head;
@@ -81,6 +94,8 @@ async function buildSwitchItems() {
           branch: label,
           current: true,
           active: isActive,
+          status,
+          upstream: null,
         });
       }
       rows.sort((a, b) => {

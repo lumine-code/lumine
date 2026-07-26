@@ -3,6 +3,12 @@ const path = require("path");
 const { CompositeDisposable, Disposable } = require("atom");
 
 const { repositoryDisplayName, repositoryWorkingDirectory } = require("./helpers");
+const {
+  renderChips,
+  statusChips,
+  statusTooltipLine,
+  summarizeStatus,
+} = require("./status-summary");
 
 // Status bar tile showing the window's active repository context. Always
 // visible: a context without a repository renders the focused directory in a
@@ -23,6 +29,10 @@ module.exports = class RepositoryStatusView {
     this.nameLabel = document.createElement("span");
     this.nameLabel.classList.add("repository-label");
     this.link.appendChild(this.nameLabel);
+
+    this.statusLabel = document.createElement("span");
+    this.statusLabel.classList.add("git-center-status");
+    this.link.appendChild(this.statusLabel);
 
     const clickHandler = (event) => {
       event.preventDefault();
@@ -55,6 +65,9 @@ module.exports = class RepositoryStatusView {
     };
     this.element.addEventListener("wheel", wheelHandler, { passive: false });
 
+    this.activeRepository = null;
+    this.snapshotSubscription = null;
+
     this.subscriptions = new CompositeDisposable(
       new Disposable(() => {
         this.element.removeEventListener("click", clickHandler);
@@ -64,6 +77,18 @@ module.exports = class RepositoryStatusView {
       atom.repositories.observeActiveRepository(() => this.update()),
       atom.repositories.onDidChange(() => this.update()),
     );
+  }
+
+  // Keep exactly one status snapshot subscription, targeting the active
+  // repository. Subscribing declares interest, which makes the repository load
+  // and refresh the snapshot on its own schedule.
+  subscribeToActiveRepository(repository) {
+    if (repository === this.activeRepository) {
+      return;
+    }
+    this.snapshotSubscription?.dispose();
+    this.activeRepository = repository;
+    this.snapshotSubscription = repository?.onDidChangeStatusSnapshot(() => this.update());
   }
 
   cycleRepository(direction) {
@@ -114,6 +139,7 @@ module.exports = class RepositoryStatusView {
     }
 
     const { repository, workingDirectory, pinned } = atom.repositories.getActiveRepositoryContext();
+    this.subscribeToActiveRepository(repository);
     this.element.classList.toggle("no-repository", !repository);
     this.icon.classList.toggle("icon-repo", !pinned);
     this.icon.classList.toggle("icon-lock", pinned);
@@ -121,10 +147,18 @@ module.exports = class RepositoryStatusView {
 
     if (repository) {
       this.nameLabel.textContent = repositoryDisplayName(repository);
+      // The tile counts what changed; the branch tile carries the divergence.
+      const summary = summarizeStatus(repository.getStatusSnapshot());
+      renderChips(this.statusLabel, statusChips(summary));
+
       const repositoryDirectory = repositoryWorkingDirectory(repository) || "";
-      this.tooltipDisposable = atom.tooltips.add(this.element, {
-        title: pinned ? `${repositoryDirectory} (pinned)` : repositoryDirectory,
-      });
+      const title = [
+        pinned ? `${repositoryDirectory} (pinned)` : repositoryDirectory,
+        statusTooltipLine(summary),
+      ]
+        .filter(Boolean)
+        .join("\n");
+      this.tooltipDisposable = atom.tooltips.add(this.element, { title });
       return;
     }
 
@@ -133,6 +167,7 @@ module.exports = class RepositoryStatusView {
     this.nameLabel.textContent = workingDirectory
       ? path.basename(workingDirectory)
       : "No repository";
+    renderChips(this.statusLabel, []);
     this.tooltipDisposable = atom.tooltips.add(this.element, {
       title: workingDirectory ? `${workingDirectory} (not a repository)` : "No repository",
     });
@@ -140,6 +175,7 @@ module.exports = class RepositoryStatusView {
 
   destroy() {
     this.subscriptions.dispose();
+    this.snapshotSubscription?.dispose();
     this.tooltipDisposable?.dispose();
     this.element.remove();
   }

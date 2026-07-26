@@ -1,3 +1,33 @@
 .git-center-repository.no-repository a {
   color: var(--text-color-subtle);
 }
+
+/* Chip layout. Counts are tabular so the tiles stop shifting sideways as the
+   numbers change width. */
+.git-center-status {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.5em;
+  margin-left: 0.5em;
+}
+
+.git-center-count,
+.git-center-ahead,
+.git-center-behind,
+.git-center-gone {
+  font-variant-numeric: tabular-nums;
+}
+
+/* File status colors come from core's git-status.css. Only the upstream chips
+   are colored here, behind the same zero-specificity guard, so that
+   `git:colorize-toggle` neutralizes them along with the rest of the UI. */
+:where(body:not(.git-colorize-disabled)) {
+  .git-center-ahead,
+  .git-center-behind {
+    color: var(--text-color-subtle);
+  }
+
+  .git-center-gone {
+    color: var(--text-color-warning);
+  }
+}

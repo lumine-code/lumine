@@ -1,7 +1,8 @@
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
+const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 
 const BranchNameDialog = require("./branch-name-dialog");
 const { applySwitchItem, buildSwitchItems, checkoutBranch } = require("./helpers");
+const { divergenceChips, statusChips } = require("./status-summary");
 
 const ACTIONS = [
   { action: "create", branch: "Create new branch...", icon: "icon-plus" },
@@ -20,23 +21,25 @@ module.exports = class BranchListView {
       emptyMessage: "No branches yet",
       filterKeyForItem: (item) => item.branch,
       elementForItem: (item, { matchIndices }) => {
-        const element = document.createElement("li");
-        element.classList.add("git-center-item");
+        const className = ["git-center-item"];
         if (item.action) {
-          element.classList.add("git-center-branch-action");
-          if (item.action === "detach") element.classList.add("git-center-branch-action-last");
+          className.push("git-center-branch-action");
+          if (item.action === "detach") className.push("git-center-branch-action-last");
         }
-        const line = document.createElement("div");
-        line.classList.add("primary-line", "icon", item.icon || "icon-git-branch");
-        line.appendChild(highlightMatches(item.branch, matchIndices));
-        if (item.current) {
-          const badge = document.createElement("span");
-          badge.classList.add("badge", "pull-right");
-          badge.textContent = "current";
-          line.appendChild(badge);
-        }
-        element.appendChild(line);
-        return element;
+
+        return createTwoLineItem({
+          className,
+          icon: [item.icon || "icon-git-branch"],
+          primary: highlightMatches(item.branch, matchIndices),
+          // Action rows stay one line; branch rows name their upstream below.
+          secondary: item.action ? undefined : item.upstream?.name || "(no upstream)",
+          trailing: [
+            // Only the checked-out branch has a working tree to report on.
+            ...(item.current ? statusChips(item.status) : []),
+            ...divergenceChips(item.upstream),
+            item.current && { text: "current", className: "badge" },
+          ],
+        });
       },
       didConfirmSelection: (item) => {
         if (item.action) this.performAction(item.action);
@@ -53,24 +56,13 @@ module.exports = class BranchListView {
       items: [],
       emptyMessage: "No references yet",
       filterKeyForItem: (item) => `${item.label} ${item.detail}`,
-      elementForItem: (item, { matchIndices }) => {
-        const element = document.createElement("li");
-        element.classList.add("git-center-item");
-        if (item.detail) element.classList.add("two-lines");
-
-        const primary = document.createElement("div");
-        primary.classList.add("primary-line", "icon", item.icon);
-        primary.appendChild(highlightMatches(item.label, matchIndices));
-        element.appendChild(primary);
-
-        if (item.detail) {
-          const secondary = document.createElement("div");
-          secondary.classList.add("secondary-line");
-          secondary.textContent = item.detail;
-          element.appendChild(secondary);
-        }
-        return element;
-      },
+      elementForItem: (item, { matchIndices }) =>
+        createTwoLineItem({
+          className: "git-center-item",
+          icon: [item.icon],
+          primary: highlightMatches(item.label, matchIndices),
+          secondary: item.detail || undefined,
+        }),
       didConfirmSelection: (item) => this.confirmReference(item),
       didCancelSelection: () => this.referenceListView.hide(),
     });

@@ -2,8 +2,43 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
+const {
+  divergenceChips,
+  divergenceTooltipLine,
+  statusChips,
+  statusTooltipLine,
+  summarizeStatus,
+} = require("../lib/status-summary");
+
 function makeWorkdir(prefix) {
   return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+}
+
+// Minimal stand-ins for the fields `summarizeStatus` reads, so the counting
+// rules can be exercised without driving Git to produce each state.
+function statusEntry(overrides = {}) {
+  return {
+    kind: "ordinary",
+    indexStatus: null,
+    worktreeStatus: "M",
+    conflicted: false,
+    untracked: false,
+    ignored: false,
+    ...overrides,
+  };
+}
+
+function statusSnapshot(files) {
+  return { initialized: true, files };
+}
+
+function chipTexts(element) {
+  return Array.from(element.querySelectorAll("span"), (span) => span.textContent);
+}
+
+function chipClass(element, text) {
+  return Array.from(element.querySelectorAll("span")).find((span) => span.textContent === text)
+    ?.className;
 }
 
 async function initializeRepository(prefix) {
@@ -19,6 +54,79 @@ async function initializeRepository(prefix) {
   await operations.commit("Initial commit");
   return { workingDirectory, repository };
 }
+
+describe("git-center status summary", () => {
+  it("counts each change kind and ignores ignored entries", () => {
+    const summary = summarizeStatus(
+      statusSnapshot([
+        statusEntry({ untracked: true, worktreeStatus: null }),
+        statusEntry({ indexStatus: "A", worktreeStatus: null }),
+        statusEntry({ worktreeStatus: "M" }),
+        statusEntry({ kind: "renamed", indexStatus: "R", worktreeStatus: null }),
+        statusEntry({ worktreeStatus: "D" }),
+        statusEntry({ indexStatus: "D", worktreeStatus: null }),
+        statusEntry({ kind: "unmerged", conflicted: true }),
+        statusEntry({ ignored: true, kind: "ignored", worktreeStatus: null }),
+      ]),
+    );
+
+    // A rename counts as modified, and a deletion staged or not counts as removed.
+    expect(summary).toEqual({ added: 2, modified: 2, removed: 2, conflicted: 1 });
+  });
+
+  it("counts a file that is staged and then edited again only once", () => {
+    // `staged` and `unstaged` are not mutually exclusive in a snapshot, but the
+    // file is still a single modification.
+    const summary = summarizeStatus(
+      statusSnapshot([statusEntry({ indexStatus: "M", worktreeStatus: "M" })]),
+    );
+    expect(summary).toEqual({ added: 0, modified: 1, removed: 0, conflicted: 0 });
+  });
+
+  it("reports nothing before the first snapshot has loaded", () => {
+    expect(summarizeStatus(null)).toBeNull();
+    expect(summarizeStatus({ initialized: false, files: [] })).toBeNull();
+    expect(statusChips(null)).toEqual([]);
+    expect(statusTooltipLine(null)).toBeNull();
+  });
+
+  it("emits a chip only for kinds that have something to report", () => {
+    expect(statusChips(summarizeStatus(statusSnapshot([])))).toEqual([]);
+
+    const chips = statusChips({ added: 3, modified: 12, removed: 1, conflicted: 0 });
+    expect(chips.map((chip) => chip.text)).toEqual(["+3", "~12", "-1"]);
+    // Colors come from core's shared classes, never from this package.
+    expect(chips.map((chip) => chip.className)).toEqual([
+      "git-center-count status-added",
+      "git-center-count status-modified",
+      "git-center-count status-removed",
+    ]);
+    expect(statusTooltipLine({ added: 3, modified: 12, removed: 1, conflicted: 0 })).toBe(
+      "3 added, 12 modified, 1 deleted",
+    );
+  });
+
+  it("describes upstream divergence, or that the upstream is gone", () => {
+    expect(divergenceChips(null)).toEqual([]);
+    expect(divergenceChips({ name: "origin/main", ahead: 0, behind: 0 })).toEqual([]);
+
+    const chips = divergenceChips({ name: "origin/main", ahead: 2, behind: 1 });
+    expect(chips.map((chip) => chip.text)).toEqual(["↑2", "↓1"]);
+    expect(divergenceTooltipLine({ name: "origin/main", ahead: 2, behind: 1 })).toBe(
+      "2 ahead, 1 behind of origin/main",
+    );
+    expect(divergenceTooltipLine({ name: "origin/main", ahead: 0, behind: 0 })).toBe(
+      "Up to date with origin/main",
+    );
+
+    // A deleted upstream makes the counts meaningless, so they are not shown.
+    const gone = divergenceChips({ name: "origin/old", ahead: 4, behind: 0, gone: true });
+    expect(gone.map((chip) => chip.text)).toEqual(["gone"]);
+    expect(divergenceTooltipLine({ name: "origin/old", gone: true })).toBe(
+      "Upstream origin/old is gone",
+    );
+  });
+});
 
 describe("git-center", () => {
   let mainModule;
@@ -189,6 +297,85 @@ describe("git-center", () => {
     listView.props.didConfirmSelection(target);
     await didChangeRefs;
     expect(repoA.repository.getRefsSnapshot().head.name).toBe("feature");
+  });
+
+  it("shows working-tree counts on the repository tile and in the picker", async () => {
+    const operations = repoA.repository.getOperations();
+    const filePath = (name) => path.join(repoA.workingDirectory, name);
+
+    fs.writeFileSync(filePath("doomed.txt"), "doomed\n");
+    await operations.stageFiles(["doomed.txt"]);
+    await operations.commit("Add a file to delete");
+
+    fs.unlinkSync(filePath("doomed.txt"));
+    fs.writeFileSync(filePath("file.txt"), "changed\n");
+    fs.writeFileSync(filePath("untracked.txt"), "new\n");
+    await repoA.repository.refreshStatusSnapshot();
+
+    const repositoryView = mainModule.repositoryStatusView;
+    repositoryView.update();
+    expect(chipTexts(repositoryView.statusLabel)).toEqual(["+1", "~1", "-1"]);
+    expect(chipClass(repositoryView.statusLabel, "+1")).toBe("git-center-count status-added");
+    expect(chipClass(repositoryView.statusLabel, "-1")).toBe("git-center-count status-removed");
+
+    await mainModule.getRepositoryListView().toggle();
+    const listView = mainModule.repositoryListView.selectListView;
+    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find((element) =>
+      element.textContent.includes(path.basename(repoA.workingDirectory)),
+    );
+    const trailing = row.querySelector(".trailing-block");
+    expect(chipTexts(trailing)).toEqual(["+1", "~1", "-1", "main"]);
+  });
+
+  it("shows upstream divergence once a branch is tracking a remote", async () => {
+    const operations = repoA.repository.getOperations();
+    const remoteDir = makeWorkdir("git-center-remote-");
+    await atom.repositories.executeGit(["init", "--bare", "--initial-branch=main", "."], remoteDir);
+    await operations.addRemote("origin", remoteDir);
+    await operations.push("origin", "main", { setUpstream: true });
+
+    fs.writeFileSync(path.join(repoA.workingDirectory, "ahead.txt"), "ahead\n");
+    await operations.stageFiles(["ahead.txt"]);
+    await operations.commit("Commit that the remote does not have");
+    await repoA.repository.refreshStatusSnapshot();
+    await repoA.repository.refreshRefsSnapshot();
+
+    const snapshot = repoA.repository.getStatusSnapshot();
+    expect(snapshot.upstream.name).toBe("origin/main");
+    expect(snapshot.upstream.ahead).toBe(1);
+    expect(snapshot.upstream.behind).toBe(0);
+
+    const branchView = mainModule.branchStatusView;
+    branchView.update();
+    expect(chipTexts(branchView.divergenceLabel)).toEqual(["↑1"]);
+
+    // The branch picker reads its counts per branch, from the refs snapshot.
+    await mainModule.getBranchListView().toggle();
+    const listView = mainModule.branchListView.selectListView;
+    const item = listView.props.items.find((entry) => entry.branch === "main");
+    expect(item.upstream.name).toBe("origin/main");
+    expect(item.upstream.ahead).toBe(1);
+
+    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find(
+      (element) => element.querySelector(".secondary-line")?.textContent === "origin/main",
+    );
+    expect(chipTexts(row.querySelector(".trailing-block"))).toEqual(["↑1", "current"]);
+  });
+
+  it("leaves branch actions on a single line and labels branches with no upstream", async () => {
+    await mainModule.getBranchListView().toggle();
+    const listView = mainModule.branchListView.selectListView;
+    const rows = Array.from(listView.element.querySelectorAll(".list-group li"));
+
+    // The three action rows carry no secondary line, so they stay compact.
+    for (const row of rows.slice(0, 3)) {
+      expect(row.classList.contains("two-lines")).toBe(false);
+      expect(row.querySelector(".secondary-line")).toBeNull();
+    }
+
+    const branchRow = rows[3];
+    expect(branchRow.classList.contains("two-lines")).toBe(true);
+    expect(branchRow.querySelector(".secondary-line").textContent).toBe("(no upstream)");
   });
 
   it("creates branches from HEAD or another ref and checks out detached", async () => {

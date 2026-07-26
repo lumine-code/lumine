@@ -1,6 +1,7 @@
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
+const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 
 const { applySwitchItem, buildSwitchItems } = require("./helpers");
+const { divergenceChips, statusChips } = require("./status-summary");
 
 // Repository picker. Selecting a repository makes it the window's active
 // repository (unpinned).
@@ -12,37 +13,28 @@ module.exports = class RepositoryListView {
       emptyMessage: "No repositories in this window",
       filterKeyForItem: (item) => item.repoName,
       elementForItem: (item, { matchIndices }) => {
-        const element = document.createElement("li");
         if (item.auto) {
-          element.classList.add("git-center-item", "two-lines");
-          const line = document.createElement("div");
-          line.classList.add("primary-line", "icon", "icon-sync");
-          line.appendChild(highlightMatches(item.repoName, matchIndices));
-          element.appendChild(line);
-
-          const secondary = document.createElement("div");
-          secondary.classList.add("secondary-line");
-          secondary.textContent = "The active repository is updated based on the active editor.";
-          element.appendChild(secondary);
-          return element;
+          return createTwoLineItem({
+            className: "git-center-item",
+            icon: ["icon-sync"],
+            primary: highlightMatches(item.repoName, matchIndices),
+            secondary: "The active repository is updated based on the active editor.",
+          });
         }
 
-        element.classList.add("git-center-item", "two-lines");
-        const primary = document.createElement("div");
-        primary.classList.add("primary-line", "icon", "icon-repo");
-        primary.appendChild(highlightMatches(item.repoName, matchIndices));
-        const badge = document.createElement("span");
-        badge.classList.add("badge", "badge-info", "pull-right");
-        badge.textContent = item.branch;
-        primary.appendChild(badge);
-        element.appendChild(primary);
-
-        const secondary = document.createElement("div");
-        secondary.classList.add("secondary-line");
-        secondary.textContent = item.workingDirectory;
-        element.appendChild(secondary);
-
-        return element;
+        // The branch badge sits last so the working-tree and upstream detail
+        // reads to its left, closest to the repository it describes.
+        return createTwoLineItem({
+          className: "git-center-item",
+          icon: ["icon-repo"],
+          primary: highlightMatches(item.repoName, matchIndices),
+          secondary: item.workingDirectory,
+          trailing: [
+            ...statusChips(item.status),
+            ...divergenceChips(item.upstream),
+            { text: item.branch, className: "badge badge-info" },
+          ],
+        });
       },
       didConfirmSelection: (item) => {
         this.hide();
