@@ -327,6 +327,45 @@ describe("git-center", () => {
     expect(chipTexts(trailing)).toEqual(["+1", "~1", "-1", "main"]);
   });
 
+  it("takes its chip colors from core rather than defining its own", async () => {
+    // The package deliberately ships no color rule for file status; the chips
+    // carry core's shared `status-*` classes instead. Nothing else asserts that
+    // those stylesheets actually reach this markup, or that the per-window
+    // colorize toggle still switches them off.
+    fs.writeFileSync(path.join(repoA.workingDirectory, "file.txt"), "changed\n");
+    fs.writeFileSync(path.join(repoA.workingDirectory, "untracked.txt"), "new\n");
+    await repoA.repository.refreshStatusSnapshot();
+
+    jasmine.attachToDOM(atom.workspace.getElement());
+    await mainModule.getRepositoryListView().toggle();
+    const listView = mainModule.repositoryListView.selectListView;
+    jasmine.attachToDOM(listView.element);
+
+    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find((element) =>
+      element.textContent.includes(path.basename(repoA.workingDirectory)),
+    );
+
+    // Floating the block blockifies its display, which is why the rule says flex.
+    const block = getComputedStyle(row.querySelector(".trailing-block"));
+    expect(block.float).toBe("right");
+    expect(block.display).toBe("flex");
+
+    const colorOf = (selector) => getComputedStyle(row.querySelector(selector)).color;
+    const plain = colorOf(".primary-text");
+    expect(colorOf(".status-added")).not.toBe(plain);
+    expect(colorOf(".status-modified")).not.toBe(plain);
+    expect(colorOf(".status-added")).not.toBe(colorOf(".status-modified"));
+
+    // `git:colorize-toggle` flips this class on the body; core's zero-specificity
+    // guard has to take the chips down with everything else.
+    document.body.classList.add("git-colorize-disabled");
+    try {
+      expect(colorOf(".status-added")).toBe(plain);
+    } finally {
+      document.body.classList.remove("git-colorize-disabled");
+    }
+  });
+
   it("shows upstream divergence once a branch is tracking a remote", async () => {
     const operations = repoA.repository.getOperations();
     const remoteDir = makeWorkdir("git-center-remote-");
