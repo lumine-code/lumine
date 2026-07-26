@@ -8,6 +8,7 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 
 - **Sessions**: starts one language server per project root, or one per workspace, lazily when a matching editor opens.
 - **Several servers per file**: every adapter matching a grammar runs, so a type checker and a linter serve the same buffer together.
+- **Overlap removal**: answers that several servers repeat, such as a shared signature line, are shown once.
 - **Transports**: spawns servers over stdio, IPC, or socket connections with JSON-RPC framing.
 - **Synchronization**: keeps open documents in sync with incremental or full-text updates.
 - **Diagnostics**: forwards server diagnostics to the linter package when installed.

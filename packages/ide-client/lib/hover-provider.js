@@ -1,4 +1,5 @@
 const C = require("./converters");
+const { mergeHoverValues } = require("./hover-merge");
 
 const HOVER_CAPABILITIES = {
   textDocument: {
@@ -57,15 +58,19 @@ module.exports = class HoverProvider {
     let range;
     for (const result of results) {
       const value = this.toValue(result?.contents, kinds);
-      if (!value || values.includes(value)) continue;
+      if (!value) continue;
       values.push(value);
       if (result.range && !range) range = C.rangeFromLsp(result.range);
     }
-    if (!values.length) return null;
+    // Overlap between servers is removed section by section, not answer by
+    // answer: they repeat each other's signature line far more often than they
+    // repeat a whole answer.
+    const value = mergeHoverValues(values);
+    if (!value) return null;
     // Markdown wins a mixed set: it is the richer renderer, and a lone
     // plaintext answer reads acceptably through it.
     const kind = kinds.has("markdown") || kinds.size === 0 ? "markdown" : "plaintext";
-    return { range, contents: { kind, value: values.join("\n\n---\n\n") } };
+    return { range, contents: { kind, value } };
   }
   toValue(contents, kinds) {
     if (!contents) return null;
