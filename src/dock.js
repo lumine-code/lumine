@@ -337,6 +337,11 @@ module.exports = class Dock {
   // area considered when detecting exit MUST fully encompass the area considered when detecting
   // entry.
   pointWithinHoverArea(point, detectingExit) {
+    // A mouse move can reach the workspace before this dock has rendered, so
+    // neither `refs` nor its elements exist yet. An unrendered dock occupies
+    // no area.
+    if (!this.refs || !this.refs.innerElement) return false;
+
     const dockBounds = this.refs.innerElement.getBoundingClientRect();
 
     // Copy the bounds object since we can't mutate it.

@@ -7,6 +7,15 @@ const Grim = require("grim");
 const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
 
 describe("Dock", () => {
+  describe("hover-area hit testing", () => {
+    it("reports no hover area before the dock has rendered", () => {
+      const dock = atom.workspace.getLeftDock();
+      expect(dock.refs && dock.refs.innerElement).toBeFalsy();
+      expect(dock.pointWithinHoverArea({ x: 0, y: 0 })).toBe(false);
+      expect(dock.pointWithinHoverArea({ x: 0, y: 0 }, true)).toBe(false);
+    });
+  });
+
   describe("when a dock is activated", () => {
     it("opens the dock and activates its active pane", () => {
       jasmine.attachToDOM(atom.workspace.getElement());
