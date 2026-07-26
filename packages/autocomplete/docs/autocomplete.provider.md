@@ -43,21 +43,48 @@ type TextEdit = {
 
 /**
  * Known types of suggestions; these have predefined styles when rendered.
+ * The list covers the whole Language Server Protocol `CompletionItemKind`
+ * vocabulary, spelled in kebab-case, plus the grammar-flavoured types that
+ * predate it.
  */
 type SuggestionType =
-  | "variable"
-  | "constant"
-  | "property"
-  | "value"
+  // Language Server Protocol kinds.
+  | "text"
   | "method"
   | "function"
+  | "constructor"
+  | "field"
+  | "variable"
   | "class"
-  | "type"
+  | "interface"
+  | "module"
+  | "property"
+  | "unit"
+  | "value"
+  | "enum"
   | "keyword"
-  | "tag"
   | "snippet"
+  | "color"
+  | "file"
+  | "reference"
+  | "folder"
+  | "enum-member"
+  | "constant"
+  | "struct"
+  | "event"
+  | "operator"
+  | "type-parameter"
+  // Types older than the protocol, still emitted by grammar-based providers.
+  | "attribute"
+  | "builtin"
   | "import"
-  | "require";
+  | "mixin"
+  | "package"
+  | "pseudo-selector"
+  | "require"
+  | "selector"
+  | "tag"
+  | "type";
 
 /**
  * A single suggestion as returned by `getSuggestions` or
@@ -126,6 +153,31 @@ type Suggestion =
        * be used. Has no effect if `textEdit` or `ranges` is specified.
        */
       replacementPrefix?: string;
+
+      /**
+       * What the typed prefix is scored against, when that is not the text the
+       * user reads. Falls back to `displayText`, then `text`, then `snippet`.
+       *
+       * Only consulted when the provider sets `filterSuggestions`.
+       */
+      filterText?: string;
+
+      /**
+       * The provider's own relevance ordering, compared as an opaque string —
+       * the Language Server Protocol field of the same name. It breaks ties
+       * between suggestions that answer the typed prefix equally well; it
+       * never outranks the prefix itself.
+       */
+      sortText?: string;
+
+      /**
+       * Nominates this suggestion as the one to start on rather than the first
+       * in the list. It remains the *default* selection, so confirming it with
+       * a key bound to confirm-if-non-default still passes the key through.
+       *
+       * The first preselected suggestion wins if several are marked.
+       */
+      preselect?: boolean;
 
       /**
        * A "type" for this suggestion. Used to classify suggestions and distinguish
@@ -228,16 +280,17 @@ type Suggestion =
  */
 type ServiceProvider = {
   /**
-   * Selector for which this provider should be active. Multiple values can be
-   * given separated by commas.
+   * Scope selector for which this provider should be active. Multiple values
+   * can be given separated by commas. Required: a provider without one is
+   * rejected at registration.
    */
-  selector: string;
+  scopeSelector: string;
   /**
-   * Selector for which this provider should be inactive, even if scope
-   * otherwise matches `selector`. Multiple values can be given separated by
-   * commas.
+   * Scope selector for which this provider should be inactive, even if the
+   * scope otherwise matches `scopeSelector`. Multiple values can be given
+   * separated by commas. Optional.
    */
-  disableForSelector: string;
+  disableForScopeSelector?: string;
 
   /**
    * The priority of this provider relative to others. Higher numbers beat
@@ -391,7 +444,7 @@ module.exports = {
 module.exports = {
   provideAutocomplete() {
     return {
-      selector: ".source.js",
+      scopeSelector: ".source.js",
       getSuggestions({ prefix }) {
         if (prefix.length < 2) return [];
         return MY_KEYWORDS.filter((word) => word.startsWith(prefix)).map((word) => ({
@@ -413,7 +466,7 @@ For some languages, you may need to override this by specifying a `replacementPr
 
 ```js
 let provider = {
-  selector: "source.js",
+  scopeSelector: ".source.js",
   getSuggestions({ editor, bufferPosition }) {
     let prefix = this.getPrefix(editor, bufferPosition);
   },
