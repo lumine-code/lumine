@@ -23,17 +23,28 @@ module.exports = class NodePool {
     if (element) {
       element.className = className || "";
       element.attributeStyleMap.forEach((value, key) => {
-        if (!style || style[key] == null) element.style[key] = "";
+        if (style && style[key] != null) return;
+        // CSS custom properties are not settable through bracket notation;
+        // they need the removeProperty/setProperty API.
+        if (key.startsWith("--")) element.style.removeProperty(key);
+        else element.style[key] = "";
       });
-      if (style) Object.assign(element.style, style);
+      if (style) this.applyStyle(element, style);
       for (const key in element.dataset) delete element.dataset[key];
       while (element.firstChild) element.firstChild.remove();
       return element;
     } else {
       const newElement = document.createElement(type);
       if (className) newElement.className = className;
-      if (style) Object.assign(newElement.style, style);
+      if (style) this.applyStyle(newElement, style);
       return newElement;
+    }
+  }
+
+  applyStyle(element, style) {
+    for (const key in style) {
+      if (key.startsWith("--")) element.style.setProperty(key, style[key]);
+      else element.style[key] = style[key];
     }
   }
 

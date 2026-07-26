@@ -30,6 +30,10 @@ exports.baseCapabilities = () => ({
       codeDescriptionSupport: true,
       dataSupport: true,
     },
+    // Consumed by the call-hierarchy companion package through the
+    // lumine.languageServer request API; external packages cannot contribute
+    // fragments, so the hub advertises this one on their behalf.
+    callHierarchy: { dynamicRegistration: true },
   },
   notebookDocument: {
     synchronization: { dynamicRegistration: false, executionSummarySupport: true },

@@ -4213,6 +4213,68 @@ describe("TextEditorComponent", () => {
       expect(clientLeftForCharacter(component, 1, 0)).toBe(lineNode.getBoundingClientRect().left);
     });
 
+    it("applies and clears CSS custom properties in text decoration styles", async () => {
+      const { component, element, editor } = buildComponent();
+      const markerLayer = editor.addMarkerLayer();
+      const marker = markerLayer.markBufferRange([
+        [0, 2],
+        [0, 6],
+      ]);
+      const decoration = editor.decorateMarker(marker, {
+        type: "text",
+        class: "hint",
+        style: { "--hint-text": '"label"', color: "red" },
+      });
+      await component.getNextUpdatePromise();
+      let span = element.querySelector(".hint");
+      expect(span.style.getPropertyValue("--hint-text")).toBe('"label"');
+      expect(span.style.color).toBe("red");
+
+      // The value must change on the reused span, and dropped plain
+      // properties must clear.
+      decoration.destroy();
+      const replacement = editor.decorateMarker(marker, {
+        type: "text",
+        class: "hint",
+        style: { "--hint-text": '"other"' },
+      });
+      await component.getNextUpdatePromise();
+      span = element.querySelector(".hint");
+      expect(span.style.getPropertyValue("--hint-text")).toBe('"other"');
+      expect(span.style.color).toBe("");
+
+      // A style-less decoration must not inherit the pooled span's
+      // custom property.
+      replacement.destroy();
+      editor.decorateMarker(marker, { type: "text", class: "hint" });
+      await component.getNextUpdatePromise();
+      span = element.querySelector(".hint");
+      expect(span.style.getPropertyValue("--hint-text")).toBe("");
+    });
+
+    it("re-measures horizontal pixel positions when text decorations change rendered widths", async () => {
+      const { component, editor } = buildComponent();
+      const before = component.pixelPositionForScreenPosition(Point(0, 6));
+      const screenLineId = editor.screenLineForScreenRow(0).id;
+      expect(component.horizontalPixelPositionsByScreenLineId.has(screenLineId)).toBe(true);
+
+      // letter-spacing widens every glyph deterministically, independent of
+      // font rasterization: 10px after each of the 6 decorated characters.
+      const marker = editor.addMarkerLayer().markBufferRange([
+        [0, 0],
+        [0, 6],
+      ]);
+      editor.decorateMarker(marker, {
+        type: "text",
+        class: "wide",
+        style: { letterSpacing: "10px" },
+      });
+      await component.getNextUpdatePromise();
+
+      const after = component.pixelPositionForScreenPosition(Point(0, 6));
+      expect(after.left).toBeCloseTo(before.left + 60, 0);
+    });
+
     function textContentOnRowMatchingSelector(component, row, selector) {
       return Array.from(lineNodeForScreenRow(component, row).querySelectorAll(selector))
         .map((span) => span.textContent)

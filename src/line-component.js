@@ -39,6 +39,13 @@ module.exports = class LineComponent {
       // the element, and any survivor shifts all subsequent renders right.
       while (this.element.firstChild) this.element.firstChild.remove();
       this.appendContents();
+      // The rebuild can change rendered glyph widths (bold ranges, injected
+      // ::before content), so this line's cached horizontal pixel positions
+      // are stale; evict them so cursors and highlights re-measure.
+      const { horizontalPixelPositionsByScreenLineId, screenLine } = this.props;
+      if (horizontalPixelPositionsByScreenLineId) {
+        horizontalPixelPositionsByScreenLineId.delete(screenLine.id);
+      }
     }
   }
 
