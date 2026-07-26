@@ -82,22 +82,22 @@ Tweak the server list from your stylesheet:
 
 ## Services
 
-- **ide-client** (`1.0.0`): provided to adapter packages to register language servers and reach sessions.
-- **autocomplete.provider** (`1.0.0`): provided to autocomplete to serve language-server completions.
-- **symbol.provider** (`1.0.0`): provided to symbols-view to serve document and project symbols.
-- **hover.provider** (`1.0.0`): provided to hover UIs to serve documentation at a buffer position.
-- **hover.signature-provider** (`1.0.0`): provided to signature-help UIs to serve call signatures while typing.
-- **outline.provider** (`1.0.0`): provided to outline UIs to serve the hierarchical document outline.
-- **code-format.range** (`1.0.0`): provided to formatting orchestrators; resolves a selected range to text edits from the server.
-- **code-format.file** (`1.0.0`): provided to formatting orchestrators; resolves a whole file to text edits from the server.
-- **code-format.on-type** (`1.0.0`): provided to formatting orchestrators; resolves text edits as the user types a trigger character.
-- **code-format.on-save** (`1.0.0`): provided to formatting orchestrators; resolves text edits on save.
-- **find-references.provider** (`1.0.0`): provided to reference UIs to list occurrences of the symbol at a position.
-- **refactor.provider** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
-- **intentions.list** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.
-- **linter.registry** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
-- **busy-signal.registry** (`^1.0.0`): consumed to surface server work-done progress while it runs.
-- **busy-signal.background-registry** (`^1.0.0`): consumed to list the running servers apart from transient tasks.
+- **[ide-client](docs/ide-client.md)** (`1.0.0`): provided to adapter packages to register language servers and reach sessions.
+- **[autocomplete.provider](https://lumine-code.github.io/docs.html#services/autocomplete.provider)** (`1.0.0`): provided to autocomplete to serve language-server completions.
+- **[symbol.provider](https://lumine-code.github.io/docs.html#services/symbol.provider)** (`1.0.0`): provided to symbols-view to serve document and project symbols.
+- **[hover.provider](https://lumine-code.github.io/docs.html#services/hover.provider)** (`1.0.0`): provided to hover UIs to serve documentation at a buffer position.
+- **[hover.signature-provider](https://lumine-code.github.io/docs.html#services/hover.signature-provider)** (`1.0.0`): provided to signature-help UIs to serve call signatures while typing.
+- **[outline.provider](https://lumine-code.github.io/docs.html#services/outline.provider)** (`1.0.0`): provided to outline UIs to serve the hierarchical document outline.
+- **[code-format.range](https://lumine-code.github.io/docs.html#services/code-format.range)** (`1.0.0`): provided to formatting orchestrators; resolves a selected range to text edits from the server.
+- **[code-format.file](https://lumine-code.github.io/docs.html#services/code-format.file)** (`1.0.0`): provided to formatting orchestrators; resolves a whole file to text edits from the server.
+- **[code-format.on-type](https://lumine-code.github.io/docs.html#services/code-format.on-type)** (`1.0.0`): provided to formatting orchestrators; resolves text edits as the user types a trigger character.
+- **[code-format.on-save](https://lumine-code.github.io/docs.html#services/code-format.on-save)** (`1.0.0`): provided to formatting orchestrators; resolves text edits on save.
+- **[find-references.provider](https://lumine-code.github.io/docs.html#services/find-references.provider)** (`1.0.0`): provided to reference UIs to list occurrences of the symbol at a position.
+- **[refactor.provider](https://lumine-code.github.io/docs.html#services/refactor.provider)** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
+- **[intentions.list](https://lumine-code.github.io/docs.html#services/intentions.list)** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.
+- **[linter.registry](https://lumine-code.github.io/docs.html#services/linter.registry)** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
+- **[busy-signal.registry](https://lumine-code.github.io/docs.html#services/busy-signal.registry)** (`^1.0.0`): consumed to surface server work-done progress while it runs.
+- **[busy-signal.background-registry](https://lumine-code.github.io/docs.html#services/busy-signal.background-registry)** (`^1.0.0`): consumed to list the running servers apart from transient tasks.
 
 ## Contributing
 

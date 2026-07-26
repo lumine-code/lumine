@@ -43,8 +43,8 @@ Commands available in `.tab-bar`:
 
 ## Services
 
-- **icons.class** (`^1.0.0`): consumed to supply the file-type icon shown on each tab.
-- **icons.element** (`^1.0.0`): consumed to supply element-based file icons for tabs.
+- **[icons.class](https://lumine-code.github.io/docs.html#services/icons.class)** (`^1.0.0`): consumed to supply the file-type icon shown on each tab.
+- **[icons.element](https://lumine-code.github.io/docs.html#services/icons.element)** (`^1.0.0`): consumed to supply element-based file icons for tabs.
 
 ## Customization
 

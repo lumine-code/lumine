@@ -9,8 +9,8 @@ Adds snippets to autocomplete suggestions.
 
 ## Services
 
-- **autocomplete.provider** (`1.0.0`): provided to supply snippet suggestions to autocomplete.
-- **snippets** (`^1.0.0`): consumed to read the available snippets to build suggestions.
+- **[autocomplete.provider](https://lumine-code.github.io/docs.html#services/autocomplete.provider)** (`1.0.0`): provided to supply snippet suggestions to autocomplete.
+- **[snippets](https://lumine-code.github.io/docs.html#services/snippets)** (`^1.0.0`): consumed to read the available snippets to build suggestions.
 
 ## Contributing
 

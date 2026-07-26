@@ -26,7 +26,7 @@ Commands available in `atom-text-editor`:
 
 ## Services
 
-- **bookmarks** (`1.0.0`): provided to expose the list of bookmarks to any package that wants to know about them.
+- **[bookmarks](docs/bookmarks.md)** (`1.0.0`): provided to expose the list of bookmarks to any package that wants to know about them.
 
 ## Customization
 

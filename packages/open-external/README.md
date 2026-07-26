@@ -34,8 +34,8 @@ operation to the next handler.
 
 ## Services
 
-- **open-external** (`1.0.0`): provided to open or reveal paths and register custom handlers for those operations.
-- **tree-view.selection** (`^1.0.0`): consumed to access the paths currently selected in the tree view.
+- **[open-external](docs/open-external.md)** (`1.0.0`): provided to open or reveal paths and register custom handlers for those operations.
+- **[tree-view.selection](https://lumine-code.github.io/docs.html#services/tree-view.selection)** (`^1.0.0`): consumed to access the paths currently selected in the tree view.
 
 ## Contributing
 

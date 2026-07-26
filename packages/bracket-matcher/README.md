@@ -39,7 +39,7 @@ Matching pairs can be customized per language through scoped settings in your `c
 
 ## Services
 
-- **bracket-matcher** (`1.0.0`): provided to expose the current match — `getMatchRanges(editor)` returns the highlighted bracket pair's buffer ranges, and `observe(callback)` reports every match change, enabling consumers such as scrollbar maps to display bracket positions.
+- **[bracket-matcher](docs/bracket-matcher.md)** (`1.0.0`): provided to expose the current match — `getMatchRanges(editor)` returns the highlighted bracket pair's buffer ranges, and `observe(callback)` reports every match change, enabling consumers such as scrollbar maps to display bracket positions.
 
 ## Contributing
 

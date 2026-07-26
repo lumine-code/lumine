@@ -19,7 +19,7 @@ Commands available in `atom-text-editor`:
 
 ## Services
 
-- **status-bar** (`^1.0.0`): consumed to show the current line ending in the status bar.
+- **[status-bar](https://lumine-code.github.io/docs.html#services/status-bar)** (`^1.0.0`): consumed to show the current line ending in the status bar.
 
 ## Contributing
 

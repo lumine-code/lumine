@@ -19,7 +19,7 @@ Commands available in `atom-workspace`:
 
 ## Services
 
-- **status-bar** (`^1.0.0`): consumed to display the repository and branch tiles.
+- **[status-bar](https://lumine-code.github.io/docs.html#services/status-bar)** (`^1.0.0`): consumed to display the repository and branch tiles.
 
 ## Contributing
 

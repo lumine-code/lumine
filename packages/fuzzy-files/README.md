@@ -46,12 +46,11 @@ Commands available in `.fuzzy-files`:
 
 ## Services
 
-- **fuzzy-files.score-modifier** (`1.0.0`): provided to let other packages register functions that boost or penalize the score of search results.
-- **icons.class** (`^1.0.0`): consumed to show file-type icons next to results.
-- **open-external** (`^1.0.0`): consumed to open files with the configured external application.
-- **windows-clip** (`^1.0.0`): consumed to copy and cuts files to the Windows clipboard.
+- **[fuzzy-files.score-modifier](docs/fuzzy-files.score-modifier.md)** (`1.0.0`): provided to let other packages register functions that boost or penalize the score of search results.
+- **[open-external](https://lumine-code.github.io/docs.html#services/open-external)** (`^1.0.0`): consumed to open files with the configured external application.
+- **[windows-clip](https://lumine-code.github.io/docs.html#services/windows-clip)** (`^1.0.0`): consumed to copy and cuts files to the Windows clipboard.
 - **claude-chat** (`^1.0.0`): consumed to attach the selected file to a claude-chat session.
-- **tree-view.selection** (`^1.0.0`): consumed to reveal the selected file in the tree view.
+- **[tree-view.selection](https://lumine-code.github.io/docs.html#services/tree-view.selection)** (`^1.0.0`): consumed to reveal the selected file in the tree view.
 
 ## Customization
 

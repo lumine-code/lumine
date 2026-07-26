@@ -12,7 +12,7 @@ Save editors when they lose focus or are closed.
 
 ## Services
 
-- **autosave** (`1.0.0`): provided to expose a `dontSaveIf` callback so other packages can exclude specific pane items from being autosaved.
+- **[autosave](docs/autosave.md)** (`1.0.0`): provided to expose a `dontSaveIf` callback so other packages can exclude specific pane items from being autosaved.
 
 ## Contributing
 

@@ -46,8 +46,7 @@ Create a config file at the Lumine config path, `explorer.json`, with an array o
 
 ## Services
 
-- **icons.class** (`^1.0.0`): consumed to show file-type icons next to results.
-- **open-external** (`^1.0.0`): consumed to open files with the configured external application.
+- **[open-external](https://lumine-code.github.io/docs.html#services/open-external)** (`^1.0.0`): consumed to open files with the configured external application.
 - **claude-chat** (`^1.0.0`): consumed to attach the selected file to a claude-chat session.
 
 ## Customization

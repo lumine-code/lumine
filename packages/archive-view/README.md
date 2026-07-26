@@ -11,8 +11,8 @@ Browse the files and folders inside archive files.
 
 ## Services
 
-- **icons.class** (`^1.0.0`): consumed to supply file-type icon classes for archive entries.
-- **icons.element** (`^1.0.0`): consumed to supply element-based file icons for archive entries.
+- **[icons.class](https://lumine-code.github.io/docs.html#services/icons.class)** (`^1.0.0`): consumed to supply file-type icon classes for archive entries.
+- **[icons.element](https://lumine-code.github.io/docs.html#services/icons.element)** (`^1.0.0`): consumed to supply element-based file icons for archive entries.
 
 ## Customization
 

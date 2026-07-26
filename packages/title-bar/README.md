@@ -20,7 +20,7 @@ Commands available in `atom-workspace`:
 
 ## Services
 
-- **title-bar** (`1.0.0`): provided to let other packages add control tiles to the title bar near the window buttons.
+- **[title-bar](docs/title-bar.md)** (`1.0.0`): provided to let other packages add control tiles to the title bar near the window buttons.
 
 ## Customization
 

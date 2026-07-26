@@ -66,7 +66,7 @@ status-bar {
 
 ## Services
 
-- **status-bar** (`1.0.0`): provided to host indicator tiles at the bottom of the workspace, with a left and right side other packages can add to.
+- **[status-bar](docs/status-bar.md)** (`1.0.0`): provided to host indicator tiles at the bottom of the workspace, with a left and right side other packages can add to.
 
 ## Contributing
 

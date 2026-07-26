@@ -38,7 +38,7 @@ Snippet files live in a package's `snippets/` folder and in your user `snippets.
 
 ## Services
 
-- **snippets** (`1.0.0`): provided to expose the loaded snippets so other packages can query and expand them.
+- **[snippets](docs/snippets.md)** (`1.0.0`): provided to expose the loaded snippets so other packages can query and expand them.
 
 ## Contributing
 

@@ -34,7 +34,7 @@ The status bar indicator can be adjusted in your `styles.css`:
 
 ## Services
 
-- **status-bar** (`^1.0.0`): consumed to show the column-selection mode indicator in the status bar.
+- **[status-bar](https://lumine-code.github.io/docs.html#services/status-bar)** (`^1.0.0`): consumed to show the column-selection mode indicator in the status bar.
 
 ## Contributing
 

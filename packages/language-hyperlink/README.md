@@ -9,7 +9,7 @@ Hyperlink colorization.
 
 ## Services
 
-- **hyperlink.injection** (`1.0.0`): provided to let other language packages highlight URLs inside their strings and comments as clickable links.
+- **[hyperlink.injection](docs/hyperlink.injection.md)** (`1.0.0`): provided to let other language packages highlight URLs inside their strings and comments as clickable links.
 
 ## Contributing
 

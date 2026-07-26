@@ -82,8 +82,8 @@ Tweak the appearance of the list by adding CSS to your `styles.css`:
 
 ## Services
 
-- **project-list** (`1.0.0`): provided to expose the project list manager — used by tree-view's empty project view to show a "List projects" button, and by window-title to resolve the current project title via `getCurrentProject()` / `onDidChangeCurrentProject()`.
-- **open-external** (`^1.0.0`): consumed to open project folders externally or show them in the system file manager. For multi-path projects, the action is applied to each path.
+- **[project-list](docs/project-list.md)** (`1.0.0`): provided to expose the project list manager — used by tree-view's empty project view to show a "List projects" button, and by window-title to resolve the current project title via `getCurrentProject()` / `onDidChangeCurrentProject()`.
+- **[open-external](https://lumine-code.github.io/docs.html#services/open-external)** (`^1.0.0`): consumed to open project folders externally or show them in the system file manager. For multi-path projects, the action is applied to each path.
 
 ## Contributing
 

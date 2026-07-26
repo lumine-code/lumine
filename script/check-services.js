@@ -12,33 +12,33 @@
 // Defaults to the parent of this repository so pkg_lumine/* is picked up when
 // checked out beside it. Exits non-zero on an error; style findings are
 // reported as warnings and do not fail the run.
+//
+// The graph itself is built by service-graph.js, which the website's service
+// reference reads from a sibling checkout.
 
 const fs = require("fs");
 const path = require("path");
 const semver = require("semver");
-const { parseSync } = require("@babel/core");
+const {
+  CORE,
+  EXTERNAL,
+  EXTERNAL_SERVICES,
+  GENERAL_DOMAINS,
+  buildGraph,
+  exportedNames,
+  mentionsIdentifier,
+  ownerFor,
+  resolveModule,
+} = require("./service-graph");
 
-// Consumed here, provided by a package that lives outside the workspace.
-const EXTERNAL_SERVICES = new Set(["claude-chat"]);
+// Sections every service document must carry. Warned about rather than
+// required, so a doc can be landed and filled in, but the list is the shape
+// reviewers should expect.
+const REQUIRED_DOC_SECTIONS = ["Registration", "Contract", "Minimal example", "Versioning"];
 
-// Namespaces that name a general domain rather than a package. Any other
-// namespace must match the name of a package in the workspace.
-const GENERAL_DOMAINS = new Set([
-  "icons",
-  "symbol",
-  "jupyter",
-  "mcp",
-  "outline",
-  "navigation",
-  "search",
-  "hyperclick",
-  "hyperlink",
-  "todo",
-  "sofistik",
-  "project",
-  "workspace",
-  "repositories",
-]);
+// Every service has a document. A new one without a document fails the build
+// rather than quietly joining a backlog.
+const DOCS_ARE_MANDATORY = true;
 
 const errors = [];
 const warnings = [];
@@ -49,291 +49,6 @@ function error(where, message) {
 
 function warn(where, message) {
   warnings.push(`${where}: ${message}`);
-}
-
-// --- AST helpers -----------------------------------------------------------
-
-function parseFile(file) {
-  try {
-    return parseSync(fs.readFileSync(file, "utf8"), {
-      filename: file,
-      configFile: false,
-      babelrc: false,
-      sourceType: "unambiguous",
-      parserOpts: {
-        allowReturnOutsideFunction: true,
-        errorRecovery: true,
-        plugins: ["classProperties", "classPrivateMethods", "jsx", "decoratorsLegacy"],
-      },
-    });
-  } catch {
-    return null;
-  }
-}
-
-function walk(node, visit) {
-  if (node === null || typeof node !== "object") return;
-  if (Array.isArray(node)) {
-    for (const child of node) walk(child, visit);
-    return;
-  }
-  if (typeof node.type === "string") visit(node);
-  for (const key of Object.keys(node)) {
-    if (key === "loc" || key === "leadingComments" || key === "trailingComments") continue;
-    walk(node[key], visit);
-  }
-}
-
-function keyName(node) {
-  if (!node) return null;
-  if (node.type === "Identifier") return node.name;
-  if (node.type === "StringLiteral") return node.value;
-  return null;
-}
-
-function isModuleExports(node) {
-  return (
-    node?.type === "MemberExpression" &&
-    node.object?.type === "Identifier" &&
-    node.object.name === "module" &&
-    keyName(node.property) === "exports"
-  );
-}
-
-function objectKeys(node) {
-  const names = [];
-  if (node?.type !== "ObjectExpression") return names;
-  for (const prop of node.properties) {
-    if (prop.type === "ObjectMethod" || prop.type === "ObjectProperty") {
-      const name = keyName(prop.key);
-      if (name) names.push(name);
-    }
-  }
-  return names;
-}
-
-function classMethodNames(node) {
-  const names = [];
-  for (const item of node?.body?.body ?? []) {
-    if (item.type === "ClassMethod" || item.type === "ClassProperty") {
-      const name = keyName(item.key);
-      if (name) names.push(name);
-    }
-  }
-  return names;
-}
-
-function resolveModule(fromFile, request) {
-  if (!request.startsWith(".")) return null;
-  const base = path.resolve(path.dirname(fromFile), request);
-  for (const candidate of [base, `${base}.js`, path.join(base, "index.js")]) {
-    if (fs.existsSync(candidate) && fs.statSync(candidate).isFile()) return candidate;
-  }
-  return null;
-}
-
-// Collects a module's public names, CommonJS or ESM. Follows one hop for the
-// two shapes that hide them: `module.exports = new TreeViewPackage()` and
-// `export * from "./elsewhere"`.
-function exportedNames(mainFile, depth = 0) {
-  const ast = parseFile(mainFile);
-  if (!ast) return null;
-
-  const names = new Set();
-
-  // ESM: export function foo() {}, export const foo =, export { foo }, export *
-  walk(ast.program, (node) => {
-    if (node.type === "ExportNamedDeclaration") {
-      const declaration = node.declaration;
-      if (declaration?.type === "FunctionDeclaration" || declaration?.type === "ClassDeclaration") {
-        if (declaration.id?.name) names.add(declaration.id.name);
-      } else if (declaration?.type === "VariableDeclaration") {
-        for (const declarator of declaration.declarations) {
-          if (declarator.id?.type === "Identifier") names.add(declarator.id.name);
-        }
-      }
-      for (const specifier of node.specifiers ?? []) {
-        const name = keyName(specifier.exported);
-        if (name) names.add(name);
-      }
-    } else if (node.type === "ExportAllDeclaration" && depth < 1) {
-      const resolved = resolveModule(mainFile, node.source?.value ?? "");
-      if (resolved) {
-        for (const name of exportedNames(resolved, depth + 1) ?? []) names.add(name);
-      }
-    }
-  });
-  const requires = new Map(); // local binding -> resolved file
-  const localObjects = new Map(); // local binding -> ObjectExpression
-  const localClasses = new Map(); // local binding -> ClassDeclaration
-
-  walk(ast.program, (node) => {
-    if (node.type === "VariableDeclarator" && node.id?.type === "Identifier") {
-      const init = node.init;
-      if (
-        init?.type === "CallExpression" &&
-        init.callee?.type === "Identifier" &&
-        init.callee.name === "require" &&
-        init.arguments[0]?.type === "StringLiteral"
-      ) {
-        const resolved = resolveModule(mainFile, init.arguments[0].value);
-        if (resolved) requires.set(node.id.name, resolved);
-      } else if (init?.type === "ObjectExpression") {
-        localObjects.set(node.id.name, init);
-      } else if (init?.type === "ClassExpression") {
-        localClasses.set(node.id.name, init);
-      }
-    }
-    if (node.type === "ClassDeclaration" && node.id?.type === "Identifier") {
-      localClasses.set(node.id.name, node);
-    }
-  });
-
-  walk(ast.program, (node) => {
-    if (node.type !== "AssignmentExpression") return;
-
-    // module.exports.foo = ...
-    if (
-      node.left?.type === "MemberExpression" &&
-      (isModuleExports(node.left.object) ||
-        (node.left.object?.type === "Identifier" && node.left.object.name === "exports"))
-    ) {
-      const name = keyName(node.left.property);
-      if (name) names.add(name);
-      return;
-    }
-
-    if (!isModuleExports(node.left)) return;
-
-    const right = node.right;
-    if (right.type === "ObjectExpression") {
-      for (const name of objectKeys(right)) names.add(name);
-    } else if (right.type === "ClassDeclaration" || right.type === "ClassExpression") {
-      for (const name of classMethodNames(right)) names.add(name);
-    } else if (right.type === "Identifier") {
-      if (localObjects.has(right.name)) {
-        for (const name of objectKeys(localObjects.get(right.name))) names.add(name);
-      }
-      if (localClasses.has(right.name)) {
-        for (const name of classMethodNames(localClasses.get(right.name))) names.add(name);
-      }
-    } else if (right.type === "NewExpression") {
-      const callee = right.callee;
-      if (callee?.type === "Identifier") {
-        if (localClasses.has(callee.name)) {
-          for (const name of classMethodNames(localClasses.get(callee.name))) names.add(name);
-        } else if (requires.has(callee.name)) {
-          const sub = parseFile(requires.get(callee.name));
-          if (sub) {
-            walk(sub.program, (inner) => {
-              if (inner.type === "ClassDeclaration" || inner.type === "ClassExpression") {
-                for (const name of classMethodNames(inner)) names.add(name);
-              }
-            });
-          }
-        }
-      }
-    }
-  });
-
-  // Object.assign(module.exports, {...})
-  walk(ast.program, (node) => {
-    if (
-      node.type === "CallExpression" &&
-      node.callee?.type === "MemberExpression" &&
-      keyName(node.callee.property) === "assign" &&
-      isModuleExports(node.arguments?.[0])
-    ) {
-      for (const arg of node.arguments.slice(1)) {
-        for (const name of objectKeys(arg)) names.add(name);
-      }
-    }
-  });
-
-  return names;
-}
-
-function sourceFiles(dir) {
-  const out = [];
-  const stack = [dir];
-  while (stack.length) {
-    const current = stack.pop();
-    let entries;
-    try {
-      entries = fs.readdirSync(current, { withFileTypes: true });
-    } catch {
-      continue;
-    }
-    for (const entry of entries) {
-      const full = path.join(current, entry.name);
-      if (entry.isDirectory()) {
-        if (entry.name === "node_modules" || entry.name.startsWith(".")) continue;
-        stack.push(full);
-      } else if (entry.name.endsWith(".js")) {
-        out.push(full);
-      }
-    }
-  }
-  return out;
-}
-
-function mentionsIdentifier(pkg, name) {
-  const pattern = new RegExp(`\\b${name}\\b`);
-  for (const dir of ["lib", "src"]) {
-    const full = path.join(pkg.dir, dir);
-    if (!fs.existsSync(full)) continue;
-    for (const file of sourceFiles(full)) {
-      if (pattern.test(fs.readFileSync(file, "utf8"))) return true;
-    }
-  }
-  return false;
-}
-
-// --- collection ------------------------------------------------------------
-
-function readPackages(root) {
-  const packages = [];
-  let entries;
-  try {
-    entries = fs.readdirSync(root, { withFileTypes: true });
-  } catch {
-    return packages;
-  }
-  for (const entry of entries) {
-    if (!entry.isDirectory()) continue;
-    const manifestPath = path.join(root, entry.name, "package.json");
-    if (!fs.existsSync(manifestPath)) continue;
-    let manifest;
-    try {
-      manifest = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
-    } catch (e) {
-      error(path.relative(process.cwd(), manifestPath), `unparseable: ${e.message}`);
-      continue;
-    }
-    packages.push({
-      name: manifest.name || entry.name,
-      dir: path.join(root, entry.name),
-      label: `${path.basename(root)}/${entry.name}`,
-      manifest,
-    });
-  }
-  return packages;
-}
-
-function readCoreServices(srcDir) {
-  const found = { provided: [], consumed: [] };
-  const pattern =
-    /serviceHub\s*\.\s*(provide|consume)\s*\(\s*["']([^"']+)["']\s*,\s*["']([^"']+)["']/g;
-  for (const file of sourceFiles(srcDir)) {
-    const text = fs.readFileSync(file, "utf8");
-    for (const match of text.matchAll(pattern)) {
-      const [, kind, name, version] = match;
-      const line = text.slice(0, match.index).split("\n").length;
-      const where = `src/${path.relative(srcDir, file).replace(/\\/g, "/")}:${line}`;
-      found[kind === "provide" ? "provided" : "consumed"].push({ name, version, where });
-    }
-  }
-  return found;
 }
 
 // --- checks ----------------------------------------------------------------
@@ -411,7 +126,10 @@ function checkReadmeServices(pkg) {
     warn(pkg.label, `declares services but README.md has no "## Services" chapter`);
     return;
   }
-  const listed = new Set([...chapter.matchAll(/^-\s+\*\*(.+?)\*\*/gm)].map((m) => m[1]));
+  // The name may be wrapped in a Markdown link to the service document.
+  const listed = new Set(
+    [...chapter.matchAll(/^-\s+\*\*(?:\[)?(.+?)(?:\]\([^)]*\))?\*\*/gm)].map((m) => m[1]),
+  );
   for (const name of declared) {
     if (!listed.has(name))
       warn(pkg.label, `"${name}" is declared but missing from the README "## Services" chapter`);
@@ -422,8 +140,97 @@ function checkReadmeServices(pkg) {
   }
 }
 
+// Every service is documented once, by the package that owns its namespace —
+// which for a hub contract is the consumer, not the providers. See ownerFor()
+// in service-graph.js.
+function checkServiceDocs(pkg, graph, packageNames) {
+  const docsDir = path.join(pkg.dir, "docs");
+  const owned = [...graph.keys()].filter((name) => ownerFor(name, packageNames) === pkg.name);
+
+  for (const name of owned) {
+    const file = path.join(docsDir, `${name}.md`);
+    if (!fs.existsSync(file)) {
+      const report = DOCS_ARE_MANDATORY ? error : warn;
+      report(pkg.label, `owns "${name}" but has no docs/${name}.md`);
+      continue;
+    }
+    const doc = fs.readFileSync(file, "utf8");
+    if (doc.split("\n")[0].trim() !== `# ${name}`) {
+      warn(pkg.label, `docs/${name}.md does not open with "# ${name}"`);
+    }
+
+    const sections = new Set([...doc.matchAll(/^## (.+?)\s*$/gm)].map((m) => m[1]));
+    for (const section of REQUIRED_DOC_SECTIONS) {
+      if (!sections.has(section)) warn(pkg.label, `docs/${name}.md has no "## ${section}"`);
+    }
+
+    // The doc has to name the method the reader must export.
+    const entry = pkg.manifest.providedServices?.[name] ?? pkg.manifest.consumedServices?.[name];
+    for (const method of Object.values(entry?.versions ?? {})) {
+      if (!doc.includes(method)) warn(pkg.label, `docs/${name}.md never mentions ${method}()`);
+    }
+
+    // Cross-owner links go to the site by absolute URL, since a relative path
+    // cannot cross a repository boundary on GitHub. Catch the ones that point
+    // at a service that does not exist.
+    for (const match of doc.matchAll(/lumine-code\.github\.io\/docs\.html#services\/([\w.-]+)/g)) {
+      if (!graph.has(match[1])) {
+        error(pkg.label, `docs/${name}.md links to "${match[1]}", which is not a service`);
+      }
+    }
+  }
+
+  if (!fs.existsSync(docsDir)) return;
+  for (const file of fs.readdirSync(docsDir)) {
+    if (!file.endsWith(".md")) continue;
+    const name = file.slice(0, -3);
+    if (!graph.has(name)) {
+      error(pkg.label, `docs/${file} documents "${name}", which is not a service`);
+    } else if (!owned.includes(name)) {
+      const owner = ownerFor(name, packageNames);
+      error(
+        pkg.label,
+        `docs/${file} documents "${name}", which is owned by ` +
+          `${typeof owner === "string" ? owner : "core"}`,
+      );
+    }
+  }
+}
+
+// Services core registers on the serviceHub itself belong to no package, so
+// their documents live in the website repository rather than here. Check them
+// only when that repository is checked out beside this one; the website's own
+// `npm run docs:services` is what enforces them where it matters.
+function checkCoreServiceDocs(graph, packageNames, workspaceRoot) {
+  const docsDir = path.join(workspaceRoot, "website", "docs", "services");
+  if (!fs.existsSync(docsDir)) return;
+
+  const owned = [...graph.keys()].filter((name) => ownerFor(name, packageNames) === CORE);
+  for (const name of owned) {
+    if (!fs.existsSync(path.join(docsDir, `${name}.md`))) {
+      warn("core", `"${name}" is registered by src/ but website has no docs/services/${name}.md`);
+    }
+  }
+  for (const file of fs.readdirSync(docsDir)) {
+    if (file.endsWith(".md") && !owned.includes(file.slice(0, -3))) {
+      warn("core", `website docs/services/${file} documents nothing core registers`);
+    }
+  }
+}
+
 function checkGraph(graph, packageNames, hasCommunityTree) {
   for (const [name, edge] of graph) {
+    // Every service needs exactly one package responsible for documenting it.
+    // A name that resolves to nobody is a naming-rule violation regardless of
+    // what is checked out, so this is not gated on hasCommunityTree.
+    if (ownerFor(name, packageNames) === null) {
+      error(
+        "graph",
+        `"${name}" resolves to no documentation owner; ` +
+          `add it to SERVICE_OWNERS in script/service-graph.js`,
+      );
+    }
+
     if (edge.consumers.length === 0) continue;
     if (edge.providers.length === 0) {
       if (EXTERNAL_SERVICES.has(name)) continue;
@@ -491,49 +298,41 @@ function main() {
   const lumineRoot = path.resolve(__dirname, "..");
   const workspaceRoot = path.resolve(process.argv[2] ?? path.join(lumineRoot, ".."));
 
-  const communityRoot = path.join(workspaceRoot, "pkg_lumine");
-  const hasCommunityTree = fs.existsSync(communityRoot);
-  const packages = [
-    ...readPackages(path.join(lumineRoot, "packages")),
-    ...readPackages(communityRoot),
-  ];
-  const packageNames = new Set(packages.map((p) => p.name));
+  const { packages, packageNames, graph, core, hasCommunityTree, problems } = buildGraph({
+    lumineRoot,
+    workspaceRoot,
+  });
 
-  const graph = new Map();
-  const edge = (name) => {
-    if (!graph.has(name)) graph.set(name, { providers: [], consumers: [] });
-    return graph.get(name);
-  };
+  for (const { where, message } of problems) error(where, message);
 
   for (const pkg of packages) {
-    for (const [name, entry] of Object.entries(pkg.manifest.providedServices ?? {})) {
-      edge(name).providers.push({ label: pkg.label, versions: Object.keys(entry.versions ?? {}) });
-    }
-    for (const [name, entry] of Object.entries(pkg.manifest.consumedServices ?? {})) {
-      for (const range of Object.keys(entry.versions ?? {})) {
-        edge(name).consumers.push({ label: pkg.label, range });
-      }
-    }
     checkDeclaredMethods(pkg);
     checkDuplicateConsumerMethods(pkg);
     checkReadmeServices(pkg);
   }
 
-  const core = readCoreServices(path.join(lumineRoot, "src"));
-  for (const { name, version, where } of core.provided) {
-    edge(name).providers.push({ label: where, versions: [version] });
+  // A second pass: doc ownership needs the whole graph, not one manifest.
+  for (const pkg of packages) {
+    checkServiceDocs(pkg, graph, packageNames);
   }
-  for (const { name, version, where } of core.consumed) {
-    edge(name).consumers.push({ label: where, range: version });
-  }
+  checkCoreServiceDocs(graph, packageNames, workspaceRoot);
 
   checkGraph(graph, packageNames, hasCommunityTree);
 
   for (const message of warnings) console.log(`warn  ${message}`);
   for (const message of errors) console.log(`ERROR ${message}`);
 
+  const documented = [...graph.keys()].filter((name) => {
+    const owner = ownerFor(name, packageNames);
+    // Core and external services are documented outside this repository.
+    if (owner === EXTERNAL || owner === CORE) return true;
+    const pkg = packages.find((p) => p.name === owner);
+    return pkg ? fs.existsSync(path.join(pkg.dir, "docs", `${name}.md`)) : false;
+  }).length;
+
   console.log(
-    `\n${packages.length} packages, ${graph.size} services, ` +
+    `\n${packages.length} packages, ${graph.size} services ` +
+      `(${documented} documented), ` +
       `${core.provided.length + core.consumed.length} core registrations — ` +
       `${errors.length} error(s), ${warnings.length} warning(s)`,
   );
