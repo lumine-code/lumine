@@ -4,7 +4,6 @@ const getSuggestionsWithTextMate = require("./text-mate-provider");
 const provider = {
   scopeSelector: ".text.html",
   disableForScopeSelector: ".text.html .comment",
-  priority: 1,
   filterSuggestions: true,
 
   getSuggestions(request) {
