@@ -89,6 +89,11 @@ module.exports = class GrammarRegistry {
   maintainLanguageMode(buffer) {
     this.grammarScoresByBuffer.set(buffer, null);
 
+    // This method installs its own destroy handler below, so claim the buffer
+    // before assigning: otherwise `assignLanguageMode` would register a second
+    // one that deletes the same two entries.
+    this.releasedBuffers.add(buffer);
+
     const languageOverride = this.languageOverridesByBufferId.get(buffer.id);
     if (languageOverride) {
       this.assignLanguageMode(buffer, languageOverride);
@@ -106,6 +111,7 @@ module.exports = class GrammarRegistry {
     const destroySubscription = buffer.onDidDestroy(() => {
       this.grammarScoresByBuffer.delete(buffer);
       this.languageOverridesByBufferId.delete(buffer.id);
+      this.releasedBuffers.delete(buffer);
       this.subscriptions.remove(destroySubscription);
       this.subscriptions.remove(pathChangeSubscription);
     });
@@ -119,6 +125,9 @@ module.exports = class GrammarRegistry {
       this.subscriptions.remove(destroySubscription);
       this.grammarScoresByBuffer.delete(buffer);
       this.languageOverridesByBufferId.delete(buffer.id);
+      // No longer claimed: a later assignment must be free to register its own
+      // one-shot release for a buffer that outlives being maintained.
+      this.releasedBuffers.delete(buffer);
     });
   }
 

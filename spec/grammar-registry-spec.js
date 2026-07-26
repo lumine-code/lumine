@@ -77,6 +77,25 @@ describe("GrammarRegistry", () => {
       expect(grammarRegistry.languageOverridesByBufferId.has(buffer.id)).toBe(false);
     });
 
+    it("registers only one release for a maintained buffer", () => {
+      grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
+
+      const buffer = new TextBuffer();
+      grammarRegistry.assignLanguageMode(buffer, "source.css");
+      const before = grammarRegistry.subscriptions.disposables.size;
+      // maintainLanguageMode installs its own destroy handler and calls
+      // assignLanguageMode on the way, so only its own pair should be added.
+      const disposable = grammarRegistry.maintainLanguageMode(buffer);
+      expect(grammarRegistry.subscriptions.disposables.size).toBe(before + 2);
+
+      // Once it stops maintaining, a later assignment may claim the buffer again.
+      disposable.dispose();
+      grammarRegistry.assignLanguageMode(buffer, "source.css");
+      buffer.destroy();
+      expect(grammarRegistry.grammarScoresByBuffer.has(buffer)).toBe(false);
+      expect(grammarRegistry.languageOverridesByBufferId.has(buffer.id)).toBe(false);
+    });
+
     it("does not stack subscriptions when a buffer is reassigned", () => {
       grammarRegistry.loadGrammarSync(
         require.resolve("language-javascript/grammars/javascript.json"),
