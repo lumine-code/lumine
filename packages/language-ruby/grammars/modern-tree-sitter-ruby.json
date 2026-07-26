@@ -5,8 +5,8 @@
   "parser": "tree-sitter-ruby",
   "injectionRegex": "rb|ruby|RB|RUBY",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-ruby#9d86f3761bb30e8dcc81e754b81d3ce91848477e",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-ruby#v0.23.1",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter-ruby/tree-sitter-ruby.wasm",
     "highlightsQuery": "tree-sitter-ruby/highlights.scm",
     "localsQuery": "tree-sitter-ruby/locals.scm",
