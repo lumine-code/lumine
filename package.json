@@ -279,6 +279,7 @@
     "full": "npm install && npm run build && npm run dist",
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
+    "check:services": "node script/check-services.js",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test:editor": "npm run test:only -- spec",
