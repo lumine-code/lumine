@@ -2805,7 +2805,7 @@ describe("Workspace", () => {
             beforeEach(() => {
               fakeSearch = null;
               onFakeSearchCreated = null;
-              atom.packages.serviceHub.provide("atom.directory-searcher", "0.1.0", {
+              atom.packages.serviceHub.provide("workspace.search-provider", "1.0.0", {
                 canSearchDirectory(directory) {
                   return directory.getPath() === dir1;
                 },
@@ -2874,7 +2874,7 @@ describe("Workspace", () => {
               // This provider's search should be cancelled when the first provider fails
               let cancelableSearch;
               let fakeSearch2 = null;
-              atom.packages.serviceHub.provide("atom.directory-searcher", "0.1.0", {
+              atom.packages.serviceHub.provide("workspace.search-provider", "1.0.0", {
                 canSearchDirectory(directory) {
                   return directory.getPath() === dir2;
                 },

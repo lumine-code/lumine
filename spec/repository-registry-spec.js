@@ -352,7 +352,7 @@ describe("RepositoryRegistry", () => {
       },
     });
 
-    expect(consumeService).toBe("atom.repository-operation-provider");
+    expect(consumeService).toBe("repositories.operations-provider");
     expect(consumeVersion).toBe("^1.0.0");
     expect(await repository.getOperations().commit("Subject")).toBe("service-commit");
   });

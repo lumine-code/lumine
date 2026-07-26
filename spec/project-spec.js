@@ -392,7 +392,11 @@ describe("Project", () => {
       atom.project.setPaths([projectPath]);
       expect(atom.repositories.getForPath(projectPath)).toBeNull();
 
-      atom.packages.serviceHub.provide("atom.repository-provider", "0.1.0", fakeRepositoryProvider);
+      atom.packages.serviceHub.provide(
+        "project.repository-provider",
+        "1.0.0",
+        fakeRepositoryProvider,
+      );
       expect(atom.repositories.resolveForPathSync(projectPath)).toBe(fakeRepository);
     });
 
@@ -401,7 +405,11 @@ describe("Project", () => {
       const repository = atom.repositories.getForPath(projectPath);
       expect(repository).toBeTruthy();
 
-      atom.packages.serviceHub.provide("atom.repository-provider", "0.1.0", fakeRepositoryProvider);
+      atom.packages.serviceHub.provide(
+        "project.repository-provider",
+        "1.0.0",
+        fakeRepositoryProvider,
+      );
       expect(atom.repositories.getForPath(projectPath)).toBe(fakeRepository);
       expect(repository.isDestroyed()).toBe(false);
     });
@@ -410,8 +418,8 @@ describe("Project", () => {
       atom.project.setPaths([]);
 
       const disposable = atom.packages.serviceHub.provide(
-        "atom.repository-provider",
-        "0.1.0",
+        "project.repository-provider",
+        "1.0.0",
         fakeRepositoryProvider,
       );
 
@@ -463,7 +471,7 @@ describe("Project", () => {
     let onDidChangeFilesCallback = null;
 
     beforeEach(() => {
-      serviceDisposable = atom.packages.serviceHub.provide("atom.directory-provider", "0.1.0", {
+      serviceDisposable = atom.packages.serviceHub.provide("project.directory-provider", "1.0.0", {
         directoryForURISync(uri) {
           if (uri.startsWith("ssh://")) {
             return new DummyDirectory(uri);
@@ -891,7 +899,7 @@ describe("Project", () => {
     });
 
     it("removes a path that is represented as a URI", () => {
-      atom.packages.serviceHub.provide("atom.directory-provider", "0.1.0", {
+      atom.packages.serviceHub.provide("project.directory-provider", "1.0.0", {
         directoryForURISync(uri) {
           return {
             getPath() {

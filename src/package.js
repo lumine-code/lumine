@@ -560,7 +560,8 @@ module.exports = class Package {
 
   activateCoreStartupServices() {
     const directoryProviderService =
-      this.metadata.providedServices && this.metadata.providedServices["atom.directory-provider"];
+      this.metadata.providedServices &&
+      this.metadata.providedServices["project.directory-provider"];
     if (directoryProviderService) {
       this.requireMainModule();
       const servicesByVersion = {};
@@ -570,7 +571,7 @@ module.exports = class Package {
           servicesByVersion[version] = this.mainModule[methodName]();
         }
       }
-      this.packageManager.serviceHub.provide("atom.directory-provider", servicesByVersion);
+      this.packageManager.serviceHub.provide("project.directory-provider", servicesByVersion);
     }
   }
 

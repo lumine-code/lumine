@@ -80,7 +80,7 @@ module.exports = class RepositoryRegistry {
     if (packageManager?.serviceHub) {
       this.subscriptions.add(
         packageManager.serviceHub.consume(
-          "atom.repository-operation-provider",
+          "repositories.operations-provider",
           "^1.0.0",
           (provider) => this.addOperationProvider(provider),
         ),

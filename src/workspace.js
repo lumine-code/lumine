@@ -522,7 +522,7 @@ module.exports = class Workspace extends Model {
 
   consumeServices({ serviceHub }) {
     this.directorySearchers = [];
-    serviceHub.consume("atom.directory-searcher", "^0.1.0", (provider) =>
+    serviceHub.consume("workspace.search-provider", "^1.0.0", (provider) =>
       this.directorySearchers.unshift(provider),
     );
   }
@@ -2242,7 +2242,7 @@ module.exports = class Workspace extends Model {
       }
 
       // ripgrep is the built-in searcher; a package-provided directory searcher
-      // (atom.directory-searcher) still takes precedence when it claims the dir.
+      // (workspace.search-provider) still takes precedence when it claims the dir.
       let searcher = this.ripgrepDirectorySearcher;
       for (const directorySearcher of this.directorySearchers) {
         if (directorySearcher.canSearchDirectory(directory)) {

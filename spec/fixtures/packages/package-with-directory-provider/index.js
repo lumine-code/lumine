@@ -34,7 +34,7 @@ class FakeRemoteDirectory {
   }
 }
 
-exports.provideDirectoryProvider = function () {
+exports.provideProjectDirectory = function () {
   return {
     name: 'directory provider from package-with-directory-provider',
 

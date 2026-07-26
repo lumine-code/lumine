@@ -804,19 +804,23 @@ describe("AtomEnvironment", () => {
         let serviceDisposable;
 
         beforeEach(() => {
-          serviceDisposable = atom.packages.serviceHub.provide("atom.directory-provider", "0.1.0", {
-            directoryForURISync(uri) {
-              if (uri.startsWith("remote://")) {
-                return {
-                  getPath() {
-                    return uri;
-                  },
-                };
-              } else {
-                return null;
-              }
+          serviceDisposable = atom.packages.serviceHub.provide(
+            "project.directory-provider",
+            "1.0.0",
+            {
+              directoryForURISync(uri) {
+                if (uri.startsWith("remote://")) {
+                  return {
+                    getPath() {
+                      return uri;
+                    },
+                  };
+                } else {
+                  return null;
+                }
+              },
             },
-          });
+          );
         });
 
         afterEach(() => {

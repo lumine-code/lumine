@@ -158,11 +158,11 @@ describe("PackageManager", () => {
       });
     });
 
-    it("early-activates any atom.directory-provider or atom.repository-provider services that the package provide", () => {
+    it("early-activates any project.directory-provider or project.repository-provider services that the package provide", () => {
       jasmine.useRealClock();
 
       const providers = [];
-      atom.packages.serviceHub.consume("atom.directory-provider", "^0.1.0", (provider) =>
+      atom.packages.serviceHub.consume("project.directory-provider", "^1.0.0", (provider) =>
         providers.push(provider),
       );
 

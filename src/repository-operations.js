@@ -1,5 +1,5 @@
 // Stable write facade for a repository. Implementations are supplied by
-// atom.repository-operation-provider services, so core does not need to own a
+// repositories.operations-provider services, so core does not need to own a
 // Git executable or a specific process library.
 class RepositoryOperations {
   constructor(registry, repository) {

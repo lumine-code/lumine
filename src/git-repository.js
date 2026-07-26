@@ -238,7 +238,7 @@ module.exports = class GitRepository {
   }
 
   // Public: Returns the stable write facade assigned by atom.repositories.
-  // Its methods are enabled by atom.repository-operation-provider services.
+  // Its methods are enabled by repositories.operations-provider services.
   getOperations() {
     return this.operations;
   }

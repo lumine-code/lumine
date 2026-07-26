@@ -148,7 +148,7 @@ function toDirectoryPath(directory) {
   return typeof directory === "string" ? directory : directory.getPath();
 }
 
-// Provider that conforms to the atom.repository-provider@0.1.0 service.
+// Provider that conforms to the project.repository-provider@1.0.0 service.
 class GitRepositoryProvider {
   constructor(project, config) {
     // Keys are real paths that end in `.git`.

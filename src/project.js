@@ -653,14 +653,14 @@ module.exports = class Project extends Model {
   */
 
   consumeServices({ serviceHub }) {
-    serviceHub.consume("atom.directory-provider", "^0.1.0", (provider) => {
+    serviceHub.consume("project.directory-provider", "^1.0.0", (provider) => {
       this.directoryProviders.unshift(provider);
       return new Disposable(() => {
         return this.directoryProviders.splice(this.directoryProviders.indexOf(provider), 1);
       });
     });
 
-    return serviceHub.consume("atom.repository-provider", "^0.1.0", (provider) => {
+    return serviceHub.consume("project.repository-provider", "^1.0.0", (provider) => {
       this.repositoryProviders.unshift(provider);
       this.repositoryPromisesByPath.clear();
       this.repositoryRegistry.rescan();
