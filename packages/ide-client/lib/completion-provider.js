@@ -12,12 +12,15 @@ const COMPLETION_CAPABILITIES = {
         preselectSupport: true,
         insertReplaceSupport: true,
         labelDetailsSupport: true,
+        commitCharactersSupport: true,
         resolveSupport: {
           properties: ["documentation", "detail", "additionalTextEdits", "command", "labelDetails"],
         },
       },
       completionItemKind: { valueSet: Array.from({ length: 25 }, (_, i) => i + 1) },
-      completionList: { itemDefaults: ["editRange", "insertTextFormat", "data"] },
+      completionList: {
+        itemDefaults: ["editRange", "insertTextFormat", "data", "commitCharacters"],
+      },
     },
   },
 };
@@ -37,6 +40,20 @@ module.exports = class CompletionProvider {
     this.filterSuggestions = true;
     this.cache = null;
     this.abortController = null;
+  }
+  // The characters every running server wants completion asked for on, which
+  // `autocomplete` reads to open the list even where it otherwise would not —
+  // `.` in TypeScript is the archetype. Computed on every read, never
+  // snapshotted: sessions start and stop as projects and grammars change, and
+  // a server only advertises its trigger characters once it is running.
+  get triggerCharacters() {
+    const characters = new Set();
+    for (const session of this.manager.sessions.values()) {
+      if (session.state !== "running") continue;
+      for (const character of session.capabilities.completionProvider?.triggerCharacters || [])
+        characters.add(character);
+    }
+    return characters;
   }
   // Completions from every server serving the editor are merged: a type
   // checker and a linter each contribute their own, and the user wants both.

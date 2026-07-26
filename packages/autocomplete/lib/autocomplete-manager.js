@@ -35,6 +35,13 @@ function sortTextEdits(textEdits) {
 // answer with its auto-import edits, short enough not to feel like lag.
 const DETAILS_TIMEOUT_MS = 200;
 
+// Why a provider is being asked for suggestions, numbered as LSP's
+// `CompletionTriggerKind`. Autocomplete raises these two; the third,
+// `3` — a re-request of a list the provider itself marked incomplete — is
+// raised by the provider, which is the only side that knows about it.
+const TRIGGER_INVOKED = 1;
+const TRIGGER_CHARACTER = 2;
+
 // How well a suggestion answers what the user typed. Ranking by tier first
 // keeps a literal prefix match above a scattered subsequence one, which a
 // single blended score cannot guarantee.
@@ -93,6 +100,13 @@ module.exports = class AutocompleteManager {
     this.suggestionList = null;
     this.suppressForClasses = [];
     this.shouldDisplaySuggestions = false;
+    // The character that opened the list on the last buffer change, when a
+    // provider declared it as a trigger. Handed to `getSuggestions`.
+    this.triggerCharacter = null;
+    // Set while a commit character is being applied. The undo, the insertion
+    // and the re-typed character it makes are our own edits, and must not be
+    // read back as the user typing.
+    this.confirmingCommitCharacter = false;
     this.prefixRegex = null;
     this.wordPrefixRegex = null;
     this.updateCurrentEditor = this.updateCurrentEditor.bind(this);
@@ -404,11 +418,18 @@ module.exports = class AutocompleteManager {
       options.scopeDescriptor,
     );
 
+    // Asking for the menu by hand is an invocation whatever was typed last.
+    const triggerCharacter = options.activatedManually ? null : this.triggerCharacter;
+
     const providerPromises = [];
     providers.forEach((provider) => {
       const getSuggestions = provider.getSuggestions.bind(provider);
       const upgradedOptions = Object.assign({}, options);
       delete upgradedOptions.legacyPrefix;
+      // Told rather than inferred: a provider used to have to re-read the
+      // buffer to work out which of its trigger characters had fired.
+      upgradedOptions.triggerKind = triggerCharacter ? TRIGGER_CHARACTER : TRIGGER_INVOKED;
+      upgradedOptions.triggerCharacter = triggerCharacter;
 
       return providerPromises.push(
         Promise.resolve(getSuggestions(upgradedOptions)).then((providerSuggestions) => {
@@ -990,6 +1011,8 @@ module.exports = class AutocompleteManager {
 
   showOrHideSuggestionListForBufferChanges({ changes }) {
     if (this.disposed) return;
+    // Our own edits, not the user's.
+    if (this.confirmingCommitCharacter) return;
 
     const lastCursorPosition = this.editor.getLastCursor().getBufferPosition();
     const changeOccurredNearLastCursor = changes.some(({ newRange }) => {
@@ -997,10 +1020,24 @@ module.exports = class AutocompleteManager {
     });
     if (!changeOccurredNearLastCursor) return;
 
-    let shouldActivate = false;
+    const insertedCharacter = this.insertedCharacterForChanges(changes);
+
+    const commitSuggestion = this.suggestionForCommitCharacter(insertedCharacter);
+    if (commitSuggestion) {
+      this.triggerCharacter = null;
+      this.confirmWithCommitCharacter(commitSuggestion, insertedCharacter, changes[0].newRange);
+      return;
+    }
+
+    this.triggerCharacter = this.isTriggerCharacter(insertedCharacter) ? insertedCharacter : null;
+
+    // A declared trigger character opens the list on its own terms, so a
+    // language server still answers `.` when suggestions on keystroke are off.
+    let shouldActivate = this.triggerCharacter != null;
     if (
-      this.autoActivationEnabled ||
-      (this.suggestionList.isActive() && !this.compositionInProgress)
+      !shouldActivate &&
+      (this.autoActivationEnabled ||
+        (this.suggestionList.isActive() && !this.compositionInProgress))
     ) {
       shouldActivate = changes.some(({ oldText, newText }) => {
         if (this.autoActivationEnabled || this.suggestionList.isActive()) {
@@ -1027,9 +1064,10 @@ module.exports = class AutocompleteManager {
           }
         }
       });
-
-      if (shouldActivate && this.shouldSuppressActivationForEditorClasses()) shouldActivate = false;
     }
+
+    // A suppressed editor stays quiet however the activation was reached.
+    if (shouldActivate && this.shouldSuppressActivationForEditorClasses()) shouldActivate = false;
 
     if (shouldActivate) {
       this.cancelHideSuggestionListRequest();
@@ -1037,6 +1075,79 @@ module.exports = class AutocompleteManager {
     } else {
       this.cancelNewSuggestionsRequest();
       this.hideSuggestionList();
+    }
+  }
+
+  // Private: The single character the user just typed, or `null` when the
+  // change was anything else — a paste, a deletion, several cursors at once.
+  //
+  // A bracket matcher answers an opening bracket by inserting the whole pair in
+  // one edit, so a two-character pair counts as the character that opened it.
+  insertedCharacterForChanges(changes) {
+    if (this.compositionInProgress) return null;
+    if (changes.length !== 1) return null;
+    const { oldText, newText } = changes[0];
+    if (oldText.length > 0) return null;
+    if (newText.length === 1) return newText;
+    if (newText.length === 2 && this.bracketMatcherPairs.includes(newText)) return newText[0];
+    return null;
+  }
+
+  // Private: Whether a provider that applies at the cursor has declared
+  // `character` as one that should open the suggestion list.
+  //
+  // Asked on every keystroke rather than cached: providers are registered and
+  // disposed as packages activate, and a language server only advertises its
+  // trigger characters once it is running.
+  isTriggerCharacter(character) {
+    if (!character || this.providerManager == null || this.editor == null) return false;
+    const cursor = this.editor.getLastCursor();
+    if (cursor == null) return false;
+    const providers = this.providerManager.applicableProviders(
+      this.editorLabels,
+      cursor.getScopeDescriptor(),
+    );
+    // `?.has?.()` rather than `.has()`: the contract asks for a `Set`, and a
+    // provider that hands over something else must not break every keystroke.
+    return providers.some((provider) => provider.triggerCharacters?.has?.(character) === true);
+  }
+
+  // Private: The highlighted suggestion when `character` is one it listed as a
+  // commit character, and `null` otherwise — including when the feature is off,
+  // when no list is showing, and when the suggestion lists no such character.
+  suggestionForCommitCharacter(character) {
+    if (!character) return null;
+    if (!atom.config.get("autocomplete.commitCharacters")) return null;
+    if (!this.suggestionList || !this.suggestionList.isActive()) return null;
+    const suggestion = this.suggestionList.suggestionListElement.getSelectedItem();
+    const characters = suggestion && suggestion.commitCharacters;
+    if (!characters || !characters.includes(character)) return null;
+    return suggestion;
+  }
+
+  // Private: Accepts `suggestion` because the user typed one of its commit
+  // characters: take the character back out, insert the suggestion, then type
+  // the character again.
+  //
+  // The three edits are one undo step. `editor.transact()` cannot express it —
+  // `confirm` goes asynchronous whenever a provider still has detail in flight,
+  // which is exactly the case for a language server — so this brackets them
+  // with a checkpoint instead. That is what `transact` does internally, and it
+  // survives the await; `replaceTextWithMatch` transacts within it and nests.
+  async confirmWithCommitCharacter(suggestion, character, range) {
+    const editor = this.editor;
+    const checkpoint = editor.createCheckpoint();
+    this.confirmingCommitCharacter = true;
+    try {
+      editor.setTextInBufferRange(range, "");
+      await this.confirm(suggestion);
+      this.confirmingCommitCharacter = false;
+      // Typed outside the guard, so the character lands like any other
+      // keystroke: one that is also a trigger character opens the next list.
+      if (!this.disposed && this.editor === editor) editor.insertText(character);
+    } finally {
+      this.confirmingCommitCharacter = false;
+      if (!editor.isDestroyed()) editor.groupChangesSinceCheckpoint(checkpoint);
     }
   }
 

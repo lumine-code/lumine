@@ -25,6 +25,7 @@ const managerWith = (...sessions) => ({
   allGrammarScopes: () => ["source.ts"],
   activeSessionsForEditor: async () => sessions.filter(Boolean),
   activeSessionForEditor: async () => sessions[0] || null,
+  sessions: new Map(sessions.filter(Boolean).map((session, index) => [`key-${index}`, session])),
 });
 
 // An item whose textEdit replaces exactly the typed prefix, as servers report.
@@ -87,6 +88,52 @@ describe("CompletionProvider item mapping", () => {
     const completionItem = CompletionProvider.capabilities.textDocument.completion.completionItem;
     expect(completionItem.labelDetailsSupport).toBe(true);
     expect(completionItem.resolveSupport.properties).toContain("labelDetails");
+  });
+
+  it("advertises commit character support", () => {
+    const completion = CompletionProvider.capabilities.textDocument.completion;
+    expect(completion.completionItem.commitCharactersSupport).toBe(true);
+    // A server is free to send the list once for the whole response rather
+    // than repeating it on every item.
+    expect(completion.completionList.itemDefaults).toContain("commitCharacters");
+  });
+});
+
+describe("CompletionProvider trigger characters", () => {
+  const runningWith = (...triggerCharacters) =>
+    sessionWith(() => ({ items: [] }), { completionProvider: { triggerCharacters } });
+
+  it("unions the characters of every running session", () => {
+    const provider = new CompletionProvider(managerWith(runningWith("."), runningWith(".", "<")));
+    expect([...provider.triggerCharacters]).toEqual([".", "<"]);
+  });
+
+  it("ignores sessions that are not running", () => {
+    const starting = runningWith("@");
+    starting.state = "starting";
+    const provider = new CompletionProvider(managerWith(runningWith("."), starting));
+    expect([...provider.triggerCharacters]).toEqual(["."]);
+  });
+
+  it("ignores a server that advertises none", () => {
+    const provider = new CompletionProvider(
+      managerWith(sessionWith(() => ({ items: [] }), { completionProvider: {} })),
+    );
+    expect([...provider.triggerCharacters]).toEqual([]);
+  });
+
+  it("answers from the sessions running now, not those running at registration", () => {
+    const manager = managerWith();
+    const provider = new CompletionProvider(manager);
+    expect([...provider.triggerCharacters]).toEqual([]);
+
+    // Servers start well after the provider is handed to autocomplete, which
+    // reads this getter on every keystroke for exactly that reason.
+    manager.sessions.set("late", runningWith("."));
+    expect([...provider.triggerCharacters]).toEqual(["."]);
+
+    manager.sessions.delete("late");
+    expect([...provider.triggerCharacters]).toEqual([]);
   });
 });
 

@@ -204,6 +204,18 @@ type Suggestion =
        */
       characterMatchIndices?: number[];
 
+      /**
+       * Single characters that accept this suggestion when typed while it is
+       * highlighted. The character is inserted after the suggestion, so typing
+       * `(` on a highlighted `console` yields `console(`.
+       *
+       * Honoured only when the `autocomplete.commitCharacters` setting is on,
+       * which it is not by default. For a snippet suggestion the character
+       * lands wherever the expansion left the cursor, which is its first tab
+       * stop rather than the end of the inserted text.
+       */
+      commitCharacters?: string[];
+
       // (Either `text`, `snippet`, or `textEdit` must be provided.)
     } & { text: string })
   | { snippet: string }
@@ -255,6 +267,17 @@ type ServiceProvider = {
   filterSuggestions: boolean;
 
   /**
+   * Single characters that should open the suggestion list when typed, even
+   * where autocomplete would otherwise leave it closed — most importantly when
+   * the user has turned off suggestions on keystroke. Optional.
+   *
+   * Read on every keystroke rather than held onto, so a provider whose set
+   * grows or shrinks at runtime — a language server that has just finished
+   * starting, say — can expose it as a getter.
+   */
+  triggerCharacters?: Set<string>;
+
+  /**
    * Retrieves suggestions for a given editor at a given point. Can consult
    * other metadata. Can go async.
    */
@@ -278,6 +301,23 @@ type ServiceProvider = {
      * automatically while typing.
      */
     activatedManually: boolean;
+    /**
+     * Why suggestions are being asked for, numbered as LSP's
+     * `CompletionTriggerKind`: `1` when the list was invoked — typed into,
+     * or asked for by hand — and `2` when one of this provider's
+     * `triggerCharacters` was typed.
+     *
+     * `3`, a re-request of a list the provider itself marked incomplete, is
+     * never raised here: only the provider knows a list was incomplete, so it
+     * is the side that reports that kind onwards.
+     */
+    triggerKind: 1 | 2;
+    /**
+     * The character that fired the trigger when `triggerKind` is `2`, and
+     * `null` otherwise. Saves re-reading the buffer to work out which one it
+     * was.
+     */
+    triggerCharacter: string | null;
   }): Suggestion[] | Promise<Suggestion[]>;
 
   /**
