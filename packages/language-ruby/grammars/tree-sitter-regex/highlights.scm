@@ -48,3 +48,39 @@
 
 (character_class
   "^" @keyword.operator.negation.regexp)
+
+; POSIX character classes: the `[:alpha:]` inside `[[:alpha:]]`.
+(posix_character_class) @constant.other.character-class.posix.regexp
+
+(posix_character_class
+  "[:" @punctuation.definition.character-class.begin.regexp
+  ":]" @punctuation.definition.character-class.end.regexp)
+
+(posix_class_name) @support.constant.character-class.regexp
+
+
+; Inline flags: `(?i)`, and both flag runs of `(?im-sx:…)`.
+(inline_flags_group) @meta.group.inline-flags.regexp
+
+(inline_flags_group
+  "(?" @punctuation.definition.group.begin.bracket.round.regexp
+  ")" @punctuation.definition.group.end.bracket.round.regexp)
+
+(flags) @keyword.other.flags.regexp
+
+
+; Named groups, plus both ways of referring back to one: the `\k<name>`
+; escape and the Python-style `(?P=name)` group.
+(named_capturing_group) @meta.group.capturing.named.regexp
+
+(named_capturing_group
+  ["(?<" "(?P<"] @punctuation.definition.group.begin.bracket.round.regexp
+  ")" @punctuation.definition.group.end.bracket.round.regexp)
+
+(named_group_backreference
+  "(?P=" @punctuation.definition.group.begin.bracket.round.regexp
+  ")" @punctuation.definition.group.end.bracket.round.regexp)
+
+(backreference_escape) @constant.character.escape.backreference.regexp
+
+(group_name) @variable.other.group-name.regexp
