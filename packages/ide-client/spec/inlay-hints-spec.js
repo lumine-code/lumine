@@ -193,6 +193,20 @@ describe("ViewportTracker", () => {
     expect(start).toBeGreaterThan(0);
   });
 
+  it("reports the top of the buffer for an editor that has never been rendered", async () => {
+    viewportTracker = new ViewportTracker();
+    // An editor opened in a background tab reports no visible rows, and
+    // converting that to a screen position throws on an invalid Point.
+    const hidden = await atom.workspace.buildTextEditor();
+    hidden.setText("x\n".repeat(300));
+    expect(hidden.getFirstVisibleScreenRow()).not.toBeGreaterThan(0);
+    const [start, end] = viewportTracker.rangeForEditor(hidden);
+    expect(start).toBe(0);
+    expect(Number.isFinite(end)).toBe(true);
+    expect(end).toBeGreaterThan(0);
+    hidden.destroy();
+  });
+
   it("emits when the buffer stops changing", async () => {
     viewportTracker = new ViewportTracker();
     const events = [];

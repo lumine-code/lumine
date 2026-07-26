@@ -67,8 +67,16 @@ module.exports = class ViewportTracker {
   }
   rangeForEditor(editor) {
     const lastBufferRow = editor.getBuffer().getLastRow();
-    const first = editor.bufferRowForScreenRow(editor.getFirstVisibleScreenRow());
-    const last = editor.bufferRowForScreenRow(editor.getLastVisibleScreenRow());
+    // An editor that has never been rendered — one opened in a background tab,
+    // or observed before its element is attached — reports no visible rows at
+    // all. Treat it as showing the top of the buffer rather than converting
+    // NaN into a screen position.
+    const firstScreenRow = editor.getFirstVisibleScreenRow();
+    const lastScreenRow = editor.getLastVisibleScreenRow();
+    if (!Number.isFinite(firstScreenRow) || !Number.isFinite(lastScreenRow))
+      return [0, Math.min(lastBufferRow, MARGIN_ROWS)];
+    const first = editor.bufferRowForScreenRow(firstScreenRow);
+    const last = editor.bufferRowForScreenRow(lastScreenRow);
     return [Math.max(0, first - MARGIN_ROWS), Math.min(lastBufferRow, last + MARGIN_ROWS)];
   }
   dispose() {

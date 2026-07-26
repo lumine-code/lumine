@@ -22,6 +22,31 @@ describe("ide-client package", () => {
     expect(commands.map(({ name }) => name)).toContain("ide-client:servers");
   });
 
+  it("satisfies the autocomplete provider contract", () => {
+    const main = atom.packages.getActivePackage("ide-client").mainModule;
+    const provider = main.provideAutocomplete();
+    // autocomplete rejects a provider outright when these are misnamed, and
+    // the rejection is only visible at runtime.
+    expect(typeof provider.scopeSelector).toBe("string");
+    expect(provider.scopeSelector.length).toBeGreaterThan(0);
+    expect(provider.selector).toBeUndefined();
+    expect(provider.disableForSelector).toBeUndefined();
+    expect(typeof provider.getSuggestions).toBe("function");
+  });
+
+  it("consumes a service name that no other provided service nests under", () => {
+    const { consumedServices } = atom.packages.getLoadedPackage("ide-client").metadata;
+    // A service named "x.y" is stored at the key path ["x"]["y"], so it is
+    // also handed to consumers of "x". Consuming both names would receive the
+    // wrong value depending on registration order.
+    const names = Object.keys(consumedServices);
+    for (const name of names) {
+      const parent = name.split(".")[0];
+      if (parent === name) continue;
+      expect(names).not.toContain(parent);
+    }
+  });
+
   it("reports its sessions to the background zone", () => {
     const main = atom.packages.getActivePackage("ide-client").mainModule;
     const entries = new Map();

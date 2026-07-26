@@ -100,7 +100,7 @@
         "^1.0.0": "consumeBusySignal"
       }
     },
-    "busy-signal.background": {
+    "background-signal": {
       "versions": {
         "^1.0.0": "consumeBackgroundSignal"
       }

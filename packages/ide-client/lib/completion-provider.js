@@ -26,7 +26,7 @@ module.exports = class CompletionProvider {
   constructor(manager) {
     this.manager = manager;
     manager.addCapabilityFragment(COMPLETION_CAPABILITIES);
-    this.selector = ".source, .text";
+    this.scopeSelector = ".source, .text";
     this.inclusionPriority = 2;
     this.suggestionPriority = 2;
     this.excludeLowerPriority = false;
