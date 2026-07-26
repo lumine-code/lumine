@@ -71,6 +71,8 @@
   "final"
   "noexcept"
 
+  "alignas"
+
   "typename"
 ] @storage.modifier._TYPE_.cpp
 
@@ -176,6 +178,14 @@
   "throw"
   "using"
   "namespace"
+] @keyword.control._TYPE_.cpp
+
+; Microsoft structured exception handling.
+[
+  "__try"
+  "__except"
+  "__finally"
+  "__leave"
 ] @keyword.control._TYPE_.cpp
 
 ; OPERATORS
