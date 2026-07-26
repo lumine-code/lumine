@@ -16,7 +16,7 @@
   "dependencies": {
     "dedent": "^1.7.2",
     "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74",
-    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#fbbc2d9660db6a2ff676c7a3baf7536f96ec34e6"
+    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#a201dae6a0ea6954cb9a905be4a718af697d9f78"
   },
   "deserializers": {
     "StyleguideView": "createStyleguideView"

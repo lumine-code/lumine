@@ -45,6 +45,18 @@
         white-space: nowrap;
         overflow: hidden;
       }
+
+      /* Right-hand content of a primary line. Floated rather than turning the
+         line into a flex row, so the ellipsis truncation above still applies to
+         the primary text. Inside the block, flex restores left-to-right order,
+         which floated siblings would otherwise reverse. */
+      .trailing-block {
+        float: right;
+        display: inline-flex;
+        align-items: baseline;
+        gap: var(--component-padding);
+        margin-left: var(--component-padding);
+      }
     }
   }
 }

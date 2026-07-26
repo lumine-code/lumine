@@ -148,7 +148,7 @@
     "resolve": "1.22.12",
     "search-panel": "file:packages/search-panel",
     "@lumine-code/season": "https://github.com/lumine-code/season.git#91bdcdd1009094699db8818c044cff557c9ed947",
-    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#fbbc2d9660db6a2ff676c7a3baf7536f96ec34e6",
+    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#a201dae6a0ea6954cb9a905be4a718af697d9f78",
     "semver": "7.8.5",
     "settings-view": "file:packages/settings-view",
     "snippets": "file:packages/snippets",
