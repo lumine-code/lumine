@@ -32,12 +32,12 @@
     "TreeView": "getTreeViewInstance"
   },
   "consumedServices": {
-    "file-icons.classes": {
+    "icons.class": {
       "versions": {
         "^1.0.0": "consumeFileIcons"
       }
     },
-    "file-icons.elements": {
+    "icons.element": {
       "versions": {
         "^1.0.0": "consumeElementIcons"
       }

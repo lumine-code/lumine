@@ -1,7 +1,7 @@
 const { Emitter, CompositeDisposable } = require("atom");
 const { repoForPath } = require("./helpers");
 
-// The fallback when no package provides `file-icons.classes`. Core owns the
+// The fallback when no package provides `icons.class`. Core owns the
 // octicon mapping so every consumer answers identically and shares its cache.
 const DefaultFileIcons = {
   iconClassForPath: (filePath) => atom.ui.iconClassForPath(filePath),

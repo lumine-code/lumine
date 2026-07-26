@@ -30,7 +30,7 @@
     }
   },
   "consumedServices": {
-    "file-icons.classes": {
+    "icons.class": {
       "versions": {
         "^1.0.0": "consumeClassIcons"
       }

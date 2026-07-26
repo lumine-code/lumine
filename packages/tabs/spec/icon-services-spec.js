@@ -27,7 +27,7 @@ describe("icon services", () => {
     iconServices.resetFileIcons();
   });
 
-  describe("file-icons.classes", () => {
+  describe("icons.class", () => {
     it("has a default handler", () => {
       expect(iconServices.fileIcons).toBe(DefaultFileIcons);
     });
@@ -59,7 +59,7 @@ describe("icon services", () => {
           return new Disposable(() => (notify = null));
         },
       };
-      const disposable = atom.packages.serviceHub.provide("file-icons.classes", "1.0.0", provider);
+      const disposable = atom.packages.serviceHub.provide("icons.class", "1.0.0", provider);
       expect(tab.itemTitle.className).toBe("title icon first");
 
       provider.iconClassForPath = () => "second";
@@ -72,7 +72,7 @@ describe("icon services", () => {
 
     it("allows a service to replace the default", () => {
       const provider = { iconClassForPath: () => "foo bar" };
-      const disposable = atom.packages.serviceHub.provide("file-icons.classes", "1.0.0", provider);
+      const disposable = atom.packages.serviceHub.provide("icons.class", "1.0.0", provider);
       expect(iconServices.fileIcons).toBe(provider);
       expect(tab.itemTitle.className).toBe("title icon foo bar");
       disposable.dispose();
@@ -82,7 +82,7 @@ describe("icon services", () => {
 
     it("accepts an array of strings as icon-classes", () => {
       const provider = { iconClassForPath: () => ["foo", "bar"] };
-      const disposable = atom.packages.serviceHub.provide("file-icons.classes", "1.0.0", provider);
+      const disposable = atom.packages.serviceHub.provide("icons.class", "1.0.0", provider);
       expect(iconServices.fileIcons).toBe(provider);
       expect(tab.itemTitle.className).toBe("title icon foo bar");
       disposable.dispose();
@@ -91,7 +91,7 @@ describe("icon services", () => {
     });
   });
 
-  describe("file-icons.elements", () => {
+  describe("icons.element", () => {
     it("has no default handler", () => {
       expect(iconServices.elementIcons).toBe(null);
     });
@@ -103,7 +103,7 @@ describe("icon services", () => {
           element.classList.remove("foo", "bar", "icon");
         });
       };
-      const disposable = atom.packages.serviceHub.provide("file-icons.elements", "1.0.0", provider);
+      const disposable = atom.packages.serviceHub.provide("icons.element", "1.0.0", provider);
       expect(iconServices.elementIcons).toBe(provider);
       expect(tab.itemTitle.className).toBe("title icon foo bar");
       disposable.dispose();
@@ -120,8 +120,8 @@ describe("icon services", () => {
           element.classList.remove("bar");
         });
       };
-      atom.packages.serviceHub.provide("file-icons.classes", "1.0.0", basicProvider);
-      atom.packages.serviceHub.provide("file-icons.elements", "1.0.0", elementProvider);
+      atom.packages.serviceHub.provide("icons.class", "1.0.0", basicProvider);
+      atom.packages.serviceHub.provide("icons.element", "1.0.0", elementProvider);
       expect(iconServices.fileIcons).toBe(basicProvider);
       expect(iconServices.elementIcons).toBe(elementProvider);
       expect(tab.itemTitle.className).toBe("title icon bar");

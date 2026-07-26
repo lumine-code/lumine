@@ -24,12 +24,12 @@
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"
   },
   "consumedServices": {
-    "file-icons.classes": {
+    "icons.class": {
       "versions": {
         "^1.0.0": "consumeFileIcons"
       }
     },
-    "file-icons.elements": {
+    "icons.element": {
       "versions": {
         "^1.0.0": "consumeElementIcons"
       }
