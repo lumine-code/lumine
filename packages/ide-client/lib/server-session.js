@@ -145,6 +145,18 @@ module.exports = class ServerSession {
       this.manager.showMessageRequest(type, message, actions),
     );
     this.connection.onRequest("window/showDocument", (params) => this.manager.showDocument(params));
+    // Server-initiated refresh requests: acknowledge with null and let the
+    // manager route them to the feature modules that hold the stale data.
+    for (const [method, kind] of [
+      ["workspace/codeLens/refresh", "codeLens"],
+      ["workspace/semanticTokens/refresh", "semanticTokens"],
+      ["workspace/inlayHint/refresh", "inlayHint"],
+    ]) {
+      this.connection.onRequest(method, () => {
+        this.manager.requestRefresh(this, kind);
+        return null;
+      });
+    }
   }
   async openEditor(editor) {
     const uri = C.pathToUri(editor.getPath());

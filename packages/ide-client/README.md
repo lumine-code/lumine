@@ -12,6 +12,9 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 - **Diagnostics**: forwards server diagnostics to the linter package when installed.
 - **Completions**: serves language-server completions to autocomplete.
 - **Symbols**: serves document and project symbols to symbols-view.
+- **Inlay hints**: renders inline type and parameter-name labels for the visible part of the editor.
+- **Code lens**: shows actionable command links above symbols; disabled by default.
+- **Semantic tokens**: layers server-computed highlighting over the grammar's own; disabled by default.
 - **Status bar**: shows the active server state with a session menu for restart, log, and problems.
 - **Logging**: keeps a per-server log buffer with optional protocol tracing.
 

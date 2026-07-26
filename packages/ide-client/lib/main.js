@@ -8,6 +8,10 @@ const CodeFormatProvider = require("./code-format-provider");
 const ReferencesProvider = require("./references-provider");
 const RefactorProvider = require("./refactor-provider");
 const IntentionsProvider = require("./intentions-provider");
+const ViewportTracker = require("./viewport-tracker");
+const CodeLens = require("./code-lens");
+const SemanticTokens = require("./semantic-tokens");
+const InlayHints = require("./inlay-hints");
 const SessionMenuView = require("./session-menu-view");
 const CustomServers = require("./custom-servers");
 const { toLinterMessages } = require("./linter-messages");
@@ -25,6 +29,12 @@ module.exports = {
     this.referencesProvider = new ReferencesProvider(this.manager);
     this.refactorProvider = new RefactorProvider(this.manager);
     this.intentionsProvider = new IntentionsProvider(this.manager);
+    // Constructed before activate() so their capability fragments are merged
+    // into the initialize handshake of every session.
+    this.viewportTracker = new ViewportTracker();
+    this.codeLens = new CodeLens(this.manager, this.viewportTracker);
+    this.semanticTokens = new SemanticTokens(this.manager, this.viewportTracker);
+    this.inlayHints = new InlayHints(this.manager, this.viewportTracker);
     this.manager.activate();
     this.customServers = new CustomServers(this.manager);
     this.customServers.activate();
@@ -58,6 +68,14 @@ module.exports = {
     );
   },
   async deactivate() {
+    this.codeLens?.dispose();
+    this.codeLens = null;
+    this.semanticTokens?.dispose();
+    this.semanticTokens = null;
+    this.inlayHints?.dispose();
+    this.inlayHints = null;
+    this.viewportTracker?.dispose();
+    this.viewportTracker = null;
     this.customServers?.dispose();
     this.customServers = null;
     this.sessionMenu?.destroy();

@@ -4,3 +4,47 @@
 .ide-client-status:focus {
   outline: 1px solid var(--base-border-color);
 }
+
+.ide-client-code-lens {
+  font-size: 0.85em;
+  line-height: 1.8;
+  color: var(--text-color-subtle);
+}
+.ide-client-code-lens a {
+  color: var(--text-color-subtle);
+  cursor: pointer;
+  margin-right: 1em;
+}
+.ide-client-code-lens a:hover {
+  color: var(--text-color-info);
+  text-decoration: underline;
+}
+
+/* The label lives in a pseudo-element fed by a CSS custom property set on the
+   decorated span, so the buffer text itself stays untouched. Font and color
+   are reset explicitly so surrounding grammar scopes do not bleed in. */
+.ide-client-inlay-hint::before,
+.ide-client-inlay-hint-after::after {
+  content: var(--ide-inlay-text);
+  margin: 0 1px;
+  padding: 0 0.3em;
+  border-radius: 3px;
+  font-size: 0.85em;
+  font-style: normal;
+  font-weight: normal;
+  color: var(--text-color-subtle);
+  background-color: var(--background-color-highlight);
+  white-space: pre;
+}
+.ide-client-inlay-hint-pad-left::before,
+.ide-client-inlay-hint-pad-left::after {
+  margin-left: 0.4em;
+}
+.ide-client-inlay-hint-pad-right::before,
+.ide-client-inlay-hint-pad-right::after {
+  margin-right: 0.4em;
+}
+
+.ide-client-strike {
+  text-decoration: line-through;
+}

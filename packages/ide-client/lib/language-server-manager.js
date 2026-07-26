@@ -41,6 +41,14 @@ module.exports = class LanguageServerManager {
   onDidLog(fn) {
     return this.emitter.on("did-log", fn);
   }
+  // fn({session, kind: "codeLens" | "semanticTokens" | "inlayHint"}) — fired
+  // when a server asks the client to re-fetch that feature's data.
+  onDidRequestRefresh(fn) {
+    return this.emitter.on("did-request-refresh", fn);
+  }
+  requestRefresh(session, kind) {
+    this.emitter.emit("did-request-refresh", { session, kind });
+  }
   // Feature modules contribute client-capability fragments before any session
   // starts; the merged result is sent with every initialize request.
   addCapabilityFragment(fragment) {
