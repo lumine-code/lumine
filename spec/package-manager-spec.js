@@ -1651,12 +1651,50 @@ describe("PackageManager", () => {
         "package-symlinked",
       );
       const destination = path.join(atom.packages.getPackageDirPaths()[0], "package-symlinked");
-      if (!fs.isDirectorySync(destination)) {
-        fs.symlinkSync(packageSymLinkedSource, destination, "junction");
+      // The fixture must be a real directory: a junction to a missing target is
+      // not enumerated, so without this the symptom is an unexplained empty
+      // result rather than the missing fixture.
+      expect(fs.isDirectorySync(packageSymLinkedSource)).toBe(
+        true,
+        `the ${path.basename(packageSymLinkedSource)} fixture is missing from the checkout`,
+      );
+
+      removeLink(destination);
+      // A junction rather than a symlink: creating a symlink on Windows needs
+      // Developer Mode or elevation, a junction needs neither.
+      fs.symlinkSync(packageSymLinkedSource, destination, "junction");
+      try {
+        const availablePackages = atom.packages.getAvailablePackageNames();
+        expect(availablePackages.includes("package-symlinked")).toBe(true);
+      } finally {
+        removeLink(destination);
       }
-      const availablePackages = atom.packages.getAvailablePackageNames();
-      expect(availablePackages.includes("package-symlinked")).toBe(true);
-      fs.removeSync(destination);
     });
   });
 });
+
+// Deletes a link to a directory without following it. `fs.removeSync` recurses
+// through a junction and empties the directory it points at, which is how this
+// fixture has twice been deleted by a spec run and then committed as gone.
+// `unlink` covers the POSIX symlink; Windows rejects it for a junction, where
+// `rmdir` removes the reparse point and leaves the target alone.
+function removeLink(linkPath) {
+  let stats;
+  try {
+    stats = fs.lstatSync(linkPath);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+
+  if (!stats.isSymbolicLink() && !stats.isDirectory()) {
+    throw new Error(`Refusing to remove ${linkPath}: it is neither a link nor a directory`);
+  }
+
+  try {
+    fs.unlinkSync(linkPath);
+  } catch (error) {
+    if (error.code !== "EPERM" && error.code !== "EISDIR") throw error;
+    fs.rmdirSync(linkPath);
+  }
+}
