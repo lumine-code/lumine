@@ -18,6 +18,7 @@ const watcher = require("./path-watcher");
 const BASE_STYLESHEETS = [
   "variables/base-variables.css",
   "icons/octicons.css",
+  "icons/icons.css",
   "normalize.css",
   "scaffolding.css",
   "core-ui/cursors.css",

@@ -1,0 +1,585 @@
+const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
+const { normalizeTarget, cacheKeyFor, defaultDataName } = require("./icon-target");
+const { Icon, NONE } = require("./icon-descriptor");
+const createPathProvider = require("./icon-path-provider");
+const { createNameProvider, createKindProvider } = require("./icon-vocabulary");
+
+const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
+
+// One application per element, so a second `applyTo` on the same element
+// replaces the first instead of layering on top of it.
+const APPLICATIONS = new WeakMap();
+
+// Paths are the only open-ended vocabulary; names and kinds are closed sets of
+// a few dozen entries and live in plain Maps.
+const PATH_CACHE_SIZE = 4000;
+
+class LRUCache {
+  constructor(maxSize) {
+    this.cache = new Map();
+    this.maxSize = maxSize;
+  }
+
+  get(key) {
+    if (!this.cache.has(key)) return undefined;
+    const value = this.cache.get(key);
+    this.cache.delete(key);
+    this.cache.set(key, value);
+    return value;
+  }
+
+  set(key, value) {
+    if (this.cache.has(key)) this.cache.delete(key);
+    else if (this.cache.size >= this.maxSize) this.cache.delete(this.cache.keys().next().value);
+    this.cache.set(key, value);
+  }
+
+  delete(key) {
+    this.cache.delete(key);
+  }
+
+  clear() {
+    this.cache.clear();
+  }
+
+  keys() {
+    return this.cache.keys();
+  }
+}
+
+const CORE_NONE = Object.freeze({ descriptor: NONE, core: true });
+
+// Everything one `applyTo` call put on one element, so disposing it can put the
+// element back exactly as it was. Tracking additions rather than rewriting
+// `className` is what keeps `status-modified`, `squashed-dir` and `selected`
+// alive across an icon change.
+class Application {
+  constructor(registry, element, target, options) {
+    this.registry = registry;
+    this.element = element;
+    this.target = target;
+    this.options = options;
+    this.key = cacheKeyFor(target, { context: registry.contextSensitive });
+    this.descriptor = null;
+    this.addedClasses = [];
+    this.previousAttributes = new Map();
+    this.styleProperties = [];
+    this.child = null;
+    this.disconnectedFlushes = 0;
+    this.disposed = false;
+  }
+
+  apply() {
+    if (this.disposed) return;
+
+    // The cache key folds in whether any provider varies by context, which can
+    // change when a provider is added or removed.
+    const key = cacheKeyFor(this.target, { context: this.registry.contextSensitive });
+    if (key !== this.key) {
+      this.registry.unbind(this);
+      this.key = key;
+      if (this.options.live) this.registry.bind(this);
+    }
+
+    const descriptor = this.registry.descriptorFor(this.target, this.options);
+    if (Icon.equal(descriptor, this.descriptor)) return;
+    this.undo();
+    this.descriptor = descriptor;
+    this.render(descriptor);
+  }
+
+  render(descriptor) {
+    for (const name of this.options.classes) this.addClass(name);
+
+    if (descriptor.render !== "none") {
+      // `none` gets no `icon` class at all: that class alone reserves the
+      // glyph's right margin, which would leave a gap where no icon is.
+      this.addClass("icon");
+      for (const name of descriptor.classes) this.addClass(name);
+    }
+
+    if (this.options.setData) {
+      this.setAttribute("data-name", this.options.name ?? defaultDataName(this.target));
+      this.setAttribute("data-path", this.target.path);
+    }
+    if (descriptor.title) this.setAttribute("title", descriptor.title);
+
+    if (!this.options.render) return;
+
+    if (descriptor.color) {
+      this.setStyleProperty("--icon-color", descriptor.color);
+      this.addClass("icon-tinted");
+    }
+
+    switch (descriptor.render) {
+      case "image":
+        this.setStyleProperty("--icon-image", `url("${descriptor.source}")`);
+        break;
+      case "svg": {
+        const svg = document.createElementNS(SVG_NAMESPACE, "svg");
+        svg.setAttribute("class", "icon-glyph");
+        if (descriptor.viewBox) svg.setAttribute("viewBox", descriptor.viewBox);
+        svg.innerHTML = descriptor.svg;
+        this.appendChild(svg);
+        break;
+      }
+      case "letter": {
+        const span = document.createElement("span");
+        span.className = "icon-letter-glyph";
+        span.textContent = descriptor.letter;
+        this.appendChild(span);
+        break;
+      }
+      default:
+        break;
+    }
+  }
+
+  addClass(name) {
+    // Only record what was not already there, so disposing never strips a class
+    // the consumer or another package owns.
+    if (this.element.classList.contains(name)) return;
+    this.element.classList.add(name);
+    this.addedClasses.push(name);
+  }
+
+  setAttribute(name, value) {
+    if (!this.previousAttributes.has(name)) {
+      this.previousAttributes.set(name, this.element.getAttribute(name));
+    }
+    if (value == null) this.element.removeAttribute(name);
+    else this.element.setAttribute(name, value);
+  }
+
+  setStyleProperty(name, value) {
+    this.element.style.setProperty(name, value);
+    this.styleProperties.push(name);
+  }
+
+  appendChild(node) {
+    this.element.appendChild(node);
+    this.child = node;
+  }
+
+  undo() {
+    for (const name of this.addedClasses) this.element.classList.remove(name);
+    this.addedClasses = [];
+
+    for (const [name, previous] of this.previousAttributes) {
+      if (previous == null) this.element.removeAttribute(name);
+      else this.element.setAttribute(name, previous);
+    }
+    this.previousAttributes.clear();
+
+    for (const name of this.styleProperties) this.element.style.removeProperty(name);
+    this.styleProperties = [];
+
+    if (this.child) {
+      this.child.remove();
+      this.child = null;
+    }
+    this.descriptor = null;
+  }
+
+  dispose() {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.undo();
+    this.registry.unbind(this);
+    if (APPLICATIONS.get(this.element) === this) APPLICATIONS.delete(this.element);
+  }
+}
+
+// Essential: The single source of every icon the editor renders — file-type
+// icons, the semantic names pane items return from `getIconName()`, and LSP
+// symbol kinds.
+//
+// Providers form a priority chain. Each is asked in turn, and returning `null`
+// means "not mine, ask the next one"; core's octicon mapping is the always
+// present provider at the bottom, so every target resolves. Returning
+// `Icon.none()` is *not* the same as `null` — it stops the chain with "no icon
+// here".
+//
+// An instance of this class is always available as the `atom.icons` global.
+module.exports = class IconRegistry {
+  constructor({ config, themeManager, grammarRegistry, packageManager } = {}) {
+    this.config = config;
+    this.themes = themeManager;
+    this.grammars = grammarRegistry;
+    this.packageManager = packageManager;
+    this.emitter = new Emitter();
+    this.subscriptions = new CompositeDisposable();
+    this.projectSubscriptions = new CompositeDisposable();
+    this.overrides = { name: new Map(), kind: new Map() };
+    this.applications = new Map();
+    this.keysByPath = new Map();
+    this.warnedProviders = new Set();
+    this.destroyed = false;
+
+    this.clear();
+
+    // An icon set that swaps its palette between light and dark answers
+    // differently after a theme change. Owning the subscription here means
+    // every provider gets that for free instead of wiring it themselves.
+    if (this.themes?.onDidChangeActiveThemes) {
+      this.subscriptions.add(this.themes.onDidChangeActiveThemes(() => this.invalidateAll()));
+    }
+    if (this.config?.onDidChange) {
+      this.subscriptions.add(
+        this.config.onDidChange("core.customFileTypes", () => this.invalidate({ types: ["path"] })),
+      );
+    }
+    // Icon themes keyed on language rather than extension resolve through the
+    // grammar registry, so a newly added grammar can change their answers.
+    if (this.grammars?.onDidAddGrammar) {
+      const onGrammarChange = () => this.invalidate({ types: ["path"] });
+      this.subscriptions.add(
+        this.grammars.onDidAddGrammar(onGrammarChange),
+        this.grammars.onDidUpdateGrammar(onGrammarChange),
+      );
+    }
+  }
+
+  // Watch the project for the renames and deletions that change what a path's
+  // icon should be.
+  attachProject(project) {
+    this.projectSubscriptions.dispose();
+    this.projectSubscriptions = new CompositeDisposable();
+    if (!project?.onDidChangeFiles) return;
+    this.projectSubscriptions.add(
+      project.onDidChangeFiles((events) => {
+        const paths = [];
+        for (const event of events) {
+          if (event.path) paths.push(event.path);
+          if (event.oldPath) paths.push(event.oldPath);
+        }
+        if (paths.length > 0) this.invalidate({ paths });
+      }),
+    );
+  }
+
+  // Drop every package-supplied provider and cached answer, leaving the core
+  // chain. Called when the window is reset.
+  clear() {
+    for (const registration of this.registrations ?? []) registration.subscription?.dispose();
+    for (const set of this.applications?.values() ?? []) {
+      for (const application of Array.from(set)) application.dispose();
+    }
+    this.applications = new Map();
+    this.keysByPath = new Map();
+    this.registrations = [];
+    this.nextRegistrationOrder = 0;
+    this.contextSensitive = false;
+    this.caches = { path: new LRUCache(PATH_CACHE_SIZE), name: new Map(), kind: new Map() };
+
+    this.addProvider(createPathProvider(), { priority: -100, core: true });
+    this.addProvider(createNameProvider(this.overrides.name), { priority: -90, core: true });
+    this.addProvider(createKindProvider(this.overrides.kind), { priority: -90, core: true });
+
+    // Resubscribed here rather than in the constructor because resetting the
+    // window runs `PackageManager#reset`, which clears every consumer off the
+    // service hub. A subscription made once at construction would survive the
+    // first reset in name only, and no provider would ever reach the chain
+    // again.
+    this.serviceSubscription?.dispose();
+    this.serviceSubscription = this.packageManager?.serviceHub?.consume(
+      "icons.provider",
+      "^1.0.0",
+      (provider) => this.addProvider(provider),
+    );
+  }
+
+  // Essential: Register an icon provider. Returns a {Disposable}.
+  //
+  // Providers are consulted highest `priority` first, and equal priorities keep
+  // registration order. `iconFor(target)` returns an icon descriptor, a class
+  // string or array, or `null` to defer to the next provider.
+  addProvider(provider, { priority = 0, id = null, core = false } = {}) {
+    if (!provider || typeof provider.iconFor !== "function") {
+      throw new TypeError("Icon providers must implement iconFor(target)");
+    }
+    const resolvedPriority = provider.priority ?? priority;
+    if (!Number.isFinite(resolvedPriority)) {
+      throw new TypeError("Icon provider priority must be a finite number");
+    }
+
+    const registration = {
+      provider,
+      core,
+      priority: resolvedPriority,
+      order: this.nextRegistrationOrder++,
+      id: provider.id ?? id ?? `icon-provider-${this.nextRegistrationOrder}`,
+      handles: Array.isArray(provider.handles) ? new Set(provider.handles) : null,
+      subscription: null,
+    };
+
+    if (provider.async === true && typeof provider.onDidChange !== "function") {
+      console.warn(
+        `Icon provider "${registration.id}" declares async but has no onDidChange, ` +
+          `so answers it resolves later will never reach the editor.`,
+      );
+    }
+    if (typeof provider.onDidChange === "function") {
+      registration.subscription = provider.onDidChange((scope) => this.invalidate(scope));
+    }
+
+    this.registrations.push(registration);
+    this.registrations.sort((a, b) => b.priority - a.priority || a.order - b.order);
+    this.updateContextSensitivity();
+    this.invalidateAll();
+
+    return new Disposable(() => {
+      const index = this.registrations.indexOf(registration);
+      if (index === -1) return;
+      this.registrations.splice(index, 1);
+      registration.subscription?.dispose();
+      this.warnedProviders.delete(registration.id);
+      this.updateContextSensitivity();
+      this.invalidateAll();
+    });
+  }
+
+  updateContextSensitivity() {
+    this.contextSensitive = this.registrations.some((r) => r.provider.usesContext === true);
+  }
+
+  // Essential: Resolve `target` to an icon descriptor. Never returns null — a
+  // target nothing answers for resolves to `Icon.none()`.
+  //
+  // `target` is an object: `{path}`, `{name}`, `{kind}`, or `{item}` for a pane
+  // item. It may also carry a `context` string naming the caller and a `hints`
+  // object describing what the caller already knows about the path — see
+  // `src/icon-target.js`.
+  iconFor(target, options = {}) {
+    return this.descriptorFor(normalizeTarget(target), options);
+  }
+
+  descriptorFor(normalized, { skipFallback = false } = {}) {
+    const entry = this.resolveEntry(normalized);
+    // "Only show an icon if something other than the built-in mapping had an
+    // opinion" — what keeps a plain tab's title unadorned.
+    if (skipFallback && entry.core) return NONE;
+    return entry.descriptor;
+  }
+
+  resolveEntry(normalized) {
+    const key = cacheKeyFor(normalized, { context: this.contextSensitive });
+    if (key == null) return CORE_NONE;
+
+    const cache = this.caches[normalized.type];
+    const cached = cache.get(key);
+    if (cached) return cached;
+
+    const entry = this.resolveUncached(normalized);
+    cache.set(key, entry);
+    if (normalized.type === "path") {
+      let keys = this.keysByPath.get(normalized.path);
+      if (!keys) this.keysByPath.set(normalized.path, (keys = new Set()));
+      keys.add(key);
+    }
+    return entry;
+  }
+
+  resolveUncached(normalized) {
+    for (const registration of this.registrations) {
+      if (registration.handles && !registration.handles.has(normalized.type)) continue;
+
+      let answer;
+      try {
+        answer = registration.provider.iconFor(normalized);
+      } catch (error) {
+        // One misbehaving provider costs its own icon, not the whole chain.
+        if (!this.warnedProviders.has(registration.id)) {
+          this.warnedProviders.add(registration.id);
+          console.error(`Icon provider "${registration.id}" threw`, error);
+        }
+        continue;
+      }
+
+      if (answer == null) continue;
+      const descriptor = Icon.coerce(answer, { providerId: registration.id });
+      if (descriptor == null) continue;
+      return { descriptor, core: registration.core };
+    }
+    return CORE_NONE;
+  }
+
+  // Essential: Render `target`'s icon into `element` and keep it current.
+  // Returns a {Disposable} that removes everything the call added.
+  //
+  // * `classes` extra class names to add regardless of the icon, e.g. `["name"]`.
+  // * `name` an explicit `data-name`, when the basename is not what belongs there.
+  // * `setData` set to `false` when the caller owns `data-name`/`data-path` itself.
+  // * `live` set to `false` to skip re-rendering when the icon changes.
+  // * `render` set to `false` to apply classes only, touching no children or styles.
+  // * `skipFallback` render nothing unless a provider above the built-in answered.
+  applyTo(element, target, options = {}) {
+    if (!element) throw new TypeError("applyTo needs an element to render into");
+
+    const normalized = normalizeTarget(target);
+    const resolved = {
+      classes: options.classes ?? [],
+      name: options.name,
+      setData: options.setData !== false,
+      live: options.live !== false,
+      render: options.render !== false,
+      skipFallback: options.skipFallback === true,
+    };
+
+    APPLICATIONS.get(element)?.dispose();
+
+    const application = new Application(this, element, normalized, resolved);
+    APPLICATIONS.set(element, application);
+    if (resolved.live && application.key != null) this.bind(application);
+    application.apply();
+    return application;
+  }
+
+  bind(application) {
+    if (application.key == null) return;
+    let set = this.applications.get(application.key);
+    if (!set) this.applications.set(application.key, (set = new Set()));
+    set.add(application);
+  }
+
+  unbind(application) {
+    const set = this.applications.get(application.key);
+    if (!set) return;
+    set.delete(application);
+    if (set.size === 0) this.applications.delete(application.key);
+  }
+
+  // Extended: Drop cached answers and repaint what they were rendered into.
+  //
+  // `scope` is undefined or null for everything, or an object narrowing it to
+  // `{types}`, `{paths}`, `{names}`, or `{kinds}`. Narrowing matters: a
+  // provider that resolves one file extension asynchronously should repaint the
+  // rows showing that extension, not every row in the tree.
+  invalidate(scope) {
+    const affected = new Set();
+
+    if (scope == null) {
+      for (const cache of Object.values(this.caches)) cache.clear();
+      this.keysByPath.clear();
+      for (const set of this.applications.values()) {
+        for (const application of set) affected.add(application);
+      }
+    } else {
+      for (const type of scope.types ?? []) this.dropType(type, affected);
+      for (const filePath of scope.paths ?? []) this.dropPath(filePath, affected);
+      for (const name of scope.names ?? []) this.dropIdentity("name", name, affected);
+      for (const kind of scope.kinds ?? []) this.dropIdentity("kind", kind, affected);
+    }
+
+    this.flush(affected);
+    this.emitter.emit("did-change", scope ?? null);
+  }
+
+  invalidateAll() {
+    this.invalidate(null);
+  }
+
+  dropType(type, affected) {
+    const cache = this.caches[type];
+    if (!cache) return;
+    for (const key of Array.from(cache.keys())) this.collect(key, affected);
+    cache.clear();
+    if (type === "path") this.keysByPath.clear();
+  }
+
+  dropPath(filePath, affected) {
+    const keys = this.keysByPath.get(filePath);
+    if (!keys) return;
+    for (const key of keys) {
+      this.caches.path.delete(key);
+      this.collect(key, affected);
+    }
+    this.keysByPath.delete(filePath);
+  }
+
+  dropIdentity(type, identity, affected) {
+    const cache = this.caches[type];
+    if (!cache) return;
+    const suffix = `\0${identity}`;
+    for (const key of Array.from(cache.keys())) {
+      if (!key.endsWith(suffix)) continue;
+      cache.delete(key);
+      this.collect(key, affected);
+    }
+  }
+
+  collect(key, affected) {
+    const set = this.applications.get(key);
+    if (!set) return;
+    for (const application of set) affected.add(application);
+  }
+
+  flush(affected) {
+    for (const application of affected) {
+      if (application.disposed) continue;
+      // Detached elements stop receiving live updates: a consumer that keeps
+      // one around is holding it, and repainting something nobody can see is
+      // wasted work. Stop tracking after two consecutive misses so the registry
+      // does not pin the element forever, but leave what was already rendered
+      // alone — undoing it would strip the icon from an element that gets
+      // reattached. Applying again resumes updates.
+      if (!application.element.isConnected) {
+        if (++application.disconnectedFlushes >= 2) this.unbind(application);
+        continue;
+      }
+      application.disconnectedFlushes = 0;
+      application.apply();
+    }
+  }
+
+  // Extended: Override the icon for one or more semantic names. Returns a
+  // {Disposable} that restores the previous mapping. A `null` value means the
+  // name renders no icon.
+  defineNames(entries) {
+    return this.define("name", entries);
+  }
+
+  // Extended: Override the icon for one or more kinds. Returns a {Disposable}.
+  defineKinds(entries) {
+    return this.define("kind", entries);
+  }
+
+  define(type, entries) {
+    const overrides = this.overrides[type];
+    const previous = new Map();
+    const keys = Object.keys(entries);
+    for (const key of keys) {
+      previous.set(key, overrides.get(key));
+      overrides.set(key, entries[key]);
+    }
+    this.invalidate({ types: [type] });
+
+    return new Disposable(() => {
+      for (const key of keys) {
+        const value = previous.get(key);
+        if (value === undefined) overrides.delete(key);
+        else overrides.set(key, value);
+      }
+      this.invalidate({ types: [type] });
+    });
+  }
+
+  // Extended: Invoke `callback` when any icon may have changed.
+  onDidChange(callback) {
+    return this.emitter.on("did-change", callback);
+  }
+
+  destroy() {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    for (const set of Array.from(this.applications.values())) {
+      for (const application of Array.from(set)) application.dispose();
+    }
+    for (const registration of this.registrations) registration.subscription?.dispose();
+    this.registrations = [];
+    this.serviceSubscription?.dispose();
+    this.projectSubscriptions.dispose();
+    this.subscriptions.dispose();
+    this.emitter.dispose();
+  }
+};

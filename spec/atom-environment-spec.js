@@ -73,6 +73,14 @@ describe("AtomEnvironment", () => {
     });
   });
 
+  describe("the icon registry", () => {
+    it("resolves every vocabulary from the built-in providers", () => {
+      expect(atom.icons.iconFor({ path: "/a/b.png" }).classes).toEqual(["icon-file-media"]);
+      expect(atom.icons.iconFor({ name: "gear" }).classes).toEqual(["icon-gear"]);
+      expect(atom.icons.iconFor({ kind: "class" }).classes).toEqual(["icon-puzzle"]);
+    });
+  });
+
   describe("window onerror handler", () => {
     let devToolsPromise = null;
     beforeEach(() => {

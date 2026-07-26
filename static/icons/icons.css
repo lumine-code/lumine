@@ -1,0 +1,51 @@
+/* Rendering for the icon descriptors that are not glyph-font classes.
+ *
+ * Every variant has to occupy the same box a font glyph would: list layouts in
+ * atom-ui compute their row padding as --component-icon-size plus
+ * --component-icon-padding and assume the icon sits in a 16px ::before. An
+ * icon drawn any other way drifts the indentation of every row around it.
+ *
+ * These rules are deliberately unscoped. Scoping them to .tree-view and
+ * .tab-bar is what used to leave native OS icons as blank boxes everywhere
+ * else. */
+
+.icon-image::before {
+  content: "";
+  display: inline-block;
+  width: var(--component-icon-size);
+  height: var(--component-icon-size);
+  background-image: var(--icon-image);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
+  vertical-align: middle;
+}
+
+/* SVG and letter icons render into a child element rather than ::before, so
+ * they carry the right margin themselves — an empty ::before generates no box
+ * to hang it on. */
+.icon-svg > .icon-glyph,
+.icon-letter > .icon-letter-glyph {
+  display: inline-block;
+  width: var(--component-icon-size);
+  height: var(--component-icon-size);
+  margin-right: var(--component-icon-padding);
+  vertical-align: middle;
+}
+
+.icon-svg > .icon-glyph {
+  fill: currentColor;
+}
+
+.icon-letter > .icon-letter-glyph {
+  font-size: calc(var(--component-icon-size) * 0.75);
+  line-height: var(--component-icon-size);
+  text-align: center;
+  text-transform: uppercase;
+}
+
+/* A provider that supplies its own colour sets --icon-color on the element and
+ * gets this class along with it. */
+.icon-tinted {
+  color: var(--icon-color);
+}

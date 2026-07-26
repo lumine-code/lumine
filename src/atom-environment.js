@@ -52,6 +52,7 @@ const PasteProviderRegistry = require("./paste-provider-registry");
 const StartupTime = require("./startup-time");
 const { getReleaseChannel } = require("./get-app-details.js");
 const UI = require("./ui");
+const IconRegistry = require("./icon-registry");
 const packagejson = require("../package.json");
 
 const { stopAllWatchers } = require("./path-watcher");
@@ -164,6 +165,19 @@ class AtomEnvironment {
     this.packages.setContextMenuManager(this.contextMenu);
     this.packages.setThemeManager(this.themes);
 
+    // The single source of every icon the editor renders. Built before the
+    // project and the workspace so a package activating early can register a
+    // provider before anything asks for an icon. It deliberately takes no
+    // repository dependency — a caller that knows a directory is a repository
+    // root says so on the target.
+    /** @type {IconRegistry} */
+    this.icons = new IconRegistry({
+      config: this.config,
+      themeManager: this.themes,
+      grammarRegistry: this.grammars,
+      packageManager: this.packages,
+    });
+
     /** @type {RepositoryRegistry} */
     this.repositories = new RepositoryRegistry({
       config: this.config,
@@ -194,6 +208,7 @@ class AtomEnvironment {
       applicationDelegate: this.applicationDelegate,
       repositoryRegistry: this.repositories,
     });
+    this.icons.attachProject(this.project);
     this.commandInstaller = new CommandInstaller(this.applicationDelegate);
     this.protocolHandlerInstaller = new ProtocolHandlerInstaller();
 
@@ -480,6 +495,8 @@ class AtomEnvironment {
     // The reset recreated the pane containers, so the registry's active-item
     // subscription must be rebuilt against the new center.
     this.repositories.attachWorkspace(this.workspace);
+    this.icons.clear();
+    this.icons.attachProject(this.project);
     this.grammars.clear();
     this.textEditors.clear();
     this.pasteProviders.clear();
@@ -504,6 +521,8 @@ class AtomEnvironment {
     this.project = null;
     if (this.repositories) this.repositories.destroy();
     this.repositories = null;
+    if (this.icons) this.icons.destroy();
+    this.icons = null;
     this.commands.clear();
     if (this.stylesElement) this.stylesElement.remove();
     this.uriHandlerRegistry.destroy();
