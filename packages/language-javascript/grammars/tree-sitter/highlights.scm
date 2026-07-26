@@ -87,7 +87,9 @@
 ; VARIABLES
 ; =========
 
-["var" "const" "let"] @storage.type._TYPE_.js
+; `using` declares a disposable binding; the `await` of `await using` is
+; already covered by the general `await` rule.
+["var" "const" "let" "using"] @storage.type._TYPE_.js
 
 ; A simple variable declaration:
 ; The "foo" in `let foo = true`
