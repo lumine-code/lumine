@@ -54,9 +54,9 @@ Commands available in `.tree-view`:
 
 ## Services
 
-- **tree-view** (`1.0.0`): provided to expose the selected paths and entry elements of the tree, matching the API of the built-in tree view.
-- **tree-view** (`1.0.0`): provided to add reveal and navigation support on top of the base tree view API.
-- **tree-view-roots** (`1.0.0`): provided to let external packages register virtual root sections above the project folders.
+- **tree-view.selection** (`1.0.0`): provided to expose the selected paths and entry elements of the tree, matching the API of the built-in tree view.
+- **tree-view.selection** (`1.0.0`): provided to add reveal and navigation support on top of the base tree view API.
+- **tree-view.roots** (`1.0.0`): provided to let external packages register virtual root sections above the project folders.
 - **icons.class** (`^1.0.0`): consumed to show file-type icons next to entries.
 - **icons.element** (`^1.0.0`): consumed to show element-based file-type icons next to entries.
 - **open-external** (`^1.0.0`): consumed to open files with the configured external application.

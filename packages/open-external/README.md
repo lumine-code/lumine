@@ -35,7 +35,7 @@ operation to the next handler.
 ## Services
 
 - **open-external** (`1.0.0`): provided to open or reveal paths and register custom handlers for those operations.
-- **tree-view** (`^1.0.0`): consumed to access the paths currently selected in the tree view.
+- **tree-view.selection** (`^1.0.0`): consumed to access the paths currently selected in the tree view.
 
 ## Contributing
 

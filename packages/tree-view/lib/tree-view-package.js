@@ -111,7 +111,7 @@ module.exports = class TreeViewPackage {
     });
   }
 
-  provideTreeView() {
+  provideTreeViewSelection() {
     return {
       selectedPaths: () => this.getTreeViewInstance().selectedPaths(),
       entryForPath: (entryPath) => this.getTreeViewInstance().entryForPath(entryPath),
@@ -119,7 +119,7 @@ module.exports = class TreeViewPackage {
     };
   }
 
-  provideRoots() {
+  provideTreeViewRoots() {
     return {
       registerRoot: (config) => {
         const entry = { config, section: null };

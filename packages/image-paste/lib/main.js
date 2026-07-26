@@ -29,7 +29,7 @@ module.exports = {
     this.pasteProvider = null;
   },
 
-  consumeTreeView(treeView) {
+  consumeTreeViewSelection(treeView) {
     this.treeView = treeView;
     return new Disposable(() => {
       this.treeView = null;

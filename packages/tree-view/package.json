@@ -59,16 +59,16 @@
     }
   },
   "providedServices": {
-    "tree-view": {
+    "tree-view.selection": {
       "description": "Tree view API with path selection, entry lookup, and reveal support",
       "versions": {
-        "1.0.0": "provideTreeView"
+        "1.0.0": "provideTreeViewSelection"
       }
     },
-    "tree-view-roots": {
+    "tree-view.roots": {
       "description": "Register virtual root sections in the tree view",
       "versions": {
-        "1.0.0": "provideRoots"
+        "1.0.0": "provideTreeViewRoots"
       }
     }
   },

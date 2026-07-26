@@ -126,7 +126,7 @@ module.exports = {
     return this.showInFolder(this.getActiveItemPath());
   },
 
-  consumeTreeView(treeView) {
+  consumeTreeViewSelection(treeView) {
     this.treeView = treeView;
     return new Disposable(() => {
       if (this.treeView === treeView) this.treeView = null;

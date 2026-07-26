@@ -626,7 +626,7 @@ module.exports = {
     };
   },
 
-  consumeTreeView(service) {
+  consumeTreeViewSelection(service) {
     this.treeViewService = service;
     return {
       dispose: () => {
