@@ -240,7 +240,11 @@ module.exports = class SuggestionListElement {
 
   render() {
     this.nonDefaultIndex = false;
-    this.selectedIndex = 0;
+    // A provider may nominate the entry to start on — an LSP server's
+    // `preselect`. It stays the "default" selection, so confirm-if-non-default
+    // still treats it as untouched by the user.
+    const preselected = this.visibleItems()?.findIndex((item) => item && item.preselect);
+    this.selectedIndex = preselected > 0 ? preselected : 0;
     this.model.select(this.getSelectedItem());
     if (atom.views.pollAfterNextUpdate) {
       atom.views.pollAfterNextUpdate();

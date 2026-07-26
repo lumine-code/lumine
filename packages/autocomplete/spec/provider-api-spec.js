@@ -468,6 +468,33 @@ describe("Provider API", () => {
         expect(getSuggestions()[0]).toEqual({ text: "sfn" });
       });
 
+      it("matches against filterText when a provider supplies one", async () => {
+        testProvider = {
+          scopeSelector: ".source.js",
+          filterSuggestions: true,
+          getSuggestions(_options) {
+            // The inserted text shares no characters with the query, so only
+            // the provider's filterText can match it — which is the point of
+            // the field.
+            return [
+              { text: "@@@", filterText: "foo" },
+              { text: "###", filterText: "bar" },
+            ];
+          },
+        };
+        registration = atom.packages.serviceHub.provide(
+          "autocomplete.provider",
+          "1.0.0",
+          testProvider,
+        );
+
+        editor.insertText("f");
+        editor.insertText("o");
+        await waitForAutocomplete(editor);
+
+        expect(getSuggestions()).toEqual([{ text: "@@@" }]);
+      });
+
       it("uses sortText to order suggestions that match equally well", async () => {
         testProvider = {
           scopeSelector: ".source.js",

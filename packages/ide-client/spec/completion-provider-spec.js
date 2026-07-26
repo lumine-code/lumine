@@ -84,6 +84,38 @@ describe("CompletionProvider item mapping", () => {
     expect(suggestion.rightLabel).toBe("node:fs");
   });
 
+  it("passes through the fields autocomplete now understands", async () => {
+    const suggestion = await suggestionFor({
+      label: "<console>",
+      filterText: "console",
+      preselect: true,
+      commitCharacters: ["(", "."],
+    });
+    expect(suggestion.filterText).toBe("console");
+    expect(suggestion.preselect).toBe(true);
+    expect(suggestion.commitCharacters).toEqual(["(", "."]);
+  });
+
+  it("inherits commit characters from the list defaults", async () => {
+    const provider = new CompletionProvider(
+      managerWith(
+        sessionWith(() => ({
+          itemDefaults: { commitCharacters: ["("] },
+          items: [{ label: "own", commitCharacters: ["."] }, { label: "inherited" }],
+        })),
+      ),
+    );
+    const suggestions = await provider.getSuggestions({
+      editor: stubEditor("con"),
+      bufferPosition: { row: 0, column: 2 },
+      prefix: "co",
+    });
+    const byLabel = Object.fromEntries(suggestions.map((s) => [s.displayText, s]));
+    expect(byLabel.inherited.commitCharacters).toEqual(["("]);
+    // An item's own list wins over the default.
+    expect(byLabel.own.commitCharacters).toEqual(["."]);
+  });
+
   it("advertises labelDetails support", () => {
     const completionItem = CompletionProvider.capabilities.textDocument.completion.completionItem;
     expect(completionItem.labelDetailsSupport).toBe(true);

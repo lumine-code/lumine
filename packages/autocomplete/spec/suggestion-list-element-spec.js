@@ -97,6 +97,27 @@ describe("Suggestion List Element", () => {
       );
     });
 
+    it("starts on the entry a provider preselected", () => {
+      suggestionListElement.model = {
+        items: [{ text: "first" }, { text: "second", preselect: true }, { text: "third" }],
+        select() {},
+      };
+      suggestionListElement.render();
+      expect(suggestionListElement.selectedIndex).toBe(1);
+      // Still the default selection: the user has not moved yet, so
+      // confirm-if-non-default must not treat this as a deliberate choice.
+      expect(suggestionListElement.nonDefaultIndex).toBe(false);
+    });
+
+    it("starts on the first entry when none is preselected", () => {
+      suggestionListElement.model = {
+        items: [{ text: "first" }, { text: "second" }],
+        select() {},
+      };
+      suggestionListElement.render();
+      expect(suggestionListElement.selectedIndex).toBe(0);
+    });
+
     it("HTML escapes labels", () => {
       let suggestion = { text: "something", leftLabel: "Animal<Cat>", rightLabel: "Animal<Dog>" };
       suggestionListElement.renderItem(suggestion);

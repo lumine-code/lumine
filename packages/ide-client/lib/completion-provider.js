@@ -181,6 +181,8 @@ module.exports = class CompletionProvider {
     if (merged.insertTextFormat == null && defaults.insertTextFormat != null)
       merged.insertTextFormat = defaults.insertTextFormat;
     if (merged.data == null && defaults.data != null) merged.data = defaults.data;
+    if (merged.commitCharacters == null && defaults.commitCharacters != null)
+      merged.commitCharacters = defaults.commitCharacters;
     if (!merged.textEdit && defaults.editRange) {
       const newText = merged.textEditText ?? merged.insertText ?? merged.label;
       merged.textEdit = defaults.editRange.start
@@ -203,6 +205,12 @@ module.exports = class CompletionProvider {
       leftLabel: item.detail,
       rightLabel: item.labelDetails?.description,
       description: documentationText,
+      // Characters that accept this item when typed. Honoured only when the
+      // user turns `autocomplete.commitCharacters` on.
+      commitCharacters: item.commitCharacters,
+      // What the server wants matched against, which is not always the label.
+      filterText: item.filterText,
+      preselect: item.preselect,
       _lspItem: item,
       _lspSession: session,
     };
