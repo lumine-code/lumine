@@ -341,6 +341,60 @@ autocomplete-suggestion-list {
     color: var(--syntax-color-attribute);
     background: rgb(from var(--syntax-color-attribute) r g b / calc(alpha - 0.8));
   }
+
+  /* The rest of the LSP 3.17 completion kinds, which language servers emit
+     verbatim. Each group borrows the color of the kind above that it reads
+     as, so a list mixing a server's suggestions with a grammar's stays one
+     palette. */
+
+  /* Types, whatever shape the language gives them. */
+  .icon.interface,
+  .icon.struct,
+  .icon.enum,
+  .icon.type-parameter {
+    color: var(--syntax-color-class);
+    background: rgb(from var(--syntax-color-class) r g b / calc(alpha - 0.8));
+  }
+  /* A constructor is the callable half of a class. */
+  .icon.constructor {
+    color: var(--syntax-color-method);
+    background: rgb(from var(--syntax-color-method) r g b / calc(alpha - 0.8));
+  }
+  /* Members reached through an instance. */
+  .icon.field,
+  .icon.event {
+    color: var(--syntax-color-property);
+    background: rgb(from var(--syntax-color-property) r g b / calc(alpha - 0.8));
+  }
+  /* A named member of an enum is a constant like any other. */
+  .icon.enum-member {
+    color: var(--syntax-color-constant);
+    background: rgb(from var(--syntax-color-constant) r g b / calc(alpha - 0.8));
+  }
+  /* Literals: a CSS length, a color swatch. */
+  .icon.unit,
+  .icon.color {
+    color: var(--syntax-color-value);
+    background: rgb(from var(--syntax-color-value) r g b / calc(alpha - 0.8));
+  }
+  /* Things brought in from elsewhere, like the import family above. */
+  .icon.file,
+  .icon.folder,
+  .icon.reference {
+    color: var(--syntax-color-import);
+    background: rgb(from var(--syntax-color-import) r g b / calc(alpha - 0.8));
+  }
+  /* An operator is language syntax, so it reads as a keyword. */
+  .icon.operator {
+    color: var(--syntax-color-keyword);
+    background: rgb(from var(--syntax-color-keyword) r g b / calc(alpha - 0.8));
+  }
+  /* A bare word with no symbol behind it — a buffer word, or a server with
+     nothing better to say. */
+  .icon.text {
+    color: var(--syntax-color-variable);
+    background: rgb(from var(--syntax-color-variable) r g b / calc(alpha - 0.8));
+  }
 }
 
 /* Low-contrast correction (converted from the guarded `.make-type-icon()`
@@ -354,15 +408,21 @@ autocomplete-suggestion-list {
      value of 75+ — the guard is false for all types, so no overrides.
    - one-day (overlay #f2f2f2, HSV value 94.9): true for the class (79.6),
      function/method (94.8), tag (89.3) and variable (89.3) colors — mapped to
-     the icon types class/mixin/type, function, method, tag and variable —
-     and false for the attribute/selector (71.6), keyword/builtin (65.2),
-     constant (71.6), import/module/package/require (65.2), property (25.9),
-     snippet (63.0) and value (25.9) colors. The light overlay picks the
-     darkened variant. */
+     the icon types class/mixin/type/interface/struct/enum/type-parameter,
+     function, method/constructor, tag and variable/text — and false for the
+     attribute/selector/event (71.6), keyword/builtin/operator (65.2),
+     constant/enum-member (71.6), import/module/package/require/file/folder/
+     reference (65.2), property/field (25.9), snippet (63.0) and
+     value/unit/color (25.9) colors. The light overlay picks the darkened
+     variant. */
 :where(.theme-one-day-ui) autocomplete-suggestion-list {
   .icon.class,
   .icon.mixin,
-  .icon.type {
+  .icon.type,
+  .icon.interface,
+  .icon.struct,
+  .icon.enum,
+  .icon.type-parameter {
     color: hsl(from var(--syntax-color-class) h s calc(l - 30));
     background: hsl(from var(--syntax-color-class) h s calc(l - 30) / calc(alpha - 0.8));
   }
@@ -370,7 +430,8 @@ autocomplete-suggestion-list {
     color: hsl(from var(--syntax-color-function) h s calc(l - 30));
     background: hsl(from var(--syntax-color-function) h s calc(l - 30) / calc(alpha - 0.8));
   }
-  .icon.method {
+  .icon.method,
+  .icon.constructor {
     color: hsl(from var(--syntax-color-method) h s calc(l - 30));
     background: hsl(from var(--syntax-color-method) h s calc(l - 30) / calc(alpha - 0.8));
   }
@@ -378,7 +439,8 @@ autocomplete-suggestion-list {
     color: hsl(from var(--syntax-color-tag) h s calc(l - 30));
     background: hsl(from var(--syntax-color-tag) h s calc(l - 30) / calc(alpha - 0.8));
   }
-  .icon.variable {
+  .icon.variable,
+  .icon.text {
     color: hsl(from var(--syntax-color-variable) h s calc(l - 30));
     background: hsl(from var(--syntax-color-variable) h s calc(l - 30) / calc(alpha - 0.8));
   }

@@ -38,6 +38,10 @@ const iconTypeToClass = {
   package: "icon-package",
   tag: "icon-code",
   attribute: "icon-tag",
+  // The letter badge cannot tell these two apart — a path completion offering
+  // both renders a column of "f".
+  file: "icon-file",
+  folder: "icon-file-directory",
 };
 
 const SnippetStart = 1;
