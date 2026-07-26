@@ -29,17 +29,25 @@ module.exports = class LspSymbolProvider {
     this.isExclusive = true;
   }
   async canProvideSymbols(meta) {
-    const session = await this.manager.activeSessionForEditor(meta.editor);
-    if (!session) return false;
-    if (meta.type === "project") return session.supports("workspace/symbol", meta.editor);
+    return !!(await this.sessionFor(meta));
+  }
+  // One symbol source per editor: merging two servers' symbol lists would show
+  // every symbol twice, so the first server that indexes them answers.
+  async sessionFor(meta) {
+    const sessions = await this.manager.activeSessionsForEditor(meta.editor);
+    if (meta.type === "project")
+      return sessions.find((session) => session.supports("workspace/symbol", meta.editor)) || null;
     return (
-      session.supports("textDocument/documentSymbol", meta.editor) ||
-      session.supports("textDocument/definition", meta.editor) ||
-      session.supports("textDocument/references", meta.editor)
+      sessions.find(
+        (session) =>
+          session.supports("textDocument/documentSymbol", meta.editor) ||
+          session.supports("textDocument/definition", meta.editor) ||
+          session.supports("textDocument/references", meta.editor),
+      ) || null
     );
   }
   async getSymbols(meta) {
-    const session = await this.manager.activeSessionForEditor(meta.editor);
+    const session = await this.sessionFor(meta);
     if (!session) return [];
     const options = { signal: meta.signal };
     if (meta.type === "project")

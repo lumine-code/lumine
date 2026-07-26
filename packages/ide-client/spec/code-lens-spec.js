@@ -21,6 +21,8 @@ const makeManager = (session) => {
   return {
     addCapabilityFragment() {},
     activeSessionForEditor: async () => session,
+    activeSessionsForEditor: async () => (session ? [session] : []),
+    activeSessionForFeature: async () => session,
     onDidRequestRefresh: (fn) => emitter.on("refresh", fn),
     onDidChangeSession: (fn) => emitter.on("session", fn),
     requestRefresh: (refreshSession, kind) =>

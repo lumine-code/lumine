@@ -99,10 +99,13 @@ module.exports = class LanguageServerManager {
         }),
     );
   }
-  adapterForEditor(editor) {
+  // Every adapter that serves this editor. More than one is normal and
+  // intended: a type checker and a linter/formatter commonly cover the same
+  // grammar, and both run.
+  adaptersForEditor(editor) {
     const scope = editor.getGrammar()?.scopeName;
     const filePath = editor.getPath();
-    return [...this.adapters.values()].find(
+    return [...this.adapters.values()].filter(
       (adapter) =>
         adapter.grammarScopes.includes(scope) &&
         (!adapter.documentSelector ||
@@ -110,6 +113,9 @@ module.exports = class LanguageServerManager {
             (filter) => !filter.pattern || this.globMatches(filter.pattern, filePath || ""),
           )),
     );
+  }
+  adapterForEditor(editor) {
+    return this.adaptersForEditor(editor)[0];
   }
   rootForPath(filePath, adapter) {
     const roots = atom.project.getPaths();
@@ -147,8 +153,12 @@ module.exports = class LanguageServerManager {
   async attachEditor(editor) {
     const filePath = editor.getPath();
     if (!filePath) return;
-    const adapter = this.adapterForEditor(editor);
-    if (!adapter) return;
+    await Promise.all(
+      this.adaptersForEditor(editor).map((adapter) => this.attachAdapter(adapter, editor)),
+    );
+  }
+  async attachAdapter(adapter, editor) {
+    const filePath = editor.getPath();
     const rootPath = this.rootForPath(filePath, adapter);
     const key = `${adapter.id}:${rootPath}`;
     let session = this.sessions.get(key);
@@ -160,7 +170,9 @@ module.exports = class LanguageServerManager {
         return this.reportStartFailure(adapter, rootPath, error);
       }
       if (!launch) return;
-      if (this.sessions.has(key)) return this.attachEditor(editor);
+      // Another attach for the same adapter and root won the race while we
+      // were resolving; retry against the session it created.
+      if (this.sessions.has(key)) return this.attachAdapter(adapter, editor);
       session = new ServerSession(this, adapter, rootPath, launch);
       this.sessions.set(key, session);
       session.ready = session.start();
@@ -185,42 +197,65 @@ module.exports = class LanguageServerManager {
       dismissable: true,
     });
   }
-  sessionForEditor(editor) {
-    const adapter = this.adapterForEditor(editor);
-    if (!adapter || !editor.getPath()) return null;
-    return (
-      this.sessions.get(`${adapter.id}:${this.rootForPath(editor.getPath(), adapter)}`) || null
-    );
+  // Every session serving this editor, in adapter registration order.
+  sessionsForEditor(editor) {
+    const filePath = editor.getPath();
+    if (!filePath) return [];
+    return this.adaptersForEditor(editor)
+      .map((adapter) => this.sessions.get(`${adapter.id}:${this.rootForPath(filePath, adapter)}`))
+      .filter(Boolean);
   }
-  // Resolves once the session for this editor finished starting; null when
-  // there is no adapter, the server failed, or it is not running yet.
+  sessionForEditor(editor) {
+    return this.sessionsForEditor(editor)[0] || null;
+  }
+  // Resolves once each session for this editor finished starting, keeping only
+  // the ones that are running.
+  async activeSessionsForEditor(editor) {
+    const sessions = await Promise.all(
+      this.sessionsForEditor(editor).map(async (session) => {
+        try {
+          await session.ready;
+        } catch {
+          return null;
+        }
+        return session.state === "running" ? session : null;
+      }),
+    );
+    return sessions.filter(Boolean);
+  }
+  // The first running session that can serve `method` for this editor. Used by
+  // the features where several answers cannot sensibly be combined — a single
+  // rename, one formatting result, one outline.
+  async activeSessionForFeature(editor, method) {
+    const sessions = await this.activeSessionsForEditor(editor);
+    return sessions.find((session) => session.supports(method, editor)) || null;
+  }
   async activeSessionForEditor(editor) {
-    const session = this.sessionForEditor(editor);
-    if (!session) return null;
-    try {
-      await session.ready;
-    } catch {
-      return null;
-    }
-    return session.state === "running" ? session : null;
+    return (await this.activeSessionsForEditor(editor))[0] || null;
   }
   didChangeSession(session, error) {
     this.emitter.emit("did-change-session", { session, state: session.state, error });
   }
+  // Diagnostics are stored per session as well as per document: several
+  // servers commonly report on the same file, and one must not erase another.
   publishDiagnostics(session, params) {
-    this.diagnostics.set(params.uri, { session, ...params });
+    const byUri = this.diagnostics.get(session) || new Map();
+    byUri.set(params.uri, { session, ...params });
+    this.diagnostics.set(session, byUri);
     this.emitter.emit("did-publish-diagnostics", { session, ...params });
   }
+  diagnosticsFor(session, uri) {
+    return this.diagnostics.get(session)?.get(uri)?.diagnostics || [];
+  }
+  allDiagnostics() {
+    return [...this.diagnostics.values()].flatMap((byUri) => [...byUri.values()]);
+  }
   clearDiagnosticsForSession(session) {
-    for (const [uri, entry] of this.diagnostics) {
-      if (entry.session !== session) continue;
-      this.diagnostics.delete(uri);
-      this.emitter.emit("did-publish-diagnostics", {
-        session,
-        uri,
-        diagnostics: [],
-      });
-    }
+    const byUri = this.diagnostics.get(session);
+    if (!byUri) return;
+    this.diagnostics.delete(session);
+    for (const uri of byUri.keys())
+      this.emitter.emit("did-publish-diagnostics", { session, uri, diagnostics: [] });
   }
   registerCapabilities(session, registrations = []) {
     const map = this.dynamicCapabilities.get(session) || new Map();

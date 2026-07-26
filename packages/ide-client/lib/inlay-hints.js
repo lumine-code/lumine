@@ -89,9 +89,12 @@ module.exports = class InlayHints {
     const { editor } = state;
     const generation = ++state.generation;
     if (!this.enabledFor(editor)) return this.clear(state);
-    const session = await this.manager.activeSessionForEditor(editor);
+    // The server that serves hints is picked by capability, not by order: a
+    // linter and a type checker can share the editor while only one of them
+    // has hints to give.
+    const session = await this.manager.activeSessionForFeature(editor, "textDocument/inlayHint");
     if (state.generation !== generation || editor.isDestroyed()) return;
-    if (!session?.supports("textDocument/inlayHint", editor)) return this.clear(state);
+    if (!session) return this.clear(state);
     state.session = session;
     const [startRow, endRow] = range;
     let hints;

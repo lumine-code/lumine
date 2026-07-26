@@ -100,9 +100,9 @@
         "^1.0.0": "consumeBusySignal"
       }
     },
-    "status-bar": {
+    "busy-signal.background": {
       "versions": {
-        "^1.0.0": "consumeStatusBar"
+        "^1.0.0": "consumeBackgroundSignal"
       }
     }
   },

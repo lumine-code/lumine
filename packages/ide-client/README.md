@@ -7,6 +7,7 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 ## Features
 
 - **Sessions**: starts one language server per project root, or one per workspace, lazily when a matching editor opens.
+- **Several servers per file**: every adapter matching a grammar runs, so a type checker and a linter serve the same buffer together.
 - **Transports**: spawns servers over stdio, IPC, or socket connections with JSON-RPC framing.
 - **Synchronization**: keeps open documents in sync with incremental or full-text updates.
 - **Diagnostics**: forwards server diagnostics to the linter package when installed.
@@ -15,14 +16,16 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 - **Inlay hints**: renders inline type and parameter-name labels for the visible part of the editor.
 - **Code lens**: shows actionable command links above symbols; disabled by default.
 - **Semantic tokens**: layers server-computed highlighting over the grammar's own; disabled by default.
-- **Status bar**: shows the active server state with a session menu for restart, log, and problems.
+- **Server list**: lists every running server with its state, and restarts, stops, or opens the log of any of them.
+- **Background zone**: reports the running servers to the busy-signal package, which shows them apart from transient tasks.
 - **Logging**: keeps a per-server log buffer with optional protocol tracing.
 
 ## Commands
 
 Commands available in `atom-workspace`:
 
-- `ide-client:restart`: restart the language server for the active editor,
+- `ide-client:servers`: list the running language servers and act on one of them,
+- `ide-client:restart`: restart the language servers for the active editor,
 - `ide-client:toggle-problems`: open the linter panel with the server diagnostics,
 - `ide-client:format`: format the active document,
 - `ide-client:show-log`: open the active server's log in a new editor,
@@ -66,13 +69,12 @@ Saving the file restarts exactly the servers whose entries changed.
 
 ## Customization
 
-Tweak the status-bar item from your stylesheet:
+Tweak the server list from your stylesheet:
 
 ```less
-.ide-client-status {
-  font-weight: bold;
-  &.status-failed {
-    color: var(--text-color-error);
+.ide-client-session-menu {
+  .ide-client-session-state {
+    font-weight: bold;
   }
 }
 ```
@@ -90,8 +92,8 @@ Tweak the status-bar item from your stylesheet:
 - **refactor** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
 - **intentions.list** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.
 - **linter-indie** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
-- **busy-signal** (`^1.0.0`): consumed to surface server work-done progress in the status bar.
-- **status-bar** (`^1.0.0`): consumed to show the active server state and session menu.
+- **busy-signal** (`^1.0.0`): consumed to surface server work-done progress while it runs.
+- **busy-signal.background** (`^1.0.0`): consumed to list the running servers apart from transient tasks.
 
 ## Contributing
 

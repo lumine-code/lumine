@@ -43,8 +43,11 @@ module.exports = class SignatureProvider {
   }
   // Returns the raw LSP SignatureHelp result; the consumer renders it.
   async getSignature(editor, point, context) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/signatureHelp", editor)) return null;
+    const session = await this.manager.activeSessionForFeature(
+      editor,
+      "textDocument/signatureHelp",
+    );
+    if (!session) return null;
     try {
       return await session.request("textDocument/signatureHelp", {
         textDocument: { uri: C.pathToUri(editor.getPath()) },

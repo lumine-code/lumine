@@ -82,9 +82,9 @@ module.exports = class CodeLens {
     const { editor } = state;
     const generation = ++state.generation;
     if (!this.enabledFor(editor)) return this.clear(state);
-    const session = await this.manager.activeSessionForEditor(editor);
+    const session = await this.manager.activeSessionForFeature(editor, "textDocument/codeLens");
     if (state.generation !== generation || editor.isDestroyed()) return;
-    if (!session?.supports("textDocument/codeLens", editor)) return this.clear(state);
+    if (!session) return this.clear(state);
     state.session = session;
     let lenses;
     try {

@@ -22,24 +22,33 @@ module.exports = class RefactorProvider {
   get grammarScopes() {
     return this.manager.allGrammarScopes();
   }
-  // Resolves to Map<absolutePath, [{ oldRange, newText }]> for the consumer to
-  // apply. When the edit contains resource operations (create/rename/delete)
-  // the hub applies the whole edit itself and resolves to null so the consumer
-  // does not double-apply.
-  async rename(editor, position, newName) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/rename", editor)) return null;
+  // Resolves to one of:
+  //   null                                  this provider cannot rename here,
+  //                                         so the consumer may try another
+  //   { outcome: "edits", edits }            Map<absolutePath, [{ oldRange,
+  //                                         newText }]> for the consumer to apply
+  //   { outcome: "applied", paths }          the edit needed file create/rename/
+  //                                         delete operations, so the hub applied
+  //                                         all of it; the consumer only reports
+  //   { outcome: "aborted" }                 applying was declined or failed;
+  //                                         the consumer stops without reporting
+  // Passing `dryRun` computes the edits without ever applying them, so a
+  // consumer can preview a rename. Every call is a server round trip, so
+  // callers must debounce previews rather than issue one per keystroke.
+  async rename(editor, position, newName, { dryRun = false } = {}) {
+    const session = await this.manager.activeSessionForFeature(editor, "textDocument/rename");
+    if (!session) return null;
     const edit = await session.request("textDocument/rename", {
       textDocument: { uri: C.pathToUri(editor.getPath()) },
       position: C.pointToPosition(position),
       newName,
     });
     if (!edit) return null;
-    if (this.hasResourceOperations(edit)) {
-      await this.manager.applyWorkspaceEdit(edit, `Rename to ${newName}`);
-      return null;
-    }
-    return this.toPathMap(edit);
+    const edits = this.toPathMap(edit);
+    if (!this.hasResourceOperations(edit)) return { outcome: "edits", edits };
+    if (dryRun) return { outcome: "edits", edits, resourceOperations: true };
+    const applied = await this.manager.applyWorkspaceEdit(edit, `Rename to ${newName}`);
+    return applied ? { outcome: "applied", paths: [...edits.keys()] } : { outcome: "aborted" };
   }
   hasResourceOperations(edit) {
     return (edit.documentChanges || []).some(
@@ -66,8 +75,11 @@ module.exports = class RefactorProvider {
     return map;
   }
   async prepareRename(editor, position) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.capabilities.renameProvider?.prepareProvider) return null;
+    const sessions = await this.manager.activeSessionsForEditor(editor);
+    const session = sessions.find(
+      (candidate) => candidate.capabilities.renameProvider?.prepareProvider,
+    );
+    if (!session) return null;
     const result = await session.request("textDocument/prepareRename", {
       textDocument: { uri: C.pathToUri(editor.getPath()) },
       position: C.pointToPosition(position),

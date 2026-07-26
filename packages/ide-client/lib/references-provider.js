@@ -22,26 +22,39 @@ module.exports = class ReferencesProvider {
   // Resolves to { symbolName, references: [{ path, range, name? }] }, null when
   // the session cannot serve references. Request failures reject.
   async findReferences(editor, point) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/references", editor)) return null;
+    const all = await this.manager.activeSessionsForEditor(editor);
+    const sessions = all.filter((session) => session.supports("textDocument/references", editor));
+    if (!sessions.length) return null;
     this.abortController?.abort();
     this.abortController = new AbortController();
-    const locations = await session.request(
-      "textDocument/references",
-      {
-        textDocument: { uri: C.pathToUri(editor.getPath()) },
-        position: C.pointToPosition(point),
-        context: { includeDeclaration: true },
-      },
-      { signal: this.abortController.signal },
+    const { signal } = this.abortController;
+    // Servers that both index the file report overlapping locations, so the
+    // merged list is deduplicated by position.
+    const seen = new Set();
+    const references = [];
+    const responses = await Promise.all(
+      sessions.map((session) =>
+        session.request(
+          "textDocument/references",
+          {
+            textDocument: { uri: C.pathToUri(editor.getPath()) },
+            position: C.pointToPosition(point),
+            context: { includeDeclaration: true },
+          },
+          { signal },
+        ),
+      ),
     );
-    const references = (locations || [])
-      .map((location) => ({
-        path: C.uriToPath(location.uri),
-        range: C.rangeFromLsp(location.range),
-        name: null,
-      }))
-      .filter((reference) => reference.path);
+    for (const location of responses.flat()) {
+      if (!location) continue;
+      const path = C.uriToPath(location.uri);
+      if (!path) continue;
+      const range = C.rangeFromLsp(location.range);
+      const key = `${path}:${range[0][0]}:${range[0][1]}:${range[1][0]}:${range[1][1]}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      references.push({ path, range, name: null });
+    }
     return { symbolName: this.symbolNameAt(editor, point), references };
   }
   symbolNameAt(editor, point) {

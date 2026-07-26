@@ -39,30 +39,39 @@ module.exports = class IntentionsProvider {
   // Code actions are requested on demand at the cursor; the published
   // diagnostics overlapping that position provide the context.
   async getIntentions({ textEditor, bufferPosition }) {
-    const session = await this.manager.activeSessionForEditor(textEditor);
-    if (!session?.supports("textDocument/codeAction", textEditor)) return [];
-    const uri = C.pathToUri(textEditor.getPath());
-    const stored = this.manager.diagnostics.get(uri);
-    const diagnostics = (stored?.diagnostics || []).filter((diagnostic) =>
-      this.rangeContains(diagnostic.range, bufferPosition),
+    const all = await this.manager.activeSessionsForEditor(textEditor);
+    const sessions = all.filter((session) =>
+      session.supports("textDocument/codeAction", textEditor),
     );
+    if (!sessions.length) return [];
+    const uri = C.pathToUri(textEditor.getPath());
     const position = C.pointToPosition(bufferPosition);
-    const range = diagnostics.length
-      ? this.unionRange(diagnostics)
-      : { start: position, end: position };
-    let actions;
-    try {
-      actions = await session.request("textDocument/codeAction", {
-        textDocument: { uri },
-        range,
-        context: { diagnostics, triggerKind: 1 },
-      });
-    } catch {
-      return [];
-    }
-    return (actions || [])
-      .filter((action) => !action.disabled)
-      .map((action) => this.toIntention(session, action));
+    // Each server is asked with the diagnostics it published itself: a server
+    // cannot fix a problem another server reported, and passing foreign
+    // diagnostics only confuses its code-action matching.
+    const results = await Promise.all(
+      sessions.map(async (session) => {
+        const diagnostics = this.manager
+          .diagnosticsFor(session, uri)
+          .filter((diagnostic) => this.rangeContains(diagnostic.range, bufferPosition));
+        const range = diagnostics.length
+          ? this.unionRange(diagnostics)
+          : { start: position, end: position };
+        try {
+          const actions = await session.request("textDocument/codeAction", {
+            textDocument: { uri },
+            range,
+            context: { diagnostics, triggerKind: 1 },
+          });
+          return (actions || [])
+            .filter((action) => !action.disabled)
+            .map((action) => this.toIntention(session, action));
+        } catch {
+          return [];
+        }
+      }),
+    );
+    return results.flat();
   }
   rangeContains(range, point) {
     if (point.row < range.start.line || point.row > range.end.line) return false;

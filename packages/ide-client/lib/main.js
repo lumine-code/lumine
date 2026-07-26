@@ -39,26 +39,13 @@ module.exports = {
     this.customServers = new CustomServers(this.manager);
     this.customServers.activate();
     this.uiSubscriptions = new CompositeDisposable();
-    this.statusElement = document.createElement("span");
-    this.statusElement.className = "ide-client-status inline-block";
-    this.statusElement.textContent = "LSP: idle";
-    this.statusElement.tabIndex = 0;
-    this.statusElement.setAttribute("role", "button");
-    this.statusElement.setAttribute("aria-label", "Language server actions");
     this.sessionMenu = new SessionMenuView(this);
-    this.statusElement.addEventListener("click", () => this.sessionMenu.toggle());
-    this.statusElement.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        event.preventDefault();
-        this.sessionMenu.toggle();
-      }
-    });
-    this.uiSubscriptions.add(this.manager.onDidChangeSession(() => this.updateStatus()));
-    this.uiSubscriptions.add(
-      atom.workspace.observeActiveTextEditor((editor) => this.observeStatusEditor(editor)),
-    );
+    // Running servers are long-lived, so they belong in the busy-signal
+    // background zone rather than in a status item of their own.
+    this.uiSubscriptions.add(this.manager.onDidChangeSession(() => this.publishSessions()));
     this.uiSubscriptions.add(
       atom.commands.add("atom-workspace", {
+        "ide-client:servers": () => this.sessionMenu.toggle(),
         "ide-client:toggle-problems": () => this.showProblems(),
         "ide-client:restart": () => this.restart(),
         "ide-client:format": () => this.format(),
@@ -83,9 +70,9 @@ module.exports = {
     this.disposeIndieDelegates();
     this.busyProvider?.dispose();
     this.busyProvider = null;
-    this.statusEditorSubscriptions?.dispose();
+    this.backgroundProvider?.dispose();
+    this.backgroundProvider = null;
     this.uiSubscriptions?.dispose();
-    this.statusElement?.remove();
     await this.manager?.deactivate();
     this.manager = null;
   },
@@ -146,9 +133,31 @@ module.exports = {
   provideIntentions() {
     return this.intentionsProvider;
   },
-  consumeStatusBar(statusBar) {
-    const tile = statusBar.addRightTile({ item: this.statusElement, priority: 500 });
-    return { dispose: () => tile.destroy() };
+  consumeBackgroundSignal(registry) {
+    this.backgroundProvider?.dispose();
+    this.backgroundProvider = registry.create();
+    this.publishSessions();
+    return new Disposable(() => {
+      this.backgroundProvider?.dispose();
+      this.backgroundProvider = null;
+    });
+  },
+  // Mirrors the live sessions into the background zone: one entry per server
+  // and project root, upserted as its state changes.
+  publishSessions() {
+    if (!this.backgroundProvider) return;
+    const live = new Set();
+    for (const [key, session] of this.manager.sessions) {
+      live.add(key);
+      this.backgroundProvider.set(`ide-client:${key}`, {
+        title: session.adapter.displayName,
+        detail: session.rootPath,
+        status: session.state,
+      });
+    }
+    for (const key of this.publishedSessions || [])
+      if (!live.has(key)) this.backgroundProvider.remove(`ide-client:${key}`);
+    this.publishedSessions = live;
   },
   consumeIndie(registerIndie) {
     this.indieSubscription?.dispose();
@@ -166,7 +175,7 @@ module.exports = {
       }
       delegate.setMessages(batch.filePath, batch.messages);
     };
-    for (const entry of this.manager.diagnostics.values()) publish(entry);
+    for (const entry of this.manager.allDiagnostics()) publish(entry);
     this.indieSubscription = this.manager.onDidPublishDiagnostics(publish);
     return {
       dispose: () => {
@@ -191,39 +200,6 @@ module.exports = {
       this.busyProvider = null;
     });
   },
-  observeStatusEditor(editor) {
-    this.statusEditorSubscriptions?.dispose();
-    this.statusEditorSubscriptions = new CompositeDisposable();
-    if (editor) {
-      this.statusEditorSubscriptions.add(
-        editor.onDidChangeGrammar(() => this.updateStatus()),
-        editor.onDidChangePath(() => this.updateStatus()),
-        editor.onDidDestroy(() => this.updateStatus()),
-      );
-    }
-    this.updateStatus();
-  },
-  updateStatus() {
-    const editor = atom.workspace.getActiveTextEditor();
-    const session = editor && this.manager.sessionForEditor(editor);
-    const adapter = editor && this.manager.adapterForEditor(editor);
-    if (!adapter) {
-      this.statusElement.textContent = "LSP Idle";
-      this.statusElement.className = "ide-client-status inline-block status-idle";
-    } else if (!session) {
-      this.statusElement.textContent = `${adapter.displayName} starting...`;
-      this.statusElement.className = "ide-client-status inline-block status-starting";
-    } else {
-      this.statusElement.textContent = `${adapter.displayName}`;
-      this.statusElement.className = `ide-client-status inline-block status-${session.state}`;
-    }
-    const background = [...this.manager.sessions.values()].filter(
-      (candidate) => candidate !== session && candidate.state === "running",
-    );
-    this.statusElement.title = background.length
-      ? `${background.length} language server${background.length === 1 ? "" : "s"} running in the background`
-      : "";
-  },
   // Diagnostics render through the linter package; this only opens its panel.
   showProblems() {
     if (this.indieDelegates) {
@@ -236,9 +212,13 @@ module.exports = {
     const editor = atom.workspace.getActiveTextEditor();
     return { editor, session: editor && this.manager.sessionForEditor(editor) };
   },
+  // Restarts every server serving the active editor, since more than one can
+  // be attached to it.
   async restart() {
-    const { session } = this.active();
-    if (session) await this.manager.restart(session);
+    const editor = atom.workspace.getActiveTextEditor();
+    if (!editor) return;
+    const sessions = this.manager.sessionsForEditor(editor);
+    await Promise.all(sessions.map((session) => this.manager.restart(session)));
   },
   async format() {
     const editor = atom.workspace.getActiveTextEditor();

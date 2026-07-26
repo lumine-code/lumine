@@ -24,8 +24,13 @@ module.exports = class OutlineProvider {
     return this.manager.allGrammarScopes();
   }
   async getOutline(editor) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/documentSymbol", editor)) return null;
+    // One outline per editor: two servers' symbol trees cannot be interleaved
+    // sensibly, so the first server that indexes documents wins.
+    const session = await this.manager.activeSessionForFeature(
+      editor,
+      "textDocument/documentSymbol",
+    );
+    if (!session) return null;
     this.abortController?.abort();
     this.abortController = new AbortController();
     let result;

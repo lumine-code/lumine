@@ -8,12 +8,18 @@ const stubEditor = {
   getGrammar: () => ({ scopeName: "source.js", name: "JavaScript" }),
 };
 
-const managerWith = (session) => ({
-  addCapabilityFragment() {},
-  allGrammarScopes: () => ["source.js"],
-  activeSessionForEditor: async () => session,
-  sessions: new Map(session ? [["key", session]] : []),
-});
+const managerWith = (...args) => {
+  const sessions = args.filter(Boolean);
+  return {
+    addCapabilityFragment() {},
+    allGrammarScopes: () => ["source.js"],
+    activeSessionsForEditor: async () => sessions,
+    activeSessionForEditor: async () => sessions[0] || null,
+    activeSessionForFeature: async (editor, method) =>
+      sessions.find((session) => session.supports(method, editor)) || null,
+    sessions: new Map(sessions.map((session, index) => [`key-${index}`, session])),
+  };
+};
 
 const sessionWith = (result, capabilities = {}) => ({
   state: "running",
@@ -53,6 +59,23 @@ describe("HoverProvider", () => {
     expect(await hoverFor({ contents: "" })).toBeNull();
     const provider = new HoverProvider(managerWith(null));
     expect(await provider.hover(stubEditor, { row: 0, column: 0 })).toBeNull();
+  });
+  it("stacks the answers of every server serving the editor", async () => {
+    const provider = new HoverProvider(
+      managerWith(
+        sessionWith({ contents: { kind: "markdown", value: "the type" } }),
+        sessionWith({ contents: { kind: "markdown", value: "the lint rule" } }),
+      ),
+    );
+    const result = await provider.hover(stubEditor, { row: 0, column: 1 });
+    expect(result.contents.value).toBe("the type\n\n---\n\nthe lint rule");
+  });
+  it("collapses identical answers from several servers", async () => {
+    const provider = new HoverProvider(
+      managerWith(sessionWith({ contents: "same" }), sessionWith({ contents: "same" })),
+    );
+    const result = await provider.hover(stubEditor, { row: 0, column: 1 });
+    expect(result.contents.value).toBe("same");
   });
 });
 

@@ -15,15 +15,26 @@ const stubEditor = (lines = ["const value = 1;"]) => ({
   getBuffer: () => ({ lineForRow: (row) => lines[row] }),
 });
 
-const managerWith = (session, extras = {}) => ({
-  addCapabilityFragment() {},
-  allGrammarScopes: () => ["source.js"],
-  activeSessionForEditor: async () => session,
-  adapterForEditor: () => (session ? { id: "stub" } : undefined),
-  diagnostics: new Map(),
-  applyWorkspaceEdit: async () => true,
-  ...extras,
-});
+const managerWith = (...args) => {
+  const extras = args.length && !isSessionLike(args[args.length - 1]) ? args.pop() : {};
+  const sessions = args.filter(Boolean);
+  return {
+    addCapabilityFragment() {},
+    allGrammarScopes: () => ["source.js"],
+    activeSessionsForEditor: async () => sessions,
+    activeSessionForEditor: async () => sessions[0] || null,
+    activeSessionForFeature: async (editor, method) =>
+      sessions.find((session) => session.supports(method, editor)) || null,
+    adapterForEditor: () => (sessions.length ? { id: "stub" } : undefined),
+    adaptersForEditor: () => sessions.map((_, index) => ({ id: `stub-${index}` })),
+    diagnostics: new Map(),
+    diagnosticsFor: () => [],
+    applyWorkspaceEdit: async () => true,
+    ...extras,
+  };
+};
+
+const isSessionLike = (value) => !value || typeof value.request === "function";
 
 const sessionWith = (respond, capabilities = {}) => ({
   state: "running",
@@ -118,6 +129,41 @@ describe("ReferencesProvider", () => {
     expect(await provider.findReferences(stubEditor(), { row: 0, column: 0 })).toBeNull();
     expect(provider.isEditorSupported(stubEditor())).toBe(false);
   });
+  it("merges references from several servers and drops duplicates", async () => {
+    const shared = { uri: fileUri, range: lspRange(0, 6, 11) };
+    const provider = new ReferencesProvider(
+      managerWith(
+        sessionWith(() => [shared, { uri: fileUri, range: lspRange(2, 0, 5) }]),
+        sessionWith(() => [shared, { uri: fileUri, range: lspRange(4, 1, 4) }]),
+      ),
+    );
+    const result = await provider.findReferences(stubEditor(), { row: 0, column: 8 });
+    expect(result.references.map((reference) => reference.range[0][0])).toEqual([0, 2, 4]);
+  });
+});
+
+describe("multi-server capability routing", () => {
+  it("asks the server that supports the feature, not the first one registered", async () => {
+    const asked = [];
+    const withSupport = (methods, name) => ({
+      state: "running",
+      capabilities: {},
+      supports: (method) => methods.includes(method),
+      request: async (method) => {
+        asked.push(`${name}:${method}`);
+        return [];
+      },
+    });
+    // A linter registered first has no formatting; the type checker behind it
+    // does, and must be the one asked.
+    const manager = managerWith(
+      withSupport(["textDocument/codeAction"], "linter"),
+      withSupport(["textDocument/formatting"], "checker"),
+    );
+    const provider = new CodeFormatProvider(manager);
+    await provider.formatFile(stubEditor());
+    expect(asked).toEqual(["checker:textDocument/formatting"]);
+  });
 });
 
 describe("RefactorProvider", () => {
@@ -132,10 +178,15 @@ describe("RefactorProvider", () => {
       ],
     }));
     const provider = new RefactorProvider(managerWith(session));
-    const map = await provider.rename(stubEditor(), { row: 0, column: 8 }, "renamed");
-    expect([...map.keys()]).toEqual([filePath]);
-    expect(map.get(filePath).length).toBe(2);
-    expect(map.get(filePath)[0]).toEqual({
+    const { outcome, edits } = await provider.rename(
+      stubEditor(),
+      { row: 0, column: 8 },
+      "renamed",
+    );
+    expect(outcome).toBe("edits");
+    expect([...edits.keys()]).toEqual([filePath]);
+    expect(edits.get(filePath).length).toBe(2);
+    expect(edits.get(filePath)[0]).toEqual({
       oldRange: [
         [0, 6],
         [0, 11],
@@ -143,9 +194,10 @@ describe("RefactorProvider", () => {
       newText: "renamed",
     });
   });
-  it("applies resource operations itself and resolves null", async () => {
+  it("applies resource operations itself and reports them as applied", async () => {
     const applied = [];
     const session = sessionWith(() => ({
+      changes: { [fileUri]: [{ range: lspRange(0, 6, 11), newText: "next" }] },
       documentChanges: [{ kind: "rename", oldUri: fileUri, newUri: fileUri }],
     }));
     const manager = managerWith(session, {
@@ -156,8 +208,42 @@ describe("RefactorProvider", () => {
     });
     const provider = new RefactorProvider(manager);
     const result = await provider.rename(stubEditor(), { row: 0, column: 8 }, "next");
-    expect(result).toBeNull();
+    expect(result).toEqual({ outcome: "applied", paths: [filePath] });
     expect(applied).toEqual(["Rename to next"]);
+  });
+  it("reports an aborted apply distinctly from declining to rename", async () => {
+    const session = sessionWith(() => ({
+      documentChanges: [{ kind: "delete", uri: fileUri }],
+    }));
+    const manager = managerWith(session, { applyWorkspaceEdit: async () => false });
+    const provider = new RefactorProvider(manager);
+    // A consumer must not read this as "try the next provider": the user
+    // declined the operation, so renaming through another provider would
+    // override that decision.
+    expect(await provider.rename(stubEditor(), { row: 0, column: 8 }, "next")).toEqual({
+      outcome: "aborted",
+    });
+  });
+  it("computes edits without applying resource operations when dry running", async () => {
+    const applied = [];
+    const session = sessionWith(() => ({
+      changes: { [fileUri]: [{ range: lspRange(0, 6, 11), newText: "next" }] },
+      documentChanges: [{ kind: "rename", oldUri: fileUri, newUri: fileUri }],
+    }));
+    const manager = managerWith(session, {
+      applyWorkspaceEdit: async () => {
+        applied.push("applied");
+        return true;
+      },
+    });
+    const provider = new RefactorProvider(manager);
+    const result = await provider.rename(stubEditor(), { row: 0, column: 8 }, "next", {
+      dryRun: true,
+    });
+    expect(result.outcome).toBe("edits");
+    expect(result.resourceOperations).toBe(true);
+    expect([...result.edits.keys()]).toEqual([filePath]);
+    expect(applied).toEqual([]);
   });
   it("normalizes the three prepareRename response shapes", async () => {
     const shapes = [
@@ -213,8 +299,12 @@ describe("IntentionsProvider", () => {
         { title: "Run tool", command: "tool.run", arguments: [] },
       ];
     });
-    const manager = managerWith(session);
-    manager.diagnostics.set(fileUri, { diagnostics: [diagnostic] });
+    const manager = managerWith(session, {
+      // Diagnostics are stored per session, and each server is asked with the
+      // diagnostics it published itself.
+      diagnosticsFor: (candidate, uri) =>
+        candidate === session && uri === fileUri ? [diagnostic] : [],
+    });
     const provider = new IntentionsProvider(manager);
     const intentions = await provider.getIntentions({
       textEditor: stubEditor(),

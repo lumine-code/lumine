@@ -22,6 +22,10 @@ const LANGUAGE_IDS = {
   "source.makefile": "makefile",
   "source.perl": "perl",
   "source.python": "python",
+  // Dialect scopes must map explicitly: without an entry the fallback derives
+  // the id from the grammar name, announcing "ipython" to servers that only
+  // know "python".
+  "source.python.ipy": "python",
   "source.ruby": "ruby",
   "source.rust": "rust",
   "source.sass": "sass",

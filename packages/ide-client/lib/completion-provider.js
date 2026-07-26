@@ -34,16 +34,19 @@ module.exports = class CompletionProvider {
     this.cache = null;
     this.abortController = null;
   }
+  // Completions from every server serving the editor are merged: a type
+  // checker and a linter each contribute their own, and the user wants both.
   async getSuggestions({ editor, bufferPosition, prefix, activatedManually }) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/completion", editor)) return [];
+    const all = await this.manager.activeSessionsForEditor(editor);
+    const sessions = all.filter((session) => session.supports("textDocument/completion", editor));
+    if (!sessions.length) return [];
     const wordStart = bufferPosition.column - (prefix?.length || 0);
     const cache = this.cache;
     if (
       cache &&
       !activatedManually &&
       cache.editor === editor &&
-      cache.session === session &&
+      this.sameSessions(cache.sessions, sessions) &&
       cache.row === bufferPosition.row &&
       cache.wordStart === wordStart &&
       !cache.isIncomplete &&
@@ -51,38 +54,49 @@ module.exports = class CompletionProvider {
     ) {
       return this.filterCached(cache.items, prefix);
     }
-    const provider = session.capabilities.completionProvider || {};
     const lastCharacter = editor.getTextInBufferRange([
       [bufferPosition.row, Math.max(0, bufferPosition.column - 1)],
       bufferPosition,
     ]);
-    let context;
-    if (!activatedManually && (provider.triggerCharacters || []).includes(lastCharacter))
-      context = { triggerKind: 2, triggerCharacter: lastCharacter };
-    else if (cache?.isIncomplete && cache.editor === editor && cache.row === bufferPosition.row)
-      context = { triggerKind: 3 };
-    else context = { triggerKind: 1 };
     this.abortController?.abort();
     this.abortController = new AbortController();
-    let result;
-    try {
-      result = await session.request(
-        "textDocument/completion",
-        {
-          textDocument: { uri: C.pathToUri(editor.getPath()) },
-          position: C.pointToPosition(bufferPosition),
-          context,
-        },
-        { signal: this.abortController.signal },
-      );
-    } catch {
-      return [];
-    }
-    const items = Array.isArray(result) ? result : result?.items || [];
-    const defaults = Array.isArray(result) ? null : result?.itemDefaults;
-    const mapped = items.map((item) =>
-      this.toSuggestion(session, this.applyDefaults(item, defaults)),
+    const { signal } = this.abortController;
+    const responses = await Promise.all(
+      sessions.map(async (session) => {
+        const provider = session.capabilities.completionProvider || {};
+        let context;
+        if (!activatedManually && (provider.triggerCharacters || []).includes(lastCharacter))
+          context = { triggerKind: 2, triggerCharacter: lastCharacter };
+        else if (cache?.isIncomplete && cache.editor === editor && cache.row === bufferPosition.row)
+          context = { triggerKind: 3 };
+        else context = { triggerKind: 1 };
+        try {
+          const result = await session.request(
+            "textDocument/completion",
+            {
+              textDocument: { uri: C.pathToUri(editor.getPath()) },
+              position: C.pointToPosition(bufferPosition),
+              context,
+            },
+            { signal },
+          );
+          return { session, result };
+        } catch {
+          // One server failing must not discard the others' suggestions.
+          return null;
+        }
+      }),
     );
+    const mapped = [];
+    let isIncomplete = false;
+    for (const response of responses.filter(Boolean)) {
+      const { session, result } = response;
+      const items = Array.isArray(result) ? result : result?.items || [];
+      const defaults = Array.isArray(result) ? null : result?.itemDefaults;
+      if (!Array.isArray(result) && result?.isIncomplete) isIncomplete = true;
+      for (const item of items)
+        mapped.push(this.toSuggestion(session, this.applyDefaults(item, defaults)));
+    }
     mapped.sort((a, b) =>
       (a._lspItem.sortText ?? a._lspItem.label).localeCompare(
         b._lspItem.sortText ?? b._lspItem.label,
@@ -90,14 +104,17 @@ module.exports = class CompletionProvider {
     );
     this.cache = {
       editor,
-      session,
+      sessions,
       row: bufferPosition.row,
       wordStart,
       prefix: prefix || "",
-      isIncomplete: !Array.isArray(result) && !!result?.isIncomplete,
+      isIncomplete,
       items: mapped,
     };
     return mapped;
+  }
+  sameSessions(a, b) {
+    return a.length === b.length && a.every((session, index) => session === b[index]);
   }
   filterCached(items, prefix) {
     const query = prefix.toLowerCase();

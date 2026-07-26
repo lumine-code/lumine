@@ -53,8 +53,11 @@ module.exports = class CodeFormatProvider {
     }));
   }
   async formatRange(editor, range) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/rangeFormatting", editor)) return [];
+    const session = await this.manager.activeSessionForFeature(
+      editor,
+      "textDocument/rangeFormatting",
+    );
+    if (!session) return [];
     try {
       return this.edits(
         await session.request("textDocument/rangeFormatting", {
@@ -68,8 +71,8 @@ module.exports = class CodeFormatProvider {
     }
   }
   async formatFile(editor) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/formatting", editor)) return [];
+    const session = await this.manager.activeSessionForFeature(editor, "textDocument/formatting");
+    if (!session) return [];
     try {
       return this.edits(
         await session.request("textDocument/formatting", {
@@ -82,8 +85,11 @@ module.exports = class CodeFormatProvider {
     }
   }
   async formatOnType(editor, position, character) {
-    const session = await this.manager.activeSessionForEditor(editor);
-    if (!session?.supports("textDocument/onTypeFormatting", editor)) return [];
+    const session = await this.manager.activeSessionForFeature(
+      editor,
+      "textDocument/onTypeFormatting",
+    );
+    if (!session) return [];
     const provider = session.capabilities.documentOnTypeFormattingProvider;
     const triggers = [
       provider?.firstTriggerCharacter,
@@ -106,7 +112,16 @@ module.exports = class CodeFormatProvider {
   // Prefers willSaveWaitUntil when the server implements it, else plain
   // document formatting.
   async formatOnSave(editor) {
-    const session = await this.manager.activeSessionForEditor(editor);
+    // A server that only answers willSaveWaitUntil still formats on save, so
+    // prefer whichever session offers either path.
+    const sessions = await this.manager.activeSessionsForEditor(editor);
+    const session =
+      sessions.find((candidate) => {
+        const sync = candidate.capabilities.textDocumentSync;
+        return typeof sync === "object" && sync?.willSaveWaitUntil;
+      }) ||
+      sessions.find((candidate) => candidate.supports("textDocument/formatting", editor)) ||
+      null;
     if (!session) return [];
     const sync = session.capabilities.textDocumentSync;
     if (typeof sync === "object" && sync?.willSaveWaitUntil) {

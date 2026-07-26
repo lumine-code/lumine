@@ -112,9 +112,14 @@ module.exports = class SemanticTokens {
     const { editor } = state;
     const generation = ++state.generation;
     if (!this.enabledFor(editor)) return this.clear(state);
-    const session = await this.manager.activeSessionForEditor(editor);
+    // Only one server may classify a buffer: two token sets over the same
+    // ranges would fight for the same decorations.
+    const session = await this.manager.activeSessionForFeature(
+      editor,
+      "textDocument/semanticTokens",
+    );
     if (state.generation !== generation || editor.isDestroyed()) return;
-    if (!session?.supports("textDocument/semanticTokens", editor)) return this.clear(state);
+    if (!session) return this.clear(state);
     const provider = session.capabilities.semanticTokensProvider;
     if (!provider?.legend) return this.clear(state);
     state.session = session;
