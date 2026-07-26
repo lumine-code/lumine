@@ -133,11 +133,22 @@ module.exports = {
   provideIntentionsList() {
     return this.intentionsProvider;
   },
-  consumeBusySignalBackgroundRegistry(registry) {
+  // One service, both zones: transient work-done progress on the busy dot,
+  // and the live sessions in the background zone.
+  consumeBusySignal(busySignal) {
+    this.busyProvider?.dispose();
+    this.busyProvider = busySignal.create();
+    this.manager.setBusyProvider(this.busyProvider);
+
     this.backgroundProvider?.dispose();
-    this.backgroundProvider = registry.create();
+    // Optional: an older busy-signal hands out a bare transient registry.
+    this.backgroundProvider = busySignal.createBackground?.() ?? null;
     this.publishSessions();
+
     return new Disposable(() => {
+      this.manager.setBusyProvider(null);
+      this.busyProvider?.dispose();
+      this.busyProvider = null;
       this.backgroundProvider?.dispose();
       this.backgroundProvider = null;
     });
@@ -188,17 +199,6 @@ module.exports = {
   disposeIndieDelegates() {
     for (const delegate of this.indieDelegates?.values() || []) delegate.dispose();
     this.indieDelegates = null;
-  },
-  consumeBusySignalRegistry(registry) {
-    this.busyProvider?.dispose();
-    this.busyProvider = registry.create();
-    this.manager.setBusyProvider(this.busyProvider);
-    return new Disposable(() => {
-      if (!this.busyProvider) return;
-      this.manager.setBusyProvider(null);
-      this.busyProvider.dispose();
-      this.busyProvider = null;
-    });
   },
   // Diagnostics render through the linter package; this only opens its panel.
   showProblems() {

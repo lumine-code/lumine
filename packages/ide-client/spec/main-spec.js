@@ -61,7 +61,10 @@ describe("ide-client package", () => {
       state: "starting",
     };
     main.manager.sessions.set("stub:/project", session);
-    const registration = main.consumeBusySignalBackgroundRegistry({ create: () => provider });
+    const registration = main.consumeBusySignal({
+      create: () => ({ add() {}, remove() {}, changeTitle() {}, clear() {}, dispose() {} }),
+      createBackground: () => provider,
+    });
     expect(entries.get("ide-client:stub:/project")).toEqual({
       title: "Stub Server",
       detail: "/project",

@@ -95,14 +95,9 @@
         "^1.0.0": "consumeLinterRegistry"
       }
     },
-    "busy-signal.registry": {
+    "busy-signal": {
       "versions": {
-        "^1.0.0": "consumeBusySignalRegistry"
-      }
-    },
-    "busy-signal.background-registry": {
-      "versions": {
-        "^1.0.0": "consumeBusySignalBackgroundRegistry"
+        "^1.0.0": "consumeBusySignal"
       }
     }
   },
