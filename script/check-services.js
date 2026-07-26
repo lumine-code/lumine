@@ -113,8 +113,6 @@ function checkReadmeServices(pkg) {
     ...Object.keys(pkg.manifest.providedServices ?? {}),
     ...Object.keys(pkg.manifest.consumedServices ?? {}),
   ]);
-  if (declared.size === 0) return;
-
   const readmePath = path.join(pkg.dir, "README.md");
   if (!fs.existsSync(readmePath)) return;
   const readme = fs.readFileSync(readmePath, "utf8");
@@ -122,8 +120,18 @@ function checkReadmeServices(pkg) {
     .split(/^## /m)
     .slice(1)
     .find((section) => /^Services\s*$/m.test(section.split("\n")[0]));
+
   if (!chapter) {
-    warn(pkg.label, `declares services but README.md has no "## Services" chapter`);
+    if (declared.size > 0) {
+      warn(pkg.label, `declares services but README.md has no "## Services" chapter`);
+    }
+    return;
+  }
+  // A chapter left behind after the last service was removed. Checked here
+  // rather than skipped, because a package that declares nothing is exactly
+  // the one whose chapter nobody thinks to delete.
+  if (declared.size === 0) {
+    warn(pkg.label, `README.md has a "## Services" chapter but declares no services`);
     return;
   }
   // The name may be wrapped in a Markdown link to the service document.

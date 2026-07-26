@@ -7,7 +7,7 @@ Display a selectable tab for each open item in a pane.
 - **Per-pane tabs**: shows a tab bar with a tab for every open editor and item in each pane.
 - **Tab management**: close a single tab, other tabs, saved tabs, or every tab at once.
 - **Split from a tab**: split the active tab up, down, left, or right into a new pane.
-- **File icons**: shows a file-type icon on each tab when an icon service is available.
+- **File icons**: shows the icon an item names for itself, and a file-type icon when an icon package is installed.
 - **MRU switching**: cycle tabs in most-recently-used order with an optional overlay list.
 - **VCS coloring**: color tab file names based on their version control status.
 
@@ -40,11 +40,6 @@ Commands available in `.tab-bar`:
 - `tabs:split-down`: split the target tab into a pane below,
 - `tabs:split-left`: split the target tab into a pane to the left,
 - `tabs:split-right`: split the target tab into a pane to the right.
-
-## Services
-
-- **[icons.class](https://lumine-code.github.io/docs.html#services/icons.class)** (`^1.0.0`): consumed to supply the file-type icon shown on each tab.
-- **[icons.element](https://lumine-code.github.io/docs.html#services/icons.element)** (`^1.0.0`): consumed to supply element-based file icons for tabs.
 
 ## Customization
 

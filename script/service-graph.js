@@ -24,16 +24,13 @@ const EXTERNAL = Symbol("external");
 // `null` marks a domain split across owners; those services are resolved
 // individually in SERVICE_OWNERS below.
 //
-// Three of these are judgment calls rather than readings of the graph:
-//   - `icons` has no hub at all — two providers, seven consumers, no definer.
-//     native-icons provides both icons.class and icons.element, so it holds the
-//     more complete implementation. This is the weakest entry in the table.
+// Two of these are judgment calls rather than readings of the graph:
 //   - `symbol` goes to symbols-view on merit: lib/main.d.ts already is the
 //     contract and lib/provider-broker.js already validates it.
 //   - `hyperclick` goes to symbols-view as the sole in-workspace definer; the
 //     service has no consumer yet, so it is an extension point without a hub.
 const GENERAL_DOMAINS = new Map([
-  ["icons", "native-icons"],
+  ["icons", null],
   ["symbol", "symbols-view"],
   ["hyperclick", "symbols-view"],
   ["outline", "outline-view"],
@@ -55,9 +52,8 @@ const SERVICE_OWNERS = new Map([
   ["jupyter.breakpoints", "jupyter-repl"],
   ["jupyter.adapter", "jupyter-view"],
   ["jupyter.notebook", "jupyter-view"],
-  // Shares the `icons` namespace with the two package-to-package icon services
-  // but is a different contract entirely: core's IconRegistry consumes it, and
-  // an implementer supplies iconFor(target) rather than iconClassForPath().
+  // `icons` names no package: core's IconRegistry is the hub that consumes
+  // this, and the icon packages provide into it.
   ["icons.provider", CORE],
   ["claude-chat", EXTERNAL],
 ]);

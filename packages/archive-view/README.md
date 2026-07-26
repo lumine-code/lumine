@@ -7,12 +7,7 @@ Browse the files and folders inside archive files.
 - **Archive browsing**: opens archives as a tree of their contents inside an editor tab.
 - **Broad format support**: handles `.egg`, `.epub`, `.jar`, `.love`, `.nupkg`, `.tar`, `.tar.gz`, `.tgz`, `.war`, `.whl`, `.xpi`, and `.zip` files.
 - **Extract and open**: selecting a file extracts it to a temporary file and opens it in a new editor.
-- **File icons**: shows file-type icons for entries when an icon service is available.
-
-## Services
-
-- **[icons.class](https://lumine-code.github.io/docs.html#services/icons.class)** (`^1.0.0`): consumed to supply file-type icon classes for archive entries.
-- **[icons.element](https://lumine-code.github.io/docs.html#services/icons.element)** (`^1.0.0`): consumed to supply element-based file icons for archive entries.
+- **File icons**: shows a file-type icon for every entry, and richer ones when an icon package is installed.
 
 ## Customization
 
