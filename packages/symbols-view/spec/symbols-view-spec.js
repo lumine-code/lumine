@@ -65,7 +65,7 @@ function registerProvider(...args) {
     let disposable = atom.packages.onDidActivatePackage((pack) => {
       if (pack.name !== "symbols-view") return;
       for (let provider of args) {
-        pack.mainModule.consumeSymbolProvider(provider);
+        pack.mainModule.consumeSymbol(provider);
       }
       disposable.dispose();
     });
@@ -75,7 +75,7 @@ function registerProvider(...args) {
     atom.packages.getLoadedPackage("symbols-view").activateNow();
   } else {
     for (let provider of args) {
-      main.consumeSymbolProvider(provider);
+      main.consumeSymbol(provider);
     }
   }
 }

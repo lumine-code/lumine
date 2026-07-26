@@ -5,7 +5,7 @@ module.exports = {
     return provider.load();
   },
 
-  getProvider() {
+  provideAutocomplete() {
     return provider;
   },
 };

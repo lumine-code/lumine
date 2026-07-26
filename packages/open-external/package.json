@@ -27,7 +27,7 @@
     "open-external": {
       "description": "Allows packages to register handlers for external file operations",
       "versions": {
-        "1.0.0": "provideOpenExternalService"
+        "1.0.0": "provideOpenExternal"
       }
     }
   },

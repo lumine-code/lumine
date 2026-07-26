@@ -22,7 +22,7 @@
   "providedServices": {
     "title-bar": {
       "versions": {
-        "1.0.0": "provideControlTiles"
+        "1.0.0": "provideTitleBar"
       }
     }
   },

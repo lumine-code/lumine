@@ -444,11 +444,11 @@ module.exports = {
     return (this.fileIconsService || atom.ui.iconClassForPath)(filePath);
   },
 
-  consumeClassIcons(object) {
+  consumeIconsClass(object) {
     this.fileIconsService = object.iconClassForPath;
   },
 
-  consumeOpenExternalService(service) {
+  consumeOpenExternal(service) {
     this.openExternalService = service;
     return new Disposable(() => {
       this.openExternalService = null;

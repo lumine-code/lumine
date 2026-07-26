@@ -7,7 +7,7 @@ module.exports = {
     this.provider = null;
   },
 
-  provide() {
+  provideAutocomplete() {
     if (this.provider == null) {
       const SnippetsProvider = require("./snippets-provider");
       this.provider = new SnippetsProvider();

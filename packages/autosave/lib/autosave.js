@@ -5,7 +5,7 @@ const { dontSaveIf, shouldSave } = require("./controls");
 module.exports = {
   subscriptions: null,
 
-  provideService() {
+  provideAutosave() {
     return { dontSaveIf };
   },
 

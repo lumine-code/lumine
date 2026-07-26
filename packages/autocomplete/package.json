@@ -38,7 +38,7 @@
   "consumedServices": {
     "autocomplete.provider": {
       "versions": {
-        "^1.0.0": "consumeProvider"
+        "^1.0.0": "consumeAutocomplete"
       }
     },
     "snippets": {

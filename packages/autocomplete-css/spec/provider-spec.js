@@ -94,7 +94,9 @@ describe("CSS property name and value autocompletions", async () => {
 
     runs(
       () =>
-        (provider = atom.packages.getActivePackage("autocomplete-css").mainModule.getProvider()),
+        (provider = atom.packages
+          .getActivePackage("autocomplete-css")
+          .mainModule.provideAutocomplete()),
     );
 
     return waitsFor(() => Object.keys(provider.properties).length > 0);

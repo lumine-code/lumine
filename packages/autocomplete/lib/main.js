@@ -34,7 +34,7 @@ module.exports = {
   Section: Provider API
   */
 
-  consumeProvider(providers) {
+  consumeAutocomplete(providers) {
     if (!providers) {
       return;
     }

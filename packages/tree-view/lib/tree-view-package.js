@@ -58,14 +58,14 @@ module.exports = class TreeViewPackage {
     this.treeView = null;
   }
 
-  consumeElementIcons(service) {
+  consumeIconsElement(service) {
     getIconServices().setElementIcons(service);
     return new Disposable(() => {
       getIconServices().resetElementIcons();
     });
   }
 
-  consumeFileIcons(service) {
+  consumeIconsClass(service) {
     getIconServices().setFileIcons(service);
     return new Disposable(() => {
       getIconServices().resetFileIcons();

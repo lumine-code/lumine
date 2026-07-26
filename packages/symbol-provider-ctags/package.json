@@ -21,7 +21,7 @@
     "symbol.provider": {
       "description": "Allows external sources to suggest symbols for a given file or project.",
       "versions": {
-        "1.0.0": "provideSymbols"
+        "1.0.0": "provideSymbol"
       }
     }
   },

@@ -20,7 +20,7 @@
   "providedServices": {
     "autocomplete.provider": {
       "versions": {
-        "1.0.0": "getProvider"
+        "1.0.0": "provideAutocomplete"
       }
     }
   },

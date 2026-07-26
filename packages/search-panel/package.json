@@ -45,7 +45,7 @@
   "consumedServices": {
     "icons.class": {
       "versions": {
-        "^1.0.0": "consumeFileIcons"
+        "^1.0.0": "consumeIconsClass"
       }
     },
     "autocomplete.watchEditor": {
@@ -55,7 +55,7 @@
     },
     "icons.element": {
       "versions": {
-        "^1.0.0": "consumeElementIcons"
+        "^1.0.0": "consumeIconsElement"
       }
     },
     "search-adapter": {

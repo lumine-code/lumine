@@ -42,7 +42,7 @@ describe("HTML autocompletions", () => {
     languageMode.useAsyncIndent = false;
     await languageMode.ready;
 
-    provider = atom.packages.getActivePackage("autocomplete-html").mainModule.getProvider();
+    provider = atom.packages.getActivePackage("autocomplete-html").mainModule.provideAutocomplete();
   });
 
   afterEach(async () => {

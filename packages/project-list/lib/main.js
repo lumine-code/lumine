@@ -676,7 +676,7 @@ module.exports = {
     return this.projectList;
   },
 
-  consumeOpenExternalService(service) {
+  consumeOpenExternal(service) {
     this.projectList.setOpenExternalService(service);
     return new Disposable(() => {
       this.projectList.setOpenExternalService(null);

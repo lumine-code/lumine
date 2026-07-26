@@ -21,7 +21,7 @@ function serialize() {
   return titleBar?.serialize();
 }
 
-function provideControlTiles() {
+function provideTitleBar() {
   return titleBar?.titleBarView?.getControlTiles();
 }
 
@@ -29,7 +29,7 @@ const api = {
   activate,
   deactivate,
   serialize,
-  provideControlTiles,
+  provideTitleBar,
 };
 
 function defineLazyExport(name, path, exportName = name) {

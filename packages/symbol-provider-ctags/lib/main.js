@@ -9,7 +9,7 @@ module.exports = {
     this.provider?.destroy?.();
   },
 
-  provideSymbols() {
+  provideSymbol() {
     return this.provider;
   },
 };

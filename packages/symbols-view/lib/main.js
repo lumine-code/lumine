@@ -109,7 +109,7 @@ module.exports = {
     this.subscriptions = null;
   },
 
-  consumeSymbolProvider(provider) {
+  consumeSymbol(provider) {
     if (Array.isArray(provider)) {
       this.broker.add(...provider);
     } else {

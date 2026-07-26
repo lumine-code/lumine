@@ -72,7 +72,7 @@ describe("Autocomplete Manager", () => {
           return list.map((text) => ({ text }));
         },
       };
-      mainModule.consumeProvider(provider, 3);
+      mainModule.consumeAutocomplete(provider, 3);
     });
 
     it("calls the provider's onDidInsertSuggestion method when it exists", async () => {
@@ -289,7 +289,7 @@ describe("Autocomplete Manager", () => {
             return list.map((text) => ({ text }));
           },
         };
-        mainModule.consumeProvider(provider);
+        mainModule.consumeAutocomplete(provider);
       });
 
       it("does not display empty suggestions", async () => {
@@ -586,7 +586,7 @@ describe("Autocomplete Manager", () => {
             },
           };
 
-          mainModule.consumeProvider(provider, 4);
+          mainModule.consumeAutocomplete(provider, 4);
 
           atom.config.set("language.nonWordCharacters", "-");
           editor.insertText(" $foo-$ba");
@@ -607,7 +607,7 @@ describe("Autocomplete Manager", () => {
             },
           };
 
-          mainModule.consumeProvider(provider, 4);
+          mainModule.consumeAutocomplete(provider, 4);
           editor.insertText(" foo");
           editor.insertText(".");
           await suggestionsPromise;
@@ -1194,7 +1194,7 @@ describe("Autocomplete Manager", () => {
               ];
             },
           };
-          mainModule.consumeProvider(provider, 4);
+          mainModule.consumeAutocomplete(provider, 4);
 
           editor.setText("");
           editor.insertText("$food $fo");
@@ -2560,7 +2560,7 @@ defm`);
           return [{ text: "bottom" }];
         },
       };
-      mainModule.consumeProvider(bottomProvider);
+      mainModule.consumeAutocomplete(bottomProvider);
 
       let centerProvider = {
         labels: ["workspace-center"],
@@ -2569,7 +2569,7 @@ defm`);
           return [{ text: "center" }];
         },
       };
-      mainModule.consumeProvider(centerProvider);
+      mainModule.consumeAutocomplete(centerProvider);
 
       editor = await atom.workspace.open("");
       editorView = atom.views.getView(editor);

@@ -19,7 +19,7 @@
     "autosave": {
       "description": "A configuration object to control what is autosaved",
       "versions": {
-        "1.0.0": "provideService"
+        "1.0.0": "provideAutosave"
       }
     }
   },

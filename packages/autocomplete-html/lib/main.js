@@ -40,7 +40,7 @@ const provider = {
 
 module.exports = {
   activate() {},
-  getProvider() {
+  provideAutocomplete() {
     return provider;
   },
 };

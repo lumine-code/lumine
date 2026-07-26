@@ -34,7 +34,9 @@ describe("Lumine API autocompletions", () => {
   beforeEach(async () => {
     jasmine.useRealClock();
     await atom.packages.activatePackage("autocomplete-lumine");
-    provider = atom.packages.getActivePackage("autocomplete-lumine").mainModule.getProvider();
+    provider = atom.packages
+      .getActivePackage("autocomplete-lumine")
+      .mainModule.provideAutocomplete();
     await conditionPromise(() => Object.keys(provider.completions).length > 0, "completions");
     await conditionPromise(() => provider.packageDirectories?.length > 0, "package directories");
     await atom.workspace.open("test.js");

@@ -322,7 +322,7 @@ describe("Autosave", () => {
     it("doesn't save a paneItem if a predicate function registered via the dontSaveIf service returns true", async () => {
       atom.workspace.getActivePane().addItem(otherItem1);
       atom.config.set("autosave.enabled", true);
-      const service = atom.packages.getActivePackage("autosave").mainModule.provideService();
+      const service = atom.packages.getActivePackage("autosave").mainModule.provideAutosave();
       service.dontSaveIf((paneItem) => paneItem === initialActiveItem);
 
       initialActiveItem.setText("foo");

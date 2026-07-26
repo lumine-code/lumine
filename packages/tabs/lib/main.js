@@ -115,7 +115,7 @@ module.exports = {
     }
   },
 
-  consumeElementIcons(service) {
+  consumeIconsElement(service) {
     getIconServices().setElementIcons(service);
     this.updateFileIcons();
     return new Disposable(() => {
@@ -124,7 +124,7 @@ module.exports = {
     });
   },
 
-  consumeFileIcons(service) {
+  consumeIconsClass(service) {
     getIconServices().setFileIcons(service);
     this.updateFileIcons();
     return new Disposable(() => {

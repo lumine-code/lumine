@@ -298,7 +298,7 @@ module.exports = {
     };
   },
 
-  consumeOpenExternalService(service) {
+  consumeOpenExternal(service) {
     this.recentList.setOpenExternalService(service);
     return new Disposable(() => {
       this.recentList.setOpenExternalService(null);

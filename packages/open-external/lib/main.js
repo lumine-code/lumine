@@ -57,7 +57,7 @@ module.exports = {
     );
   },
 
-  provideOpenExternalService() {
+  provideOpenExternal() {
     return {
       registerHandler: (handler) => this.registerHandler(handler),
       openExternal: (filePath) => this.openExternal(filePath),

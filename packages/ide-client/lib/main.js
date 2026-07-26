@@ -100,7 +100,7 @@ module.exports = {
   provideAutocomplete() {
     return this.completionProvider;
   },
-  provideSymbols() {
+  provideSymbol() {
     return this.symbolProvider;
   },
   provideHover() {
@@ -130,7 +130,7 @@ module.exports = {
   provideRefactor() {
     return this.refactorProvider;
   },
-  provideIntentions() {
+  provideIntentionsList() {
     return this.intentionsProvider;
   },
   consumeBusySignalBackgroundRegistry(registry) {

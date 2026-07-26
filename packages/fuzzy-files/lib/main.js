@@ -583,7 +583,7 @@ module.exports = {
     }
   },
 
-  provideScoreModifier() {
+  provideFuzzyFilesScoreModifier() {
     return {
       add: (fn) => {
         this.scoreModifiers.push(fn);
@@ -595,11 +595,11 @@ module.exports = {
     };
   },
 
-  consumeClassIcons(object) {
+  consumeIconsClass(object) {
     this.fileIconsService = object.iconClassForPath;
   },
 
-  consumeOpenExternalService(service) {
+  consumeOpenExternal(service) {
     this.openExternalService = service;
     return {
       dispose: () => {
