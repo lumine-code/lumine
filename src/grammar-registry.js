@@ -37,6 +37,9 @@ module.exports = class GrammarRegistry {
 
     this.languageOverridesByBufferId = new Map();
     this.grammarScoresByBuffer = new Map();
+    // Buffers already wired to release themselves, so a repeated assignment
+    // does not stack subscriptions.
+    this.releasedBuffers = new WeakSet();
     this.textMateScopeNamesByTreeSitterLanguageId = new Map();
     this.treeSitterLanguageIdsByTextMateScopeName = new Map();
 
@@ -141,6 +144,7 @@ module.exports = class GrammarRegistry {
     }
 
     this.grammarScoresByBuffer.set(buffer, null);
+    this.releaseBufferOnDestroy(buffer);
     if (grammar !== buffer.getLanguageMode().grammar) {
       buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(grammar, buffer));
     }
@@ -160,10 +164,30 @@ module.exports = class GrammarRegistry {
     if (buffer.getBuffer) buffer = buffer.getBuffer();
     this.languageOverridesByBufferId.set(buffer.id, grammar.scopeName || null);
     this.grammarScoresByBuffer.set(buffer, null);
+    this.releaseBufferOnDestroy(buffer);
     if (grammar !== buffer.getLanguageMode().grammar) {
       buffer.setLanguageMode(this.languageModeForGrammarAndBuffer(grammar, buffer));
     }
     return true;
+  }
+
+  // `grammarScoresByBuffer` holds buffers strongly and cannot be a WeakMap —
+  // it is iterated whenever grammars are added or removed. Buffers reaching it
+  // through `maintainLanguageMode` are released when they are destroyed, but a
+  // buffer assigned a grammar directly had nothing releasing it, so every
+  // throwaway editor given a language mode — one per fenced code block that
+  // `atom.ui.markdown.applySyntaxHighlighting` renders — stayed alive for the
+  // lifetime of the window.
+  releaseBufferOnDestroy(buffer) {
+    if (this.releasedBuffers.has(buffer)) return;
+    this.releasedBuffers.add(buffer);
+    const subscription = buffer.onDidDestroy(() => {
+      this.grammarScoresByBuffer.delete(buffer);
+      this.languageOverridesByBufferId.delete(buffer.id);
+      this.releasedBuffers.delete(buffer);
+      this.subscriptions.remove(subscription);
+    });
+    this.subscriptions.add(subscription);
   }
 
   // Extended: Get the `languageId` that has been explicitly assigned to

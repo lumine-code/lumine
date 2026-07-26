@@ -47,6 +47,50 @@ describe("GrammarRegistry", () => {
       expect(buffer.getLanguageMode().getLanguageId()).toBe("source.css");
     });
 
+    it("stops retaining a buffer once it is destroyed", () => {
+      grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
+
+      // `applySyntaxHighlighting` assigns a language mode to a throwaway
+      // editor for every fenced code block it renders. Retaining those for the
+      // lifetime of the window leaked one buffer per rendered block.
+      const buffer = new TextBuffer();
+      grammarRegistry.assignLanguageMode(buffer, "source.css");
+      expect(grammarRegistry.grammarScoresByBuffer.has(buffer)).toBe(true);
+      expect(grammarRegistry.languageOverridesByBufferId.has(buffer.id)).toBe(true);
+
+      buffer.destroy();
+      expect(grammarRegistry.grammarScoresByBuffer.has(buffer)).toBe(false);
+      expect(grammarRegistry.languageOverridesByBufferId.has(buffer.id)).toBe(false);
+    });
+
+    it("stops retaining a buffer assigned a grammar directly", () => {
+      const grammar = grammarRegistry.loadGrammarSync(
+        require.resolve("language-css/grammars/css.json"),
+      );
+
+      const buffer = new TextBuffer();
+      grammarRegistry.assignGrammar(buffer, grammar);
+      expect(grammarRegistry.grammarScoresByBuffer.has(buffer)).toBe(true);
+
+      buffer.destroy();
+      expect(grammarRegistry.grammarScoresByBuffer.has(buffer)).toBe(false);
+      expect(grammarRegistry.languageOverridesByBufferId.has(buffer.id)).toBe(false);
+    });
+
+    it("does not stack subscriptions when a buffer is reassigned", () => {
+      grammarRegistry.loadGrammarSync(
+        require.resolve("language-javascript/grammars/javascript.json"),
+      );
+      grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
+
+      const buffer = new TextBuffer();
+      const before = grammarRegistry.subscriptions.disposables.size;
+      grammarRegistry.assignLanguageMode(buffer, "source.js");
+      grammarRegistry.assignLanguageMode(buffer, "source.css");
+      grammarRegistry.assignLanguageMode(buffer, "source.js");
+      expect(grammarRegistry.subscriptions.disposables.size).toBe(before + 1);
+    });
+
     describe("when no languageId is passed", () => {
       it("makes the buffer use the null grammar", () => {
         grammarRegistry.loadGrammarSync(require.resolve("language-css/grammars/css.json"));
