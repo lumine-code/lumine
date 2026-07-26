@@ -1,10 +1,11 @@
 const { CompositeDisposable, Disposable } = require("atom");
 
-const { headLabel } = require("./helpers");
+const { headLabel, headUpstream } = require("./helpers");
 const { divergenceChips, divergenceTooltipLine, renderChips } = require("./status-summary");
 
-// Status bar tile showing the active repository's head. Subscribing to the
-// status snapshot is what keeps it refreshed.
+// Status bar tile showing the active repository's head and how far it has
+// drifted from its upstream. Subscribing to both snapshots is what keeps them
+// refreshed.
 module.exports = class BranchStatusView {
   constructor({ onDidClick } = {}) {
     this.element = document.createElement("git-center-branch");
@@ -34,6 +35,7 @@ module.exports = class BranchStatusView {
 
     this.activeRepository = null;
     this.snapshotSubscription = null;
+    this.refsSubscription = null;
 
     this.subscriptions = new CompositeDisposable(
       new Disposable(() => this.branchArea.removeEventListener("click", clickHandler)),
@@ -45,16 +47,20 @@ module.exports = class BranchStatusView {
     return this.element.style.display === "none" ? null : this.element;
   }
 
-  // Keep exactly one status snapshot subscription, targeting the active
-  // repository. Subscribing declares interest, which makes the repository
-  // load and refresh the snapshot on its own schedule.
+  // Keep exactly one subscription of each kind, targeting the active
+  // repository. Subscribing declares interest, which makes the repository load
+  // and refresh that snapshot on its own schedule — without a refs subscriber
+  // the refs snapshot is loaded once and never updated again, so the upstream
+  // this tile and the branch picker read would silently go stale.
   subscribeToActiveRepository(repository) {
     if (repository === this.activeRepository) {
       return;
     }
     this.snapshotSubscription?.dispose();
+    this.refsSubscription?.dispose();
     this.activeRepository = repository;
     this.snapshotSubscription = repository?.onDidChangeStatusSnapshot(() => this.update());
+    this.refsSubscription = repository?.onDidChangeRefsSnapshot(() => this.update());
   }
 
   update() {
@@ -85,7 +91,7 @@ module.exports = class BranchStatusView {
 
     // The tile reports drift from upstream; the repository tile carries the
     // working-tree counts. A detached or unborn head has no upstream to report.
-    const upstream = snapshot.initialized ? snapshot.upstream : null;
+    const upstream = headUpstream(repository);
     renderChips(this.divergenceLabel, divergenceChips(upstream));
 
     let tooltip = `On branch ${head}`;
@@ -104,6 +110,7 @@ module.exports = class BranchStatusView {
   destroy() {
     this.subscriptions.dispose();
     this.snapshotSubscription?.dispose();
+    this.refsSubscription?.dispose();
     this.branchTooltipDisposable?.dispose();
     this.element.remove();
   }

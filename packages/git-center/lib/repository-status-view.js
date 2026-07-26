@@ -102,9 +102,13 @@ module.exports = class RepositoryStatusView {
 
     const active = atom.repositories.getActiveRepository();
     const index = repositories.indexOf(active);
+    // With no active repository there is nothing to step from, so enter the list
+    // at the end the wheel is coming from. Stepping off index -1 would otherwise
+    // land on the second-to-last repository when wheeling backwards.
     const next =
-      repositories[(index + direction + repositories.length) % repositories.length] ||
-      repositories[0];
+      index === -1
+        ? repositories[direction > 0 ? 0 : repositories.length - 1]
+        : repositories[(index + direction + repositories.length) % repositories.length];
     try {
       // A locked selection stays locked, retargeted to the new repository.
       atom.repositories.setActiveRepository(next, {

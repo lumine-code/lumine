@@ -401,6 +401,57 @@ describe("git-center", () => {
     expect(chipTexts(row.querySelector(".trailing-block"))).toEqual(["↑1", "current"]);
   });
 
+  it("reports a deleted upstream instead of claiming the branch is up to date", async () => {
+    // Git omits the `branch.ab` header once the upstream commit is gone, which
+    // parses as zero ahead and zero behind — so the status snapshot cannot tell
+    // "up to date" from "upstream deleted". Only the refs snapshot carries
+    // `gone`, which is why the tile reads its upstream from there.
+    const operations = repoA.repository.getOperations();
+    const remoteDir = makeWorkdir("git-center-gone-remote-");
+    await atom.repositories.executeGit(["init", "--bare", "--initial-branch=main", "."], remoteDir);
+    await operations.addRemote("origin", remoteDir);
+    await operations.push("origin", "main", { setUpstream: true });
+
+    // Delete the branch on the remote and prune, leaving the tracking config.
+    await atom.repositories.executeGit(["branch", "-D", "main"], remoteDir);
+    await operations.fetch("origin", null, { prune: true });
+    await repoA.repository.refreshStatusSnapshot();
+    await repoA.repository.refreshRefsSnapshot();
+
+    const snapshot = repoA.repository.getStatusSnapshot();
+    const refsUpstream = repoA.repository
+      .getRefsSnapshot()
+      .branches.find((branch) => branch.isHead).upstream;
+    // The precondition this whole fix rests on: the status snapshot looks clean.
+    expect(snapshot.upstream && snapshot.upstream.ahead).toBe(0);
+    expect(snapshot.upstream && snapshot.upstream.behind).toBe(0);
+    expect(refsUpstream.gone).toBe(true);
+
+    const branchView = mainModule.branchStatusView;
+    branchView.update();
+    expect(chipTexts(branchView.divergenceLabel)).toEqual(["gone"]);
+    expect(branchView.branchTooltipDisposable).toBeTruthy();
+  });
+
+  it("enters the repository list at either end when nothing is active", () => {
+    const repositoryView = mainModule.repositoryStatusView;
+    const sorted = [repoA.repository, repoB.repository].sort((a, b) =>
+      path.basename(a.getWorkingDirectory()).localeCompare(path.basename(b.getWorkingDirectory())),
+    );
+    spyOn(atom.repositories, "getRepositories").andReturn(sorted);
+    spyOn(atom.repositories, "getActiveRepository").andReturn(null);
+    spyOn(atom.repositories, "setActiveRepository");
+
+    // Stepping off "no active repository" must not skip past the far end.
+    repositoryView.cycleRepository(-1);
+    expect(atom.repositories.setActiveRepository).toHaveBeenCalledWith(sorted[sorted.length - 1], {
+      pin: false,
+    });
+
+    repositoryView.cycleRepository(1);
+    expect(atom.repositories.setActiveRepository).toHaveBeenCalledWith(sorted[0], { pin: false });
+  });
+
   it("leaves branch actions on a single line and labels branches with no upstream", async () => {
     await mainModule.getBranchListView().toggle();
     const listView = mainModule.branchListView.selectListView;

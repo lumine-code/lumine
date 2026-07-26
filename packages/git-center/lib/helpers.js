@@ -29,6 +29,21 @@ function headLabel(repository) {
   return repository?.getShortHead?.() || "";
 }
 
+// Upstream tracking for the current head. The refs snapshot is preferred
+// because it is the only source that reports a deleted upstream: the status
+// snapshot has no `gone` field, and Git omits its `branch.ab` header entirely
+// once the upstream commit is missing, which parses as zero ahead and zero
+// behind — indistinguishable from being up to date.
+function headUpstream(repository) {
+  const refs = repository?.getRefsSnapshot?.();
+  if (refs?.initialized) {
+    const head = refs.branches?.find((branch) => branch.isHead);
+    if (head) return head.upstream || null;
+  }
+  const snapshot = repository?.getStatusSnapshot?.();
+  return snapshot?.initialized ? snapshot.upstream : null;
+}
+
 function checkoutBranch(repository, branchName, options = {}) {
   const operations = repository.getOperations?.();
   if (!operations) {
@@ -134,6 +149,7 @@ module.exports = {
   buildSwitchItems,
   checkoutBranch,
   headLabel,
+  headUpstream,
   repositoryDisplayName,
   repositoryWorkingDirectory,
 };
