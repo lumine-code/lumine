@@ -106,7 +106,7 @@ module.exports = {
   provideHover() {
     return this.hoverProvider;
   },
-  provideSignature() {
+  provideHoverSignature() {
     return this.signatureProvider;
   },
   provideOutline() {

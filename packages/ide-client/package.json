@@ -38,17 +38,17 @@
         "1.0.0": "provideSymbol"
       }
     },
-    "hover": {
+    "hover.provider": {
       "versions": {
         "1.0.0": "provideHover"
       }
     },
-    "signature": {
+    "hover.signature-provider": {
       "versions": {
-        "1.0.0": "provideSignature"
+        "1.0.0": "provideHoverSignature"
       }
     },
-    "outline-view": {
+    "outline.provider": {
       "versions": {
         "1.0.0": "provideOutline"
       }
@@ -63,22 +63,22 @@
         "1.0.0": "provideCodeFormatFile"
       }
     },
-    "code-format.onType": {
+    "code-format.on-type": {
       "versions": {
         "1.0.0": "provideCodeFormatOnType"
       }
     },
-    "code-format.onSave": {
+    "code-format.on-save": {
       "versions": {
         "1.0.0": "provideCodeFormatOnSave"
       }
     },
-    "find-references": {
+    "find-references.provider": {
       "versions": {
         "1.0.0": "provideFindReferences"
       }
     },
-    "refactor": {
+    "refactor.provider": {
       "versions": {
         "1.0.0": "provideRefactor"
       }

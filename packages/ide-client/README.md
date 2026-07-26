@@ -85,12 +85,12 @@ Tweak the server list from your stylesheet:
 - **lumine.languageServer** (`1.0.0`): provided to adapter packages to register language servers and reach sessions.
 - **autocomplete.provider** (`1.0.0`): provided to autocomplete to serve language-server completions.
 - **symbol.provider** (`1.0.0`): provided to symbols-view to serve document and project symbols.
-- **hover** (`1.0.0`): provided to hover UIs to serve documentation at a buffer position.
-- **signature** (`1.0.0`): provided to signature-help UIs to serve call signatures while typing.
-- **outline-view** (`1.0.0`): provided to outline UIs to serve the hierarchical document outline.
+- **hover.provider** (`1.0.0`): provided to hover UIs to serve documentation at a buffer position.
+- **hover.signature-provider** (`1.0.0`): provided to signature-help UIs to serve call signatures while typing.
+- **outline.provider** (`1.0.0`): provided to outline UIs to serve the hierarchical document outline.
 - **code-format.range**, **code-format.file**, **code-format.onType**, **code-format.onSave** (`1.0.0`): provided to formatting orchestrators; each resolves to text edits from the server.
-- **find-references** (`1.0.0`): provided to reference UIs to list occurrences of the symbol at a position.
-- **refactor** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
+- **find-references.provider** (`1.0.0`): provided to reference UIs to list occurrences of the symbol at a position.
+- **refactor.provider** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
 - **intentions.list** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.
 - **linter-indie** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
 - **busy-signal.registry** (`^1.0.0`): consumed to surface server work-done progress while it runs.
