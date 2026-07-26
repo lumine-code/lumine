@@ -1,0 +1,24 @@
+<!doctype html>
+<!-- <- meta.tag.doctype -->
+<html lang="en">
+<!-- <- punctuation.definition.tag.begin.html -->
+  <head>
+    <meta charset="utf-8">
+<!--       ^ entity.other.attribute-name.html -->
+<!--               ^ string.quoted.double -->
+    <title>A page</title>
+<!--     ^ entity.name.tag -->
+  </head>
+  <body>
+    <p class='single "quoted" value'>Text &amp; entity</p>
+<!-- ^ entity.name.tag -->
+<!--       ^ entity.other.attribute-name.html -->
+    <script>
+      const embedded = 1;
+    </script>
+    <style>
+      .a { color: red; }
+    </style>
+    <!-- an ordinary comment -->
+  </body>
+</html>

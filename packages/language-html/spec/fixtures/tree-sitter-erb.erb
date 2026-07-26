@@ -1,0 +1,10 @@
+<ul>
+    <% items.each do |item| %>
+<!-- ^ keyword.directive.begin.erb -->
+    <li><%= item.name %></li>
+<!--     ^ keyword.directive.begin.erb -->
+    <% end %>
+<!--       ^ keyword.directive.end.erb -->
+</ul>
+<%# an ERB comment %>
+<!-- <- comment.block.erb -->
