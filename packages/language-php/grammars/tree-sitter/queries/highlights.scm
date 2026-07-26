@@ -210,6 +210,12 @@
 (method_declaration
   name: (name) @entity.name.function.method.php)
 
+; The `get` and `set` of a property hook — `public string $n { get => … }`.
+; They are plain `name` nodes, so anchor to the first child of the hook to
+; avoid catching every identifier in its body.
+(property_hook
+  . (name) @storage.type.property-hook._TEXT_.php)
+
 ; Function calls not caught by anything in the support section.
 (function_call_expression
   function: [(qualified_name (name)) (name)] @support.other.function.php
