@@ -1,46 +1,6 @@
 const { Disposable, CompositeDisposable } = require("event-kit");
 const { Range, SemVer } = require("semver");
 
-function splitKeyPath(keyPath) {
-  if (keyPath == null) {
-    return [];
-  }
-  let startIndex = 0;
-  const keys = [];
-  for (let i = 0; i < keyPath.length; i++) {
-    const char = keyPath[i];
-    if (char === "." && (i === 0 || keyPath[i - 1] !== "\\")) {
-      keys.push(keyPath.substring(startIndex, i));
-      startIndex = i + 1;
-    }
-  }
-  keys.push(keyPath.substr(startIndex, keyPath.length));
-  return keys;
-}
-
-function getValueAtKeyPath(object, keyPath) {
-  const keys = splitKeyPath(keyPath);
-  for (const key of keys) {
-    object = object[key];
-    if (object == null) {
-      return;
-    }
-  }
-  return object;
-}
-
-function setValueAtKeyPath(object, keyPath, value) {
-  const keys = splitKeyPath(keyPath);
-  while (keys.length > 1) {
-    const key = keys.shift();
-    if (object[key] == null) {
-      object[key] = {};
-    }
-    object = object[key];
-  }
-  return (object[keys.shift()] = value);
-}
-
 class Consumer {
   constructor(keyPath, versionRange, callback) {
     this.keyPath = keyPath;
@@ -51,27 +11,26 @@ class Consumer {
 
 class Provider {
   constructor(keyPath, servicesByVersion) {
+    this.keyPath = keyPath;
     this.consumersDisposable = new CompositeDisposable();
     this.servicesByVersion = {};
     this.versions = [];
     for (const version in servicesByVersion) {
-      const service = servicesByVersion[version];
-      this.servicesByVersion[version] = {};
+      this.servicesByVersion[version] = servicesByVersion[version];
       this.versions.push(new SemVer(version));
-      setValueAtKeyPath(this.servicesByVersion[version], keyPath, service);
     }
     this.versions.sort((a, b) => b.compare(a));
   }
 
   provide(consumer) {
+    if (consumer.keyPath !== this.keyPath) {
+      return;
+    }
     for (const version of this.versions) {
       if (consumer.versionRange.test(version)) {
-        const value = getValueAtKeyPath(
-          this.servicesByVersion[version.toString()],
-          consumer.keyPath,
-        );
-        if (value) {
-          const consumerDisposable = consumer.callback.call(null, value);
+        const service = this.servicesByVersion[version.toString()];
+        if (service) {
+          const consumerDisposable = consumer.callback.call(null, service);
           if (typeof consumerDisposable?.dispose === "function") {
             this.consumersDisposable.add(consumerDisposable);
           }
@@ -93,10 +52,12 @@ module.exports = class ServiceHub {
   }
 
   // Public: Provide a service by invoking the callback of all current and future
-  // consumers matching the given key path and version range.
+  // consumers matching the given service name and version range.
   //
-  // * `keyPath` A {String} of `.` separated keys indicating the services's
-  //   location in the namespace of all services.
+  // * `keyPath` A {String} naming the service. Names are matched exactly. A `.`
+  //   is a grouping convention for related services (`linter.provider`,
+  //   `linter.registry`) and carries no lookup meaning: consuming `linter` does
+  //   not match a provider of `linter.provider`.
   // * `version` A {String} containing a [semantic version](http://semver.org/)
   //   for the service's API.
   // * `service` An object exposing the service API.
@@ -126,12 +87,13 @@ module.exports = class ServiceHub {
   }
 
   // Public: Consume a service by invoking the given callback for all current
-  // and future provided services matching the given key path and version range.
+  // and future provided services matching the given service name and version
+  // range.
   //
-  // * `keyPath` A {String} of `.` separated keys indicating the services's
-  //   location in the namespace of all services.
+  // * `keyPath` A {String} naming the service. Names are matched exactly; see
+  //   {::provide}.
   // * `versionRange` A {String} containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html)
-  //   that any provided services for the given key path must satisfy.
+  //   that any provided services for the given service name must satisfy.
   // * `callback` A {Function} to be called with current and future matching
   //   service objects.
   //
