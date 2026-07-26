@@ -242,7 +242,18 @@ function exportedNames(mainFile, depth = 0) {
       }
     } else if (right.type === "NewExpression") {
       const callee = right.callee;
-      if (callee?.type === "Identifier") {
+      // `new Proxy(target, handler)` exports whatever the target carries. The
+      // trap forwards everything else at runtime, but only the target is
+      // visible to a reader — or to this check — so a package that wires
+      // services through a proxy has to spell them out there.
+      if (callee?.type === "Identifier" && callee.name === "Proxy") {
+        const target = right.arguments?.[0];
+        if (target?.type === "ObjectExpression") {
+          for (const name of objectKeys(target)) names.add(name);
+        } else if (target?.type === "Identifier" && localObjects.has(target.name)) {
+          for (const name of objectKeys(localObjects.get(target.name))) names.add(name);
+        }
+      } else if (callee?.type === "Identifier") {
         if (localClasses.has(callee.name)) {
           for (const name of classMethodNames(localClasses.get(callee.name))) names.add(name);
         } else if (requires.has(callee.name)) {
