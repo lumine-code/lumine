@@ -7,6 +7,7 @@
  */
 
 const cp = require("node:child_process");
+const os = require("node:os");
 const path = require("node:path");
 const fs = require("node:fs");
 const CSON = require("@lumine-code/season");
@@ -63,109 +64,140 @@ if (wasmFilesChanged.length === 0) {
 // changes are also accompanied by a change in the parser source or build
 // metadata.
 
+// Maps every grammar config to the absolute path of the wasm it declares.
+// Matching on that path rather than on a filename matters twice over: a wasm
+// stored more than one directory below its config was skipped outright, which
+// left the jsdoc and JavaScript regex grammars ungated, and two grammars that
+// happen to share a wasm filename could otherwise be taken for one another.
+function collectGrammarConfigs() {
+  const configs = [];
+  const packagesDir = path.join(__dirname, "..", "packages");
+
+  for (const pkg of fs.readdirSync(packagesDir)) {
+    const grammarsDir = path.join(packagesDir, pkg, "grammars");
+    if (!fs.existsSync(grammarsDir)) continue;
+
+    for (const file of fs.readdirSync(grammarsDir)) {
+      if (!objectFileExtensions.has(path.extname(file))) continue;
+
+      const configPath = path.join(grammarsDir, file);
+      if (!fs.lstatSync(configPath).isFile()) continue;
+
+      let contents;
+      try {
+        contents = CSON.readFileSync(configPath);
+      } catch {
+        // Not a grammar config we can read; nothing to gate.
+        continue;
+      }
+
+      const grammar = contents?.treeSitter?.grammar;
+      if (!grammar) continue;
+
+      configs.push({
+        file,
+        configPath,
+        contents,
+        wasmPath: path.resolve(path.dirname(configPath), grammar),
+      });
+    }
+  }
+
+  return configs;
+}
+
+// Windows reports paths that differ only by case, so compare them folded.
+const samePath = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+
+const grammarConfigs = collectGrammarConfigs();
+
 for (const wasmFile of wasmFilesChanged) {
   // Ignore files that have been deleted or moved.
   if (!fs.existsSync(wasmFile)) {
     console.log(`Skipping file that no longer exists: ${wasmFile}`);
     continue;
   }
-  const wasmPath = path.dirname(wasmFile);
 
-  const files = fs.readdirSync(path.join(wasmPath, ".."));
   console.log(`Detected changes to: ${wasmFile}`);
 
-  if (verbose) {
-    console.log("Verbose file check details:");
-    console.log(wasmFile);
-    console.log(wasmPath);
-    console.log(files);
-    console.log("\n");
+  const owners = grammarConfigs.filter((config) => samePath(config.wasmPath, wasmFile));
+
+  if (owners.length === 0) {
+    console.error(`No grammar config declares '${wasmFile}', so its provenance cannot be checked.`);
+    process.exit(1);
   }
 
-  for (const file of files) {
-    // Only check supported object-format grammar files.
-    if (!objectFileExtensions.has(path.extname(file))) continue;
+  for (const { file, configPath, contents } of owners) {
+    // `git show` wants a repo-relative path with forward slashes.
+    const relativePath = path.relative(process.cwd(), configPath).split(path.sep).join("/");
+    console.log(`Checking: ${relativePath}`);
 
-    const filePath = path.join(wasmPath, "..", file);
-    console.log(`Checking: ${filePath}`);
+    // In order to check the previous state of what the key is, we first must
+    // retrieve the file prior to this PR.
+    const getPrevFile = cp.spawnSync("git", ["show", `${commit}:./${relativePath}`]);
 
-    if (fs.lstatSync(filePath).isFile()) {
-      const contents = CSON.readFileSync(filePath);
+    if (getPrevFile.status !== 0 || getPrevFile.stderr.toString().length > 0) {
+      // This can fail for two major reasons
+      // 1. The `git show` command has returned an error code other than `0`, failing.
+      // 2. This is a new file, and it failed to find an earlier copy (which didn't exist)
+      // So that we don't fail brand new TreeSitter grammars, we manually check for number 2
 
-      // We now have the contents of one of the grammar files for this specific grammar.
-      // Since each grammar may contain multiple grammar files, we need to ensure
-      // that this particular one is using the tree-sitter wasm file that was
-      // actually changed.
-      const grammarFile = contents.treeSitter?.grammar ?? "";
-
-      if (path.basename(grammarFile) === path.basename(wasmFile)) {
-        // This grammar uses the WASM file that's changed. So we must ensure our key has also changed
-        // Sidenote we use `basename` here, since the `wasmFile` will be
-        // a path relative from the root of the repo, meanwhile `grammarFile`
-        // will be relative from the file itself
-
-        // In order to check the previous state of what the key is, we first must retreive the file prior to this PR
-        const getPrevFile = cp.spawnSync("git", ["show", `${commit}:./${filePath}`]);
-
-        if (getPrevFile.status !== 0 || getPrevFile.stderr.toString().length > 0) {
-          // This can fail for two major reasons
-          // 1. The `git show` command has returned an error code other than `0`, failing.
-          // 2. This is a new file, and it failed to find an earlier copy (which didn't exist)
-          // So that we don't fail brand new TreeSitter grammars, we manually check for number 2
-
-          if (getPrevFile.stderr.toString().includes("exists on disk, but not in")) {
-            // Looks like this file is new. Skip this check
-            if (verbose) {
-              console.log("Looks like this file is new. Skipping...");
-            }
-            continue;
-          }
-
-          console.error("Git command failed!");
-          console.error(`'git show ${commit}:./${filePath}'`);
-          console.error(getPrevFile.stderr.toString());
-          process.exit(1);
-        }
-
-        fs.writeFileSync(path.join(wasmPath, "..", `OLD-${file}`), getPrevFile.stdout.toString());
-
-        const oldContents = CSON.readFileSync(path.join(wasmPath, "..", `OLD-${file}`));
-        const oldParserSource = oldContents.treeSitter?.parserSource ?? "";
-        const newParserSource = contents.treeSitter?.parserSource ?? "";
-        const oldWasmBuildTool = oldContents.treeSitter?.wasmBuildTool ?? "";
-        const newWasmBuildTool = contents.treeSitter?.wasmBuildTool ?? "";
-        const oldWasmBuildPatch = oldContents.treeSitter?.wasmBuildPatch ?? "";
-        const newWasmBuildPatch = contents.treeSitter?.wasmBuildPatch ?? "";
-
-        if (newParserSource.length === 0) {
-          console.error(`Failed to find the new \`parserSource\` within: '${filePath}'`);
-          console.error(contents.treeSitter);
-          process.exit(1);
-        }
-
-        if (
-          oldParserSource == newParserSource &&
-          oldWasmBuildTool == newWasmBuildTool &&
-          oldWasmBuildPatch == newWasmBuildPatch
-        ) {
-          console.error(
-            `Neither \`parserSource\` nor WASM build metadata of '${filePath}' has been updated!`,
-          );
-          console.error(`Current parserSource: ${newParserSource} - Old: ${oldParserSource}`);
-          console.error(`Current wasmBuildTool: ${newWasmBuildTool} - Old: ${oldWasmBuildTool}`);
-          console.error(`Current wasmBuildPatch: ${newWasmBuildPatch} - Old: ${oldWasmBuildPatch}`);
-          process.exit(1);
-        }
-
-        // Else it looks like it has been updated properly
-        console.log(`Validated WASM metadata has been updated within '${filePath}' properly.`);
-      } else {
+      if (getPrevFile.stderr.toString().includes("exists on disk, but not in")) {
+        // Looks like this file is new. Skip this check
         if (verbose) {
-          console.log(
-            "This grammar file doesn't use a WASM file that's changed (On the current iteration)",
-          );
+          console.log("Looks like this file is new. Skipping...");
         }
+        continue;
       }
+
+      console.error("Git command failed!");
+      console.error(`'git show ${commit}:./${relativePath}'`);
+      console.error(getPrevFile.stderr.toString());
+      process.exit(1);
     }
+
+    // The loader picks its parser from the file extension, so the previous
+    // revision goes through a scratch file — in the temp directory rather than
+    // beside the real config, which used to leave `OLD-*` files behind in the
+    // working tree for a stray `git add` to pick up.
+    const scratchDir = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-wasm-validate-"));
+    let oldContents;
+    try {
+      const scratchFile = path.join(scratchDir, file);
+      fs.writeFileSync(scratchFile, getPrevFile.stdout.toString());
+      oldContents = CSON.readFileSync(scratchFile);
+    } finally {
+      fs.rmSync(scratchDir, { recursive: true, force: true });
+    }
+
+    const oldParserSource = oldContents.treeSitter?.parserSource ?? "";
+    const newParserSource = contents.treeSitter?.parserSource ?? "";
+    const oldWasmBuildTool = oldContents.treeSitter?.wasmBuildTool ?? "";
+    const newWasmBuildTool = contents.treeSitter?.wasmBuildTool ?? "";
+    const oldWasmBuildPatch = oldContents.treeSitter?.wasmBuildPatch ?? "";
+    const newWasmBuildPatch = contents.treeSitter?.wasmBuildPatch ?? "";
+
+    if (newParserSource.length === 0) {
+      console.error(`Failed to find the new \`parserSource\` within: '${relativePath}'`);
+      console.error(contents.treeSitter);
+      process.exit(1);
+    }
+
+    if (
+      oldParserSource == newParserSource &&
+      oldWasmBuildTool == newWasmBuildTool &&
+      oldWasmBuildPatch == newWasmBuildPatch
+    ) {
+      console.error(
+        `Neither \`parserSource\` nor WASM build metadata of '${relativePath}' has been updated!`,
+      );
+      console.error(`Current parserSource: ${newParserSource} - Old: ${oldParserSource}`);
+      console.error(`Current wasmBuildTool: ${newWasmBuildTool} - Old: ${oldWasmBuildTool}`);
+      console.error(`Current wasmBuildPatch: ${newWasmBuildPatch} - Old: ${oldWasmBuildPatch}`);
+      process.exit(1);
+    }
+
+    // Else it looks like it has been updated properly
+    console.log(`Validated WASM metadata has been updated within '${relativePath}' properly.`);
   }
 }
