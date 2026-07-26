@@ -73,6 +73,30 @@ describe("Suggestion List Element", () => {
       expect(icon.querySelector(".icon-move-right")).not.toBeNull();
     });
 
+    it("renders the label detail after the word", () => {
+      suggestionListElement.renderItem({ text: "readFile", displayTextDetail: "(path: string)" });
+      const container = suggestionListElement.selectedLi.querySelector(".word-container");
+      expect(container.querySelector(".word").textContent).toBe("readFile");
+      expect(container.querySelector(".word-detail").textContent).toBe("(path: string)");
+      // The word span is rebuilt on every render; the detail must survive it.
+      expect(container.querySelector(".word").nextElementSibling).toBe(
+        container.querySelector(".word-detail"),
+      );
+    });
+
+    it("empties the label detail when a suggestion has none", () => {
+      suggestionListElement.renderItem({ text: "readFile", displayTextDetail: "(path: string)" });
+      suggestionListElement.renderItem({ text: "readFile" });
+      expect(suggestionListElement.selectedLi.querySelector(".word-detail").textContent).toBe("");
+    });
+
+    it("HTML escapes the label detail", () => {
+      suggestionListElement.renderItem({ text: "get", displayTextDetail: "(): Animal<Cat>" });
+      expect(suggestionListElement.selectedLi.querySelector(".word-detail").innerHTML).toContain(
+        "Animal&lt;Cat&gt;",
+      );
+    });
+
     it("HTML escapes labels", () => {
       let suggestion = { text: "something", leftLabel: "Animal<Cat>", rightLabel: "Animal<Dog>" };
       suggestionListElement.renderItem(suggestion);
@@ -82,6 +106,92 @@ describe("Suggestion List Element", () => {
       return expect(
         suggestionListElement.selectedLi.querySelector(".right-label").innerHTML,
       ).toContain("Animal&lt;Dog&gt;");
+    });
+  });
+
+  describe("updateDescription", () => {
+    let content;
+
+    beforeEach(() => {
+      jasmine.attachToDOM(suggestionListElement.element);
+      content = suggestionListElement.element.querySelector(".suggestion-description-content");
+    });
+
+    it("renders a markdown description", () => {
+      suggestionListElement.updateDescription({ descriptionMarkdown: "**bold** and `code`" });
+      expect(content.querySelector("strong").textContent).toBe("bold");
+      expect(content.querySelector("code").textContent).toBe("code");
+      expect(content.classList.contains("markdown-description")).toBe(true);
+    });
+
+    it("does not eat a leading rule as front matter", () => {
+      suggestionListElement.updateDescription({
+        descriptionMarkdown: "---\nkey: value\n---\n\nBody",
+      });
+      expect(content.textContent).toContain("key: value");
+      expect(content.textContent).toContain("Body");
+    });
+
+    it("does not rewrite links in provider documentation", () => {
+      suggestionListElement.updateDescription({
+        descriptionMarkdown: "[docs](https://atom.io/packages/foo)",
+      });
+      expect(content.querySelector("a").getAttribute("href")).toBe("https://atom.io/packages/foo");
+    });
+
+    it("does not turn a wrapped line into a break", () => {
+      suggestionListElement.updateDescription({ descriptionMarkdown: "line one\nline two" });
+      expect(content.querySelector("br")).toBeNull();
+    });
+
+    it("syntax highlights fenced code blocks", () => {
+      suggestionListElement.updateDescription({
+        descriptionMarkdown: "```js\nlet x = 1\n```",
+      });
+      // `applySyntaxHighlighting` swaps the `pre` for a read-only editor.
+      expect(content.querySelector("pre")).toBeNull();
+      const editorElement = content.querySelector("atom-text-editor");
+      expect(editorElement).not.toBeNull();
+      expect(editorElement.getModel().getText()).toBe("let x = 1");
+    });
+
+    it("destroys the code block editors of the previous description", () => {
+      suggestionListElement.updateDescription({
+        descriptionMarkdown: "```js\nlet x = 1\n```",
+      });
+      const editor = content.querySelector("atom-text-editor").getModel();
+
+      suggestionListElement.updateDescription({ description: "plain" });
+      expect(content.querySelector("atom-text-editor")).toBeNull();
+      expect(content.classList.contains("markdown-description")).toBe(false);
+      expect(editor.isDestroyed()).toBe(true);
+    });
+
+    it("falls back to the plain description", () => {
+      suggestionListElement.updateDescription({ description: "**not bold**" });
+      expect(content.querySelector("strong")).toBeNull();
+      expect(content.textContent).toBe("**not bold**");
+    });
+  });
+
+  describe("descriptionLength", () => {
+    it("measures whichever description will be rendered", () => {
+      // The markdown field wins in `updateDescription`, so a markdown-only item
+      // has to score for the popup to be sized off the widest one.
+      expect(suggestionListElement.descriptionLength({ descriptionMarkdown: "abcd" })).toBe(4);
+      expect(suggestionListElement.descriptionLength({ description: "abc" })).toBe(3);
+      expect(
+        suggestionListElement.descriptionLength({
+          description: "ab",
+          descriptionMarkdown: "abcd",
+        }),
+      ).toBe(4);
+      expect(
+        suggestionListElement.descriptionLength({
+          descriptionMarkdown: "abcd",
+          descriptionMoreURL: "https://example.com",
+        }),
+      ).toBe(10);
     });
   });
 

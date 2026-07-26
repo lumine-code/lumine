@@ -36,6 +36,60 @@ const itemWithEdit = (label, endColumn) => ({
   },
 });
 
+describe("CompletionProvider item mapping", () => {
+  const suggestionFor = async (item) => {
+    const provider = new CompletionProvider(managerWith(sessionWith(() => ({ items: [item] }))));
+    const suggestions = await provider.getSuggestions({
+      editor: stubEditor("con"),
+      bufferPosition: { row: 0, column: 2 },
+      prefix: "co",
+    });
+    return suggestions[0];
+  };
+
+  it("renders markdown documentation as markdown", async () => {
+    const suggestion = await suggestionFor({
+      label: "console",
+      documentation: { kind: "markdown", value: "**bold** and `code`" },
+    });
+    expect(suggestion.descriptionMarkdown).toBe("**bold** and `code`");
+    // The plain field stays populated: it is what the popup measures and what
+    // any text-only consumer reads.
+    expect(suggestion.description).toBe("**bold** and `code`");
+  });
+
+  it("leaves plaintext documentation as plain text", async () => {
+    const suggestion = await suggestionFor({
+      label: "console",
+      documentation: { kind: "plaintext", value: "**not bold**" },
+    });
+    expect(suggestion.descriptionMarkdown).toBeUndefined();
+    expect(suggestion.description).toBe("**not bold**");
+  });
+
+  it("leaves string documentation as plain text", async () => {
+    const suggestion = await suggestionFor({ label: "console", documentation: "plain" });
+    expect(suggestion.descriptionMarkdown).toBeUndefined();
+    expect(suggestion.description).toBe("plain");
+  });
+
+  it("maps labelDetails onto the detail and the right label", async () => {
+    const suggestion = await suggestionFor({
+      label: "readFile",
+      labelDetails: { detail: "(path: string): Buffer", description: "node:fs" },
+    });
+    expect(suggestion.displayText).toBe("readFile");
+    expect(suggestion.displayTextDetail).toBe("(path: string): Buffer");
+    expect(suggestion.rightLabel).toBe("node:fs");
+  });
+
+  it("advertises labelDetails support", () => {
+    const completionItem = CompletionProvider.capabilities.textDocument.completion.completionItem;
+    expect(completionItem.labelDetailsSupport).toBe(true);
+    expect(completionItem.resolveSupport.properties).toContain("labelDetails");
+  });
+});
+
 describe("CompletionProvider caching", () => {
   it("grows the cached edit range as the user keeps typing", async () => {
     const session = sessionWith(() => ({

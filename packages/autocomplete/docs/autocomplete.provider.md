@@ -101,6 +101,13 @@ type Suggestion =
       displayText?: string;
 
       /**
+       * A dimmed detail rendered immediately after the displayed text, in the
+       * same cell — typically a signature such as `(a: number): string`. Always
+       * treated as plain text.
+       */
+      displayTextDetail?: string;
+
+      /**
        * A list of `Range`s to replace when inserting the text. Each `Range`present
        * in this list will result in one insertion of the suggestion's textor
        * snippet.
@@ -176,6 +183,13 @@ type Suggestion =
        * Optional.
        */
       description?: string;
+
+      /**
+       * The same summary written in Markdown. Takes precedence over
+       * `description` when both are present: it is rendered and sanitized, and
+       * fenced code blocks are syntax highlighted.
+       */
+      descriptionMarkdown?: string;
 
       /**
        * A url to the documentation or more information about this suggestion. When

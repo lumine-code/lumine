@@ -11,8 +11,9 @@ const COMPLETION_CAPABILITIES = {
         deprecatedSupport: true,
         preselectSupport: true,
         insertReplaceSupport: true,
+        labelDetailsSupport: true,
         resolveSupport: {
-          properties: ["documentation", "detail", "additionalTextEdits", "command"],
+          properties: ["documentation", "detail", "additionalTextEdits", "command", "labelDetails"],
         },
       },
       completionItemKind: { valueSet: Array.from({ length: 25 }, (_, i) => i + 1) },
@@ -168,16 +169,27 @@ module.exports = class CompletionProvider {
     return merged;
   }
   toSuggestion(session, item) {
+    const documentation = item.documentation;
+    const documentationText =
+      typeof documentation === "string" ? documentation : documentation?.value;
     const suggestion = {
       displayText: item.label,
+      // `labelDetails.detail` is a signature glued to the label; `.description`
+      // is the source module, which reads like every other right label.
+      displayTextDetail: item.labelDetails?.detail,
       text: item.insertText || item.label,
       type: C.completionKind(item.kind),
       leftLabel: item.detail,
-      description:
-        typeof item.documentation === "string" ? item.documentation : item.documentation?.value,
+      rightLabel: item.labelDetails?.description,
+      description: documentationText,
       _lspItem: item,
       _lspSession: session,
     };
+    // The plain `description` stays set alongside it: anything reading the
+    // suggestion as text still gets the source, and the popup falls back to it
+    // if the markdown ever fails to render.
+    if (documentation?.kind === "markdown" && documentationText)
+      suggestion.descriptionMarkdown = documentationText;
     if (item.insertTextFormat === 2) {
       suggestion.snippet = item.insertText || item.textEdit?.newText || item.label;
       delete suggestion.text;

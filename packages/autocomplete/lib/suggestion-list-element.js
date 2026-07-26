@@ -12,6 +12,10 @@ const createSuggestionFrag = () => {
       let innerEl = document.createElement("span");
       innerEl.className = "word";
       el.appendChild(innerEl);
+      // Sits in the same cell as the word so a signature reads as part of it.
+      let detailEl = document.createElement("span");
+      detailEl.className = "word-detail";
+      el.appendChild(detailEl);
     }
     frag.appendChild(el);
   });
@@ -39,6 +43,24 @@ const iconTypeToClass = {
 const SnippetStart = 1;
 const SnippetEnd = 2;
 const SnippetStartAndEnd = 3;
+
+// Maps a fenced code block's language to a grammar scope. Providers write
+// either a bare language id (`python`) or a full scope (`source.python`).
+const scopeForFenceName = (fenceName) => {
+  if (fenceName) {
+    if (fenceName.includes(".") && atom.grammars.grammarForScopeName(fenceName)) {
+      return fenceName;
+    }
+    const grammar = atom.grammars.treeSitterGrammarForLanguageString?.(fenceName);
+    if (grammar) {
+      return grammar.scopeName;
+    }
+    if (atom.grammars.grammarForScopeName(`source.${fenceName}`)) {
+      return `source.${fenceName}`;
+    }
+  }
+  return "text.plain";
+};
 
 module.exports = class SuggestionListElement {
   constructor(model) {
@@ -150,18 +172,47 @@ module.exports = class SuggestionListElement {
 
     if (item.descriptionMarkdown && item.descriptionMarkdown.length > 0) {
       this.descriptionContainer.style.display = "block";
-      this.descriptionContent.innerHTML = atom.ui.markdown.render(item.descriptionMarkdown, {
-        breaks: true,
-        renderMode: "fragment",
-      });
+      this.renderMarkdownDescription(item.descriptionMarkdown);
       this.setDescriptionMoreLink(item);
     } else if (item.description && item.description.length > 0) {
       this.descriptionContainer.style.display = "block";
+      this.clearDescription();
       this.descriptionContent.textContent = item.description;
       this.setDescriptionMoreLink(item);
     } else {
       this.descriptionContainer.style.display = "none";
     }
+  }
+
+  renderMarkdownDescription(markdown) {
+    const html = atom.ui.markdown.render(markdown, {
+      // A docstring opening with `---` is a rule, not YAML front matter.
+      handleFrontMatter: false,
+      // Documentation comes from the provider; its links are already correct.
+      transformAtomLinks: false,
+    });
+    const fragment = atom.ui.markdown.convertToDOM(html);
+    // "fragment" is the mode that runs synchronously and leaves the editors
+    // embedded, which is what a detached node can carry.
+    if (fragment.querySelector("pre")) {
+      atom.ui.markdown.applySyntaxHighlighting(fragment, {
+        renderMode: "fragment",
+        syntaxScopeNameFunc: scopeForFenceName,
+      });
+    }
+    this.clearDescription();
+    this.descriptionContent.classList.add("markdown-description");
+    this.descriptionContent.appendChild(fragment);
+  }
+
+  // Code blocks are rendered as live editors, so the previous description has
+  // to be torn down rather than just overwritten.
+  clearDescription() {
+    for (const editorElement of this.descriptionContent.querySelectorAll("atom-text-editor")) {
+      editorElement.getModel().destroy();
+    }
+    this.descriptionContent.classList.remove("markdown-description");
+    this.descriptionContent.replaceChildren();
   }
 
   setDescriptionMoreLink(item) {
@@ -376,8 +427,13 @@ module.exports = class SuggestionListElement {
 
   descriptionLength(item) {
     let count = 0;
-    if (item.description != null) {
-      count += item.description.length;
+    // Mirrors the precedence in `updateDescription`: whichever field is going
+    // to be rendered is the one that decides how wide the popup has to be. A
+    // markdown-only list otherwise scores zero everywhere and wins no widest
+    // item at all.
+    const description = item.descriptionMarkdown ?? item.description;
+    if (description != null) {
+      count += description.length;
     }
     if (item.descriptionMoreURL != null) {
       count += 6;
@@ -481,6 +537,7 @@ module.exports = class SuggestionListElement {
       snippet,
       text,
       displayText,
+      displayTextDetail,
       className,
       replacementPrefix,
       leftLabel,
@@ -559,6 +616,11 @@ module.exports = class SuggestionListElement {
       this.getDisplayFragment(text, snippet, displayText, replacementPrefix, characterMatchIndices),
     );
     li.querySelector(".word-container").replaceChild(wordSpan, li.querySelector(".word"));
+
+    // Never HTML: a signature is full of angle brackets, and there is no
+    // `displayTextDetailHTML` counterpart to opt into markup.
+    li.querySelector(".word-detail").textContent =
+      displayTextDetail != null ? displayTextDetail : "";
 
     const leftLabelSpan = li.querySelector(".left-label");
     if (leftLabelHTML != null) {

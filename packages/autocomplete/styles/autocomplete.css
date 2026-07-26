@@ -54,7 +54,45 @@ autocomplete-suggestion-list.select-list.popover-list {
     max-height: 33vh;
     display: block;
     overflow-y: auto;
+  }
+
+  /* Plain-text descriptions carry their layout in the whitespace. Rendered
+     markdown brings its own blocks, where pre-wrap doubles every blank line. */
+  .suggestion-description-content:not(.markdown-description) {
     white-space: pre-wrap;
+  }
+
+  .markdown-description {
+    > :first-child {
+      margin-top: 0;
+    }
+
+    > :last-child {
+      margin-bottom: 0;
+    }
+
+    /* `applySyntaxHighlighting` swaps each fence for a read-only editor, so
+       both shapes have to stay inside the popup. */
+    pre,
+    atom-text-editor {
+      max-width: 100%;
+      margin: 0.5em 0;
+      padding: 0.4em 0.6em;
+      overflow-x: auto;
+      border-radius: var(--component-border-radius);
+      color: var(--syntax-text-color);
+      background: var(--syntax-background-color);
+    }
+
+    code {
+      font-family: monospace;
+      border-radius: 2px;
+      background: rgb(from var(--text-color) r g b / calc(alpha - 0.9));
+    }
+
+    pre code {
+      background: none;
+    }
   }
 
   .suggestion-description-more-link {
@@ -96,6 +134,7 @@ autocomplete-suggestion-list.select-list.popover-list {
         /* .character-match keeps its base/theme highlight color on the
            selected row, matching the select-list consumers (command palette,
            fuzzy files). */
+        .word-detail,
         .left-label,
         .right-label,
         .snippet-completion {
@@ -177,6 +216,18 @@ autocomplete-suggestion-list {
     float: left;
   }
 
+  /* The label detail reads as a dimmed continuation of the word. */
+  .word-detail {
+    float: left;
+    padding-left: 0.4em;
+    font-size: var(--autocomplete-font-size-small);
+    color: var(--text-color-subtle);
+
+    &:empty {
+      padding-left: 0;
+    }
+  }
+
   .character-match {
     /* Color only — bold glyphs are wider and make rows shift. */
     color: var(--text-color-highlight);
@@ -193,11 +244,15 @@ autocomplete-suggestion-list {
   .word {
     max-width: 35vw;
   }
+  .word-detail {
+    max-width: 25vw;
+  }
   .right-label {
     max-width: 25vw;
   }
 
   .word,
+  .word-detail,
   .left-label,
   .right-label {
     white-space: nowrap;
