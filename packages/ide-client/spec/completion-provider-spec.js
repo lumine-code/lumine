@@ -116,6 +116,23 @@ describe("CompletionProvider item mapping", () => {
     expect(byLabel.own.commitCharacters).toEqual(["."]);
   });
 
+  it("strikes through a deprecated item", async () => {
+    // The 3.15 tag and the boolean it replaced both mean the same thing, and
+    // servers in the field still send either.
+    expect((await suggestionFor({ label: "old", tags: [1] })).className).toBe("ide-client-strike");
+    expect((await suggestionFor({ label: "old", deprecated: true })).className).toBe(
+      "ide-client-strike",
+    );
+    expect((await suggestionFor({ label: "current" })).className).toBeUndefined();
+    // Tag 1 is the only deprecation tag; anything else must not strike.
+    expect((await suggestionFor({ label: "current", tags: [2] })).className).toBeUndefined();
+  });
+
+  it("advertises deprecated tag support", () => {
+    const completionItem = CompletionProvider.capabilities.textDocument.completion.completionItem;
+    expect(completionItem.tagSupport.valueSet).toEqual([1]);
+  });
+
   it("advertises labelDetails support", () => {
     const completionItem = CompletionProvider.capabilities.textDocument.completion.completionItem;
     expect(completionItem.labelDetailsSupport).toBe(true);

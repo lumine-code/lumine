@@ -9,6 +9,9 @@ const COMPLETION_CAPABILITIES = {
         snippetSupport: true,
         documentationFormat: ["markdown", "plaintext"],
         deprecatedSupport: true,
+        // `CompletionItemTag.Deprecated` — the 3.15 replacement for the
+        // `deprecated` boolean above, which servers still send in its place.
+        tagSupport: { valueSet: [1] },
         preselectSupport: true,
         insertReplaceSupport: true,
         labelDetailsSupport: true,
@@ -218,6 +221,13 @@ module.exports = class CompletionProvider {
       // What the server wants matched against, which is not always the label.
       filterText: item.filterText,
       preselect: item.preselect,
+      // A deprecated symbol is struck through rather than hidden: it still
+      // exists and still compiles, and the user needs to see which of the two
+      // overloads in front of them is the one on the way out. `tags` is the
+      // 3.15 form; `deprecated` is the boolean it replaced, and servers still
+      // send either.
+      className:
+        item.tags?.includes(1) || item.deprecated === true ? "ide-client-strike" : undefined,
       _lspItem: item,
       _lspSession: session,
     };
