@@ -24,7 +24,7 @@
     ]
   },
   "consumedServices": {
-    "atom.file-icons": {
+    "file-icons.classes": {
       "versions": {
         "^1.0.0": "consumeClassIcons"
       }

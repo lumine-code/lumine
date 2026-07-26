@@ -28,12 +28,12 @@
     "ArchiveEditorView": "deserialize"
   },
   "consumedServices": {
-    "atom.file-icons": {
+    "file-icons.classes": {
       "versions": {
         "^1.0.0": "consumeFileIcons"
       }
     },
-    "file-icons.element-icons": {
+    "file-icons.elements": {
       "versions": {
         "^1.0.0": "consumeElementIcons"
       }

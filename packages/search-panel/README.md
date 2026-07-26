@@ -85,8 +85,8 @@ Both find panels share a `search-panel` root class (`search-panel-editor` and
 ## Services
 
 - **search-panel** (`1.0.0`): provided to expose find options, panel visibility controls, and programmatic search triggers.
-- **atom.file-icons** (`^1.0.0`): consumed to render file-type icons in project results.
-- **file-icons.element-icons** (`^1.0.0`): consumed to render element-based file-type icons in project results.
+- **file-icons.classes** (`^1.0.0`): consumed to render file-type icons in project results.
+- **file-icons.elements** (`^1.0.0`): consumed to render element-based file-type icons in project results.
 - **autocomplete.watchEditor** (`^1.0.0`): consumed to enable autocompletion in the find fields.
 - **search-adapter** (`^1.0.0`): consumed to let non-editor pane items be searched through the buffer find panel.
 

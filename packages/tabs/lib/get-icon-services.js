@@ -1,6 +1,6 @@
 const { Emitter, CompositeDisposable } = require("atom");
 
-// The fallback when no package provides `atom.file-icons`. Core owns the
+// The fallback when no package provides `file-icons.classes`. Core owns the
 // octicon mapping so every consumer answers identically and shares its cache.
 // Tabs only want a default icon in the MRU switcher — a plain tab keeps its
 // title unadorned unless a real icon provider is installed.

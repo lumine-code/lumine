@@ -43,7 +43,7 @@
     "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74"
   },
   "consumedServices": {
-    "atom.file-icons": {
+    "file-icons.classes": {
       "versions": {
         "^1.0.0": "consumeFileIcons"
       }
@@ -53,7 +53,7 @@
         "^1.0.0": "consumeAutocompleteWatchEditor"
       }
     },
-    "file-icons.element-icons": {
+    "file-icons.elements": {
       "versions": {
         "^1.0.0": "consumeElementIcons"
       }
