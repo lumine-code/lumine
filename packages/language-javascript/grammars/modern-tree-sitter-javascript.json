@@ -5,8 +5,8 @@
   "parser": "tree-sitter-javascript",
   "injectionRegex": "^(js|javascript|JS|JAVASCRIPT)$",
   "treeSitter": {
-    "parserSource": "github:tree-sitter/tree-sitter-javascript#v0.23.0",
-    "wasmBuildTool": "tree-sitter-cli#v0.26.10",
+    "parserSource": "github:tree-sitter/tree-sitter-javascript#v0.25.0",
+    "wasmBuildTool": "tree-sitter-cli#v0.26.11",
     "grammar": "tree-sitter/tree-sitter-javascript.wasm",
     "highlightsQuery": "tree-sitter/highlights.scm",
     "localsQuery": "tree-sitter/locals.scm",
