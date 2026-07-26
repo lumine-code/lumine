@@ -8,6 +8,7 @@ const { GitError, LargeRepoError } = require("../src/git-error");
 const { filterPatch } = require("../src/patch-filter");
 const Notification = require("../src/notification");
 const { watchPath, watchFile } = require("../src/path-watcher");
+const { Icon } = require("../src/icon-descriptor");
 
 const atomExport = {
   BufferedNodeProcess,
@@ -25,6 +26,10 @@ const atomExport = {
   CompositeDisposable,
   watchPath,
   watchFile,
+  // The factories an `icons.provider` builds its answers with. `Icon.none()` in
+  // particular has no hand-written equivalent a provider would guess at: it is
+  // the difference between "no icon here" and "not mine, ask the next one".
+  Icon,
 };
 
 // Absolute path to the bundled ripgrep binary, for packages that spawn their

@@ -43,7 +43,7 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
 //   cross-editor features like completion sourcing.
 const ROLES = new Set(["document", "fragment", "background"]);
 
-// This global registry tracks registered `TextEditors`.
+// Experimental: This global registry tracks registered `TextEditors`.
 //
 // If you want to add functionality to a wider set of text editors than just
 // those appearing within workspace panes, use `atom.textEditors.observe` to

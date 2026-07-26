@@ -50,6 +50,8 @@ The `meta` bundle carries `type` (`"file"`, `"project"`, or `"project-find"`), t
 
 A symbol needs a `name` and a position — either `position` (a `Point`) or `range` (a `Range`). Everything else (`tag`, `context`, `file`, `directory`, `path`) enriches the presentation.
 
+`tag` is the symbol's kind — `"class"`, `"method"`, `"variable"` and the rest of the LSP `SymbolKind` list. Give one and the editor picks the icon for you from its own kind vocabulary, badging a kind it has no glyph for with the kind's first letter. Set `icon` to a CSS class only to override that choice; a bare name is prefixed with `icon-`.
+
 ## Minimal example
 
 ```js

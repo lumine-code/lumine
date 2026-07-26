@@ -1,5 +1,8 @@
 const IconRegistry = require("../src/icon-registry");
 const { Icon } = require("../src/icon-descriptor");
+// The same object a package reaches for, which is the only way it can express
+// `Icon.none()` — the answer that stops the chain.
+const { Icon: PublicIcon } = require("atom");
 
 describe("IconRegistry", () => {
   let registry;
@@ -25,6 +28,12 @@ describe("IconRegistry", () => {
   };
 
   const provider = (iconFor, extra = {}) => ({ iconFor, ...extra });
+
+  it("hands packages the same Icon factories core uses", () => {
+    expect(PublicIcon).toBe(Icon);
+    expect(PublicIcon.none().render).toBe("none");
+    expect(PublicIcon.classes(["a"]).classes).toEqual(["a"]);
+  });
 
   describe("the provider chain", () => {
     it("asks the next provider when one returns null", () => {

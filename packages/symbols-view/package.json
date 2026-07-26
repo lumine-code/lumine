@@ -28,7 +28,7 @@
     "showIconsInSymbolsView": {
       "order": 2,
       "title": "Show Icons In Symbols View",
-      "description": "When enabled, an icon will be shown alongside a symbol if the symbol provider specifies one.",
+      "description": "When enabled, an icon is shown alongside each symbol: the one its provider names, or one chosen from the symbol's kind.",
       "type": "boolean",
       "default": true
     },
