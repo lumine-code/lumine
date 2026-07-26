@@ -188,12 +188,11 @@
 
 (number) @constant.numeric.decimal.shell
 
-; TODO: Double parentheses are used like `let` expressions, but ((i++)) is not
-; understood by `tree-sitter-bash` as a variable increment. It needs an equals
-; sign before it construes the contents as math.
-(test_command
+; `((` and `))` delimit a compound statement rather than a test command, and
+; their contents parse as arithmetic, so `((i++))` reads as an increment.
+(compound_statement
   "((" @punctuation.brace.double-round.begin.shell)
-(test_command
+(compound_statement
   "))" @punctuation.brace.double-round.end.shell)
 
 

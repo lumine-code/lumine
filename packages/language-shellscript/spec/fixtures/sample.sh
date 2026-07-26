@@ -71,3 +71,9 @@ while true && false; do
 #           ^ keyword.operator.logical.shell
   break
 done
+
+# `(( ))` is a compound statement, not a test command — the two are easy to
+# confuse and upstream has moved this once already.
+(( count += 1 ))
+# <- punctuation.brace.double-round.begin.shell
+#             ^ punctuation.brace.double-round.end.shell
