@@ -87,7 +87,7 @@ Both find panels share a `search-panel` root class (`search-panel-editor` and
 - **search.control** (`1.0.0`): provided to expose find options, panel visibility controls, and programmatic search triggers.
 - **icons.class** (`^1.0.0`): consumed to render file-type icons in project results.
 - **icons.element** (`^1.0.0`): consumed to render element-based file-type icons in project results.
-- **autocomplete.watchEditor** (`^1.0.0`): consumed to enable autocompletion in the find fields.
+- **autocomplete.watch-editor** (`^1.0.0`): consumed to enable autocompletion in the find fields.
 - **search.adapter** (`^1.0.0`): consumed to let non-editor pane items be searched through the buffer find panel.
 
 ## Contributing

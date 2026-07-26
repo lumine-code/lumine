@@ -23,9 +23,9 @@
     "minimatch": "^10.2.5"
   },
   "providedServices": {
-    "lumine.languageServer": {
+    "ide-client": {
       "versions": {
-        "1.0.0": "provideLanguageServer"
+        "1.0.0": "provideIdeClient"
       }
     },
     "autocomplete.provider": {

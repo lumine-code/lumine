@@ -2,7 +2,7 @@
 
 Language Server Protocol client infrastructure.
 
-Starts language servers lazily when matching editors open and exposes UI-independent sessions to other packages through the `lumine.languageServer` service.
+Starts language servers lazily when matching editors open and exposes UI-independent sessions to other packages through the `ide-client` service.
 
 ## Features
 
@@ -34,10 +34,10 @@ Commands available in `atom-workspace`:
 
 ## Usage
 
-Language servers are registered by adapter packages that consume the `lumine.languageServer` service:
+Language servers are registered by adapter packages that consume the `ide-client` service:
 
 ```js
-consumeLanguageServer(languageServer) {
+consumeIdeClient(ideClient) {
   return languageServer.registerAdapter({
     id: "example",
     displayName: "Example Language Server",
@@ -82,13 +82,16 @@ Tweak the server list from your stylesheet:
 
 ## Services
 
-- **lumine.languageServer** (`1.0.0`): provided to adapter packages to register language servers and reach sessions.
+- **ide-client** (`1.0.0`): provided to adapter packages to register language servers and reach sessions.
 - **autocomplete.provider** (`1.0.0`): provided to autocomplete to serve language-server completions.
 - **symbol.provider** (`1.0.0`): provided to symbols-view to serve document and project symbols.
 - **hover.provider** (`1.0.0`): provided to hover UIs to serve documentation at a buffer position.
 - **hover.signature-provider** (`1.0.0`): provided to signature-help UIs to serve call signatures while typing.
 - **outline.provider** (`1.0.0`): provided to outline UIs to serve the hierarchical document outline.
-- **code-format.range**, **code-format.file**, **code-format.onType**, **code-format.onSave** (`1.0.0`): provided to formatting orchestrators; each resolves to text edits from the server.
+- **code-format.range** (`1.0.0`): provided to formatting orchestrators; resolves a selected range to text edits from the server.
+- **code-format.file** (`1.0.0`): provided to formatting orchestrators; resolves a whole file to text edits from the server.
+- **code-format.on-type** (`1.0.0`): provided to formatting orchestrators; resolves text edits as the user types a trigger character.
+- **code-format.on-save** (`1.0.0`): provided to formatting orchestrators; resolves text edits on save.
 - **find-references.provider** (`1.0.0`): provided to reference UIs to list occurrences of the symbol at a position.
 - **refactor.provider** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
 - **intentions.list** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.

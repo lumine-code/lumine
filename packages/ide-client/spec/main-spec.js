@@ -9,7 +9,7 @@ describe("ide-client package", () => {
 
   it("exposes the versioned language-server service", () => {
     const main = atom.packages.getActivePackage("ide-client").mainModule;
-    const service = main.provideLanguageServer();
+    const service = main.provideIdeClient();
     expect(typeof service.registerAdapter).toBe("function");
     expect(typeof service.sessionForEditor).toBe("function");
     expect(typeof service.applyWorkspaceEdit).toBe("function");

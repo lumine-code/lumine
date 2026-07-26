@@ -76,7 +76,7 @@ module.exports = {
     await this.manager?.deactivate();
     this.manager = null;
   },
-  provideLanguageServer() {
+  provideIdeClient() {
     return {
       registerAdapter: (adapter) => this.manager.registerAdapter(adapter),
       sessionForEditor: (editor) => this.manager.sessionForEditor(editor),

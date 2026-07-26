@@ -22,7 +22,7 @@ module.exports = {
     this.autocompleteManager = null;
   },
 
-  provideWatchEditor() {
+  provideAutocompleteWatchEditor() {
     return this.autocompleteManager.watchEditor.bind(this.autocompleteManager);
   },
 
