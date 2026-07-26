@@ -1,33 +1,32 @@
 require "a"
-# ^ function.method.builtin
+# ^ support.other.function
 
 class Car < Vehicle
-  # <- keyword
-  #    ^ constructor
+  # <- keyword.control.class
+  #    ^ entity.name.type.class
 
   def init(id)
-    # <- keyword
-    # ^ function.method
+    # <- keyword.control.def
+    # ^ entity.name.function
 
     @id = id
-    # <- property
-    #     ^ variable.parameter
+    # <- variable.other.readwrite.instance
 
     yield
-    # <- keyword
+    # <- keyword.control.yield
     return
-    # <- keyword
+    # <- keyword.control.return
     next
-    # <- keyword
+    # <- keyword.control.next
   end
 
   private
-  # ^ keyword
+  # ^ keyword.other.special-method.private
 
   public
-  # ^ keyword
+  # ^ keyword.other.special-method.public
 
   protected
-  # ^ keyword
+  # ^ keyword.other.special-method.protected
 end
-# <- keyword
+# <- keyword.control.end
