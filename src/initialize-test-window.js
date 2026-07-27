@@ -55,8 +55,9 @@ module.exports = async function ({ blobStore }) {
       // reports itself focused, and without it every focus-dependent spec fails
       // on the Linux and Windows runners. Locally, show without stealing focus
       // from whatever the developer is doing; the specs that genuinely need it
-      // call `jasmine.requireDocumentFocus()` and report themselves pending
-      // instead of failing (see spec/helpers/document-focus.js).
+      // are declared with `jasmine.itWithDocumentFocus`/`describeWithDocumentFocus`
+      // and report themselves pending instead of failing (see
+      // spec/helpers/document-focus.js).
       const currentWindow = remote.getCurrentWindow();
       if (process.env.CI) {
         currentWindow.show();

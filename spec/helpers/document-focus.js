@@ -15,6 +15,17 @@
 // `describe`/`it` rather than being called from inside a spec: the runner
 // swallows a `pending()` raised in a spec body into a pass, and one raised in a
 // `beforeEach` does not stop the body from running.
+//
+// Deciding at declaration time is not enough on its own. The runner restores
+// focus before every spec on CI, but that hook runs before the suite's own
+// `beforeEach`s, and a host can take focus at any point in a run that lasts
+// minutes. A body that then runs unfocused reports whatever it happened to
+// assert — a cursor with `opacity: 0`, say — instead of the precondition it
+// actually lost, so re-establish focus as late as possible: for a spec that is
+// after every hook has run, and for a suite that is the earliest its own
+// `beforeEach` chain allows.
+
+const focusTestWindow = require("../../src/focus-test-window");
 
 const skippedDescriptions = [];
 
@@ -28,18 +39,46 @@ function documentIsFocused() {
   return false;
 }
 
-jasmine.describeWithDocumentFocus = (description, fn) => {
-  if (documentIsFocused()) return describe(description, fn);
+// Resolves immediately while the window still has focus, and otherwise waits
+// for it to come back, throwing with a message that names the precondition.
+function requireDocumentFocus() {
+  return focusTestWindow();
+}
 
-  skippedDescriptions.push(description);
-  return xdescribe(description, fn);
+function withDocumentFocus(fn) {
+  // Jasmine rejects a spec that both takes `done` and returns a promise, so the
+  // callback style has to be preserved rather than wrapped in an async function.
+  if (fn.length > 0) {
+    return function (done) {
+      requireDocumentFocus().then(() => fn.call(this, done), done);
+    };
+  }
+
+  return async function () {
+    await requireDocumentFocus();
+    return fn.call(this);
+  };
+}
+
+jasmine.describeWithDocumentFocus = (description, fn) => {
+  if (!documentIsFocused()) {
+    skippedDescriptions.push(description);
+    return xdescribe(description, fn);
+  }
+
+  return describe(description, function () {
+    beforeEach(requireDocumentFocus);
+    fn.call(this);
+  });
 };
 
 jasmine.itWithDocumentFocus = (description, fn, timeout) => {
-  if (documentIsFocused()) return it(description, fn, timeout);
+  if (!documentIsFocused()) {
+    skippedDescriptions.push(description);
+    return xit(description, fn, timeout);
+  }
 
-  skippedDescriptions.push(description);
-  return xit(description, fn, timeout);
+  return it(description, withDocumentFocus(fn), timeout);
 };
 
 jasmine.getDocumentFocusSkips = () => skippedDescriptions.slice();

@@ -1,10 +1,17 @@
+// Captured at load, before any spec runs: the spec harness replaces the global
+// timers and `Date.now` with a fake clock that only moves when a spec calls
+// `advanceClock`, so waiting on the live ones from inside a spec would never
+// resolve and this would hang instead of timing out.
+const nativeSetTimeout = globalThis.setTimeout.bind(globalThis);
+const nativeNow = Date.now.bind(Date);
+
 module.exports = async function focusTestWindow() {
   if (document.hasFocus()) return;
 
   const remote = require("@electron/remote");
   const currentWindow = remote.getCurrentWindow();
   const webContents = remote.getCurrentWebContents();
-  const timeoutAt = Date.now() + 10000;
+  const timeoutAt = nativeNow() + 10000;
 
   // BrowserWindow.focus() requests native-window focus, while
   // WebContents.focus() focuses the page itself. Both transitions are
@@ -13,10 +20,10 @@ module.exports = async function focusTestWindow() {
   while (!document.hasFocus()) {
     currentWindow.focus();
     webContents.focus();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await new Promise((resolve) => nativeSetTimeout(resolve, 50));
 
-    if (Date.now() >= timeoutAt) {
-      throw new Error("Timed out waiting for the CI spec window to receive focus");
+    if (nativeNow() >= timeoutAt) {
+      throw new Error("Timed out waiting for the spec window to receive focus");
     }
   }
 };
