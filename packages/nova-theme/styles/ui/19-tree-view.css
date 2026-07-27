@@ -14,8 +14,10 @@
       height: var(--ui-tab-height);
       background-clip: padding-box;
     }
-    & > .header .name {
+    & > .header {
       line-height: var(--ui-tab-height);
+    }
+    & > .header .name {
       font-size: 0.9em;
       font-weight: 600;
       letter-spacing: 0.02em;
@@ -105,33 +107,4 @@
 /* The project root rows use the same inset rounded bar as the item rows. */
 .tree-view .project-root.project-root::before {
   border-radius: var(--component-border-radius);
-}
-
-/* icon */
-.list-group .icon,
-.list-tree .icon {
-  display: inline-block;
-  height: inherit;
-  &::before {
-    top: initial;
-    line-height: inherit;
-    height: inherit;
-    vertical-align: top;
-  }
-}
-
-/* Arrow icon */
-.list-group,
-.list-tree {
-  .header.header.header.header::before {
-    top: initial;
-    line-height: inherit;
-    height: inherit;
-    vertical-align: top;
-    font-size: inherit;
-  }
-}
-.tree-view
-  .project-root-header.project-root-header.project-root-header.project-root-header::before {
-  line-height: var(--ui-tab-height);
 }

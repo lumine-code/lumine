@@ -78,6 +78,10 @@
   --component-padding: 10px;
   --component-icon-padding: 5px;
   --component-icon-size: 16px;
+  /* Version token for the icon geometry contract (atom-ui/styles/icons.css).
+   * Icon packages probe it to choose between contract-mode emission and their
+   * self-contained legacy geometry on editors without the contract. */
+  --icon-contract: box;
   --component-line-height: 25px;
   --component-border-radius: 2px;
   --tab-height: 30px;

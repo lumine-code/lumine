@@ -18,7 +18,7 @@
   background-position: center;
   background-repeat: no-repeat;
   background-size: contain;
-  vertical-align: middle;
+  vertical-align: text-bottom;
 }
 
 /* SVG and letter icons render into a child element rather than ::before, so
@@ -30,7 +30,7 @@
   width: var(--component-icon-size);
   height: var(--component-icon-size);
   margin-right: var(--component-icon-padding);
-  vertical-align: middle;
+  vertical-align: text-bottom;
 }
 
 .icon-svg > .icon-glyph {

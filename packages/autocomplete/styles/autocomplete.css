@@ -170,16 +170,17 @@ autocomplete-suggestion-list {
     &:empty {
       display: none;
     }
+    /* The chip keeps its own smaller box; line-height and vertical-align are
+       restated so the icon contract's 16px values don't leak in. */
     > *::before {
       font-size: var(--autocomplete-type-icon-font-size);
       width: var(--autocomplete-type-icon-font-size);
       height: var(--autocomplete-type-icon-font-size);
+      line-height: var(--autocomplete-type-icon-font-size);
+      vertical-align: text-bottom;
     }
 
     .icon-letter {
-      /* I'm failing to vert center these letters. So shift them up... */
-      position: relative;
-      top: -0.1em;
       font-size: var(--autocomplete-type-letter-icon-font-size);
       line-height: var(--autocomplete-type-letter-icon-font-size);
     }

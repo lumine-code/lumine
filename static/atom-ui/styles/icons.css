@@ -1,4 +1,20 @@
+/* The icon geometry contract. Every icon occupies a fixed square of
+ * --component-icon-size whose line-height equals its height, so ink centers in
+ * the box's own content area regardless of the font's metrics. text-bottom
+ * pins the box to the strut's content area, whose height (1.33em of the UI
+ * font) matches the box, so the box centers in any line — tree rows, tabs,
+ * multi-line text — with no per-surface tuning. Ownership: core owns the box
+ * (this rule), icon sets own ink only (font-family, content, per-glyph
+ * font-size, translate nudges), themes own row metrics only (container
+ * line-height, heights, margins) and never restyle the ::before. */
 .icon::before {
+  display: inline-block;
+  width: var(--component-icon-size);
+  height: var(--component-icon-size);
+  line-height: var(--component-icon-size);
+  font-size: var(--component-icon-size);
+  text-align: center;
+  vertical-align: text-bottom;
   margin-right: var(--component-icon-padding);
 }
 

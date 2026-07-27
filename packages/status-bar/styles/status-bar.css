@@ -70,14 +70,9 @@ status-bar {
     padding-right: 0;
   }
 
-  /* All icons are smaller than normal (normal is 16px)
-     (Expanded Less mixin `.icon-size(14px)`) */
+  /* Geometry comes from the icon contract; the bar only relaxes the box
+     width — tiles mix icons with text at natural advance. */
   .icon:before {
-    font-size: 14px;
-    width: 14px;
-    height: 14px;
-    position: relative;
-    top: 1px;
     width: auto; /* Enable auto-width since not every icon has the same width */
     margin-right: 4px;
   }

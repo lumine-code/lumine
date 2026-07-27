@@ -45,6 +45,8 @@
     margin-bottom: 50px;
     width: auto;
     height: auto;
+    line-height: 1;
+    vertical-align: baseline;
     font-size: 8em;
   }
 

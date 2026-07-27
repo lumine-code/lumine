@@ -329,12 +329,3 @@
     box-shadow: 0 0 0 1px var(--button-background-color-selected);
   }
 }
-
-/* Button Icons ----------------------- */
-
-.btn.icon:before {
-  width: auto;
-  height: auto;
-  font-size: 1.333333em;
-  vertical-align: -0.1em;
-}

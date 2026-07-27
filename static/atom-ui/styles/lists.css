@@ -292,11 +292,6 @@ button.list-group-item {
     position: relative;
   }
 
-  .icon::before {
-    margin-right: var(--component-icon-padding);
-    position: relative;
-    top: 1px;
-  }
   .no-icon {
     padding-left: calc(var(--component-icon-padding) + var(--component-icon-size));
   }
@@ -328,45 +323,34 @@ button.list-group-item {
       display: none;
     }
 
-    /* Nested items always get disclosure arrows
-       (.octicon(chevron-down, @disclosure-arrow-size) inlined) */
+    /* Nested items always get disclosure arrows. The 12px glyph rides the
+       16px icon-contract carrier: line-height centers the ink in the box,
+       text-bottom centers the box in the row — the same frame as .icon::before
+       (atom-ui/styles/icons.css), which these elements lack the .icon class
+       for. (.octicon(chevron-down, @disclosure-arrow-size) inlined) */
     .list-nested-item > .list-item {
       &::before {
         font-family: "Octicons Regular";
         font-weight: normal;
         font-style: normal;
         display: inline-block;
-        line-height: 1;
         -webkit-font-smoothing: antialiased;
         text-decoration: none;
         font-size: var(--disclosure-arrow-size);
         width: var(--disclosure-arrow-size);
-        height: var(--disclosure-arrow-size);
-        content: "\f0a3"; /* @chevron-down */
-      }
-      &::before {
-        position: relative;
-        top: -1px;
+        height: var(--component-icon-size);
+        line-height: var(--component-icon-size);
+        text-align: center;
+        vertical-align: text-bottom;
         margin-right: var(--component-icon-padding);
+        content: "\f0a3"; /* @chevron-down */
       }
     }
     /* (.octicon(chevron-right, @disclosure-arrow-size) inlined) */
     .list-nested-item.collapsed > .list-item {
       &::before {
-        font-family: "Octicons Regular";
-        font-weight: normal;
-        font-style: normal;
-        display: inline-block;
-        line-height: 1;
-        -webkit-font-smoothing: antialiased;
-        text-decoration: none;
-        font-size: var(--disclosure-arrow-size);
-        width: var(--disclosure-arrow-size);
-        height: var(--disclosure-arrow-size);
         content: "\f078"; /* @chevron-right */
-      }
-      &::before {
-        left: 1px;
+        translate: 1px 0;
       }
     }
 

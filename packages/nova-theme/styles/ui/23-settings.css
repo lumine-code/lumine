@@ -17,9 +17,6 @@
       font-size: calc(var(--ui-size) * 0.889); /* step -1 of modular scale 1.125 */
       line-height: 1;
       padding: calc(var(--ui-padding) / 3) calc(var(--ui-padding) / 2);
-      &::before {
-        vertical-align: middle;
-      }
     }
   }
   .nav {

@@ -190,10 +190,13 @@
   color: var(--text-color-subtle);
 
   .icon::before {
-    /* Make these octicons look good inlined with text */
+    /* Make these octicons look good inlined with text: hug the glyph instead
+       of the icon-contract box and center on the text. */
     position: relative;
     width: auto;
     height: auto;
+    line-height: 1;
+    vertical-align: middle;
     margin-right: 0;
     font-size: 1.5em;
   }

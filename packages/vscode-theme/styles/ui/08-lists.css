@@ -60,12 +60,6 @@
     }
   }
 
-  /* Reset icon to allow nesting */
-  .icon {
-    display: initial;
-    height: initial;
-  }
-
   /* We want to highlight the background of the list items because we dont
      know their size. */
   li.selected {
@@ -88,9 +82,13 @@
       display: inline-block;
       left: auto;
       right: auto;
-      height: var(--active-icon-size);
       width: var(--active-icon-size);
       font-size: var(--active-icon-size);
+      /* The 14px glyph rides the 16px icon-contract carrier. */
+      height: var(--component-icon-size);
+      line-height: var(--component-icon-size);
+      text-align: center;
+      vertical-align: text-bottom;
     }
     > li:not(.active):before {
       margin-right: var(--ui-padding-icon);
@@ -102,12 +100,8 @@
         font-weight: normal;
         font-style: normal;
         display: inline-block;
-        line-height: 1;
         -webkit-font-smoothing: antialiased;
         text-decoration: none;
-        font-size: var(--active-icon-size);
-        width: var(--active-icon-size);
-        height: var(--active-icon-size);
         content: "\f03a"; /* @check octicon */
       }
       &:before {
@@ -135,12 +129,6 @@
 
   .list-group li {
     padding-left: var(--popover-list-padding);
-  }
-
-  /* Un-reset icon in popover lists */
-  .icon.icon {
-    display: inline-block;
-    height: inherit;
   }
 }
 

@@ -7,7 +7,7 @@
       height: var(--ui-tab-height);
       background-clip: padding-box;
     }
-    & > .header .name {
+    & > .header {
       line-height: var(--ui-tab-height);
     }
   }
@@ -83,33 +83,4 @@
 .list-group .selected::before,
 .list-tree .selected::before {
   height: var(--ui-line-height);
-}
-
-/* icon */
-.list-group .icon,
-.list-tree .icon {
-  display: inline-block;
-  height: inherit;
-  &::before {
-    top: initial;
-    line-height: inherit;
-    height: inherit;
-    vertical-align: top;
-  }
-}
-
-/* Arrow icon */
-.list-group,
-.list-tree {
-  .header.header.header.header::before {
-    top: initial;
-    line-height: inherit;
-    height: inherit;
-    vertical-align: top;
-    font-size: inherit;
-  }
-}
-.tree-view
-  .project-root-header.project-root-header.project-root-header.project-root-header::before {
-  line-height: var(--ui-tab-height);
 }
