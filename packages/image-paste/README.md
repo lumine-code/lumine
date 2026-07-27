@@ -37,7 +37,7 @@ Customize the modal with CSS and package custom properties:
 
 ## Services
 
-- **[tree-view.selection](https://lumine-code.github.io/docs.html#services/tree-view.selection)** (`^1.0.0`): consumed to locate the selected directory for explicit image paste commands.
+- **tree-view.selection** (`^1.0.0`): consumed to locate the selected directory for explicit image paste commands.
 
 ## Contributing
 

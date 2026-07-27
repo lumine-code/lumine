@@ -9,7 +9,7 @@ The title bar's control tile collection: a package inserts an element beside the
 | Consumed by | `consumeTitleBar(titleBar)`                               |
 | Owner       | `title-bar` (bundled)                                     |
 
-The same shape as [`status-bar`](https://lumine-code.github.io/docs.html#services/status-bar), for the strip at the top of the window rather than the bottom. Reserve it for controls that act on the window itself — layout, presentation, window state — rather than on the file being edited.
+The same shape as `status-bar`, for the strip at the top of the window rather than the bottom. Reserve it for controls that act on the window itself — layout, presentation, window state — rather than on the file being edited.
 
 ## Registration
 

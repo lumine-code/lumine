@@ -9,7 +9,7 @@ Lets a language grammar highlight URLs inside its own strings and comments, by i
 | Consumed by | `consumeHyperlinkInjection(hyperlink)`                       |
 | Owner       | `language-hyperlink` (bundled)                               |
 
-Consumed by nineteen language packages, and by far the cheapest service in the workspace to adopt: a grammar package names the Tree-sitter node types that may contain a URL, and the rest is handled for it. The sibling service [`todo.injection`](https://lumine-code.github.io/docs.html#services/todo.injection) has an identical shape.
+Consumed by nineteen language packages, and by far the cheapest service in the workspace to adopt: a grammar package names the Tree-sitter node types that may contain a URL, and the rest is handled for it. The sibling service `todo.injection` has an identical shape.
 
 ## Registration
 

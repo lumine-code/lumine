@@ -11,7 +11,7 @@ Provides symbols to symbols-view via ctags.
 
 ## Services
 
-- **[symbol.provider](https://lumine-code.github.io/docs.html#services/symbol.provider)** (`1.0.0`): provided to supply symbols for a given file or project to symbols-view.
+- **symbol.provider** (`1.0.0`): provided to supply symbols for a given file or project to symbols-view.
 
 ## Contributing
 

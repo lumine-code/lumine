@@ -10,7 +10,7 @@ GitHub Flavored Markdown language support.
 
 ## Services
 
-- **[hyperlink.injection](https://lumine-code.github.io/docs.html#services/hyperlink.injection)** (`^1.0.0`): consumed to highlight URLs inside documents as clickable links.
+- **hyperlink.injection** (`^1.0.0`): consumed to highlight URLs inside documents as clickable links.
 
 ## Contributing
 

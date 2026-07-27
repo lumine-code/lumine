@@ -33,7 +33,7 @@ Commands available in `.recent-list`:
 ## Services
 
 - **[recent-list](docs/recent-list.md)** (`1.0.0`): provided to expose the recent projects list manager so other packages can open the list without depending on the toggle command.
-- **[open-external](https://lumine-code.github.io/docs.html#services/open-external)** (`^1.0.0`): consumed to open folders externally and shows them in the explorer.
+- **open-external** (`^1.0.0`): consumed to open folders externally and shows them in the explorer.
 
 ## Customization
 

@@ -32,8 +32,8 @@ Commands available in `atom-workspace`:
 
 ## Services
 
-- **[status-bar](https://lumine-code.github.io/docs.html#services/status-bar)** (`^1.0.0`): consumed to add a settings icon and a package-updates indicator to the status bar.
-- **[snippets](https://lumine-code.github.io/docs.html#services/snippets)** (`^1.0.0`): consumed to read user snippets so they can be displayed alongside settings.
+- **status-bar** (`^1.0.0`): consumed to add a settings icon and a package-updates indicator to the status bar.
+- **snippets** (`^1.0.0`): consumed to read user snippets so they can be displayed alongside settings.
 
 ## Customization
 

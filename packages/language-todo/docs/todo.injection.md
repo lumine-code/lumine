@@ -9,7 +9,7 @@ Lets a language grammar highlight `TODO`-style markers inside its own comments, 
 | Consumed by | `consumeTodoInjection(todo)`                            |
 | Owner       | `language-todo` (bundled)                               |
 
-Consumed by eighteen language packages. The shape is identical to [`hyperlink.injection`](https://lumine-code.github.io/docs.html#services/hyperlink.injection); a grammar package usually consumes both in the same file.
+Consumed by eighteen language packages. The shape is identical to `hyperlink.injection`; a grammar package usually consumes both in the same file.
 
 The markers recognised are `TODO`, `FIXME`, `CHANGED`, `XXX`, `IDEA`, `HACK`, `NOTE`, `REVIEW`, `NB`, `BUG`, `QUESTION`, `COMBAK`, `TEMP`, `DEBUG`, `OPTIMIZE`, and `WARNING`.
 

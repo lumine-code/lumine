@@ -16,7 +16,7 @@ Commands available in `atom-workspace`:
 
 ## Services
 
-- **[status-bar](https://lumine-code.github.io/docs.html#services/status-bar)** (`^1.0.0`): consumed to show an indicator in the status bar when incompatible packages are detected.
+- **status-bar** (`^1.0.0`): consumed to show an indicator in the status bar when incompatible packages are detected.
 
 ## Customization
 

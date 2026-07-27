@@ -10,8 +10,8 @@ Sass and SCSS language support.
 
 ## Services
 
-- **[hyperlink.injection](https://lumine-code.github.io/docs.html#services/hyperlink.injection)** (`^1.0.0`): consumed to highlight URLs inside stylesheets as clickable links.
-- **[todo.injection](https://lumine-code.github.io/docs.html#services/todo.injection)** (`^1.0.0`): consumed to highlight `TODO`-style markers inside comments.
+- **hyperlink.injection** (`^1.0.0`): consumed to highlight URLs inside stylesheets as clickable links.
+- **todo.injection** (`^1.0.0`): consumed to highlight `TODO`-style markers inside comments.
 
 ## Contributing
 

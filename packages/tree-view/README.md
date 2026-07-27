@@ -56,9 +56,9 @@ Commands available in `.tree-view`:
 
 - **[tree-view.selection](docs/tree-view.selection.md)** (`1.0.0`): provided to expose the selected paths, look up the entry element for a path, and reveal a path in the tree.
 - **[tree-view.roots](docs/tree-view.roots.md)** (`1.0.0`): provided to let external packages register virtual root sections above the project folders.
-- **[open-external](https://lumine-code.github.io/docs.html#services/open-external)** (`^1.0.0`): consumed to open files with the configured external application.
-- **[project-list](https://lumine-code.github.io/docs.html#services/project-list)** (`^1.0.0`): consumed to add a "List projects" button to the empty project view.
-- **[recent-list](https://lumine-code.github.io/docs.html#services/recent-list)** (`^1.0.0`): consumed to add a "Reopen a project" button to the empty project view.
+- **open-external** (`^1.0.0`): consumed to open files with the configured external application.
+- **project-list** (`^1.0.0`): consumed to add a "List projects" button to the empty project view.
+- **recent-list** (`^1.0.0`): consumed to add a "Reopen a project" button to the empty project view.
 
 ## Customization
 

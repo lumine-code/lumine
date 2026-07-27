@@ -39,7 +39,7 @@ status-bar .editor-position {
 
 ## Services
 
-- **[status-bar](https://lumine-code.github.io/docs.html#services/status-bar)** (`^1.0.0`): consumed to add the file-info and editor-position tiles to the left side of the status bar.
+- **status-bar** (`^1.0.0`): consumed to add the file-info and editor-position tiles to the left side of the status bar.
 
 ## Contributing
 

@@ -9,7 +9,7 @@ A source of completion suggestions for the autocomplete popup: which scopes it a
 | Consumed by | `consumeAutocomplete(provider)`                                     |
 | Owner       | `autocomplete` (bundled)                                            |
 
-To turn a language server into a completion source, register an adapter with [`ide-client`](https://lumine-code.github.io/docs.html#services/ide-client) instead of implementing this service directly — `ide-client` already provides `autocomplete.provider` on every adapter's behalf.
+To turn a language server into a completion source, register an adapter with `ide-client` instead of implementing this service directly — `ide-client` already provides `autocomplete.provider` on every adapter's behalf.
 
 ## Contract
 

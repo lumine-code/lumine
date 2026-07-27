@@ -85,7 +85,7 @@ Both find panels share a `search-panel` root class (`search-panel-editor` and
 ## Services
 
 - **[search.control](docs/search.control.md)** (`1.0.0`): provided to expose find options, panel visibility controls, and programmatic search triggers.
-- **[autocomplete.watch-editor](https://lumine-code.github.io/docs.html#services/autocomplete.watch-editor)** (`^1.0.0`): consumed to enable autocompletion in the find fields.
+- **autocomplete.watch-editor** (`^1.0.0`): consumed to enable autocompletion in the find fields.
 - **[search.adapter](docs/search.adapter.md)** (`^1.0.0`): consumed to let non-editor pane items be searched through the buffer find panel.
 
 ## Contributing

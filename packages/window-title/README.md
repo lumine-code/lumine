@@ -53,7 +53,7 @@ Combine the project, relative file path, and current Git branch:
 
 ## Services
 
-- **[project-list](https://lumine-code.github.io/docs.html#services/project-list)** (`^1.0.0`): consumed to resolve the `{projectTitle}` placeholder from the current window's matched project.
+- **project-list** (`^1.0.0`): consumed to resolve the `{projectTitle}` placeholder from the current window's matched project.
 
 ## Contributing
 
