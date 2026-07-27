@@ -65,7 +65,6 @@ class Application {
     this.previousAttributes = new Map();
     this.styleProperties = [];
     this.child = null;
-    this.disconnectedFlushes = 0;
     this.disposed = false;
     // Held by the registry's bindings, so it must not close over anything the
     // application does not already own.
@@ -532,21 +531,16 @@ module.exports = class IconRegistry {
     this.liveApplications(key, affected);
   }
 
+  // Detached elements are repainted like any other. A consumer routinely builds
+  // a row, gives it an icon and appends it afterwards — the tree view does
+  // exactly that — so skipping what is not in the document yet means a row
+  // built while one icon package was active keeps that package's classes for
+  // the rest of its life, and shows nothing at all once the package is gone.
+  // Bindings are weak, so an element nobody keeps is collected on its own and
+  // needs no pruning here.
   flush(affected) {
     for (const application of affected) {
-      if (application.disposed) continue;
-      // Detached elements stop receiving live updates: a consumer that keeps
-      // one around is holding it, and repainting something nobody can see is
-      // wasted work. Stop tracking after two consecutive misses so the registry
-      // does not pin the element forever, but leave what was already rendered
-      // alone — undoing it would strip the icon from an element that gets
-      // reattached. Applying again resumes updates.
-      if (!application.element.isConnected) {
-        if (++application.disconnectedFlushes >= 2) this.unbind(application);
-        continue;
-      }
-      application.disconnectedFlushes = 0;
-      application.apply();
+      if (!application.disposed) application.apply();
     }
   }
 

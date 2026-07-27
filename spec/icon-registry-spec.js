@@ -487,20 +487,24 @@ describe("IconRegistry", () => {
         expect(registry.applications.get(key).size).toBe(1);
       });
 
-      it("stops tracking a detached element without stripping its icon", () => {
+      // A consumer routinely builds a row, gives it an icon and appends it
+      // afterwards — the tree view does exactly that. Skipping what is not in
+      // the document yet left such a row wearing the classes of whichever icon
+      // package was installed when it was built, for the rest of its life.
+      it("keeps repainting an element that is not in the document", () => {
         let classes = ["one"];
         registry.addProvider(provider(() => Icon.classes(classes)));
-        const node = element();
+        const node = document.createElement("span");
         registry.applyTo(node, { path: "/a" });
+        expect(node.classList.contains("one")).toBe(true);
 
-        node.remove();
         classes = ["two"];
         registry.invalidateAll();
         registry.invalidateAll();
         registry.invalidateAll();
 
-        // Still wearing what it had when it left the document.
-        expect(node.classList.contains("one")).toBe(true);
+        expect(node.classList.contains("two")).toBe(true);
+        expect(node.classList.contains("one")).toBe(false);
       });
 
       it("repaints when a provider is added or removed", () => {
