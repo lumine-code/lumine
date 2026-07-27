@@ -39,7 +39,9 @@ module.exports = class RipgrepFileCrawler {
   //   * `followSymlinks` {Boolean} whether to descend into symlinked
   //     directories (default: false).
   //   * `excludeVcsIgnoredPaths` {Boolean} whether to honor VCS ignore files
-  //     (default: true).
+  //     (default: true). ripgrep only consults `.gitignore` inside a
+  //     repository, so a directory with no `.git` above it lists everything
+  //     either way.
   //   * `sort` {Boolean} whether to return paths in a stable order. Costs
   //     ripgrep its parallel walk, so only ask when the order is observable.
   //

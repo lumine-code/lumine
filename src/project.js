@@ -678,7 +678,8 @@ module.exports = class Project extends Model {
   //   * `followSymlinks` {Boolean} whether to descend into symlinked
   //     directories. Defaults to `core.followSymlinks`.
   //   * `excludeVcsIgnoredPaths` {Boolean} whether to honor VCS ignore files.
-  //     Defaults to `core.excludeVcsIgnoredPaths`.
+  //     Defaults to `core.excludeVcsIgnoredPaths`. Only takes effect inside a
+  //     repository — a directory with no `.git` above it lists everything.
   //   * `sort` {Boolean} whether to return paths in a stable order. Costs
   //     ripgrep its parallel walk, so only ask when the order is observable.
   //
