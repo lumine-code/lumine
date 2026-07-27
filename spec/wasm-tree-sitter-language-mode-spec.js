@@ -60,6 +60,25 @@ describe("WASMTreeSitterLanguageMode", () => {
     }
   });
 
+  // Callers destructure the result, so the shape has to hold on every path out
+  // — including the early one taken before the mode has tokenized.
+  describe("atTransactionEnd", () => {
+    it("describes a transaction even before the mode has tokenized", async () => {
+      jasmine.useRealClock();
+      grammar = new WASMTreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      buffer.setLanguageMode(
+        new WASMTreeSitterLanguageMode({ grammar, buffer, config: atom.config }),
+      );
+      const languageMode = buffer.getLanguageMode();
+      expect(languageMode.tokenized).toBe(false);
+
+      const { range, changeCount, autoIndentRequests } = await languageMode.atTransactionEnd();
+      expect(range).toBeNull();
+      expect(changeCount).toBe(0);
+      expect(autoIndentRequests).toBe(0);
+    });
+  });
+
   describe("highlighting", () => {
     it("applies the most specific scope mapping to each node in the syntax tree", async () => {
       jasmine.useRealClock();

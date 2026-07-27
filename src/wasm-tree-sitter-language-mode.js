@@ -517,25 +517,30 @@ class WASMTreeSitterLanguageMode {
   //
   async atTransactionEnd() {
     if (!this.tokenized) {
-      return this.ready;
+      // `this.ready` resolves with nothing, and callers destructure what they
+      // are given: a mode that has not tokenized yet still owes them a
+      // description of a transaction, even an empty one.
+      await this.ready;
+      return this.transactionMetadata();
     }
     if (this.atTransactionEndPromise) {
       return this.atTransactionEndPromise;
     }
     let prerequisite = this.nextTransaction || Promise.resolve();
     this.atTransactionEndPromise = prerequisite
-      .then(() => {
-        let result = {
-          changeCount: this.lastTransactionChangeCount ?? 0,
-          range: this.lastTransactionEditedRange ?? null,
-          autoIndentRequests: this.lastTransactionAutoIndentRequests ?? 0,
-        };
-        return result;
-      })
+      .then(() => this.transactionMetadata())
       .finally(() => {
         this.atTransactionEndPromise = null;
       });
     return this.atTransactionEndPromise;
+  }
+
+  transactionMetadata() {
+    return {
+      changeCount: this.lastTransactionChangeCount ?? 0,
+      range: this.lastTransactionEditedRange ?? null,
+      autoIndentRequests: this.lastTransactionAutoIndentRequests ?? 0,
+    };
   }
 
   // Alias for `atTransactionEnd` for packages that used the implementation
