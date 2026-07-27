@@ -38,6 +38,11 @@
   --section-padding: calc(2 * var(--component-padding));
   --breadcrumb-padding: calc(2 * var(--component-padding));
 
+  /* How wide the content of a page gets, whatever page it is. GitHub's readme
+     column, which is what the rendered markdown here is measured against. Every
+     page reads it from here so none of them can drift apart. */
+  --settings-content-width: 1012px;
+
   --settings-view-alert-info-dark-flag: hsl(
     from color-mix(in srgb, var(--background-color-info) 10%, var(--base-background-color)) 0 0
       calc((50 - l) * infinity) / 1
@@ -307,7 +312,7 @@
 
   .section-container {
     width: 100%;
-    max-width: 800px;
+    max-width: var(--settings-content-width);
 
     &.updates-container {
       .package-container {
@@ -1025,7 +1030,7 @@
 
     > * {
       width: 100%;
-      max-width: 1200px;
+      max-width: var(--settings-content-width);
     }
   }
 
