@@ -33,18 +33,6 @@ atom-workspace {
     background: var(--scrollbar-background-color);
   }
 
-  ::-webkit-scrollbar-thumb:vertical:active {
-    border-radius: 0;
-    border-left-width: 0;
-    border-right-width: 0;
-  }
-
-  ::-webkit-scrollbar-thumb:horizontal:active {
-    border-radius: 0;
-    border-top-width: 0;
-    border-bottom-width: 0;
-  }
-
   atom-text-editor {
     ::-webkit-scrollbar-track {
       background: var(--scrollbar-background-color-editor);
@@ -57,6 +45,20 @@ atom-workspace {
       background: var(--scrollbar-color-editor);
     }
   }
+}
+
+/* Held-thumb rules must stay un-nested: Chromium never matches a
+   :hover/:active scrollbar-part rule whose selector comes from CSS nesting. */
+.scrollbars-visible-always ::-webkit-scrollbar-thumb:vertical:active {
+  border-radius: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
+
+.scrollbars-visible-always ::-webkit-scrollbar-thumb:horizontal:active {
+  border-radius: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
 }
 
 /* TODO: Move to a better place, not sure where it gets used */

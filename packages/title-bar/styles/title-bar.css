@@ -85,18 +85,26 @@
   ::-webkit-scrollbar-corner {
     background: var(--scrollbar-background-color);
   }
+}
 
-  ::-webkit-scrollbar-thumb:vertical:active {
-    border-radius: 0;
-    border-left-width: 0;
-    border-right-width: 0;
-  }
+/* Held-thumb rules must stay un-nested: Chromium never matches a
+   :hover/:active scrollbar-part rule whose selector comes from CSS nesting. */
+.title-bar .app-menu .menu-label ::-webkit-scrollbar-thumb:vertical:active,
+.context-menu-container ::-webkit-scrollbar-thumb:vertical:active,
+.app-menu-submenu-portal ::-webkit-scrollbar-thumb:vertical:active,
+.context-menu-submenu-portal ::-webkit-scrollbar-thumb:vertical:active {
+  border-radius: 0;
+  border-left-width: 0;
+  border-right-width: 0;
+}
 
-  ::-webkit-scrollbar-thumb:horizontal:active {
-    border-radius: 0;
-    border-top-width: 0;
-    border-bottom-width: 0;
-  }
+.title-bar .app-menu .menu-label ::-webkit-scrollbar-thumb:horizontal:active,
+.context-menu-container ::-webkit-scrollbar-thumb:horizontal:active,
+.app-menu-submenu-portal ::-webkit-scrollbar-thumb:horizontal:active,
+.context-menu-submenu-portal ::-webkit-scrollbar-thumb:horizontal:active {
+  border-radius: 0;
+  border-top-width: 0;
+  border-bottom-width: 0;
 }
 
 .title-bar {
