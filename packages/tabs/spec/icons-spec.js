@@ -35,19 +35,24 @@ describe("tab icons", () => {
     return tabFor(item);
   };
 
-  // The behaviour worth guarding above all others: without a provider, a plain
-  // tab keeps its title unadorned. The built-in mapping always has an answer,
-  // so only `skipFallback` stops every text tab growing an icon-file-text.
-  it("shows no icon when nothing but the built-in mapping has an opinion", () => {
-    expect(tab.itemTitle.className).toBe("title");
+  // A tab carries the editor's own file-type icon with no icon package
+  // installed, and `tabs.showIcons` decides whether it is shown.
+  it("falls back to the built-in file icon", () => {
+    expect(tab.itemTitle.className).toBe("title icon icon-file-text");
   });
 
-  it("takes an icon from a provider", () => {
+  it("takes an icon from a provider, and gives it back", () => {
     const disposable = provide(() => "foo bar");
     expect(tab.itemTitle.className).toBe("title icon foo bar");
 
     disposable.dispose();
-    expect(tab.itemTitle.className).toBe("title");
+    expect(tab.itemTitle.className).toBe("title icon icon-file-text");
+  });
+
+  it("hides the icon rather than dropping it when showIcons is off", () => {
+    atom.config.set("tabs.showIcons", false);
+    expect(tab.itemTitle.classList.contains("hide-icon")).toBe(true);
+    expect(tab.itemTitle.classList.contains("icon-file-text")).toBe(true);
   });
 
   it("accepts an array of classes", () => {

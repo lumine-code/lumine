@@ -335,10 +335,10 @@ class TabView {
     return (this.updatingTitle = false);
   }
 
-  // A tab shows an icon only when something has an opinion about it: an item
-  // that names one, or an installed icon provider. `skipFallback` is what keeps
-  // a plain text tab's title unadorned rather than growing the built-in
-  // `icon-file-text` glyph.
+  // A tab takes the icon its item names, and otherwise the one its path
+  // resolves to — the editor's own file-type glyph when no icon package is
+  // installed, a package's when one is. Whether that icon is shown at all is
+  // the `tabs.showIcons` setting, applied as a class by `updateIconVisibility`.
   //
   // `updateDataAttributes` owns `data-name`/`data-path` here — it deletes them
   // when there is no path — so the registry must not also write them.
@@ -351,7 +351,7 @@ class TabView {
     this.iconDisposable = atom.icons.applyTo(
       this.itemTitle,
       iconName ? { name: iconName } : { path: this.path, context: "tabs" },
-      { setData: false, skipFallback: !iconName },
+      { setData: false },
     );
     this.subscriptions.add(this.iconDisposable);
   }
