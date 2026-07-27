@@ -1336,6 +1336,33 @@ describe("PackageManager", () => {
         expect(consumerModule.consumeSecondService).not.toHaveBeenCalled();
       });
 
+      it("tears services down again after a deactivate/reactivate cycle", async () => {
+        const consumerModule = require("./fixtures/packages/package-with-consumed-services");
+
+        // A fresh disposable per consume: the same object would dispose once
+        // and silently absorb the second cycle this spec exists to pin.
+        let disposalCount = 0;
+        spyOn(consumerModule, "consumeFirstServiceV3").and.callFake(
+          () => new Disposable(() => disposalCount++),
+        );
+        spyOn(consumerModule, "consumeFirstServiceV4");
+        spyOn(consumerModule, "consumeSecondService");
+
+        await atom.packages.activatePackage("package-with-consumed-services");
+        await atom.packages.activatePackage("package-with-provided-services");
+        await atom.packages.deactivatePackage("package-with-provided-services");
+        expect(disposalCount).toBe(1);
+
+        // Re-activation must register the new service disposables somewhere a
+        // second deactivation still reaches. A disposed CompositeDisposable
+        // ignores adds, so keeping the old composite left the re-provided
+        // service on the hub forever — a disabled icon package's provider
+        // stayed in the chain after one off/on cycle.
+        await atom.packages.activatePackage("package-with-provided-services");
+        await atom.packages.deactivatePackage("package-with-provided-services");
+        expect(disposalCount).toBe(2);
+      });
+
       it("ignores provided and consumed services that do not exist", async () => {
         const addErrorHandler = jasmine.createSpy();
         atom.notifications.onDidAddNotification(addErrorHandler);

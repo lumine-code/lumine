@@ -794,6 +794,12 @@ module.exports = class Package {
 
     this.deactivateStylesheets();
     if (this.activationDisposables) this.activationDisposables.dispose();
+    // Null rather than keep the disposed composite: CompositeDisposable
+    // silently ignores adds after disposal, so a re-activated package would
+    // register its services and menus into a dead composite and the *next*
+    // deactivation could never tear them down — a disabled icon package's
+    // provider stayed in the chain forever after one off/on cycle.
+    this.activationDisposables = null;
     if (this.keymapDisposables) this.keymapDisposables.dispose();
 
     this.grammarsActivated = false;
