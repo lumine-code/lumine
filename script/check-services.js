@@ -7,11 +7,15 @@
 // at all. Nothing throws, and most community packages have no spec asserting
 // their service names. These checks are the substitute.
 //
-//   node script/check-services.js [workspace-root]
+//   node script/check-services.js [workspace-root] [--package <name>]
 //
 // Defaults to the parent of this repository so pkg_lumine/* is picked up when
 // checked out beside it. Exits non-zero on an error; style findings are
 // reported as warnings and do not fail the run.
+//
+// `--package` narrows the per-package checks to one manifest and drops the
+// cross-repo graph assertions to warnings — the mode a package repository's own
+// CI runs, where it is the only community checkout.
 //
 // The graph itself is built by service-graph.js, which the website's service
 // reference reads from a sibling checkout.
@@ -309,7 +313,17 @@ function checkGraph(graph, packageNames, hasCommunityTree) {
 
 function main() {
   const lumineRoot = path.resolve(__dirname, "..");
-  const workspaceRoot = path.resolve(process.argv[2] ?? path.join(lumineRoot, ".."));
+  const argv = process.argv.slice(2);
+  // `--package <name>` is for a package repository's own CI, where that package
+  // is the only community checkout: it judges what one manifest can be held to
+  // — its declared methods exist, it documents what it owns and nothing else,
+  // its README agrees — and leaves the cross-repo assertions to the workspace
+  // run, since every provider living in another repo is simply absent here.
+  const only = argv.includes("--package") ? argv[argv.indexOf("--package") + 1] : null;
+  const positional = argv.filter(
+    (arg, index) => arg !== "--package" && argv[index - 1] !== "--package",
+  );
+  const workspaceRoot = path.resolve(positional[0] ?? path.join(lumineRoot, ".."));
 
   const { packages, packageNames, graph, core, hasCommunityTree, problems } = buildGraph({
     lumineRoot,
@@ -318,19 +332,26 @@ function main() {
 
   for (const { where, message } of problems) error(where, message);
 
-  for (const pkg of packages) {
+  const checked = only ? packages.filter((pkg) => pkg.name === only) : packages;
+  if (only && checked.length === 0) {
+    error("args", `--package ${only} matched no package under ${workspaceRoot}`);
+  }
+
+  for (const pkg of checked) {
     checkDeclaredMethods(pkg);
     checkDuplicateConsumerMethods(pkg);
     checkReadmeServices(pkg);
   }
 
   // A second pass: doc ownership needs the whole graph, not one manifest.
-  for (const pkg of packages) {
+  for (const pkg of checked) {
     checkServiceDocs(pkg, graph, packageNames);
   }
-  checkCoreServiceDocs(graph, packageNames, workspaceRoot);
+  if (!only) {
+    checkCoreServiceDocs(graph, packageNames, workspaceRoot);
+  }
 
-  checkGraph(graph, packageNames, hasCommunityTree);
+  checkGraph(graph, packageNames, only ? false : hasCommunityTree);
 
   for (const message of warnings) console.log(`warn  ${message}`);
   for (const message of errors) console.log(`ERROR ${message}`);
@@ -344,7 +365,7 @@ function main() {
   }).length;
 
   console.log(
-    `\n${packages.length} packages, ${graph.size} services ` +
+    `\n${checked.length} package(s) checked against ${graph.size} services ` +
       `(${documented} documented), ` +
       `${core.provided.length + core.consumed.length} core registrations — ` +
       `${errors.length} error(s), ${warnings.length} warning(s)`,

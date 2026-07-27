@@ -1,18 +1,55 @@
-const { Disposable, CompositeDisposable } = require("event-kit");
+const { Disposable } = require("event-kit");
 const { Range, SemVer } = require("semver");
+
+// One service handed to one consumer, held by both sides.
+//
+// A provider going away means "the service is gone"; a consumer going away
+// means "the package that took it is gone". Both have to reach the disposable
+// the consumer returned, and neither may dispose it twice -- consumers hand
+// back plain `{dispose}` objects that are not required to be idempotent.
+class Registration {
+  constructor(provider, consumer, disposable) {
+    this.provider = provider;
+    this.consumer = consumer;
+    this.disposable = disposable;
+    this.disposed = false;
+  }
+
+  dispose() {
+    if (this.disposed) {
+      return;
+    }
+    this.disposed = true;
+    this.provider.registrations.delete(this);
+    this.consumer.registrations.delete(this);
+    this.disposable?.dispose();
+  }
+}
 
 class Consumer {
   constructor(keyPath, versionRange, callback) {
     this.keyPath = keyPath;
     this.callback = callback;
     this.versionRange = new Range(versionRange);
+    this.registrations = new Set();
+    this.isDestroyed = false;
+    // Whether any provider ever satisfied this consumer. A consumer that never
+    // was is a feature that silently does not exist -- see `unmatchedConsumers`.
+    this.isSatisfied = false;
+  }
+
+  destroy() {
+    this.isDestroyed = true;
+    for (const registration of [...this.registrations]) {
+      registration.dispose();
+    }
   }
 }
 
 class Provider {
   constructor(keyPath, servicesByVersion) {
     this.keyPath = keyPath;
-    this.consumersDisposable = new CompositeDisposable();
+    this.registrations = new Set();
     this.servicesByVersion = {};
     this.versions = [];
     for (const version in servicesByVersion) {
@@ -26,22 +63,48 @@ class Provider {
     if (consumer.keyPath !== this.keyPath) {
       return;
     }
+    let versionMatched = false;
     for (const version of this.versions) {
-      if (consumer.versionRange.test(version)) {
-        const service = this.servicesByVersion[version.toString()];
-        if (service) {
-          const consumerDisposable = consumer.callback.call(null, service);
-          if (typeof consumerDisposable?.dispose === "function") {
-            this.consumersDisposable.add(consumerDisposable);
-          }
-          return;
-        }
+      if (!consumer.versionRange.test(version)) {
+        continue;
       }
+      versionMatched = true;
+      const service = this.servicesByVersion[version.toString()];
+      if (service == null) {
+        continue;
+      }
+      consumer.isSatisfied = true;
+      const disposable = consumer.callback.call(null, service);
+      if (typeof disposable?.dispose === "function") {
+        const registration = new Registration(this, consumer, disposable);
+        this.registrations.add(registration);
+        consumer.registrations.add(registration);
+      }
+      return;
+    }
+    // The name matched and the delivery still did not happen, which is never
+    // intentional: one side of a service was bumped without the other, or a
+    // provider method returned nothing. Left alone the only symptom is a
+    // feature quietly not being there. A given pair meets exactly once --
+    // `provide` and `consume` each walk the other side one time -- so this
+    // cannot repeat itself into noise.
+    if (versionMatched) {
+      console.warn(
+        `Service "${this.keyPath}" matched ${consumer.versionRange.raw} but its provider ` +
+          `supplied no service object; nothing was delivered`,
+      );
+    } else {
+      console.warn(
+        `Service "${this.keyPath}" is provided at ${this.versions.join(", ")} ` +
+          `but consumed at ${consumer.versionRange.raw}; nothing was delivered`,
+      );
     }
   }
 
   destroy() {
-    return this.consumersDisposable.dispose();
+    for (const registration of [...this.registrations]) {
+      registration.dispose();
+    }
   }
 }
 
@@ -82,7 +145,9 @@ module.exports = class ServiceHub {
     return new Disposable(() => {
       provider.destroy();
       const index = this.providers.indexOf(provider);
-      return this.providers.splice(index, 1);
+      if (index >= 0) {
+        this.providers.splice(index, 1);
+      }
     });
   }
 
@@ -98,7 +163,8 @@ module.exports = class ServiceHub {
   //   service objects.
   //
   // Returns a {Disposable} on which `.dispose()` can be called to remove the
-  // consumer.
+  // consumer. Disposing it also disposes whatever the callback returned, so a
+  // package that deactivates unregisters itself from the services it took.
   consume(keyPath, versionRange, callback) {
     const consumer = new Consumer(keyPath, versionRange, callback);
     this.consumers.push(consumer);
@@ -106,11 +172,30 @@ module.exports = class ServiceHub {
       provider.provide(consumer);
     }
     return new Disposable(() => {
+      consumer.destroy();
       const index = this.consumers.indexOf(consumer);
       if (index >= 0) {
-        return this.consumers.splice(index, 1);
+        this.consumers.splice(index, 1);
       }
     });
+  }
+
+  // Public: Names consumed by someone and provided by no one.
+  //
+  // Deliberately not reported on its own: packages activate lazily, so a
+  // consumer with no provider *yet* is ordinary. It is a question to ask at a
+  // moment the caller chooses -- a diagnostic command, `timecop` -- rather than
+  // a warning this class can time correctly. The static answer belongs to
+  // `script/check-services.js`, which sees every manifest at once.
+  //
+  // Returns an {Array} of `{keyPath, versionRange}`.
+  unmatchedConsumers() {
+    return this.consumers
+      .filter((consumer) => !consumer.isSatisfied && !consumer.isDestroyed)
+      .map((consumer) => ({
+        keyPath: consumer.keyPath,
+        versionRange: consumer.versionRange.raw,
+      }));
   }
 
   // Public: Clear out all service consumers and providers, disposing of any
@@ -119,7 +204,10 @@ module.exports = class ServiceHub {
     for (const provider of this.providers.slice()) {
       provider.destroy();
     }
+    for (const consumer of this.consumers.slice()) {
+      consumer.destroy();
+    }
     this.providers = [];
-    return (this.consumers = []);
+    this.consumers = [];
   }
 };

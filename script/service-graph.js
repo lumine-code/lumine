@@ -40,6 +40,10 @@ const GENERAL_DOMAINS = new Map([
   ["todo", "language-todo"],
   ["sofistik", "language-sofistik"],
   ["mcp", "lumine-mcp"],
+  // `marker` names no package: two overview maps consume this contract and the
+  // marker-* packages provide into it. scrollmap is named the owner because the
+  // contract was written there; a third map would change nothing here.
+  ["marker", "scrollmap"],
   ["jupyter", null],
   ["project", CORE],
   ["workspace", CORE],

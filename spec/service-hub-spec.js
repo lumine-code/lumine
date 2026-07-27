@@ -116,11 +116,35 @@ describe("ServiceHub", () => {
 
     it("does not deliver when no version satisfies the range", () => {
       const consume = jasmine.createSpy("consume");
+      spyOn(console, "warn");
 
       hub.provide("example.service", "1.0.0", {});
       hub.consume("example.service", "^2.0.0", consume);
 
       expect(consume).not.toHaveBeenCalled();
+    });
+
+    // Silently delivering nothing is how a one-sided version bump hides: the
+    // consumer looks registered and the feature simply is not there.
+    it("warns when the name matches but the versions do not", () => {
+      spyOn(console, "warn");
+
+      hub.provide("example.service", "1.0.0", {});
+      hub.consume("example.service", "^2.0.0", () => {});
+
+      expect(console.warn.calls.count()).toBe(1);
+      const message = console.warn.calls.argsFor(0)[0];
+      expect(message).toContain("example.service");
+      expect(message).toContain("1.0.0");
+      expect(message).toContain("^2.0.0");
+    });
+
+    it("does not warn when a name simply has no provider", () => {
+      spyOn(console, "warn");
+
+      hub.consume("example.service", "^1.0.0", () => {});
+
+      expect(console.warn).not.toHaveBeenCalled();
     });
   });
 
@@ -154,6 +178,49 @@ describe("ServiceHub", () => {
       expect(consume).not.toHaveBeenCalled();
     });
 
+    // The mirror of the case above, and the one that used to be missing: a
+    // package that deactivates has to unregister itself from the services it
+    // took, or the provider keeps a live registration for a package that is
+    // gone.
+    it("disposes the disposable a consumer returned when the consumer goes away", () => {
+      const dispose = jasmine.createSpy("dispose");
+
+      hub.provide("terminal", "1.0.0", {});
+      const consumerDisposable = hub.consume("terminal", "^1.0.0", () => ({ dispose }));
+      expect(dispose).not.toHaveBeenCalled();
+
+      consumerDisposable.dispose();
+      expect(dispose.calls.count()).toBe(1);
+    });
+
+    it("disposes a returned disposable once even when both sides go away", () => {
+      const dispose = jasmine.createSpy("dispose");
+
+      const providerDisposable = hub.provide("terminal", "1.0.0", {});
+      const consumerDisposable = hub.consume("terminal", "^1.0.0", () => ({ dispose }));
+
+      consumerDisposable.dispose();
+      providerDisposable.dispose();
+      expect(dispose.calls.count()).toBe(1);
+    });
+
+    // A package deactivating and activating again used to leave its first
+    // registration behind, so the provider fired both when it went away.
+    it("does not accumulate registrations across consume/dispose cycles", () => {
+      const first = jasmine.createSpy("first");
+      const second = jasmine.createSpy("second");
+
+      const providerDisposable = hub.provide("terminal", "1.0.0", {});
+      hub.consume("terminal", "^1.0.0", () => ({ dispose: first })).dispose();
+      hub.consume("terminal", "^1.0.0", () => ({ dispose: second }));
+
+      expect(first.calls.count()).toBe(1);
+
+      providerDisposable.dispose();
+      expect(first.calls.count()).toBe(1);
+      expect(second.calls.count()).toBe(1);
+    });
+
     it("clear() drops every provider and consumer and disposes their disposables", () => {
       const dispose = jasmine.createSpy("dispose");
       const consume = jasmine.createSpy("consume");
@@ -166,6 +233,29 @@ describe("ServiceHub", () => {
       hub.provide("terminal", "1.0.0", {});
       hub.consume("terminal", "^1.0.0", consume);
       expect(consume.calls.count()).toBe(1);
+    });
+  });
+
+  describe("unmatchedConsumers", () => {
+    it("reports a consumer no provider has satisfied", () => {
+      hub.consume("outline", "^1.0.0", () => {});
+
+      expect(hub.unmatchedConsumers()).toEqual([{ keyPath: "outline", versionRange: "^1.0.0" }]);
+    });
+
+    it("drops a consumer once it has been satisfied, even if the provider leaves", () => {
+      hub.consume("outline", "^1.0.0", () => {});
+      const providerDisposable = hub.provide("outline", "1.0.0", {});
+      expect(hub.unmatchedConsumers()).toEqual([]);
+
+      providerDisposable.dispose();
+      expect(hub.unmatchedConsumers()).toEqual([]);
+    });
+
+    it("drops a disposed consumer", () => {
+      hub.consume("outline", "^1.0.0", () => {}).dispose();
+
+      expect(hub.unmatchedConsumers()).toEqual([]);
     });
   });
 });
