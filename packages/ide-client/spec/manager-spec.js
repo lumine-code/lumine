@@ -132,6 +132,34 @@ describe("LanguageServerManager session lifetime", () => {
     expect(manager.rerouteEditorsToTheirRoots).toHaveBeenCalled();
   });
 
+  it("keeps one session for a workspace-scoped adapter however the roots move", () => {
+    const adapter = {
+      id: "ws",
+      displayName: "Workspace",
+      grammarScopes: ["source.test"],
+      sessionScope: "workspace",
+      resolveServer: async () => null,
+    };
+    const [root] = atom.project.getPaths();
+    const other = path.join(path.sep, "tmp", "other");
+    // The identity of a window-wide server must not depend on which root
+    // happens to sort first, or removing a folder silently starts a second one.
+    expect(manager.keyFor(adapter, root)).toBe(manager.keyFor(adapter, other));
+    expect(manager.keyFor({ ...adapter, sessionScope: undefined }, root)).not.toBe(
+      manager.keyFor({ ...adapter, sessionScope: undefined }, other),
+    );
+  });
+
+  it("keeps a workspace-scoped session warm although its own root left", () => {
+    const session = sessionAt(path.join(path.sep, "tmp", "gone"));
+    session.adapter.sessionScope = "workspace";
+    expect(atom.project.getPaths().length).toBeGreaterThan(0);
+    manager.didCloseDocument(session);
+    advanceClock(1000);
+    // It still answers for the roots that remain.
+    expect(session.stop).not.toHaveBeenCalled();
+  });
+
   it("drops pending checks when the package deactivates", async () => {
     const session = sessionAt(path.join(path.sep, "tmp", "loose"));
     manager.didCloseDocument(session);

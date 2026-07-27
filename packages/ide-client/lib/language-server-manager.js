@@ -131,6 +131,13 @@ module.exports = class LanguageServerManager {
         .sort((a, b) => b.length - a.length)[0] || path.dirname(filePath)
     );
   }
+  // A project-root session is identified by the root it serves. A
+  // workspace-scoped one serves the whole window, so its identity must not
+  // move when `roots[0]` does: it keeps whichever root it started with as its
+  // `rootUri` and hears about the rest through `didChangeWorkspaceFolders`.
+  keyFor(adapter, rootPath) {
+    return adapter.sessionScope === "workspace" ? `${adapter.id}:` : `${adapter.id}:${rootPath}`;
+  }
   adapterContext(adapter, rootPath) {
     return {
       rootPath,
@@ -165,7 +172,7 @@ module.exports = class LanguageServerManager {
   async attachAdapter(adapter, editor) {
     const filePath = editor.getPath();
     const rootPath = this.rootForPath(filePath, adapter);
-    const key = `${adapter.id}:${rootPath}`;
+    const key = this.keyFor(adapter, rootPath);
     let session = this.sessions.get(key);
     if (!session) {
       let launch;
@@ -210,7 +217,9 @@ module.exports = class LanguageServerManager {
     const filePath = editor.getPath();
     if (!filePath) return [];
     return this.adaptersForEditor(editor)
-      .map((adapter) => this.sessions.get(`${adapter.id}:${this.rootForPath(filePath, adapter)}`))
+      .map((adapter) =>
+        this.sessions.get(this.keyFor(adapter, this.rootForPath(filePath, adapter))),
+      )
       .filter(Boolean);
   }
   sessionForEditor(editor) {
@@ -561,7 +570,7 @@ module.exports = class LanguageServerManager {
     return replacement;
   }
   async disconnect(session) {
-    const key = `${session.adapter.id}:${session.rootPath}`;
+    const key = this.keyFor(session.adapter, session.rootPath);
     if (this.sessions.get(key) === session) this.sessions.delete(key);
     await session.stop();
   }
@@ -584,7 +593,13 @@ module.exports = class LanguageServerManager {
   stopIfUnreachable(session) {
     if (session.state === "stopped" || session.state === "stopping") return;
     if (session.documents.size > 0) return;
-    if (atom.project.getPaths().includes(session.rootPath)) return;
+    const roots = atom.project.getPaths();
+    // A workspace-scoped session answers for every root, so it stays warm as
+    // long as the window has one, whatever its own `rootPath` says.
+    if (
+      session.adapter.sessionScope === "workspace" ? roots.length : roots.includes(session.rootPath)
+    )
+      return;
     const stillServesAnEditor = atom.workspace
       .getTextEditors()
       .some((editor) => this.sessionsForEditor(editor).includes(session));
