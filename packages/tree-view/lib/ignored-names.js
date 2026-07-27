@@ -16,7 +16,12 @@ module.exports = class IgnoredNames {
     for (let ignoredName of ignoredNames) {
       if (ignoredName) {
         try {
-          this.ignoredPatterns.push(picomatch(ignoredName, { basename: true, dot: true }));
+          // `basename` only for a pattern with no slash, matching minimatch's
+          // `matchBase`. Unconditionally, a name like `**/node_modules/**`
+          // would never match, since only the basename would be compared.
+          this.ignoredPatterns.push(
+            picomatch(ignoredName, { basename: !ignoredName.includes("/"), dot: true }),
+          );
         } catch (error) {
           atom.notifications.addWarning(`Error parsing ignore pattern (${ignoredName})`, {
             detail: error.message,

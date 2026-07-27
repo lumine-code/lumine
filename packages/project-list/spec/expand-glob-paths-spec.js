@@ -43,11 +43,15 @@ describe("project-list glob path expansion", () => {
     expect(await projectList.expandGlobPaths([missing])).toEqual([missing]);
   });
 
-  it("accepts backslash separators in a pattern", async () => {
-    const expanded = await projectList.expandGlobPaths([`${dir}\\*`]);
+  // Windows only: on POSIX a backslash is an ordinary character in a filename,
+  // so `dir\*` names one literal file rather than globbing `dir`.
+  if (process.platform === "win32") {
+    it("accepts backslash separators in a pattern", async () => {
+      const expanded = await projectList.expandGlobPaths([`${dir}\\*`]);
 
-    expect(expanded).toEqual([path.join(dir, "alpha"), path.join(dir, "beta")]);
-  });
+      expect(expanded).toEqual([path.join(dir, "alpha"), path.join(dir, "beta")]);
+    });
+  }
 
   it("sorts the combined result", async () => {
     const expanded = await projectList.expandGlobPaths([

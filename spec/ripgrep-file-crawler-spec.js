@@ -93,6 +93,18 @@ describe("RipgrepFileCrawler", () => {
     }
   });
 
+  // POSIX only: Windows forbids these characters in a filename, so the fixture
+  // cannot even be created there.
+  if (process.platform !== "win32") {
+    it("returns a filename containing a newline intact", async () => {
+      const awkward = "two\nlines.txt";
+      fs.writeFileSync(path.join(dir, awkward), "odd\n");
+      const rels = relativize(dir, await crawl([dir]));
+
+      expect(rels.has(awkward)).toBe(true);
+    });
+  }
+
   it("emits a path reachable through two roots only once", async () => {
     const found = await crawl([dir, path.join(dir, "sub")]);
     const nested = found.filter((p) => path.basename(p) === "nested.txt");

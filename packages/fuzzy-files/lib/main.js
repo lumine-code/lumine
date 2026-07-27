@@ -155,7 +155,10 @@ module.exports = {
       this.ignores.push("**/" + ignore + "/**");
     }
     for (let ignore of this.ignores) {
-      this.Ignores.push(picomatch(ignore, { basename: true, dot: true }));
+      // `basename` only for a pattern with no slash, matching minimatch's
+      // `matchBase`. Unconditionally it would defeat the `**/<name>/**` forms
+      // pushed above, since only the basename would ever be compared.
+      this.Ignores.push(picomatch(ignore, { basename: !ignore.includes("/"), dot: true }));
     }
   },
 

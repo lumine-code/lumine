@@ -307,7 +307,9 @@ module.exports = class LanguageServerManager {
     const base = C.uriToPath(globPattern.baseUri?.uri || globPattern.baseUri);
     if (!base) return false;
     const relative = path.relative(base, filePath);
-    if (!relative || relative.startsWith("..")) return false;
+    // An absolute result means the two paths share no root at all — a different
+    // Windows drive or UNC server — which `..` does not express.
+    if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) return false;
     return picomatch.isMatch(relative.replaceAll("\\", "/"), globPattern.pattern, { dot: true });
   }
   // Watched-file events are limited to paths under the project roots â€” that is

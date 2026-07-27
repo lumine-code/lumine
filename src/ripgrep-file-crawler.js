@@ -12,7 +12,7 @@ const PathsChunkSize = 100;
 // searches file *contents*. Both drive the bundled ripgrep binary, so the crawl
 // itself happens in a separate process: ripgrep honors `.gitignore` natively,
 // walks in parallel, and never blocks the renderer. What is left on this side is
-// line-splitting the paths it streams back.
+// splitting apart the NUL-terminated paths it streams back.
 //
 // It exists so that the ripgrep invocation lives in exactly one place. Every
 // consumer that rolled its own got some of these details right and some wrong:
@@ -68,7 +68,10 @@ module.exports = class RipgrepFileCrawler {
     }
 
     const didFindPaths = options.didFindPaths || (() => {});
-    const args = ["--files", "--hidden"];
+    // `--null` terminates each path with NUL instead of a newline. A newline is
+    // a legal character in a POSIX filename, so splitting on one would break
+    // such a path into two that do not exist.
+    const args = ["--files", "--hidden", "--null"];
 
     if (options.sort) {
       args.push("--sort", "path");
@@ -133,9 +136,9 @@ module.exports = class RipgrepFileCrawler {
 
       child.stdout.on("data", (chunk) => {
         if (cancelled) return;
-        const lines = (remainder + chunk).split(/\r?\n/);
-        remainder = lines.pop();
-        for (const line of lines) found(line);
+        const paths = (remainder + chunk).split("\0");
+        remainder = paths.pop();
+        for (const foundPath of paths) found(foundPath);
       });
 
       child.stderr.on("data", () => {

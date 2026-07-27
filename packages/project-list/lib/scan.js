@@ -14,9 +14,11 @@ module.exports = function (dirPath, scanList) {
     onlyDirectories: true,
   });
   // A pattern ending in `/` matches with the separator still attached; the
-  // caller joins these onto `dirPath`, so strip it.
+  // caller joins these onto `dirPath`, so strip it. tinyglobby always reports
+  // `/`, so only that is a separator here — a trailing backslash would be part
+  // of a POSIX directory name.
   emit(
     "project-list:entries",
-    entries.map((entry) => entry.replace(/[\\/]+$/, "")),
+    entries.map((entry) => entry.replace(/\/+$/, "")),
   );
 };

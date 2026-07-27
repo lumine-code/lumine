@@ -10,7 +10,10 @@ const globMagicPattern = /[*?[\]{}]/;
 //
 // Returns `null` when the pattern does not name an existing directory.
 module.exports = function searchForPattern(rawPattern) {
-  const normalizedPattern = rawPattern.replace(/\\/g, "/");
+  // Globs speak `/`. On Windows the config may use `\`, so normalize the
+  // separators there — but never on POSIX, where a backslash is an ordinary
+  // character in a filename.
+  const normalizedPattern = path.sep === "\\" ? rawPattern.replace(/\\/g, "/") : rawPattern;
   const parts = normalizedPattern.split("/");
   const rootParts = [];
   const includeParts = [];
@@ -26,7 +29,9 @@ module.exports = function searchForPattern(rawPattern) {
   }
 
   if (!foundGlob) {
-    const resolvedPath = path.resolve(rawPattern);
+    // The normalized form, so this branch agrees with the glob one below about
+    // where a Windows pattern's separators are.
+    const resolvedPath = path.resolve(normalizedPattern);
     if (isDirectory(resolvedPath)) {
       return { root: resolvedPath, include: "**" };
     }

@@ -1,11 +1,21 @@
 const { CompositeDisposable, Disposable, Emitter, watchFile, Task } = require("atom");
 const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
-const { glob, isDynamicPattern, convertPathToPattern } = require("tinyglobby");
+const { glob, isDynamicPattern } = require("tinyglobby");
 const fs = require("fs");
 const path = require("path");
 const CSON = require("@lumine-code/season");
 
 const CACHE_UPDATED_CHANNEL = "project-list:cache-updated";
+
+// Windows reads both `\` and `/` as separators; POSIX reads a backslash as an
+// ordinary character in a filename, so only `/` may be rewritten there.
+const WINDOWS_SEPARATORS = path.sep === "\\";
+const TRAILING_SEPARATOR = WINDOWS_SEPARATORS ? /[\\/]+$/ : /\/+$/;
+const ANY_SEPARATOR = WINDOWS_SEPARATORS ? /[\\/]/g : /\//g;
+
+// Settles a path on the platform separator, with no trailing one.
+const normalizeSeparators = (aPath) =>
+  aPath.replace(TRAILING_SEPARATOR, "").split(ANY_SEPARATOR).join(path.sep);
 
 class ProjectList {
   constructor() {
@@ -599,10 +609,15 @@ class ProjectList {
   async expandGlobPaths(paths) {
     const expanded = await Promise.all(
       paths.map((p) => {
-        // Convert before testing: a backslash is an escape character in glob
-        // syntax, so a Windows path reads as a literal until its separators are
-        // normalized.
-        const pattern = convertPathToPattern(p);
+        // Globs speak `/`. On Windows the config may use `\`, which glob syntax
+        // reads as an escape character, so normalize the separators there
+        // first — but never on POSIX, where a backslash is an ordinary
+        // character in a filename.
+        //
+        // Not `convertPathToPattern()`: that one *escapes* glob symbols so a
+        // literal path matches itself, which is the opposite of what a user's
+        // `projects.cson` pattern means.
+        const pattern = WINDOWS_SEPARATORS ? p.split(ANY_SEPARATOR).join("/") : p;
         return isDynamicPattern(pattern)
           ? glob(pattern, { absolute: true, onlyDirectories: true })
           : Promise.resolve([p]);
@@ -611,15 +626,7 @@ class ProjectList {
     // Literals arrive however the user wrote them and matches arrive
     // `/`-separated with a trailing slash, so settle on one form before
     // sorting. `prepareItem` re-adds the trailing separator later.
-    return expanded
-      .flat()
-      .map((p) =>
-        p
-          .replace(/[\\/]+$/, "")
-          .split(/[\\/]/g)
-          .join(path.sep),
-      )
-      .sort();
+    return expanded.flat().map(normalizeSeparators).sort();
   }
 
   editConfig() {
@@ -629,14 +636,7 @@ class ProjectList {
   prepareItem(item) {
     // Format: "#tag1 #tag2 Title" - tags first for better fuzzy matching
     item.text = (item.tags ? item.tags.map((x) => `#${x}`).join(" ") + " " : "") + item.title;
-    item.paths = item.paths.map((ppath) => {
-      return (
-        ppath
-          .replace(/[\\/]+$/, "")
-          .split(/[\\/]/g)
-          .join(path.sep) + path.sep
-      );
-    });
+    item.paths = item.paths.map((ppath) => normalizeSeparators(ppath) + path.sep);
     return item;
   }
 
