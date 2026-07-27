@@ -110,6 +110,13 @@ let options = {
     "!menus/",
     "!script/",
     "!hooks/",
+    // Windows packaging inputs only: the tile manifest and its PNGs ship via
+    // win.extraFiles (Windows must read them from disk next to Lumine.exe), the
+    // .ico/.cmd/.js via win.extraResources, and the .nsh files are compiled into
+    // the NSIS installer. Nothing reads resources/win/ at runtime, so keep it
+    // out of app.asar on every platform. resources/app-icons/ must stay -- that
+    // one IS read from inside the asar, by src/atom-window.js.
+    "!resources/win/",
 
     // Git Related Exclusions
     "!**/{.git,.gitignore,.gitattributes,.git-keep,.github}",
@@ -313,6 +320,30 @@ let options = {
       { from: "resources/win/lumine.js", to: `${baseName}.js` },
       { from: "resources/win/NSIS_Licenses.txt", to: "NSIS_Licenses.txt" },
     ],
+    // Unlike extraResources (which targets <root>/resources), extraFiles
+    // targets the app root. The Start-menu tile manifest has to sit next to
+    // Lumine.exe and be named after it -- Windows never looks inside app.asar,
+    // and a manifest whose stem does not match the executable is ignored in
+    // silence. Deriving the name from `displayName` keeps the two in step.
+    extraFiles: [
+      {
+        from: "resources/win/lumine.visualElementsManifest.xml",
+        to: `${displayName}.VisualElementsManifest.xml`,
+      },
+      // Literal base names only. Scale-qualified variants (Logo.scale-200.png)
+      // resolve solely through MRM, which needs a Resources.pri built by the
+      // Windows SDK's makepri.exe -- an SDK dependency this 3-OS matrix should
+      // not grow. These are rendered at the 200% plateau so Windows, which
+      // scales tile art to fit, only ever scales them down.
+      {
+        from: "resources/win/visualElements/Square150x150Logo.png",
+        to: "visualElements/Square150x150Logo.png",
+      },
+      {
+        from: "resources/win/visualElements/Square70x70Logo.png",
+        to: "visualElements/Square70x70Logo.png",
+      },
+    ],
     target: [{ target: "nsis" }, { target: "zip" }],
   },
 
@@ -323,6 +354,15 @@ let options = {
     runAfterFinish: true,
     createDesktopShortcut: true,
     createStartMenuShortcut: true,
+    // Branding for the assisted installer's pages. Both keys are required:
+    // directories.buildResources defaults to build/, which this repo has no
+    // such directory for, so without them NSIS falls back to its own stock
+    // nsis3-metro sidebar and draws no header at all. Regenerate the bitmaps
+    // with `npm run generate:win-branding`. uninstallerSidebar is deliberately
+    // unset -- electron-builder reuses installerSidebar for the uninstaller's
+    // MUI_UNWELCOMEFINISHPAGE_BITMAP.
+    installerSidebar: "resources/win/installerSidebar.bmp",
+    installerHeader: "resources/win/installerHeader.bmp",
     // GUID is omitted so electron-builder derives it from the appId.
     include: "resources/win/installer.nsh",
     warningsAsErrors: false,
