@@ -19,8 +19,9 @@ module.exports = class ReferencesProvider {
   isEditorSupported(editor) {
     return !!this.manager.adapterForEditor(editor);
   }
-  // Resolves to { symbolName, references: [{ path, range, name? }] }, null when
-  // the session cannot serve references. Request failures reject.
+  // Resolves to { symbolName, references: [{ path, range, name? }] }; null when
+  // no session can serve references, and also when a newer request has
+  // superseded this one. Genuine failures reject.
   async findReferences(editor, point) {
     const all = await this.manager.activeSessionsForEditor(editor);
     const sessions = all.filter((session) => session.supports("textDocument/references", editor));
@@ -32,19 +33,28 @@ module.exports = class ReferencesProvider {
     // merged list is deduplicated by position.
     const seen = new Set();
     const references = [];
-    const responses = await Promise.all(
-      sessions.map((session) =>
-        session.request(
-          "textDocument/references",
-          {
-            textDocument: { uri: C.pathToUri(editor.getPath()) },
-            position: C.pointToPosition(point),
-            context: { includeDeclaration: true },
-          },
-          { signal },
+    let responses;
+    try {
+      responses = await Promise.all(
+        sessions.map((session) =>
+          session.request(
+            "textDocument/references",
+            {
+              textDocument: { uri: C.pathToUri(editor.getPath()) },
+              position: C.pointToPosition(point),
+              context: { includeDeclaration: true },
+            },
+            { signal },
+          ),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      // Cancelling our own in-flight request is not a failure: the cursor
+      // moved and a newer request is already on its way. Reporting it would
+      // put "the reference request failed" on screen for ordinary typing.
+      if (signal.aborted) return null;
+      throw error;
+    }
     for (const location of responses.flat()) {
       if (!location) continue;
       const path = C.uriToPath(location.uri);

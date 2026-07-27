@@ -124,6 +124,52 @@ describe("ReferencesProvider", () => {
       },
     ]);
   });
+  it("resolves null when a newer request supersedes it", async () => {
+    // A session that actually honours the signal, the way the JSON-RPC
+    // connection does.
+    let release;
+    const gate = new Promise((resolve) => {
+      release = resolve;
+    });
+    let pending = 0;
+    const session = {
+      state: "running",
+      capabilities: {},
+      supports: () => true,
+      request: async (_method, _params, { signal } = {}) => {
+        if (++pending === 1) {
+          await gate;
+          if (signal?.aborted) throw signal.reason ?? new Error("Request cancelled");
+        }
+        return [{ uri: fileUri, range: lspRange(0, 6, 11) }];
+      },
+    };
+    const provider = new ReferencesProvider(managerWith(session));
+
+    // The cursor rests, then moves again before the server has answered.
+    const superseded = provider.findReferences(stubEditor(), { row: 0, column: 8 });
+    const current = provider.findReferences(stubEditor(), { row: 0, column: 9 });
+    release();
+
+    // Cancelling our own request is not a failure: rejecting here is what put
+    // "the reference request failed — signal is aborted without reason" on
+    // screen for ordinary cursor movement.
+    expect(await superseded).toBeNull();
+    expect((await current).references.length).toBe(1);
+  });
+  it("still rejects when the server genuinely fails", async () => {
+    const session = sessionWith(() => {
+      throw new Error("server exploded");
+    });
+    const provider = new ReferencesProvider(managerWith(session));
+    let message = null;
+    try {
+      await provider.findReferences(stubEditor(), { row: 0, column: 8 });
+    } catch (error) {
+      message = error.message;
+    }
+    expect(message).toBe("server exploded");
+  });
   it("resolves null without a capable session", async () => {
     const provider = new ReferencesProvider(managerWith(null));
     expect(await provider.findReferences(stubEditor(), { row: 0, column: 0 })).toBeNull();
