@@ -517,6 +517,12 @@ module.exports = class AutocompleteManager {
     // default.
     let firstCharacterMustMatch = atom.config.get("autocomplete.firstCharacterMustMatch");
 
+    // Scored in batches rather than one call per suggestion: `score()` builds a
+    // fresh native matcher every time, which on the ~1000-item list a language
+    // server returns for a global scope costs about 4 ms of every keystroke
+    // against 0.6 ms for the batch API. Suggestions are grouped by the prefix
+    // they are matched against, since a provider may give each its own.
+    const groups = new Map();
     for (let i = 0; i < suggestions.length; i++) {
       const suggestion = suggestions[i];
       // Ties fall back to the order the provider supplied them in.
@@ -539,18 +545,29 @@ module.exports = class AutocompleteManager {
         continue;
       }
 
-      const text = matchTextFor(suggestion);
-      if (firstCharacterMustMatch && text[0]?.toLowerCase() !== suggestionPrefix[0].toLowerCase()) {
-        continue;
-      }
+      const group = groups.get(suggestionPrefix);
+      if (group) group.push(suggestion);
+      else groups.set(suggestionPrefix, [suggestion]);
+    }
 
-      const score = atom.ui.fuzzyMatcher.score(text, suggestionPrefix);
-      if (!score) {
-        continue;
+    for (const [suggestionPrefix, group] of groups) {
+      const texts = group.map(matchTextFor);
+      // `match` returns only the candidates that scored above zero, each
+      // carrying the index of the candidate it came from.
+      const matches = atom.ui.fuzzyMatcher.setCandidates(texts).match(suggestionPrefix);
+      for (const match of matches) {
+        const text = texts[match.id];
+        if (
+          firstCharacterMustMatch &&
+          text[0]?.toLowerCase() !== suggestionPrefix[0].toLowerCase()
+        ) {
+          continue;
+        }
+        const suggestion = group[match.id];
+        suggestion.score = match.score;
+        suggestion.matchTier = matchTierFor(text, suggestionPrefix);
+        results.push(suggestion);
       }
-      suggestion.score = score;
-      suggestion.matchTier = matchTierFor(text, suggestionPrefix);
-      results.push(suggestion);
     }
 
     results.sort(compareSuggestions);
@@ -762,13 +779,48 @@ module.exports = class AutocompleteManager {
     if (this.editor === null) return;
     let range = Range.fromObject(textEdit.range ?? textEdit.oldRange);
     if (isSnippet && this.snippetsManager) {
+      // Snippet expansion drives the cursor through its tab stops, so it only
+      // makes sense at one place: the other cursors keep what they had.
       let selection = this.editor.getLastSelection();
       let cursor = selection.cursor;
       selection.setBufferRange(range);
       this.snippetsManager.insertSnippet(textEdit.newText, this.editor, cursor);
     } else {
-      this.editor.setTextInBufferRange(range, textEdit.newText);
+      for (const editRange of this.textEditRangesForCursors(range)) {
+        this.editor.setTextInBufferRange(editRange, textEdit.newText);
+      }
     }
+  }
+
+  // A completion's edit range covers the word being typed and ends at the
+  // cursor it was requested for, so the same span — the same number of
+  // characters either side — is what every other cursor wants replaced.
+  // Without this an edit landed once and the other cursors kept their prefix.
+  textEditRangesForCursors(range) {
+    const cursors = this.editor.getCursors();
+    if (cursors.length < 2) return [range];
+
+    const origin = this.editor.getLastCursor().getBufferPosition();
+    // Only cursors on the same row as the edit can be offset this way; a
+    // multi-row edit is not a prefix replacement and is left alone.
+    if (range.start.row !== origin.row || range.end.row !== origin.row) return [range];
+
+    const before = origin.column - range.start.column;
+    const after = range.end.column - origin.column;
+    return (
+      cursors
+        .map((cursor) => cursor.getBufferPosition())
+        // Later rows first, so an earlier edit cannot shift a range still to be
+        // applied. Cursors sharing a row are handled right-to-left for the same
+        // reason.
+        .sort((a, b) => b.compare(a))
+        .map((position) =>
+          Range.fromObject([
+            [position.row, Math.max(0, position.column - before)],
+            [position.row, position.column + after],
+          ]),
+        )
+    );
   }
 
   // Private: Replaces the current prefix with the given match.

@@ -590,7 +590,55 @@ describe("Provider API", () => {
       return waitForAutocompleteToDisappear(editor);
     };
 
-    beforeEach(() => editor.setText(""));
+    beforeEach(() => {
+      editor.setText("");
+      // Collapses to a single cursor: a spec that adds one would otherwise
+      // leave it in place for the next.
+      editor.setCursorBufferPosition([0, 0]);
+    });
+
+    it("applies a textEdit at every cursor", () => {
+      editor.setText("oh\noh\n");
+      editor.setCursorBufferPosition([0, 2]);
+      editor.addCursorAtBufferPosition([1, 2]);
+
+      // Driven directly rather than through the popup: the insertion path is
+      // what is under test, and a suggestion list needs a single cursor's
+      // worth of activation machinery to open at all.
+      autocompleteManager.replaceTextWithMatch({
+        text: "ohai",
+        // As a server reports it: the range covers the typed prefix and ends
+        // at the cursor the request was made for — the last one, on row 1.
+        textEdit: {
+          range: [
+            [1, 0],
+            [1, 2],
+          ],
+          newText: "ohai",
+        },
+      });
+
+      // Applying the edit once leaves the other line as "oh".
+      expect(editor.getText()).toBe("ohai\nohai\n");
+    });
+
+    it("applies a textEdit once when there is a single cursor", () => {
+      editor.setText("oh\noh\n");
+      editor.setCursorBufferPosition([0, 2]);
+
+      autocompleteManager.replaceTextWithMatch({
+        text: "ohai",
+        textEdit: {
+          range: [
+            [0, 0],
+            [0, 2],
+          ],
+          newText: "ohai",
+        },
+      });
+
+      expect(editor.getText()).toBe("ohai\noh\n");
+    });
 
     it("replaces the right range on the editor when `range` is present", async () => {
       testProvider = {
