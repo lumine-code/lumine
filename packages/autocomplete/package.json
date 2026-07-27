@@ -242,7 +242,7 @@
         },
         {
           "value": "textOrSnippet",
-          "description": "Remove when the insertion text or snippet match"
+          "description": "Remove a suggestion that inserts the same text as an earlier one and shows nothing more, such as a buffer word behind a real completion"
         }
       ],
       "default": "textOrSnippet"

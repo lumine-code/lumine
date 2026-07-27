@@ -580,6 +580,54 @@ describe("Provider API", () => {
     });
   });
 
+  describe("removing redundant suggestions", () => {
+    it("drops a bare duplicate of a richer suggestion", () => {
+      // What the buffer-word provider produces alongside a real completion of
+      // the same name.
+      const shown = autocompleteManager.removeRedundantSuggestions([
+        { text: "map", leftLabel: "(method)", description: "Calls a function." },
+        { text: "map" },
+      ]);
+      expect(shown.length).toBe(1);
+      expect(shown[0].leftLabel).toBe("(method)");
+    });
+
+    it("drops a suggestion that repeats one already shown", () => {
+      const shown = autocompleteManager.removeRedundantSuggestions([
+        { text: "map", leftLabel: "(method)" },
+        { text: "map", leftLabel: "(method)" },
+      ]);
+      expect(shown.length).toBe(1);
+    });
+
+    it("keeps the same symbol offered from two different modules", () => {
+      // Both insert "readFile" and differ only in where it comes from and the
+      // import each brings. Collapsing them would choose a module silently.
+      const shown = autocompleteManager.removeRedundantSuggestions([
+        { text: "readFile", rightLabel: "node:fs" },
+        { text: "readFile", rightLabel: "node:fs/promises" },
+      ]);
+      expect(shown.length).toBe(2);
+      expect(shown.map((item) => item.rightLabel)).toEqual(["node:fs", "node:fs/promises"]);
+    });
+
+    it("keeps suggestions that insert different text", () => {
+      const shown = autocompleteManager.removeRedundantSuggestions([
+        { text: "map" },
+        { text: "filter" },
+      ]);
+      expect(shown.length).toBe(2);
+    });
+
+    it("tells a snippet apart from a word that inserts the same text", () => {
+      const shown = autocompleteManager.removeRedundantSuggestions([
+        { snippet: "for (${1:i}) {}", displayText: "for" },
+        { text: "for" },
+      ]);
+      expect(shown.length).toBe(2);
+    });
+  });
+
   describe("range-based replacement", () => {
     const triggerAutocompletion = () => {
       atom.commands.dispatch(atom.views.getView(editor), "autocomplete:activate");
