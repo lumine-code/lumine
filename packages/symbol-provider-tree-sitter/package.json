@@ -36,7 +36,7 @@
     }
   },
   "devDependencies": {
-    "eslint": "^10.7.0",
+    "eslint": "^10.8.0",
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"
   }
