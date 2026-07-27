@@ -60,6 +60,11 @@ describe("ServerSession against a fake server", () => {
     expect(initialize.params.capabilities.textDocument.inlayHint).toBeUndefined();
     expect(initialize.params.capabilities.textDocument.semanticTokens).toBeUndefined();
     expect(initialize.params.capabilities.textDocument.codeLens).toBeUndefined();
+    // Diagnostic tags are only sent by a server that saw them advertised, so
+    // assert this over the real handshake rather than by reading the module.
+    expect(initialize.params.capabilities.textDocument.publishDiagnostics.tagSupport).toEqual({
+      valueSet: [1, 2],
+    });
   });
 
   it("merges registered capability fragments into the handshake", async () => {

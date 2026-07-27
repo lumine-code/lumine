@@ -26,6 +26,7 @@ exports.baseCapabilities = () => ({
     },
     publishDiagnostics: {
       relatedInformation: true,
+      tagSupport: { valueSet: [1, 2] },
       versionSupport: true,
       codeDescriptionSupport: true,
       dataSupport: true,

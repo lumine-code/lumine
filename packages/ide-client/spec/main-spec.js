@@ -125,11 +125,22 @@ describe("ide-client package", () => {
             severity: 2,
             message: "Example warning",
           },
+          // The full path is what matters here: the hub validates this batch
+          // unconditionally, so a hint that it rejected would drop the warning
+          // above along with it.
+          {
+            range: { start: { line: 1, character: 0 }, end: { line: 1, character: 4 } },
+            severity: 4,
+            tags: [1],
+            message: "Unused import",
+          },
         ],
       },
     );
     expect(delegate.batches[0].filePath).toBe(filePath);
     expect(delegate.batches[0].messages[0].severity).toBe("warning");
+    expect(delegate.batches[0].messages[1].severity).toBe("hint");
+    expect(delegate.batches[0].messages[1].tags).toEqual(["unnecessary"]);
     registration.dispose();
   });
 });

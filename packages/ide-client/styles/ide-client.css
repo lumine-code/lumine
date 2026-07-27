@@ -83,3 +83,17 @@
 .ide-client-strike {
   text-decoration: line-through;
 }
+
+/* Inside an editor line this class shares its span with the linter's severity
+ * underline — the editor merges overlapping text decorations onto one element —
+ * and text-decoration carries a single line, colour and style for the whole
+ * span, so whichever rule wins the cascade erases the other. Draw the strike as
+ * a background there instead. The autocomplete list keeps the rule above, where
+ * text-decoration is exactly right. */
+.ide-client-semantic-token.ide-client-strike {
+  text-decoration: none;
+  background-image: linear-gradient(currentColor, currentColor);
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+  background-position: 0 55%;
+}
