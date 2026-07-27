@@ -454,7 +454,7 @@ module.exports = class AtomApplication extends EventEmitter {
       const focusHandler = () => this.windowStack.touch(window);
       const blurHandler = () => this.saveCurrentWindowOptions(false);
       const scrollbarStyleChangeDisposable = onDidChangeScrollbarStyle((newValue) => {
-        window.browserWindow.webContents.send("did-change-scrollbar-style", newValue);
+        window.sendToRenderer("did-change-scrollbar-style", newValue);
       });
       window.browserWindow.on("focus", focusHandler);
       window.browserWindow.on("blur", blurHandler);
@@ -756,8 +756,9 @@ module.exports = class AtomApplication extends EventEmitter {
     this.disposable.add(
       ipcHelpers.on(ipcMain, "did-change-history-manager", (event) => {
         for (let atomWindow of this.getAllWindows()) {
-          const { webContents } = atomWindow.browserWindow;
-          if (webContents !== event.sender) webContents.send("did-change-history-manager");
+          if (atomWindow.browserWindow.webContents !== event.sender) {
+            atomWindow.sendToRenderer("did-change-history-manager");
+          }
         }
       }),
     );
@@ -767,9 +768,8 @@ module.exports = class AtomApplication extends EventEmitter {
         if (typeof eventName !== "string") return;
 
         for (let atomWindow of this.getAllWindows()) {
-          const { webContents } = atomWindow.browserWindow;
-          if (webContents !== event.sender) {
-            webContents.send(WINDOW_EVENT_CHANNEL, eventName, ...args);
+          if (atomWindow.browserWindow.webContents !== event.sender) {
+            atomWindow.sendToRenderer(WINDOW_EVENT_CHANNEL, eventName, ...args);
           }
         }
       }),

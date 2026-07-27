@@ -367,15 +367,20 @@ module.exports = class AtomWindow extends EventEmitter {
   // reload, after the renderer's main frame has already been disposed.
   // Sending IPC at that point has no renderer left to act on it, so drop the
   // message instead of letting Electron log a disposed-frame error.
+  //
+  // The window and its `webContents` both outlive that disposal, so neither
+  // `isDestroyed()` catches it: `webContents.send()` forwards to the main
+  // frame, and sending through a frame whose render frame is gone throws
+  // inside Electron, which swallows the error and logs it. `isDestroyed()` on
+  // the frame is the accessor that stays safe once it is disposed, so it has
+  // to come before any other frame property.
   sendToRenderer(channel, ...args) {
     if (this.browserWindow.isDestroyed()) return;
     const contents = this.browserWindow.webContents;
     if (contents.isDestroyed()) return;
-    try {
-      contents.send(channel, ...args);
-    } catch {
-      // The frame was disposed between the check and the send.
-    }
+    const frame = contents.mainFrame;
+    if (!frame || frame.isDestroyed() || frame.detached) return;
+    frame.send(channel, ...args);
   }
 
   sendMessage(message, detail) {
