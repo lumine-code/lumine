@@ -212,6 +212,7 @@ module.exports = class ServerSession {
     doc.subscriptions.dispose();
     this.documents.delete(uri);
     this.connection.notify("textDocument/didClose", { textDocument: { uri } });
+    if (!this.documents.size) this.manager.didCloseDocument(this);
   }
   request(method, params, options) {
     if (this.state !== "running")

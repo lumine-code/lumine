@@ -24,6 +24,123 @@ describe("LanguageServerManager adapters", () => {
   });
 });
 
+describe("LanguageServerManager session lifetime", () => {
+  let manager;
+  const sessionAt = (rootPath) => {
+    const session = {
+      adapter: { id: "test", displayName: "Test", grammarScopes: ["source.test"] },
+      rootPath,
+      state: "running",
+      documents: new Map(),
+      stop: jasmine.createSpy("stop").and.callFake(async () => {
+        session.state = "stopped";
+      }),
+    };
+    manager.sessions.set(`test:${rootPath}`, session);
+    return session;
+  };
+
+  beforeEach(() => {
+    manager = new LanguageServerManager();
+  });
+  afterEach(async () => manager.deactivate());
+
+  it("reclaims a session rooted outside the project once its last editor closes", () => {
+    // What opening a lone file with no project folder produces: the root is
+    // the file's own directory, so nothing will ever ask for this session
+    // again.
+    const session = sessionAt(path.join(path.sep, "tmp", "loose"));
+    manager.didCloseDocument(session);
+    advanceClock(1000);
+    expect(session.stop).toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(0);
+  });
+
+  it("keeps a session rooted at a project path warm", () => {
+    const [root] = atom.project.getPaths();
+    expect(root).toBeDefined();
+    const session = sessionAt(root);
+    manager.didCloseDocument(session);
+    advanceClock(1000);
+    // Reopening a file in the project must not pay for another server start.
+    expect(session.stop).not.toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(1);
+  });
+
+  it("keeps a session whose documents came back before the grace period", () => {
+    const session = sessionAt(path.join(path.sep, "tmp", "loose"));
+    manager.didCloseDocument(session);
+    // A save under a new name closes and reopens the document.
+    session.documents.set("file:///tmp/loose/a.test", {});
+    advanceClock(1000);
+    expect(session.stop).not.toHaveBeenCalled();
+  });
+
+  it("gives an editor a new server when its root leaves the project", async () => {
+    const editor = await atom.workspace.open(path.join(atom.project.getPaths()[0], "a.test"));
+    spyOn(manager, "reattachEditor");
+    spyOn(manager, "attachEditor");
+
+    // The session serving it was stopped by reconcileProjects when the root
+    // went away, leaving the still-open editor with nothing.
+    manager.rerouteEditorsToTheirRoots();
+    expect(manager.attachEditor).toHaveBeenCalledWith(editor);
+    editor.destroy();
+  });
+
+  it("moves an editor onto the session of the root it just gained", async () => {
+    const filePath = path.join(atom.project.getPaths()[0], "b.test");
+    const editor = await atom.workspace.open(filePath);
+    // Attached to a session keyed to its own directory, as it would be when
+    // opened before any project folder existed.
+    const loose = sessionAt(path.dirname(filePath));
+    loose.documents.set(require("url").pathToFileURL(filePath).href, {});
+    spyOn(manager, "reattachEditor");
+
+    manager.rerouteEditorsToTheirRoots();
+    expect(manager.reattachEditor).toHaveBeenCalledWith(editor);
+    editor.destroy();
+  });
+
+  it("leaves an editor alone when its root did not change", async () => {
+    const filePath = path.join(atom.project.getPaths()[0], "c.test");
+    const editor = await atom.workspace.open(filePath);
+    manager.registerAdapter({
+      id: "test",
+      displayName: "Test",
+      grammarScopes: [editor.getGrammar().scopeName],
+      resolveServer: async () => null,
+    });
+    const root = atom.project.getPaths()[0];
+    const session = sessionAt(root);
+    session.documents.set(require("url").pathToFileURL(filePath).href, {});
+    spyOn(manager, "reattachEditor");
+    spyOn(manager, "attachEditor");
+
+    // Already on the right session: no didClose/didOpen churn for every open
+    // editor each time a folder is added.
+    manager.rerouteEditorsToTheirRoots();
+    expect(manager.reattachEditor).not.toHaveBeenCalled();
+    expect(manager.attachEditor).not.toHaveBeenCalled();
+    editor.destroy();
+  });
+
+  it("reroutes editors whenever the project paths change", () => {
+    spyOn(manager, "rerouteEditorsToTheirRoots");
+    manager.knownRoots = [];
+    manager.projectPathsChanged();
+    expect(manager.rerouteEditorsToTheirRoots).toHaveBeenCalled();
+  });
+
+  it("drops pending checks when the package deactivates", async () => {
+    const session = sessionAt(path.join(path.sep, "tmp", "loose"));
+    manager.didCloseDocument(session);
+    expect(manager.idleChecks.size).toBe(1);
+    await manager.deactivate();
+    expect(manager.idleChecks.size).toBe(0);
+  });
+});
+
 describe("LanguageServerManager capabilities", () => {
   let manager;
   beforeEach(() => {

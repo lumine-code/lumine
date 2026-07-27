@@ -7,6 +7,9 @@ const C = require("./converters");
 const { baseCapabilities, mergeCapabilities } = require("./capabilities");
 const { languageIdForEditor } = require("./language-ids");
 
+// Grace period before a session with no documents left is reclaimed.
+const IDLE_SHUTDOWN_MS = 1000;
+
 module.exports = class LanguageServerManager {
   constructor() {
     this.adapters = new Map();
@@ -20,6 +23,8 @@ module.exports = class LanguageServerManager {
     this.busyProvider = null;
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
+    // Pending checks for sessions whose last document just closed.
+    this.idleChecks = new Map();
   }
   activate() {
     this.knownRoots = atom.project.getPaths();
@@ -360,6 +365,26 @@ module.exports = class LanguageServerManager {
       }
     }
     this.reconcileProjects();
+    this.rerouteEditorsToTheirRoots();
+  }
+  // Which session serves an editor follows from its root, so adding or
+  // removing a project folder can move it. A file that gained a root belongs
+  // to that root's session now rather than the one keyed to its own directory,
+  // and a file whose root was just removed has had its server stopped from
+  // under it by `reconcileProjects` and needs another.
+  rerouteEditorsToTheirRoots() {
+    for (const editor of atom.workspace.getTextEditors()) {
+      const filePath = editor.getPath();
+      if (!filePath) continue;
+      const uri = C.pathToUri(filePath);
+      const wanted = new Set(this.sessionsForEditor(editor));
+      const attached = [...this.sessions.values()].filter((session) => session.documents.has(uri));
+      if (attached.length !== wanted.size || attached.some((session) => !wanted.has(session))) {
+        this.reattachEditor(editor);
+      } else if (!attached.length) {
+        this.attachEditor(editor);
+      }
+    }
   }
   pushSettingsForAdapter(adapter) {
     for (const session of this.sessions.values())
@@ -540,6 +565,36 @@ module.exports = class LanguageServerManager {
     if (this.sessions.get(key) === session) this.sessions.delete(key);
     await session.stop();
   }
+  // A session outlives the editors it serves on purpose: reopening a file in a
+  // project should not pay for another server start. That only holds while
+  // something can still reach it — a session rooted at a project path waits for
+  // the next editor there. One rooted at a lone file's directory, opened with
+  // no project, can never be reached again once that editor is gone, so it is
+  // shut down instead of idling for the life of the window.
+  didCloseDocument(session) {
+    if (this.idleChecks.has(session)) return;
+    const timer = setTimeout(() => {
+      this.idleChecks.delete(session);
+      this.stopIfUnreachable(session);
+      // Long enough that closing an editor to immediately reopen it — a save
+      // under a new name, a grammar change — does not restart the server.
+    }, IDLE_SHUTDOWN_MS);
+    this.idleChecks.set(session, timer);
+  }
+  stopIfUnreachable(session) {
+    if (session.state === "stopped" || session.state === "stopping") return;
+    if (session.documents.size > 0) return;
+    if (atom.project.getPaths().includes(session.rootPath)) return;
+    const stillServesAnEditor = atom.workspace
+      .getTextEditors()
+      .some((editor) => this.sessionsForEditor(editor).includes(session));
+    if (stillServesAnEditor) return;
+    this.disconnect(session);
+  }
+  cancelIdleChecks() {
+    for (const timer of this.idleChecks.values()) clearTimeout(timer);
+    this.idleChecks.clear();
+  }
   reconcileProjects() {
     const roots = atom.project.getPaths();
     for (const [key, session] of this.sessions)
@@ -549,6 +604,7 @@ module.exports = class LanguageServerManager {
       }
   }
   async deactivate() {
+    this.cancelIdleChecks();
     this.subscriptions.dispose();
     for (const subs of this.editorSubscriptions.values()) subs.dispose();
     this.editorSubscriptions.clear();
