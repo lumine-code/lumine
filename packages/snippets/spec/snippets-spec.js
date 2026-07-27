@@ -97,6 +97,26 @@ describe("Snippets extension", () => {
         snippetsInterface.insertSnippet("hello ${1:world}", editor);
         expect(editor.lineTextForBufferRow(0)).toBe("var hello world = function () {");
       });
+
+      it("indents the lines of a multi-line snippet to match where it lands", () => {
+        editor.setText("  start\n");
+        editor.setCursorBufferPosition([0, 7]);
+        snippetsInterface.insertSnippet("\nsecond\nthird", editor);
+        expect(editor.lineTextForBufferRow(1)).toBe("  second");
+        expect(editor.lineTextForBufferRow(2)).toBe("  third");
+      });
+
+      it("inserts a snippet exactly as written when indentation is not adjusted", () => {
+        editor.setText("  start\n");
+        editor.setCursorBufferPosition([0, 7]);
+        // A language server sending LSP `insertTextMode: asIs` has already
+        // decided what the text should look like.
+        snippetsInterface.insertSnippet("\nsecond\nthird", editor, undefined, {
+          adjustIndentation: false,
+        });
+        expect(editor.lineTextForBufferRow(1)).toBe("second");
+        expect(editor.lineTextForBufferRow(2)).toBe("third");
+      });
     });
   });
 

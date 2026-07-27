@@ -128,6 +128,33 @@ describe("CompletionProvider item mapping", () => {
     expect((await suggestionFor({ label: "current", tags: [2] })).className).toBeUndefined();
   });
 
+  it("passes the insert-text mode through, including from the list defaults", async () => {
+    expect((await suggestionFor({ label: "asIs", insertTextMode: 1 })).insertTextMode).toBe(1);
+
+    const provider = new CompletionProvider(
+      managerWith(
+        sessionWith(() => ({
+          itemDefaults: { insertTextMode: 2 },
+          items: [{ label: "inherited" }, { label: "own", insertTextMode: 1 }],
+        })),
+      ),
+    );
+    const suggestions = await provider.getSuggestions({
+      editor: stubEditor("con"),
+      bufferPosition: { row: 0, column: 2 },
+      prefix: "co",
+    });
+    const byLabel = Object.fromEntries(suggestions.map((s) => [s.displayText, s]));
+    expect(byLabel.inherited.insertTextMode).toBe(2);
+    expect(byLabel.own.insertTextMode).toBe(1);
+  });
+
+  it("advertises insert-text mode support", () => {
+    const completion = CompletionProvider.capabilities.textDocument.completion;
+    expect(completion.completionItem.insertTextModeSupport.valueSet).toEqual([1, 2]);
+    expect(completion.completionList.itemDefaults).toContain("insertTextMode");
+  });
+
   it("advertises deprecated tag support", () => {
     const completionItem = CompletionProvider.capabilities.textDocument.completion.completionItem;
     expect(completionItem.tagSupport.valueSet).toEqual([1]);

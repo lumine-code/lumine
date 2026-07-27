@@ -30,6 +30,11 @@ function sortTextEdits(textEdits) {
   return textEdits.sort((a, b) => compareRanges(a.range, b.range));
 }
 
+// LSP `InsertTextMode`: 1 leaves the inserted text exactly as the provider
+// wrote it, 2 re-indents it to match the line it lands on.
+const INSERT_TEXT_MODE_AS_IS = 1;
+const INSERT_TEXT_MODE_ADJUST_INDENTATION = 2;
+
 // How long confirming waits for a provider's in-flight detail request before
 // inserting what it already has. Long enough for a warm language server to
 // answer with its auto-import edits, short enough not to feel like lag.
@@ -775,7 +780,7 @@ module.exports = class AutocompleteManager {
   }
 
   // Private: Applies a `TextEdit` to the given editor.
-  applyTextEdit(textEdit, isSnippet = false) {
+  applyTextEdit(textEdit, isSnippet = false, insertTextMode = undefined) {
     if (this.editor === null) return;
     let range = Range.fromObject(textEdit.range ?? textEdit.oldRange);
     if (isSnippet && this.snippetsManager) {
@@ -784,10 +789,20 @@ module.exports = class AutocompleteManager {
       let selection = this.editor.getLastSelection();
       let cursor = selection.cursor;
       selection.setBufferRange(range);
-      this.snippetsManager.insertSnippet(textEdit.newText, this.editor, cursor);
+      this.snippetsManager.insertSnippet(textEdit.newText, this.editor, cursor, {
+        adjustIndentation: insertTextMode !== INSERT_TEXT_MODE_AS_IS,
+      });
     } else {
       for (const editRange of this.textEditRangesForCursors(range)) {
-        this.editor.setTextInBufferRange(editRange, textEdit.newText);
+        const inserted = this.editor.setTextInBufferRange(editRange, textEdit.newText);
+        // Plain text carries no tab stops, so nothing re-indents it unless
+        // asked. Only worth doing for an edit that spans lines.
+        if (
+          insertTextMode === INSERT_TEXT_MODE_ADJUST_INDENTATION &&
+          inserted.start.row !== inserted.end.row
+        ) {
+          this.editor.autoIndentBufferRows(inserted.start.row + 1, inserted.end.row);
+        }
       }
     }
   }
@@ -873,7 +888,7 @@ module.exports = class AutocompleteManager {
         // already have a `snippet` property that we can reuse for this purpose
         // in a way that's rather backward-compatible. If `snippet` is truthy,
         // we'll assume ourselves to be in snippet mode.
-        this.applyTextEdit(suggestion.textEdit, !!suggestion.snippet);
+        this.applyTextEdit(suggestion.textEdit, !!suggestion.snippet, suggestion.insertTextMode);
       } else if (suggestion.ranges) {
         // Suggestion wants to insert the default text over one or more
         // specific ranges. This occurs instead of the default text insertion

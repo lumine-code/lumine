@@ -987,7 +987,7 @@ module.exports = {
     this.getStore(editor).makeCheckpoint();
   },
 
-  insert(snippet, editor, cursor, { method = null } = {}) {
+  insert(snippet, editor, cursor, { method = null, adjustIndentation = true } = {}) {
     if (editor == null) {
       editor = atom.workspace.getActiveTextEditor();
     }
@@ -1004,7 +1004,7 @@ module.exports = {
         bodyText: snippet,
       });
     }
-    return new SnippetExpansion(snippet, editor, cursor, this, { method });
+    return new SnippetExpansion(snippet, editor, cursor, this, { method, adjustIndentation });
   },
 
   getUnparsedSnippets() {

@@ -7,6 +7,7 @@ const COMPLETION_CAPABILITIES = {
       contextSupport: true,
       completionItem: {
         snippetSupport: true,
+        insertTextModeSupport: { valueSet: [1, 2] },
         documentationFormat: ["markdown", "plaintext"],
         deprecatedSupport: true,
         // `CompletionItemTag.Deprecated` — the 3.15 replacement for the
@@ -22,7 +23,13 @@ const COMPLETION_CAPABILITIES = {
       },
       completionItemKind: { valueSet: Array.from({ length: 25 }, (_, i) => i + 1) },
       completionList: {
-        itemDefaults: ["editRange", "insertTextFormat", "data", "commitCharacters"],
+        itemDefaults: [
+          "editRange",
+          "insertTextFormat",
+          "insertTextMode",
+          "data",
+          "commitCharacters",
+        ],
       },
     },
   },
@@ -190,6 +197,8 @@ module.exports = class CompletionProvider {
     const merged = { ...item };
     if (merged.insertTextFormat == null && defaults.insertTextFormat != null)
       merged.insertTextFormat = defaults.insertTextFormat;
+    if (merged.insertTextMode == null && defaults.insertTextMode != null)
+      merged.insertTextMode = defaults.insertTextMode;
     if (merged.data == null && defaults.data != null) merged.data = defaults.data;
     if (merged.commitCharacters == null && defaults.commitCharacters != null)
       merged.commitCharacters = defaults.commitCharacters;
@@ -221,6 +230,9 @@ module.exports = class CompletionProvider {
       // What the server wants matched against, which is not always the label.
       filterText: item.filterText,
       preselect: item.preselect,
+      // Whether the inserted text should be re-indented to its new
+      // surroundings, or left exactly as the server wrote it.
+      insertTextMode: item.insertTextMode,
       // A deprecated symbol is struck through rather than hidden: it still
       // exists and still compiles, and the user needs to see which of the two
       // overloads in front of them is the one on the way out. `tags` is the

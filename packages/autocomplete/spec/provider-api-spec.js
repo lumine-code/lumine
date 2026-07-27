@@ -622,6 +622,47 @@ describe("Provider API", () => {
       expect(editor.getText()).toBe("ohai\nohai\n");
     });
 
+    it("re-indents a multi-line plain-text edit when asked to", () => {
+      editor.setText("  const x = 1;\n");
+      editor.setCursorBufferPosition([0, 14]);
+
+      autocompleteManager.replaceTextWithMatch({
+        text: "block",
+        // LSP insertTextMode 2: adjust the inserted lines to their new
+        // surroundings. Plain text has no tab stops, so nothing else does it.
+        insertTextMode: 2,
+        textEdit: {
+          range: [
+            [0, 14],
+            [0, 14],
+          ],
+          newText: "\nif (x) {\nreturn x;\n}",
+        },
+      });
+
+      const lines = editor.getText().split("\n");
+      expect(lines[1].startsWith("  ")).toBe(true);
+      expect(lines[2].startsWith("    ")).toBe(true);
+    });
+
+    it("leaves a multi-line plain-text edit alone by default", () => {
+      editor.setText("  const x = 1;\n");
+      editor.setCursorBufferPosition([0, 14]);
+
+      autocompleteManager.replaceTextWithMatch({
+        text: "block",
+        textEdit: {
+          range: [
+            [0, 14],
+            [0, 14],
+          ],
+          newText: "\nif (x) {\nreturn x;\n}",
+        },
+      });
+
+      expect(editor.getText().split("\n")[1]).toBe("if (x) {");
+    });
+
     it("applies a textEdit once when there is a single cursor", () => {
       editor.setText("oh\noh\n");
       editor.setCursorBufferPosition([0, 2]);

@@ -1,7 +1,11 @@
 const { CompositeDisposable, Range, Point } = require("atom");
 
 module.exports = class SnippetExpansion {
-  constructor(snippet, editor, cursor, snippets, { method } = {}) {
+  // `adjustIndentation` false inserts the body exactly as given: no leading
+  // indentation copied onto its lines, no tab normalization. A language server
+  // sending LSP `insertTextMode: asIs` has already decided what the text
+  // should look like.
+  constructor(snippet, editor, cursor, snippets, { method, adjustIndentation = true } = {}) {
     this.settingTabStop = false;
     this.isIgnoringBufferChanges = false;
     this.onUndoOrRedo = this.onUndoOrRedo.bind(this);
@@ -45,8 +49,9 @@ module.exports = class SnippetExpansion {
     let { body, tabStopList } = this.snippet;
     let tabStops = tabStopList.toArray();
 
+    this.adjustIndentation = adjustIndentation;
     let indent = this.editor.lineTextForBufferRow(startPosition.row).match(/^\s*/)[0];
-    if (this.snippet.lineCount > 1 && indent) {
+    if (adjustIndentation && this.snippet.lineCount > 1 && indent) {
       // Add proper leading indentation to the snippet
       body = body.replace(/\n/g, `\n${indent}`);
 
@@ -104,7 +109,9 @@ module.exports = class SnippetExpansion {
         // Snippet bodies are written generically and don't know anything
         // about the user's indentation settings. So we adjust them after
         // expansion.
-        this.editor.normalizeTabsInBufferRange(newRangeMarker.getBufferRange());
+        if (this.adjustIndentation) {
+          this.editor.normalizeTabsInBufferRange(newRangeMarker.getBufferRange());
+        }
       });
     });
   }

@@ -180,6 +180,18 @@ type Suggestion =
       preselect?: boolean;
 
       /**
+       * How inserted text should be indented, following LSP `InsertTextMode`:
+       * `1` inserts it exactly as written, `2` re-indents it to match the line
+       * it lands on.
+       *
+       * Only meaningful for an insertion spanning several lines. A snippet is
+       * re-indented by default, so pass `1` to keep a body the provider has
+       * already laid out; plain text is left alone by default, so pass `2` to
+       * have it adjusted.
+       */
+      insertTextMode?: 1 | 2;
+
+      /**
        * A "type" for this suggestion. Used to classify suggestions and distinguish
        * them visually. The types of {@link SuggestionType} are preferred (and have
        * predefined styles), but you can use an arbitrary string if none of those
