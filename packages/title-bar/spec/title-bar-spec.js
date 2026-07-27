@@ -269,4 +269,30 @@ describe("Title Bar package", () => {
       });
     });
   });
+
+  describe("the hidden dock hover strip", () => {
+    it("does not collapse a dock revealed as a drop target", () => {
+      jasmine.attachToDOM(workspaceElement);
+      const dock = atom.workspace.getRightDock();
+      const inner = () => dock.getElement().querySelector(".atom-dock-inner");
+      const mask = () => inner().querySelector(".atom-dock-mask");
+
+      // A hidden side dock is widened into an invisible strip, so its toggle button
+      // stays reachable past the resize border a frameless window puts at the edge.
+      expect(getComputedStyle(mask()).width).toBe("8px");
+      expect(getComputedStyle(mask()).visibility).toBe("hidden");
+      expect(getComputedStyle(inner()).pointerEvents).toBe("none");
+
+      // A dock revealed as a drop target is open, so none of that applies to it: it
+      // has to be painted and hit testable, or the item being dragged falls through
+      // to whatever sits underneath the dock.
+      dock.handleToggleButtonDragEnter();
+      expect(getComputedStyle(mask()).width).toBe("300px");
+      expect(getComputedStyle(mask()).visibility).toBe("visible");
+      expect(getComputedStyle(inner()).pointerEvents).not.toBe("none");
+
+      // Detaches the drag listeners this dock added to the window.
+      dock.draggedOut();
+    });
+  });
 });

@@ -8,7 +8,6 @@ const Grim = require("grim");
 const $ = etch.dom;
 const MINIMUM_SIZE = 100;
 const DEFAULT_INITIAL_SIZE = 300;
-const SHOULD_ANIMATE_CLASS = "atom-dock-should-animate";
 const VISIBLE_CLASS = "atom-dock-open";
 const RESIZE_HANDLE_RESIZABLE_CLASS = "atom-dock-resize-handle-resizable";
 const TOGGLE_BUTTON_VISIBLE_CLASS = "atom-dock-toggle-button-visible";
@@ -52,7 +51,6 @@ module.exports = class Dock {
     this.state = {
       size: null,
       visible: false,
-      shouldAnimate: false,
     };
 
     this.subscriptions = new CompositeDisposable(
@@ -147,26 +145,17 @@ module.exports = class Dock {
     const prevState = this.state;
     const nextState = Object.assign({}, prevState, newState);
 
-    // Update the `shouldAnimate` state. This needs to be written to the DOM before updating the
-    // class that changes the animated property. Normally we'd have to defer the class change a
-    // frame to ensure the property is animated (or not) appropriately, however we luck out in this
-    // case because the drag start always happens before the item is dragged into the toggle button.
-    if (nextState.visible !== prevState.visible) {
-      // Never animate toggling visibility...
-      nextState.shouldAnimate = false;
-    } else if (!nextState.visible && nextState.draggingItem && !prevState.draggingItem) {
-      // ...but do animate if you start dragging while the panel is hidden.
-      nextState.shouldAnimate = true;
-    }
-
     this.state = nextState;
 
     const { hovered, visible } = this.state;
+    const shouldBeVisible = visible || this.state.showDropTarget;
+    const wasVisible = prevState.visible || prevState.showDropTarget;
 
     // Render immediately if the dock becomes visible or the size changes in case people are
-    // measuring after opening, for example.
+    // measuring after opening, for example. Revealing a dock as a drop target counts: it
+    // moves the dock back into the flow, and the drag hit testing measures it right after.
     if (this.element != null) {
-      if ((visible && !prevState.visible) || this.state.size !== prevState.size)
+      if ((shouldBeVisible && !wasVisible) || this.state.size !== prevState.size)
         etch.updateSync(this);
       else etch.update(this);
     }
@@ -180,16 +169,17 @@ module.exports = class Dock {
   }
 
   render() {
-    const innerElementClassList = ["atom-dock-inner", this.location];
-    if (this.state.visible) innerElementClassList.push(VISIBLE_CLASS);
+    // A dock has two states, hidden and open. A dock revealed as a drop target is
+    // open in every sense: it takes up layout space like any other open dock rather
+    // than overlaying the workspace, so you can see exactly where the item will land.
+    const shouldBeVisible = this.state.visible || this.state.showDropTarget;
 
-    const maskElementClassList = ["atom-dock-mask"];
-    if (this.state.shouldAnimate) maskElementClassList.push(SHOULD_ANIMATE_CLASS);
+    const innerElementClassList = ["atom-dock-inner", this.location];
+    if (shouldBeVisible) innerElementClassList.push(VISIBLE_CLASS);
 
     const cursorOverlayElementClassList = ["atom-dock-cursor-overlay", this.location];
     if (this.state.resizing) cursorOverlayElementClassList.push(CURSOR_OVERLAY_VISIBLE_CLASS);
 
-    const shouldBeVisible = this.state.visible || this.state.showDropTarget;
     const size = Math.max(
       MINIMUM_SIZE,
       this.state.size ||
@@ -211,7 +201,7 @@ module.exports = class Dock {
         { ref: "innerElement", className: innerElementClassList.join(" ") },
         $.div(
           {
-            className: maskElementClassList.join(" "),
+            className: "atom-dock-mask",
             style: maskStyle,
           },
           $.div(
@@ -237,9 +227,11 @@ module.exports = class Dock {
           toggle: this.toggle,
           dockIsVisible: shouldBeVisible,
           visible:
-            // Don't show the toggle button if the dock is closed and empty...
-            (this.state.hovered && (this.state.visible || this.getPaneItems().length > 0)) ||
-            // ...or if the item can't be dropped in that dock.
+            // Show the toggle button whenever the dock edge is hovered. An empty dock
+            // still opens and is a valid drop destination, so it needs the affordance
+            // just as much as one with items...
+            this.state.hovered ||
+            // ...but not if the item being dragged can't be dropped in that dock.
             (!shouldBeVisible &&
               this.state.draggingItem &&
               isItemAllowed(this.state.draggingItem, this.location)),

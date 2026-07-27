@@ -398,6 +398,104 @@ describe("Dock", () => {
 
       expect(() => atom.workspace.getElement().handleDragStart(dragEvent)).not.toThrow();
     });
+
+    it("opens an empty dock as a drop target without making it visible", async () => {
+      jasmine.attachToDOM(atom.workspace.getElement());
+      const dock = atom.workspace.getRightDock();
+
+      const element = document.createElement("div");
+      element.setAttribute("is", "tabs-tab");
+      element.item = {
+        element,
+        getDefaultLocation() {
+          return "right";
+        },
+      };
+
+      const dragEvent = new DragEvent("dragstart");
+      Object.defineProperty(dragEvent, "target", { value: element });
+
+      atom.workspace.getElement().handleDragStart(dragEvent);
+      await getNextUpdatePromise();
+
+      // The toggle button is offered even though the dock is empty and hidden.
+      expect(dock.getPaneItems()).toHaveLength(0);
+      expect(dock.refs.toggleButton.element).toHaveClass("atom-dock-toggle-button-visible");
+      expect(dock.refs.innerElement).not.toHaveClass("atom-dock-open");
+
+      dock.handleToggleButtonDragEnter();
+      await getNextUpdatePromise();
+
+      // Revealed as a drop target, the dock is open like any other: it takes up layout
+      // space and can be hit tested, so the drop lands in it instead of falling through
+      // to whatever is underneath. Assert the declared size rather than the measured
+      // one — the mask animates open, so measuring here races the transition.
+      const maskOf = () => dock.refs.innerElement.querySelector(".atom-dock-mask");
+      expect(dock.refs.innerElement).toHaveClass("atom-dock-open");
+      expect(getComputedStyle(dock.refs.innerElement).position).toBe("static");
+      expect(maskOf().style.width).toBe("300px");
+      // ...but it is still only a peek: nothing has actually been opened yet.
+      expect(dock.isVisible()).toBe(false);
+
+      dock.draggedOut();
+      await getNextUpdatePromise();
+      expect(dock.refs.innerElement).not.toHaveClass("atom-dock-open");
+      expect(getComputedStyle(dock.refs.innerElement).position).toBe("absolute");
+      expect(maskOf().style.width).toBe("0px");
+    });
+
+    it("gives an empty dock revealed as a drop target real layout space", async () => {
+      jasmine.attachToDOM(atom.workspace.getElement());
+      const dock = atom.workspace.getRightDock();
+      expect(dock.getPaneItems()).toHaveLength(0);
+      expect(dock.getElement().offsetWidth).toBe(0);
+
+      dock.handleToggleButtonDragEnter();
+      await getNextUpdatePromise();
+
+      // The whole point: the dock claims width from the workspace, so the pane inside
+      // it is hit testable and the item can be dropped there.
+      expect(dock.getElement().offsetWidth).toBe(300);
+      expect(dock.getElement().parentElement.offsetWidth).toBe(300);
+
+      dock.draggedOut();
+      await getNextUpdatePromise();
+      expect(dock.getElement().offsetWidth).toBe(0);
+    });
+
+    it("shows and hides a dock without animating it", async () => {
+      jasmine.attachToDOM(atom.workspace.getElement());
+      const dock = atom.workspace.getRightDock();
+      const mask = () => dock.refs.innerElement.querySelector(".atom-dock-mask");
+      const wrapper = () => dock.refs.wrapperElement;
+
+      // Neither the space the dock occupies nor its contents may transition. The dock
+      // takes up layout space, so animating the size reflows the workspace on every
+      // frame, and callers that open a dock and measure it would read a size
+      // mid-animation.
+      expect(getComputedStyle(mask()).transitionDuration).toBe("0s");
+      expect(getComputedStyle(wrapper()).transitionDuration).toBe("0s");
+      expect(getComputedStyle(wrapper()).transform).toBe("none");
+
+      dock.show();
+      await getNextUpdatePromise();
+      expect(getComputedStyle(mask()).transitionDuration).toBe("0s");
+      expect(getComputedStyle(wrapper()).transitionDuration).toBe("0s");
+      expect(getComputedStyle(wrapper()).transform).toBe("none");
+    });
+
+    it("offers the toggle button for an empty, hidden dock on hover", async () => {
+      jasmine.attachToDOM(atom.workspace.getElement());
+      const dock = atom.workspace.getRightDock();
+
+      expect(dock.getPaneItems()).toHaveLength(0);
+      expect(dock.isVisible()).toBe(false);
+      expect(dock.refs.toggleButton.element).not.toHaveClass("atom-dock-toggle-button-visible");
+
+      dock.setHovered(true);
+      await getNextUpdatePromise();
+      expect(dock.refs.toggleButton.element).toHaveClass("atom-dock-toggle-button-visible");
+    });
   });
 
   describe("::getActiveTextEditor()", () => {

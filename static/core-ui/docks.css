@@ -47,8 +47,11 @@ atom-dock {
   }
 
   &:not(.atom-dock-open) {
-    /* The dock should only take up space when it's active (i.e. it shouldn't
-       take up space when you're dragging something into it). */
+    /* A hidden dock is taken out of the flow so it claims no space. `atom-dock-open`
+       covers a dock revealed as a drop target too, so dragging an item into a hidden
+       dock opens it for real and pushes the workspace aside, rather than overlaying
+       it. Stylesheets that shrink or hide a closed dock must key off this class, or
+       an item can never be dragged into one. */
     position: absolute;
     z-index: 10; /* An arbitrary number. Seems high enough. ¯\_(ツ)_/¯ */
   }
@@ -64,12 +67,10 @@ atom-dock {
   width: 100%;
   height: 100%;
 
+  /* Never animated. An open dock takes up layout space, so transitioning its size
+     reflows the workspace on every frame, and it would leave callers that open a
+     dock and measure it straight away reading a size mid-animation. */
   transition: none;
-  &.atom-dock-should-animate {
-    transition:
-      width 0.2s ease-out,
-      height 0.2s ease-out;
-  }
 }
 
 .atom-dock-content-wrapper {
