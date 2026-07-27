@@ -300,7 +300,6 @@ class LineNumberGutterComponent {
           const style = tileElement.style;
           style.contain = "layout style";
           style.position = "absolute";
-          style.top = 0;
           tile = {
             element: tileElement,
             lineNumbersByKey: new Map(),
@@ -324,7 +323,11 @@ class LineNumberGutterComponent {
           tile.width = tileWidth;
         }
         if (tile.top !== tileTop) {
-          tile.element.style.transform = `translateY(${tileTop}px)`;
+          // Layout `top`, not `transform`: a fractional translateY gives the
+          // tile its own pixel-snapping space, painting a hairline seam
+          // between adjacent tiles (see LinesTileComponent, which uses
+          // `margin-top` because its tiles are static-position anchored).
+          tile.element.style.top = tileTop + "px";
           tile.top = tileTop;
         }
 

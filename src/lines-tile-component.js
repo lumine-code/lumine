@@ -14,7 +14,14 @@ module.exports = class LinesTileComponent {
     style.position = "absolute";
     style.height = props.height + "px";
     style.width = props.width + "px";
-    style.transform = `translateY(${props.top}px)`;
+    // Position with layout `margin-top`, not `transform`: a fractional
+    // translateY gives the tile its own pixel-snapping space, painting a
+    // hairline seam between adjacent tiles whenever the line height is
+    // fractional. A margin offsets the box during layout instead, keeping all
+    // tiles in one snapping space, while the absent `top` keeps the tile
+    // anchored at its static position so padding/margins on the lines
+    // container still shift the text as they always have.
+    style.marginTop = props.top + "px";
 
     this.createLines();
     this.updateBlockDecorations({}, props);
@@ -32,7 +39,7 @@ module.exports = class LinesTileComponent {
         this.element.style.width = newProps.width + "px";
       }
       if (newProps.top !== oldProps.top) {
-        this.element.style.transform = `translateY(${newProps.top}px)`;
+        this.element.style.marginTop = newProps.top + "px";
       }
 
       if (!newProps.measuredContent) {

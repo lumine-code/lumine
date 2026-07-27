@@ -145,6 +145,14 @@ class WorkspaceElement extends HTMLElement {
     // to `1.6` and correctly observe that nothing seems to have changed. We
     // think that's OK — and, in the unlikely event a user thinks this is
     // wrong, we can advise them on how to avoid this behavior.
+    //
+    // Note: the worst instance of the symptom — a seam on exactly every sixth
+    // line, i.e. at each renderer tile boundary — was a separate bug, fixed
+    // structurally by positioning tiles with layout `top` instead of a
+    // fractional `translateY` (see LinesTileComponent). The alignment done
+    // here remains a best-effort mitigation for line-to-line rendering; it
+    // cannot be exact anyway, because Chromium quantizes layout to 1/64 CSS
+    // pixel, so even a device-aligned `line-height` measures back fractional.
     let fontSize = this.config.get("editor.fontSize");
     let fontFamily = this.config.get("editor.fontFamily");
     let lineHeight = this.config.get("editor.lineHeight");
