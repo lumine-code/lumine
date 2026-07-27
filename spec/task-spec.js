@@ -98,6 +98,17 @@ describe("Task", function () {
       expect(() => task.send("hi")).toThrowError("Cannot send message to terminated process");
       expect(task.childProcess).toBe(null);
     });
+
+    it("does not wait for the IPC channel to notice, which outlives the process on Linux", function () {
+      const task = new Task(require.resolve("./fixtures/task-spec-handler"));
+      // The stdio streams of a killed child close after its `exit` event, so
+      // `connected` still reads true in that window.
+      task.childProcess.signalCode = "SIGKILL";
+      expect(task.childProcess.connected).toBe(true);
+
+      expect(() => task.send("hi")).toThrowError("Cannot send message to terminated process");
+      expect(task.childProcess).toBe(null);
+    });
   });
 
   describe("::cancel()", function () {

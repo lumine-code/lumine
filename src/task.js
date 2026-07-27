@@ -153,7 +153,7 @@ module.exports = class Task {
   //
   // * `message` The message to send to the task.
   send(message) {
-    if (this.childProcess != null && this.childProcess.connected === false) {
+    if (this.childProcess != null && !this.isChildRunning()) {
       // The child exited or its channel closed without a deliberate
       // terminate(); sending would emit an uncaught `error` event instead of
       // throwing. Clean up and fail the documented way.
@@ -165,6 +165,14 @@ module.exports = class Task {
       throw new Error("Cannot send message to terminated process");
     }
     return undefined;
+  }
+
+  // A dead child keeps reporting `connected: true` until the last of its stdio
+  // streams closes, and on Linux that lands well after `exit`, so the exit
+  // status has to be consulted as well.
+  isChildRunning() {
+    const child = this.childProcess;
+    return child.connected !== false && child.exitCode == null && child.signalCode == null;
   }
 
   // Public: Call a function when an event is emitted by the child process
