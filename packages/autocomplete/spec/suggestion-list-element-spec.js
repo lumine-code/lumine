@@ -156,6 +156,28 @@ describe("Suggestion List Element", () => {
       suggestionListElement.maxVisibleSuggestions = 2;
     });
 
+    it("caps the list and selects from the same capped list", () => {
+      // The cap is observed from `autocomplete.maxSuggestions` when a model is
+      // attached; set directly here because this element is built without one.
+      suggestionListElement.maxItems = 3;
+      suggestionListElement.model = modelWith(10);
+      suggestionListElement.render();
+
+      expect(suggestionListElement.visibleItems().length).toBe(3);
+      // Selection must read the capped list too: indexing the model's full
+      // list agreed only while the selection could not exceed the cap.
+      suggestionListElement.selectedIndex = 5;
+      expect(suggestionListElement.getSelectedItem()).toBeUndefined();
+      suggestionListElement.selectedIndex = 2;
+      expect(suggestionListElement.getSelectedItem()).toBe(suggestionListElement.model.items[2]);
+    });
+
+    it("exposes the cap as a setting", () => {
+      const { configSchema } = require("../package.json");
+      expect(configSchema.maxSuggestions.default).toBe(200);
+      expect(configSchema.maxSuggestions.minimum).toBe(1);
+    });
+
     it("renders the deferred rows when the selection lands on the first of them", () => {
       suggestionListElement.model = modelWith(5);
       suggestionListElement.render();

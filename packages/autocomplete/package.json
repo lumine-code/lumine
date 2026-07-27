@@ -222,8 +222,16 @@
       "type": "boolean",
       "default": false
     },
-    "similarSuggestionRemoval": {
+    "maxSuggestions": {
       "order": 22,
+      "title": "Maximum Suggestions",
+      "description": "How many suggestions the list can hold. A language server may answer with thousands; only the best ranked this many are reachable.",
+      "type": "integer",
+      "minimum": 1,
+      "default": 200
+    },
+    "similarSuggestionRemoval": {
+      "order": 23,
       "title": "Similar Suggestion Removal",
       "description": "Should similar suggestions be removed from the list? If so how to determine they are similar.",
       "type": "string",
@@ -237,17 +245,17 @@
           "description": "Remove when the insertion text or snippet match"
         }
       ],
-      "default": "none"
+      "default": "textOrSnippet"
     },
     "moveToCancel": {
-      "order": 23,
+      "order": 24,
       "title": "Move To Cancel",
       "description": "Moving up when the first item is selected or down when the last item is selected cancels the suggestion list.",
       "type": "boolean",
       "default": false
     },
     "commitCharacters": {
-      "order": 24,
+      "order": 25,
       "title": "Accept On Commit Characters",
       "description": "Typing a character that the highlighted suggestion lists as a commit character, such as `(` or `.`, accepts that suggestion and then inserts the character. Only suggestions that supply commit characters are affected.",
       "type": "boolean",

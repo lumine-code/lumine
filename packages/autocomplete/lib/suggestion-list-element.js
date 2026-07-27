@@ -73,6 +73,8 @@ const scopeForFenceName = (fenceName) => {
 module.exports = class SuggestionListElement {
   constructor(model) {
     this.element = document.createElement("autocomplete-suggestion-list");
+    // Overwritten by the config observer below once a model is attached; the
+    // default matters for the element built without one.
     this.maxItems = 200;
     this.emptySnippetGroupRegex = /(\$\{\d+:\})|(\$\{\d+\})|(\$\d+)/gi;
     this.slashesInSnippetRegex = /\\\\/g;
@@ -119,6 +121,11 @@ module.exports = class SuggestionListElement {
     this.subscriptions.add(
       atom.config.observe("autocomplete.maxVisibleSuggestions", (maxVisibleSuggestions) => {
         this.maxVisibleSuggestions = maxVisibleSuggestions;
+      }),
+    );
+    this.subscriptions.add(
+      atom.config.observe("autocomplete.maxSuggestions", (maxSuggestions) => {
+        this.maxItems = maxSuggestions;
       }),
     );
     this.subscriptions.add(
@@ -360,9 +367,13 @@ module.exports = class SuggestionListElement {
   // Private: Get the currently selected item
   //
   // Returns the selected {Object}
+  // Reads the same capped list every `moveSelection*` is bounded by. Indexing
+  // the model's full list agreed with it only because the selection could
+  // never exceed the cap — an assumption nothing enforced.
   getSelectedItem() {
-    if (this.model && this.model.items) {
-      return this.model.items[this.selectedIndex];
+    const items = this.visibleItems();
+    if (items) {
+      return items[this.selectedIndex];
     }
   }
 
