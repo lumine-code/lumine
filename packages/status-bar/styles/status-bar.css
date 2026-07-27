@@ -70,6 +70,10 @@ status-bar {
     padding-right: 0;
   }
 
+  /* All icons are smaller than normal (normal is 16px): scale the icon
+     contract's box for the whole bar rather than restyling the ::before. */
+  --component-icon-size: 14px;
+
   /* Geometry comes from the icon contract; the bar only relaxes the box
      width — tiles mix icons with text at natural advance. */
   .icon:before {
