@@ -1,4 +1,4 @@
-const { SelectListView } = require("@lumine-code/select-list");
+const { SelectListView, createTwoLineItem } = require("@lumine-code/select-list");
 
 // Lists every language server the window is running — not only the one serving
 // the active editor — so any session can be inspected or restarted from
@@ -6,13 +6,17 @@ const { SelectListView } = require("@lumine-code/select-list");
 module.exports = class SessionMenuView {
   constructor(main) {
     this.main = main;
+    // The list manages its own modal panel. Hosting one by hand leaves the base
+    // view's panel unbuilt, and its focusout handler bails on a list it thinks
+    // is not visible — which is what stopped a click outside from closing this.
     this.selectList = new SelectListView({
+      className: "ide-client-session-menu",
       items: [],
       emptyMessage: "No language servers are running",
       filterKeyForItem: (item) => `${item.label} ${item.detail || ""}`,
       elementForItem: (item) => this.elementForItem(item),
       didConfirmSelection: (item) => {
-        this.cancel();
+        this.selectList.hide();
         Promise.resolve(item.action()).catch((error) =>
           atom.notifications.addError("Language server action failed", {
             detail: error.message,
@@ -20,30 +24,23 @@ module.exports = class SessionMenuView {
           }),
         );
       },
-      didCancelSelection: () => this.cancel(),
+      didCancelSelection: () => this.selectList.hide(),
     });
-    this.selectList.element.classList.add("ide-client-session-menu");
   }
 
+  // The state goes in the trailing block, so the states line up down the right
+  // edge instead of each one trailing a name of a different length.
   elementForItem(item) {
-    const element = document.createElement("li");
-    const primary = document.createElement("div");
-    primary.className = "primary-line";
-    primary.textContent = item.label;
-    if (item.state) {
-      const badge = document.createElement("span");
-      badge.className = `ide-client-session-state status-${item.state}`;
-      badge.textContent = item.state;
-      primary.appendChild(badge);
-    }
-    element.appendChild(primary);
-    if (item.detail) {
-      const secondary = document.createElement("div");
-      secondary.className = "secondary-line text-subtle";
-      secondary.textContent = item.detail;
-      element.appendChild(secondary);
-    }
-    return element;
+    return createTwoLineItem({
+      primary: item.label,
+      secondary: item.detail,
+      trailing: [
+        item.state && {
+          text: item.state,
+          className: `ide-client-session-state status-${item.state}`,
+        },
+      ],
+    });
   }
 
   // The active editor's servers come first: they are the ones the user is
@@ -66,18 +63,13 @@ module.exports = class SessionMenuView {
   }
 
   async show(items) {
-    await this.selectList.update({ items });
-    if (!this.panel) {
-      this.previouslyFocusedElement = document.activeElement;
-      this.panel = atom.workspace.addModalPanel({ item: this.selectList });
-    }
-    this.panel.show();
-    this.selectList.focus();
     this.selectList.reset();
+    await this.selectList.update({ items });
+    this.selectList.show();
   }
 
   async toggle() {
-    if (this.panel) return this.cancel();
+    if (this.selectList.isVisible()) return this.selectList.hide();
     return this.show(this.serverItems());
   }
 
@@ -112,15 +104,7 @@ module.exports = class SessionMenuView {
     ]);
   }
 
-  cancel() {
-    this.panel?.destroy();
-    this.panel = null;
-    this.previouslyFocusedElement?.focus();
-    this.previouslyFocusedElement = null;
-  }
-
   destroy() {
-    this.cancel();
     this.selectList.destroy();
   }
 };

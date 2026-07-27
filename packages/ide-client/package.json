@@ -99,6 +99,11 @@
       "versions": {
         "^1.0.0": "consumeBusySignal"
       }
+    },
+    "status-bar": {
+      "versions": {
+        "^1.0.0": "consumeStatusBar"
+      }
     }
   },
   "configSchema": {
@@ -172,6 +177,21 @@
           "type": "integer",
           "minimum": 1,
           "default": 48
+        }
+      }
+    },
+    "statusBar": {
+      "order": 6,
+      "title": "Status Bar",
+      "description": "Indicator for the language servers this window is running.",
+      "type": "object",
+      "properties": {
+        "enabled": {
+          "order": 1,
+          "title": "Enabled",
+          "description": "Show the running language servers in the status bar. The item hides itself while no server is running.",
+          "type": "boolean",
+          "default": true
         }
       }
     }

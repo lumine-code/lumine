@@ -1,5 +1,5 @@
+/* The badge sits in a select-list trailing block, which brings its own spacing. */
 .ide-client-session-state {
-  margin-left: 0.5em;
   padding: 0 0.4em;
   border-radius: 3px;
   font-size: 0.85em;
@@ -15,6 +15,29 @@
 }
 .ide-client-session-state.status-failed {
   color: var(--text-color-error);
+}
+
+/* Status-bar item. `.inline-block` supplies the display and the outer spacing,
+   so only the badge colors and the tooltip layout are set here. A stopped
+   server needs no rule of its own: the subtle base color is what it should
+   read as. */
+.ide-client-server-status.has-starting .ide-client-server-label {
+  color: var(--text-color-warning);
+}
+.ide-client-server-status.has-failed .ide-client-server-label,
+.ide-client-server-status .ide-client-server-failed {
+  color: var(--text-color-error);
+}
+.ide-client-server-status .ide-client-server-failed {
+  margin-left: 0.4em;
+}
+.ide-client-server-status .ide-client-server-failed[hidden] {
+  display: none;
+}
+
+/* The tooltip body is appended into `.tooltip-inner`, which centers its text. */
+.ide-client-server-tooltip {
+  text-align: left;
 }
 
 .ide-client-code-lens {

@@ -88,7 +88,7 @@ Right panel, from the right edge inwards:
 | 210–243  | Editor modes   | cursor-leader, column-selection, overtype-mode, invert-colors (240–243) |
 | 310, 320 | Source control | git-panel, github-panel                                                 |
 | 410–430  | File identity  | grammar-selector, encoding-selector, line-ending-selector               |
-| 510–530  | Observers      | latex-tools, typst-tools, prettier observed-file counters               |
+| 510–540  | Observers      | latex-tools, typst-tools, prettier observed files, ide-client servers   |
 | 610      | Activity       | busy-signal                                                             |
 | 710, 720 | Warnings       | deprecation-cop, incompatible-packages                                  |
 

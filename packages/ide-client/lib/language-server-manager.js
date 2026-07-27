@@ -175,6 +175,9 @@ module.exports = class LanguageServerManager {
       if (this.sessions.has(key)) return this.attachAdapter(adapter, editor);
       session = new ServerSession(this, adapter, rootPath, launch);
       this.sessions.set(key, session);
+      // The session exists now; state changes alone never say so, and it stays
+      // "starting" until the handshake finishes.
+      this.didChangeSession(session);
       session.ready = session.start();
       session.ready.catch(() => {});
     }
@@ -523,6 +526,7 @@ module.exports = class LanguageServerManager {
       await session.adapter.resolveServer(this.adapterContext(session.adapter, session.rootPath)),
     );
     this.sessions.set(key, replacement);
+    this.didChangeSession(replacement);
     replacement.ready = replacement.start();
     replacement.ready.catch(() => {});
     await replacement.ready;

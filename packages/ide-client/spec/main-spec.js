@@ -1,3 +1,17 @@
+const fakeStatusBar = (tiles) => ({
+  addRightTile(options) {
+    const tile = {
+      ...options,
+      destroyed: false,
+      destroy() {
+        this.destroyed = true;
+      },
+    };
+    tiles.push(tile);
+    return tile;
+  },
+});
+
 describe("ide-client package", () => {
   beforeEach(async () => {
     await atom.packages.activatePackage("ide-client");
@@ -47,40 +61,46 @@ describe("ide-client package", () => {
     }
   });
 
-  it("reports its sessions to the background zone", () => {
+  it("takes only the transient half of busy-signal", () => {
     const main = atom.packages.getActivePackage("ide-client").mainModule;
-    const entries = new Map();
-    const provider = {
-      set: (id, entry) => entries.set(id, entry),
-      remove: (id) => entries.delete(id),
-      dispose() {},
-    };
-    const session = {
-      adapter: { id: "stub", displayName: "Stub Server" },
-      rootPath: "/project",
-      state: "starting",
-    };
-    main.manager.sessions.set("stub:/project", session);
+    const provider = { add() {}, remove() {}, changeTitle() {}, clear() {}, dispose() {} };
     const registration = main.consumeBusySignal({
-      create: () => ({ add() {}, remove() {}, changeTitle() {}, clear() {}, dispose() {} }),
-      createBackground: () => provider,
+      create: () => provider,
+      // The running servers have a status item of their own now; asking for a
+      // background zone would mean the old mirroring path came back.
+      createBackground: () => {
+        throw new Error("createBackground must not be called");
+      },
     });
-    expect(entries.get("ide-client:stub:/project")).toEqual({
-      title: "Stub Server",
-      detail: "/project",
-      status: "starting",
-    });
+    expect(main.manager.busyProvider).toBe(provider);
 
-    // The entry is upserted in place as the server's state changes.
-    session.state = "running";
-    main.manager.didChangeSession(session);
-    expect(entries.get("ide-client:stub:/project").status).toBe("running");
-
-    // A session that goes away takes its entry with it.
-    main.manager.sessions.delete("stub:/project");
-    main.publishSessions();
-    expect(entries.size).toBe(0);
+    // Dropping the service unhooks the manager rather than leaving a stale
+    // provider it would keep reporting into.
     registration.dispose();
+    expect(main.manager.busyProvider).toBe(null);
+  });
+
+  it("adds its status-bar item to the observer band", () => {
+    const main = atom.packages.getActivePackage("ide-client").mainModule;
+    const tiles = [];
+    const registration = main.consumeStatusBar(fakeStatusBar(tiles));
+    expect(tiles.length).toBe(1);
+    expect(tiles[0].priority).toBe(540);
+    expect(tiles[0].item).toBe(main.serverStatus.element);
+
+    registration.dispose();
+    expect(tiles[0].destroyed).toBe(true);
+    expect(main.serverStatus).toBe(null);
+  });
+
+  it("removes the status-bar item on deactivation", async () => {
+    const main = atom.packages.getActivePackage("ide-client").mainModule;
+    const tiles = [];
+    // The disposable consumeStatusBar returns belongs to the status-bar
+    // package, so it never fires when this package deactivates.
+    main.consumeStatusBar(fakeStatusBar(tiles));
+    await atom.packages.deactivatePackage("ide-client");
+    expect(tiles[0].destroyed).toBe(true);
   });
 
   it("publishes LSP diagnostics through linter.registry", () => {

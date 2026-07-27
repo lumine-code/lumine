@@ -18,7 +18,7 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 - **Code lens**: shows actionable command links above symbols; disabled by default.
 - **Semantic tokens**: layers server-computed highlighting over the grammar's own; disabled by default.
 - **Server list**: lists every running server with its state, and restarts, stops, or opens the log of any of them.
-- **Background zone**: reports the running servers to the busy-signal package, which shows them apart from transient tasks.
+- **Status bar**: counts the running servers in a status-bar item, flags the failed ones, and opens the server list on click.
 - **Logging**: keeps a per-server log buffer with optional protocol tracing.
 
 ## Commands
@@ -70,13 +70,14 @@ Saving the file restarts exactly the servers whose entries changed.
 
 ## Customization
 
-Tweak the server list from your stylesheet:
+Tweak the server list and the status-bar item from your stylesheet:
 
-```less
-.ide-client-session-menu {
-  .ide-client-session-state {
-    font-weight: bold;
-  }
+```css
+.ide-client-session-state {
+  font-weight: bold;
+}
+.ide-client-server-status .ide-client-server-label {
+  color: var(--text-color-info);
 }
 ```
 
@@ -96,7 +97,8 @@ Tweak the server list from your stylesheet:
 - **[refactor.provider](https://lumine-code.github.io/docs.html#services/refactor.provider)** (`1.0.0`): provided to rename UIs; resolves to a path-to-edits map, with prepare support.
 - **[intentions.list](https://lumine-code.github.io/docs.html#services/intentions.list)** (`1.0.0`): provided to the intentions UI to serve code actions and quick fixes at the cursor.
 - **[linter.registry](https://lumine-code.github.io/docs.html#services/linter.registry)** (`^1.0.0`): consumed to push server diagnostics into the linter UI, one delegate per server.
-- **[busy-signal](https://lumine-code.github.io/docs.html#services/busy-signal)** (`^1.0.0`): consumed to surface server work-done progress on the busy indicator and to list the running servers in the background zone.
+- **[busy-signal](https://lumine-code.github.io/docs.html#services/busy-signal)** (`^1.0.0`): consumed to surface server work-done progress on the busy indicator.
+- **[status-bar](https://lumine-code.github.io/docs.html#services/status-bar)** (`^1.0.0`): consumed to show the running servers in an item that opens the server list.
 
 ## Contributing
 

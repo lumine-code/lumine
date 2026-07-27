@@ -13,6 +13,7 @@ const CodeLens = require("./code-lens");
 const SemanticTokens = require("./semantic-tokens");
 const InlayHints = require("./inlay-hints");
 const SessionMenuView = require("./session-menu-view");
+const ServerStatusView = require("./server-status-view");
 const CustomServers = require("./custom-servers");
 const { toLinterMessages } = require("./linter-messages");
 const { CompositeDisposable, Disposable } = require("atom");
@@ -40,9 +41,6 @@ module.exports = {
     this.customServers.activate();
     this.uiSubscriptions = new CompositeDisposable();
     this.sessionMenu = new SessionMenuView(this);
-    // Running servers are long-lived, so they belong in the busy-signal
-    // background zone rather than in a status item of their own.
-    this.uiSubscriptions.add(this.manager.onDidChangeSession(() => this.publishSessions()));
     this.uiSubscriptions.add(
       atom.commands.add("atom-workspace", {
         "ide-client:servers": () => this.sessionMenu.toggle(),
@@ -66,12 +64,13 @@ module.exports = {
     this.customServers?.dispose();
     this.customServers = null;
     this.sessionMenu?.destroy();
+    // Before the manager stops every session: each stop reports a state change
+    // the status item would render into a detached element.
+    this.teardownStatusBar();
     this.indieSubscription?.dispose();
     this.disposeIndieDelegates();
     this.busyProvider?.dispose();
     this.busyProvider = null;
-    this.backgroundProvider?.dispose();
-    this.backgroundProvider = null;
     this.uiSubscriptions?.dispose();
     await this.manager?.deactivate();
     this.manager = null;
@@ -133,42 +132,41 @@ module.exports = {
   provideIntentionsList() {
     return this.intentionsProvider;
   },
-  // One service, both zones: transient work-done progress on the busy dot,
-  // and the live sessions in the background zone.
+  consumeStatusBar(statusBar) {
+    // status-bar can be reactivated while this package stays up, which calls
+    // the consumer again; tear the previous item down rather than orphan it.
+    this.teardownStatusBar();
+    this.serverStatus = new ServerStatusView({
+      manager: this.manager,
+      onDidClick: () => this.sessionMenu.toggle(),
+    });
+    // Observer band, see the priority convention in packages/status-bar/README.md.
+    this.serverStatusTile = statusBar.addRightTile({
+      item: this.serverStatus.element,
+      priority: 540,
+    });
+    return new Disposable(() => this.teardownStatusBar());
+  },
+  // The disposable above belongs to the status-bar package and never fires on
+  // our own deactivation, so both paths call this and it has to be safe twice.
+  teardownStatusBar() {
+    this.serverStatusTile?.destroy();
+    this.serverStatusTile = null;
+    this.serverStatus?.destroy();
+    this.serverStatus = null;
+  },
+  // Work-done progress a server reports spins the busy dot; the servers
+  // themselves are long-lived and have a status item of their own.
   consumeBusySignal(busySignal) {
     this.busyProvider?.dispose();
     this.busyProvider = busySignal.create();
     this.manager.setBusyProvider(this.busyProvider);
 
-    this.backgroundProvider?.dispose();
-    // Optional: an older busy-signal hands out a bare transient registry.
-    this.backgroundProvider = busySignal.createBackground?.() ?? null;
-    this.publishSessions();
-
     return new Disposable(() => {
-      this.manager.setBusyProvider(null);
+      this.manager?.setBusyProvider(null);
       this.busyProvider?.dispose();
       this.busyProvider = null;
-      this.backgroundProvider?.dispose();
-      this.backgroundProvider = null;
     });
-  },
-  // Mirrors the live sessions into the background zone: one entry per server
-  // and project root, upserted as its state changes.
-  publishSessions() {
-    if (!this.backgroundProvider) return;
-    const live = new Set();
-    for (const [key, session] of this.manager.sessions) {
-      live.add(key);
-      this.backgroundProvider.set(`ide-client:${key}`, {
-        title: session.adapter.displayName,
-        detail: session.rootPath,
-        status: session.state,
-      });
-    }
-    for (const key of this.publishedSessions || [])
-      if (!live.has(key)) this.backgroundProvider.remove(`ide-client:${key}`);
-    this.publishedSessions = live;
   },
   consumeLinterRegistry(registerIndie) {
     this.indieSubscription?.dispose();
