@@ -32,10 +32,6 @@
     background-color: var(--level-2-color);
   }
 
-  .section-container {
-    max-width: calc(var(--ui-size) * 60);
-  }
-
   .section,
   .section:first-child,
   .section:last-child {
