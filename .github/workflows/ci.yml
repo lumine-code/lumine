@@ -96,9 +96,13 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y xvfb libx11-dev libxkbfile-dev libsecret-1-dev fonts-noto-cjk
-      # The native install scripts are wasted here: the native modules are
-      # rebuilt for Electron below regardless. Install without scripts, then
-      # reproduce the pieces we actually need.
+      # Most native install scripts are wasted here: those modules are rebuilt
+      # for Electron below regardless. They stay skipped because npm's
+      # allow-scripts gate blocks anything absent from `allowScripts` in
+      # package.json -- so a plain `npm ci` runs only what is approved there,
+      # which today is node-pty. That one is not optional: it is a TypeScript
+      # package whose `prepare` emits `lib/`, and nothing later reproduces it,
+      # so `--ignore-scripts` would install it without an entry point.
       #
       # npm records the @lumine-code git forks with ssh URLs, but the runners
       # have no ssh key. Rewrite them to anonymous HTTPS (the forks are public).
@@ -111,7 +115,7 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: |
-          install() { npm ci --ignore-scripts; }
+          install() { npm ci; }
           install || install || install
       - name: Download the Electron binary
         run: node ./node_modules/electron/install.js

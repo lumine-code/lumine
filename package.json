@@ -306,5 +306,8 @@
     "prettier": "^3.9.5",
     "random-seed": "0.3.0",
     "sinon": "22.0.0"
+  },
+  "allowScripts": {
+    "github:lumine-code/node-pty#c9c7646d0db00a084b114b6c563e1c08dedc6688": true
   }
 }

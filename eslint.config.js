@@ -13,6 +13,9 @@ const runtimeModules = [
   "@electron/remote",
   "@lumine-code/season",
   "@lumine-code/underscore-plus",
+  // Built by its own `prepare` into `lib/`, which the lint job's
+  // `--ignore-scripts` install skips, so its `main` is absent there.
+  "@lumine-code/node-pty",
 ];
 
 module.exports = [
