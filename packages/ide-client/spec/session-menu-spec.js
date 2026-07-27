@@ -1,10 +1,11 @@
 describe("ide-client session menu", () => {
   let main, menu;
 
-  const stubSession = (state, id = "stub", rootPath = "/project") => ({
+  const stubSession = (state, id = "stub", rootPath = "/project", folders = [rootPath]) => ({
     adapter: { id, displayName: `${id} Server` },
     rootPath,
     state,
+    folders: new Set(folders),
     stop() {},
   });
 
@@ -65,6 +66,32 @@ describe("ide-client session menu", () => {
     await menu.toggle();
     await menu.toggle();
     expect(menu.selectList.getQuery()).toBe("");
+  });
+
+  it("names every folder a server answers for, not the one that started it", () => {
+    const shared = stubSession("running", "pyright", "/project", ["/project", "/work/tools"]);
+    main.manager.sessions.set("pyright:/project", shared);
+    main.manager.sessions.set("pyright:/work/tools", shared);
+
+    const [item, ...rest] = menu.serverItems();
+    // One entry for one server, however many folders it took on.
+    expect(rest).toEqual([]);
+    expect(item.detail).toBe("2 folders: project, tools");
+  });
+
+  it("shows the whole project for a workspace-scoped server", () => {
+    const session = stubSession("running", "wide", "/project");
+    session.adapter.sessionScope = "workspace";
+    main.manager.sessions.set("wide:", session);
+    spyOn(atom.project, "getPaths").and.returnValue(["/one", "/two"]);
+
+    // Its own rootPath is just whichever folder came first.
+    expect(menu.serverItems()[0].detail).toBe("2 folders: one, two");
+  });
+
+  it("keeps the plain path when a server serves a single folder", () => {
+    main.manager.sessions.set("stub:/project", stubSession("running"));
+    expect(menu.serverItems()[0].detail).toBe("/project");
   });
 
   it("lists the servers of the active editor first", () => {

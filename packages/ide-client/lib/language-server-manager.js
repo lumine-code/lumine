@@ -144,6 +144,14 @@ module.exports = class LanguageServerManager {
   allSessions() {
     return [...new Set(this.sessions.values())];
   }
+  // The project folders a session answers for. A workspace-scoped one answers
+  // for all of them and only happens to have started at the first, so its own
+  // `rootPath` says nothing about its reach.
+  foldersFor(session) {
+    if (session.adapter.sessionScope !== "workspace") return [...session.folders];
+    const roots = atom.project.getPaths();
+    return roots.length ? roots : [session.rootPath];
+  }
   keysFor(session) {
     return [...this.sessions].filter(([, value]) => value === session).map(([key]) => key);
   }

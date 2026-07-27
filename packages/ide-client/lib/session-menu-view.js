@@ -1,3 +1,4 @@
+const path = require("path");
 const { SelectListView, createTwoLineItem } = require("@lumine-code/select-list");
 
 // Lists every language server the window is running — not only the one serving
@@ -43,6 +44,16 @@ module.exports = class SessionMenuView {
     });
   }
 
+  // What the server actually covers. Naming it after the folder that happened
+  // to start it is a lie for anything serving more than one — a multi-root
+  // server and every workspace-scoped one.
+  describeFolders(session) {
+    const folders = this.main.manager.foldersFor(session);
+    if (folders.length < 2) return folders[0] || session.rootPath;
+    // The full paths would not fit; the names are what tells them apart.
+    return `${folders.length} folders: ${folders.map((folder) => path.basename(folder)).join(", ")}`;
+  }
+
   // The active editor's servers come first: they are the ones the user is
   // most likely acting on.
   serverItems() {
@@ -57,7 +68,7 @@ module.exports = class SessionMenuView {
       )
       .map((session) => ({
         label: session.adapter.displayName,
-        detail: session.rootPath,
+        detail: this.describeFolders(session),
         state: session.state,
         action: () => this.showActions(session),
       }));
@@ -83,7 +94,7 @@ module.exports = class SessionMenuView {
       },
       {
         label: "Stop",
-        detail: `Stop ${session.adapter.displayName} for ${session.rootPath}`,
+        detail: `Stop ${session.adapter.displayName} for ${this.describeFolders(session)}`,
         action: () => this.main.manager.disconnect(session),
       },
       {
