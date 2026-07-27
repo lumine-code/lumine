@@ -1166,9 +1166,11 @@ class StubWindow extends EventEmitter {
 
     this.browserWindow = new EventEmitter();
     this.browserWindow.webContents = new EventEmitter();
-    // Real webContents exposes `send`; stub it so broadcast handlers such as the
-    // scrollbar-style listener don't throw if they fire against a stub window.
     this.browserWindow.webContents.send = sinon.spy();
+    // Broadcast handlers such as the scrollbar-style listener identify a window
+    // by its `webContents` and then relay through `sendToRenderer`, so a stub
+    // window needs both or those handlers throw when they fire against it.
+    this.sendToRenderer = sinon.spy();
 
     const locationsToOpen = this.loadSettings.locationsToOpen || [];
     if (!(locationsToOpen.length === 1 && locationsToOpen[0].pathToOpen == null) && !this.isSpec) {

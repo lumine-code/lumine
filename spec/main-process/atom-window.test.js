@@ -234,15 +234,30 @@ describe("AtomWindow", function () {
       assert.lengthOf(w.browserWindow.sent, 0);
     });
 
-    it("swallows a send to a frame disposed after the destroyed checks", function () {
+    // The window and its webContents both outlive the renderer's main frame, so
+    // these two are the only signal that there is nothing left to send to.
+    it("drops messages once the main frame is disposed", function () {
       const w = new AtomWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
-      w.browserWindow.webContents.send = () => {
-        throw new Error("Render frame was disposed before WebFrameMain could be accessed");
-      };
+      w.browserWindow.webContents.mainFrame.destroyed = true;
 
-      assert.doesNotThrow(() => w.browserWindow.emit("blur"));
+      w.browserWindow.emit("blur");
+      w.sendMessage("some-message");
+
+      assert.lengthOf(w.browserWindow.sent, 0);
+    });
+
+    it("drops messages once the main frame is detached", function () {
+      const w = new AtomWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+      w.browserWindow.webContents.mainFrame.detached = true;
+
+      w.browserWindow.emit("blur");
+      w.sendMessage("some-message");
+
+      assert.lengthOf(w.browserWindow.sent, 0);
     });
   });
 
@@ -550,11 +565,21 @@ class StubBrowserWindow extends EventEmitter {
     };
 
     this.webContents = new EventEmitter();
-    this.webContents.send = (...args) => {
-      this.sent.push(args);
-    };
     this.webContents.setVisualZoomLevelLimits = () => {};
     this.webContents.isDestroyed = () => this.destroyed;
+    // IPC leaves through the main frame rather than `webContents.send`: a
+    // disposed render frame outlives both `isDestroyed()` checks, so that is
+    // the only place AtomWindow can tell there is no renderer left to send to.
+    this.webContents.mainFrame = {
+      detached: false,
+      destroyed: false,
+      isDestroyed() {
+        return this.destroyed;
+      },
+      send: (...args) => {
+        this.sent.push(args);
+      },
+    };
   }
 
   loadURL() {}
