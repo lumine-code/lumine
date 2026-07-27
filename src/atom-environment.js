@@ -1159,6 +1159,11 @@ class AtomEnvironment {
   }
 
   unloadEditorWindow() {
+    // By the time this runs the window is going away for certain, including on
+    // paths that never reached `prepareToUnloadEditorWindow`. Workers and
+    // background tasks read this flag to stop starting — and stop settling —
+    // work that nothing is left to observe.
+    this.unloading = true;
     stopAllWatchers();
     GitHost.reset();
     if (this.gitAuthBroker) this.gitAuthBroker.terminate();

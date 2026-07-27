@@ -24,6 +24,20 @@ function restartError() {
   return error;
 }
 
+// Once the window is unloading nothing can act on a settled request: the
+// renderer context is being torn down and the environment has already dropped
+// the registries its consumers read from, so settling only surfaces as an
+// "Uncaught (in promise)" on the way out. Requests are abandoned instead, the
+// same way Task and WatcherTask silently do nothing once this flag is set.
+function isUnloading() {
+  return Boolean(globalThis.window?.atom?.unloading);
+}
+
+// A request that can no longer be answered because the window is going away.
+function abandonedRequest() {
+  return new Promise(() => {});
+}
+
 // Rebuild a real Error from the fields the worker serialized, preserving the
 // `code`/`exitCode`/`stderr` that callers branch on (e.g. GitRepository.getDiff
 // maps ERR_CHILD_PROCESS_STDIO_MAXBUFFER -> ERR_GIT_DIFF_TOO_LARGE).
@@ -187,22 +201,31 @@ class GitHost {
   handleExit() {
     // Reject a start that never reached readiness, then fail every pending
     // request with a retriable error and drop state so the next request forks a
-    // fresh worker. Background refreshes already swallow rejections.
-    this.rejectReady?.(restartError());
+    // fresh worker. Background refreshes already swallow rejections; while the
+    // window unloads nothing is settled at all (see isUnloading).
+    if (!isUnloading()) this.rejectReady?.(restartError());
     this.resolveReady = null;
     this.rejectReady = null;
 
-    for (const entry of this.pending.values()) {
-      this.detachAbort(entry);
-      entry.reject(restartError());
-    }
-    this.pending.clear();
+    this.clearPending();
 
     if (this.child) {
       this.child.removeAllListeners();
       this.child = null;
     }
     this.readyPromise = null;
+  }
+
+  // Drop every pending request, failing it as retriable so the caller can retry
+  // against the next worker — unless the window is unloading, where the request
+  // is abandoned instead (see isUnloading).
+  clearPending() {
+    const abandon = isUnloading();
+    for (const entry of this.pending.values()) {
+      this.detachAbort(entry);
+      if (!abandon) entry.reject(restartError());
+    }
+    this.pending.clear();
   }
 
   detachAbort(entry) {
@@ -213,7 +236,7 @@ class GitHost {
 
   async request(op, payload, { signal } = {}) {
     if (signal?.aborted) throw abortError();
-    if (globalThis.window?.atom?.unloading) throw restartError();
+    if (isUnloading()) return abandonedRequest();
 
     await this.ensureStarted();
 
@@ -271,11 +294,7 @@ class GitHost {
   }
 
   terminate() {
-    for (const entry of this.pending.values()) {
-      this.detachAbort(entry);
-      entry.reject(restartError());
-    }
-    this.pending.clear();
+    this.clearPending();
 
     if (this.child) {
       this.child.removeAllListeners();

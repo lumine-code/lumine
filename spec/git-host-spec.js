@@ -146,6 +146,52 @@ describe("GitHost transport", () => {
     expect(await second).toBe("OK");
   });
 
+  it("abandons requests instead of rejecting them while the window is unloading", async () => {
+    // A reload tears the environment down without deactivating packages first,
+    // so requests are still in flight when `unloadEditorWindow` resets the
+    // host. Rejecting them there only lands as "Uncaught (in promise)" noise in
+    // a context that is already gone.
+    const pending = host.request("status", { workingDirectory: "/repo", options: {} });
+    current().emit("message", { event: "git:ready" });
+    await flush();
+
+    const settled = jasmine.createSpy("settled");
+    pending.then(settled, settled);
+
+    atom.unloading = true;
+    try {
+      host.terminate();
+      await flush();
+      expect(settled).not.toHaveBeenCalled();
+
+      // A request started during unload is abandoned too, without forking.
+      host.request("status", { workingDirectory: "/repo", options: {} }).then(settled, settled);
+      await flush();
+      expect(settled).not.toHaveBeenCalled();
+      expect(children.length).toBe(1);
+    } finally {
+      atom.unloading = false;
+    }
+  });
+
+  it("abandons pending requests when the worker exits while the window is unloading", async () => {
+    const pending = host.request("status", { workingDirectory: "/repo", options: {} });
+    current().emit("message", { event: "git:ready" });
+    await flush();
+
+    const settled = jasmine.createSpy("settled");
+    pending.then(settled, settled);
+
+    atom.unloading = true;
+    try {
+      current().emit("exit");
+      await flush();
+      expect(settled).not.toHaveBeenCalled();
+    } finally {
+      atom.unloading = false;
+    }
+  });
+
   it("translates an AbortSignal into a cancel and rejects locally with AbortError", async () => {
     const controller = new AbortController();
     const pending = host.request(
