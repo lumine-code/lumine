@@ -1,4 +1,5 @@
 const path = require("path");
+const nodeFs = require("fs");
 const fs = require("@lumine-code/fs-plus");
 
 const UIWatcher = require("../lib/ui-watcher");
@@ -58,6 +59,36 @@ describe("UIWatcher", () => {
     expect(lastWatcher.entities[3].getPath()).toBe(
       path.join(packagePath, "styles", "sub", "2.less"),
     );
+  });
+
+  it("ignores a temporary file left in the styles folder by a stylesheet save", async () => {
+    const packagePath = path.join(__dirname, "fixtures", "package-with-styles-folder");
+    const stylesPath = path.join(packagePath, "styles");
+    const temporaryPath = path.join(stylesPath, "3.css.tmp.4242.deadbeef");
+
+    await atom.packages.activatePackage(packagePath);
+    uiWatcher = new UIWatcher();
+
+    const watcher = uiWatcher.watchedPackages.get("package-with-styles-folder");
+
+    // Saving a stylesheet writes a temporary file next to it and renames it
+    // away, so the scan can list an entry that no longer exists by the time it
+    // is looked at. Nothing may be stat'ed for the entry to be discarded.
+    const readdirSync = nodeFs.readdirSync;
+    spyOn(nodeFs, "readdirSync").and.callFake((directoryPath, options) => {
+      const entries = readdirSync(directoryPath, options);
+      if (directoryPath === stylesPath && options?.withFileTypes) {
+        entries.push({
+          name: path.basename(temporaryPath),
+          parentPath: stylesPath,
+          isDirectory: () => false,
+        });
+      }
+      return entries;
+    });
+
+    expect(() => watcher.syncStylesheetWatchers()).not.toThrow();
+    expect(watcher.entities.map((entity) => entity.getPath())).not.toContain(temporaryPath);
   });
 
   it("starts watching a stylesheet added after activation", async () => {

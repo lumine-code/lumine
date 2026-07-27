@@ -1,7 +1,33 @@
-const fs = require("@lumine-code/fs-plus");
+const fs = require("fs");
 const path = require("path");
 
 const Watcher = require("./watcher");
+
+const STYLESHEET_EXTENSIONS = new Set([".css", ".less"]);
+
+function isDirectory(directoryPath) {
+  return fs.statSync(directoryPath, { throwIfNoEntry: false })?.isDirectory() ?? false;
+}
+
+// Entry types come straight from the directory read, so nothing is stat'ed
+// individually: a stylesheet saved through a temporary file can disappear
+// between the read and the stat, and that ENOENT used to crash the watcher.
+function findStylesheets(directoryPath) {
+  let entries;
+  try {
+    entries = fs.readdirSync(directoryPath, { recursive: true, withFileTypes: true });
+  } catch {
+    return [];
+  }
+
+  const stylesheetPaths = [];
+  for (const entry of entries) {
+    if (entry.isDirectory()) continue;
+    if (!STYLESHEET_EXTENSIONS.has(path.extname(entry.name).toLowerCase())) continue;
+    stylesheetPaths.push(path.join(entry.parentPath, entry.name));
+  }
+  return stylesheetPaths;
+}
 
 module.exports = class PackageWatcher extends Watcher {
   static supportsPackage(pack, type) {
@@ -21,7 +47,7 @@ module.exports = class PackageWatcher extends Watcher {
     this.stylesheetsPaths = this.pack.themeStylesDirectories ?? [this.pack.getStylesheetsPath()];
 
     for (const stylesheetsPath of this.stylesheetsPaths) {
-      if (!fs.isDirectorySync(stylesheetsPath)) continue;
+      if (!isDirectory(stylesheetsPath)) continue;
       this.watchDirectory(stylesheetsPath, () => this.handleDirectoryChange());
     }
 
@@ -31,14 +57,9 @@ module.exports = class PackageWatcher extends Watcher {
   syncStylesheetWatchers() {
     const stylesheetPaths = new Set(this.pack.getStylesheetPaths());
     for (const stylesheetsPath of this.stylesheetsPaths) {
-      if (!fs.isDirectorySync(stylesheetsPath)) continue;
-
-      const onFile = (stylesheetPath) => {
-        if ([".css", ".less"].includes(path.extname(stylesheetPath).toLowerCase())) {
-          stylesheetPaths.add(stylesheetPath);
-        }
-      };
-      fs.traverseTreeSync(stylesheetsPath, onFile, () => true);
+      for (const stylesheetPath of findStylesheets(stylesheetsPath)) {
+        stylesheetPaths.add(stylesheetPath);
+      }
     }
 
     const watchedPaths = new Set(
