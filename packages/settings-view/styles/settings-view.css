@@ -515,21 +515,19 @@
         color: var(--text-color-highlight);
       }
 
-      /* Indent nested headers past the base 15px nav padding. */
-      .config-toc-level-2 > a {
+      /* A README's own top-level headers sit flush with the section entries at
+         the base 15px nav padding; only headers below them are indented. */
+      .config-toc-level-3 > a {
         padding-left: 27px;
       }
-      .config-toc-level-3 > a {
+      .config-toc-level-4 > a {
         padding-left: 39px;
       }
-      .config-toc-level-4 > a {
+      .config-toc-level-5 > a {
         padding-left: 51px;
       }
-      .config-toc-level-5 > a {
-        padding-left: 63px;
-      }
       .config-toc-level-6 > a {
-        padding-left: 75px;
+        padding-left: 63px;
       }
     }
 

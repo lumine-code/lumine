@@ -711,8 +711,10 @@ export default class PackageDetailView {
     this.settingsView.showTableOfContents(entries);
   }
 
-  // The README's own headers, indented one level below its section entry. Levels
-  // deeper than the sidebar indents share the last one rather than running off it.
+  // The README's own headers, nested one level below its section entry. Its top
+  // headers still align with the section entries; only headers below them are
+  // indented. Levels deeper than the sidebar indents share the last one rather
+  // than running off it.
   readmeTableOfContents() {
     const readme = this.readmeView && this.readmeView.packageReadme;
     const headings = readme ? readme.querySelectorAll("h1, h2, h3, h4, h5, h6") : [];
