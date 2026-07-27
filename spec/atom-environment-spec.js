@@ -81,7 +81,7 @@ describe("AtomEnvironment", () => {
     });
   });
 
-  describe("window onerror handler", () => {
+  describe("uncaught error handlers", () => {
     let devToolsPromise = null;
     beforeEach(() => {
       devToolsPromise = Promise.resolve();
@@ -103,14 +103,19 @@ describe("AtomEnvironment", () => {
 
     describe("::onWillThrowError", () => {
       let willThrowSpy = null;
+      // These outlive their spec otherwise, and one of them calls
+      // preventDefault() — every later spec would find the dev tools suppressed.
+      let subscription = null;
 
       beforeEach(() => {
         willThrowSpy = jasmine.createSpy();
       });
 
+      afterEach(() => subscription?.dispose());
+
       it("is called when there is an error", () => {
         let error = null;
-        atom.onWillThrowError(willThrowSpy);
+        subscription = atom.onWillThrowError(willThrowSpy);
         try {
           a + 1; // eslint-disable-line no-undef
         } catch (e) {
@@ -130,7 +135,7 @@ describe("AtomEnvironment", () => {
 
       it("will not show the devtools when preventDefault() is called", () => {
         willThrowSpy.and.callFake((errorObject) => errorObject.preventDefault());
-        atom.onWillThrowError(willThrowSpy);
+        subscription = atom.onWillThrowError(willThrowSpy);
 
         try {
           a + 1; // eslint-disable-line no-undef
@@ -146,11 +151,13 @@ describe("AtomEnvironment", () => {
 
     describe("::onDidThrowError", () => {
       let didThrowSpy = null;
+      let subscription = null;
       beforeEach(() => (didThrowSpy = jasmine.createSpy()));
+      afterEach(() => subscription?.dispose());
 
       it("is called when there is an error", () => {
         let error = null;
-        atom.onDidThrowError(didThrowSpy);
+        subscription = atom.onDidThrowError(didThrowSpy);
         try {
           a + 1; // eslint-disable-line no-undef
         } catch (e) {
@@ -164,6 +171,84 @@ describe("AtomEnvironment", () => {
           column: 3,
           originalError: error,
         });
+      });
+    });
+
+    // A rejected promise carries no position of its own, so the report has to
+    // be reconstructed from its stack.
+    describe("unhandled promise rejections", () => {
+      let willThrowSpy = null;
+      let subscription = null;
+
+      beforeEach(() => {
+        willThrowSpy = jasmine.createSpy();
+        subscription = atom.onWillThrowError(willThrowSpy);
+      });
+
+      afterEach(() => subscription.dispose());
+
+      const reject = (reason) => window.onunhandledrejection({ reason });
+
+      it("reports one the same way as a thrown error", () => {
+        const error = new Error("write EPIPE");
+        error.stack = "Error: write EPIPE\n    at doWrite (C:\\app\\src\\writer.js:596:12)";
+        reject(error);
+
+        const event = willThrowSpy.calls.mostRecent().args[0];
+        expect(event.message).toBe("Uncaught (in promise) Error: write EPIPE");
+        expect(event.originalError).toBe(error);
+        expect(event.url).toBe("C:\\app\\src\\writer.js");
+        expect(event.line).toBe(596);
+        expect(event.column).toBe(12);
+      });
+
+      it("reads the frame of a stack whose first line is bare", () => {
+        const error = new Error("nope");
+        error.stack = "Error: nope\n    at /app/lib/thing.js:12:5";
+        reject(error);
+
+        const event = willThrowSpy.calls.mostRecent().args[0];
+        expect(event.url).toBe("/app/lib/thing.js");
+        expect(event.line).toBe(12);
+      });
+
+      it("wraps a rejection that carries no Error, and blames no file for it", () => {
+        reject("just a string");
+
+        const event = willThrowSpy.calls.mostRecent().args[0];
+        expect(event.message).toBe(
+          "Uncaught (in promise) Error: Promise rejected with 'just a string'",
+        );
+        // Reporting this file's own stack would read as a fault in core.
+        expect(event.originalError.stack).toBeUndefined();
+        expect(event.url).toBeUndefined();
+        expect(event.line).toBeUndefined();
+      });
+
+      it("survives a rejection with no reason at all", () => {
+        expect(() => reject(undefined)).not.toThrow();
+        expect(willThrowSpy.calls.mostRecent().args[0].message).toContain("undefined");
+      });
+
+      // The reporter opens the dev tools through a promise. Left unhandled,
+      // that promise's own rejection arrives back here and opens them again.
+      it("does not feed itself when opening the dev tools fails", async () => {
+        // The loop this guards runs on the event loop, not on microtasks.
+        jasmine.useRealClock();
+        atom.openDevTools.and.returnValue(Promise.reject(new Error("no dev tools")));
+        reject(new Error("first"));
+        await wait(100);
+        expect(atom.openDevTools.calls.count()).toBe(1);
+      });
+
+      it("opens the dev tools unless a handler prevents it", () => {
+        reject(new Error("shown"));
+        expect(atom.openDevTools).toHaveBeenCalled();
+
+        atom.openDevTools.calls.reset();
+        willThrowSpy.and.callFake((event) => event.preventDefault());
+        reject(new Error("hidden"));
+        expect(atom.openDevTools).not.toHaveBeenCalled();
       });
     });
   });

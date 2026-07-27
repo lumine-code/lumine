@@ -557,6 +557,10 @@ class AtomEnvironment {
   // Extended: Invoke the given callback when there is an unhandled error, but
   // before the devtools pop open
   //
+  // Both a thrown error and a rejected promise nobody handled arrive here. A
+  // rejection reports no position of its own, so `url`, `line` and `column`
+  // are read back out of its stack, and are undefined when it has none.
+  //
   // * `callback` {Function} to be called whenever there is an unhandled error
   //   * `event` {Object}
   //     * `originalError` {Object} the original error object
@@ -571,7 +575,8 @@ class AtomEnvironment {
     return this.emitter.on("will-throw-error", callback);
   }
 
-  // Extended: Invoke the given callback whenever there is an unhandled error.
+  // Extended: Invoke the given callback whenever there is an unhandled error,
+  // whether thrown or carried by a rejected promise nobody handled.
   //
   // * `callback` {Function} to be called whenever there is an unhandled error
   //   * `event` {Object}
@@ -1196,24 +1201,24 @@ class AtomEnvironment {
       column = mapping.column;
       if (url === "<embedded>") url = mapping.source;
 
-      const eventObject = { message, url, line, column, originalError };
+      this.reportUncaughtError({ message, url, line, column, originalError });
+    };
 
-      let openDevTools = true;
-      eventObject.preventDefault = () => {
-        openDevTools = false;
-      };
+    // A promise nobody handled is as much a fault as a thrown one, and on its
+    // own it reaches no one: no notification, and no dev tools unless the
+    // window already had them open. Where it came from has to be read back out
+    // of the stack, since a rejection carries no position of its own.
+    this.previousWindowRejectionHandler = this.window.onunhandledrejection;
+    this.window.onunhandledrejection = ({ reason }) => {
+      const originalError = asError(reason);
+      const origin = firstStackFrame(originalError.stack);
+      const { source, line, column } = origin
+        ? mapSourcePosition(origin)
+        : { source: undefined, line: undefined, column: undefined };
 
-      this.emitter.emit("will-throw-error", eventObject);
-
-      if (openDevTools) {
-        this.openDevTools().then(() =>
-          this.executeJavaScriptInDevTools('DevToolsAPI.showPanel("console")'),
-        );
-      }
-
-      this.emitter.emit("did-throw-error", {
-        message,
-        url,
+      this.reportUncaughtError({
+        message: `Uncaught (in promise) ${originalError}`,
+        url: source,
         line,
         column,
         originalError,
@@ -1221,8 +1226,35 @@ class AtomEnvironment {
     };
   }
 
+  reportUncaughtError(eventObject) {
+    let openDevTools = true;
+    eventObject.preventDefault = () => {
+      openDevTools = false;
+    };
+
+    this.emitter.emit("will-throw-error", eventObject);
+
+    if (openDevTools) {
+      // Swallowed deliberately: an unhandled rejection here would come straight
+      // back through this same reporter, and open the dev tools forever.
+      this.openDevTools()
+        .then(() => this.executeJavaScriptInDevTools('DevToolsAPI.showPanel("console")'))
+        .catch(() => {});
+    }
+
+    const { message, url, line, column, originalError } = eventObject;
+    this.emitter.emit("did-throw-error", {
+      message,
+      url,
+      line,
+      column,
+      originalError,
+    });
+  }
+
   uninstallUncaughtErrorHandler() {
     this.window.onerror = this.previousWindowErrorHandler;
+    this.window.onunhandledrejection = this.previousWindowRejectionHandler;
   }
 
   installWindowEventHandler() {
@@ -1780,6 +1812,28 @@ or use Pane::saveItemAs for programmatic saving.`);
 
       return this.applicationDelegate.resolveProxy(requestId, url);
     });
+  }
+}
+
+// A promise can be rejected with anything at all, but everything downstream of
+// an uncaught error — the notifications package first — expects an Error.
+function asError(reason) {
+  if (reason instanceof Error) return reason;
+  const error = new Error(`Promise rejected with ${util.inspect(reason)}`);
+  // Its stack would describe this reporter rather than whatever went wrong,
+  // and a handler that decides by stack would read that as a fault in core.
+  error.stack = undefined;
+  return error;
+}
+
+const STACK_FRAME = /^\s*at (?:.*\()?(.+?):(\d+):(\d+)\)?$/;
+
+// Where a stack says the error came from, in the shape `window.onerror` would
+// have reported it. Returns undefined when the stack says nothing usable.
+function firstStackFrame(stack) {
+  for (const frame of String(stack || "").split("\n")) {
+    const match = STACK_FRAME.exec(frame);
+    if (match) return { source: match[1], line: Number(match[2]), column: Number(match[3]) };
   }
 }
 
