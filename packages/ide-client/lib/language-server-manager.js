@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("fs");
-const { minimatch } = require("minimatch");
+const picomatch = require("picomatch");
 const { Emitter, CompositeDisposable, Disposable } = require("atom");
 const ServerSession = require("./server-session");
 const C = require("./converters");
@@ -300,15 +300,15 @@ module.exports = class LanguageServerManager {
     const normalized = filePath.replaceAll("\\", "/");
     if (typeof globPattern === "string") {
       return (
-        minimatch(normalized, globPattern, { dot: true }) ||
-        minimatch(normalized, `**/${globPattern}`, { dot: true })
+        picomatch.isMatch(normalized, globPattern, { dot: true }) ||
+        picomatch.isMatch(normalized, `**/${globPattern}`, { dot: true })
       );
     }
     const base = C.uriToPath(globPattern.baseUri?.uri || globPattern.baseUri);
     if (!base) return false;
     const relative = path.relative(base, filePath);
     if (!relative || relative.startsWith("..")) return false;
-    return minimatch(relative.replaceAll("\\", "/"), globPattern.pattern, { dot: true });
+    return picomatch.isMatch(relative.replaceAll("\\", "/"), globPattern.pattern, { dot: true });
   }
   // Watched-file events are limited to paths under the project roots â€” that is
   // the scope of atom.project.onDidChangeFiles.

@@ -2,7 +2,7 @@ const _ = require("@lumine-code/underscore-plus");
 const path = require("path");
 const { Emitter, Disposable, CompositeDisposable } = require("event-kit");
 const fs = require("@lumine-code/fs-plus");
-const { Minimatch } = require("minimatch");
+const picomatch = require("picomatch");
 const ProjectDirectory = require("./project-directory");
 const Grim = require("grim");
 const RipgrepDirectorySearcher = require("./ripgrep-directory-searcher");
@@ -25,25 +25,23 @@ const { createWorkspaceElement } = require("./workspace-element");
 // probably screw it up in some cases. It's easier to just traverse upward
 // until we hit the top of the project.
 function filePathMatchesGlob(filePath, matcher) {
-  // Minimatch globs use `/` as the separator, but on Windows the relativized
-  // path arrives with `\`, so normalize before matching.
+  // Globs use `/` as the separator, but on Windows the relativized path
+  // arrives with `\`, so normalize before matching.
   filePath = filePath.split(path.sep).join("/");
   // When we call `path.dirname` on a path like `foo`, it'll return `.`. That's
   // when we should stop because there's no more upward traversal to be done.
   while (filePath && filePath !== ".") {
-    if (matcher.match(filePath)) {
-      // We created these matchers with `flipNegate` because it does the right
-      // thing when faced with this strange glob-matching algorithm. But that
-      // means we need to manually check the `negate` property at the end and
-      // flip the result if it's `true`.
-      return matcher.negate ? false : true;
+    if (matcher.isMatch(filePath)) {
+      // The matcher was compiled from the pattern with its `!` stripped, so a
+      // hit on a negated pattern means this path is excluded.
+      return !matcher.negated;
     }
     filePath = path.dirname(filePath);
   }
-  return matcher.negate ? true : false;
+  return matcher.negated;
 }
 
-// Transform a pattern prior to handing it off to `minimatch`.
+// Transform a pattern prior to handing it off to the glob matcher.
 function normalizePattern(rawPath) {
   // Strip any trailing path separator.
   // The path separator is `\` on Windows, but we also allow usage of `/`;
@@ -140,15 +138,22 @@ function getBasenamesFromProjectRoots() {
   return roots.map((r) => path.basename(r));
 }
 
-const CACHED_MINIMATCH_INSTANCES = new Map();
+const CACHED_MATCHERS_BY_PATTERN = new Map();
 
-function minimatchInstanceForPattern(rawPattern) {
+// Compiles a search glob into a matcher for `filePathMatchesGlob`.
+//
+// A negated pattern is compiled without its `!` and the negation reported
+// separately, because that walk has to test the *positive* pattern against each
+// ancestor directory and only invert once, at the end. Compiling `!foo/**`
+// directly would invert per ancestor instead, which is the wrong answer.
+function matcherForPattern(rawPattern) {
   let pattern = normalizePattern(rawPattern);
-  if (!CACHED_MINIMATCH_INSTANCES.has(pattern)) {
-    let instance = new Minimatch(pattern, { flipNegate: true });
-    CACHED_MINIMATCH_INSTANCES.set(pattern, instance);
+  if (!CACHED_MATCHERS_BY_PATTERN.has(pattern)) {
+    let negated = picomatch.scan(pattern).negated;
+    let isMatch = picomatch(negated ? pattern.replace(/^!+/, "") : pattern);
+    CACHED_MATCHERS_BY_PATTERN.set(pattern, { isMatch, negated });
   }
-  return CACHED_MINIMATCH_INSTANCES.get(pattern);
+  return CACHED_MATCHERS_BY_PATTERN.get(pattern);
 }
 
 const STOPPED_CHANGING_ACTIVE_PANE_ITEM_DELAY = 100;
@@ -2327,12 +2332,12 @@ module.exports = class Workspace extends Model {
       defaultMatchers = options.paths
         // Filter out "empty string" ("") path segments that somehow make it here
         .filter((p) => !!p)
-        .map((inclusion) => minimatchInstanceForPattern(inclusion));
+        .map((inclusion) => matcherForPattern(inclusion));
     }
 
     const customMatchers = new Map();
     for (let [dir, inclusions] of customInclusionsForDirectory) {
-      let matchers = inclusions?.map((i) => minimatchInstanceForPattern(i)) ?? null;
+      let matchers = inclusions?.map((i) => matcherForPattern(i)) ?? null;
       customMatchers.set(dir.getPath(), matchers);
     }
 
@@ -2544,7 +2549,7 @@ module.exports = class Workspace extends Model {
     // not match.
     if (!this.project.contains(filePath)) return false;
 
-    let matchers = patterns.map((inclusion) => minimatchInstanceForPattern(inclusion));
+    let matchers = patterns.map((inclusion) => matcherForPattern(inclusion));
 
     let relativizedFilePath = atom.project.relativize(filePath);
     return matchers.some((matcher) => {

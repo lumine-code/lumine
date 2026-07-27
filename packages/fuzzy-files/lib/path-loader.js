@@ -1,39 +1,50 @@
 const fs = require("fs");
-const { Task } = require("atom");
 
 module.exports = {
+  // Crawls the project's files.
+  //
+  // `atom.project.crawl()` drives ripgrep in its own process, so there is no
+  // Task fork on top of it: all that is left here is collecting the batches it
+  // streams back. The editor owns the ripgrep invocation, which is why the
+  // ignore-file and `.git` handling no longer appears in this package.
   startTask(callback, metricsReporter) {
     const results = [];
-    const taskPath = require.resolve("./load-paths-handler");
-    const followSymlinks = atom.config.get("core.followSymlinks");
-    let ignoredNames = atom.config.get("fuzzy-files.ignoredNames") || [];
-    ignoredNames = ignoredNames.concat(atom.config.get("core.ignoredNames") || []);
-    const excludeVcsIgnoredPaths = atom.config.get("core.excludeVcsIgnoredPaths");
-    const projectPaths = atom.project.getPaths().map((path) => fs.realpathSync(path));
+    const ignoredNames = [
+      ...(atom.config.get("fuzzy-files.ignoredNames") || []),
+      ...(atom.config.get("core.ignoredNames") || []),
+    ];
+    const directoryPaths = atom.project
+      .getPaths()
+      .map((projectPath) => fs.realpathSync(projectPath));
 
     const startTime = performance.now();
+    let cancelled = false;
 
-    const task = Task.once(
-      taskPath,
-      projectPaths,
-      followSymlinks,
-      excludeVcsIgnoredPaths,
+    const crawl = atom.project.crawl({
+      directoryPaths,
       ignoredNames,
-      () => {
-        callback(results);
-
-        const duration = Math.round(performance.now() - startTime);
-        if (metricsReporter && metricsReporter.sendCrawlEvent) {
-          metricsReporter.sendCrawlEvent(duration, results.length, "ripgrep");
-        }
-      },
-    );
-
-    task.on("load-paths:paths-found", (paths) => {
-      paths = paths || [];
-      results.push(...paths);
+      // The finder lists results in path order.
+      sort: true,
+      didFindPaths: (paths) => results.push(...paths),
     });
 
-    return task;
+    // A thenable carrying `terminate()`, the same shape `atom.project.crawl()`
+    // and `workspace.scan()` use, so callers can await the crawl as well as
+    // stop it.
+    const finished = crawl.then(() => {
+      if (cancelled) return;
+      callback(results);
+
+      const duration = Math.round(performance.now() - startTime);
+      if (metricsReporter && metricsReporter.sendCrawlEvent) {
+        metricsReporter.sendCrawlEvent(duration, results.length, "ripgrep");
+      }
+    });
+
+    finished.terminate = () => {
+      cancelled = true;
+      crawl.cancel();
+    };
+    return finished;
   },
 };

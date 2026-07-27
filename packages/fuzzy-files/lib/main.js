@@ -1,7 +1,7 @@
 const { CompositeDisposable, Disposable } = require("atom");
 const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 const { shell, clipboard } = require("electron");
-const minimatch = require("minimatch");
+const picomatch = require("picomatch");
 const path = require("path");
 const fs = require("fs");
 const PathLoader = require("./path-loader");
@@ -154,9 +154,8 @@ module.exports = {
       this.ignores.push(ignore);
       this.ignores.push("**/" + ignore + "/**");
     }
-    const Minimatch = minimatch.Minimatch;
     for (let ignore of this.ignores) {
-      this.Ignores.push(new Minimatch(ignore, { matchBase: true, dot: true }));
+      this.Ignores.push(picomatch(ignore, { basename: true, dot: true }));
     }
   },
 
@@ -312,8 +311,8 @@ module.exports = {
   },
 
   isIgnored(fPath) {
-    for (let compiledPattern of this.Ignores) {
-      if (compiledPattern.match(fPath)) return true;
+    for (let isMatch of this.Ignores) {
+      if (isMatch(fPath)) return true;
     }
     return false;
   },

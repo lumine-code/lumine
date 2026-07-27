@@ -21,7 +21,7 @@
   },
   "dependencies": {
     "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#a201dae6a0ea6954cb9a905be4a718af697d9f78",
-    "minimatch": "^10.2.5",
+    "picomatch": "^4.0.5",
     "natural-compare-lite": "^1.4.0"
   },
   "backgroundTips": [

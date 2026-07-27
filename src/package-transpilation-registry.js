@@ -7,9 +7,7 @@ const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
 
-const minimatchModule = require("minimatch");
-const minimatch =
-  typeof minimatchModule === "function" ? minimatchModule : minimatchModule.minimatch;
+const picomatch = require("picomatch");
 
 let Resolve = null;
 
@@ -106,7 +104,7 @@ class PackageTranspilationRegistry {
         const globPath = normalizeGlobPath(relativePath);
         for (let i = 0; i < config.specs.length; i++) {
           const spec = config.specs[i];
-          if (minimatch(globPath, normalizeGlobPath(spec.glob))) {
+          if (picomatch.isMatch(globPath, normalizeGlobPath(spec.glob))) {
             spec._config = config;
             this.specByFilePath[normalizedFilePath] = spec;
             return spec;

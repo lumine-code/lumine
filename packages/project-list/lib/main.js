@@ -1,8 +1,6 @@
 const { CompositeDisposable, Disposable, Emitter, watchFile, Task } = require("atom");
 const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
-// glob >=9 exports named functions; older hoisted versions expose the callable module
-const globPkg = require("glob");
-const glob = typeof globPkg === "function" ? require("util").promisify(globPkg) : globPkg.glob;
+const { glob, isDynamicPattern, convertPathToPattern } = require("tinyglobby");
 const fs = require("fs");
 const path = require("path");
 const CSON = require("@lumine-code/season");
@@ -600,13 +598,28 @@ class ProjectList {
 
   async expandGlobPaths(paths) {
     const expanded = await Promise.all(
-      paths.map((p) =>
-        /[*?{[]/.test(p)
-          ? glob(p.split(/[\\/]/g).join("/").replace(/\/?$/, "/"), { absolute: true })
-          : Promise.resolve([p]),
-      ),
+      paths.map((p) => {
+        // Convert before testing: a backslash is an escape character in glob
+        // syntax, so a Windows path reads as a literal until its separators are
+        // normalized.
+        const pattern = convertPathToPattern(p);
+        return isDynamicPattern(pattern)
+          ? glob(pattern, { absolute: true, onlyDirectories: true })
+          : Promise.resolve([p]);
+      }),
     );
-    return expanded.flat().sort();
+    // Literals arrive however the user wrote them and matches arrive
+    // `/`-separated with a trailing slash, so settle on one form before
+    // sorting. `prepareItem` re-adds the trailing separator later.
+    return expanded
+      .flat()
+      .map((p) =>
+        p
+          .replace(/[\\/]+$/, "")
+          .split(/[\\/]/g)
+          .join(path.sep),
+      )
+      .sort();
   }
 
   editConfig() {

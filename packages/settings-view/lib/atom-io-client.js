@@ -1,9 +1,8 @@
 const fs = require("@lumine-code/fs-plus");
+const fsPromises = require("fs").promises;
 const path = require("path");
 const remote = require("@electron/remote");
-// glob >=9 exports named functions; older hoisted versions expose the callable module
-const globPkg = require("glob");
-const glob = typeof globPkg === "function" ? require("util").promisify(globPkg) : globPkg.glob;
+const picomatch = require("picomatch");
 
 module.exports = class AtomIoClient {
   constructor(packageManager) {
@@ -41,9 +40,14 @@ module.exports = class AtomIoClient {
     return path.join(this.getCachePath(), `${login}-${Date.now()}`);
   }
 
-  // Wraps the glob library so tests can stub filesystem failures.
-  glob(pattern) {
-    return glob(pattern);
+  // Lists the cached avatars matching `pattern`. The cache is one flat
+  // directory, so this reads it directly rather than pulling in a glob
+  // library. Kept as a method so tests can stub filesystem failures.
+  async glob(pattern) {
+    const directory = path.dirname(pattern);
+    const isMatch = picomatch(path.basename(pattern));
+    const entries = await fsPromises.readdir(directory);
+    return entries.filter(isMatch).map((entry) => path.join(directory, entry));
   }
 
   cachedAvatar(login, callback) {

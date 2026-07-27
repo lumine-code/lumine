@@ -1,9 +1,10 @@
-const { CompositeDisposable, Disposable, Task } = require("atom");
+const { CompositeDisposable, Disposable } = require("atom");
 const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 const { clipboard, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
 const CSON = require("@lumine-code/season");
+const searchForPattern = require("./search-pattern");
 
 const CACHE_UPDATED_CHANNEL = "fuzzy-explorer:cache-updated";
 
@@ -285,20 +286,20 @@ module.exports = {
   },
 
   searchPromise(pattern, itemSet) {
-    return new Promise((resolve) => {
-      const task = Task.once(
-        require.resolve("./scan"),
-        pattern,
-        this.ignores,
-        atom.config.get("core.followSymlinks"),
-        atom.config.get("core.excludeVcsIgnoredPaths"),
-      );
-      task.on("fuzzy-explorer:entries", (entries) => {
-        for (const filePath of entries) {
+    const search = searchForPattern(pattern);
+    if (!search) return Promise.resolve();
+
+    // The editor's crawler runs ripgrep in its own process, so there is no Task
+    // to fork here: `didFindPaths` is called with batches as they arrive.
+    return atom.project.crawl({
+      directoryPaths: [search.root],
+      inclusion: search.include,
+      ignoredNames: this.ignores,
+      didFindPaths: (paths) => {
+        for (const filePath of paths) {
           itemSet.add(path.normalize(filePath));
         }
-        resolve();
-      });
+      },
     });
   },
 

@@ -1,11 +1,11 @@
-let Minimatch = null; // Defer requiring until actually needed
+let picomatch = null; // Defer requiring until actually needed
 
 module.exports = class IgnoredNames {
   constructor() {
     this.ignoredPatterns = [];
 
-    if (Minimatch == null) {
-      ({ Minimatch } = require("minimatch"));
+    if (picomatch == null) {
+      picomatch = require("picomatch");
     }
 
     let ignoredNames = atom.config.get("core.ignoredNames") ?? [];
@@ -16,7 +16,7 @@ module.exports = class IgnoredNames {
     for (let ignoredName of ignoredNames) {
       if (ignoredName) {
         try {
-          this.ignoredPatterns.push(new Minimatch(ignoredName, { matchBase: true, dot: true }));
+          this.ignoredPatterns.push(picomatch(ignoredName, { basename: true, dot: true }));
         } catch (error) {
           atom.notifications.addWarning(`Error parsing ignore pattern (${ignoredName})`, {
             detail: error.message,
@@ -27,8 +27,8 @@ module.exports = class IgnoredNames {
   }
 
   matches(filePath) {
-    for (let ignoredPattern of this.ignoredPatterns) {
-      if (ignoredPattern.match(filePath)) {
+    for (let isIgnored of this.ignoredPatterns) {
+      if (isIgnored(filePath)) {
         return true;
       }
     }

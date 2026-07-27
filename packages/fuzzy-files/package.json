@@ -52,9 +52,7 @@
     }
   },
   "dependencies": {
-    "async": "3.2.6",
-    "minimatch": "^10.2.5",
-    "@vscode/ripgrep": "1.18.0",
+    "picomatch": "^4.0.5",
     "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#a201dae6a0ea6954cb9a905be4a718af697d9f78"
   },
   "configSchema": {

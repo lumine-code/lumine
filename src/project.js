@@ -649,6 +649,61 @@ module.exports = class Project extends Model {
   }
 
   /*
+  Section: Crawling files
+  */
+
+  // Public: Lists the files under the project's directories.
+  //
+  // The crawl runs in a separate process (the bundled ripgrep binary), honors
+  // `.gitignore` unless told otherwise, and streams results as it finds them
+  // rather than resolving with one large array. Prefer it over walking the
+  // filesystem yourself: `core.ignoredNames` and `core.excludeVcsIgnoredPaths`
+  // are respected here in one place.
+  //
+  // ```js
+  // const crawl = atom.project.crawl({
+  //   didFindPaths: (paths) => results.push(...paths),
+  // });
+  // await crawl;
+  // ```
+  //
+  // * `options` (optional) {Object}
+  //   * `didFindPaths` {Function} called with an {Array} of absolute paths as
+  //     they are found. Called several times over the life of one crawl.
+  //   * `directoryPaths` an {Array} of {String} paths to crawl. Defaults to the
+  //     project's root directories.
+  //   * `inclusion` {String} glob scoping the crawl. `**` means "everything".
+  //   * `ignoredNames` an {Array} of {String} globs to exclude. Defaults to
+  //     `core.ignoredNames`.
+  //   * `followSymlinks` {Boolean} whether to descend into symlinked
+  //     directories. Defaults to `core.followSymlinks`.
+  //   * `excludeVcsIgnoredPaths` {Boolean} whether to honor VCS ignore files.
+  //     Defaults to `core.excludeVcsIgnoredPaths`.
+  //   * `sort` {Boolean} whether to return paths in a stable order. Costs
+  //     ripgrep its parallel walk, so only ask when the order is observable.
+  //
+  // Returns a {Promise} with a `cancel()` method that resolves the crawl early.
+  crawl(options = {}) {
+    if (!this.fileCrawler) {
+      const RipgrepFileCrawler = require("./ripgrep-file-crawler");
+      this.fileCrawler = new RipgrepFileCrawler();
+    }
+
+    const config = atom.config;
+    const directoryPaths = options.directoryPaths ?? this.getPaths() ?? [];
+
+    return this.fileCrawler.crawl(directoryPaths, {
+      didFindPaths: options.didFindPaths,
+      inclusion: options.inclusion,
+      ignoredNames: options.ignoredNames ?? config.get("core.ignoredNames") ?? [],
+      followSymlinks: options.followSymlinks ?? config.get("core.followSymlinks"),
+      excludeVcsIgnoredPaths:
+        options.excludeVcsIgnoredPaths ?? config.get("core.excludeVcsIgnoredPaths"),
+      sort: options.sort,
+    });
+  }
+
+  /*
   Section: Private
   */
 
