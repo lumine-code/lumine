@@ -74,7 +74,7 @@ module.exports = {
     for (const extension of ["markdown", "md", "mdown", "mkd", "mkdown", "ron", "txt"]) {
       this.disposables.add(
         atom.commands.add(
-          `.tree-view .file .name[data-name$=\\.${extension}]`,
+          `.tree-view .file[data-name$=".${extension}"]`,
           "markdown-preview:preview-file",
           previewFile,
         ),
@@ -168,8 +168,10 @@ module.exports = {
     });
   },
 
-  previewFile({ target }) {
-    const filePath = target.dataset.path;
+  // `currentTarget`, not `target`: the command matches the tree-view row, but
+  // the click that dispatched it may have landed on the name span inside it.
+  previewFile({ currentTarget }) {
+    const filePath = currentTarget.dataset.path;
     if (!filePath) {
       return;
     }

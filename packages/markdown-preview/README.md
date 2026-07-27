@@ -30,7 +30,7 @@ Commands available in `.markdown-preview`:
 - `markdown-preview:toggle-break-on-single-newline`: toggle line breaks on single newlines,
 - `markdown-preview:toggle-github-style`: toggle the GitHub.com preview style.
 
-Commands available in `.tree-view .file .name`:
+Commands available in `.tree-view .file`:
 
 - `markdown-preview:preview-file`: open a preview of the selected Markdown file.
 

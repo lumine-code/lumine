@@ -1298,7 +1298,7 @@ class TreeView {
     if (this.multiSelectEnabled()) {
       for (const entry of this.getSelectedEntries()) {
         if (entry.classList.contains("project-root")) {
-          const path = entry.querySelector(".header .name")?.dataset.path;
+          const path = entry.getPath?.();
           if (path) atom.project.removePath(path);
         }
       }
@@ -1307,19 +1307,15 @@ class TreeView {
 
     // Remove the targeted project folder (generally this only happens through
     // the context menu)
-    let pathToRemove = event.target.closest(".project-root > .header")?.querySelector(".name")
-      ?.dataset.path;
+    let pathToRemove = event.target.closest(".project-root > .header")?.dataset.path;
 
     // If an entry is selected, remove that entry's project folder
-    pathToRemove ??= this.selectedEntry()
-      ?.closest(".project-root")
-      ?.querySelector(".header")
-      ?.querySelector(".name")?.dataset.path;
+    pathToRemove ??= this.selectedEntry()?.closest(".project-root")?.getPath?.();
 
     // Finally, if only one project folder exists and nothing is selected,
     // remove that folder
     if (!pathToRemove && this.roots.length === 1) {
-      pathToRemove = this.roots[0].querySelector(".header")?.querySelector(".name")?.dataset.path;
+      pathToRemove = this.roots[0].getPath?.();
     }
 
     if (pathToRemove) {
@@ -1757,7 +1753,7 @@ class TreeView {
     dragImage.style.willChange = "transform";
     let initialPaths = [];
     for (let target of this.getSelectedEntries()) {
-      let entryPath = target.querySelector(".name").dataset.path;
+      let entryPath = target.getPath();
       let parentSelected = target.parentNode.closest(".entry.selected");
       if (!parentSelected) {
         initialPaths.push(entryPath);
@@ -1819,7 +1815,7 @@ class TreeView {
         return;
       }
 
-      let newDirectoryPath = entry.querySelector(".name")?.dataset.path;
+      let newDirectoryPath = entry.getPath?.();
       if (!newDirectoryPath) return false;
 
       let initialPaths = event.dataTransfer.getData("initialPaths");

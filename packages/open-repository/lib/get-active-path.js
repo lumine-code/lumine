@@ -5,12 +5,9 @@ function getActivePath(target) {
 
   const treeView = target.closest(".tree-view");
   if (treeView) {
-    // called from treeview
-    const selected = treeView.querySelector(".selected > .list-item > .name, .selected > .name");
-    if (selected) {
-      return selected.dataset.path;
-    }
-    return;
+    // called from treeview. A special-root section header is excluded: its
+    // `getPath()` is a synthetic `special-root://` URI, not a real directory.
+    return treeView.querySelector(".entry.selected:not(.tree-view-special-root)")?.getPath?.();
   }
 
   const tab = target.closest(".tab-bar > .tab");

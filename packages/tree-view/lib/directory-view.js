@@ -31,6 +31,13 @@ module.exports = class DirectoryView {
         : this.directory.name;
     this.directoryName.title = displayName;
 
+    // On the header, not on the `li`: the header is the row, while the `li`
+    // also wraps every nested entry, and a context menu is resolved by walking
+    // up from whatever was clicked — so a `data-name` on the `li` would match
+    // right-clicks on the children too.
+    this.header.dataset.name = displayName;
+    this.header.dataset.path = this.directory.path;
+
     if (this.directory.squashedNames != null) {
       const squashedDirectoryNameNode = document.createElement("span");
       squashedDirectoryNameNode.classList.add("squashed-dir");
@@ -43,7 +50,7 @@ module.exports = class DirectoryView {
 
     // After the name is in place: an icon rendered as a child element would be
     // wiped by writing `textContent` over it.
-    this.updateIcon(displayName);
+    this.updateIcon();
 
     this.element.appendChild(this.header);
     this.header.appendChild(this.directoryName);
@@ -79,7 +86,7 @@ module.exports = class DirectoryView {
 
   // Everything the registry needs to pick a folder glyph travels on the target.
   // The repository lookup is skipped for symlinks, which outrank it anyway.
-  updateIcon(displayName) {
+  updateIcon() {
     const hints = {
       directory: true,
       symlink: this.directory.symlink,
@@ -94,7 +101,7 @@ module.exports = class DirectoryView {
       atom.icons.applyTo(
         this.directoryName,
         { path: this.directory.path, context: "tree-view", hints },
-        { classes: ["name"], name: displayName },
+        { classes: ["name"], setData: false },
       ),
     );
   }

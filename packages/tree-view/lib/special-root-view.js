@@ -26,6 +26,10 @@ class SpecialRootEntry {
     this.fileName.textContent = this.name;
     this.fileName.title = filePath;
 
+    // The row owns these, as it does for a regular entry — see `file-view.js`.
+    this.element.dataset.name = this.name;
+    this.element.dataset.path = filePath;
+
     this.file = { path: filePath };
 
     this.element.getPath = () => this.filePath;
@@ -59,7 +63,7 @@ class SpecialRootEntry {
       atom.icons.applyTo(
         this.fileName,
         { path: this.filePath, context: "tree-view", hints },
-        { classes: ["name"], name: this.name },
+        { classes: ["name"], setData: false },
       ),
     );
   }

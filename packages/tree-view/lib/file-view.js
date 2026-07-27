@@ -11,6 +11,12 @@ module.exports = class FileView {
     this.element.draggable = true;
     this.element.classList.add("file", "entry", "list-item");
 
+    // On the row, not on the name span: a context menu is resolved by walking
+    // up from whatever was clicked, so anything the span carries is only
+    // reachable when the pointer is over the text itself.
+    this.element.dataset.name = this.file.name;
+    this.element.dataset.path = this.file.path;
+
     this.fileName = document.createElement("span");
     this.element.appendChild(this.fileName);
     this.fileName.textContent = this.file.name;
@@ -28,8 +34,9 @@ module.exports = class FileView {
   }
 
   // The registry keeps the icon current on its own, so there is nothing to
-  // subscribe to here — and it writes `data-name`/`data-path`, which the
-  // `[data-name$=".md"]` selectors packages register commands on depend on.
+  // subscribe to here. `setData` is off because the row owns `data-name`/
+  // `data-path`; letting the span carry them too is what used to make
+  // `[data-name$=".md"]` menu items miss every click beside the filename.
   updateIcon() {
     this.subscriptions.add(
       atom.icons.applyTo(
@@ -39,7 +46,7 @@ module.exports = class FileView {
           context: "tree-view",
           hints: { directory: false, symlink: this.file.symlink },
         },
-        { classes: ["name"], name: this.file.name },
+        { classes: ["name"], setData: false },
       ),
     );
   }
@@ -57,7 +64,7 @@ module.exports = class FileView {
   }
 
   getPath() {
-    return this.fileName.dataset.path;
+    return this.file.path;
   }
 
   isPathEqual(pathToCompare) {

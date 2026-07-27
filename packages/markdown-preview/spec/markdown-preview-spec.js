@@ -435,6 +435,65 @@ describe("Markdown Preview", function () {
     });
   });
 
+  describe("markdown-preview:preview-file", function () {
+    // The real row builder, so this covers the actual DOM contract rather than
+    // a stand-in that could drift from it.
+    const FileView = require("../../tree-view/lib/file-view");
+
+    function treeViewRow(name, filePath = path.join(atom.project.getPaths()[0], name)) {
+      const treeView = document.createElement("div");
+      treeView.classList.add("tree-view");
+
+      const view = new FileView({
+        name,
+        path: filePath,
+        symlink: false,
+        status: null,
+        onDidDestroy: () => ({ dispose() {} }),
+        onDidStatusChange: () => ({ dispose() {} }),
+        isPathEqual: (other) => other === filePath,
+      });
+
+      treeView.appendChild(view.element);
+      return { row: view.element, nameSpan: view.fileName };
+    }
+
+    function contextMenuLabels(element) {
+      return atom.contextMenu.templateForElement(element).map((item) => item.label);
+    }
+
+    it("offers the command anywhere on the row, not just on the file name", function () {
+      const { row, nameSpan } = treeViewRow("file.md");
+
+      // The bug this guards: the item used to be registered on the span, so it
+      // was absent unless the pointer happened to be over the text itself.
+      expect(contextMenuLabels(row)).toContain("Markdown Preview");
+      expect(contextMenuLabels(nameSpan)).toContain("Markdown Preview");
+    });
+
+    it("offers the command for every previewable extension and no others", function () {
+      for (const name of ["a.markdown", "a.md", "a.mdown", "a.mkd", "a.mkdown", "a.ron", "a.txt"]) {
+        expect(contextMenuLabels(treeViewRow(name).row)).toContain("Markdown Preview");
+      }
+      for (const name of ["a.js", "a.mdx", "md"]) {
+        expect(contextMenuLabels(treeViewRow(name).row)).not.toContain("Markdown Preview");
+      }
+    });
+
+    it("previews the row's file when dispatched from the name span inside it", function () {
+      const filePath = path.join(atom.project.getPaths()[0], "subdir", "simple.md");
+      const { nameSpan } = treeViewRow("simple.md", filePath);
+
+      // Dispatching from the span is what a real right-click on the text does;
+      // the handler has to read the row that matched, not the click target.
+      atom.commands.dispatch(nameSpan, "markdown-preview:preview-file");
+
+      waitsFor(() => atom.workspace.getActivePaneItem() instanceof MarkdownPreviewView);
+
+      runs(() => expect(atom.workspace.getActivePaneItem().getPath()).toBe(filePath));
+    });
+  });
+
   describe("when markdown-preview:copy-html is triggered", function () {
     it("copies the HTML to the clipboard", function () {
       waitsForPromise(() => atom.workspace.open("subdir/simple.md"));

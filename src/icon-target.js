@@ -94,9 +94,10 @@ function cacheKeyFor(normalized, { context = true } = {}) {
   }
 }
 
-// The `data-name` a consumer gets when it passes no explicit override. Matches
-// what tree-view, tabs and the fuzzy finders write by hand today, which is what
-// `[data-name$=".md"]` selectors in packages and user stylesheets match on.
+// The `data-name` a consumer gets when it passes no explicit override, and what
+// `[data-name$=".md"]` selectors in packages and user stylesheets match on. A
+// consumer whose icon does not sit on the element those selectors should target
+// — tree-view's rows, tabs — passes `setData: false` and writes them itself.
 function defaultDataName(normalized) {
   if (normalized.type !== "path" || !normalized.path) return null;
   return path.basename(normalized.path);

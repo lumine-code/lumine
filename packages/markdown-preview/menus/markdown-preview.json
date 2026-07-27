@@ -46,43 +46,43 @@
         "command": "core:copy"
       }
     ],
-    ".tree-view .file .name[data-name$=\\.markdown]": [
+    ".tree-view .file[data-name$=\".markdown\"]": [
       {
         "label": "Markdown Preview",
         "command": "markdown-preview:preview-file"
       }
     ],
-    ".tree-view .file .name[data-name$=\\.md]": [
+    ".tree-view .file[data-name$=\".md\"]": [
       {
         "label": "Markdown Preview",
         "command": "markdown-preview:preview-file"
       }
     ],
-    ".tree-view .file .name[data-name$=\\.mdown]": [
+    ".tree-view .file[data-name$=\".mdown\"]": [
       {
         "label": "Markdown Preview",
         "command": "markdown-preview:preview-file"
       }
     ],
-    ".tree-view .file .name[data-name$=\\.mkd]": [
+    ".tree-view .file[data-name$=\".mkd\"]": [
       {
         "label": "Markdown Preview",
         "command": "markdown-preview:preview-file"
       }
     ],
-    ".tree-view .file .name[data-name$=\\.mkdown]": [
+    ".tree-view .file[data-name$=\".mkdown\"]": [
       {
         "label": "Markdown Preview",
         "command": "markdown-preview:preview-file"
       }
     ],
-    ".tree-view .file .name[data-name$=\\.ron]": [
+    ".tree-view .file[data-name$=\".ron\"]": [
       {
         "label": "Markdown Preview",
         "command": "markdown-preview:preview-file"
       }
     ],
-    ".tree-view .file .name[data-name$=\\.txt]": [
+    ".tree-view .file[data-name$=\".txt\"]": [
       {
         "label": "Markdown Preview",
         "command": "markdown-preview:preview-file"

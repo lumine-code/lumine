@@ -509,8 +509,11 @@ module.exports = class ProjectFindView {
   directoryPathForElement(element) {
     const directoryElement = element.closest(".directory");
     if (directoryElement) {
-      const pathElement = directoryElement.querySelector("[data-path]");
-      return pathElement && pathElement.dataset.path;
+      // A tree-view folder carries `data-path` on its own `.header`, but a
+      // special-root folder entry is a single row and carries it itself.
+      return (
+        directoryElement.dataset.path ?? directoryElement.querySelector("[data-path]")?.dataset.path
+      );
     } else {
       const activeEditor = atom.workspace.getCenter().getActiveTextEditor();
       if (activeEditor) {
