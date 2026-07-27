@@ -75,10 +75,16 @@ status-bar {
   --component-icon-size: 14px;
 
   /* Geometry comes from the icon contract; the bar only relaxes the box
-     width — tiles mix icons with text at natural advance. */
+     width — tiles mix icons with text at natural advance — and raises the
+     glyph one pixel: text-bottom hangs the box a descent below the line's
+     middle, and the raise lands the ink centre exactly on the tile text's
+     optical centre (pixel-measured; `position` so an icon set's own
+     `translate` nudge still composes on top). */
   .icon:before {
     width: auto; /* Enable auto-width since not every icon has the same width */
     margin-right: 4px;
+    position: relative;
+    top: -1px;
   }
 
   .icon-diff-ignored:before,

@@ -68,6 +68,15 @@ function* iconBeforeRules(css) {
   }
 }
 
+// The contract's `text-bottom` anchors the glyph box to its host element's
+// content area, so a theme relocating the *element* — vertical-align, its own
+// line box, a position offset — moves every icon with it just as surely as
+// restyling the ::before. The status bar's icons sat 2px low behind exactly
+// one such rule (`.icon { vertical-align: middle }`). Element font-size stays
+// legal: on compounds like `.badge.icon` it is the component's typography.
+const ELEMENT_GEOMETRY =
+  /^(vertical-align|line-height|position|top|bottom|left|right|height|translate|transform)$/;
+
 function targetsIconBefore(chain) {
   // The rule's own selector must reach a ::before, and some link of the chain
   // must scope it to an icon element. `.title` counts: in tabs the icon glyph
@@ -77,14 +86,27 @@ function targetsIconBefore(chain) {
   return chain.some((link) => /\.icon\b|\.title\b/.test(link));
 }
 
+function targetsIconElement(chain) {
+  // An element rule whose subject is the `.icon` class itself (not `.icon-x`
+  // and not a pseudo-element rule, which the ::before check owns).
+  const selector = chain[chain.length - 1];
+  if (/::?(?:before|after)\b/.test(selector)) return false;
+  return /\.icon(?![\w-])/.test(selector);
+}
+
 function findViolations(file) {
   const css = fs.readFileSync(file, "utf8");
   const violations = [];
   for (const { chain, declarations } of iconBeforeRules(css)) {
-    if (!targetsIconBefore(chain)) continue;
+    const pattern = targetsIconBefore(chain)
+      ? GEOMETRY
+      : targetsIconElement(chain)
+        ? ELEMENT_GEOMETRY
+        : null;
+    if (!pattern) continue;
     for (const declaration of declarations.split(";")) {
       const property = declaration.split(":")[0]?.trim();
-      if (property && GEOMETRY.test(property)) {
+      if (property && pattern.test(property)) {
         violations.push({
           selector: chain.filter(Boolean).join(" "),
           property,

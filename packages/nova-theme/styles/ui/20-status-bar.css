@@ -45,9 +45,6 @@
       margin-left: 0; /* override default */
     }
   }
-  .icon {
-    vertical-align: middle;
-  }
   .icon::before {
     margin-right: 0.25em;
   }
