@@ -1562,11 +1562,11 @@ module.exports = class AtomApplication extends EventEmitter {
 
     const timeoutInSeconds = Number.parseFloat(timeout);
     if (!Number.isNaN(timeoutInSeconds)) {
-      const timeoutHandler = function () {
+      const timeoutHandler = () => {
         console.log(
           `The test suite has timed out because it has been running for more than ${timeoutInSeconds} seconds.`,
         );
-        return process.exit(124); // Use the same exit code as the UNIX timeout util.
+        this.exit(124); // Use the same exit code as the UNIX timeout util.
       };
       setTimeout(timeoutHandler, timeoutInSeconds * 1000);
     }
@@ -1588,13 +1588,20 @@ module.exports = class AtomApplication extends EventEmitter {
       }
     }
 
+    // `exit()` hands the process to Electron, which does not unwind this stack
+    // the way `process.exit()` is assumed to, so every failure below returns as
+    // well. Otherwise the run carries a null path into `createWindow` and dies
+    // on a type error instead of on the message it just printed.
     if (testPaths.length === 0) {
-      process.stderr.write("Error: Specify at least one test path\n\n");
-      process.exit(1);
+      process.stderr.write("Error: Specify at least one test path.\n\n");
+      this.exit(1);
+      return null;
     }
 
     const legacyTestRunnerPath = this.resolveLegacyTestRunnerPath();
     const testRunnerPath = this.resolveTestRunnerPath(testPaths[0]);
+    if (testRunnerPath == null) return null;
+
     const devMode = true;
     const isSpec = true;
     if (safeMode == null) {
@@ -1624,8 +1631,11 @@ module.exports = class AtomApplication extends EventEmitter {
     let packageRoot = FindParentDir.sync(testPath, "package.json");
 
     if (!packageRoot) {
-      process.stderr.write("Error: Could not find root directory");
-      process.exit(1);
+      process.stderr.write(
+        `Error: Could not find a package.json in '${testPath}' or any directory above it.\n`,
+      );
+      this.exit(1);
+      return null;
     }
 
     const packageMetadata = require(path.join(packageRoot, "package.json"));
@@ -1672,10 +1682,9 @@ module.exports = class AtomApplication extends EventEmitter {
       // Nothing to do, try the next strategy
     }
 
-    process.stderr.write(
-      `Error: Could not resolve test runner path '${packageMetadata.atomTestRunner}'`,
-    );
-    process.exit(1);
+    process.stderr.write(`Error: Could not resolve test runner path '${atomTestRunner}'.\n`);
+    this.exit(1);
+    return null;
   }
 
   resolveLegacyTestRunnerPath() {

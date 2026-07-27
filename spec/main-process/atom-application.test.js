@@ -1101,6 +1101,53 @@ describe("AtomApplication", function () {
       assert.isTrue(w1.close.called);
     });
   });
+
+  describe("starting a test run", function () {
+    // `exit()` does not unwind the stack the way `process.exit()` is assumed
+    // to, so a rejected test run has to return on its own. Before it did, the
+    // messages below were printed and then buried under a type error raised by
+    // the null they left behind.
+    let app;
+
+    beforeEach(function () {
+      // The scenario stubs runner resolution out, since its temp project roots
+      // have no package.json above them — that is exactly the case under test.
+      app = scenario.addApplication({ devResourcePath: path.resolve(__dirname, "../..") });
+      app.resolveTestRunnerPath.restore();
+      sinon.stub(app, "exit");
+      sinon.stub(process.stderr, "write");
+    });
+
+    it("reports a test path with no package.json above it", function () {
+      const orphanPath = path.join(temp.mkdirSync("lumine-orphan-specs-"), "spec");
+
+      assert.isNull(app.resolveTestRunnerPath(orphanPath));
+      assert.isTrue(app.exit.calledWith(1));
+      assert.match(process.stderr.write.lastCall.args[0], /Could not find a package\.json/);
+    });
+
+    it("reports a run with no test paths, and opens no window", function () {
+      assert.isNull(
+        app.runTests({
+          headless: true,
+          resourcePath: app.resourcePath,
+          executedFrom: process.cwd(),
+          pathsToOpen: [],
+        }),
+      );
+      assert.isTrue(app.exit.calledWith(1));
+      assert.match(process.stderr.write.lastCall.args[0], /Specify at least one test path/);
+      assert.isFalse(app.createWindow.called);
+    });
+
+    it("resolves the default runner for a package that declares none", function () {
+      const runnerPath = app.resolveTestRunnerPath(path.resolve(__dirname, "../../spec"));
+
+      assert.isNotNull(runnerPath);
+      assert.match(runnerPath, /jasmine-test-runner/);
+      assert.isFalse(app.exit.called);
+    });
+  });
 });
 
 class StubWindow extends EventEmitter {
