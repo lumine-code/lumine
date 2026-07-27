@@ -396,7 +396,7 @@ describe("SubsequenceProvider", () => {
   describe("when the legacy completions array is used", () => {
     beforeEach(() => {
       editor.setText("// abcomment");
-      atom.config.set("editor.completions", ["abcd", "abcde", "abcdef"], {
+      atom.config.set("language.completions", ["abcd", "abcde", "abcdef"], {
         scopeSelector: ".source.js .comment",
       });
     });

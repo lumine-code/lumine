@@ -90,7 +90,7 @@ module.exports = class ProviderConfig {
     this.config = {};
     const legacyCompletions = this.settingsForScopeDescriptor(
       scopeDescriptor,
-      "editor.completions",
+      "language.completions",
     );
     const allConfigEntries = this.settingsForScopeDescriptor(
       scopeDescriptor,
