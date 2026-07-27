@@ -9942,11 +9942,14 @@ describe("TextEditor", () => {
       // Mock `Pane::promptOnSaveConflictedFile` in order to skip the presentation of the
       // dialog. Instead, we can choose the outcome of the prompt on a per-call
       // basis.
-      promptOnSaveConflictedFileOutcome = Promise.resolve();
+      // Built when the prompt is answered rather than ahead of it: a rejected
+      // promise sitting in a variable counts as unhandled until something
+      // finally asks for it.
+      promptOnSaveConflictedFileOutcome = () => Promise.resolve();
       if (!Pane.prototype.promptOnSaveConflictedFile.calls) {
-        spyOn(Pane.prototype, "promptOnSaveConflictedFile").and.callFake(() => {
-          return promptOnSaveConflictedFileOutcome;
-        });
+        spyOn(Pane.prototype, "promptOnSaveConflictedFile").and.callFake(() =>
+          promptOnSaveConflictedFileOutcome(),
+        );
       }
 
       await atom.packages.activatePackage("language-javascript");
@@ -10021,7 +10024,7 @@ describe("TextEditor", () => {
       let contentsOnDisk = fs.readFileSync(destination, "utf8").toString();
       expect(editor.isInConflict()).toBe(true);
 
-      promptOnSaveConflictedFileOutcome = Promise.reject({ path: destination });
+      promptOnSaveConflictedFileOutcome = () => Promise.reject({ path: destination });
       let uncommittedContents = editor.getText();
 
       let activePane = atom.workspace.getActivePane();
