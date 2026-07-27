@@ -35,6 +35,9 @@ module.exports = class LanguageServerManager {
       }),
       atom.project.onDidChangePaths(() => this.projectPathsChanged()),
       atom.project.onDidChangeFiles((events) => this.routeFileEvents(events)),
+      atom.config.onDidChange("ide-client.trace", () => {
+        for (const session of this.allSessions()) session.applyTrace();
+      }),
     );
   }
   onDidChangeSession(fn) {
@@ -489,15 +492,6 @@ module.exports = class LanguageServerManager {
   clearProgress(session) {
     for (const entry of session.progressTitles.values()) this.busyProvider?.remove(entry.current);
     session.progressTitles.clear();
-  }
-  trace(session, direction, message) {
-    const level = atom.config.get("ide-client.trace");
-    if (level === "off") return;
-    const copy =
-      level === "verbose"
-        ? message
-        : { id: message.id, method: message.method, error: message.error };
-    this.log(session, `${direction} ${JSON.stringify(copy)}`);
   }
   log(session, message) {
     const id = session.adapter?.id || "unknown";

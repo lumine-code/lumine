@@ -1,11 +1,13 @@
 const ChildProcess = require("child_process");
 const net = require("net");
 const { Emitter, CompositeDisposable } = require("atom");
-const JsonRpcConnection = require("./json-rpc-connection");
-const IpcConnection = require("./ipc-connection");
+const RpcConnection = require("./rpc-connection");
 const C = require("./converters");
 const { STATIC_CAPABILITIES } = require("./capabilities");
 const { languageIdForEditor } = require("./language-ids");
+
+// How long a server gets to exit on its own after `exit` before it is killed.
+const EXIT_GRACE_MS = 1000;
 
 module.exports = class ServerSession {
   constructor(manager, adapter, rootPath, launch) {
@@ -27,6 +29,8 @@ module.exports = class ServerSession {
   onDidChangeState(fn) {
     return this.emitter.on("did-change-state", fn);
   }
+  // Notifications this client registers no handler of its own for. The ones it
+  // does handle reach their consumers through the manager instead.
   onNotification(fn) {
     return this.emitter.on("notification", fn);
   }
@@ -35,36 +39,43 @@ module.exports = class ServerSession {
     this.emitter.emit("did-change-state", { session: this, state, error });
     this.manager.didChangeSession(this, error);
   }
-  trace(direction, message) {
-    this.manager.trace(this, direction, message);
+  // Everything the connection has to say about itself — traffic traces, write
+  // failures, handler faults — lands in this server's log buffer.
+  logger() {
+    const log = (message) => this.manager.log(this, message);
+    return { error: log, warn: log, info: log, log };
+  }
+  applyTrace() {
+    this.connection?.setTrace(atom.config.get("ide-client.trace"));
   }
   async start() {
     const { command, args = [], cwd = this.rootPath, env = {}, transport = "stdio" } = this.launch;
     if (!command) throw new Error(`Adapter ${this.adapter.id} returned no server command`);
     const options = { cwd, env: { ...process.env, ...env }, windowsHide: true, shell: false };
+    const rpc = { logger: this.logger() };
     if (transport === "ipc") {
       this.process = ChildProcess.fork(command, args, {
         ...options,
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
-      this.connection = new IpcConnection(this.process, { trace: this.trace.bind(this) });
+      this.connection = RpcConnection.ipc(this.process, rpc);
     } else if (transport === "socket") {
       this.process = ChildProcess.spawn(command, args, options);
       const socket = net.connect({ host: this.launch.host || "127.0.0.1", port: this.launch.port });
       await new Promise((resolve, reject) => socket.once("connect", resolve).once("error", reject));
-      this.connection = new JsonRpcConnection(socket, socket, { trace: this.trace.bind(this) });
+      this.connection = RpcConnection.socket(socket, rpc);
     } else {
       this.process = ChildProcess.spawn(command, args, {
         ...options,
         stdio: ["pipe", "pipe", "pipe"],
       });
-      this.connection = new JsonRpcConnection(this.process.stdout, this.process.stdin, {
-        trace: this.trace.bind(this),
-      });
+      this.connection = RpcConnection.stdio(this.process, rpc);
     }
     this.process.stderr?.on("data", (chunk) => this.manager.log(this, chunk.toString()));
     this.process.once("exit", (code, signal) => this.onExit(code, signal));
     this.installClientHandlers();
+    this.applyTrace();
+    this.connection.listen();
     const rootUri = C.pathToUri(this.rootPath);
     const result = await this.connection.request("initialize", {
       processId: process.pid,
@@ -108,7 +119,8 @@ module.exports = class ServerSession {
     return field ? !!this.capabilities[field] : true;
   }
   installClientHandlers() {
-    this.connection.on("notification", (method, params) =>
+    this.connection.onError((error) => this.manager.log(this, error.stack || error.message));
+    this.connection.onOtherNotification((method, params) =>
       this.emitter.emit("notification", { session: this, method, params }),
     );
     this.connection.onNotification("textDocument/publishDiagnostics", (params) =>
@@ -243,18 +255,37 @@ module.exports = class ServerSession {
     this.setState("failed", new Error(`Server exited (${code ?? signal})`));
     this.manager.scheduleRestart(this);
   }
+  // `exit` asks the server to leave on its own. Killing it in the same tick
+  // breaks its stdin before it has read the frame, so wait for it to go and
+  // only insist once it is clear it will not.
+  awaitExit() {
+    const child = this.process;
+    if (!child || child.exitCode != null || child.signalCode != null) return;
+    child.stdin?.end();
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        child.kill();
+        resolve();
+      }, EXIT_GRACE_MS);
+      child.once("exit", () => {
+        clearTimeout(timer);
+        resolve();
+      });
+    });
+  }
   async stop() {
     if (this.state === "stopped") return;
     const wasRunning = this.state === "running";
     this.setState("stopping");
     try {
-      if (wasRunning) await this.connection.request("shutdown", null);
-      this.connection?.notify("exit");
+      if (wasRunning) await this.connection.request("shutdown");
     } catch {
       /* The server may already be gone. */
     }
+    // Awaited so the frame is on the wire before the process is taken down.
+    await this.connection?.notify("exit");
+    await this.awaitExit();
     this.connection?.dispose();
-    this.process?.kill();
     for (const doc of this.documents.values()) doc.subscriptions.dispose();
     this.documents.clear();
     this.manager.clearDiagnosticsForSession(this);

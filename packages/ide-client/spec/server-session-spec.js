@@ -215,4 +215,28 @@ describe("ServerSession against a fake server", () => {
     await until(() => states.includes("failed"));
     expect(session.state).toBe("failed");
   });
+
+  it("lets the server exit on its own rather than killing it mid-frame", async () => {
+    const session = await startSession();
+    const child = session.process;
+    await session.stop();
+    expect(session.state).toBe("stopped");
+    // `exit` was read and acted on: a killed process reports its signal here.
+    expect(child.exitCode).toBe(0);
+    expect(child.signalCode).toBeNull();
+  });
+
+  // The report this guards: `exit` is written to a server that is already gone,
+  // the write fails a tick later, and an unheard stream error takes down the
+  // renderer with "Uncaught Error: write EPIPE".
+  it("stops a server whose pipe is already broken without raising", async () => {
+    const session = await startSession();
+    const child = session.process;
+    session.request("test/crash").catch(() => {});
+    await until(() => child.exitCode != null || child.signalCode != null);
+    await session.stop();
+    expect(session.state).toBe("stopped");
+    // Reported into the server's log, not thrown at the renderer.
+    expect(manager.getLog("fake")).toContain("Could not deliver exit");
+  });
 });
