@@ -105,6 +105,59 @@ describe("PackageDetailView", function () {
     expect(labels).toContain("README");
   });
 
+  it("drops and restores the sections as the package is disabled and enabled", () => {
+    atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
+    const pack = atom.packages.getLoadedPackage("package-with-config");
+    const settingsView = new SettingsView();
+    const showToc = spyOn(settingsView, "showTableOfContents").andCallThrough();
+    view = new PackageDetailView(pack, settingsView, packageManager, SnippetsProvider);
+
+    const sectionKeys = () =>
+      Array.from(view.refs.sections.children).map((element) => element.dataset.section);
+    const listedSections = () =>
+      showToc.mostRecentCall.args[0].filter((entry) => entry.level === 1).map((e) => e.label);
+    expect(sectionKeys()).toContain("settings");
+
+    // Disabling the package takes effect in the panel that is open: a disabled
+    // package contributes no settings, keybindings, grammars, or snippets, so
+    // those sections go — no need to leave the panel and come back.
+    atom.config.pushAtKeyPath("core.disabledPackages", "package-with-config");
+    expect(sectionKeys()).toEqual(["readme"]);
+    expect(listedSections()).toEqual(["README"]);
+    expect(view.refs.startupTime.style.display).toBe("none");
+
+    // Enabling it again brings them back, ahead of the README.
+    atom.config.removeAtKeyPath("core.disabledPackages", "package-with-config");
+    expect(sectionKeys()).toEqual(["settings", "keymap", "grammars", "snippets", "readme"]);
+    expect(listedSections()).toEqual(["Settings", "README"]);
+    expect(view.refs.startupTime.style.display).toBe("");
+  });
+
+  it("adds the sections when a package that started disabled is enabled", () => {
+    const packagePath = path.join(__dirname, "fixtures", "package-with-config");
+    atom.packages.packageDirPaths.push(path.join(__dirname, "fixtures"));
+    atom.config.pushAtKeyPath("core.disabledPackages", "package-with-config");
+    const metadata = { ...require(path.join(packagePath, "package.json")) };
+
+    // A disabled package is never loaded, so the Packages list hands the detail
+    // view what it read off disk rather than a loaded package.
+    view = new PackageDetailView(
+      { ...metadata, path: packagePath, metadata },
+      new SettingsView(),
+      packageManager,
+      SnippetsProvider,
+    );
+    const settingsSection = () => view.refs.sections.querySelector('[data-section="settings"]');
+    expect(settingsSection()).toBeNull();
+
+    // Enabling it loads the package, so its settings appear in the panel that is
+    // already open, built from the package that was just loaded.
+    atom.packages.enablePackage("package-with-config");
+    expect(view.pack).toBe(atom.packages.getLoadedPackage("package-with-config"));
+    expect(settingsSection()).not.toBeNull();
+    expect(settingsSection().querySelector(".control-group")).not.toBeNull();
+  });
+
   it("renders an installed package README with its file path", function () {
     const packagePath = path.join(__dirname, "fixtures", "package-with-readme");
     atom.packages.loadPackage(packagePath);

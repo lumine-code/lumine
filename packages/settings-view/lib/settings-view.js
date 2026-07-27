@@ -70,25 +70,12 @@ export default class SettingsView {
       }),
     );
 
-    this.disposables.add(
-      atom.packages.onDidActivateInitialPackages(() => {
-        this.disposables.add(
-          atom.packages.onDidActivatePackage((pack) => this.removePanelCache(pack.name)),
-          atom.packages.onDidDeactivatePackage((pack) => this.removePanelCache(pack.name)),
-        );
-      }),
-    );
+    // A package detail panel is deliberately NOT dropped from the cache when its
+    // package is activated or deactivated: that left the panel already on screen
+    // untouched (only a trip out and back showed the change) and orphaned its
+    // element and subscriptions here. The detail view keeps itself current.
 
     process.nextTick(() => this.initializePanels());
-  }
-
-  removePanelCache(name) {
-    delete this.panelsByName[name];
-    for (const [key, panel] of Object.entries(this.panelsByName)) {
-      if (panel instanceof PackageDetailView && panel.pack && panel.pack.name === name) {
-        delete this.panelsByName[key];
-      }
-    }
   }
 
   update() {}

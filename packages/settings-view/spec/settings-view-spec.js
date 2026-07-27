@@ -501,7 +501,7 @@ describe("SettingsView", function () {
         );
       });
 
-      it("doesn't use cached package detail when package re-activated and opens the package view with atom://config/packages/<package-name>", async () => {
+      it("keeps the open package detail panel and refreshes it when the package is re-activated", async () => {
         jasmine.useRealClock();
         await atom.packages.activate();
         await atom.packages.activatePackage(
@@ -511,8 +511,8 @@ describe("SettingsView", function () {
 
         await wait(10);
 
-        let detailInitial = settingsView.getOrCreatePanel("package-with-readme");
-        expect(settingsView.getOrCreatePanel("package-with-readme")).toBe(detailInitial);
+        const detailInitial = settingsView.getOrCreatePanel("package-with-readme");
+        expect(detailInitial).toBeTruthy();
 
         await atom.packages.deactivatePackage("package-with-readme");
         await atom.packages.activatePackage(
@@ -520,11 +520,11 @@ describe("SettingsView", function () {
         );
         await atom.workspace.open("atom://config/packages/package-with-readme");
 
-        let detailAfterReactivate = settingsView.getOrCreatePanel("package-with-readme");
-        expect(settingsView.getOrCreatePanel("package-with-readme")).toBe(detailAfterReactivate);
-        expect(detailInitial).toBeTruthy();
-        expect(detailAfterReactivate).toBeTruthy();
-        expect(detailInitial).not.toBe(detailAfterReactivate);
+        // The panel the reader has open is the one that must reflect the change,
+        // so it stays and updates itself rather than being dropped and rebuilt
+        // on the next visit — which left this one stale and orphaned in the DOM.
+        expect(settingsView.getOrCreatePanel("package-with-readme")).toBe(detailInitial);
+        expect(settingsView.refs.panels.contains(detailInitial.element)).toBe(true);
       });
 
       it("recreates an origin-keyed detail panel when a selected ref changes the package name", function () {

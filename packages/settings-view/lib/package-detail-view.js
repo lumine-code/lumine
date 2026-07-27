@@ -48,6 +48,7 @@ export default class PackageDetailView {
     etch.initialize(this);
     this.setupSections();
     this.loadPackage();
+    this.subscribeToPackageEnablement();
 
     this.disposables.add(
       atom.commands.add(this.element, {
@@ -231,30 +232,11 @@ export default class PackageDetailView {
   }
 
   destroy() {
-    if (this.settingsPanel) {
-      this.settingsPanel.destroy();
-      this.settingsPanel = null;
-    }
-
-    if (this.keymapView) {
-      this.keymapView.destroy();
-      this.keymapView = null;
-    }
-
-    if (this.grammarsView) {
-      this.grammarsView.destroy();
-      this.grammarsView = null;
-    }
-
-    if (this.snippetsView) {
-      this.snippetsView.destroy();
-      this.snippetsView = null;
-    }
-
-    if (this.readmeView) {
-      this.readmeView.destroy();
-      this.readmeView = null;
-    }
+    this.settingsPanel = this.destroySection(this.settingsPanel);
+    this.keymapView = this.destroySection(this.keymapView);
+    this.grammarsView = this.destroySection(this.grammarsView);
+    this.snippetsView = this.destroySection(this.snippetsView);
+    this.readmeView = this.destroySection(this.readmeView);
 
     if (this.packageCard) {
       this.packageCard.destroy();
@@ -447,59 +429,11 @@ export default class PackageDetailView {
     // This renders the installed version, so leave any preview mode.
     this.previewMode = false;
 
-    if (this.settingsPanel) {
-      this.settingsPanel.destroy();
-      this.settingsPanel = null;
-    }
-
-    if (this.keymapView) {
-      this.keymapView.destroy();
-      this.keymapView = null;
-    }
-
-    if (this.grammarsView) {
-      this.grammarsView.destroy();
-      this.grammarsView = null;
-    }
-
-    if (this.snippetsView) {
-      this.snippetsView.destroy();
-      this.snippetsView = null;
-    }
-
-    if (this.readmeView) {
-      this.readmeView.destroy();
-      this.readmeView = null;
-    }
-
+    this.readmeView = this.destroySection(this.readmeView);
     this.updateFileButtons();
-    this.activateConfig();
-    this.refs.startupTime.style.display = "none";
+    this.updateConfigSections();
 
     const loadedPackage = this.getMatchingLoadedPackage();
-    if (loadedPackage) {
-      if (!atom.packages.isPackageDisabled(this.pack.name)) {
-        this.settingsPanel = new SettingsPanel({ namespace: this.pack.name, includeTitle: false });
-        this.keymapView = new PackageKeymapView(this.pack);
-        this.settingsPanel.element.dataset.section = "settings";
-        this.keymapView.element.dataset.section = "keymap";
-        this.refs.sections.appendChild(this.settingsPanel.element);
-        this.refs.sections.appendChild(this.keymapView.element);
-
-        if (this.pack.path) {
-          this.grammarsView = new PackageGrammarsView(this.pack.path);
-          this.snippetsView = new PackageSnippetsView(this.pack, this.snippetsProvider);
-          this.grammarsView.element.dataset.section = "grammars";
-          this.snippetsView.element.dataset.section = "snippets";
-          this.refs.sections.appendChild(this.grammarsView.element);
-          this.refs.sections.appendChild(this.snippetsView.element);
-        }
-
-        this.refs.startupTime.innerHTML = `This ${this.type} added <span class='highlight'>${this.getStartupTime()}ms</span> to startup time.`;
-        this.refs.startupTime.style.display = "";
-      }
-    }
-
     const sourceIsAvailable =
       loadedPackage &&
       loadedPackage.path &&
@@ -513,6 +447,99 @@ export default class PackageDetailView {
     }
 
     this.renderReadme();
+  }
+
+  // A package only contributes settings, keybindings, grammars, and snippets
+  // while it is installed at this name and enabled.
+  packageIsEnabled() {
+    return !!this.getMatchingLoadedPackage() && !atom.packages.isPackageDisabled(this.pack.name);
+  }
+
+  // Rebuilds the sections that describe the package as it runs here. A disabled
+  // package contributes none of them, so they are dropped until it is enabled
+  // again — and rebuilt from the freshly loaded package when it is.
+  updateConfigSections() {
+    this.settingsPanel = this.destroySection(this.settingsPanel);
+    this.keymapView = this.destroySection(this.keymapView);
+    this.grammarsView = this.destroySection(this.grammarsView);
+    this.snippetsView = this.destroySection(this.snippetsView);
+
+    this.activateConfig();
+    this.refs.startupTime.style.display = "none";
+    this.configSectionsBuilt = this.packageIsEnabled();
+
+    if (this.configSectionsBuilt) {
+      this.settingsPanel = new SettingsPanel({ namespace: this.pack.name, includeTitle: false });
+      this.keymapView = new PackageKeymapView(this.pack);
+      this.appendSection(this.settingsPanel.element, "settings");
+      this.appendSection(this.keymapView.element, "keymap");
+
+      if (this.pack.path) {
+        this.grammarsView = new PackageGrammarsView(this.pack.path);
+        this.snippetsView = new PackageSnippetsView(this.pack, this.snippetsProvider);
+        this.appendSection(this.grammarsView.element, "grammars");
+        this.appendSection(this.snippetsView.element, "snippets");
+      }
+
+      this.refs.startupTime.innerHTML = `This ${this.type} added <span class='highlight'>${this.getStartupTime()}ms</span> to startup time.`;
+      this.refs.startupTime.style.display = "";
+    }
+
+    this.updateSections();
+  }
+
+  // The config sections always precede the README, which is the last section of
+  // the list. It is appended after them on a full render, but is already in
+  // place when only the config sections are rebuilt.
+  appendSection(element, key) {
+    element.dataset.section = key;
+    this.refs.sections.insertBefore(element, this.readmeView ? this.readmeView.element : null);
+  }
+
+  // Drops a section's sub-view together with its element. The etch-based ones
+  // remove their node on the next animation frame, which would leave a
+  // torn-down section standing in the list — and in the table of contents —
+  // until then.
+  destroySection(view) {
+    if (!view) return null;
+    view.element.remove();
+    view.destroy();
+    return null;
+  }
+
+  // The detail view outlives the package being enabled or disabled — from its
+  // own card, from the Packages list, or from the config file — so it keeps its
+  // sections current instead of only being right when freshly opened.
+  subscribeToPackageEnablement() {
+    const refresh = () => this.updateEnablementState();
+    this.disposables.add(
+      atom.config.onDidChange("core.disabledPackages", refresh),
+      atom.packages.onDidActivatePackage((pack) => {
+        if (pack.name === this.pack.name) refresh();
+      }),
+      atom.packages.onDidDeactivatePackage((pack) => {
+        if (pack.name === this.pack.name) refresh();
+      }),
+    );
+  }
+
+  updateEnablementState() {
+    if (!this.pack.metadata) return;
+
+    const loadedPackage = this.getMatchingLoadedPackage();
+    const enabled = !!loadedPackage && !atom.packages.isPackageDisabled(this.pack.name);
+    // Enabling arrives twice — as the `core.disabledPackages` change and again as
+    // the activation — and every package's toggle is heard on the config change,
+    // so do nothing unless this package's state or its loaded copy really moved.
+    // A rebuild replaces the sections the reader is looking at.
+    if (enabled === this.configSectionsBuilt && (!loadedPackage || loadedPackage === this.pack)) {
+      return;
+    }
+
+    // A package the session started disabled is loaded only once it is enabled,
+    // so adopt the real package before building anything from it.
+    if (loadedPackage) this.pack = loadedPackage;
+    this.updateConfigSections();
   }
 
   // Opens the package's LICENSE. The card only names the license (its SPDX id,
