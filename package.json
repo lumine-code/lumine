@@ -279,6 +279,8 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "check:icons": "node script/check-icons.js",
+    "generate:branding": "electron --no-sandbox script/generate-branding.js",
+    "check:branding": "electron --no-sandbox script/generate-branding.js --check",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test:editor": "npm run test:only -- spec",
