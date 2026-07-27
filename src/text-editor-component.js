@@ -261,13 +261,17 @@ module.exports = class TextEditorComponent {
   }
 
   scheduleUpdate(nextUpdateOnlyBlinksCursors = false) {
-    if (!this.visible) return;
-    if (this.suppressUpdates) return;
-    // A destroyed editor must never render. Destroying an attached editor
-    // emits synchronous marker and decoration events mid-teardown; rendering
-    // from those would repopulate the destroyed display layer's spatial index
-    // and read a buffer whose native resources may already be released.
-    if (this.props.model.isDestroyed()) return;
+    // These bail-outs resolve any pending update promise for the same reason
+    // the mirrored ones in `updateSync` do: no update is going to happen, so a
+    // caller already awaiting `getNextUpdatePromise()` would hang forever.
+    if (!this.visible || this.suppressUpdates || this.props.model.isDestroyed()) {
+      // A destroyed editor must never render. Destroying an attached editor
+      // emits synchronous marker and decoration events mid-teardown; rendering
+      // from those would repopulate the destroyed display layer's spatial index
+      // and read a buffer whose native resources may already be released.
+      if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
+      return;
+    }
 
     this.nextUpdateOnlyBlinksCursors =
       this.nextUpdateOnlyBlinksCursors !== false && nextUpdateOnlyBlinksCursors === true;

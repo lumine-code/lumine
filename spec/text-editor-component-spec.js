@@ -52,7 +52,13 @@ class CustomViewRegistry extends ViewRegistry {
 
 let defaultScheduler = TextEditorComponent.getScheduler();
 let alternativeScheduler = new CustomViewRegistry(defaultScheduler.props);
-const shouldUseAlternativeScheduler = process.platform === "linux" || process.platform === "win32";
+// Every `await component.getNextUpdatePromise()` in this file is an untimed
+// wait on a single scheduler flush, so the scheduler has to be one that always
+// runs. The default one is driven by `requestAnimationFrame`, which this
+// Chromium suspends for a window it does not consider rendered (see
+// src/initialize-test-window.js) — and macOS, whose WindowServer reports real
+// occlusion, is exactly where that happens. Excluding darwin here left it the
+// only platform waiting on the compositor, which is what timed out at 120s.
 function useAlternativeScheduler() {
   TextEditorComponent.setScheduler(alternativeScheduler);
 }
@@ -79,9 +85,7 @@ let verticalScrollbarWidth, horizontalScrollbarHeight;
 
 describe("TextEditorComponent", () => {
   beforeEach(() => {
-    if (shouldUseAlternativeScheduler) {
-      useAlternativeScheduler();
-    }
+    useAlternativeScheduler();
   });
 
   beforeEach(() => {
@@ -116,9 +120,10 @@ describe("TextEditorComponent", () => {
       editor.destroy();
     }
     editors.length = 0;
-    if (shouldUseAlternativeScheduler) {
-      restoreDefaultScheduler();
-    }
+    // Drop anything still queued, so a spec that did time out cannot bleed a
+    // pending writer into the next one.
+    alternativeScheduler.clearDocumentRequests();
+    restoreDefaultScheduler();
   });
 
   describe("rendering", () => {
@@ -1083,8 +1088,12 @@ describe("TextEditorComponent", () => {
         component.updateSync();
         expect(element.className).toBe("editor a b is-focused");
         document.body.focus();
-        await component.getNextUpdatePromise();
-        await wait(0);
+        // Mirror of the focus half above. Losing OS focus is delivered
+        // asynchronously too, so a contended runner can process the blur after
+        // the assertion and leave `is-focused` behind. Drive the component's
+        // own blur entry point and render synchronously, leaving no async gap.
+        component.didBlurHiddenInput({ type: "blur", relatedTarget: document.body });
+        component.updateSync();
         expect(element.className).toBe("editor a b");
       },
     );
@@ -1191,18 +1200,14 @@ describe("TextEditorComponent", () => {
       let originalTimeout;
 
       beforeEach(() => {
-        if (shouldUseAlternativeScheduler) {
-          useAlternativeScheduler();
-        }
+        useAlternativeScheduler();
         originalTimeout = jasmine.DEFAULT_TIMEOUT_INTERVAL;
         jasmine.DEFAULT_TIMEOUT_INTERVAL = 60 * 1000;
       });
 
       afterEach(() => {
         jasmine.DEFAULT_TIMEOUT_INTERVAL = originalTimeout;
-        if (shouldUseAlternativeScheduler) {
-          restoreDefaultScheduler();
-        }
+        restoreDefaultScheduler();
       });
 
       it("renders the visible rows correctly after randomly mutating the editor", async () => {
@@ -2340,15 +2345,11 @@ describe("TextEditorComponent", () => {
 
   describe("highlight decorations", () => {
     beforeEach(() => {
-      if (shouldUseAlternativeScheduler) {
-        useAlternativeScheduler();
-      }
+      useAlternativeScheduler();
     });
 
     afterEach(() => {
-      if (shouldUseAlternativeScheduler) {
-        restoreDefaultScheduler();
-      }
+      restoreDefaultScheduler();
     });
 
     it("renders single-line highlights", async () => {
