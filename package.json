@@ -306,6 +306,13 @@
     "sinon": "22.0.0"
   },
   "allowScripts": {
-    "github:lumine-code/node-pty#c9c7646d0db00a084b114b6c563e1c08dedc6688": true
+    "github:lumine-code/node-pty#c9c7646d0db00a084b114b6c563e1c08dedc6688": true,
+    "github:lumine-code/node-ctags#c4272afbc8dcd3c0acd137d85d1127995dd31f76": true,
+    "github:lumine-code/fuzzy-native#7284186486868a94675c39ba387ee42f92b94910": true,
+    "github:lumine-code/keyboard-layout#b3c034f622c2ab36edc6abb101b0fd7a8e42da50": true,
+    "github:lumine-code/superstring#72dcab5bf7c9615ed15cbffe58a78142998ffff5": true,
+    "@parcel/watcher@2.6.0": true,
+    "electron-winstaller@5.4.0": true,
+    "fs-admin": true
   }
 }
