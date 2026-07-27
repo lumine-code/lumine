@@ -68,6 +68,7 @@
   --font-family: system-ui;
   --use-custom-controls: true;
   --text-color-faded: hsla(220, 13%, 66%, 0.2);
+  --text-color-hint: hsl(220, 13%, 46%);
   --text-color-added: hsl(140, 44%, 62%);
   --text-color-ignored: hsla(220, 13%, 66%, 0.6);
   --text-color-modified: hsl(36, 60%, 72%);

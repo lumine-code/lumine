@@ -92,6 +92,12 @@
 
   /* --- ui extended: text --- */
   --text-color-faded: rgb(from var(--text-color) r g b / 20%);
+  /* Diagnostics of the lowest severity. Neutral by contract: a hint must not
+     compete with info, warning and error, so it derives from the theme's own
+     de-emphasized foreground rather than claiming a fourth hue. Aliased rather
+     than reused directly so a theme can retint hints without disturbing
+     --text-color-subtle, which also colors tabs, paths and placeholders. */
+  --text-color-hint: var(--text-color-subtle);
   --text-color-added: var(--text-color-success);
   --text-color-ignored: var(--text-color-subtle);
   --text-color-modified: var(--text-color-warning);

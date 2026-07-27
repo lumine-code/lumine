@@ -68,6 +68,7 @@
   --font-family: system-ui;
   --use-custom-controls: true;
   --text-color-faded: rgba(59, 59, 59, 0.3);
+  --text-color-hint: #767676;
   --text-color-added: #107c10;
   --text-color-ignored: #8e8e90;
   --text-color-modified: #895503;

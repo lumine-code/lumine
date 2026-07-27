@@ -92,6 +92,7 @@ const UI_VARIABLES = [
 const UI_VARIABLES_EXTENDED = [
   // Text
   "text-color-faded",
+  "text-color-hint",
   "text-color-added",
   "text-color-ignored",
   "text-color-modified",

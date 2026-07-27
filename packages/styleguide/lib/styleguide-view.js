@@ -124,6 +124,7 @@ export default class StyleguideView {
               "text-color-success",
               "text-color-warning",
               "text-color-error",
+              "text-color-hint",
             ])}
 
             <h2>Background colors</h2>
