@@ -339,6 +339,14 @@
     margin-right: calc(var(--component-padding) * 0.8);
   }
 
+  /* Section headings run 1.75em against the icon contract's 16px box, so
+     text-bottom rests the glyph well below the title. The raise is
+     pixel-measured: the glyph box lands on the heading's cap band. */
+  .section-heading.icon:before {
+    position: relative;
+    top: -6px;
+  }
+
   .section-heading-count {
     margin-left: 0.5em;
   }

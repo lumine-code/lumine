@@ -1,7 +1,16 @@
-/* Package README */
+/* Rendered markdown: the package README, and the documents it ships in `docs/` */
 
 .settings-view {
-  .package-readme {
+  /* Each document is a source of its own, so it is ruled off from the one above
+     it the way the sections of the list are ruled off from each other. */
+  .package-doc + .package-doc {
+    margin-top: var(--section-padding);
+    padding-top: var(--section-padding);
+    border-top: 1px solid var(--base-border-color);
+  }
+
+  .package-readme,
+  .package-doc {
     font-size: 1.25em;
 
     h1 {

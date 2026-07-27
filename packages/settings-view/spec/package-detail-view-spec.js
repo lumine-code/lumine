@@ -120,17 +120,113 @@ describe("PackageDetailView", function () {
 
     // Disabling the package takes effect in the panel that is open: a disabled
     // package contributes no settings, keybindings, grammars, or snippets, so
-    // those sections go — no need to leave the panel and come back.
+    // those sections go — no need to leave the panel and come back. Docs stay:
+    // they are files on disk, and this package ships none, so the section is
+    // present but empty and therefore hidden.
     atom.config.pushAtKeyPath("core.disabledPackages", "package-with-config");
-    expect(sectionKeys()).toEqual(["readme"]);
+    expect(sectionKeys()).toEqual(["readme", "docs"]);
     expect(listedSections()).toEqual(["README"]);
     expect(view.refs.startupTime.style.display).toBe("none");
 
     // Enabling it again brings them back, ahead of the README.
     atom.config.removeAtKeyPath("core.disabledPackages", "package-with-config");
-    expect(sectionKeys()).toEqual(["settings", "keymap", "grammars", "snippets", "readme"]);
+    expect(sectionKeys()).toEqual(["settings", "keymap", "grammars", "snippets", "readme", "docs"]);
     expect(listedSections()).toEqual(["Settings", "README"]);
     expect(view.refs.startupTime.style.display).toBe("");
+  });
+
+  describe("the documents a package ships in docs/", () => {
+    const openDetailView = (fixture, settingsView = new SettingsView()) => {
+      atom.packages.loadPackage(path.join(__dirname, "fixtures", fixture));
+      const pack = atom.packages.getLoadedPackage(fixture);
+      view = new PackageDetailView(pack, settingsView, packageManager, SnippetsProvider);
+      return view;
+    };
+    const docsSection = () => view.refs.sections.querySelector('[data-section="docs"]');
+
+    it("renders one block per document, in order", () => {
+      openDetailView("package-with-docs");
+
+      const docs = Array.from(docsSection().querySelectorAll(".package-doc"));
+      expect(docs.map((element) => element.dataset.docFile)).toEqual([
+        "a.provider.md",
+        "b.provider.md",
+      ]);
+      expect(docsSection().style.display).toBe("");
+
+      // The markdown is rendered, not shown as source.
+      expect(docs[0].querySelector("h1").textContent).toBe("a.provider");
+    });
+
+    it("hides the section for a package that ships no documents", () => {
+      openDetailView("package-with-config");
+
+      expect(docsSection().querySelector(".package-doc")).toBeNull();
+      expect(docsSection().style.display).toBe("none");
+    });
+
+    it("lists each document under its own name in the table of contents", () => {
+      const settingsView = new SettingsView();
+      const showToc = spyOn(settingsView, "showTableOfContents").andCallThrough();
+      openDetailView("package-with-docs", settingsView);
+
+      const entries = showToc.mostRecentCall.args[0];
+
+      // Each document is a top-level entry named after its file — there is no
+      // single "Docs" entry burying them, and the README still comes first.
+      expect(entries.filter((entry) => entry.level === 1).map((entry) => entry.label)).toEqual([
+        "Settings",
+        "README",
+        "a.provider.md",
+        "b.provider.md",
+      ]);
+      expect(entries.find((entry) => entry.label === "Documentation")).toBeUndefined();
+
+      // Its own headers follow it, nested just as the README's are.
+      const header = (label) => entries.filter((entry) => entry.label === label);
+      expect(header("a.provider")[0].level).toBe(2);
+      expect(header("Contract").length).toBe(2);
+      expect(header("Contract")[0].level).toBe(3);
+      expect(header("Contract")[0].icon).toBe("icon-chevron-right");
+
+      // Clicking a document scrolls to it in the list.
+      const [first] = docsSection().querySelectorAll(".package-doc");
+      const scrollIntoView = spyOn(first, "scrollIntoView");
+      entries.find((entry) => entry.label === "a.provider.md").onClick();
+      expect(scrollIntoView).toHaveBeenCalled();
+    });
+
+    it("keeps the section while the package is disabled", () => {
+      openDetailView("package-with-docs");
+      expect(docsSection().querySelectorAll(".package-doc").length).toBe(2);
+
+      // The documents are files on disk, so unlike the sections describing what
+      // the package contributes while running, they read the same either way.
+      atom.config.pushAtKeyPath("core.disabledPackages", "package-with-docs");
+      expect(docsSection().querySelectorAll(".package-doc").length).toBe(2);
+      expect(docsSection().style.display).toBe("");
+
+      atom.config.removeAtKeyPath("core.disabledPackages", "package-with-docs");
+      expect(docsSection().querySelectorAll(".package-doc").length).toBe(2);
+    });
+
+    it("resolves a fragment link within the document that was clicked", () => {
+      openDetailView("package-with-docs");
+
+      // Every contract document uses the same headings, so `#contract` exists
+      // once per file and the ids collide across them.
+      const [first, second] = docsSection().querySelectorAll(".package-doc");
+      const link = first.querySelector('a[href="#contract"]');
+      const target = first.querySelector("#user-content-contract");
+      const sibling = second.querySelector("#user-content-contract");
+      spyOn(target, "scrollIntoView");
+      spyOn(sibling, "scrollIntoView");
+
+      link.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+
+      expect(target.scrollIntoView).toHaveBeenCalled();
+      expect(sibling.scrollIntoView).not.toHaveBeenCalled();
+    });
   });
 
   it("adds the sections when a package that started disabled is enabled", () => {

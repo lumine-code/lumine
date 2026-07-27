@@ -9,6 +9,7 @@ import { CompositeDisposable, Disposable } from "atom";
 import etch from "@lumine-code/etch";
 
 import PackageCard from "./package-card";
+import PackageDocsView from "./package-docs-view";
 import PackageGrammarsView from "./package-grammars-view";
 import PackageKeymapView from "./package-keymap-view";
 import PackageReadmeView from "./package-readme-view";
@@ -18,17 +19,20 @@ import { packageOrigin } from "./utils";
 
 const NORMALIZE_PACKAGE_DATA_README_ERROR = "ERROR: No README data found!";
 
-// The sections of the detail view. Each is appended to `refs.sections` and they
-// are all shown at once, as one long scrolling list; the sidebar table of
-// contents is the navigation, listing every section (with the README's own
-// headers nested under it).
+// The sections of the detail view, in the order they are listed. Each is
+// appended to `refs.sections` and they are all shown at once, as one long
+// scrolling list; the sidebar table of contents is the navigation, listing every
+// section with the rendered markdown's own headers nested under it.
 const SECTION_META = {
   settings: { label: "Settings", icon: "icon-gear" },
   keymap: { label: "Keybindings", icon: "icon-keyboard" },
   grammars: { label: "Grammars", icon: "icon-file-code" },
   snippets: { label: "Snippets", icon: "icon-code" },
   readme: { label: "README", icon: "icon-book" },
+  docs: { label: "Documentation", icon: "icon-file-text" },
 };
+
+const SECTION_ORDER = Object.keys(SECTION_META);
 
 export default class PackageDetailView {
   constructor(pack, settingsView, packageManager, snippetsProvider) {
@@ -236,6 +240,7 @@ export default class PackageDetailView {
     this.keymapView = this.destroySection(this.keymapView);
     this.grammarsView = this.destroySection(this.grammarsView);
     this.snippetsView = this.destroySection(this.snippetsView);
+    this.docsView = this.destroySection(this.docsView);
     this.readmeView = this.destroySection(this.readmeView);
 
     if (this.packageCard) {
@@ -252,8 +257,8 @@ export default class PackageDetailView {
   }
 
   setupSections() {
-    // Sub-views are appended asynchronously (settings/keymap/grammars/snippets on
-    // install, the README once fetched), so refresh the section visibility and
+    // Sub-views are appended asynchronously (settings/keymap/grammars/snippets/docs
+    // on install, the README once fetched), so refresh the section visibility and
     // the table of contents whenever the section list changes.
     this.sectionsObserver = new MutationObserver(() => this.updateSections());
     this.sectionsObserver.observe(this.refs.sections, { childList: true, subtree: true });
@@ -286,7 +291,7 @@ export default class PackageDetailView {
   sectionHasContent(key, element) {
     // While previewing a version other than the installed one, only the README
     // belongs to that version (it is fetched for the previewed commit); settings,
-    // keymaps, grammars, and snippets describe the installed copy.
+    // keymaps, grammars, snippets, and docs describe the installed copy.
     if (this.previewMode && key !== "readme") return false;
 
     switch (key) {
@@ -297,6 +302,8 @@ export default class PackageDetailView {
         return !!element.querySelector("tbody tr");
       case "grammars":
         return !!element.querySelector(".settings-panel");
+      case "docs":
+        return !!element.querySelector(".package-doc");
       default:
         return true; // readme
     }
@@ -463,6 +470,7 @@ export default class PackageDetailView {
     this.keymapView = this.destroySection(this.keymapView);
     this.grammarsView = this.destroySection(this.grammarsView);
     this.snippetsView = this.destroySection(this.snippetsView);
+    this.docsView = this.destroySection(this.docsView);
 
     this.activateConfig();
     this.refs.startupTime.style.display = "none";
@@ -485,15 +493,27 @@ export default class PackageDetailView {
       this.refs.startupTime.style.display = "";
     }
 
+    // The documents a package ships in `docs/` are files on disk, so unlike the
+    // sections above they read the same whether or not the package is enabled.
+    if (this.pack.path) {
+      this.docsView = new PackageDocsView(this.pack.path);
+      this.appendSection(this.docsView.element, "docs");
+    }
+
     this.updateSections();
   }
 
-  // The config sections always precede the README, which is the last section of
-  // the list. It is appended after them on a full render, but is already in
-  // place when only the config sections are rebuilt.
+  // Places a section in the order `SECTION_META` declares it, whatever order the
+  // sections happen to arrive in: the config sections are rebuilt on every
+  // enable/disable, while the README is appended separately once it has been read
+  // from disk or fetched.
   appendSection(element, key) {
     element.dataset.section = key;
-    this.refs.sections.insertBefore(element, this.readmeView ? this.readmeView.element : null);
+    const rank = SECTION_ORDER.indexOf(key);
+    const next = Array.from(this.refs.sections.children).find(
+      (child) => SECTION_ORDER.indexOf(child.dataset.section) > rank,
+    );
+    this.refs.sections.insertBefore(element, next ?? null);
   }
 
   // Drops a section's sub-view together with its element. The etch-based ones
@@ -709,16 +729,17 @@ export default class PackageDetailView {
       );
       this.readmeView.destroy();
     } else {
-      this.refs.sections.appendChild(readmeView.element);
+      this.appendSection(readmeView.element, "readme");
     }
     this.readmeView = readmeView;
     this.updateSections();
   }
 
-  // Publishes the sections on show — and the current README's own headers, nested
-  // under it — to the sidebar TOC, which is how the long list is navigated. Only
-  // while this detail view is the visible panel, so an async README load for a
-  // panel the user has navigated away from does not hijack the sidebar.
+  // Publishes the sections on show — and the rendered markdown's own headers,
+  // nested under it — to the sidebar TOC, which is how the long list is
+  // navigated. Only while this detail view is the visible panel, so an async
+  // README load for a panel the user has navigated away from does not hijack the
+  // sidebar.
   publishTableOfContents() {
     if (!this.settingsView || typeof this.settingsView.showTableOfContents !== "function") return;
     if (this.element.style.display === "none") return;
@@ -727,24 +748,52 @@ export default class PackageDetailView {
     for (const [key, element] of this.sectionElements()) {
       const meta = SECTION_META[key];
       if (!meta || element.style.display === "none") continue;
+      // The documents stand in for their section rather than nesting under it.
+      if (key === "docs") {
+        entries.push(...this.docsTableOfContents());
+        continue;
+      }
       entries.push({
         label: meta.label,
         icon: meta.icon,
         level: 1,
         onClick: () => element.scrollIntoView(),
       });
-      if (key === "readme") entries.push(...this.readmeTableOfContents());
+      if (key === "readme") {
+        entries.push(
+          ...this.headingTableOfContents(this.readmeView && this.readmeView.packageReadme),
+        );
+      }
     }
     this.settingsView.showTableOfContents(entries);
   }
 
-  // The README's own headers, nested one level below its section entry. Its top
-  // headers still align with the section entries; only headers below them are
-  // indented. Levels deeper than the sidebar indents share the last one rather
-  // than running off it.
-  readmeTableOfContents() {
-    const readme = this.readmeView && this.readmeView.packageReadme;
-    const headings = readme ? readme.querySelectorAll("h1, h2, h3, h4, h5, h6") : [];
+  // Each document a package ships in `docs/` is listed exactly as the README is —
+  // a top-level entry, its own headers nested below — but under its file name.
+  // They are the contracts of separate services rather than chapters of one
+  // document, so the name identifying each is what belongs in the sidebar, and a
+  // single "Docs" entry would bury exactly that.
+  docsTableOfContents() {
+    const container = this.docsView && this.docsView.packageDocs;
+    const entries = [];
+    for (const element of container ? container.querySelectorAll(".package-doc") : []) {
+      entries.push({
+        label: element.dataset.docName,
+        icon: SECTION_META.docs.icon,
+        level: 1,
+        onClick: () => element.scrollIntoView(),
+      });
+      entries.push(...this.headingTableOfContents(element));
+    }
+    return entries;
+  }
+
+  // The headers of rendered markdown, nested one level below the entry they
+  // belong to. The top ones still align with that entry; only headers below them
+  // are indented. Levels deeper than the sidebar indents share the last one
+  // rather than running off it.
+  headingTableOfContents(container) {
+    const headings = container ? container.querySelectorAll("h1, h2, h3, h4, h5, h6") : [];
     const entries = [];
     for (const heading of headings) {
       const label = heading.textContent.trim();
