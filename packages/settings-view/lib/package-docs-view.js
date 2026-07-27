@@ -77,7 +77,6 @@ export default class PackageDocsView {
     const element = document.createElement("div");
     element.classList.add("package-doc");
     element.dataset.docFile = path.basename(file);
-    element.dataset.docName = displayName(element.dataset.docFile);
 
     try {
       element.innerHTML = atom.ui.markdown.render(source, {
@@ -101,16 +100,11 @@ export default class PackageDocsView {
 
 // The markdown a package ships in `docs/`, read in file-name order. That order is
 // the only one there is, so a package that wants a particular reading order says
-// so by numbering its files — `1_overview.md`, `2_contract.md`. `listSync`
-// returns nothing for a path that is not a directory, so a package without
-// `docs/` simply has no documents.
+// so by numbering its files — `1_overview.md`, `2_contract.md`. The number never
+// shows: each document is listed by its own headers. `listSync` returns nothing
+// for a path that is not a directory, so a package without `docs/` simply has no
+// documents.
 function documentFiles(packagePath) {
   if (!packagePath) return [];
   return fs.listSync(path.join(packagePath, "docs"), ["md"]);
-}
-
-// The name a document is listed under. A leading number orders the file; it is
-// not part of what the document is called, so it is not shown.
-function displayName(file) {
-  return file.replace(/^\d+[-_. ]*/, "") || file;
 }

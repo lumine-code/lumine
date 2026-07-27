@@ -83,9 +83,9 @@ describe("PackageDetailView", function () {
     // The sidebar table of contents is the navigation: one entry per section, in
     // list order, and clicking it scrolls there.
     const sections = showToc.mostRecentCall.args[0].filter((entry) => entry.level === 1);
-    expect(sections.map((entry) => entry.label)).toEqual(["Settings", "README"]);
+    expect(sections.map((entry) => entry.label)).toEqual(["README", "Settings"]);
     const scrollIntoView = spyOn(settingsSection, "scrollIntoView");
-    sections[0].onClick();
+    sections[1].onClick();
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
@@ -128,10 +128,10 @@ describe("PackageDetailView", function () {
     expect(listedSections()).toEqual(["README"]);
     expect(view.refs.startupTime.style.display).toBe("none");
 
-    // Enabling it again brings them back, ahead of the README.
+    // Enabling it again brings them back, behind the README.
     atom.config.removeAtKeyPath("core.disabledPackages", "package-with-config");
-    expect(sectionKeys()).toEqual(["settings", "keymap", "grammars", "snippets", "readme", "docs"]);
-    expect(listedSections()).toEqual(["Settings", "README"]);
+    expect(sectionKeys()).toEqual(["readme", "settings", "keymap", "grammars", "snippets", "docs"]);
+    expect(listedSections()).toEqual(["README", "Settings"]);
     expect(view.refs.startupTime.style.display).toBe("");
   });
 
@@ -165,34 +165,32 @@ describe("PackageDetailView", function () {
       expect(docsSection().style.display).toBe("none");
     });
 
-    it("lists each document under its own name in the table of contents", () => {
+    it("nests the document headers under its entry in the table of contents", () => {
       const settingsView = new SettingsView();
       const showToc = spyOn(settingsView, "showTableOfContents").andCallThrough();
       openDetailView("package-with-docs", settingsView);
 
       const entries = showToc.mostRecentCall.args[0];
 
-      // Each document is a top-level entry named after its file — there is no
-      // single "Docs" entry burying them, and the README still comes first.
+      // One entry for the section, last of the list.
       expect(entries.filter((entry) => entry.level === 1).map((entry) => entry.label)).toEqual([
-        "Settings",
         "README",
-        "a.provider.md",
-        "b.provider.md",
+        "Settings",
+        "Documentation",
       ]);
-      expect(entries.find((entry) => entry.label === "Documentation")).toBeUndefined();
 
-      // Its own headers follow it, nested just as the README's are.
+      // The documents' own headers follow it, nested just as the README's are.
       const header = (label) => entries.filter((entry) => entry.label === label);
       expect(header("a.provider")[0].level).toBe(2);
+      expect(header("b.provider")[0].level).toBe(2);
       expect(header("Contract").length).toBe(2);
       expect(header("Contract")[0].level).toBe(3);
       expect(header("Contract")[0].icon).toBe("icon-chevron-right");
 
-      // Clicking a document scrolls to it in the list.
-      const [first] = docsSection().querySelectorAll(".package-doc");
-      const scrollIntoView = spyOn(first, "scrollIntoView");
-      entries.find((entry) => entry.label === "a.provider.md").onClick();
+      // Clicking a header scrolls to it in the list.
+      const heading = docsSection().querySelector("h1");
+      const scrollIntoView = spyOn(heading, "scrollIntoView");
+      header("a.provider")[0].onClick();
       expect(scrollIntoView).toHaveBeenCalled();
     });
 

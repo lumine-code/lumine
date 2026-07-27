@@ -23,12 +23,15 @@ const NORMALIZE_PACKAGE_DATA_README_ERROR = "ERROR: No README data found!";
 // appended to `refs.sections` and they are all shown at once, as one long
 // scrolling list; the sidebar table of contents is the navigation, listing every
 // section with the rendered markdown's own headers nested under it.
+// Reading order: what the package is, then how it is configured, then what it
+// contributes, and last its service contracts — reference material for someone
+// writing against the package rather than using it.
 const SECTION_META = {
+  readme: { label: "README", icon: "icon-book" },
   settings: { label: "Settings", icon: "icon-gear" },
   keymap: { label: "Keybindings", icon: "icon-keyboard" },
   grammars: { label: "Grammars", icon: "icon-file-code" },
   snippets: { label: "Snippets", icon: "icon-code" },
-  readme: { label: "README", icon: "icon-book" },
   docs: { label: "Documentation", icon: "icon-file-text" },
 };
 
@@ -748,44 +751,21 @@ export default class PackageDetailView {
     for (const [key, element] of this.sectionElements()) {
       const meta = SECTION_META[key];
       if (!meta || element.style.display === "none") continue;
-      // The documents stand in for their section rather than nesting under it.
-      if (key === "docs") {
-        entries.push(...this.docsTableOfContents());
-        continue;
-      }
       entries.push({
         label: meta.label,
         icon: meta.icon,
         level: 1,
         onClick: () => element.scrollIntoView(),
       });
-      if (key === "readme") {
+      if (key === "docs") {
+        entries.push(...this.headingTableOfContents(this.docsView && this.docsView.packageDocs));
+      } else if (key === "readme") {
         entries.push(
           ...this.headingTableOfContents(this.readmeView && this.readmeView.packageReadme),
         );
       }
     }
     this.settingsView.showTableOfContents(entries);
-  }
-
-  // Each document a package ships in `docs/` is listed exactly as the README is —
-  // a top-level entry, its own headers nested below — but under its file name.
-  // They are the contracts of separate services rather than chapters of one
-  // document, so the name identifying each is what belongs in the sidebar, and a
-  // single "Docs" entry would bury exactly that.
-  docsTableOfContents() {
-    const container = this.docsView && this.docsView.packageDocs;
-    const entries = [];
-    for (const element of container ? container.querySelectorAll(".package-doc") : []) {
-      entries.push({
-        label: element.dataset.docName,
-        icon: SECTION_META.docs.icon,
-        level: 1,
-        onClick: () => element.scrollIntoView(),
-      });
-      entries.push(...this.headingTableOfContents(element));
-    }
-    return entries;
   }
 
   // The headers of rendered markdown, nested one level below the entry they

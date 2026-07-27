@@ -25,13 +25,16 @@ describe("PackageDocsView", () => {
     expect(docs[0].querySelector("h1").textContent).toBe("a.provider");
   });
 
-  it("orders the documents by file name and drops a numeric prefix from the name", () => {
+  it("orders the documents by file name, so a number sets the reading order", () => {
     view = new PackageDocsView(fixture("package-with-ordered-docs"));
 
     const docs = Array.from(view.packageDocs.querySelectorAll(".package-doc"));
     expect(docs.map((element) => element.dataset.docFile)).toEqual(["1_second.md", "2_first.md"]);
-    // The number orders the file; it is not part of what the document is called.
-    expect(docs.map((element) => element.dataset.docName)).toEqual(["second.md", "first.md"]);
+    // The number never shows: each document is listed by its own headers.
+    expect(docs.map((element) => element.querySelector("h1").textContent)).toEqual([
+      "second",
+      "first",
+    ]);
   });
 
   it("adds safely prefixed heading ids for fragment links", () => {
