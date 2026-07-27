@@ -1,4 +1,3 @@
-const path = require("path");
 const { SelectListView, createTwoLineItem } = require("@lumine-code/select-list");
 
 // Lists every language server the window is running — not only the one serving
@@ -44,14 +43,30 @@ module.exports = class SessionMenuView {
     });
   }
 
-  // What the server actually covers. Naming it after the folder that happened
-  // to start it is a lie for anything serving more than one — a multi-root
-  // server and every workspace-scoped one.
-  describeFolders(session) {
+  // What the server actually covers, named as such. A bare path cannot say
+  // whether it is the project, one root among several, or the directory of a
+  // loose file — and naming a server after the folder that happened to start
+  // it is a lie for anything serving more than one.
+  scopeOf(session) {
+    const scope = this.main.manager.scopeFor(session);
+    if (scope === "file") {
+      // The folder is only the file's directory; the file is what was opened.
+      const files = [...(session.documents?.values() || [])]
+        .map((document) => document.editor?.getPath())
+        .filter(Boolean);
+      if (files.length)
+        return { label: files.length > 1 ? `Files (${files.length})` : "File", files };
+      return { label: "File", files: [...session.folders] };
+    }
     const folders = this.main.manager.foldersFor(session);
-    if (folders.length < 2) return folders[0] || session.rootPath;
-    // The full paths would not fit; the names are what tells them apart.
-    return `${folders.length} folders: ${folders.map((folder) => path.basename(folder)).join(", ")}`;
+    if (scope === "workspace") return { label: "Workspace", files: folders };
+    return { label: folders.length > 1 ? `Roots (${folders.length})` : "Root", files: folders };
+  }
+
+  describeScope(session) {
+    const { label, files } = this.scopeOf(session);
+    const paths = files.length ? files : [session.rootPath];
+    return `${label} · ${paths.join(", ")}`;
   }
 
   // The active editor's servers come first: they are the ones the user is
@@ -68,7 +83,7 @@ module.exports = class SessionMenuView {
       )
       .map((session) => ({
         label: session.adapter.displayName,
-        detail: this.describeFolders(session),
+        detail: this.describeScope(session),
         state: session.state,
         action: () => this.showActions(session),
       }));
@@ -94,7 +109,7 @@ module.exports = class SessionMenuView {
       },
       {
         label: "Stop",
-        detail: `Stop ${session.adapter.displayName} for ${this.describeFolders(session)}`,
+        detail: `Stop ${session.adapter.displayName} for ${this.describeScope(session)}`,
         action: () => this.main.manager.disconnect(session),
       },
       {

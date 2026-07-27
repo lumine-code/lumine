@@ -189,7 +189,7 @@
         "enabled": {
           "order": 1,
           "title": "Enabled",
-          "description": "Show the running language servers in the status bar. The item hides itself while no server is running.",
+          "description": "Show the running language servers in the status bar. The item stays in place while none is running, reporting zero.",
           "type": "boolean",
           "default": true
         }

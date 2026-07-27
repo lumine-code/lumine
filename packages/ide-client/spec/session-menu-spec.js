@@ -72,11 +72,12 @@ describe("ide-client session menu", () => {
     const shared = stubSession("running", "pyright", "/project", ["/project", "/work/tools"]);
     main.manager.sessions.set("pyright:/project", shared);
     main.manager.sessions.set("pyright:/work/tools", shared);
+    spyOn(atom.project, "getPaths").and.returnValue(["/project", "/work/tools"]);
 
     const [item, ...rest] = menu.serverItems();
     // One entry for one server, however many folders it took on.
     expect(rest).toEqual([]);
-    expect(item.detail).toBe("2 folders: project, tools");
+    expect(item.detail).toBe("Roots (2) · /project, /work/tools");
   });
 
   it("shows the whole project for a workspace-scoped server", () => {
@@ -86,12 +87,32 @@ describe("ide-client session menu", () => {
     spyOn(atom.project, "getPaths").and.returnValue(["/one", "/two"]);
 
     // Its own rootPath is just whichever folder came first.
-    expect(menu.serverItems()[0].detail).toBe("2 folders: one, two");
+    expect(menu.serverItems()[0].detail).toBe("Workspace · /one, /two");
   });
 
-  it("keeps the plain path when a server serves a single folder", () => {
+  it("calls a single project folder a root", () => {
     main.manager.sessions.set("stub:/project", stubSession("running"));
-    expect(menu.serverItems()[0].detail).toBe("/project");
+    spyOn(atom.project, "getPaths").and.returnValue(["/project"]);
+    expect(menu.serverItems()[0].detail).toBe("Root · /project");
+  });
+
+  it("names the file for a server started outside the project", () => {
+    // No project folder contains it, so the session is rooted at the file's own
+    // directory — the directory is an implementation detail, the file is not.
+    const session = stubSession("running", "loose", "/tmp/scratch");
+    session.documents = new Map([["uri", { editor: { getPath: () => "/tmp/scratch/notes.py" } }]]);
+    main.manager.sessions.set("loose:/tmp/scratch", session);
+    spyOn(atom.project, "getPaths").and.returnValue(["/project"]);
+
+    expect(menu.serverItems()[0].detail).toBe("File · /tmp/scratch/notes.py");
+  });
+
+  it("falls back to the directory when the loose file has no path yet", () => {
+    const session = stubSession("running", "loose", "/tmp/scratch");
+    main.manager.sessions.set("loose:/tmp/scratch", session);
+    spyOn(atom.project, "getPaths").and.returnValue(["/project"]);
+
+    expect(menu.serverItems()[0].detail).toBe("File · /tmp/scratch");
   });
 
   it("lists the servers of the active editor first", () => {

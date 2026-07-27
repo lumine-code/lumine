@@ -152,6 +152,13 @@ module.exports = class LanguageServerManager {
     const roots = atom.project.getPaths();
     return roots.length ? roots : [session.rootPath];
   }
+  // What a session covers: the window as a whole, one or more project roots,
+  // or the directory of a file opened outside the project.
+  scopeFor(session) {
+    if (session.adapter.sessionScope === "workspace") return "workspace";
+    const roots = atom.project.getPaths();
+    return [...session.folders].some((folder) => roots.includes(folder)) ? "root" : "file";
+  }
   keysFor(session) {
     return [...this.sessions].filter(([, value]) => value === session).map(([key]) => key);
   }

@@ -140,10 +140,11 @@ module.exports = {
       manager: this.manager,
       onDidClick: () => this.sessionMenu.toggle(),
     });
-    // Observer band, see the priority convention in packages/status-bar/README.md.
+    // Code-intelligence band, outside source control, see the priority
+    // convention in packages/status-bar/README.md.
     this.serverStatusTile = statusBar.addRightTile({
       item: this.serverStatus.element,
-      priority: 540,
+      priority: 250,
     });
     return new Disposable(() => this.teardownStatusBar());
   },

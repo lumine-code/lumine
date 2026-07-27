@@ -80,12 +80,13 @@ describe("ide-client package", () => {
     expect(main.manager.busyProvider).toBe(null);
   });
 
-  it("adds its status-bar item to the observer band", () => {
+  it("adds its status-bar item to the code-intelligence band", () => {
     const main = atom.packages.getActivePackage("ide-client").mainModule;
     const tiles = [];
     const registration = main.consumeStatusBar(fakeStatusBar(tiles));
     expect(tiles.length).toBe(1);
-    expect(tiles[0].priority).toBe(540);
+    // Outside source control (310) on the right panel.
+    expect(tiles[0].priority).toBe(250);
     expect(tiles[0].item).toBe(main.serverStatus.element);
 
     registration.dispose();

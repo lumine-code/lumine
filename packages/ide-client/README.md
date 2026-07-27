@@ -18,7 +18,8 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 - **Code lens**: shows actionable command links above symbols; disabled by default.
 - **Semantic tokens**: layers server-computed highlighting over the grammar's own; disabled by default.
 - **Server list**: lists every running server with its state, and restarts, stops, or opens the log of any of them.
-- **Status bar**: counts the running servers in a status-bar item, flags the failed ones, and opens the server list on click.
+- **Status bar**: counts the running servers in a permanent status-bar item, flags the failed ones, and opens the server list on click.
+- **Server list**: names what each running server covers — a project root, the workspace, or a file opened outside the project — with its path.
 - **Logging**: keeps a per-server log buffer with optional protocol tracing.
 
 ## Commands

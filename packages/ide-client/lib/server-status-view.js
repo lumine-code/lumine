@@ -79,11 +79,17 @@ module.exports = class ServerStatusView {
       line.textContent = `${session.adapter.displayName} (${session.state})`;
       this.tooltipContent.appendChild(line);
     }
+    if (!sessions.length) this.tooltipContent.textContent = "No language servers are running";
 
+    // The item stays put whether or not anything is running: a count of zero is
+    // the answer to "is a server up for this file?", and a tile that comes and
+    // goes shifts everything beside it. Only the setting hides it.
+    //
     // `.inline-block` supplies a display from the base stylesheet, which
     // outranks the hidden attribute, so visibility goes through the style
     // attribute instead.
-    this.element.style.display = this.enabled && sessions.length ? "" : "none";
+    this.element.style.display = this.enabled ? "" : "none";
+    this.element.classList.toggle("is-idle", sessions.length === 0);
   }
 
   destroy() {

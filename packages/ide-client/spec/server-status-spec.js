@@ -46,9 +46,13 @@ describe("ide-client status-bar item", () => {
     await atom.packages.deactivatePackage("ide-client");
   });
 
-  it("hides itself while no server is running", () => {
-    expect(view.element.style.display).toBe("none");
+  it("stays in place while no server is running", () => {
+    // A tile that comes and goes shifts every neighbour, and zero is itself an
+    // answer to "is a server up for this file?".
+    expect(view.element.style.display).toBe("");
     expect(view.label.textContent).toBe("IDE (0)");
+    expect(view.element.classList.contains("is-idle")).toBe(true);
+    expect(view.tooltipContent.textContent).toBe("No language servers are running");
   });
 
   it("counts the servers once they appear", () => {
@@ -69,7 +73,14 @@ describe("ide-client status-bar item", () => {
     flush();
 
     expect(view.label.textContent).toBe("IDE (0)");
-    expect(view.element.style.display).toBe("none");
+    expect(view.element.style.display).toBe("");
+    expect(view.element.classList.contains("is-idle")).toBe(true);
+  });
+
+  it("sits outside the source-control tiles", () => {
+    // Lower priority is further out on the right panel, so this puts it right
+    // of git-panel (310). See packages/status-bar/README.md.
+    expect(tiles[0].priority).toBeLessThan(310);
   });
 
   it("badges the failed servers", () => {
