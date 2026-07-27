@@ -24,11 +24,6 @@
 .ide-client-server-status.has-starting .ide-client-server-label {
   color: var(--text-color-warning);
 }
-/* Nothing running is a resting state, not information: the item stays legible
-   but stops competing with the tiles that have something to report. */
-.ide-client-server-status.is-idle {
-  opacity: 0.6;
-}
 .ide-client-server-status.has-failed .ide-client-server-label,
 .ide-client-server-status .ide-client-server-failed {
   color: var(--text-color-error);

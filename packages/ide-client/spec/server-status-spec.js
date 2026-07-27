@@ -51,7 +51,6 @@ describe("ide-client status-bar item", () => {
     // answer to "is a server up for this file?".
     expect(view.element.style.display).toBe("");
     expect(view.label.textContent).toBe("IDE (0)");
-    expect(view.element.classList.contains("is-idle")).toBe(true);
     expect(view.tooltipContent.textContent).toBe("No language servers are running");
   });
 
@@ -74,7 +73,6 @@ describe("ide-client status-bar item", () => {
 
     expect(view.label.textContent).toBe("IDE (0)");
     expect(view.element.style.display).toBe("");
-    expect(view.element.classList.contains("is-idle")).toBe(true);
   });
 
   it("sits outside the source-control tiles", () => {

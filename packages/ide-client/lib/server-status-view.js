@@ -89,7 +89,6 @@ module.exports = class ServerStatusView {
     // outranks the hidden attribute, so visibility goes through the style
     // attribute instead.
     this.element.style.display = this.enabled ? "" : "none";
-    this.element.classList.toggle("is-idle", sessions.length === 0);
   }
 
   destroy() {
