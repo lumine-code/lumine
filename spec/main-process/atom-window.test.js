@@ -29,8 +29,6 @@ describe("AtomWindow", function () {
     let resourcePath, windowInitializationScript, atomHome;
     let original;
 
-    this.timeout(10 * 1000);
-
     beforeEach(async function () {
       original = {
         LUMINE_HOME: process.env.LUMINE_HOME,

@@ -81,7 +81,7 @@ module.exports = [
   {
     // process.exit() is legitimate in build scripts, the Electron main process,
     // and standalone helper processes/CLIs (CLI flag handling, forced quit,
-    // askpass/worker entry points, the mocha runner) — not the anti-pattern
+    // askpass/worker entry points, the spec runners) — not the anti-pattern
     // this rule targets in long-running library code.
     files: [
       "script/**",
@@ -111,15 +111,14 @@ module.exports = [
     },
   },
   {
-    // Test files — jasmine (Atom test runner) plus the mocha/jest-style
-    // `*.test.js` suites (the main-process specs, the completion updaters) and
+    // Test files — jasmine, both the editor runner and the plain-Node
+    // `*.test.js` suites (the main-process specs, the completion updaters), and
     // Atom's async helpers. Also relax dependency-resolution rules: specs require
     // devDependencies and load fixture modules by path the resolver can't follow.
     files: ["spec/**", "**/spec/**", "**/*-spec.js", "**/*.test.js"],
     languageOptions: {
       globals: {
         ...globals.jasmine,
-        ...globals.mocha,
         test: "readonly",
         // Grammar-test helpers injected onto `window` by spec/helpers/normalize-comments.js.
         runGrammarTests: "readonly",

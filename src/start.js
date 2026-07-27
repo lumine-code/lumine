@@ -117,7 +117,7 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
     app.setPath("userData", temp.mkdirSync("atom-user-data-dir-for-main-process-tests"));
     app.on("ready", function () {
       const testRunner = require(
-        path.join(args.resourcePath, "spec/main-process/mocha-test-runner"),
+        path.join(args.resourcePath, "spec/main-process/jasmine-test-runner"),
       );
       testRunner(args.pathsToOpen);
     });
