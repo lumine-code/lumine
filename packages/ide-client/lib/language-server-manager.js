@@ -95,13 +95,14 @@ module.exports = class LanguageServerManager {
     this.adapters.delete(adapter.id);
     this.adapterSubscriptions.get(adapter.id)?.dispose();
     this.adapterSubscriptions.delete(adapter.id);
+    const owned = new Set(
+      this.allSessions().filter((session) => session.adapter.id === adapter.id),
+    );
     await Promise.all(
-      [...this.sessions]
-        .filter(([key]) => key.startsWith(`${adapter.id}:`))
-        .map(async ([key, session]) => {
-          this.sessions.delete(key);
-          await session.stop();
-        }),
+      [...owned].map(async (session) => {
+        this.forget(session);
+        await session.stop();
+      }),
     );
   }
   // Every adapter that serves this editor. More than one is normal and
@@ -138,6 +139,52 @@ module.exports = class LanguageServerManager {
   keyFor(adapter, rootPath) {
     return adapter.sessionScope === "workspace" ? `${adapter.id}:` : `${adapter.id}:${rootPath}`;
   }
+  // A session that adopted folders is reachable under one key per folder, so
+  // anything walking the sessions themselves has to go through here.
+  allSessions() {
+    return [...new Set(this.sessions.values())];
+  }
+  keysFor(session) {
+    return [...this.sessions].filter(([, value]) => value === session).map(([key]) => key);
+  }
+  forget(session) {
+    for (const key of this.keysFor(session)) this.sessions.delete(key);
+  }
+  folderOf(rootPath) {
+    return { uri: C.pathToUri(rootPath), name: path.basename(rootPath) };
+  }
+  // Whether a running server can take on a project folder it was not started
+  // with. `supported` alone only means it read the list at initialize; adding
+  // one afterwards needs the change notification as well.
+  acceptsFolders(session) {
+    const folders = session.capabilities.workspace?.workspaceFolders;
+    return !!folders?.supported && !!folders.changeNotifications;
+  }
+  // A server that declares multi-root support does not need a second process
+  // for a second project folder — it is told about the folder instead. The
+  // capabilities say which servers those are, so no adapter has to declare it.
+  async adoptFolder(adapter, rootPath, key) {
+    if (adapter.sessionScope === "workspace") return null;
+    for (const session of this.allSessions()) {
+      if (session.adapter !== adapter || session.folders.has(rootPath)) continue;
+      try {
+        await session.ready;
+      } catch {
+        continue;
+      }
+      // Another attach for the same root won the race while we were waiting.
+      if (this.sessions.has(key)) return this.sessions.get(key);
+      if (session.state !== "running" || !this.acceptsFolders(session)) continue;
+      session.folders.add(rootPath);
+      this.sessions.set(key, session);
+      session.notify("workspace/didChangeWorkspaceFolders", {
+        event: { added: [this.folderOf(rootPath)], removed: [] },
+      });
+      this.didChangeSession(session);
+      return session;
+    }
+    return null;
+  }
   adapterContext(adapter, rootPath) {
     return {
       rootPath,
@@ -159,7 +206,7 @@ module.exports = class LanguageServerManager {
     this.editorSubscriptions.set(editor, subs);
   }
   reattachEditor(editor) {
-    for (const session of this.sessions.values()) session.detachEditor(editor);
+    for (const session of this.allSessions()) session.detachEditor(editor);
     return this.attachEditor(editor);
   }
   async attachEditor(editor) {
@@ -173,7 +220,7 @@ module.exports = class LanguageServerManager {
     const filePath = editor.getPath();
     const rootPath = this.rootForPath(filePath, adapter);
     const key = this.keyFor(adapter, rootPath);
-    let session = this.sessions.get(key);
+    let session = this.sessions.get(key) || (await this.adoptFolder(adapter, rootPath, key));
     if (!session) {
       let launch;
       try {
@@ -364,10 +411,14 @@ module.exports = class LanguageServerManager {
     const added = roots.filter((root) => !this.knownRoots.includes(root)).map(toFolder);
     const removed = this.knownRoots.filter((root) => !roots.includes(root)).map(toFolder);
     this.knownRoots = roots;
+    // Only a workspace-scoped session answers for the project as a whole. The
+    // others hear about exactly the folders they take on or lose, from
+    // `adoptFolder` and `reconcileProjects`.
     if (added.length || removed.length) {
-      for (const session of this.sessions.values()) {
+      for (const session of this.allSessions()) {
         if (
           session.state === "running" &&
+          session.adapter.sessionScope === "workspace" &&
           session.capabilities.workspace?.workspaceFolders?.changeNotifications
         )
           session.notify("workspace/didChangeWorkspaceFolders", { event: { added, removed } });
@@ -387,7 +438,7 @@ module.exports = class LanguageServerManager {
       if (!filePath) continue;
       const uri = C.pathToUri(filePath);
       const wanted = new Set(this.sessionsForEditor(editor));
-      const attached = [...this.sessions.values()].filter((session) => session.documents.has(uri));
+      const attached = this.allSessions().filter((session) => session.documents.has(uri));
       if (attached.length !== wanted.size || attached.some((session) => !wanted.has(session))) {
         this.reattachEditor(editor);
       } else if (!attached.length) {
@@ -396,7 +447,7 @@ module.exports = class LanguageServerManager {
     }
   }
   pushSettingsForAdapter(adapter) {
-    for (const session of this.sessions.values())
+    for (const session of this.allSessions())
       if (session.adapter === adapter && session.state === "running") session.pushSettings();
   }
   handleProgress(session, { token, value }) {
@@ -543,7 +594,7 @@ module.exports = class LanguageServerManager {
     if (session.restartCount >= limit) return;
     const delay = Math.min(1000 * 2 ** session.restartCount++, 30000);
     setTimeout(async () => {
-      if (!this.sessions.has(`${session.adapter.id}:${session.rootPath}`)) return;
+      if (!this.keysFor(session).length) return;
       try {
         await this.restart(session);
       } catch (error) {
@@ -553,7 +604,7 @@ module.exports = class LanguageServerManager {
     }, delay);
   }
   async restart(session) {
-    const key = `${session.adapter.id}:${session.rootPath}`;
+    const keys = this.keysFor(session);
     await session.stop();
     const replacement = new ServerSession(
       this,
@@ -561,7 +612,10 @@ module.exports = class LanguageServerManager {
       session.rootPath,
       await session.adapter.resolveServer(this.adapterContext(session.adapter, session.rootPath)),
     );
-    this.sessions.set(key, replacement);
+    // The replacement inherits the folders, so every editor the old session
+    // served finds it under the same key.
+    replacement.folders = new Set(session.folders);
+    for (const key of keys) this.sessions.set(key, replacement);
     this.didChangeSession(replacement);
     replacement.ready = replacement.start();
     replacement.ready.catch(() => {});
@@ -570,8 +624,7 @@ module.exports = class LanguageServerManager {
     return replacement;
   }
   async disconnect(session) {
-    const key = this.keyFor(session.adapter, session.rootPath);
-    if (this.sessions.get(key) === session) this.sessions.delete(key);
+    this.forget(session);
     await session.stop();
   }
   // A session outlives the editors it serves on purpose: reopening a file in a
@@ -595,9 +648,12 @@ module.exports = class LanguageServerManager {
     if (session.documents.size > 0) return;
     const roots = atom.project.getPaths();
     // A workspace-scoped session answers for every root, so it stays warm as
-    // long as the window has one, whatever its own `rootPath` says.
+    // long as the window has one, whatever its own `rootPath` says. Any other
+    // session waits for the next editor under a folder it still answers for.
     if (
-      session.adapter.sessionScope === "workspace" ? roots.length : roots.includes(session.rootPath)
+      session.adapter.sessionScope === "workspace"
+        ? roots.length
+        : [...session.folders].some((folder) => roots.includes(folder))
     )
       return;
     const stillServesAnEditor = atom.workspace
@@ -610,13 +666,29 @@ module.exports = class LanguageServerManager {
     for (const timer of this.idleChecks.values()) clearTimeout(timer);
     this.idleChecks.clear();
   }
+  // A folder that left the project takes its key with it. A session that held
+  // more than one survives on the folders it has left; one that held only the
+  // departed folder has nothing to answer for and stops.
   reconcileProjects() {
     const roots = atom.project.getPaths();
-    for (const [key, session] of this.sessions)
-      if (session.adapter.sessionScope !== "workspace" && !roots.includes(session.rootPath)) {
-        this.sessions.delete(key);
+    for (const session of this.allSessions()) {
+      if (session.adapter.sessionScope === "workspace") continue;
+      const gone = [...session.folders].filter((folder) => !roots.includes(folder));
+      if (!gone.length) continue;
+      if (gone.length === session.folders.size) {
+        this.forget(session);
         session.stop();
+        continue;
       }
+      for (const folder of gone) {
+        session.folders.delete(folder);
+        this.sessions.delete(this.keyFor(session.adapter, folder));
+      }
+      if (!session.folders.has(session.rootPath)) [session.rootPath] = session.folders;
+      session.notify("workspace/didChangeWorkspaceFolders", {
+        event: { added: [], removed: gone.map((folder) => this.folderOf(folder)) },
+      });
+    }
   }
   async deactivate() {
     this.cancelIdleChecks();
@@ -625,7 +697,7 @@ module.exports = class LanguageServerManager {
     this.editorSubscriptions.clear();
     for (const subs of this.adapterSubscriptions.values()) subs.dispose();
     this.adapterSubscriptions.clear();
-    await Promise.all([...this.sessions.values()].map((session) => session.stop()));
+    await Promise.all(this.allSessions().map((session) => session.stop()));
     this.sessions.clear();
     this.emitter.dispose();
   }

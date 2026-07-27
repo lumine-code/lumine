@@ -32,6 +32,7 @@ describe("LanguageServerManager session lifetime", () => {
       rootPath,
       state: "running",
       documents: new Map(),
+      folders: new Set([rootPath]),
       stop: jasmine.createSpy("stop").and.callFake(async () => {
         session.state = "stopped";
       }),
@@ -166,6 +167,111 @@ describe("LanguageServerManager session lifetime", () => {
     expect(manager.idleChecks.size).toBe(1);
     await manager.deactivate();
     expect(manager.idleChecks.size).toBe(0);
+  });
+});
+
+describe("LanguageServerManager multi-root servers", () => {
+  let manager, adapter, notifications;
+  const rootA = path.join(path.sep, "tmp", "a");
+  const rootB = path.join(path.sep, "tmp", "b");
+  const MULTI_ROOT = {
+    workspace: { workspaceFolders: { supported: true, changeNotifications: true } },
+  };
+  const sessionAt = (rootPath, capabilities) => {
+    const session = {
+      adapter,
+      rootPath,
+      state: "running",
+      capabilities,
+      documents: new Map(),
+      folders: new Set([rootPath]),
+      ready: Promise.resolve(),
+      notify: (method, params) => notifications.push({ method, params }),
+      stop: jasmine.createSpy("stop"),
+    };
+    manager.sessions.set(manager.keyFor(adapter, rootPath), session);
+    return session;
+  };
+
+  beforeEach(() => {
+    manager = new LanguageServerManager();
+    notifications = [];
+    adapter = { id: "test", displayName: "Test", grammarScopes: ["source.test"] };
+  });
+  afterEach(async () => manager.deactivate());
+
+  it("hands a second folder to a server that declares multi-root support", async () => {
+    const first = sessionAt(rootA, MULTI_ROOT);
+    const adopted = await manager.adoptFolder(adapter, rootB, manager.keyFor(adapter, rootB));
+    // No second process: the running server is told about the folder.
+    expect(adopted).toBe(first);
+    expect(manager.sessions.get(manager.keyFor(adapter, rootB))).toBe(first);
+    expect(first.folders.has(rootB)).toBe(true);
+    expect(notifications[0].method).toBe("workspace/didChangeWorkspaceFolders");
+    expect(notifications[0].params.event.added.map((f) => f.name)).toEqual([path.basename(rootB)]);
+    // Two keys, one server — everything that walks the sessions must see one.
+    expect(manager.allSessions().length).toBe(1);
+  });
+
+  it("starts a separate server when the running one cannot take folders", async () => {
+    // No `workspaceFolders` capability: this server resolves its configuration
+    // from the single root it was started with.
+    sessionAt(rootA, {});
+    const adopted = await manager.adoptFolder(adapter, rootB, manager.keyFor(adapter, rootB));
+    expect(adopted).toBe(null);
+    expect(manager.sessions.has(manager.keyFor(adapter, rootB))).toBe(false);
+    expect(notifications).toEqual([]);
+  });
+
+  it("refuses to adopt when the server takes the list only at initialize", async () => {
+    sessionAt(rootA, { workspace: { workspaceFolders: { supported: true } } });
+    expect(await manager.adoptFolder(adapter, rootB, manager.keyFor(adapter, rootB))).toBe(null);
+  });
+
+  it("offers the folder to a running server before resolving a new one", async () => {
+    const root = atom.project.getPaths()[0];
+    const editor = await atom.workspace.open(path.join(root, "x.test"));
+    adapter = {
+      id: "adopt",
+      displayName: "Adopt",
+      grammarScopes: [editor.getGrammar().scopeName],
+      resolveServer: jasmine.createSpy("resolveServer").and.returnValue(Promise.resolve(null)),
+    };
+    manager.adapters.set(adapter.id, adapter);
+    const existing = sessionAt(rootA, MULTI_ROOT);
+    existing.openEditor = jasmine.createSpy("openEditor");
+
+    await manager.attachAdapter(adapter, editor);
+    // The attach path has to go through the adoption, not just be able to.
+    expect(adapter.resolveServer).not.toHaveBeenCalled();
+    expect(existing.folders.has(root)).toBe(true);
+    expect(existing.openEditor).toHaveBeenCalledWith(editor);
+    editor.destroy();
+  });
+
+  it("keeps a shared server when only one of its folders leaves the project", async () => {
+    const session = sessionAt(rootA, MULTI_ROOT);
+    await manager.adoptFolder(adapter, rootB, manager.keyFor(adapter, rootB));
+    notifications.length = 0;
+    spyOn(atom.project, "getPaths").and.returnValue([rootA]);
+
+    manager.reconcileProjects();
+    expect(session.stop).not.toHaveBeenCalled();
+    expect(manager.sessions.has(manager.keyFor(adapter, rootB))).toBe(false);
+    expect([...session.folders]).toEqual([rootA]);
+    expect(notifications[0].params.event.removed.map((f) => f.name)).toEqual([
+      path.basename(rootB),
+    ]);
+  });
+
+  it("stops a shared server once its last folder leaves the project", async () => {
+    const session = sessionAt(rootA, MULTI_ROOT);
+    await manager.adoptFolder(adapter, rootB, manager.keyFor(adapter, rootB));
+    spyOn(atom.project, "getPaths").and.returnValue([]);
+
+    manager.reconcileProjects();
+    expect(session.stop).toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(0);
   });
 });
 

@@ -34,7 +34,7 @@ module.exports = class SignatureProvider {
   }
   collectCharacters(key) {
     const characters = new Set();
-    for (const session of this.manager.sessions.values()) {
+    for (const session of this.manager.allSessions()) {
       if (session.state !== "running") continue;
       for (const character of session.capabilities.signatureHelpProvider?.[key] || [])
         characters.add(character);

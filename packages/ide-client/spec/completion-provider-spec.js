@@ -26,6 +26,9 @@ const managerWith = (...sessions) => ({
   activeSessionsForEditor: async () => sessions.filter(Boolean),
   activeSessionForEditor: async () => sessions[0] || null,
   sessions: new Map(sessions.filter(Boolean).map((session, index) => [`key-${index}`, session])),
+  allSessions() {
+    return [...new Set(this.sessions.values())];
+  },
 });
 
 // An item whose textEdit replaces exactly the typed prefix, as servers report.

@@ -59,7 +59,7 @@ module.exports = class ServerStatusView {
     this.updateSubscription?.dispose();
     this.updateSubscription = atom.views.updateDocument(() => {
       this.updateSubscription = null;
-      this.render([...this.manager.sessions.values()]);
+      this.render(this.manager.allSessions());
     });
   }
 

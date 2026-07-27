@@ -49,7 +49,7 @@ consumeIdeClient(ideClient) {
 }
 ```
 
-Commands are spawned directly with `shell: false`; arguments belong in `args`. The default session scope is one server per project root; set `sessionScope: "workspace"` only for servers that correctly support multi-root workspaces. Editors without a file path are not attached to language servers. The complete public shapes are documented in `lib/main.d.ts`.
+Commands are spawned directly with `shell: false`; arguments belong in `args`. The default session scope is one server per project root; a server whose capabilities declare multi-root support is handed further folders instead of being started again, so `sessionScope: "workspace"` is needed only for servers with no notion of a root. Editors without a file path are not attached to language servers. The complete public shapes are documented in `lib/main.d.ts`.
 
 ## Configuration
 

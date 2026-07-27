@@ -48,7 +48,8 @@ module.exports = class SessionMenuView {
   serverItems() {
     const editor = atom.workspace.getActiveTextEditor();
     const serving = new Set(editor ? this.main.manager.sessionsForEditor(editor) : []);
-    return [...this.main.manager.sessions.values()]
+    return this.main.manager
+      .allSessions()
       .sort(
         (a, b) =>
           (serving.has(a) ? 0 : 1) - (serving.has(b) ? 0 : 1) ||

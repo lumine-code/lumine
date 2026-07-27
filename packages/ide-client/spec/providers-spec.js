@@ -18,6 +18,9 @@ const managerWith = (...args) => {
     activeSessionForFeature: async (editor, method) =>
       sessions.find((session) => session.supports(method, editor)) || null,
     sessions: new Map(sessions.map((session, index) => [`key-${index}`, session])),
+    allSessions() {
+      return [...new Set(this.sessions.values())];
+    },
   };
 };
 

@@ -65,7 +65,7 @@ module.exports = class CompletionProvider {
   // a server only advertises its trigger characters once it is running.
   get triggerCharacters() {
     const characters = new Set();
-    for (const session of this.manager.sessions.values()) {
+    for (const session of this.manager.allSessions()) {
       if (session.state !== "running") continue;
       for (const character of session.capabilities.completionProvider?.triggerCharacters || [])
         characters.add(character);

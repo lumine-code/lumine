@@ -13,6 +13,9 @@ module.exports = class ServerSession {
     this.adapter = adapter;
     this.rootPath = rootPath;
     this.launch = launch;
+    // Every project folder this session answers for. More than one only when
+    // the server declared multi-root support and adopted the rest.
+    this.folders = new Set([rootPath]);
     this.documents = new Map();
     this.progressTitles = new Map();
     this.emitter = new Emitter();
