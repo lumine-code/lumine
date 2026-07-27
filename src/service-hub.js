@@ -185,8 +185,8 @@ module.exports = class ServiceHub {
   // Deliberately not reported on its own: packages activate lazily, so a
   // consumer with no provider *yet* is ordinary. It is a question to ask at a
   // moment the caller chooses -- a diagnostic command, `timecop` -- rather than
-  // a warning this class can time correctly. The static answer belongs to
-  // `script/check-services.js`, which sees every manifest at once.
+  // a warning this class can time correctly. Nothing makes the check statically
+  // either, so this is the only place the question is answered at all.
   //
   // Returns an {Array} of `{keyPath, versionRange}`.
   unmatchedConsumers() {

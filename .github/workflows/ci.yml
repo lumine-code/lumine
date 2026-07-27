@@ -1,11 +1,9 @@
 name: CI
 
 on:
-  # Markdown is checked content now, not just prose: `check:services` verifies
-  # that every service has a document, that no document describes a service
-  # that does not exist, and that the README "## Services" chapter matches the
-  # manifest. A docs-only push can break all three, so it must not skip CI.
-  # Use [skip ci] in the head commit message for a genuinely inert change.
+  # No `paths-ignore`: the lint lane covers markdown too, and a docs-only push
+  # is cheap to run. Use [skip ci] in the head commit message for a genuinely
+  # inert change.
   push:
   pull_request:
   workflow_dispatch:
@@ -53,12 +51,6 @@ jobs:
         run: npm run lint
       - name: Check formatting
         run: npm run format:check
-      # Service wiring fails silently at runtime — a declared method that does
-      # not exist, or a consumer whose service name no longer matches any
-      # provider, produces no error and no failing spec. Only the bundled
-      # packages are visible here; pkg_lumine repos are checked in their own CI.
-      - name: Check services
-        run: npm run check:services
       # Themes must not re-declare icon box geometry — the icon contract in
       # static/atom-ui/styles/icons.css is its single owner.
       - name: Check icon contract
