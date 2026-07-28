@@ -413,16 +413,21 @@ input[type="button"] {
     width: initial;
     height: initial;
     margin-right: 0.3125em;
-    /* Buttons run a larger font (1.2em) than the icon contract's 16px box
-       assumes, so text-bottom rests the glyph a couple of pixels below the
-       label's optical centre. The raise is pixel-measured: ink lands on the
-       label's cap centre, and on the button's middle for icon-only buttons
+    /* A labelled button aligns its glyph to the label, and its label runs a
+       larger font (1.2em) than the icon contract's 16px box assumes, so
+       text-bottom rests the glyph a couple of pixels below the label's optical
+       centre. The raise is pixel-measured: ink lands on the label's cap centre
        (`position` so an icon set's translate nudge still composes). */
     position: relative;
     top: -2.5px;
   }
+  /* An icon-only button has no label to align to — the target is the button's
+     own middle, which is where text-bottom already puts the glyph. Buttons
+     that size their glyph down (btn-sm, btn-xs) are exactly the ones the
+     label-relative raise would overshoot. */
   &:empty:before {
     margin-right: 0;
+    top: auto;
   }
 }
 
