@@ -9,7 +9,9 @@ const path = require("path");
 const temp = require("@lumine-code/temp").track();
 const fs = require("@lumine-code/fs-plus");
 const babelCompiler = require("../src/babel");
-const CoffeeScript = require("coffeescript");
+// The core module and the package entry share one export object, but the
+// entry requires vm, which Electron rejects in renderer processes.
+const CoffeeScript = require("coffeescript/lib/coffeescript/coffeescript");
 const CSON = require("@lumine-code/season");
 const TypeScriptTranspiler = require("../src/typescript");
 const CompileCache = require("../src/compile-cache");
