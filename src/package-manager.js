@@ -2,7 +2,7 @@ const path = require("path");
 let normalizePackageData = null;
 
 const _ = require("@lumine-code/underscore-plus");
-const { Emitter } = require("event-kit");
+const { CompositeDisposable, Emitter } = require("event-kit");
 const fs = require("@lumine-code/fs-plus");
 const CSON = require("@lumine-code/season");
 
@@ -55,6 +55,7 @@ module.exports = class PackageManager {
     this.activePackages = {};
     this.activatingPackages = {};
     this.packageStates = {};
+    this.themePackRegistrationsByPackageName = new Map();
     this.serviceHub = new ServiceHub();
 
     this.packageActivators = [];
@@ -94,6 +95,7 @@ module.exports = class PackageManager {
     this.loadedPackages = {};
     this.preloadedPackages = {};
     this.packageStates = {};
+    this.themePackRegistrationsByPackageName.clear();
     this.packagesCache = packageJSON._atomPackages != null ? packageJSON._atomPackages : {};
     this.packageDependencies =
       packageJSON.packageDependencies != null ? packageJSON.packageDependencies : {};
@@ -652,6 +654,7 @@ module.exports = class PackageManager {
       if (availablePackage.isBundled) {
         preloadedPackage.finishLoading();
         this.loadedPackages[availablePackage.name] = preloadedPackage;
+        this.registerThemePacksFromPackage(preloadedPackage);
         return preloadedPackage;
       } else {
         preloadedPackage.deactivate();
@@ -681,8 +684,48 @@ module.exports = class PackageManager {
     const pack = metadata.theme ? new ThemePackage(options) : new Package(options);
     pack.load();
     this.loadedPackages[pack.name] = pack;
+    this.registerThemePacksFromPackage(pack);
     this.emitter.emit("did-load-package", pack);
     return pack;
+  }
+
+  // Register declarative light/dark theme packs from a package manifest.
+  // Registrations are tied to the containing package's lifecycle; virtual
+  // themes created from its `themes` array do not inherit these definitions.
+  registerThemePacksFromPackage(pack) {
+    if (
+      !this.themeManager ||
+      this.themePackRegistrationsByPackageName.has(pack.name) ||
+      !Array.isArray(pack.metadata.themePacks)
+    ) {
+      return;
+    }
+
+    const registrations = new CompositeDisposable();
+    let registrationCount = 0;
+    for (const themePack of pack.metadata.themePacks) {
+      try {
+        registrations.add(this.themeManager.registerThemePack(themePack));
+        registrationCount++;
+      } catch (error) {
+        console.warn(
+          `Ignoring an invalid theme pack in the '${pack.name}' package: ${error.message}`,
+        );
+      }
+    }
+
+    if (registrationCount > 0) {
+      this.themePackRegistrationsByPackageName.set(pack.name, registrations);
+    } else {
+      registrations.dispose();
+    }
+  }
+
+  unregisterThemePacksForPackage(packageName) {
+    const registrations = this.themePackRegistrationsByPackageName.get(packageName);
+    if (!registrations) return;
+    registrations.dispose();
+    this.themePackRegistrationsByPackageName.delete(packageName);
   }
 
   // Register one virtual ThemePackage per entry of a `themes` array. Each
@@ -712,6 +755,7 @@ module.exports = class PackageManager {
 
       const themeMetadata = { ...metadata, name: entry.name, theme: entry.theme };
       delete themeMetadata.themes;
+      delete themeMetadata.themePacks;
       delete themeMetadata.main;
       delete themeMetadata.configSchema;
 
@@ -816,6 +860,7 @@ module.exports = class PackageManager {
 
     const pack = this.getLoadedPackage(name);
     if (pack) {
+      this.unregisterThemePacksForPackage(pack.name);
       delete this.loadedPackages[pack.name];
       this.emitter.emit("did-unload-package", pack);
     } else {
@@ -885,6 +930,7 @@ module.exports = class PackageManager {
       return Promise.reject(new Error(`Failed to load package '${name}'`));
     }
 
+    this.registerThemePacksFromPackage(pack);
     this.activatingPackages[pack.name] = pack;
     const activationPromise = pack.activate().then(() => {
       if (this.activatingPackages[pack.name] != null) {
@@ -967,6 +1013,7 @@ module.exports = class PackageManager {
       this.serializePackage(pack);
     }
 
+    this.unregisterThemePacksForPackage(pack.name);
     const deactivationResult = pack.deactivate();
     if (deactivationResult && typeof deactivationResult.then === "function") {
       await deactivationResult;

@@ -53,6 +53,59 @@ describe("atom.themes", () => {
       }));
   });
 
+  describe("theme packs", () => {
+    let registration;
+
+    afterEach(() => registration?.dispose());
+
+    it("registers immutable light/dark pairs and notifies observers", () => {
+      const didChangeThemePacks = jasmine.createSpy();
+      atom.themes.onDidChangeThemePacks(didChangeThemePacks);
+      const light = ["day-ui", "day-syntax"];
+      const dark = ["night-ui", "night-syntax"];
+
+      registration = atom.themes.registerThemePack({ name: "Example", light, dark });
+      light[0] = "changed-ui";
+
+      expect(atom.themes.getThemePacks()).toEqual([
+        {
+          name: "Example",
+          light: ["day-ui", "day-syntax"],
+          dark: ["night-ui", "night-syntax"],
+        },
+      ]);
+      expect(didChangeThemePacks).toHaveBeenCalled();
+
+      registration.dispose();
+      registration = null;
+      expect(atom.themes.getThemePacks()).toEqual([]);
+      expect(didChangeThemePacks.calls.count()).toBe(2);
+    });
+
+    it("sets and identifies the active pack", () => {
+      registration = atom.themes.registerThemePack({
+        name: "Example",
+        light: ["day-ui", "day-syntax"],
+        dark: ["night-ui", "night-syntax"],
+      });
+      const [themePack] = atom.themes.getThemePacks();
+
+      atom.themes.setThemePack(themePack);
+
+      expect(atom.config.get("theme.light")).toEqual(["day-ui", "day-syntax"]);
+      expect(atom.config.get("theme.dark")).toEqual(["night-ui", "night-syntax"]);
+      expect(atom.themes.isThemePackActive(themePack)).toBe(true);
+      expect(atom.themes.getActiveThemePack()).toBe(themePack);
+    });
+
+    it("rejects incomplete registrations", () => {
+      expect(() => atom.themes.registerThemePack()).toThrow();
+      expect(() =>
+        atom.themes.registerThemePack({ name: "Example", light: [], dark: ["night-ui"] }),
+      ).toThrow();
+    });
+  });
+
   describe("when the active theme pair contains invalid entries", () => {
     it("ignores them", () => {
       setActiveThemes([
@@ -663,6 +716,24 @@ h2 {
   });
 
   describe("multi-theme packages", () => {
+    it("registers theme packs declared in package.json for the container lifecycle", async () => {
+      atom.packages.loadPackage("multi-theme-package");
+
+      let themePack = atom.themes.getThemePacks().find(({ name }) => name === "Multi Alpha");
+      expect(themePack.light).toEqual(["multi-alpha-ui", "multi-alpha-syntax"]);
+      expect(themePack.dark).toEqual(["multi-alpha-ui", "multi-alpha-syntax"]);
+      expect(atom.packages.getLoadedPackage("multi-alpha-ui").metadata.themePacks).toBeUndefined();
+
+      await atom.packages.deactivatePackage("multi-theme-package");
+      expect(
+        atom.themes.getThemePacks().find(({ name }) => name === "Multi Alpha"),
+      ).toBeUndefined();
+
+      await atom.packages.activatePackage("multi-theme-package");
+      themePack = atom.themes.getThemePacks().find(({ name }) => name === "Multi Alpha");
+      expect(themePack).toBeDefined();
+    });
+
     it("registers each entry of the themes array as a loaded theme package", () => {
       atom.packages.loadPackage("multi-theme-package");
 

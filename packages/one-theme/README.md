@@ -10,11 +10,10 @@ The One day and night UI and syntax themes.
 - **Mix and match**: any theme can be paired with a community counterpart, e.g. `one-night-ui` with a third-party syntax theme.
 - **Reusable foundation**: other bundled themes can load the shared UI or syntax styles first and keep only their overrides locally.
 
-## Commands
+## Theme pack
 
-Commands available in `atom-workspace`:
-
-- `one-theme:select`: sets the One day and night pairs as the light and dark themes.
+The package declares its four themes as the **One** pack. Use
+`theme-selector:toggle` to preview and select it.
 
 ## Derived themes
 

@@ -7,13 +7,13 @@ describe("nova-theme", () => {
     await atom.packages.deactivatePackage("nova-theme");
   });
 
-  it("selects its theme pairs with the select command", async () => {
+  it("registers its light and dark themes as a pack", async () => {
     await atom.packages.activatePackage("nova-theme");
 
-    atom.commands.dispatch(atom.views.getView(atom.workspace), "nova-theme:select");
+    const themePack = atom.themes.getThemePacks().find(({ name }) => name === "Nova");
 
-    expect(atom.config.get("theme.light")).toEqual(["nova-day-ui", "nova-day-syntax"]);
-    expect(atom.config.get("theme.dark")).toEqual(["nova-night-ui", "nova-night-syntax"]);
+    expect(themePack.light).toEqual(["nova-day-ui", "nova-day-syntax"]);
+    expect(themePack.dark).toEqual(["nova-night-ui", "nova-night-syntax"]);
   });
 
   it("inherits unchanged One styles and keeps its own overrides", async () => {

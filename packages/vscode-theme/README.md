@@ -10,11 +10,10 @@ The VSCode day and night UI and syntax themes following the VS Code Modern look.
 - **Dark+ and Light+ tokens**: the classic VS Code syntax colors, including the matching terminal ANSI palette.
 - **One foundation**: shared UI and syntax rules load from `one-theme` first; this package contains only VS Code palettes and overrides.
 
-## Commands
+## Theme pack
 
-Commands available in `atom-workspace`:
-
-- `vscode-theme:select`: sets the VSCode day and night pairs as the light and dark themes.
+The package declares its four themes as the **VS Code Modern** pack. Use
+`theme-selector:toggle` to preview and select it.
 
 ## Contributing
 

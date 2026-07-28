@@ -40,13 +40,13 @@ describe("one-theme", () => {
     expect(root.hasAttribute("ui-dock-buttons")).toBe(false);
   });
 
-  it("selects its theme pairs with the select command", async () => {
+  it("registers its light and dark themes as a pack", async () => {
     await atom.packages.activatePackage("one-theme");
 
-    atom.commands.dispatch(atom.views.getView(atom.workspace), "one-theme:select");
+    const themePack = atom.themes.getThemePacks().find(({ name }) => name === "One");
 
-    expect(atom.config.get("theme.light")).toEqual(["one-day-ui", "one-day-syntax"]);
-    expect(atom.config.get("theme.dark")).toEqual(["one-night-ui", "one-night-syntax"]);
+    expect(themePack.light).toEqual(["one-day-ui", "one-day-syntax"]);
+    expect(themePack.dark).toEqual(["one-night-ui", "one-night-syntax"]);
   });
 
   it("keeps its package-specific config stylesheet out of the shared UI directory", async () => {

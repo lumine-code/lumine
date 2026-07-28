@@ -10,11 +10,10 @@ The Nova day and night UI and syntax themes.
 - **Borderless layering**: panels are separated by background shades instead of hard borders wherever possible.
 - **One foundation**: shared UI and syntax rules load from `one-theme` first; this package contains only Nova palettes and overrides.
 
-## Commands
+## Theme pack
 
-Commands available in `atom-workspace`:
-
-- `nova-theme:select`: sets the Nova day and night pairs as the light and dark themes.
+The package declares its four themes as the **Nova** pack. Use
+`theme-selector:toggle` to preview and select it.
 
 ## Contributing
 

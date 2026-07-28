@@ -159,6 +159,7 @@
     "symbol-provider-tree-sitter": "file:packages/symbol-provider-tree-sitter",
     "symbols-view": "file:packages/symbols-view",
     "tabs": "file:packages/tabs",
+    "theme-selector": "file:packages/theme-selector",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0",
     "timecop": "file:packages/timecop",
     "tinyglobby": "^0.2.17",
@@ -178,6 +179,7 @@
   "packageDependencies": {
     "nova-theme": "file:./packages/nova-theme",
     "one-theme": "file:./packages/one-theme",
+    "theme-selector": "file:./packages/theme-selector",
     "vscode-theme": "file:./packages/vscode-theme",
     "about": "file:./packages/about",
     "archive-view": "file:./packages/archive-view",

@@ -1,0 +1,9 @@
+.theme-selector {
+  .theme-pack-status {
+    color: var(--text-color-success);
+  }
+
+  .theme-pack:not(.active) .theme-pack-status {
+    visibility: hidden;
+  }
+}

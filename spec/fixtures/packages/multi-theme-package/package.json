@@ -17,5 +17,18 @@
       "extends": "multi-theme-base-package::styles/base/inherited.css",
       "styles": "styles/alpha-syntax"
     }
+  ],
+  "themePacks": [
+    {
+      "name": "Multi Alpha",
+      "light": [
+        "multi-alpha-ui",
+        "multi-alpha-syntax"
+      ],
+      "dark": [
+        "multi-alpha-ui",
+        "multi-alpha-syntax"
+      ]
+    }
   ]
 }

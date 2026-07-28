@@ -1,7 +1,6 @@
 {
   "name": "nova-theme",
   "author": "lumine-code",
-  "main": "lib/main",
   "themes": [
     {
       "name": "nova-day-ui",
@@ -37,6 +36,19 @@
       "styles": [
         "styles/syntax-overrides",
         "styles/night-syntax"
+      ]
+    }
+  ],
+  "themePacks": [
+    {
+      "name": "Nova",
+      "light": [
+        "nova-day-ui",
+        "nova-day-syntax"
+      ],
+      "dark": [
+        "nova-night-ui",
+        "nova-night-syntax"
       ]
     }
   ],

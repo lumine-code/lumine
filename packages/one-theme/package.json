@@ -32,6 +32,19 @@
       "styles": "styles/night-syntax"
     }
   ],
+  "themePacks": [
+    {
+      "name": "One",
+      "light": [
+        "one-day-ui",
+        "one-day-syntax"
+      ],
+      "dark": [
+        "one-night-ui",
+        "one-night-syntax"
+      ]
+    }
+  ],
   "version": "1.0.0",
   "description": "The One day and night UI and syntax themes.",
   "keywords": [

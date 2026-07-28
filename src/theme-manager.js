@@ -2,7 +2,7 @@
 
 const path = require("path");
 const _ = require("@lumine-code/underscore-plus");
-const { Emitter } = require("event-kit");
+const { Disposable, Emitter } = require("event-kit");
 const fs = require("@lumine-code/fs-plus");
 const LessCompileCache = require("./less-compile-cache");
 const { UI_VARIABLES, SYNTAX_VARIABLES } = require("./theme-variables");
@@ -78,6 +78,7 @@ module.exports = class ThemeManager {
     this.themeImportPathsOverride = null;
     this.themeShimDir = null;
     this.themeSwitchPromise = Promise.resolve();
+    this.themePacks = new Set();
     this.packageManager.registerPackageActivator(this, ["theme"]);
 
     this.reloadStylesheet = _.debounce(() => {
@@ -114,6 +115,13 @@ module.exports = class ThemeManager {
     return this.emitter.on("did-change-active-themes", callback);
   }
 
+  // Public: Invoke `callback` when a theme pack is registered or removed.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  onDidChangeThemePacks(callback) {
+    return this.emitter.on("did-change-theme-packs", callback);
+  }
+
   /*
   Section: Accessing Available Themes
   */
@@ -121,6 +129,85 @@ module.exports = class ThemeManager {
   getAvailableNames() {
     // TODO: Maybe should change to list all the available themes out there?
     return this.getLoadedNames();
+  }
+
+  // Public: Register a named light/dark theme pack.
+  //
+  // A pack groups the complete theme stacks for both appearance modes:
+  //
+  // * `name` A user-facing {String}.
+  // * `light` An {Array} of theme package names.
+  // * `dark` An {Array} of theme package names.
+  //
+  // Returns a {Disposable} that removes the pack.
+  registerThemePack({ name, light, dark } = {}) {
+    if (typeof name !== "string" || name.trim().length === 0) {
+      throw new TypeError("A theme pack must have a non-empty name.");
+    }
+
+    const normalizePair = (pair, mode) => {
+      if (
+        !Array.isArray(pair) ||
+        pair.length === 0 ||
+        pair.some((themeName) => typeof themeName !== "string" || themeName.length === 0)
+      ) {
+        throw new TypeError(`The '${mode}' side of a theme pack must be a non-empty name array.`);
+      }
+      return Object.freeze(pair.slice());
+    };
+
+    const themePack = Object.freeze({
+      name: name.trim(),
+      light: normalizePair(light, "light"),
+      dark: normalizePair(dark, "dark"),
+    });
+
+    this.themePacks.add(themePack);
+    this.emitter.emit("did-change-theme-packs", this.getThemePacks());
+
+    return new Disposable(() => {
+      if (!this.themePacks.delete(themePack)) return;
+      this.emitter.emit("did-change-theme-packs", this.getThemePacks());
+    });
+  }
+
+  // Public: Returns registered theme packs sorted by their user-facing names.
+  getThemePacks() {
+    return Array.from(this.themePacks).sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  // Public: Returns whether both configured mode pairs match `themePack`.
+  isThemePackActive(themePack) {
+    if (!themePack) return false;
+    const pairsMatch = (keyPath, expected) => {
+      const actual = this.config.get(keyPath);
+      return (
+        Array.isArray(actual) &&
+        Array.isArray(expected) &&
+        actual.length === expected.length &&
+        actual.every((themeName, index) => themeName === expected[index])
+      );
+    };
+    return pairsMatch("theme.light", themePack.light) && pairsMatch("theme.dark", themePack.dark);
+  }
+
+  // Public: Returns the registered pack matching both configured mode pairs.
+  getActiveThemePack() {
+    return this.getThemePacks().find((themePack) => this.isThemePackActive(themePack)) ?? null;
+  }
+
+  // Public: Configure both appearance modes from `themePack`.
+  setThemePack(themePack) {
+    if (!themePack || !Array.isArray(themePack.light) || !Array.isArray(themePack.dark)) {
+      throw new TypeError("A theme pack must provide light and dark theme arrays.");
+    }
+    if (this.isThemePackActive(themePack)) return false;
+
+    this.config.transact(() => {
+      this.config.set("theme.light", themePack.light.slice());
+      this.config.set("theme.dark", themePack.dark.slice());
+    });
+    return true;
   }
 
   /*

@@ -1,7 +1,6 @@
 {
   "name": "vscode-theme",
   "author": "lumine-code",
-  "main": "lib/main",
   "themes": [
     {
       "name": "vscode-day-ui",
@@ -41,6 +40,19 @@
       "styles": [
         "styles/syntax-overrides",
         "styles/night-syntax"
+      ]
+    }
+  ],
+  "themePacks": [
+    {
+      "name": "VS Code Modern",
+      "light": [
+        "vscode-day-ui",
+        "vscode-day-syntax"
+      ],
+      "dark": [
+        "vscode-night-ui",
+        "vscode-night-syntax"
       ]
     }
   ],
