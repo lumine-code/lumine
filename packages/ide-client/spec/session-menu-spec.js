@@ -30,10 +30,25 @@ describe("ide-client session menu", () => {
 
     const badge = trailing.querySelector(".ide-client-session-state");
     expect(badge.textContent).toBe("running");
-    expect(badge.classList.contains("status-running")).toBe(true);
     // The name stays in the primary text, so the ellipsis truncates it and not
     // the state.
     expect(element.querySelector(".primary-text").textContent).toBe("stub Server");
+  });
+
+  it("renders the state as a themed badge, one variant per state", () => {
+    const badgeFor = (state) =>
+      render({ label: "stub Server", state }).querySelector(".ide-client-session-state");
+
+    expect([...badgeFor("running").classList]).toEqual([
+      "ide-client-session-state",
+      "badge",
+      "badge-success",
+    ]);
+    expect(badgeFor("starting").classList.contains("badge-warning")).toBe(true);
+    expect(badgeFor("stopping").classList.contains("badge-warning")).toBe(true);
+    expect(badgeFor("failed").classList.contains("badge-error")).toBe(true);
+    // An idle server gets the plain neutral pill, not a variant.
+    expect([...badgeFor("stopped").classList]).toEqual(["ide-client-session-state", "badge"]);
   });
 
   it("renders the root path as a second line the theme dims", () => {

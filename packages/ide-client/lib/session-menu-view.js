@@ -1,3 +1,13 @@
+// The state chip is a plain `.badge`, so its shape and colors come from the UI
+// theme rather than from this package. `stopped` maps to no variant on purpose:
+// the neutral pill is what an idle server should read as.
+const STATE_BADGES = {
+  running: "badge-success",
+  starting: "badge-warning",
+  stopping: "badge-warning",
+  failed: "badge-error",
+};
+
 // Lists every language server the window is running — not only the one serving
 // the active editor — so any session can be inspected or restarted from
 // anywhere. Choosing a server opens the actions for it.
@@ -35,7 +45,7 @@ module.exports = class SessionMenuView {
       trailing: [
         item.state && {
           text: item.state,
-          className: `ide-client-session-state status-${item.state}`,
+          className: `ide-client-session-state badge ${STATE_BADGES[item.state] ?? ""}`.trim(),
         },
       ],
     };
