@@ -15,6 +15,11 @@
   font-size: var(--component-icon-size);
   text-align: center;
   vertical-align: text-bottom;
+  /* A flex or grid container ignores vertical-align, and a box with a set
+     height does not stretch, so the glyph would pin to the start of the line.
+     Centring itself keeps the contract intact wherever a consumer lays its
+     row out that way; in normal flow this is ignored. */
+  align-self: center;
   margin-right: var(--component-icon-padding);
 }
 
