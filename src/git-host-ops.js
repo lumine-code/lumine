@@ -132,6 +132,11 @@ module.exports = function createGitHostOps(runner) {
           signal,
         });
       }
+      // The diff itself is synchronous CPU work. Yield once first, so when a
+      // HEAD move fans out one lineDiff per open editor, already-queued
+      // requests (an interactive exec, a status read) get dispatched between
+      // computations instead of waiting out the whole burst.
+      await new Promise((resolve) => setImmediate(resolve));
       return computeLineDiffHunks(blob, text, { ignoreEolWhitespace });
     },
   };
