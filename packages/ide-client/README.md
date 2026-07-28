@@ -71,7 +71,9 @@ Saving the file restarts exactly the servers whose entries changed.
 
 ## Customization
 
-Tweak the server list and the status-bar item from your stylesheet:
+Tweak the server list and the status-bar item from your stylesheet. The item
+stays the color of the status bar whatever the servers are doing, but it carries
+`has-starting` and `has-failed` so you can say otherwise:
 
 ```css
 .ide-client-session-state {
@@ -79,6 +81,9 @@ Tweak the server list and the status-bar item from your stylesheet:
 }
 .ide-client-server-status .ide-client-server-label {
   color: var(--text-color-info);
+}
+.ide-client-server-status.has-failed .ide-client-server-label {
+  color: var(--text-color-error);
 }
 ```
 

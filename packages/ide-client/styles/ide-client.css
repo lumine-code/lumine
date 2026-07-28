@@ -3,17 +3,12 @@
    its own spacing. `.ide-client-session-state` stays on it as the hook a user
    stylesheet can target. */
 
-/* Status-bar item. `.inline-block` supplies the display and the outer spacing,
-   so only the badge colors and the tooltip layout are set here. A stopped
-   server needs no rule of its own: the subtle base color is what it should
-   read as. */
-.ide-client-server-status.has-starting .ide-client-server-label {
-  color: var(--text-color-warning);
-}
-.ide-client-server-status.has-failed .ide-client-server-label,
-.ide-client-server-status .ide-client-server-failed {
-  color: var(--text-color-error);
-}
+/* Status-bar item. It keeps the status bar's own text color in every state:
+   the count and the alert glyph already say what is going on, and a tile that
+   repaints itself pulls the eye off whatever was being read. `has-starting`
+   and `has-failed` stay on the element as hooks for a user stylesheet.
+   `.inline-block` supplies the display and the outer spacing, so only the
+   failed-count layout is left here. */
 .ide-client-server-status .ide-client-server-failed {
   margin-left: 0.4em;
 }
