@@ -1,46 +1,9 @@
-const { SelectListView, createTwoLineItem } = require("@lumine-code/select-list");
-
 // Lists every language server the window is running — not only the one serving
 // the active editor — so any session can be inspected or restarted from
-// anywhere. Choosing a server opens the actions for it.
+// anywhere. Choosing a server enters the actions for it.
 module.exports = class SessionMenuView {
   constructor(main) {
     this.main = main;
-    // The list manages its own modal panel. Hosting one by hand leaves the base
-    // view's panel unbuilt, and its focusout handler bails on a list it thinks
-    // is not visible — which is what stopped a click outside from closing this.
-    this.selectList = new SelectListView({
-      className: "ide-client-session-menu",
-      items: [],
-      emptyMessage: "No language servers are running",
-      filterKeyForItem: (item) => `${item.label} ${item.detail || ""}`,
-      elementForItem: (item) => this.elementForItem(item),
-      didConfirmSelection: (item) => {
-        this.selectList.hide();
-        Promise.resolve(item.action()).catch((error) =>
-          atom.notifications.addError("Language server action failed", {
-            detail: error.message,
-            dismissable: true,
-          }),
-        );
-      },
-      didCancelSelection: () => this.selectList.hide(),
-    });
-  }
-
-  // The state goes in the trailing block, so the states line up down the right
-  // edge instead of each one trailing a name of a different length.
-  elementForItem(item) {
-    return createTwoLineItem({
-      primary: item.label,
-      secondary: item.detail,
-      trailing: [
-        item.state && {
-          text: item.state,
-          className: `ide-client-session-state status-${item.state}`,
-        },
-      ],
-    });
   }
 
   // What the server actually covers, named as such. A bare path cannot say
@@ -71,8 +34,7 @@ module.exports = class SessionMenuView {
 
   // The active editor's servers come first: they are the ones the user is
   // most likely acting on.
-  serverItems() {
-    const editor = atom.workspace.getActiveTextEditor();
+  serverItems(editor) {
     const serving = new Set(editor ? this.main.manager.sessionsForEditor(editor) : []);
     return this.main.manager
       .allSessions()
@@ -85,23 +47,51 @@ module.exports = class SessionMenuView {
         label: session.adapter.displayName,
         detail: this.describeScope(session),
         state: session.state,
-        action: () => this.showActions(session),
+        session,
       }));
   }
 
-  async show(items) {
-    this.selectList.reset();
-    await this.selectList.update({ items });
-    this.selectList.show();
+  // The state goes in the trailing block, so the states line up down the right
+  // edge instead of each one trailing a name of a different length.
+  renderer() {
+    return {
+      entry: (item) => ({ id: item.label, text: `${item.label} ${item.detail || ""}` }),
+      row: (item) => ({
+        label: item.label,
+        detail: item.detail,
+        badges: item.state
+          ? [{ text: item.state, className: `ide-client-session-state status-${item.state}` }]
+          : undefined,
+      }),
+    };
   }
 
-  async toggle() {
-    if (this.selectList.isVisible()) return this.selectList.hide();
-    return this.show(this.serverItems());
+  run(action) {
+    return Promise.resolve(action()).catch((error) =>
+      atom.notifications.addError("Language server action failed", {
+        detail: error.message,
+        dismissable: true,
+      }),
+    );
   }
 
-  async showActions(session) {
-    return this.show([
+  toggle() {
+    return atom.modals.toggle({
+      id: "ide-client.sessions",
+      className: "ide-client-session-menu",
+      placeholder: "Select a language server",
+      emptyMessage: "No language servers are running",
+      title: "Language servers",
+      source: (req) => this.serverItems(req.session.target.editor),
+      renderer: this.renderer(),
+      // Confirming a server enters its actions. Going back is the stack's job,
+      // so there is no "Back" row and no reopening the list by hand.
+      confirm: ({ item }) => ({ push: this.actionsSpec(item.session) }),
+    });
+  }
+
+  actionsSpec(session) {
+    const items = [
       {
         label: "Restart",
         detail: `Restart ${session.adapter.displayName}`,
@@ -122,16 +112,20 @@ module.exports = class SessionMenuView {
         detail: "Open the language-server diagnostics",
         action: () => this.main.showProblems(),
       },
-      {
-        label: "Back",
-        detail: "Return to the list of language servers",
-        // Confirming closed the panel, so this reopens rather than toggles.
-        action: () => this.show(this.serverItems()),
+    ];
+
+    return {
+      id: "ide-client.session-actions",
+      className: "ide-client-session-menu",
+      title: session.adapter.displayName,
+      placeholder: "Select an action",
+      source: items,
+      renderer: this.renderer(),
+      confirm: ({ item }) => {
+        this.run(item.action);
       },
-    ]);
+    };
   }
 
-  destroy() {
-    this.selectList.destroy();
-  }
+  destroy() {}
 };

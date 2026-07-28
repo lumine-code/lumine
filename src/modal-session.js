@@ -484,6 +484,7 @@ class ModalSession {
     const blocking = action.busy === "block";
     if (blocking) this.state = "busy";
     this.actionDepth++;
+    const depthBefore = this.depth;
     this.abortController = this.abortController ?? new AbortController();
     if (blocking) this.render();
 
@@ -511,6 +512,10 @@ class ModalSession {
     if (action.keepOpen && (!result || result.keepOpen === undefined)) {
       result = { ...(result ?? {}), keepOpen: true };
     }
+    // An action that entered a sublist — by calling push(), or by opening what
+    // it thought was a separate modal — cannot also be closing the session. A
+    // bare `return` there means "I already did the thing", not "confirm".
+    if (!result && this.depth > depthBefore) return;
     await this.runActionResult(result, { action, ctx });
   }
 

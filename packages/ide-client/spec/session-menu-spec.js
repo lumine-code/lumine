@@ -1,3 +1,12 @@
+const {
+  activeSession,
+  isModalOpen,
+  modalElement,
+  setQuery,
+  confirm,
+  settle,
+} = require("../../../spec/helpers/modal-helpers");
+
 describe("ide-client session menu", () => {
   let main, menu;
 
@@ -9,7 +18,17 @@ describe("ide-client session menu", () => {
     stop() {},
   });
 
-  const render = (item) => menu.elementForItem(item);
+  // Rows are built by the kernel from the view's renderer, so the way to see
+  // one is to open the view that produces it.
+  const renderRows = async (items) => {
+    atom.modals.open({
+      id: "spec.ide-client-rows",
+      source: items,
+      renderer: menu.renderer(),
+    });
+    await settle();
+    return Array.from(modalElement().querySelectorAll("ol.list-group > li"));
+  };
 
   beforeEach(async () => {
     await atom.packages.activatePackage("ide-client");
@@ -18,11 +37,14 @@ describe("ide-client session menu", () => {
   });
 
   afterEach(async () => {
+    if (atom.modals.isOpen()) atom.modals.cancel("api");
     await atom.packages.deactivatePackage("ide-client");
   });
 
-  it("puts the state in the trailing block of the primary line", () => {
-    const element = render({ label: "stub Server", detail: "/project", state: "running" });
+  it("puts the state in the trailing block of the primary line", async () => {
+    const [element] = await renderRows([
+      { label: "stub Server", detail: "/project", state: "running" },
+    ]);
     const trailing = element.querySelector(".primary-line > .trailing-block");
     expect(trailing).not.toBe(null);
 
@@ -34,38 +56,62 @@ describe("ide-client session menu", () => {
     expect(element.querySelector(".primary-text").textContent).toBe("stub Server");
   });
 
-  it("renders the root path as a second line the theme dims", () => {
-    const element = render({ label: "stub Server", detail: "/project", state: "running" });
+  it("renders the root path as a second line the theme dims", async () => {
+    const [element] = await renderRows([
+      { label: "stub Server", detail: "/project", state: "running" },
+    ]);
     expect(element.classList.contains("two-lines")).toBe(true);
     expect(element.querySelector(".secondary-line").textContent).toBe("/project");
   });
 
-  it("leaves out the trailing block for the action items, which have no state", () => {
-    const element = render({ label: "Restart", detail: "Restart stub Server" });
+  it("leaves out the trailing block for the action items, which have no state", async () => {
+    const [element] = await renderRows([{ label: "Restart", detail: "Restart stub Server" }]);
     expect(element.querySelector(".trailing-block")).toBe(null);
     expect(element.querySelector(".primary-text").textContent).toBe("Restart");
   });
 
-  it("hosts the list in the view's own panel, so a click outside cancels it", async () => {
-    // The base view cancels on focusout only for a list it knows is visible,
-    // which means the panel has to be the one it built itself.
-    // Truthiness, not `false`: isVisible() is `this.panel && …`, so it answers
-    // undefined until the panel exists.
-    expect(menu.selectList.isVisible()).toBeFalsy();
-    await menu.toggle();
-    expect(menu.selectList.isVisible()).toBeTruthy();
-    expect(menu.selectList.getPanel().getItem()).toBe(menu.selectList);
+  it("opens and closes through the shared modal host", async () => {
+    expect(isModalOpen()).toBe(false);
+    menu.toggle();
+    await settle();
+    expect(isModalOpen()).toBe(true);
 
-    menu.selectList.cancel();
-    expect(menu.selectList.isVisible()).toBeFalsy();
+    activeSession().cancel("api");
+    await settle();
+    expect(isModalOpen()).toBe(false);
   });
 
   it("clears the previous query when it reopens", async () => {
-    await menu.toggle();
-    menu.selectList.refs.queryEditor.setText("pyright");
-    await menu.toggle();
-    await menu.toggle();
-    expect(menu.selectList.getQuery()).toBe("");
+    menu.toggle();
+    await settle();
+    setQuery("pyright");
+    await settle();
+
+    menu.toggle();
+    await settle();
+    menu.toggle();
+    await settle();
+
+    expect(activeSession().getQuery().raw).toBe("");
+  });
+
+  it("enters the actions for the chosen server instead of reopening a list", async () => {
+    main.manager.sessions.set("stub:/project", stubSession("running"));
+    spyOn(atom.project, "getPaths").and.returnValue(["/project"]);
+
+    menu.toggle();
+    await settle();
+    const session = activeSession();
+    expect(session.depth).toBe(1);
+
+    confirm();
+    await settle();
+
+    expect(session.depth).toBe(2);
+    // No "Back" row: escape pops instead.
+    const labels = session.getVisibleItems().map((item) => item.label);
+    expect(labels).not.toContain("Back");
+    expect(labels).toContain("Restart");
   });
 
   it("names every folder a server answers for, not the one that started it", () => {
@@ -120,9 +166,14 @@ describe("ide-client session menu", () => {
     const serving = stubSession("running", "alpha");
     main.manager.sessions.set("zeta:/project", other);
     main.manager.sessions.set("alpha:/project", serving);
+    const editor = {};
     spyOn(main.manager, "sessionsForEditor").and.returnValue([other]);
-    spyOn(atom.workspace, "getActiveTextEditor").and.returnValue({});
 
-    expect(menu.serverItems().map((item) => item.label)).toEqual(["zeta Server", "alpha Server"]);
+    // The editor is the one the modal captured before it took focus, so it is
+    // passed in rather than read back out of the workspace.
+    expect(menu.serverItems(editor).map((item) => item.label)).toEqual([
+      "zeta Server",
+      "alpha Server",
+    ]);
   });
 });

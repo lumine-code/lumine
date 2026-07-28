@@ -456,6 +456,175 @@ describe("ModalSession", () => {
     });
   });
 
+  describe("the view stack", () => {
+    const parent = (overrides = {}) => ({
+      id: "spec.parent",
+      title: "Parent",
+      source: [
+        { id: "a", label: "alpha" },
+        { id: "b", label: "beta" },
+      ],
+      ...overrides,
+    });
+    const child = (overrides = {}) => ({
+      id: "spec.child",
+      title: "Child",
+      source: ["one", "two"],
+      ...overrides,
+    });
+
+    it("pushes a view and reports the depth and breadcrumb", async () => {
+      const session = atom.modals.open(parent({ confirm: () => ({ push: child() }) }));
+      await settle();
+      expect(session.depth).toBe(1);
+
+      confirm();
+      await settle();
+
+      expect(session.depth).toBe(2);
+      expect(visibleLabels()).toEqual(["one", "two"]);
+      expect(session.getStack().map((crumb) => crumb.title)).toEqual(["Parent", "Child"]);
+      expect(session.element.querySelector(".modals-breadcrumb").style.display).not.toBe("none");
+    });
+
+    it("starts the child with an empty query and restores the parent's on pop", async () => {
+      const session = atom.modals.open(parent({ confirm: () => ({ push: child() }) }));
+      await settle();
+      setQuery("alp");
+      await settle();
+
+      confirm();
+      await settle();
+      expect(session.getQuery().raw).toBe("");
+
+      session.pop();
+      await settle();
+      expect(session.depth).toBe(1);
+      expect(session.getQuery().raw).toBe("alp");
+      expect(visibleLabels()).toEqual(["alpha"]);
+    });
+
+    it("restores the parent's focused row by id, not by index", async () => {
+      const session = atom.modals.open(parent({ confirm: () => ({ push: child() }) }));
+      await settle();
+      moveDown();
+      expect(focusedLabel()).toBe("beta");
+
+      confirm();
+      await settle();
+      session.pop();
+      await settle();
+
+      expect(focusedLabel()).toBe("beta");
+    });
+
+    it("escape pops one level rather than closing the session", async () => {
+      const session = atom.modals.open(parent({ confirm: () => ({ push: child() }) }));
+      await settle();
+      confirm();
+      await settle();
+      expect(session.depth).toBe(2);
+
+      cancel();
+      await settle();
+      expect(session.depth).toBe(1);
+      expect(atom.modals.isOpen()).toBe(true);
+
+      cancel();
+      await settle();
+      expect(atom.modals.isOpen()).toBe(false);
+    });
+
+    it("cancel-all closes the whole stack from any depth", async () => {
+      const session = atom.modals.open(parent({ confirm: () => ({ push: child() }) }));
+      await settle();
+      confirm();
+      await settle();
+
+      dispatch("modals:cancel-all");
+      await settle();
+
+      expect(atom.modals.isOpen()).toBe(false);
+      expect((await session.result).status).toBe("cancelled");
+    });
+
+    it("runs didClose for every frame exactly once when the session closes deep", async () => {
+      const closed = [];
+      atom.modals.open(
+        parent({
+          didClose: () => closed.push("parent"),
+          confirm: () => ({ push: child({ didClose: () => closed.push("child") }) }),
+        }),
+      );
+      await settle();
+      confirm();
+      await settle();
+
+      atom.modals.cancel("api");
+      await settle();
+
+      expect(closed).toEqual(["child", "parent"]);
+    });
+
+    it("resolves the push promise with the value pop was given", async () => {
+      const session = atom.modals.open(parent());
+      await settle();
+
+      const pushed = session.push(child({ confirm: () => ({ pop: true, value: "picked" }) }));
+      await settle();
+      confirm();
+      await settle();
+
+      expect(await pushed).toBe("picked");
+      expect(session.depth).toBe(1);
+    });
+
+    it("resolves an outstanding push with undefined when the session is cancelled", async () => {
+      const session = atom.modals.open(parent());
+      await settle();
+      const pushed = session.push(child());
+      await settle();
+
+      atom.modals.cancel("api");
+      await settle();
+
+      expect(await pushed).toBeUndefined();
+    });
+
+    it("re-routes an open() issued from inside an action into a push", async () => {
+      // Replacing would destroy the very session whose action is running, and
+      // discard the answer it is waiting for.
+      let session;
+      session = atom.modals.open(
+        parent({
+          confirm: () => {
+            atom.modals.open(child());
+          },
+        }),
+      );
+      await settle();
+      confirm();
+      await settle();
+
+      expect(atom.modals.getActiveSession()).toBe(session);
+      expect(session.depth).toBe(2);
+    });
+
+    it("confirming a row that declares its own push enters it", async () => {
+      const session = atom.modals.open({
+        id: "spec.row-push",
+        source: [{ id: "a", label: "alpha" }],
+        renderer: { row: (item) => ({ label: item.label, push: child() }) },
+      });
+      await settle();
+      confirm();
+      await settle();
+
+      expect(session.depth).toBe(2);
+      expect(visibleLabels()).toEqual(["one", "two"]);
+    });
+  });
+
   describe("parseQuery", () => {
     it("feeds the matcher the parsed text and exposes the extras", async () => {
       let seen = null;
