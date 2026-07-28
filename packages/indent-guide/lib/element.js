@@ -21,7 +21,9 @@ function getEditorCache(editorElement) {
       const container = document.createElement("div");
       container.className = "indent-guide-layer";
       container.style.cssText = "position:absolute;top:0;left:0;pointer-events:none";
-      highlights.parentNode.insertBefore(container, highlights.nextSibling);
+      // Keep guides above selections but inside the highlights stacking
+      // context, below line tiles and block decorations such as inline results.
+      highlights.appendChild(container);
       cache.container = container;
     }
   }
@@ -48,7 +50,7 @@ function styleGuide(element, point, length, stack, active, editor) {
   const height = endTop - top;
 
   // Batch style assignments for single reflow
-  element.style.cssText = `left:${left}px;top:${top}px;height:${height}px;display:block;z-index:0`;
+  element.style.cssText = `left:${left}px;top:${top}px;height:${height}px;display:block`;
   element.setAttribute("depth", point.column);
 }
 

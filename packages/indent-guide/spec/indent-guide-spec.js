@@ -129,6 +129,49 @@ describe("indent-guide", () => {
       expect(layer.querySelectorAll("indent-guide.indent-guide").length).toBeGreaterThan(0);
     });
 
+    it("renders guides above selections", async () => {
+      const editor = await atom.workspace.open();
+      editor.setText("a\n  b\n");
+      editor.setSelectedBufferRange([
+        [0, 0],
+        [1, 3],
+      ]);
+      const editorElement = atom.views.getView(editor);
+      await renderGuides(editor, editorElement);
+
+      const highlights = editorElement.querySelector(".scroll-view .lines > .highlights");
+      const selection = highlights.querySelector(".selection .region");
+      const layer = editorElement.querySelector(".indent-guide-layer");
+      const guide = editorElement.querySelector(".indent-guide-layer indent-guide");
+      expect(selection).not.toBeNull();
+      expect(layer.parentElement).toBe(highlights);
+      expect(getComputedStyle(guide).zIndex).toBe("1");
+    });
+
+    it("keeps block decorations above guides", async () => {
+      const editor = await atom.workspace.open();
+      editor.setText("a\n  b\n");
+      const marker = editor.markBufferPosition([0, Infinity]);
+      const item = document.createElement("div");
+      item.className = "inline-result";
+      editor.decorateMarker(marker, {
+        type: "block",
+        item,
+        position: "after",
+      });
+      const editorElement = atom.views.getView(editor);
+
+      await waitUntil(() => {
+        mainModule.updateGuide(editor, editorElement);
+        return item.isConnected && editorElement.querySelector(".indent-guide-layer indent-guide");
+      });
+
+      const highlights = editorElement.querySelector(".scroll-view .lines > .highlights");
+      const layer = editorElement.querySelector(".indent-guide-layer");
+      expect(layer.parentElement).toBe(highlights);
+      expect(highlights.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+    });
+
     it("removes guide layers on deactivation", async () => {
       const editor = await atom.workspace.open();
       editor.setText("a\n  b\n");
