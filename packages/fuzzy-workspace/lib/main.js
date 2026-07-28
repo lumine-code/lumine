@@ -1,5 +1,4 @@
 const { CompositeDisposable } = require("atom");
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 const { clipboard } = require("electron");
 
 const CONTAINERS = [
@@ -10,41 +9,18 @@ const CONTAINERS = [
 ];
 
 module.exports = {
-  items: [],
-  signature: null,
-  selectList: null,
   disposables: null,
 
   activate() {
-    this.selectList = new SelectListView({
-      className: "fuzzy-workspace",
-      maxResults: 50,
-      emptyMessage: "No open items found",
-      removeDiacritics: true,
-      algorithm: "command-t",
-      elementForItem: (item, options) => this.elementForItem(item, options),
-      didConfirmSelection: () => this.performAction("focus"),
-      didCancelSelection: () => this.selectList.hide(),
-      willShow: () => this.update(),
-      filterKeyForItem: (item) => item.title,
-    });
-
     this.disposables = new CompositeDisposable(
       atom.commands.add("atom-workspace", {
-        "fuzzy-workspace:toggle": () => this.selectList.toggle(),
-      }),
-      atom.commands.add(this.selectList.element, {
-        "select-list:focus-selected-item": () => this.performAction("focus"),
-        "select-list:close-selected-item": () => this.performAction("close"),
-        "select-list:copy-selected-path": () => this.performAction("copy-path"),
-        "select-list:query-selection": () => this.selectList.setQueryFromSelection(),
+        "fuzzy-workspace:toggle": () => this.toggle(),
       }),
     );
   },
 
   deactivate() {
     this.disposables.dispose();
-    this.selectList.destroy();
   },
 
   buildItems() {
@@ -87,84 +63,99 @@ module.exports = {
     return undefined;
   },
 
-  elementForItem(item, { matchIndices }) {
-    const li = createTwoLineItem({
-      primary: highlightMatches(item.title, matchIndices),
-      secondary: item.uri || item.container,
+  toggle() {
+    return atom.modals.toggle({
+      id: "fuzzy-workspace.open-items",
+      className: "fuzzy-workspace",
+      placeholder: "Find an open item",
+      emptyMessage: "No open items found",
+      source: () => this.buildItems(),
+      matcher: atom.modals.matchers.fuzzy({ maxResults: 50 }),
+      help: (session) => {
+        const count = session.getItems().length;
+        return (
+          "Available commands:\n" +
+          "- **Enter**: Focus item\n" +
+          "- **Alt+Delete**: Close item\n" +
+          "- **Alt+C**: Copy path\n" +
+          "- **Alt+S**: Query from selection\n\n" +
+          `**${count}** open item${count !== 1 ? "s" : ""}`
+        );
+      },
+      renderer: {
+        // Titles repeat freely — three untitled buffers, two index.js tabs —
+        // so identity is the pane item itself.
+        entry: (item) => ({ id: item.paneItem, text: item.title }),
+        row: (item) => ({
+          label: item.title,
+          detail: item.uri || item.container,
+          className: item.active ? "active-item" : null,
+        }),
+        decorate: (li, item) => {
+          // The item's own icon name wins over its path — `normalizeTarget`
+          // settles that. Only a real path is offered as one; a `scheme://`
+          // URI is not. An item with neither still reads as a file.
+          const uri = item.uri && !item.uri.includes("://") ? item.uri : null;
+          let target = { item: item.paneItem, path: uri, context: "fuzzy-workspace" };
+          if (atom.icons.iconFor(target).render === "none") target = { name: "file-text" };
+          atom.icons.applyTo(li.firstChild, target, { setData: false });
+          li.firstChild.dataset.container = item.container;
+        },
+      },
+      actions: [
+        {
+          name: "focus-item",
+          label: "Focus item",
+          keystroke: "enter",
+          run: ({ item }) => this.focusItem(item),
+        },
+        {
+          name: "close-item",
+          label: "Close item",
+          keystroke: "alt-delete",
+          run: ({ item }) => {
+            item.pane.destroyItem(item.paneItem);
+            // Stay open and re-read the workspace, so closing several items in
+            // a row does not mean reopening the list each time.
+            return { keepOpen: true, refresh: true };
+          },
+        },
+        {
+          name: "copy-path",
+          label: "Copy path",
+          keystroke: "alt-c",
+          run: ({ item }) => {
+            if (!item.uri) {
+              atom.notifications.addWarning("Selected item has no path");
+              return { keepOpen: true };
+            }
+            clipboard.writeText(item.uri);
+          },
+        },
+        {
+          name: "query-from-selection",
+          label: "Query from selection",
+          keystroke: "alt-s",
+          when: "always",
+          run: ({ session }) => {
+            session.setQueryFromSelection();
+            return { keepOpen: true };
+          },
+        },
+      ],
+      confirm: ({ item }) => this.focusItem(item),
     });
-
-    // The item's own icon name wins over its path — `normalizeTarget` settles
-    // that. Only a real path is offered as one; a `scheme://` URI is not. An
-    // item with neither still reads as a file.
-    const uri = item.uri && !item.uri.includes("://") ? item.uri : null;
-    let target = { item: item.paneItem, path: uri, context: "fuzzy-workspace" };
-    if (atom.icons.iconFor(target).render === "none") target = { name: "file-text" };
-    atom.icons.applyTo(li.firstChild, target, { setData: false });
-
-    if (item.active) li.classList.add("active-item");
-    li.firstChild.dataset.container = item.container;
-    return li;
   },
 
-  getHelpMarkdown() {
-    return (
-      "Available commands:\n" +
-      "- **Enter**: Focus item\n" +
-      "- **Alt+Delete**: Close item\n" +
-      "- **Alt+C**: Copy path\n" +
-      "- **Alt+S**: Query from selection\n\n" +
-      `**${this.items.length}** open item${this.items.length !== 1 ? "s" : ""}`
-    );
-  },
-
-  update() {
-    const items = this.buildItems();
-    const signature = this.signatureFor(items);
-    if (signature === this.signature) return;
-    this.signature = signature;
-    this.items = items;
-    this.selectList.update({
-      items: this.items,
-      helpMarkdown: this.getHelpMarkdown(),
-    });
-  },
-
-  signatureFor(items) {
-    return items
-      .map((item) => `${item.container}\0${item.title}\0${item.uri || ""}\0${item.active ? 1 : 0}`)
-      .join("\x01");
-  },
-
-  performAction(mode) {
-    const item = this.selectList.getSelectedItem();
-    if (!item) return;
-
-    if (mode === "copy-path") {
-      this.selectList.hide();
-      if (!item.uri) {
-        atom.notifications.addWarning("Selected item has no path");
-        return;
-      }
-      clipboard.writeText(item.uri);
-      return;
+  focusItem(item) {
+    const container = item.pane.getContainer();
+    if (container && typeof container.show === "function") {
+      container.show();
     }
-
-    if (mode === "close") {
-      item.pane.destroyItem(item.paneItem);
-      this.update();
-      return;
-    }
-
-    if (mode === "focus") {
-      this.selectList.hide();
-      const container = item.pane.getContainer();
-      if (container && typeof container.show === "function") {
-        container.show();
-      }
-      item.pane.activateItem(item.paneItem);
-      item.pane.activate();
-      const el = typeof item.paneItem.getElement === "function" ? item.paneItem.getElement() : null;
-      if (el && typeof el.focus === "function") el.focus();
-    }
+    item.pane.activateItem(item.paneItem);
+    item.pane.activate();
+    const element =
+      typeof item.paneItem.getElement === "function" ? item.paneItem.getElement() : null;
+    if (element && typeof element.focus === "function") element.focus();
   },
 };

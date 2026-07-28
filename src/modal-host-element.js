@@ -201,7 +201,7 @@ class ModalHostElement extends HTMLElement {
           for (const item of session.getVisibleItems()) session.setChecked(item, true);
         }),
         "modals:uncheck-all": withSession((session) => session.clearChecked()),
-        "modals:query-from-selection": withSession((session) => this.queryFromSelection(session)),
+        "modals:query-from-selection": withSession((session) => session.setQueryFromSelection()),
         "modals:focus-next-control": withSession(() => this.focusNextControl(1)),
         "modals:focus-previous-control": withSession(() => this.focusNextControl(-1)),
       }),
@@ -210,15 +210,6 @@ class ModalHostElement extends HTMLElement {
 
   getPageSize() {
     return this.template && this.template.getPageSize ? this.template.getPageSize() : 10;
-  }
-
-  queryFromSelection(session) {
-    const editor = session.target && session.target.editor;
-    if (!editor) return;
-    const text = editor.getSelectedText();
-    if (!text || /\n/.test(text)) return;
-    this.setQuery(text, { select: "all" });
-    session.didChangeQuery();
   }
 
   // ── view application ──────────────────────────────────────────────────────

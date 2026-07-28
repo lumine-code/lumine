@@ -361,6 +361,18 @@ class ModalSession {
     this.render();
   }
 
+  // Seeds the query from the selection in the editor that was focused before
+  // the modal opened. No-op when there is no editor, or the selection spans
+  // more than one line.
+  setQueryFromSelection() {
+    const editor = this.target && this.target.editor;
+    if (!editor) return false;
+    const text = editor.getSelectedText();
+    if (!text || /\n/.test(text)) return false;
+    this.setQuery(text, { select: "all" });
+    return true;
+  }
+
   setHelp(markdown) {
     this.frame.spec = { ...this.frame.spec, help: markdown };
     if (this.host) this.host.didChangeHelp(this);

@@ -404,6 +404,33 @@ describe("ModalSession", () => {
       expect(ran).toBe("a");
     });
 
+    it("registers an action's declared keystroke under the view's scope", async () => {
+      atom.modals.open({
+        id: "spec.keystroke",
+        source: ["a"],
+        actions: [{ name: "shout", label: "Shout", keystroke: "alt-s", run: () => {} }],
+      });
+      await settle();
+
+      const bindings = atom.keymaps.findKeyBindings({
+        command: "modals:shout",
+        target: activeSession().element,
+      });
+      expect(bindings.length).toBe(1);
+      expect(bindings[0].keystrokes).toBe("alt-s");
+      // Above package keymaps (0) so a foreign binding cannot win, below the
+      // user keymap (100) so an override still can.
+      expect(bindings[0].priority).toBe(50);
+
+      cancel();
+      await settle();
+      // The scope goes away with the view, so the next modal does not inherit
+      // some other package's verbs.
+      expect(
+        atom.keymaps.findKeyBindings({ command: "modals:shout", target: document.body }).length,
+      ).toBe(0);
+    });
+
     it("keeps the session alive when an action throws", async () => {
       atom.modals.open({
         id: "spec.throw",
