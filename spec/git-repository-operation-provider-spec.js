@@ -325,6 +325,49 @@ describe("GitRepositoryOperationProvider", () => {
     ]);
   });
 
+  it("classifies operations by the snapshots they can invalidate", () => {
+    const provider = new GitRepositoryOperationProvider({
+      exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    });
+    const workingDirectory = temp.mkdirSync("git-refresh-hints");
+    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const hint = (name, ...args) => operations.getOperationRefreshHint(name, args);
+
+    expect(hint("stageFiles", ["a.txt"])).toBe("status");
+    expect(hint("unstageFiles", ["a.txt"])).toBe("status");
+    expect(hint("applyPatch", "patch")).toBe("status");
+    expect(hint("checkoutFiles", ["a.txt"], "HEAD")).toBe("status");
+    expect(hint("abortMerge")).toBe("status");
+    expect(hint("writeMergeConflictToIndex", "a.txt", null, "b", "c")).toBe("status");
+    expect(hint("commit", "Subject")).toBe("both");
+    expect(hint("checkout", "main")).toBe("both");
+    expect(hint("reset", "soft", "HEAD~")).toBe("both");
+    expect(hint("deleteRef", "HEAD")).toBe("both");
+    expect(hint("fetch", "origin")).toBe("both");
+    expect(hint("push", "origin", "main")).toBe("both");
+    expect(hint("addRemote", "origin", "https://example.invalid/repo.git")).toBe("refs");
+    expect(hint("setRemoteUrl", "origin", "https://example.invalid/repo.git")).toBe("refs");
+    expect(hint("removeRemote", "origin")).toBe("both");
+    expect(hint("createBlob", { stdin: "contents" })).toBe("none");
+    // An operation this provider does not know about refreshes everything.
+    expect(hint("someFutureOperation")).toBe("both");
+
+    // Config writes matter only for the keys the snapshots actually read.
+    expect(hint("setConfig", "user.name", "Someone")).toBe("none");
+    expect(hint("setConfig", "atomGithub.historySha", "abcdef")).toBe("none");
+    expect(hint("setConfig", "branch.main.remote", "origin")).toBe("both");
+    expect(hint("unsetConfig", "remote.origin.url")).toBe("both");
+
+    // Object-database reads written to disk refresh status only when the file
+    // lands inside the working tree.
+    const inside = path.join(workingDirectory, "restored.txt");
+    const outside = path.join(temp.mkdirSync("git-refresh-hints-out"), "restored.txt");
+    expect(hint("expandBlobToFile", inside, "abcdef")).toBe("status");
+    expect(hint("expandBlobToFile", outside, "abcdef")).toBe("none");
+    expect(hint("mergeFile", "ours", "base", "theirs", "merged/result.txt")).toBe("status");
+    expect(hint("mergeFile", "ours", "base", "theirs", outside)).toBe("none");
+  });
+
   it("supports injected configuration, cleanup modes, and merge-file labels", async () => {
     const calls = [];
     const provider = new GitRepositoryOperationProvider({

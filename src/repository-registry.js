@@ -6,6 +6,10 @@ const RepositoryOperations = require("./repository-operations");
 
 const DEFAULT_EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
 
+// Valid answers from an operation implementation's getOperationRefreshHint():
+// which read snapshots the just-finished operation can have invalidated.
+const OPERATION_REFRESH_HINTS = new Set(["none", "status", "refs", "both"]);
+
 function normalizePath(filePath) {
   const resolved = path.resolve(filePath);
   return process.platform === "win32" ? resolved.toLowerCase() : resolved;
@@ -822,7 +826,10 @@ module.exports = class RepositoryRegistry {
           record.activeOperations++;
           try {
             const result = await record.implementation[operationName](...args);
-            await this.refreshRepositoryAfterOperation(repository);
+            await this.refreshRepositoryAfterOperation(
+              repository,
+              this.operationRefreshHint(record.implementation, operationName, args),
+            );
             return result;
           } finally {
             record.activeOperations--;
@@ -920,25 +927,57 @@ module.exports = class RepositoryRegistry {
     entry.operationImplementations.clear();
   }
 
-  async refreshRepositoryAfterOperation(repository) {
-    if (repository.isDestroyed?.()) return;
+  // Ask the operation implementation which snapshots the operation can have
+  // invalidated. Implementations declare this through the optional
+  // `getOperationRefreshHint(name, args)` member; anything absent, unknown, or
+  // throwing refreshes both snapshots — the behavior every operation had
+  // before hints existed.
+  operationRefreshHint(implementation, operationName, args) {
+    if (typeof implementation.getOperationRefreshHint !== "function") return "both";
     try {
-      const refreshes = [];
-      if (repository.refreshStatusSnapshot && repository.getStatusSnapshot?.().initialized) {
-        refreshes.push(repository.refreshStatusSnapshot());
-      }
-      if (repository.refreshRefsSnapshot && repository.getRefsSnapshot?.().initialized) {
-        refreshes.push(repository.refreshRefsSnapshot());
-      }
-      await Promise.all(refreshes);
-    } catch (error) {
-      // The Git command has already succeeded. Never report it as failed (and
-      // invite a dangerous retry) merely because the read cache did not refresh.
-      this.notificationManager?.addWarning("Repository refresh failed after Git operation", {
-        detail: error.message,
-        dismissable: true,
+      const hint = implementation.getOperationRefreshHint(operationName, args);
+      return OPERATION_REFRESH_HINTS.has(hint) ? hint : "both";
+    } catch {
+      return "both";
+    }
+  }
+
+  async refreshRepositoryAfterOperation(repository, hint = "both") {
+    if (hint === "none" || repository.isDestroyed?.()) return;
+    // Every refs consumer is event-driven, so the refs refresh never gates the
+    // operation's promise: it runs detached, freeing five git commands' worth
+    // of wait from ref-moving operations. The status refresh stays awaited —
+    // callers rely on the operation resolving with a fresh status snapshot.
+    if (
+      (hint === "refs" || hint === "both") &&
+      repository.refreshRefsSnapshot &&
+      repository.getRefsSnapshot?.().initialized
+    ) {
+      Promise.resolve(repository.refreshRefsSnapshot()).catch((error) => {
+        this.reportRefreshFailure(repository, error);
       });
     }
+    if (
+      (hint === "status" || hint === "both") &&
+      repository.refreshStatusSnapshot &&
+      repository.getStatusSnapshot?.().initialized
+    ) {
+      try {
+        await repository.refreshStatusSnapshot();
+      } catch (error) {
+        this.reportRefreshFailure(repository, error);
+      }
+    }
+  }
+
+  reportRefreshFailure(repository, error) {
+    if (repository.isDestroyed?.()) return;
+    // The Git command has already succeeded. Never report it as failed (and
+    // invite a dangerous retry) merely because the read cache did not refresh.
+    this.notificationManager?.addWarning("Repository refresh failed after Git operation", {
+      detail: error.message,
+      dismissable: true,
+    });
   }
 
   emitOperationProviderChange() {

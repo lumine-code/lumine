@@ -35,6 +35,70 @@ function coAuthorTrailer(author) {
   return `Co-authored-by: ${author.name} <${author.email}>`;
 }
 
+// Whether a target path lands inside the working tree. Written files outside it
+// (temp directories, mostly) cannot change `git status` output. A lexical
+// check is enough here: a false "inside" merely refreshes status without need.
+function writesIntoWorkingDirectory(workingDirectory, targetPath) {
+  let root = path.resolve(workingDirectory);
+  let resolved = path.resolve(workingDirectory, String(targetPath ?? ""));
+  if (process.platform === "win32") {
+    root = root.toLowerCase();
+    resolved = resolved.toLowerCase();
+  }
+  return resolved === root || resolved.startsWith(root + path.sep);
+}
+
+// `branch.*` and `remote.*` config keys feed the refs snapshot (remote -v,
+// for-each-ref %(upstream)) and the status snapshot's branch headers; every
+// other key is invisible to both snapshots.
+function configRefreshHint([key]) {
+  return /^(branch|remote)\./i.test(String(key ?? "")) ? "both" : "none";
+}
+
+// Which snapshots each operation can invalidate, consulted by the repository
+// registry to right-size its post-operation refresh. "status" operations touch
+// the index or working tree but can never move a ref; "refs"/"both" move refs
+// or remotes; "none" writes only the object database or unrelated config.
+// Functions receive the operation's arguments for the hints that depend on
+// them. Anything absent refreshes both snapshots — the safe default.
+const OPERATION_REFRESH_HINTS = {
+  stageFiles: "status",
+  unstageFiles: "status",
+  stageFileModeChange: "status",
+  stageFileSymlinkChange: "status",
+  applyPatch: "status",
+  commit: "both",
+  merge: "both",
+  // `merge --abort` restores the pre-merge worktree/index; HEAD never moved,
+  // and MERGE_HEAD is not part of the refs snapshot.
+  abortMerge: "status",
+  checkoutSide: "status",
+  checkout: "both",
+  checkoutFiles: "status",
+  // fetch/push move remote or tracking refs, which also feed the status
+  // snapshot's ahead/behind branch headers.
+  fetch: "both",
+  pull: "both",
+  push: "both",
+  reset: "both",
+  deleteRef: "both",
+  updateSubmodules: "status",
+  setConfig: configRefreshHint,
+  unsetConfig: configRefreshHint,
+  // A brand-new remote has no refs yet, so only `remote -v` output changes.
+  addRemote: "refs",
+  // Removing a remote deletes refs/remotes/<name>/*; if HEAD tracked one of
+  // them, the status snapshot's upstream header changes too.
+  removeRemote: "both",
+  setRemoteUrl: "refs",
+  createBlob: "none",
+  expandBlobToFile: (args, operations) =>
+    writesIntoWorkingDirectory(operations.workingDirectory, args[0]) ? "status" : "none",
+  mergeFile: (args, operations) =>
+    writesIntoWorkingDirectory(operations.workingDirectory, args[3]) ? "status" : "none",
+  writeMergeConflictToIndex: "status",
+};
+
 class GitRepositoryOperations {
   constructor(provider, workingDirectory, repository = null) {
     this.provider = provider;
@@ -44,6 +108,12 @@ class GitRepositoryOperations {
 
   run(args, options) {
     return this.provider.run(args, this.workingDirectory, options);
+  }
+
+  getOperationRefreshHint(operationName, args = []) {
+    const hint = OPERATION_REFRESH_HINTS[operationName];
+    if (typeof hint === "function") return hint(args, this);
+    return hint || "both";
   }
 
   // A snapshot that already proves HEAD exists lets `reset HEAD` run without

@@ -408,6 +408,128 @@ describe("RepositoryRegistry", () => {
     expect(repository.refreshRefsSnapshotCount).toBe(1);
   });
 
+  it("right-sizes the post-operation refresh from the implementation's hint", async () => {
+    const workdir = temp.mkdirSync("operation-refresh-hints");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    let hint;
+    const hintCalls = [];
+    registry.addOperationProvider({
+      createRepositoryOperations() {
+        return {
+          commit: async () => "created-commit",
+          getOperationRefreshHint(name, args) {
+            hintCalls.push([name, args]);
+            return hint;
+          },
+        };
+      },
+    });
+    const operations = repository.getOperations();
+    const counts = () => [
+      repository.refreshStatusSnapshotCount,
+      repository.refreshRefsSnapshotCount,
+    ];
+
+    hint = "none";
+    await operations.commit("Subject");
+    expect(counts()).toEqual([0, 0]);
+
+    hint = "status";
+    await operations.commit("Subject");
+    expect(counts()).toEqual([1, 0]);
+
+    hint = "refs";
+    await operations.commit("Subject");
+    expect(counts()).toEqual([1, 1]);
+
+    hint = "both";
+    await operations.commit("Subject");
+    expect(counts()).toEqual([2, 2]);
+
+    // Unknown hint values refresh both snapshots — the safe default.
+    hint = "everything";
+    await operations.commit("Subject");
+    expect(counts()).toEqual([3, 3]);
+
+    expect(hintCalls[0][0]).toBe("commit");
+    expect(hintCalls[0][1][0]).toBe("Subject");
+  });
+
+  it("refreshes both snapshots when the refresh hint getter throws", async () => {
+    const workdir = temp.mkdirSync("throwing-refresh-hint");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    registry.addOperationProvider({
+      createRepositoryOperations() {
+        return {
+          commit: async () => "created-commit",
+          getOperationRefreshHint() {
+            throw new Error("broken hint");
+          },
+        };
+      },
+    });
+
+    expect(await repository.getOperations().commit("Subject")).toBe("created-commit");
+    expect(repository.refreshStatusSnapshotCount).toBe(1);
+    expect(repository.refreshRefsSnapshotCount).toBe(1);
+  });
+
+  it("resolves an operation without waiting for the detached refs refresh", async () => {
+    const workdir = temp.mkdirSync("detached-refs-refresh");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    let releaseRefs;
+    repository.refreshRefsSnapshot = () => new Promise((resolve) => (releaseRefs = resolve));
+    registry.addOperationProvider({
+      createRepositoryOperations() {
+        return { commit: async () => "created-commit" };
+      },
+    });
+
+    // The refs refresh is still hanging when the operation's promise resolves:
+    // only the status refresh gates it.
+    expect(await repository.getOperations().commit("Subject")).toBe("created-commit");
+    expect(repository.refreshStatusSnapshotCount).toBe(1);
+    expect(typeof releaseRefs).toBe("function");
+    releaseRefs();
+  });
+
+  it("warns when the detached refs refresh fails, unless the repository is gone", async () => {
+    const warnings = [];
+    const workdir = temp.mkdirSync("failed-refs-refresh");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    registry.notificationManager = { addWarning: (...args) => warnings.push(args) };
+    let rejectRefs;
+    repository.refreshRefsSnapshot = () => new Promise((_, reject) => (rejectRefs = reject));
+    registry.addOperationProvider({
+      createRepositoryOperations() {
+        return { commit: async () => "created-commit" };
+      },
+    });
+
+    await repository.getOperations().commit("Subject");
+    rejectRefs(new Error("refs refresh failed"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(warnings.length).toBe(1);
+    expect(warnings[0][1].detail).toBe("refs refresh failed");
+
+    // A failure surfacing after the repository was destroyed stays silent.
+    await repository.getOperations().commit("Subject");
+    repository.destroy();
+    rejectRefs(new Error("late failure"));
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(warnings.length).toBe(1);
+  });
+
   it("uses service providers before the built-in fallback provider", async () => {
     const workdir = temp.mkdirSync("fallback-operation-provider");
     const repository = new FakeRepository(workdir);

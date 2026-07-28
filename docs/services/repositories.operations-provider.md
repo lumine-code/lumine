@@ -35,6 +35,13 @@ type OperationsProvider = {
   executeGit?(args: string[], options?: object): Promise<{ stdout: string; stderr: string }>;
   getCapabilities?(): string[];
 };
+
+type OperationImplementation = {
+  getCapabilities?(): string[];
+  getOperationRefreshHint?(name: string, args: unknown[]): "none" | "status" | "refs" | "both";
+  destroy?(): void;
+  // ...plus one async method per supported operation (stageFiles, commit, …).
+};
 ```
 
 **At least one of the four operation members must be a function**, or registration throws a `TypeError`. They split by scope:
@@ -72,6 +79,8 @@ module.exports = {
 Providers are stored **newest first** by default, so a later registration takes precedence. A provider registered with `{ fallback: true }` goes to the end instead — that option is internal to core and not reachable through the service.
 
 `createRepositoryOperations` is called lazily, the first time a repository needs an operation, and the result is cached per repository per provider. Registering a provider fires a change notification so consumers can re-read capabilities.
+
+After a successful per-repository operation the registry refreshes the repository's read snapshots. The implementation right-sizes that refresh by declaring `getOperationRefreshHint(name, args)`: `"none"` skips it (object-database or unrelated-config writes), `"status"` refreshes the status snapshot, `"refs"` the refs snapshot, `"both"` both. The status refresh is awaited — a `"status"`/`"both"` operation resolves with a fresh status snapshot — while the refs refresh always runs detached, so code that needs post-operation refs must subscribe to `onDidChangeRefsSnapshot` rather than read synchronously after the await. A missing, unknown, or throwing hint refreshes both.
 
 Capability discovery is the intended way to drive a UI: `canPerformOperation(repository, name)` walks the providers and reports whether anyone implements it, and `getOperationCapabilities(repository)` returns the union of the standard operations that resolve plus whatever each implementation's own `getCapabilities()` adds. Grey out what nothing supports rather than failing at the call.
 
