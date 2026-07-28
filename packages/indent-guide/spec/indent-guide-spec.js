@@ -169,7 +169,9 @@ describe("indent-guide", () => {
       const highlights = editorElement.querySelector(".scroll-view .lines > .highlights");
       const layer = editorElement.querySelector(".indent-guide-layer");
       expect(layer.parentElement).toBe(highlights);
-      expect(highlights.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(0);
+      expect(highlights.compareDocumentPosition(item) & Node.DOCUMENT_POSITION_FOLLOWING).not.toBe(
+        0,
+      );
     });
 
     it("removes guide layers on deactivation", async () => {

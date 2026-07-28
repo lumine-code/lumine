@@ -115,9 +115,7 @@
   --ui-tab-height: 2.75em;
   --settings-view-install-border-color: transparent;
   --settings-view-install-background-image: none;
-  --settings-view-install-hover-background-color: hsl(
-    from var(--accent-bg-color) h s calc(l + 4)
-  );
+  --settings-view-install-hover-background-color: hsl(from var(--accent-bg-color) h s calc(l + 4));
   --settings-view-install-hover-background-image: none;
   --settings-view-install-focus-box-shadow: 0 0 0 2px
     color-mix(in srgb, var(--accent-bg-color) 40%, transparent);

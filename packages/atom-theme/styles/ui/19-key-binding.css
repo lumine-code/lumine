@@ -1,0 +1,14 @@
+.key-binding {
+  display: inline-block;
+  margin-left: var(--component-icon-padding);
+  padding: calc(var(--component-padding) / 2);
+  line-height: 100%;
+  font-family: inherit;
+  font-size: calc(var(--font-size) - 1px);
+  border: 1px solid var(--key-binding-border-color);
+  border-radius: var(--component-border-radius);
+  color: var(--text-color);
+  background-image: var(--key-binding-background-image);
+  box-shadow: inset 1px 1px 0 var(--key-binding-highlight-color);
+  text-shadow: none;
+}

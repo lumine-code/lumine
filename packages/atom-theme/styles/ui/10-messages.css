@@ -1,0 +1,28 @@
+/* Background messages
+ *
+ * The watermark shown in an empty pane. The classic themes hard-coded a black
+ * tint here, which is invisible on the dark palette — it reads from the
+ * foreground colour instead. */
+
+ul.background-message {
+  font-weight: bold;
+  color: var(--text-color-faded);
+}
+
+/* Notifications ------------------------------------ */
+
+atom-notifications {
+  font-size: calc(var(--ui-size) * 1.2);
+
+  atom-notification {
+    .detail,
+    .description {
+      font-size: 0.85em;
+    }
+
+    .btn-copy-report {
+      line-height: 2em;
+      margin-left: 0.5em;
+    }
+  }
+}

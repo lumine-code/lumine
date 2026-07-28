@@ -98,10 +98,7 @@
     background-color: var(--accent-bg-color);
     background-image: var(
       --settings-view-install-background-image,
-      linear-gradient(
-        hsl(from var(--accent-bg-color) h s calc(l + 2)),
-        var(--accent-bg-color)
-      )
+      linear-gradient(hsl(from var(--accent-bg-color) h s calc(l + 2)), var(--accent-bg-color))
     );
     color: var(--accent-bg-text-color);
 

@@ -1,0 +1,169 @@
+/* Lists
+ *
+ * The `.generate-list-item-text-color()` Less mixin is expanded per class.
+ * Git status colours are not repeated here — core owns them in
+ * static/atom-ui/styles/git-status.css. */
+
+.list-group,
+.list-tree {
+  li:not(.list-nested-item),
+  li.list-nested-item > .list-item {
+    font-weight: normal;
+    color: var(--text-color);
+  }
+
+  li:not(.list-nested-item).text-subtle,
+  li.list-nested-item.text-subtle > .list-item {
+    font-weight: normal;
+    color: var(--text-color-subtle);
+  }
+  li:not(.list-nested-item).text-info,
+  li.list-nested-item.text-info > .list-item {
+    color: var(--text-color-info);
+  }
+  li:not(.list-nested-item).text-success,
+  li.list-nested-item.text-success > .list-item {
+    color: var(--text-color-success);
+  }
+  li:not(.list-nested-item).text-warning,
+  li.list-nested-item.text-warning > .list-item {
+    color: var(--text-color-warning);
+  }
+  li:not(.list-nested-item).text-error,
+  li.list-nested-item.text-error > .list-item {
+    color: var(--text-color-error);
+  }
+  li:not(.list-nested-item).text-selected,
+  li.list-nested-item.text-selected > .list-item {
+    font-weight: normal;
+    color: var(--text-color-selected);
+  }
+
+  li:not(.list-nested-item).selected,
+  li.list-nested-item.selected > .list-item {
+    font-weight: normal;
+    color: var(--text-color-selected);
+  }
+
+  .no-icon {
+    padding-left: calc(var(--component-icon-padding) + var(--component-icon-size));
+  }
+}
+
+/* Select lists ------------------------------------ */
+
+.select-list ol.list-group {
+  li.two-lines {
+    .secondary-line {
+      color: var(--text-color-subtle);
+    }
+    &.selected .secondary-line {
+      color: var(--text-color);
+      text-shadow: none;
+    }
+  }
+
+  /* Item heights are not known up front, so the whole row is tinted rather
+     than the fixed-height ::before layer core would otherwise draw. */
+  li.selected {
+    background-color: var(--background-color-selected);
+    &::before {
+      display: none;
+    }
+  }
+
+  &.mark-active {
+    /* Pad in front of the text where the icon would be. Non-active items get a
+       'fake' icon so other classes can pad the item without worrying about it. */
+    li::before {
+      content: "";
+      position: static;
+      display: inline-block;
+      left: auto;
+      right: auto;
+      width: 14px;
+      height: 14px;
+      background-color: transparent;
+    }
+
+    > li:not(.active)::before {
+      margin-right: var(--component-icon-padding);
+    }
+
+    li.active::before {
+      /* .octicon(check, 14px) */
+      font-family: "Octicons Regular";
+      font-weight: normal;
+      font-style: normal;
+      display: inline-block;
+      line-height: 1;
+      -webkit-font-smoothing: antialiased;
+      text-decoration: none;
+      font-size: 14px;
+      content: "\f03a";
+      margin-right: var(--component-icon-padding);
+      color: var(--text-color-success);
+    }
+  }
+}
+
+.select-list.popover-list {
+  padding: calc(var(--component-padding) / 2);
+  border: 1px solid var(--overlay-border-color);
+  border-radius: var(--component-border-radius);
+  background-color: var(--overlay-background-color);
+  box-shadow: 0 0 10px var(--base-border-color);
+
+  atom-text-editor {
+    margin-bottom: calc(var(--component-padding) / 2);
+  }
+
+  .list-group li {
+    padding-left: calc(var(--component-padding) / 2);
+  }
+}
+
+/* Dropdowns ------------------------------------ */
+
+.dropdown-menu {
+  padding: 0;
+  border: 1px solid var(--base-border-color);
+  border-radius: var(--component-border-radius);
+  background-color: var(--overlay-background-color);
+
+  > li > a {
+    font-weight: normal;
+    color: var(--text-color);
+  }
+
+  > li > a:hover {
+    font-weight: normal;
+    color: var(--text-color-highlight);
+    background-color: var(--background-color-highlight);
+  }
+}
+
+/* Sortable lists ------------------------------------ */
+
+.ui-sortable {
+  li {
+    line-height: 2.5;
+  }
+
+  li.ui-sortable-placeholder {
+    visibility: visible !important;
+    background-color: hsl(from var(--pane-item-background-color) h s calc(l - 10));
+  }
+}
+
+li.ui-draggable-dragging,
+li.ui-sortable-helper {
+  line-height: var(--component-line-height);
+  height: var(--component-line-height);
+  border: 0;
+  border-radius: 0;
+  list-style: none;
+  padding: 0 var(--component-padding);
+  background: var(--background-color-highlight);
+  box-shadow: 0 0 1px var(--base-border-color);
+}

@@ -1,0 +1,54 @@
+/* Status bar
+ *
+ * New to this port — the classic themes shipped before the status bar was a
+ * package. It picks up the tab bar's shade so the window is framed top and
+ * bottom by the same tone. */
+
+.status-bar {
+  font-size: var(--ui-size);
+  height: var(--ui-tab-height);
+  line-height: var(--ui-tab-height);
+  color: var(--text-color);
+  background-color: var(--level-3-color);
+  box-shadow: inset 0 1px 0 var(--background-color-highlight);
+
+  .flexbox-repaint-hack {
+    padding: 0; /* override default */
+  }
+
+  /* Underlines are for external links only. */
+  a:hover,
+  a:focus {
+    text-decoration: none;
+    cursor: default;
+  }
+
+  .inline-block {
+    margin: 0; /* override default */
+    padding: 0 calc(var(--ui-padding) / 2);
+    vertical-align: top;
+
+    &:hover {
+      text-decoration: none;
+      color: var(--text-color-highlight);
+      background-color: var(--level-3-color-hover);
+    }
+    &:active {
+      background-color: var(--level-3-color-active);
+    }
+
+    /* Reset on a nested inline-block. */
+    .inline-block {
+      margin: 0;
+      padding: 0;
+    }
+  }
+
+  .status-bar-right .inline-block {
+    margin-left: 0; /* override default */
+  }
+
+  .icon::before {
+    margin-right: 0.25em;
+  }
+}

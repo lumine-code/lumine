@@ -1,0 +1,104 @@
+/*
+ * atom-day palette — the syntax side of the theme variable contract as CSS
+ * custom properties. Converted from the classic atom-light-syntax Less sources.
+ *
+ * Values must stay concrete (hex/hsl/rgba or plain var() aliases within this
+ * file): Lumine derives the legacy Less ui-variables/syntax-variables shim for
+ * community packages from this file, and Less color functions need concrete
+ * colors to operate on. See src/theme-variable-shim.js.
+ */
+
+:root {
+  /* --- general --- */
+  --syntax-text-color: #555;
+  --syntax-cursor-color: #000;
+  --syntax-selection-color: #afc4da;
+  --syntax-selection-flash-color: #69c;
+  --syntax-background-color: #fff;
+
+  /* --- guides --- */
+  --syntax-invisible-character-color: rgba(85, 85, 85, 0.2);
+  --wrap-guide-color: rgba(85, 85, 85, 0.2);
+  --indent-guide-color: rgba(85, 85, 85, 0.2);
+  --indent-guide-stack-color: rgba(85, 85, 85, 0.3);
+  --indent-guide-active-color: rgba(82, 147, 216, 0.3);
+
+  /* --- find and replace markers --- */
+  --syntax-result-marker-color: #999;
+  --syntax-result-marker-color-selected: #000;
+
+  /* --- gutter --- */
+  --syntax-gutter-text-color: #555;
+  --syntax-gutter-text-color-selected: #555;
+  --syntax-gutter-background-color: #fff;
+  --syntax-gutter-background-color-selected: rgba(255, 255, 134, 0.34);
+
+  /* --- git diff --- */
+  --syntax-color-added: #718c00;
+  --syntax-color-modified: #ff982d;
+  --syntax-color-removed: #dd1144;
+  --syntax-color-renamed: #5293d8;
+
+  /* --- language entities --- */
+  --syntax-color-variable: #008080;
+  --syntax-color-constant: #009999;
+  --syntax-color-property: #333;
+  --syntax-color-value: #009999;
+  --syntax-color-function: #990000;
+  --syntax-color-method: #990000;
+  --syntax-color-class: #606aa1;
+  --syntax-color-keyword: #222;
+  --syntax-color-tag: #008080;
+  --syntax-color-attribute: #445588;
+  --syntax-color-import: #222;
+  --syntax-color-snippet: #009999;
+  --syntax-color-string: #dd1144;
+  --syntax-color-comment: #999988;
+
+  /* --- terminal --- */
+  --terminal-selection-background-color: #afc4da;
+  --terminal-selection-text-color: #555;
+  --terminal-cursor-color: #000;
+  --terminal-result-marker-color: #999;
+  --terminal-result-marker-color-selected: #000;
+  --terminal-color-black: #2f2f2f;
+  --terminal-color-red: #990000;
+  --terminal-color-green: #718c00;
+  --terminal-color-yellow: #ff982d;
+  --terminal-color-blue: #445588;
+  --terminal-color-magenta: #606aa1;
+  --terminal-color-cyan: #008080;
+  --terminal-color-white: #e6e6e6;
+  --terminal-color-bright-black: #494949;
+  --terminal-color-bright-red: #cc0000;
+  --terminal-color-bright-green: #99cc99;
+  --terminal-color-bright-yellow: #ffb160;
+  --terminal-color-bright-blue: #556aaa;
+  --terminal-color-bright-magenta: #8088b4;
+  --terminal-color-bright-cyan: #009999;
+  --terminal-color-bright-white: #fff;
+
+  /* --- convenience aliases --- */
+  --syntax-fg: #555;
+  --syntax-bg: #fff;
+  --syntax-gutter: #555;
+  --syntax-guide: rgba(85, 85, 85, 0.2);
+  --syntax-accent: #008080;
+
+  /* --- theme-local token palette (not part of the contract) ---
+     The classic light palette, named so the rules below read as colors rather
+     than as hex codes. Retint one of these to restyle a whole family. */
+  --atom-fg: #555;
+  --atom-ink: #222;
+  --atom-ink-strong: #111;
+  --atom-slate: #333;
+  --atom-teal: #008080;
+  --atom-cyan: #009999;
+  --atom-crimson: #dd1144;
+  --atom-maroon: #990000;
+  --atom-navy: #445588;
+  --atom-indigo: #606aa1;
+  --atom-gray: #999988;
+  --atom-gray-mid: #888;
+  --atom-fold: #e87b00;
+}

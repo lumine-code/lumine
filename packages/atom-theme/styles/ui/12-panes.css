@@ -1,0 +1,31 @@
+/* Panes
+ *
+ * The unfocused pane sits a shade lighter than the workspace behind it, so the
+ * focused pane reads as the darker, "recessed" one. */
+
+atom-pane-container {
+  atom-pane {
+    position: relative;
+    background-color: hsl(from var(--app-background-color) h s calc(l + 4));
+
+    &:focus {
+      background-color: var(--app-background-color);
+    }
+  }
+
+  atom-pane-axis.horizontal > * {
+    border-right: 1px solid var(--pane-item-border-color);
+
+    &:last-child {
+      border-right: none;
+    }
+  }
+
+  atom-pane-axis.vertical > * {
+    border-bottom: 1px solid var(--pane-item-border-color);
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+}

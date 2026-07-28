@@ -625,23 +625,32 @@ describe("TextEditorComponent", () => {
 
         element.focus();
         await component.getNextUpdatePromise();
+        // Windows CI can momentarily drop OS window focus during the async
+        // update, which blurs the hidden input and clears `is-focused` — the
+        // only rule that gives a cursor `opacity: 1`, so every assertion below
+        // reads 0 instead. Re-establish focus through the component's own entry
+        // point, then render each blink synchronously rather than awaiting an
+        // update: with no yield left between the blinks and the assertions that
+        // read them, no blur can be delivered in between.
+        component.didFocus();
+        component.updateSync();
         const [cursor1, cursor2] = element.querySelectorAll(".cursor");
 
         expect(getComputedStyle(cursor1).opacity).toBe("1");
         expect(getComputedStyle(cursor2).opacity).toBe("1");
 
         blink();
-        await component.getNextUpdatePromise();
+        component.updateSync();
         expect(getComputedStyle(cursor1).opacity).toBe("0");
         expect(getComputedStyle(cursor2).opacity).toBe("0");
 
         blink();
-        await component.getNextUpdatePromise();
+        component.updateSync();
         expect(getComputedStyle(cursor1).opacity).toBe("1");
         expect(getComputedStyle(cursor2).opacity).toBe("1");
 
         editor.moveRight();
-        await component.getNextUpdatePromise();
+        component.updateSync();
 
         expect(getComputedStyle(cursor1).opacity).toBe("1");
         expect(getComputedStyle(cursor2).opacity).toBe("1");

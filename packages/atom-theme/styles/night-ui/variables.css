@@ -1,0 +1,166 @@
+/*
+ * atom-night palette — the UI side of the theme variable contract as CSS
+ * custom properties. Converted from the classic atom-dark-ui Less sources;
+ * every value that was a Less color function there is resolved here.
+ *
+ * Values must stay concrete (hex/hsl/rgba or plain var() aliases within this
+ * file): Lumine derives the legacy Less ui-variables/syntax-variables shim for
+ * community packages from this file, and Less color functions need concrete
+ * colors to operate on. See src/theme-variable-shim.js.
+ */
+
+:root {
+  /* --- text --- */
+  --text-color: #aaa;
+  /* Classic value was #555, which lands at 1.9:1 on the panel shades — every
+     other foreground in this palette clears 4:1, so it is raised just enough
+     to stay legible while still reading as subdued. */
+  --text-color-subtle: #777;
+  --text-color-highlight: #fff;
+  --text-color-selected: #fff;
+  --text-color-info: #5293d8;
+  --text-color-success: #2bda77;
+  --text-color-warning: #ff982d;
+  /* Likewise #c00, the classic value, sat at 2.4:1 — unreadable for the one
+     colour that flags a problem. Lifted into the same red family at 4:1.
+     --background-color-error keeps #c00: white on it was always fine. */
+  --text-color-error: #e35d5d;
+
+  /* --- background --- */
+  --background-color-info: #0098ff;
+  --background-color-success: #17ca65;
+  --background-color-warning: #ffaa2c;
+  --background-color-error: #c00;
+  --background-color-highlight: rgba(255, 255, 255, 0.07);
+  --background-color-selected: #4182c4;
+  --app-background-color: #333;
+
+  /* --- base --- */
+  --base-background-color: #292c2f;
+  --base-border-color: rgba(0, 0, 0, 0.5);
+
+  /* --- components --- */
+  --pane-item-background-color: #292c2f;
+  --pane-item-border-color: rgba(0, 0, 0, 0.5);
+  --input-background-color: #212224;
+  --input-border-color: rgba(0, 0, 0, 0.5);
+  --tool-panel-background-color: #1d1f21;
+  --tool-panel-border-color: rgba(0, 0, 0, 0.5);
+  --inset-panel-background-color: #161719;
+  --inset-panel-border-color: rgba(0, 0, 0, 0.5);
+  --panel-heading-background-color: #43484d;
+  --panel-heading-border-color: rgba(0, 0, 0, 0.6);
+  --overlay-background-color: #202123;
+  --overlay-border-color: rgba(255, 255, 255, 0.07);
+  --button-background-color: #43484d;
+  --button-background-color-hover: #4f555b;
+  --button-background-color-selected: #5c6064;
+  --button-border-color: rgba(0, 0, 0, 0.5);
+  --tab-bar-background-color: #222;
+  --tab-bar-border-color: #080808;
+  --tab-background-color: #333;
+  --tab-background-color-active: #222;
+  --tab-border-color: #484848;
+  --tree-view-background-color: #303030;
+  --tree-view-border-color: rgba(0, 0, 0, 0.5);
+  --scrollbar-color: rgba(92, 92, 92, 0.5);
+  --scrollbar-background-color: #222425;
+
+  /* --- site colors --- */
+  --ui-site-color-1: #17ca65;
+  --ui-site-color-2: #0098ff;
+  --ui-site-color-3: #ffaa2c;
+  --ui-site-color-4: #db2ff4;
+  --ui-site-color-5: #f5e11d;
+
+  /* --- sizes --- */
+  --font-size: 12px;
+  --input-font-size: 14px;
+  --disclosure-arrow-size: 12px;
+  --component-padding: 10px;
+  --component-icon-padding: 5px;
+  --component-icon-size: 16px;
+  --component-line-height: 25px;
+  --component-border-radius: 2px;
+  --tab-height: 26px;
+
+  /* --- other --- */
+  --font-family: system-ui;
+  --use-custom-controls: true;
+
+  /* --- extended: text --- */
+  --text-color-faded: rgba(170, 170, 170, 0.2);
+  --text-color-hint: #6f6f6f;
+  --text-color-added: #2bda77;
+  --text-color-ignored: #777;
+  --text-color-modified: #ff982d;
+  --text-color-removed: #e35d5d;
+  --text-color-renamed: #5293d8;
+  --text-color-conflicted: #e35d5d;
+
+  /* --- extended: readable text on colored backgrounds --- */
+  --text-color-on-info: #fff;
+  --text-color-on-success: #fff;
+  --text-color-on-warning: #2b1a00;
+  --text-color-on-error: #fff;
+
+  /* --- extended: background levels --- */
+  --level-1-color: #43484d;
+  --level-2-color: #292c2f;
+  --level-3-color: #222;
+  --level-3-color-hover: #2e2e2e;
+  --level-3-color-active: #282828;
+
+  /* --- extended: accent --- */
+  --accent-color: #5293d8;
+  --accent-text-color: #fff;
+  --accent-bg-color: #4182c4;
+  --accent-bg-text-color: #fff;
+  --accent-only-text-color: #5293d8;
+
+  /* --- extended: components --- */
+  --badge-background-color: rgba(255, 255, 255, 0.14);
+  --button-text-color-selected: #fff;
+  --button-border-color-selected: rgba(0, 0, 0, 0.5);
+  --checkbox-background-color: rgba(65, 130, 196, 0.33);
+  --input-background-color-focus: #2d2f31;
+  --input-selection-color: #393b3f;
+  --input-selection-color-focus: #408cbf;
+  --overlay-backdrop-color: #111213;
+  --overlay-backdrop-opacity: 0.55;
+  --progress-background-color: #17ca65;
+  --scrollbar-color-editor: rgba(92, 92, 92, 0.5);
+  --scrollbar-background-color-editor: #1d1f21;
+  --tab-text-color: #aaa;
+  --tab-text-color-active: #fff;
+  --tab-text-color-editor: #fff;
+  --tab-background-color-editor: #222;
+  --tab-inactive-status-added: rgba(43, 218, 119, 0.55);
+  --tab-inactive-status-modified: rgba(255, 152, 45, 0.55);
+  --tab-inactive-status-conflicted: rgba(227, 93, 93, 0.55);
+  --tooltip-background-color: #fff;
+  --tooltip-text-color: #333;
+  --tooltip-text-key-color: #555;
+  --tooltip-background-key-color: rgba(0, 0, 0, 0.08);
+
+  /* --- extended: sizes --- */
+  --ui-size: 1em;
+  --ui-input-size: 1.15em;
+  --ui-padding: 1.5em;
+  --ui-padding-pane: 0.5em;
+  --ui-padding-icon: 0.45454545em;
+  --ui-line-height: 2em;
+  --ui-tab-height: 2.5em;
+
+  /* --- theme-local (not part of the contract) --- */
+  --scrollbar-thumb-shadow-color: #000;
+  --tab-bar-background-image: none;
+  --tab-background-image: linear-gradient(#454545, #333);
+  --tab-background-image-active: linear-gradient(#343434, #222);
+  --tab-bar-bottom-border-color: #111;
+  --tree-view-background-color-focus: #282828;
+  --progress-track-color: #666;
+  --key-binding-background-image: linear-gradient(rgba(100, 100, 100, 0.5), rgba(70, 70, 70, 0.5));
+  --key-binding-highlight-color: rgba(255, 255, 255, 0.1);
+  --key-binding-border-color: transparent;
+}
