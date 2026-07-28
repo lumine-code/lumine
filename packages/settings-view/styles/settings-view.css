@@ -38,8 +38,6 @@
   --section-padding: calc(2 * var(--component-padding));
   --breadcrumb-padding: calc(2 * var(--component-padding));
 
-  --settings-content-width: calc(var(--ui-size) * 80);
-
   --settings-view-alert-info-dark-flag: hsl(
     from color-mix(in srgb, var(--background-color-info) 10%, var(--base-background-color)) 0 0
       calc((50 - l) * infinity) / 1
@@ -309,7 +307,6 @@
 
   .section-container {
     width: 100%;
-    max-width: var(--settings-content-width);
 
     &.updates-container {
       .package-container {
@@ -1027,7 +1024,6 @@
 
     > * {
       width: 100%;
-      max-width: var(--settings-content-width);
     }
   }
 
