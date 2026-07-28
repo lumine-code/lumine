@@ -19,44 +19,76 @@ function defaultGitExec(args, workingDirectory, options) {
 // without changing any provider's observable behavior.
 const DEFAULT_MAX_CONCURRENT_GIT = 6;
 
+// Two lanes, so a user-initiated command (a stage, a commit) never waits out a
+// long backlog of background refreshes. Interactive waiters are admitted
+// first, FIFO within each lane, and `reservedInteractive` slots are kept off
+// limits to background work: even a fully saturated background queue leaves an
+// interactive command a free slot.
 class Semaphore {
-  constructor(max) {
+  constructor(max, { reservedInteractive = 0 } = {}) {
     this.max = max;
-    this.active = 0;
-    this.queue = [];
+    this.backgroundMax = Math.max(1, max - reservedInteractive);
+    this.activeInteractive = 0;
+    this.activeBackground = 0;
+    this.interactiveQueue = [];
+    this.backgroundQueue = [];
   }
 
-  async acquire() {
-    if (this.active < this.max) {
-      this.active++;
+  get active() {
+    return this.activeInteractive + this.activeBackground;
+  }
+
+  async acquire(priority = "background") {
+    const interactive = priority === "interactive";
+    const belowLimit = interactive
+      ? this.active < this.max
+      : this.active < this.max && this.activeBackground < this.backgroundMax;
+    if (belowLimit) {
+      if (interactive) this.activeInteractive++;
+      else this.activeBackground++;
       return;
     }
-    await new Promise((resolve) => this.queue.push(resolve));
+    await new Promise((resolve) => {
+      (interactive ? this.interactiveQueue : this.backgroundQueue).push(resolve);
+    });
   }
 
-  release() {
-    const next = this.queue.shift();
-    if (next) {
-      // Hand the freed slot directly to the next waiter without dropping the
-      // active count, so a synchronous acquire() cannot slip in and exceed max.
-      next();
-    } else {
-      this.active--;
+  release(priority = "background") {
+    if (priority === "interactive") this.activeInteractive--;
+    else this.activeBackground--;
+    this.admit();
+  }
+
+  // Counts are incremented synchronously before each admitted waiter resolves,
+  // so a concurrently arriving acquire() can never slip past the limits.
+  admit() {
+    while (this.interactiveQueue.length > 0 && this.active < this.max) {
+      this.activeInteractive++;
+      this.interactiveQueue.shift()();
+    }
+    while (
+      this.backgroundQueue.length > 0 &&
+      this.active < this.max &&
+      this.activeBackground < this.backgroundMax
+    ) {
+      this.activeBackground++;
+      this.backgroundQueue.shift()();
     }
   }
 
-  async run(fn) {
-    await this.acquire();
+  async run(fn, priority = "background") {
+    await this.acquire(priority);
     try {
       return await fn();
     } finally {
-      this.release();
+      this.release(priority);
     }
   }
 }
 
-// Process-wide limiter shared by every GitRunner instance.
-const sharedGitLimiter = new Semaphore(DEFAULT_MAX_CONCURRENT_GIT);
+// Process-wide limiter shared by every GitRunner instance, with one slot
+// reserved for interactive commands.
+const sharedGitLimiter = new Semaphore(DEFAULT_MAX_CONCURRENT_GIT, { reservedInteractive: 1 });
 
 const COLOR_CONFIG = [
   "-c",
@@ -125,7 +157,10 @@ class GitRunner {
       });
     // Interactive/credential operations may block for a long time; keep them out
     // of the shared read budget so a hung prompt cannot starve status refreshes.
-    const result = options.allowPrompt ? await runExec() : await this.limiter.run(runExec);
+    const priority = options.priority === "interactive" ? "interactive" : "background";
+    const result = options.allowPrompt
+      ? await runExec()
+      : await this.limiter.run(runExec, priority);
     const allowedExitCodes = options.allowedExitCodes || [0];
     if (!allowedExitCodes.includes(result.exitCode)) {
       throw new GitOperationError(args[0], result);

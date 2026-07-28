@@ -64,6 +64,85 @@ describe("GitRunner concurrency", () => {
   });
 });
 
+describe("GitRunner priority lanes", () => {
+  it("admits queued interactive commands before earlier background waiters", async () => {
+    const starts = [];
+    const resolvers = [];
+    const execute = (args) =>
+      new Promise((resolve) => {
+        starts.push(args[args.length - 1]);
+        resolvers.push(() => resolve({ exitCode: 0, stdout: "", stderr: "" }));
+      });
+    const runner = new GitRunner({ execute, limiter: new Semaphore(1) });
+
+    const first = runner.run(["status", "bg-1"], "/repo");
+    await flush();
+    const second = runner.run(["status", "bg-2"], "/repo");
+    const third = runner.run(["status", "int-1"], "/repo", { priority: "interactive" });
+    await flush();
+    expect(starts).toEqual(["bg-1"]);
+
+    // The interactive command queued after bg-2 yet starts before it.
+    resolvers.shift()();
+    await flush();
+    expect(starts).toEqual(["bg-1", "int-1"]);
+
+    resolvers.shift()();
+    await flush();
+    expect(starts).toEqual(["bg-1", "int-1", "bg-2"]);
+
+    resolvers.shift()();
+    await Promise.all([first, second, third]);
+  });
+
+  it("keeps reserved slots off limits to background commands", async () => {
+    const { execute, state } = trackingExecute();
+    const runner = new GitRunner({
+      execute,
+      limiter: new Semaphore(2, { reservedInteractive: 1 }),
+    });
+
+    const background = Promise.all(
+      Array.from({ length: 4 }, () => runner.run(["status"], "/repo")),
+    );
+    await flush();
+    // Background work saturates only max - reserved slots...
+    expect(state.active).toBe(1);
+
+    const interactive = runner.run(["add"], "/repo", { priority: "interactive" });
+    await flush();
+    // ...so the reserved slot admits an interactive command immediately.
+    expect(state.active).toBe(2);
+    expect(state.peak).toBe(2);
+
+    while (state.resolvers.length > 0) {
+      state.resolvers.shift()();
+      await flush();
+      expect(state.active).toBeLessThanOrEqual(2);
+    }
+    await Promise.all([background, interactive]);
+    expect(state.peak).toBe(2);
+  });
+
+  it("routes only priority 'interactive' into the interactive lane", async () => {
+    const priorities = [];
+    const limiter = {
+      run: (fn, priority) => {
+        priorities.push(priority);
+        return fn();
+      },
+    };
+    const execute = async () => ({ exitCode: 0, stdout: "", stderr: "" });
+    const runner = new GitRunner({ execute, limiter });
+
+    await runner.run(["status"], "/repo");
+    await runner.run(["add"], "/repo", { priority: "interactive" });
+    await runner.run(["status"], "/repo", { priority: "urgent" });
+
+    expect(priorities).toEqual(["background", "interactive", "background"]);
+  });
+});
+
 describe("GitRunner repository trust", () => {
   function capturingExecute() {
     const calls = [];

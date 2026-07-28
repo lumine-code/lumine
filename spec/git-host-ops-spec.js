@@ -63,6 +63,31 @@ describe("git-host ops", () => {
     expect(calls[0].options.signal).toBe(controller.signal);
   });
 
+  it("passes options.priority through the exec op to the runner's limiter", async () => {
+    const priorities = [];
+    const limiter = {
+      run: (fn, priority) => {
+        priorities.push(priority);
+        return fn();
+      },
+    };
+    const execute = async () => ({ exitCode: 0, stdout: "", stderr: "" });
+    const ops = createGitHostOps(new GitRunner({ execute, limiter }));
+
+    await ops.exec(
+      {
+        workingDirectory: "/repo",
+        args: ["add", "--", "a.txt"],
+        options: { priority: "interactive" },
+        raw: false,
+      },
+      {},
+    );
+    await ops.status({ workingDirectory: "/repo", options: {} }, {});
+
+    expect(priorities).toEqual(["interactive", "background"]);
+  });
+
   it("keeps unborn/missing-path handling in the worker op (returns null)", async () => {
     const execute = () =>
       Promise.resolve({

@@ -963,7 +963,9 @@ module.exports = class RepositoryRegistry {
       repository.getStatusSnapshot?.().initialized
     ) {
       try {
-        await repository.refreshStatusSnapshot();
+        // This refresh gates the operation's promise, so it rides the
+        // interactive lane along with the operation itself.
+        await repository.refreshStatusSnapshot({ priority: "interactive" });
       } catch (error) {
         this.reportRefreshFailure(repository, error);
       }

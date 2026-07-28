@@ -458,7 +458,10 @@ module.exports = class GitRepositoryOperationProvider {
   }
 
   runResult(args, workingDirectory, options = {}) {
-    return this.exec(args, workingDirectory, options, false);
+    // Repository operations are user-initiated: they take the semaphore's
+    // interactive lane so they never queue behind background refreshes.
+    // Callers can still override the priority explicitly.
+    return this.exec(args, workingDirectory, { priority: "interactive", ...options }, false);
   }
 
   run(args, workingDirectory, options = {}) {
