@@ -1,7 +1,6 @@
 /** @babel */
 /** @jsx etch.dom */
 
-import { SelectListView } from "@lumine-code/select-list";
 import etch from "@lumine-code/etch";
 import dedent from "dedent";
 import CodeBlock from "./code-block";
@@ -9,56 +8,44 @@ import CodeBlock from "./code-block";
 export default class ExampleSelectListView {
   constructor() {
     this.jsExampleCode = dedent`
-    import { SelectListView } from '@lumine-code/select-list'
-
-    const selectListView = new SelectListView({
-      items: ['one', 'two', 'three'],
-      elementForItem: (item) => {
-        const li = document.createElement('li')
-        li.textContent = item
-        return li
-      },
-      didConfirmSelection: (item) => {
+    const session = atom.modals.open({
+      id: 'my-package.numbers',
+      source: ['one', 'two', 'three'],
+      confirm: ({ item }) => {
         console.log('confirmed', item)
       },
-      didCancelSelection: () => {
-        console.log('cancelled')
+      didClose: (result) => {
+        if (result.status === 'cancelled') console.log('cancelled')
       }
     })
     `;
     etch.initialize(this);
+    this.mountExample();
   }
 
-  elementForItem(item) {
-    const li = document.createElement("li");
-    li.textContent = item;
-    return li;
-  }
-
-  didConfirmSelection(item) {
-    console.log("confirmed", item);
-  }
-
-  didCancelSelection() {
-    console.log("cancelled");
+  // A live inline session rather than a picture of one: `mount` gives the same
+  // rendering and keyboard handling with no panel, no focus policy and no
+  // global commands, so it cannot take over the page it is documenting.
+  mountExample() {
+    if (!this.refs.example) return;
+    this.session = atom.modals.mount(this.refs.example, {
+      id: "styleguide.example-list",
+      source: ["one", "two", "three"],
+      // Nothing is focused on first paint: activating a row would scroll the
+      // styleguide down to this mid-page example.
+      initialActivation: "none",
+      confirm: ({ item }) => {
+        console.log("confirmed", item);
+        return { keepOpen: true };
+      },
+    });
   }
 
   render() {
     return (
       <div className="example">
         <div className="example-rendered">
-          <atom-panel className="modal">
-            <SelectListView
-              items={["one", "two", "three"]}
-              // This is a static showcase, not a live picker in a fixed modal.
-              // Auto-selecting an item would call scrollIntoViewIfNeeded and
-              // scroll the whole styleguide down to this mid-page example.
-              initialSelectionIndex={undefined}
-              elementForItem={this.elementForItem.bind(this)}
-              didConfirmSelection={this.didConfirmSelection.bind(this)}
-              didCancelSelection={this.didCancelSelection.bind(this)}
-            />
-          </atom-panel>
+          <div ref="example" />
         </div>
         <div className="example-code show-example-space-pen">
           <CodeBlock
@@ -72,4 +59,9 @@ export default class ExampleSelectListView {
   }
 
   update() {}
+
+  destroy() {
+    if (this.session) this.session.cancel("api");
+    return etch.destroy(this);
+  }
 }
