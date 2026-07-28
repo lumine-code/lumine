@@ -92,6 +92,10 @@ class ModalListTemplate {
 
     this.emptyMessage.style.display = "none";
 
+    // Replacing the rows resets scrollTop; a list that is being edited in place
+    // (removing entries, toggling flags) should not jump to the top each time.
+    const scrollTop = this.spec.keepScrollPosition === false ? null : this.list.scrollTop;
+
     const fragment = document.createDocumentFragment();
     const rows = [];
     for (let index = 0; index < visibleItems.length; index++) {
@@ -102,6 +106,7 @@ class ModalListTemplate {
     }
     this.list.replaceChildren(fragment);
     this.rows = rows;
+    if (scrollTop != null) this.list.scrollTop = scrollTop;
 
     const focused = rows[focusedIndex];
     this.host.setActiveDescendant(focused ? focused.id : null);
