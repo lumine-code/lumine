@@ -23,15 +23,20 @@ const NORMALIZE_PACKAGE_DATA_README_ERROR = "ERROR: No README data found!";
 // appended to `refs.sections` and they are all shown at once, as one long
 // scrolling list; the sidebar table of contents is the navigation, listing every
 // section with the rendered markdown's own headers nested under it.
-// Reading order: what the package is, then how it is configured, then what it
-// contributes, and last its service contracts — reference material for someone
-// writing against the package rather than using it.
+// Reading order: first what this package contributes to this install and
+// nowhere else — its settings, keybindings, grammars, and snippets, which is
+// what someone opens an installed package's details to reach — then the README,
+// and last its service contracts, reference material for someone writing against
+// the package rather than using it. The README does not lead: it runs long
+// enough to bury everything under it, and it is the whole list anyway for a
+// package that is only being browsed, since the sections above it describe the
+// installed copy and are dropped while previewing one.
 const SECTION_META = {
-  readme: { label: "README", icon: "icon-book" },
   settings: { label: "Settings", icon: "icon-gear" },
   keymap: { label: "Keybindings", icon: "icon-keyboard" },
   grammars: { label: "Grammars", icon: "icon-file-code" },
   snippets: { label: "Snippets", icon: "icon-code" },
+  readme: { label: "README", icon: "icon-book" },
   docs: { label: "Documentation", icon: "icon-file-text" },
 };
 

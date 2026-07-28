@@ -83,9 +83,9 @@ describe("PackageDetailView", function () {
     // The sidebar table of contents is the navigation: one entry per section, in
     // list order, and clicking it scrolls there.
     const sections = showToc.mostRecentCall.args[0].filter((entry) => entry.level === 1);
-    expect(sections.map((entry) => entry.label)).toEqual(["README", "Settings"]);
+    expect(sections.map((entry) => entry.label)).toEqual(["Settings", "README"]);
     const scrollIntoView = spyOn(settingsSection, "scrollIntoView");
-    sections[1].onClick();
+    sections[0].onClick();
     expect(scrollIntoView).toHaveBeenCalled();
   });
 
@@ -128,10 +128,10 @@ describe("PackageDetailView", function () {
     expect(listedSections()).toEqual(["README"]);
     expect(view.refs.startupTime.style.display).toBe("none");
 
-    // Enabling it again brings them back, behind the README.
+    // Enabling it again brings them back, ahead of the README.
     atom.config.removeAtKeyPath("core.disabledPackages", "package-with-config");
-    expect(sectionKeys()).toEqual(["readme", "settings", "keymap", "grammars", "snippets", "docs"]);
-    expect(listedSections()).toEqual(["README", "Settings"]);
+    expect(sectionKeys()).toEqual(["settings", "keymap", "grammars", "snippets", "readme", "docs"]);
+    expect(listedSections()).toEqual(["Settings", "README"]);
     expect(view.refs.startupTime.style.display).toBe("");
   });
 
@@ -174,8 +174,8 @@ describe("PackageDetailView", function () {
 
       // One entry for the section, last of the list.
       expect(entries.filter((entry) => entry.level === 1).map((entry) => entry.label)).toEqual([
-        "README",
         "Settings",
+        "README",
         "Documentation",
       ]);
 
@@ -431,8 +431,8 @@ describe("PackageDetailView", function () {
     expect(showToc).toHaveBeenCalled();
     const entries = showToc.mostRecentCall.args[0];
 
-    // The README section heads the list, and its own headers follow, indented
-    // one level below it.
+    // This package is not installed, so the README is the only section there is
+    // to list, and its own headers follow it indented one level below.
     expect(entries[0].label).toBe("README");
     expect(entries[0].level).toBe(1);
     const header = (label) => entries.find((entry) => entry.label.includes(label));
