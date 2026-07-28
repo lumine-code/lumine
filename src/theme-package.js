@@ -1,14 +1,18 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
+const { globSync } = require("tinyglobby");
 const Package = require("./package");
+
+const STYLESHEET_EXTENSIONS = new Set([".css", ".less"]);
 
 module.exports = class ThemePackage extends Package {
   // A theme provided by a multi-theme package (a `themes` array in
   // package.json) lives in one or more styles directories inside the owning
-  // package — shared directories first, the theme's own directory (holding
-  // its variables.css) last.
+  // package. Package-qualified `extends` globs load first and this theme's
+  // styles load afterward as overrides.
   constructor(options) {
     super(options);
+    this.themeStyleExtensions = options.themeStyleExtensions ?? [];
     this.themeStylesDirectories = options.themeStylesDirectories ?? null;
   }
 
@@ -29,13 +33,47 @@ module.exports = class ThemePackage extends Package {
 
   getStylesheetPaths() {
     if (this.themeStylesDirectories != null) {
-      const stylesheetPaths = [];
+      const stylesheetPaths = this.getExtendedStylesheetPaths();
       for (const directory of this.themeStylesDirectories) {
         stylesheetPaths.push(...fs.listSync(directory, ["css", "less"]).sort());
       }
       return stylesheetPaths;
     }
     return super.getStylesheetPaths();
+  }
+
+  getStylesheetDirectories() {
+    if (this.themeStylesDirectories != null) {
+      const directories = this.themeStyleExtensions.map(({ watchDirectory }) => watchDirectory);
+      return [...new Set([...directories, ...this.themeStylesDirectories])];
+    }
+    return [this.getStylesheetsPath()];
+  }
+
+  getExtendedStylesheetPaths() {
+    const stylesheetPaths = [];
+    const seenPaths = new Set();
+
+    for (const { packagePath, pattern } of this.themeStyleExtensions) {
+      const matches = globSync(pattern, {
+        cwd: packagePath,
+        absolute: true,
+        onlyFiles: true,
+      })
+        .map((stylesheetPath) => path.normalize(stylesheetPath))
+        .filter((stylesheetPath) =>
+          STYLESHEET_EXTENSIONS.has(path.extname(stylesheetPath).toLowerCase()),
+        )
+        .sort();
+
+      for (const stylesheetPath of matches) {
+        if (seenPaths.has(stylesheetPath)) continue;
+        seenPaths.add(stylesheetPath);
+        stylesheetPaths.push(stylesheetPath);
+      }
+    }
+
+    return stylesheetPaths;
   }
 
   // Use this theme in the mode currently in effect, replacing any existing

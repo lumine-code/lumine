@@ -1,3 +1,5 @@
+const path = require("path");
+
 const root = document.documentElement;
 
 describe("one-theme", () => {
@@ -45,5 +47,14 @@ describe("one-theme", () => {
 
     expect(atom.config.get("theme.light")).toEqual(["one-day-ui", "one-day-syntax"]);
     expect(atom.config.get("theme.dark")).toEqual(["one-night-ui", "one-night-syntax"]);
+  });
+
+  it("keeps its package-specific config stylesheet out of the shared UI directory", async () => {
+    await atom.packages.activatePackage("one-theme");
+
+    const uiPaths = atom.packages.getLoadedPackage("one-day-ui").getStylesheetPaths();
+    const configPath = uiPaths.find((stylePath) => path.basename(stylePath) === "26-config.css");
+
+    expect(configPath).toContain(path.join("one-theme", "styles", "one-ui"));
   });
 });

@@ -6,28 +6,42 @@
     {
       "name": "vscode-day-ui",
       "theme": "ui",
+      "extends": [
+        "one-theme::styles/ui/*"
+      ],
       "styles": [
-        "styles/ui",
+        "styles/ui-overrides",
         "styles/day-ui"
       ]
     },
     {
       "name": "vscode-day-syntax",
       "theme": "syntax",
-      "styles": "styles/day-syntax"
+      "extends": "one-theme::styles/day-syntax/*",
+      "styles": [
+        "styles/syntax-overrides",
+        "styles/day-syntax"
+      ]
     },
     {
       "name": "vscode-night-ui",
       "theme": "ui",
+      "extends": [
+        "one-theme::styles/ui/*"
+      ],
       "styles": [
-        "styles/ui",
+        "styles/ui-overrides",
         "styles/night-ui"
       ]
     },
     {
       "name": "vscode-night-syntax",
       "theme": "syntax",
-      "styles": "styles/night-syntax"
+      "extends": "one-theme::styles/night-syntax/*",
+      "styles": [
+        "styles/syntax-overrides",
+        "styles/night-syntax"
+      ]
     }
   ],
   "version": "1.0.0",

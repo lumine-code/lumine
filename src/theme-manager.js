@@ -243,14 +243,21 @@ module.exports = class ThemeManager {
     return path.join(packagePath, "styles");
   }
 
-  // A modern theme defines its palette as CSS custom properties in a
-  // variables.css inside its styles directory. Returns that path, or null for
-  // legacy Less themes.
-  getThemeVariablesPath(themeName) {
+  // A modern theme defines its palette as CSS custom properties in one or more
+  // variables.css files in its resolved stylesheet chain. Returns those paths
+  // in cascade order, or an empty array for legacy Less themes.
+  getThemeVariablesPaths(themeName) {
+    const loadedPackage = this.packageManager.getLoadedPackage(themeName);
+    if (loadedPackage) {
+      return loadedPackage
+        .getStylesheetPaths()
+        .filter((stylesheetPath) => path.basename(stylesheetPath) === "variables.css");
+    }
+
     const stylesPath = this.getThemeStylesPath(themeName);
-    if (!stylesPath) return null;
+    if (!stylesPath) return [];
     const variablesPath = path.join(stylesPath, "variables.css");
-    return fs.isFileSync(variablesPath) ? variablesPath : null;
+    return fs.isFileSync(variablesPath) ? [variablesPath] : [];
   }
 
   // For the modern themes in `themeNames`, write the generated Less shim
@@ -266,18 +273,23 @@ module.exports = class ThemeManager {
     const modernTypes = new Set();
 
     for (const themeName of themeNames) {
-      const variablesPath = this.getThemeVariablesPath(themeName);
-      if (!variablesPath) continue;
-      try {
-        paletteSources.push(fs.readFileSync(variablesPath, "utf8"));
-        modernThemeNames.push(themeName);
-        modernTypes.add(this.getThemeType(themeName) === "syntax" ? "syntax" : "ui");
-      } catch (error) {
-        this.notificationManager.addError(
-          `Failed to read the '${themeName}' theme's variables.css`,
-          { detail: error.message, dismissable: true },
-        );
+      const variablesPaths = this.getThemeVariablesPaths(themeName);
+      if (variablesPaths.length === 0) continue;
+      let readPalette = false;
+      for (const variablesPath of variablesPaths) {
+        try {
+          paletteSources.push(fs.readFileSync(variablesPath, "utf8"));
+          readPalette = true;
+        } catch (error) {
+          this.notificationManager.addError(
+            `Failed to read the '${themeName}' theme's variables.css`,
+            { detail: error.message, dismissable: true },
+          );
+        }
       }
+      if (!readPalette) continue;
+      modernThemeNames.push(themeName);
+      modernTypes.add(this.getThemeType(themeName) === "syntax" ? "syntax" : "ui");
     }
 
     if (paletteSources.length === 0) return null;
@@ -685,7 +697,7 @@ On Linux there are currently problems with watch sizes. See [this document][watc
     // bridged, so a modern theme paired with a legacy one is not overridden.
     const legacyTypes = new Set();
     for (const themeName of enabledThemeNames) {
-      if (this.getThemeVariablesPath(themeName)) continue;
+      if (this.getThemeVariablesPaths(themeName).length > 0) continue;
       legacyTypes.add(this.getThemeType(themeName) === "syntax" ? "syntax" : "ui");
     }
     const needsBridge = legacyTypes.size > 0;

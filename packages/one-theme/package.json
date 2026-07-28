@@ -8,6 +8,7 @@
       "theme": "ui",
       "styles": [
         "styles/ui",
+        "styles/one-ui",
         "styles/day-ui"
       ]
     },
@@ -21,6 +22,7 @@
       "theme": "ui",
       "styles": [
         "styles/ui",
+        "styles/one-ui",
         "styles/night-ui"
       ]
     },

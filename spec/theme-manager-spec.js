@@ -684,6 +684,33 @@ h2 {
       expect(syntaxTheme.metadata.theme).toBe("syntax");
     });
 
+    it("loads extended styles before the theme's own override styles", () => {
+      atom.packages.loadPackage("multi-theme-package");
+
+      const uiTheme = atom.packages.getLoadedPackage("multi-alpha-ui");
+      const stylesheetPaths = uiTheme.getStylesheetPaths();
+
+      expect(stylesheetPaths.map((stylesheetPath) => path.basename(stylesheetPath))).toEqual([
+        "base.css",
+        "inherited.css",
+        "variables.css",
+        "base.css",
+        "variables.css",
+      ]);
+      expect(stylesheetPaths[0]).toContain("multi-theme-base-package");
+      expect(stylesheetPaths[3]).toContain("multi-theme-package");
+
+      const variablesPaths = atom.themes.getThemeVariablesPaths("multi-alpha-ui");
+      expect(variablesPaths).toHaveLength(2);
+      expect(variablesPaths[0]).toContain("multi-theme-base-package");
+      expect(variablesPaths[1]).toContain("multi-theme-package");
+
+      const syntaxTheme = atom.packages.getLoadedPackage("multi-alpha-syntax");
+      expect(
+        syntaxTheme.getStylesheetPaths().map((stylesheetPath) => path.basename(stylesheetPath)),
+      ).toEqual(["inherited.css", "index.css"]);
+    });
+
     it("activates the provided themes like any other theme", async () => {
       atom.packages.loadPackage("multi-theme-package");
       setActiveThemes(["multi-alpha-ui", "multi-alpha-syntax"]);

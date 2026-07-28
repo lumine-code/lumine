@@ -1,0 +1,15 @@
+/* VSCode keeps ligatures enabled, uses an immediate cursor, and italicizes comments. */
+atom-text-editor {
+  .line.cursor-line,
+  &[mini] {
+    font-variant-ligatures: normal;
+  }
+
+  .cursor {
+    transition: none;
+  }
+}
+
+.syntax--comment {
+  font-style: italic;
+}

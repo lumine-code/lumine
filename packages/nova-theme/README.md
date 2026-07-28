@@ -8,6 +8,7 @@ The Nova day and night UI and syntax themes.
 - **Day and night pair**: `nova-day-ui`/`nova-day-syntax` and `nova-night-ui`/`nova-night-syntax` follow the system theme mode out of the box.
 - **Iris accent**: a violet-blue accent on cool neutral surfaces, shared between the UI and syntax sides.
 - **Borderless layering**: panels are separated by background shades instead of hard borders wherever possible.
+- **One foundation**: shared UI and syntax rules load from `one-theme` first; this package contains only Nova palettes and overrides.
 
 ## Commands
 

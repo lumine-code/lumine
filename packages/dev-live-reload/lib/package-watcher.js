@@ -43,8 +43,10 @@ module.exports = class PackageWatcher extends Watcher {
 
   watch() {
     // Themes provided by a multi-theme package draw styles from several
-    // directories (shared directories plus the theme's own).
-    this.stylesheetsPaths = this.pack.themeStylesDirectories ?? [this.pack.getStylesheetsPath()];
+    // directories (`extends` glob roots plus the theme's own directories).
+    this.stylesheetsPaths = this.pack.getStylesheetDirectories?.() ?? [
+      this.pack.getStylesheetsPath(),
+    ];
 
     for (const stylesheetsPath of this.stylesheetsPaths) {
       if (!isDirectory(stylesheetsPath)) continue;

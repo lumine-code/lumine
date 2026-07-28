@@ -688,8 +688,11 @@ module.exports = class PackageManager {
   // Register one virtual ThemePackage per entry of a `themes` array. Each
   // entry has a `name`, a `theme` type ("ui" or "syntax"), and optionally a
   // `styles` directory relative to the package root (defaults to
-  // `styles/<theme name>`). The containing package is loaded separately as a
-  // normal package (see loadAvailablePackage).
+  // `styles/<theme name>`). `extends` accepts a package-qualified glob string
+  // or an ordered list of them (`package-name::styles/**/*.css`); matching
+  // styles load first, followed by this theme's override styles. The
+  // containing package is loaded separately as a normal package (see
+  // loadAvailablePackage).
   registerThemesFromPackage(availablePackage, metadata) {
     for (const entry of metadata.themes) {
       if (!entry || typeof entry.name !== "string" || !entry.theme) {
@@ -717,11 +720,13 @@ module.exports = class PackageManager {
       const stylesDirs = Array.isArray(entry.styles)
         ? entry.styles
         : [entry.styles ?? path.join("styles", entry.name)];
+      const styleExtensions = this.resolveThemeStyleExtensions(entry.extends, availablePackage);
 
       const pack = new ThemePackage({
         path: availablePackage.path,
         name: entry.name,
         metadata: themeMetadata,
+        themeStyleExtensions: styleExtensions,
         themeStylesDirectories: stylesDirs.map((dir) => path.join(availablePackage.path, dir)),
         bundledPackage: availablePackage.isBundled,
         packageManager: this,
@@ -741,6 +746,63 @@ module.exports = class PackageManager {
       this.loadedPackages[pack.name] = pack;
       this.emitter.emit("did-load-package", pack);
     }
+  }
+
+  resolveThemeStyleExtensions(extensions, availablePackage) {
+    if (extensions == null) return [];
+
+    const references = Array.isArray(extensions) ? extensions : [extensions];
+    const stylesheetGlobs = [];
+
+    for (const reference of references) {
+      if (typeof reference !== "string") {
+        console.warn(`Ignoring an invalid theme extension in '${availablePackage.name}'.`);
+        continue;
+      }
+
+      const separatorIndex = reference.indexOf("::");
+      const packageName = reference.slice(0, separatorIndex);
+      const pattern = reference.slice(separatorIndex + 2).replaceAll("\\", "/");
+      if (
+        separatorIndex <= 0 ||
+        pattern.length === 0 ||
+        path.posix.isAbsolute(pattern) ||
+        /^[A-Za-z]:/.test(pattern) ||
+        pattern.split("/").includes("..")
+      ) {
+        console.warn(
+          `Ignoring invalid theme extension '${reference}' in '${availablePackage.name}'.`,
+        );
+        continue;
+      }
+
+      const packagePath =
+        packageName === availablePackage.name
+          ? availablePackage.path
+          : this.resolvePackagePath(packageName);
+      if (!packagePath) {
+        console.warn(
+          `Ignoring theme extension from missing package '${packageName}' in '${availablePackage.name}'.`,
+        );
+        continue;
+      }
+
+      stylesheetGlobs.push({
+        packagePath,
+        pattern,
+        watchDirectory: this.getThemeExtensionWatchDirectory(packagePath, pattern),
+      });
+    }
+
+    return stylesheetGlobs;
+  }
+
+  getThemeExtensionWatchDirectory(packagePath, pattern) {
+    const segments = pattern.split("/");
+    const firstGlobSegment = segments.findIndex((segment) => /[*?[\]{}()]/.test(segment));
+    const staticSegments =
+      firstGlobSegment === -1 ? segments.slice(0, -1) : segments.slice(0, firstGlobSegment);
+    return path.join(packagePath, ...staticSegments);
   }
 
   unloadPackages() {

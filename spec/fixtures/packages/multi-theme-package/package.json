@@ -5,11 +5,16 @@
     {
       "name": "multi-alpha-ui",
       "theme": "ui",
+      "extends": [
+        "multi-theme-base-package::styles/base/base.css",
+        "multi-theme-base-package::styles/base/{inherited,variables}.css"
+      ],
       "styles": "styles/alpha"
     },
     {
       "name": "multi-alpha-syntax",
       "theme": "syntax",
+      "extends": "multi-theme-base-package::styles/base/inherited.css",
       "styles": "styles/alpha-syntax"
     }
   ]

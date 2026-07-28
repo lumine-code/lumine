@@ -1,7 +1,7 @@
 const { CompositeDisposable } = require("atom");
 
 // Applies the One themes' layout settings to the document root as
-// attributes that the theme stylesheets (styles/ui/26-config.css) key off of.
+// attributes that the theme stylesheets (styles/one-ui/26-config.css) key off of.
 const root = document.documentElement;
 
 let subscriptions = null;
