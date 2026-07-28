@@ -132,10 +132,17 @@ class GitRunner {
   }
 
   async runResult(args, workingDirectory, options = {}) {
+    const priority = options.priority === "interactive" ? "interactive" : "background";
     const environment = {
       GIT_TERMINAL_PROMPT: options.allowPrompt ? "1" : "0",
       GIT_EDITOR: "true",
       LC_ALL: "C",
+      // Background commands never take git's optional locks: a debounced
+      // status refresh holding .git/index.lock would otherwise make a
+      // concurrent user `git add` fail with "index.lock exists". The trade-off
+      // (background statuses stop refreshing the index stat cache) is bounded,
+      // because the interactive post-operation refresh still does.
+      ...(priority === "background" && !options.allowPrompt ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
       ...options.env,
     };
     const configArguments = [];
@@ -157,7 +164,6 @@ class GitRunner {
       });
     // Interactive/credential operations may block for a long time; keep them out
     // of the shared read budget so a hung prompt cannot starve status refreshes.
-    const priority = options.priority === "interactive" ? "interactive" : "background";
     const result = options.allowPrompt
       ? await runExec()
       : await this.limiter.run(runExec, priority);

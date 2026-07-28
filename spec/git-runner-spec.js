@@ -143,6 +143,42 @@ describe("GitRunner priority lanes", () => {
   });
 });
 
+describe("GitRunner optional locks", () => {
+  function capturingExecute() {
+    const calls = [];
+    const execute = (args, cwd, options) => {
+      calls.push({ args, options });
+      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+    };
+    return { execute, calls };
+  }
+
+  it("disables optional locks for background commands only", async () => {
+    const { execute, calls } = capturingExecute();
+    const runner = new GitRunner({ execute });
+
+    await runner.run(["status"], "/repo");
+    await runner.run(["add"], "/repo", { priority: "interactive" });
+    await runner.run(["fetch"], "/repo", { allowPrompt: true });
+
+    // A background status must never hold .git/index.lock against a
+    // concurrent user-initiated write; interactive and prompting commands
+    // keep git's default locking.
+    expect(calls[0].options.env.GIT_OPTIONAL_LOCKS).toBe("0");
+    expect(calls[1].options.env.GIT_OPTIONAL_LOCKS).toBeUndefined();
+    expect(calls[2].options.env.GIT_OPTIONAL_LOCKS).toBeUndefined();
+  });
+
+  it("lets a caller-provided env override the optional-locks default", async () => {
+    const { execute, calls } = capturingExecute();
+    const runner = new GitRunner({ execute });
+
+    await runner.run(["status"], "/repo", { env: { GIT_OPTIONAL_LOCKS: "1" } });
+
+    expect(calls[0].options.env.GIT_OPTIONAL_LOCKS).toBe("1");
+  });
+});
+
 describe("GitRunner repository trust", () => {
   function capturingExecute() {
     const calls = [];
