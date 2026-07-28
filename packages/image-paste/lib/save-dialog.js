@@ -1,12 +1,16 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { InputDialogView } = require("@lumine-code/select-list");
+
+const INFO = "Enter a path relative to the current project or directory for the pasted image.";
 
 module.exports = class SaveDialog {
   constructor({ nativeImage }) {
     this.nativeImage = nativeImage;
 
+    // One stable node, reused across pastes: its `src` is a function of the
+    // pasted image, not of what is typed, so it belongs in the content slot
+    // rather than being rebuilt per keystroke.
     this.previewElement = document.createElement("div");
     this.previewElement.classList.add("image-paste-preview");
 
@@ -18,27 +22,15 @@ module.exports = class SaveDialog {
     this.imageElement = document.createElement("img");
     this.imageElement.alt = "Clipboard image preview";
     this.previewElement.appendChild(this.imageElement);
-
-    this.inputDialogView = new InputDialogView({
-      className: "image-paste save-dialog",
-      infoMessage:
-        "Enter a path relative to the current project or directory for the pasted image.",
-      contentElement: this.previewElement,
-      didChangeQuery: () => this.clearWarning(),
-      didConfirm: () => this.confirm(),
-      didCancel: () => this.hide(),
-    });
-    this.miniEditor = this.inputDialogView.refs.queryEditor;
   }
 
   destroy() {
-    this.inputDialogView.destroy();
+    if (this.session) this.session.cancel("api");
   }
 
   prepare({ target, pngBuffer, sourceName = null }) {
     this.target = target;
     this.pngBuffer = Buffer.from(pngBuffer);
-    this.saving = false;
 
     const hash = crypto.createHash("md5").update(this.pngBuffer).digest("hex").slice(0, 8);
     let initialPath;
@@ -63,17 +55,39 @@ module.exports = class SaveDialog {
     if (atom.config.get("image-paste.forwardSlash")) {
       initialPath = initialPath.replace(/\\/g, "/");
     }
-    this.miniEditor.setText(initialPath);
+
     this.clearWarning();
     this.imageElement.src = atom.config.get("image-paste.imagePreview")
       ? `data:image/png;base64,${this.pngBuffer.toString("base64")}`
       : "";
-    this.inputDialogView.show();
-    this.selectBaseName(initialPath);
-  }
 
-  hide() {
-    this.inputDialogView.hide();
+    return atom.modals.open({
+      id: "image-paste.save",
+      template: "input",
+      className: "image-paste save-dialog",
+      content: this.previewElement,
+      value: initialPath,
+      valueSelection: this.baseNameRange(initialPath),
+      willOpen: (session) => {
+        this.session = session;
+        session.setStatus({ message: INFO, severity: "info" });
+      },
+      didClose: () => {
+        this.session = null;
+      },
+      didChangeQuery: () => this.clearWarning(),
+      actions: [
+        {
+          name: "confirm",
+          label: "Save image",
+          when: "always",
+          // Writing the file blocks further confirms rather than needing a
+          // hand-rolled `saving` flag to swallow the second Enter.
+          busy: "block",
+          run: (ctx) => this.confirm(ctx),
+        },
+      ],
+    });
   }
 
   clearWarning() {
@@ -85,14 +99,11 @@ module.exports = class SaveDialog {
     this.warningElement.textContent = message;
   }
 
-  selectBaseName(relativePath) {
+  baseNameRange(relativePath) {
     const normalizedPath = relativePath.replace(/\\/g, "/");
     const slashIndex = normalizedPath.lastIndexOf("/");
     const extensionLength = path.extname(normalizedPath).length;
-    this.miniEditor.setSelectedBufferRange([
-      [0, slashIndex + 1],
-      [0, normalizedPath.length - extensionLength],
-    ]);
+    return [slashIndex + 1, normalizedPath.length - extensionLength];
   }
 
   normalizeImagePath(relativePath) {
@@ -105,30 +116,31 @@ module.exports = class SaveDialog {
     return relativePath + ".png";
   }
 
-  async confirm() {
-    if (this.saving || !this.target || !this.pngBuffer) return;
+  async confirm({ query }) {
+    if (!this.target || !this.pngBuffer) return;
 
-    let relativePath = this.normalizeImagePath(this.miniEditor.getText());
+    const relativePath = this.normalizeImagePath(query.raw);
     if (path.isAbsolute(relativePath)) {
       this.warn("Enter a path relative to the selected project or directory.");
-      return;
+      return { keepOpen: true };
     }
 
     const filePath = path.resolve(this.target.basePath, relativePath);
     const pathFromBase = path.relative(this.target.basePath, filePath);
     if (pathFromBase.startsWith(".." + path.sep) || path.isAbsolute(pathFromBase)) {
       this.warn("The image must remain inside the selected project or directory.");
-      return;
+      return { keepOpen: true };
     }
-    if (!path.basename(filePath)) return;
+    if (!path.basename(filePath)) return { keepOpen: true };
 
+    // Overwriting takes a second Enter, and the path it applies to is
+    // remembered so editing the path arms the guard again.
     if (fs.existsSync(filePath) && this.overwritePath !== filePath) {
       this.overwritePath = filePath;
       this.warn("The file already exists. Confirm again to overwrite it.");
-      return;
+      return { keepOpen: true };
     }
 
-    this.saving = true;
     try {
       await fs.promises.mkdir(path.dirname(filePath), { recursive: true });
       const extension = path.extname(filePath).toLowerCase();
@@ -148,14 +160,12 @@ module.exports = class SaveDialog {
         }
         editor.insertText(insertionPath);
       }
-      this.hide();
     } catch (error) {
       atom.notifications.addError("Unable to save the clipboard image.", {
         detail: error.message,
         dismissable: true,
       });
-    } finally {
-      this.saving = false;
+      return { keepOpen: true };
     }
   }
 };

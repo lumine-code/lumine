@@ -17,8 +17,7 @@
   },
   "license": "MIT",
   "dependencies": {
-    "@electron/remote": "2.1.3",
-    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#a201dae6a0ea6954cb9a905be4a718af697d9f78"
+    "@electron/remote": "2.1.3"
   },
   "engines": {
     "atom": "*"
