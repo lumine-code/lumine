@@ -58,12 +58,6 @@
   background-color: hsl(from var(--background-color-info) calc(h + 337.5) s l) !important;
 }
 
-/* Highlight matched text */
-.symbols-view .list-group .character-match {
-  /* Color only — bold glyphs are wider and make rows shift. */
-  color: var(--text-color-highlight);
-}
-
 atom-panel.modal .symbols-view {
   .primary-line {
     display: flex !important;

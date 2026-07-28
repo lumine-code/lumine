@@ -131,9 +131,8 @@ autocomplete-suggestion-list.select-list.popover-list {
         .word {
           color: rgb(from var(--text-color-selected) r g b / calc(alpha - 0.2));
         }
-        /* .character-match keeps its base/theme highlight color on the
-           selected row, matching the select-list consumers (command palette,
-           fuzzy files). */
+        /* Matched characters keep the shared select-list highlight color on
+           the selected row. */
         .word-detail,
         .left-label,
         .right-label,
@@ -227,11 +226,6 @@ autocomplete-suggestion-list {
     &:empty {
       padding-left: 0;
     }
-  }
-
-  .character-match {
-    /* Color only — bold glyphs are wider and make rows shift. */
-    color: var(--text-color-highlight);
   }
 
   .snippet-completion {

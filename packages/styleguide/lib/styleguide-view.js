@@ -280,7 +280,6 @@ export default class StyleguideView {
               "input-selection-color-focus",
               "overlay-backdrop-color",
               "progress-background-color",
-              "settings-list-background-color",
             ])}
 
             <h2>Extended sizes</h2>

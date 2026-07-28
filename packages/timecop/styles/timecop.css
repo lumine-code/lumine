@@ -1,6 +1,28 @@
+.tab-bar .tab.active[data-type$="TimecopView"] {
+  color: var(--tab-text-color-editor);
+  background-color: var(--tab-background-color-editor);
+}
+
 .timecop {
   .timecop-panel {
-    background-color: var(--tool-panel-background-color);
+    padding: calc(var(--component-padding) / 2);
+    background-color: var(--level-2-color);
+  }
+
+  .tool-panel {
+    padding: calc(var(--component-padding) / 2);
+    background-color: var(--level-2-color);
+  }
+
+  .inset-panel {
+    border: 1px solid var(--base-border-color);
+  }
+
+  .panel-heading {
+    font-weight: normal;
+    color: var(--text-color-highlight);
+    border-color: var(--base-border-color);
+    background-color: var(--level-1-color);
   }
 
   overflow: auto;
@@ -44,6 +66,10 @@
   .list-item {
     margin-top: calc(var(--component-padding) / 2);
     margin-bottom: calc(var(--component-padding) / 2);
+
+    .inline-block {
+      line-height: 1.5;
+    }
   }
 
   .package {

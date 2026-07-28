@@ -5,7 +5,7 @@ atom-text-editor {
     z-index: 3;
     position: absolute;
     top: 0;
-    background-color: var(--syntax-wrap-guide-color);
+    background-color: var(--wrap-guide-color, #ccc);
     -webkit-transform: translateZ(0);
     pointer-events: none;
   }

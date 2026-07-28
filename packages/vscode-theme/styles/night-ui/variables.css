@@ -113,10 +113,13 @@
   --ui-padding-icon: 0.45454545em;
   --ui-line-height: 1.75em;
   --ui-tab-height: 2.7em;
-  --settings-list-background-color: #1c1c1c;
-  --theme-config-box-shadow: inset 0 0 3px hsla(0, 0%, 100%, 0.4), 0 1px 3px hsla(0, 0%, 0%, 0.2);
-  --theme-config-box-shadow-selected: inset 0 1px 3px hsla(0, 0%, 0%, 0.1);
-  --theme-config-border-selected: hsla(0, 0%, 100%, 0.75);
+  --settings-view-install-border-color: transparent;
+  --settings-view-install-background-image: none;
+  --settings-view-install-hover-background-color: hsl(
+    from var(--accent-bg-color) h s calc(l + 4)
+  );
+  --settings-view-install-hover-background-image: none;
+  --settings-view-install-focus-box-shadow: 0 0 0 1px var(--accent-bg-color);
   --text-color-on-info: #ffffff;
   --text-color-on-success: #ffffff;
   --text-color-on-warning: #ffffff;

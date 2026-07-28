@@ -153,12 +153,6 @@ const UI_VARIABLES_EXTENDED = [
   "ui-padding-icon",
   "ui-line-height",
   "ui-tab-height",
-
-  // Package overrides
-  "settings-list-background-color",
-  "theme-config-box-shadow",
-  "theme-config-box-shadow-selected",
-  "theme-config-border-selected",
 ];
 
 const SYNTAX_VARIABLES = [
@@ -170,8 +164,6 @@ const SYNTAX_VARIABLES = [
   "syntax-background-color",
 
   // Guides
-  "syntax-wrap-guide-color",
-  "syntax-indent-guide-color",
   "syntax-invisible-character-color",
 
   // Find and replace markers
@@ -205,31 +197,6 @@ const SYNTAX_VARIABLES = [
   "syntax-color-snippet",
   "syntax-color-string",
   "syntax-color-comment",
-
-  // Terminal
-  "terminal-text-color",
-  "terminal-background-color",
-  "terminal-selection-background-color",
-  "terminal-selection-text-color",
-  "terminal-cursor-color",
-  "terminal-result-marker-color",
-  "terminal-result-marker-color-selected",
-  "terminal-color-black",
-  "terminal-color-red",
-  "terminal-color-green",
-  "terminal-color-yellow",
-  "terminal-color-blue",
-  "terminal-color-magenta",
-  "terminal-color-cyan",
-  "terminal-color-white",
-  "terminal-color-bright-black",
-  "terminal-color-bright-red",
-  "terminal-color-bright-green",
-  "terminal-color-bright-yellow",
-  "terminal-color-bright-blue",
-  "terminal-color-bright-magenta",
-  "terminal-color-bright-cyan",
-  "terminal-color-bright-white",
 ];
 
 module.exports = { UI_VARIABLES, UI_VARIABLES_EXTENDED, SYNTAX_VARIABLES };

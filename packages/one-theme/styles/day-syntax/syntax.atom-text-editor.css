@@ -40,10 +40,6 @@ atom-text-editor {
     color: var(--syntax-invisible-character-color);
   }
 
-  .wrap-guide {
-    background-color: var(--syntax-wrap-guide-color);
-  }
-
   .gutter {
     .line-number {
       color: var(--syntax-gutter-text-color);

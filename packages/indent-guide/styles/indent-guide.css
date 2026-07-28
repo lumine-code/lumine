@@ -1,22 +1,12 @@
-atom-text-editor {
-  --indent-guide-color: var(--syntax-indent-guide-color);
-  --indent-guide-stack-color: color-mix(
-    in srgb,
-    var(--indent-guide-color) 90%,
-    var(--syntax-text-color)
-  );
-  --indent-guide-active-color: rgba(1, 162, 226, 0.18);
-}
-
 .indent-guide {
   width: 0.1px;
   z-index: 1;
   position: absolute;
-  background-color: var(--indent-guide-color);
+  background-color: var(--indent-guide-color, rgba(158, 158, 158, 0.15));
   &.indent-guide-stack {
-    background-color: var(--indent-guide-stack-color);
+    background-color: var(--indent-guide-stack-color, rgba(158, 158, 158, 0.24));
     &.indent-guide-active {
-      background-color: var(--indent-guide-active-color);
+      background-color: var(--indent-guide-active-color, rgba(1, 162, 226, 0.18));
     }
   }
 }

@@ -97,3 +97,20 @@ status-bar {
     display: none;
   }
 }
+
+/* Status-bar item contracts. Packages can opt out of interaction feedback or
+   mark icon-only tiles without depending on a particular UI theme. */
+.status-bar.status-bar {
+  .is-read-only {
+    &:hover,
+    &:active,
+    .inline-block:hover,
+    .inline-block:active {
+      background-color: transparent;
+    }
+  }
+
+  .icon.is-icon-only::before {
+    margin-right: 0;
+  }
+}

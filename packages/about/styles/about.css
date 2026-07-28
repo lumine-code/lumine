@@ -213,3 +213,7 @@
 .about-team-text {
   text-align: center;
 }
+.tab-bar .tab.active[data-type$="AboutView"] {
+  color: var(--tab-text-color-editor);
+  background-color: var(--tab-background-color-editor);
+}

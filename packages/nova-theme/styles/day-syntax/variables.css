@@ -14,8 +14,10 @@
   --syntax-selection-color: hsl(230, 60%, 92%);
   --syntax-selection-flash-color: #7a83f2;
   --syntax-background-color: hsl(0, 0%, 100%);
-  --syntax-wrap-guide-color: hsla(228, 10%, 26%, 0.08);
-  --syntax-indent-guide-color: hsla(228, 10%, 26%, 0.15);
+  --wrap-guide-color: hsla(228, 10%, 26%, 0.08);
+  --indent-guide-color: hsla(228, 10%, 26%, 0.15);
+  --indent-guide-stack-color: hsla(228, 10%, 26%, 0.24);
+  --indent-guide-active-color: rgba(79, 88, 214, 0.18);
   --syntax-invisible-character-color: hsla(228, 10%, 26%, 0.18);
   --syntax-result-marker-color: hsla(233, 70%, 60%, 0.2);
   --syntax-result-marker-color-selected: #4f58d6;

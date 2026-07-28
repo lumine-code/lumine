@@ -44,39 +44,3 @@
     margin-right: 0.25em;
   }
 }
-
-/* Package overrides ------------------------------- */
-
-.status-bar.status-bar {
-  /* Read-only -> Remove hover effect */
-  .is-read-only, /* <- use this class in packages */
-  busy-signal {
-    &:hover,
-    &:active,
-    .inline-block:hover,
-    .inline-block:active {
-      background-color: transparent;
-    }
-  }
-
-  /* Remove underline */
-  .package-updates-status-view,
-  .github-ChangedFilesCount {
-    &:hover,
-    &:focus {
-      text-decoration: none;
-      cursor: default;
-    }
-  }
-
-  /* Remove margin for icon without text */
-  .about-release-notes::before, /* New release squirrel */
-  .PortalStatusBarIndicator .icon::before, /* Teletype */
-  .icon.is-icon-only::before {
-    margin-right: 0;
-  }
-  .github-PushPull-label.is-push:empty {
-    /* GitHub package when nothing to push */
-    margin-right: -0.25em;
-  }
-}

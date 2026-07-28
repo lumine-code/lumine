@@ -183,11 +183,7 @@ atom-dock .tab-bar .tab::before {
 /* Custom tabs -------------- */
 
 .tab-bar .tab.active {
-  &[data-type$="Editor"],
-  &[data-type$="AboutView"],
-  &[data-type$="TimecopView"],
-  &[data-type$="StyleguideView"],
-  &[data-type="MarkdownPreviewView"] {
+  &[data-type$="Editor"] {
     color: var(--tab-text-color-editor);
     background-color: var(--tab-background-color-editor);
   }

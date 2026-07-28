@@ -46,6 +46,50 @@ atom-panel.modal {
     margin-bottom: 10px;
   }
 
+  .select-list ol.list-group,
+  &.select-list ol.list-group {
+    max-height: min(70vh, calc(var(--ui-line-height) * 24));
+    overflow: hidden auto;
+    border: 1px solid var(--overlay-border-color);
+
+    &:empty {
+      border: none;
+      margin-top: 0;
+    }
+
+    li {
+      line-height: var(--ui-line-height);
+
+      .icon::before {
+        margin-left: 1px;
+      }
+
+      .icon.status {
+        float: right;
+        margin-left: var(--ui-padding-icon);
+
+        &::before {
+          margin-left: 0;
+          margin-right: 0;
+        }
+      }
+
+      &.selected .status.icon {
+        color: var(--text-color-selected);
+      }
+    }
+  }
+
+  .select-list .key-binding {
+    margin-top: -1px;
+    margin-left: calc(var(--ui-padding) / 2);
+    margin-right: calc(var(--ui-padding) / -3 + 1px);
+  }
+
+  .select-list .primary-line {
+    display: block;
+  }
+
   .message {
     padding-top: 5px;
     font-size: 11px;

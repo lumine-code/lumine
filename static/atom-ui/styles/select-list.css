@@ -58,6 +58,67 @@
         gap: var(--component-padding);
         margin-left: var(--component-padding);
       }
+
+      &:hover:not(.selected) {
+        background-color: var(--background-color-highlight);
+      }
+    }
+
+    li.two-lines {
+      .secondary-line {
+        color: var(--text-color-subtle);
+      }
+
+      &.selected .secondary-line {
+        color: rgb(from var(--text-color-highlight) r g b / 50%);
+        text-shadow: none;
+      }
+    }
+
+    /* Select lists use the item itself for the full-width selection instead of
+       the generic list pseudo-element. */
+    li.selected {
+      background-color: var(--background-color-selected);
+
+      &::before {
+        display: none;
+      }
+    }
+
+    &.mark-active {
+      --active-icon-size: 14px;
+
+      /* Reserve the same icon carrier for active and inactive rows. */
+      li::before {
+        content: "";
+        background-color: transparent;
+        position: static;
+        display: inline-block;
+        left: auto;
+        right: auto;
+        width: var(--active-icon-size);
+        font-size: var(--active-icon-size);
+        height: var(--component-icon-size);
+        line-height: var(--component-icon-size);
+        text-align: center;
+        vertical-align: text-bottom;
+      }
+
+      > li:not(.active)::before {
+        margin-right: var(--ui-padding-icon);
+      }
+
+      li.active::before {
+        font-family: "Octicons Regular";
+        font-weight: normal;
+        font-style: normal;
+        display: inline-block;
+        -webkit-font-smoothing: antialiased;
+        text-decoration: none;
+        content: "\f03a"; /* @check octicon */
+        margin-right: var(--ui-padding-icon);
+        color: var(--text-color-success);
+      }
     }
   }
 }
@@ -94,15 +155,29 @@
 /* Popover List */
 
 .select-list.popover-list {
+  --popover-list-padding: calc(var(--ui-padding) / 4);
+
   width: 200px;
   min-width: 200px;
   margin-left: 0;
   position: relative;
   background-color: var(--overlay-background-color);
+  box-shadow: 0 2px 8px 1px rgba(0, 0, 0, 0.3);
+  padding: var(--popover-list-padding);
+  border-radius: var(--component-border-radius);
+
+  atom-text-editor[mini] {
+    margin-bottom: var(--popover-list-padding);
+  }
 
   ol.list-group {
     position: relative;
     overflow-y: scroll;
     max-height: 200px;
+    margin-top: var(--popover-list-padding);
+  }
+
+  .list-group li {
+    padding-left: var(--popover-list-padding);
   }
 }

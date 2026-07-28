@@ -155,6 +155,12 @@ mark,
   color: var(--text-color-highlight);
 }
 
+/* Match renderers across lists, trees, and suggestions share one highlight.
+   Consumers may add layout-specific decoration without redefining its color. */
+.character-match {
+  color: var(--accent-only-text-color, var(--text-color-highlight));
+}
+
 /* Contextual colors
    (.text-variant() inlined for each modifier) */
 .text-info,

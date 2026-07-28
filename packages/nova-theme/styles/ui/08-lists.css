@@ -49,88 +49,8 @@
   text-align: center;
 }
 
-.select-list ol.list-group {
-  li.two-lines {
-    .secondary-line {
-      color: var(--text-color-subtle);
-    }
-    &.selected .secondary-line {
-      color: rgb(from var(--text-color-highlight) r g b / 50%);
-      text-shadow: none;
-    }
-  }
-
-  /* We want to highlight the background of the list items because we dont
-     know their size. */
-  li.selected {
-    background-color: var(--background-color-selected);
-    border-radius: var(--component-border-radius);
-    &:before {
-      display: none;
-    }
-  }
-
-  &.mark-active {
-    --active-icon-size: 14px;
-
-    /* pad in front of the text where the icon would be We'll pad the non-
-       active items with a 'fake' icon so other classes can pad the item
-       without worrying about the icon padding. */
-    li:before {
-      content: "";
-      background-color: transparent;
-      position: static;
-      display: inline-block;
-      left: auto;
-      right: auto;
-      width: var(--active-icon-size);
-      font-size: var(--active-icon-size);
-      /* The 14px glyph rides the 16px icon-contract carrier. */
-      height: var(--component-icon-size);
-      line-height: var(--component-icon-size);
-      text-align: center;
-      vertical-align: text-bottom;
-    }
-    > li:not(.active):before {
-      margin-right: var(--ui-padding-icon);
-    }
-    li.active {
-      /* .octicon(check, --active-icon-size) mixin, expanded */
-      &::before {
-        font-family: "Octicons Regular";
-        font-weight: normal;
-        font-style: normal;
-        display: inline-block;
-        -webkit-font-smoothing: antialiased;
-        text-decoration: none;
-        content: "\f03a"; /* @check octicon */
-      }
-      &:before {
-        margin-right: var(--ui-padding-icon);
-        color: var(--text-color-success);
-      }
-    }
-  }
-}
-
-.select-list.popover-list {
-  --popover-list-padding: calc(var(--ui-padding) / 4);
-  background-color: var(--overlay-background-color);
-  box-shadow: 0 2px 8px 1px rgba(0, 0, 0, 0.3);
-  padding: var(--popover-list-padding);
+.select-list ol.list-group li.selected {
   border-radius: var(--component-border-radius);
-
-  atom-text-editor[mini] {
-    margin-bottom: var(--popover-list-padding);
-  }
-
-  ol.list-group {
-    margin-top: var(--popover-list-padding);
-  }
-
-  .list-group li {
-    padding-left: var(--popover-list-padding);
-  }
 }
 
 .ui-sortable {

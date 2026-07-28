@@ -183,12 +183,6 @@
   --ui-line-height: calc(var(--ui-size) * 2);
   --ui-tab-height: calc(var(--ui-size) * 2.5);
 
-  /* --- ui extended: package overrides --- */
-  --settings-list-background-color: hsl(from var(--level-2-color) h s calc(l - 1.5));
-  --theme-config-box-shadow: inset 0 0 3px hsla(0, 0%, 100%, 0.4), 0 1px 3px hsla(0, 0%, 0%, 0.2);
-  --theme-config-box-shadow-selected: inset 0 1px 3px hsla(0, 0%, 0%, 0.1);
-  --theme-config-border-selected: hsla(0, 0%, 100%, 0.75);
-
   /* --- syntax: general --- */
   --syntax-text-color: #333;
   --syntax-cursor-color: #333;
@@ -197,8 +191,6 @@
   --syntax-background-color: #fff;
 
   /* --- syntax: guides --- */
-  --syntax-wrap-guide-color: #ccc;
-  --syntax-indent-guide-color: #ccc;
   --syntax-invisible-character-color: #ccc;
 
   /* --- syntax: find and replace markers --- */
@@ -232,33 +224,4 @@
   --syntax-color-snippet: #97c378;
   --syntax-color-string: #97c378;
   --syntax-color-comment: #888;
-
-  /* --- terminal --- */
-  /* Terminals sit in docks, so their surface defaults to panel colors and
-     blends with the surrounding chrome; themes tint selection, cursor, and
-     the ANSI palette. */
-  --terminal-text-color: var(--text-color);
-  --terminal-background-color: var(--tool-panel-background-color);
-  --terminal-selection-background-color: var(--background-color-selected);
-  --terminal-selection-text-color: var(--text-color-highlight);
-  --terminal-cursor-color: var(--text-color-highlight);
-  --terminal-scrollbar-color: var(--scrollbar-color);
-  --terminal-result-marker-color: var(--syntax-result-marker-color);
-  --terminal-result-marker-color-selected: var(--syntax-result-marker-color-selected);
-  --terminal-color-black: hsl(from var(--syntax-text-color) h s calc(l + 10));
-  --terminal-color-red: #b72424;
-  --terminal-color-green: hsl(from #97c378 h s calc(l - 10));
-  --terminal-color-yellow: #e5c17c;
-  --terminal-color-blue: #0e528c;
-  --terminal-color-magenta: #a431c4;
-  --terminal-color-cyan: #61aeef;
-  --terminal-color-white: hsl(from var(--syntax-background-color) h s calc(l - 20));
-  --terminal-color-bright-black: hsl(from var(--terminal-color-black) h s calc(l + 10));
-  --terminal-color-bright-red: #df6a73;
-  --terminal-color-bright-green: #97c378;
-  --terminal-color-bright-yellow: hsl(from var(--terminal-color-yellow) h s calc(l + 10));
-  --terminal-color-bright-blue: hsl(from var(--terminal-color-blue) h s calc(l + 10));
-  --terminal-color-bright-magenta: hsl(from var(--terminal-color-magenta) h s calc(l + 10));
-  --terminal-color-bright-cyan: hsl(from var(--terminal-color-cyan) h s calc(l + 10));
-  --terminal-color-bright-white: hsl(from var(--terminal-color-white) h s calc(l + 10));
 }

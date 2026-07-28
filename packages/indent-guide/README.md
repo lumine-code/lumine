@@ -19,7 +19,7 @@ Commands available in `atom-workspace`:
 
 ## Customization
 
-Guides are rendered as `indent-guide` elements layered over the editor. Their colors are exposed as custom properties — the base color follows the theme's `--syntax-indent-guide-color`, the stack color is derived from it, and the active guide defaults to a soft blue. Adjust them in your `styles.css`:
+Guides are rendered as `indent-guide` elements layered over the editor. Bundled syntax themes set their base, stack, and active colors through package-specific custom properties, with neutral package fallbacks for other themes. Adjust them in your `styles.css`:
 
 ```css
 atom-text-editor {

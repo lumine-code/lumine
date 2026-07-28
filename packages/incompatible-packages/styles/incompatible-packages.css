@@ -35,6 +35,13 @@
   }
 }
 
+.tool-panel.incompatible-packages {
+  /* This view fills a pane; it is not a compact tool panel. */
+  font-weight: normal;
+  color: var(--text-color);
+  background-color: var(--level-2-color);
+}
+
 .incompatible-packages-status {
   padding-left: 2px;
 }

@@ -15,8 +15,10 @@
   --syntax-selection-color: #add6ff;
   --syntax-selection-flash-color: #005fb8;
   --syntax-background-color: #ffffff;
-  --syntax-wrap-guide-color: rgba(59, 59, 59, 0.08);
-  --syntax-indent-guide-color: #d3d3d3;
+  --wrap-guide-color: rgba(59, 59, 59, 0.08);
+  --indent-guide-color: #d3d3d3;
+  --indent-guide-stack-color: #c4c4c4;
+  --indent-guide-active-color: rgba(0, 95, 184, 0.18);
   --syntax-invisible-character-color: rgba(59, 59, 59, 0.25);
   --syntax-result-marker-color: rgba(234, 92, 0, 0.3);
   --syntax-result-marker-color-selected: #005fb8;

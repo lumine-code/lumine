@@ -36,12 +36,15 @@ Show multiple guide lines by listing the columns. The right-most line acts as yo
 
 ## Customization
 
-Change the guide's color and width by adding CSS to your `styles.css`:
+Change the guide's themeable color and width by adding CSS to your `styles.css`:
 
 ```css
+:root {
+  --wrap-guide-color: red;
+}
+
 atom-text-editor .wrap-guide {
   width: 10px;
-  background-color: red;
 }
 ```
 

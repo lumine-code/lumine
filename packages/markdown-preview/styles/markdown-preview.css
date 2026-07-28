@@ -78,3 +78,7 @@
     opacity: 1;
   }
 }
+.tab-bar .tab.active[data-type="MarkdownPreviewView"] {
+  color: var(--tab-text-color-editor);
+  background-color: var(--tab-background-color-editor);
+}

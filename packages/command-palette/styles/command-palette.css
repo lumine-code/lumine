@@ -1,9 +1,3 @@
-/* Highlight matched text */
-.command-palette .list-group .character-match {
-  /* Color only — bold glyphs are wider and make rows shift. */
-  color: var(--text-color-highlight);
-}
-
 /* Recently used commands listed on top while the query is empty */
 .command-palette .list-group .recent {
   background: color-mix(in srgb, var(--background-color-info) 10%, transparent);
