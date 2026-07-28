@@ -1131,8 +1131,9 @@ module.exports = class GitRepository {
     const operations = this.getOperations();
     if (!operations) return false;
 
+    // The operation registry already refreshes the status snapshot before the
+    // operation resolves; scheduling another refresh here only duplicated it.
     await operations.checkoutFiles([this.posixRelativePath(filePath)], "HEAD");
-    this.scheduleStatusSnapshotRefresh();
     return true;
   }
 
@@ -1149,9 +1150,9 @@ module.exports = class GitRepository {
     const operations = this.getOperations();
     if (!operations) return false;
 
+    // The operation registry refreshes the status snapshot (awaited) and the
+    // refs snapshot (detached) for a checkout; no extra scheduling needed.
     await operations.checkout(reference, { createNew: create });
-    this.scheduleStatusSnapshotRefresh();
-    this.scheduleRefsSnapshotRefresh();
     return true;
   }
 
