@@ -1,33 +1,14 @@
 const { CompositeDisposable } = require("atom");
 
-// Applies the One themes' appearance settings to the document root as
+// Applies the One themes' layout settings to the document root as
 // attributes that the theme stylesheets (styles/ui/26-config.css) key off of.
 const root = document.documentElement;
 
 let subscriptions = null;
 
-function applyVariant(variant) {
-  if (variant === "Pure") {
-    root.setAttribute("ui-variant", "pure");
-  } else {
-    root.removeAttribute("ui-variant");
-  }
-}
-
 module.exports = {
   activate() {
-    // The variant is the one setting here that repaints the window rather than
-    // rearranging it, so it goes through `updateAppearance`: the swap
-    // cross-fades like a theme switch, and packages that cache resolved colors
-    // instead of reading them from CSS — the terminal's canvas, say — are told
-    // to re-read them. Applied directly the first time, since there is nothing
-    // to transition from at activation.
-    applyVariant(atom.config.get("one-theme.variant"));
-
     subscriptions = new CompositeDisposable(
-      atom.config.onDidChange("one-theme.variant", ({ newValue }) => {
-        atom.themes.updateAppearance(() => applyVariant(newValue));
-      }),
       atom.config.observe("one-theme.tabSizing", (tabSizing) => {
         root.setAttribute("ui-tabsizing", tabSizing.toLowerCase());
       }),
@@ -64,7 +45,6 @@ module.exports = {
   deactivate() {
     subscriptions?.dispose();
     subscriptions = null;
-    root.removeAttribute("ui-variant");
     root.removeAttribute("ui-tabsizing");
     root.removeAttribute("ui-tab-close-button");
     root.removeAttribute("ui-dock-buttons");
