@@ -170,6 +170,7 @@ atom-text-editor {
   .placeholder-text {
     contain: layout paint style; /* contain_except_size */
     position: absolute;
+    padding-inline-start: 0.25em;
     color: var(--text-color-subtle);
   }
 

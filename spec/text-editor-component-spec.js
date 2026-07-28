@@ -717,11 +717,11 @@ describe("TextEditorComponent", () => {
       editor.setText("");
       await component.getNextUpdatePromise();
 
-      const placeholderTextLeft = element
-        .querySelector(".placeholder-text")
-        .getBoundingClientRect().left;
+      const placeholderText = element.querySelector(".placeholder-text");
+      const placeholderTextLeft = placeholderText.getBoundingClientRect().left;
       const linesLeft = component.refs.lineTiles.getBoundingClientRect().left;
       expect(placeholderTextLeft).toBe(linesLeft);
+      expect(parseFloat(getComputedStyle(placeholderText).paddingInlineStart)).toBeGreaterThan(0);
     });
 
     it("places the hidden input element at the location of the last cursor if it is visible", async () => {
