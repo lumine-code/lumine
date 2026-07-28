@@ -12,7 +12,7 @@
 :root {
   --syntax-text-color: #d4d4d4;
   --syntax-cursor-color: #aeafad;
-  --syntax-selection-color: #264f78;
+  --syntax-selection-color: rgba(38, 79, 120, 0.5);
   --syntax-selection-flash-color: #0078d4;
   --syntax-background-color: #1f1f1f;
   --wrap-guide-color: rgba(212, 212, 212, 0.06);

@@ -49,7 +49,8 @@
   --tab-border-color: #e5e5e5;
   --tree-view-background-color: #f8f8f8;
   --tree-view-border-color: #e5e5e5;
-  --scrollbar-color: rgba(100, 100, 100, 0.4);
+  --scrollbar-color: rgba(100, 100, 100, 0.16);
+  --scrollbar-color-hover: rgba(100, 100, 100, 0.27);
   --scrollbar-background-color: #f8f8f8;
   --ui-site-color-1: hsl(208, 100%, 56%);
   --ui-site-color-2: hsl(132, 48%, 48%);
@@ -59,8 +60,8 @@
   --font-size: 13px;
   --input-font-size: 14px;
   --disclosure-arrow-size: 12px;
-  --component-padding: 10px;
-  --component-icon-padding: 5px;
+  --component-padding: 8px;
+  --component-icon-padding: 4px;
   --component-icon-size: 16px;
   --component-line-height: 25px;
   --component-border-radius: 4px;
@@ -94,7 +95,8 @@
   --overlay-backdrop-color: hsl(0, 0%, 40%);
   --overlay-backdrop-opacity: 0;
   --progress-background-color: #005fb8;
-  --scrollbar-color-editor: rgba(100, 100, 100, 0.4);
+  --scrollbar-color-editor: rgba(100, 100, 100, 0.16);
+  --scrollbar-color-editor-hover: rgba(100, 100, 100, 0.27);
   --scrollbar-background-color-editor: #ffffff;
   --tab-text-color: #6f6f6f;
   --tab-text-color-active: #3b3b3b;
@@ -108,9 +110,9 @@
   --tooltip-background-key-color: #dcdcdc;
   --ui-size: 1em;
   --ui-input-size: 1.15em;
-  --ui-padding: 1.5em;
-  --ui-padding-pane: 0.5em;
-  --ui-padding-icon: 0.45454545em;
+  --ui-padding: 1.25em;
+  --ui-padding-pane: 0.4em;
+  --ui-padding-icon: 0.38em;
   --ui-line-height: 1.75em;
   --ui-tab-height: 2.7em;
   --settings-view-install-border-color: transparent;

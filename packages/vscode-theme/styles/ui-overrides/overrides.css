@@ -28,11 +28,11 @@
 }
 
 .scrollbars-visible-always ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--scrollbar-color) 60%, var(--text-color-subtle));
+  background: var(--scrollbar-color-hover);
 }
 
 .scrollbars-visible-always atom-text-editor ::-webkit-scrollbar-thumb:hover {
-  background: color-mix(in srgb, var(--scrollbar-color-editor) 60%, var(--text-color-subtle));
+  background: var(--scrollbar-color-editor-hover);
 }
 
 /* Buttons */
@@ -134,7 +134,7 @@ atom-panel.modal {
   max-width: min(92vw, calc(var(--ui-size) * 50));
 
   &.from-top {
-    top: calc(var(--component-padding) * 2);
+    top: var(--component-padding);
   }
 
   atom-text-editor[mini] {
@@ -143,6 +143,7 @@ atom-panel.modal {
 
   .select-list ol.list-group,
   &.select-list ol.list-group {
+    border: none;
     border-radius: var(--component-border-radius);
     background-color: transparent;
 
@@ -157,12 +158,23 @@ atom-panel.modal {
   }
 
   &::before {
+    background-color: var(--base-background-color);
     border-radius: calc(var(--component-border-radius) * 1.5);
+    box-shadow:
+      inset 0 0 0 1px var(--overlay-border-color),
+      0 2px 8px rgb(0 0 0 / 24%);
   }
 
   &::after {
     backdrop-filter: none;
   }
+}
+
+/* Key bindings */
+
+.key-binding {
+  color: var(--text-color-subtle);
+  background-color: var(--background-color-highlight);
 }
 
 /* Panels */
@@ -181,7 +193,7 @@ atom-panel.modal {
 .tab-bar {
   .tab {
     .title {
-      margin: 0 1.8em 0 0.66em;
+      margin: 0 2.2em 0 0.66em;
       text-align: left;
     }
 
