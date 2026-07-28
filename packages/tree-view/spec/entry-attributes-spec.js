@@ -1,6 +1,8 @@
 const path = require("path");
 const FileView = require("../lib/file-view");
 const DirectoryView = require("../lib/directory-view");
+const TreeEntry = require("../lib/tree-entry");
+const TreeRowView = require("../lib/tree-row-view");
 const { SpecialRootEntry } = require("../lib/special-root-view");
 
 // `data-name`/`data-path` are the anchor packages register per-file context
@@ -89,6 +91,63 @@ describe("tree-view entry attributes", () => {
       expect(entry.element.dataset.path).toBe(path.join("/root", "notes.md"));
       expect(entry.fileName.dataset.name).toBeUndefined();
       expect(entry.fileName.dataset.path).toBeUndefined();
+    });
+  });
+
+  describe("a logical row", () => {
+    const treeView = {
+      selectedEntries: new Set(),
+      expandTreeEntry() {},
+      collapseTreeEntry() {},
+      reloadTreeEntry() {},
+    };
+
+    function item(name, entryPath) {
+      return {
+        name,
+        path: entryPath,
+        status: null,
+        isPathEqual: (candidate) => candidate === entryPath,
+      };
+    }
+
+    it("keeps file metadata on the mounted row", () => {
+      const entryPath = path.join("/root", "README.md");
+      const entry = new TreeEntry(treeView, {
+        item: item("README.md", entryPath),
+        kind: "file",
+      });
+      entry.depth = 2;
+      entry.height = 24;
+      const view = new TreeRowView(treeView, "file");
+
+      view.bind(entry);
+
+      expect(view.element.dataset.name).toBe("README.md");
+      expect(view.element.dataset.path).toBe(entryPath);
+      expect(view.name.dataset.name).toBeUndefined();
+      expect(view.element.getAttribute("aria-level")).toBe("3");
+      expect(view.element.treeEntry).toBe(entry);
+      view.destroy();
+    });
+
+    it("renders a special directory as a leaf without a disclosure arrow", () => {
+      const entryPath = path.join("/root", "notes");
+      const entry = new TreeEntry(treeView, {
+        item: item("notes", entryPath),
+        kind: "directory",
+        special: true,
+      });
+      entry.height = 24;
+      const view = new TreeRowView(treeView, "directory");
+
+      view.bind(entry);
+
+      expect(view.element.matches(".directory.list-item")).toBe(true);
+      expect(view.element.classList.contains("list-nested-item")).toBe(false);
+      expect(view.element.getAttribute("is")).toBe("tree-view-special-entry");
+      expect(view.element.hasAttribute("aria-expanded")).toBe(false);
+      view.destroy();
     });
   });
 });

@@ -40,23 +40,18 @@ module.exports = class RootDragAndDropHandler {
 
     this.prevDropTargetIndex = null;
     e.dataTransfer.setData("atom-tree-view-root-event", "true");
-    const projectRoot = e.target.closest(".project-root");
+    const projectRoot = this.treeView.treeEntryForElement(e.target);
+    if (!projectRoot?.projectRoot) return;
     const { directory } = projectRoot;
 
-    e.dataTransfer.setData(
-      "project-root-index",
-      Array.from(projectRoot.parentElement.children).indexOf(projectRoot),
-    );
-
     let rootIndex = this.treeView.roots.findIndex((root) => root.directory === directory);
+    e.dataTransfer.setData("project-root-index", rootIndex);
 
     e.dataTransfer.setData("from-root-index", rootIndex);
     e.dataTransfer.setData("from-root-path", directory.path);
 
     // Collect all selected project roots if the dragged root is among them
-    const selectedRoots = Array.from(
-      this.treeView.element.querySelectorAll(".project-root.selected"),
-    );
+    const selectedRoots = this.treeView.getSelectedEntries().filter((entry) => entry.projectRoot);
     const fromRootPaths =
       selectedRoots.length > 0 && selectedRoots.some((r) => r.directory === directory)
         ? selectedRoots.map((r) => r.directory.path)
@@ -144,15 +139,20 @@ module.exports = class RootDragAndDropHandler {
 
     const projectRoots = this.treeView.roots;
 
+    const placeholder = this.getPlaceholder();
     if (newDropTargetIndex < projectRoots.length) {
-      element = projectRoots[newDropTargetIndex];
-      element.classList.add("is-drop-target");
-      return element.parentElement.insertBefore(this.getPlaceholder(), element);
+      const root = projectRoots[newDropTargetIndex];
+      element = this.treeView.elementForTreeEntry(root);
+      element?.classList.add("is-drop-target");
+      placeholder.style.top = `${root.top}px`;
     } else {
-      element = projectRoots[newDropTargetIndex - 1];
-      element.classList.add("drop-target-is-after");
-      return element.parentElement.insertBefore(this.getPlaceholder(), element.nextSibling);
+      const root = projectRoots[newDropTargetIndex - 1];
+      element = this.treeView.elementForTreeEntry(root);
+      element?.classList.add("drop-target-is-after");
+      placeholder.style.top = `${this.treeView.rowTops[root.subtreeEndIndex]}px`;
     }
+    this.treeView.list.appendChild(placeholder);
+    return placeholder;
   }
 
   onDropOnOtherWindow(e, fromItemIndex) {
@@ -167,6 +167,11 @@ module.exports = class RootDragAndDropHandler {
     const element = this.treeView.element.querySelector(".is-dragging");
     element?.classList.remove("is-dragging");
     element?.updateTooltip();
+    for (const target of this.treeView.element.querySelectorAll(
+      ".is-drop-target, .drop-target-is-after",
+    )) {
+      target.classList.remove("is-drop-target", "drop-target-is-after");
+    }
     return this.removePlaceholder();
   }
 
@@ -237,7 +242,9 @@ module.exports = class RootDragAndDropHandler {
     }
 
     const projectRoots = this.treeView.roots;
-    let projectRoot = e.target.closest(".project-root");
+    let projectRoot = this.treeView.treeEntryForElement(e.target);
+    while (projectRoot?.parent) projectRoot = projectRoot.parent;
+    if (!projectRoot?.projectRoot) projectRoot = null;
     if (!projectRoot) {
       projectRoot = projectRoots[projectRoots.length - 1];
     }
@@ -248,7 +255,10 @@ module.exports = class RootDragAndDropHandler {
 
     const projectRootIndex = this.treeView.roots.indexOf(projectRoot);
 
-    const center = projectRoot.getBoundingClientRect().top + projectRoot.offsetHeight / 2;
+    const projectRootElement = this.treeView.elementForTreeEntry(projectRoot);
+    if (!projectRootElement) return projectRootIndex;
+    const rect = projectRootElement.getBoundingClientRect();
+    const center = rect.top + rect.height / 2;
 
     if (e.pageY < center) {
       return projectRootIndex;
@@ -258,7 +268,10 @@ module.exports = class RootDragAndDropHandler {
   }
 
   canDragStart(e) {
-    return e.target.closest(".project-root-header");
+    return (
+      Boolean(e.target.closest(".project-root-header")) &&
+      this.treeView.treeEntryForElement(e.target)?.projectRoot
+    );
   }
 
   isDragging(e) {
@@ -285,6 +298,7 @@ module.exports = class RootDragAndDropHandler {
     if (!this.placeholderEl) {
       this.placeholderEl = document.createElement("li");
       this.placeholderEl.classList.add("placeholder");
+      this.placeholderEl.style.position = "absolute";
     }
     return this.placeholderEl;
   }

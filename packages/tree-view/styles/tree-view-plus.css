@@ -16,7 +16,7 @@
   --tree-view-root-name-text-transform: none;
 
   contain: size;
-  overflow: auto;
+  overflow: hidden;
   z-index: 2;
   -webkit-user-select: none;
 
@@ -25,6 +25,25 @@
   padding: var(--tree-view-padding);
   font-size: var(--ui-size);
   background: var(--tree-view-background);
+
+  .tree-view-viewport {
+    position: relative;
+    min-width: 0;
+    min-height: 0;
+    flex: 1;
+    overflow: hidden;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  .tree-view-scroller {
+    position: absolute;
+    inset: 0;
+    overflow: auto;
+    background: inherit;
+  }
 
   #add-projects-view {
     display: flex;
@@ -66,8 +85,10 @@
   }
 
   .tree-view-root {
-    padding-left: var(--component-icon-padding);
-    padding-right: var(--component-padding);
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    min-width: 100%;
     background-color: inherit;
 
     /*
@@ -83,22 +104,63 @@
      */
     isolation: isolate;
 
-    /* Expands tree-view root to take up full height.
-       This makes sure that the context menu can still be openend in the empty
-       area underneath the files. */
-    flex-grow: 1;
-
-    /* Expands tree-view root to take up as much width as needed by the content.
-       This makes sure that the selected item's "bar/background" expands to full width. */
     position: relative;
-    min-width: min-content;
+  }
+
+  .tree-view-row {
+    --tree-view-indent: calc(
+      var(--component-icon-padding) + var(--tree-view-depth) *
+        (var(--disclosure-arrow-size) + var(--component-icon-padding))
+    );
+
+    position: relative;
+    box-sizing: border-box;
+    width: max-content;
+    min-width: 100%;
+    padding-right: var(--component-padding);
+    padding-left: var(--tree-view-indent);
+    overflow: hidden;
+
+    &::before {
+      top: 0;
+    }
+
+    &.file {
+      --tree-view-indent: calc(
+        var(--component-icon-padding) + (var(--tree-view-depth) + 1) *
+          (var(--disclosure-arrow-size) + var(--component-icon-padding))
+      );
+
+      margin-left: 0;
+    }
+  }
+
+  .tree-view-root.has-collapsable-children > .tree-view-row.file {
+    /* Files reserve the disclosure width in --tree-view-indent. Override the
+       shared list-item margin so it is not counted a second time. */
+    margin-left: 0;
+  }
+
+  .tree-view-special {
+    box-sizing: border-box;
+    min-width: 100%;
+    overflow: visible;
+  }
+
+  .tree-view-metrics-probe {
+    position: absolute !important;
+    top: 0;
+    left: 0;
+    visibility: hidden;
+    pointer-events: none;
   }
 
   .header {
     position: relative;
   }
 
-  .file.entry > .name {
+  .file.entry > .name,
+  .tree-view-special-entry > .name {
     /* Keep file content above the full-width ::before hover/selection layer. */
     position: relative;
   }
@@ -176,12 +238,11 @@
   }
 
   .tree-view-sticky-header-layer {
-    position: sticky;
+    position: absolute;
     top: 0;
+    right: 0;
     left: 0;
     z-index: 100;
-    flex: 0 0 0;
-    width: 100%;
     height: 0;
     overflow: visible;
     isolation: isolate;
@@ -199,13 +260,11 @@
     overflow: hidden;
     contain: paint;
     isolation: isolate;
-    transform: translateZ(0);
-    background: var(--tree-view-sticky-background);
-    backface-visibility: hidden;
-    will-change: transform;
+    background: transparent;
   }
 
   .tree-view-sticky-header {
+    position: relative;
     background: var(--tree-view-sticky-background);
 
     &::before {
@@ -220,7 +279,11 @@
       padding-right: var(--component-padding);
       padding-left: max(
         0px,
-        calc(var(--tree-view-sticky-content-offset) - var(--tree-view-row-inset))
+        calc(
+          var(--component-icon-padding) + var(--tree-view-depth) *
+            (var(--disclosure-arrow-size) + var(--component-icon-padding)) -
+            var(--tree-view-row-inset)
+        )
       );
       border-radius: var(--tree-view-row-border-radius);
       background: var(--tree-view-sticky-background);
@@ -233,13 +296,6 @@
 
     &.selected > .tree-view-sticky-header-row {
       background: var(--background-color-selected);
-    }
-  }
-
-  .tree-view-sticky-header-source {
-    &::before,
-    > .header {
-      visibility: hidden;
     }
   }
 

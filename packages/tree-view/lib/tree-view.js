@@ -13,9 +13,10 @@ let IgnoredNames; // Defer requiring until actually needed
 
 const AddProjectsView = require("./add-projects-view");
 const Directory = require("./directory");
-const DirectoryView = require("./directory-view");
 const RootDragAndDrop = require("./root-drag-and-drop");
-const { SpecialRootSection } = require("./special-root-view");
+const TreeEntry = require("./tree-entry");
+const TreeRowView = require("./tree-row-view");
+const TreeRootSection = require("./tree-root-section");
 
 const TREE_VIEW_URI = "atom://tree-view";
 const TREE_VIEW_CLIPBOARD_FORMAT = "application/lumine-tree-view";
@@ -49,6 +50,12 @@ class TreeView {
     this.element.classList.add("tool-panel", "tree-view");
     this.element.tabIndex = -1;
 
+    this.viewport = document.createElement("div");
+    this.viewport.classList.add("tree-view-viewport");
+
+    this.scroller = document.createElement("div");
+    this.scroller.classList.add("tree-view-scroller");
+
     this.list = document.createElement("ol");
     this.list.classList.add(
       "tree-view-root",
@@ -57,6 +64,7 @@ class TreeView {
       "has-collapsable-children",
       "focusable-panel",
     );
+    this.list.setAttribute("role", "tree");
 
     this.stickyHeaderLayer = document.createElement("div");
     this.stickyHeaderLayer.classList.add("tree-view-sticky-header-layer");
@@ -66,16 +74,28 @@ class TreeView {
     this.stickyHeaderList = document.createElement("ol");
     this.stickyHeaderList.classList.add(
       "tree-view-sticky-header-list",
+      "full-menu",
       "list-tree",
       "has-collapsable-children",
     );
     this.stickyHeaderLayer.appendChild(this.stickyHeaderList);
-    this.element.appendChild(this.stickyHeaderLayer);
+    this.scroller.appendChild(this.list);
+    this.viewport.append(this.scroller, this.stickyHeaderLayer);
+    this.element.appendChild(this.viewport);
 
     this.stickyHeadersEnabled = false;
     this.stickyHeaderEntries = [];
-    this.stickyHeaderOriginals = new WeakMap();
     this.stickyHeaderUpdateFrame = null;
+
+    this.treeEntries = new Set();
+    this.projectEntries = new Set();
+    this.visibleRows = [];
+    this.rowTops = [0];
+    this.rowViews = new Map();
+    this.selectedEntries = new Set();
+    this.regularRowHeight = 24;
+    this.rootRowHeight = 32;
+    this.maxMeasuredContentWidth = 0;
 
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
@@ -85,19 +105,10 @@ class TreeView {
       }),
     );
 
-    this.stickyHeaderObserver = new MutationObserver(() => {
-      this.scheduleStickyHeadersUpdate();
-    });
-    this.stickyHeaderObserver.observe(this.list, {
-      attributes: true,
-      attributeFilter: ["class"],
-      childList: true,
-      subtree: true,
-    });
-
     if (typeof ResizeObserver === "function") {
       this.stickyHeaderResizeObserver = new ResizeObserver(() => {
-        this.scheduleStickyHeadersUpdate();
+        this.measureRowHeights();
+        this.rebuildVisibleRows();
       });
       this.stickyHeaderResizeObserver.observe(this.element);
     }
@@ -137,7 +148,7 @@ class TreeView {
 
     if (state.selectedPaths?.length > 0) {
       for (let selectedPath of state.selectedPaths) {
-        this.selectMultipleEntries(this.entryForPath(selectedPath));
+        this.selectMultipleEntries(this.treeEntryForPath(selectedPath));
       }
     } else {
       this.selectEntry(this.roots[0]);
@@ -150,8 +161,9 @@ class TreeView {
       // exactly once, then disconnect this observer.
       let observer = new IntersectionObserver(() => {
         if (this.isVisible()) {
-          this.element.scrollTop = state.scrollTop;
-          this.element.scrollLeft = state.scrollLeft;
+          this.scroller.scrollTop = state.scrollTop;
+          this.scroller.scrollLeft = state.scrollLeft;
+          this.updateStickyHeaderOverlay();
           observer.disconnect();
         }
       });
@@ -221,7 +233,7 @@ class TreeView {
   }
 
   serialize() {
-    let { scrollLeft, scrollTop } = this.element;
+    let { scrollLeft, scrollTop } = this.scroller;
     let width = parseInt(this.element.style.width || 0, 10);
 
     class ExpansionStateBuilder {
@@ -247,13 +259,12 @@ class TreeView {
       cancelAnimationFrame(this.stickyHeaderUpdateFrame);
       this.stickyHeaderUpdateFrame = null;
     }
-    for (const entry of this.stickyHeaderEntries) {
-      entry.classList.remove("tree-view-sticky-header-source");
-    }
-    this.stickyHeaderObserver.disconnect();
+    this.destroyRowViews();
+    this.clearStickyHeaderViews();
     this.stickyHeaderResizeObserver?.disconnect();
     for (let root of this.roots) {
       root.directory.destroy();
+      this.unregisterTreeEntry(root);
     }
     for (const section of this.specialRoots) {
       section.destroy();
@@ -311,103 +322,96 @@ class TreeView {
   }
 
   updateStickyHeaderOverlay() {
+    const stickyLeft = -this.scroller.scrollLeft;
+    if (this.stickyHeaderLeft !== stickyLeft) {
+      this.stickyHeaderLeft = stickyLeft;
+      this.stickyHeaderList.style.left = `${stickyLeft}px`;
+    }
+    this.stickyHeaderList.style.width = this.list.style.width || "100%";
     this.renderStickyHeaderEntries(this.collectStickyHeaderEntries());
   }
 
   collectStickyHeaderEntries() {
-    if (!this.stickyHeadersEnabled) return [];
+    if (!this.stickyHeadersEnabled || this.visibleRows.length === 0) return [];
 
-    const treeRect = this.element.getBoundingClientRect();
-    if (treeRect.height <= 0 || treeRect.width <= 0) return [];
+    const scrollTop = this.scroller.scrollTop;
+    const firstIndex = this.indexAtOffset(scrollTop);
+    let root = this.visibleRows[firstIndex];
+    while (root?.parent) root = root.parent;
+    if (!root || (!root.projectRoot && !root.specialRoot)) return [];
 
-    let slotTop = treeRect.top;
-    const roots = Array.from(this.element.querySelectorAll(".project-root")).filter(
-      (root) => !this.stickyHeaderLayer.contains(root),
-    );
-    const root = roots.find((candidate) => {
-      const header = candidate.header ?? candidate.querySelector(":scope > .project-root-header");
-      if (!header) return false;
-
-      const entryRect = candidate.getBoundingClientRect();
-      const headerRect = header.getBoundingClientRect();
-      return headerRect.top < slotTop && entryRect.bottom > slotTop;
-    });
-    if (!root) return [];
+    const rootBottom = this.rowTops[root.subtreeEndIndex] ?? root.top + root.height;
+    if (scrollTop < root.top || scrollTop >= rootBottom) return [];
 
     const entries = [root];
-    slotTop += this.stickyHeaderHeight(root.header.getBoundingClientRect());
-
     let directory = root;
-    while (directory.classList.contains("expanded") && directory.entries) {
-      const child = Array.from(directory.entries.children).find((candidate) => {
-        const candidateRect = candidate.getBoundingClientRect();
-        return candidateRect.top <= slotTop && candidateRect.bottom > slotTop;
-      });
-      if (
-        !child?.matches(".directory.list-nested-item.expanded") ||
-        !child.header ||
-        !child.entries
-      ) {
+    let slot = scrollTop + root.height;
+
+    while (directory.isExpanded && slot < rootBottom) {
+      const probe = this.visibleRows[this.indexAtOffset(slot)];
+      if (!probe || probe.index >= directory.subtreeEndIndex) break;
+
+      let child = probe;
+      while (child?.parent && child.parent !== directory) child = child.parent;
+      if (!child || child.parent !== directory || child.kind !== "directory" || !child.isExpanded) {
         break;
       }
 
-      const childRect = child.getBoundingClientRect();
-      const headerRect = child.header.getBoundingClientRect();
-      const headerHeight = this.stickyHeaderHeight(headerRect);
-      if (headerRect.top >= slotTop || childRect.bottom <= slotTop) break;
+      const childBottom = this.rowTops[child.subtreeEndIndex] ?? child.top + child.height;
+      if (child.top >= slot || childBottom <= slot) break;
 
       entries.push(child);
-      slotTop += headerHeight;
+      slot += child.height;
       directory = child;
     }
 
     return entries;
   }
 
-  stickyHeaderHeight(rect) {
-    return rect.height || rect.bottom - rect.top;
-  }
-
   renderStickyHeaderEntries(entries) {
-    const nextEntries = new Set(entries);
-    for (const entry of this.stickyHeaderEntries) {
-      if (!nextEntries.has(entry)) {
-        entry.classList.remove("tree-view-sticky-header-source");
-      }
+    let commonPrefixLength = 0;
+    while (
+      commonPrefixLength < entries.length &&
+      commonPrefixLength < this.stickyHeaderEntries.length &&
+      entries[commonPrefixLength] === this.stickyHeaderEntries[commonPrefixLength]
+    ) {
+      commonPrefixLength++;
     }
-    for (const entry of entries) {
-      entry.classList.add("tree-view-sticky-header-source");
+
+    while (this.stickyHeaderList.children.length > commonPrefixLength) {
+      this.stickyHeaderList.lastElementChild.treeRowView?.destroy();
     }
 
-    const sameEntries =
-      entries.length === this.stickyHeaderEntries.length &&
-      entries.every((entry, index) => entry === this.stickyHeaderEntries[index]);
+    for (let index = commonPrefixLength; index < entries.length; index++) {
+      const entry = entries[index];
+      const view = new TreeRowView(this, "directory", { sticky: true });
+      const element = view.bind(entry);
+      element.style.height = `${entry.height}px`;
+      element.treeRowView = view;
+      this.stickyHeaderList.appendChild(element);
+    }
 
-    if (!sameEntries) {
-      const fragment = document.createDocumentFragment();
-      this.stickyHeaderOriginals = new WeakMap();
+    this.stickyHeaderEntries = entries.slice();
+    let stackTop = 0;
+    for (let index = 0; index < this.stickyHeaderList.children.length; index++) {
+      const child = this.stickyHeaderList.children[index];
+      const entry = entries[index];
+      child.treeRowView?.sync();
 
-      for (const entry of entries) {
-        const stickyEntry = document.createElement("li");
-        stickyEntry.classList.add(
-          "tree-view-sticky-header",
-          "directory",
-          "list-nested-item",
-          "expanded",
-        );
-        if (entry.classList.contains("project-root")) {
-          stickyEntry.classList.add("project-root");
-        }
-
-        const header = entry.header.cloneNode(true);
-        header.classList.add("tree-view-sticky-header-row");
-        stickyEntry.appendChild(header);
-        this.stickyHeaderOriginals.set(stickyEntry, entry);
-        fragment.appendChild(stickyEntry);
-      }
-
-      this.stickyHeaderList.replaceChildren(fragment);
-      this.stickyHeaderEntries = entries.slice();
+      const subtreeBottom = this.rowTops?.[entry.subtreeEndIndex];
+      const visibleSubtreeBottom =
+        subtreeBottom == null ? Infinity : subtreeBottom - this.scroller.scrollTop;
+      // Push an ending header upward as its following sibling reaches the
+      // sticky stack. Ancestors have a higher z-index, so nested headers slide
+      // underneath them rather than painting over them.
+      const pushOffset = Math.min(
+        entry.height,
+        Math.max(0, stackTop + entry.height - visibleSubtreeBottom),
+      );
+      child.style.clipPath = "";
+      child.style.top = pushOffset > 0 ? `-${pushOffset}px` : "";
+      child.style.zIndex = entries.length - index;
+      stackTop += entry.height;
     }
 
     this.stickyHeaderLayer.hidden = entries.length === 0;
@@ -415,78 +419,357 @@ class TreeView {
       this.stickyHeaderList.style.height = "";
       return;
     }
-
-    const stickyLayerRect = this.stickyHeaderLayer.getBoundingClientRect();
-    const stickyEntries = this.stickyHeaderList.children;
-    let backingHeight = 0;
-    for (let index = 0; index < entries.length; index++) {
-      const originalEntry = entries[index];
-      const headerRect = originalEntry.header.getBoundingClientRect();
-      this.syncStickyHeaderEntry(stickyEntries[index], originalEntry, stickyLayerRect, headerRect);
-      const headerHeight = this.stickyHeaderHeight(headerRect);
-      backingHeight += headerHeight;
-    }
-    this.stickyHeaderList.style.height = `${backingHeight}px`;
+    this.stickyHeaderList.style.height = `${entries.reduce(
+      (height, entry) => height + entry.height,
+      0,
+    )}px`;
   }
 
-  syncStickyHeaderEntry(stickyEntry, originalEntry, stickyLayerRect, headerRect) {
-    stickyEntry.classList.toggle("selected", originalEntry.classList.contains("selected"));
-
-    for (const className of Array.from(stickyEntry.classList)) {
-      if (className.startsWith("status-")) stickyEntry.classList.remove(className);
+  clearStickyHeaderViews() {
+    for (const child of Array.from(this.stickyHeaderList.children)) {
+      child.treeRowView?.destroy();
     }
-    for (const className of originalEntry.classList) {
-      if (className.startsWith("status-")) stickyEntry.classList.add(className);
-    }
+    this.stickyHeaderList.replaceChildren();
+    this.stickyHeaderEntries = [];
+  }
 
-    const stickyHeader = stickyEntry.querySelector(".tree-view-sticky-header-row");
-    if (stickyHeader.innerHTML !== originalEntry.header.innerHTML) {
-      stickyHeader.replaceChildren(
-        ...Array.from(originalEntry.header.childNodes, (child) => child.cloneNode(true)),
-      );
-    }
+  registerTreeEntry(entry, { project = true } = {}) {
+    this.treeEntries.add(entry);
+    if (project) this.projectEntries.add(entry);
+    return entry;
+  }
 
-    stickyEntry.style.setProperty(
-      "--tree-view-sticky-content-offset",
-      `${Math.max(0, headerRect.left - stickyLayerRect.left)}px`,
+  unregisterTreeEntry(entry) {
+    for (const child of entry.children.slice()) this.unregisterTreeEntry(child);
+    entry.children = [];
+
+    const rowView = this.rowViews.get(entry);
+    if (rowView) this.destroyRowView(entry, rowView);
+    this.selectedEntries.delete(entry);
+    if (this.lastFocusedEntry === entry) this.lastFocusedEntry = null;
+    entry.subscriptions?.dispose();
+    entry.subscriptions = null;
+    this.treeEntries.delete(entry);
+    this.projectEntries.delete(entry);
+  }
+
+  createDirectoryTreeEntry(directory, parent = null, { projectRoot = false } = {}) {
+    const shouldExpand = directory.expansionState.isExpanded;
+    const entry = new TreeEntry(this, {
+      item: directory,
+      kind: "directory",
+      parent,
+      projectRoot,
+    });
+    entry.subscriptions = new CompositeDisposable(
+      directory.onDidStatusChange(() => {
+        entry.syncViews();
+        this.scheduleStickyHeadersUpdate();
+      }),
+      directory.onDidAddEntries((addedEntries) => {
+        this.addDirectoryTreeEntries(entry, addedEntries);
+      }),
+      directory.onDidRemoveEntries((removedEntries) => {
+        this.removeDirectoryTreeEntries(entry, removedEntries);
+      }),
     );
+    this.registerTreeEntry(entry);
+
+    if (shouldExpand) {
+      Promise.resolve().then(() => {
+        if (this.treeEntries.has(entry)) entry.expand();
+      });
+    }
+    return entry;
   }
 
-  forwardStickyHeaderEvent(event) {
-    const stickyEntry = event.target.closest(".tree-view-sticky-header");
-    if (!stickyEntry) return;
+  createFileTreeEntry(file, parent) {
+    const entry = new TreeEntry(this, {
+      item: file,
+      kind: "file",
+      parent,
+    });
+    entry.subscriptions = new CompositeDisposable(
+      file.onDidStatusChange(() => {
+        entry.syncViews();
+        this.scheduleStickyHeadersUpdate();
+      }),
+    );
+    return this.registerTreeEntry(entry);
+  }
 
-    const originalEntry = this.stickyHeaderOriginals.get(stickyEntry);
-    if (!originalEntry?.header?.isConnected) {
-      this.scheduleStickyHeadersUpdate();
+  addDirectoryTreeEntries(parent, addedEntries) {
+    for (const item of addedEntries) {
+      const entry =
+        item instanceof Directory
+          ? this.createDirectoryTreeEntry(item, parent)
+          : this.createFileTreeEntry(item, parent);
+      const index = Math.min(
+        item.indexInParentDirectory ?? parent.children.length,
+        parent.children.length,
+      );
+      parent.children.splice(index, 0, entry);
+    }
+    this.rebuildVisibleRows();
+  }
+
+  removeDirectoryTreeEntries(parent, removedEntries) {
+    for (let index = parent.children.length - 1; index >= 0; index--) {
+      const entry = parent.children[index];
+      if (!removedEntries.has(entry.item)) continue;
+      parent.children.splice(index, 1);
+      this.unregisterTreeEntry(entry);
+    }
+    this.rebuildVisibleRows();
+  }
+
+  async expandTreeEntry(entry, isRecursive = false) {
+    if (!entry || entry.kind !== "directory") return;
+    if (entry.specialRoot) return entry.section.expand();
+    if (entry.special) return Promise.resolve();
+
+    if (!entry.isExpanded) {
+      entry.isExpanded = true;
+      entry.syncViews();
+      this.rebuildVisibleRows();
+      await entry.directory.expand();
+    }
+
+    if (isRecursive) {
+      for (const child of entry.children.slice()) {
+        if (child.kind === "directory") await child.expand(true);
+      }
+    }
+    this.rebuildVisibleRows();
+  }
+
+  collapseTreeEntry(entry, isRecursive = false) {
+    if (!entry || entry.kind !== "directory") return;
+    if (entry.specialRoot) return entry.section.collapse();
+    if (entry.special || !entry.isExpanded) return;
+
+    if (isRecursive) {
+      for (const child of entry.children.slice()) {
+        if (child.kind === "directory") child.collapse(true);
+      }
+    }
+
+    for (const child of entry.children.slice()) this.unregisterTreeEntry(child);
+    entry.children = [];
+    entry.isExpanded = false;
+    entry.directory.collapse();
+    entry.syncViews();
+
+    if (!this.selectedEntries.has(entry) && this.selectedEntries.size === 0) {
+      this.selectEntry(entry);
+    }
+    this.rebuildVisibleRows();
+  }
+
+  reloadTreeEntry(entry) {
+    if (!entry || entry.kind !== "directory") return;
+    if (entry.specialRoot) return entry.section.refresh();
+    if (entry.special) return;
+    entry.directory.reload();
+  }
+
+  rebuildVisibleRows({ preserveScroll = true } = {}) {
+    if (!this.scroller || !this.list) return;
+
+    const oldAnchor =
+      preserveScroll && this.visibleRows.length > 0
+        ? this.visibleRows[this.indexAtOffset(this.scroller.scrollTop)]
+        : null;
+    const oldAnchorOffset = oldAnchor ? this.scroller.scrollTop - oldAnchor.top : 0;
+    const rows = [];
+    const rowTops = [0];
+
+    const appendEntry = (entry, depth) => {
+      entry.depth = depth;
+      entry.index = rows.length;
+      entry.top = rowTops[rowTops.length - 1];
+      entry.height =
+        entry.projectRoot || entry.specialRoot ? this.rootRowHeight : this.regularRowHeight;
+      rows.push(entry);
+      rowTops.push(entry.top + entry.height);
+
+      if (entry.kind === "directory" && entry.isExpanded) {
+        for (const child of entry.children) appendEntry(child, depth + 1);
+      }
+      entry.subtreeEndIndex = rows.length;
+    };
+
+    for (const section of this.specialRoots) {
+      const isRenderable = section.isRenderable();
+      section.element.hidden = !isRenderable;
+      if (isRenderable) appendEntry(section.root, 0);
+    }
+    for (const root of this.roots) appendEntry(root, 0);
+
+    this.visibleRows = rows;
+    this.rowTops = rowTops;
+    this.viewport.hidden = rows.length === 0;
+
+    for (const section of this.specialRoots) {
+      if (!section.isRenderable()) continue;
+      section.element.style.width = "100%";
+    }
+
+    if (oldAnchor && rows.includes(oldAnchor)) {
+      this.scroller.scrollTop = Math.max(0, oldAnchor.top + oldAnchorOffset);
+    }
+
+    this.renderVisibleRows();
+  }
+
+  measureRowHeights() {
+    if (!this.list?.isConnected) return;
+
+    const regularProbe = document.createElement("li");
+    regularProbe.classList.add("tree-view-metrics-probe", "file", "entry", "list-item");
+    regularProbe.textContent = "M";
+
+    const rootProbe = document.createElement("li");
+    rootProbe.classList.add(
+      "tree-view-metrics-probe",
+      "directory",
+      "entry",
+      "list-nested-item",
+      "project-root",
+      "expanded",
+    );
+    const rootHeader = document.createElement("div");
+    rootHeader.classList.add("header", "list-item", "project-root-header");
+    rootHeader.textContent = "M";
+    rootProbe.appendChild(rootHeader);
+    this.list.append(regularProbe, rootProbe);
+
+    const regularHeight = regularProbe.getBoundingClientRect().height;
+    const rootHeight = rootHeader.getBoundingClientRect().height;
+    regularProbe.remove();
+    rootProbe.remove();
+
+    const nextRegularHeight = regularHeight || this.regularRowHeight;
+    const nextRootHeight = rootHeight || this.rootRowHeight;
+    if (nextRegularHeight !== this.regularRowHeight || nextRootHeight !== this.rootRowHeight) {
+      this.regularRowHeight = nextRegularHeight;
+      this.rootRowHeight = nextRootHeight;
+    }
+  }
+
+  indexAtOffset(offset) {
+    if (this.visibleRows.length === 0) return 0;
+    const boundedOffset = Math.max(0, Math.min(offset, this.rowTops[this.rowTops.length - 1]));
+    let low = 0;
+    let high = this.visibleRows.length;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (this.rowTops[middle + 1] <= boundedOffset) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+    return Math.min(low, this.visibleRows.length - 1);
+  }
+
+  renderVisibleRows() {
+    if (!this.scroller || this.visibleRows.length === 0) {
+      this.destroyRowViews();
+      this.renderStickyHeaderEntries([]);
       return;
     }
 
-    event.stopPropagation();
-    const stickyRect = stickyEntry
-      .querySelector(".tree-view-sticky-header-row")
-      .getBoundingClientRect();
-    const originalRect = originalEntry.header.getBoundingClientRect();
-    const forwardedEvent = new MouseEvent(event.type, {
-      bubbles: true,
-      cancelable: true,
-      composed: true,
-      view: window,
-      detail: event.detail,
-      screenX: event.screenX,
-      screenY: event.screenY,
-      clientX: originalRect.left + event.clientX - stickyRect.left,
-      clientY: originalRect.top + event.clientY - stickyRect.top,
-      ctrlKey: event.ctrlKey,
-      shiftKey: event.shiftKey,
-      altKey: event.altKey,
-      metaKey: event.metaKey,
-      button: event.button,
-      buttons: event.buttons,
-    });
+    const needed = new Set(this.visibleRows);
 
-    const dispatched = originalEntry.header.dispatchEvent(forwardedEvent);
-    if (!dispatched || forwardedEvent.defaultPrevented) event.preventDefault();
+    for (const [entry, view] of Array.from(this.rowViews)) {
+      if (!needed.has(entry)) this.destroyRowView(entry, view);
+    }
+
+    const viewsByParent = new Map();
+    for (const entry of this.visibleRows) {
+      let view = this.rowViews.get(entry);
+      if (!view) {
+        view = new TreeRowView(this, entry.kind);
+        view.bind(entry);
+        this.rowViews.set(entry, view);
+      } else {
+        view.element.style.height = `${entry.height}px`;
+        view.element.style.setProperty("--tree-view-depth", entry.depth);
+        view.sync();
+      }
+
+      const parent = entry.section ? entry.section.element : this.list;
+      let views = viewsByParent.get(parent);
+      if (!views) viewsByParent.set(parent, (views = []));
+      views.push(view);
+    }
+
+    for (const [parent, views] of viewsByParent) {
+      let reference =
+        parent === this.list
+          ? Array.from(parent.children).find((child) => child.classList.contains("tree-view-row"))
+          : parent.firstElementChild;
+      for (const view of views) {
+        if (view.element === reference) {
+          reference = reference.nextElementSibling;
+        } else {
+          parent.insertBefore(view.element, reference);
+        }
+      }
+    }
+
+    let measuredWidth = this.maxMeasuredContentWidth;
+    for (const view of this.rowViews.values()) {
+      measuredWidth = Math.max(measuredWidth, view.element.scrollWidth);
+    }
+
+    this.maxMeasuredContentWidth = measuredWidth;
+    const contentWidth = Math.max(this.scroller.clientWidth, measuredWidth);
+    this.list.style.width = `${contentWidth}px`;
+    for (const section of this.specialRoots) section.element.style.width = `${contentWidth}px`;
+    this.updateStickyHeaderOverlay();
+  }
+
+  destroyRowView(entry, view) {
+    if (this.rowViews.get(entry) === view) this.rowViews.delete(entry);
+    view.destroy();
+  }
+
+  destroyRowViews() {
+    for (const [entry, view] of Array.from(this.rowViews)) {
+      this.destroyRowView(entry, view);
+    }
+  }
+
+  treeEntryForElement(element) {
+    return element?.closest?.(".entry, .tree-view-sticky-header")?.treeEntry ?? null;
+  }
+
+  elementForTreeEntry(entry) {
+    return this.rowViews.get(entry)?.element ?? null;
+  }
+
+  treeEntryForPath(entryPath) {
+    let realPathMatchEntry = null;
+    let bestMatchEntry = null;
+    let bestMatchLength = 0;
+    for (const entry of this.treeEntries) {
+      const currentPath = entry.getPath();
+      if (currentPath === entryPath) return entry;
+      if (realPathMatchEntry == null && entry.isPathEqual(entryPath)) {
+        realPathMatchEntry = entry;
+      }
+      if (
+        this.projectEntries.has(entry) &&
+        entry.contains(entryPath) &&
+        currentPath.length > bestMatchLength
+      ) {
+        bestMatchEntry = entry;
+        bestMatchLength = currentPath.length;
+      }
+    }
+    return realPathMatchEntry ?? bestMatchEntry;
   }
 
   getPreferredLocation() {
@@ -502,11 +785,7 @@ class TreeView {
   }
 
   getPreferredWidth() {
-    let result;
-    this.list.style.width = "min-content";
-    result = this.list.offsetWidth;
-    this.list.style.width = "";
-    return result;
+    return Math.max(this.maxMeasuredContentWidth, this.scroller.scrollWidth);
   }
 
   onDirectoryCreated(callback) {
@@ -546,12 +825,7 @@ class TreeView {
   }
 
   handleEvents() {
-    for (const eventType of ["mousedown", "mouseup", "click", "contextmenu"]) {
-      this.stickyHeaderLayer.addEventListener(eventType, (event) => {
-        this.forwardStickyHeaderEvent(event);
-      });
-    }
-    this.element.addEventListener(
+    this.scroller.addEventListener(
       "scroll",
       () => {
         this.updateStickyHeadersOnScroll();
@@ -635,7 +909,7 @@ class TreeView {
       // …when the active pane changes.
       atom.workspace.getCenter().onDidChangeActivePaneItem(() => {
         // Don't steal selection from special root sections
-        if (!(this.hasFocus() && this.element.querySelector(".tree-view-special .selected"))) {
+        if (!(this.hasFocus() && this.getSelectedEntries().some((entry) => entry.special))) {
           this.selectActiveFile();
         }
         if (atom.config.get("tree-view.autoReveal")) {
@@ -725,15 +999,11 @@ class TreeView {
   // Special roots
 
   addSpecialRoot(config) {
-    const section = new SpecialRootSection(config);
+    const section = new TreeRootSection(this, config);
     this.specialRoots.push(section);
-    // Insert before the project list, but always after the zero-height sticky layer.
-    if (this.list.parentElement === this.element) {
-      this.element.insertBefore(section.element, this.list);
-    } else {
-      this.element.insertBefore(section.element, this.stickyHeaderLayer.nextSibling);
-    }
-    this.scheduleStickyHeadersUpdate();
+    this.viewport.hidden =
+      this.roots.length === 0 && !this.specialRoots.some((candidate) => candidate.isRenderable());
+    this.rebuildVisibleRows();
     return section;
   }
 
@@ -742,26 +1012,28 @@ class TreeView {
     if (index === -1) return;
     section.destroy();
     this.specialRoots.splice(index, 1);
-    this.scheduleStickyHeadersUpdate();
+    this.viewport.hidden =
+      this.roots.length === 0 && !this.specialRoots.some((candidate) => candidate.isRenderable());
+    this.rebuildVisibleRows();
   }
 
   refreshSpecialRoots() {
     for (const section of this.specialRoots) {
       section.refresh();
     }
-    this.scheduleStickyHeadersUpdate();
+    this.rebuildVisibleRows();
   }
 
   entryClicked(event) {
-    let entry = event.target.closest(".entry");
+    let entry = this.treeEntryForElement(event.target);
     if (!entry) return;
 
     let { detail = 1 } = event;
     let isRecursive = event.altKey ?? false;
 
-    if (entry.classList.contains("directory")) {
+    if (entry.kind === "directory") {
       // Special root directory entry: reveal in main tree
-      if (entry.classList.contains("tree-view-special-entry")) {
+      if (entry.special && !entry.specialRoot) {
         this.selectEntry(entry);
         this.revealInTree(entry.getPath());
         return;
@@ -790,7 +1062,7 @@ class TreeView {
         this.selectEntry(entry);
         entry.toggleExpansion(isRecursive);
       }
-    } else if (entry.classList.contains("file")) {
+    } else if (entry.kind === "file") {
       // Alt+click: open externally via open-external service
       if (event.altKey && this.openExternalService) {
         this.selectEntry(entry);
@@ -818,7 +1090,8 @@ class TreeView {
   }
 
   fileViewEntryClicked(event) {
-    let filePath = event.target.closest(".entry").getPath();
+    let filePath = this.treeEntryForElement(event.target)?.getPath();
+    if (!filePath) return;
     let { detail = 1 } = event;
     let alwaysOpenExisting = atom.config.get("tree-view.alwaysOpenExisting");
     let allowPendingPaneItems = atom.config.get("core.allowPendingPaneItems");
@@ -859,14 +1132,12 @@ class TreeView {
     for (let root of this.roots) {
       oldExpansionStates[root.directory.path] = root.directory.serializeExpansionState();
       root.directory.destroy();
-      root.remove();
+      this.unregisterTreeEntry(root);
     }
     this.roots = [];
     let projectPaths = atom.project.getPaths();
     if (projectPaths.length > 0) {
-      if (!this.element.querySelector("tree-view-root")) {
-        this.element.appendChild(this.list);
-      }
+      this.viewport.hidden = false;
       let addProjectsViewElement = this.element.querySelector("#add-projects-view");
       if (addProjectsViewElement) {
         this.element.removeChild(addProjectsViewElement);
@@ -901,21 +1172,20 @@ class TreeView {
           stats,
         });
 
-        let root = new DirectoryView(directory).element;
-        this.list.appendChild(root);
+        let root = this.createDirectoryTreeEntry(directory, null, { projectRoot: true });
         this.roots.push(root);
       }
+      this.rebuildVisibleRows({ preserveScroll: false });
       let results = [];
       for (let selectedPath of selectedPaths) {
-        results.push(this.selectMultipleEntries(this.entryForPath(selectedPath)));
+        results.push(this.selectMultipleEntries(this.treeEntryForPath(selectedPath)));
       }
       return results;
     } else {
+      this.rebuildVisibleRows({ preserveScroll: false });
+      this.viewport.hidden = !this.specialRoots.some((section) => section.isRenderable());
       this.selectedPath = null;
       this.lastFocusedEntry = null;
-      if (this.element.querySelector(".tree-view-root")) {
-        this.element.removeChild(this.list);
-      }
       if (!this.element.querySelector("#add-projects-view")) {
         this.addProjectsView = new AddProjectsView();
         if (this.projectList) this.addProjectsView.setProjectList(this.projectList);
@@ -931,7 +1201,7 @@ class TreeView {
 
   selectActiveFile() {
     let activeFilePath = this.getActivePath();
-    if (this.entryForPath(activeFilePath)) {
+    if (this.treeEntryForPath(activeFilePath)) {
       return this.selectEntryForPath(activeFilePath);
     } else {
       // If the active file is not part of the project, deselect all entries.
@@ -960,9 +1230,9 @@ class TreeView {
       let currentPath = rootPath.substring(0, rootPath.lastIndexOf(path.sep));
       for (let pathComponent of pathComponents) {
         currentPath += path.sep + pathComponent;
-        let entry = this.entryForPath(currentPath);
+        let entry = this.treeEntryForPath(currentPath);
         if (!entry) return;
-        if (entry.classList.contains("directory")) {
+        if (entry.kind === "directory") {
           entry.expand();
         } else {
           this.selectEntry(entry);
@@ -986,6 +1256,10 @@ class TreeView {
   }
 
   entryForPath(entryPath) {
+    if (this.treeEntries) {
+      return this.elementForTreeEntry(this.treeEntryForPath(entryPath)) ?? undefined;
+    }
+
     let entries = Array.from(this.list.querySelectorAll(".entry"));
     // A symlink entry also matches its target's path via realpath, so an exact
     // path match anywhere in the list must beat an earlier realpath alias.
@@ -1007,7 +1281,7 @@ class TreeView {
   }
 
   selectEntryForPath(entryPath) {
-    let entry = this.entryForPath(entryPath);
+    let entry = this.treeEntryForPath(entryPath);
     return this.selectEntry(entry);
   }
 
@@ -1019,9 +1293,9 @@ class TreeView {
     let currentPath = rootPath.substring(0, rootPath.lastIndexOf(path.sep));
     for (let component of components) {
       currentPath += path.sep + component;
-      let entry = this.entryForPath(currentPath);
+      let entry = this.treeEntryForPath(currentPath);
       if (!entry) return;
-      if (entry.classList.contains("directory")) {
+      if (entry.kind === "directory") {
         entry.expand();
       }
       if (entry.isPathEqual(entryPath)) {
@@ -1039,9 +1313,9 @@ class TreeView {
     let selectedEntry = this.selectedEntry();
     if (selectedEntry != null) {
       // If the current entry is a directory…
-      if (selectedEntry.classList.contains("directory")) {
+      if (selectedEntry.kind === "directory" && selectedEntry.isExpanded) {
         // …the next entry should be its first child.
-        if (this.selectEntry(selectedEntry.entries.children[0])) {
+        if (this.selectEntry(selectedEntry.children[0])) {
           this.scrollToEntry(this.selectedEntry(), false);
           return;
         }
@@ -1065,45 +1339,22 @@ class TreeView {
       if (previousEntry) {
         this.selectEntry(previousEntry);
       } else {
-        this.selectEntry(selectedEntry.parentElement.closest(".directory"));
+        this.selectEntry(selectedEntry.parent);
       }
     } else {
-      let entries = this.list.querySelectorAll(".entry");
-      this.selectEntry(entries[entries.length - 1]);
+      this.selectEntry(this.visibleRows[this.visibleRows.length - 1]);
     }
     return this.scrollToEntry(this.selectedEntry(), false);
   }
 
   nextEntry(entry) {
-    let currentEntry = entry;
-    while (currentEntry != null) {
-      if (currentEntry.nextSibling != null) {
-        currentEntry = currentEntry.nextSibling;
-        if (currentEntry.matches(".entry")) {
-          return currentEntry;
-        }
-      } else {
-        currentEntry = currentEntry.parentElement.closest(".directory");
-      }
-    }
-    return null;
+    const index = this.visibleRows.indexOf(entry);
+    return index === -1 ? null : (this.visibleRows[index + 1] ?? null);
   }
 
   previousEntry(entry) {
-    let previousEntry = entry.previousSibling;
-    while (previousEntry && !previousEntry.matches(".entry")) {
-      previousEntry = previousEntry.previousSibling;
-    }
-    if (!previousEntry) return null;
-    // If the previous entry is an expanded directory, we need to select the
-    // last entry in that directory, not the directory itself.
-    if (previousEntry.matches(".directory.expanded")) {
-      let entries = previousEntry.querySelectorAll(".entry");
-      if (entries.length > 0) {
-        return entries[entries.length - 1];
-      }
-    }
-    return previousEntry;
+    const index = this.visibleRows.indexOf(entry);
+    return index <= 0 ? null : this.visibleRows[index - 1];
   }
 
   emptyViewControls() {
@@ -1148,20 +1399,21 @@ class TreeView {
   }
 
   scrollToEmptyViewControl(control) {
-    const scrollLeft = this.element.scrollLeft;
+    const scrollLeft = this.scroller.scrollLeft;
     if (control.scrollIntoViewIfNeeded) {
       control.scrollIntoViewIfNeeded(false);
     } else {
       control.scrollIntoView({ block: "nearest" });
     }
-    this.element.scrollLeft = scrollLeft;
+    this.scroller.scrollLeft = scrollLeft;
   }
 
   expandDirectory(isRecursive = false) {
     let selectedEntry = this.selectedEntry();
     if (!selectedEntry) return;
 
-    let directory = selectedEntry.closest(".directory");
+    let directory = selectedEntry.kind === "directory" ? selectedEntry : selectedEntry.parent;
+    if (!directory) return;
     if (isRecursive === false && directory.isExpanded) {
       if (directory.directory.getEntries().length > 0) {
         // Select the first entry in the expanded folder if it exists.
@@ -1180,7 +1432,8 @@ class TreeView {
     let selectedEntry = this.selectedEntry();
     if (!selectedEntry) return;
 
-    let directory = selectedEntry.closest(".expanded.directory");
+    let directory = selectedEntry.kind === "directory" ? selectedEntry : selectedEntry.parent;
+    while (directory && !directory.isExpanded) directory = directory.parent;
     if (directory) {
       directory.collapse(isRecursive);
       return this.selectEntry(directory);
@@ -1194,13 +1447,13 @@ class TreeView {
       return;
     }
 
-    if (selectedEntry.classList.contains("directory")) {
+    if (selectedEntry.kind === "directory") {
       if (expandDirectory) {
         return this.expandDirectory(false);
       } else {
         return selectedEntry.toggleExpansion();
       }
-    } else if (selectedEntry.classList.contains("file")) {
+    } else if (selectedEntry.kind === "file") {
       if (atom.config.get("tree-view.alwaysOpenExisting")) {
         options = { searchAllPanes: true, ...options };
       }
@@ -1213,7 +1466,7 @@ class TreeView {
     if (!selectedEntry) return;
 
     let pane = atom.workspace.getCenter().getActivePane();
-    if (!pane || !selectedEntry.classList.contains("file")) return;
+    if (!pane || selectedEntry.kind !== "file") return;
 
     if (atom.workspace.getCenter().getActivePaneItem()) {
       let split = pane.split(orientation, side);
@@ -1244,7 +1497,7 @@ class TreeView {
     if (selectedEntry == null) return;
 
     let pane = atom.workspace.getCenter().getPanes()[index];
-    if (pane && selectedEntry.classList.contains("file")) {
+    if (pane && selectedEntry.kind === "file") {
       return atom.workspace.open(selectedEntry.getPath(), { pane });
     }
   }
@@ -1348,12 +1601,12 @@ class TreeView {
       selectedEntries = this.getSelectedEntries();
     } else if (activePath) {
       selectedPaths = [activePath];
-      selectedEntries = [this.entryForPath(activePath)];
+      selectedEntries = [this.treeEntryForPath(activePath)];
     }
     if ((selectedPaths?.length ?? 0) === 0) return;
 
     // Skip entries inside special root sections (e.g. favourites)
-    selectedEntries = Array.from(selectedEntries).filter((e) => !e.closest(".tree-view-special"));
+    selectedEntries = Array.from(selectedEntries).filter((entry) => entry && !entry.section);
     selectedPaths = selectedEntries.map((e) => e.getPath());
     if (selectedPaths.length === 0) return;
 
@@ -1389,7 +1642,10 @@ class TreeView {
           let newSelectedEntry;
           let firstSelectedEntry = selectedEntries[0];
           if (firstSelectedEntry) {
-            newSelectedEntry = firstSelectedEntry.closest(".directory:not(.selected)");
+            newSelectedEntry = firstSelectedEntry.parent;
+            while (newSelectedEntry && this.selectedEntries.has(newSelectedEntry)) {
+              newSelectedEntry = newSelectedEntry.parent;
+            }
           }
 
           for (let selectedPath of selectedPaths) {
@@ -1527,7 +1783,7 @@ class TreeView {
     const selectedEntry = this.selectedEntry();
     if (!selectedEntry) return null;
     const selectedPath = selectedEntry.getPath();
-    return selectedEntry.classList.contains("file") ? path.dirname(selectedPath) : selectedPath;
+    return selectedEntry.kind === "file" ? path.dirname(selectedPath) : selectedPath;
   }
 
   pastePaths(initialPaths, operation, newDirectoryPath) {
@@ -1553,7 +1809,7 @@ class TreeView {
     let dialog = new AddDialog(selectedPath, isCreatingFile);
 
     dialog.onDidCreateDirectory((createdPath) => {
-      this.entryForPath(createdPath)?.reload();
+      this.treeEntryForPath(createdPath)?.reload();
       this.selectEntryForPath(createdPath);
       if (atom.config.get("tree-view.squashDirectoryNames")) this.updateRoots();
 
@@ -1561,7 +1817,7 @@ class TreeView {
     });
 
     dialog.onDidCreateFile((createdPath) => {
-      this.entryForPath(createdPath)?.reload();
+      this.treeEntryForPath(createdPath)?.reload();
       atom.workspace.open(createdPath);
       if (atom.config.get("tree-view.squashDirectoryNames")) this.updateRoots();
 
@@ -1573,7 +1829,7 @@ class TreeView {
   removeProjectFolder(event) {
     if (this.multiSelectEnabled()) {
       for (const entry of this.getSelectedEntries()) {
-        if (entry.classList.contains("project-root")) {
+        if (entry.projectRoot) {
           const path = entry.getPath?.();
           if (path) atom.project.removePath(path);
         }
@@ -1586,7 +1842,9 @@ class TreeView {
     let pathToRemove = event.target.closest(".project-root > .header")?.dataset.path;
 
     // If an entry is selected, remove that entry's project folder
-    pathToRemove ??= this.selectedEntry()?.closest(".project-root")?.getPath?.();
+    let selectedRoot = this.selectedEntry();
+    while (selectedRoot?.parent) selectedRoot = selectedRoot.parent;
+    pathToRemove ??= selectedRoot?.projectRoot ? selectedRoot.getPath() : null;
 
     // Finally, if only one project folder exists and nothing is selected,
     // remove that folder
@@ -1600,10 +1858,13 @@ class TreeView {
   }
 
   selectedEntry() {
-    return this.element.querySelector(".entry.selected");
+    return this.lastFocusedEntry && this.selectedEntries.has(this.lastFocusedEntry)
+      ? this.lastFocusedEntry
+      : (this.getSelectedEntries()[0] ?? null);
   }
 
   selectEntry(entry) {
+    entry = entry?.treeEntry ?? entry;
     if (!entry) return;
     this.addProjectsView?.clearSelection();
     this.selectedPath = entry.getPath();
@@ -1611,45 +1872,79 @@ class TreeView {
     let selectedEntries = this.getSelectedEntries();
     if (selectedEntries.length > 1 || selectedEntries[0] !== entry) {
       this.deselect(selectedEntries);
-      entry.classList.add("selected");
+      this.selectedEntries.add(entry);
+      entry.syncViews();
     }
     this.scheduleStickyHeadersUpdate();
     return entry;
   }
 
   getSelectedEntries() {
-    return this.element.querySelectorAll(".entry.selected");
+    const visible = this.visibleRows.filter((entry) => this.selectedEntries.has(entry));
+    for (const entry of this.selectedEntries) {
+      if (!visible.includes(entry)) visible.push(entry);
+    }
+    return visible;
   }
 
   deselect(elementsToDeselect) {
     elementsToDeselect ??= this.getSelectedEntries();
     for (let selected of elementsToDeselect) {
-      selected.classList.remove("selected");
+      selected = selected?.treeEntry ?? selected;
+      if (!selected) continue;
+      this.selectedEntries.delete(selected);
+      selected.syncViews();
     }
+    if (this.selectedEntries.size === 0) this.selectedPath = null;
     this.scheduleStickyHeadersUpdate();
   }
 
   scrollTop(top = null) {
     if (top !== null) {
-      return (this.element.scrollTop = top);
+      this.scroller.scrollTop = top;
+      this.updateStickyHeaderOverlay();
+      return this.scroller.scrollTop;
     } else {
-      return this.element.scrollTop;
+      return this.scroller.scrollTop;
     }
   }
 
   scrollBottom(bottom = null) {
     if (bottom !== null) {
-      return (this.element.scrollTop = bottom - this.element.offsetHeight);
+      this.scroller.scrollTop = bottom - this.scroller.clientHeight;
+      this.updateStickyHeaderOverlay();
+      return this.scroller.scrollTop;
     } else {
-      return this.element.scrollTop + this.element.offsetHeight;
+      return this.scroller.scrollTop + this.scroller.clientHeight;
     }
   }
 
   scrollToEntry(entry, center = true) {
-    let element = entry?.classList.contains("directory") ? entry.header : entry;
-    const scrollLeft = this.element.scrollLeft;
-    element?.scrollIntoViewIfNeeded(center);
-    this.element.scrollLeft = scrollLeft;
+    entry = entry?.treeEntry ?? entry;
+    if (!entry || entry.index < 0 || this.visibleRows[entry.index] !== entry) return;
+
+    const scrollLeft = this.scroller.scrollLeft;
+    const viewportHeight = this.scroller.clientHeight;
+    if (center) {
+      this.scroller.scrollTop = Math.max(
+        0,
+        entry.top - Math.max(0, viewportHeight - entry.height) / 2,
+      );
+    } else {
+      const stickyHeight = this.collectStickyHeaderEntries().reduce(
+        (height, stickyEntry) => height + stickyEntry.height,
+        0,
+      );
+      const visibleTop = this.scroller.scrollTop + stickyHeight;
+      const visibleBottom = this.scroller.scrollTop + viewportHeight;
+      if (entry.top < visibleTop) {
+        this.scroller.scrollTop = Math.max(0, entry.top - stickyHeight);
+      } else if (entry.top + entry.height > visibleBottom) {
+        this.scroller.scrollTop = entry.top + entry.height - viewportHeight;
+      }
+    }
+    this.updateStickyHeaderOverlay();
+    this.scroller.scrollLeft = scrollLeft;
   }
 
   scrollToBottom() {
@@ -1657,8 +1952,7 @@ class TreeView {
       let controls = this.emptyViewControls();
       return this.selectEmptyViewControl(controls[controls.length - 1]);
     }
-    const entries = this.list.querySelectorAll(".entry");
-    let lastEntry = entries[entries.length - 1];
+    let lastEntry = this.visibleRows[this.visibleRows.length - 1];
     if (lastEntry) {
       this.selectEntry(lastEntry);
       this.scrollToEntry(lastEntry);
@@ -1672,15 +1966,18 @@ class TreeView {
     if (this.roots[0]) {
       this.selectEntry(this.roots[0]);
     }
-    this.element.scrollTop = 0;
+    this.scroller.scrollTop = 0;
+    this.updateStickyHeaderOverlay();
   }
 
   pageUp() {
-    this.element.scrollTop -= this.element.offsetHeight;
+    this.scroller.scrollTop -= this.scroller.clientHeight;
+    this.updateStickyHeaderOverlay();
   }
 
   pageDown() {
-    this.element.scrollTop += this.element.offsetHeight;
+    this.scroller.scrollTop += this.scroller.clientHeight;
+    this.updateStickyHeaderOverlay();
   }
 
   // Copies an entry from `initialPath` to `newDirectoryPath`.
@@ -1826,14 +2123,16 @@ class TreeView {
     // If visible, force a redraw so the scrollbars are styled correctly based on
     // the theme.
     if (!this.isVisible()) return;
-    this.element.style.display = "none";
-    this.element.offsetWidth;
-    this.element.style.display = "";
-    this.scheduleStickyHeadersUpdate();
+    this.scroller.style.display = "none";
+    this.scroller.offsetWidth;
+    this.scroller.style.display = "";
+    this.maxMeasuredContentWidth = 0;
+    this.measureRowHeights();
+    this.rebuildVisibleRows();
   }
 
   onMouseDown(event) {
-    let entryToSelect = event.target.closest(".entry");
+    let entryToSelect = this.treeEntryForElement(event.target);
     if (!entryToSelect) return;
     event.stopPropagation();
 
@@ -1848,7 +2147,7 @@ class TreeView {
 
     let cmdKey = event.metaKey || (event.ctrlKey && process.platform !== "darwin");
     // return early if clicking on a selected entry
-    if (entryToSelect.classList.contains("selected")) {
+    if (this.selectedEntries.has(entryToSelect)) {
       // mouse right click or ctrl click as right click on darwin platforms
       if (event.button === 2 || (event.ctrlKey && process.platform === "darwin")) {
         return;
@@ -1882,7 +2181,7 @@ class TreeView {
     let { shiftKey, cmdKey } = this.selectOnMouseUp;
     this.selectOnMouseUp = null;
 
-    let entryToSelect = event.target.closest(".entry");
+    let entryToSelect = this.treeEntryForElement(event.target);
     if (!entryToSelect) return;
     event.stopPropagation();
 
@@ -1920,22 +2219,26 @@ class TreeView {
   // Public: Selects items within a range defined by a currently selected entry
   // and a new given entry. This is Shift+click functionality.
   selectContinuousEntries(entry, deselectOthers = true) {
+    entry = entry?.treeEntry ?? entry;
     let currentSelectedEntry = this.lastFocusedEntry ?? this.selectedEntry();
     if (!currentSelectedEntry) return [];
-    let parentContainer = entry.parentElement;
     let elements = [];
-    if (parentContainer === currentSelectedEntry.parentElement) {
-      let entries = Array.from(parentContainer.querySelectorAll(".entry"));
-      let entryIndex = entries.indexOf(entry);
-      let selectedIndex = entries.indexOf(currentSelectedEntry);
+    const sameRootContainer =
+      entry.parent != null ||
+      (entry.specialRoot && currentSelectedEntry.specialRoot) ||
+      (entry.projectRoot && currentSelectedEntry.projectRoot);
+    if (entry.parent === currentSelectedEntry.parent && sameRootContainer) {
+      let entryIndex = this.visibleRows.indexOf(entry);
+      let selectedIndex = this.visibleRows.indexOf(currentSelectedEntry);
       let minIndex = Math.min(entryIndex, selectedIndex);
       let maxIndex = Math.max(entryIndex, selectedIndex);
       for (let i = minIndex; i <= maxIndex; i++) {
-        elements.push(entries[i]);
+        elements.push(this.visibleRows[i]);
       }
       if (deselectOthers) this.deselect();
       for (let element of elements) {
-        element.classList.add("selected");
+        this.selectedEntries.add(element);
+        element.syncViews();
       }
     }
     return elements;
@@ -1944,7 +2247,19 @@ class TreeView {
   // Public: Selects an entry without clearing previously selected items. This
   // is Cmd+click functionality.
   selectMultipleEntries(entry) {
-    entry?.classList.toggle("selected");
+    entry = entry?.treeEntry ?? entry;
+    if (!entry) return;
+    if (this.selectedEntries.has(entry)) {
+      this.selectedEntries.delete(entry);
+      if (this.lastFocusedEntry === entry) {
+        this.lastFocusedEntry = this.getSelectedEntries()[0] ?? null;
+      }
+    } else {
+      this.selectedEntries.add(entry);
+      this.selectedPath = entry.getPath();
+      this.lastFocusedEntry = entry;
+    }
+    entry.syncViews();
     return entry;
   }
 
@@ -1953,6 +2268,8 @@ class TreeView {
   showFullMenu() {
     this.list.classList.remove("multi-select", "all-roots-selected");
     this.list.classList.add("full-menu");
+    this.stickyHeaderList.classList.remove("multi-select", "all-roots-selected");
+    this.stickyHeaderList.classList.add("full-menu");
   }
 
   // Toggle the `multi-select` class on the main list element to display the
@@ -1961,10 +2278,11 @@ class TreeView {
   showMultiSelectMenu() {
     this.list.classList.remove("full-menu");
     this.list.classList.add("multi-select");
-    const allRoots = Array.from(this.getSelectedEntries()).every((e) =>
-      e.classList.contains("project-root"),
-    );
+    this.stickyHeaderList.classList.remove("full-menu");
+    this.stickyHeaderList.classList.add("multi-select");
+    const allRoots = Array.from(this.getSelectedEntries()).every((entry) => entry.projectRoot);
     this.list.classList.toggle("all-roots-selected", allRoots);
+    this.stickyHeaderList.classList.toggle("all-roots-selected", allRoots);
   }
 
   showMultiSelectMenuIfNecessary() {
@@ -1983,7 +2301,8 @@ class TreeView {
   }
 
   onDragEnter(event) {
-    let entry = event.target.closest(".entry.directory");
+    const entryElement = event.target.closest(".entry.directory");
+    let entry = this.treeEntryForElement(entryElement);
     if (!entry) return;
     if (this.rootDragAndDrop.isDragging(event)) return;
     if (!this.isAtomTreeViewEvent(event)) return;
@@ -1993,21 +2312,22 @@ class TreeView {
       count = 0;
       this.dragEventCounts.set(entry, count);
     }
-    if (!(count !== 0 || entry.classList.contains("selected"))) {
-      entry.classList.add("drag-over", "selected");
+    if (!(count !== 0 || this.selectedEntries.has(entry))) {
+      entryElement.classList.add("drag-over", "selected");
     }
     this.dragEventCounts.set(entry, count + 1);
   }
 
   onDragLeave(event) {
-    let entry = event.target.closest(".entry.directory");
+    const entryElement = event.target.closest(".entry.directory");
+    let entry = this.treeEntryForElement(entryElement);
     if (!entry) return;
     if (this.rootDragAndDrop.isDragging(event)) return;
     if (!this.isAtomTreeViewEvent(event)) return;
     event.stopPropagation();
     this.dragEventCounts.set(entry, this.dragEventCounts.get(entry) - 1);
-    if (this.dragEventCounts.get(entry) === 0 && entry.classList.contains("drag-over")) {
-      entry.classList.remove("drag-over", "selected");
+    if (this.dragEventCounts.get(entry) === 0 && entryElement.classList.contains("drag-over")) {
+      entryElement.classList.remove("drag-over", "selected");
     }
   }
 
@@ -2015,7 +2335,7 @@ class TreeView {
   onDragStart(event) {
     this.dragEventCounts = new WeakMap();
     this.selectOnMouseUp = null;
-    let entry = event.target.closest(".entry");
+    let entry = this.treeEntryForElement(event.target);
     if (!entry) return;
     event.stopPropagation();
     if (this.rootDragAndDrop.canDragStart(event)) {
@@ -2033,20 +2353,27 @@ class TreeView {
     let initialPaths = [];
     for (let target of this.getSelectedEntries()) {
       let entryPath = target.getPath();
-      let parentSelected = target.parentNode.closest(".entry.selected");
+      let parentSelected = target.parent;
+      while (parentSelected && !this.selectedEntries.has(parentSelected)) {
+        parentSelected = parentSelected.parent;
+      }
       if (!parentSelected) {
         initialPaths.push(entryPath);
-        let newElement = target.cloneNode(true);
-        if (newElement.classList.contains("directory")) {
-          newElement.querySelector(".entries").remove();
+        let temporaryView = null;
+        let sourceElement = this.elementForTreeEntry(target);
+        if (!sourceElement) {
+          temporaryView = new TreeRowView(this, target.kind);
+          sourceElement = temporaryView.bind(target);
         }
-        for (let [key, value] of Object.entries(getStyleObject(target))) {
+        let newElement = sourceElement.cloneNode(true);
+        for (let [key, value] of Object.entries(getStyleObject(sourceElement))) {
           if (value === "") continue;
           newElement.style[key] = value;
         }
         newElement.style.paddingLeft = "1em";
         newElement.style.paddingRight = "1em";
         dragImage.append(newElement);
+        temporaryView?.destroy();
       }
     }
     document.body.appendChild(dragImage);
@@ -2059,21 +2386,23 @@ class TreeView {
 
   // Handle entry dragover event; reset default dragover actions.
   onDragOver(event) {
-    let entry = event.target.closest(".entry.directory");
+    const entryElement = event.target.closest(".entry.directory");
+    let entry = this.treeEntryForElement(entryElement);
     if (!entry) return;
     if (this.rootDragAndDrop.isDragging(event)) return;
     if (!this.isAtomTreeViewEvent(event)) return;
     event.preventDefault();
     event.stopPropagation();
-    if (this.dragEventCounts.get(entry) > 0 && entry.classList.contains("selected")) {
-      entry.classList.add("drag-over", "selected");
+    if (this.dragEventCounts.get(entry) > 0 && entryElement.classList.contains("selected")) {
+      entryElement.classList.add("drag-over", "selected");
     }
   }
 
   // Handle entry drop event.
   onDrop(event) {
     this.dragEventCounts = new WeakMap();
-    let entry = event.target.closest(".entry.directory");
+    const entryElement = event.target.closest(".entry.directory");
+    let entry = this.treeEntryForElement(entryElement);
     if (entry) {
       if (this.rootDragAndDrop.isDragging(event)) return;
       if (!this.isAtomTreeViewEvent(event)) return;
@@ -2081,16 +2410,15 @@ class TreeView {
       event.stopPropagation();
 
       // Drop onto special root section: delegate to onDrop callback
-      let specialSection = entry.closest(".tree-view-special");
-      if (specialSection) {
-        let section = this.specialRoots.find((s) => s.element === specialSection);
+      if (entry.section) {
+        let section = entry.section;
         if (section?.config.onDrop) {
           let initialPaths = event.dataTransfer.getData("initialPaths");
           if (initialPaths) {
             section.config.onDrop(JSON.parse(initialPaths));
           }
         }
-        entry.classList.remove("drag-over", "selected");
+        entryElement.classList.remove("drag-over", "selected");
         return;
       }
 
@@ -2103,7 +2431,7 @@ class TreeView {
         initialPaths = JSON.parse(initialPaths);
         if (initialPaths.includes(newDirectoryPath)) return;
 
-        entry.classList.remove("drag-over", "selected");
+        entryElement.classList.remove("drag-over", "selected");
         // Iterate backwards so that files in a dir are moved before the dir
         // itself.
         for (let j = initialPaths.length - 1; j >= 0; j -= 1) {
@@ -2114,7 +2442,7 @@ class TreeView {
           // TODO: Investigate whether this is still needed now that we're on
           // the `watchPath` API.
           let initialPath = initialPaths[j];
-          this.entryForPath(initialPath)?.collapse?.();
+          this.treeEntryForPath(initialPath)?.collapse?.();
           if ((process.platform === "darwin" && event.metaKey) || event.ctrlKey) {
             // Mimic OS-specific conventions in which holding down a modifier
             // key means that an entry is copied rather than moved.
@@ -2125,7 +2453,7 @@ class TreeView {
         }
       } else {
         // Drop event from OS
-        entry.classList.remove("selected");
+        entryElement.classList.remove("selected");
         for (let file of event.dataTransfer.files) {
           if ((process.platform === "darwin" && event.metaKey) || event.ctrlKey) {
             this.copyEntry(file.path, newDirectoryPath);

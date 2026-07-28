@@ -1,5 +1,6 @@
 const path = require("path");
 const TreeView = require("../lib/tree-view");
+const TreeEntry = require("../lib/tree-entry");
 
 describe("TreeView.entryForPath", () => {
   function makeEntry(entryPath, { realPath = entryPath, containedPaths = [] } = {}) {
@@ -42,6 +43,19 @@ describe("TreeView.entryForPath", () => {
     expect(entryForPath([shallow, deep], "/root/sub/missing.md")).toBe(deep);
     expect(entryForPath([shallow], "/nowhere/missing.md")).toBeNull();
   });
+
+  it("returns the mounted row for a logical entry", () => {
+    const logicalEntry = { getPath: () => "/root/file.js" };
+    const element = document.createElement("li");
+    const treeView = {
+      treeEntries: new Set([logicalEntry]),
+      treeEntryForPath: jasmine.createSpy("treeEntryForPath").and.returnValue(logicalEntry),
+      elementForTreeEntry: jasmine.createSpy("elementForTreeEntry").and.returnValue(element),
+    };
+
+    expect(TreeView.prototype.entryForPath.call(treeView, "/root/file.js")).toBe(element);
+    expect(treeView.elementForTreeEntry).toHaveBeenCalledWith(logicalEntry);
+  });
 });
 
 describe("TreeView root updates", () => {
@@ -59,52 +73,182 @@ describe("TreeView root updates", () => {
   });
 });
 
-describe("TreeView sticky headers", () => {
-  function rect(top, bottom, left = 0, width = 300) {
+describe("TreeView construction", () => {
+  let originalProjectPaths;
+  let treeView;
+
+  beforeEach(() => {
+    originalProjectPaths = atom.project.getPaths();
+    atom.project.setPaths([path.resolve(__dirname, "..")]);
+  });
+
+  afterEach(() => {
+    treeView?.destroy();
+    atom.project.setPaths(originalProjectPaths);
+  });
+
+  it("mounts project rows inside the scroller and keeps stickies outside it", () => {
+    treeView = new TreeView({});
+
+    expect(treeView.roots.length).toBe(1);
+    expect(treeView.visibleRows[0]).toBe(treeView.roots[0]);
+    expect(treeView.rowViews.has(treeView.roots[0])).toBe(true);
+    expect(treeView.scroller.contains(treeView.elementForTreeEntry(treeView.roots[0]))).toBe(true);
+    expect(treeView.scroller.contains(treeView.stickyHeaderLayer)).toBe(false);
+    expect(treeView.stickyHeaderLayer.parentElement).toBe(treeView.viewport);
+  });
+
+  it("keeps registered root sections before mounted project rows", () => {
+    treeView = new TreeView({});
+    const section = treeView.addSpecialRoot({
+      name: "Recent",
+      className: "recent",
+      entryClassName: "recent-entry",
+      iconClass: "icon-history",
+      getEntries: () => [__filename],
+    });
+
+    expect(treeView.list.firstElementChild).toBe(section.element);
+    expect(section.element.nextElementSibling).toBe(
+      treeView.elementForTreeEntry(treeView.roots[0]),
+    );
+  });
+});
+
+describe("TreeView row model and sticky headers", () => {
+  function item(name) {
+    const entryPath = path.join("/root", name);
     return {
-      top,
-      right: left + width,
-      bottom,
-      left,
-      width,
-      height: bottom - top,
+      name,
+      path: entryPath,
+      status: null,
+      isPathEqual: (candidate) => candidate === entryPath,
+      contains: () => false,
     };
   }
 
-  function directory({ top, bottom, headerTop, headerHeight, left = 0, projectRoot = false }) {
-    const entry = document.createElement("li");
-    entry.classList.add("directory", "entry", "list-nested-item", "expanded");
-    if (projectRoot) entry.classList.add("project-root");
-
-    const header = document.createElement("div");
-    header.classList.add("header", "list-item");
-    if (projectRoot) header.classList.add("project-root-header");
-    header.textContent = projectRoot ? "Project" : "Directory";
-
-    const entries = document.createElement("ol");
-    entries.classList.add("entries", "list-tree");
-    entry.append(header, entries);
-    entry.header = header;
-    entry.entries = entries;
-    entry.getBoundingClientRect = () => rect(top, bottom, left);
-    header.getBoundingClientRect = () => rect(headerTop, headerTop + headerHeight, left);
-    return entry;
+  function entry(treeView, name, kind, parent = null, options = {}) {
+    const result = new TreeEntry(treeView, {
+      item: item(name),
+      kind,
+      parent,
+      ...options,
+    });
+    if (parent) parent.children.push(result);
+    result.isExpanded = kind === "directory";
+    return result;
   }
 
-  it("toggles the package-owned state and clears the overlay when disabled", () => {
-    const treeView = {
-      element: document.createElement("div"),
-      scheduleStickyHeadersUpdate: jasmine.createSpy("scheduleStickyHeadersUpdate"),
-      renderStickyHeaderEntries: jasmine.createSpy("renderStickyHeaderEntries"),
+  function layout(treeView, roots, regularHeight = 24, rootHeight = 32) {
+    const rows = [];
+    const tops = [0];
+    const append = (current, depth) => {
+      current.depth = depth;
+      current.index = rows.length;
+      current.top = tops[tops.length - 1];
+      current.height = current.projectRoot ? rootHeight : regularHeight;
+      rows.push(current);
+      tops.push(current.top + current.height);
+      if (current.kind === "directory" && current.isExpanded) {
+        for (const child of current.children) append(child, depth + 1);
+      }
+      current.subtreeEndIndex = rows.length;
     };
+    for (const root of roots) append(root, 0);
+    treeView.visibleRows = rows;
+    treeView.rowTops = tops;
+  }
 
-    TreeView.prototype.setStickyHeadersEnabled.call(treeView, true);
-    expect(treeView.element.classList.contains("sticky-headers")).toBe(true);
-    expect(treeView.scheduleStickyHeadersUpdate).toHaveBeenCalled();
+  function stickyHarness() {
+    const treeView = Object.create(TreeView.prototype);
+    treeView.stickyHeadersEnabled = true;
+    treeView.scroller = document.createElement("div");
+    Object.defineProperties(treeView.scroller, {
+      scrollTop: { value: 0, writable: true },
+      scrollLeft: { value: 0, writable: true },
+    });
+    treeView.list = document.createElement("ol");
+    treeView.list.style.width = "300px";
+    treeView.selectedEntries = new Set();
+    return treeView;
+  }
 
-    TreeView.prototype.setStickyHeadersEnabled.call(treeView, false);
-    expect(treeView.element.classList.contains("sticky-headers")).toBe(false);
-    expect(treeView.renderStickyHeaderEntries).toHaveBeenCalledWith([]);
+  it("keeps the root stable from the first scroll position and derives nested stickies from offsets", () => {
+    const treeView = stickyHarness();
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    const source = entry(treeView, "source", "directory", root);
+    const components = entry(treeView, "components", "directory", source);
+    entry(treeView, "button.js", "file", components);
+    layout(treeView, [root]);
+
+    expect(treeView.collectStickyHeaderEntries().map((row) => row.name)).toEqual(["root"]);
+
+    treeView.scroller.scrollTop = 1;
+    expect(treeView.collectStickyHeaderEntries().map((row) => row.name)).toEqual([
+      "root",
+      "source",
+      "components",
+    ]);
+  });
+
+  it("unpins a directory exactly when its final descendant leaves its sticky slot", () => {
+    const treeView = stickyHarness();
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    const directory = entry(treeView, "source", "directory", root);
+    entry(treeView, "last.js", "file", directory);
+    layout(treeView, [root]);
+
+    treeView.scroller.scrollTop = 47;
+    expect(treeView.collectStickyHeaderEntries().map((row) => row.name)).toEqual([
+      "root",
+      "source",
+    ]);
+
+    treeView.scroller.scrollTop = 48;
+    expect(treeView.collectStickyHeaderEntries().map((row) => row.name)).toEqual(["root"]);
+  });
+
+  it("pushes an ending sticky directory upward before its next sibling", () => {
+    const treeView = stickyHarness();
+    treeView.stickyHeaderLayer = document.createElement("div");
+    treeView.stickyHeaderList = document.createElement("ol");
+    treeView.stickyHeaderLayer.appendChild(treeView.stickyHeaderList);
+    treeView.stickyHeaderEntries = [];
+
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    const directory = entry(treeView, "source", "directory", root);
+    entry(treeView, "last.js", "file", directory);
+    entry(treeView, "next-directory", "directory", root);
+    layout(treeView, [root]);
+
+    treeView.scroller.scrollTop = 25;
+    treeView.renderStickyHeaderEntries(treeView.collectStickyHeaderEntries());
+
+    expect(treeView.stickyHeaderList.children.length).toBe(2);
+    expect(treeView.stickyHeaderList.children[1].style.top).toBe("-1px");
+    expect(treeView.stickyHeaderList.children[0].style.zIndex).toBe("2");
+    expect(treeView.stickyHeaderList.children[1].style.zIndex).toBe("1");
+
+    treeView.scroller.scrollTop = 47;
+    treeView.renderStickyHeaderEntries(treeView.collectStickyHeaderEntries());
+    expect(treeView.stickyHeaderList.children[1].style.top).toBe("-23px");
+
+    treeView.scroller.scrollTop = 48;
+    treeView.renderStickyHeaderEntries(treeView.collectStickyHeaderEntries());
+    expect(treeView.stickyHeaderList.children.length).toBe(1);
+    treeView.clearStickyHeaderViews();
+  });
+
+  it("switches roots from logical row boundaries without reading layout geometry", () => {
+    const treeView = stickyHarness();
+    const first = entry(treeView, "first", "directory", null, { projectRoot: true });
+    entry(treeView, "one.js", "file", first);
+    const second = entry(treeView, "second", "directory", null, { projectRoot: true });
+    entry(treeView, "two.js", "file", second);
+    layout(treeView, [first, second]);
+
+    treeView.scroller.scrollTop = second.top;
+    expect(treeView.collectStickyHeaderEntries().map((row) => row.name)).toEqual(["second"]);
   });
 
   it("updates immediately on scroll instead of waiting for another animation frame", () => {
@@ -122,212 +266,108 @@ describe("TreeView sticky headers", () => {
     expect(treeView.updateStickyHeaderOverlay).toHaveBeenCalled();
   });
 
-  it("collects only the expanded ancestor chain that has crossed each sticky slot", () => {
-    const treeView = Object.create(TreeView.prototype);
-    treeView.stickyHeadersEnabled = true;
-    treeView.element = document.createElement("div");
-    treeView.element.getBoundingClientRect = () => rect(0, 220);
-    treeView.stickyHeaderLayer = document.createElement("div");
-    treeView.element.appendChild(treeView.stickyHeaderLayer);
-
-    const root = directory({
-      top: -80,
-      bottom: 300,
-      headerTop: -80,
-      headerHeight: 32,
-      projectRoot: true,
-    });
-    const source = directory({
-      top: -48,
-      bottom: 260,
-      headerTop: -48,
-      headerHeight: 24,
-      left: 18,
-    });
-    const components = directory({
-      top: -24,
-      bottom: 180,
-      headerTop: -24,
-      headerHeight: 24,
-      left: 36,
-    });
-    root.entries.appendChild(source);
-    source.entries.appendChild(components);
-    treeView.element.appendChild(root);
-
-    expect(treeView.collectStickyHeaderEntries()).toEqual([root, source, components]);
-
-    root.header.getBoundingClientRect = () => rect(0, 32);
-    expect(treeView.collectStickyHeaderEntries()).toEqual([]);
-  });
-
-  it("keeps a directory pinned until its final descendant has passed the sticky slot", () => {
-    const treeView = Object.create(TreeView.prototype);
-    treeView.stickyHeadersEnabled = true;
-    treeView.element = document.createElement("div");
-    treeView.element.getBoundingClientRect = () => rect(0, 220);
-    treeView.stickyHeaderLayer = document.createElement("div");
-    treeView.element.appendChild(treeView.stickyHeaderLayer);
-
-    const root = directory({
-      top: -40,
-      bottom: 200,
-      headerTop: -40,
-      headerHeight: 32,
-      projectRoot: true,
-    });
-    const directoryWithFinalFile = directory({
-      top: -8,
-      bottom: 40,
-      headerTop: -8,
-      headerHeight: 24,
-      left: 18,
-    });
-    root.entries.appendChild(directoryWithFinalFile);
-    treeView.element.appendChild(root);
-
-    expect(treeView.collectStickyHeaderEntries()).toEqual([root, directoryWithFinalFile]);
-
-    directoryWithFinalFile.getBoundingClientRect = () => rect(-8, 32, 18);
-    expect(treeView.collectStickyHeaderEntries()).toEqual([root]);
-  });
-
-  it("keeps rendered header elements stable while synchronizing selection and status", () => {
-    const treeView = Object.create(TreeView.prototype);
-    treeView.element = document.createElement("div");
-    treeView.element.getBoundingClientRect = () => rect(0, 220);
+  it("renders sticky rows from the same logical entry without source-row handoffs", () => {
+    const treeView = stickyHarness();
     treeView.stickyHeaderLayer = document.createElement("div");
     treeView.stickyHeaderList = document.createElement("ol");
     treeView.stickyHeaderLayer.appendChild(treeView.stickyHeaderList);
-    treeView.stickyHeaderLayer.hidden = true;
-    treeView.stickyHeaderLayer.getBoundingClientRect = () =>
-      treeView.stickyHeaderLayer.hidden ? rect(0, 0, 0, 0) : rect(0, 0, 10);
     treeView.stickyHeaderEntries = [];
-    treeView.stickyHeaderOriginals = new WeakMap();
 
-    const root = directory({
-      top: -32,
-      bottom: 300,
-      headerTop: -32,
-      headerHeight: 32,
-      left: 15,
-      projectRoot: true,
-    });
-    treeView.element.append(root, treeView.stickyHeaderLayer);
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    root.height = 32;
+    root.depth = 0;
 
     treeView.renderStickyHeaderEntries([root]);
-    const stickyEntry = treeView.stickyHeaderList.firstElementChild;
-    expect(root.classList.contains("tree-view-sticky-header-source")).toBe(true);
-    expect(stickyEntry.classList.contains("entry")).toBe(false);
-    expect(stickyEntry.textContent).toBe("Project");
-    expect(stickyEntry.style.getPropertyValue("--tree-view-sticky-content-offset")).toBe("5px");
-    expect(treeView.stickyHeaderList.style.height).toBe("32px");
+    const stickyElement = treeView.stickyHeaderList.firstElementChild;
+    expect(stickyElement.treeEntry).toBe(root);
+    expect(stickyElement.classList.contains("tree-view-sticky-header")).toBe(true);
+    expect(treeView.treeEntryForElement(stickyElement.firstElementChild)).toBe(root);
 
-    root.classList.add("selected", "status-modified");
+    treeView.selectedEntries.add(root);
+    root.item.status = "modified";
     treeView.renderStickyHeaderEntries([root]);
-    expect(treeView.stickyHeaderList.firstElementChild).toBe(stickyEntry);
-    expect(stickyEntry.classList.contains("selected")).toBe(true);
-    expect(stickyEntry.classList.contains("status-modified")).toBe(true);
-
-    root.header.textContent = "Renamed Project";
-    treeView.renderStickyHeaderEntries([root]);
-    expect(treeView.stickyHeaderList.firstElementChild).toBe(stickyEntry);
-    expect(stickyEntry.textContent).toBe("Renamed Project");
+    expect(treeView.stickyHeaderList.firstElementChild).toBe(stickyElement);
+    expect(stickyElement.classList.contains("selected")).toBe(true);
+    expect(stickyElement.classList.contains("status-modified")).toBe(true);
 
     treeView.renderStickyHeaderEntries([]);
-    expect(root.classList.contains("tree-view-sticky-header-source")).toBe(false);
     expect(treeView.stickyHeaderLayer.hidden).toBe(true);
-    expect(treeView.stickyHeaderList.style.height).toBe("");
+    expect(root.views.size).toBe(0);
   });
 
-  it("keeps the sticky stack fully backed without transforming its rows", () => {
-    const treeView = Object.create(TreeView.prototype);
-    treeView.element = document.createElement("div");
-    treeView.stickyHeaderLayer = document.createElement("div");
-    treeView.stickyHeaderLayer.getBoundingClientRect = () => rect(0, 0);
-    treeView.stickyHeaderList = document.createElement("ol");
-    treeView.stickyHeaderLayer.appendChild(treeView.stickyHeaderList);
-    treeView.stickyHeaderEntries = [];
-    treeView.stickyHeaderOriginals = new WeakMap();
-
-    const root = directory({
-      top: -40,
-      bottom: 200,
-      headerTop: -40,
-      headerHeight: 32,
-      projectRoot: true,
-    });
-    const endingDirectory = directory({
-      top: -8,
-      bottom: 40,
-      headerTop: -8,
-      headerHeight: 24,
-      left: 18,
-    });
-
-    treeView.renderStickyHeaderEntries([root, endingDirectory]);
-
-    const stickyEntries = treeView.stickyHeaderList.children;
-    expect(stickyEntries[0].style.transform).toBe("");
-    expect(stickyEntries[1].style.transform).toBe("");
-    expect(treeView.stickyHeaderList.style.height).toBe("56px");
-
-    endingDirectory.getBoundingClientRect = () => rect(-8, 33, 18);
-    treeView.renderStickyHeaderEntries([root, endingDirectory]);
-    expect(treeView.stickyHeaderList.children[1]).toBe(stickyEntries[1]);
-    expect(treeView.stickyHeaderList.style.height).toBe("56px");
-  });
-
-  it("forwards pointer actions to the original directory header", () => {
-    const treeView = Object.create(TreeView.prototype);
-    treeView.element = document.createElement("div");
-    treeView.element.getBoundingClientRect = () => rect(0, 220);
+  it("keeps the stable sticky prefix mounted when a nested directory joins the stack", () => {
+    const treeView = stickyHarness();
     treeView.stickyHeaderLayer = document.createElement("div");
     treeView.stickyHeaderList = document.createElement("ol");
     treeView.stickyHeaderLayer.appendChild(treeView.stickyHeaderList);
     treeView.stickyHeaderEntries = [];
-    treeView.stickyHeaderOriginals = new WeakMap();
 
-    const root = directory({
-      top: -32,
-      bottom: 300,
-      headerTop: -32,
-      headerHeight: 32,
-      left: 5,
-      projectRoot: true,
-    });
-    treeView.element.append(root, treeView.stickyHeaderLayer);
-    jasmine.attachToDOM(treeView.element);
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    const source = entry(treeView, "source", "directory", root);
+    root.height = 32;
+    source.height = 24;
+
     treeView.renderStickyHeaderEntries([root]);
+    const rootElement = treeView.stickyHeaderList.firstElementChild;
+    treeView.renderStickyHeaderEntries([root, source]);
 
-    const stickyHeader = treeView.stickyHeaderList.querySelector(".tree-view-sticky-header-row");
-    stickyHeader.getBoundingClientRect = () => rect(0, 32);
-    treeView.stickyHeaderLayer.addEventListener("click", (event) => {
-      treeView.forwardStickyHeaderEvent(event);
-    });
-    const originalClick = jasmine.createSpy("originalClick");
-    root.header.addEventListener("click", originalClick);
-
-    stickyHeader.dispatchEvent(
-      new MouseEvent("click", {
-        bubbles: true,
-        cancelable: true,
-        clientX: 10,
-        clientY: 7,
-        ctrlKey: true,
-        detail: 1,
-      }),
-    );
-
-    expect(originalClick).toHaveBeenCalled();
-    const forwardedEvent = originalClick.calls.mostRecent().args[0];
-    expect(forwardedEvent.target).toBe(root.header);
-    expect(forwardedEvent.clientX).toBe(15);
-    expect(forwardedEvent.clientY).toBe(-25);
-    expect(forwardedEvent.ctrlKey).toBe(true);
+    expect(treeView.stickyHeaderList.firstElementChild).toBe(rootElement);
+    expect(treeView.stickyHeaderList.lastElementChild.treeEntry).toBe(source);
+    treeView.clearStickyHeaderViews();
   });
 
-  it("keeps row content and sticky surfaces above their state backgrounds", () => {
+  it("keeps every visible row mounted while scrolling", () => {
+    const treeView = stickyHarness();
+    treeView.stickyHeadersEnabled = false;
+    treeView.stickyHeaderLayer = document.createElement("div");
+    treeView.stickyHeaderList = document.createElement("ol");
+    treeView.stickyHeaderLayer.appendChild(treeView.stickyHeaderList);
+    treeView.stickyHeaderEntries = [];
+    treeView.rowViews = new Map();
+    treeView.specialRoots = [];
+    treeView.maxMeasuredContentWidth = 0;
+    treeView.regularRowHeight = 24;
+    treeView.list = document.createElement("ol");
+    Object.defineProperty(treeView.scroller, "clientWidth", { value: 300 });
+
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    for (let index = 0; index < 100; index++) {
+      entry(treeView, `file-${index}.js`, "file", root);
+    }
+    layout(treeView, [root]);
+
+    treeView.renderVisibleRows();
+    const initialElements = new Map(
+      Array.from(treeView.rowViews, ([row, view]) => [row, view.element]),
+    );
+    expect(treeView.rowViews.size).toBe(treeView.visibleRows.length);
+
+    treeView.scroller.scrollTop = 12000;
+    treeView.updateStickyHeaderOverlay();
+    expect(treeView.rowViews.size).toBe(treeView.visibleRows.length);
+    for (const [row, element] of initialElements) {
+      expect(treeView.rowViews.get(row).element).toBe(element);
+    }
+    treeView.destroyRowViews();
+  });
+
+  it("keeps the package-owned state and clears the overlay when disabled", () => {
+    const treeView = {
+      element: document.createElement("div"),
+      scheduleStickyHeadersUpdate: jasmine.createSpy("scheduleStickyHeadersUpdate"),
+      renderStickyHeaderEntries: jasmine.createSpy("renderStickyHeaderEntries"),
+    };
+
+    TreeView.prototype.setStickyHeadersEnabled.call(treeView, true);
+    expect(treeView.element.classList.contains("sticky-headers")).toBe(true);
+    expect(treeView.scheduleStickyHeadersUpdate).toHaveBeenCalled();
+
+    TreeView.prototype.setStickyHeadersEnabled.call(treeView, false);
+    expect(treeView.element.classList.contains("sticky-headers")).toBe(false);
+    expect(treeView.renderStickyHeaderEntries).toHaveBeenCalledWith([]);
+  });
+
+  it("keeps scrolling and sticky paint in separate surfaces", () => {
     const stylesheet = atom.themes.requireStylesheet(
       path.join(__dirname, "..", "styles", "tree-view-plus.css"),
     );
@@ -343,27 +383,25 @@ describe("TreeView sticky headers", () => {
       --ui-tab-height: 32px;
       --ui-size: 12px;
       --component-padding: 8px;
+      --component-icon-padding: 5px;
+      --disclosure-arrow-size: 12px;
     `;
 
+    const viewport = document.createElement("div");
+    viewport.classList.add("tree-view-viewport");
+    const scroller = document.createElement("div");
+    scroller.classList.add("tree-view-scroller");
+    const list = document.createElement("ol");
+    list.classList.add("tree-view-root", "list-tree", "has-collapsable-children");
     const file = document.createElement("li");
-    file.classList.add("file", "entry", "list-item", "selected");
+    file.classList.add("file", "entry", "list-item", "tree-view-row", "selected");
+    file.style.setProperty("--tree-view-depth", "1");
     const fileName = document.createElement("span");
     fileName.classList.add("name");
     fileName.textContent = "styles.css";
     file.appendChild(fileName);
-
-    const stickySource = document.createElement("li");
-    stickySource.classList.add(
-      "directory",
-      "entry",
-      "list-nested-item",
-      "selected",
-      "tree-view-sticky-header-source",
-    );
-    const stickySourceHeader = document.createElement("div");
-    stickySourceHeader.classList.add("header", "list-item");
-    stickySourceHeader.textContent = "Source";
-    stickySource.appendChild(stickySourceHeader);
+    list.appendChild(file);
+    scroller.appendChild(list);
 
     const stickyLayer = document.createElement("div");
     stickyLayer.classList.add("tree-view-sticky-header-layer");
@@ -383,26 +421,24 @@ describe("TreeView sticky headers", () => {
     stickyEntry.appendChild(stickyRow);
     stickyList.appendChild(stickyEntry);
     stickyLayer.appendChild(stickyList);
-    tree.append(stickyLayer, stickySource, file);
+    viewport.append(scroller, stickyLayer);
+    tree.appendChild(viewport);
     jasmine.attachToDOM(tree);
 
     try {
+      expect(getComputedStyle(tree).overflow).toBe("hidden");
+      expect(getComputedStyle(scroller).overflow).toBe("auto");
+      expect(getComputedStyle(file).marginLeft).toBe("0px");
       expect(getComputedStyle(fileName).position).toBe("relative");
       expect(getComputedStyle(file, "::before").backgroundColor).toBe("rgb(220, 225, 235)");
-      expect(getComputedStyle(stickyList).backgroundColor).toBe("rgb(242, 242, 242)");
-      expect(getComputedStyle(stickyEntry).backgroundColor).toBe("rgb(242, 242, 242)");
-      expect(getComputedStyle(stickyRow).backgroundColor).toBe("rgb(220, 225, 235)");
-      expect(getComputedStyle(stickyEntry).transform).toBe("none");
+      expect(getComputedStyle(stickyLayer).position).toBe("absolute");
       expect(getComputedStyle(stickyLayer).height).toBe("0px");
-      expect(getComputedStyle(stickyLayer).overflow).toBe("visible");
       expect(getComputedStyle(stickyList).overflow).toBe("hidden");
       expect(getComputedStyle(stickyList).contain).toBe("paint");
-      expect(getComputedStyle(stickyList).transform).not.toBe("none");
-      expect(getComputedStyle(stickySourceHeader).visibility).toBe("hidden");
-      expect(getComputedStyle(stickySource, "::before").visibility).toBe("hidden");
+      expect(getComputedStyle(stickyList).transform).toBe("none");
+      expect(getComputedStyle(stickyRow).backgroundColor).toBe("rgb(220, 225, 235)");
 
       tree.focus();
-      expect(getComputedStyle(file, "::before").backgroundColor).toBe("rgb(90, 138, 233)");
       expect(getComputedStyle(stickyRow).backgroundColor).toBe("rgb(90, 138, 233)");
     } finally {
       stylesheet.dispose();
