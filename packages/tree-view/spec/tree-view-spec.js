@@ -113,6 +113,53 @@ describe("TreeView construction", () => {
       treeView.elementForTreeEntry(treeView.roots[0]),
     );
   });
+
+  describe("when a root section stops showing its entries", () => {
+    function sectionWithSelectedEntry() {
+      treeView = new TreeView({});
+      const section = treeView.addSpecialRoot({
+        name: "Recent",
+        className: "recent",
+        entryClassName: "recent-entry",
+        iconClass: "icon-history",
+        getEntries: () => [__filename],
+      });
+      treeView.selectEntry(section.entries[0]);
+      expect(treeView.getSelectedEntries()).toEqual([section.entries[0]]);
+      return section;
+    }
+
+    // A closed section keeps its entries registered, so nothing drops them out
+    // of the selection on its own — the selection would stay on a row that is
+    // no longer rendered, and every command reading it would act on that row.
+    it("hands the selection to the section root when it collapses", () => {
+      const section = sectionWithSelectedEntry();
+
+      section.collapse();
+
+      expect(treeView.selectedEntries.has(section.entries[0])).toBe(false);
+      expect(treeView.getSelectedEntries()).toEqual([section.root]);
+      expect(treeView.lastFocusedEntry).toBe(section.root);
+    });
+
+    it("falls back to a project row when the section itself is hidden", () => {
+      const section = sectionWithSelectedEntry();
+
+      section.toggleVisible();
+
+      expect(treeView.selectedEntries.has(section.entries[0])).toBe(false);
+      expect(treeView.getSelectedEntries()).toEqual([treeView.roots[0]]);
+    });
+
+    it("leaves a selection outside the section alone", () => {
+      const section = sectionWithSelectedEntry();
+      treeView.selectEntry(treeView.roots[0]);
+
+      section.collapse();
+
+      expect(treeView.getSelectedEntries()).toEqual([treeView.roots[0]]);
+    });
+  });
 });
 
 describe("TreeView row model and sticky headers", () => {
@@ -325,7 +372,7 @@ describe("TreeView row model and sticky headers", () => {
     treeView.stickyHeaderEntries = [];
     treeView.rowViews = new Map();
     treeView.specialRoots = [];
-    treeView.maxMeasuredContentWidth = 0;
+    treeView.contentWidth = 0;
     treeView.regularRowHeight = 24;
     treeView.list = document.createElement("ol");
     Object.defineProperty(treeView.scroller, "clientWidth", { value: 300 });
@@ -440,6 +487,78 @@ describe("TreeView row model and sticky headers", () => {
 
       tree.focus();
       expect(getComputedStyle(stickyRow).backgroundColor).toBe("rgb(90, 138, 233)");
+    } finally {
+      stylesheet.dispose();
+    }
+  });
+
+  // The list sizes itself, rather than script writing back the widest row it
+  // measured: a row is `min-width: 100%` of the list, so a measured maximum
+  // fed back into the list width can only ever grow.
+  it("follows a long row's width back down when the row goes away", () => {
+    const stylesheet = atom.themes.requireStylesheet(
+      path.join(__dirname, "..", "styles", "tree-view-plus.css"),
+    );
+    const tree = document.createElement("div");
+    tree.classList.add("tree-view");
+    tree.style.cssText = `
+      width: 200px;
+      height: 300px;
+      --ui-line-height: 24px;
+      --ui-size: 12px;
+      --component-padding: 8px;
+      --component-icon-padding: 5px;
+      --disclosure-arrow-size: 12px;
+    `;
+
+    const viewport = document.createElement("div");
+    viewport.classList.add("tree-view-viewport");
+    const scroller = document.createElement("div");
+    scroller.classList.add("tree-view-scroller");
+    const list = document.createElement("ol");
+    list.classList.add("tree-view-root", "list-tree", "has-collapsable-children");
+
+    function row(name) {
+      const element = document.createElement("li");
+      element.classList.add("file", "entry", "list-item", "tree-view-row");
+      element.style.setProperty("--tree-view-depth", "0");
+      const label = document.createElement("span");
+      label.classList.add("name");
+      label.textContent = name;
+      element.appendChild(label);
+      return element;
+    }
+
+    // A root section is its own list nested in the tree, and it no longer gets
+    // a width written onto it either.
+    const section = document.createElement("ol");
+    section.classList.add("recent", "tree-view-special", "list-tree", "has-collapsable-children");
+    const sectionRow = row("b.js");
+    section.appendChild(sectionRow);
+
+    const short = row("a.js");
+    const long = row(`${"long-".repeat(20)}name.js`);
+    list.append(section, short, long);
+    scroller.appendChild(list);
+    viewport.appendChild(scroller);
+    tree.appendChild(viewport);
+    jasmine.attachToDOM(tree);
+
+    try {
+      const available = scroller.clientWidth;
+      const overflowing = list.getBoundingClientRect().width;
+      expect(overflowing).toBeGreaterThan(available);
+      // Short rows still stretch across the whole scrollable width, so hover
+      // and selection do not stop at the end of the name.
+      expect(short.getBoundingClientRect().width).toBe(overflowing);
+      expect(section.getBoundingClientRect().width).toBe(overflowing);
+      expect(sectionRow.getBoundingClientRect().width).toBe(overflowing);
+
+      long.remove();
+
+      expect(list.getBoundingClientRect().width).toBe(available);
+      expect(short.getBoundingClientRect().width).toBe(available);
+      expect(sectionRow.getBoundingClientRect().width).toBe(available);
     } finally {
       stylesheet.dispose();
     }

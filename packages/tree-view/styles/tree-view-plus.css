@@ -88,6 +88,11 @@
     box-sizing: border-box;
     margin: 0;
     padding: 0;
+    /* The rows are `width: max-content; min-width: 100%`, so the list shrinks
+       to wrap its widest row and the rows then stretch back out to fill it.
+       This is what sizes the horizontal scrollbar, and unlike a width measured
+       in script it follows the content back down when a long entry goes away. */
+    width: max-content;
     min-width: 100%;
     background-color: inherit;
 
@@ -135,7 +140,8 @@
     }
   }
 
-  .tree-view-root.has-collapsable-children > .tree-view-row.file {
+  .tree-view-root.has-collapsable-children > .tree-view-row.file,
+  .tree-view-special.has-collapsable-children > .tree-view-row.file {
     /* Files reserve the disclosure width in --tree-view-indent. Override the
        shared list-item margin so it is not counted a second time. */
     margin-left: 0;

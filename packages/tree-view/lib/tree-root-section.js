@@ -57,6 +57,7 @@ module.exports = class TreeRootSection {
     if (!this.isExpanded) return;
     this.isExpanded = false;
     this.root.isExpanded = false;
+    this.treeView.releaseSelectionInSection(this);
     this.treeView.rebuildVisibleRows();
   }
 
@@ -104,6 +105,7 @@ module.exports = class TreeRootSection {
 
   toggleVisible() {
     this.isVisible = !this.isVisible;
+    if (!this.isVisible) this.treeView.releaseSelectionInSection(this);
     this.treeView.rebuildVisibleRows();
   }
 

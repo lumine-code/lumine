@@ -438,24 +438,34 @@ describe("Markdown Preview", function () {
   describe("markdown-preview:preview-file", function () {
     // The real row builder, so this covers the actual DOM contract rather than
     // a stand-in that could drift from it.
-    const FileView = require("../../tree-view/lib/file-view");
+    const TreeEntry = require("../../tree-view/lib/tree-entry");
+    const TreeRowView = require("../../tree-view/lib/tree-row-view");
+    const rowViews = [];
+
+    afterEach(function () {
+      for (const view of rowViews) view.destroy();
+      rowViews.length = 0;
+    });
 
     function treeViewRow(name, filePath = path.join(atom.project.getPaths()[0], name)) {
-      const treeView = document.createElement("div");
-      treeView.classList.add("tree-view");
+      const container = document.createElement("div");
+      container.classList.add("tree-view");
 
-      const view = new FileView({
-        name,
-        path: filePath,
-        symlink: false,
-        status: null,
-        onDidDestroy: () => ({ dispose() {} }),
-        onDidStatusChange: () => ({ dispose() {} }),
-        isPathEqual: (other) => other === filePath,
+      const treeView = { selectedEntries: new Set() };
+      const entry = new TreeEntry(treeView, {
+        item: {
+          name,
+          path: filePath,
+          status: null,
+          isPathEqual: (other) => other === filePath,
+        },
+        kind: "file",
       });
+      const view = new TreeRowView(treeView, "file");
+      rowViews.push(view);
+      container.appendChild(view.bind(entry));
 
-      treeView.appendChild(view.element);
-      return { row: view.element, nameSpan: view.fileName };
+      return { row: view.element, nameSpan: view.name };
     }
 
     function contextMenuLabels(element) {

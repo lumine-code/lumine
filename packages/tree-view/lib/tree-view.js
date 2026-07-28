@@ -95,7 +95,7 @@ class TreeView {
     this.selectedEntries = new Set();
     this.regularRowHeight = 24;
     this.rootRowHeight = 32;
-    this.maxMeasuredContentWidth = 0;
+    this.contentWidth = 0;
 
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
@@ -327,7 +327,9 @@ class TreeView {
       this.stickyHeaderLeft = stickyLeft;
       this.stickyHeaderList.style.left = `${stickyLeft}px`;
     }
-    this.stickyHeaderList.style.width = this.list.style.width || "100%";
+    // The cached width, not a fresh measurement: this runs on every scroll
+    // event, and reading the list back would force a layout each time.
+    this.stickyHeaderList.style.width = this.contentWidth > 0 ? `${this.contentWidth}px` : "100%";
     this.renderStickyHeaderEntries(this.collectStickyHeaderEntries());
   }
 
@@ -610,11 +612,6 @@ class TreeView {
     this.rowTops = rowTops;
     this.viewport.hidden = rows.length === 0;
 
-    for (const section of this.specialRoots) {
-      if (!section.isRenderable()) continue;
-      section.element.style.width = "100%";
-    }
-
     if (oldAnchor && rows.includes(oldAnchor)) {
       this.scroller.scrollTop = Math.max(0, oldAnchor.top + oldAnchorOffset);
     }
@@ -676,6 +673,7 @@ class TreeView {
   renderVisibleRows() {
     if (!this.scroller || this.visibleRows.length === 0) {
       this.destroyRowViews();
+      this.contentWidth = 0;
       this.renderStickyHeaderEntries([]);
       return;
     }
@@ -719,15 +717,12 @@ class TreeView {
       }
     }
 
-    let measuredWidth = this.maxMeasuredContentWidth;
-    for (const view of this.rowViews.values()) {
-      measuredWidth = Math.max(measuredWidth, view.element.scrollWidth);
-    }
-
-    this.maxMeasuredContentWidth = measuredWidth;
-    const contentWidth = Math.max(this.scroller.clientWidth, measuredWidth);
-    this.list.style.width = `${contentWidth}px`;
-    for (const section of this.specialRoots) section.element.style.width = `${contentWidth}px`;
+    // Every logically visible row is mounted, so the list sizes itself to the
+    // widest one: `width: max-content` with `min-width: 100%`. Measuring each
+    // row here instead and writing the maximum back could only ever grow the
+    // tree — a row is `min-width: 100%` of a list already stretched to the
+    // previous content width, so it reports that width back as its own.
+    this.contentWidth = Math.ceil(this.list.getBoundingClientRect().width);
     this.updateStickyHeaderOverlay();
   }
 
@@ -785,7 +780,7 @@ class TreeView {
   }
 
   getPreferredWidth() {
-    return Math.max(this.maxMeasuredContentWidth, this.scroller.scrollWidth);
+    return Math.max(this.contentWidth, this.scroller.scrollWidth);
   }
 
   onDirectoryCreated(callback) {
@@ -834,9 +829,6 @@ class TreeView {
     );
 
     this.element.addEventListener("click", (e) => {
-      // This prevents accidental collapsing when an `.entries` element is the
-      // event target.
-      if (e.target.classList.contains("entries")) return;
       if (!(e.shiftKey || e.metaKey || e.ctrlKey)) {
         return this.entryClicked(e);
       }
@@ -1015,6 +1007,31 @@ class TreeView {
     this.viewport.hidden =
       this.roots.length === 0 && !this.specialRoots.some((candidate) => candidate.isRenderable());
     this.rebuildVisibleRows();
+  }
+
+  // A closed section keeps its entries registered so it can reopen without
+  // reading the disk again, so nothing drops them out of the selection the way
+  // `collapseTreeEntry` does for a directory it unregisters. Hand the selection
+  // to a row that stays on screen rather than leaving it on one nobody can see.
+  releaseSelectionInSection(section) {
+    const stays = section.isRenderable();
+    const leaving = stays ? section.entries : [section.root, ...section.entries];
+
+    let released = false;
+    for (const entry of leaving) {
+      if (!this.selectedEntries.delete(entry)) continue;
+      released = true;
+      entry.syncViews();
+      if (this.lastFocusedEntry === entry) this.lastFocusedEntry = null;
+    }
+    if (!released) return;
+
+    if (this.selectedEntries.size > 0) {
+      this.scheduleStickyHeadersUpdate();
+      return;
+    }
+    this.selectedPath = null;
+    this.selectEntry(stays ? section.root : this.roots[0]);
   }
 
   refreshSpecialRoots() {
@@ -2126,7 +2143,6 @@ class TreeView {
     this.scroller.style.display = "none";
     this.scroller.offsetWidth;
     this.scroller.style.display = "";
-    this.maxMeasuredContentWidth = 0;
     this.measureRowHeights();
     this.rebuildVisibleRows();
   }
