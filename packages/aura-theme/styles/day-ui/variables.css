@@ -1,0 +1,76 @@
+/*
+ * aura-day palette overrides. The complete UI contract comes from the
+ * one-day palette loaded earlier in the theme's style chain.
+ */
+
+:root {
+  --text-color: hsl(228, 9%, 30%);
+  --text-color-subtle: hsl(228, 7%, 56%);
+  --text-color-highlight: hsl(228, 12%, 14%);
+  --text-color-selected: hsl(228, 16%, 8%);
+  --background-color-highlight: hsl(228, 24%, 94%);
+  --background-color-selected: hsl(218, 62%, 92%);
+  --app-background-color: #f2f2f2;
+  --base-background-color: hsl(0, 0%, 100%);
+  --base-border-color: hsl(228, 12%, 88%);
+  --pane-item-background-color: hsl(0, 0%, 100%);
+  --pane-item-border-color: var(--base-border-color);
+  --input-background-color: hsl(228, 24%, 96%);
+  --input-border-color: var(--base-border-color);
+  --tool-panel-background-color: #f2f2f2;
+  --tool-panel-border-color: var(--base-border-color);
+  --inset-panel-background-color: hsl(228, 24%, 96%);
+  --inset-panel-border-color: hsla(228, 12%, 88%, 0.85);
+  --panel-heading-background-color: hsl(228, 28%, 98%);
+  --panel-heading-border-color: var(--base-border-color);
+  --overlay-background-color: hsl(0, 0%, 100%);
+  --overlay-border-color: var(--base-border-color);
+  --button-background-color: hsl(228, 20%, 94%);
+  --button-background-color-hover: hsl(228, 18%, 90%);
+  --button-background-color-selected: #5a8ae9;
+  --button-border-color: var(--base-border-color);
+  --tab-bar-background-color: #f2f2f2;
+  --tab-bar-border-color: var(--base-border-color);
+  --tab-background-color: transparent;
+  --tab-background-color-active: hsl(0, 0%, 100%);
+  --tab-border-color: var(--base-border-color);
+  --tree-view-background-color: #f2f2f2;
+  --tree-view-border-color: var(--base-border-color);
+  --scrollbar-color: hsla(228, 10%, 38%, 0.18);
+  --scrollbar-background-color: #f2f2f2;
+  --component-border-radius: 6px;
+  --tab-height: 32px;
+  --text-color-faded: hsla(228, 9%, 30%, 0.28);
+  --text-color-hint: hsl(228, 7%, 56%);
+  --level-1-color: hsl(0, 0%, 100%);
+  --level-2-color: hsl(228, 28%, 98%);
+  --level-3-color: #f2f2f2;
+  --level-3-color-hover: hsl(228, 18%, 90%);
+  --level-3-color-active: hsl(228, 20%, 93%);
+  --accent-color: #5a8ae9;
+  --accent-text-color: #ffffff;
+  --accent-bg-color: #5a8ae9;
+  --accent-bg-text-color: #ffffff;
+  --accent-only-text-color: #356fdc;
+  --badge-background-color: hsl(228, 16%, 90%);
+  --button-text-color-selected: #ffffff;
+  --button-border-color-selected: #5a8ae9;
+  --checkbox-background-color: rgba(90, 138, 233, 0.28);
+  --input-background-color-focus: hsl(218, 100%, 98%);
+  --input-selection-color: hsl(218, 62%, 94%);
+  --input-selection-color-focus: hsl(218, 64%, 90%);
+  --overlay-backdrop-color: hsl(228, 12%, 48%);
+  --overlay-backdrop-opacity: 0.14;
+  --progress-background-color: #5a8ae9;
+  --scrollbar-color-editor: hsla(228, 10%, 38%, 0.16);
+  --scrollbar-background-color-editor: hsl(0, 0%, 100%);
+  --tab-text-color: hsl(228, 7%, 54%);
+  --tab-text-color-active: hsl(228, 12%, 14%);
+  --tab-text-color-editor: hsl(228, 12%, 14%);
+  --tab-background-color-editor: hsl(0, 0%, 100%);
+  --tooltip-background-color: #5a8ae9;
+  --tooltip-text-color: #ffffff;
+  --tooltip-text-key-color: #5a8ae9;
+  --tooltip-background-key-color: #ffffff;
+  --ui-tab-height: 2.66666667em;
+}

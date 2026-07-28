@@ -1,0 +1,30 @@
+/*
+ * aura-night syntax overrides. Unchanged token colors come from one-night-syntax.
+ */
+
+:root {
+  --syntax-text-color: hsl(228, 16%, 76%);
+  --syntax-cursor-color: #5a8ae9;
+  --syntax-selection-color: hsl(218, 22%, 21%);
+  --syntax-selection-flash-color: #5a8ae9;
+  --syntax-background-color: hsl(228, 20%, 10%);
+  --wrap-guide-color: hsla(228, 16%, 76%, 0.035);
+  --indent-guide-color: hsla(228, 16%, 76%, 0.1);
+  --indent-guide-stack-color: hsla(228, 16%, 76%, 0.18);
+  --indent-guide-active-color: rgba(90, 138, 233, 0.18);
+  --syntax-invisible-character-color: hsla(228, 16%, 76%, 0.12);
+  --syntax-result-marker-color: rgba(90, 138, 233, 0.22);
+  --syntax-result-marker-color-selected: #5a8ae9;
+  --syntax-gutter-background-color: hsl(228, 20%, 10%);
+  --syntax-gutter-background-color-selected: hsl(218, 20%, 19%);
+  --terminal-selection-background-color: hsl(218, 22%, 21%);
+  --terminal-cursor-color: #5a8ae9;
+  --terminal-result-marker-color: rgba(90, 138, 233, 0.22);
+  --terminal-result-marker-color-selected: #5a8ae9;
+  --terminal-color-black: hsl(228, 20%, 10%);
+  --mono-1: hsl(228, 16%, 76%);
+  --syntax-fg: var(--mono-1);
+  --syntax-bg: hsl(228, 20%, 10%);
+  --syntax-guide: hsla(228, 16%, 76%, 0.1);
+  --syntax-accent: #5a8ae9;
+}

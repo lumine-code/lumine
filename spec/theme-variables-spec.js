@@ -79,7 +79,7 @@ describe("the theme variable contract", () => {
   });
 
   it("keeps package selectors out of bundled themes", () => {
-    const themeNames = ["one-theme", "nova-theme", "vscode-theme"];
+    const themeNames = ["one-theme", "aura-theme", "nova-theme", "vscode-theme"];
     const removedOverrideFiles = [
       "styles/ui/09-messages.css",
       "styles/ui/23-settings.css",
@@ -141,7 +141,7 @@ describe("the theme variable contract", () => {
       "symbols-view/styles/symbols-view.css",
       "autocomplete/styles/autocomplete.css",
     ];
-    const themeNames = ["one-theme", "nova-theme", "vscode-theme"];
+    const themeNames = ["one-theme", "aura-theme", "nova-theme", "vscode-theme"];
     const redundantThemeFragments = [
       ".select-list .character-match",
       "--popover-list-padding",

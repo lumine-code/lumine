@@ -14,7 +14,6 @@ describe("one-theme", () => {
     expect(root.getAttribute("ui-tabsizing")).toBe("even");
     expect(root.hasAttribute("ui-tab-close-button")).toBe(false);
     expect(root.hasAttribute("ui-dock-buttons")).toBe(false);
-    expect(root.hasAttribute("ui-sticky-headers")).toBe(false);
 
     // Changing a setting updates the matching attribute.
     atom.config.set("one-theme.tabSizing", "Maximum");
@@ -25,9 +24,6 @@ describe("one-theme", () => {
 
     atom.config.set("one-theme.hideDockButtons", true);
     expect(root.getAttribute("ui-dock-buttons")).toBe("hidden");
-
-    atom.config.set("one-theme.stickyHeaders", true);
-    expect(root.getAttribute("ui-sticky-headers")).toBe("sticky");
   });
 
   it("removes the attributes when deactivated", async () => {

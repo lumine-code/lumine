@@ -89,13 +89,6 @@
       "description": "Note: When hiding the toggle buttons, opening a dock needs to be done by using the keyboard or other alternatives.",
       "type": "boolean",
       "default": false
-    },
-    "stickyHeaders": {
-      "order": 4,
-      "title": "Make Tree-View Project Headers Sticky",
-      "description": "Keep tree-view project folder headers pinned to the top while scrolling.",
-      "type": "boolean",
-      "default": false
     }
   }
 }

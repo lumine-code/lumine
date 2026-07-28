@@ -347,38 +347,19 @@ atom-pane-container > atom-pane.pane {
 /* Tree view */
 
 .tree-view {
-  --list-row-inset: 6px;
-  padding: var(--list-row-inset) var(--list-row-inset) var(--component-padding);
-  background: transparent;
-
-  .project-root.project-root > .header .name {
-    color: var(--text-color-subtle);
-    font-size: 0.9em;
-    font-weight: 600;
-    letter-spacing: 0.02em;
-    text-transform: uppercase;
-  }
-
-  li.list-item:not(.list-nested-item):not(.selected):hover::before,
-  .list-nested-item:not(.selected):not(:has(li:hover)):hover::before {
-    right: var(--list-row-inset);
-    left: var(--list-row-inset);
-    border-radius: var(--component-border-radius);
-  }
-
-  .project-root.project-root:not(.selected):not(:has(li:hover)):hover::before,
-  .project-root.project-root::before {
-    border-radius: var(--component-border-radius);
-  }
-}
-
-:where(.theme-nova-night-ui) .tree-view .project-root.project-root::before {
-  border-top: 1px solid transparent;
-  background-clip: padding-box;
+  --tree-view-padding: 6px 6px var(--component-padding);
+  --tree-view-background: transparent;
+  --tree-view-row-inset: 4px;
+  --tree-view-row-border-radius: var(--component-border-radius);
+  --tree-view-root-name-color: var(--text-color-subtle);
+  --tree-view-root-name-font-size: 0.9em;
+  --tree-view-root-name-font-weight: 600;
+  --tree-view-root-name-letter-spacing: 0.02em;
+  --tree-view-root-name-text-transform: uppercase;
 }
 
 .list-group .selected::before,
-.list-tree .selected::before {
+.list-tree:not(.tree-view .list-tree) .selected::before {
   right: 4px;
   left: 4px;
   border-radius: var(--component-border-radius);

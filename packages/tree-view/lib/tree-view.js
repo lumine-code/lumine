@@ -58,8 +58,49 @@ class TreeView {
       "focusable-panel",
     );
 
+    this.stickyHeaderLayer = document.createElement("div");
+    this.stickyHeaderLayer.classList.add("tree-view-sticky-header-layer");
+    this.stickyHeaderLayer.setAttribute("aria-hidden", "true");
+    this.stickyHeaderLayer.hidden = true;
+
+    this.stickyHeaderList = document.createElement("ol");
+    this.stickyHeaderList.classList.add(
+      "tree-view-sticky-header-list",
+      "list-tree",
+      "has-collapsable-children",
+    );
+    this.stickyHeaderLayer.appendChild(this.stickyHeaderList);
+    this.element.appendChild(this.stickyHeaderLayer);
+
+    this.stickyHeadersEnabled = false;
+    this.stickyHeaderEntries = [];
+    this.stickyHeaderOriginals = new WeakMap();
+    this.stickyHeaderUpdateFrame = null;
+
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
+    this.disposables.add(
+      atom.config.observe("tree-view.stickyHeaders", (stickyHeaders) => {
+        this.setStickyHeadersEnabled(stickyHeaders);
+      }),
+    );
+
+    this.stickyHeaderObserver = new MutationObserver(() => {
+      this.scheduleStickyHeadersUpdate();
+    });
+    this.stickyHeaderObserver.observe(this.list, {
+      attributes: true,
+      attributeFilter: ["class"],
+      childList: true,
+      subtree: true,
+    });
+
+    if (typeof ResizeObserver === "function") {
+      this.stickyHeaderResizeObserver = new ResizeObserver(() => {
+        this.scheduleStickyHeadersUpdate();
+      });
+      this.stickyHeaderResizeObserver.observe(this.element);
+    }
 
     this.roots = [];
 
@@ -202,6 +243,15 @@ class TreeView {
   }
 
   destroy() {
+    if (this.stickyHeaderUpdateFrame != null) {
+      cancelAnimationFrame(this.stickyHeaderUpdateFrame);
+      this.stickyHeaderUpdateFrame = null;
+    }
+    for (const entry of this.stickyHeaderEntries) {
+      entry.classList.remove("tree-view-sticky-header-source");
+    }
+    this.stickyHeaderObserver.disconnect();
+    this.stickyHeaderResizeObserver?.disconnect();
     for (let root of this.roots) {
       root.directory.destroy();
     }
@@ -228,6 +278,215 @@ class TreeView {
 
   getURI() {
     return TREE_VIEW_URI;
+  }
+
+  setStickyHeadersEnabled(stickyHeaders) {
+    this.stickyHeadersEnabled = stickyHeaders;
+    this.element.classList.toggle("sticky-headers", stickyHeaders);
+
+    if (stickyHeaders) {
+      this.scheduleStickyHeadersUpdate();
+    } else {
+      this.renderStickyHeaderEntries([]);
+    }
+  }
+
+  scheduleStickyHeadersUpdate() {
+    if (!this.stickyHeadersEnabled || this.stickyHeaderUpdateFrame != null) return;
+
+    this.stickyHeaderUpdateFrame = requestAnimationFrame(() => {
+      this.stickyHeaderUpdateFrame = null;
+      this.updateStickyHeaderOverlay();
+    });
+  }
+
+  updateStickyHeadersOnScroll() {
+    if (!this.stickyHeadersEnabled) return;
+
+    if (this.stickyHeaderUpdateFrame != null) {
+      cancelAnimationFrame(this.stickyHeaderUpdateFrame);
+      this.stickyHeaderUpdateFrame = null;
+    }
+    this.updateStickyHeaderOverlay();
+  }
+
+  updateStickyHeaderOverlay() {
+    this.renderStickyHeaderEntries(this.collectStickyHeaderEntries());
+  }
+
+  collectStickyHeaderEntries() {
+    if (!this.stickyHeadersEnabled) return [];
+
+    const treeRect = this.element.getBoundingClientRect();
+    if (treeRect.height <= 0 || treeRect.width <= 0) return [];
+
+    let slotTop = treeRect.top;
+    const roots = Array.from(this.element.querySelectorAll(".project-root")).filter(
+      (root) => !this.stickyHeaderLayer.contains(root),
+    );
+    const root = roots.find((candidate) => {
+      const header = candidate.header ?? candidate.querySelector(":scope > .project-root-header");
+      if (!header) return false;
+
+      const entryRect = candidate.getBoundingClientRect();
+      const headerRect = header.getBoundingClientRect();
+      return headerRect.top < slotTop && entryRect.bottom > slotTop;
+    });
+    if (!root) return [];
+
+    const entries = [root];
+    slotTop += this.stickyHeaderHeight(root.header.getBoundingClientRect());
+
+    let directory = root;
+    while (directory.classList.contains("expanded") && directory.entries) {
+      const child = Array.from(directory.entries.children).find((candidate) => {
+        const candidateRect = candidate.getBoundingClientRect();
+        return candidateRect.top <= slotTop && candidateRect.bottom > slotTop;
+      });
+      if (
+        !child?.matches(".directory.list-nested-item.expanded") ||
+        !child.header ||
+        !child.entries
+      ) {
+        break;
+      }
+
+      const childRect = child.getBoundingClientRect();
+      const headerRect = child.header.getBoundingClientRect();
+      const headerHeight = this.stickyHeaderHeight(headerRect);
+      if (headerRect.top >= slotTop || childRect.bottom <= slotTop) break;
+
+      entries.push(child);
+      slotTop += headerHeight;
+      directory = child;
+    }
+
+    return entries;
+  }
+
+  stickyHeaderHeight(rect) {
+    return rect.height || rect.bottom - rect.top;
+  }
+
+  renderStickyHeaderEntries(entries) {
+    const nextEntries = new Set(entries);
+    for (const entry of this.stickyHeaderEntries) {
+      if (!nextEntries.has(entry)) {
+        entry.classList.remove("tree-view-sticky-header-source");
+      }
+    }
+    for (const entry of entries) {
+      entry.classList.add("tree-view-sticky-header-source");
+    }
+
+    const sameEntries =
+      entries.length === this.stickyHeaderEntries.length &&
+      entries.every((entry, index) => entry === this.stickyHeaderEntries[index]);
+
+    if (!sameEntries) {
+      const fragment = document.createDocumentFragment();
+      this.stickyHeaderOriginals = new WeakMap();
+
+      for (const entry of entries) {
+        const stickyEntry = document.createElement("li");
+        stickyEntry.classList.add(
+          "tree-view-sticky-header",
+          "directory",
+          "list-nested-item",
+          "expanded",
+        );
+        if (entry.classList.contains("project-root")) {
+          stickyEntry.classList.add("project-root");
+        }
+
+        const header = entry.header.cloneNode(true);
+        header.classList.add("tree-view-sticky-header-row");
+        stickyEntry.appendChild(header);
+        this.stickyHeaderOriginals.set(stickyEntry, entry);
+        fragment.appendChild(stickyEntry);
+      }
+
+      this.stickyHeaderList.replaceChildren(fragment);
+      this.stickyHeaderEntries = entries.slice();
+    }
+
+    this.stickyHeaderLayer.hidden = entries.length === 0;
+    if (entries.length === 0) {
+      this.stickyHeaderList.style.height = "";
+      return;
+    }
+
+    const stickyLayerRect = this.stickyHeaderLayer.getBoundingClientRect();
+    const stickyEntries = this.stickyHeaderList.children;
+    let backingHeight = 0;
+    for (let index = 0; index < entries.length; index++) {
+      const originalEntry = entries[index];
+      const headerRect = originalEntry.header.getBoundingClientRect();
+      this.syncStickyHeaderEntry(stickyEntries[index], originalEntry, stickyLayerRect, headerRect);
+      const headerHeight = this.stickyHeaderHeight(headerRect);
+      backingHeight += headerHeight;
+    }
+    this.stickyHeaderList.style.height = `${backingHeight}px`;
+  }
+
+  syncStickyHeaderEntry(stickyEntry, originalEntry, stickyLayerRect, headerRect) {
+    stickyEntry.classList.toggle("selected", originalEntry.classList.contains("selected"));
+
+    for (const className of Array.from(stickyEntry.classList)) {
+      if (className.startsWith("status-")) stickyEntry.classList.remove(className);
+    }
+    for (const className of originalEntry.classList) {
+      if (className.startsWith("status-")) stickyEntry.classList.add(className);
+    }
+
+    const stickyHeader = stickyEntry.querySelector(".tree-view-sticky-header-row");
+    if (stickyHeader.innerHTML !== originalEntry.header.innerHTML) {
+      stickyHeader.replaceChildren(
+        ...Array.from(originalEntry.header.childNodes, (child) => child.cloneNode(true)),
+      );
+    }
+
+    stickyEntry.style.setProperty(
+      "--tree-view-sticky-content-offset",
+      `${Math.max(0, headerRect.left - stickyLayerRect.left)}px`,
+    );
+  }
+
+  forwardStickyHeaderEvent(event) {
+    const stickyEntry = event.target.closest(".tree-view-sticky-header");
+    if (!stickyEntry) return;
+
+    const originalEntry = this.stickyHeaderOriginals.get(stickyEntry);
+    if (!originalEntry?.header?.isConnected) {
+      this.scheduleStickyHeadersUpdate();
+      return;
+    }
+
+    event.stopPropagation();
+    const stickyRect = stickyEntry
+      .querySelector(".tree-view-sticky-header-row")
+      .getBoundingClientRect();
+    const originalRect = originalEntry.header.getBoundingClientRect();
+    const forwardedEvent = new MouseEvent(event.type, {
+      bubbles: true,
+      cancelable: true,
+      composed: true,
+      view: window,
+      detail: event.detail,
+      screenX: event.screenX,
+      screenY: event.screenY,
+      clientX: originalRect.left + event.clientX - stickyRect.left,
+      clientY: originalRect.top + event.clientY - stickyRect.top,
+      ctrlKey: event.ctrlKey,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      button: event.button,
+      buttons: event.buttons,
+    });
+
+    const dispatched = originalEntry.header.dispatchEvent(forwardedEvent);
+    if (!dispatched || forwardedEvent.defaultPrevented) event.preventDefault();
   }
 
   getPreferredLocation() {
@@ -287,6 +546,19 @@ class TreeView {
   }
 
   handleEvents() {
+    for (const eventType of ["mousedown", "mouseup", "click", "contextmenu"]) {
+      this.stickyHeaderLayer.addEventListener(eventType, (event) => {
+        this.forwardStickyHeaderEvent(event);
+      });
+    }
+    this.element.addEventListener(
+      "scroll",
+      () => {
+        this.updateStickyHeadersOnScroll();
+      },
+      { passive: true },
+    );
+
     this.element.addEventListener("click", (e) => {
       // This prevents accidental collapsing when an `.entries` element is the
       // event target.
@@ -411,6 +683,7 @@ class TreeView {
       return;
     }
     container.show();
+    this.scheduleStickyHeadersUpdate();
     if (focus) {
       this.focus();
     } else if (
@@ -454,12 +727,13 @@ class TreeView {
   addSpecialRoot(config) {
     const section = new SpecialRootSection(config);
     this.specialRoots.push(section);
-    // Insert before the project list, or at the start if the list isn't attached yet
+    // Insert before the project list, but always after the zero-height sticky layer.
     if (this.list.parentElement === this.element) {
       this.element.insertBefore(section.element, this.list);
     } else {
-      this.element.insertBefore(section.element, this.element.firstChild);
+      this.element.insertBefore(section.element, this.stickyHeaderLayer.nextSibling);
     }
+    this.scheduleStickyHeadersUpdate();
     return section;
   }
 
@@ -468,12 +742,14 @@ class TreeView {
     if (index === -1) return;
     section.destroy();
     this.specialRoots.splice(index, 1);
+    this.scheduleStickyHeadersUpdate();
   }
 
   refreshSpecialRoots() {
     for (const section of this.specialRoots) {
       section.refresh();
     }
+    this.scheduleStickyHeadersUpdate();
   }
 
   entryClicked(event) {
@@ -1337,6 +1613,7 @@ class TreeView {
       this.deselect(selectedEntries);
       entry.classList.add("selected");
     }
+    this.scheduleStickyHeadersUpdate();
     return entry;
   }
 
@@ -1349,6 +1626,7 @@ class TreeView {
     for (let selected of elementsToDeselect) {
       selected.classList.remove("selected");
     }
+    this.scheduleStickyHeadersUpdate();
   }
 
   scrollTop(top = null) {
@@ -1551,6 +1829,7 @@ class TreeView {
     this.element.style.display = "none";
     this.element.offsetWidth;
     this.element.style.display = "";
+    this.scheduleStickyHeadersUpdate();
   }
 
   onMouseDown(event) {

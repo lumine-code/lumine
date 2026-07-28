@@ -41,6 +41,7 @@
     "@vscode/ripgrep": "1.18.0",
     "about": "file:packages/about",
     "archive-view": "file:packages/archive-view",
+    "aura-theme": "file:packages/aura-theme",
     "async": "3.2.6",
     "autocomplete-lumine": "file:packages/autocomplete-lumine",
     "autocomplete-css": "file:packages/autocomplete-css",
@@ -177,6 +178,7 @@
     "yargs": "18.1.0"
   },
   "packageDependencies": {
+    "aura-theme": "file:./packages/aura-theme",
     "nova-theme": "file:./packages/nova-theme",
     "one-theme": "file:./packages/one-theme",
     "theme-selector": "file:./packages/theme-selector",

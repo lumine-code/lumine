@@ -3,6 +3,18 @@
 }
 
 .tree-view {
+  --tree-view-padding: 0;
+  --tree-view-background: var(--tree-view-background-color);
+  --tree-view-sticky-background: var(--tree-view-background-color);
+  --tree-view-row-inset: 0px;
+  --tree-view-row-border-radius: 0px;
+  --tree-view-root-header-height: var(--ui-tab-height);
+  --tree-view-root-name-color: currentColor;
+  --tree-view-root-name-font-size: inherit;
+  --tree-view-root-name-font-weight: inherit;
+  --tree-view-root-name-letter-spacing: normal;
+  --tree-view-root-name-text-transform: none;
+
   contain: size;
   overflow: auto;
   z-index: 2;
@@ -10,6 +22,9 @@
 
   display: flex;
   flex-direction: column;
+  padding: var(--tree-view-padding);
+  font-size: var(--ui-size);
+  background: var(--tree-view-background);
 
   #add-projects-view {
     display: flex;
@@ -83,6 +98,29 @@
     position: relative;
   }
 
+  .file.entry > .name {
+    /* Keep file content above the full-width ::before hover/selection layer. */
+    position: relative;
+  }
+
+  .project-root.project-root {
+    &::before {
+      height: var(--tree-view-root-header-height);
+    }
+
+    > .header {
+      line-height: var(--tree-view-root-header-height);
+    }
+
+    > .header .name {
+      color: var(--tree-view-root-name-color);
+      font-size: var(--tree-view-root-name-font-size);
+      font-weight: var(--tree-view-root-name-font-weight);
+      letter-spacing: var(--tree-view-root-name-letter-spacing);
+      text-transform: var(--tree-view-root-name-text-transform);
+    }
+  }
+
   .tree-view-root .list-tree {
     /* Keeps selections expanded while dragging */
     position: static;
@@ -93,7 +131,120 @@
     &::before {
       content: "";
       position: absolute;
+      right: var(--tree-view-row-inset);
+      left: var(--tree-view-row-inset);
+      border-radius: var(--tree-view-row-border-radius);
     }
+  }
+
+  .entry.selected::before {
+    background: var(--background-color-selected);
+  }
+
+  li.list-item:not(.list-nested-item):not(.selected):hover::before,
+  .directory.list-nested-item:not(.selected):has(> .header:hover)::before {
+    height: var(--ui-line-height);
+    background: var(--background-color-highlight);
+    pointer-events: none;
+  }
+
+  .project-root.project-root:not(.selected):has(> .project-root-header:hover)::before {
+    height: var(--tree-view-root-header-height);
+  }
+
+  &:focus {
+    .selected.list-item > .name,
+    .selected.list-nested-item > .list-item > .name,
+    .selected.list-nested-item > .header::before {
+      color: var(--accent-bg-text-color);
+    }
+
+    .entry.selected::before {
+      background: var(--button-background-color-selected);
+    }
+  }
+
+  .list-tree {
+    li:not(.list-nested-item),
+    li.list-nested-item > .list-item {
+      line-height: var(--ui-line-height);
+    }
+
+    .selected::before {
+      height: var(--ui-line-height);
+    }
+  }
+
+  .tree-view-sticky-header-layer {
+    position: sticky;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    flex: 0 0 0;
+    width: 100%;
+    height: 0;
+    overflow: visible;
+    isolation: isolate;
+
+    &[hidden] {
+      display: none;
+    }
+  }
+
+  .tree-view-sticky-header-list {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    overflow: hidden;
+    contain: paint;
+    isolation: isolate;
+    transform: translateZ(0);
+    background: var(--tree-view-sticky-background);
+    backface-visibility: hidden;
+    will-change: transform;
+  }
+
+  .tree-view-sticky-header {
+    background: var(--tree-view-sticky-background);
+
+    &::before {
+      display: none;
+    }
+
+    > .tree-view-sticky-header-row {
+      box-sizing: border-box;
+      width: calc(100% - var(--tree-view-row-inset) * 2);
+      margin-right: var(--tree-view-row-inset);
+      margin-left: var(--tree-view-row-inset);
+      padding-right: var(--component-padding);
+      padding-left: max(
+        0px,
+        calc(var(--tree-view-sticky-content-offset) - var(--tree-view-row-inset))
+      );
+      border-radius: var(--tree-view-row-border-radius);
+      background: var(--tree-view-sticky-background);
+      overflow: hidden;
+    }
+
+    &:not(.selected) > .tree-view-sticky-header-row:hover {
+      background: var(--background-color-highlight);
+    }
+
+    &.selected > .tree-view-sticky-header-row {
+      background: var(--background-color-selected);
+    }
+  }
+
+  .tree-view-sticky-header-source {
+    &::before,
+    > .header {
+      visibility: hidden;
+    }
+  }
+
+  &:focus .tree-view-sticky-header.selected > .tree-view-sticky-header-row {
+    background: var(--button-background-color-selected);
   }
 
   /* Drag and Drop */
@@ -146,4 +297,8 @@
       text-decoration: line-through;
     }
   }
+}
+
+.tree-view-resizer .tree-view-resize-handle {
+  width: 8px;
 }

@@ -8,6 +8,7 @@ describe("theme-selector", () => {
     atom.config.set("theme.dark", ["one-night-ui", "one-night-syntax"]);
 
     await atom.packages.activatePackage("one-theme");
+    await atom.packages.activatePackage("aura-theme");
     await atom.packages.activatePackage("nova-theme");
     await atom.packages.activatePackage("vscode-theme");
     const pack = await atom.packages.activatePackage("theme-selector");
@@ -18,6 +19,7 @@ describe("theme-selector", () => {
     await atom.packages.deactivatePackage("theme-selector");
     await atom.packages.deactivatePackage("vscode-theme");
     await atom.packages.deactivatePackage("nova-theme");
+    await atom.packages.deactivatePackage("aura-theme");
     await atom.packages.deactivatePackage("one-theme");
   });
 
@@ -26,6 +28,7 @@ describe("theme-selector", () => {
 
     expect(selector.selectList.items.map(({ name }) => name)).toEqual([
       "One",
+      "Aura",
       "Nova",
       "VS Code Modern",
     ]);

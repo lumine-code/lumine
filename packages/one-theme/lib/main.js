@@ -26,13 +26,6 @@ module.exports = {
           root.removeAttribute("ui-dock-buttons");
         }
       }),
-      atom.config.observe("one-theme.stickyHeaders", (stickyHeaders) => {
-        if (stickyHeaders) {
-          root.setAttribute("ui-sticky-headers", "sticky");
-        } else {
-          root.removeAttribute("ui-sticky-headers");
-        }
-      }),
     );
   },
 
@@ -42,6 +35,5 @@ module.exports = {
     root.removeAttribute("ui-tabsizing");
     root.removeAttribute("ui-tab-close-button");
     root.removeAttribute("ui-dock-buttons");
-    root.removeAttribute("ui-sticky-headers");
   },
 };

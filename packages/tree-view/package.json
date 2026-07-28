@@ -136,64 +136,71 @@
       "type": "boolean",
       "default": false
     },
-    "hideVcsIgnoredFiles": {
+    "stickyHeaders": {
       "order": 7,
+      "title": "Sticky Directory Headers",
+      "description": "Keep project roots and expanded ancestor directories pinned while scrolling.",
+      "type": "boolean",
+      "default": true
+    },
+    "hideVcsIgnoredFiles": {
+      "order": 8,
       "title": "Hide VCS Ignored Files",
       "description": "Don't show files and directories ignored by the current project's VCS system. For example, projects using Git have these paths defined in their `.gitignore` file.",
       "type": "boolean",
       "default": false
     },
     "hideIgnoredNames": {
-      "order": 8,
+      "order": 9,
       "title": "Hide Ignored Names",
       "description": "Don't show items matched by the `Ignored Names` core config setting.",
       "type": "boolean",
       "default": false
     },
     "autoReveal": {
-      "order": 9,
+      "order": 10,
       "title": "Auto Reveal",
       "description": "Reveal tree view entries when they become the active pane item.",
       "type": "boolean",
       "default": false
     },
     "focusOnReveal": {
-      "order": 10,
+      "order": 11,
       "title": "Focus On Reveal",
       "description": "Focus the tree view when revealing entries.",
       "type": "boolean",
       "default": true
     },
     "alwaysOpenExisting": {
-      "order": 11,
+      "order": 12,
       "title": "Always Open Existing",
       "description": "When opening a file, always focus an already-existing view of the file even if it's in another pane.",
       "type": "boolean",
       "default": false
     },
     "hiddenOnStartup": {
-      "order": 12,
+      "order": 13,
       "title": "Hidden On Startup",
       "description": "When Lumine is opened, the view is hidden.",
       "type": "boolean",
       "default": false
     },
     "fileDoubleClick": {
-      "order": 13,
+      "order": 14,
       "title": "File Double Click",
       "description": "Require double click to open files. When enabled, single click only selects the entry.",
       "type": "boolean",
       "default": false
     },
     "dirDoubleClick": {
-      "order": 14,
+      "order": 15,
       "title": "Dir Double Click",
       "description": "Require double click to expand/collapse folders. When enabled, single click only selects the entry. The arrow icon always responds to a single click.",
       "type": "boolean",
       "default": false
     },
     "openAfterCopy": {
-      "order": 15,
+      "order": 16,
       "title": "Open After Copy",
       "description": "Open the new file after duplicating it. This setting mirrors the checkbox in the duplicate dialog.",
       "type": "boolean",

@@ -245,31 +245,9 @@ atom-pane-container > atom-pane.pane {
 /* Tree view */
 
 .tree-view {
-  --root-header-height: calc(var(--font-size) * 2.1);
-
-  .project-root.project-root {
-    &::before {
-      height: var(--root-header-height);
-    }
-
-    & > .header {
-      line-height: var(--root-header-height);
-    }
-
-    & > .header .name {
-      font-size: 0.85em;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-      text-transform: uppercase;
-    }
-  }
-
-  .project-root.project-root:not(.selected):not(:has(li:hover)):hover::before {
-    height: var(--root-header-height);
-  }
-}
-
-:where(.theme-vscode-night-ui) .tree-view .project-root.project-root::before {
-  border-top: 1px solid transparent;
-  background-clip: padding-box;
+  --tree-view-root-header-height: calc(var(--font-size) * 2.1);
+  --tree-view-root-name-font-size: 0.85em;
+  --tree-view-root-name-font-weight: 700;
+  --tree-view-root-name-letter-spacing: 0.04em;
+  --tree-view-root-name-text-transform: uppercase;
 }
