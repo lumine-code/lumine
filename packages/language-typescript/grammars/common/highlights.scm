@@ -595,22 +595,18 @@
 
 ((identifier) @support.object.builtin._TEXT_._LANG_
   (#match? @support.object.builtin._TEXT_._LANG_ "^(arguments|module|window|document)$")
-  (#is-not? local)
   (#set! capture.final true))
 
 ((identifier) @support.object.builtin.filename._LANG_
   (#eq? @support.object.builtin.filename._LANG_ "__filename")
-  (#is-not? local)
   (#set! capture.final true))
 
 ((identifier) @support.object.builtin.dirname._LANG_
   (#eq? @support.object.builtin.dirname._LANG_ "__dirname")
-  (#is-not? local)
   (#set! capture.final true))
 
 ((identifier) @support.function.builtin.require._LANG_
   (#eq? @support.function.builtin.require._LANG_ "require")
-  (#is-not? local)
   (#set! capture.final true))
 
 ((identifier) @constant.language.infinity._LANG_

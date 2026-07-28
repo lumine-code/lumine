@@ -773,23 +773,19 @@
 
 ((identifier) @support.object.builtin._TEXT_.js
   (#match? @support.object.builtin._TEXT_.js "^(arguments|module|window|document)$")
-  (#is-not? local)
   (#set! capture.final true))
 
 ((identifier) @support.object.builtin.filename.js
   (#eq? @support.object.builtin.filename.js "__filename")
-  (#is-not? local)
   (#set! capture.final true))
 
 ((identifier) @support.object.builtin.dirname.js
   (#eq? @support.object.builtin.dirname.js "__dirname")
-  (#is-not? local)
   (#set! capture.final true))
 
 
 ((identifier) @support.function.builtin.require.js
   (#eq? @support.function.builtin.require.js "require")
-  (#is-not? local)
   (#set! capture.final true))
 
 [
