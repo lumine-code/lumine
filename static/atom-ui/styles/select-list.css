@@ -1,4 +1,6 @@
 .select-list {
+  --select-list-hover-tint: color-mix(in srgb, var(--text-color) 8%, transparent);
+
   .loading {
     .loading-message {
       /* (.octicon(hourglass) inlined, default size 16px) */
@@ -59,8 +61,18 @@
         margin-left: var(--component-padding);
       }
 
+      /* Hover is a translucent layer over the row rather than a background
+         colour, so it composes with whatever the list's owner paints. Packages
+         mark rows by giving them a background-color — command-palette tints
+         `.recent` — and an opaque hover would erase that mark. Mixing towards
+         the text colour also keeps the affordance visible on a light palette,
+         where lightening an already-white overlay clamps to no change.
+         Themes retune it through --select-list-hover-tint. */
       &:hover:not(.selected) {
-        background-color: var(--background-color-highlight);
+        background-image: linear-gradient(
+          var(--select-list-hover-tint),
+          var(--select-list-hover-tint)
+        );
       }
     }
 

@@ -37,10 +37,6 @@ atom-panel.modal {
       &:last-of-type {
         border-bottom: none;
       }
-
-      &:hover:not(.selected) {
-        background-color: hsl(from var(--overlay-background-color) h s calc(l + 5));
-      }
     }
   }
 
