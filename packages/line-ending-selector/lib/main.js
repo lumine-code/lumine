@@ -2,7 +2,7 @@
 
 import _ from "@lumine-code/underscore-plus";
 import { CompositeDisposable, Disposable } from "atom";
-import { Selector } from "./selector";
+import { showSelector } from "./selector";
 import StatusBarItem from "./status-bar-item";
 import helpers from "./helpers";
 
@@ -19,26 +19,10 @@ let disposables = null;
 
 export function activate() {
   disposables = new CompositeDisposable();
-  let selectorDisposable;
-  let selector;
 
   disposables.add(
     atom.commands.add("atom-text-editor", {
-      "line-ending-selector:show": () => {
-        // Initiating Selector object - called only once when `line-ending-selector:show` is called
-        if (!selectorDisposable) {
-          // make a Selector object
-          selector = new Selector([
-            { name: "LF", value: "\n" },
-            { name: "CRLF", value: "\r\n" },
-          ]);
-          // Add disposable for selector
-          selectorDisposable = new Disposable(() => selector.dispose());
-          disposables.add(selectorDisposable);
-        }
-
-        selector.show();
-      },
+      "line-ending-selector:show": () => showSelector(),
 
       "line-ending-selector:convert-to-LF": (event) => {
         const editorElement = event.target.closest("atom-text-editor");

@@ -1,6 +1,16 @@
 const helpers = require("../lib/helpers");
 const { TextEditor } = require("atom");
 const path = require("path");
+const {
+  activeSession,
+  modalElement,
+  isModalOpen,
+  visibleLabels,
+  setQuery,
+  confirm,
+  cancel,
+  settle: settleModal,
+} = require("../../../spec/helpers/modal-helpers");
 
 describe("line ending selector", () => {
   let lineEndingTile;
@@ -178,8 +188,6 @@ describe("line ending selector", () => {
     });
 
     describe("clicking the tile", () => {
-      let lineEndingModal, lineEndingSelector;
-
       beforeEach(() => {
         jasmine.attachToDOM(atom.views.getView(atom.workspace));
 
@@ -197,14 +205,13 @@ describe("line ending selector", () => {
           expect(item.getFileName && item.getFileName()).toBe("unix-endings.md");
 
           lineEndingTile.element.dispatchEvent(new MouseEvent("click", {}));
-          lineEndingModal = atom.workspace.getModalPanels()[0];
-          lineEndingSelector = lineEndingModal.getItem();
 
-          expect(lineEndingModal.isVisible()).toBe(true);
-          expect(lineEndingSelector.element.contains(document.activeElement)).toBe(true);
-          let listItems = lineEndingSelector.element.querySelectorAll("li");
-          expect(listItems[0].textContent).toBe("LF");
-          expect(listItems[1].textContent).toBe("CRLF");
+          waitsForPromise(async () => {
+            await settleModal();
+            expect(isModalOpen()).toBe(true);
+            expect(modalElement().contains(document.activeElement)).toBe(true);
+            expect(visibleLabels()).toEqual(["LF", "CRLF"]);
+          });
         });
       });
 
@@ -215,22 +222,21 @@ describe("line ending selector", () => {
           expect(item instanceof TextEditor).toBe(false);
 
           lineEndingTile.element.dispatchEvent(new MouseEvent("click", {}));
-          lineEndingModal = atom.workspace.getModalPanels()[0];
-          lineEndingSelector = lineEndingModal.getItem();
 
-          expect(lineEndingModal.isVisible()).toBe(true);
-          expect(lineEndingSelector.element.contains(document.activeElement)).toBe(true);
-          let listItems = lineEndingSelector.element.querySelectorAll("li");
-          expect(listItems[0].textContent).toBe("LF");
-          expect(listItems[1].textContent).toBe("CRLF");
+          waitsForPromise(async () => {
+            await settleModal();
+            expect(isModalOpen()).toBe(true);
+            // The kernel captured the editor before focus moved into the host,
+            // so the picker still targets it even though the dock had focus.
+            expect(activeSession().target.editor.getFileName()).toBe("unix-endings.md");
+            expect(visibleLabels()).toEqual(["LF", "CRLF"]);
+          });
         });
       });
 
       describe("when selecting a different line ending for the file", () => {
         it("changes the line endings in the buffer", () => {
           lineEndingTile.element.dispatchEvent(new MouseEvent("click", {}));
-          lineEndingModal = atom.workspace.getModalPanels()[0];
-          lineEndingSelector = lineEndingModal.getItem();
 
           const lineEndingChangedPromise = new Promise((resolve) => {
             lineEndingTile.onDidChange(() => {
@@ -242,22 +248,29 @@ describe("line ending selector", () => {
             });
           });
 
-          lineEndingSelector.refs.queryEditor.setText("CR");
-          lineEndingSelector.confirmSelection();
-          expect(lineEndingModal.isVisible()).toBe(false);
-
-          waitsForPromise(() => lineEndingChangedPromise);
+          waitsForPromise(async () => {
+            await settleModal();
+            setQuery("CR");
+            await settleModal();
+            confirm();
+            await settleModal();
+            expect(isModalOpen()).toBe(false);
+            await lineEndingChangedPromise;
+          });
         });
       });
 
       describe("when modal is exited", () => {
         it("leaves the tile selection as-is", () => {
           lineEndingTile.element.dispatchEvent(new MouseEvent("click", {}));
-          lineEndingModal = atom.workspace.getModalPanels()[0];
-          lineEndingSelector = lineEndingModal.getItem();
 
-          lineEndingSelector.cancelSelection();
-          expect(lineEndingTile.element.textContent).toBe("LF");
+          waitsForPromise(async () => {
+            await settleModal();
+            cancel();
+            await settleModal();
+            expect(isModalOpen()).toBe(false);
+            expect(lineEndingTile.element.textContent).toBe("LF");
+          });
         });
       });
     });
