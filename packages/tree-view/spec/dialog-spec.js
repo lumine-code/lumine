@@ -6,7 +6,6 @@ const AddDialog = require("../lib/add-dialog");
 const MoveDialog = require("../lib/move-dialog");
 const CopyDialog = require("../lib/copy-dialog");
 const {
-  activeSession,
   modalElement,
   statusText,
   setQuery,
