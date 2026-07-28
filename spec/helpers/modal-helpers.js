@@ -103,20 +103,38 @@ function flush(ms = 0) {
   if (typeof advanceClock === "function") advanceClock(ms);
 }
 
-// Resolves once the active session's source has settled and the list has been
-// rendered for the current query.
-async function settle() {
-  let session = activeSession();
-  if (!session) return;
-  flush(0);
-  await Promise.resolve();
-  // The session can close while we yield — an action that confirms, a blur —
-  // and a closed session has no frames left to wait on.
-  session = activeSession();
-  const run = session && session.frames.length > 0 ? session.frame.run : null;
-  if (run) await run.whenSettled();
-  flush(0);
-  await Promise.resolve();
+// Settles the active session: drains pending timers and microtasks, then waits
+// on whatever source run is in flight. Loops because one hop is not always
+// enough — a confirm handler that pushes resolves first, and only then does the
+// child's own source start — and stops as soon as nothing changed.
+async function settle(maxPasses = 4) {
+  for (let pass = 0; pass < maxPasses; pass++) {
+    const session = activeSession();
+    if (!session) return;
+    const before = session.frames.length > 0 ? session.frame : null;
+    const beforeRun = before ? before.run : null;
+
+    flush(0);
+    await Promise.resolve();
+
+    // The session can close while we yield — an action that confirms, a blur —
+    // and a closed session has no frames left to wait on.
+    const current = activeSession();
+    const run = current && current.frames.length > 0 ? current.frame.run : null;
+    if (run) await run.whenSettled();
+    flush(0);
+    await Promise.resolve();
+
+    const after = activeSession();
+    const afterFrame = after && after.frames.length > 0 ? after.frame : null;
+    if (
+      after === session &&
+      afterFrame === before &&
+      (!afterFrame || afterFrame.run === beforeRun)
+    ) {
+      return;
+    }
+  }
 }
 
 module.exports = {

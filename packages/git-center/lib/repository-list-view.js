@@ -1,78 +1,68 @@
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
-
 const { applySwitchItem, buildSwitchItems } = require("./helpers");
 const { divergenceChips, statusChips } = require("./status-summary");
 
 // Repository picker. Selecting a repository makes it the window's active
 // repository (unpinned).
 module.exports = class RepositoryListView {
-  constructor() {
-    this.selectListView = new SelectListView({
+  toggle() {
+    return atom.modals.toggle({
+      id: "git-center.repositories",
       className: "git-center-repository-list",
-      items: [],
+      placeholder: "Select a repository",
       emptyMessage: "No repositories in this window",
-      filterKeyForItem: (item) => item.repoName,
-      elementForItem: (item, { matchIndices }) => {
-        if (item.auto) {
-          return createTwoLineItem({
-            className: "git-center-item",
-            icon: ["icon-sync"],
-            primary: highlightMatches(item.repoName, matchIndices),
-            secondary: "The active repository is updated based on the active editor.",
-          });
-        }
-
-        // The branch badge sits last so the working-tree and upstream detail
-        // reads to its left, closest to the repository it describes.
-        return createTwoLineItem({
-          className: "git-center-item",
-          icon: ["icon-repo"],
-          primary: highlightMatches(item.repoName, matchIndices),
-          secondary: item.workingDirectory,
-          trailing: [
-            ...statusChips(item.status),
-            ...divergenceChips(item.upstream),
-            { text: item.branch, className: "badge badge-info" },
-          ],
-        });
+      // Reading the repositories is async, so the list opens with busy chrome
+      // and fills in. The run is abandoned if the view goes away first, which
+      // is what the old post-await isVisible() check was doing by hand.
+      source: async (req) => {
+        req.progress({ busy: true, message: "Loading repositories…" });
+        const items = [
+          { auto: true, repoName: "Auto" },
+          ...(await buildSwitchItems()).filter((item) => item.current),
+        ];
+        req.progress({ busy: false, message: null });
+        return items;
       },
-      didConfirmSelection: (item) => {
-        this.hide();
+      renderer: {
+        entry: (item) => ({ id: item.auto ? "auto" : item.workingDirectory, text: item.repoName }),
+        row: (item) => {
+          if (item.auto) {
+            return {
+              className: "git-center-item",
+              icon: ["icon-sync"],
+              label: item.repoName,
+              detail: "The active repository is updated based on the active editor.",
+            };
+          }
+
+          // The branch badge sits last so the working-tree and upstream detail
+          // reads to its left, closest to the repository it describes.
+          return {
+            className: "git-center-item",
+            icon: ["icon-repo"],
+            label: item.repoName,
+            detail: item.workingDirectory,
+            trailing: [
+              ...statusChips(item.status),
+              ...divergenceChips(item.upstream),
+              { text: item.branch, className: "badge badge-info" },
+            ],
+          };
+        },
+      },
+      confirm: ({ item }) => {
         if (item.auto) {
           atom.repositories.setActiveRepository(null);
         } else {
           applySwitchItem(item, { pin: true });
         }
       },
-      didCancelSelection: () => this.hide(),
     });
   }
 
-  async toggle() {
-    if (this.selectListView.isVisible()) {
-      this.hide();
-      return;
-    }
-
-    this.selectListView.reset();
-    await this.selectListView.update({ items: [], loadingMessage: "Loading repositories…" });
-    this.selectListView.show();
-
-    const items = [
-      { auto: true, repoName: "Auto" },
-      ...(await buildSwitchItems()).filter((item) => item.current),
-    ];
-    if (!this.selectListView.isVisible()) {
-      return;
-    }
-    await this.selectListView.update({ items, loadingMessage: null });
-  }
-
   hide() {
-    this.selectListView.hide();
+    const session = atom.modals.getActiveSession();
+    if (session && session.rootSpec.id === "git-center.repositories") session.cancel("api");
   }
 
-  destroy() {
-    this.selectListView.destroy();
-  }
+  destroy() {}
 };

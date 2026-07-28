@@ -9,6 +9,14 @@ const {
   statusTooltipLine,
   summarizeStatus,
 } = require("../lib/status-summary");
+const {
+  activeSession,
+  modalElement,
+  isModalOpen,
+  visibleItems,
+  confirmItem,
+  settle,
+} = require("../../../spec/helpers/modal-helpers");
 
 function makeWorkdir(prefix) {
   return fs.realpathSync.native(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
@@ -242,29 +250,30 @@ describe("git-center", () => {
   });
 
   it("switches the active repository through the repository picker", async () => {
-    await mainModule.getRepositoryListView().toggle();
-    const listView = mainModule.repositoryListView.selectListView;
-    expect(listView.isVisible()).toBe(true);
+    mainModule.getRepositoryListView().toggle();
+    await settle();
+    expect(isModalOpen()).toBe(true);
 
-    const items = listView.props.items;
+    const items = visibleItems();
     expect(items[0].auto).toBe(true);
     expect(items[0].repoName).toBe("Auto");
-    const autoElement = listView.element.querySelector(".list-group li");
+    const autoElement = modalElement().querySelector(".list-group li");
     expect(autoElement.querySelector(".secondary-line").textContent).toBe(
       "The active repository is updated based on the active editor.",
     );
     expect(items.slice(1).every((item) => item.current)).toBe(true);
     const target = items.find((item) => item.repository === repoB.repository);
     expect(target).toBeTruthy();
-    listView.props.didConfirmSelection(target);
+    await confirmItem(target);
 
     expect(atom.repositories.getActiveRepository()).toBe(repoB.repository);
     expect(atom.repositories.isActiveRepositoryPinned()).toBe(true);
-    expect(listView.isVisible()).toBe(false);
+    expect(isModalOpen()).toBe(false);
 
-    await mainModule.getRepositoryListView().toggle();
-    const auto = listView.props.items.find((item) => item.auto);
-    listView.props.didConfirmSelection(auto);
+    mainModule.getRepositoryListView().toggle();
+    await settle();
+    const auto = visibleItems().find((item) => item.auto);
+    await confirmItem(auto);
     expect(atom.repositories.isActiveRepositoryPinned()).toBe(false);
   });
 
@@ -273,11 +282,11 @@ describe("git-center", () => {
     await repoA.repository.getOperations().checkout("main");
     await repoA.repository.refreshRefsSnapshot();
 
-    await mainModule.getBranchListView().toggle();
-    const listView = mainModule.branchListView.selectListView;
-    expect(listView.isVisible()).toBe(true);
+    mainModule.getBranchListView().toggle();
+    await settle();
+    expect(isModalOpen()).toBe(true);
 
-    const items = listView.props.items;
+    const items = visibleItems();
     expect(items.slice(0, 3).map((item) => item.branch)).toEqual([
       "Create new branch...",
       "Create new branch from...",
@@ -294,7 +303,7 @@ describe("git-center", () => {
         resolve();
       });
     });
-    listView.props.didConfirmSelection(target);
+    await confirmItem(target);
     await didChangeRefs;
     expect(repoA.repository.getRefsSnapshot().head.name).toBe("feature");
   });
@@ -318,9 +327,9 @@ describe("git-center", () => {
     expect(chipClass(repositoryView.statusLabel, "+1")).toBe("git-center-count status-added");
     expect(chipClass(repositoryView.statusLabel, "-1")).toBe("git-center-count status-removed");
 
-    await mainModule.getRepositoryListView().toggle();
-    const listView = mainModule.repositoryListView.selectListView;
-    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find((element) =>
+    mainModule.getRepositoryListView().toggle();
+    await settle();
+    const row = Array.from(modalElement().querySelectorAll(".list-group li")).find((element) =>
       element.textContent.includes(path.basename(repoA.workingDirectory)),
     );
     const trailing = row.querySelector(".trailing-block");
@@ -337,11 +346,11 @@ describe("git-center", () => {
     await repoA.repository.refreshStatusSnapshot();
 
     jasmine.attachToDOM(atom.workspace.getElement());
-    await mainModule.getRepositoryListView().toggle();
-    const listView = mainModule.repositoryListView.selectListView;
-    jasmine.attachToDOM(listView.element);
+    mainModule.getRepositoryListView().toggle();
+    await settle();
+    jasmine.attachToDOM(modalElement());
 
-    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find((element) =>
+    const row = Array.from(modalElement().querySelectorAll(".list-group li")).find((element) =>
       element.textContent.includes(path.basename(repoA.workingDirectory)),
     );
 
@@ -389,13 +398,13 @@ describe("git-center", () => {
     expect(chipTexts(branchView.divergenceLabel)).toEqual(["↑1"]);
 
     // The branch picker reads its counts per branch, from the refs snapshot.
-    await mainModule.getBranchListView().toggle();
-    const listView = mainModule.branchListView.selectListView;
-    const item = listView.props.items.find((entry) => entry.branch === "main");
+    mainModule.getBranchListView().toggle();
+    await settle();
+    const item = visibleItems().find((entry) => entry.branch === "main");
     expect(item.upstream.name).toBe("origin/main");
     expect(item.upstream.ahead).toBe(1);
 
-    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find(
+    const row = Array.from(modalElement().querySelectorAll(".list-group li")).find(
       (element) => element.querySelector(".secondary-line")?.textContent === "origin/main",
     );
     expect(chipTexts(row.querySelector(".trailing-block"))).toEqual(["↑1", "current"]);
@@ -453,9 +462,9 @@ describe("git-center", () => {
   });
 
   it("leaves branch actions on a single line and labels branches with no upstream", async () => {
-    await mainModule.getBranchListView().toggle();
-    const listView = mainModule.branchListView.selectListView;
-    const rows = Array.from(listView.element.querySelectorAll(".list-group li"));
+    mainModule.getBranchListView().toggle();
+    await settle();
+    const rows = Array.from(modalElement().querySelectorAll(".list-group li"));
 
     // The three action rows carry no secondary line, so they stay compact.
     for (const row of rows.slice(0, 3)) {
@@ -469,34 +478,62 @@ describe("git-center", () => {
   });
 
   it("creates branches from HEAD or another ref and checks out detached", async () => {
-    const branchListView = mainModule.getBranchListView();
     const operations = repoA.repository.getOperations();
     spyOn(operations, "checkout").andReturn(Promise.resolve());
 
-    branchListView.performAction("create");
-    const nameInputDialogView = branchListView.branchNameDialog.inputDialogView;
-    expect(nameInputDialogView.props.infoMessage).toBe("Please provide a new branch name");
-    expect(nameInputDialogView.refs.queryEditor.getPlaceholderText()).toBe("Branch name");
-    nameInputDialogView.refs.queryEditor.setText("new-branch");
-    await nameInputDialogView.props.didConfirm();
+    // Each flow is one session: the action row enters a sublist, and the name
+    // prompt is a third level under "create from".
+    mainModule.getBranchListView().toggle();
+    await settle();
+    await confirmItem((item) => item.action === "create");
+
+    const session = activeSession();
+    expect(session.depth).toBe(2);
+    expect(session.queryEditor.getPlaceholderText()).toBe("Branch name");
+    session.setQuery("new-branch");
+    await settle();
+    atom.commands.dispatch(session.element, "core:confirm");
+    // The checkout is an async action, so the session closing is the signal
+    // that it finished — settle() only waits on the source.
+    await session.result;
     expect(operations.checkout).toHaveBeenCalledWith("new-branch", { createNew: true });
 
-    await branchListView.showReferenceList("create-from", repoA.repository);
-    const main = branchListView.referenceListView.props.items.find(
-      (item) => item.reference === "main",
-    );
-    branchListView.confirmReference(main);
-    nameInputDialogView.refs.queryEditor.setText("from-main");
-    await nameInputDialogView.props.didConfirm();
+    mainModule.getBranchListView().toggle();
+    await settle();
+    await confirmItem((item) => item.action === "create-from");
+    expect(activeSession().depth).toBe(2);
+    await confirmItem((item) => item.reference === "main");
+
+    const nameSession = activeSession();
+    expect(nameSession.depth).toBe(3);
+    nameSession.setQuery("from-main");
+    await settle();
+    atom.commands.dispatch(nameSession.element, "core:confirm");
+    await nameSession.result;
     expect(operations.checkout).toHaveBeenCalledWith("from-main", {
       createNew: true,
       startPoint: "main",
     });
 
-    await branchListView.showReferenceList("detach", repoA.repository);
-    branchListView.confirmReference(
-      branchListView.referenceListView.props.items.find((item) => item.reference === "main"),
-    );
+    mainModule.getBranchListView().toggle();
+    await settle();
+    await confirmItem((item) => item.action === "detach");
+    await confirmItem((item) => item.reference === "main");
     expect(operations.checkout).toHaveBeenCalledWith("main", { detach: true });
+  });
+
+  it("goes back a step instead of closing the whole branch flow", async () => {
+    mainModule.getBranchListView().toggle();
+    await settle();
+    await confirmItem((item) => item.action === "create-from");
+
+    const session = activeSession();
+    expect(session.depth).toBe(2);
+
+    // Escape pops one level, so the reference list is not a dead end.
+    atom.commands.dispatch(session.element, "core:cancel");
+    await settle();
+    expect(session.depth).toBe(1);
+    expect(isModalOpen()).toBe(true);
   });
 });
