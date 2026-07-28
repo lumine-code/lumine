@@ -51,6 +51,20 @@ describe("GrammarSelector", () => {
       }
     }));
 
+  describe("when the query matches a grammar", () =>
+    it("marks the matched characters in the rendered row", async () => {
+      const view = await getGrammarView(editor);
+      view.refs.queryEditor.setText("jav");
+      await atom.views.getNextUpdatePromise();
+
+      const matched = view.element.querySelectorAll("li .character-match");
+      expect(matched.length).toBeGreaterThan(0);
+      // The row highlights the grammar name it is showing, not the raw query.
+      expect(
+        Array.from(matched).every((span) => "JavaScript".includes(span.textContent)),
+      ).toBe(true);
+    }));
+
   describe("when a grammar is selected", () =>
     it("sets the new grammar on the editor", async () => {
       const grammarView = await getGrammarView(editor);
