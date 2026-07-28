@@ -56,6 +56,47 @@ describe("GitDiff package", () => {
     });
   });
 
+  describe("when a repository event changes none of the diff inputs", () => {
+    it("skips recomputing the line diffs", () => {
+      let repository, afterFirstEdit;
+
+      waitsFor(() => screenUpdates > 0);
+      waitsForPromise(async () => {
+        repository = await atom.repositories.resolveForPath(path.join(projectPath, "sample.js"));
+      });
+      runs(() => {
+        expect(repository).toBeTruthy();
+        spyOn(repository, "getLineDiffsAsync").andCallThrough();
+
+        editor.insertText("a");
+        advanceClock(editor.getBuffer().stoppedChangingDelay);
+      });
+
+      // The buffer edit forces a compute that also applies (markers appear).
+      waitsFor(() => editor.getMarkers().length > 0);
+      runs(() => {
+        afterFirstEdit = repository.getLineDiffsAsync.callCount;
+
+        // An index-only event — staging, unstaging — reuses the same head oid
+        // and buffer, so no worker round trip happens.
+        repository.emitter.emit("did-change-status-snapshot", repository.getStatusSnapshot());
+        expect(repository.getLineDiffsAsync.callCount).toBe(afterFirstEdit);
+
+        // Another buffer change still recomputes...
+        editor.insertText("b");
+        advanceClock(editor.getBuffer().stoppedChangingDelay);
+      });
+
+      waitsFor(() => repository.getLineDiffsAsync.callCount > afterFirstEdit);
+      runs(() => {
+        // ...and once it lands, an input-free repository event skips again.
+        const afterSecondEdit = repository.getLineDiffsAsync.callCount;
+        repository.emitter.emit("did-change-status-snapshot", repository.getStatusSnapshot());
+        expect(repository.getLineDiffsAsync.callCount).toBe(afterSecondEdit);
+      });
+    });
+  });
+
   describe("when the editor has modified lines", () => {
     it("highlights the modified lines", () => {
       expect(editorElement.querySelectorAll(".git-line-modified").length).toBe(0);

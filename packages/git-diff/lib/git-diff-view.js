@@ -74,6 +74,10 @@ export default class GitDiffView {
     this._animationId = null;
     this.editorPath = null;
     this.buffer = null;
+    // Inputs of the last applied diff, for skipping no-op recomputations.
+    this.bufferChangedSinceDiff = true;
+    this.lastDiffHeadOid = undefined;
+    this.lastDiffStatusFlags = null;
   }
 
   /**
@@ -101,10 +105,19 @@ export default class GitDiffView {
     if (this.repository !== null) {
       this.editorPath = editorPath;
       this.buffer = this.editor.getBuffer();
+      this.bufferChangedSinceDiff = true;
+      this.lastDiffHeadOid = undefined;
+      this.lastDiffStatusFlags = null;
 
       const subscribeToRepository = this.subscribeToRepository.bind(this);
       const updateIconDecoration = this.updateIconDecoration.bind(this);
       const scheduleUpdate = this.scheduleUpdate.bind(this);
+      // Buffer-driven updates always recompute; repository events recompute
+      // only when an input of the diff actually changed (see updateDiffs).
+      const scheduleBufferUpdate = () => {
+        this.bufferChangedSinceDiff = true;
+        scheduleUpdate();
+      };
 
       this._repoSubs = new CompositeDisposable(
         this.repository.onDidDestroy(subscribeToRepository),
@@ -113,7 +126,7 @@ export default class GitDiffView {
         this.repository.onDidChangeStatus(({ path: changedPath }) => {
           if (changedPath === this.editorPath) scheduleUpdate();
         }),
-        this.editor.onDidStopChanging(scheduleUpdate),
+        this.editor.onDidStopChanging(scheduleBufferUpdate),
         this.editor.onDidChangePath(subscribeToRepository),
         atom.commands.add(
           this.editorElement,
@@ -222,13 +235,29 @@ export default class GitDiffView {
   async updateDiffs() {
     if (this.buffer.getLength() >= MAX_BUFFER_LENGTH_TO_DIFF) return;
 
+    // A line diff depends only on the buffer text, the HEAD blob, and the
+    // untracked/conflicted early-out below. Index-only repository events —
+    // staging, unstaging — change none of those, and every open editor
+    // recomputing through the shared git-host worker on each of them starved
+    // the worker for interactive reads. Skip when no input changed.
+    const statusEntry = this.repository.getStatusEntry(this.editorPath);
+    const statusFlags = `${Boolean(statusEntry?.untracked)}:${Boolean(statusEntry?.conflicted)}`;
+    const headOid = this.repository.getStatusSnapshot?.().head?.oid ?? null;
+    if (
+      !this.bufferChangedSinceDiff &&
+      headOid === this.lastDiffHeadOid &&
+      statusFlags === this.lastDiffStatusFlags
+    ) {
+      return;
+    }
+
     // The diff is now computed off-thread by the git-host worker, so guard
     // against a newer update (or teardown) landing before this one resolves.
     const generation = ++this.diffUpdateGeneration;
+    this.bufferChangedSinceDiff = false;
 
     // Line diffs against HEAD are meaningless for untracked files and
     // misleading while a merge conflict is unresolved.
-    const statusEntry = this.repository.getStatusEntry(this.editorPath);
     let diffs;
     if (statusEntry?.untracked || statusEntry?.conflicted) {
       diffs = [];
@@ -237,6 +266,8 @@ export default class GitDiffView {
       try {
         diffs = await this.repository.getLineDiffsAsync(this.editorPath, text);
       } catch {
+        // Nothing was applied; make sure the next trigger recomputes.
+        this.bufferChangedSinceDiff = true;
         return;
       }
       diffs = diffs || []; // Sanitize type to array.
@@ -252,6 +283,9 @@ export default class GitDiffView {
       return;
     }
     if (this.buffer.isDestroyed?.()) return;
+
+    this.lastDiffHeadOid = headOid;
+    this.lastDiffStatusFlags = statusFlags;
 
     // Redraw: tear down the old markers, then mark the new hunks.
     if (this.diffs) for (const diff of this.diffs) this.markers.get(diff)?.destroy();
