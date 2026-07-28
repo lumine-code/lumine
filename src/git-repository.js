@@ -150,7 +150,7 @@ module.exports = class GitRepository {
     this.statusSnapshotSubscriberCount = 0;
     this.statusSnapshotDebounceMs = options.statusSnapshotDebounceMs ?? 150;
     this.statusSnapshotRefreshTimer = null;
-    this.pendingStatusSnapshotLoad = null;
+    this.statusRefreshCoalescer = { flight: null, trailing: null };
     this.refsSnapshotProvider = options.refsSnapshotProvider || new GitHostRefsProvider();
     this.refsSnapshot = EMPTY_REFS_SNAPSHOT;
     this.refsSnapshotCacheKey = null;
@@ -158,7 +158,7 @@ module.exports = class GitRepository {
     this.refsSnapshotSubscriberCount = 0;
     this.refsSnapshotDebounceMs = options.refsSnapshotDebounceMs ?? 150;
     this.refsSnapshotRefreshTimer = null;
-    this.pendingRefsSnapshotLoad = null;
+    this.refsRefreshCoalescer = { flight: null, trailing: null };
     this.diffProvider = options.diffProvider || new GitHostDiffProvider();
     this.historyProvider = options.historyProvider || new GitHostHistoryProvider();
     this.configProvider = options.configProvider || new GitHostConfigProvider();
@@ -627,12 +627,10 @@ module.exports = class GitRepository {
   // Returns a {Promise} that resolves to the snapshot.
   async ensureStatusSnapshot(options = {}) {
     if (this.statusSnapshot.initialized) return this.statusSnapshot;
-    if (!this.pendingStatusSnapshotLoad) {
-      this.pendingStatusSnapshotLoad = this.refreshStatusSnapshot(options).finally(() => {
-        this.pendingStatusSnapshotLoad = null;
-      });
-    }
-    return this.pendingStatusSnapshotLoad;
+    // Any initialized snapshot satisfies an ensure, so the in-flight run is
+    // shared instead of queueing a trailing one behind it.
+    if (this.statusRefreshCoalescer.flight) return this.statusRefreshCoalescer.flight;
+    return this.refreshStatusSnapshot(options);
   }
 
   // Schedule a background snapshot refresh. Calls within the debounce window
@@ -658,10 +656,65 @@ module.exports = class GitRepository {
     return this.statusEntriesByPath.get(statusPathKey(relativePath)) || null;
   }
 
+  // Shared single-flight-plus-trailing scheduler for both snapshot refreshes.
+  // A request arriving while a run is in flight never joins that run — its git
+  // process may have started before the state the caller wants captured — but
+  // joins (or creates) one trailing run that starts after the flight settles.
+  // This guarantees the run backing a returned promise starts at or after the
+  // request, which is the freshness the post-operation contract needs, while
+  // bounding each snapshot to one running and one queued subprocess per repo.
+  coalesceSnapshotRefresh(state, options, execute) {
+    const begin = (runOptions) => {
+      const promise = execute(runOptions).finally(() => {
+        state.flight = null;
+        const trailing = state.trailing;
+        if (trailing) {
+          state.trailing = null;
+          // Promote synchronously so no request can slip in between the
+          // flight settling and the trailing run becoming the new flight.
+          trailing.begin();
+        }
+      });
+      state.flight = promise;
+      return promise;
+    };
+
+    if (!state.flight) return begin(options);
+
+    if (!state.trailing) {
+      // The trailing run is shared by every requester that piggybacks on it,
+      // so no single requester's AbortSignal may cancel it.
+      const trailingOptions = { ...options };
+      delete trailingOptions.signal;
+      const trailing = { options: trailingOptions };
+      trailing.promise = new Promise((resolve, reject) => {
+        trailing.begin = () => begin(trailing.options).then(resolve, reject);
+      });
+      state.trailing = trailing;
+      return trailing.promise;
+    }
+
+    const merged = state.trailing.options;
+    // Ignored entries are included unless every requester opted out, and one
+    // interactive requester makes the shared run interactive.
+    if (options.includeIgnored !== false) delete merged.includeIgnored;
+    if (options.priority === "interactive") merged.priority = "interactive";
+    return state.trailing.promise;
+  }
+
   // Public: Refresh the detailed branch and file status snapshot with Git.
-  // This is intentionally independent from the synchronous git-utils cache so
-  // hot path coloring never waits for a Git subprocess.
-  async refreshStatusSnapshot(options = {}) {
+  // Concurrent calls coalesce into at most one in-flight and one trailing
+  // subprocess; see {::coalesceSnapshotRefresh}.
+  refreshStatusSnapshot(options = {}) {
+    return this.coalesceSnapshotRefresh(this.statusRefreshCoalescer, options, (runOptions) =>
+      this.executeStatusSnapshotRefresh(runOptions),
+    );
+  }
+
+  // The actual status snapshot refresh. This is intentionally independent from
+  // the synchronous git-utils cache so hot path coloring never waits for a Git
+  // subprocess.
+  async executeStatusSnapshotRefresh(options = {}) {
     const provider = this.statusSnapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
@@ -796,12 +849,10 @@ module.exports = class GitRepository {
   // Returns a {Promise} that resolves to the snapshot.
   async ensureRefsSnapshot(options = {}) {
     if (this.refsSnapshot.initialized) return this.refsSnapshot;
-    if (!this.pendingRefsSnapshotLoad) {
-      this.pendingRefsSnapshotLoad = this.refreshRefsSnapshot(options).finally(() => {
-        this.pendingRefsSnapshotLoad = null;
-      });
-    }
-    return this.pendingRefsSnapshotLoad;
+    // Any initialized snapshot satisfies an ensure, so the in-flight run is
+    // shared instead of queueing a trailing one behind it.
+    if (this.refsRefreshCoalescer.flight) return this.refsRefreshCoalescer.flight;
+    return this.refreshRefsSnapshot(options);
   }
 
   // Schedule a background refs refresh with the same coalescing rules as
@@ -816,11 +867,20 @@ module.exports = class GitRepository {
     }, this.refsSnapshotDebounceMs);
   }
 
-  // Public: Refresh the refs snapshot with Git. Reads branches, tags,
-  // remotes, worktrees, and the exact HEAD state in one pass; stale
-  // out-of-order responses are discarded and identical raw output does not
-  // emit a change event.
-  async refreshRefsSnapshot(options = {}) {
+  // Public: Refresh the refs snapshot with Git. Concurrent calls coalesce into
+  // at most one in-flight and one trailing refresh; see
+  // {::coalesceSnapshotRefresh}.
+  refreshRefsSnapshot(options = {}) {
+    return this.coalesceSnapshotRefresh(this.refsRefreshCoalescer, options, (runOptions) =>
+      this.executeRefsSnapshotRefresh(runOptions),
+    );
+  }
+
+  // The actual refs snapshot refresh. Reads branches, tags, remotes,
+  // worktrees, and the exact HEAD state in one pass; stale out-of-order
+  // responses are discarded and identical raw output does not emit a change
+  // event.
+  async executeRefsSnapshotRefresh(options = {}) {
     const provider = this.refsSnapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 

@@ -270,22 +270,58 @@ describe("GitRepository", () => {
       expect(repo.isPathIgnoredCached(path.join(workingDirectory, "src", "index.js"))).toBe(false);
     });
 
-    it("does not let an older concurrent refresh replace a newer snapshot", async () => {
+    it("coalesces concurrent refreshes into one flight and one trailing run", async () => {
       const resolvers = [];
       statusSnapshotProvider.getStatus.andCallFake(
         () => new Promise((resolve) => resolvers.push(resolve)),
       );
 
-      const olderRefresh = repo.refreshStatusSnapshot();
-      const newerRefresh = repo.refreshStatusSnapshot();
-      resolvers[1]("# branch.oid newest\0# branch.head main\0? newest.txt\0");
-      const newerSnapshot = await newerRefresh;
-      resolvers[0]("# branch.oid older\0# branch.head main\0? older.txt\0");
+      const flight = repo.refreshStatusSnapshot();
+      const trailingA = repo.refreshStatusSnapshot();
+      const trailingB = repo.refreshStatusSnapshot();
+      // Requests during the flight join one queued trailing run; nothing else
+      // spawns.
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(1);
 
-      expect(await olderRefresh).toBe(newerSnapshot);
-      expect(repo.getStatusSnapshot()).toBe(newerSnapshot);
-      expect(repo.getStatusEntry("newest.txt")).toBe(newerSnapshot.files[0]);
-      expect(repo.getStatusEntry("older.txt")).toBeNull();
+      resolvers[0]("# branch.oid older\0# branch.head main\0? older.txt\0");
+      const flightSnapshot = await flight;
+      expect(flightSnapshot.files[0].path).toBe("older.txt");
+
+      // The trailing run started only after the flight settled, so it captures
+      // state changed while the flight was already running.
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(2);
+      resolvers[1]("# branch.oid newest\0# branch.head main\0? newest.txt\0");
+      const trailingSnapshot = await trailingA;
+      expect(await trailingB).toBe(trailingSnapshot);
+      expect(trailingSnapshot.files[0].path).toBe("newest.txt");
+      expect(repo.getStatusSnapshot()).toBe(trailingSnapshot);
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(2);
+    });
+
+    it("merges trailing options from every coalesced requester", async () => {
+      const optionsSeen = [];
+      const resolvers = [];
+      statusSnapshotProvider.getStatus.andCallFake((workingDir, statusOptions) => {
+        optionsSeen.push(statusOptions);
+        return new Promise((resolve) => resolvers.push(resolve));
+      });
+
+      const flight = repo.refreshStatusSnapshot({ includeIgnored: false });
+      const trailingA = repo.refreshStatusSnapshot({ includeIgnored: false, signal: {} });
+      const trailingB = repo.refreshStatusSnapshot({ priority: "interactive" });
+
+      resolvers[0](output);
+      await flight;
+      resolvers[1](output);
+      await Promise.all([trailingA, trailingB]);
+
+      expect(optionsSeen[0].includeIgnored).toBe(false);
+      // One requester wanted ignored entries (the default) and interactive
+      // priority, so the shared trailing run honors both — and drops the
+      // piggybacked signal, which must not be able to cancel a shared run.
+      expect(optionsSeen[1].includeIgnored).toBe(true);
+      expect(optionsSeen[1].priority).toBe("interactive");
+      expect(optionsSeen[1].signal).toBeUndefined();
     });
   });
 
@@ -471,20 +507,29 @@ describe("GitRepository", () => {
       expect(changeHandler.calls.count()).toBe(2);
     });
 
-    it("does not let an older concurrent refresh replace a newer refs snapshot", async () => {
+    it("coalesces concurrent refs refreshes into one flight and one trailing run", async () => {
       const resolvers = [];
       refsSnapshotProvider.getRefs.andCallFake(
         () => new Promise((resolve) => resolvers.push(resolve)),
       );
 
-      const olderRefresh = repo.refreshRefsSnapshot();
-      const newerRefresh = repo.refreshRefsSnapshot();
-      resolvers[1](makeOutputs("newest"));
-      const newerSnapshot = await newerRefresh;
-      resolvers[0](makeOutputs("older"));
+      const flight = repo.refreshRefsSnapshot();
+      const trailingA = repo.refreshRefsSnapshot();
+      const trailingB = repo.refreshRefsSnapshot();
+      expect(refsSnapshotProvider.getRefs.calls.count()).toBe(1);
 
-      expect(await olderRefresh).toBe(newerSnapshot);
+      resolvers[0](makeOutputs("older"));
+      const flightSnapshot = await flight;
+      expect(flightSnapshot.head.name).toBe("older");
+
+      // The trailing run starts after the flight settles and captures the
+      // newer state; both piggybacked requesters share it.
+      expect(refsSnapshotProvider.getRefs.calls.count()).toBe(2);
+      resolvers[1](makeOutputs("newest"));
+      const trailingSnapshot = await trailingA;
+      expect(await trailingB).toBe(trailingSnapshot);
       expect(repo.getRefsSnapshot().head.name).toBe("newest");
+      expect(refsSnapshotProvider.getRefs.calls.count()).toBe(2);
     });
 
     it("refreshes refs again when scheduled while a subscriber exists", async () => {
