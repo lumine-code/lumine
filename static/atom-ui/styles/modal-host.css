@@ -1,0 +1,231 @@
+/*
+ * Modal host (atom.modals)
+ * --------------------------------------------------
+ * Chrome around the shared list/input body. The row and list styling itself
+ * still comes from select-list.css, which the host deliberately re-emits so
+ * themes and package overrides keep working.
+ */
+
+atom-modal {
+  display: block;
+}
+
+/* Breadcrumb (stack depth > 1) */
+
+.modals-breadcrumb {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--component-padding) / 2);
+  margin-bottom: calc(var(--component-padding) / 2);
+  color: var(--text-color-subtle);
+  font-size: 0.9em;
+}
+
+.modals-breadcrumb .modals-back {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  padding: 0 4px;
+  font-size: 1.2em;
+  line-height: 1;
+}
+
+.modals-breadcrumb .modals-crumb.clickable {
+  cursor: pointer;
+  text-decoration: underline dotted;
+}
+
+.modals-breadcrumb .modals-crumb:not(:last-child)::after {
+  content: "›";
+  margin-left: calc(var(--component-padding) / 2);
+  opacity: 0.6;
+}
+
+/* Query row */
+
+.modals-query {
+  position: relative;
+}
+
+.modals-query .modals-help-toggle {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  z-index: 1;
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.5;
+  padding: 0;
+  line-height: 1;
+}
+
+.modals-query .modals-help-toggle:hover,
+.modals-query .modals-help-toggle:focus {
+  opacity: 1;
+}
+
+/* A masked field still needs a caret, so the glyph substitution happens on the
+   rendered text rather than by hiding it. */
+.modals-query .modals-query-editor.password .line {
+  -webkit-text-security: disc;
+}
+
+/* Checkboxes */
+
+.modals-checkboxes {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: var(--component-padding);
+}
+
+.modals-checkboxes .input-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+
+/* Status region: busy spinner, messages, badges, validation */
+
+.modals-status {
+  display: flex;
+  align-items: center;
+  gap: calc(var(--component-padding) / 2);
+  margin-top: var(--component-padding);
+  color: var(--text-color-subtle);
+}
+
+.modals-status[data-severity="warning"] {
+  color: var(--text-color-warning);
+}
+
+.modals-status[data-severity="error"] {
+  color: var(--text-color-error);
+}
+
+.modals-status .badge {
+  margin-left: auto;
+}
+
+/* Split: list body and (from Stage 5) the preview column */
+
+.modals-split {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: var(--component-padding);
+  min-height: 0;
+}
+
+.modals-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+atom-modal[data-layout="stacked"] .modals-split {
+  flex-direction: column;
+}
+
+/* Rows carrying trailing controls must not have the block collapse: the base
+   sheet floats it, and three packages force `.primary-line { display: flex }`,
+   so keep the block itself laying out left-to-right either way. */
+.modals-host ol.list-group li .trailing-block {
+  flex: 0 0 auto;
+  align-items: center;
+}
+
+.modals-host ol.list-group li.separator {
+  padding-top: calc(var(--component-padding) / 2);
+  color: var(--text-color-subtle);
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: default;
+}
+
+.modals-host ol.list-group li.disabled {
+  opacity: 0.5;
+}
+
+.modals-host ol.list-group li.modals-row-error {
+  color: var(--text-color-error);
+  font-style: italic;
+}
+
+.modals-host .modals-row-button {
+  border: none;
+  background: none;
+  color: inherit;
+  cursor: pointer;
+  opacity: 0.6;
+  padding: 0 2px;
+}
+
+.modals-host .modals-row-button:hover {
+  opacity: 1;
+}
+
+/* Input template */
+
+.modals-value-preview {
+  margin-top: var(--component-padding);
+  color: var(--text-color-subtle);
+}
+
+/* Help overlay */
+
+.modals-help {
+  margin-top: var(--component-padding);
+  max-height: 312px;
+  overflow-y: auto;
+}
+
+.modals-help-actions {
+  width: 100%;
+  margin-top: var(--component-padding);
+  border-collapse: collapse;
+}
+
+.modals-help-actions td {
+  padding: 2px 0;
+  vertical-align: baseline;
+}
+
+.modals-help-actions td:first-child {
+  width: 10em;
+  color: var(--text-color-highlight);
+  font-family: var(--editor-font-family, monospace);
+  white-space: nowrap;
+}
+
+/* Mounted (non-panel) sessions.
+   All row and list chrome normally arrives scoped inside `atom-panel.modal`,
+   so an inline host would otherwise render unstyled. */
+
+atom-modal.modals-mounted {
+  display: block;
+  color: var(--text-color);
+  background-color: var(--overlay-background-color);
+  padding: 10px;
+  box-sizing: border-box;
+}
+
+atom-modal.modals-mounted ol.list-group {
+  max-height: 312px;
+  overflow-y: auto;
+  border: 1px solid var(--base-border-color);
+  border-radius: var(--component-border-radius);
+}
+
+atom-modal.modals-mounted ol.list-group li {
+  padding: 4px 10px;
+}
+
+atom-modal.modals-mounted ol.list-group li.selected {
+  background-color: var(--background-color-selected);
+}

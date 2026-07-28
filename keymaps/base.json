@@ -134,6 +134,34 @@
   ".select-list atom-text-editor[mini]": {
     "enter": "core:confirm"
   },
+  // atom.modals. Scoped to the host rather than its mini editor so a stray Tab
+  // onto a checkbox or the help button cannot take every binding out.
+  "atom-modal": {
+    "enter": "core:confirm",
+    "alt-enter": "modals:confirm-secondary",
+    "cmdorctrl-enter": "modals:confirm-secondary",
+    "alt-left": "modals:back",
+    "alt-home": "core:move-to-top",
+    "alt-end": "core:move-to-bottom",
+    "ctrl-f1": "modals:help",
+    "tab": "modals:focus-next-control",
+    "shift-tab": "modals:focus-previous-control"
+  },
+  // Higher specificity than the `atom-workspace` shift-escape binding, which
+  // would otherwise win and toggle the pending pane item instead.
+  "atom-modal.modals-host": {
+    "shift-escape": "modals:cancel-all"
+  },
+  "atom-modal[data-multi-select]": {
+    "tab": "modals:toggle-check",
+    "cmdorctrl-shift-a": "modals:check-all"
+  },
+  // `!important` because the bare `atom-text-editor` escape binding below is
+  // itself `!important`; it only falls through to us when the query editor
+  // happens to have a single selection.
+  "atom-modal atom-text-editor[mini] !important": {
+    "escape": "core:cancel"
+  },
   ".tool-panel.panel-left, .tool-panel.panel-right": {
     "escape": "tool-panel:unfocus"
   },

@@ -7,6 +7,7 @@ class PanelContainerElement extends HTMLElement {
   constructor() {
     super();
     this.subscriptions = new CompositeDisposable();
+    this.panelSubscriptions = new Map();
   }
 
   connectedCallback() {
@@ -52,8 +53,23 @@ class PanelContainerElement extends HTMLElement {
     }
 
     if (this.model.isModal()) {
-      this.hideAllPanelsExcept(panel);
+      // Per-panel subscriptions live in their own composite so destroying a
+      // panel prunes them. Adding them to the container's composite leaked for
+      // the window's lifetime, three per panel, however often panels churned.
+      const panelSubscriptions = new CompositeDisposable();
+      this.panelSubscriptions.set(panel, panelSubscriptions);
       this.subscriptions.add(
+        panel.onDidDestroy(() => {
+          panelSubscriptions.dispose();
+          this.panelSubscriptions.delete(panel);
+        }),
+      );
+
+      // Only a *visible* panel displaces the others. A panel added hidden (the
+      // usual `{visible: false}` construction) used to force-hide whatever was
+      // on screen the moment it was created, with no callback to the owner.
+      if (panel.isVisible()) this.hideAllPanelsExcept(panel);
+      panelSubscriptions.add(
         panel.onDidChangeVisible((visible) => {
           if (visible) {
             this.hideAllPanelsExcept(panel);
@@ -63,7 +79,7 @@ class PanelContainerElement extends HTMLElement {
 
       if (panel.restoreFocus) {
         if (panel.isVisible()) this.capturePriorFocus();
-        this.subscriptions.add(
+        panelSubscriptions.add(
           panel.onDidChangeVisible((visible) => {
             if (visible) {
               this.capturePriorFocus();
@@ -94,7 +110,7 @@ class PanelContainerElement extends HTMLElement {
         }
         const modalFocusTrap = createFocusTrap(panelElement, focusOptions);
 
-        this.subscriptions.add(
+        panelSubscriptions.add(
           panel.onDidChangeVisible((visible) => {
             if (visible) {
               modalFocusTrap.activate();
@@ -108,6 +124,8 @@ class PanelContainerElement extends HTMLElement {
   }
 
   destroyed() {
+    for (const subscriptions of this.panelSubscriptions.values()) subscriptions.dispose();
+    this.panelSubscriptions.clear();
     this.subscriptions.dispose();
     if (this.parentNode != null) {
       this.parentNode.removeChild(this);

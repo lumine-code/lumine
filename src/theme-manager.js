@@ -49,6 +49,7 @@ const BASE_STYLESHEETS = [
   "atom-ui/styles/lists.css",
   "atom-ui/styles/loading.css",
   "atom-ui/styles/messages.css",
+  "atom-ui/styles/modal-host.css",
   "atom-ui/styles/modals.css",
   "atom-ui/styles/panels.css",
   "atom-ui/styles/select-list.css",

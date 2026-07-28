@@ -52,6 +52,7 @@ const PasteProviderRegistry = require("./paste-provider-registry");
 const StartupTime = require("./startup-time");
 const { getReleaseChannel } = require("./get-app-details.js");
 const UI = require("./ui");
+const ModalManager = require("./modal-manager");
 const IconRegistry = require("./icon-registry");
 const packagejson = require("../package.json");
 
@@ -240,6 +241,18 @@ class AtomEnvironment {
 
     this.themes.workspace = this.workspace;
     this.repositories.attachWorkspace(this.workspace);
+
+    /** @type {ModalManager} */
+    this.modals = new ModalManager({
+      workspace: this.workspace,
+      commands: this.commands,
+      keymaps: this.keymaps,
+      config: this.config,
+      views: this.views,
+      packages: this.packages,
+      textEditors: this.textEditors,
+      notifications: this.notifications,
+    });
 
     if (this.keymaps.canLoadBundledKeymapsFromMemory()) {
       this.keymaps.loadBundledKeymaps();
@@ -488,6 +501,10 @@ class AtomEnvironment {
     this.contextMenu.clear();
 
     await this.packages.reset();
+    // Before the workspace reset, which destroys every panel container: the
+    // manager must tear its panel down itself and rebuild lazily, rather than
+    // hold a destroyed panel whose show() would silently do nothing.
+    this.modals.clear();
     this.workspace.reset(this.packages);
     this.registerDefaultOpeners();
     this.project.reset(this.packages);
@@ -513,6 +530,12 @@ class AtomEnvironment {
     // reset it because another environment will be created.
     this.isDestroying = true;
     this.emitter.emit("will-destroy");
+
+    // Before the disposables and the workspace go: a modal's terminal
+    // callbacks routinely touch atom.workspace/atom.project, which are null by
+    // the time the rest of this method has run.
+    if (this.modals) this.modals.destroy();
+    this.modals = null;
 
     this.disposables.dispose();
     if (this.workspace) this.workspace.destroy();
