@@ -20,6 +20,11 @@ class ModalListTemplate {
 
     this.list = document.createElement("ol");
     this.list.classList.add("list-group");
+    // Reserves the check-glyph gutter on every row. Set on the list rather than
+    // derived from the visible rows, so filtering the active row out does not
+    // shift the whole list sideways.
+    if (spec.markActive) this.list.classList.add("mark-active");
+    if (spec.itemsClassList) this.list.classList.add(...[].concat(spec.itemsClassList));
     this.list.setAttribute("role", "listbox");
     this.list.id = `modals-${host.sessionId}-list`;
     this.element.appendChild(this.list);

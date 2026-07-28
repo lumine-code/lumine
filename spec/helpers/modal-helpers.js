@@ -80,6 +80,19 @@ function dispatch(commandName) {
 }
 
 const confirm = () => dispatch("core:confirm");
+
+// Focuses a specific row and confirms it, as if the user had arrowed to it.
+// `target` is either the item itself or a predicate.
+async function confirmItem(target) {
+  const session = activeSession();
+  if (!session) throw new Error("modal-helpers: no modal is open");
+  const match = typeof target === "function" ? target : (item) => item === target;
+  const index = session.getVisibleItems().findIndex(match);
+  if (index < 0) throw new Error("modal-helpers: no visible item matched");
+  session.focusIndex(index);
+  confirm();
+  await settle();
+}
 const cancel = () => dispatch("core:cancel");
 const moveDown = () => dispatch("core:move-down");
 const moveUp = () => dispatch("core:move-up");
@@ -116,6 +129,7 @@ module.exports = {
   emptyMessageText,
   dispatch,
   confirm,
+  confirmItem,
   cancel,
   moveDown,
   moveUp,

@@ -1,4 +1,4 @@
-const { SelectListView: SelectList } = require("@lumine-code/select-list");
+const { confirmItem, settle } = require("../../../spec/helpers/modal-helpers");
 // const {it, fit, ffit, beforeEach, afterEach} = require('./async-spec-helpers') // eslint-disable-line
 const path = require("path");
 
@@ -20,7 +20,7 @@ describe("EncodingSelector", () => {
   describe("when encoding-selector:show is triggered", () => {
     it("displays a list of all the available encodings", async () => {
       atom.commands.dispatch(editor.getElement(), "encoding-selector:show");
-      await SelectList.getScheduler().getNextUpdatePromise();
+      await settle();
 
       expect(document.body.querySelectorAll(".encoding-selector li").length).toBeGreaterThan(1);
     });
@@ -29,10 +29,9 @@ describe("EncodingSelector", () => {
   describe("when an encoding is selected", () => {
     it("sets the new encoding on the editor", async () => {
       atom.commands.dispatch(editor.getElement(), "encoding-selector:show");
-      await SelectList.getScheduler().getNextUpdatePromise();
+      await settle();
 
-      const encodingListView = atom.workspace.getModalPanels()[0].getItem();
-      encodingListView.props.didConfirmSelection({ id: "utf16le" });
+      await confirmItem((encoding) => encoding.id === "utf16le");
       expect(editor.getEncoding()).toBe("utf16le");
     });
   });
@@ -46,10 +45,9 @@ describe("EncodingSelector", () => {
       expect(encodingChangeHandler.callCount).toBe(1);
 
       atom.commands.dispatch(editor.getElement(), "encoding-selector:show");
-      await SelectList.getScheduler().getNextUpdatePromise();
+      await settle();
 
-      const encodingListView = atom.workspace.getModalPanels()[0].getItem();
-      encodingListView.props.didConfirmSelection({ id: "detect" });
+      await confirmItem((encoding) => encoding.id === "detect");
       await new Promise((resolve) => {
         encodingChangeHandler.andCallFake(() => {
           expect(editor.getEncoding()).toBe("utf8");

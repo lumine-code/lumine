@@ -276,7 +276,10 @@ function buildRowElement(row, ctx) {
     row.detail == null ? [] : Array.isArray(row.detail) ? row.detail : [row.detail];
   if (detailValues.length > 0) li.classList.add("two-lines");
   if (row.disabled) li.classList.add("disabled");
-  if (row.active) li.classList.add("mark-active");
+  // The check glyph is drawn by `ol.mark-active > li.active`, so the list
+  // element carries the mode (see ViewSpec.markActive) and the row only says
+  // whether it is the current value.
+  if (row.active) li.classList.add("active");
   if (row.dataset) {
     for (const key of Object.keys(row.dataset)) li.dataset[key] = row.dataset[key];
   }

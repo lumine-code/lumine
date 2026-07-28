@@ -1,5 +1,11 @@
 const path = require("path");
-const { SelectListView } = require("@lumine-code/select-list");
+const {
+  activeSession,
+  modalElement,
+  visibleItems,
+  confirmItem,
+  settle,
+} = require("../../../spec/helpers/modal-helpers");
 
 function setConfigForLanguageMode(mode) {
   let useTreeSitterParsers = mode !== "textmate";
@@ -33,7 +39,7 @@ describe("GrammarSelector", () => {
 
   describe("when grammar-selector:show is triggered", () =>
     it("displays a list of all the available grammars", async () => {
-      const grammarView = (await getGrammarView(editor)).element;
+      const grammarView = (await getGrammarView(editor), modalElement());
 
       let allGrammars = atom.grammars
         .getGrammars({ includeTreeSitter: true })
@@ -54,18 +60,18 @@ describe("GrammarSelector", () => {
 
   describe("when a grammar is selected", () =>
     it("sets the new grammar on the editor", async () => {
-      const grammarView = await getGrammarView(editor);
-      grammarView.props.didConfirmSelection(textGrammar);
+      await getGrammarView(editor);
+      await confirmItem(textGrammar);
       expect(editor.getGrammar()).toBe(textGrammar);
     }));
 
   describe("when auto-detect is selected", () => {
     it("restores the auto-detected grammar on the editor (when language parser is textmate)", async () => {
-      let grammarView = await getGrammarView(editor);
-      grammarView.props.didConfirmSelection(textGrammar);
+      await getGrammarView(editor);
+      await confirmItem(textGrammar);
       expect(editor.getGrammar()).toBe(textGrammar);
-      grammarView = await getGrammarView(editor);
-      grammarView.props.didConfirmSelection(grammarView.items[0]);
+      await getGrammarView(editor);
+      await confirmItem(visibleItems()[0]);
       let currentGrammar = editor.getGrammar();
       expect(currentGrammar.scopeName).toBe("source.js");
       expect(currentGrammar.constructor.name).toBe("Grammar");
@@ -73,11 +79,11 @@ describe("GrammarSelector", () => {
 
     it("restores the auto-detected grammar on the editor (when language parser is web-tree-sitter)", async () => {
       setConfigForLanguageMode("web-tree-sitter");
-      let grammarView = await getGrammarView(editor);
-      grammarView.props.didConfirmSelection(textGrammar);
+      await getGrammarView(editor);
+      await confirmItem(textGrammar);
       expect(editor.getGrammar()).toBe(textGrammar);
-      grammarView = await getGrammarView(editor);
-      grammarView.props.didConfirmSelection(grammarView.items[0]);
+      await getGrammarView(editor);
+      await confirmItem(visibleItems()[0]);
       let currentGrammar = editor.getGrammar();
       expect(currentGrammar.scopeName).toBe("source.js");
       expect(currentGrammar.constructor.name).toBe("WASMTreeSitterGrammar");
@@ -87,7 +93,7 @@ describe("GrammarSelector", () => {
   describe("when the editor's current grammar is the null grammar", () =>
     it("displays Auto Detect as the selected grammar", async () => {
       editor.setGrammar(atom.grammars.nullGrammar);
-      const grammarView = (await getGrammarView(editor)).element;
+      const grammarView = (await getGrammarView(editor), modalElement());
       expect(grammarView.querySelector("li.active").textContent).toBe("Auto Detect");
     }));
 
@@ -96,8 +102,8 @@ describe("GrammarSelector", () => {
       editor = await atom.workspace.open();
       expect(editor.getGrammar()).not.toBe(jsGrammar);
 
-      const grammarView = await getGrammarView(editor);
-      grammarView.props.didConfirmSelection(jsGrammar);
+      await getGrammarView(editor);
+      await confirmItem(jsGrammar);
       expect(editor.getGrammar()).toBe(jsGrammar);
     }));
 
@@ -190,17 +196,18 @@ describe("GrammarSelector", () => {
       it("shows only the Tree-sitter if true and both exist", async () => {
         // the main JS grammar has both a TextMate and Tree-sitter implementation
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", true);
-        const grammarView = await getGrammarView(editor);
+        await getGrammarView(editor);
         const observedNames = new Set();
-        grammarView.element.querySelectorAll("li").forEach((li) => {
-          const name = li.getAttribute("data-grammar");
-          expect(observedNames.has(name)).toBe(false);
-          observedNames.add(name);
-        });
+        modalElement()
+          .querySelectorAll("li")
+          .forEach((li) => {
+            const name = li.getAttribute("data-grammar");
+            expect(observedNames.has(name)).toBe(false);
+            observedNames.add(name);
+          });
 
         // check the seen JS is actually the Tree-sitter one
-        const list = atom.workspace.getModalPanels()[0].item;
-        for (const item of list.items) {
+        for (const item of visibleItems()) {
           if (item.name === "JavaScript") {
             expect(item.constructor.name === "TreeSitterGrammar");
           }
@@ -214,7 +221,7 @@ describe("GrammarSelector", () => {
         await getGrammarView(editor);
         let cppCount = 0;
 
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           const grammar = listItems[i];
           const name = grammar.name;
@@ -241,7 +248,7 @@ describe("GrammarSelector", () => {
         await getGrammarView(editor);
         let cppCount = 0;
 
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           const grammar = listItems[i];
           const name = grammar.name;
@@ -264,15 +271,15 @@ describe("GrammarSelector", () => {
 
     describe("for every Tree-sitter grammar", () => {
       it("adds a label to identify it as Tree-sitter", async () => {
-        const grammarView = await getGrammarView(editor);
-        const elements = grammarView.element.querySelectorAll("li");
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        await getGrammarView(editor);
+        const elements = modalElement().querySelectorAll("li");
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           if (listItems[i].constructor.name === "TreeSitterGrammar") {
             expect(
-              elements[i].childNodes[1].childNodes[0].className.startsWith(
-                "grammar-selector-parser",
-              ),
+              elements[i]
+                .querySelector(".trailing-block > span")
+                .classList.contains("grammar-selector-parser"),
             ).toBe(true);
           }
         }
@@ -315,7 +322,7 @@ describe("GrammarSelector", () => {
 
     describe("when grammar-selector:show is triggered", () => {
       it("displays a list of all the available grammars", async () => {
-        const grammarView = (await getGrammarView(editor)).element;
+        const grammarView = (await getGrammarView(editor), modalElement());
 
         // -1 for removing nullGrammar, +1 for adding "Auto Detect"
         // Tree-sitter names the regex and JSDoc grammars
@@ -337,24 +344,25 @@ describe("GrammarSelector", () => {
     describe("when toggling hideDuplicateTextMateGrammars", () => {
       it("shows only the preferred if true and several exist (and preferred is default)", async () => {
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", true);
-        const grammarView = await getGrammarView(editor);
+        await getGrammarView(editor);
         const observedNames = new Map();
         // Show a maximum of one grammar (the modern tree-sitter variant).
-        grammarView.element.querySelectorAll("li").forEach((li) => {
-          const name = li.getAttribute("data-grammar");
-          if (!observedNames.has(name)) {
-            observedNames.set(name, 0);
-          }
-          observedNames.set(name, observedNames.get(name) + 1);
-          expect(observedNames.get(name) < 2).toBe(
-            true,
-            `found ${observedNames.get(name)} of ${name}`,
-          );
-        });
+        modalElement()
+          .querySelectorAll("li")
+          .forEach((li) => {
+            const name = li.getAttribute("data-grammar");
+            if (!observedNames.has(name)) {
+              observedNames.set(name, 0);
+            }
+            observedNames.set(name, observedNames.get(name) + 1);
+            expect(observedNames.get(name) < 2).toBe(
+              true,
+              `found ${observedNames.get(name)} of ${name}`,
+            );
+          });
 
         // check the seen JS is actually the Tree-sitter one
-        const list = atom.workspace.getModalPanels()[0].item;
-        for (const item of list.items) {
+        for (const item of visibleItems()) {
           if (item.name === "JavaScript") {
             expect(item.constructor.name).toBe("WASMTreeSitterGrammar");
           }
@@ -364,23 +372,24 @@ describe("GrammarSelector", () => {
       it("shows only the preferred if true and several exist (and preferred is web-tree-sitter)", async () => {
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", true);
         setConfigForLanguageMode("web-tree-sitter", { scopeSelector: ".source.js" });
-        const grammarView = await getGrammarView(editor);
+        await getGrammarView(editor);
         const observedNames = new Map();
-        grammarView.element.querySelectorAll("li").forEach((li) => {
-          const name = li.getAttribute("data-grammar");
-          if (!observedNames.has(name)) {
-            observedNames.set(name, 0);
-          }
-          observedNames.set(name, observedNames.get(name) + 1);
-          expect(observedNames.get(name) < 2).toBe(
-            true,
-            `found ${observedNames.get(name)} of ${name}`,
-          );
-        });
+        modalElement()
+          .querySelectorAll("li")
+          .forEach((li) => {
+            const name = li.getAttribute("data-grammar");
+            if (!observedNames.has(name)) {
+              observedNames.set(name, 0);
+            }
+            observedNames.set(name, observedNames.get(name) + 1);
+            expect(observedNames.get(name) < 2).toBe(
+              true,
+              `found ${observedNames.get(name)} of ${name}`,
+            );
+          });
 
         // check the seen JS is actually the Tree-sitter one
-        const list = atom.workspace.getModalPanels()[0].item;
-        for (const item of list.items) {
+        for (const item of visibleItems()) {
           if (item.name === "JavaScript") {
             expect(item.constructor.name).toBe("WASMTreeSitterGrammar");
           }
@@ -390,23 +399,24 @@ describe("GrammarSelector", () => {
       it("shows only the preferred if true and several exist (and preferred is textmate)", async () => {
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", true);
         setConfigForLanguageMode("textmate", { scopeSelector: ".source.js" });
-        const grammarView = await getGrammarView(editor);
+        await getGrammarView(editor);
         const observedNames = new Map();
-        grammarView.element.querySelectorAll("li").forEach((li) => {
-          const name = li.getAttribute("data-grammar");
-          if (!observedNames.has(name)) {
-            observedNames.set(name, 0);
-          }
-          observedNames.set(name, observedNames.get(name) + 1);
-          expect(observedNames.get(name) < 2).toBe(
-            true,
-            `found ${observedNames.get(name)} of ${name}`,
-          );
-        });
+        modalElement()
+          .querySelectorAll("li")
+          .forEach((li) => {
+            const name = li.getAttribute("data-grammar");
+            if (!observedNames.has(name)) {
+              observedNames.set(name, 0);
+            }
+            observedNames.set(name, observedNames.get(name) + 1);
+            expect(observedNames.get(name) < 2).toBe(
+              true,
+              `found ${observedNames.get(name)} of ${name}`,
+            );
+          });
 
         // check the seen JS is actually the Tree-sitter one
-        const list = atom.workspace.getModalPanels()[0].item;
-        for (const item of list.items) {
+        for (const item of visibleItems()) {
           if (item.name === "JavaScript") {
             expect(item.constructor.name).toBe("Grammar");
           }
@@ -419,7 +429,7 @@ describe("GrammarSelector", () => {
         await getGrammarView(editor);
         let cppCount = 0;
 
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           const grammar = listItems[i];
           const name = grammar.name;
@@ -442,25 +452,27 @@ describe("GrammarSelector", () => {
     describe("for every Tree-sitter grammar", () => {
       it("adds a label to identify it as Tree-sitter", async () => {
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", false);
-        const grammarView = await getGrammarView(editor);
-        const elements = grammarView.element.querySelectorAll("li");
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        await getGrammarView(editor);
+        const elements = modalElement().querySelectorAll("li");
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           let item = listItems[i];
           let element = elements[i];
           if (item.constructor.name.includes("TreeSitterGrammar")) {
             expect(
-              element.childNodes[1].childNodes[0].className.startsWith("grammar-selector-parser"),
+              element
+                .querySelector(".trailing-block > span")
+                .classList.contains("grammar-selector-parser"),
             ).toBe(true);
           }
           if (item.constructor.name === "TreeSitterGrammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-warning")).toBe(
-              true,
-            );
+            expect(
+              element.querySelector(".trailing-block > span").classList.contains("badge-warning"),
+            ).toBe(true);
           } else if (item.constructor.name === "WASMTreeSitterGrammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-success")).toBe(
-              true,
-            );
+            expect(
+              element.querySelector(".trailing-block > span").classList.contains("badge-success"),
+            ).toBe(true);
           }
         }
       });
@@ -475,7 +487,7 @@ describe("GrammarSelector", () => {
 
     describe("when grammar-selector:show is triggered", () => {
       it("displays a list of all the available grammars ", async () => {
-        const grammarView = (await getGrammarView(editor)).element;
+        const grammarView = (await getGrammarView(editor), modalElement());
 
         // -1 for removing nullGrammar, +1 for adding "Auto Detect"
         // Tree-sitter names the regex and JSDoc grammars
@@ -496,24 +508,25 @@ describe("GrammarSelector", () => {
       it("shows only the Tree-sitter if true and several exist", async () => {
         // the main JS grammar has both a TextMate and Tree-sitter implementation
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", true);
-        const grammarView = await getGrammarView(editor);
+        await getGrammarView(editor);
         const observedNames = new Map();
 
-        grammarView.element.querySelectorAll("li").forEach((li) => {
-          const name = li.getAttribute("data-grammar");
-          if (!observedNames.has(name)) {
-            observedNames.set(name, 0);
-          }
-          observedNames.set(name, observedNames.get(name) + 1);
-          expect(observedNames.get(name) < 2).toBe(
-            true,
-            `found ${observedNames.get(name)} of ${name}`,
-          );
-        });
+        modalElement()
+          .querySelectorAll("li")
+          .forEach((li) => {
+            const name = li.getAttribute("data-grammar");
+            if (!observedNames.has(name)) {
+              observedNames.set(name, 0);
+            }
+            observedNames.set(name, observedNames.get(name) + 1);
+            expect(observedNames.get(name) < 2).toBe(
+              true,
+              `found ${observedNames.get(name)} of ${name}`,
+            );
+          });
 
         // check the seen JS is actually the Tree-sitter one
-        const list = atom.workspace.getModalPanels()[0].item;
-        for (const item of list.items) {
+        for (const item of visibleItems()) {
           if (item.name === "JavaScript") {
             expect(item.constructor.name).toBe("WASMTreeSitterGrammar");
           }
@@ -526,7 +539,7 @@ describe("GrammarSelector", () => {
         await getGrammarView(editor);
         let cppCount = 0;
 
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           const grammar = listItems[i];
           const name = grammar.name;
@@ -549,48 +562,54 @@ describe("GrammarSelector", () => {
     describe("for every Tree-sitter grammar", () => {
       it("adds a label to identify it as Tree-sitter (when showing duplicate grammars)", async () => {
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", false);
-        const grammarView = await getGrammarView(editor);
-        const elements = grammarView.element.querySelectorAll("li");
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        await getGrammarView(editor);
+        const elements = modalElement().querySelectorAll("li");
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           let item = listItems[i];
           let element = elements[i];
           if (item.constructor.name.includes("TreeSitterGrammar")) {
             expect(
-              element.childNodes[1].childNodes[0].className.startsWith("grammar-selector-parser"),
+              element
+                .querySelector(".trailing-block > span")
+                .classList.contains("grammar-selector-parser"),
             ).toBe(true);
           }
           if (item.constructor.name === "WASMTreeSitterGrammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-success")).toBe(
-              true,
-            );
+            expect(
+              element.querySelector(".trailing-block > span").classList.contains("badge-success"),
+            ).toBe(true);
           } else if (item.constructor.name === "Grammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-info")).toBe(true);
+            expect(
+              element.querySelector(".trailing-block > span").classList.contains("badge-info"),
+            ).toBe(true);
           }
         }
       });
 
       it("does not add a label to identify it as Tree-sitter (when hiding duplicate grammars)", async () => {
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", true);
-        const grammarView = await getGrammarView(editor);
-        const elements = grammarView.element.querySelectorAll("li");
-        const listItems = atom.workspace.getModalPanels()[0].item.items;
+        await getGrammarView(editor);
+        const elements = modalElement().querySelectorAll("li");
+        const listItems = visibleItems();
         for (let i = 0; i < listItems.length; i++) {
           let item = listItems[i];
           let element = elements[i];
           if (item.constructor.name.includes("TreeSitterGrammar")) {
             expect(
-              element.childNodes[1].childNodes[0].className.startsWith("grammar-selector-parser"),
+              element
+                .querySelector(".trailing-block > span")
+                .classList.contains("grammar-selector-parser"),
             ).toBe(false);
           }
           if (item.constructor.name === "TreeSitterGrammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-success")).toBe(
-              false,
-            );
+            expect(
+              element.querySelector(".trailing-block > span").classList.contains("badge-success"),
+            ).toBe(false);
           } else if (item.constructor.name === "WASMTreeSitterGrammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-warning")).toBe(
-              false,
-            );
+            expect(
+              element.querySelector(".trailing-block > span").classList.contains("badge-warning"),
+            ).toBe(false);
           }
         }
       });
@@ -604,11 +623,7 @@ function getTooltipText(element) {
 }
 
 async function getGrammarView(editor) {
-  let timeout = setTimeout(() => {
-    throw new Error("Timeout");
-  }, 5000);
   atom.commands.dispatch(editor.getElement(), "grammar-selector:show");
-  await SelectListView.getScheduler().getNextUpdatePromise();
-  clearTimeout(timeout);
-  return atom.workspace.getModalPanels()[0].getItem();
+  await settle();
+  return activeSession();
 }
