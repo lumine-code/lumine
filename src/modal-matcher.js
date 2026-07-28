@@ -120,7 +120,9 @@ class FuzzyMatcher {
   }
 
   match(query) {
-    const text = query.text ?? "";
+    const text = this.opts.normalizeQuery
+      ? this.opts.normalizeQuery(query.text ?? "")
+      : (query.text ?? "");
     const results = text.length === 0 ? this.matchAll() : this.matchQuery(text);
 
     if (this.opts.scoreModifier) {
@@ -237,7 +239,9 @@ class FuzzyMatcher {
   }
 
   highlightsFor(result, query) {
-    const text = query.text ?? "";
+    const text = this.opts.normalizeQuery
+      ? this.opts.normalizeQuery(query.text ?? "")
+      : (query.text ?? "");
     if (!text) return {};
     if (this.combine === "joined") {
       const map = this.maps[result.index];
@@ -323,11 +327,14 @@ const matchers = {
   custom(fn) {
     return new CustomMatcher(fn);
   },
-  // Preset for command lists: `-` reads as a space so "fold all" finds
-  // "editor:fold-all", and the whole displayed string is the haystack.
+  // Preset for command lists. Command names are hyphenated
+  // (`editor:fold-all`) while their display names are spaced
+  // (`Editor: Fold All`), so a typed `-` reads as a space and either spelling
+  // finds the command.
   command(opts = {}) {
     return new FuzzyMatcher({
       ...opts,
+      normalizeQuery: (text) => text.replace(/-/g, " "),
       fields: opts.fields ?? [{ name: "label", get: (entry) => entry.text.replace(/-/g, " ") }],
     });
   },

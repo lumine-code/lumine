@@ -1,192 +1,127 @@
 const { humanizeKeystroke } = require("./humankeys");
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
 
 class CommandPalette {
   constructor(recentlyUsed) {
     this.keyBindingsForActiveElement = [];
     this.commands = [];
     this.showHiddenCommands = false;
-    this.lastShowHiddenCommands = false;
-    this.lastActiveElement = null;
     this.recentlyUsed = recentlyUsed || [];
     this.recentCount = atom.config.get("command-palette.recentCount");
-    this.preserveQuery = atom.config.get("command-palette.preserveQuery");
-    this.needsUpdate = true;
 
     this.configObserver = atom.config.onDidChange("command-palette.recentCount", ({ newValue }) => {
       this.recentCount = newValue;
       while (this.recentlyUsed.length > this.recentCount) this.recentlyUsed.pop();
-      this.needsUpdate = true;
-    });
-    this.configObserver2 = atom.config.onDidChange(
-      "command-palette.preserveQuery",
-      ({ newValue }) => {
-        this.preserveQuery = newValue;
-      },
-    );
-
-    this.selectListView = new SelectListView({
-      className: "command-palette",
-      emptyMessage: "No matches found",
-
-      order: (a, b) => {
-        if (this.selectListView.getQuery() === "") {
-          const aRecent = this.recentlyUsed.indexOf(a.name);
-          const bRecent = this.recentlyUsed.indexOf(b.name);
-          if (aRecent !== -1 && bRecent !== -1) return aRecent - bRecent;
-          if (aRecent !== -1) return -1;
-          if (bRecent !== -1) return 1;
-          return a.displayName.localeCompare(b.displayName);
-        }
-        return 0;
-      },
-
-      // Command names are hyphenated (`editor:fold-all`) while their display
-      // names are spaced (`Editor: Fold All`), so treat a typed `-` as a space.
-      filterQuery: (query) => query.replace(/-/g, " "),
-
-      filterKeyForItem: (item) => {
-        let key = item.displayName;
-        if (item.tags) {
-          key += " " + item.tags.join(" ");
-        }
-        if (item.description) {
-          key += " " + item.description;
-        }
-        return key;
-      },
-
-      willShow: () => {
-        if (!this.preserveQuery) this.selectListView.reset();
-        this.activeElement =
-          document.activeElement === document.body
-            ? atom.views.getView(atom.workspace)
-            : document.activeElement;
-        // The command list depends on both the focused element and the hidden
-        // filter, so a change to either one invalidates the cached commands.
-        if (
-          this.activeElement !== this.lastActiveElement ||
-          this.showHiddenCommands !== this.lastShowHiddenCommands
-        ) {
-          this.lastActiveElement = this.activeElement;
-          this.lastShowHiddenCommands = this.showHiddenCommands;
-          this.keyBindingsForActiveElement = atom.keymaps.findKeyBindings({
-            target: this.activeElement,
-          });
-          this.commands = atom.commands
-            .findCommands({ target: this.activeElement })
-            .filter((command) => this.showHiddenCommands === !!command.hiddenInCommandPalette);
-          this.needsUpdate = true;
-        }
-        if (this.needsUpdate) {
-          this.needsUpdate = false;
-          this.selectListView.update({ items: this.commands });
-        }
-      },
-
-      elementForItem: (item, { matchIndices }) => {
-        const li = document.createElement("li");
-        li.classList.add("event", "two-lines");
-        if (this.selectListView.getQuery() === "" && this.recentlyUsed.includes(item.name)) {
-          li.classList.add("recent");
-        }
-        li.dataset.eventName = item.name;
-
-        // Key bindings on the right
-        const rightBlock = document.createElement("div");
-        rightBlock.classList.add("pull-right");
-        const seen = new Set();
-        this.keyBindingsForActiveElement
-          .filter(({ command, keystrokes }) => {
-            if (command !== item.name || seen.has(keystrokes)) return false;
-            seen.add(keystrokes);
-            return true;
-          })
-          .forEach((keyBinding) => {
-            const kbd = document.createElement("kbd");
-            kbd.classList.add("key-binding");
-            kbd.textContent = humanizeKeystroke(keyBinding.keystrokes);
-            rightBlock.appendChild(kbd);
-          });
-        li.appendChild(rightBlock);
-
-        // Primary line: command name
-        const leftBlock = document.createElement("div");
-        const titleEl = document.createElement("div");
-        titleEl.classList.add("primary-line");
-        titleEl.title = item.name;
-        titleEl.appendChild(highlightMatches(item.displayName, matchIndices));
-        leftBlock.appendChild(titleEl);
-
-        // Secondary line: description
-        if (item.description) {
-          const secondaryEl = document.createElement("div");
-          secondaryEl.classList.add("secondary-line");
-          secondaryEl.title = item.description;
-          const offset =
-            item.displayName.length + (item.tags ? item.tags.join(" ").length + 1 : 0) + 1;
-          secondaryEl.appendChild(
-            highlightMatches(
-              item.description,
-              matchIndices.map((i) => i - offset),
-            ),
-          );
-          leftBlock.appendChild(secondaryEl);
-        }
-
-        li.appendChild(leftBlock);
-        return li;
-      },
-
-      didConfirmSelection: (item) => {
-        this.selectListView.hide();
-        const idx = this.recentlyUsed.indexOf(item.name);
-        if (idx !== -1) this.recentlyUsed.splice(idx, 1);
-        this.recentlyUsed.unshift(item.name);
-        while (this.recentlyUsed.length > this.recentCount) this.recentlyUsed.pop();
-        this.needsUpdate = true;
-        const event = new CustomEvent(item.name, {
-          bubbles: true,
-          cancelable: true,
-        });
-        this.activeElement.dispatchEvent(event);
-      },
-
-      didCancelSelection: () => {
-        this.selectListView.hide();
-      },
     });
   }
 
   destroy() {
     this.configObserver.dispose();
-    this.configObserver2.dispose();
-    return this.selectListView.destroy();
+  }
+
+  // The command list depends on which element is focused, so it is gathered
+  // from the target the kernel captured before the modal took focus.
+  collect(target) {
+    const activeElement =
+      target.element && target.element !== document.body
+        ? target.element
+        : atom.views.getView(atom.workspace);
+
+    this.activeElement = activeElement;
+    this.keyBindingsForActiveElement = atom.keymaps.findKeyBindings({ target: activeElement });
+    this.commands = atom.commands
+      .findCommands({ target: activeElement })
+      .filter((command) => this.showHiddenCommands === !!command.hiddenInCommandPalette);
+    return this.commands;
+  }
+
+  keystrokesFor(name) {
+    const seen = new Set();
+    const keystrokes = [];
+    for (const binding of this.keyBindingsForActiveElement) {
+      if (binding.command !== name || seen.has(binding.keystrokes)) continue;
+      seen.add(binding.keystrokes);
+      keystrokes.push(humanizeKeystroke(binding.keystrokes));
+    }
+    return keystrokes;
+  }
+
+  spec() {
+    return {
+      id: "command-palette.commands",
+      className: "command-palette",
+      placeholder: "Search commands",
+      emptyMessage: "No matches found",
+      preserveQuery: atom.config.get("command-palette.preserveQuery"),
+      source: (req) => this.collect(req.session.target),
+      matcher: atom.modals.matchers.command({
+        // Every displayed part is searchable, and the offsets come back split
+        // per field, so each line highlights its own matches.
+        fields: [
+          { name: "label", get: (entry) => entry.item.displayName },
+          { name: "tags", get: (entry) => (entry.item.tags ? entry.item.tags.join(" ") : "") },
+          { name: "description", get: (entry) => entry.item.description ?? "" },
+        ],
+        // Recently used commands float to the top, but only until the user
+        // types: after that, match quality is the only thing that should order
+        // the list.
+        order: (a, b, query) => {
+          if (query.text !== "") return 0;
+          const aRecent = this.recentlyUsed.indexOf(a.entry.item.name);
+          const bRecent = this.recentlyUsed.indexOf(b.entry.item.name);
+          if (aRecent !== -1 && bRecent !== -1) return aRecent - bRecent;
+          if (aRecent !== -1) return -1;
+          if (bRecent !== -1) return 1;
+          return a.entry.item.displayName.localeCompare(b.entry.item.displayName);
+        },
+      }),
+      renderer: {
+        entry: (command) => ({ id: command.name, text: command.displayName }),
+        row: (command, { query }) => ({
+          className: [
+            "event",
+            query.text === "" && this.recentlyUsed.includes(command.name) ? "recent" : null,
+          ],
+          dataset: { eventName: command.name },
+          label: { text: command.displayName, tooltip: command.name },
+          detail: command.description
+            ? { text: command.description, tooltip: command.description }
+            : undefined,
+          keybinding: this.keystrokesFor(command.name),
+        }),
+      },
+      confirm: ({ item, target }) => {
+        const index = this.recentlyUsed.indexOf(item.name);
+        if (index !== -1) this.recentlyUsed.splice(index, 1);
+        this.recentlyUsed.unshift(item.name);
+        while (this.recentlyUsed.length > this.recentCount) this.recentlyUsed.pop();
+        // Dispatched into the element that had focus before the palette
+        // opened, never into the palette itself.
+        target.dispatch(item.name);
+      },
+    };
   }
 
   toggle() {
     this.showHiddenCommands = false;
-    return this.selectListView.toggle();
+    return atom.modals.toggle(this.spec());
   }
 
   show(showHiddenCommands = false) {
     this.showHiddenCommands = showHiddenCommands;
-    return this.selectListView.show();
+    return atom.modals.open(this.spec());
   }
 
   hide() {
-    return this.selectListView.hide();
+    const session = atom.modals.getActiveSession();
+    if (session && session.rootSpec.id === "command-palette.commands") session.cancel("api");
   }
 
   clearRecent() {
     if (this.recentlyUsed.length === 0) return;
-
     this.recentlyUsed.length = 0;
-    this.needsUpdate = true;
 
-    if (this.selectListView.isVisible?.()) {
-      this.selectListView.update({ items: this.commands });
-    }
+    const session = atom.modals.getActiveSession();
+    if (session && session.rootSpec.id === "command-palette.commands") session.refresh();
   }
 }
 

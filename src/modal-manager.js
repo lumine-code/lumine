@@ -52,6 +52,10 @@ class ModalManager {
     this.pendingOpen = null;
     this.destroyed = false;
     this.actionKeymaps = new Map();
+    // Last query per view id, for views that opt into `preserveQuery`. Replace
+    // closes the session outright, so without this a user who bounces to
+    // another modal and back loses what they had typed.
+    this.preservedQueries = new Map();
 
     this.sources = sources;
     this.matchers = matchers;
@@ -188,8 +192,10 @@ class ModalManager {
 
     session.start(this.host).then((started) => {
       if (!started || session !== this.session) return;
-      if (opts.query != null) {
-        this.host.setQuery(opts.query, { select: "all", silent: true });
+      const preserved = spec.preserveQuery ? this.preservedQueries.get(spec.id) : null;
+      const query = opts.query ?? preserved;
+      if (query != null) {
+        this.host.setQuery(query, { select: "all", silent: true });
         session.didChangeQuery();
       }
       this.hidingSelf = false;
@@ -277,6 +283,9 @@ class ModalManager {
     if (session.closed) return;
     this.isClosing = true;
     try {
+      if (session.rootSpec.preserveQuery && this.host && session === this.session) {
+        this.preservedQueries.set(session.rootSpec.id, this.host.getQueryText());
+      }
       session.runTerminalCallbacks(result);
 
       const isPanelSession = session === this.session;
