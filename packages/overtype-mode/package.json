@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can switch between inserting and overwriting text with {{ 'overtype-mode:toggle-global' | keystroke }}"
+  ],
   "consumedServices": {
     "status-bar": {
       "versions": {

@@ -23,6 +23,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can open a .zip, .tar, .jar, or .whl archive from the tree view and browse its contents in a tab."
+  ],
   "deserializers": {
     "ArchiveEditor": "deserialize",
     "ArchiveEditorView": "deserialize"

@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can see which command a keystroke resolves to with {{ 'key-binding-resolver:toggle' | keystroke }}"
+  ],
   "deserializers": {
     "keybinding-resolver/KeyBindingResolverView": "deserializeKeyBindingResolverView"
   },

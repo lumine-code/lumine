@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "The indentation guides enclosing the cursor are highlighted, so you always see which block you are in."
+  ],
   "configSchema": {
     "cursorAwareActive": {
       "title": "Cursor Aware Active",

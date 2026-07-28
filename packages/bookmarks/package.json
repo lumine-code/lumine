@@ -16,6 +16,10 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can bookmark the line under the cursor with {{ 'bookmarks:toggle-bookmark' | keystroke }}",
+    "You can search every bookmark you have set with {{ 'bookmarks:view-all' | keystroke }}"
+  ],
   "providedServices": {
     "bookmarks": {
       "description": "Provides a list of bookmarks to any package that wants to know about them.",

@@ -16,5 +16,8 @@
   "license": "MIT",
   "engines": {
     "atom": "*"
-  }
+  },
+  "backgroundTips": [
+    "{% if keys['theme-selector:toggle'] %}You can preview light and dark theme packs live with {{ 'theme-selector:toggle' | keystroke }}{% else %}You can preview light and dark theme packs live in the theme selector and keep the one you like.{% endif %}"
+  ]
 }

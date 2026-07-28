@@ -15,6 +15,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can switch to another project with {{ 'project-list:toggle' | keystroke }}"
+  ],
   "main": "./lib/main",
   "dependencies": {
     "tinyglobby": "^0.2.17"

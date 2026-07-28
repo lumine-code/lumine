@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can change the language used to highlight the current file with {{ 'grammar-selector:show' | keystroke }}"
+  ],
   "consumedServices": {
     "status-bar": {
       "versions": {

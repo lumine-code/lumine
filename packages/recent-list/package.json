@@ -15,6 +15,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can reopen a project you worked on earlier with {{ 'recent-list:toggle' | keystroke }}"
+  ],
   "main": "./lib/main",
   "providedServices": {
     "recent-list": {

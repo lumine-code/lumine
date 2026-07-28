@@ -15,6 +15,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can search files across your own list of directories with {{ 'fuzzy-explorer:toggle' | keystroke }}"
+  ],
   "main": "./lib/main",
   "activationCommands": {
     "atom-workspace": [

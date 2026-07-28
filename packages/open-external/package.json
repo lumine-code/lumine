@@ -15,6 +15,10 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can open the current file in the application your system associates with it using {{ 'open-external:open' | keystroke }}",
+    "You can reveal the current file in your system file manager with {{ 'open-external:show' | keystroke }}"
+  ],
   "main": "./lib/main",
   "consumedServices": {
     "tree-view.selection": {

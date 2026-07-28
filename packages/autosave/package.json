@@ -15,6 +15,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "Lumine can save an editor the moment it loses focus. Turn on autosave in the Settings view."
+  ],
   "providedServices": {
     "autosave": {
       "description": "A configuration object to control what is autosaved",

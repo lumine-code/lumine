@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "{% if keys['notifications:toggle-log'] %}You can reread every notification you have dismissed with {{ 'notifications:toggle-log' | keystroke }}{% else %}Every notification you dismiss is kept in the notifications log, so nothing is lost.{% endif %}"
+  ],
   "dependencies": {
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
     "semver": "^7.0.0",

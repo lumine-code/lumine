@@ -15,6 +15,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can jump to anything already open in the workspace with {{ 'fuzzy-workspace:toggle' | keystroke }}"
+  ],
   "main": "./lib/main",
   "activationCommands": {
     "atom-workspace": [

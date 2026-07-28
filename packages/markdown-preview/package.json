@@ -17,6 +17,9 @@
     "atom": "*",
     "node": ">=12"
   },
+  "backgroundTips": [
+    "You can open a live preview of the Markdown file you are editing with {{ 'markdown-preview:toggle' | keystroke }}"
+  ],
   "scripts": {
     "generate-github-markdown-css": "node scripts/generate-github-markdown-css.js"
   },

@@ -22,6 +22,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "{% if keys['image-paste:paste'] %}You can paste an image from the clipboard into the project with {{ 'image-paste:paste' | keystroke }}{% else %}You can paste an image from the clipboard straight into the project and have its relative path inserted.{% endif %}"
+  ],
   "consumedServices": {
     "tree-view.selection": {
       "versions": {

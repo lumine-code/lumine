@@ -17,6 +17,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can bring up the completion list at any moment with {{ 'autocomplete:activate' | keystroke }}"
+  ],
   "dependencies": {
     "atom-slick": "^2.0.0",
     "grim": "^2.0.1",

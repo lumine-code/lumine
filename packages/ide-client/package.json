@@ -18,6 +18,9 @@
     "atom": "*",
     "node": ">=24"
   },
+  "backgroundTips": [
+    "{% if keys['ide-client:servers'] %}You can see every language server that is running, and restart any of them, with {{ 'ide-client:servers' | keystroke }}{% else %}Lumine speaks the Language Server Protocol. Install an ide package for your language to get completions, diagnostics, and go-to-definition.{% endif %}"
+  ],
   "dependencies": {
     "picomatch": "^4.0.5",
     "vscode-jsonrpc": "^9.0.1"

@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can expand a snippet by typing its prefix and pressing {{ 'snippets:expand' | keystroke }}"
+  ],
   "dependencies": {
     "async": "3.2.6",
     "pegjs": "^0.10.0",

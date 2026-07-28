@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can open the http link under the cursor in your browser without leaving the editor."
+  ],
   "activationCommands": {
     "atom-workspace": [
       "link:open"

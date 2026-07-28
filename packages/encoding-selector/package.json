@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can change the character encoding of the current file with {{ 'encoding-selector:show' | keystroke }}"
+  ],
   "dependencies": {
     "jschardet": "^3.1.4"
   },

@@ -39,6 +39,11 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can find and replace inside the current file with {{ 'search-panel:show' | keystroke }}",
+    "You can search every file in the project at once with {{ 'search-panel:project-show' | keystroke }}",
+    "You can jump to the next match without reopening the panel using {{ 'search-panel:find-next' | keystroke }}"
+  ],
   "dependencies": {
     "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74"
   },

@@ -30,6 +30,10 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can open the current file on its Git host's website with {{ 'open-repository:file' | keystroke }}",
+    "You can read the blame of the current file on your Git host with {{ 'open-repository:blame' | keystroke }}"
+  ],
   "devDependencies": {
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"

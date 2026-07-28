@@ -16,6 +16,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can keep rectangular selection on for repeated mouse gestures with {{ 'column-selection:sticky' | keystroke }}"
+  ],
   "consumedServices": {
     "status-bar": {
       "versions": {

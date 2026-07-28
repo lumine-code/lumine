@@ -16,6 +16,10 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "You can jump to the bracket matching the one at the cursor with {{ 'bracket-matcher:go-to-matching-bracket' | keystroke }}",
+    "You can select everything inside the brackets around the cursor with {{ 'bracket-matcher:select-inside-brackets' | keystroke }}"
+  ],
   "dependencies": {
     "@lumine-code/second-mate": "https://github.com/lumine-code/second-mate.git#4127deccad62905de7464ed456e0a205f064800b"
   },

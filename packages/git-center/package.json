@@ -18,6 +18,9 @@
   "engines": {
     "atom": "*"
   },
+  "backgroundTips": [
+    "{% if keys['git-center:select-branch'] %}You can check out another branch of the active repository with {{ 'git-center:select-branch' | keystroke }}{% else %}The status bar names the active repository and branch, and clicking either one switches it.{% endif %}"
+  ],
   "consumedServices": {
     "status-bar": {
       "versions": {
