@@ -371,6 +371,11 @@ class ModalManager {
   // editor I was on when the command fired".
   captureTarget() {
     const editor = this.workspace.getActiveTextEditor() ?? null;
+    // Resolved from focus rather than from the centre pane, so a command
+    // invoked in a panel or dock mini editor writes back into THAT editor.
+    // `editor` is the centre's active item and would silently target the wrong
+    // buffer for those; consumers that insert text want this one.
+    const focusedEditor = this.textEditors ? this.textEditors.getActiveTextEditor() : null;
     const element = document.activeElement;
     const pane = this.workspace.getActivePane() ?? null;
     const paneItem = pane && !pane.isDestroyed() ? pane.getActiveItem() : null;
@@ -380,6 +385,7 @@ class ModalManager {
 
     return {
       editor,
+      focusedEditor: focusedEditor ?? editor,
       element,
       pane,
       paneItem,

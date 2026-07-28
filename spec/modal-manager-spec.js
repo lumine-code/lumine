@@ -228,6 +228,37 @@ describe("atom.modals", () => {
       expect(session.target.editor).toBe(editor);
     });
 
+    it("captures the focused editor separately from the centre's active one", async () => {
+      jasmine.attachToDOM(atom.workspace.getElement());
+      const centre = await atom.workspace.open();
+
+      // A mini editor standing in for a panel or dock editor: a command bound
+      // on bare `atom-text-editor` fires in one of these too, and text it
+      // inserts must land there rather than in the centre pane.
+      const mini = new (require("../src/text-editor"))({ mini: true });
+      const registration = atom.textEditors.add(mini);
+      jasmine.attachToDOM(mini.element);
+      mini.element.focus();
+
+      atom.modals.open(listSpec());
+      await settle();
+
+      const target = activeSession().target;
+      expect(target.editor).toBe(centre);
+      expect(target.focusedEditor).toBe(mini);
+
+      registration.dispose();
+      mini.destroy();
+    });
+
+    it("falls back to the centre editor when focus is not in an editor", async () => {
+      const centre = await atom.workspace.open();
+      atom.modals.open(listSpec());
+      await settle();
+
+      expect(activeSession().target.focusedEditor).toBe(centre);
+    });
+
     it("degrades restore() when the captured pane item is gone", async () => {
       await atom.workspace.open();
       const session = atom.modals.open(listSpec());
