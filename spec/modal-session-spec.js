@@ -625,6 +625,36 @@ describe("ModalSession", () => {
     });
   });
 
+  describe("large lists", () => {
+    const many = (count) =>
+      Array.from({ length: count }, (_, i) => ({ id: String(i), label: `item-${i}` }));
+
+    it("matches every item but only builds a bounded number of rows", async () => {
+      const session = atom.modals.open({ id: "spec.big", source: many(3000) });
+      await settle();
+
+      // Nothing is filtered out — an empty query returns the whole list.
+      expect(session.getVisibleItems().length).toBe(3000);
+      // But the DOM stays bounded.
+      const rendered = session.element.querySelectorAll("ol.list-group > li").length;
+      expect(rendered).toBeLessThan(3000);
+      expect(rendered).toBeGreaterThan(0);
+    });
+
+    it("keeps the focused row rendered when it moves past the window", async () => {
+      const session = atom.modals.open({ id: "spec.big-focus", source: many(3000) });
+      await settle();
+
+      session.focusEdge("last");
+      await settle();
+
+      expect(session.getFocusedIndex()).toBe(2999);
+      const selected = session.element.querySelector("ol.list-group > li.selected");
+      expect(selected).not.toBeNull();
+      expect(selected.textContent).toContain("item-2999");
+    });
+  });
+
   describe("parseQuery", () => {
     it("feeds the matcher the parsed text and exposes the extras", async () => {
       let seen = null;

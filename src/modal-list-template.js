@@ -2,6 +2,11 @@
 
 const { buildRowElement } = require("./modal-row");
 
+// How many rows are built into the DOM at once, and how far past the focused
+// row the window extends when focus moves beyond it.
+const RENDER_WINDOW = 200;
+const RENDER_LOOKAHEAD = 50;
+
 // The `"list"` template: renders visible rows into `ol.list-group`, owns focus
 // movement and scroll, and reports mouse interaction back to the frame.
 //
@@ -96,9 +101,19 @@ class ModalListTemplate {
     // (removing entries, toggling flags) should not jump to the top each time.
     const scrollTop = this.spec.keepScrollPosition === false ? null : this.list.scrollTop;
 
+    // Matching is uncapped — an empty query deliberately returns every item in
+    // source order — but the DOM is not. Rendering a few thousand rows, each
+    // resolving an icon, is a cost the list should never pay for results the
+    // user cannot see. The window follows the focused row, so arrowing or
+    // jumping to the bottom always has somewhere to land.
+    const limit = Math.min(
+      visibleItems.length,
+      Math.max(RENDER_WINDOW, focusedIndex + RENDER_LOOKAHEAD),
+    );
+
     const fragment = document.createDocumentFragment();
     const rows = [];
-    for (let index = 0; index < visibleItems.length; index++) {
+    for (let index = 0; index < limit; index++) {
       const visible = visibleItems[index];
       const li = this.buildRow(visible, index, focusedIndex, checked);
       rows.push(li);
