@@ -3,7 +3,7 @@
 const { normalizeSource, SourceRun } = require("./modal-source");
 const { normalizeMatcher } = require("./modal-matcher");
 const { normalizeActions } = require("./modal-actions");
-const { normalizeEntry, defaultEntry } = require("./modal-row");
+const { normalizeEntry, defaultEntry, highlight, highlightSegments } = require("./modal-row");
 
 // One mounted view: capability normalization plus the item pipeline
 //   run → deliver → entries → match → visible rows
@@ -275,6 +275,11 @@ class ModalFrame {
       focused: index === this.focusedIndex,
       checked: this.checked.has(item),
       highlights,
+      // For renderers that build their own DOM: the offsets are already
+      // computed, so a custom row never has to recompute or guess them.
+      highlight: (text, offsets) => highlight(text, offsets ?? highlights.label),
+      highlightSegments: (segments, offsets) =>
+        highlightSegments(segments, offsets ?? highlights.label),
     };
 
     let row;
