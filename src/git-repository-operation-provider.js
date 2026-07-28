@@ -36,13 +36,29 @@ function coAuthorTrailer(author) {
 }
 
 class GitRepositoryOperations {
-  constructor(provider, workingDirectory) {
+  constructor(provider, workingDirectory, repository = null) {
     this.provider = provider;
     this.workingDirectory = workingDirectory;
+    this.repository = repository;
   }
 
   run(args, options) {
     return this.provider.run(args, this.workingDirectory, options);
+  }
+
+  // A snapshot that already proves HEAD exists lets `reset HEAD` run without
+  // the `rev-parse` probe, saving a worker round trip per unstage. Only a
+  // positive answer is trusted: acting on a stale "unborn" claim would route
+  // to `rm --cached` and silently stage a deletion, so anything less falls
+  // back to the probe.
+  headExistsInSnapshot() {
+    for (const snapshot of [
+      this.repository?.getStatusSnapshot?.(),
+      this.repository?.getRefsSnapshot?.(),
+    ]) {
+      if (snapshot?.initialized && snapshot.head?.oid) return true;
+    }
+    return false;
   }
 
   stageFiles(paths, options = {}) {
@@ -56,6 +72,9 @@ class GitRepositoryOperations {
     if (filePaths.length === 0) return "";
     if (options.reference) {
       return this.run(["reset", options.reference, "--", ...filePaths], options);
+    }
+    if (this.headExistsInSnapshot()) {
+      return this.run(["reset", "HEAD", "--", ...filePaths], options);
     }
 
     const head = await this.provider.runResult(
@@ -384,8 +403,8 @@ module.exports = class GitRepositoryOperationProvider {
     return resolveGitPath(globalThis.atom?.config?.get("git.path") || "");
   }
 
-  createRepositoryOperations({ workingDirectory }) {
-    return new GitRepositoryOperations(this, workingDirectory);
+  createRepositoryOperations({ workingDirectory, repository }) {
+    return new GitRepositoryOperations(this, workingDirectory, repository);
   }
 
   async initializeRepository(directoryPath, options = {}) {

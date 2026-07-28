@@ -259,6 +259,72 @@ describe("GitRepositoryOperationProvider", () => {
     ]);
   });
 
+  it("skips the HEAD probe in unstageFiles when a snapshot proves HEAD exists", async () => {
+    const calls = [];
+    const provider = new GitRepositoryOperationProvider({
+      exec: async (args) => {
+        calls.push(args);
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    const workingDirectory = path.join(temp.mkdirSync("git-unstage-fast-path"), "repo");
+    const oid = "0123456789abcdef0123456789abcdef01234567";
+
+    const fromStatus = provider.createRepositoryOperations({
+      workingDirectory,
+      repository: {
+        getStatusSnapshot: () => ({ initialized: true, head: { oid } }),
+        getRefsSnapshot: () => ({ initialized: false, head: null }),
+      },
+    });
+    await fromStatus.unstageFiles(["one.txt"]);
+
+    // The refs snapshot serves as proof when the status snapshot has not
+    // initialized yet.
+    const fromRefs = provider.createRepositoryOperations({
+      workingDirectory,
+      repository: {
+        getStatusSnapshot: () => ({ initialized: false, head: null }),
+        getRefsSnapshot: () => ({ initialized: true, head: { oid } }),
+      },
+    });
+    await fromRefs.unstageFiles(["two.txt"]);
+
+    expect(calls).toEqual([
+      ["reset", "HEAD", "--", "one.txt"],
+      ["reset", "HEAD", "--", "two.txt"],
+    ]);
+  });
+
+  it("keeps the HEAD probe in unstageFiles when snapshots cannot prove HEAD", async () => {
+    const calls = [];
+    const provider = new GitRepositoryOperationProvider({
+      exec: async (args) => {
+        calls.push(args);
+        if (args[0] === "rev-parse") return { exitCode: 128, stdout: "", stderr: "" };
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    const workingDirectory = path.join(temp.mkdirSync("git-unstage-probe"), "repo");
+
+    // An initialized snapshot claiming "unborn" is not trusted: were it stale,
+    // acting on it would stage a deletion via `rm --cached` instead of
+    // unstaging. The probe stays authoritative for everything but a proven oid.
+    const operations = provider.createRepositoryOperations({
+      workingDirectory,
+      repository: {
+        getStatusSnapshot: () => ({ initialized: true, head: { oid: null, unborn: true } }),
+        getRefsSnapshot: () => ({ initialized: true, head: { oid: null, unborn: true } }),
+      },
+    });
+    await operations.unstageFiles(["one.txt"]);
+
+    expect(calls).toEqual([
+      ["rev-parse", "--verify", "HEAD"],
+      ["rm", "--cached", "--ignore-unmatch", "--", "one.txt"],
+    ]);
+  });
+
   it("supports injected configuration, cleanup modes, and merge-file labels", async () => {
     const calls = [];
     const provider = new GitRepositoryOperationProvider({
