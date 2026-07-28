@@ -17,8 +17,7 @@
     "atom": "*"
   },
   "dependencies": {
-    "jschardet": "^3.1.4",
-    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#c598adc39d2c3167b3519226859842dca4f9d026"
+    "jschardet": "^3.1.4"
   },
   "consumedServices": {
     "status-bar": {

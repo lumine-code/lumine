@@ -1,7 +1,5 @@
 "use babel";
 
-import { SelectListView } from "@lumine-code/select-list";
-
 import { TextEditor } from "atom";
 import { setLineEnding } from "./main";
 
@@ -10,7 +8,7 @@ export class Selector {
 
   // Make a selector object (should be called once)
   constructor(selectorItems) {
-    this.lineEndingListView = new SelectListView({
+    this.lineEndingListView = atom.workspace.buildSelectList({
       // an array containing the objects you want to show in the select list
       items: selectorItems,
 

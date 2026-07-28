@@ -1936,6 +1936,135 @@ describe("Workspace", () => {
     });
   });
 
+  describe("::buildSelectList(props)", () => {
+    let lists;
+
+    beforeEach(() => {
+      lists = [];
+    });
+
+    afterEach(() => {
+      for (const list of lists) list.destroy();
+    });
+
+    function build(props = {}) {
+      const list = atom.workspace.buildSelectList({
+        items: ["alpha", "beta"],
+        elementForItem: (item) => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          return li;
+        },
+        ...props,
+      });
+      lists.push(list);
+      return list;
+    }
+
+    it("returns a usable list that renders its items", () => {
+      const list = build();
+
+      expect(list.element.classList.contains("select-list")).toBe(true);
+      expect(Array.from(list.element.querySelectorAll("li"), (li) => li.textContent)).toEqual([
+        "alpha",
+        "beta",
+      ]);
+      expect(list.getSelectedItem()).toBe("alpha");
+    });
+
+    it("gives every caller its own list and its own modal panel", () => {
+      const first = build();
+      const second = build();
+
+      expect(first).not.toBe(second);
+      expect(first.getPanel()).not.toBe(second.getPanel());
+      expect(atom.workspace.getModalPanels()).toContain(first.getPanel());
+      expect(atom.workspace.getModalPanels()).toContain(second.getPanel());
+    });
+
+    it("owns the panel across show and hide", () => {
+      const list = build();
+
+      expect(list.isVisible()).toBe(false);
+      list.show();
+      expect(list.isVisible()).toBe(true);
+      list.hide();
+      expect(list.isVisible()).toBe(false);
+    });
+
+    it("hands elementForItem a highlight function bound to the item", async () => {
+      const list = build({
+        elementForItem: (item, { highlight }) => {
+          const li = document.createElement("li");
+          li.appendChild(highlight(item));
+          return li;
+        },
+      });
+
+      list.refs.queryEditor.setText("al");
+      await list.constructor.getScheduler().getNextUpdatePromise();
+
+      const matches = list.element.querySelectorAll(".character-match");
+      expect(Array.from(matches, (m) => m.textContent)).toEqual(["al"]);
+    });
+
+    it("builds a two-line row when elementForItem returns a descriptor", () => {
+      const list = build({
+        elementForItem: (item) => ({ primary: item, secondary: "detail" }),
+      });
+
+      const li = list.element.querySelector("li");
+      expect(li.classList.contains("two-lines")).toBe(true);
+      expect(li.querySelector(".primary-line").textContent).toBe("alpha");
+      expect(li.querySelector(".secondary-line").textContent).toBe("detail");
+    });
+  });
+
+  describe("::buildInputDialog(props)", () => {
+    let dialogs;
+
+    beforeEach(() => {
+      dialogs = [];
+    });
+
+    afterEach(() => {
+      for (const dialog of dialogs) dialog.destroy();
+    });
+
+    function build(props = {}) {
+      const dialog = atom.workspace.buildInputDialog(props);
+      dialogs.push(dialog);
+      return dialog;
+    }
+
+    it("returns a dialog with a query editor and no list", () => {
+      const dialog = build({ placeholderText: "Name" });
+
+      expect(dialog.element.classList.contains("input-dialog")).toBe(true);
+      expect(dialog.element.classList.contains("select-list")).toBe(false);
+      expect(dialog.element.querySelector("ol.list-group")).toBeNull();
+      expect(dialog.getQuery()).toBe("");
+    });
+
+    it("reports the typed query to didConfirm", () => {
+      let confirmed = null;
+      const dialog = build({ didConfirm: (query) => (confirmed = query) });
+
+      dialog.refs.queryEditor.setText("a-name");
+      dialog.confirm();
+
+      expect(confirmed).toBe("a-name");
+    });
+
+    it("gives every caller its own dialog and its own modal panel", () => {
+      const first = build();
+      const second = build();
+
+      expect(first).not.toBe(second);
+      expect(first.getPanel()).not.toBe(second.getPanel());
+    });
+  });
+
   describe("::filePathMatchesPatterns", () => {
     it("correctly applies scan path glob semantics against individual paths", () => {
       const projectPath = path.join(__dirname, "fixtures", "workspace-scan");

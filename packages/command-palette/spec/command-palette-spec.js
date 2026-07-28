@@ -1,5 +1,3 @@
-const { SelectListView } = require("@lumine-code/select-list");
-
 describe("command-palette", () => {
   let workspaceElement, mainModule, palette, commandDisposables;
 
@@ -32,7 +30,7 @@ describe("command-palette", () => {
 
   async function openPalette(command = "command-palette:toggle") {
     atom.commands.dispatch(workspaceElement, command);
-    await SelectListView.getScheduler().getNextUpdatePromise();
+    await atom.views.getNextUpdatePromise();
     return palette.selectListView;
   }
 
@@ -195,7 +193,7 @@ describe("command-palette", () => {
     it("matches spaced display names when the query uses hyphens", async () => {
       const selectListView = await openPalette();
       selectListView.refs.queryEditor.setText("palette-spec-noop");
-      await SelectListView.getScheduler().getNextUpdatePromise();
+      await atom.views.getNextUpdatePromise();
       expect(listedCommandNames()).toEqual(["command-palette-spec:noop"]);
     });
   });

@@ -1,5 +1,3 @@
-const { SelectListView, createTwoLineItem } = require("@lumine-code/select-list");
-
 // Lists every language server the window is running — not only the one serving
 // the active editor — so any session can be inspected or restarted from
 // anywhere. Choosing a server opens the actions for it.
@@ -9,7 +7,7 @@ module.exports = class SessionMenuView {
     // The list manages its own modal panel. Hosting one by hand leaves the base
     // view's panel unbuilt, and its focusout handler bails on a list it thinks
     // is not visible — which is what stopped a click outside from closing this.
-    this.selectList = new SelectListView({
+    this.selectList = atom.workspace.buildSelectList({
       className: "ide-client-session-menu",
       items: [],
       emptyMessage: "No language servers are running",
@@ -31,7 +29,7 @@ module.exports = class SessionMenuView {
   // The state goes in the trailing block, so the states line up down the right
   // edge instead of each one trailing a name of a different length.
   elementForItem(item) {
-    return createTwoLineItem({
+    return {
       primary: item.label,
       secondary: item.detail,
       trailing: [
@@ -40,7 +38,7 @@ module.exports = class SessionMenuView {
           className: `ide-client-session-state status-${item.state}`,
         },
       ],
-    });
+    };
   }
 
   // What the server actually covers, named as such. A bare path cannot say

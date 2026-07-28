@@ -17,9 +17,6 @@
   "engines": {
     "atom": "*"
   },
-  "dependencies": {
-    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#c598adc39d2c3167b3519226859842dca4f9d026"
-  },
   "devDependencies": {
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"

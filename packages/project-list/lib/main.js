@@ -1,5 +1,4 @@
 const { CompositeDisposable, Disposable, Emitter, watchFile, Task } = require("atom");
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
 const { glob, isDynamicPattern } = require("tinyglobby");
 const fs = require("fs");
 const path = require("path");
@@ -31,7 +30,7 @@ class ProjectList {
     this.configPath = this.getConfigPath();
 
     // create select-list
-    this.selectList = new SelectListView({
+    this.selectList = atom.workspace.buildSelectList({
       className: "project-list",
       maxResults: 50,
       emptyMessage: "No matches found",
@@ -284,7 +283,7 @@ class ProjectList {
     }
   }
 
-  elementForItem(item, { matchIndices }) {
+  elementForItem(item, { matchIndices, highlight }) {
     // Text format: "Title #tag1 #tag2"
     let li = document.createElement("li");
     li.classList.add("two-lines");
@@ -300,7 +299,7 @@ class ProjectList {
         et.classList.add("tag");
         tagOffset += 1; // for #
         et.appendChild(
-          highlightMatches(
+          highlight(
             tag,
             indices.map((x) => x - tagOffset),
           ),
@@ -320,7 +319,7 @@ class ProjectList {
           et.classList.add("square");
           let text = "[" + part.text + "]";
           et.appendChild(
-            highlightMatches(
+            highlight(
               text,
               indices.map((x) => x - titleOffset),
             ),
@@ -329,7 +328,7 @@ class ProjectList {
           e1.appendChild(et);
         } else {
           e1.appendChild(
-            highlightMatches(
+            highlight(
               part.text,
               indices.map((x) => x - titleOffset),
             ),
@@ -340,7 +339,7 @@ class ProjectList {
     } else {
       // Render title as-is - offset: after tags
       e1.appendChild(
-        highlightMatches(
+        highlight(
           item.title,
           indices.map((x) => x - tagOffset),
         ),

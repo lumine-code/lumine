@@ -9,7 +9,9 @@ describe("ide-client session menu", () => {
     stop() {},
   });
 
-  const render = (item) => menu.elementForItem(item);
+  // elementForItem returns a row descriptor, so go through the list to get the
+  // element it actually renders — the same path a real row takes.
+  const render = (item) => menu.selectList.resolveElement(item, {});
 
   beforeEach(async () => {
     await atom.packages.activatePackage("ide-client");

@@ -1,5 +1,3 @@
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
-
 module.exports = class GrammarListView {
   constructor() {
     this.autoDetect = { name: "Auto Detect" };
@@ -11,19 +9,19 @@ module.exports = class GrammarListView {
       },
     );
 
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       className: "grammar-selector",
       itemsClassList: ["mark-active"],
       items: [],
       filterKeyForItem: (grammar) => grammar.name,
-      elementForItem: (grammar, { matchIndices }) => {
+      elementForItem: (grammar, { highlight }) => {
         const grammarName = grammar.name || grammar.scopeName;
         const element = document.createElement("li");
         if (grammar === this.currentGrammar) {
           element.classList.add("active");
         }
         element.classList.add("grammar-item");
-        element.appendChild(highlightMatches(grammarName, matchIndices));
+        element.appendChild(highlight(grammarName));
         element.dataset.grammar = grammarName;
 
         const div = document.createElement("div");

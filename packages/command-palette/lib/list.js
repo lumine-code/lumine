@@ -1,5 +1,4 @@
 const { humanizeKeystroke } = require("./humankeys");
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
 
 class CommandPalette {
   constructor(recentlyUsed) {
@@ -25,7 +24,7 @@ class CommandPalette {
       },
     );
 
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       className: "command-palette",
       emptyMessage: "No matches found",
 
@@ -84,7 +83,7 @@ class CommandPalette {
         }
       },
 
-      elementForItem: (item, { matchIndices }) => {
+      elementForItem: (item, { matchIndices, highlight }) => {
         const li = document.createElement("li");
         li.classList.add("event", "two-lines");
         if (this.selectListView.getQuery() === "" && this.recentlyUsed.includes(item.name)) {
@@ -115,7 +114,7 @@ class CommandPalette {
         const titleEl = document.createElement("div");
         titleEl.classList.add("primary-line");
         titleEl.title = item.name;
-        titleEl.appendChild(highlightMatches(item.displayName, matchIndices));
+        titleEl.appendChild(highlight(item.displayName));
         leftBlock.appendChild(titleEl);
 
         // Secondary line: description
@@ -126,7 +125,7 @@ class CommandPalette {
           const offset =
             item.displayName.length + (item.tags ? item.tags.join(" ").length + 1 : 0) + 1;
           secondaryEl.appendChild(
-            highlightMatches(
+            highlight(
               item.description,
               matchIndices.map((i) => i - offset),
             ),

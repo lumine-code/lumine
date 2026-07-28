@@ -1,5 +1,4 @@
 const { CompositeDisposable, Point } = require("atom");
-const { highlightMatches } = require("@lumine-code/select-list");
 
 const Config = require("./config");
 const SymbolsView = require("./symbols-view");
@@ -110,7 +109,7 @@ class FileView extends SymbolsView {
     // The “primary” results line shows the symbol's name and its tag, if any.
     let primary = el(
       `div.${primaryLineClasses.join(".")}`,
-      el("div.name", highlightMatches(name, options.matchIndices)),
+      el("div.name", options.highlight(name)),
       badges &&
         el("div.badge-container", ...badges.map((b) => badge(b, { variant: this.useBadgeColors }))),
     );

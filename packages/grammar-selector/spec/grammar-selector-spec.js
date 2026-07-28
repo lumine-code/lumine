@@ -1,5 +1,4 @@
 const path = require("path");
-const { SelectListView } = require("@lumine-code/select-list");
 
 function setConfigForLanguageMode(mode) {
   let useTreeSitterParsers = mode !== "textmate";
@@ -608,7 +607,7 @@ async function getGrammarView(editor) {
     throw new Error("Timeout");
   }, 5000);
   atom.commands.dispatch(editor.getElement(), "grammar-selector:show");
-  await SelectListView.getScheduler().getNextUpdatePromise();
+  await atom.views.getNextUpdatePromise();
   clearTimeout(timeout);
   return atom.workspace.getModalPanels()[0].getItem();
 }

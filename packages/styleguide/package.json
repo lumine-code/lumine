@@ -15,8 +15,7 @@
   "license": "MIT",
   "dependencies": {
     "dedent": "^1.7.2",
-    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74",
-    "@lumine-code/select-list": "https://github.com/lumine-code/select-list.git#c598adc39d2c3167b3519226859842dca4f9d026"
+    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74"
   },
   "deserializers": {
     "StyleguideView": "createStyleguideView"

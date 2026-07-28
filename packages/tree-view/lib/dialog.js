@@ -1,6 +1,5 @@
 const { CompositeDisposable, Emitter, Range, Point } = require("atom");
 const path = require("path");
-const { InputDialogView } = require("@lumine-code/select-list");
 const { getFullExtension } = require("./helpers");
 
 module.exports = class Dialog {
@@ -20,7 +19,7 @@ module.exports = class Dialog {
     }
     this.promptText.textContent = prompt;
 
-    this.inputDialogView = new InputDialogView({
+    this.inputDialogView = atom.workspace.buildInputDialog({
       className: "tree-view-dialog",
       headerElement: this.promptText,
       infoMessage: info,

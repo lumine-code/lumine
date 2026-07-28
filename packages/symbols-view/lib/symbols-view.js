@@ -2,7 +2,6 @@ const Path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const Config = require("./config");
 const { CompositeDisposable, Point } = require("atom");
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
 
 const el = require("./element-builder");
 const { badge } = require("./util");
@@ -60,7 +59,7 @@ class SymbolsView {
       ...options,
     };
 
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       ...options,
       className: "symbols-view",
       panelItem: this,
@@ -129,7 +128,7 @@ class SymbolsView {
 
     let primary = el(
       `div.${primaryLineClasses.join(".")}`,
-      el("div.name", highlightMatches(name, options.matchIndices)),
+      el("div.name", options.highlight(name)),
       badges &&
         el("div.badge-container", ...badges.map((b) => badge(b, { variant: this.useBadgeColors }))),
     );

@@ -1,5 +1,4 @@
 const { CompositeDisposable, Disposable } = require("atom");
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 const { shell, clipboard } = require("electron");
 const picomatch = require("picomatch");
 const path = require("path");
@@ -36,7 +35,7 @@ module.exports = {
     this.cacheCallbacks = [];
     this.projectCount = atom.project.getPaths().length;
 
-    this.selectList = new SelectListView({
+    this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-files",
       maxResults: 50,
       emptyMessage: "No matches found",
@@ -328,16 +327,16 @@ module.exports = {
     }
   },
 
-  elementForItem(item, { matchIndices }) {
-    const li = createTwoLineItem({
-      primary: highlightMatches(this.displayPath(item), matchIndices),
-    });
-    atom.icons.applyTo(
-      li.firstChild,
-      { path: item.aPath, context: "fuzzy-files", hints: { directory: false } },
-      { name: path.basename(item.aPath) },
-    );
-    return li;
+  elementForItem(item, { highlight }) {
+    return {
+      primary: highlight(this.displayPath(item)),
+      didRender: (li) =>
+        atom.icons.applyTo(
+          li.firstChild,
+          { path: item.aPath, context: "fuzzy-files", hints: { directory: false } },
+          { name: path.basename(item.aPath) },
+        ),
+    };
   },
 
   displayPath(item) {

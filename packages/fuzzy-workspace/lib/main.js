@@ -1,5 +1,4 @@
 const { CompositeDisposable } = require("atom");
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 const { clipboard } = require("electron");
 
 const CONTAINERS = [
@@ -16,7 +15,7 @@ module.exports = {
   disposables: null,
 
   activate() {
-    this.selectList = new SelectListView({
+    this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-workspace",
       maxResults: 50,
       emptyMessage: "No open items found",
@@ -87,23 +86,23 @@ module.exports = {
     return undefined;
   },
 
-  elementForItem(item, { matchIndices }) {
-    const li = createTwoLineItem({
-      primary: highlightMatches(item.title, matchIndices),
-      secondary: item.uri || item.container,
-    });
-
+  elementForItem(item, { highlight }) {
     // The item's own icon name wins over its path — `normalizeTarget` settles
     // that. Only a real path is offered as one; a `scheme://` URI is not. An
     // item with neither still reads as a file.
     const uri = item.uri && !item.uri.includes("://") ? item.uri : null;
     let target = { item: item.paneItem, path: uri, context: "fuzzy-workspace" };
     if (atom.icons.iconFor(target).render === "none") target = { name: "file-text" };
-    atom.icons.applyTo(li.firstChild, target, { setData: false });
 
-    if (item.active) li.classList.add("active-item");
-    li.firstChild.dataset.container = item.container;
-    return li;
+    return {
+      className: item.active ? "active-item" : undefined,
+      primary: highlight(item.title),
+      secondary: item.uri || item.container,
+      didRender: (li) => {
+        atom.icons.applyTo(li.firstChild, target, { setData: false });
+        li.firstChild.dataset.container = item.container;
+      },
+    };
   },
 
   getHelpMarkdown() {

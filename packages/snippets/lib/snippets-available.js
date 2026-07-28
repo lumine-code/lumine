@@ -1,12 +1,11 @@
 /** @babel */
 
 import _ from "@lumine-code/underscore-plus";
-import { SelectListView } from "@lumine-code/select-list";
 
 export default class SnippetsAvailable {
   constructor(snippets) {
     this.snippets = snippets;
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       className: "available-snippets",
       panelItem: this,
       items: [],

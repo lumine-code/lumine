@@ -1,5 +1,4 @@
 const { Disposable, CompositeDisposable } = require("atom");
-const { SelectListView, highlightMatches, removeDiacritics } = require("@lumine-code/select-list");
 const path = require("path");
 const fs = require("fs");
 
@@ -7,7 +6,7 @@ class RecentList {
   constructor() {
     this.items = [];
     this.restart = true;
-    this.selectList = new SelectListView({
+    this.selectList = atom.workspace.buildSelectList({
       className: "recent-list",
       maxResults: 50,
       emptyMessage: "No matches found",
@@ -111,7 +110,7 @@ class RecentList {
             );
           }),
           texts: project.paths.map((ppath) => {
-            return removeDiacritics(
+            return atom.tools.removeDiacritics(
               ppath
                 .replace(/[\\/]+$/, "")
                 .split(/[\\/]/g)
@@ -126,7 +125,7 @@ class RecentList {
   }
 
   filter(items, query) {
-    query = removeDiacritics(query);
+    query = atom.tools.removeDiacritics(query);
     if (query.length === 0) {
       return items;
     }
@@ -160,7 +159,9 @@ class RecentList {
     return scoredItems.sort((a, b) => b.score - a.score);
   }
 
-  elementForItem(item) {
+  elementForItem(item, { highlight }) {
+    // Indices come from this package's own filter(), not the built-in matcher,
+    // so they are passed explicitly rather than left to highlight's default.
     const indices = item.matchIndices || [];
     const li = document.createElement("li");
 
@@ -171,7 +172,7 @@ class RecentList {
         line.classList.add("icon-line");
       }
       if (i === item.ibest && indices.length > 0) {
-        line.appendChild(highlightMatches(item.paths[i], indices));
+        line.appendChild(highlight(item.paths[i], indices));
       } else {
         line.textContent = item.paths[i];
       }

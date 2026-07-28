@@ -1,7 +1,6 @@
 const crypto = require("crypto");
 const fs = require("fs");
 const path = require("path");
-const { InputDialogView } = require("@lumine-code/select-list");
 
 module.exports = class SaveDialog {
   constructor({ nativeImage }) {
@@ -19,7 +18,7 @@ module.exports = class SaveDialog {
     this.imageElement.alt = "Clipboard image preview";
     this.previewElement.appendChild(this.imageElement);
 
-    this.inputDialogView = new InputDialogView({
+    this.inputDialogView = atom.workspace.buildInputDialog({
       className: "image-paste save-dialog",
       infoMessage:
         "Enter a path relative to the current project or directory for the pasted image.",

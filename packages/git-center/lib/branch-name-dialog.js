@@ -1,10 +1,8 @@
-const { InputDialogView } = require("@lumine-code/select-list");
-
 // Branch-name prompt built on InputDialogView: the query is the proposed name
 // and confirming submits it.
 module.exports = class BranchNameDialog {
   constructor() {
-    this.inputDialogView = new InputDialogView({
+    this.inputDialogView = atom.workspace.buildInputDialog({
       className: "git-center-branch-name-dialog",
       didChangeQuery: () => this.inputDialogView.update({ errorMessage: null }),
       didConfirm: () => this.confirm(),

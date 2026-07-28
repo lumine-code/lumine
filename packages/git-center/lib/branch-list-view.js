@@ -1,5 +1,3 @@
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
-
 const BranchNameDialog = require("./branch-name-dialog");
 const { applySwitchItem, buildSwitchItems, checkoutBranch } = require("./helpers");
 const { divergenceChips, statusChips } = require("./status-summary");
@@ -15,22 +13,22 @@ const ACTIONS = [
 module.exports = class BranchListView {
   constructor() {
     this.branchNameDialog = new BranchNameDialog();
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       className: "git-center-branch-list",
       items: [],
       emptyMessage: "No branches yet",
       filterKeyForItem: (item) => item.branch,
-      elementForItem: (item, { matchIndices }) => {
+      elementForItem: (item, { highlight }) => {
         const className = ["git-center-item"];
         if (item.action) {
           className.push("git-center-branch-action");
           if (item.action === "detach") className.push("git-center-branch-action-last");
         }
 
-        return createTwoLineItem({
+        return {
           className,
           icon: [item.icon || "icon-git-branch"],
-          primary: highlightMatches(item.branch, matchIndices),
+          primary: highlight(item.branch),
           // Action rows stay one line; branch rows name their upstream below.
           secondary: item.action ? undefined : item.upstream?.name || "(no upstream)",
           trailing: [
@@ -39,7 +37,7 @@ module.exports = class BranchListView {
             ...divergenceChips(item.upstream),
             item.current && { text: "current", className: "badge" },
           ],
-        });
+        };
       },
       didConfirmSelection: (item) => {
         if (item.action) this.performAction(item.action);
@@ -51,18 +49,17 @@ module.exports = class BranchListView {
       didCancelSelection: () => this.hide(),
     });
 
-    this.referenceListView = new SelectListView({
+    this.referenceListView = atom.workspace.buildSelectList({
       className: "git-center-reference-list",
       items: [],
       emptyMessage: "No references yet",
       filterKeyForItem: (item) => `${item.label} ${item.detail}`,
-      elementForItem: (item, { matchIndices }) =>
-        createTwoLineItem({
-          className: "git-center-item",
-          icon: [item.icon],
-          primary: highlightMatches(item.label, matchIndices),
-          secondary: item.detail || undefined,
-        }),
+      elementForItem: (item, { highlight }) => ({
+        className: "git-center-item",
+        icon: [item.icon],
+        primary: highlight(item.label),
+        secondary: item.detail || undefined,
+      }),
       didConfirmSelection: (item) => this.confirmReference(item),
       didCancelSelection: () => this.referenceListView.hide(),
     });

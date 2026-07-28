@@ -1,11 +1,9 @@
 const path = require("path");
 
-const { SelectListView } = require("@lumine-code/select-list");
-
 module.exports = class BookmarksView {
   constructor(editorsBookmarks) {
     this.editorsBookmarks = editorsBookmarks;
-    this.selectList = new SelectListView({
+    this.selectList = atom.workspace.buildSelectList({
       className: "bookmarks-view",
       emptyMessage: "No bookmarks found",
       items: [],

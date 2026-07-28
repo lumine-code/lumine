@@ -1,21 +1,20 @@
 const jschardet = require("jschardet");
 const fs = require("fs");
-const { SelectListView, highlightMatches } = require("@lumine-code/select-list");
 
 module.exports = class EncodingListView {
   constructor(encodings) {
     this.encodings = encodings;
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       className: "encoding-selector",
       itemsClassList: ["mark-active"],
       items: [],
       filterKeyForItem: (encoding) => encoding.name,
-      elementForItem: (encoding, { matchIndices }) => {
+      elementForItem: (encoding, { highlight }) => {
         const element = document.createElement("li");
         if (encoding.id === this.currentEncoding) {
           element.classList.add("active");
         }
-        element.appendChild(highlightMatches(encoding.name, matchIndices));
+        element.appendChild(highlight(encoding.name));
         element.dataset.encoding = encoding.id;
         return element;
       },

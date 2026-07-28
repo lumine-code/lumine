@@ -1,5 +1,4 @@
 const { CompositeDisposable, Disposable } = require("atom");
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 const { clipboard, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -25,7 +24,7 @@ module.exports = {
   activate() {
     this.cacheUpdateSubscription = new Disposable();
 
-    this.selectList = new SelectListView({
+    this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-explorer",
       maxResults: 50,
       emptyMessage: "No matches found",
@@ -322,16 +321,16 @@ module.exports = {
     );
   },
 
-  elementForItem(item, { matchIndices }) {
-    const li = createTwoLineItem({
-      primary: highlightMatches(item, matchIndices || []),
-    });
-    atom.icons.applyTo(
-      li.firstChild,
-      { path: item, context: "fuzzy-explorer" },
-      { name: path.basename(item) },
-    );
-    return li;
+  elementForItem(item, { highlight }) {
+    return {
+      primary: highlight(item),
+      didRender: (li) =>
+        atom.icons.applyTo(
+          li.firstChild,
+          { path: item, context: "fuzzy-explorer" },
+          { name: path.basename(item) },
+        ),
+    };
   },
 
   update() {

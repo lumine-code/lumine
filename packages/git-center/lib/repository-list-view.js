@@ -1,5 +1,3 @@
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
-
 const { applySwitchItem, buildSwitchItems } = require("./helpers");
 const { divergenceChips, statusChips } = require("./status-summary");
 
@@ -7,34 +5,34 @@ const { divergenceChips, statusChips } = require("./status-summary");
 // repository (unpinned).
 module.exports = class RepositoryListView {
   constructor() {
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       className: "git-center-repository-list",
       items: [],
       emptyMessage: "No repositories in this window",
       filterKeyForItem: (item) => item.repoName,
-      elementForItem: (item, { matchIndices }) => {
+      elementForItem: (item, { highlight }) => {
         if (item.auto) {
-          return createTwoLineItem({
+          return {
             className: "git-center-item",
             icon: ["icon-sync"],
-            primary: highlightMatches(item.repoName, matchIndices),
+            primary: highlight(item.repoName),
             secondary: "The active repository is updated based on the active editor.",
-          });
+          };
         }
 
         // The branch badge sits last so the working-tree and upstream detail
         // reads to its left, closest to the repository it describes.
-        return createTwoLineItem({
+        return {
           className: "git-center-item",
           icon: ["icon-repo"],
-          primary: highlightMatches(item.repoName, matchIndices),
+          primary: highlight(item.repoName),
           secondary: item.workingDirectory,
           trailing: [
             ...statusChips(item.status),
             ...divergenceChips(item.upstream),
             { text: item.branch, className: "badge badge-info" },
           ],
-        });
+        };
       },
       didConfirmSelection: (item) => {
         this.hide();

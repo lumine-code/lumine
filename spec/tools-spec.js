@@ -182,3 +182,26 @@ describe("Renders Markdown", () => {
     });
   });
 });
+
+describe("Removes diacritics", () => {
+  it("folds combining accents onto the base letter", () => {
+    expect(atom.tools.removeDiacritics("café")).toBe("cafe");
+    expect(atom.tools.removeDiacritics("żółw")).toBe("zolw");
+  });
+
+  it("folds letters that carry their stroke in the codepoint", () => {
+    // These have no decomposed form, so a plain NFD normalize would leave them
+    // alone. The table-driven fold is what keeps them matchable.
+    expect(atom.tools.removeDiacritics("Øl")).toBe("Ol");
+    expect(atom.tools.removeDiacritics("Łódź")).toBe("Lodz");
+  });
+
+  it("expands ligatures rather than dropping them", () => {
+    expect(atom.tools.removeDiacritics("Æther")).toBe("AEther");
+  });
+
+  it("leaves text with nothing to fold untouched", () => {
+    expect(atom.tools.removeDiacritics("plain ascii")).toBe("plain ascii");
+    expect(atom.tools.removeDiacritics("")).toBe("");
+  });
+});

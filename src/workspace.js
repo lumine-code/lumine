@@ -15,6 +15,10 @@ const PanelContainer = require("./panel-container");
 const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
+// Provided to packages through ::buildSelectList and ::buildInputDialog, so
+// that a package needs neither a manifest entry nor a pin for the list toolkit
+// and a window holds a single copy of it.
+const { SelectListView, InputDialogView } = require("@lumine-code/select-list");
 
 // Given a single glob pattern matcher, test it against a relativized path
 // within the project. Even if this path itself doesn't match the glob, it's
@@ -1536,6 +1540,50 @@ module.exports = class Workspace extends Model {
     const subscription = this.textEditorRegistry.maintainConfig(editor);
     editor.onDidDestroy(() => subscription.dispose());
     return editor;
+  }
+
+  // Essential: Create a fuzzy-searchable list shown in a modal panel.
+  //
+  // The editor ships the implementation, so a package neither depends on it nor
+  // pins it, and a window holds exactly one copy of it. This is a factory, not a
+  // shared instance: every call returns a list that owns its own panel, so a
+  // renderer that throws takes down one package's list rather than all of them.
+  //
+  // The list owns its panel. Do not call {::addModalPanel} for it — `show()`,
+  // `hide()` and `toggle()` manage a hidden-until-shown modal panel created on
+  // first use, and `getPanel()` returns it.
+  //
+  // * `props` An {Object} describing the list. The two that matter most:
+  //   * `items` An {Array} of the objects to show.
+  //   * `elementForItem` A {Function} called as `(item, options)` to render a
+  //     row. Return an {HTMLElement}, or an {Object} with `primary` and an
+  //     optional `secondary`, `icon`, `className` and `trailing` to have a row
+  //     built for you. `options` carries `selected`, `index`, `filterKey`,
+  //     `visible`, a lazily computed `matchIndices`, and `highlight(text,
+  //     indices)` — which wraps the matched characters of `text` in
+  //     `span.character-match`, defaulting to this item's own indices.
+  //
+  // Returns a {SelectListView}.
+  buildSelectList(props) {
+    return new SelectListView(props);
+  }
+
+  // Essential: Create a modal dialog whose query editor is the value.
+  //
+  // The base of {::buildSelectList} without the list: a modal panel with a mini
+  // editor, for prompts and save dialogs where the typed text is the answer.
+  // Extra DOM goes above the editor via `headerElement`, below it via
+  // `contentElement`, and a `checkboxes` row can bind straight to `atom.config`.
+  //
+  // Panel ownership is the same as {::buildSelectList} — the dialog creates and
+  // owns its own modal panel.
+  //
+  // * `props` An {Object} describing the dialog, including `didConfirm(query)`,
+  //   `didCancel()` and `didChangeQuery(query)`.
+  //
+  // Returns an {InputDialogView}.
+  buildInputDialog(props) {
+    return new InputDialogView(props);
   }
 
   // Public: Asynchronously reopens the last-closed item's URI if it hasn't already been

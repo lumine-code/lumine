@@ -1,17 +1,16 @@
 "use babel";
 
-import { SelectListView, highlightMatches } from "@lumine-code/select-list";
 import repositoryForPath from "./helpers";
 
 export default class DiffListView {
   constructor() {
-    this.selectListView = new SelectListView({
+    this.selectListView = atom.workspace.buildSelectList({
       className: "diff-list-view",
       emptyMessage: "No diffs in file",
       items: [],
       filterKeyForItem: (diff) => diff.lineText,
-      elementForItem: (diff, { filterKey, matchIndices }) => ({
-        primary: highlightMatches(filterKey, matchIndices),
+      elementForItem: (diff, { filterKey, highlight }) => ({
+        primary: highlight(filterKey),
         secondary: `-${diff.oldStart},${diff.oldLines} +${diff.newStart},${diff.newLines}`,
       }),
       didConfirmSelection: (diff) => {

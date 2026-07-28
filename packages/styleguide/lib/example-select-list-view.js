@@ -1,7 +1,6 @@
 /** @babel */
 /** @jsx etch.dom */
 
-import { SelectListView } from "@lumine-code/select-list";
 import etch from "@lumine-code/etch";
 import dedent from "dedent";
 import CodeBlock from "./code-block";
@@ -9,9 +8,7 @@ import CodeBlock from "./code-block";
 export default class ExampleSelectListView {
   constructor() {
     this.jsExampleCode = dedent`
-    import { SelectListView } from '@lumine-code/select-list'
-
-    const selectListView = new SelectListView({
+    const selectListView = atom.workspace.buildSelectList({
       items: ['one', 'two', 'three'],
       elementForItem: (item) => {
         const li = document.createElement('li')
@@ -26,7 +23,23 @@ export default class ExampleSelectListView {
       }
     })
     `;
+
+    // The list is built rather than rendered as an etch component: the editor
+    // hands back an instance, and etch needs a constructor in tag position. Its
+    // element is adopted into the tree below instead.
+    this.selectListView = atom.workspace.buildSelectList({
+      items: ["one", "two", "three"],
+      // This is a static showcase, not a live picker in a fixed modal.
+      // Auto-selecting an item would call scrollIntoViewIfNeeded and
+      // scroll the whole styleguide down to this mid-page example.
+      initialSelectionIndex: undefined,
+      elementForItem: this.elementForItem.bind(this),
+      didConfirmSelection: this.didConfirmSelection.bind(this),
+      didCancelSelection: this.didCancelSelection.bind(this),
+    });
+
     etch.initialize(this);
+    this.refs.host.appendChild(this.selectListView.element);
   }
 
   elementForItem(item) {
@@ -47,18 +60,7 @@ export default class ExampleSelectListView {
     return (
       <div className="example">
         <div className="example-rendered">
-          <atom-panel className="modal">
-            <SelectListView
-              items={["one", "two", "three"]}
-              // This is a static showcase, not a live picker in a fixed modal.
-              // Auto-selecting an item would call scrollIntoViewIfNeeded and
-              // scroll the whole styleguide down to this mid-page example.
-              initialSelectionIndex={undefined}
-              elementForItem={this.elementForItem.bind(this)}
-              didConfirmSelection={this.didConfirmSelection.bind(this)}
-              didCancelSelection={this.didCancelSelection.bind(this)}
-            />
-          </atom-panel>
+          <atom-panel className="modal" ref="host" />
         </div>
         <div className="example-code show-example-space-pen">
           <CodeBlock
@@ -72,4 +74,9 @@ export default class ExampleSelectListView {
   }
 
   update() {}
+
+  destroy() {
+    this.selectListView.destroy();
+    return etch.destroy(this);
+  }
 }
