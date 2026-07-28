@@ -4,6 +4,7 @@ const { CompositeDisposable, Disposable } = require("event-kit");
 const { ModalQueryEditor } = require("./modal-query-editor");
 const { ModalListTemplate } = require("./modal-list-template");
 const { ModalInputTemplate } = require("./modal-input-template");
+const { ModalPreview } = require("./modal-preview");
 
 // The single `<atom-modal>` host. One per window, created lazily, reset
 // completely between views.
@@ -75,6 +76,14 @@ class ModalHostElement extends HTMLElement {
 
     this.split = document.createElement("div");
     this.split.classList.add("modals-split");
+
+    this.preview = new ModalPreview(this);
+    // Specs reach the preview through the host element they already have.
+    this.__preview = this.preview;
+    // Resolved from the host's own width: a modal too narrow for two columns
+    // stacks, and a narrower one hides the preview until it is asked for.
+    this.resizeObserver = new ResizeObserver(() => this.updateLayout());
+    this.resizeObserver.observe(this);
 
     this.footerSlot = document.createElement("div");
     this.footerSlot.classList.add("modals-footer");
@@ -202,6 +211,7 @@ class ModalHostElement extends HTMLElement {
         }),
         "modals:uncheck-all": withSession((session) => session.clearChecked()),
         "modals:query-from-selection": withSession((session) => session.setQueryFromSelection()),
+        "modals:toggle-preview": withSession(() => this.preview.toggleCollapsed()),
         "modals:focus-next-control": withSession(() => this.focusNextControl(1)),
         "modals:focus-previous-control": withSession(() => this.focusNextControl(-1)),
       }),
@@ -269,6 +279,18 @@ class ModalHostElement extends HTMLElement {
     this.template = new TemplateClass(this, spec);
     this.template.setMultiSelectable(!!spec.multiSelect);
     this.split.appendChild(this.template.element);
+
+    const hasPreview = this.preview.applyView(spec);
+    if (hasPreview) {
+      this.split.appendChild(this.preview.element);
+      this.dataset.preview = "";
+      // The panel, not the host, carries the width tier: the theme rule that
+      // widens a previewing modal targets `atom-panel.modal`.
+      if (this.manager.panel) this.manager.panel.getElement().dataset.wide = "";
+    } else if (this.manager.panel && !this.mounted) {
+      delete this.manager.panel.getElement().dataset.wide;
+    }
+    this.updateLayout();
 
     if (frame.isList) {
       this.queryEditor.element.setAttribute("aria-controls", this.template.list.id);
@@ -420,6 +442,10 @@ class ModalHostElement extends HTMLElement {
     const state = session.templateState();
 
     this.renderStatus(state);
+    // Driven from render rather than from focus notifications: the initial
+    // activation sets the focused row directly, so there is no notification for
+    // the first paint. Requests dedupe by row identity, so this is cheap.
+    this.preview.request(session);
 
     if (this.showHelp) return;
 
@@ -493,6 +519,32 @@ class ModalHostElement extends HTMLElement {
 
   didFocusIndex(index) {
     if (this.session) this.session.focusIndex(index);
+  }
+
+  // Called once per session close, before the host is released.
+  settlePreview(result) {
+    const previewer = this.preview.previewer;
+    if (!previewer) return;
+    if (result.reason === "destroyed") return;
+    if (result.status === "confirmed") {
+      if (typeof previewer.keep === "function") previewer.keep();
+    } else if (typeof previewer.restore === "function") {
+      previewer.restore();
+    }
+  }
+
+  updateLayout() {
+    const layout = this.preview.isActive ? this.preview.layoutFor(this.clientWidth) : "list";
+    this.dataset.layout = layout;
+    // Below the collapse threshold the column is hidden but still reachable
+    // with the toggle, so the state is the layout's, not the previewer's.
+    this.preview.element.style.display =
+      this.preview.previewer && layout !== "list" && !this.preview.collapsed ? "" : "none";
+  }
+
+  didChangeFocusedItem(session) {
+    if (session !== this.session) return;
+    this.preview.request(session);
   }
 
   didChangeHelp(session) {
@@ -574,6 +626,8 @@ class ModalHostElement extends HTMLElement {
 
   releaseSession() {
     this.session = null;
+    this.preview.abort();
+    this.preview.clear();
     if (this.blurTimer != null) {
       clearTimeout(this.blurTimer);
       this.blurTimer = null;
@@ -598,6 +652,8 @@ class ModalHostElement extends HTMLElement {
 
   destroy() {
     this.releaseSession();
+    this.resizeObserver.disconnect();
+    this.preview.destroy();
     if (this.blurTimer != null) clearTimeout(this.blurTimer);
     this.subscriptions.dispose();
     this.queryEditor.destroy();

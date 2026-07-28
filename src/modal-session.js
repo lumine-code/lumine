@@ -284,6 +284,7 @@ class ModalSession {
       }
     }
     this.emitter.emit("did-change-focused-item", item);
+    if (this.host) this.host.didChangeFocusedItem(this);
   }
 
   // ── checked set (multi-select data model; UI lands in Stage 4) ─────────────

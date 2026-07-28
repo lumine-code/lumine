@@ -7,6 +7,8 @@ const { sources } = require("./modal-source");
 const { matchers } = require("./modal-matcher");
 const { highlight, highlightSegments } = require("./modal-row");
 const { registerActionKeystrokes } = require("./modal-keymap");
+const { previewers } = require("./modal-preview");
+const { paneItem } = require("./modal-workspace-preview");
 
 // `atom.modals` — the single owner of modal UI in a window.
 //
@@ -63,14 +65,7 @@ class ModalManager {
       rows: () => ({ row: (item) => item }),
       custom: (fn) => ({ row: fn }),
     };
-    this.previewers = {
-      none: () => false,
-      file: notYet("previewers.file", 5),
-      buffer: notYet("previewers.buffer", 5),
-      element: notYet("previewers.element", 5),
-      markdown: notYet("previewers.markdown", 5),
-      paneItem: notYet("previewers.paneItem", 5),
-    };
+    this.previewers = { ...previewers, paneItem };
     this.actions = {
       set: (actions, override) => ({ actions, override }),
       confirm: (run, opts = {}) => ({
@@ -285,6 +280,12 @@ class ModalManager {
     try {
       if (session.rootSpec.preserveQuery && this.host && session === this.session) {
         this.preservedQueries.set(session.rootSpec.id, this.host.getQueryText());
+      }
+      // A previewer that moved the real workspace puts it back — unless the
+      // user confirmed, where landing where they chose is the whole point, or
+      // the window is going away, where touching state is pure risk.
+      if (this.host && session === this.session) {
+        this.host.settlePreview(result);
       }
       session.runTerminalCallbacks(result);
 
@@ -520,12 +521,6 @@ function validateSpec(spec) {
   if (typeof spec.id !== "string" || spec.id.length === 0) {
     throw new TypeError("modals: ViewSpec.id is required (kebab-case, package-namespaced)");
   }
-}
-
-function notYet(name, stage) {
-  return () => {
-    throw new Error(`modals: ${name} lands in Stage ${stage}`);
-  };
 }
 
 module.exports = ModalManager;

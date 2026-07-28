@@ -229,3 +229,55 @@ atom-modal.modals-mounted ol.list-group li {
 atom-modal.modals-mounted ol.list-group li.selected {
   background-color: var(--background-color-selected);
 }
+
+/* Preview column */
+
+.modals-preview {
+  flex: 1 1 55%;
+  min-width: 0;
+  min-height: 0;
+  overflow: auto;
+  border-left: 1px solid var(--base-border-color);
+  padding-left: var(--component-padding);
+}
+
+atom-modal[data-layout="stacked"] .modals-preview {
+  flex: 0 0 auto;
+  max-height: 40vh;
+  border-left: none;
+  border-top: 1px solid var(--base-border-color);
+  padding-left: 0;
+  padding-top: var(--component-padding);
+}
+
+.modals-preview-message {
+  color: var(--text-color-subtle);
+  font-style: italic;
+}
+
+.modals-preview-message[data-severity="error"] {
+  color: var(--text-color-error);
+  font-style: normal;
+}
+
+/* The pooled preview editor is not interactive, so it must not advertise a
+   caret or accept a click that would look like an edit. */
+.modals-preview-editor {
+  height: 100%;
+  cursor: default;
+}
+
+.modals-preview-editor .cursors {
+  display: none;
+}
+
+/* A previewing modal needs the width for two columns. Set on the panel rather
+   than the host, because that is what the theme's width rule targets — and it
+   has to beat the base sheet's fixed `width`, not just its max-width. */
+atom-panel.modal[data-wide] {
+  width: min(96vw, calc(var(--ui-size) * 120));
+  max-width: 96vw;
+  margin-left: 0;
+  left: 50%;
+  transform: translateX(-50%);
+}
