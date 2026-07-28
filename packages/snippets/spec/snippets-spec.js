@@ -3,6 +3,13 @@ const temp = require("@lumine-code/temp").track();
 const Snippets = require("../lib/snippets");
 const { TextEditor } = require("atom");
 const crypto = require("crypto");
+const {
+  activeSession,
+  isModalOpen,
+  confirm,
+  moveDown,
+  settle,
+} = require("../../../spec/helpers/modal-helpers");
 
 const SUPPORTS_UUID = "randomUUID" in crypto && typeof crypto.randomUUID === "function";
 
@@ -2095,8 +2102,6 @@ foo\
   });
 
   describe("when the 'snippets:available' command is triggered", () => {
-    let availableSnippetsView = null;
-
     beforeEach(() => {
       atom.grammars.assignLanguageMode(editor, "source.js");
       Snippets.add(__filename, {
@@ -2117,45 +2122,41 @@ foo\
 
       atom.commands.dispatch(editorElement, "snippets:available");
 
-      waitsFor(() => atom.workspace.getModalPanels().length === 1);
-
-      runs(() => {
-        availableSnippetsView = atom.workspace.getModalPanels()[0].getItem();
-      });
+      waitsForPromise(() => settle());
     });
 
     it("renders a select list of all available snippets", () => {
-      expect(availableSnippetsView.selectListView.getSelectedItem().prefix).toBe("test");
-      expect(availableSnippetsView.selectListView.getSelectedItem().name).toBe("test");
-      expect(availableSnippetsView.selectListView.getSelectedItem().bodyText).toBe(
-        "${1:Test pass you will}, young ",
-      );
+      const session = activeSession();
+      expect(session.getFocusedItem().prefix).toBe("test");
+      expect(session.getFocusedItem().name).toBe("test");
+      expect(session.getFocusedItem().bodyText).toBe("${1:Test pass you will}, young ");
 
-      availableSnippetsView.selectListView.selectNext();
+      moveDown();
 
-      expect(availableSnippetsView.selectListView.getSelectedItem().prefix).toBe("chal");
-      expect(availableSnippetsView.selectListView.getSelectedItem().name).toBe("challenge");
-      expect(availableSnippetsView.selectListView.getSelectedItem().bodyText).toBe(
-        "$1: ${2:To pass this challenge}",
-      );
+      expect(session.getFocusedItem().prefix).toBe("chal");
+      expect(session.getFocusedItem().name).toBe("challenge");
+      expect(session.getFocusedItem().bodyText).toBe("$1: ${2:To pass this challenge}");
     });
 
     it("writes the selected snippet to the editor as snippet", () => {
-      availableSnippetsView.selectListView.confirmSelection();
+      waitsForPromise(async () => {
+        confirm();
+        await settle();
 
-      expect(editor.getCursorScreenPosition()).toEqual([0, 18]);
-      expect(editor.getSelectedText()).toBe("Test pass you will");
-      expect(editor.lineTextForBufferRow(0)).toBe(
-        "Test pass you will, young var quicksort = function () {",
-      );
+        expect(editor.getCursorScreenPosition()).toEqual([0, 18]);
+        expect(editor.getSelectedText()).toBe("Test pass you will");
+        expect(editor.lineTextForBufferRow(0)).toBe(
+          "Test pass you will, young var quicksort = function () {",
+        );
+      });
     });
 
     it("closes the dialog when triggered again", () => {
-      atom.commands.dispatch(
-        availableSnippetsView.selectListView.refs.queryEditor.element,
-        "snippets:available",
-      );
-      expect(atom.workspace.getModalPanels().filter((panel) => panel.isVisible()).length).toBe(0);
+      waitsForPromise(async () => {
+        atom.commands.dispatch(editorElement, "snippets:available");
+        await settle();
+        expect(isModalOpen()).toBe(false);
+      });
     });
   });
 });

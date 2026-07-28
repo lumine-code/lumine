@@ -1,57 +1,13 @@
 const path = require("path");
 
-const { SelectListView } = require("@lumine-code/select-list");
-
 module.exports = class BookmarksView {
   constructor(editorsBookmarks) {
     this.editorsBookmarks = editorsBookmarks;
-    this.selectList = new SelectListView({
-      className: "bookmarks-view",
-      emptyMessage: "No bookmarks found",
-      items: [],
-      filterKeyForItem: (bookmark) => bookmark.filterText,
-      didConfirmSelection: ({ editor, marker }) => {
-        this.hide();
-        editor.setSelectedBufferRange(marker.getBufferRange(), { autoscroll: true });
-        atom.workspace.paneForItem(editor).activate();
-        atom.workspace.paneForItem(editor).activateItem(editor);
-      },
-      didCancelSelection: () => {
-        this.hide();
-      },
-      elementForItem: ({ marker, editor }) => {
-        const bookmarkStartRow = marker.getStartBufferPosition().row;
-        const bookmarkEndRow = marker.getEndBufferPosition().row;
-        const bookmarkPath = editor.getPath() ? path.basename(editor.getPath()) : "untitled";
-        let bookmarkLocation = `${bookmarkPath}:${bookmarkStartRow + 1}`;
-        if (bookmarkStartRow !== bookmarkEndRow) {
-          bookmarkLocation += `-${bookmarkEndRow + 1}`;
-        }
-
-        const lineText = editor.lineTextForBufferRow(bookmarkStartRow);
-        const li = document.createElement("li");
-        li.classList.add("bookmark");
-        const primaryLine = document.createElement("div");
-        primaryLine.classList.add("primary-line");
-        primaryLine.textContent = bookmarkLocation;
-        li.appendChild(primaryLine);
-        if (lineText) {
-          const secondaryLine = document.createElement("div");
-          secondaryLine.classList.add("secondary-line", "line-text");
-          secondaryLine.textContent = lineText.trim();
-          li.appendChild(secondaryLine);
-          li.classList.add("two-lines");
-        }
-        return li;
-      },
-    });
   }
 
-  destroy() {
-    this.selectList.destroy();
-  }
+  destroy() {}
 
-  async show() {
+  getBookmarks() {
     const bookmarks = [];
     for (const { editor, markerLayer } of this.editorsBookmarks) {
       for (const marker of markerLayer.getMarkers()) {
@@ -69,13 +25,43 @@ module.exports = class BookmarksView {
         bookmarks.push({ marker, editor, filterText });
       }
     }
+    return bookmarks;
+  }
 
-    this.selectList.reset();
-    await this.selectList.update({ items: bookmarks });
-    this.selectList.show();
+  show() {
+    return atom.modals.open({
+      id: "bookmarks.bookmarks",
+      className: "bookmarks-view",
+      placeholder: "Jump to a bookmark",
+      emptyMessage: "No bookmarks found",
+      source: this.getBookmarks(),
+      renderer: {
+        // A marker is unique per bookmark and survives the list rebuilding.
+        entry: (bookmark) => ({ id: bookmark.marker, text: bookmark.filterText }),
+        row: ({ marker, editor }) => {
+          const startRow = marker.getStartBufferPosition().row;
+          const endRow = marker.getEndBufferPosition().row;
+          const bookmarkPath = editor.getPath() ? path.basename(editor.getPath()) : "untitled";
+          let location = `${bookmarkPath}:${startRow + 1}`;
+          if (startRow !== endRow) location += `-${endRow + 1}`;
+
+          const lineText = editor.lineTextForBufferRow(startRow);
+          return {
+            className: "bookmark",
+            label: location,
+            detail: lineText ? { text: lineText.trim(), className: "line-text" } : undefined,
+          };
+        },
+      },
+      confirm: ({ item: { editor, marker } }) => {
+        editor.setSelectedBufferRange(marker.getBufferRange(), { autoscroll: true });
+        atom.workspace.paneForItem(editor).activate();
+        atom.workspace.paneForItem(editor).activateItem(editor);
+      },
+    });
   }
 
   hide() {
-    this.selectList.hide();
+    if (atom.modals.getActiveSession()) atom.modals.cancel("api");
   }
 };

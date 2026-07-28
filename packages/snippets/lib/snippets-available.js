@@ -1,61 +1,34 @@
 /** @babel */
 
 import _ from "@lumine-code/underscore-plus";
-import { SelectListView } from "@lumine-code/select-list";
 
 export default class SnippetsAvailable {
   constructor(snippets) {
     this.snippets = snippets;
-    this.selectListView = new SelectListView({
-      className: "available-snippets",
-      panelItem: this,
-      items: [],
-      filterKeyForItem: (snippet) => snippet.searchText,
-      elementForItem: (snippet) => ({
-        primary: snippet.prefix,
-        secondary: snippet.name,
-      }),
-      didConfirmSelection: (snippet) => {
-        for (const cursor of this.editor.getCursors()) {
-          this.snippets.insert(snippet.bodyText, this.editor, cursor);
-        }
-        this.cancel();
-      },
-      didConfirmEmptySelection: () => {
-        this.cancel();
-      },
-      didCancelSelection: () => {
-        this.cancel();
-      },
-    });
-    this.element = this.selectListView.element;
   }
 
-  async toggle(editor) {
-    this.editor = editor;
-    if (this.selectListView.isVisible()) {
-      this.cancel();
-    } else {
-      this.selectListView.reset();
-      await this.populate();
-      this.selectListView.show();
-    }
-  }
-
-  cancel() {
-    this.editor = null;
-    this.selectListView.hide();
-  }
-
-  destroy() {
-    return this.selectListView.destroy();
-  }
-
-  populate() {
-    const snippets = Object.values(this.snippets.getSnippets(this.editor));
-    for (let snippet of snippets) {
+  toggle(editor) {
+    const available = Object.values(this.snippets.getSnippets(editor));
+    for (const snippet of available) {
       snippet.searchText = _.compact([snippet.prefix, snippet.name]).join(" ");
     }
-    return this.selectListView.update({ items: snippets });
+
+    return atom.modals.toggle({
+      id: "snippets.available",
+      className: "available-snippets",
+      placeholder: "Insert a snippet",
+      source: available,
+      renderer: {
+        entry: (snippet) => ({ id: snippet.prefix, text: snippet.searchText }),
+        row: (snippet) => ({ label: snippet.prefix, detail: snippet.name }),
+      },
+      confirm: ({ item, target }) => {
+        for (const cursor of target.editor.getCursors()) {
+          this.snippets.insert(item.bodyText, target.editor, cursor);
+        }
+      },
+    });
   }
+
+  destroy() {}
 }

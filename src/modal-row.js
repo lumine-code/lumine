@@ -59,9 +59,9 @@ function classList(value) {
 
 function textAndTooltip(value) {
   if (value && typeof value === "object" && !(value instanceof Node) && "text" in value) {
-    return { content: value.text, tooltip: value.tooltip };
+    return { content: value.text, tooltip: value.tooltip, className: value.className };
   }
-  return { content: value, tooltip: undefined };
+  return { content: value, tooltip: undefined, className: undefined };
 }
 
 function appendContent(parent, content) {
@@ -302,7 +302,7 @@ function buildRowElement(row, ctx) {
   if (row.description != null) {
     const desc = textAndTooltip(row.description);
     const span = document.createElement("span");
-    span.classList.add("description");
+    span.classList.add("description", ...classList(desc.className));
     if (desc.tooltip) span.title = desc.tooltip;
     const descOffsets = ctx && ctx.highlights ? ctx.highlights.description : null;
     if (typeof desc.content === "string" && descOffsets && descOffsets.length) {
@@ -320,7 +320,7 @@ function buildRowElement(row, ctx) {
   for (const value of detailValues) {
     const detail = textAndTooltip(value);
     const line = document.createElement("div");
-    line.classList.add("secondary-line");
+    line.classList.add("secondary-line", ...classList(detail.className));
     if (detail.tooltip) line.title = detail.tooltip;
     const detailOffsets = ctx && ctx.highlights ? ctx.highlights.detail : null;
     if (typeof detail.content === "string" && detailOffsets && detailOffsets.length) {

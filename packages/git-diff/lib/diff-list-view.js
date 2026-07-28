@@ -1,57 +1,47 @@
 "use babel";
 
-import { SelectListView, highlightMatches } from "@lumine-code/select-list";
 import repositoryForPath from "./helpers";
 
 export default class DiffListView {
-  constructor() {
-    this.selectListView = new SelectListView({
+  destroy() {}
+
+  async getDiffs(editor) {
+    const repository = await repositoryForPath(editor.getPath());
+    let diffs = repository
+      ? await repository.getLineDiffsAsync(editor.getPath(), editor.getText())
+      : [];
+    if (!diffs) diffs = [];
+    for (const diff of diffs) {
+      const bufferRow = diff.newStart > 0 ? diff.newStart - 1 : diff.newStart;
+      const lineText = editor.lineTextForBufferRow(bufferRow);
+      diff.lineText = lineText ? lineText.trim() : "";
+    }
+    return diffs;
+  }
+
+  toggle() {
+    if (!atom.workspace.getActiveTextEditor()) return null;
+
+    return atom.modals.toggle({
+      id: "git-diff.diffs",
       className: "diff-list-view",
+      placeholder: "Jump to a diff",
       emptyMessage: "No diffs in file",
-      items: [],
-      filterKeyForItem: (diff) => diff.lineText,
-      elementForItem: (diff, { filterKey, matchIndices }) => ({
-        primary: highlightMatches(filterKey, matchIndices),
-        secondary: `-${diff.oldStart},${diff.oldLines} +${diff.newStart},${diff.newLines}`,
-      }),
-      didConfirmSelection: (diff) => {
-        this.selectListView.hide();
-        const bufferRow = diff.newStart > 0 ? diff.newStart - 1 : diff.newStart;
-        this.editor.setCursorBufferPosition([bufferRow, 0], {
-          autoscroll: true,
-        });
-        this.editor.moveToFirstCharacterOfLine();
+      // Reading the diff is async, so the list is a promise source rather than
+      // work the caller has to finish before opening.
+      source: (req) => this.getDiffs(req.session.target.editor),
+      renderer: {
+        entry: (diff) => ({ id: `${diff.newStart}:${diff.newLines}`, text: diff.lineText }),
+        row: (diff) => ({
+          label: diff.lineText,
+          detail: `-${diff.oldStart},${diff.oldLines} +${diff.newStart},${diff.newLines}`,
+        }),
       },
-      didCancelSelection: () => {
-        this.selectListView.hide();
+      confirm: ({ item, target }) => {
+        const bufferRow = item.newStart > 0 ? item.newStart - 1 : item.newStart;
+        target.editor.setCursorBufferPosition([bufferRow, 0], { autoscroll: true });
+        target.editor.moveToFirstCharacterOfLine();
       },
     });
-  }
-
-  destroy() {
-    return this.selectListView.destroy();
-  }
-
-  async toggle() {
-    const editor = atom.workspace.getActiveTextEditor();
-    if (this.selectListView.isVisible()) {
-      this.selectListView.hide();
-    } else if (editor) {
-      this.editor = editor;
-      const repository = await repositoryForPath(this.editor.getPath());
-      let diffs = repository
-        ? await repository.getLineDiffsAsync(this.editor.getPath(), this.editor.getText())
-        : [];
-      if (!diffs) diffs = [];
-      for (let diff of diffs) {
-        const bufferRow = diff.newStart > 0 ? diff.newStart - 1 : diff.newStart;
-        const lineText = this.editor.lineTextForBufferRow(bufferRow);
-        diff.lineText = lineText ? lineText.trim() : "";
-      }
-
-      this.selectListView.reset();
-      await this.selectListView.update({ items: diffs });
-      this.selectListView.show();
-    }
   }
 }

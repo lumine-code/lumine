@@ -1,6 +1,7 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp").track();
+const { confirm, settle } = require("../../../spec/helpers/modal-helpers");
 
 describe("git-diff:toggle-diff-list", () => {
   let diffListView, editor;
@@ -36,8 +37,11 @@ describe("git-diff:toggle-diff-list", () => {
   });
 
   it("moves the cursor to the selected hunk", () => {
-    editor.setCursorBufferPosition([0, 0]);
-    atom.commands.dispatch(document.querySelector(".diff-list-view"), "core:confirm");
-    expect(editor.getCursorBufferPosition()).toEqual([8, 4]);
+    waitsForPromise(async () => {
+      editor.setCursorBufferPosition([0, 0]);
+      confirm();
+      await settle();
+      expect(editor.getCursorBufferPosition()).toEqual([8, 4]);
+    });
   });
 });
