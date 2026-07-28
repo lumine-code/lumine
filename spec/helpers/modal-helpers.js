@@ -106,11 +106,15 @@ function flush(ms = 0) {
 // Resolves once the active session's source has settled and the list has been
 // rendered for the current query.
 async function settle() {
-  const session = activeSession();
+  let session = activeSession();
   if (!session) return;
   flush(0);
   await Promise.resolve();
-  if (session.frame.run) await session.frame.run.whenSettled();
+  // The session can close while we yield — an action that confirms, a blur —
+  // and a closed session has no frames left to wait on.
+  session = activeSession();
+  const run = session && session.frames.length > 0 ? session.frame.run : null;
+  if (run) await run.whenSettled();
   flush(0);
   await Promise.resolve();
 }

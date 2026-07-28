@@ -1,5 +1,4 @@
 const { CompositeDisposable, Disposable } = require("atom");
-const { SelectListView, createTwoLineItem, highlightMatches } = require("@lumine-code/select-list");
 const { clipboard, shell } = require("electron");
 const path = require("path");
 const fs = require("fs");
@@ -7,6 +6,7 @@ const CSON = require("@lumine-code/season");
 const searchForPattern = require("./search-pattern");
 
 const CACHE_UPDATED_CHANNEL = "fuzzy-explorer:cache-updated";
+const VIEW_ID = "fuzzy-explorer.paths";
 
 module.exports = {
   openExternalService: null,
@@ -14,10 +14,8 @@ module.exports = {
   ignores: [],
   Ignores: [],
   items: [],
-  pending: false,
   building: false,
   separator: 0,
-  selectList: null,
   disposables: null,
   cacheUpdateSubscription: null,
   cacheFingerprint: null,
@@ -25,105 +23,24 @@ module.exports = {
   activate() {
     this.cacheUpdateSubscription = new Disposable();
 
-    this.selectList = new SelectListView({
-      className: "fuzzy-explorer",
-      maxResults: 50,
-      emptyMessage: "No matches found",
-      removeDiacritics: true,
-      algorithm: "command-t",
-      loadingSpinner: true,
-      elementForItem: (item, options) => this.elementForItem(item, options),
-      didConfirmSelection: () => this.performAction("open"),
-      didCancelSelection: () => this.selectList.hide(),
-      willShow: () => this.updateView(true),
-    });
-
     this.disposables = new CompositeDisposable(
       atom.config.observe("fuzzy-explorer.separator", (value) => {
         this.separator = value;
       }),
       atom.commands.add("atom-workspace", {
-        "fuzzy-explorer:toggle": () => this.selectList.toggle(),
+        "fuzzy-explorer:toggle": () => this.toggle(),
         "fuzzy-explorer:refresh": () => this.build(),
         "fuzzy-explorer:edit": () => this.editConfig(),
-      }),
-      atom.commands.add(this.selectList.element, {
-        "select-list:query-selected-path": () => {
-          this.updateQueryFromItem();
-        },
-        "select-list:open": () => {
-          this.performAction("open");
-        },
-        "select-list:open-external": () => {
-          this.performAction("open-external");
-        },
-        "select-list:show-in-folder": () => {
-          this.performAction("show-in-folder");
-        },
-        "select-list:split-left": () => {
-          this.performAction("split", { side: "left" });
-        },
-        "select-list:split-right": () => {
-          this.performAction("split", { side: "right" });
-        },
-        "select-list:split-up": () => {
-          this.performAction("split", { side: "up" });
-        },
-        "select-list:split-down": () => {
-          this.performAction("split", { side: "down" });
-        },
-        "select-list:insert-absolute-path": () => {
-          this.performAction("path", { op: "insert", rel: "a" });
-        },
-        "select-list:insert-relative-path": () => {
-          this.performAction("path", { op: "insert", rel: "r" });
-        },
-        "select-list:insert-file-name": () => {
-          this.performAction("path", { op: "insert", rel: "n" });
-        },
-        "select-list:copy-absolute-path": () => {
-          this.performAction("path", { op: "copy", rel: "a" });
-        },
-        "select-list:copy-relative-path": () => {
-          this.performAction("path", { op: "copy", rel: "r" });
-        },
-        "select-list:copy-file-name": () => {
-          this.performAction("path", { op: "copy", rel: "n" });
-        },
-        "select-list:refresh-index": () => {
-          this.update();
-        },
-        "select-list:claude-chat": () => {
-          this.performAction("claude-chat");
-        },
-        "select-list:query-selection": () => {
-          this.selectList.setQueryFromSelection();
-        },
-        "select-list:use-default-separator": () => {
-          atom.config.set("fuzzy-explorer.separator", 0);
-          atom.notifications.addSuccess("Separator has been changed to default");
-        },
-        "select-list:use-forward-slashes": () => {
-          atom.config.set("fuzzy-explorer.separator", 1);
-          atom.notifications.addSuccess("Separator has been changed to forward slash");
-        },
-        "select-list:use-backslashes": () => {
-          atom.config.set("fuzzy-explorer.separator", 2);
-          atom.notifications.addSuccess("Separator has been changed to backslash");
-        },
       }),
     );
 
     this.observeCacheUpdates();
-    if (this.loadCache()) {
-      this.pending = true;
-    }
+    this.loadCache();
   },
 
   deactivate() {
     this.cacheUpdateSubscription.dispose();
     this.disposables.dispose();
-    this.selectList.destroy();
   },
 
   getConfigPath() {
@@ -171,10 +88,7 @@ module.exports = {
   handleCacheUpdate(cacheFingerprint) {
     if (this.building) return;
     if (cacheFingerprint === this.cacheFingerprint) return;
-    if (this.loadCache()) {
-      this.pending = true;
-      this.updateView();
-    }
+    if (this.loadCache()) this.refreshOpenList();
   },
 
   notifyCacheUpdate() {
@@ -270,19 +184,14 @@ module.exports = {
 
   finishBuild() {
     this.building = false;
-    this.pending = true;
-    this.updateView();
+    this.refreshOpenList();
   },
 
-  updateView(visible) {
-    if (this.pending && (visible || this.selectList.isVisible())) {
-      this.pending = false;
-      this.selectList.update({
-        items: this.items,
-        loadingMessage: null,
-        helpMarkdown: this.getHelpMarkdown(),
-      });
-    }
+  // The index can finish while the list is up; re-reading it is idempotent, so
+  // there is no "did the panel become visible yet?" guard to get wrong.
+  refreshOpenList() {
+    const session = atom.modals.getActiveSession();
+    if (session && session.rootSpec.id === VIEW_ID) session.refresh();
   },
 
   searchPromise(pattern, itemSet) {
@@ -322,125 +231,203 @@ module.exports = {
     );
   },
 
-  elementForItem(item, { matchIndices }) {
-    const li = createTwoLineItem({
-      primary: highlightMatches(item, matchIndices || []),
+  toggle() {
+    return atom.modals.toggle({
+      id: VIEW_ID,
+      className: "fuzzy-explorer",
+      placeholder: "Find a file",
+      emptyMessage: "No matches found",
+      source: () => this.items,
+      matcher: atom.modals.matchers.fuzzy({ maxResults: 50 }),
+      help: () => this.getHelpMarkdown(),
+      renderer: {
+        row: (item) => ({ label: item }),
+        decorate: (li, item) => {
+          atom.icons.applyTo(
+            li.firstChild,
+            { path: item, context: "fuzzy-explorer" },
+            { name: path.basename(item) },
+          );
+        },
+      },
+      actions: this.buildActions(),
+      confirm: (ctx) => this.openItem(ctx),
     });
-    atom.icons.applyTo(
-      li.firstChild,
-      { path: item, context: "fuzzy-explorer" },
-      { name: path.basename(item) },
-    );
-    return li;
   },
 
-  update() {
-    this.selectList.update({
-      items: [],
-      loadingMessage: "Indexing files\u2026",
-    });
-    this.build();
-  },
+  buildActions() {
+    const splits = [
+      ["split-left", "left", "alt-left"],
+      ["split-right", "right", "alt-right"],
+      ["split-up", "up", "alt-up"],
+      ["split-down", "down", "alt-down"],
+    ];
+    const paths = [
+      ["insert-absolute-path", "insert", "a", "alt-v alt-a"],
+      ["insert-relative-path", "insert", "r", "alt-v"],
+      ["insert-file-name", "insert", "n", "alt-v alt-n"],
+      ["copy-absolute-path", "copy", "a", "alt-c alt-a"],
+      ["copy-relative-path", "copy", "r", "alt-c"],
+      ["copy-file-name", "copy", "n", "alt-c alt-n"],
+    ];
+    const separators = [
+      ["use-default-separator", 0, "alt-0", "default"],
+      ["use-forward-slashes", 1, "alt-/", "forward slash"],
+      ["use-backslashes", 2, "alt-\\", "backslash"],
+    ];
 
-  updateQueryFromItem() {
-    let text = this.selectList.getSelectedItem() + path.sep;
-    this.selectList.refs.queryEditor.setText(text);
-    this.selectList.refs.queryEditor.moveToEndOfLine();
-  },
-
-  performAction(mode, params) {
-    const item = this.selectList.getSelectedItem();
-    if (!item) return;
-
-    let editor, itemPath, text;
-
-    if (mode === "open") {
-      itemPath = item;
-      try {
-        if (!fs.lstatSync(itemPath).isFile()) {
-          return this.updateQueryFromItem();
-        }
-      } catch (error) {
-        atom.notifications.addError(error.message || String(error), {
-          detail: itemPath,
-        });
-      }
-    }
-
-    this.selectList.hide();
-
-    if (mode === "open") {
-      atom.workspace.open(item, { pending: atom.config.get("core.allowPendingPaneItems") });
-    } else if (mode === "open-external") {
-      if (this.openExternalService) {
-        this.openExternalService.openExternal(item);
-      } else {
-        shell.openPath(item);
-      }
-    } else if (mode === "show-in-folder") {
-      if (this.openExternalService) {
-        this.openExternalService.showInFolder(item);
-      } else {
-        shell.showItemInFolder(item);
-      }
-    } else if (mode === "split") {
-      itemPath = item;
-      try {
-        if (fs.lstatSync(itemPath).isFile()) {
-          atom.workspace.open(itemPath, { split: params.side });
-        } else {
-          atom.notifications.addError("Cannot open path, because it's a dir", {
-            detail: itemPath,
+    return [
+      { name: "open", label: "Open file", keystroke: "enter", run: (ctx) => this.openItem(ctx) },
+      {
+        name: "open-external",
+        label: "Open externally",
+        keystroke: "alt-enter",
+        run: ({ item }) => {
+          if (this.openExternalService) this.openExternalService.openExternal(item);
+          else shell.openPath(item);
+        },
+      },
+      {
+        name: "show-in-folder",
+        label: "Show in folder",
+        keystroke: "ctrl-enter",
+        run: ({ item }) => {
+          if (this.openExternalService) this.openExternalService.showInFolder(item);
+          else shell.showItemInFolder(item);
+        },
+      },
+      ...splits.map(([name, side, keystroke]) => ({
+        name,
+        label: `Split ${side}`,
+        keystroke,
+        run: ({ item }) => this.openSplit(item, side),
+      })),
+      ...paths.map(([name, op, rel, keystroke]) => ({
+        name,
+        label: name.replace(/-/g, " "),
+        keystroke,
+        run: (ctx) => this.applyPath(ctx, op, rel),
+      })),
+      ...separators.map(([name, value, keystroke, label]) => ({
+        name,
+        label: `Use ${label} separator`,
+        keystroke,
+        when: "always",
+        run: () => {
+          atom.config.set("fuzzy-explorer.separator", value);
+          atom.notifications.addSuccess(`Separator has been changed to ${label}`);
+          return { keepOpen: true };
+        },
+      })),
+      {
+        name: "query-selected-path",
+        label: "Query from item",
+        keystroke: "alt-q",
+        run: ({ item }) => this.drillInto(item),
+      },
+      {
+        name: "query-from-selection",
+        label: "Query from selection",
+        keystroke: "alt-s",
+        when: "always",
+        run: ({ session }) => {
+          session.setQueryFromSelection();
+          return { keepOpen: true };
+        },
+      },
+      {
+        name: "claude-chat",
+        label: "Attach to claude-chat",
+        keystroke: "alt-f",
+        run: ({ item }) => {
+          if (!this.claudeChatService) {
+            atom.notifications.addWarning("claude-chat service not available");
+            return { keepOpen: true };
+          }
+          const [, relativePath] = atom.project.relativizePath(item);
+          this.claudeChatService.setAttachContext({
+            type: "paths",
+            paths: [item],
+            label: relativePath || item,
+            icon: "file",
           });
-        }
-      } catch (error) {
-        atom.notifications.addError(error.message || String(error), {
-          detail: itemPath,
-        });
-      }
-    } else if (mode === "path") {
-      if (params.rel === "a") {
-        text = item;
-      } else if (params.rel === "r") {
-        editor = atom.workspace.getActiveTextEditor();
-        if (!editor) {
-          atom.notifications.addError("Cannot insert path, because there is no active text editor");
-          return;
-        }
-        const editorPath = editor.getPath();
-        text = editorPath ? path.relative(path.dirname(editorPath), item) : item;
-      } else if (params.rel === "n") {
-        text = path.basename(item);
-      }
-      if (this.separator === 1) {
-        text = text.replace(/\\/g, "/");
-      } else if (this.separator === 2) {
-        text = text.replace(/\//g, "\\");
-      }
-      if (params.op === "insert") {
-        if (!editor) editor = atom.workspace.getActiveTextEditor();
-        if (!editor) {
-          atom.notifications.addError("Cannot insert path, because there is no active text editor");
-          return;
-        }
-        editor.insertText(text, { select: true });
-      } else if (params.op === "copy") {
-        clipboard.writeText(text);
-      }
-    } else if (mode === "claude-chat") {
-      if (!this.claudeChatService) {
-        atom.notifications.addWarning("claude-chat service not available");
+        },
+      },
+      {
+        name: "refresh-index",
+        label: "Refresh index",
+        keystroke: "f5",
+        when: "always",
+        run: ({ session }) => {
+          this.items = [];
+          session.setStatus({ busy: true, message: "Indexing files…" });
+          this.build();
+          return { keepOpen: true, refresh: true };
+        },
+      },
+    ];
+  },
+
+  // Confirming a directory drills into it rather than failing to open it.
+  drillInto(item) {
+    return { keepOpen: true, query: item + path.sep, select: "reset" };
+  },
+
+  openItem({ item }) {
+    try {
+      if (!fs.lstatSync(item).isFile()) return this.drillInto(item);
+    } catch (error) {
+      atom.notifications.addError(error.message || String(error), { detail: item });
+      return { keepOpen: true };
+    }
+    atom.workspace.open(item, { pending: atom.config.get("core.allowPendingPaneItems") });
+  },
+
+  openSplit(item, side) {
+    try {
+      if (!fs.lstatSync(item).isFile()) {
+        atom.notifications.addError("Cannot open path, because it's a dir", { detail: item });
         return;
       }
-      const [, relativePath] = atom.project.relativizePath(item);
-      const context = {
-        type: "paths",
-        paths: [item],
-        label: relativePath || item,
-        icon: "file",
-      };
-      this.claudeChatService.setAttachContext(context);
+    } catch (error) {
+      atom.notifications.addError(error.message || String(error), { detail: item });
+      return;
     }
+    atom.workspace.open(item, { split: side });
+  },
+
+  applyPath({ item, target }, op, rel) {
+    let editor = target.editor;
+    let text;
+
+    if (rel === "a") {
+      text = item;
+    } else if (rel === "r") {
+      if (!editor) {
+        atom.notifications.addError("Cannot insert path, because there is no active text editor");
+        return;
+      }
+      const editorPath = editor.getPath();
+      text = editorPath ? path.relative(path.dirname(editorPath), item) : item;
+    } else {
+      text = path.basename(item);
+    }
+
+    if (this.separator === 1) {
+      text = text.replace(/\\/g, "/");
+    } else if (this.separator === 2) {
+      text = text.replace(/\//g, "\\");
+    }
+
+    if (op === "copy") {
+      clipboard.writeText(text);
+      return;
+    }
+    if (!editor) {
+      atom.notifications.addError("Cannot insert path, because there is no active text editor");
+      return;
+    }
+    editor.insertText(text, { select: true });
   },
 
   consumeOpenExternal(service) {
