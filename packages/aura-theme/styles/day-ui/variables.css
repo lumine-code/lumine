@@ -15,7 +15,7 @@
   --base-border-color: hsl(228, 12%, 88%);
   --pane-item-background-color: hsl(0, 0%, 100%);
   --pane-item-border-color: var(--base-border-color);
-  --input-background-color: hsl(228, 24%, 96%);
+  --input-background-color: hsl(0, 0%, 100%);
   --input-border-color: var(--base-border-color);
   --tool-panel-background-color: #f2f2f2;
   --tool-panel-border-color: var(--base-border-color);
@@ -25,8 +25,8 @@
   --panel-heading-border-color: var(--base-border-color);
   --overlay-background-color: hsl(0, 0%, 100%);
   --overlay-border-color: var(--base-border-color);
-  --button-background-color: hsl(228, 20%, 94%);
-  --button-background-color-hover: hsl(228, 18%, 90%);
+  --button-background-color: hsl(0, 0%, 100%);
+  --button-background-color-hover: hsl(228, 20%, 96%);
   --button-background-color-selected: #5a8ae9;
   --button-border-color: var(--base-border-color);
   --tab-bar-background-color: #f2f2f2;
