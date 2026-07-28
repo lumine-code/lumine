@@ -24,21 +24,18 @@
   },
   "configSchema": {
     "showIcons": {
-      "order": 1,
       "title": "Show Icons",
       "description": "Show icons in tabs for panes which define an icon, such as the Settings and Project Find Results.",
       "type": "boolean",
       "default": true
     },
     "alwaysShowTabBar": {
-      "order": 2,
       "title": "Always Show Tab Bar",
       "description": "Show the tab bar even when only one tab is open.",
       "type": "boolean",
       "default": true
     },
     "tabScrolling": {
-      "order": 3,
       "title": "Tab Scrolling",
       "description": "Jump to next or previous tab by scrolling on the tab bar.",
       "type": [
@@ -53,14 +50,12 @@
       "default": "platform"
     },
     "tabScrollingThreshold": {
-      "order": 4,
       "title": "Tab Scrolling Threshold",
       "description": "Threshold for switching to the next/previous tab when the `Tab Scrolling` config setting is enabled. Higher numbers mean that a longer scroll is needed to jump to the next/previous tab.",
       "type": "integer",
       "default": 120
     },
     "addNewTabsAtEnd": {
-      "order": 5,
       "title": "Add New Tabs At End",
       "description": "Add new tabs at the end of the tab bar, rather than after active tab.",
       "type": "boolean",

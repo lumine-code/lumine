@@ -30,7 +30,6 @@
   },
   "configSchema": {
     "template": {
-      "order": 1,
       "title": "Template",
       "description": "Select the information shown in the editor status tile. Choose `Custom` to use the template below, or `Hide` to hide the tile.",
       "type": "string",
@@ -45,7 +44,6 @@
       "default": "Row and Column, Lines and Chars"
     },
     "custom": {
-      "order": 2,
       "title": "Custom Template",
       "description": "Liquid template used when `Template` is `Custom`. Variables: `start.row`, `start.col` (where the selection begins, or the cursor when nothing is selected), `end.row`, `end.col` (where the cursor is; equals `start` with no selection), `lines`, `chars` (selected line and character counts), and `n` (number of cursors). `start` and `end` follow the selection's direction. Supports tags such as `{% if chars %}-{{ end.row }}:{{ end.col }}{% endif %}`.",
       "type": "string",

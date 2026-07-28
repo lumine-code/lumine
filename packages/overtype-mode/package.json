@@ -25,7 +25,6 @@
   },
   "configSchema": {
     "statusBar": {
-      "order": 1,
       "title": "Status bar icon",
       "description": "Show status icon in the status bar.",
       "type": "boolean",

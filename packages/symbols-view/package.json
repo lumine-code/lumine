@@ -19,42 +19,36 @@
   },
   "configSchema": {
     "quickJumpToFileSymbol": {
-      "order": 1,
       "title": "Quick Jump To File Symbol",
       "description": "Automatically visit selected file-symbols as you navigate the symbols list.",
       "type": "boolean",
       "default": true
     },
     "showIconsInSymbolsView": {
-      "order": 2,
       "title": "Show Icons In Symbols View",
       "description": "When enabled, an icon is shown alongside each symbol: the one its provider names, or one chosen from the symbol's kind.",
       "type": "boolean",
       "default": true
     },
     "useBadgeColors": {
-      "order": 3,
       "title": "Use Badge Colors",
       "description": "Whether to use an assortment of colors for symbol badges. If enabled, each badge will be one of sixteen colors based on its text. Badge colors are generated automatically as hue variants of your theme’s ordinary badge color.",
       "type": "boolean",
       "default": false
     },
     "prefillSelectedText": {
-      "order": 4,
       "title": "Prefill Selected Text",
       "description": "When enabled, any text you may have selected in the active editor will be used as the search query in the symbols list.",
       "type": "boolean",
       "default": true
     },
     "showProviderNamesInSymbolsView": {
-      "order": 5,
       "title": "Show Provider Names In Symbols View",
       "description": "When enabled, the name of the provider will be shown alongside each result.",
       "type": "boolean",
       "default": false
     },
     "preferCertainProviders": {
-      "order": 6,
       "title": "Prefer Certain Providers",
       "description": "A comma-separated list of preferred providers. Used to help break ties when more than one provider can contribute symbols. Anything on this list will be preferred over anything not on this list, and earlier items will be preferred over later items. (A provider can be identified by its official name or its package name; run the **Symbols View: Show Active Providers** command to see both values.)",
       "type": "array",
@@ -64,14 +58,12 @@
       "default": []
     },
     "providerTimeout": {
-      "order": 7,
       "title": "Provider Timeout",
       "description": "How long providers have to respond to symbol requests before this package gives up and shows the list. If a certain provider is particularly slow, you may have to increase this value. (Does not apply to project-wide symbol search **if** the list is already visible.)",
       "type": "number",
       "default": 2000
     },
     "enableDebugLogging": {
-      "order": 8,
       "title": "Enable Debug Logging",
       "description": "Whether to log certain diagnostic information to the console. (For example: which provider is chosen for a given task.)",
       "type": "boolean",

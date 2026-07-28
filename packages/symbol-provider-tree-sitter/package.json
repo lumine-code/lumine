@@ -28,7 +28,6 @@
   },
   "configSchema": {
     "includeReferences": {
-      "order": 1,
       "title": "Include References",
       "description": "Whether to make symbols out of references (for example, function calls) in addition to definitions.",
       "type": "boolean",

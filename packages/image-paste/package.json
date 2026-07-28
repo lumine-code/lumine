@@ -31,21 +31,18 @@
   },
   "configSchema": {
     "assetsDirectory": {
-      "order": 1,
       "title": "Assets Directory",
       "description": "Project-relative directory used when saving images pasted into text editors.",
       "type": "string",
       "default": "assets"
     },
     "forwardSlash": {
-      "order": 2,
       "title": "Use Forward Slashes",
       "description": "Insert image paths with forward slashes in text editors.",
       "type": "boolean",
       "default": true
     },
     "imagePreview": {
-      "order": 3,
       "title": "Image Preview",
       "description": "Show an image preview in the save dialog.",
       "type": "boolean",

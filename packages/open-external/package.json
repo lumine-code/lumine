@@ -33,14 +33,12 @@
   },
   "configSchema": {
     "flag": {
-      "order": 1,
       "title": "Open unsupported files externally",
       "description": "Automatically open files with a configured extension in their system application.",
       "type": "boolean",
       "default": true
     },
     "list": {
-      "order": 2,
       "title": "External file extensions",
       "description": "File extensions to open externally, without leading dots.",
       "type": "array",

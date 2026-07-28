@@ -41,36 +41,7 @@
     "MarkdownPreviewView": "createMarkdownPreviewView"
   },
   "configSchema": {
-    "breakOnSingleNewline": {
-      "order": 2,
-      "title": "Break On Single Newline",
-      "description": "In Markdown, a single newline character doesn't cause a line break in the generated HTML. In GitHub Flavored Markdown, that is not true. Enable this config option to insert line breaks in rendered HTML for single newlines in Markdown source.",
-      "type": "boolean",
-      "default": false
-    },
-    "liveUpdate": {
-      "order": 3,
-      "title": "Live Update",
-      "description": "Re-render the preview as the contents of the source changes, without requiring the source buffer to be saved. If disabled, the preview is re-rendered only when the buffer is saved to disk.",
-      "type": "boolean",
-      "default": true
-    },
-    "openPreviewInSplitPane": {
-      "order": 4,
-      "title": "Open Preview In Split Pane",
-      "description": "Open the preview in a split pane. If disabled, the preview is opened in a new tab in the same pane.",
-      "type": "boolean",
-      "default": true
-    },
-    "allowUnsafeProtocols": {
-      "order": 5,
-      "title": "Allow Unsafe Protocols",
-      "description": "Allow HTML attributes to use protocols normally considered unsafe such as `file://` and absolute paths on Windows.",
-      "type": "boolean",
-      "default": false
-    },
     "grammars": {
-      "order": 1,
       "title": "Grammars",
       "description": "List of scopes for languages for which previewing is enabled. See [this README](https://github.com/lumine-code/lumine/tree/master/packages/spell-check#readme) for more information on finding the correct scope for a specific language.",
       "type": "array",
@@ -83,15 +54,37 @@
         "text.plain.null-grammar"
       ]
     },
+    "breakOnSingleNewline": {
+      "title": "Break On Single Newline",
+      "description": "In Markdown, a single newline character doesn't cause a line break in the generated HTML. In GitHub Flavored Markdown, that is not true. Enable this config option to insert line breaks in rendered HTML for single newlines in Markdown source.",
+      "type": "boolean",
+      "default": false
+    },
+    "liveUpdate": {
+      "title": "Live Update",
+      "description": "Re-render the preview as the contents of the source changes, without requiring the source buffer to be saved. If disabled, the preview is re-rendered only when the buffer is saved to disk.",
+      "type": "boolean",
+      "default": true
+    },
+    "openPreviewInSplitPane": {
+      "title": "Open Preview In Split Pane",
+      "description": "Open the preview in a split pane. If disabled, the preview is opened in a new tab in the same pane.",
+      "type": "boolean",
+      "default": true
+    },
+    "allowUnsafeProtocols": {
+      "title": "Allow Unsafe Protocols",
+      "description": "Allow HTML attributes to use protocols normally considered unsafe such as `file://` and absolute paths on Windows.",
+      "type": "boolean",
+      "default": false
+    },
     "useGitHubStyle": {
-      "order": 6,
       "title": "Use GitHub.com Style",
       "description": "Use the same CSS styles for preview as the ones used on GitHub.com.",
       "type": "boolean",
       "default": false
     },
     "gitHubStyleMode": {
-      "order": 7,
       "title": "GitHub.com Style Mode",
       "description": "Whether to use light-mode GitHub CSS, dark-mode GitHub CSS, or system default (based on your operating system preferences). Has no effect unless **Use GitHub.com Style** is enabled.",
       "type": "string",
@@ -112,7 +105,6 @@
       "default": "auto"
     },
     "syntaxHighlightingLanguageIdentifier": {
-      "order": 8,
       "title": "Syntax Highlighting Language Identifiers",
       "description": "Syntax Highlighting System to use for code block language identification. See [the README](https://github.com/lumine-code/lumine/tree/master/packages/markdown-preview#readme) for details.",
       "type": "string",
@@ -137,14 +129,12 @@
       "default": "linguist"
     },
     "customSyntaxHighlightingLanguageIdentifiers": {
-      "order": 9,
       "title": "Custom Syntax Highlighting Language Identifiers",
       "description": "Comma-separated list of syntax language identifiers to map to any language. See [the README](https://github.com/lumine-code/lumine/tree/master/packages/markdown-preview#readme) for usage.",
       "type": "string",
       "default": ""
     },
     "useOriginalParser": {
-      "order": 10,
       "title": "Use Original Parser",
       "description": "When checked, will use the original Markdown parser for `markdown-preview` (`marked`). When unchecked, will use the new Markdown parser built into Lumine (`markdown-it`).",
       "type": "boolean",

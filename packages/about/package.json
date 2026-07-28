@@ -21,7 +21,6 @@
   },
   "configSchema": {
     "showOnStartup": {
-      "order": 1,
       "title": "Show About On Startup",
       "description": "Show the About pane when opening a new Lumine window.",
       "type": "boolean",

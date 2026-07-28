@@ -23,14 +23,12 @@
   },
   "configSchema": {
     "showIconsInEditorGutter": {
-      "order": 1,
       "title": "Show Icons In Editor Gutter",
       "description": "Show colored icons for added (`+`), modified (`·`) and removed (`-`) lines in the editor's gutter, instead of colored markers (`|`).",
       "type": "boolean",
       "default": false
     },
     "wrapAroundOnMoveToDiff": {
-      "order": 2,
       "title": "Wrap Around On Move To Diff",
       "description": "Wraps around to the first/last diff in the file when moving to next/previous diff.",
       "type": "boolean",

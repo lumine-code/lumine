@@ -29,14 +29,12 @@
   },
   "configSchema": {
     "fullWidth": {
-      "order": 1,
       "title": "Full-width",
       "description": "Fit the status-bar to the window's full-width",
       "type": "boolean",
       "default": true
     },
     "isVisible": {
-      "order": 2,
       "title": "Is Visible",
       "description": "Show status bar at the bottom of the workspace",
       "type": "boolean",

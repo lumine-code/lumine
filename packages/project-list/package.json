@@ -36,21 +36,18 @@
   },
   "configSchema": {
     "useCache": {
-      "order": 1,
       "title": "Use cached data",
       "description": "Dump the project list to a cache file. Useful if scanning is used.",
       "type": "boolean",
       "default": true
     },
     "checkExists": {
-      "order": 2,
       "title": "Existing items only",
       "description": "Add an item to the list only if at least one of its paths exists.",
       "type": "boolean",
       "default": true
     },
     "parseTitleTags": {
-      "order": 3,
       "title": "Parse [tags] in titles",
       "description": "Parse and style [tag] patterns in project titles as tag elements.",
       "type": "boolean",

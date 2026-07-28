@@ -18,7 +18,6 @@
   },
   "configSchema": {
     "cursorAwareActive": {
-      "order": 1,
       "title": "Cursor Aware Active",
       "description": "When enabled, the active guide is determined by the cursor column position. When disabled, the deepest guide on the cursor line is always marked active.",
       "type": "boolean",

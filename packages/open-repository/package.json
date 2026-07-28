@@ -36,7 +36,6 @@
   },
   "configSchema": {
     "includeLineNumbersInUrls": {
-      "order": 1,
       "title": "Include Line Numbers In URLs",
       "description": "Include the line range selected in the editor when opening or copying URLs to the clipboard. When opened in the browser, the host's page will automatically scroll to the selected line range.",
       "type": "boolean",

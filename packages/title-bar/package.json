@@ -28,7 +28,6 @@
   },
   "configSchema": {
     "controlTheme": {
-      "order": 1,
       "title": "Window Controls Theme",
       "description": "Visual style used for the window control buttons.",
       "type": "string",
@@ -41,21 +40,18 @@
       "default": "Default"
     },
     "customContextMenus": {
-      "order": 2,
       "title": "Custom Context Menus",
       "description": "Use custom styled HTML context menus instead of native Electron menus. Matches the title bar styling.",
       "type": "boolean",
       "default": true
     },
     "autoHide": {
-      "order": 3,
       "title": "Auto Hide Menu Bar",
       "description": "Automatically hide the menu bar and toggle it by pressing Alt.",
       "type": "boolean",
       "default": true
     },
     "altGivesFocus": {
-      "order": 4,
       "title": "Alt Gives Focus",
       "description": "Releasing the alt key gives focus to the application menu.",
       "type": "boolean",

@@ -25,7 +25,6 @@
   },
   "configSchema": {
     "enabled": {
-      "order": 1,
       "title": "Enabled",
       "description": "Save files automatically when they lose focus or their pane is closed.",
       "type": "boolean",

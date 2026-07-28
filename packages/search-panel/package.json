@@ -64,14 +64,12 @@
   },
   "configSchema": {
     "focusEditorAfterSearch": {
-      "order": 1,
       "title": "Focus editor after search",
       "description": "Focus the editor and select the next match when a file search is executed. If no matches are found, the editor will not be focused.",
       "type": "boolean",
       "default": false
     },
     "projectSearchResultsPaneSplitDirection": {
-      "order": 2,
       "title": "Direction to open results pane",
       "description": "Direction to split the active pane when showing project search results. If 'none', the results will be shown in the active pane.",
       "type": "string",
@@ -83,21 +81,18 @@
       "default": "none"
     },
     "closeFindPanelAfterSearch": {
-      "order": 3,
       "title": "Close project find panel after search",
       "description": "Close the find panel after executing a project-wide search.",
       "type": "boolean",
       "default": false
     },
     "scrollToResultOnLiveSearch": {
-      "order": 4,
       "title": "Scroll to result on live-search (incremental find in buffer)",
       "description": "Scroll to and select the closest match while typing in the buffer find box.",
       "type": "boolean",
       "default": false
     },
     "liveSearchMinimumCharacters": {
-      "order": 5,
       "title": "Live search minimum characters",
       "description": "The minimum number of characters which need to be typed into the buffer find box before search starts matching and highlighting matches as you type.",
       "type": "integer",
@@ -105,7 +100,6 @@
       "default": 3
     },
     "searchContextLineCountBefore": {
-      "order": 6,
       "title": "Search context line count before",
       "description": "The number of extra lines of context to query before the match for project results",
       "type": "integer",
@@ -113,7 +107,6 @@
       "default": 3
     },
     "searchContextLineCountAfter": {
-      "order": 7,
       "title": "Search context line count after",
       "description": "The number of extra lines of context to query after the match for project results",
       "type": "integer",
@@ -121,35 +114,30 @@
       "default": 3
     },
     "showSearchWrapIcon": {
-      "order": 8,
       "title": "Show search wrap icon",
       "description": "Display a visual cue over the editor when looping through search results.",
       "type": "boolean",
       "default": true
     },
     "enablePCRE2": {
-      "order": 9,
       "title": "Enable PCRE2 regex engine",
       "description": "Enable the PCRE2 regex engine. This enables additional regex features such as lookbehind, but may make searches slower.",
       "type": "boolean",
       "default": false
     },
     "autocompleteSearches": {
-      "order": 11,
       "title": "Autocomplete search",
       "description": "Autocompletes entries in the find search field.",
       "type": "boolean",
       "default": false
     },
     "preserveCaseOnReplace": {
-      "order": 12,
       "title": "Preserve case during replace",
       "description": "Keep the replaced text case during replace: replacing 'user' with 'person' will replace 'User' with 'Person' and 'USER' with 'PERSON'.",
       "type": "boolean",
       "default": false
     },
     "cleanOnHide": {
-      "order": 13,
       "title": "Clean on panel hide",
       "description": "Clear the search and replace fields when closing the find panel.",
       "type": "boolean",

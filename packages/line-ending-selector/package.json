@@ -28,7 +28,6 @@
   },
   "configSchema": {
     "defaultLineEnding": {
-      "order": 1,
       "title": "Default line ending",
       "description": "Line ending to use for new files",
       "type": "string",

@@ -22,21 +22,18 @@
   "license": "MIT",
   "configSchema": {
     "dismissTag": {
-      "order": 1,
       "title": "Dismiss Tag",
       "description": "Highlights forms after #_ as comments",
       "type": "boolean",
       "default": true
     },
     "commentTag": {
-      "order": 2,
       "title": "Comment Tag",
       "description": "Highlights forms like (comment ...) as comments",
       "type": "boolean",
       "default": false
     },
     "markDeprecations": {
-      "order": 3,
       "title": "Mark Deprecations",
       "description": "Marks deprecations like `use`",
       "type": "boolean",

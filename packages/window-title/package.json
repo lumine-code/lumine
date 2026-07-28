@@ -28,7 +28,6 @@
   },
   "configSchema": {
     "template": {
-      "order": 1,
       "title": "Window Title",
       "description": "Select the information shown in the window title. Choose `Custom` to use the template below.",
       "type": "string",
@@ -42,7 +41,6 @@
       "default": "Project and File"
     },
     "custom": {
-      "order": 2,
       "title": "Custom Template",
       "description": "Liquid template used when `Window Title` is `Custom`. Variables: `projectTitle`, `projectPaths`, `projectCount`, `projectName`, `projectPath`, `fileName`, `filePath`, `relativeFilePath`, `gitHead`, `appName`, `devMode`, `safeMode`. Supports tags such as `{% if devMode %} [Dev]{% endif %}`. If the template renders empty, the title falls back to `Lumine`.",
       "type": "string",

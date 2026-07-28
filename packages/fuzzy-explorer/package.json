@@ -37,7 +37,6 @@
   },
   "configSchema": {
     "ignoredNames": {
-      "order": 1,
       "title": "Ignored Names",
       "description": "List of glob patterns. Files matching these patterns will be ignored.",
       "type": "array",
@@ -47,7 +46,6 @@
       "default": []
     },
     "separator": {
-      "order": 2,
       "title": "Type of separator in file paths",
       "description": "Type of separator for the file path when copying or pasting.",
       "type": "integer",

@@ -108,7 +108,6 @@
   },
   "configSchema": {
     "trace": {
-      "order": 1,
       "title": "Protocol Trace",
       "description": "Log the traffic between the editor and language servers to the per-server log buffer.",
       "type": "string",
@@ -120,7 +119,6 @@
       "default": "off"
     },
     "restartLimit": {
-      "order": 2,
       "title": "Maximum Automatic Restarts",
       "description": "How many times a crashed language server is restarted automatically before giving up.",
       "type": "integer",
@@ -128,13 +126,11 @@
       "default": 3
     },
     "codeLens": {
-      "order": 3,
       "title": "Code Lens",
       "description": "Actionable command links rendered above the symbols they describe.",
       "type": "object",
       "properties": {
         "enabled": {
-          "order": 1,
           "title": "Enabled",
           "description": "Show code lens links above symbols. Also settable per language in scoped settings.",
           "type": "boolean",
@@ -143,13 +139,11 @@
       }
     },
     "semanticTokens": {
-      "order": 4,
       "title": "Semantic Tokens",
       "description": "Server-computed highlighting layered over the grammar's own.",
       "type": "object",
       "properties": {
         "enabled": {
-          "order": 1,
           "title": "Enabled",
           "description": "Color identifiers with the language server's semantic classification. Also settable per language in scoped settings.",
           "type": "boolean",
@@ -158,20 +152,17 @@
       }
     },
     "inlayHints": {
-      "order": 5,
       "title": "Inlay Hints",
       "description": "Inline type and parameter-name labels rendered between characters.",
       "type": "object",
       "properties": {
         "enabled": {
-          "order": 1,
           "title": "Enabled",
           "description": "Show inlay hints in the visible part of the editor. Also settable per language in scoped settings.",
           "type": "boolean",
           "default": true
         },
         "maxLabelLength": {
-          "order": 2,
           "title": "Maximum Label Length",
           "description": "Longer hint labels are truncated with an ellipsis.",
           "type": "integer",
@@ -181,13 +172,11 @@
       }
     },
     "statusBar": {
-      "order": 6,
       "title": "Status Bar",
       "description": "Indicator for the language servers this window is running.",
       "type": "object",
       "properties": {
         "enabled": {
-          "order": 1,
           "title": "Enabled",
           "description": "Show the running language servers in the status bar. The item stays in place while none is running, reporting zero.",
           "type": "boolean",

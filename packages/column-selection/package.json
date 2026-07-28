@@ -25,7 +25,6 @@
   },
   "configSchema": {
     "mouseButton": {
-      "order": 1,
       "title": "Mouse button",
       "description": "The mouse button that starts a column selection. Choose None to use only sticky or picker mode.",
       "type": "integer",
@@ -50,7 +49,6 @@
       "default": 3
     },
     "selectKey": {
-      "order": 2,
       "title": "Select key",
       "description": "The modifier required to start column selection.",
       "type": "integer",
@@ -75,7 +73,6 @@
       "default": 0
     },
     "statusBar": {
-      "order": 3,
       "title": "Status bar icon",
       "description": "Show the column selection mode indicator in the status bar.",
       "type": "boolean",

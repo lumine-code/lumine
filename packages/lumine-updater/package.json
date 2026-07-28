@@ -25,7 +25,6 @@
   },
   "configSchema": {
     "checkForUpdatesOnLaunch": {
-      "order": 1,
       "title": "Check For Updates On Launch",
       "description": "If Lumine Updater should check for an update to Lumine as soon as Lumine launches.",
       "type": "boolean",
