@@ -336,20 +336,13 @@ const schemaEnforcers = {};
 //
 // #### order
 //
-// The settings view orders your settings alphabetically. You can override this
-// ordering with the order key.
+// The settings view displays your settings in the order the schema declares
+// them, so arranging the schema is all this normally takes.
 //
-// ```coffee
-// config:
-//   zSetting:
-//     type: 'integer'
-//     default: 4
-//     order: 1
-//   aSetting:
-//     type: 'integer'
-//     default: 4
-//     order: 2
-// ```
+// An explicit `order` key still takes precedence where one is present, but
+// prefer not to use it: a setting without `order` sorts after every setting
+// that has one, so adding `order` to part of a schema reorders the rest of it
+// too.
 //
 // ## Manipulating values outside your configuration schema
 //
