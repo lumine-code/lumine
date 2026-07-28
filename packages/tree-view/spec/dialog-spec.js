@@ -5,6 +5,14 @@ const fsCompat = require("../lib/fs-compat");
 const AddDialog = require("../lib/add-dialog");
 const MoveDialog = require("../lib/move-dialog");
 const CopyDialog = require("../lib/copy-dialog");
+const {
+  activeSession,
+  modalElement,
+  statusText,
+  setQuery,
+  confirm,
+  settle,
+} = require("../../../spec/helpers/modal-helpers");
 
 describe("TreeView dialogs", () => {
   let projectPath;
@@ -18,15 +26,20 @@ describe("TreeView dialogs", () => {
   });
 
   afterEach(() => {
-    for (const dialog of dialogs) {
-      try {
-        dialog.inputDialogView.destroy();
-      } catch {
-        // already destroyed by a confirm/cancel
-      }
-    }
+    if (atom.modals.isOpen()) atom.modals.cancel("api");
+    dialogs.length = 0;
     fs.rmSync(projectPath, { recursive: true, force: true });
   });
+
+  // Opens the dialog, types a path and confirms it, the way a user would.
+  async function submit(dialog, text) {
+    dialog.attach();
+    await settle();
+    setQuery(text);
+    await settle();
+    confirm();
+    await settle();
+  }
 
   function track(dialog) {
     dialogs.push(dialog);
@@ -41,40 +54,40 @@ describe("TreeView dialogs", () => {
   }
 
   describe("AddDialog", () => {
-    it("renders the prompt in the header and creates a file", () => {
+    it("renders the prompt in the header and creates a file", async () => {
       const dialog = track(new AddDialog(projectPath, true));
       dialog.attach();
+      await settle();
 
-      const header = dialog.inputDialogView.element.querySelector("label.icon");
-      expect(header.textContent).toContain("file");
-      expect(dialog.inputDialogView.refs.infoMessage.textContent).toContain(
-        "relative to the project root",
-      );
+      expect(modalElement().querySelector("label.icon").textContent).toContain("file");
+      expect(statusText()).toContain("relative to the project root");
 
       let created = null;
       dialog.onDidCreateFile((createdPath) => (created = createdPath));
-      dialog.miniEditor.setText("newfile.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      setQuery("newfile.txt");
+      await settle();
+      confirm();
+      await settle();
 
       expect(created).toBe(path.join(projectPath, "newfile.txt"));
       expect(fs.existsSync(created)).toBe(true);
+      expect(atom.modals.isOpen()).toBe(false);
     });
 
-    it("shows an error when the target already exists", async () => {
+    it("shows an error and stays open when the target already exists", async () => {
       fixture("exists.txt");
       const dialog = track(new AddDialog(projectPath, true));
-      dialog.attach();
-      dialog.miniEditor.setText("exists.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      await submit(dialog, "exists.txt");
 
-      await dialog.inputDialogView.constructor.getScheduler().getNextUpdatePromise();
-      expect(dialog.inputDialogView.refs.errorMessage.textContent).toContain("already exists");
-      expect(dialog.inputDialogView.element.classList.contains("error")).toBe(true);
+      expect(statusText()).toContain("already exists");
+      expect(modalElement().classList.contains("error")).toBe(true);
+      // The path has to stay correctable, so the dialog must not close.
+      expect(atom.modals.isOpen()).toBe(true);
     });
   });
 
   describe("MoveDialog", () => {
-    it("moves the entry and reports the move", () => {
+    it("moves the entry and reports the move", async () => {
       const source = fixture("old.txt", "content");
       let moved = null;
       const dialog = track(
@@ -82,9 +95,7 @@ describe("TreeView dialogs", () => {
           onMove: ({ initialPath, newPath }) => (moved = { initialPath, newPath }),
         }),
       );
-      dialog.attach();
-      dialog.miniEditor.setText("renamed.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      await submit(dialog, "renamed.txt");
 
       const destination = path.join(projectPath, "renamed.txt");
       expect(fs.existsSync(source)).toBe(false);
@@ -98,12 +109,12 @@ describe("TreeView dialogs", () => {
       return track(new CopyDialog(source, { onCopy: onCopy || (() => {}) }));
     }
 
-    it("binds the open-after-copy checkbox to the tree-view.openAfterCopy config", () => {
+    it("binds the open-after-copy checkbox to the tree-view.openAfterCopy config", async () => {
       atom.config.set("tree-view.openAfterCopy", true);
-      const dialog = makeCopyDialog(fixture("a.txt", "hi"));
-      dialog.attach();
+      makeCopyDialog(fixture("a.txt", "hi")).attach();
+      await settle();
 
-      const checkbox = dialog.inputDialogView.element.querySelector(".input-checkbox");
+      const checkbox = modalElement().querySelector(".input-checkbox");
       expect(checkbox.checked).toBe(true);
 
       checkbox.checked = false;
@@ -113,26 +124,23 @@ describe("TreeView dialogs", () => {
 
     it("reflects an external config change in the checkbox", async () => {
       atom.config.set("tree-view.openAfterCopy", false);
-      const dialog = makeCopyDialog(fixture("a.txt", "hi"));
-      dialog.attach();
-      expect(dialog.inputDialogView.element.querySelector(".input-checkbox").checked).toBe(false);
+      makeCopyDialog(fixture("a.txt", "hi")).attach();
+      await settle();
+      expect(modalElement().querySelector(".input-checkbox").checked).toBe(false);
 
       atom.config.set("tree-view.openAfterCopy", true);
-      await dialog.inputDialogView.constructor.getScheduler().getNextUpdatePromise();
-      expect(dialog.inputDialogView.element.querySelector(".input-checkbox").checked).toBe(true);
+      await settle();
+      expect(modalElement().querySelector(".input-checkbox").checked).toBe(true);
     });
 
-    it("opens the duplicate when openAfterCopy is enabled", () => {
+    it("opens the duplicate when openAfterCopy is enabled", async () => {
       atom.config.set("tree-view.openAfterCopy", true);
       // Run the copy callback synchronously so the open decision is testable
       // without depending on real async filesystem timing.
       spyOn(fsCompat, "copy").and.callFake((source, destination, callback) => callback());
       spyOn(atom.workspace, "open").and.returnValue(Promise.resolve());
 
-      const dialog = makeCopyDialog(fixture("a.txt", "hi"));
-      dialog.attach();
-      dialog.miniEditor.setText("b.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      await submit(makeCopyDialog(fixture("a.txt", "hi")), "b.txt");
 
       expect(fsCompat.copy).toHaveBeenCalled();
       expect(atom.workspace.open).toHaveBeenCalledWith(path.join(projectPath, "b.txt"), {
@@ -140,15 +148,12 @@ describe("TreeView dialogs", () => {
       });
     });
 
-    it("does not open the duplicate when openAfterCopy is disabled", () => {
+    it("does not open the duplicate when openAfterCopy is disabled", async () => {
       atom.config.set("tree-view.openAfterCopy", false);
       spyOn(fsCompat, "copy").and.callFake((source, destination, callback) => callback());
       spyOn(atom.workspace, "open").and.returnValue(Promise.resolve());
 
-      const dialog = makeCopyDialog(fixture("a.txt", "hi"));
-      dialog.attach();
-      dialog.miniEditor.setText("b.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      await submit(makeCopyDialog(fixture("a.txt", "hi")), "b.txt");
 
       expect(fsCompat.copy).toHaveBeenCalled();
       expect(atom.workspace.open).not.toHaveBeenCalled();
