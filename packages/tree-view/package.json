@@ -24,8 +24,8 @@
     "natural-compare-lite": "^1.4.0"
   },
   "backgroundTips": [
-    "You can toggle the Tree View with {atom-workspace>tree-view:toggle}",
-    "You can focus the Tree View with {atom-workspace>tree-view:toggle-focus}"
+    "You can focus the Tree View without reaching for the mouse using {{ 'tree-view:toggle-focus' | keystroke }}",
+    "You can reveal the file you are editing in the Tree View with {{ 'tree-view:reveal-active-file' | keystroke }}"
   ],
   "deserializers": {
     "TreeView": "getTreeViewInstance"

@@ -5,26 +5,46 @@ Displays tips about Lumine in the background when no editors are open.
 ## Features
 
 - **Idle tips**: shows helpful tips whenever the workspace has no open editors.
-- **Live keybindings**: replaces `{command}` placeholders with the current keybinding for that command.
+- **Liquid templates**: every tip is a Liquid template, so it can branch on what the keymap actually binds.
+- **Live keystrokes**: a keystroke is resolved when the tip is shown, so it follows the platform and any keymap the user has changed.
 - **Package contributions**: lets any package add its own tips through a `backgroundTips` array.
 
 ## Usage
 
-Packages can contribute tips by adding a `backgroundTips` array to their `package.json`. Each entry is a string displayed as-is, with optional `{command}` placeholders that are replaced by the current keybinding for that command.
+Packages contribute tips by adding a `backgroundTips` array to their `package.json`. Each entry is a [Liquid](https://liquidjs.com) template, rendered every time the tip comes up. A string with no template tags in it is shown as-is.
 
 ```json
 "backgroundTips": [
-  "You can toggle the Tree View with {atom-workspace>tree-view:toggle}",
-  "You can open any file quickly using {atom-workspace>fuzzy-files:toggle}"
+  "You can open any file quickly using {{ 'fuzzy-files:toggle' | keystroke }}"
 ]
 ```
 
-The placeholder syntax is `{command}` or `{scope>command}`:
+There are two ways to reach a keystroke, and the difference is what happens when the command is unbound:
 
-- `{command}` resolves the keybinding using the current platform.
-- `{scope>command}` resolves the keybinding for the given CSS selector scope (e.g. `atom-workspace`, `atom-text-editor`, `body`).
+- `{{ "command" | keystroke }}` states that the tip needs that keystroke. It renders the current one, and the whole tip is skipped when nothing is bound to the command.
+- `keys["command"]` only looks the keystroke up. It yields nothing when the command is unbound, which makes it the one to test in a condition when the tip should still be shown:
 
-If the command in a placeholder has no keybinding defined, the tip is skipped entirely.
+```json
+"backgroundTips": [
+  "{% if keys['minimap:toggle'] %}You can hide the minimap with {{ 'minimap:toggle' | keystroke }}{% else %}The minimap draws git changes and lint messages over a bird's-eye view of the file.{% endif %}"
+]
+```
+
+The `keystroke` filter takes an optional selector for a command bound in more than one scope. It is matched exactly against the selector the keymap declares:
+
+```
+{{ 'tree-view:copy' | keystroke: '.tree-view' }}
+```
+
+Without one, the binding whose selector names the current platform wins, and otherwise the first one declared.
+
+`platform` holds the current `process.platform`, for a tip that only applies to one operating system:
+
+```
+{% if platform == 'win32' %}...{% endif %}
+```
+
+A tip that renders to nothing is skipped, as is one whose template does not parse.
 
 ## Contributing
 

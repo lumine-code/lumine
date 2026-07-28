@@ -93,7 +93,7 @@
     }
   },
   "backgroundTips": [
-    "You can install packages, themes, and customize your editor in Settings with {atom-workspace>settings-view:open}"
+    "You can install packages, themes, and customize your editor in Settings with {{ 'settings-view:open' | keystroke }}"
   ],
   "deserializers": {
     "SettingsView": "createSettingsView"

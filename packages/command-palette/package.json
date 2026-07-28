@@ -25,7 +25,7 @@
     "atom": "*"
   },
   "backgroundTips": [
-    "Everything Lumine can do is in the Command Palette. See it by using {atom-workspace>command-palette:toggle}"
+    "Everything Lumine can do is in the Command Palette. See it by using {{ 'command-palette:toggle' | keystroke }}"
   ],
   "configSchema": {
     "recentCount": {
