@@ -18,7 +18,10 @@ exports.getCachePath = function (sourceCode) {
 exports.compile = function (sourceCode, filePath) {
   if (!CoffeeScript) {
     const previousPrepareStackTrace = Error.prepareStackTrace;
-    CoffeeScript = require("coffeescript");
+    // The coffeescript package entry point eagerly requires vm, which
+    // Electron deprecates in renderer processes; the core compiler module
+    // compiles without it.
+    CoffeeScript = require("coffeescript/lib/coffeescript/coffeescript");
 
     // When it loads, coffeescript reassigns Error.prepareStackTrace. We have
     // already reassigned it via the 'source-map-support' module, so we need
