@@ -20,8 +20,8 @@ function normalizeTarget(target) {
   let { name = null, kind = null, item = null } = target;
   let filePath = target.path ?? null;
 
-  // A pane item is resolved here, once, so tabs, the MRU switcher and the
-  // workspace finder cannot drift apart on which wins.
+  // A pane item is resolved here, once, so tabs and the workspace finder
+  // cannot drift apart on which wins.
   if (item != null) {
     if (name == null && typeof item.getIconName === "function") {
       name = item.getIconName() || null;

@@ -1,9 +1,6 @@
 const path = require("path");
 const { Disposable } = require("atom");
 
-const mruItemViewModule = require("../lib/mru-item-view");
-const MRUItemView = mruItemViewModule.default || mruItemViewModule;
-
 describe("tab icons", () => {
   let tab;
 
@@ -114,36 +111,6 @@ describe("tab icons", () => {
     it("can still be overridden by a provider", () => {
       provide((target) => (target.type === "name" ? "named" : null));
       expect(namedTab.itemTitle.classList.contains("named")).toBe(true);
-    });
-  });
-
-  describe("the MRU switcher", () => {
-    const viewFor = (item) => {
-      const view = new MRUItemView();
-      view.initialize(null, item);
-      return view;
-    };
-
-    // Unlike a tab, the switcher does want the built-in file icons.
-    it("falls back to the built-in mapping", () => {
-      const view = viewFor({
-        getTitle: () => "foo.png",
-        getPath: () => path.join(__dirname, "fixtures", "foo.png"),
-      });
-      expect(view.firstLineDiv.classList.contains("icon-file-media")).toBe(true);
-    });
-
-    it("keeps the item's title in data-name rather than the basename", () => {
-      const view = viewFor({
-        getTitle: () => "A Nice Title",
-        getPath: () => path.join(__dirname, "fixtures", "sample.js"),
-      });
-      expect(view.firstLineDiv.dataset.name).toBe("A Nice Title");
-    });
-
-    it("shows a generic icon for an item with no path", () => {
-      const view = viewFor({ getTitle: () => "untitled" });
-      expect(view.firstLineDiv.classList.contains("icon-file-text")).toBe(true);
     });
   });
 });

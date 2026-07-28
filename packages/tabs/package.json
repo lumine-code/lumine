@@ -6,7 +6,6 @@
   "description": "Display a selectable tab for each open item in a pane.",
   "keywords": [
     "pane",
-    "mru",
     "vcs",
     "split",
     "tab-bar"
@@ -66,20 +65,6 @@
       "description": "Add new tabs at the end of the tab bar, rather than after active tab.",
       "type": "boolean",
       "default": false
-    },
-    "enableMruTabSwitching": {
-      "order": 6,
-      "title": "Enable MRU Tab Switching",
-      "description": "Enable tab switching in most-recently-used order. This setting has no effect if ctrl-tab or ctrl-shift-tab are already rebound via your keymap or another package.",
-      "type": "boolean",
-      "default": true
-    },
-    "displayMruTabList": {
-      "order": 7,
-      "title": "Display MRU Tab Switching List",
-      "description": "When MRU Tab Switching is enabled, display the most-recently-used tab list.",
-      "type": "boolean",
-      "default": true
     }
   }
 }

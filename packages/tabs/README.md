@@ -8,7 +8,6 @@ Display a selectable tab for each open item in a pane.
 - **Tab management**: close a single tab, other tabs, saved tabs, or every tab at once.
 - **Split from a tab**: split the active tab up, down, left, or right into a new pane.
 - **File icons**: shows the icon an item names for itself, and a file-type icon when an icon package is installed.
-- **MRU switching**: cycle tabs in most-recently-used order with an optional overlay list.
 - **VCS coloring**: color tab file names based on their version control status.
 
 ## Commands
