@@ -51,7 +51,7 @@ const TextEditorRegistry = require("./text-editor-registry");
 const PasteProviderRegistry = require("./paste-provider-registry");
 const StartupTime = require("./startup-time");
 const { getReleaseChannel } = require("./get-app-details.js");
-const UI = require("./ui");
+const Tools = require("./tools");
 const IconRegistry = require("./icon-registry");
 const packagejson = require("../package.json");
 
@@ -270,7 +270,7 @@ class AtomEnvironment {
       urlCoreRepo: packagejson.repository.url,
     };
 
-    this.ui = UI;
+    this.tools = Tools;
 
     // Keep instances of HistoryManager in sync
     this.disposables.add(

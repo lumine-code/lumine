@@ -102,7 +102,7 @@ function chooseRender(text, filePath) {
     return render(text, filePath);
   } else {
     // Built-in rendering with `markdown-it`.
-    let html = atom.ui.markdown.render(text, {
+    let html = atom.tools.markdown.render(text, {
       renderMode: "fragment",
       filePath: filePath,
       breaks: atom.config.get("markdown-preview.breakOnSingleNewline"),
@@ -110,7 +110,7 @@ function chooseRender(text, filePath) {
       useGitHubHeadings: true,
       sanitizeAllowUnknownProtocols: atom.config.get("markdown-preview.allowUnsafeProtocols"),
     });
-    return atom.ui.markdown.convertToDOM(html);
+    return atom.tools.markdown.convertToDOM(html);
   }
 }
 

@@ -256,7 +256,7 @@ describe("PackageDetailView", function () {
     const packagePath = path.join(__dirname, "fixtures", "package-with-readme");
     atom.packages.loadPackage(packagePath);
     const pack = atom.packages.getLoadedPackage("package-with-readme");
-    const render = spyOn(atom.ui.markdown, "render").andCallThrough();
+    const render = spyOn(atom.tools.markdown, "render").andCallThrough();
 
     view = new PackageDetailView(pack, new SettingsView(), packageManager, SnippetsProvider);
 

@@ -735,7 +735,7 @@ export default class InstallPanel {
     if (keywords.some((keyword) => keyword.includes(query))) return 300;
 
     // Typo-tolerant fallback on the name only.
-    return (atom.ui.fuzzyMatcher.score(name, query) || 0) > 0 ? 100 : 0;
+    return (atom.tools.fuzzyMatcher.score(name, query) || 0) > 0 ? 100 : 0;
   }
 
   scoreCatalog(query) {

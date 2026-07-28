@@ -584,7 +584,7 @@ module.exports = class AutocompleteManager {
       const texts = group.map(matchTextFor);
       // `match` returns only the candidates that scored above zero, each
       // carrying the index of the candidate it came from.
-      const matches = atom.ui.fuzzyMatcher.setCandidates(texts).match(suggestionPrefix);
+      const matches = atom.tools.fuzzyMatcher.setCandidates(texts).match(suggestionPrefix);
       for (const match of matches) {
         const text = texts[match.id];
         if (

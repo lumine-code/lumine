@@ -115,7 +115,7 @@ module.exports = NotificationElement = (function () {
 
       const notificationContainer = this.element.querySelector(".message");
 
-      notificationContainer.innerHTML = atom.ui.markdown.render(this.model.getMessage());
+      notificationContainer.innerHTML = atom.tools.markdown.render(this.model.getMessage());
 
       if ((detail = this.model.getDetail())) {
         let stack;
@@ -139,7 +139,7 @@ module.exports = NotificationElement = (function () {
         metaContainer = this.element.querySelector(".meta");
         metaContainer.appendChild(TemplateHelper.render(this.metaTemplate));
         const description = this.element.querySelector(".description");
-        description.innerHTML = atom.ui.markdown.render(metaContent);
+        description.innerHTML = atom.tools.markdown.render(metaContent);
       }
 
       if (options.buttons && options.buttons.length > 0) {

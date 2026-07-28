@@ -286,7 +286,7 @@ export default class KeybindingsPanel {
   }
 
   fieldMatches(field, keyword) {
-    return field.includes(keyword) || Boolean(atom.ui.fuzzyMatcher.match(field, keyword));
+    return field.includes(keyword) || Boolean(atom.tools.fuzzyMatcher.match(field, keyword));
   }
 
   compareKeyBindings(a, b) {

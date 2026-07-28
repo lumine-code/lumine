@@ -323,7 +323,7 @@ export default class SearchSettingsPanel extends CollapsibleSectionPanel {
 
   getScore(candidate, query) {
     if (!candidate || !query) return { score: 0, matchIndexes: [] };
-    const result = atom.ui.fuzzyMatcher.match(candidate, query, { recordMatchIndexes: true });
+    const result = atom.tools.fuzzyMatcher.match(candidate, query, { recordMatchIndexes: true });
     return result
       ? { score: result.score, matchIndexes: result.matchIndexes }
       : { score: 0, matchIndexes: [] };

@@ -203,17 +203,17 @@ module.exports = class SuggestionListElement {
   }
 
   renderMarkdownDescription(markdown) {
-    const html = atom.ui.markdown.render(markdown, {
+    const html = atom.tools.markdown.render(markdown, {
       // A docstring opening with `---` is a rule, not YAML front matter.
       handleFrontMatter: false,
       // Documentation comes from the provider; its links are already correct.
       transformAtomLinks: false,
     });
-    const fragment = atom.ui.markdown.convertToDOM(html);
+    const fragment = atom.tools.markdown.convertToDOM(html);
     // "fragment" is the mode that runs synchronously and leaves the editors
     // embedded, which is what a detached node can carry.
     if (fragment.querySelector("pre")) {
-      atom.ui.markdown.applySyntaxHighlighting(fragment, {
+      atom.tools.markdown.applySyntaxHighlighting(fragment, {
         renderMode: "fragment",
         syntaxScopeNameFunc: scopeForFenceName,
       });
@@ -848,7 +848,7 @@ module.exports = class SuggestionListElement {
       return;
     }
     return (
-      atom.ui.fuzzyMatcher.match(text, replacementPrefix, { recordMatchIndexes: true })
+      atom.tools.fuzzyMatcher.match(text, replacementPrefix, { recordMatchIndexes: true })
         ?.matchIndexes || []
     );
   }

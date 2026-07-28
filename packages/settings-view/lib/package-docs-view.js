@@ -79,7 +79,7 @@ export default class PackageDocsView {
     element.dataset.docFile = path.basename(file);
 
     try {
-      element.innerHTML = atom.ui.markdown.render(source, {
+      element.innerHTML = atom.tools.markdown.render(source, {
         breaks: false,
         taskCheckboxDisabled: true,
         useGitHubHeadings: true,

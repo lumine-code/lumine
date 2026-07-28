@@ -125,7 +125,7 @@ export default class DeprecationCopView {
                 <span className="text-warning icon icon-alert" />
                 <div
                   className="list-item deprecation-message"
-                  innerHTML={atom.ui.markdown.render(deprecation.getMessage())}
+                  innerHTML={atom.tools.markdown.render(deprecation.getMessage())}
                 />
                 {this.renderIssueURLIfNeeded(
                   packageName,
@@ -197,7 +197,7 @@ export default class DeprecationCopView {
                         <span className="text-warning icon icon-alert" />
                         <div
                           className="list-item deprecation-message"
-                          innerHTML={atom.ui.markdown.render(deprecation.message)}
+                          innerHTML={atom.tools.markdown.render(deprecation.message)}
                         />
                         {this.renderSelectorIssueURLIfNeeded(packageName, issueTitle, issueBody)}
                       </li>

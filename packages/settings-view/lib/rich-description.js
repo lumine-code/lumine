@@ -6,7 +6,7 @@ module.exports = {
       description = schema.description;
     }
 
-    return atom.ui.markdown
+    return atom.tools.markdown
       .render(description, {
         useTaskCheckbox: false,
         disableMode: "strict",

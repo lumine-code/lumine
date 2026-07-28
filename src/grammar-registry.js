@@ -185,7 +185,7 @@ module.exports = class GrammarRegistry {
   // through `maintainLanguageMode` are released when they are destroyed, but a
   // buffer assigned a grammar directly had nothing releasing it, so every
   // throwaway editor given a language mode — one per fenced code block that
-  // `atom.ui.markdown.applySyntaxHighlighting` renders — stayed alive for the
+  // `atom.tools.markdown.applySyntaxHighlighting` renders — stayed alive for the
   // lifetime of the window.
   releaseBufferOnDestroy(buffer) {
     if (this.releasedBuffers.has(buffer)) return;

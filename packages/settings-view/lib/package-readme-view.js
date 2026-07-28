@@ -36,7 +36,7 @@ export default class PackageReadmeView {
     }
 
     try {
-      this.packageReadme.innerHTML = atom.ui.markdown.render(readme, markdownOpts);
+      this.packageReadme.innerHTML = atom.tools.markdown.render(readme, markdownOpts);
     } catch {
       this.packageReadme.innerHTML = "<h3>Error parsing README</h3>";
     }

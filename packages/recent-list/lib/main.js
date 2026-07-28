@@ -136,7 +136,7 @@ class RecentList {
       item.score = 0;
       item.matchIndices = null;
       for (let i = 0; i < item.texts.length; i++) {
-        const result = atom.ui.fuzzyMatcher.match(item.texts[i], query, {
+        const result = atom.tools.fuzzyMatcher.match(item.texts[i], query, {
           recordMatchIndexes: true,
           algorithm: "command-t", // Path-aware matching
         });

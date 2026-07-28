@@ -499,7 +499,7 @@ export default class ThemesPanel extends CollapsibleSectionPanel {
         } else {
           const owner = pack.owner != null ? pack.owner : ownerFromRepository(pack.repository);
           const filterText = `${pack.name} ${owner}`;
-          return atom.ui.fuzzyMatcher.score(filterText, text) > 0;
+          return atom.tools.fuzzyMatcher.score(filterText, text) > 0;
         }
       });
 
