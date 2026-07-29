@@ -4,6 +4,7 @@ const root = document.documentElement;
 
 describe("one-theme", () => {
   afterEach(async () => {
+    await atom.packages.deactivatePackage("one-day-ui");
     await atom.packages.deactivatePackage("one-theme");
   });
 
@@ -52,5 +53,29 @@ describe("one-theme", () => {
     const configPath = uiPaths.find((stylePath) => path.basename(stylePath) === "26-config.css");
 
     expect(configPath).toContain(path.join("one-theme", "styles", "one-ui"));
+  });
+
+  it("keeps rounded modal-list scrollbars clear of the list corners", async () => {
+    await atom.packages.activatePackage("one-theme");
+    await atom.packages.activatePackage("one-day-ui");
+
+    const modal = document.createElement("atom-panel");
+    modal.className = "modal";
+    const selectList = document.createElement("div");
+    selectList.className = "select-list";
+    const list = document.createElement("ol");
+    list.className = "list-group";
+    selectList.appendChild(list);
+    modal.appendChild(selectList);
+    document.body.appendChild(modal);
+
+    const trackStyle = getComputedStyle(list, "::-webkit-scrollbar-track");
+    const cornerStyle = getComputedStyle(list, "::-webkit-scrollbar-corner");
+    expect(trackStyle.marginTop).toBe("3px");
+    expect(trackStyle.marginBottom).toBe("3px");
+    expect(trackStyle.borderRadius).toBe("999px");
+    expect(cornerStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+
+    modal.remove();
   });
 });

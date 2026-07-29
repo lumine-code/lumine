@@ -30,6 +30,15 @@ atom-panel.modal {
     border-radius: calc(var(--component-border-radius) * 2);
     background-color: hsl(from var(--overlay-background-color) h s calc(l + 2));
 
+    &::-webkit-scrollbar-track {
+      margin-block: 3px;
+      border-radius: 999px;
+    }
+
+    &::-webkit-scrollbar-corner {
+      background: transparent;
+    }
+
     li {
       padding: calc(var(--ui-padding) * 0.6) calc(var(--ui-padding) / 1.5);
       border-bottom: 1px solid var(--overlay-border-color);
