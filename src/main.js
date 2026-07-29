@@ -65,7 +65,7 @@ if (args.resourcePath) {
     devResourcePath = stableResourcePath;
   }
 
-  if (args.dev || args.test) {
+  if (args.dev || args.test || process.env.LUMINE_DEV_MODE === "1") {
     resourcePath = devResourcePath;
   } else {
     resourcePath = stableResourcePath;

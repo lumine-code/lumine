@@ -92,6 +92,46 @@ describe("parseCommandLine", () => {
     });
   });
 
+  describe("when LUMINE_DEV_MODE is set", () => {
+    let originalDevMode;
+
+    beforeEach(() => {
+      originalDevMode = process.env.LUMINE_DEV_MODE;
+    });
+
+    afterEach(() => {
+      if (originalDevMode === undefined) {
+        delete process.env.LUMINE_DEV_MODE;
+      } else {
+        process.env.LUMINE_DEV_MODE = originalDevMode;
+      }
+    });
+
+    it("enables development mode without --dev", () => {
+      process.env.LUMINE_DEV_MODE = "1";
+
+      const args = parseCommandLine([]);
+
+      assert.isTrue(args.devMode);
+    });
+
+    it("takes precedence over --no-dev", () => {
+      process.env.LUMINE_DEV_MODE = "1";
+
+      const args = parseCommandLine(["--no-dev"]);
+
+      assert.isTrue(args.devMode);
+    });
+
+    it("does not enable development mode for other values", () => {
+      process.env.LUMINE_DEV_MODE = "0";
+
+      const args = parseCommandLine([]);
+
+      assert.isUndefined(args.devMode);
+    });
+  });
+
   describe('when evil macOS Gatekeeper flag "-psn_0_[six or seven digits here]" is passed', () => {
     it('ignores any arguments starting with "-psn_"', () => {
       const getPsnFlag = () => {
