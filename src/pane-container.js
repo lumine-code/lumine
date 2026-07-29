@@ -322,7 +322,7 @@ module.exports = class PaneContainer {
   }
 
   didChangeActiveItemOnPane(pane, activeItem) {
-    if (pane === this.getActivePane()) {
+    if (this.isAlive() && pane === this.getActivePane()) {
       this.emitter.emit("did-change-active-pane-item", activeItem);
 
       this.cancelStoppedChangingActivePaneItemTimeout();

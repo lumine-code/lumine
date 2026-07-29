@@ -1,4 +1,5 @@
 const PaneContainer = require("../src/pane-container");
+const { Emitter } = require("event-kit");
 
 describe("PaneContainer", () => {
   let confirm, params;
@@ -185,6 +186,35 @@ describe("PaneContainer", () => {
       pane1.activate();
       pane2.activate();
       expect(observed).toEqual([pane1.itemAtIndex(0), pane2.itemAtIndex(0)]);
+    });
+
+    it("does not expose already-destroyed items while the container is being destroyed", () => {
+      const disposedEmitter = new Emitter();
+      const stubItem = {
+        destroy() {
+          disposedEmitter.dispose();
+        },
+        onDidChangeTitle(callback) {
+          return disposedEmitter.on("did-change-title", callback);
+        },
+      };
+      const activeItemEmitter = new Emitter();
+      const activeItem = {
+        destroy() {
+          activeItemEmitter.emit("did-destroy");
+        },
+        onDidDestroy(callback) {
+          return activeItemEmitter.on("did-destroy", callback);
+        },
+      };
+
+      pane2.addItems([stubItem, activeItem]);
+      pane2.activateItem(activeItem);
+      observed.length = 0;
+      container.onDidChangeActivePaneItem((item) => item.onDidChangeTitle(() => {}));
+
+      expect(() => container.destroy()).not.toThrow();
+      expect(observed).toEqual([]);
     });
   });
 
