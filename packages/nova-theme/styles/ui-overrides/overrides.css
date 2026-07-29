@@ -236,6 +236,12 @@ atom-panel {
   }
 }
 
+atom-panel.tool-panel.panel-bottom:has(> .search-panel) {
+  margin: 0 6px 6px;
+  border-radius: calc(var(--component-border-radius) * 1.5);
+  overflow: hidden;
+}
+
 .panel-heading .btn {
   background-image: none;
 

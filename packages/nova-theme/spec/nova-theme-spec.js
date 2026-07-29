@@ -46,4 +46,23 @@ describe("nova-theme", () => {
     expect(atom.themes.stylesheetElementForId(uiPathByName.get("03-buttons.css"))).not.toBeNull();
     expect(atom.themes.stylesheetElementForId(uiPathByName.get("overrides.css"))).not.toBeNull();
   });
+
+  it("renders Search Panel as a rounded bottom card", async () => {
+    await atom.packages.activatePackage("nova-theme");
+    await atom.packages.activatePackage("nova-day-ui");
+
+    const panel = document.createElement("atom-panel");
+    panel.className = "bottom tool-panel panel-bottom";
+    const searchPanel = document.createElement("div");
+    searchPanel.className = "search-panel search-panel-project";
+    panel.appendChild(searchPanel);
+    jasmine.attachToDOM(panel);
+
+    const style = getComputedStyle(panel);
+    expect(style.marginRight).toBe("6px");
+    expect(style.marginBottom).toBe("6px");
+    expect(style.marginLeft).toBe("6px");
+    expect(style.borderRadius).toBe("9px");
+    expect(style.overflow).toBe("hidden");
+  });
 });
