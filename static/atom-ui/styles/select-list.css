@@ -166,6 +166,13 @@
 
 /* Popover List */
 
+/* The library's own last row when matches exceed the batch cap: reads as a
+   button, not as an item. */
+.select-list li.show-more-item {
+  text-align: center;
+  font-style: italic;
+}
+
 .select-list.popover-list {
   --popover-list-padding: calc(var(--ui-padding) / 4);
 
