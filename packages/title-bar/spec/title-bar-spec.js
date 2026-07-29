@@ -34,6 +34,21 @@ describe("Title Bar package", () => {
     expect(titleBar.querySelector(".app-menu .menu-item")).toExist();
   });
 
+  it("rounds only the outer corners of left-side menu scrollbars", () => {
+    jasmine.attachToDOM(workspaceElement);
+    const menuBox = workspaceElement.querySelector(".title-bar .app-menu .menu-label .menu-box");
+    const scrollbarStyle = getComputedStyle(menuBox, "::-webkit-scrollbar");
+    const trackStyle = getComputedStyle(menuBox, "::-webkit-scrollbar-track");
+    const cornerStyle = getComputedStyle(menuBox, "::-webkit-scrollbar-corner");
+
+    expect(scrollbarStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+    expect(trackStyle.borderTopLeftRadius).toBe("6px");
+    expect(trackStyle.borderTopRightRadius).toBe("0px");
+    expect(trackStyle.borderBottomRightRadius).toBe("0px");
+    expect(trackStyle.borderBottomLeftRadius).toBe("6px");
+    expect(cornerStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
+  });
+
   it("sets intrinsic logo dimensions before styles load", () => {
     const logo = workspaceElement.querySelector(".title-bar .app-icon img");
 

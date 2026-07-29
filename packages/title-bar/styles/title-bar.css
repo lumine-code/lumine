@@ -69,10 +69,12 @@
   ::-webkit-scrollbar {
     width: 10px;
     height: 10px;
+    background: transparent;
   }
 
   ::-webkit-scrollbar-track {
     background: var(--scrollbar-background-color);
+    border-radius: var(--title-bar-menu-box-radius) 0 0 var(--title-bar-menu-box-radius);
   }
 
   ::-webkit-scrollbar-thumb {
@@ -83,7 +85,7 @@
   }
 
   ::-webkit-scrollbar-corner {
-    background: var(--scrollbar-background-color);
+    background: transparent;
   }
 }
 
