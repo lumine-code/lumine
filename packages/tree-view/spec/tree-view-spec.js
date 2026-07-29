@@ -351,6 +351,31 @@ describe("TreeView row model and sticky headers", () => {
     expect(treeView.updateStickyHeaderOverlay).toHaveBeenCalled();
   });
 
+  it("clips sticky paint to the scrollport before the scrollbar", () => {
+    const treeView = stickyHarness();
+    treeView.stickyHeaderList = document.createElement("ol");
+    treeView.contentWidth = 300;
+    treeView.scrollportWidth = 284;
+    treeView.renderStickyHeaderEntries = jasmine.createSpy("renderStickyHeaderEntries");
+    treeView.collectStickyHeaderEntries = jasmine
+      .createSpy("collectStickyHeaderEntries")
+      .and.returnValue([]);
+
+    treeView.updateStickyHeaderOverlay();
+
+    expect(treeView.stickyHeaderList.style.left).toBe("0px");
+    expect(treeView.stickyHeaderList.style.width).toBe("300px");
+    expect(treeView.stickyHeaderList.style.clipPath).toBe("inset(0px 16px 0px 0px)");
+
+    treeView.contentWidth = 400;
+    treeView.scroller.scrollLeft = 30;
+    treeView.updateStickyHeaderOverlay();
+
+    expect(treeView.stickyHeaderList.style.left).toBe("-30px");
+    expect(treeView.stickyHeaderList.style.width).toBe("400px");
+    expect(treeView.stickyHeaderList.style.clipPath).toBe("inset(0px 86px 0px 30px)");
+  });
+
   it("renders sticky rows from the same logical entry without source-row handoffs", () => {
     const treeView = stickyHarness();
     treeView.stickyHeaderLayer = document.createElement("div");

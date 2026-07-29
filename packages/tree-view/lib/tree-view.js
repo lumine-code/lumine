@@ -97,6 +97,8 @@ class TreeView {
     this.regularRowHeight = 24;
     this.rootRowHeight = 32;
     this.contentWidth = 0;
+    this.scrollportWidth = 0;
+    this.stickyHeaderClipPath = null;
 
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
@@ -323,7 +325,8 @@ class TreeView {
   }
 
   updateStickyHeaderOverlay() {
-    const stickyLeft = -this.scroller.scrollLeft;
+    const scrollLeft = this.scroller.scrollLeft;
+    const stickyLeft = -scrollLeft;
     if (this.stickyHeaderLeft !== stickyLeft) {
       this.stickyHeaderLeft = stickyLeft;
       this.stickyHeaderList.style.left = `${stickyLeft}px`;
@@ -331,6 +334,16 @@ class TreeView {
     // The cached width, not a fresh measurement: this runs on every scroll
     // event, and reading the list back would force a layout each time.
     this.stickyHeaderList.style.width = this.contentWidth > 0 ? `${this.contentWidth}px` : "100%";
+    const clipLeft = Math.max(0, scrollLeft);
+    const clipRight = Math.max(0, this.contentWidth - clipLeft - this.scrollportWidth);
+    const clipPath =
+      this.contentWidth > 0 && this.scrollportWidth > 0 && (clipLeft > 0 || clipRight > 0)
+        ? `inset(0px ${clipRight}px 0px ${clipLeft}px)`
+        : "";
+    if (this.stickyHeaderClipPath !== clipPath) {
+      this.stickyHeaderClipPath = clipPath;
+      this.stickyHeaderList.style.clipPath = clipPath;
+    }
     this.renderStickyHeaderEntries(this.collectStickyHeaderEntries());
   }
 
@@ -730,6 +743,7 @@ class TreeView {
     // tree — a row is `min-width: 100%` of a list already stretched to the
     // previous content width, so it reports that width back as its own.
     this.contentWidth = Math.ceil(this.list.getBoundingClientRect().width);
+    this.scrollportWidth = this.scroller.clientWidth;
     this.updateStickyHeaderOverlay();
   }
 
