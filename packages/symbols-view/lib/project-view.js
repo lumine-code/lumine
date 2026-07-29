@@ -9,7 +9,6 @@ module.exports = class ProjectView extends SymbolsView {
     // override them?
     super(stack, broker, {
       emptyMessage: "Project has no symbols or is empty",
-      maxResults: 20,
       isDynamic: true,
     });
 

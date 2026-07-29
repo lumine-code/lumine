@@ -55,7 +55,6 @@ class SymbolsView {
 
     options = {
       emptyMessage: "No symbols found",
-      maxResults: null,
       ...options,
     };
 

@@ -46,12 +46,20 @@ describe("command-palette", () => {
 
       const names = listedCommandNames();
       expect(names.length).toBeGreaterThan(0);
-      expect(names).toContain("command-palette-spec:noop");
 
       const visibleCommands = atom.commands
         .findCommands({ target: palette.activeElement })
         .filter((command) => !command.hiddenInCommandPalette);
-      expect(names.length).toBe(visibleCommands.length);
+      // Every available command is in the list; the view renders them in
+      // 99-row batches behind the library's Show more row.
+      expect(selectListView.props.items.length).toBe(visibleCommands.length);
+      expect(
+        selectListView.props.items.some((command) => command.name === "command-palette-spec:noop"),
+      ).toBe(true);
+      expect(names.length).toBe(Math.min(visibleCommands.length, 99));
+      if (visibleCommands.length > 99) {
+        expect(selectListView.element.querySelector(".show-more-item")).not.toBeNull();
+      }
     });
 
     it("hides the palette when it is already visible", async () => {

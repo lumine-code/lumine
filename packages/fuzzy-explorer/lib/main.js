@@ -27,7 +27,6 @@ module.exports = {
     this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-explorer",
       crumb: "Explorer",
-      maxResults: 50,
       emptyMessage: "No matches found",
       removeDiacritics: true,
       algorithm: "command-t",

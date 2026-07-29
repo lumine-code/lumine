@@ -33,7 +33,6 @@ class ProjectList {
     this.selectList = atom.workspace.buildSelectList({
       className: "project-list",
       crumb: "Projects",
-      maxResults: 50,
       emptyMessage: "No matches found",
       removeDiacritics: true,
       algorithm: "fuzzaldrin",

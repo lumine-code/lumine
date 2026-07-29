@@ -9,7 +9,6 @@ class RecentList {
     this.selectList = atom.workspace.buildSelectList({
       className: "recent-list",
       crumb: "Recent",
-      maxResults: 50,
       emptyMessage: "No matches found",
       removeDiacritics: true,
       elementForItem: (item, options) => this.elementForItem(item, options),

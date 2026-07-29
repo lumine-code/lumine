@@ -38,7 +38,6 @@ module.exports = {
     this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-files",
       crumb: "Files",
-      maxResults: 50,
       emptyMessage: "No matches found",
       removeDiacritics: true,
       algorithm: "command-t",
