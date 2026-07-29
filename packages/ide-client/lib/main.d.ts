@@ -17,6 +17,10 @@ export interface ServerResolutionContext {
   configDirPath: string;
   managedStoragePath: string;
 }
+export interface DocumentTextContext {
+  editor: TextEditor;
+  uri: string;
+}
 export interface LanguageServerAdapter {
   id: string;
   displayName: string;
@@ -37,6 +41,10 @@ export interface LanguageServerAdapter {
   /** Config key paths whose changes re-push getSettings() to running sessions. */
   settingsKeyPaths?: string[];
   getWorkspaceConfiguration?(section?: string, resource?: string): unknown;
+  /** Reversibly adapt editor text before synchronizing it to the server. */
+  transformDocumentText?(text: string, context: DocumentTextContext): string;
+  /** Restore transformed text in formatting and workspace edits from the server. */
+  restoreDocumentText?(text: string, context: DocumentTextContext): string;
   transformServerCapabilities?(capabilities: Record<string, unknown>): Record<string, unknown>;
 }
 export interface LanguageServerSession {

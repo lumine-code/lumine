@@ -110,6 +110,12 @@ module.exports = class ServerSession {
       {};
     if (this.connection) this.connection.notify("workspace/didChangeConfiguration", { settings });
   }
+  transformDocumentText(text, editor, uri) {
+    return this.adapter.transformDocumentText?.(text, { editor, uri }) ?? text;
+  }
+  restoreDocumentText(text, editor, uri) {
+    return this.adapter.restoreDocumentText?.(text, { editor, uri }) ?? text;
+  }
   // True when the session can serve the given request method for the editor.
   // Dynamic registrations take precedence over the static server capability.
   supports(method, editor) {
@@ -145,7 +151,7 @@ module.exports = class ServerSession {
       ),
     );
     this.connection.onRequest("workspace/applyEdit", async ({ edit, label }) => ({
-      applied: await this.manager.applyWorkspaceEdit(edit, label),
+      applied: await this.manager.applyWorkspaceEdit(edit, label, this),
     }));
     this.connection.onRequest("window/workDoneProgress/create", () => null);
     this.connection.onRequest("client/registerCapability", (params) => {
@@ -183,7 +189,7 @@ module.exports = class ServerSession {
         uri,
         languageId: languageIdForEditor(this.adapter, editor),
         version: 1,
-        text: editor.getText(),
+        text: this.transformDocumentText(editor.getText(), editor, uri),
       },
     });
     document.subscriptions.add(
@@ -193,7 +199,7 @@ module.exports = class ServerSession {
       editor.onDidSave(() =>
         this.connection.notify("textDocument/didSave", {
           textDocument: { uri },
-          text: editor.getText(),
+          text: this.transformDocumentText(editor.getText(), editor, uri),
         }),
       ),
     );
@@ -205,8 +211,16 @@ module.exports = class ServerSession {
         ? this.capabilities.textDocumentSync
         : this.capabilities.textDocumentSync?.change;
     const contentChanges =
-      sync === 1
-        ? [{ text: document.editor.getText() }]
+      sync === 1 || this.adapter.transformDocumentText
+        ? [
+            {
+              text: this.transformDocumentText(
+                document.editor.getText(),
+                document.editor,
+                document.uri,
+              ),
+            },
+          ]
         : event.changes.map((change) => ({
             range: C.rangeToLsp(change.oldRange),
             rangeLength: change.oldText?.length,

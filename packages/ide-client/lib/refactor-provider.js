@@ -44,10 +44,10 @@ module.exports = class RefactorProvider {
       newName,
     });
     if (!edit) return null;
-    const edits = this.toPathMap(edit);
+    const edits = this.toPathMap(edit, session);
     if (!this.hasResourceOperations(edit)) return { outcome: "edits", edits };
     if (dryRun) return { outcome: "edits", edits, resourceOperations: true };
-    const applied = await this.manager.applyWorkspaceEdit(edit, `Rename to ${newName}`);
+    const applied = await this.manager.applyWorkspaceEdit(edit, `Rename to ${newName}`, session);
     return applied ? { outcome: "applied", paths: [...edits.keys()] } : { outcome: "aborted" };
   }
   hasResourceOperations(edit) {
@@ -55,16 +55,21 @@ module.exports = class RefactorProvider {
       (change) => change.kind === "create" || change.kind === "rename" || change.kind === "delete",
     );
   }
-  toPathMap(edit) {
+  toPathMap(edit, session) {
     const map = new Map();
     const add = (uri, edits) => {
       const filePath = C.uriToPath(uri);
       if (!filePath || !edits?.length) return;
       const list = map.get(filePath) || [];
+      const editor = atom.workspace
+        .getTextEditors()
+        .find((candidate) => candidate.getPath() === filePath);
       list.push(
         ...edits.map((textEdit) => ({
           oldRange: C.rangeFromLsp(textEdit.range),
-          newText: textEdit.newText,
+          newText:
+            (editor && session?.restoreDocumentText?.(textEdit.newText, editor, uri)) ??
+            textEdit.newText,
         })),
       );
       map.set(filePath, list);

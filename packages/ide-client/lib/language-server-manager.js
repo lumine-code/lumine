@@ -533,7 +533,7 @@ module.exports = class LanguageServerManager {
       return { success: false };
     }
   }
-  async applyWorkspaceEdit(edit, label) {
+  async applyWorkspaceEdit(edit, label, session = null) {
     const documentChanges =
       edit.documentChanges ||
       Object.entries(edit.changes || {}).map(([uri, edits]) => ({ textDocument: { uri }, edits }));
@@ -585,7 +585,11 @@ module.exports = class LanguageServerManager {
                 b.range.start.character - a.range.start.character,
             )
             .forEach((textEdit) =>
-              editor.setTextInBufferRange(C.rangeFromLsp(textEdit.range), textEdit.newText),
+              editor.setTextInBufferRange(
+                C.rangeFromLsp(textEdit.range),
+                session?.restoreDocumentText(textEdit.newText, editor, change.textDocument?.uri) ??
+                  textEdit.newText,
+              ),
             ),
         );
       }

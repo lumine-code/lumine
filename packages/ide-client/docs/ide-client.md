@@ -46,6 +46,8 @@ interface LanguageServerAdapter {
   getSettings?(): unknown;
   settingsKeyPaths?: string[];
   getWorkspaceConfiguration?(section?: string, resource?: string): unknown;
+  transformDocumentText?(text: string, context: { editor: TextEditor; uri: string }): string;
+  restoreDocumentText?(text: string, context: { editor: TextEditor; uri: string }): string;
   transformServerCapabilities?(caps: Record<string, unknown>): Record<string, unknown>;
 }
 ```
@@ -115,6 +117,8 @@ A `"project-root"` server that declares `workspace.workspaceFolders.supported` *
 The `languageId` sent to the server is resolved in order: `languageIdForScope(scopeName)`, then the built-in scope table, then the blanket `languageId`. Override only the level you actually need.
 
 `getSettings` is pushed as `workspace/didChangeConfiguration` after initialize, and re-pushed whenever a config key listed in `settingsKeyPaths` changes. Without `settingsKeyPaths` the settings are sent once and never refreshed.
+
+`transformDocumentText` can adapt an editor's text before `didOpen`, `didChange`, and `didSave`. An adapter that uses it receives full-document changes so the server never sees a mixture of transformed and original text. `restoreDocumentText` reverses the adaptation in formatting, rename, and workspace edits before they reach the editor. A transform must preserve line positions outside the text it intentionally hides.
 
 `session.supports(method, editor)` honours dynamic registrations, so ask it rather than reading `capabilities` yourself when a server registers capabilities after initialize.
 

@@ -150,6 +150,52 @@ describe("ServerSession against a fake server", () => {
     expect(didChange.params.contentChanges).toEqual([{ text: "replaced\n" }]);
   });
 
+  it("transforms synchronized text and switches incremental servers to full changes", async () => {
+    const filePath = path.join(tempDir, "transformed.js");
+    fs.writeFileSync(filePath, "visible secret\n");
+    const session = await startSession(
+      { capabilities: { textDocumentSync: 2 } },
+      { transformDocumentText: (text) => text.replaceAll("secret", "hidden") },
+    );
+    const editor = await atom.workspace.open(filePath);
+    await session.openEditor(editor);
+    editor.setText("changed secret\n");
+
+    const received = await receivedMessages(session);
+    const didOpen = received.find((message) => message.method === "textDocument/didOpen");
+    const didChange = received.find((message) => message.method === "textDocument/didChange");
+    expect(didOpen.params.textDocument.text).toBe("visible hidden\n");
+    expect(didChange.params.contentChanges).toEqual([{ text: "changed hidden\n" }]);
+  });
+
+  it("restores transformed text before applying a server workspace edit", async () => {
+    const filePath = path.join(tempDir, "restored.js");
+    fs.writeFileSync(filePath, "original\n");
+    const session = await startSession(
+      {},
+      { restoreDocumentText: (text) => text.replaceAll("hidden", "secret") },
+    );
+    const editor = await atom.workspace.open(filePath);
+    await manager.applyWorkspaceEdit(
+      {
+        changes: {
+          [require("url").pathToFileURL(filePath).href]: [
+            {
+              range: {
+                start: { line: 0, character: 0 },
+                end: { line: 0, character: 8 },
+              },
+              newText: "hidden",
+            },
+          ],
+        },
+      },
+      "Restore transformed text",
+      session,
+    );
+    expect(editor.getText()).toBe("secret\n");
+  });
+
   it("routes $/progress to the busy provider", async () => {
     const busy = {
       added: [],

@@ -46,10 +46,11 @@ module.exports = class CodeFormatProvider {
   options(editor) {
     return { tabSize: editor.getTabLength(), insertSpaces: editor.getSoftTabs() };
   }
-  edits(result) {
+  edits(result, session, editor) {
+    const uri = C.pathToUri(editor.getPath());
     return (result || []).map((edit) => ({
       oldRange: C.rangeFromLsp(edit.range),
-      newText: edit.newText,
+      newText: session.restoreDocumentText?.(edit.newText, editor, uri) ?? edit.newText,
     }));
   }
   async formatRange(editor, range) {
@@ -65,6 +66,8 @@ module.exports = class CodeFormatProvider {
           range: C.rangeToLsp(range),
           options: this.options(editor),
         }),
+        session,
+        editor,
       );
     } catch {
       return [];
@@ -79,6 +82,8 @@ module.exports = class CodeFormatProvider {
           textDocument: { uri: C.pathToUri(editor.getPath()) },
           options: this.options(editor),
         }),
+        session,
+        editor,
       );
     } catch {
       return [];
@@ -104,6 +109,8 @@ module.exports = class CodeFormatProvider {
           ch: character,
           options: this.options(editor),
         }),
+        session,
+        editor,
       );
     } catch {
       return [];
@@ -131,6 +138,8 @@ module.exports = class CodeFormatProvider {
             textDocument: { uri: C.pathToUri(editor.getPath()) },
             reason: 1,
           }),
+          session,
+          editor,
         );
       } catch {
         return [];

@@ -124,7 +124,8 @@ module.exports = class IntentionsProvider {
         resolved = action;
       }
     }
-    if (resolved.edit) await this.manager.applyWorkspaceEdit(resolved.edit, resolved.title);
+    if (resolved.edit)
+      await this.manager.applyWorkspaceEdit(resolved.edit, resolved.title, session);
     if (resolved.command)
       await session.request("workspace/executeCommand", {
         command: resolved.command.command,

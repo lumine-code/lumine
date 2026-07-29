@@ -69,6 +69,15 @@ describe("CodeFormatProvider", () => {
       },
     ]);
   });
+  it("restores adapter-transformed text in formatting edits", async () => {
+    const session = {
+      ...sessionWith(() => [{ range: lspRange(0, 0, 5), newText: "masked" }]),
+      restoreDocumentText: (text) => text.replace("masked", "source"),
+    };
+    const provider = new CodeFormatProvider(managerWith(session));
+    const edits = await provider.formatFile(stubEditor());
+    expect(edits[0].newText).toBe("source");
+  });
   it("gates on-type formatting on the server trigger characters", async () => {
     const requests = [];
     const session = sessionWith(
