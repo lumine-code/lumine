@@ -6936,6 +6936,26 @@ describe("TextEditorComponent", () => {
   });
 
   describe("handleMouseDragUntilMouseUp", () => {
+    it("does not process drag frames while the editor has no visible layout", async () => {
+      const { component, element } = buildComponent();
+      spyOn(console, "error");
+      const didDrag = jasmine
+        .createSpy("didDrag")
+        .and.callFake((event) => component.screenPositionForMouseEvent(event));
+      component.handleMouseDragUntilMouseUp({
+        didDrag,
+        didStopDragging: () => {},
+      });
+
+      element.style.display = "none";
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 0, clientY: 0 }));
+      await getNextAnimationFramePromise();
+
+      expect(didDrag).not.toHaveBeenCalled();
+      expect(console.error).not.toHaveBeenCalled();
+      window.dispatchEvent(new MouseEvent("mouseup"));
+    });
+
     it("repeatedly schedules `didDrag` calls on new animation frames after moving the mouse, and calls `didStopDragging` on mouseup", async () => {
       const { component } = buildComponent();
 

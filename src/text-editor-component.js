@@ -2636,7 +2636,10 @@ module.exports = class TextEditorComponent {
     const animationFrameLoop = () => {
       window.requestAnimationFrame(() => {
         if (dragging && this.visible) {
-          didDrag(lastMousemoveEvent);
+          // IntersectionObserver reports visibility changes asynchronously. A
+          // pane can therefore lose its layout while `visible` is still true;
+          // avoid hit-testing text nodes whose client rects have disappeared.
+          if (this.isVisible()) didDrag(lastMousemoveEvent);
           animationFrameLoop();
         }
       });
