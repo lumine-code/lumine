@@ -142,6 +142,10 @@
     // Opens the item-actions list: the dialog's own commands with their
     // descriptions and keybindings, command-palette style. Package keymaps
     // add actions in their own namespace and leave the chrome keys alone.
+    // Inside the actions list, F12 goes back to the dialog it belongs to.
+    "f12": "select-list:actions"
+  },
+  ".input-dialog atom-text-editor[mini]": {
     "f12": "select-list:actions"
   },
   ".tool-panel.panel-left, .tool-panel.panel-right": {
