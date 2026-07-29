@@ -4,7 +4,7 @@
 
 :root {
   --syntax-cursor-color: #5a8ae9;
-  --syntax-selection-color: hsl(218, 62%, 94%);
+  --syntax-selection-color: #ebebeb;
   --syntax-selection-flash-color: #5a8ae9;
   --syntax-background-color: hsl(0, 0%, 100%);
   --wrap-guide-color: hsla(228, 9%, 30%, 0.06);

@@ -60,7 +60,7 @@
   --input-background-color-focus: hsl(218, 20%, 16%);
   --input-selection-color: hsl(218, 22%, 21%);
   --input-selection-color-focus: hsl(218, 30%, 29%);
-  --overlay-backdrop-color: hsl(228, 28%, 2%);
+  --overlay-backdrop-color: hsl(0, 0%, 12%);
   --overlay-backdrop-opacity: 0.3;
   --progress-background-color: #5a8ae9;
   --scrollbar-color-editor: hsla(228, 18%, 72%, 0.18);

@@ -9,7 +9,7 @@
   border-radius: var(--component-border-radius);
   background-image: none;
 
-  &:hover {
+  &:not(.selected, .btn-primary, .btn-info, .btn-success, .btn-warning, .btn-error):hover {
     background-color: var(--button-background-color-hover);
     background-image: none;
   }
@@ -51,7 +51,7 @@ atom-panel.modal {
     border-radius: calc(var(--component-border-radius) * 1.5);
 
     li {
-      margin: 1px 3px;
+      margin: 2px 3px;
       border-bottom: none;
       border-radius: var(--component-border-radius);
     }
@@ -66,7 +66,7 @@ atom-panel.modal {
   }
 
   &::after {
-    backdrop-filter: none;
+    backdrop-filter: blur(2px);
   }
 }
 
@@ -95,20 +95,50 @@ atom-panel.modal {
       flex: 1 1 0;
       max-width: none;
     }
+
+    .tab:last-of-type {
+      box-shadow: inset 0 -1px 0 var(--tab-border-color);
+    }
+
+    .tab.active:last-of-type {
+      box-shadow: none;
+    }
+
+    .tab:only-child,
+    .tab.active:only-child {
+      border-top-right-radius: 0;
+      box-shadow: none;
+    }
   }
 }
 
-atom-pane-axis > atom-pane.active,
-atom-pane-container > atom-pane.pane {
-  .tab.active::before {
-    top: 0;
-    right: 0.6em;
-    bottom: auto;
-    left: 0.6em;
-    width: auto;
-    height: 2px;
-    border-radius: 0 0 2px 2px;
+.tab-bar[location="center"] {
+  .tab,
+  .tab.active {
+    max-width: 210px;
   }
+
+  .tab.active:first-of-type {
+    border-top-left-radius: 0;
+  }
+
+  &.is-fully-occupied {
+    .tab.active:last-of-type {
+      border-top-right-radius: 0;
+    }
+  }
+}
+
+.tab-bar .tab.active::before,
+atom-pane-axis > atom-pane.active .tab.active::before,
+atom-pane-container > atom-pane.pane .tab.active::before {
+  top: 1px;
+  right: var(--component-border-radius);
+  bottom: auto;
+  left: var(--component-border-radius);
+  width: auto;
+  height: 2px;
+  border-radius: 999px;
 }
 
 /* Inset rounded list states keep large sidebars visually quiet. */
@@ -116,6 +146,13 @@ atom-pane-container > atom-pane.pane {
 .tree-view {
   --tree-view-row-inset: 4px;
   --tree-view-row-border-radius: var(--component-border-radius);
+}
+
+.list-group,
+.list-tree:not(.list-tree .list-tree),
+.git-panel-FilePatchListView,
+.git-panel-RecentCommits-list {
+  padding-block: 4px;
 }
 
 .list-group .selected::before,
@@ -140,10 +177,67 @@ atom-pane-container > atom-pane.pane {
   border-radius: var(--component-border-radius);
 }
 
+.settings-view .config-menu .nav.nav > li {
+  margin-block: 2px;
+
+  > a {
+    margin-inline: 4px;
+    border-radius: var(--component-border-radius);
+  }
+}
+
 .status-bar {
   background-color: var(--app-background-color);
 
+  .status-bar-left {
+    padding-left: 4px;
+  }
+
+  .status-bar-right {
+    padding-right: 4px;
+  }
+
   .inline-block {
     border-radius: var(--component-border-radius);
+  }
+
+  .status-bar-left > .inline-block,
+  .status-bar-right > .inline-block {
+    height: calc(var(--ui-tab-height) - 6px);
+    margin-block: 3px;
+    line-height: calc(var(--ui-tab-height) - 6px);
+  }
+}
+
+.title-bar .control-tiles > .inline-block {
+  height: calc(100% - 6px);
+  margin-block: 3px;
+  border-radius: var(--component-border-radius);
+
+  &:hover {
+    background-color: var(--level-3-color-hover);
+    color: var(--text-color);
+  }
+
+  &:active {
+    background-color: var(--level-3-color-active);
+  }
+}
+
+.title-bar .app-menu .menu-label {
+  &::before {
+    top: 3px;
+    bottom: 3px;
+    border-radius: var(--component-border-radius);
+  }
+
+  &.open::before,
+  &.focused::before,
+  &:hover::before {
+    background-color: var(--level-3-color-hover);
+  }
+
+  &:active::before {
+    background-color: var(--level-3-color-active);
   }
 }
