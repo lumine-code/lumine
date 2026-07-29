@@ -111,6 +111,15 @@ describe("TreeView dialogs", () => {
       expect(atom.config.get("tree-view.openAfterCopy")).toBe(false);
     });
 
+    it("does not offer to open a copied directory", () => {
+      const source = path.join(projectPath, "source");
+      fs.mkdirSync(source);
+      const dialog = makeCopyDialog(source);
+      dialog.attach();
+
+      expect(dialog.inputDialogView.element.querySelector(".input-checkbox")).toBeNull();
+    });
+
     it("reflects an external config change in the checkbox", async () => {
       atom.config.set("tree-view.openAfterCopy", false);
       const dialog = makeCopyDialog(fixture("a.txt", "hi"));

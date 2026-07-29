@@ -5,13 +5,16 @@ const { repoForPath } = require("./helpers");
 
 module.exports = class CopyDialog extends Dialog {
   constructor(initialPath, { onCopy }) {
+    const checkboxes = fs.isDirectorySync(initialPath)
+      ? undefined
+      : [{ label: "Open file after copying", config: "tree-view.openAfterCopy" }];
     super({
       prompt: "Enter the new path for the duplicate.",
       info: "Paths are relative to the project root unless absolute.",
       initialPath: atom.project.relativize(initialPath),
       select: true,
       iconClass: "icon-arrow-right",
-      checkboxes: [{ label: "Open file after copying", config: "tree-view.openAfterCopy" }],
+      checkboxes,
     });
 
     this.initialPath = initialPath;
