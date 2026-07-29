@@ -611,8 +611,17 @@ module.exports = class WASMTreeSitterGrammar {
         });
       };
       const watcherPromise = watchPath(filePath, { recursive: false }, () => onChange());
+      // A watch that fails to arm (or a watcher-worker death mid-arm) reports
+      // through the watcher's own channels; without this, the rejection would
+      // surface as unhandled and be attributed to unrelated work.
+      watcherPromise.catch(() => {});
       this.subscriptions.add(
-        new Disposable(() => watcherPromise.then((watcher) => watcher.dispose())),
+        new Disposable(() =>
+          watcherPromise.then(
+            (watcher) => watcher.dispose(),
+            () => {},
+          ),
+        ),
       );
     }
   }

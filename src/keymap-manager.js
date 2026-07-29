@@ -474,7 +474,10 @@ module.exports = KeymapManager = (function () {
           () => {},
         );
         this.watchSubscriptions[filePath] = new Disposable(() =>
-          watcherPromise.then((watcher) => watcher.dispose()),
+          watcherPromise.then(
+            (watcher) => watcher.dispose(),
+            () => {},
+          ),
         );
       }
 

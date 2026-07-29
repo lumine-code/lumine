@@ -4,7 +4,12 @@ const path = require("path");
 const { promisify } = require("util");
 
 const { CompositeDisposable } = require("event-kit");
-const { NativeWatcher, PathWatcherManager, watchPath } = require("../src/path-watcher");
+const {
+  NativeWatcher,
+  PathWatcherManager,
+  watchPath,
+  stopAllWatchers,
+} = require("../src/path-watcher");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 temp.track();
@@ -399,6 +404,38 @@ describe("watchPath", function () {
         }
         expect(received.length).toBeGreaterThan(0);
       }, 45000);
+
+      it("resolves stopAllWatchers when the worker dies with an unwatch in flight", async function () {
+        jasmine.useRealClock();
+        const rootDir = await tempMkdir("atom-fsmanager-test-").then(realpath);
+        const watcher = await watchPath(rootDir, {}, () => {});
+        disposables.add(watcher);
+
+        // Swallow the outgoing unwatch so its reply can never arrive, keeping
+        // the request pending until the worker dies.
+        const WatcherClass = watcher.native.constructor;
+        const task = WatcherClass.task;
+        const realSend = task.send.bind(task);
+        let droppedUnwatch = false;
+        spyOn(task, "send").and.callFake((message) => {
+          if (typeof message === "string" && message.includes('"watcher:unwatch"')) {
+            droppedUnwatch = true;
+            return;
+          }
+          realSend(message);
+        });
+
+        const stopPromise = stopAllWatchers();
+        await conditionPromise(() => droppedUnwatch);
+        task.childProcess.kill("SIGKILL");
+
+        // The death rejects the pending unwatch with ERR_WATCHER_WORKER_EXITED.
+        // A dead worker has already stopped watching, so the stop completes
+        // instead of propagating the exit — which the spec harness's per-spec
+        // teardown would otherwise attribute to whichever spec just ran.
+        await stopPromise;
+        WatcherClass.lastWorkerExit = null;
+      });
 
       it("reuses existing native watchers even while they're still starting", async function () {
         const rootDir = await tempMkdir("atom-fsmanager-test-");

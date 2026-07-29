@@ -17,8 +17,11 @@ const WATCHER_STATE = {
 // Private: Error code marking an unexpected exit of the file-watcher worker.
 const WORKER_EXIT_ERROR_CODE = "ERR_WATCHER_WORKER_EXITED";
 
-function workerExitError() {
-  const error = new Error("The file-watcher worker process exited unexpectedly");
+function workerExitError(cause) {
+  // Name the exit cause in the message itself: when this error surfaces in a
+  // CI log the console (where the respawn message goes) is not captured, so
+  // the message is the only place the exit code/signal can be read from.
+  const error = new Error(`The file-watcher worker process exited unexpectedly (${cause})`);
   error.code = WORKER_EXIT_ERROR_CODE;
   return error;
 }
@@ -330,7 +333,7 @@ class WorkerProcessWatcher extends NativeWatcher {
       console.error(
         `The file-watcher worker process exited unexpectedly (${cause}); respawning it`,
       );
-      const error = workerExitError();
+      const error = workerExitError(cause);
       for (const meta of this.PROMISE_META.values()) {
         meta.reject?.(error);
       }
@@ -461,11 +464,14 @@ class WorkerProcessWatcher extends NativeWatcher {
   setIgnoredNames(ignoredNames) {
     this.ignoredNames = ignoredNames;
     if (this.state === WATCHER_STATE.RUNNING) {
+      // Fire-and-forget: a worker death with this update in flight must not
+      // surface as an unhandled rejection; the respawn re-sends the ignored
+      // names when it resubscribes the watch.
       this.send("watcher:update", {
         normalizedPath: this.normalizedPath,
         instance: this.id,
         ignored: this.ignoredNames,
-      });
+      }).catch(() => {});
     }
   }
 
@@ -506,6 +512,13 @@ class WorkerProcessWatcher extends NativeWatcher {
         normalizedPath: this.normalizedPath,
         instance: this.id,
       });
+    } catch (error) {
+      // A worker that died with this unwatch in flight has already stopped
+      // watching, so the unwatch's goal is achieved. Propagating the exit
+      // would fail unrelated work instead — the spec harness stops all
+      // watchers after every spec, and jasmine attributes a rejection there
+      // to whichever spec just ran. Failures from a live worker still throw.
+      if (error.code !== WORKER_EXIT_ERROR_CODE) throw error;
     } finally {
       this.constructor.unregister(this);
     }
