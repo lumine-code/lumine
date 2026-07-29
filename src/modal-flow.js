@@ -73,6 +73,9 @@ module.exports = class ModalFlow {
       }
       this.stack.push({ panel, label: this.labelFor(panel, label) });
       panel.show();
+      // Only a switch between two panels settles the appear animation; a step
+      // that opens with nothing on screen is a fresh appearance and keeps it.
+      if (top) this.settleAnimations(panel);
     } finally {
       this.transitioning = false;
     }
@@ -104,7 +107,9 @@ module.exports = class ModalFlow {
         }
       }
       this.stack.length = index + 1;
-      this.stack[this.stack.length - 1].panel.show();
+      const previous = this.stack[this.stack.length - 1].panel;
+      previous.show();
+      this.settleAnimations(previous);
     } finally {
       this.transitioning = false;
     }
@@ -144,6 +149,29 @@ module.exports = class ModalFlow {
       this.subscriptions = null;
     }
     this.didChange();
+  }
+
+  // A step change swaps one panel for another while the modal surface
+  // visually persists, so the theme's appear animation must not replay — the
+  // display flip restarts it from zero and the switch reads as a flicker.
+  // Finishing the freshly restarted animations jumps the panel straight to
+  // its settled state. Only animations targeting the panel element itself are
+  // finished — that includes its ::before/::after chrome, whose animations
+  // report the origin element as their target — while animations inside the
+  // content (loading spinners) keep running. Plain show()/hide() outside the
+  // flow never comes through here, so opening and closing keep the theme's
+  // animation.
+  settleAnimations(panel) {
+    const element = panel.getElement();
+    if (typeof element.getAnimations !== "function") return;
+    for (const animation of element.getAnimations({ subtree: true })) {
+      if (animation.effect?.target !== element) continue;
+      try {
+        animation.finish();
+      } catch {
+        // Infinite animations cannot be finished; leave them be.
+      }
+    }
   }
 
   labelFor(panel, label) {

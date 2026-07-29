@@ -270,6 +270,65 @@ describe("modal flow", () => {
     });
   });
 
+  describe("appear-animation settling", () => {
+    let style;
+
+    beforeEach(() => {
+      // Stand-in for a theme's modal-appear animation and a content spinner.
+      // Long durations keep them observably "running" unless settled.
+      style = document.createElement("style");
+      style.textContent = `
+        @keyframes flow-spec-appear { from { opacity: 0.99; } to { opacity: 1; } }
+        atom-panel.modal { animation: flow-spec-appear 60s linear; }
+        .flow-spec-spinner { animation: flow-spec-appear 60s linear infinite; }
+      `;
+      document.head.appendChild(style);
+    });
+
+    afterEach(() => {
+      style.remove();
+    });
+
+    function runningPanelAnimations(panel) {
+      const element = panel.getElement();
+      return element
+        .getAnimations({ subtree: true })
+        .filter((animation) => animation.effect?.target === element)
+        .filter((animation) => animation.playState === "running");
+    }
+
+    it("keeps the appear animation on a fresh show and settles it on switches", () => {
+      const root = addModal({ crumb: "Root" });
+      const step = addModal();
+
+      root.show();
+      expect(runningPanelAnimations(root).length).toBeGreaterThan(0);
+
+      step.show({ crumb: "Step" });
+      expect(runningPanelAnimations(step).length).toBe(0);
+
+      expect(atom.workspace.popModal()).toBe(true);
+      expect(runningPanelAnimations(root).length).toBe(0);
+    });
+
+    it("leaves animations inside the content running across a switch", () => {
+      const root = addModal({ crumb: "Root" });
+      const item = document.createElement("div");
+      const spinner = document.createElement("div");
+      spinner.classList.add("flow-spec-spinner");
+      item.appendChild(spinner);
+      const step = atom.workspace.addModalPanel({ item, visible: false });
+      panels.push(step);
+
+      root.show();
+      step.show({ crumb: "Step" });
+
+      expect(runningPanelAnimations(step).length).toBe(0);
+      const spinning = spinner.getAnimations().filter((a) => a.playState === "running");
+      expect(spinning.length).toBe(1);
+    });
+  });
+
   describe("focus restoration across a flow", () => {
     it("returns focus to the pre-flow element after the flow ends", () => {
       const outside = document.createElement("input");
