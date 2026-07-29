@@ -75,6 +75,30 @@ class RepositoryOperations {
     return this.execute("abortMerge", options);
   }
 
+  cherryPick(reference, options) {
+    return this.execute("cherryPick", reference, options);
+  }
+
+  rebase(reference, options) {
+    return this.execute("rebase", reference, options);
+  }
+
+  stashPush(options) {
+    return this.execute("stashPush", options);
+  }
+
+  stashApply(reference, options) {
+    return this.execute("stashApply", reference, options);
+  }
+
+  stashPop(reference, options) {
+    return this.execute("stashPop", reference, options);
+  }
+
+  stashDrop(reference, options) {
+    return this.execute("stashDrop", reference, options);
+  }
+
   checkoutSide(side, paths, options) {
     return this.execute("checkoutSide", side, paths, options);
   }

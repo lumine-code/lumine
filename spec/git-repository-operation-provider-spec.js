@@ -219,6 +219,17 @@ describe("GitRepositoryOperationProvider", () => {
       amend: true,
       coAuthors: [{ name: "Example User", email: "user@example.com" }],
     });
+    await operations.cherryPick("abc123", { noCommit: true });
+    await operations.rebase("main", { autostash: true, rebaseMerges: true });
+    await operations.stashPush({
+      includeUntracked: true,
+      keepIndex: true,
+      message: "Work in progress",
+      paths: ["one.txt"],
+    });
+    await operations.stashApply("stash@{2}", { index: true });
+    await operations.stashPop("stash@{1}");
+    await operations.stashDrop("stash@{0}");
 
     // The worker receives the bare argument vector; color/trust config and the
     // GIT_TERMINAL_PROMPT environment are applied by the worker's GitRunner.
@@ -228,6 +239,21 @@ describe("GitRepositoryOperationProvider", () => {
     expect(calls[1].options.stdin).toBe(
       "Subject\n\nCo-authored-by: Example User <user@example.com>",
     );
+    expect(calls[2].args).toEqual(["cherry-pick", "--no-commit", "abc123"]);
+    expect(calls[3].args).toEqual(["rebase", "--autostash", "--rebase-merges", "main"]);
+    expect(calls[4].args).toEqual([
+      "stash",
+      "push",
+      "--include-untracked",
+      "--keep-index",
+      "--message",
+      "Work in progress",
+      "--",
+      "one.txt",
+    ]);
+    expect(calls[5].args).toEqual(["stash", "apply", "--index", "stash@{2}"]);
+    expect(calls[6].args).toEqual(["stash", "pop", "stash@{1}"]);
+    expect(calls[7].args).toEqual(["stash", "drop", "stash@{0}"]);
   });
 
   it("orders `checkout -b <name>` before `--track` so the branch name survives", async () => {
@@ -338,8 +364,14 @@ describe("GitRepositoryOperationProvider", () => {
     expect(hint("applyPatch", "patch")).toBe("status");
     expect(hint("checkoutFiles", ["a.txt"], "HEAD")).toBe("status");
     expect(hint("abortMerge")).toBe("status");
+    expect(hint("stashPush")).toBe("status");
+    expect(hint("stashApply")).toBe("status");
+    expect(hint("stashPop")).toBe("status");
+    expect(hint("stashDrop")).toBe("none");
     expect(hint("writeMergeConflictToIndex", "a.txt", null, "b", "c")).toBe("status");
     expect(hint("commit", "Subject")).toBe("both");
+    expect(hint("cherryPick", "abc123")).toBe("both");
+    expect(hint("rebase", "main")).toBe("both");
     expect(hint("checkout", "main")).toBe("both");
     expect(hint("reset", "soft", "HEAD~")).toBe("both");
     expect(hint("deleteRef", "HEAD")).toBe("both");

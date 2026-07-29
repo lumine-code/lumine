@@ -69,9 +69,17 @@ const OPERATION_REFRESH_HINTS = {
   applyPatch: "status",
   commit: "both",
   merge: "both",
+  cherryPick: "both",
+  rebase: "both",
   // `merge --abort` restores the pre-merge worktree/index; HEAD never moved,
   // and MERGE_HEAD is not part of the refs snapshot.
   abortMerge: "status",
+  // Stashes are not part of either public snapshot. Applying or creating one
+  // only changes the index and working tree from their point of view.
+  stashPush: "status",
+  stashApply: "status",
+  stashPop: "status",
+  stashDrop: "none",
   checkoutSide: "status",
   checkout: "both",
   checkoutFiles: "status",
@@ -226,6 +234,63 @@ class GitRepositoryOperations {
 
   abortMerge(options = {}) {
     return this.run(["merge", "--abort"], options);
+  }
+
+  async cherryPick(reference, options = {}) {
+    const args = ["cherry-pick"];
+    addBooleanFlag(args, options.noCommit, "--no-commit");
+    addBooleanFlag(args, options.edit, "--edit");
+    if (options.mainline != null) args.push("--mainline", String(options.mainline));
+    if (options.gpgSign === true) args.push("--gpg-sign");
+    else if (typeof options.gpgSign === "string") args.push(`--gpg-sign=${options.gpgSign}`);
+    args.push(reference);
+    return this.run(
+      args,
+      await this.provider.withSigningEnvironment(this.workingDirectory, options),
+    );
+  }
+
+  async rebase(reference, options = {}) {
+    const args = ["rebase"];
+    addBooleanFlag(args, options.autostash, "--autostash");
+    addBooleanFlag(args, options.rebaseMerges, "--rebase-merges");
+    addBooleanFlag(args, options.keepEmpty, "--keep-empty");
+    if (options.onto) args.push("--onto", options.onto);
+    args.push(reference);
+    return this.run(
+      args,
+      await this.provider.withSigningEnvironment(this.workingDirectory, options),
+    );
+  }
+
+  stashPush(options = {}) {
+    const args = ["stash", "push"];
+    addBooleanFlag(args, options.includeUntracked, "--include-untracked");
+    addBooleanFlag(args, options.all, "--all");
+    addBooleanFlag(args, options.keepIndex, "--keep-index");
+    addBooleanFlag(args, options.staged, "--staged");
+    if (options.message) args.push("--message", String(options.message));
+    const filePaths = pathsFrom(options.paths);
+    if (filePaths.length > 0) args.push("--", ...filePaths);
+    return this.run(args, options);
+  }
+
+  stashApply(reference = "stash@{0}", options = {}) {
+    const args = ["stash", "apply"];
+    addBooleanFlag(args, options.index, "--index");
+    args.push(reference || "stash@{0}");
+    return this.run(args, options);
+  }
+
+  stashPop(reference = "stash@{0}", options = {}) {
+    const args = ["stash", "pop"];
+    addBooleanFlag(args, options.index, "--index");
+    args.push(reference || "stash@{0}");
+    return this.run(args, options);
+  }
+
+  stashDrop(reference = "stash@{0}", options = {}) {
+    return this.run(["stash", "drop", reference || "stash@{0}"], options);
   }
 
   checkoutSide(side, paths, options = {}) {
