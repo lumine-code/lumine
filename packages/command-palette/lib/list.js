@@ -117,12 +117,10 @@ class CommandPalette {
           secondaryEl.title = item.description;
           const offset =
             item.displayName.length + (item.tags ? item.tags.join(" ").length + 1 : 0) + 1;
-          secondaryEl.appendChild(
-            highlight(
-              item.description,
-              matchIndices.map((i) => i - offset),
-            ),
-          );
+          const descriptionMatchIndices = (matchIndices ?? [])
+            .map((index) => index - offset)
+            .filter((index) => index >= 0);
+          secondaryEl.appendChild(highlight(item.description, descriptionMatchIndices));
           leftBlock.appendChild(secondaryEl);
         }
 

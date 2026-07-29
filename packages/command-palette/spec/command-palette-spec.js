@@ -7,6 +7,7 @@ describe("command-palette", () => {
     commandDisposables = [];
     commandDisposables.push(
       atom.commands.add("atom-workspace", "command-palette-spec:noop", {
+        description: "A command with a description",
         didDispatch() {},
       }),
       atom.commands.add("atom-workspace", "command-palette-spec:hidden", {
@@ -81,6 +82,17 @@ describe("command-palette", () => {
       if (binding) {
         expect(toggleItem.querySelector("kbd.key-binding")).not.toBeNull();
       }
+    });
+
+    it("renders command descriptions when the query has no match indices", async () => {
+      await openPalette();
+      const item = palette.selectListView.element.querySelector(
+        "li[data-event-name='command-palette-spec:noop']",
+      );
+
+      expect(item.querySelector(".secondary-line").textContent).toBe(
+        "A command with a description",
+      );
     });
   });
 
