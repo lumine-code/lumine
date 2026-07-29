@@ -499,4 +499,39 @@ describe("git-center", () => {
     );
     expect(operations.checkout).toHaveBeenCalledWith("main", { detach: true });
   });
+
+  it("builds a breadcrumb trail through the create-from flow and navigates back", async () => {
+    jasmine.attachToDOM(atom.workspace.getElement());
+    const branchListView = mainModule.getBranchListView();
+    const operations = repoA.repository.getOperations();
+    spyOn(operations, "checkout").andReturn(Promise.resolve());
+
+    await branchListView.toggle();
+    expect(branchListView.selectListView.isVisible()).toBe(true);
+    expect(atom.workspace.getModalTrail()).toEqual([]);
+
+    // Entering the reference list adopts the visible branch list as the root.
+    await branchListView.showReferenceList("create-from", repoA.repository);
+    expect(branchListView.selectListView.isVisible()).toBe(false);
+    expect(branchListView.referenceListView.isVisible()).toBe(true);
+    expect(atom.workspace.getModalTrail()).toEqual(["Branches", "Create from"]);
+
+    const itemsBefore = branchListView.referenceListView.props.items;
+    const main = itemsBefore.find((item) => item.reference === "main");
+    branchListView.confirmReference(main);
+    expect(branchListView.branchNameDialog.inputDialogView.isVisible()).toBe(true);
+    expect(atom.workspace.getModalTrail()).toEqual(["Branches", "Create from", "main"]);
+
+    // Going back re-shows the reference list with its items intact - no reload.
+    expect(atom.workspace.popModal()).toBe(true);
+    expect(branchListView.referenceListView.isVisible()).toBe(true);
+    expect(branchListView.referenceListView.props.items).toBe(itemsBefore);
+    expect(atom.workspace.getModalTrail()).toEqual(["Branches", "Create from"]);
+
+    // Escape cancels the visible step, which ends the whole trail.
+    atom.commands.dispatch(branchListView.referenceListView.element, "core:cancel");
+    expect(branchListView.referenceListView.isVisible()).toBe(false);
+    expect(branchListView.selectListView.isVisible()).toBe(false);
+    expect(atom.workspace.getModalTrail()).toEqual([]);
+  });
 });

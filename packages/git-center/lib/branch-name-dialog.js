@@ -10,7 +10,10 @@ module.exports = class BranchNameDialog {
     });
   }
 
-  show({ prompt, onConfirm }) {
+  // With `crumb`, the dialog displays itself as a step of the modal flow: the
+  // modal visible at that moment becomes the previous breadcrumb entry and
+  // Shift-Escape returns to it. Without `crumb` it opens standalone.
+  show({ prompt, onConfirm, crumb }) {
     this.onConfirm = onConfirm;
     this.pending = false;
     this.inputDialogView.reset();
@@ -19,7 +22,7 @@ module.exports = class BranchNameDialog {
       errorMessage: null,
       placeholderText: "Branch name",
     });
-    this.inputDialogView.show();
+    this.inputDialogView.show(crumb ? { crumb } : undefined);
   }
 
   async confirm() {

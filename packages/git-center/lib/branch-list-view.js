@@ -3,9 +3,14 @@ const { applySwitchItem, buildSwitchItems, checkoutBranch } = require("./helpers
 const { divergenceChips, statusChips } = require("./status-summary");
 
 const ACTIONS = [
-  { action: "create", branch: "Create new branch...", icon: "icon-plus" },
-  { action: "create-from", branch: "Create new branch from...", icon: "icon-plus" },
-  { action: "detach", branch: "Checkout detached...", icon: "icon-git-commit" },
+  { action: "create", branch: "Create new branch...", icon: "icon-plus", crumb: "New branch" },
+  {
+    action: "create-from",
+    branch: "Create new branch from...",
+    icon: "icon-plus",
+    crumb: "Create from",
+  },
+  { action: "detach", branch: "Checkout detached...", icon: "icon-git-commit", crumb: "Detach" },
 ];
 
 // Branch picker for the active repository. Selecting a non-current branch
@@ -15,6 +20,7 @@ module.exports = class BranchListView {
     this.branchNameDialog = new BranchNameDialog();
     this.selectListView = atom.workspace.buildSelectList({
       className: "git-center-branch-list",
+      crumb: "Branches",
       items: [],
       emptyMessage: "No branches yet",
       filterKeyForItem: (item) => item.branch,
@@ -68,11 +74,13 @@ module.exports = class BranchListView {
   performAction(action) {
     const repository = atom.repositories.getActiveRepository();
     if (!repository) return;
-    this.hide();
 
+    // The next step shows itself as a flow step, which hides this list as a
+    // transition — the trail keeps it as the previous breadcrumb entry.
     if (action === "create") {
       this.branchNameDialog.show({
         prompt: "Please provide a new branch name",
+        crumb: ACTIONS.find((entry) => entry.action === action).crumb,
         onConfirm: (name) => checkoutBranch(repository, name, { createNew: true }),
       });
     } else {
@@ -81,14 +89,14 @@ module.exports = class BranchListView {
   }
 
   async showReferenceList(action, repository) {
-    this.referenceAction = action;
-    this.referenceRepository = repository;
+    this.pendingReference = { action, repository };
     this.referenceListView.reset();
     await this.referenceListView.update({ items: [], loadingMessage: "Loading references…" });
-    this.referenceListView.show();
+    this.referenceListView.show({ crumb: ACTIONS.find((entry) => entry.action === action).crumb });
 
     const refs = await repository.ensureRefsSnapshot?.().catch(() => null);
-    if (!this.referenceListView.isVisible() || repository !== this.referenceRepository) return;
+    if (!this.referenceListView.isVisible() || repository !== this.pendingReference?.repository)
+      return;
     await this.referenceListView.update({
       items: this.buildReferenceItems(refs),
       loadingMessage: null,
@@ -134,16 +142,22 @@ module.exports = class BranchListView {
   }
 
   confirmReference(item) {
-    const action = this.referenceAction;
-    const repository = this.referenceRepository;
-    this.referenceListView.hide();
-    if (!repository) return;
+    const { action, repository } = this.pendingReference ?? {};
+    if (!repository) {
+      this.referenceListView.hide();
+      return;
+    }
 
     if (action === "detach") {
+      // Confirming completes the flow, so this hide ends the trail.
+      this.referenceListView.hide();
       checkoutBranch(repository, item.reference, { detach: true });
     } else if (action === "create-from") {
+      // The dialog shows itself as the next step; going back from it returns
+      // to this reference list with its items and filter intact.
       this.branchNameDialog.show({
         prompt: "Please provide a new branch name",
+        crumb: item.reference,
         onConfirm: (name) =>
           checkoutBranch(repository, name, { createNew: true, startPoint: item.reference }),
       });
