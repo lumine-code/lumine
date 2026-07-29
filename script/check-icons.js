@@ -77,21 +77,27 @@ function* iconBeforeRules(css) {
 const ELEMENT_GEOMETRY =
   /^(vertical-align|line-height|position|top|bottom|left|right|height|translate|transform)$/;
 
+// `-` is a valid class character, so a word boundary is not a class boundary:
+// `\.title\b` also matches `.title-bar`, whose ::before is a menu highlight and
+// no icon at all. Match a whole class name instead.
+const ICON_CLASS = /\.icon(?:-[\w-]+)?(?![\w-])/;
+const TITLE_CLASS = /\.title(?![\w-])/;
+
 function targetsIconBefore(chain) {
   // The rule's own selector must reach a ::before, and some link of the chain
   // must scope it to an icon element. `.title` counts: in tabs the icon glyph
   // renders through the title's ::before.
   const selector = chain[chain.length - 1];
   if (!/::?before\b/.test(selector)) return false;
-  return chain.some((link) => /\.icon\b|\.title\b/.test(link));
+  return chain.some((link) => ICON_CLASS.test(link) || TITLE_CLASS.test(link));
 }
 
 function targetsIconElement(chain) {
-  // An element rule whose subject is the `.icon` class itself (not `.icon-x`
-  // and not a pseudo-element rule, which the ::before check owns).
+  // An element rule whose subject is an icon class itself, rather than a
+  // pseudo-element rule, which the ::before check owns.
   const selector = chain[chain.length - 1];
   if (/::?(?:before|after)\b/.test(selector)) return false;
-  return /\.icon(?![\w-])/.test(selector);
+  return ICON_CLASS.test(selector);
 }
 
 function findViolations(file) {
@@ -117,13 +123,25 @@ function findViolations(file) {
   return violations;
 }
 
+// Every stylesheet a theme ships, at any depth. Themes lay their sheets out
+// differently — `styles/ui/` for the ones that own a full UI, `ui-overrides/`
+// for the ones that layer on another — so keying on one folder name silently
+// stops checking a theme the day it is restructured.
+function* stylesheets(dir) {
+  if (!fs.existsSync(dir)) return;
+  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+    const full = path.join(dir, entry.name);
+    if (entry.isDirectory()) yield* stylesheets(full);
+    else if (entry.name.endsWith(".css")) yield full;
+  }
+}
+
 function main() {
   const errors = [];
+  let scanned = 0;
   for (const stylesDir of themeDirs()) {
-    const uiDir = path.join(stylesDir, "ui");
-    if (!fs.existsSync(uiDir)) continue;
-    for (const name of fs.readdirSync(uiDir).filter((entry) => entry.endsWith(".css"))) {
-      const file = path.join(uiDir, name);
+    for (const file of stylesheets(stylesDir)) {
+      scanned++;
       for (const violation of findViolations(file)) {
         errors.push(
           `${path.relative(ROOT, file)}: "${violation.selector}" declares ` +
@@ -136,7 +154,8 @@ function main() {
 
   for (const error of errors) console.error(`error: ${error}`);
   console.log(
-    `icon contract: ${themeDirs().length} theme packages scanned, ${errors.length} error(s)`,
+    `icon contract: ${themeDirs().length} theme packages, ${scanned} stylesheets scanned, ` +
+      `${errors.length} error(s)`,
   );
   process.exitCode = errors.length > 0 ? 1 : 0;
 }
