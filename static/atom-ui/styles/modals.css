@@ -86,6 +86,14 @@ atom-panel.modal {
     margin-right: calc(var(--ui-padding) / -3 + 1px);
   }
 
+  /* The negative pull above is tuned for the command palette's row layout.
+     Inside a trailing block it would cancel the row's right padding and pin
+     the chip to the card edge, so the chip respects the row spacing there. */
+  .select-list li .trailing-block .key-binding {
+    margin-top: 0;
+    margin-right: 0;
+  }
+
   .select-list .primary-line {
     display: block;
   }
