@@ -408,18 +408,32 @@ input[type="button"] {
 /* Icon buttons
    -------------------------------------------------- */
 
+/* The glyph is a fixed --component-icon-size box, but a button's label is not
+   a fixed size: a settings card runs 14.4px, a dock toolbar 10.8px. text-bottom
+   rests the box against the label's own content area, so how far it lands below
+   the label's optical centre grows with the label — a single pixel constant
+   fits one size and over-raises every smaller one. `em` inside the ::before
+   would resolve against the glyph's own font-size, so register the length and
+   let it compute on the button, where 1em is the label. */
+@property --btn-icon-label-size {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 0px;
+}
+
 .btn.icon {
+  --btn-icon-label-size: 1em;
+
   &:before {
     width: initial;
     height: initial;
     margin-right: 0.3125em;
-    /* A labelled button aligns its glyph to the label, and its label runs a
-       larger font (1.2em) than the icon contract's 16px box assumes, so
-       text-bottom rests the glyph a couple of pixels below the label's optical
-       centre. The raise is pixel-measured: ink lands on the label's cap centre
-       (`position` so an icon set's translate nudge still composes). */
+    /* Pixel-measured at two label sizes — 2.5px of raise at 14.4px, 0.6px at
+       10.7px — and the slope between them matches the type metrics that cause
+       it (descent plus half the cap height). `position` so an icon set's own
+       translate nudge still composes. */
     position: relative;
-    top: -2.5px;
+    top: calc(4.8px - 0.51 * var(--btn-icon-label-size));
   }
   /* An icon-only button has no label to align to — the target is the button's
      own middle, which is where text-bottom already puts the glyph. Buttons
