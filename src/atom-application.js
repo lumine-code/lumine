@@ -1180,7 +1180,7 @@ module.exports = class AtomApplication extends EventEmitter {
     if (!pathsToOpen) pathsToOpen = [];
     if (!foldersToOpen) foldersToOpen = [];
 
-    devMode = Boolean(devMode);
+    devMode = process.env.LUMINE_DEV_MODE === "1" || Boolean(devMode);
     safeMode = Boolean(safeMode);
     clearWindowState = Boolean(clearWindowState);
 

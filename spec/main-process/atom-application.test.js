@@ -42,9 +42,11 @@ const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec
 //   creation order.
 
 describe("AtomApplication", function () {
-  let scenario, sinon;
+  let scenario, sinon, originalDevMode;
 
   beforeEach(async function () {
+    originalDevMode = process.env.LUMINE_DEV_MODE;
+    delete process.env.LUMINE_DEV_MODE;
     sinon = sandbox;
     scenario = await LaunchScenario.create(sinon);
   });
@@ -52,6 +54,11 @@ describe("AtomApplication", function () {
   afterEach(async function () {
     await scenario.destroy();
     sinon.restore();
+    if (originalDevMode === undefined) {
+      delete process.env.LUMINE_DEV_MODE;
+    } else {
+      process.env.LUMINE_DEV_MODE = originalDevMode;
+    }
   });
 
   describe("command-line interface behavior", function () {
@@ -877,6 +884,30 @@ describe("AtomApplication", function () {
       );
       await app.openPaths.lastCall.returnValue;
       await scenario.assert("[a 1.md] [c,d _] [b _]");
+    });
+
+    it('"open" honors LUMINE_DEV_MODE for internal window requests', async function () {
+      process.env.LUMINE_DEV_MODE = "1";
+
+      electron.ipcMain.emit(
+        "open",
+        {},
+        { pathsToOpen: [scenario.convertRootPath("c")], newWindow: true },
+      );
+      await app.openPaths.lastCall.returnValue;
+      assert.isTrue(scenario.getWindow(3).devMode);
+
+      electron.ipcMain.emit(
+        "open",
+        {},
+        {
+          pathsToOpen: [scenario.convertRootPath("d")],
+          newWindow: true,
+          devMode: false,
+        },
+      );
+      await app.openPaths.lastCall.returnValue;
+      assert.isTrue(scenario.getWindow(4).devMode);
     });
 
     it('"open" without any option open the prompt for selecting a path', async function () {
