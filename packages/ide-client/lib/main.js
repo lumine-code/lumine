@@ -43,7 +43,10 @@ module.exports = {
     this.sessionMenu = new SessionMenuView(this);
     this.uiSubscriptions.add(
       atom.commands.add("atom-workspace", {
-        "ide-client:servers": () => this.sessionMenu.toggle(),
+        "ide-client:servers": {
+          modal: "Servers",
+          didDispatch: () => this.sessionMenu.toggle(),
+        },
         "ide-client:toggle-problems": () => this.showProblems(),
         "ide-client:restart": () => this.restart(),
         "ide-client:format": () => this.format(),

@@ -10,21 +10,35 @@ const STATE_BADGES = {
 
 // Lists every language server the window is running — not only the one serving
 // the active editor — so any session can be inspected or restarted from
-// anywhere. Choosing a server opens the actions for it.
+// anywhere. Choosing a server steps into its actions: the breadcrumb trail
+// names the server, and going back returns to a freshly rendered server list.
 module.exports = class SessionMenuView {
   constructor(main) {
     this.main = main;
-    // The list manages its own modal panel. Hosting one by hand leaves the base
-    // view's panel unbuilt, and its focusout handler bails on a list it thinks
-    // is not visible — which is what stopped a click outside from closing this.
-    this.selectList = atom.workspace.buildSelectList({
+    // Each step is its own list with its own modal panel; the modal flow
+    // chains them, and the base view's focus and cancel behavior only works
+    // in a panel it built itself.
+    this.serverList = atom.workspace.buildSelectList({
       className: "ide-client-session-menu",
+      crumb: "Servers",
       items: [],
       emptyMessage: "No language servers are running",
       filterKeyForItem: (item) => `${item.label} ${item.detail || ""}`,
       elementForItem: (item) => this.elementForItem(item),
+      // Runs on every show — including a back navigation from the actions
+      // list — so the rows always carry current server states.
+      willShow: () => this.serverList.update({ items: this.serverItems() }),
+      didConfirmSelection: (item) => this.showActions(item.session),
+      didCancelSelection: () => this.serverList.hide(),
+    });
+    this.actionsList = atom.workspace.buildSelectList({
+      className: "ide-client-session-menu",
+      items: [],
+      filterKeyForItem: (item) => `${item.label} ${item.detail || ""}`,
+      elementForItem: (item) => this.elementForItem(item),
       didConfirmSelection: (item) => {
-        this.selectList.hide();
+        // Acting on a server completes the flow, so this hide ends the trail.
+        this.actionsList.hide();
         Promise.resolve(item.action()).catch((error) =>
           atom.notifications.addError("Language server action failed", {
             detail: error.message,
@@ -32,7 +46,7 @@ module.exports = class SessionMenuView {
           }),
         );
       },
-      didCancelSelection: () => this.selectList.hide(),
+      didCancelSelection: () => this.actionsList.hide(),
     });
   }
 
@@ -93,23 +107,12 @@ module.exports = class SessionMenuView {
         label: session.adapter.displayName,
         detail: this.describeScope(session),
         state: session.state,
-        action: () => this.showActions(session),
+        session,
       }));
   }
 
-  async show(items) {
-    this.selectList.reset();
-    await this.selectList.update({ items });
-    this.selectList.show();
-  }
-
-  async toggle() {
-    if (this.selectList.isVisible()) return this.selectList.hide();
-    return this.show(this.serverItems());
-  }
-
-  async showActions(session) {
-    return this.show([
+  actionItems(session) {
+    return [
       {
         label: "Restart",
         detail: `Restart ${session.adapter.displayName}`,
@@ -130,16 +133,26 @@ module.exports = class SessionMenuView {
         detail: "Open the language-server diagnostics",
         action: () => this.main.showProblems(),
       },
-      {
-        label: "Back",
-        detail: "Return to the list of language servers",
-        // Confirming closed the panel, so this reopens rather than toggles.
-        action: () => this.show(this.serverItems()),
-      },
-    ]);
+    ];
+  }
+
+  // The actions list shows itself as a flow step: the visible server list
+  // becomes the trail root, and Shift-Escape or a crumb click returns to it.
+  async showActions(session) {
+    this.actionsList.reset();
+    await this.actionsList.update({ items: this.actionItems(session) });
+    this.actionsList.show({ crumb: session.adapter.displayName });
+  }
+
+  async toggle() {
+    if (this.serverList.isVisible()) return this.serverList.hide();
+    if (this.actionsList.isVisible()) return this.actionsList.hide();
+    this.serverList.reset();
+    this.serverList.show();
   }
 
   destroy() {
-    this.selectList.destroy();
+    this.serverList.destroy();
+    this.actionsList.destroy();
   }
 };

@@ -11,7 +11,7 @@ describe("ide-client session menu", () => {
 
   // elementForItem returns a row descriptor, so go through the list to get the
   // element it actually renders — the same path a real row takes.
-  const render = (item) => menu.selectList.resolveElement(item, {});
+  const render = (item) => menu.serverList.resolveElement(item, {});
 
   beforeEach(async () => {
     await atom.packages.activatePackage("ide-client");
@@ -68,21 +68,21 @@ describe("ide-client session menu", () => {
     // which means the panel has to be the one it built itself.
     // Truthiness, not `false`: isVisible() is `this.panel && …`, so it answers
     // undefined until the panel exists.
-    expect(menu.selectList.isVisible()).toBeFalsy();
+    expect(menu.serverList.isVisible()).toBeFalsy();
     await menu.toggle();
-    expect(menu.selectList.isVisible()).toBeTruthy();
-    expect(menu.selectList.getPanel().getItem()).toBe(menu.selectList);
+    expect(menu.serverList.isVisible()).toBeTruthy();
+    expect(menu.serverList.getPanel().getItem()).toBe(menu.serverList);
 
-    menu.selectList.cancel();
-    expect(menu.selectList.isVisible()).toBeFalsy();
+    menu.serverList.cancel();
+    expect(menu.serverList.isVisible()).toBeFalsy();
   });
 
   it("clears the previous query when it reopens", async () => {
     await menu.toggle();
-    menu.selectList.refs.queryEditor.setText("pyright");
+    menu.serverList.refs.queryEditor.setText("pyright");
     await menu.toggle();
     await menu.toggle();
-    expect(menu.selectList.getQuery()).toBe("");
+    expect(menu.serverList.getQuery()).toBe("");
   });
 
   it("names every folder a server answers for, not the one that started it", () => {
@@ -141,5 +141,67 @@ describe("ide-client session menu", () => {
     spyOn(atom.workspace, "getActiveTextEditor").and.returnValue({});
 
     expect(menu.serverItems().map((item) => item.label)).toEqual(["zeta Server", "alpha Server"]);
+  });
+
+  describe("stepping into a server's actions", () => {
+    let session;
+
+    beforeEach(() => {
+      session = stubSession("running", "pyright");
+      main.manager.sessions.set("pyright:/project", session);
+      spyOn(atom.project, "getPaths").and.returnValue(["/project"]);
+    });
+
+    it("routes a confirmed server row into showActions", async () => {
+      spyOn(menu, "showActions");
+      await menu.toggle();
+      expect(menu.serverList.props.items.length).toBe(1);
+
+      menu.serverList.confirmSelection();
+      expect(menu.showActions).toHaveBeenCalledWith(session);
+    });
+
+    it("shows the actions as a flow step named after the server, with no Back row", async () => {
+      await menu.toggle();
+      await menu.showActions(session);
+
+      expect(menu.serverList.isVisible()).toBeFalsy();
+      expect(menu.actionsList.isVisible()).toBeTruthy();
+      expect(atom.workspace.getModalTrail()).toEqual(["Servers", "pyright Server"]);
+      expect(menu.actionsList.props.items.map((item) => item.label)).toEqual([
+        "Restart",
+        "Stop",
+        "Show Server Log",
+        "Show Problems",
+      ]);
+    });
+
+    it("returns to a freshly built server list on back navigation", async () => {
+      await menu.toggle();
+      await menu.showActions(session);
+
+      // A server that appeared while the actions were open must be in the
+      // list the back navigation re-shows.
+      main.manager.sessions.set("late:/project", stubSession("starting", "late"));
+
+      expect(atom.workspace.popModal()).toBe(true);
+      expect(menu.serverList.isVisible()).toBeTruthy();
+      expect(menu.serverList.props.items.map((item) => item.label)).toEqual([
+        "late Server",
+        "pyright Server",
+      ]);
+      expect(atom.workspace.getModalTrail()).toEqual(["Servers"]);
+    });
+
+    it("ends the flow when an action is confirmed", async () => {
+      await menu.toggle();
+      await menu.showActions(session);
+
+      menu.actionsList.props.didConfirmSelection({ action: () => {} });
+
+      expect(menu.actionsList.isVisible()).toBeFalsy();
+      expect(menu.serverList.isVisible()).toBeFalsy();
+      expect(atom.workspace.getModalTrail()).toEqual([]);
+    });
   });
 });
