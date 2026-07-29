@@ -52,7 +52,12 @@ class PanelContainerElement extends HTMLElement {
     }
 
     if (this.model.isModal()) {
-      this.hideAllPanelsExcept(panel);
+      // Only a panel that arrives visible displaces the current modal. Modals
+      // are usually created hidden and shown later — that add must not
+      // dismiss (and thereby cancel) whatever modal is on screen.
+      if (panel.isVisible()) {
+        this.hideAllPanelsExcept(panel);
+      }
       this.subscriptions.add(
         panel.onDidChangeVisible((visible) => {
           if (visible) {

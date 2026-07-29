@@ -164,9 +164,8 @@ module.exports = class ModalFlow {
     if (this.subscriptions || this.stack.length === 0) return;
     this.subscriptions = new CompositeDisposable();
     const observe = (panel) => {
-      // The trail can be cleared while the emitter that carries this callback
-      // is still mid-dispatch (adding a panel force-hides the visible top,
-      // which clears the trail before this add listener runs).
+      // The trail can be cleared while the emitter carrying this callback is
+      // still mid-dispatch; a cleared keeper must not resubscribe.
       if (!this.subscriptions) return;
       this.subscriptions.add(
         panel.onDidChangeVisible(() => this.checkTrail()),
