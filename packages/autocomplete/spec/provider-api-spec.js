@@ -433,8 +433,8 @@ describe("Provider API", () => {
         expect(getSuggestions()).toEqual([
           { text: "::cats" },
           { text: "hai" },
-          { text: "something" },
           { text: "ohai" },
+          { text: "something" },
         ]);
       });
 
