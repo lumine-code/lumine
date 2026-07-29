@@ -1,4 +1,14 @@
+const os = require("os");
 const fuzzyNative = require("@lumine-code/fuzzy-native");
+
+// Leave headroom for the renderer; the native module only fans out across
+// threads for candidate sets of 10000 or more anyway.
+const DEFAULT_NUM_THREADS = Math.max(1, Math.min(8, os.availableParallelism() - 1));
+
+// Cached single-candidate matchers for the one-shot match()/score() helpers,
+// keyed by the construction-time ignoreDiacritics flag, so per-row highlight
+// loops don't allocate a fresh native Matcher on every call.
+const singleCandidateMatchers = new Map();
 
 /*
   # Name: setCandidates
@@ -54,8 +64,6 @@ function setCandidates(matcherOrCandidates, candidates, _options) {
 */
 class Matcher {
   constructor(fuzzyMatcher) {
-    // Some heuristics to get the default number of CPUs to make the filter
-    this.numCpus = Math.max(1, Math.round(4 * 0.8));
     this.fuzzyMatcher = fuzzyMatcher;
   }
 
@@ -69,18 +77,26 @@ class Matcher {
     * `options` Key/map to customize the details of the search. All keys are
       optional, meaning they all have defaults
       * `algorithm` Either "fuzzaldrin" or "command-t". Defaults to "fuzzaldrin"
-        (the **opposite** of @lumine-code/fuzzy-native)
+        (the **opposite** of @lumine-code/fuzzy-native), a native port of the
+        fuzzaldrin-plus scorer: acronym and consecutive-run bonuses,
+        basename-aware path scoring, and " _-:/\" as optional query
+        characters. "command-t" is the path-tuned alternative
       * `maxResults` The number of results to return. Defaults to `Infinity`,
         meaning that it'll return _all results_ that did match. Note
         that this has no effect on filtering speed
       * `recordMatchIndexes` If `true`, also returns `matchIndexes`, an array
         of numbers where each number is the index (0-based) of the character
         that was matched. Defaults to `false`
-      * `numThreads` The number of threads to filter. Defaults to 80% of the
-        current CPUs
+      * `numThreads` The number of threads to filter. Defaults to most of the
+        machine's cores, capped at 8
       * `maxGap` (only "command-t") The number of maximum "character gap" between
         consecutive letters. A smaller gap means a faster result. Defaults to
         Infinite
+      * `usePathScoring` (only "fuzzaldrin") Whether to blend basename and
+        full-path scores by directory depth. Defaults to `true`
+      * `useExtensionBonus` (only "fuzzaldrin") Whether to award a bonus for
+        matching the file extension (query "mf.h" prefers "myFile.h" over
+        "myFile.html"). Defaults to `false`
 
     Returns: an object containing:
 
@@ -89,12 +105,15 @@ class Matcher {
     * `score` A number in the range 0 to 1. Higher scores are more relevant.
       0 denotes "no match" and will never be returned.
     * `matchIndexes` (optional) Will be returned only if `recordMatchIndexes`
-      is set to true. It's an array of integer for each character index in
-      `value` for each character in `query`. This can be expensive to calculate.
+      is set to true. An array of character indexes in `value`, for highlight
+      rendering. With "command-t" there is one index per `query` character;
+      with "fuzzaldrin" the array can be shorter (optional characters may go
+      unmatched) or longer (full-path and basename alignments merge). This
+      can be expensive to calculate.
   */
   match(query, options = {}) {
     let { numThreads, algorithm } = options;
-    numThreads ||= this.numCpus;
+    numThreads ||= DEFAULT_NUM_THREADS;
     algorithm ||= "fuzzaldrin";
     return this.fuzzyMatcher.match(query, { ...options, numThreads, algorithm });
   }
@@ -126,9 +145,10 @@ const fuzzyMatcher = {
   setCandidates: setCandidates,
 
   // Same as {setCandidates} passing a single candidate, and returning only
-  // the score. It can return `0` if there's no match.
-  score(candidate, query, _opts = {}) {
-    return this.match(candidate, query)?.score || 0;
+  // the score. It can return `0` if there's no match. Accepts the same
+  // options as {Matcher#match} plus `ignoreDiacritics`.
+  score(candidate, query, opts = {}) {
+    return this.match(candidate, query, opts)?.score || 0;
   },
 
   // The same as {setCandidates} with a single candidate. Returns just the
@@ -137,9 +157,14 @@ const fuzzyMatcher = {
   // Accepts `ignoreDiacritics` in `opts` to fold accents before matching
   // (e.g. "cafe" matches "café"); indexes are reported against the original.
   match(candidate, query, opts = {}) {
-    const matcher = setCandidates([candidate], {
-      ignoreDiacritics: opts.ignoreDiacritics,
-    });
+    const key = !!opts.ignoreDiacritics;
+    let matcher = singleCandidateMatchers.get(key);
+    if (matcher) {
+      matcher.setCandidates([candidate]);
+    } else {
+      matcher = setCandidates([candidate], { ignoreDiacritics: key });
+      singleCandidateMatchers.set(key, matcher);
+    }
     return matcher.match(query, opts)[0];
   },
 };
