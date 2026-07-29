@@ -8,9 +8,26 @@ atom-text-editor {
       color: var(--syntax-color-added);
     }
 
-    &.git-line-removed,
-    &.git-previous-line-removed {
-      color: var(--syntax-color-removed);
+    &.git-line-removed:before,
+    &.git-previous-line-removed:before {
+      position: absolute;
+      left: 0;
+      height: 0;
+      width: 0;
+      content: "";
+      border: solid transparent;
+      border-left-color: var(--syntax-color-removed);
+      border-width: 4px;
+      margin-top: -4px;
+      pointer-events: none;
+    }
+
+    &.git-line-removed:before {
+      bottom: -4px;
+    }
+
+    &.git-previous-line-removed:before {
+      top: 0;
     }
   }
 

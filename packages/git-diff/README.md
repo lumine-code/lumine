@@ -4,8 +4,10 @@ Marks lines in the editor gutter that have been added, edited, or deleted since 
 
 ## Features
 
-- **Gutter markers**: marks added, edited, and deleted lines with colored line numbers.
-- **Icon or line-number style**: shows colored icons or colored line numbers in the gutter.
+- **Gutter markers**: marks added and edited lines with colored line numbers, and deleted
+  lines with a compact horizontal marker.
+- **Icon or marker style**: shows colored icons instead of the default line-number and
+  deletion markers.
 - **Diff navigation**: moves the cursor to the next or previous diff in the editor.
 - **Diff list**: opens a searchable list of all diffs in the current file.
 - **Wrap-around**: optionally wraps around to the first or last diff when navigating.
