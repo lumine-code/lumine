@@ -2018,6 +2018,25 @@ describe("Workspace", () => {
       expect(li.querySelector(".primary-line").textContent).toBe("alpha");
       expect(li.querySelector(".secondary-line").textContent).toBe("detail");
     });
+
+    it("chains lists into the modal breadcrumb trail via show({crumb})", () => {
+      jasmine.attachToDOM(atom.workspace.getElement());
+      let cancelled = false;
+      const root = build({ crumb: "Root", didCancelSelection: () => (cancelled = true) });
+      const step = build();
+
+      root.show();
+      step.show({ crumb: "Step" });
+
+      expect(cancelled).toBe(false);
+      expect(root.isVisible()).toBe(false);
+      expect(step.isVisible()).toBe(true);
+      expect(atom.workspace.getModalTrail()).toEqual(["Root", "Step"]);
+
+      expect(atom.workspace.popModal()).toBe(true);
+      expect(root.isVisible()).toBe(true);
+      expect(atom.workspace.getModalTrail()).toEqual(["Root"]);
+    });
   });
 
   describe("::buildInputDialog(props)", () => {
