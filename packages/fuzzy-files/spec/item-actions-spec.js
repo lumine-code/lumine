@@ -27,10 +27,13 @@ describe("fuzzy-files item actions", () => {
     const insertRelative = byCommand.get("fuzzy-files:insert-relative-path");
     expect([...insertRelative.keystrokes].sort()).toEqual(["alt-v", "alt-v alt-r"]);
 
-    // A description exists only where it adds something the humanized name
-    // does not already say — "Copy Absolute Path" explains itself.
-    expect(byCommand.get("fuzzy-files:copy-absolute-path").description).toBeUndefined();
-    expect(byCommand.get("fuzzy-files:trash").description).toBeUndefined();
+    // Every action explains itself with more than a restated title.
+    for (const action of actions) {
+      expect(action.description).toBeTruthy();
+    }
+    expect(byCommand.get("fuzzy-files:copy-absolute-path").description).toBe(
+      "Copy the full path from the filesystem root to the clipboard",
+    );
 
     // Chrome and global commands stay out.
     expect(byCommand.has("core:confirm")).toBe(false);

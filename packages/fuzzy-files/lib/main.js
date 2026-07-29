@@ -69,11 +69,13 @@ module.exports = {
       }),
       // Registered in the package's own namespace: the item-actions list
       // (F12) derives its rows — label, description, keybinding — from these
-      // registrations and the keymap, so nothing is documented twice. A
-      // description is only given where it adds something the humanized
-      // command name does not already say.
+      // registrations and the keymap, so nothing is documented twice. Every
+      // description says something the humanized command name does not.
       atom.commands.add(this.selectList.element, {
-        "fuzzy-files:open": () => this.performAction("open"),
+        "fuzzy-files:open": {
+          description: "Open the file, at the line given after a colon in the query",
+          didDispatch: () => this.performAction("open"),
+        },
         "fuzzy-files:open-external": {
           description: "Open the file in the default external program",
           didDispatch: () => this.performAction("open-external"),
@@ -82,7 +84,10 @@ module.exports = {
           description: "Show the file in the system file manager",
           didDispatch: () => this.performAction("show-in-folder"),
         },
-        "fuzzy-files:trash": () => this.performAction("trash"),
+        "fuzzy-files:trash": {
+          description: "Move the file to the system trash, where it can be restored",
+          didDispatch: () => this.performAction("trash"),
+        },
         "fuzzy-files:split-left": {
           description: "Open the file in a pane to the left",
           didDispatch: () => this.performAction("split", { side: "left" }),
@@ -103,26 +108,38 @@ module.exports = {
           description: "Insert the path relative to the project root",
           didDispatch: () => this.performAction("path", { op: "insert", rel: "p" }),
         },
-        "fuzzy-files:insert-absolute-path": () =>
-          this.performAction("path", { op: "insert", rel: "a" }),
+        "fuzzy-files:insert-absolute-path": {
+          description: "Insert the full path from the filesystem root into the active editor",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "a" }),
+        },
         "fuzzy-files:insert-relative-path": {
           description: "Insert the path relative to the active editor",
           didDispatch: () => this.performAction("path", { op: "insert", rel: "r" }),
         },
-        "fuzzy-files:insert-file-name": () =>
-          this.performAction("path", { op: "insert", rel: "n" }),
+        "fuzzy-files:insert-file-name": {
+          description: "Insert the base name, without its directories, into the active editor",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "n" }),
+        },
         "fuzzy-files:copy-project-path": {
           description: "Copy the path relative to the project root",
           didDispatch: () => this.performAction("path", { op: "copy", rel: "p" }),
         },
-        "fuzzy-files:copy-absolute-path": () =>
-          this.performAction("path", { op: "copy", rel: "a" }),
+        "fuzzy-files:copy-absolute-path": {
+          description: "Copy the full path from the filesystem root to the clipboard",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "a" }),
+        },
         "fuzzy-files:copy-relative-path": {
           description: "Copy the path relative to the active editor",
           didDispatch: () => this.performAction("path", { op: "copy", rel: "r" }),
         },
-        "fuzzy-files:copy-file-name": () => this.performAction("path", { op: "copy", rel: "n" }),
-        "fuzzy-files:refresh-index": () => this.refresh(),
+        "fuzzy-files:copy-file-name": {
+          description: "Copy the base name, without its directories, to the clipboard",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "n" }),
+        },
+        "fuzzy-files:refresh-index": {
+          description: "Crawl the project again to pick up changes made outside the editor",
+          didDispatch: () => this.refresh(),
+        },
         "fuzzy-files:use-default-separator": {
           description: "Use the platform path separator",
           didDispatch: () => {
@@ -160,7 +177,10 @@ module.exports = {
           description: "Use the editor selection as the query",
           didDispatch: () => this.selectList.setQueryFromSelection(),
         },
-        "fuzzy-files:reveal-in-tree-view": () => this.performAction("reveal-in-tree-view"),
+        "fuzzy-files:reveal-in-tree-view": {
+          description: "Expand the tree view to the file and select it there",
+          didDispatch: () => this.performAction("reveal-in-tree-view"),
+        },
         "fuzzy-files:claude-chat": {
           description: "Attach the file to the Claude chat",
           didDispatch: () => this.performAction("claude-chat"),
