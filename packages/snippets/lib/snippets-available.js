@@ -7,6 +7,7 @@ export default class SnippetsAvailable {
     this.snippets = snippets;
     this.selectListView = atom.workspace.buildSelectList({
       className: "available-snippets",
+      crumb: "Snippets",
       panelItem: this,
       items: [],
       filterKeyForItem: (snippet) => snippet.searchText,

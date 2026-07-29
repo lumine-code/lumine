@@ -5,6 +5,7 @@ module.exports = class BookmarksView {
     this.editorsBookmarks = editorsBookmarks;
     this.selectList = atom.workspace.buildSelectList({
       className: "bookmarks-view",
+      crumb: "Bookmarks",
       emptyMessage: "No bookmarks found",
       items: [],
       filterKeyForItem: (bookmark) => bookmark.filterText,

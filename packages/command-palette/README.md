@@ -20,6 +20,10 @@ Commands available in `atom-workspace`:
 - `command-palette:show-hidden-commands`: open the palette listing only commands hidden from it,
 - `command-palette:clear-recent`: forget the recently used commands.
 
+Commands available in `.command-palette`, listed with their keybindings in the item-actions list (F12):
+
+- `command-palette:toggle-hidden-commands`: include the commands hidden from the palette by their packages.
+
 ## Customization
 
 The palette is rendered inside a modal panel with the `command-palette` class. Adjust its appearance by adding CSS to your `styles.css`:

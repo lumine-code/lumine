@@ -197,4 +197,73 @@ describe("command-palette", () => {
       expect(listedCommandNames()).toEqual(["command-palette-spec:noop"]);
     });
   });
+
+  describe("item actions", () => {
+    it("derives its actions from the command registration", () => {
+      const actions = palette.selectListView.itemActions();
+      const byCommand = new Map(actions.map((action) => [action.command, action]));
+
+      const toggleHidden = byCommand.get("command-palette:toggle-hidden-commands");
+      expect(toggleHidden.name).toBe("Toggle Hidden Commands");
+      expect(toggleHidden.description).toBe(
+        "Include the commands hidden from the palette by their packages",
+      );
+      expect(toggleHidden.keystrokes).toEqual([]);
+
+      // Every action explains itself with more than a restated title.
+      for (const action of actions) {
+        expect(action.description).toBeTruthy();
+      }
+
+      // Chrome and workspace-scope commands stay out: the actions list shows
+      // only what the dialog contributes itself.
+      expect(byCommand.has("core:confirm")).toBe(false);
+      expect(byCommand.has("select-list:actions")).toBe(false);
+      expect(byCommand.has("command-palette:toggle")).toBe(false);
+      expect(byCommand.has("command-palette:show-hidden-commands")).toBe(false);
+      expect(byCommand.has("command-palette:clear-recent")).toBe(false);
+    });
+
+    it("shows the actions as a flow step and toggles the hidden commands", async () => {
+      await openPalette();
+      expect(listedCommandNames()).toContain("command-palette-spec:noop");
+
+      await palette.selectListView.showItemActions();
+
+      const actionsList = palette.selectListView.itemActionsList;
+      expect(actionsList.isVisible()).toBe(true);
+      expect(atom.workspace.getModalTrail()).toEqual(["Commands", "Actions"]);
+      // The actions list wears the package class, so its styling applies there.
+      expect(actionsList.element.classList.contains("command-palette")).toBe(true);
+
+      const index = actionsList.items.findIndex(
+        (item) => item.command === "command-palette:toggle-hidden-commands",
+      );
+      actionsList.selectIndex(index);
+      actionsList.confirmSelection();
+
+      expect(palette.selectListView.isVisible()).toBe(true);
+      expect(actionsList.isVisible()).toBe(false);
+      expect(palette.showHiddenCommands).toBe(true);
+      await atom.views.getNextUpdatePromise();
+      const names = listedCommandNames();
+      expect(names).toContain("command-palette-spec:hidden");
+      expect(names).not.toContain("command-palette-spec:noop");
+    });
+
+    it("toggles back to the visible commands on a second dispatch", async () => {
+      const selectListView = await openPalette();
+      const queryElement = selectListView.refs.queryEditor.element;
+
+      atom.commands.dispatch(queryElement, "command-palette:toggle-hidden-commands");
+      await atom.views.getNextUpdatePromise();
+      expect(listedCommandNames()).toContain("command-palette-spec:hidden");
+
+      atom.commands.dispatch(queryElement, "command-palette:toggle-hidden-commands");
+      await atom.views.getNextUpdatePromise();
+      const names = listedCommandNames();
+      expect(names).toContain("command-palette-spec:noop");
+      expect(names).not.toContain("command-palette-spec:hidden");
+    });
+  });
 });

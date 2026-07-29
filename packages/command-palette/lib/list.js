@@ -26,6 +26,7 @@ class CommandPalette {
 
     this.selectListView = atom.workspace.buildSelectList({
       className: "command-palette",
+      crumb: "Commands",
       emptyMessage: "No matches found",
 
       order: (a, b) => {
@@ -67,15 +68,7 @@ class CommandPalette {
           this.activeElement !== this.lastActiveElement ||
           this.showHiddenCommands !== this.lastShowHiddenCommands
         ) {
-          this.lastActiveElement = this.activeElement;
-          this.lastShowHiddenCommands = this.showHiddenCommands;
-          this.keyBindingsForActiveElement = atom.keymaps.findKeyBindings({
-            target: this.activeElement,
-          });
-          this.commands = atom.commands
-            .findCommands({ target: this.activeElement })
-            .filter((command) => this.showHiddenCommands === !!command.hiddenInCommandPalette);
-          this.needsUpdate = true;
+          this.refreshCommands();
         }
         if (this.needsUpdate) {
           this.needsUpdate = false;
@@ -155,12 +148,49 @@ class CommandPalette {
         this.selectListView.hide();
       },
     });
+
+    // Registered in the package's own namespace on the palette element: the
+    // item-actions list (F12) derives its rows — label, description,
+    // keybinding — from commands the dialog contributes itself, so this is
+    // what makes the mode swap discoverable from inside the palette.
+    this.commandsDisposable = atom.commands.add(this.selectListView.element, {
+      "command-palette:toggle-hidden-commands": {
+        description: "Include the commands hidden from the palette by their packages",
+        didDispatch: () => this.toggleHiddenCommands(),
+      },
+    });
   }
 
   destroy() {
     this.configObserver.dispose();
     this.configObserver2.dispose();
+    this.commandsDisposable.dispose();
     return this.selectListView.destroy();
+  }
+
+  // Recomputes the command list and its keybindings for the current active
+  // element and hidden filter; `needsUpdate` marks the result for the next
+  // update push.
+  refreshCommands() {
+    this.lastActiveElement = this.activeElement;
+    this.lastShowHiddenCommands = this.showHiddenCommands;
+    this.keyBindingsForActiveElement = atom.keymaps.findKeyBindings({
+      target: this.activeElement,
+    });
+    this.commands = atom.commands
+      .findCommands({ target: this.activeElement })
+      .filter((command) => this.showHiddenCommands === !!command.hiddenInCommandPalette);
+    this.needsUpdate = true;
+  }
+
+  // Swaps the open palette between the visible commands and the ones packages
+  // hide from it, keeping the commands of the originally focused element.
+  toggleHiddenCommands() {
+    if (!this.selectListView.isVisible()) return;
+    this.showHiddenCommands = !this.showHiddenCommands;
+    this.refreshCommands();
+    this.needsUpdate = false;
+    this.selectListView.update({ items: this.commands });
   }
 
   toggle() {

@@ -9,6 +9,8 @@ export class Selector {
   // Make a selector object (should be called once)
   constructor(selectorItems) {
     this.lineEndingListView = atom.workspace.buildSelectList({
+      crumb: "Line Endings",
+
       // an array containing the objects you want to show in the select list
       items: selectorItems,
 

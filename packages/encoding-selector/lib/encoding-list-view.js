@@ -6,6 +6,7 @@ module.exports = class EncodingListView {
     this.encodings = encodings;
     this.selectListView = atom.workspace.buildSelectList({
       className: "encoding-selector",
+      crumb: "Encodings",
       itemsClassList: ["mark-active"],
       items: [],
       filterKeyForItem: (encoding) => encoding.name,

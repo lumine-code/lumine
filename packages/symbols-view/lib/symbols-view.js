@@ -62,6 +62,7 @@ class SymbolsView {
     this.selectListView = atom.workspace.buildSelectList({
       ...options,
       className: "symbols-view",
+      crumb: "Symbols",
       panelItem: this,
       items: [],
       filterKeyForItem: (item) => item.name,

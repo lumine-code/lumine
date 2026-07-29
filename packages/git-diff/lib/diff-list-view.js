@@ -6,6 +6,7 @@ export default class DiffListView {
   constructor() {
     this.selectListView = atom.workspace.buildSelectList({
       className: "diff-list-view",
+      crumb: "Diffs",
       emptyMessage: "No diffs in file",
       items: [],
       filterKeyForItem: (diff) => diff.lineText,

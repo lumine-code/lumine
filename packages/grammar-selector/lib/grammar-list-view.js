@@ -11,6 +11,7 @@ module.exports = class GrammarListView {
 
     this.selectListView = atom.workspace.buildSelectList({
       className: "grammar-selector",
+      crumb: "Grammars",
       itemsClassList: ["mark-active"],
       items: [],
       filterKeyForItem: (grammar) => grammar.name,
