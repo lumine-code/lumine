@@ -148,8 +148,10 @@ atom-pane-container > atom-pane.pane .tab.active::before {
   --tree-view-row-border-radius: var(--component-border-radius);
 }
 
+/* Not the tree-view lists: the tree positions rows and sticky headers with
+   measured offsets that assume the lists carry no padding of their own. */
 .list-group,
-.list-tree:not(.list-tree .list-tree),
+.list-tree:not(.list-tree .list-tree, .tree-view .list-tree),
 .git-panel-FilePatchListView,
 .git-panel-RecentCommits-list {
   padding-block: 4px;

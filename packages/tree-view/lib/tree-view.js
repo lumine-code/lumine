@@ -388,7 +388,6 @@ class TreeView {
       const entry = entries[index];
       const view = new TreeRowView(this, "directory", { sticky: true });
       const element = view.bind(entry);
-      element.style.height = `${entry.height}px`;
       element.treeRowView = view;
       this.stickyHeaderList.appendChild(element);
     }
@@ -399,6 +398,13 @@ class TreeView {
       const child = this.stickyHeaderList.children[index];
       const entry = entries[index];
       child.treeRowView?.sync();
+      // Not only on creation: every stylesheet that arrives during startup
+      // re-measures the row grid, and a mounted sticky copy must follow it the
+      // way renderVisibleRows refreshes real rows. A copy trusting the height
+      // it was born with ends up a stale band over rows laid out on the new
+      // grid, and the whole stack below it lands offset.
+      child.style.height = `${entry.height}px`;
+      child.style.setProperty("--tree-view-depth", entry.depth);
 
       const subtreeBottom = this.rowTops?.[entry.subtreeEndIndex];
       const visibleSubtreeBottom =

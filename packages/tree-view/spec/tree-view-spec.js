@@ -342,6 +342,34 @@ describe("TreeView row model and sticky headers", () => {
     expect(root.views.size).toBe(0);
   });
 
+  it("refreshes a reused sticky row when the measured row grid changes", () => {
+    const treeView = stickyHarness();
+    treeView.stickyHeaderLayer = document.createElement("div");
+    treeView.stickyHeaderList = document.createElement("ol");
+    treeView.stickyHeaderLayer.appendChild(treeView.stickyHeaderList);
+    treeView.stickyHeaderEntries = [];
+
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    root.height = 32;
+    root.depth = 0;
+
+    treeView.renderStickyHeaderEntries([root]);
+    const stickyElement = treeView.stickyHeaderList.firstElementChild;
+    expect(stickyElement.style.height).toBe("32px");
+    expect(treeView.stickyHeaderList.style.height).toBe("32px");
+
+    // A stylesheet arriving after the sticky mounted re-measured the rows.
+    // The copy is in the stable prefix, so it is reused, not recreated — it
+    // must follow the new grid the way renderVisibleRows refreshes real rows.
+    root.height = 24;
+    treeView.renderStickyHeaderEntries([root]);
+
+    expect(treeView.stickyHeaderList.firstElementChild).toBe(stickyElement);
+    expect(stickyElement.style.height).toBe("24px");
+    expect(treeView.stickyHeaderList.style.height).toBe("24px");
+    treeView.clearStickyHeaderViews();
+  });
+
   it("keeps the stable sticky prefix mounted when a nested directory joins the stack", () => {
     const treeView = stickyHarness();
     treeView.stickyHeaderLayer = document.createElement("div");
@@ -432,6 +460,8 @@ describe("TreeView row model and sticky headers", () => {
       --component-padding: 8px;
       --component-icon-padding: 5px;
       --disclosure-arrow-size: 12px;
+      --tree-view-row-inset: 4px;
+      --tree-view-row-border-radius: 6px;
     `;
 
     const viewport = document.createElement("div");
@@ -447,13 +477,28 @@ describe("TreeView row model and sticky headers", () => {
     fileName.classList.add("name");
     fileName.textContent = "styles.css";
     file.appendChild(fileName);
-    list.appendChild(file);
+
+    const directory = document.createElement("li");
+    directory.classList.add("directory", "entry", "list-nested-item", "tree-view-row", "expanded");
+    directory.style.setProperty("--tree-view-depth", "1");
+    const directoryRow = document.createElement("div");
+    directoryRow.classList.add("header", "list-item");
+    const directoryName = document.createElement("span");
+    directoryName.classList.add("name");
+    directoryName.textContent = "Source";
+    directoryRow.appendChild(directoryName);
+    directory.appendChild(directoryRow);
+    list.append(file, directory);
     scroller.appendChild(list);
 
     const stickyLayer = document.createElement("div");
     stickyLayer.classList.add("tree-view-sticky-header-layer");
     const stickyList = document.createElement("ol");
-    stickyList.classList.add("tree-view-sticky-header-list", "list-tree");
+    stickyList.classList.add(
+      "tree-view-sticky-header-list",
+      "list-tree",
+      "has-collapsable-children",
+    );
     stickyList.style.height = "24px";
     const stickyEntry = document.createElement("li");
     stickyEntry.classList.add(
@@ -462,9 +507,13 @@ describe("TreeView row model and sticky headers", () => {
       "list-nested-item",
       "selected",
     );
+    stickyEntry.style.setProperty("--tree-view-depth", "1");
     const stickyRow = document.createElement("div");
     stickyRow.classList.add("tree-view-sticky-header-row", "header", "list-item");
-    stickyRow.textContent = "Source";
+    const stickyName = document.createElement("span");
+    stickyName.classList.add("name");
+    stickyName.textContent = "Source";
+    stickyRow.appendChild(stickyName);
     stickyEntry.appendChild(stickyRow);
     stickyList.appendChild(stickyEntry);
     stickyLayer.appendChild(stickyList);
@@ -483,7 +532,25 @@ describe("TreeView row model and sticky headers", () => {
       expect(getComputedStyle(stickyList).overflow).toBe("hidden");
       expect(getComputedStyle(stickyList).contain).toBe("paint");
       expect(getComputedStyle(stickyList).transform).toBe("none");
+      expect(getComputedStyle(stickyList).backgroundColor).toBe("rgb(242, 242, 242)");
       expect(getComputedStyle(stickyRow).backgroundColor).toBe("rgb(220, 225, 235)");
+      const directoryRowStyle = getComputedStyle(directoryRow);
+      const stickyRowStyle = getComputedStyle(stickyRow);
+      const directoryDisclosureLeft =
+        directoryRow.getBoundingClientRect().left + parseFloat(directoryRowStyle.paddingLeft);
+      const stickyDisclosureLeft =
+        stickyRow.getBoundingClientRect().left + parseFloat(stickyRowStyle.paddingLeft);
+      // The indent lives on the row `li` as padding, not on the header — the
+      // header itself starts at the li's content edge.
+      expect(getComputedStyle(directory).paddingLeft).toBe("22px");
+      expect(directoryRowStyle.marginLeft).toBe("0px");
+      expect(stickyDisclosureLeft).toBe(directoryDisclosureLeft);
+      expect(stickyName.getBoundingClientRect().top - stickyEntry.getBoundingClientRect().top).toBe(
+        directoryName.getBoundingClientRect().top - directory.getBoundingClientRect().top,
+      );
+      expect(stickyRow.getBoundingClientRect().height).toBe(
+        directoryRow.getBoundingClientRect().height,
+      );
 
       tree.focus();
       expect(getComputedStyle(stickyRow).backgroundColor).toBe("rgb(90, 138, 233)");

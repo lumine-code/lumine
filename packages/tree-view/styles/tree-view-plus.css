@@ -8,7 +8,7 @@
   --tree-view-sticky-background: var(--tree-view-background-color);
   --tree-view-row-inset: 0px;
   --tree-view-row-border-radius: 0px;
-  --tree-view-root-header-height: var(--ui-tab-height);
+  --tree-view-root-header-height: var(--ui-line-height);
   --tree-view-root-name-color: currentColor;
   --tree-view-root-name-font-size: inherit;
   --tree-view-root-name-font-weight: inherit;
@@ -266,7 +266,7 @@
     overflow: hidden;
     contain: paint;
     isolation: isolate;
-    background: transparent;
+    background: var(--tree-view-sticky-background);
   }
 
   .tree-view-sticky-header {
