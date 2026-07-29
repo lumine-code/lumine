@@ -438,6 +438,16 @@ module.exports = {
     return query;
   },
 
+  // The command table that used to live here moved to the actions list (F12),
+  // which derives it from the registrations; help keeps what only it can say.
+  getHelpMarkdown() {
+    return (
+      `**${this.items.length}** files in **${this.projectCount}** project${
+        this.projectCount !== 1 ? "s" : ""
+      }.\n\n` + "The actions list (F12) shows every command with its keybinding."
+    );
+  },
+
   update() {
     if (this.needRebuild) {
       this.selectList.update({
@@ -449,6 +459,7 @@ module.exports = {
         this.selectList.update({
           items: this.items,
           loadingMessage: null,
+          helpMarkdown: this.getHelpMarkdown(),
         });
       });
     } else if (!this.viewSynced) {
@@ -456,6 +467,7 @@ module.exports = {
       this.relativize();
       this.selectList.update({
         items: this.items,
+        helpMarkdown: this.getHelpMarkdown(),
       });
     } else {
       this.relativize();
