@@ -122,13 +122,10 @@ module.exports = {
     };
   },
 
-  // The command table that used to live here moved to the actions list (F12),
-  // which derives it from the registrations; help keeps what only it can say.
-  getHelpMarkdown() {
-    return (
-      `**${this.items.length}** open item${this.items.length !== 1 ? "s" : ""}.\n\n` +
-      "The actions list (F12) shows every command with its keybinding."
-    );
+  // The command table moved to the actions list (F12); the item count is the
+  // one thing only this line can say.
+  infoLine() {
+    return `${this.items.length} open item${this.items.length !== 1 ? "s" : ""}`;
   },
 
   update() {
@@ -139,7 +136,7 @@ module.exports = {
     this.items = items;
     this.selectList.update({
       items: this.items,
-      helpMarkdown: this.getHelpMarkdown(),
+      infoMessage: this.infoLine(),
     });
   },
 

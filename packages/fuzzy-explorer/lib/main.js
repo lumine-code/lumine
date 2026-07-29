@@ -310,7 +310,7 @@ module.exports = {
       this.selectList.update({
         items: this.items,
         loadingMessage: null,
-        helpMarkdown: this.getHelpMarkdown(),
+        infoMessage: this.infoLine(),
       });
     }
   },
@@ -333,14 +333,11 @@ module.exports = {
     });
   },
 
-  // The command table that used to live here moved to the actions list (F12),
-  // which derives it from the registrations; help keeps what only it can say.
-  getHelpMarkdown() {
+  // The command table moved to the actions list (F12); the index size is the
+  // one thing only this line can say.
+  infoLine() {
     const count = this.items ? this.items.length : 0;
-    return (
-      `**${count}** files indexed.\n\n` +
-      "The actions list (F12) shows every command with its keybinding."
-    );
+    return `${count} files indexed`;
   },
 
   elementForItem(item, { highlight }) {
