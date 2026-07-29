@@ -1,5 +1,6 @@
 const path = require("path");
 const os = require("os");
+const { webUtils } = require("electron");
 const fs = require("./fs-compat");
 const { CompositeDisposable, Emitter } = require("atom");
 
@@ -2477,9 +2478,11 @@ class TreeView {
         // Drop event from OS
         entryElement.classList.remove("selected");
         for (let file of event.dataTransfer.files) {
+          const droppedPath = getPathForDroppedFile(file);
+          if (!droppedPath) continue;
           if ((process.platform === "darwin" && event.metaKey) || event.ctrlKey) {
-            this.copyEntry(file.path, newDirectoryPath);
-          } else if (!this.moveEntry(file.path, newDirectoryPath)) {
+            this.copyEntry(droppedPath, newDirectoryPath);
+          } else if (!this.moveEntry(droppedPath, newDirectoryPath)) {
             break;
           }
         }
@@ -2489,7 +2492,8 @@ class TreeView {
       // tree view. This is probably the user dragging a folder into the tree
       // view in order to add a new folder to the project.
       for (let entry of event.dataTransfer.files) {
-        atom.project.addPath(entry.path);
+        const droppedPath = getPathForDroppedFile(entry);
+        if (droppedPath) atom.project.addPath(droppedPath);
       }
     }
   }
@@ -2504,6 +2508,19 @@ class TreeView {
   isVisible() {
     return this.element.offsetWidth !== 0 || this.element.offsetHeight !== 0;
   }
+}
+
+function getPathForDroppedFile(file) {
+  if (typeof webUtils?.getPathForFile === "function") {
+    try {
+      const filePath = webUtils.getPathForFile(file);
+      if (filePath) return filePath;
+    } catch {
+      // Spec fakes and older call sites may still provide a path property instead.
+    }
+  }
+
+  return file.path;
 }
 
 module.exports = TreeView;

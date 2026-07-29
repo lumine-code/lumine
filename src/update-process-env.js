@@ -4,6 +4,7 @@ const childProcess = require("child_process");
 const ENVIRONMENT_VARIABLES_TO_PRESERVE = new Set([
   "NODE_ENV",
   "NODE_PATH",
+  "CHROME_CRASHPAD_PIPE_NAME",
   "LUMINE_HOME",
   "LUMINE_CHANNEL",
   "LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT",

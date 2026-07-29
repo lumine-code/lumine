@@ -220,6 +220,22 @@ describe("updateProcessEnv(launchEnv)", function () {
       });
     });
 
+    it("preserves the renderer's Crashpad pipe instead of copying one from another process", async function () {
+      process.env = {
+        CHROME_CRASHPAD_PIPE_NAME: "\\\\.\\pipe\\crashpad_current",
+      };
+
+      await updateProcessEnv({
+        PROMPT: "$P$G",
+        CHROME_CRASHPAD_PIPE_NAME: "\\\\.\\pipe\\crashpad_terminated_launcher",
+      });
+
+      expect(process.env).toEqual({
+        PROMPT: "$P$G",
+        CHROME_CRASHPAD_PIPE_NAME: "\\\\.\\pipe\\crashpad_current",
+      });
+    });
+
     it("allows an existing env variable to be updated", async function () {
       process.env = {
         WILL_BE_UPDATED: "old-value",

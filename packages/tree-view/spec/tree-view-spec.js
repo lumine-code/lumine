@@ -1,4 +1,5 @@
 const path = require("path");
+const { webUtils } = require("electron");
 const TreeView = require("../lib/tree-view");
 const TreeEntry = require("../lib/tree-entry");
 
@@ -70,6 +71,43 @@ describe("TreeView root updates", () => {
     } finally {
       atom.project = project;
     }
+  });
+});
+
+describe("TreeView OS file drops", () => {
+  it("uses Electron's native path when adding a dropped folder as a project root", () => {
+    const droppedFolder = {};
+    const nativePath = path.resolve(__dirname, "..");
+    spyOn(webUtils, "getPathForFile").and.callFake((file) =>
+      file === droppedFolder ? nativePath : "",
+    );
+    spyOn(atom.project, "addPath");
+    const event = {
+      target: { closest: () => null },
+      dataTransfer: { files: [droppedFolder] },
+    };
+    const treeView = {
+      treeEntryForElement: () => null,
+    };
+
+    TreeView.prototype.onDrop.call(treeView, event);
+
+    expect(atom.project.addPath).toHaveBeenCalledWith(nativePath);
+  });
+
+  it("ignores a dropped file when Electron cannot resolve its path", () => {
+    spyOn(webUtils, "getPathForFile").and.returnValue("");
+    spyOn(atom.project, "addPath");
+    const event = {
+      target: { closest: () => null },
+      dataTransfer: { files: [{}] },
+    };
+    const treeView = {
+      treeEntryForElement: () => null,
+    };
+
+    expect(() => TreeView.prototype.onDrop.call(treeView, event)).not.toThrow();
+    expect(atom.project.addPath).not.toHaveBeenCalled();
   });
 });
 
