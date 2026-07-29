@@ -53,21 +53,6 @@ atom-text-editor {
         color: var(--syntax-text-color);
       }
     }
-
-    &:not(.git-diff-icon) .line-number.git-line-removed {
-      &.git-line-removed::before {
-        bottom: -3px;
-      }
-      &::after {
-        content: "";
-        position: absolute;
-        left: 0px;
-        bottom: 0px;
-        width: 25px;
-        border-bottom: 1px dotted rgb(from var(--syntax-color-removed) r g b / 50%);
-        pointer-events: none;
-      }
-    }
   }
 
   .gutter .line-number.folded,

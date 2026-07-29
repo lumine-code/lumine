@@ -28,7 +28,7 @@
   "configSchema": {
     "showIconsInEditorGutter": {
       "title": "Show Icons In Editor Gutter",
-      "description": "Show colored icons for added (`+`), modified (`·`) and removed (`-`) lines in the editor's gutter, instead of colored markers (`|`).",
+      "description": "Show colored icons for added (`+`), modified (`·`) and removed (`-`) lines in the editor's gutter, instead of colored line numbers.",
       "type": "boolean",
       "default": false
     },

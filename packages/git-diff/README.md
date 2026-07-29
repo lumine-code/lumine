@@ -4,8 +4,8 @@ Marks lines in the editor gutter that have been added, edited, or deleted since 
 
 ## Features
 
-- **Gutter markers**: marks added, edited, and deleted lines in the editor gutter.
-- **Icon or marker style**: shows colored icons or colored markers in the gutter.
+- **Gutter markers**: marks added, edited, and deleted lines with colored line numbers.
+- **Icon or line-number style**: shows colored icons or colored line numbers in the gutter.
 - **Diff navigation**: moves the cursor to the next or previous diff in the editor.
 - **Diff list**: opens a searchable list of all diffs in the current file.
 - **Wrap-around**: optionally wraps around to the first or last diff when navigating.
@@ -20,11 +20,11 @@ Commands available in `atom-text-editor`:
 
 ## Customization
 
-Give the added-line gutter marker a thicker, custom-colored border by adding CSS to your `styles.css`:
+Give added-line numbers a custom color by adding CSS to your `styles.css`:
 
 ```css
 atom-text-editor .gutter .line-number.git-line-added {
-  border-left: 4px solid #98c379;
+  color: #98c379;
 }
 ```
 

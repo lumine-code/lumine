@@ -1,33 +1,16 @@
 atom-text-editor {
-  .gutter .line-number {
+  .gutter:not(.git-diff-icon) .line-number {
     &.git-line-modified {
-      border-left: 2px solid var(--syntax-color-modified);
-      padding-left: calc(0.5em - 2px);
+      color: var(--syntax-color-modified);
     }
 
     &.git-line-added {
-      border-left: 2px solid var(--syntax-color-added);
-      padding-left: calc(0.5em - 2px);
+      color: var(--syntax-color-added);
     }
 
-    &.git-line-removed:before,
-    &.git-previous-line-removed:before {
-      position: absolute;
-      left: 0;
-      height: 0;
-      width: 0;
-      content: "";
-      border: solid transparent;
-      border-left-color: var(--syntax-color-removed);
-      border-width: 4px;
-      margin-top: -4px;
-      pointer-events: none;
-    }
-    &.git-line-removed:before {
-      bottom: -4px;
-    }
-    &.git-previous-line-removed:before {
-      top: 0;
+    &.git-line-removed,
+    &.git-previous-line-removed {
+      color: var(--syntax-color-removed);
     }
   }
 
