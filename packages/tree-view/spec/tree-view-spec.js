@@ -559,6 +559,72 @@ describe("TreeView row model and sticky headers", () => {
     }
   });
 
+  it("joins adjacent rounded selections into continuous areas", () => {
+    const stylesheet = atom.themes.requireStylesheet(
+      path.join(__dirname, "..", "styles", "tree-view-plus.css"),
+    );
+    const tree = document.createElement("div");
+    tree.classList.add("tree-view");
+    tree.style.cssText = `
+      --tree-view-row-border-radius: 6px;
+      --tree-view-row-inset: 4px;
+      --ui-line-height: 24px;
+    `;
+    const list = document.createElement("ol");
+    list.classList.add("tree-view-root", "list-tree");
+
+    const row = (...classNames) => {
+      const element = document.createElement("li");
+      element.classList.add("entry", "tree-view-row", ...classNames);
+      return element;
+    };
+    const first = row("selected");
+    const middle = row("selected");
+    const last = row("selected");
+    const isolated = row("selected");
+    const dragTarget = row("selected", "drag-over");
+    const afterDragTarget = row("selected");
+    list.append(first, middle, last, row(), isolated, row(), dragTarget, afterDragTarget);
+
+    const stickyList = document.createElement("ol");
+    stickyList.classList.add("tree-view-sticky-header-list", "list-tree");
+    const sticky = () => {
+      const entry = document.createElement("li");
+      entry.classList.add("entry", "tree-view-sticky-header", "selected");
+      const header = document.createElement("div");
+      header.classList.add("tree-view-sticky-header-row");
+      entry.appendChild(header);
+      return { entry, header };
+    };
+    const firstSticky = sticky();
+    const lastSticky = sticky();
+    stickyList.append(firstSticky.entry, lastSticky.entry);
+    tree.append(list, stickyList);
+    jasmine.attachToDOM(tree);
+
+    try {
+      const selectionStyle = (entry) => getComputedStyle(entry, "::before");
+
+      expect(selectionStyle(first).borderTopLeftRadius).toBe("6px");
+      expect(selectionStyle(first).borderBottomLeftRadius).toBe("0px");
+      expect(selectionStyle(middle).borderTopLeftRadius).toBe("0px");
+      expect(selectionStyle(middle).borderBottomLeftRadius).toBe("0px");
+      expect(selectionStyle(last).borderTopLeftRadius).toBe("0px");
+      expect(selectionStyle(last).borderBottomLeftRadius).toBe("6px");
+      expect(selectionStyle(isolated).borderRadius).toBe("6px");
+      expect(selectionStyle(dragTarget).borderRadius).toBe("6px");
+      expect(selectionStyle(afterDragTarget).borderRadius).toBe("6px");
+
+      expect(getComputedStyle(firstSticky.header).borderTopLeftRadius).toBe("6px");
+      expect(getComputedStyle(firstSticky.header).borderBottomLeftRadius).toBe("0px");
+      expect(getComputedStyle(lastSticky.header).borderTopLeftRadius).toBe("0px");
+      expect(getComputedStyle(lastSticky.header).borderBottomLeftRadius).toBe("6px");
+    } finally {
+      tree.remove();
+      stylesheet.dispose();
+    }
+  });
+
   // The list sizes itself, rather than script writing back the widest row it
   // measured: a row is `min-width: 100%` of the list, so a measured maximum
   // fed back into the list width can only ever grow.

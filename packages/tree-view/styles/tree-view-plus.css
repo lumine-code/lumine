@@ -205,6 +205,18 @@
     }
   }
 
+  /* Adjacent selected rows paint as one continuous area. Keep drag targets
+     independent so their destination highlight cannot merge into a selection. */
+  .entry.selected:not(.drag-over):has(+ .entry.selected:not(.drag-over))::before {
+    border-bottom-right-radius: 0;
+    border-bottom-left-radius: 0;
+  }
+
+  .entry.selected:not(.drag-over) + .entry.selected:not(.drag-over)::before {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
+  }
+
   .entry.selected::before {
     background: var(--background-color-selected);
   }
@@ -302,6 +314,19 @@
 
     &.selected > .tree-view-sticky-header-row {
       background: var(--background-color-selected);
+    }
+
+    &.selected:not(.drag-over):has(+ .tree-view-sticky-header.selected:not(.drag-over))
+      > .tree-view-sticky-header-row {
+      border-bottom-right-radius: 0;
+      border-bottom-left-radius: 0;
+    }
+
+    &.selected:not(.drag-over)
+      + .tree-view-sticky-header.selected:not(.drag-over)
+      > .tree-view-sticky-header-row {
+      border-top-left-radius: 0;
+      border-top-right-radius: 0;
     }
   }
 
