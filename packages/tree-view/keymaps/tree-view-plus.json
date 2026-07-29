@@ -50,8 +50,8 @@
     "backspace": "tree-view:remove",
     "k": "core:move-up",
     "j": "core:move-down",
-    "u": "tree-view:toggle-ignored-names",
-    "i": "tree-view:toggle-vcs-ignored-files",
+    "i": "tree-view:toggle-ignored-names",
+    "v": "tree-view:toggle-vcs-ignored-files",
     "home": "core:move-to-top",
     "end": "core:move-to-bottom"
   },
