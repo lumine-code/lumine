@@ -18,31 +18,31 @@ Commands available in `atom-workspace`:
 - `fuzzy-files:toggle`: toggle the fuzzy files panel,
 - `fuzzy-files:refresh`: refresh the file cache.
 
-Commands available in `.fuzzy-files`:
+Commands available in `.fuzzy-files`, all listed with their keybindings in the item-actions list (F12):
 
-- `select-list:open`: open the selected file,
-- `select-list:open-external`: open the selected file externally,
-- `select-list:show-in-folder`: show the selected file in its folder,
-- `select-list:trash`: move the selected file to the trash,
-- `select-list:split-left/right/up/down`: open the selected file in a split pane,
-- `select-list:refresh-index`: refresh the file index,
-- `select-list:copy-relative-path`: copy the relative path,
-- `select-list:copy-project-path`: copy the project path,
-- `select-list:copy-absolute-path`: copy the absolute path,
-- `select-list:copy-file-name`: copy the file name,
-- `select-list:insert-relative-path`: insert the relative path,
-- `select-list:insert-project-path`: insert the project path,
-- `select-list:insert-absolute-path`: insert the absolute path,
-- `select-list:insert-file-name`: insert the file name,
-- `select-list:use-default-separator`: use the default path separator,
-- `select-list:use-forward-slashes`: use forward slashes in paths,
-- `select-list:use-backslashes`: use backslashes in paths,
-- `select-list:query-selected-path`: set the query from the selected item path,
-- `select-list:query-selection`: set the query from the editor selection,
-- `select-list:reveal-in-tree-view`: reveal the selected file in the tree view,
-- `select-list:cut-file`: cut the selected file,
-- `select-list:copy-file`: copy the selected file,
-- `select-list:claude-chat`: attach the selected file to claude-chat.
+- `fuzzy-files:open`: open the selected file,
+- `fuzzy-files:open-external`: open the file in the default external program,
+- `fuzzy-files:show-in-folder`: show the file in the system file manager,
+- `fuzzy-files:trash`: move the file to the trash,
+- `fuzzy-files:split-left/right/up/down`: open the file in a split pane,
+- `fuzzy-files:refresh-index`: rebuild the file index,
+- `fuzzy-files:copy-relative-path`: copy the path relative to the active editor,
+- `fuzzy-files:copy-project-path`: copy the path relative to the project root,
+- `fuzzy-files:copy-absolute-path`: copy the absolute path,
+- `fuzzy-files:copy-file-name`: copy the file name,
+- `fuzzy-files:insert-relative-path`: insert the path relative to the active editor,
+- `fuzzy-files:insert-project-path`: insert the path relative to the project root,
+- `fuzzy-files:insert-absolute-path`: insert the absolute path,
+- `fuzzy-files:insert-file-name`: insert the file name,
+- `fuzzy-files:use-default-separator`: use the platform path separator,
+- `fuzzy-files:use-forward-slashes`: use forward slashes in inserted and copied paths,
+- `fuzzy-files:use-backslashes`: use backslashes in inserted and copied paths,
+- `fuzzy-files:query-selected-path`: continue the query from the selected path,
+- `fuzzy-files:query-selection`: use the editor selection as the query,
+- `fuzzy-files:reveal-in-tree-view`: reveal the file in the tree view,
+- `fuzzy-files:cut-file`: cut the file to the system clipboard,
+- `fuzzy-files:copy-file`: copy the file to the system clipboard,
+- `fuzzy-files:claude-chat`: attach the file to the Claude chat.
 
 ## Services
 

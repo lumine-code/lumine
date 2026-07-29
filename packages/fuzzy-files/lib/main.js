@@ -37,6 +37,7 @@ module.exports = {
 
     this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-files",
+      crumb: "Files",
       maxResults: 50,
       emptyMessage: "No matches found",
       removeDiacritics: true,
@@ -66,48 +67,124 @@ module.exports = {
         "fuzzy-files:toggle": () => this.selectList.toggle(),
         "fuzzy-files:refresh": () => this.cache(),
       }),
+      // Registered in the package's own namespace with descriptions: the
+      // item-actions list (F12) derives its rows — label, description,
+      // keybinding — from these registrations and the keymap, so nothing is
+      // documented twice.
       atom.commands.add(this.selectList.element, {
-        "select-list:query-selected-path": () => this.updateQueryFromItem(),
-        "select-list:open": () => this.performAction("open"),
-        "select-list:open-external": () => this.performAction("open-external"),
-        "select-list:show-in-folder": () => this.performAction("show-in-folder"),
-        "select-list:trash": () => this.performAction("trash"),
-        "select-list:split-left": () => this.performAction("split", { side: "left" }),
-        "select-list:split-right": () => this.performAction("split", { side: "right" }),
-        "select-list:split-up": () => this.performAction("split", { side: "up" }),
-        "select-list:split-down": () => this.performAction("split", { side: "down" }),
-        "select-list:insert-project-path": () =>
-          this.performAction("path", { op: "insert", rel: "p" }),
-        "select-list:insert-absolute-path": () =>
-          this.performAction("path", { op: "insert", rel: "a" }),
-        "select-list:insert-relative-path": () =>
-          this.performAction("path", { op: "insert", rel: "r" }),
-        "select-list:insert-file-name": () =>
-          this.performAction("path", { op: "insert", rel: "n" }),
-        "select-list:copy-project-path": () => this.performAction("path", { op: "copy", rel: "p" }),
-        "select-list:copy-absolute-path": () =>
-          this.performAction("path", { op: "copy", rel: "a" }),
-        "select-list:copy-relative-path": () =>
-          this.performAction("path", { op: "copy", rel: "r" }),
-        "select-list:copy-file-name": () => this.performAction("path", { op: "copy", rel: "n" }),
-        "select-list:refresh-index": () => this.refresh(),
-        "select-list:use-default-separator": () => {
-          atom.config.set("fuzzy-files.separator", 0);
-          atom.notifications.addSuccess("Separator has been changed to default");
+        "fuzzy-files:open": {
+          description: "Open the selected file",
+          didDispatch: () => this.performAction("open"),
         },
-        "select-list:use-forward-slashes": () => {
-          atom.config.set("fuzzy-files.separator", 1);
-          atom.notifications.addSuccess("Separator has been changed to forward slash");
+        "fuzzy-files:open-external": {
+          description: "Open the file in the default external program",
+          didDispatch: () => this.performAction("open-external"),
         },
-        "select-list:use-backslashes": () => {
-          atom.config.set("fuzzy-files.separator", 2);
-          atom.notifications.addSuccess("Separator has been changed to backslash");
+        "fuzzy-files:show-in-folder": {
+          description: "Show the file in the system file manager",
+          didDispatch: () => this.performAction("show-in-folder"),
         },
-        "select-list:cut-file": () => this.performAction("clip", { effect: "cut" }),
-        "select-list:copy-file": () => this.performAction("clip", { effect: "copy" }),
-        "select-list:query-selection": () => this.selectList.setQueryFromSelection(),
-        "select-list:reveal-in-tree-view": () => this.performAction("reveal-in-tree-view"),
-        "select-list:claude-chat": () => this.performAction("claude-chat"),
+        "fuzzy-files:trash": {
+          description: "Move the file to the trash",
+          didDispatch: () => this.performAction("trash"),
+        },
+        "fuzzy-files:split-left": {
+          description: "Open the file in a pane to the left",
+          didDispatch: () => this.performAction("split", { side: "left" }),
+        },
+        "fuzzy-files:split-right": {
+          description: "Open the file in a pane to the right",
+          didDispatch: () => this.performAction("split", { side: "right" }),
+        },
+        "fuzzy-files:split-up": {
+          description: "Open the file in a pane above",
+          didDispatch: () => this.performAction("split", { side: "up" }),
+        },
+        "fuzzy-files:split-down": {
+          description: "Open the file in a pane below",
+          didDispatch: () => this.performAction("split", { side: "down" }),
+        },
+        "fuzzy-files:insert-project-path": {
+          description: "Insert the path relative to the project root",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "p" }),
+        },
+        "fuzzy-files:insert-absolute-path": {
+          description: "Insert the absolute path",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "a" }),
+        },
+        "fuzzy-files:insert-relative-path": {
+          description: "Insert the path relative to the active editor",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "r" }),
+        },
+        "fuzzy-files:insert-file-name": {
+          description: "Insert the file name",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "n" }),
+        },
+        "fuzzy-files:copy-project-path": {
+          description: "Copy the path relative to the project root",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "p" }),
+        },
+        "fuzzy-files:copy-absolute-path": {
+          description: "Copy the absolute path",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "a" }),
+        },
+        "fuzzy-files:copy-relative-path": {
+          description: "Copy the path relative to the active editor",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "r" }),
+        },
+        "fuzzy-files:copy-file-name": {
+          description: "Copy the file name",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "n" }),
+        },
+        "fuzzy-files:refresh-index": {
+          description: "Rebuild the file index",
+          didDispatch: () => this.refresh(),
+        },
+        "fuzzy-files:use-default-separator": {
+          description: "Use the platform path separator",
+          didDispatch: () => {
+            atom.config.set("fuzzy-files.separator", 0);
+            atom.notifications.addSuccess("Separator has been changed to default");
+          },
+        },
+        "fuzzy-files:use-forward-slashes": {
+          description: "Use forward slashes in inserted and copied paths",
+          didDispatch: () => {
+            atom.config.set("fuzzy-files.separator", 1);
+            atom.notifications.addSuccess("Separator has been changed to forward slash");
+          },
+        },
+        "fuzzy-files:use-backslashes": {
+          description: "Use backslashes in inserted and copied paths",
+          didDispatch: () => {
+            atom.config.set("fuzzy-files.separator", 2);
+            atom.notifications.addSuccess("Separator has been changed to backslash");
+          },
+        },
+        "fuzzy-files:cut-file": {
+          description: "Cut the file to the system clipboard",
+          didDispatch: () => this.performAction("clip", { effect: "cut" }),
+        },
+        "fuzzy-files:copy-file": {
+          description: "Copy the file to the system clipboard",
+          didDispatch: () => this.performAction("clip", { effect: "copy" }),
+        },
+        "fuzzy-files:query-selected-path": {
+          description: "Continue the query from the selected path",
+          didDispatch: () => this.updateQueryFromItem(),
+        },
+        "fuzzy-files:query-selection": {
+          description: "Use the editor selection as the query",
+          didDispatch: () => this.selectList.setQueryFromSelection(),
+        },
+        "fuzzy-files:reveal-in-tree-view": {
+          description: "Reveal the file in the tree view",
+          didDispatch: () => this.performAction("reveal-in-tree-view"),
+        },
+        "fuzzy-files:claude-chat": {
+          description: "Attach the file to the Claude chat",
+          didDispatch: () => this.performAction("claude-chat"),
+        },
       }),
       atom.project.onDidChangeFiles((events) => {
         if (!this.needRebuild) this.updateEvent(events);
@@ -361,28 +438,6 @@ module.exports = {
     return query;
   },
 
-  getHelpMarkdown() {
-    return (
-      "Available commands:\n" +
-      "- **Enter**: Open file\n" +
-      "- **Alt+Enter**: Open externally\n" +
-      "- **Ctrl+Enter**: Show in folder\n" +
-      "- **Alt+Left|Right|Up|Down**: Split pane\n" +
-      "- **Alt+C P|A|R|N**: Copy path\n" +
-      "- **Alt+V P|A|R|N**: Insert path\n" +
-      "- **Alt+Delete**: Trash file\n" +
-      "- **Alt+Q|S**: Query from item|selection\n" +
-      "- **Alt+T**: Reveal in tree-view\n" +
-      "- **Alt+0|/|\\\\**: Set path separator\n" +
-      "- **Alt+F**: Attach to claude-chat\n" +
-      "- **Alt+W Alt+C|X**: Copy/cut file\n" +
-      "- **F5**: Refresh index\n\n" +
-      `**${this.items.length}** files in **${this.projectCount}** project${
-        this.projectCount !== 1 ? "s" : ""
-      }`
-    );
-  },
-
   update() {
     if (this.needRebuild) {
       this.selectList.update({
@@ -394,7 +449,6 @@ module.exports = {
         this.selectList.update({
           items: this.items,
           loadingMessage: null,
-          helpMarkdown: this.getHelpMarkdown(),
         });
       });
     } else if (!this.viewSynced) {
@@ -402,7 +456,6 @@ module.exports = {
       this.relativize();
       this.selectList.update({
         items: this.items,
-        helpMarkdown: this.getHelpMarkdown(),
       });
     } else {
       this.relativize();

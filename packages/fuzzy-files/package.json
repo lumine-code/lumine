@@ -17,7 +17,7 @@
   },
   "backgroundTips": [
     "You can open any file in the project by typing part of its name with {{ 'fuzzy-files:toggle' | keystroke }}",
-    "You can send the file you picked in the finder straight into a split pane with {{ 'select-list:split-right' | keystroke }}"
+    "You can send the file you picked in the finder straight into a split pane with {{ 'fuzzy-files:split-right' | keystroke }}"
   ],
   "main": "./lib/main",
   "activationCommands": {

@@ -138,7 +138,11 @@
     "shift-escape": "modal:go-back"
   },
   ".select-list atom-text-editor[mini]": {
-    "enter": "core:confirm"
+    "enter": "core:confirm",
+    // Opens the item-actions list: the dialog's own commands with their
+    // descriptions and keybindings, command-palette style. Package keymaps
+    // add actions in their own namespace and leave the chrome keys alone.
+    "f12": "select-list:actions"
   },
   ".tool-panel.panel-left, .tool-panel.panel-right": {
     "escape": "tool-panel:unfocus"
