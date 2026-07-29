@@ -58,6 +58,10 @@ describe("project-list scan handler", () => {
     expect(run(dir, "beta/*/")).toEqual(["beta/nested"]);
   });
 
+  it("does not expand matched directories recursively", () => {
+    expect(run(dir, "bet?")).toEqual(["beta"]);
+  });
+
   it("returns nothing when the pattern matches no directory", () => {
     expect(run(dir, "gamma/*/")).toEqual([]);
   });

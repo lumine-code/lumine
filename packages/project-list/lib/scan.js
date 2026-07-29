@@ -12,6 +12,7 @@ module.exports = function (dirPath, scanList) {
     cwd: dirPath,
     absolute: false,
     onlyDirectories: true,
+    expandDirectories: false,
   });
   // A pattern ending in `/` matches with the separator still attached; the
   // caller joins these onto `dirPath`, so strip it. tinyglobby always reports

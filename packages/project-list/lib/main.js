@@ -643,7 +643,11 @@ class ProjectList {
         // `projects.cson` pattern means.
         const pattern = WINDOWS_SEPARATORS ? p.split(ANY_SEPARATOR).join("/") : p;
         return isDynamicPattern(pattern)
-          ? glob(pattern, { absolute: true, onlyDirectories: true })
+          ? glob(pattern, {
+              absolute: true,
+              onlyDirectories: true,
+              expandDirectories: false,
+            })
           : Promise.resolve([p]);
       }),
     );

@@ -25,6 +25,14 @@ describe("project-list glob path expansion", () => {
     expect(expanded).toEqual([path.join(dir, "alpha"), path.join(dir, "beta")]);
   });
 
+  it("does not expand matched directories recursively", async () => {
+    fs.mkdirSync(path.join(dir, "alpha", "nested"));
+
+    const expanded = await projectList.expandGlobPaths([path.join(dir, "alph?")]);
+
+    expect(expanded).toEqual([path.join(dir, "alpha")]);
+  });
+
   it("never expands to a file", async () => {
     const expanded = await projectList.expandGlobPaths([path.join(dir, "*")]);
 
