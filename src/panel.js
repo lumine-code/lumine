@@ -10,7 +10,10 @@ module.exports = class Panel {
   Section: Construction and Destruction
   */
 
-  constructor({ item, autoFocus, restoreFocus, visible, priority, className }, viewRegistry) {
+  constructor(
+    { item, autoFocus, restoreFocus, visible, priority, className, crumb },
+    viewRegistry,
+  ) {
     this.destroyed = false;
     this.item = item;
     this.autoFocus = autoFocus == null ? false : autoFocus;
@@ -18,6 +21,14 @@ module.exports = class Panel {
     this.visible = visible == null ? true : visible;
     this.priority = priority == null ? 100 : priority;
     this.className = className;
+    this.crumb = crumb;
+    // Assigned by the workspace for modal panels; the keeper of the window's
+    // modal breadcrumb trail (see Workspace::addPanel and src/modal-flow.js).
+    this.flowKeeper = null;
+    // True only while the modal flow hides this panel to move to another step.
+    // Owners that treat an unrequested hide as a cancel consult it to tell a
+    // flow transition apart from a dismissal.
+    this.flowTransition = false;
     this.viewRegistry = viewRegistry;
     this.emitter = new Emitter();
   }
@@ -97,8 +108,35 @@ module.exports = class Panel {
     if (wasVisible) this.emitter.emit("did-change-visible", this.visible);
   }
 
-  // Public: Show this panel
-  show() {
+  // Public: Show this panel.
+  //
+  // * `options` (optional) {Object}
+  //   * `crumb` Modal panels only. A {String}, or `true` to use the label the
+  //     panel declared when it was added. The panel announces "display me now
+  //     and take me into the breadcrumb": the modal that is visible at this
+  //     moment becomes the previous entry of the window's modal trail, the
+  //     breadcrumb strip shows the path, and `modal:go-back` (Shift-Escape)
+  //     or a click on an earlier crumb returns to it. Without `crumb` the
+  //     panel is shown standalone, exactly as before — and showing a modal
+  //     standalone ends whatever trail another flow had built.
+  show(options) {
+    if (options != null) {
+      for (const key of Object.keys(options)) {
+        if (key !== "crumb") {
+          throw new TypeError(`Panel::show received an unknown option "${key}"`);
+        }
+      }
+      if ("crumb" in options) {
+        if (typeof options.crumb !== "string" && options.crumb !== true) {
+          throw new TypeError("The crumb option must be a string or true");
+        }
+        if (!this.flowKeeper) {
+          throw new Error("The crumb option is only supported on modal panels");
+        }
+        this.flowKeeper.showStep(this, options.crumb === true ? this.crumb : options.crumb);
+        return;
+      }
+    }
     let wasVisible = this.visible;
     this.visible = true;
     if (this.element) this.element.style.display = null;

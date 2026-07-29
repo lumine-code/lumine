@@ -131,6 +131,12 @@
     // Lumine Specific
     "shift-escape": "pane:toggle-pending-item"
   },
+  "atom-panel.modal": {
+    // More specific than the atom-workspace binding above, so inside a modal
+    // Shift-Escape walks the breadcrumb trail instead of toggling the pending
+    // item.
+    "shift-escape": "modal:go-back"
+  },
   ".select-list atom-text-editor[mini]": {
     "enter": "core:confirm"
   },

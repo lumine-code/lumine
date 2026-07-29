@@ -267,6 +267,12 @@ module.exports = function ({
       "core:save-as": function () {
         return this.getModel().saveActivePaneItemAs();
       },
+      "modal:go-back": {
+        hiddenInCommandPalette: true,
+        didDispatch() {
+          return this.getModel().popModal();
+        },
+      },
     },
     false,
   );

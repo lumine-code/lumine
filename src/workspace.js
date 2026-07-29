@@ -12,6 +12,7 @@ const StateStore = require("./state-store");
 const TextEditor = require("./text-editor");
 const Panel = require("./panel");
 const PanelContainer = require("./panel-container");
+const ModalFlow = require("./modal-flow");
 const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
@@ -1586,6 +1587,62 @@ module.exports = class Workspace extends Model {
     return new InputDialogView(props);
   }
 
+  /*
+  Section: Modal flow
+  */
+
+  // The keeper of the window's modal breadcrumb trail. Internal — packages
+  // reach the flow through {Panel::show}'s `crumb` option and the delegates
+  // below.
+  getModalFlow() {
+    if (this.modalFlowKeeper == null) {
+      this.modalFlowKeeper = new ModalFlow(this);
+    }
+    return this.modalFlowKeeper;
+  }
+
+  // Essential: Go back one step in the modal breadcrumb trail.
+  //
+  // A trail exists while a modal shown with {Panel::show}'s `crumb` option is
+  // on screen. Going back hides the current step — without cancelling it —
+  // and re-shows the previous panel with its state intact. Bound to
+  // Shift-Escape as `modal:go-back`; Escape still cancels the visible modal,
+  // which ends the whole trail.
+  //
+  // Returns a {Boolean} — `false` when there is no step to go back to.
+  popModal() {
+    return this.modalFlowKeeper ? this.modalFlowKeeper.pop() : false;
+  }
+
+  // Essential: Jump back to an earlier step of the modal breadcrumb trail.
+  //
+  // * `index` The zero-based trail position to return to, as reported by
+  //   {::getModalTrail}. The breadcrumb strip wires its crumbs to this.
+  //
+  // Returns a {Boolean} — `false` when the index is not an earlier step.
+  popModalTo(index) {
+    return this.modalFlowKeeper ? this.modalFlowKeeper.popTo(index) : false;
+  }
+
+  // Essential: The current modal breadcrumb trail.
+  //
+  // Returns an {Array} of {String} labels, root first; empty when no flow is
+  // active.
+  getModalTrail() {
+    return this.modalFlowKeeper ? this.modalFlowKeeper.getTrail() : [];
+  }
+
+  // Extended: Invoke the given callback whenever the modal breadcrumb trail
+  // changes — a step is entered, the flow goes back, or the trail ends.
+  //
+  // * `callback` {Function} receiving the trail as {::getModalTrail} reports
+  //   it.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  onDidChangeModalTrail(callback) {
+    return this.getModalFlow().onDidChangeTrail(callback);
+  }
+
   // Public: Asynchronously reopens the last-closed item's URI if it hasn't already been
   // reopened.
   //
@@ -2088,6 +2145,11 @@ module.exports = class Workspace extends Model {
   //     yourself. By default, when a modal panel is hidden, focus returns to the element
   //     that was focused before the modal opened — or, for chained modals, before the
   //     first modal in the chain opened. (default: true)
+  //   * `crumb` (optional) {String} the label this panel carries on the modal
+  //     breadcrumb trail. Used when the panel is shown as a flow step without
+  //     an explicit label — `panel.show({crumb: true})` — and when a step
+  //     shown on top of this panel adopts it as the trail root. See
+  //     {Panel::show}.
   //
   // Returns a {Panel}
   addModalPanel(options = {}) {
@@ -2117,7 +2179,13 @@ module.exports = class Workspace extends Model {
     if (options == null) {
       options = {};
     }
-    return this.panelContainers[location].addPanel(new Panel(options, this.viewRegistry));
+    const panel = new Panel(options, this.viewRegistry);
+    if (location === "modal") {
+      panel.flowKeeper = this.getModalFlow();
+    } else if (panel.crumb != null) {
+      throw new TypeError("The crumb option is only supported on modal panels");
+    }
+    return this.panelContainers[location].addPanel(panel);
   }
 
   /*

@@ -110,6 +110,11 @@ module.exports = class CommandRegistry {
   //       make sense to be executed from the command palette. Please use this
   //       option conservatively, as it could reduce the discoverability of your
   //       package's commands.
+  //     * `modal`: Declares that dispatching this command opens a modal panel.
+  //       Set to `true`, or to a {String} naming the label the modal carries
+  //       on the breadcrumb trail. The registry does not act on it — the
+  //       declaration travels with the command metadata so tooling can tell
+  //       modal-opening commands apart.
   //
   // ## Arguments: Registering Multiple Commands
   //

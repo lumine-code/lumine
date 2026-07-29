@@ -102,6 +102,54 @@ atom-panel.modal {
   }
 }
 
+/*
+ * Modal breadcrumbs
+ * --------------------------------------------------
+ * One strip per window, rendered by the workspace's modal flow (see
+ * src/modal-flow.js) and anchored flush above the modal card; the flow sets
+ * left/top/max-width from the card's measured rect.
+ */
+
+.modal-breadcrumbs {
+  position: fixed;
+  transform: translate(-50%, -100%);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  box-sizing: border-box;
+  padding: 2px 10px;
+  border-top-left-radius: 4px;
+  border-top-right-radius: 4px;
+  font-size: 11px;
+  white-space: nowrap;
+  color: var(--text-color-subtle);
+  background-color: var(--overlay-background-color);
+
+  .modal-breadcrumb {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+
+    &:not(.current) {
+      cursor: pointer;
+
+      &:hover {
+        color: var(--text-color-highlight);
+      }
+    }
+
+    &.current {
+      color: var(--text-color);
+    }
+
+    & + .modal-breadcrumb::before {
+      content: "›";
+      margin: 0 0.4em;
+      color: var(--text-color-subtle);
+    }
+  }
+}
+
 /* Deprecated: overlay, from-top, from-bottom, floating
    --------------------------------------------------
    TODO: Remove these! */
