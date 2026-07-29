@@ -1129,6 +1129,9 @@ module.exports = class TextEditorComponent {
         this.refs.scrollContainer.appendChild(horizontalScrollbar.element);
         this.refs.scrollContainer.appendChild(scrollbarCorner);
       }
+
+      this.refs.scrollbarCorner.style.visibility =
+        canScrollHorizontally && canScrollVertically ? "" : "hidden";
     } else if (this.refs.verticalScrollbar) {
       this.refs.verticalScrollbar.destroy();
       this.refs.horizontalScrollbar.destroy();

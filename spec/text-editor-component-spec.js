@@ -444,6 +444,7 @@ describe("TextEditorComponent", () => {
       expect(horizontalScrollbar.style.right).toBe(getHorizontalScrollbarHeight(component) + "px");
       expect(horizontalScrollbar.style.visibility).toBe("");
       expect(component.refs.scrollbarCorner).toBeDefined();
+      expect(component.refs.scrollbarCorner.style.visibility).toBe("");
 
       setScrollTop(component, 100);
       await setScrollLeft(component, 100);
@@ -462,6 +463,7 @@ describe("TextEditorComponent", () => {
       expect(getHorizontalScrollbarHeight(component)).toBe(0);
       expect(verticalScrollbar.style.visibility).toBe("");
       expect(horizontalScrollbar.style.visibility).toBe("hidden");
+      expect(component.refs.scrollbarCorner.style.visibility).toBe("hidden");
 
       editor.setText("a".repeat(100));
       await component.getNextUpdatePromise();
@@ -469,6 +471,7 @@ describe("TextEditorComponent", () => {
       expect(getHorizontalScrollbarHeight(component)).toBeGreaterThan(0);
       expect(verticalScrollbar.style.visibility).toBe("hidden");
       expect(horizontalScrollbar.style.visibility).toBe("");
+      expect(component.refs.scrollbarCorner.style.visibility).toBe("hidden");
 
       editor.setText("");
       await component.getNextUpdatePromise();
@@ -476,6 +479,7 @@ describe("TextEditorComponent", () => {
       expect(getHorizontalScrollbarHeight(component)).toBe(0);
       expect(verticalScrollbar.style.visibility).toBe("hidden");
       expect(horizontalScrollbar.style.visibility).toBe("hidden");
+      expect(component.refs.scrollbarCorner.style.visibility).toBe("hidden");
     });
 
     it("shows the vertical scrollbar for a short file when scrollPastEnd makes it scrollable (regression)", async () => {
