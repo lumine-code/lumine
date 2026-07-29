@@ -17,6 +17,7 @@ module.exports = {
   activate() {
     this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-workspace",
+      crumb: "Workspace",
       maxResults: 50,
       emptyMessage: "No open items found",
       removeDiacritics: true,
@@ -32,11 +33,27 @@ module.exports = {
       atom.commands.add("atom-workspace", {
         "fuzzy-workspace:toggle": () => this.selectList.toggle(),
       }),
+      // Registered in the package's own namespace: the item-actions list
+      // (F12) derives its rows — label, description, keybinding — from these
+      // registrations and the keymap, so nothing is documented twice. Every
+      // description says something the humanized command name does not.
       atom.commands.add(this.selectList.element, {
-        "select-list:focus-selected-item": () => this.performAction("focus"),
-        "select-list:close-selected-item": () => this.performAction("close"),
-        "select-list:copy-selected-path": () => this.performAction("copy-path"),
-        "select-list:query-selection": () => this.selectList.setQueryFromSelection(),
+        "fuzzy-workspace:focus-selected-item": {
+          description: "Reveal the item's dock if hidden, activate its pane, and focus it",
+          didDispatch: () => this.performAction("focus"),
+        },
+        "fuzzy-workspace:close-selected-item": {
+          description: "Close the item in its pane, keeping the list open",
+          didDispatch: () => this.performAction("close"),
+        },
+        "fuzzy-workspace:copy-selected-path": {
+          description: "Copy the item's file path or URI to the clipboard",
+          didDispatch: () => this.performAction("copy-path"),
+        },
+        "fuzzy-workspace:query-selection": {
+          description: "Use the editor selection as the query",
+          didDispatch: () => this.selectList.setQueryFromSelection(),
+        },
       }),
     );
   },
@@ -105,14 +122,12 @@ module.exports = {
     };
   },
 
+  // The command table that used to live here moved to the actions list (F12),
+  // which derives it from the registrations; help keeps what only it can say.
   getHelpMarkdown() {
     return (
-      "Available commands:\n" +
-      "- **Enter**: Focus item\n" +
-      "- **Alt+Delete**: Close item\n" +
-      "- **Alt+C**: Copy path\n" +
-      "- **Alt+S**: Query from selection\n\n" +
-      `**${this.items.length}** open item${this.items.length !== 1 ? "s" : ""}`
+      `**${this.items.length}** open item${this.items.length !== 1 ? "s" : ""}.\n\n` +
+      "The actions list (F12) shows every command with its keybinding."
     );
   },
 

@@ -19,18 +19,18 @@ Commands available in `atom-workspace`:
 - `project-list:update`: rebuild the project list,
 - `project-list:edit`: open the configuration file.
 
-Commands available in `.project-list`:
+Commands available in `.project-list`, all listed with their keybindings in the item-actions list (F12):
 
-- `select-list:open`: open the selected project in a new window,
-- `select-list:swap`: open the selected project in a new window and close the current one,
-- `select-list:switch`: switch the current window to the selected project,
-- `select-list:append`: append the selected project to the current window,
-- `select-list:paste`: insert the project paths into the active text editor,
-- `select-list:dev`: open the selected project in a new window in dev mode,
-- `select-list:safe`: open the selected project in a new window in safe mode,
-- `select-list:external`: open the project folders externally (via open-external),
-- `select-list:show`: show the project folders in the system file manager (via open-external),
-- `select-list:update`: rebuild the project list.
+- `project-list:open`: open the selected project in a new window,
+- `project-list:swap`: open the selected project in a new window and close the current one,
+- `project-list:switch`: switch the current window to the selected project,
+- `project-list:append`: append the selected project to the current window,
+- `project-list:paste`: insert the project paths into the active text editor,
+- `project-list:dev`: open the selected project in a new window in dev mode,
+- `project-list:safe`: open the selected project in a new window in safe mode,
+- `project-list:external`: open the project folders externally (via open-external),
+- `project-list:show`: show the project folders in the system file manager (via open-external),
+- `project-list:refresh`: rebuild the project list, skipping the cache.
 
 ## Configuration
 

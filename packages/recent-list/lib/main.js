@@ -8,21 +8,9 @@ class RecentList {
     this.restart = true;
     this.selectList = atom.workspace.buildSelectList({
       className: "recent-list",
+      crumb: "Recent",
       maxResults: 50,
       emptyMessage: "No matches found",
-      helpMarkdown:
-        "Available commands:\n" +
-        "- **Enter**: Open in new window\n" +
-        "- **Alt+Enter**: Swap current window\n" +
-        "- **Ctrl+Enter**: Switch in same window\n" +
-        "- **Shift+Enter**: Append to current window\n" +
-        "- **Alt+V**: Insert path\n" +
-        "- **Alt+D**: Open in new window in dev mode\n" +
-        "- **Alt+S**: Open in new window in safe mode\n" +
-        "- **Alt+F12**: Open external (via open-external)\n" +
-        "- **Ctrl+F12**: Show in explorer (via open-external)\n" +
-        "- **F5**: Refresh list\n" +
-        "- **Alt+Delete**: Remove from history",
       removeDiacritics: true,
       elementForItem: (item, options) => this.elementForItem(item, options),
       didConfirmSelection: () => this.performAction("open"),
@@ -38,18 +26,55 @@ class RecentList {
       atom.commands.add("atom-workspace", {
         "recent-list:toggle": () => this.toggle(),
       }),
+      // Registered in the package's own namespace: the item-actions list
+      // (F12) derives its rows — label, description, keybinding — from these
+      // registrations and the keymap, so nothing is documented twice. Every
+      // description says something the humanized command name does not.
       atom.commands.add(this.selectList.element, {
-        "select-list:open": () => this.performAction("open"),
-        "select-list:swap": () => this.performAction("swap"),
-        "select-list:switch": () => this.performAction("switch"),
-        "select-list:append": () => this.performAction("append"),
-        "select-list:paste": () => this.performAction("paste"),
-        "select-list:dev": () => this.performAction("dev"),
-        "select-list:safe": () => this.performAction("safe"),
-        "select-list:update": () => this.refresh(),
-        "select-list:external": () => this.performAction("external"),
-        "select-list:show": () => this.performAction("show"),
-        "select-list:delete": () => this.deleteSelected(),
+        "recent-list:open": {
+          description: "Open the project in a new window",
+          didDispatch: () => this.performAction("open"),
+        },
+        "recent-list:swap": {
+          description: "Open the project in a new window and close the current one",
+          didDispatch: () => this.performAction("swap"),
+        },
+        "recent-list:switch": {
+          description: "Replace the folders of the current window with the project paths",
+          didDispatch: () => this.performAction("switch"),
+        },
+        "recent-list:append": {
+          description: "Add the project paths to the folders of the current window",
+          didDispatch: () => this.performAction("append"),
+        },
+        "recent-list:paste": {
+          description: "Insert the project paths into the active editor",
+          didDispatch: () => this.performAction("paste"),
+        },
+        "recent-list:dev": {
+          description: "Open the project in a new window in dev mode",
+          didDispatch: () => this.performAction("dev"),
+        },
+        "recent-list:safe": {
+          description: "Open the project in a new window in safe mode",
+          didDispatch: () => this.performAction("safe"),
+        },
+        "recent-list:update": {
+          description: "Read the recent projects from the history again",
+          didDispatch: () => this.refresh(),
+        },
+        "recent-list:external": {
+          description: "Open each project folder in the default external program",
+          didDispatch: () => this.performAction("external"),
+        },
+        "recent-list:show": {
+          description: "Show each project folder in the system file manager",
+          didDispatch: () => this.performAction("show"),
+        },
+        "recent-list:delete": {
+          description: "Remove the project from the history, keeping the list open",
+          didDispatch: () => this.deleteSelected(),
+        },
       }),
     );
   }

@@ -16,19 +16,19 @@ Commands available in `atom-workspace`:
 
 - `recent-list:toggle`: open the recent list.
 
-Commands available in `.recent-list`:
+Commands available in `.recent-list`, all listed with their keybindings in the item-actions list (F12):
 
-- `select-list:open`: open a new window with the selected project,
-- `select-list:swap`: close the active window and open a new one with the selected project,
-- `select-list:switch`: switch to a new window with the selected project,
-- `select-list:append`: append the selected project to the active window,
-- `select-list:paste`: paste paths into the active text editor,
-- `select-list:dev`: open a new window with the selected project in dev mode,
-- `select-list:safe`: open a new window with the selected project in safe mode,
-- `select-list:external`: open folders externally,
-- `select-list:show`: show folders in the explorer,
-- `select-list:update`: update the recent list,
-- `select-list:delete`: remove the selected project from the recent list.
+- `recent-list:open`: open a new window with the selected project,
+- `recent-list:swap`: close the active window and open a new one with the selected project,
+- `recent-list:switch`: switch the current window to the selected project,
+- `recent-list:append`: append the selected project to the active window,
+- `recent-list:paste`: paste paths into the active text editor,
+- `recent-list:dev`: open a new window with the selected project in dev mode,
+- `recent-list:safe`: open a new window with the selected project in safe mode,
+- `recent-list:external`: open folders externally,
+- `recent-list:show`: show folders in the explorer,
+- `recent-list:update`: update the recent list,
+- `recent-list:delete`: remove the selected project from the recent list.
 
 ## Services
 

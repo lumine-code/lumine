@@ -26,6 +26,7 @@ module.exports = {
 
     this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-explorer",
+      crumb: "Explorer",
       maxResults: 50,
       emptyMessage: "No matches found",
       removeDiacritics: true,
@@ -46,69 +47,99 @@ module.exports = {
         "fuzzy-explorer:refresh": () => this.build(),
         "fuzzy-explorer:edit": () => this.editConfig(),
       }),
+      // Registered in the package's own namespace: the item-actions list
+      // (F12) derives its rows — label, description, keybinding — from these
+      // registrations and the keymap, so nothing is documented twice. Every
+      // description says something the humanized command name does not.
       atom.commands.add(this.selectList.element, {
-        "select-list:query-selected-path": () => {
-          this.updateQueryFromItem();
+        "fuzzy-explorer:open": {
+          description: "Open the file, or continue the query into a directory",
+          didDispatch: () => this.performAction("open"),
         },
-        "select-list:open": () => {
-          this.performAction("open");
+        "fuzzy-explorer:open-external": {
+          description: "Open the file in the default external program",
+          didDispatch: () => this.performAction("open-external"),
         },
-        "select-list:open-external": () => {
-          this.performAction("open-external");
+        "fuzzy-explorer:show-in-folder": {
+          description: "Show the file in the system file manager",
+          didDispatch: () => this.performAction("show-in-folder"),
         },
-        "select-list:show-in-folder": () => {
-          this.performAction("show-in-folder");
+        "fuzzy-explorer:split-left": {
+          description: "Open the file in a pane to the left",
+          didDispatch: () => this.performAction("split", { side: "left" }),
         },
-        "select-list:split-left": () => {
-          this.performAction("split", { side: "left" });
+        "fuzzy-explorer:split-right": {
+          description: "Open the file in a pane to the right",
+          didDispatch: () => this.performAction("split", { side: "right" }),
         },
-        "select-list:split-right": () => {
-          this.performAction("split", { side: "right" });
+        "fuzzy-explorer:split-up": {
+          description: "Open the file in a pane above",
+          didDispatch: () => this.performAction("split", { side: "up" }),
         },
-        "select-list:split-up": () => {
-          this.performAction("split", { side: "up" });
+        "fuzzy-explorer:split-down": {
+          description: "Open the file in a pane below",
+          didDispatch: () => this.performAction("split", { side: "down" }),
         },
-        "select-list:split-down": () => {
-          this.performAction("split", { side: "down" });
+        "fuzzy-explorer:insert-absolute-path": {
+          description: "Insert the full path from the filesystem root into the active editor",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "a" }),
         },
-        "select-list:insert-absolute-path": () => {
-          this.performAction("path", { op: "insert", rel: "a" });
+        "fuzzy-explorer:insert-relative-path": {
+          description: "Insert the path relative to the active editor",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "r" }),
         },
-        "select-list:insert-relative-path": () => {
-          this.performAction("path", { op: "insert", rel: "r" });
+        "fuzzy-explorer:insert-file-name": {
+          description: "Insert the base name, without its directories, into the active editor",
+          didDispatch: () => this.performAction("path", { op: "insert", rel: "n" }),
         },
-        "select-list:insert-file-name": () => {
-          this.performAction("path", { op: "insert", rel: "n" });
+        "fuzzy-explorer:copy-absolute-path": {
+          description: "Copy the full path from the filesystem root to the clipboard",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "a" }),
         },
-        "select-list:copy-absolute-path": () => {
-          this.performAction("path", { op: "copy", rel: "a" });
+        "fuzzy-explorer:copy-relative-path": {
+          description: "Copy the path relative to the active editor",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "r" }),
         },
-        "select-list:copy-relative-path": () => {
-          this.performAction("path", { op: "copy", rel: "r" });
+        "fuzzy-explorer:copy-file-name": {
+          description: "Copy the base name, without its directories, to the clipboard",
+          didDispatch: () => this.performAction("path", { op: "copy", rel: "n" }),
         },
-        "select-list:copy-file-name": () => {
-          this.performAction("path", { op: "copy", rel: "n" });
+        "fuzzy-explorer:refresh-index": {
+          description: "Scan the configured glob patterns again and rebuild the index",
+          didDispatch: () => this.update(),
         },
-        "select-list:refresh-index": () => {
-          this.update();
+        "fuzzy-explorer:use-default-separator": {
+          description: "Use the platform path separator",
+          didDispatch: () => {
+            atom.config.set("fuzzy-explorer.separator", 0);
+            atom.notifications.addSuccess("Separator has been changed to default");
+          },
         },
-        "select-list:claude-chat": () => {
-          this.performAction("claude-chat");
+        "fuzzy-explorer:use-forward-slashes": {
+          description: "Use forward slashes in inserted and copied paths",
+          didDispatch: () => {
+            atom.config.set("fuzzy-explorer.separator", 1);
+            atom.notifications.addSuccess("Separator has been changed to forward slash");
+          },
         },
-        "select-list:query-selection": () => {
-          this.selectList.setQueryFromSelection();
+        "fuzzy-explorer:use-backslashes": {
+          description: "Use backslashes in inserted and copied paths",
+          didDispatch: () => {
+            atom.config.set("fuzzy-explorer.separator", 2);
+            atom.notifications.addSuccess("Separator has been changed to backslash");
+          },
         },
-        "select-list:use-default-separator": () => {
-          atom.config.set("fuzzy-explorer.separator", 0);
-          atom.notifications.addSuccess("Separator has been changed to default");
+        "fuzzy-explorer:query-selected-path": {
+          description: "Continue the query from the selected path",
+          didDispatch: () => this.updateQueryFromItem(),
         },
-        "select-list:use-forward-slashes": () => {
-          atom.config.set("fuzzy-explorer.separator", 1);
-          atom.notifications.addSuccess("Separator has been changed to forward slash");
+        "fuzzy-explorer:query-selection": {
+          description: "Use the editor selection as the query",
+          didDispatch: () => this.selectList.setQueryFromSelection(),
         },
-        "select-list:use-backslashes": () => {
-          atom.config.set("fuzzy-explorer.separator", 2);
-          atom.notifications.addSuccess("Separator has been changed to backslash");
+        "fuzzy-explorer:claude-chat": {
+          description: "Attach the file to the Claude chat",
+          didDispatch: () => this.performAction("claude-chat"),
         },
       }),
     );
@@ -302,22 +333,13 @@ module.exports = {
     });
   },
 
+  // The command table that used to live here moved to the actions list (F12),
+  // which derives it from the registrations; help keeps what only it can say.
   getHelpMarkdown() {
-    const summary = this.items ? `\n\n**${this.items.length}** files indexed` : "";
+    const count = this.items ? this.items.length : 0;
     return (
-      "Available commands:\n" +
-      "- **Enter**: Open file\n" +
-      "- **Alt+Enter**: Open externally\n" +
-      "- **Ctrl+Enter**: Show in folder\n" +
-      "- **Alt+Left|Right|Up|Down**: Split pane\n" +
-      "- **Alt+C A|R|N**: Copy path\n" +
-      "- **Alt+V A|R|N**: Insert path\n" +
-      "- **Alt+Q**: Query from item\n" +
-      "- **Alt+S**: Query from selection\n" +
-      "- **Alt+0|/|\\\\**: Set separator\n" +
-      "- **Alt+F**: Attach to claude-chat\n" +
-      "- **F5**: Refresh index" +
-      summary
+      `**${count}** files indexed.\n\n` +
+      "The actions list (F12) shows every command with its keybinding."
     );
   },
 

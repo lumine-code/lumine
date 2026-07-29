@@ -32,20 +32,9 @@ class ProjectList {
     // create select-list
     this.selectList = atom.workspace.buildSelectList({
       className: "project-list",
+      crumb: "Projects",
       maxResults: 50,
       emptyMessage: "No matches found",
-      helpMarkdown:
-        "Available commands:\n" +
-        "- **Enter**: Open in new window\n" +
-        "- **Alt+Enter**: Swap current window\n" +
-        "- **Ctrl+Enter**: Switch in same window\n" +
-        "- **Shift+Enter**: Append to current window\n" +
-        "- **Alt+V**: Insert path\n" +
-        "- **Alt+D**: Open in new window in dev mode\n" +
-        "- **Alt+S**: Open in new window in safe mode\n" +
-        "- **Alt+F12**: Open external (via open-external)\n" +
-        "- **Ctrl+F12**: Show in explorer (via open-external)\n" +
-        "- **F5**: Refresh list",
       removeDiacritics: true,
       algorithm: "fuzzaldrin",
       elementForItem: (item, options) => this.elementForItem(item, options),
@@ -103,17 +92,54 @@ class ProjectList {
         "project-list:update": () => this.updateView(false),
         "project-list:edit": () => this.editConfig(),
       }),
+      // Registered in the package's own namespace: the item-actions list
+      // (F12) derives its rows — label, description, keybinding — from these
+      // registrations and the keymap, so nothing is documented twice. Every
+      // description says something the humanized command name does not.
+      // `project-list:refresh` is not `project-list:update`: a name registered
+      // on `atom-workspace` too would be filtered out of the actions list as
+      // chrome from above.
       atom.commands.add(this.selectList.element, {
-        "select-list:open": () => this.performAction("open"),
-        "select-list:swap": () => this.performAction("swap"),
-        "select-list:switch": () => this.performAction("switch"),
-        "select-list:append": () => this.performAction("append"),
-        "select-list:paste": () => this.performAction("paste"),
-        "select-list:dev": () => this.performAction("dev"),
-        "select-list:safe": () => this.performAction("safe"),
-        "select-list:update": () => this.updateView(false),
-        "select-list:external": () => this.performAction("external"),
-        "select-list:show": () => this.performAction("show"),
+        "project-list:open": {
+          description: "Open the project in a new window",
+          didDispatch: () => this.performAction("open"),
+        },
+        "project-list:swap": {
+          description: "Open the project in a new window and close the current one",
+          didDispatch: () => this.performAction("swap"),
+        },
+        "project-list:switch": {
+          description: "Replace the folders of the current window with the project paths",
+          didDispatch: () => this.performAction("switch"),
+        },
+        "project-list:append": {
+          description: "Add the project paths to the folders of the current window",
+          didDispatch: () => this.performAction("append"),
+        },
+        "project-list:paste": {
+          description: "Insert the project paths into the active editor",
+          didDispatch: () => this.performAction("paste"),
+        },
+        "project-list:dev": {
+          description: "Open the project in a new window in dev mode",
+          didDispatch: () => this.performAction("dev"),
+        },
+        "project-list:safe": {
+          description: "Open the project in a new window in safe mode",
+          didDispatch: () => this.performAction("safe"),
+        },
+        "project-list:refresh": {
+          description: "Rebuild the list from the config file, skipping the cache",
+          didDispatch: () => this.updateView(false),
+        },
+        "project-list:external": {
+          description: "Open each project folder in the default external program",
+          didDispatch: () => this.performAction("external"),
+        },
+        "project-list:show": {
+          description: "Show each project folder in the system file manager",
+          didDispatch: () => this.performAction("show"),
+        },
       }),
     );
 

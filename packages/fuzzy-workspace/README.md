@@ -16,12 +16,12 @@ Commands available in `atom-workspace`:
 
 - `fuzzy-workspace:toggle`: toggle the fuzzy workspace panel.
 
-Commands available in `.fuzzy-workspace`:
+Commands available in `.fuzzy-workspace`, all listed with their keybindings in the item-actions list (F12):
 
-- `select-list:focus-selected-item`: focus the selected item,
-- `select-list:close-selected-item`: close the selected item,
-- `select-list:copy-selected-path`: copy the path of the selected item,
-- `select-list:query-selection`: set the query from the editor selection.
+- `fuzzy-workspace:focus-selected-item`: focus the selected item, revealing its dock and pane,
+- `fuzzy-workspace:close-selected-item`: close the selected item without leaving the list,
+- `fuzzy-workspace:copy-selected-path`: copy the path of the selected item,
+- `fuzzy-workspace:query-selection`: use the editor selection as the query.
 
 ## Customization
 

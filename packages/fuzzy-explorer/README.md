@@ -12,29 +12,29 @@ Fuzzy search files across user-defined directories.
 
 Commands available in `atom-workspace`:
 
-- `fuzzy-explorer:toggle`: toggle fuzzy explorer panel,
-- `fuzzy-explorer:refresh`: refresh file cache,
-- `fuzzy-explorer:edit`: open config file.
+- `fuzzy-explorer:toggle`: toggle the fuzzy explorer panel,
+- `fuzzy-explorer:refresh`: refresh the file cache,
+- `fuzzy-explorer:edit`: open the configuration file.
 
-Commands available in `.fuzzy-explorer`:
+Commands available in `.fuzzy-explorer`, all listed with their keybindings in the item-actions list (F12):
 
-- `select-list:open`: open file,
-- `select-list:open-external`: open file externally,
-- `select-list:show-in-folder`: show in folder,
-- `select-list:split-left/right/up/down`: open in split pane,
-- `select-list:refresh-index`: refresh file index,
-- `select-list:copy-relative-path`: copy relative path,
-- `select-list:copy-absolute-path`: copy absolute path,
-- `select-list:copy-file-name`: copy file name,
-- `select-list:insert-relative-path`: insert relative path,
-- `select-list:insert-absolute-path`: insert absolute path,
-- `select-list:insert-file-name`: insert file name,
-- `select-list:use-default-separator`: use default separator,
-- `select-list:use-forward-slashes`: use forward slash,
-- `select-list:use-backslashes`: use backslash,
-- `select-list:query-selected-path`: set query from selected item path,
-- `select-list:query-selection`: set query from editor selection,
-- `select-list:claude-chat`: attach file to claude-chat.
+- `fuzzy-explorer:open`: open the selected file,
+- `fuzzy-explorer:open-external`: open the file in the default external program,
+- `fuzzy-explorer:show-in-folder`: show the file in the system file manager,
+- `fuzzy-explorer:split-left/right/up/down`: open the file in a split pane,
+- `fuzzy-explorer:refresh-index`: rebuild the file index,
+- `fuzzy-explorer:copy-relative-path`: copy the path relative to the active editor,
+- `fuzzy-explorer:copy-absolute-path`: copy the absolute path,
+- `fuzzy-explorer:copy-file-name`: copy the file name,
+- `fuzzy-explorer:insert-relative-path`: insert the path relative to the active editor,
+- `fuzzy-explorer:insert-absolute-path`: insert the absolute path,
+- `fuzzy-explorer:insert-file-name`: insert the file name,
+- `fuzzy-explorer:use-default-separator`: use the platform path separator,
+- `fuzzy-explorer:use-forward-slashes`: use forward slashes in inserted and copied paths,
+- `fuzzy-explorer:use-backslashes`: use backslashes in inserted and copied paths,
+- `fuzzy-explorer:query-selected-path`: continue the query from the selected path,
+- `fuzzy-explorer:query-selection`: use the editor selection as the query,
+- `fuzzy-explorer:claude-chat`: attach the file to the Claude chat.
 
 ## Configuration
 
