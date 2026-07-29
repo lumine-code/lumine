@@ -8,7 +8,7 @@
   --tree-view-sticky-background: var(--tree-view-background-color);
   --tree-view-row-inset: 0px;
   --tree-view-row-border-radius: 0px;
-  --tree-view-root-header-height: var(--ui-line-height);
+  --tree-view-root-header-height: var(--ui-tab-height);
   --tree-view-root-name-color: currentColor;
   --tree-view-root-name-font-size: inherit;
   --tree-view-root-name-font-weight: inherit;
@@ -245,8 +245,12 @@
   }
 
   .list-tree {
+    /* Not the project roots: their header states its own line-height from
+       --tree-view-root-header-height, and without the exclusion this rule
+       would win the tie on its type selector — (0,4,1) over the root rule's
+       (0,4,0) — leaving that variable dead. */
     li:not(.list-nested-item),
-    li.list-nested-item > .list-item {
+    li.list-nested-item:not(.project-root) > .list-item {
       line-height: var(--ui-line-height);
     }
 

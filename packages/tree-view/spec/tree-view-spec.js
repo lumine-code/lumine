@@ -488,7 +488,26 @@ describe("TreeView row model and sticky headers", () => {
     directoryName.textContent = "Source";
     directoryRow.appendChild(directoryName);
     directory.appendChild(directoryRow);
-    list.append(file, directory);
+
+    const root = document.createElement("li");
+    root.classList.add(
+      "directory",
+      "entry",
+      "list-nested-item",
+      "tree-view-row",
+      "project-root",
+      "expanded",
+    );
+    root.style.setProperty("--tree-view-depth", "0");
+    const rootHeader = document.createElement("div");
+    rootHeader.classList.add("header", "list-item", "project-root-header");
+    const rootName = document.createElement("span");
+    rootName.classList.add("name");
+    rootName.textContent = "project";
+    rootHeader.appendChild(rootName);
+    root.appendChild(rootHeader);
+
+    list.append(root, file, directory);
     scroller.appendChild(list);
 
     const stickyLayer = document.createElement("div");
@@ -545,6 +564,13 @@ describe("TreeView row model and sticky headers", () => {
       expect(getComputedStyle(directory).paddingLeft).toBe("22px");
       expect(directoryRowStyle.marginLeft).toBe("0px");
       expect(stickyDisclosureLeft).toBe(directoryDisclosureLeft);
+      // The root header takes its height from --tree-view-root-header-height
+      // (tab height here), not from the generic list line-height — the rule
+      // reading the variable loses that fight without the :not(.project-root)
+      // exclusion, and the variable is silently dead.
+      expect(getComputedStyle(rootHeader).lineHeight).toBe("32px");
+      expect(rootHeader.getBoundingClientRect().height).toBe(32);
+      expect(getComputedStyle(directoryRow).lineHeight).toBe("24px");
       expect(stickyName.getBoundingClientRect().top - stickyEntry.getBoundingClientRect().top).toBe(
         directoryName.getBoundingClientRect().top - directory.getBoundingClientRect().top,
       );
