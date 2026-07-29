@@ -860,6 +860,38 @@ describe("AtomApplication", function () {
         .callsFake((_type, callback, defaultPath) => callback([defaultPath]));
     });
 
+    it('"show-window" focuses only the requested window on Windows', async function () {
+      w1.preserveFocus = false;
+      w1.browserWindow.show = w1.show;
+      w1.browserWindow.focus = w1.focus;
+      w1.focus.resetHistory();
+
+      const sender = {
+        isDestroyed: sinon.stub().returns(false),
+        send: sinon.spy(),
+      };
+      sinon
+        .stub(electron.BrowserWindow, "fromWebContents")
+        .withArgs(sender)
+        .returns(w1.browserWindow);
+      const focusApplication = sinon.stub(electron.app, "focus");
+
+      electron.ipcMain.emit("show-window", { sender }, "show-window-response");
+      await conditionPromise(() => sender.send.called);
+
+      assert.isTrue(w1.show.calledOnce);
+      if (process.platform === "win32") {
+        assert.isTrue(w1.focus.calledOnce);
+        assert.isFalse(focusApplication.called);
+      } else if (process.platform === "darwin") {
+        assert.isFalse(w1.focus.called);
+        assert.isTrue(focusApplication.calledOnce);
+      } else {
+        assert.isFalse(w1.focus.called);
+        assert.isFalse(focusApplication.called);
+      }
+    });
+
     // This is the IPC message used to handle:
     // * application:reopen-project
     // * choosing "open in new window" when adding a folder that has previously saved state

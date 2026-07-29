@@ -903,13 +903,12 @@ module.exports = class AtomApplication extends EventEmitter {
           atomWindow.preserveFocus = false;
           return;
         }
-        // On Linux, `window.show()` is enough to make the new window
-        // frontmost, at least on X11. (TODO: Investigate Wayland behavior.)
-        //
-        // On both Windows and macOS (despite their varying window management
-        // models!) we must also call `app.focus()` to ensure the frontmost
-        // Lumine window is brought above windows from other applications.
-        if (process.platform !== "linux") {
+        // On Windows, `app.focus()` targets the application's first window,
+        // which may be a different, minimized window. Focus this BrowserWindow
+        // directly so opening a new window leaves existing windows untouched.
+        if (process.platform === "win32") {
+          window.focus();
+        } else if (process.platform === "darwin") {
           app.focus({ steal: true });
         }
       }),
@@ -1257,13 +1256,10 @@ module.exports = class AtomApplication extends EventEmitter {
         } else {
           openedWindow.focus();
         }
-        // On Linux, `window.show()` is enough to make the existing window
-        // frontmost, at least on X11. (TODO: Investigate Wayland behavior.)
-        //
-        // On both Windows and macOS (despite their varying window management
-        // models!) we must also call `app.focus()` to ensure the frontmost
-        // Lumine window is brought above windows from other applications.
-        if (process.platform !== "linux") {
+        // On macOS, focusing the window does not necessarily activate Lumine.
+        // Do not call `app.focus()` on Windows: Electron implements it by
+        // focusing the application's first window, which may be unrelated.
+        if (process.platform === "darwin") {
           app.focus({ steal: true });
         }
       }
