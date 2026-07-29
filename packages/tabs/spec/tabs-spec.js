@@ -165,6 +165,26 @@ describe("TabBarView", () => {
 
   afterEach(() => deserializerDisposable.dispose());
 
+  describe("when tabs reach the end of the bar", () => {
+    it("exposes whether the full bar is occupied", () => {
+      const lastTab = tabBar.getTabs()[tabBar.getTabs().length - 1].element;
+      spyOn(tabBar.element, "getBoundingClientRect").andReturn({
+        width: 300,
+        right: 300,
+      });
+      const lastTabRect = spyOn(lastTab, "getBoundingClientRect").andReturn({
+        right: 240,
+      });
+
+      expect(tabBar.updateBarOccupancy()).toBe(false);
+      expect(tabBar.element.classList.contains("is-fully-occupied")).toBe(false);
+
+      lastTabRect.andReturn({ right: 300 });
+      expect(tabBar.updateBarOccupancy()).toBe(true);
+      expect(tabBar.element.classList.contains("is-fully-occupied")).toBe(true);
+    });
+  });
+
   describe("when an item reports that its file was deleted on disk", () => {
     it("toggles the 'deleted' class on the item's tab", () => {
       const tab = tabBar.tabAtIndex(0);

@@ -19,6 +19,8 @@ class TabBarView {
     this.tabs = [];
     this.tabsByElement = new WeakMap();
     this.subscriptions = new CompositeDisposable();
+    this.resizeObserver = new ResizeObserver(() => this.updateBarOccupancy());
+    this.resizeObserver.observe(this.element);
 
     this.paneElement = this.pane.getElement();
 
@@ -139,6 +141,7 @@ class TabBarView {
 
   destroy() {
     ipcRenderer.removeListener("tab:dropped", this.onDropOnOtherWindow);
+    this.resizeObserver.disconnect();
     this.subscriptions.dispose();
     return this.element.remove();
   }
@@ -199,7 +202,9 @@ class TabBarView {
     }
 
     tab.updateTitle();
-    return this.updateTabBarVisibility();
+    this.resizeObserver.observe(tab.element);
+    this.updateTabBarVisibility();
+    return this.updateBarOccupancy();
   }
 
   removeTabForItem(item) {
@@ -209,13 +214,15 @@ class TabBarView {
       tab = this.tabs[tabIndex];
       this.tabs.splice(tabIndex, 1);
       this.tabsByElement.delete(tab);
+      this.resizeObserver.unobserve(tab.element);
       tab.destroy();
     }
     for (tab of this.getTabs()) {
       tab.updateTitle();
     }
 
-    return this.updateTabBarVisibility();
+    this.updateTabBarVisibility();
+    return this.updateBarOccupancy();
   }
 
   updateTabBarVisibility() {
@@ -225,6 +232,21 @@ class TabBarView {
     } else {
       return this.element.classList.add("hidden");
     }
+  }
+
+  updateBarOccupancy() {
+    const lastTab = this.tabs[this.tabs.length - 1]?.element;
+    let isFullyOccupied = false;
+
+    if (lastTab != null) {
+      const barRect = this.element.getBoundingClientRect();
+      const lastTabRect = lastTab.getBoundingClientRect();
+      const marginRight = Number.parseFloat(getComputedStyle(lastTab).marginRight) || 0;
+      isFullyOccupied = barRect.width > 0 && lastTabRect.right + marginRight >= barRect.right - 1;
+    }
+
+    this.element.classList.toggle("is-fully-occupied", isFullyOccupied);
+    return isFullyOccupied;
   }
 
   getTabs() {
