@@ -1,5 +1,4 @@
 const SymbolsView = require("./symbols-view");
-const { timeout } = require("./util");
 
 module.exports = class GoToView extends SymbolsView {
   constructor(stack, broker) {
@@ -64,43 +63,7 @@ module.exports = class GoToView extends SymbolsView {
       return [];
     }
 
-    let allSymbols = [];
-
-    let done = (symbols, provider) => {
-      if (signal.aborted) return;
-      if (!Array.isArray(symbols)) {
-        error(`Provider did not return a list of symbols`, provider);
-        return;
-      }
-      this.addSymbols(allSymbols, symbols, provider);
-    };
-
-    let error = (err, provider) => {
-      if (signal.aborted) return;
-      let message = typeof err === "string" ? err : err.message;
-      console.error(`Error in retrieving symbols from provider ${provider.name}: ${message}`);
-    };
-
-    let tasks = [];
-    for (let provider of providers) {
-      try {
-        let symbols = this.getSymbolsFromProvider(provider, signal, meta);
-        if (symbols?.then) {
-          let task = symbols
-            .then((result) => done(result, provider))
-            .catch((err) => error(err, provider));
-          tasks.push(task);
-        } else {
-          done(symbols, provider);
-        }
-      } catch (err) {
-        error(err, provider);
-      }
-    }
-
-    if (tasks.length > 0) {
-      await Promise.race([Promise.allSettled(tasks), timeout(this.timeoutMs)]);
-    }
+    let allSymbols = await this.gatherSymbols(providers, signal, meta);
 
     if (signal.aborted) {
       return null;

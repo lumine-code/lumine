@@ -3,7 +3,7 @@ const { CompositeDisposable, Point } = require("atom");
 const Config = require("./config");
 const SymbolsView = require("./symbols-view");
 const el = require("./element-builder");
-const { badge, isIterable, timeout } = require("./util");
+const { badge } = require("./util");
 
 class FileView extends SymbolsView {
   constructor(stack, broker) {
@@ -269,51 +269,9 @@ class FileView extends SymbolsView {
       return existingSymbols;
     }
 
-    let done = (symbols, provider) => {
-      if (signal.aborted) return;
-      // If these don't match up, our results are stale.
-      if (signal !== this.abortController.signal) return;
-      if (!isIterable(symbols)) {
-        error(`Provider did not return a list of symbols`, provider);
-        return;
-      }
-      this.addSymbols(allSymbols, symbols, provider);
-    };
-
-    let error = (err, provider) => {
-      if (signal.aborted) return;
-      let message = typeof err === "string" ? err : err.message;
-      console.error(`Error in retrieving symbols from provider ${provider.name}: ${message}`);
-    };
-
-    let tasks = [];
-    let allSymbols = existingSymbols ? [...existingSymbols] : [];
-    for (let provider of providers) {
-      try {
-        // Each provider can return a list of symbols directly or a promise.
-        let symbols = this.getSymbolsFromProvider(provider, signal, meta);
-        if (symbols?.then) {
-          // This is a promise, so we'll add it to the list of tasks that we
-          // need to wait for.
-          let task = symbols
-            .then((result) => done(result, provider))
-            .catch((err) => error(err, provider));
-          tasks.push(task);
-        } else if (isIterable(symbols)) {
-          // This is a valid list of symbols, so the provider acted
-          // synchronously. Add it to the results list.
-          done(symbols, provider);
-        } else {
-          error(`Provider did not return a list of symbols`, provider);
-        }
-      } catch (err) {
-        error(err, provider);
-      }
-    }
-
-    if (tasks.length > 0) {
-      await Promise.race([Promise.allSettled(tasks), timeout(this.timeoutMs)]);
-    }
+    let allSymbols = await this.gatherSymbols(providers, signal, meta, {
+      symbols: existingSymbols ? [...existingSymbols] : [],
+    });
 
     await this.updateView({ loadingMessage: null });
 

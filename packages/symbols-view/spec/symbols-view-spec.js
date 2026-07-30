@@ -18,6 +18,8 @@ const EmptyProvider = require("./fixtures/providers/empty-provider.js");
 const TaggedProvider = require("./fixtures/providers/tagged-provider.js");
 const CacheClearingProvider = require("./fixtures/providers/cache-clearing-provider.js");
 const CompetingExclusiveProvider = require("./fixtures/providers/competing-exclusive-provider.js");
+const AbortHonoringProvider = require("./fixtures/providers/abort-honoring-provider.js");
+const LateProvider = require("./fixtures/providers/late-provider.js");
 
 const { it, beforeEach, afterEach, conditionPromise } = require("./async-spec-helpers");
 
@@ -237,6 +239,45 @@ describe("SymbolsView", () => {
       expect(symbolsView.element.querySelector("li:last-child .secondary-line")).toHaveText(
         "Line 13",
       );
+    });
+
+    it("does not report a provider for honoring the timeout we set for it", async () => {
+      // `AbortHonoringProvider` does what `docs/symbol.provider.md` asks of a
+      // cancelled provider: it stops and comes back with nothing. Cancelling it
+      // was our decision, so empty hands are the contract working rather than a
+      // provider failing us, and saying otherwise blames it for our own budget.
+      registerProvider(DummyProvider, AbortHonoringProvider);
+      await activationPromise;
+      spyOn(console, "error").andCallThrough();
+
+      await dispatchAndWaitForChoices("symbols-view:toggle-file-symbols");
+      symbolsView = getSymbolsView();
+      expect(choiceCount(symbolsView)).toBe(5);
+
+      // Wait for the moment it gives up rather than sleeping past it.
+      await AbortHonoringProvider.answered;
+      await getOrScheduleUpdatePromise();
+
+      expect(console.error).not.toHaveBeenCalled();
+    });
+
+    it("ignores symbols that arrive after it has given up on the provider", async () => {
+      // `LateProvider` ignores its signal and answers long after the budget has
+      // run out — the one way symbols can still show up once the list has been
+      // rendered and stored. Taking them would leave the straggler out of order
+      // on screen, or invisible until the cached list is served again.
+      registerProvider(DummyProvider, LateProvider);
+      await activationPromise;
+
+      await dispatchAndWaitForChoices("symbols-view:toggle-file-symbols");
+      symbolsView = getSymbolsView();
+      expect(choiceCount(symbolsView)).toBe(5);
+
+      await LateProvider.answered;
+      await getOrScheduleUpdatePromise();
+
+      expect(choiceCount(symbolsView)).toBe(5);
+      expect(symbolsView.cachedResults.get(editor).length).toBe(5);
     });
 
     it("skips providers that hang while answering canProvideSymbols", async () => {

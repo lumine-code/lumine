@@ -4,7 +4,7 @@ const Config = require("./config");
 const { CompositeDisposable, Point } = require("atom");
 
 const el = require("./element-builder");
-const { badge } = require("./util");
+const { badge, isIterable, timeout } = require("./util");
 
 // Properties that we allow a provider to set on a `SelectListView` via a
 // `ListController` instance.
@@ -319,23 +319,142 @@ class SymbolsView {
     return undefined;
   }
 
+  /**
+   * Ask a single provider for symbols.
+   *
+   * @param   {Object} provider The provider to ask.
+   * @param   {AbortSignal} signal The signal for the task as a whole, aborted
+   *   when the user cancels it.
+   * @param   {Object} meta The task descriptor to hand to the provider.
+   * @returns {Object} An object whose `symbols` property is whatever the
+   *   provider returned — a list, or a promise of one — and whose `signal`
+   *   property is the signal governing that particular provider. Callers need
+   *   the latter to tell a provider that failed them from one they gave up on:
+   *   returning nothing once that signal aborts is the documented contract
+   *   being honored, not a provider misbehaving.
+   */
   getSymbolsFromProvider(provider, signal, meta) {
     let controller = new AbortController();
 
     // If the user cancels the task, propagate that cancellation to this
     // provider's AbortController.
-    signal.addEventListener("abort", () => controller.abort());
+    signal.addEventListener("abort", () => controller.abort(), { once: true });
 
     // Cancel this job automatically if it times out.
-    setTimeout(() => controller.abort(), this.timeoutMs);
+    let timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
-    if (provider.isExclusive) {
-      // The exclusive provider is the only one that gets an instance of
-      // `ListController` so that it can set UI messages.
-      return provider.getSymbols({ signal: controller.signal, ...meta }, this.listController);
-    } else {
-      return provider.getSymbols({ signal: controller.signal, ...meta });
+    // The exclusive provider is the only one that gets an instance of
+    // `ListController` so that it can set UI messages.
+    let args = [{ signal: controller.signal, ...meta }];
+    if (provider.isExclusive) args.push(this.listController);
+
+    // Stop the clock the moment the provider answers. Left running, it would
+    // tell a provider its work was cancelled long after it had delivered.
+    let stopClock = () => clearTimeout(timer);
+
+    let symbols;
+    try {
+      symbols = provider.getSymbols(...args);
+    } catch (error) {
+      stopClock();
+      throw error;
     }
+
+    if (symbols?.then) {
+      symbols = symbols.then(
+        (value) => {
+          stopClock();
+          return value;
+        },
+        (error) => {
+          stopClock();
+          throw error;
+        },
+      );
+    } else {
+      stopClock();
+    }
+
+    return { symbols, signal: controller.signal };
+  }
+
+  /**
+   * Ask each of the given providers for symbols and gather what comes back.
+   *
+   * Settles when every provider has answered or when they collectively run
+   * past `providerTimeout`, whichever happens first.
+   *
+   * @param   {Array} providers The providers to ask.
+   * @param   {AbortSignal} signal The signal for the task as a whole, aborted
+   *   when the user cancels it.
+   * @param   {Object} meta The task descriptor to hand to each provider.
+   * @param   {Object} options Options.
+   * @param   {Array} options.symbols The list to gather symbols into.
+   *   Optional; defaults to a new empty list. Pass one to seed the results
+   *   with symbols that are already known.
+   * @param   {Function} options.onSymbols Called with the gathered symbols
+   *   each time a provider adds to them, for a list that fills in as it loads.
+   *   Optional.
+   * @returns {Promise<Array>} The gathered symbols.
+   */
+  async gatherSymbols(providers, signal, meta, { symbols = [], onSymbols = null } = {}) {
+    // Once we stop waiting we stop listening. Every provider holds a signal
+    // that aborts on this same budget, so anything still arriving afterwards
+    // comes from a provider that ignored it — and taking that would mean the
+    // provider honoring the contract gets nothing shown while the one flouting
+    // it gets a late render. The write has nowhere good to go regardless: by
+    // then the caller has sorted these symbols, rendered them, and cached the
+    // list, so a straggler appears out of order or not until the next toggle.
+    let closed = false;
+
+    let error = (err, provider, providerSignal) => {
+      // A provider we cancelled — because it ran past `providerTimeout`, or
+      // because the user dismissed the list — owes us nothing. Abandoning its
+      // work is precisely what we asked it to do, so blaming it for the empty
+      // hands it comes back with would be reporting our own decision as its
+      // fault. Only a provider that failed us on its own terms is worth a word.
+      if (providerSignal?.aborted || signal.aborted) return;
+      let message = typeof err === "string" ? err : err.message;
+      console.error(`Error in retrieving symbols from provider ${provider.name}: ${message}`);
+    };
+
+    let done = (newSymbols, provider, providerSignal) => {
+      if (closed || signal.aborted) return;
+      if (!isIterable(newSymbols)) {
+        error(`Provider did not return a list of symbols`, provider, providerSignal);
+        return;
+      }
+      this.addSymbols(symbols, newSymbols, provider);
+      onSymbols?.(symbols);
+    };
+
+    let tasks = [];
+    for (let provider of providers) {
+      let providerSignal;
+      try {
+        let result = this.getSymbolsFromProvider(provider, signal, meta);
+        providerSignal = result.signal;
+        if (result.symbols?.then) {
+          // The provider went async, so we have something to wait for.
+          tasks.push(
+            result.symbols
+              .then((value) => done(value, provider, providerSignal))
+              .catch((err) => error(err, provider, providerSignal)),
+          );
+        } else {
+          done(result.symbols, provider, providerSignal);
+        }
+      } catch (err) {
+        error(err, provider, providerSignal);
+      }
+    }
+
+    if (tasks.length > 0) {
+      await Promise.race([Promise.allSettled(tasks), timeout(this.timeoutMs)]);
+    }
+    closed = true;
+
+    return symbols;
   }
 }
 

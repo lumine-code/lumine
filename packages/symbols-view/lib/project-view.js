@@ -1,7 +1,6 @@
 // const { Point } = require('atom');
 
 const SymbolsView = require("./symbols-view");
-const { isIterable, timeout } = require("./util");
 
 module.exports = class ProjectView extends SymbolsView {
   constructor(stack, broker) {
@@ -154,45 +153,9 @@ module.exports = class ProjectView extends SymbolsView {
       return null;
     }
 
-    let allSymbols = [];
-    let done = (symbols, provider) => {
-      if (signal.aborted) return;
-      if (!isIterable(symbols)) {
-        error(`Provider did not return a list of symbols`, provider);
-        return;
-      }
-      this.addSymbols(allSymbols, symbols, provider);
-      callback(allSymbols);
-    };
-
-    let error = (err, provider) => {
-      if (signal.aborted) return;
-      let message = typeof err === "string" ? err : err.message;
-      console.error(`Error in retrieving symbols from provider ${provider.name}: ${message}`);
-    };
-
-    let tasks = [];
-    for (let provider of providers) {
-      try {
-        let symbols = this.getSymbolsFromProvider(provider, signal, meta);
-        if (symbols?.then) {
-          let task = symbols
-            .then((result) => done(result, provider))
-            .catch((err) => error(err, provider));
-          tasks.push(task);
-        } else if (isIterable(symbols)) {
-          done(symbols, provider);
-        } else {
-          error(`Provider did not return a list of symbols`, provider);
-        }
-      } catch (err) {
-        error(err, provider);
-      }
-    }
-
-    if (tasks.length > 0) {
-      await Promise.race([Promise.allSettled(tasks), timeout(this.timeoutMs)]);
-    }
+    let allSymbols = await this.gatherSymbols(providers, signal, meta, {
+      onSymbols: callback,
+    });
 
     // Since we might've gone async here, we should check our own signal. If
     // it's aborted, that means the user has cancelled.
