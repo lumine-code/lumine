@@ -257,6 +257,16 @@ describe("SymbolsView", () => {
     });
 
     it("allows the exclusive provider to control certain UI aspects", async () => {
+      // `AsyncDummyProvider` spends ~350ms setting and then clearing its
+      // loading message, and the 500ms budget this block sets for the two
+      // timeout specs above leaves that only ~150ms of headroom. A loaded
+      // machine spends it: the race in `generateSymbols` picks the timeout
+      // branch, the provider's symbols land after the list has already
+      // rendered, and no `li` ever appears. This spec is about the
+      // `ListController` privilege, not about the budget, so give the provider
+      // one its own delays cannot exhaust. A provider that truly hangs still
+      // fails the spec at jasmine's own five-second cap.
+      atom.config.set("symbols-view.providerTimeout", 30000);
       registerProvider(AsyncDummyProvider);
       await activationPromise;
       expect(mainModule.broker.providers.length).toBe(1);
