@@ -2,6 +2,25 @@ const assert = require("./assert");
 const parseCommandLine = require("../../src/parse-command-line");
 
 describe("parseCommandLine", () => {
+  // `LUMINE_DEV_MODE` forces dev mode regardless of arguments, so a developer
+  // who exports it persistently would otherwise see every `devMode` assertion
+  // here answer for their shell instead of for the arguments under test. Start
+  // each spec from an unset variable and hand the real one back afterwards.
+  let originalDevMode;
+
+  beforeEach(() => {
+    originalDevMode = process.env.LUMINE_DEV_MODE;
+    delete process.env.LUMINE_DEV_MODE;
+  });
+
+  afterEach(() => {
+    if (originalDevMode === undefined) {
+      delete process.env.LUMINE_DEV_MODE;
+    } else {
+      process.env.LUMINE_DEV_MODE = originalDevMode;
+    }
+  });
+
   describe("when --uri-handler is not passed", () => {
     it("parses arguments as normal", () => {
       const args = parseCommandLine([
@@ -93,26 +112,25 @@ describe("parseCommandLine", () => {
   });
 
   describe("when LUMINE_DEV_MODE is set", () => {
-    let originalDevMode;
-
-    beforeEach(() => {
-      originalDevMode = process.env.LUMINE_DEV_MODE;
-    });
-
-    afterEach(() => {
-      if (originalDevMode === undefined) {
-        delete process.env.LUMINE_DEV_MODE;
-      } else {
-        process.env.LUMINE_DEV_MODE = originalDevMode;
-      }
-    });
-
     it("enables development mode without --dev", () => {
       process.env.LUMINE_DEV_MODE = "1";
 
       const args = parseCommandLine([]);
 
       assert.isTrue(args.devMode);
+    });
+
+    // The variable is the developer's own machine-wide choice and a URL cannot
+    // reach it, so `--uri-handler` sanitizing the arguments is not a reason to
+    // ignore it: a developer who opted into dev mode wants their `atom://` URLs
+    // to land in the dev instance too.
+    it("still applies under --uri-handler, which only strips arguments", () => {
+      process.env.LUMINE_DEV_MODE = "1";
+
+      const args = parseCommandLine(["--uri-handler", "atom://test/url"]);
+
+      assert.isTrue(args.devMode);
+      assert.deepEqual(args.urlsToOpen, ["atom://test/url"]);
     });
 
     it("takes precedence over --no-dev", () => {
