@@ -309,7 +309,14 @@ module.exports = class AtomWindow extends EventEmitter {
         }
       };
       ipcMain.on("did-prepare-to-unload", callback);
-      this.sendToRenderer("prepare-to-unload", options);
+      // A dropped message never earns a reply, so waiting on one would hang this
+      // handshake for good and leak the listener with it. A renderer that cannot
+      // be reached has nothing left to save and no veto to cast, so treat the
+      // unload as agreed to rather than waiting on an answer that never comes.
+      if (!this.sendToRenderer("prepare-to-unload", options)) {
+        ipcMain.removeListener("did-prepare-to-unload", callback);
+        resolve(true);
+      }
     });
 
     return this.lastPrepareToUnloadPromise;
@@ -374,13 +381,17 @@ module.exports = class AtomWindow extends EventEmitter {
   // inside Electron, which swallows the error and logs it. `isDestroyed()` on
   // the frame is the accessor that stays safe once it is disposed, so it has
   // to come before any other frame property.
+  //
+  // Returns true when the message reached a frame, so a caller that waits for a
+  // reply can tell a dropped message apart from one still in flight.
   sendToRenderer(channel, ...args) {
-    if (this.browserWindow.isDestroyed()) return;
+    if (this.browserWindow.isDestroyed()) return false;
     const contents = this.browserWindow.webContents;
-    if (contents.isDestroyed()) return;
+    if (contents.isDestroyed()) return false;
     const frame = contents.mainFrame;
-    if (!frame || frame.isDestroyed() || frame.detached) return;
+    if (!frame || frame.isDestroyed() || frame.detached) return false;
     frame.send(channel, ...args);
+    return true;
   }
 
   sendMessage(message, detail) {
@@ -492,13 +503,22 @@ module.exports = class AtomWindow extends EventEmitter {
     return this.isSpec;
   }
 
-  reload() {
+  // `loadedPromise` is the latch every `openLocations` waits on, and only a
+  // `window:loaded` event from a freshly loaded renderer can settle it. So a
+  // pending one must never be installed before the reload is certain: an unload
+  // the renderer refuses leaves it unsettled with nothing left to resolve it,
+  // and from then on every main-process path that opens a path in this window
+  // awaits forever. That is silent — `application:open-your-keymap` and the
+  // rest of `openPathOnEvent` simply stop doing anything while the renderer
+  // itself keeps working normally. Commit to the reload first, latch second.
+  async reload() {
+    const canUnload = await this.prepareToUnload({ deactivatePackages: false });
+    if (!canUnload || this.browserWindow.isDestroyed()) return this.loadedPromise;
+
     this.loadedPromise = new Promise((resolve) => {
       this.resolveLoadedPromise = resolve;
     });
-    this.prepareToUnload({ deactivatePackages: false }).then((canUnload) => {
-      if (canUnload) this.browserWindow.reload();
-    });
+    this.browserWindow.reload();
     return this.loadedPromise;
   }
 

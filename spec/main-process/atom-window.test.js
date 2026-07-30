@@ -272,6 +272,28 @@ describe("AtomWindow", function () {
       assert.isTrue(w.prepareToUnload.calledWith({ deactivatePackages: false }));
       assert.isTrue(w.browserWindow.behavior.reloaded);
     });
+
+    it("leaves paths openable when the renderer refuses to unload", async function () {
+      const w = new AtomWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+      w.resolveLoadedPromise();
+      w.prepareToUnload = sinon.stub().resolves(false);
+
+      await w.reload();
+      assert.isFalse(w.browserWindow.behavior.reloaded);
+
+      // A refused reload must not swap in a fresh loaded promise: nothing but a
+      // `window:loaded` event can settle one, so leaving it pending wedges every
+      // path that opens a location in this window.
+      const outcome = await Promise.race([
+        w.openPath(path.join("/", "some", "file")).then(() => "opened"),
+        new Promise((resolve) => setImmediate(() => resolve("hung"))),
+      ]);
+
+      assert.equal(outcome, "opened");
+      assert.equal(w.browserWindow.sent.at(-1)[1], "open-locations");
+    });
   });
 
   describe("isWebViewFocused", function () {

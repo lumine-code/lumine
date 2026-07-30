@@ -307,8 +307,19 @@ module.exports = class ApplicationDelegate {
   }
 
   onDidRequestUnload(callback) {
+    // The main process waits on this reply with no timeout, so a handler that
+    // throws would leave it waiting forever: no reload, no close, and no second
+    // chance to ask. Always answer. Refusing is the safe answer to a failure
+    // here, since the alternative discards whatever the handler did not get to
+    // save; the window stays usable and the error says why it would not reload.
     const outerCallback = async (_event, message) => {
-      const shouldUnload = await callback(message || {});
+      let shouldUnload;
+      try {
+        shouldUnload = await callback(message || {});
+      } catch (error) {
+        console.error("Failed to prepare the window to unload", error);
+        shouldUnload = false;
+      }
       ipcRenderer.send("did-prepare-to-unload", shouldUnload);
     };
 
