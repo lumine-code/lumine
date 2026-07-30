@@ -324,6 +324,34 @@ describe("TreeView row model and sticky headers", () => {
     treeView.clearStickyHeaderViews();
   });
 
+  it("shrinks the sticky list with a departing header instead of covering the reveal", () => {
+    const treeView = stickyHarness();
+    treeView.stickyHeaderLayer = document.createElement("div");
+    treeView.stickyHeaderList = document.createElement("ol");
+    treeView.stickyHeaderLayer.appendChild(treeView.stickyHeaderList);
+    treeView.stickyHeaderEntries = [];
+
+    const root = entry(treeView, "root", "directory", null, { projectRoot: true });
+    const documents = entry(treeView, "documents", "directory", root);
+    entry(treeView, "a.txt", "file", documents);
+    entry(treeView, "b.txt", "file", documents);
+    const sibling = entry(treeView, "bcdr", "directory", root);
+    entry(treeView, "main.ipy", "file", sibling);
+    layout(treeView, [root]);
+
+    treeView.scroller.scrollTop = 60;
+    treeView.renderStickyHeaderEntries(treeView.collectStickyHeaderEntries());
+
+    expect(treeView.stickyHeaderList.children.length).toBe(2);
+    expect(treeView.stickyHeaderList.children[1].style.top).toBe("-12px");
+    // The departing header's subtree ends 44px below the viewport top, so the
+    // opaque list must end there too. At the summed 56px, a dead band below
+    // the pushed header blankets the top of the sibling row sliding in — one
+    // band per simultaneously departing header.
+    expect(treeView.stickyHeaderList.style.height).toBe("44px");
+    treeView.clearStickyHeaderViews();
+  });
+
   it("switches roots from logical row boundaries without reading layout geometry", () => {
     const treeView = stickyHarness();
     const first = entry(treeView, "first", "directory", null, { projectRoot: true });

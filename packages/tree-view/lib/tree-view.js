@@ -408,6 +408,7 @@ class TreeView {
 
     this.stickyHeaderEntries = entries.slice();
     let stackTop = 0;
+    let stackBottom = 0;
     for (let index = 0; index < this.stickyHeaderList.children.length; index++) {
       const child = this.stickyHeaderList.children[index];
       const entry = entries[index];
@@ -434,6 +435,7 @@ class TreeView {
       child.style.top = pushOffset > 0 ? `-${pushOffset}px` : "";
       child.style.zIndex = entries.length - index;
       stackTop += entry.height;
+      stackBottom = Math.max(stackBottom, stackTop - pushOffset);
     }
 
     this.stickyHeaderLayer.hidden = entries.length === 0;
@@ -441,10 +443,11 @@ class TreeView {
       this.stickyHeaderList.style.height = "";
       return;
     }
-    this.stickyHeaderList.style.height = `${entries.reduce(
-      (height, entry) => height + entry.height,
-      0,
-    )}px`;
+    // The visible bottom of the stack, not the sum of its heights: the list is
+    // an opaque surface, and while a header is being pushed out the sum leaves
+    // a dead band below the stack that covers the very row sliding in to
+    // replace it — one band per simultaneously departing header.
+    this.stickyHeaderList.style.height = `${stackBottom}px`;
   }
 
   clearStickyHeaderViews() {
