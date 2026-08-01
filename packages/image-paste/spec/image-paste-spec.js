@@ -75,7 +75,9 @@ describe("image-paste", () => {
   });
 
   it("handles the normal editor paste command through the provider registry", async () => {
-    const editorPath = path.join(directoryPath, "document.md");
+    const editorDirectory = path.join(directoryPath, "docs");
+    fs.mkdirSync(editorDirectory);
+    const editorPath = path.join(editorDirectory, "document.md");
     fs.writeFileSync(editorPath, "");
     atom.project.setPaths([directoryPath]);
     const editor = await atom.workspace.open(editorPath);
@@ -90,7 +92,7 @@ describe("image-paste", () => {
     const { target, pngBuffer } = imagePaste.saveDialog.prepare.calls.mostRecent().args[0];
     expect(target.type).toBe("text-editor");
     expect(target.editor).toBe(editor);
-    expect(target.basePath).toBe(atom.project.relativizePath(editorPath)[0]);
+    expect(target.basePath).toBe(editorDirectory);
     expect(pngBuffer).toEqual(jasmine.any(Buffer));
   });
 });

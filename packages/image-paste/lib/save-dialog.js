@@ -21,7 +21,7 @@ module.exports = class SaveDialog {
     this.inputDialogView = atom.workspace.buildInputDialog({
       className: "image-paste save-dialog",
       infoMessage:
-        "Enter a path relative to the current project or directory for the pasted image.",
+        "Enter a path relative to the current editor or selected directory for the pasted image.",
       contentElement: this.previewElement,
       didChangeQuery: () => this.clearWarning(),
       didConfirm: () => this.confirm(),

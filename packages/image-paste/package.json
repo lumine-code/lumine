@@ -35,7 +35,7 @@
   "configSchema": {
     "assetsDirectory": {
       "title": "Assets Directory",
-      "description": "Project-relative directory used when saving images pasted into text editors.",
+      "description": "Editor-relative directory used when saving images pasted into text editors.",
       "type": "string",
       "default": "assets"
     },

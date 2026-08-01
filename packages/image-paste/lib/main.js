@@ -89,11 +89,9 @@ module.exports = {
     if (target?.type === "text-editor") {
       const { editor } = target;
       const editorPath = editor?.getPath();
-      let projectPath = editorPath ? atom.project.relativizePath(editorPath)[0] : null;
-      if (!projectPath) projectPath = atom.project.getPaths()[0];
-      if (!projectPath && editorPath) projectPath = path.dirname(editorPath);
-      if (!projectPath) return null;
-      return { type: "text-editor", editor, basePath: projectPath };
+      const basePath = editorPath ? path.dirname(editorPath) : atom.project.getPaths()[0];
+      if (!basePath) return null;
+      return { type: "text-editor", editor, basePath };
     }
 
     if (target?.type === "directory" && target.path) {
