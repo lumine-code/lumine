@@ -1,0 +1,17 @@
+{
+  "name": "package-with-service-dependency",
+  "consumedServices": {
+    "service-1": {
+      "versions": {
+        "^0.4.1": "consumeDependency"
+      }
+    }
+  },
+  "providedServices": {
+    "dependent-service": {
+      "versions": {
+        "1.0.0": "provideDependentService"
+      }
+    }
+  }
+}

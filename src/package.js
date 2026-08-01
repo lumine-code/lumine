@@ -390,25 +390,10 @@ module.exports = class Package {
   }
 
   activateServices() {
-    let methodName, version, versions;
-    for (var name in this.metadata.providedServices) {
-      ({ versions } = this.metadata.providedServices[name]);
-      const servicesByVersion = {};
-      for (version in versions) {
-        methodName = versions[version];
-        if (typeof this.mainModule[methodName] === "function") {
-          servicesByVersion[version] = this.mainModule[methodName]();
-        } else {
-          console.warn(
-            `Package ${this.name} declares it provides ${name}@${version} but it doesn't expose a function in ${methodName}`,
-          );
-        }
-      }
-      this.activationDisposables.add(
-        this.packageManager.serviceHub.provide(name, servicesByVersion),
-      );
-    }
-
+    let methodName, name, version, versions;
+    // Connect a package's dependencies before publishing anything that may use
+    // them. Providing is synchronous and can immediately invoke consumers in
+    // other packages, so doing it first exposes a half-wired main module.
     for (name in this.metadata.consumedServices) {
       ({ versions } = this.metadata.consumedServices[name]);
       for (version in versions) {
@@ -427,6 +412,24 @@ module.exports = class Package {
           );
         }
       }
+    }
+
+    for (name in this.metadata.providedServices) {
+      ({ versions } = this.metadata.providedServices[name]);
+      const servicesByVersion = {};
+      for (version in versions) {
+        methodName = versions[version];
+        if (typeof this.mainModule[methodName] === "function") {
+          servicesByVersion[version] = this.mainModule[methodName]();
+        } else {
+          console.warn(
+            `Package ${this.name} declares it provides ${name}@${version} but it doesn't expose a function in ${methodName}`,
+          );
+        }
+      }
+      this.activationDisposables.add(
+        this.packageManager.serviceHub.provide(name, servicesByVersion),
+      );
     }
   }
 

@@ -1291,6 +1291,21 @@ describe("PackageManager", () => {
     });
 
     describe("service registration", () => {
+      it("consumes a package's dependencies before publishing its services", async () => {
+        const consumeDependentService = jasmine.createSpy("consumeDependentService");
+        const subscription = atom.packages.serviceHub.consume(
+          "dependent-service",
+          "^1.0.0",
+          consumeDependentService,
+        );
+
+        await atom.packages.activatePackage("package-with-provided-services");
+        await atom.packages.activatePackage("package-with-service-dependency");
+
+        expect(consumeDependentService).toHaveBeenCalledWith("first-service-v4");
+        subscription.dispose();
+      });
+
       it("registers the package's provided and consumed services", async () => {
         const consumerModule = require("./fixtures/packages/package-with-consumed-services");
 
