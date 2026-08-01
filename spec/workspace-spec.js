@@ -2578,6 +2578,18 @@ describe("Workspace", () => {
             expect(resultHandler).toHaveBeenCalledWith(path.join(projectPath, "ignored.txt"));
           });
 
+          it("includes ignored files when includeVcsIgnoredPaths is true", async () => {
+            atom.project.setPaths([projectPath]);
+            atom.config.set("core.excludeVcsIgnoredPaths", true);
+            const resultHandler = jasmine.createSpy("result found");
+
+            await scan(/match/, { includeVcsIgnoredPaths: true }, ({ filePath }) =>
+              resultHandler(filePath),
+            );
+
+            expect(resultHandler).toHaveBeenCalledWith(path.join(projectPath, "ignored.txt"));
+          });
+
           it("does not exclude files when searching on an ignored folder even when core.excludeVcsIgnoredPaths is true", async () => {
             fs.mkdirSync(path.join(projectPath, "poop"));
             ignoredPath = path.join(path.join(projectPath, "poop", "whatever.txt"));

@@ -108,6 +108,13 @@ module.exports = class ProjectFindView {
                 innerHTML: `<use xlink:href="#search-panel-icon-word" />`,
               }),
             ),
+            $.button(
+              {
+                ref: "includeVcsIgnoredPathsOptionButton",
+                className: "btn option-include-vcs-ignored-paths",
+              },
+              $.i({ className: "icon icon-eye" }),
+            ),
           ),
         ),
       ),
@@ -244,6 +251,12 @@ module.exports = class ProjectFindView {
         keyBindingTarget: this.findEditor.element,
       }),
 
+      atom.tooltips.add(this.refs.includeVcsIgnoredPathsOptionButton, {
+        title: "Include VCS-Ignored Files",
+        keyBindingCommand: "search-panel:project-toggle-include-vcs-ignored-paths-option",
+        keyBindingTarget: this.findEditor.element,
+      }),
+
       atom.tooltips.add(this.refs.findAllButton, {
         title: "Find All",
         keyBindingCommand: "search-panel:search",
@@ -291,6 +304,8 @@ module.exports = class ProjectFindView {
         "search-panel:project-toggle-regex-option": () => this.toggleRegexOption(),
         "search-panel:project-toggle-case-option": () => this.toggleCaseOption(),
         "search-panel:project-toggle-whole-word-option": () => this.toggleWholeWordOption(),
+        "search-panel:project-toggle-include-vcs-ignored-paths-option": () =>
+          this.toggleIncludeVcsIgnoredPathsOption(),
         "search-panel:project-replace-all": () => this.replaceAll(),
         "search-panel:clear": () => this.clear(),
       }),
@@ -348,6 +363,9 @@ module.exports = class ProjectFindView {
     this.refs.regexOptionButton.addEventListener("click", () => this.toggleRegexOption());
     this.refs.caseOptionButton.addEventListener("click", () => this.toggleCaseOption());
     this.refs.wholeWordOptionButton.addEventListener("click", () => this.toggleWholeWordOption());
+    this.refs.includeVcsIgnoredPathsOptionButton.addEventListener("click", () =>
+      this.toggleIncludeVcsIgnoredPathsOption(),
+    );
     this.refs.pcre2OptionButton.addEventListener("click", () => this.togglePCRE2Option());
     this.refs.replaceAllButton.addEventListener("click", () => this.replaceAll());
     this.refs.findAllButton.addEventListener("click", () => this.search());
@@ -666,6 +684,10 @@ module.exports = class ProjectFindView {
       label.push("Whole Word");
     }
 
+    if (this.model.getFindOptions().includeVcsIgnoredPaths) {
+      label.push("VCS-Ignored Files");
+    }
+
     this.refs.optionsLabel.textContent = label.join(", ");
   }
 
@@ -678,6 +700,10 @@ module.exports = class ProjectFindView {
     this.setOptionButtonState(
       this.refs.wholeWordOptionButton,
       this.model.getFindOptions().wholeWord,
+    );
+    this.setOptionButtonState(
+      this.refs.includeVcsIgnoredPathsOptionButton,
+      this.model.getFindOptions().includeVcsIgnoredPaths,
     );
     this.updateEngineOptionButtons();
   }
@@ -715,6 +741,13 @@ module.exports = class ProjectFindView {
     this.search({
       onlyRunIfActive: true,
       wholeWord: !this.model.getFindOptions().wholeWord,
+    });
+  }
+
+  toggleIncludeVcsIgnoredPathsOption() {
+    this.search({
+      onlyRunIfActive: true,
+      includeVcsIgnoredPaths: !this.model.getFindOptions().includeVcsIgnoredPaths,
     });
   }
 

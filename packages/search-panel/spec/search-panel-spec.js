@@ -83,7 +83,21 @@ describe("search-panel integration", () => {
         "option-pcre2",
         "option-case-sensitive",
         "option-whole-word",
+        "option-include-vcs-ignored-paths",
       ]);
+    });
+
+    it("includes VCS-ignored files only when its option is selected", () => {
+      atom.commands.dispatch(workspaceElement, "search-panel:project-show");
+      const button = workspaceElement.querySelector(".option-include-vcs-ignored-paths");
+
+      expect(mainModule.resultsModel.getFindOptions().includeVcsIgnoredPaths).toBe(false);
+      expect(button.classList.contains("selected")).toBe(false);
+
+      button.click();
+
+      expect(mainModule.resultsModel.getFindOptions().includeVcsIgnoredPaths).toBe(true);
+      expect(button.classList.contains("selected")).toBe(true);
     });
   });
 });

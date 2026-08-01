@@ -2197,6 +2197,8 @@ module.exports = class Workspace extends Model {
   // * `regex` {RegExp} to search with.
   // * `options` (optional) {Object}
   //   * `paths` An {Array} of glob patterns to search within. (See note below for multi-root projects.)
+  //   * `includeVcsIgnoredPaths` {Boolean} default `false`; Whether to include
+  //     paths excluded by VCS ignore files, regardless of the core preference.
   //   * `onPathsSearched` (optional) {Function} to be periodically called
   //     with number of paths searched.
   //   * `leadingContextLineCount` {Number} default `0`; The number of lines
@@ -2406,7 +2408,9 @@ module.exports = class Workspace extends Model {
       const searchOptions = {
         inclusions: options.paths || [],
         includeHidden: true,
-        excludeVcsIgnores: this.config.get("core.excludeVcsIgnoredPaths"),
+        excludeVcsIgnores: options.includeVcsIgnoredPaths
+          ? false
+          : this.config.get("core.excludeVcsIgnoredPaths"),
         exclusions: this.config.get("core.ignoredNames"),
         follow: this.config.get("core.followSymlinks"),
         leadingContextLineCount: options.leadingContextLineCount || 0,

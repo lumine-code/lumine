@@ -226,6 +226,7 @@ module.exports = class ResultsModel {
       {
         paths: searchPaths,
         onPathsSearched,
+        includeVcsIgnoredPaths: this.findOptions.includeVcsIgnoredPaths,
         leadingContextLineCount,
         PCRE2: enablePCRE2,
         trailingContextLineCount,

@@ -7,6 +7,7 @@ const Params = [
   "useRegex",
   "wholeWord",
   "caseSensitive",
+  "includeVcsIgnoredPaths",
   "inCurrentSelection",
   "leadingContextLineCount",
   "trailingContextLineCount",
@@ -41,6 +42,8 @@ module.exports = class FindOptions {
       null
         ? left2
         : false;
+    this.includeVcsIgnoredPaths =
+      state.includeVcsIgnoredPaths != null ? state.includeVcsIgnoredPaths : false;
     this.inCurrentSelection =
       (left3 =
         state.inCurrentSelection != null
