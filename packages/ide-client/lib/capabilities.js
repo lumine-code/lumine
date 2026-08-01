@@ -47,7 +47,7 @@ exports.baseCapabilities = () => ({
   general: {
     positionEncodings: ["utf-16"],
     staleRequestSupport: { cancel: true, retryOnContentModified: [] },
-    markdown: { parser: "markdown-it", version: "14" },
+    markdown: { parser: "markdown-it", version: "15" },
     regularExpressions: { engine: "ECMAScript", version: "ES2024" },
   },
 });
