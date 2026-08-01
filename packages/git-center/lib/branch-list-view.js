@@ -1,5 +1,12 @@
+const { CompositeDisposable } = require("atom");
+
 const BranchNameDialog = require("./branch-name-dialog");
-const { applySwitchItem, buildSwitchItems, checkoutBranch } = require("./helpers");
+const {
+  applySwitchItem,
+  buildSwitchItems,
+  checkoutBranch,
+  updateListPreservingScroll,
+} = require("./helpers");
 const { divergenceChips, statusChips } = require("./status-summary");
 
 const ACTIONS = [
@@ -17,6 +24,13 @@ const ACTIONS = [
 // checks it out through the repository's operations facade.
 module.exports = class BranchListView {
   constructor() {
+    this.subscriptions = new CompositeDisposable();
+    this.branchRepositorySubscriptions = null;
+    this.referenceRepositorySubscriptions = null;
+    this.branchRefreshRequested = false;
+    this.branchRefreshPromise = null;
+    this.referenceRefreshRequested = false;
+    this.referenceRefreshPromise = null;
     this.branchNameDialog = new BranchNameDialog();
     this.selectListView = atom.workspace.buildSelectList({
       className: "git-center-branch-list",
@@ -69,6 +83,135 @@ module.exports = class BranchListView {
       didConfirmSelection: (item) => this.confirmReference(item),
       didCancelSelection: () => this.referenceListView.hide(),
     });
+
+    this.subscriptions.add(
+      this.selectListView.getPanel().onDidChangeVisible((visible) => {
+        if (visible) {
+          this.observeActiveRepository();
+          this.requestBranchRefresh().catch(() => {});
+        } else {
+          this.stopObservingActiveRepository();
+        }
+      }),
+      this.referenceListView.getPanel().onDidChangeVisible((visible) => {
+        if (visible) {
+          this.observeReferenceRepository();
+          this.requestReferenceRefresh().catch(() => {});
+        } else {
+          this.stopObservingReferenceRepository();
+        }
+      }),
+    );
+  }
+
+  observeActiveRepository() {
+    this.stopObservingActiveRepository();
+    const subscriptions = new CompositeDisposable();
+    this.branchRepositorySubscriptions = subscriptions;
+    const repository = atom.repositories.getActiveRepository();
+
+    subscriptions.add(
+      atom.repositories.onDidChangeActiveRepository(() => {
+        if (!this.selectListView.isVisible()) return;
+        this.observeActiveRepository();
+        this.requestBranchRefresh().catch(() => {});
+      }),
+    );
+    if (repository) {
+      subscriptions.add(
+        repository.onDidChangeStatusSnapshot(() => {
+          this.requestBranchRefresh().catch(() => {});
+        }),
+        repository.onDidChangeRefsSnapshot(() => {
+          this.requestBranchRefresh().catch(() => {});
+        }),
+      );
+    }
+  }
+
+  stopObservingActiveRepository() {
+    this.branchRepositorySubscriptions?.dispose();
+    this.branchRepositorySubscriptions = null;
+    this.branchRefreshRequested = false;
+  }
+
+  observeReferenceRepository() {
+    this.stopObservingReferenceRepository();
+    const repository = this.pendingReference?.repository;
+    if (!repository) return;
+    const subscriptions = new CompositeDisposable();
+    this.referenceRepositorySubscriptions = subscriptions;
+    subscriptions.add(
+      repository.onDidChangeRefsSnapshot(() => {
+        this.requestReferenceRefresh().catch(() => {});
+      }),
+    );
+  }
+
+  stopObservingReferenceRepository() {
+    this.referenceRepositorySubscriptions?.dispose();
+    this.referenceRepositorySubscriptions = null;
+    this.referenceRefreshRequested = false;
+  }
+
+  requestBranchRefresh() {
+    if (!this.selectListView.isVisible()) return Promise.resolve();
+    this.branchRefreshRequested = true;
+    if (!this.branchRefreshPromise) {
+      this.branchRefreshPromise = this.refreshBranchItems().finally(() => {
+        this.branchRefreshPromise = null;
+      });
+    }
+    return this.branchRefreshPromise;
+  }
+
+  async refreshBranchItems() {
+    while (this.branchRefreshRequested && this.selectListView.isVisible()) {
+      this.branchRefreshRequested = false;
+      const repository = atom.repositories.getActiveRepository();
+      if (!repository) {
+        this.hide();
+        return;
+      }
+      const items = [...ACTIONS, ...(await buildSwitchItems()).filter((item) => item.active)];
+      if (
+        !this.selectListView.isVisible() ||
+        atom.repositories.getActiveRepository() !== repository
+      ) {
+        continue;
+      }
+      await updateListPreservingScroll(this.selectListView, {
+        items,
+        loadingMessage: null,
+      });
+    }
+  }
+
+  requestReferenceRefresh() {
+    if (!this.referenceListView.isVisible()) return Promise.resolve();
+    this.referenceRefreshRequested = true;
+    if (!this.referenceRefreshPromise) {
+      this.referenceRefreshPromise = this.refreshReferenceItems().finally(() => {
+        this.referenceRefreshPromise = null;
+      });
+    }
+    return this.referenceRefreshPromise;
+  }
+
+  async refreshReferenceItems() {
+    while (this.referenceRefreshRequested && this.referenceListView.isVisible()) {
+      this.referenceRefreshRequested = false;
+      const repository = this.pendingReference?.repository;
+      if (!repository) return;
+      const refs = await repository.ensureRefsSnapshot?.().catch(() => null);
+      if (!this.referenceListView.isVisible() || repository !== this.pendingReference?.repository) {
+        continue;
+      }
+      await updateListPreservingScroll(this.referenceListView, {
+        items: this.buildReferenceItems(refs),
+        loadingMessage: null,
+      });
+    }
   }
 
   performAction(action) {
@@ -94,13 +237,7 @@ module.exports = class BranchListView {
     await this.referenceListView.update({ items: [], loadingMessage: "Loading references…" });
     this.referenceListView.show({ crumb: ACTIONS.find((entry) => entry.action === action).crumb });
 
-    const refs = await repository.ensureRefsSnapshot?.().catch(() => null);
-    if (!this.referenceListView.isVisible() || repository !== this.pendingReference?.repository)
-      return;
-    await this.referenceListView.update({
-      items: this.buildReferenceItems(refs),
-      loadingMessage: null,
-    });
+    await this.requestReferenceRefresh();
   }
 
   buildReferenceItems(refs) {
@@ -178,14 +315,7 @@ module.exports = class BranchListView {
     await this.selectListView.update({ items: [], loadingMessage: "Loading branches…" });
     this.selectListView.show();
 
-    const items = [...ACTIONS, ...(await buildSwitchItems()).filter((item) => item.active)];
-    if (
-      !this.selectListView.isVisible() ||
-      atom.repositories.getActiveRepository() !== repository
-    ) {
-      return;
-    }
-    await this.selectListView.update({ items, loadingMessage: null });
+    await this.requestBranchRefresh();
   }
 
   hide() {
@@ -193,6 +323,9 @@ module.exports = class BranchListView {
   }
 
   destroy() {
+    this.stopObservingActiveRepository();
+    this.stopObservingReferenceRepository();
+    this.subscriptions.dispose();
     this.selectListView.destroy();
     this.referenceListView.destroy();
     this.branchNameDialog.destroy();

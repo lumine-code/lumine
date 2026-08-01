@@ -268,6 +268,33 @@ describe("git-center", () => {
     expect(atom.repositories.isActiveRepositoryPinned()).toBe(false);
   });
 
+  it("refreshes an open repository picker without moving its scroll position", async () => {
+    const repositoryListView = mainModule.getRepositoryListView();
+    await repositoryListView.toggle();
+    const listView = repositoryListView.selectListView;
+    Object.defineProperty(listView.refs.items, "scrollTop", {
+      configurable: true,
+      value: 37,
+      writable: true,
+    });
+    spyOn(repositoryListView, "requestRefresh").andCallThrough();
+
+    fs.writeFileSync(path.join(repoA.workingDirectory, "new.txt"), "new\n");
+    await repoA.repository.refreshStatusSnapshot();
+    expect(repositoryListView.requestRefresh).toHaveBeenCalled();
+    await repositoryListView.requestRefresh.calls.mostRecent().returnValue;
+
+    const item = listView.props.items.find((entry) => entry.repository === repoA.repository);
+    expect(item.status.added).toBe(1);
+    expect(listView.refs.items.scrollTop).toBe(37);
+
+    repositoryListView.hide();
+    repositoryListView.requestRefresh.calls.reset();
+    fs.writeFileSync(path.join(repoA.workingDirectory, "another.txt"), "another\n");
+    await repoA.repository.refreshStatusSnapshot();
+    expect(repositoryListView.requestRefresh).not.toHaveBeenCalled();
+  });
+
   it("checks out a branch through the branch picker", async () => {
     await repoA.repository.getOperations().checkout("feature", { createNew: true });
     await repoA.repository.getOperations().checkout("main");
@@ -297,6 +324,26 @@ describe("git-center", () => {
     listView.props.didConfirmSelection(target);
     await didChangeRefs;
     expect(repoA.repository.getRefsSnapshot().head.name).toBe("feature");
+  });
+
+  it("refreshes an open branch picker without moving its scroll position", async () => {
+    const branchListView = mainModule.getBranchListView();
+    await branchListView.toggle();
+    const listView = branchListView.selectListView;
+    Object.defineProperty(listView.refs.items, "scrollTop", {
+      configurable: true,
+      value: 53,
+      writable: true,
+    });
+    spyOn(branchListView, "requestBranchRefresh").andCallThrough();
+
+    await atom.repositories.executeGit(["branch", "feature"], repoA.workingDirectory);
+    await repoA.repository.refreshRefsSnapshot();
+    expect(branchListView.requestBranchRefresh).toHaveBeenCalled();
+    await branchListView.requestBranchRefresh.calls.mostRecent().returnValue;
+
+    expect(listView.props.items.some((item) => item.branch === "feature")).toBe(true);
+    expect(listView.refs.items.scrollTop).toBe(53);
   });
 
   it("shows working-tree counts on the repository tile and in the picker", async () => {

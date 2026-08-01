@@ -144,6 +144,17 @@ function applySwitchItem(item, { pin = false } = {}) {
   }
 }
 
+// Rebuilding a visible select list normally lets its selected row scroll back
+// into view. Snapshot updates are ambient rather than user navigation, so put
+// the viewport back where the user left it after the new rows render.
+async function updateListPreservingScroll(selectListView, props) {
+  const scrollTop = selectListView.refs.items?.scrollTop;
+  await selectListView.update(props);
+  if (scrollTop != null && selectListView.refs.items) {
+    selectListView.refs.items.scrollTop = scrollTop;
+  }
+}
+
 module.exports = {
   applySwitchItem,
   buildSwitchItems,
@@ -152,4 +163,5 @@ module.exports = {
   headUpstream,
   repositoryDisplayName,
   repositoryWorkingDirectory,
+  updateListPreservingScroll,
 };

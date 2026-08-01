@@ -1,10 +1,16 @@
-const { applySwitchItem, buildSwitchItems } = require("./helpers");
+const { CompositeDisposable } = require("atom");
+
+const { applySwitchItem, buildSwitchItems, updateListPreservingScroll } = require("./helpers");
 const { divergenceChips, statusChips } = require("./status-summary");
 
 // Repository picker. Selecting a repository makes it the window's active
 // repository (unpinned).
 module.exports = class RepositoryListView {
   constructor() {
+    this.subscriptions = new CompositeDisposable();
+    this.repositorySubscriptions = null;
+    this.refreshRequested = false;
+    this.refreshPromise = null;
     this.selectListView = atom.workspace.buildSelectList({
       className: "git-center-repository-list",
       items: [],
@@ -44,6 +50,77 @@ module.exports = class RepositoryListView {
       },
       didCancelSelection: () => this.hide(),
     });
+
+    this.subscriptions.add(
+      this.selectListView.getPanel().onDidChangeVisible((visible) => {
+        if (visible) {
+          this.observeRepositories();
+          this.requestRefresh().catch(() => {});
+        } else {
+          this.stopObservingRepositories();
+        }
+      }),
+    );
+  }
+
+  observeRepositories() {
+    this.stopObservingRepositories();
+    const subscriptions = new CompositeDisposable();
+    this.repositorySubscriptions = subscriptions;
+
+    subscriptions.add(
+      atom.repositories.onDidChange(() => {
+        if (!this.selectListView.isVisible()) return;
+        this.observeRepositories();
+        this.requestRefresh().catch(() => {});
+      }),
+      atom.repositories.onDidChangeActiveRepository(() => {
+        this.requestRefresh().catch(() => {});
+      }),
+    );
+
+    for (const repository of atom.repositories.getRepositories()) {
+      subscriptions.add(
+        repository.onDidChangeStatusSnapshot(() => {
+          this.requestRefresh().catch(() => {});
+        }),
+        repository.onDidChangeRefsSnapshot(() => {
+          this.requestRefresh().catch(() => {});
+        }),
+      );
+    }
+  }
+
+  stopObservingRepositories() {
+    this.repositorySubscriptions?.dispose();
+    this.repositorySubscriptions = null;
+    this.refreshRequested = false;
+  }
+
+  requestRefresh() {
+    if (!this.selectListView.isVisible()) return Promise.resolve();
+    this.refreshRequested = true;
+    if (!this.refreshPromise) {
+      this.refreshPromise = this.refreshItems().finally(() => {
+        this.refreshPromise = null;
+      });
+    }
+    return this.refreshPromise;
+  }
+
+  async refreshItems() {
+    while (this.refreshRequested && this.selectListView.isVisible()) {
+      this.refreshRequested = false;
+      const items = [
+        { auto: true, repoName: "Auto" },
+        ...(await buildSwitchItems()).filter((item) => item.current),
+      ];
+      if (!this.selectListView.isVisible()) return;
+      await updateListPreservingScroll(this.selectListView, {
+        items,
+        loadingMessage: null,
+      });
+    }
   }
 
   async toggle() {
@@ -55,15 +132,7 @@ module.exports = class RepositoryListView {
     this.selectListView.reset();
     await this.selectListView.update({ items: [], loadingMessage: "Loading repositories…" });
     this.selectListView.show();
-
-    const items = [
-      { auto: true, repoName: "Auto" },
-      ...(await buildSwitchItems()).filter((item) => item.current),
-    ];
-    if (!this.selectListView.isVisible()) {
-      return;
-    }
-    await this.selectListView.update({ items, loadingMessage: null });
+    await this.requestRefresh();
   }
 
   hide() {
@@ -71,6 +140,8 @@ module.exports = class RepositoryListView {
   }
 
   destroy() {
+    this.stopObservingRepositories();
+    this.subscriptions.dispose();
     this.selectListView.destroy();
   }
 };
