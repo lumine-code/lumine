@@ -44,6 +44,24 @@ let Tooltip = null;
 //   keyBindingTarget: this.findEditor.element
 // })
 // ```
+//
+// To display several tooltip entries together, use `addComposite`.
+//
+// ```js
+// disposable = atom.tooltips.addComposite(this.modeIndicator, [
+//   {title: 'Column selection'},
+//   {
+//     title: 'Toggle sticky mode',
+//     keyBindingExtra: 'LMB',
+//     keyBindingCommand: 'column-selection:sticky'
+//   },
+//   {
+//     title: 'Toggle picker mode',
+//     keyBindingExtra: 'RMB',
+//     keyBindingCommand: 'column-selection:picker'
+//   }
+// ])
+// ```
 module.exports = class TooltipManager {
   constructor({ keymapManager, viewRegistry }) {
     this.defaults = {
@@ -107,6 +125,11 @@ module.exports = class TooltipManager {
   //   * `keyBindingTarget` An `HTMLElement` on which to look up the key binding.
   //     If this option is not supplied, the first of all matching key bindings
   //     for the given command will be rendered.
+  //   * `keyBindingExtra` A {String} rendered as an additional key binding
+  //     before the command's resolved binding. Use this for interactions that
+  //     are not represented in the keymap, such as `LMB` or `RMB`. The value
+  //     accepts `+` separators and `cmdorctrl`, which is resolved for the
+  //     current platform (for example, `cmdorctrl+RMB`).
   //
   // Returns a {Disposable} on which `.dispose()` can be called to remove the
   // tooltip.
@@ -119,23 +142,79 @@ module.exports = class TooltipManager {
       return disposable;
     }
 
+    return this.addTooltip(target, this.getTooltipOptions(options));
+  }
+
+  // Essential: Add several tooltip entries that are displayed together.
+  //
+  // * `target` An `HTMLElement`
+  // * `entries` An {Array} of option objects accepted by {::add}. Entries are
+  //   rendered on separate lines. Display options, such as `placement` and
+  //   `delay`, are taken from the first entry.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to remove the
+  // composite tooltip.
+  addComposite(target, entries) {
+    if (target.jquery) {
+      const disposable = new CompositeDisposable();
+      for (let i = 0; i < target.length; i++) {
+        disposable.add(this.addComposite(target[i], entries));
+      }
+      return disposable;
+    }
+
+    if (!Array.isArray(entries) || entries.length === 0) {
+      throw new Error("`entries` must be a non-empty array of tooltip options.");
+    }
+    if (entries.some((entry) => entry.item != null)) {
+      throw new Error("Composite tooltips do not support the `item` option.");
+    }
+
+    const options = entries.map((entry) => this.getTooltipOptions(entry));
+    const titles = options.map((option) => ({
+      title: option.title,
+      hasKeyBinding: option.keyBindingCommand != null || option.keyBindingExtra != null,
+    }));
+    const compositeOptions = options[0];
+    compositeOptions.title = function () {
+      const items = titles
+        .map(({ title, hasKeyBinding }) => {
+          const content = typeof title === "function" ? title.call(this) : title;
+          const className = hasKeyBinding
+            ? "tooltip-composite-item has-key-binding"
+            : "tooltip-composite-item";
+          return content && `<div class="${className}">${content}</div>`;
+        })
+        .filter(Boolean)
+        .join("");
+      return items && `<div class="tooltip-composite">${items}</div>`;
+    };
+
+    return this.addTooltip(target, compositeOptions);
+  }
+
+  getTooltipOptions(options) {
     if (Tooltip == null) {
       Tooltip = require("./tooltip");
     }
 
-    const { keyBindingCommand, keyBindingTarget } = options;
+    options = { ...options };
+    const { keyBindingCommand, keyBindingExtra, keyBindingTarget } = options;
 
-    if (keyBindingCommand != null) {
+    if (keyBindingCommand != null || keyBindingExtra != null) {
       const keymapManager = this.keymapManager;
       const baseTitle = options.title;
       options.title = function () {
-        const bindings = keymapManager.findKeyBindings({
-          command: keyBindingCommand,
-          target: keyBindingTarget,
-        });
-        const keystroke = getKeystroke(bindings);
         const base = typeof baseTitle === "function" ? baseTitle.call(this) : baseTitle;
-        return [base, keystroke].filter(Boolean).join(" ");
+        const keyBindings = [
+          keyBindingExtra != null && getKeyBindingExtraLabel(keyBindingExtra),
+          keyBindingCommand != null &&
+            getKeyBinding(keymapManager, keyBindingCommand, keyBindingTarget),
+        ].filter(Boolean);
+        const keyBindingGroup = keyBindings.length
+          ? `<span class="key-bindings">${keyBindings.join(" ")}</span>`
+          : null;
+        return [base, keyBindingGroup].filter(Boolean).join(" ");
       };
     }
 
@@ -145,6 +224,10 @@ module.exports = class TooltipManager {
       options = _.defaults(options, this.hoverDefaults);
     }
 
+    return options;
+  }
+
+  addTooltip(target, options) {
     const tooltip = new Tooltip(target, options, this.viewRegistry);
 
     if (!this.tooltips.has(target)) {
@@ -195,8 +278,20 @@ module.exports = class TooltipManager {
   }
 };
 
-function getKeystroke(bindings) {
+function getKeyBinding(keymapManager, command, target) {
+  const bindings = keymapManager.findKeyBindings({ command, target });
   if (bindings && bindings.length) {
-    return `<span class="keystroke">${_.humanizeKeystroke(bindings[0].keystrokes)}</span>`;
+    return getKeyBindingLabel(_.humanizeKeystroke(bindings[0].keystrokes));
   }
+}
+
+function getKeyBindingLabel(label) {
+  return `<span class="keystroke">${label}</span>`;
+}
+
+function getKeyBindingExtraLabel(label) {
+  const keystroke = label
+    .replace(/\+/g, "-")
+    .replace(/\b(cmdorctrl|cmd|ctrl|alt|option|shift)\b/gi, (modifier) => modifier.toLowerCase());
+  return getKeyBindingLabel(_.humanizeKeystroke(keystroke));
 }

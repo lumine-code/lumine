@@ -49,6 +49,39 @@
   border-radius: var(--component-border-radius);
 }
 
+.tooltip-inner:has(.tooltip-composite) {
+  max-width: none;
+}
+
+.tooltip-composite {
+  display: grid;
+  gap: 0.15em;
+  width: max-content;
+  max-width: inherit;
+}
+
+.tooltip-composite-item {
+  text-align: inherit;
+
+  &.has-key-binding {
+    display: flex;
+    gap: 0.75em;
+    align-items: center;
+    text-align: left;
+
+    .key-bindings {
+      display: inline-flex;
+      gap: 0.6em;
+      align-items: center;
+      margin-left: auto;
+
+      .keystroke {
+        margin-left: 0;
+      }
+    }
+  }
+}
+
 /* Arrows */
 .tooltip-arrow {
   position: absolute;

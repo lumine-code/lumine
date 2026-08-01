@@ -363,13 +363,27 @@ module.exports = {
       item: this.switch,
       priority: 220,
     });
-    this.tooltipDisposable = atom.tooltips.add(this.switch, {
-      title: () => {
-        if (this.pickerFlag) return "Picker mode is enabled";
-        if (this.stickyFlag) return "Sticky column mode is enabled";
-        return "Left click: Sticky | Right click: Picker";
+    const keyBindingTarget = atom.views.getView(atom.workspace);
+    this.tooltipDisposable = atom.tooltips.addComposite(this.switch, [
+      {
+        title: () => {
+          if (this.pickerFlag) return "Picker mode is enabled";
+          if (this.stickyFlag) return "Sticky column mode is enabled";
+        },
       },
-    });
+      {
+        title: "Toggle sticky mode",
+        keyBindingExtra: "LMB",
+        keyBindingCommand: "column-selection:sticky",
+        keyBindingTarget,
+      },
+      {
+        title: "Toggle picker mode",
+        keyBindingExtra: "RMB",
+        keyBindingCommand: "column-selection:picker",
+        keyBindingTarget,
+      },
+    ]);
   },
 
   deactivateStatusBar() {

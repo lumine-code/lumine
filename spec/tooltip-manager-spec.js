@@ -363,6 +363,75 @@ describe("TooltipManager", () => {
       });
     });
 
+    describe("::addComposite(target, entries)", () => {
+      it("renders each tooltip entry on a separate line", () => {
+        atom.keymaps.add("test", {
+          ".foo": {
+            "ctrl-x": "sticky-command",
+            "ctrl-y": "picker-command",
+          },
+        });
+
+        manager.addComposite(element, [
+          { title: "Column selection" },
+          {
+            title: "Toggle sticky mode",
+            keyBindingExtra: "LMB",
+            keyBindingCommand: "sticky-command",
+          },
+          { title: "Toggle picker mode", keyBindingCommand: "picker-command" },
+        ]);
+
+        hover(element, function () {
+          expect(document.body.querySelector(".tooltip-composite")).not.toBeNull();
+          const rows = document.body.querySelectorAll(".tooltip-composite-item");
+          expect(rows.length).toBe(3);
+          expect(rows[0].textContent).toBe("Column selection");
+          expect(rows[0].classList.contains("has-key-binding")).toBe(false);
+          expect(rows[1].textContent).toBe(`Toggle sticky mode LMB ${ctrlX}`);
+          expect(rows[1].classList.contains("has-key-binding")).toBe(true);
+          expect(rows[1].querySelector(".key-bindings")).not.toBeNull();
+          expect(rows[1].querySelectorAll(".keystroke").length).toBe(2);
+          expect(rows[2].textContent).toBe(`Toggle picker mode ${ctrlY}`);
+          expect(rows[2].classList.contains("has-key-binding")).toBe(true);
+        });
+      });
+
+      it("composes multiline hints without key bindings", () => {
+        manager.addComposite(element, [{ title: "First hint" }, { title: () => "Second hint" }]);
+
+        hover(element, function () {
+          const rows = document.body.querySelectorAll(".tooltip-composite-item");
+          expect(Array.from(rows, (row) => row.textContent)).toEqual(["First hint", "Second hint"]);
+          expect(document.body.querySelector(".key-bindings")).toBeNull();
+        });
+      });
+
+      it("resolves platform modifiers in extra key bindings", () => {
+        manager.addComposite(element, [
+          { title: "More actions", keyBindingExtra: "cmdorctrl+RMB" },
+          { title: "Shift action", keyBindingExtra: "Shift+LMB" },
+        ]);
+
+        hover(element, function () {
+          const keystrokes = Array.from(
+            document.body.querySelectorAll(".keystroke"),
+            (element) => element.textContent,
+          );
+          expect(keystrokes).toEqual([
+            _.humanizeKeystroke("cmdorctrl-RMB"),
+            _.humanizeKeystroke("shift-LMB"),
+          ]);
+        });
+      });
+
+      it("requires at least one entry", () => {
+        expect(() => manager.addComposite(element, [])).toThrowError(
+          "`entries` must be a non-empty array of tooltip options.",
+        );
+      });
+    });
+
     describe("when .dispose() is called on the returned disposable", () =>
       it("no longer displays the tooltip on hover", () => {
         const disposable = manager.add(element, { title: "Title" });

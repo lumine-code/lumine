@@ -102,9 +102,10 @@ module.exports = class BranchStatusView {
     }
     const divergence = divergenceTooltipLine(upstream);
     this.branchTooltipDisposable?.dispose();
-    this.branchTooltipDisposable = atom.tooltips.add(this.branchArea, {
-      title: [tooltip, divergence].filter(Boolean).join("\n"),
-    });
+    this.branchTooltipDisposable = atom.tooltips.addComposite(
+      this.branchArea,
+      [tooltip, divergence].filter(Boolean).map((title) => ({ title })),
+    );
   }
 
   destroy() {

@@ -621,17 +621,12 @@ export default class InstallPanel {
         /[&<>"']/g,
         (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char],
       );
-    const title = failed
-      .map(
-        (pack) =>
-          `<strong>${escape(pack.originKey || pack.name || "")}</strong>: ${escape(pack.error)}`,
-      )
-      .join("<br>");
-    this.catalogProgressTooltip = atom.tooltips.add(this.refs.catalogProgress, {
-      html: true,
-      class: "catalog-progress-tooltip",
-      title,
-    });
+    const entries = failed.map((pack) => ({
+      title: `<strong>${escape(pack.originKey || pack.name || "")}</strong>: ${escape(pack.error)}`,
+    }));
+    entries[0].html = true;
+    entries[0].class = "catalog-progress-tooltip";
+    this.catalogProgressTooltip = atom.tooltips.addComposite(this.refs.catalogProgress, entries);
   }
 
   // Renders `packs` into `container`, reusing any existing card whose pack

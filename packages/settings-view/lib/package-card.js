@@ -363,7 +363,7 @@ export default class PackageCard {
   // The catalog details shown on hover over the repository reference: origin,
   // resolved commit, selected ref, catalog provenance, and validation status.
   // Field labels are bold; the content is left-aligned via the tooltip class.
-  catalogTooltipHtml() {
+  catalogTooltipLines() {
     const install = this.pack.apmInstallSource || {};
     const lines = [];
     const field = (fieldLabel, value) => {
@@ -381,7 +381,16 @@ export default class PackageCard {
     }
     if (this.pack.status && this.pack.status !== "ready") field("Status:", this.pack.status);
     if (this.pack.error) lines.push(escapeHtml(this.pack.error));
-    return lines.join("<br>");
+    return lines;
+  }
+
+  catalogTooltipEntries() {
+    const entries = Array.from({ length: 7 }, (_, index) => ({
+      title: () => this.catalogTooltipLines()[index],
+    }));
+    entries[0].html = true;
+    entries[0].class = "package-catalog-tooltip";
+    return entries;
   }
 
   versionOptionEntries() {
@@ -761,11 +770,7 @@ export default class PackageCard {
       // in a hover tooltip rather than cluttering the card. A function title
       // keeps it current as the selected ref changes.
       this.disposables.add(
-        atom.tooltips.add(this.refs.repoLink, {
-          html: true,
-          class: "package-catalog-tooltip",
-          title: () => this.catalogTooltipHtml(),
-        }),
+        atom.tooltips.addComposite(this.refs.repoLink, this.catalogTooltipEntries()),
       );
     }
     this.refs.packageName.addEventListener("click", packageNameClickHandler);

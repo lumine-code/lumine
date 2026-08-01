@@ -477,7 +477,7 @@ describe("PackageCard", function () {
     );
 
     // Catalog provenance now lives in the repository hover tooltip.
-    const tooltip = card.catalogTooltipHtml();
+    const tooltip = card.catalogTooltipLines().join(" ");
     expect(tooltip).toContain("first/catalog");
     expect(tooltip).toContain("second/catalog (branch:Next)");
     expect(tooltip).toContain("first catalog wins");
@@ -500,7 +500,7 @@ describe("PackageCard", function () {
       packageManager,
     );
 
-    const tooltip = card.catalogTooltipHtml();
+    const tooltip = card.catalogTooltipLines().join(" ");
     expect(tooltip).toContain("<strong>Origin:</strong>");
     expect(tooltip).toContain("<strong>Catalogs:</strong>");
     expect(tooltip).toContain("owner/catalog");

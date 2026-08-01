@@ -36,11 +36,16 @@ module.exports = class FileInfoView {
   }
 
   registerTooltip() {
-    this.tooltip = atom.tooltips.add(this.element, {
-      title() {
-        return "Click to copy absolute file path (Shift + Click to copy relative path)";
+    this.tooltip = atom.tooltips.addComposite(this.element, [
+      {
+        title: "Copy absolute file path",
+        keyBindingExtra: "LMB",
       },
-    });
+      {
+        title: "Copy relative file path",
+        keyBindingExtra: "Shift+LMB",
+      },
+    ]);
   }
 
   clearCopiedTooltip() {
