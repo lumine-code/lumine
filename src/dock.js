@@ -427,7 +427,11 @@ module.exports = class Dock {
   }
 
   deserialize(serialized, deserializerManager) {
-    this.paneContainer.deserialize(serialized.paneContainer, deserializerManager);
+    this.paneContainer.deserialize(serialized.paneContainer, deserializerManager, {
+      // Dock items may deliberately opt out of serialization. Do not preserve
+      // the splits that contained them as empty panes after restoring a layout.
+      destroyEmptyPanes: true,
+    });
     this.setState({
       size: serialized.size || this.getInitialSize(),
       // If no items could be deserialized, we don't want to show the dock (even if it was visible last time)

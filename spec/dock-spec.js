@@ -362,6 +362,31 @@ describe("Dock", () => {
       expect(dock.getPaneItems()).toHaveLength(0);
       expect(dock.isVisible()).toBe(false);
     });
+
+    it("removes splits whose items do not deserialize", () => {
+      const restoredItem = {
+        element: document.createElement("div"),
+        serialize: () => ({ deserializer: "DockTestItem" }),
+      };
+      const transientItem = { element: document.createElement("div") };
+      atom.deserializers.add({
+        name: "DockTestItem",
+        deserialize: () => restoredItem,
+      });
+
+      const dock = atom.workspace.getLeftDock();
+      const restoredPane = dock.getActivePane();
+      restoredPane.addItem(restoredItem);
+      restoredPane.splitRight({ items: [transientItem] });
+      const serialized = dock.serialize();
+
+      atom.workspace.getCenter().getActivePane().activate();
+      dock.deserialize(serialized, atom.deserializers);
+
+      expect(dock.getPanes()).toHaveLength(1);
+      expect(dock.getPaneItems()).toEqual([restoredItem]);
+      expect(atom.workspace.getActivePaneContainer()).toBe(atom.workspace.getCenter());
+    });
   });
 
   describe("drag handling", () => {

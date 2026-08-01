@@ -76,14 +76,19 @@ module.exports = class PaneContainer {
     };
   }
 
-  deserialize(state, deserializerManager) {
+  deserialize(state, deserializerManager, options = {}) {
     if (state.version !== SERIALIZATION_VERSION) return;
     this.itemRegistry = new ItemRegistry();
     this.setRoot(deserializerManager.deserialize(state.root));
-    this.activePane =
+    const activePane =
       find(this.getRoot().getPanes(), (pane) => pane.id === state.activePaneId) ||
       this.getPanes()[0];
-    if (this.config.get("core.destroyEmptyPanes")) this.destroyEmptyPanes();
+    const destroyEmptyPanes =
+      options.destroyEmptyPanes == null
+        ? this.config.get("core.destroyEmptyPanes")
+        : options.destroyEmptyPanes;
+    if (destroyEmptyPanes) this.destroyEmptyPanes();
+    this.activePane = activePane.isAlive() ? activePane : this.getPanes()[0];
   }
 
   onDidChangeRoot(fn) {
