@@ -1212,6 +1212,7 @@ module.exports = class RepositoryRegistry {
 
   automaticRepositoryLimitReached() {
     const maximum = this.config?.get("git.maxCount") ?? 100;
+    if (maximum === 0) return false;
     if (this.entriesById.size < maximum) return false;
 
     if (!this.didNotifyRepositoryLimit) {

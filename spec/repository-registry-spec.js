@@ -1149,6 +1149,24 @@ describe("RepositoryRegistry", () => {
     expect(registry.getRepositories()).toContain(nested);
   });
 
+  it("treats a maximum repository count of zero as unlimited", async () => {
+    registry.destroy();
+    registry = new RepositoryRegistry({
+      project,
+      config: config({ "git.maxCount": 0 }),
+    });
+    const rootPath = temp.mkdirSync("unlimited-scanned-root");
+    const repositoryPaths = [path.join(rootPath, "first"), path.join(rootPath, "second")];
+    for (const repositoryPath of repositoryPaths) {
+      repositories.push(new FakeRepository(repositoryPath));
+    }
+
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+    await registry.scanProjectRoots({ depth: 1 });
+
+    expect(registry.getRepositories()).toEqual(repositories);
+  });
+
   it("removes repositories that disappeared during a manual rescan", async () => {
     const workdir = temp.mkdirSync("removed-repository");
     const repository = new FakeRepository(workdir);

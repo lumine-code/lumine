@@ -584,9 +584,9 @@ const configSchema = {
       maxCount: {
         title: "Maximum Repository Count",
         description:
-          "Maximum number of repositories that automatic project scanning may add to a window. Manually opened repositories are not rejected by this limit.",
+          "Maximum number of repositories that automatic project scanning may add to a window. Set to 0 for no limit. Manually opened repositories are not rejected by this limit.",
         type: "integer",
-        minimum: 1,
+        minimum: 0,
         maximum: 1000,
         default: 100,
       },
