@@ -44,6 +44,10 @@ atom-text-editor[mini].is-focused,
 
 /* Compact rounded overlays and borderless result rows. */
 
+.select-list {
+  --select-list-separator-inset: calc(var(--component-padding) / 2);
+}
+
 atom-panel.modal {
   .select-list ol.list-group,
   &.select-list ol.list-group {
@@ -54,6 +58,10 @@ atom-panel.modal {
       margin: 2px 3px;
       border-bottom: none;
       border-radius: var(--component-border-radius);
+
+      &.select-list-separator[role="separator"] + li {
+        border-top: none;
+      }
     }
   }
 

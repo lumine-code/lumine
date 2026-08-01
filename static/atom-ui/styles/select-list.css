@@ -1,7 +1,6 @@
 .select-list {
   --select-list-hover-tint: color-mix(in srgb, var(--text-color) 8%, transparent);
   --select-list-separator-color: color-mix(in srgb, var(--text-color-subtle) 20%, transparent);
-  --select-list-separator-inset: calc(var(--component-padding) / 2);
 
   .loading {
     .loading-message {
@@ -81,9 +80,6 @@
     /* A themed row border immediately before the standalone line would draw a
        distracting double rule (notably in One). Keep normal row borders
        everywhere else. */
-    > li:has(+ li.select-list-separator[role="separator"]) {
-      border-bottom: 0;
-    }
 
     /* Separators are their own non-interactive list chrome, not a border on a
        row. The role attribute raises specificity above modal-theme row rules,
@@ -94,7 +90,7 @@
       width: auto;
       height: 1px;
       min-height: 0;
-      margin: var(--select-list-separator-inset);
+      margin: calc(var(--component-padding) / 2) var(--select-list-separator-inset, 0);
       padding: 0;
       border: 0;
       border-radius: 0;
