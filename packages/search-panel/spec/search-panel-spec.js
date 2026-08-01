@@ -66,6 +66,18 @@ describe("search-panel integration", () => {
   });
 
   describe("the project find panel", () => {
+    it("does not create the buffer panel when its command activates the package", async () => {
+      await atom.packages.deactivatePackage("search-panel");
+
+      const activationPromise = atom.packages.activatePackage("search-panel");
+      atom.commands.dispatch(workspaceElement, "search-panel:project-show");
+      const pkg = await activationPromise;
+      mainModule = pkg.mainModule;
+
+      expect(mainModule.findPanel).toBeNull();
+      expect(mainModule.projectFindPanel.isVisible()).toBe(true);
+    });
+
     it("shows with the project-show command", () => {
       atom.commands.dispatch(workspaceElement, "search-panel:project-show");
       expect(mainModule.projectFindPanel.isVisible()).toBe(true);

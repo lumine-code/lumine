@@ -58,7 +58,7 @@ module.exports = {
 
     this.subscriptions.add(
       atom.commands.add("atom-workspace", "search-panel:project-show", () => {
-        this.createViews();
+        this.createProjectFindView();
         return showPanel(this.projectFindPanel, this.findPanel, () =>
           this.projectFindView.focusFindElement(),
         );
@@ -67,7 +67,7 @@ module.exports = {
 
     this.subscriptions.add(
       atom.commands.add("atom-workspace", "search-panel:project-toggle", () => {
-        this.createViews();
+        this.createProjectFindView();
         return togglePanel(this.projectFindPanel, this.findPanel, () =>
           this.projectFindView.focusFindElement(),
         );
@@ -79,8 +79,8 @@ module.exports = {
         "atom-workspace",
         "search-panel:project-show-in-current-directory",
         ({ target }) => {
-          this.createViews();
-          this.findPanel.hide();
+          this.createProjectFindView();
+          this.findPanel?.hide();
           this.projectFindPanel.show();
           this.projectFindView.focusFindElement();
           return this.projectFindView.findInCurrentlySelectedDirectory(target);
@@ -108,7 +108,7 @@ module.exports = {
 
     this.subscriptions.add(
       atom.commands.add("atom-workspace", "search-panel:toggle", () => {
-        this.createViews();
+        this.createFindView();
         return togglePanel(this.findPanel, this.projectFindPanel, () =>
           this.findView.focusFindEditor(),
         );
@@ -117,7 +117,7 @@ module.exports = {
 
     this.subscriptions.add(
       atom.commands.add("atom-workspace", "search-panel:show", () => {
-        this.createViews();
+        this.createFindView();
         return showPanel(this.findPanel, this.projectFindPanel, () =>
           this.findView.focusFindEditor(),
         );
@@ -126,7 +126,7 @@ module.exports = {
 
     this.subscriptions.add(
       atom.commands.add("atom-workspace", "search-panel:show-replace", () => {
-        this.createViews();
+        this.createFindView();
         return showPanel(this.findPanel, this.projectFindPanel, () =>
           this.findView.focusReplaceEditor(),
         );
@@ -177,13 +177,13 @@ module.exports = {
     };
 
     var showPanel = function (panelToShow, panelToHide, postShowAction) {
-      panelToHide.hide();
+      panelToHide?.hide();
       panelToShow.show();
       return postShowAction?.();
     };
 
     var togglePanel = function (panelToToggle, panelToHide, postToggleAction) {
-      panelToHide.hide();
+      panelToHide?.hide();
 
       if (panelToToggle.isVisible()) {
         return panelToToggle.hide();
@@ -262,20 +262,20 @@ module.exports = {
 
       // Panel visibility
       showFind: () => {
-        this.createViews();
-        this.projectFindPanel.hide();
+        this.createFindView();
+        this.projectFindPanel?.hide();
         this.findPanel.show();
         this.findView.focusFindEditor();
       },
       showReplace: () => {
-        this.createViews();
-        this.projectFindPanel.hide();
+        this.createFindView();
+        this.projectFindPanel?.hide();
         this.findPanel.show();
         this.findView.focusReplaceEditor();
       },
       showProjectFind: () => {
-        this.createViews();
-        this.findPanel.hide();
+        this.createProjectFindView();
+        this.findPanel?.hide();
         this.projectFindPanel.show();
         this.projectFindView.focusFindElement();
       },
@@ -288,21 +288,21 @@ module.exports = {
       onDidUpdate: (callback) => this.findModel.onDidUpdate(callback),
       onDidChangeCurrentResult: (callback) => this.findModel.onDidChangeCurrentResult(callback),
       onDidChangeFindVisibility: (callback) => {
-        this.createViews();
+        this.createFindView();
         return this.findPanel.onDidChangeVisible(callback);
       },
       onDidChangeProjectFindVisibility: (callback) => {
-        this.createViews();
+        this.createProjectFindView();
         return this.projectFindPanel.onDidChangeVisible(callback);
       },
 
       // Search triggers
       search: (findPattern, options) => {
-        this.createViews();
+        this.createFindView();
         this.findView.search(findPattern, options);
       },
       projectSearch: (findPattern, pathsPattern) => {
-        this.createViews();
+        this.createProjectFindView();
         this.findOptions.set({ findPattern, pathsPattern });
         this.projectFindView.confirm();
       },
@@ -310,43 +310,64 @@ module.exports = {
   },
 
   createViews() {
-    if (this.findView != null) {
-      return;
+    this.createFindView();
+    this.createProjectFindView();
+  },
+
+  createViewOptions() {
+    if (this.viewOptions != null) {
+      return this.viewOptions;
     }
 
     const findBuffer = new TextBuffer();
     const replaceBuffer = new TextBuffer();
     const pathsBuffer = new TextBuffer();
 
-    const findHistoryCycler = new HistoryCycler(findBuffer, this.findHistory);
-    const replaceHistoryCycler = new HistoryCycler(replaceBuffer, this.replaceHistory);
-    const pathsHistoryCycler = new HistoryCycler(pathsBuffer, this.pathsHistory);
-
-    const options = {
+    this.viewOptions = {
       findBuffer,
       replaceBuffer,
       pathsBuffer,
-      findHistoryCycler,
-      replaceHistoryCycler,
-      pathsHistoryCycler,
+      findHistoryCycler: new HistoryCycler(findBuffer, this.findHistory),
+      replaceHistoryCycler: new HistoryCycler(replaceBuffer, this.replaceHistory),
+      pathsHistoryCycler: new HistoryCycler(pathsBuffer, this.pathsHistory),
     };
 
-    this.findView = new FindView(this.activeTarget, options);
+    return this.viewOptions;
+  },
 
-    this.projectFindView = new ProjectFindView(this.resultsModel, options);
+  createFindView() {
+    if (this.findView != null) {
+      return;
+    }
+
+    this.findView = new FindView(this.activeTarget, this.createViewOptions());
 
     this.findPanel = atom.workspace.addBottomPanel({
       item: this.findView,
       visible: false,
       className: "tool-panel panel-bottom",
     });
+
+    this.findView.setPanel(this.findPanel);
+    if (this.activeTarget?.refresh) {
+      this.activeTarget.refresh();
+    }
+    this.toggleAutocompletions(atom.config.get("search-panel.autocompleteSearches"));
+  },
+
+  createProjectFindView() {
+    if (this.projectFindView != null) {
+      return;
+    }
+
+    this.projectFindView = new ProjectFindView(this.resultsModel, this.createViewOptions());
+
     this.projectFindPanel = atom.workspace.addBottomPanel({
       item: this.projectFindView,
       visible: false,
       className: "tool-panel panel-bottom",
     });
 
-    this.findView.setPanel(this.findPanel);
     this.projectFindView.setPanel(this.projectFindPanel);
 
     // HACK: Soooo, we need to get the model to the pane view whenever it is
@@ -365,11 +386,6 @@ module.exports = {
     // as different pane views don't necessarily use same models anymore
     // but most recent pane view and projectFindView do
     ResultsPaneView.projectFindView = this.projectFindView;
-
-    if (this.activeTarget && this.activeTarget.refresh) {
-      this.activeTarget.refresh();
-    }
-    return this.toggleAutocompletions(atom.config.get("search-panel.autocompleteSearches"));
   },
 
   // Point the buffer find view at the given SearchTarget (editor- or
@@ -440,6 +456,7 @@ module.exports = {
     this.projectFindPanel = null;
     this.projectFindView?.destroy();
     this.projectFindView = null;
+    this.viewOptions = null;
 
     ResultsPaneView.model = null;
 
