@@ -3,9 +3,10 @@ const { CompositeDisposable, Emitter } = require("atom");
 const { repoForPath } = require("./helpers");
 
 module.exports = class File {
-  constructor({ name, fullPath, symlink, useSyncFS, stats }) {
+  constructor({ name, fullPath, symlink, ignoredByName = false, useSyncFS, stats }) {
     this.name = name;
     this.symlink = symlink;
+    this.ignoredByName = ignoredByName;
     this.stats = stats;
     this.destroyed = false;
     this.emitter = new Emitter();

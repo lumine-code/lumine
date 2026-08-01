@@ -12,6 +12,7 @@ module.exports = class Directory {
     this.expansionState = expansionState;
     this.isRoot = isRoot;
     this.ignoredNames = ignoredNames;
+    this.ignoredByName = ignoredNames?.matches(fullPath) ?? false;
     this.useSyncFS = useSyncFS;
     this.stats = stats;
     this.destroyed = false;
@@ -359,6 +360,7 @@ module.exports = class Directory {
               name,
               fullPath,
               symlink,
+              ignoredByName: this.ignoredNames.matches(fullPath),
               useSyncFS: this.useSyncFS,
               stats: statFlat,
             }),

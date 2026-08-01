@@ -1148,11 +1148,7 @@ class TreeView {
       // (and in what order).
       atom.config.onDidChange("tree-view.hideVcsIgnoredFiles", () => this.updateRoots()),
       atom.config.onDidChange("tree-view.hideIgnoredNames", () => this.updateRoots()),
-      atom.config.onDidChange("core.ignoredNames", () => {
-        if (atom.config.get("tree-view.hideIgnoredNames")) {
-          this.updateRoots();
-        }
-      }),
+      atom.config.onDidChange("core.ignoredNames", () => this.updateRoots()),
       atom.config.onDidChange("tree-view.sortFoldersBeforeFiles", () => this.updateRoots()),
       atom.config.onDidChange("tree-view.squashDirectoryNames", () => this.updateRoots()),
     );

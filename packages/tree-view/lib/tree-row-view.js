@@ -203,6 +203,7 @@ module.exports = class TreeRowView {
     element.classList.toggle("expanded", expandable && entry.isExpanded);
     element.classList.toggle("collapsed", expandable && !entry.isExpanded);
     element.classList.toggle("selected", this.treeView.selectedEntries.has(entry));
+    element.classList.toggle("ignored-name", entry.item?.ignoredByName === true);
     element.classList.toggle("status-removed", entry.special && !entry.exists);
     element.isExpanded = entry.isExpanded;
     element.setAttribute("role", "treeitem");

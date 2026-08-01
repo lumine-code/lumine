@@ -10,6 +10,7 @@ function repositoryFor({ directoryStatusSummary = null } = {}) {
     getDirectoryStatusSummary: jasmine
       .createSpy("getDirectoryStatusSummary")
       .andReturn(directoryStatusSummary),
+    getPathStatusSummary: jasmine.createSpy("getPathStatusSummary").andReturn(null),
     isPathIgnoredCached: jasmine.createSpy("isPathIgnoredCached").andReturn(false),
     getWorkingDirectory() {
       return null;
@@ -40,7 +41,7 @@ function createDirectory(fullPath, repository, { isRoot = false, ignoredNames } 
   });
 }
 
-describe("TreeView Directory Git status", () => {
+describe("TreeView Directory decorations and Git status", () => {
   let directory;
   let temporaryDirectories;
 
@@ -99,7 +100,7 @@ describe("TreeView Directory Git status", () => {
     expect(repository.getDirectoryStatusSummary).toHaveBeenCalledWith(directoryPath);
   });
 
-  it("does not mark a directory whose path matches core.ignoredNames", () => {
+  it("tracks core.ignoredNames separately from Git status", () => {
     const directoryPath = makeTemporaryDirectory("ignored-name-directory");
     const repository = repositoryFor({ directoryStatusSummary: null });
 
@@ -107,6 +108,7 @@ describe("TreeView Directory Git status", () => {
       ignoredNames: { matches: (candidate) => candidate === directoryPath },
     });
 
+    expect(directory.ignoredByName).toBe(true);
     expect(directory.status).toBeNull();
   });
 
@@ -120,6 +122,21 @@ describe("TreeView Directory Git status", () => {
       ignoredNames: { matches: (candidate) => candidate === directoryPath },
     });
 
+    expect(directory.ignoredByName).toBe(true);
     expect(directory.status).toBe("modified");
+  });
+
+  it("marks a visible child file whose path matches core.ignoredNames", () => {
+    const directoryPath = makeTemporaryDirectory("ignored-name-child");
+    const ignoredPath = path.join(directoryPath, "debug.log");
+    fs.writeFileSync(ignoredPath, "ignored");
+    const repository = repositoryFor({ directoryStatusSummary: null });
+
+    directory = createDirectory(directoryPath, repository, {
+      ignoredNames: { matches: (candidate) => candidate === ignoredPath },
+    });
+    directory.reload();
+
+    expect(directory.entries.get("debug.log").ignoredByName).toBe(true);
   });
 });

@@ -69,6 +69,17 @@ describe("tree-view entry attributes", () => {
       expect(view.element.treeEntry).toBe(view.entry);
       expect(view.element.getAttribute("aria-level")).toBe("3");
     });
+
+    it("marks an ignored name without replacing its Git status", () => {
+      const filePath = path.join("/root", "debug.log");
+      const view = mount(
+        "file",
+        item("debug.log", filePath, { ignoredByName: true, status: "modified" }),
+      );
+
+      expect(view.element.classList.contains("ignored-name")).toBe(true);
+      expect(view.element.classList.contains("status-modified")).toBe(true);
+    });
   });
 
   describe("a directory row", () => {
