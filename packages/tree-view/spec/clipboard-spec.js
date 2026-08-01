@@ -92,4 +92,32 @@ describe("TreeView clipboard data", () => {
       target: { type: "directory", path: targetPath },
     });
   });
+
+  it("queues every copied path before waiting for the first one", async () => {
+    const sourcePaths = [__filename, path.join(__dirname, "tree-view-spec.js")];
+    const targetPath = path.resolve("target");
+    const resolvers = [];
+    const treeView = {
+      copyEntry: jasmine.createSpy("copyEntry").and.callFake(
+        () =>
+          new Promise((resolve) => {
+            resolvers.push(resolve);
+          }),
+      ),
+    };
+
+    const pastePromise = TreeView.prototype.pastePaths.call(
+      treeView,
+      sourcePaths,
+      "copy",
+      targetPath,
+    );
+
+    expect(treeView.copyEntry.calls.count()).toBe(2);
+    expect(treeView.copyEntry.calls.argsFor(0)[2].reservedPaths).toBe(
+      treeView.copyEntry.calls.argsFor(1)[2].reservedPaths,
+    );
+    for (const resolve of resolvers) resolve(true);
+    expect(await pastePromise).toBe(true);
+  });
 });

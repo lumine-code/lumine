@@ -15,10 +15,11 @@ function notify(listener, label, payload) {
 // briefly after completion amortizes process startup across multi-entry pastes
 // without paying for an idle process throughout the editor session.
 module.exports = class FileOperationProcess {
-  constructor({ onDidStart, onDidProgress, onDidFinish, onConflict } = {}) {
+  constructor({ onDidStart, onDidProgress, onDidFinish, onDidChange, onConflict } = {}) {
     this.onDidStart = onDidStart;
     this.onDidProgress = onDidProgress;
     this.onDidFinish = onDidFinish;
+    this.onDidChange = onDidChange;
     this.onConflict = onConflict;
     this.queue = [];
     this.nextJobId = 1;
@@ -30,9 +31,10 @@ module.exports = class FileOperationProcess {
       return Promise.reject(new Error("The file operation process has been destroyed."));
     }
 
-    return new Promise((resolve, reject) => {
+    const id = this.nextJobId++;
+    const promise = new Promise((resolve, reject) => {
       this.queue.push({
-        id: this.nextJobId++,
+        id,
         operation,
         sourcePath,
         destinationPath,
@@ -40,7 +42,54 @@ module.exports = class FileOperationProcess {
         reject,
       });
       this.pump();
+      this.didChange();
     });
+    promise.operationId = id;
+    return promise;
+  }
+
+  getOperations() {
+    const summarize = (job, state) => ({
+      id: job.id,
+      operation: job.operation,
+      sourcePath: job.sourcePath,
+      destinationPath: job.destinationPath,
+      phase: job.phase,
+      entries: job.entries,
+      bytesTotal: job.bytesTotal,
+      cancelRequested: job.cancelRequested === true,
+      state,
+    });
+    return [
+      ...(this.current ? [summarize(this.current, "running")] : []),
+      ...this.queue.map((job) => summarize(job, "queued")),
+    ];
+  }
+
+  cancel(jobId) {
+    const queuedIndex = this.queue.findIndex((job) => job.id === jobId);
+    if (queuedIndex !== -1) {
+      const [job] = this.queue.splice(queuedIndex, 1);
+      job.resolve({ cancelled: true });
+      this.didChange();
+      return true;
+    }
+
+    if (this.current?.id !== jobId || this.current.cancelRequested) return false;
+    this.current.cancelRequested = true;
+    this.current.phase = "cancelling";
+    notify(this.onDidProgress, "progress", { ...this.current });
+    this.didChange();
+    try {
+      this.childProcess?.send({ type: "cancel", jobId });
+    } catch (error) {
+      this.finishCurrent(error);
+    }
+    return true;
+  }
+
+  didChange() {
+    notify(this.onDidChange, "change", this.getOperations());
   }
 
   pump() {
@@ -56,9 +105,10 @@ module.exports = class FileOperationProcess {
     this.idleShutdownTimer = null;
     this.current = job;
     notify(this.onDidStart, "start", job);
+    this.didChange();
 
-    const child = this.getChildProcess();
     try {
+      const child = this.getChildProcess();
       child.send({
         type: "run",
         jobId: job.id,
@@ -66,6 +116,7 @@ module.exports = class FileOperationProcess {
         sourcePath: job.sourcePath,
         destinationPath: job.destinationPath,
       });
+      if (job.cancelRequested) child.send({ type: "cancel", jobId: job.id });
     } catch (error) {
       this.finishCurrent(error);
     }
@@ -93,7 +144,9 @@ module.exports = class FileOperationProcess {
 
     switch (message.type) {
       case "progress":
-        notify(this.onDidProgress, "progress", { ...this.current, ...message.progress });
+        Object.assign(this.current, message.progress);
+        if (this.current.cancelRequested) this.current.phase = "cancelling";
+        notify(this.onDidProgress, "progress", { ...this.current });
         break;
       case "conflict":
         this.resolveConflict(child, message);
@@ -147,6 +200,7 @@ module.exports = class FileOperationProcess {
       job.resolve(result);
     }
     this.pump();
+    this.didChange();
   }
 
   handleChildFailure(child, error) {

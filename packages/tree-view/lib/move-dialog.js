@@ -74,7 +74,11 @@ module.exports = class MoveDialog extends Dialog {
       let repo;
       this.willMove?.({ initialPath: this.initialPath, newPath });
       this.close();
-      await this.move(this.initialPath, newPath);
+      const result = await this.move(this.initialPath, newPath);
+      if (result?.cancelled || result?.skipped) {
+        this.onMoveFailed?.({ initialPath: this.initialPath, newPath });
+        return;
+      }
       this.onMove?.({ initialPath: this.initialPath, newPath });
       if ((repo = repoForPath(newPath))) {
         repo.scheduleStatusSnapshotRefresh();

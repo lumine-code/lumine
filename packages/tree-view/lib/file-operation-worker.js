@@ -3,6 +3,7 @@ const path = require("path");
 
 const fsp = fs.promises;
 const conflictResolvers = new Map();
+const cancelledJobs = new Set();
 let nextConflictId = 1;
 
 // This module is forked directly instead of running through Task so the worker
@@ -13,6 +14,10 @@ function emit(message) {
 
 function serializeError(error) {
   return { message: error.message, code: error.code, stack: error.stack };
+}
+
+function isCancelled(jobId) {
+  return cancelledJobs.has(jobId);
 }
 
 async function statNoException(filePath, method = "lstat") {
@@ -54,7 +59,9 @@ function progressReporter(jobId, phase) {
 }
 
 async function copyPath(sourcePath, destinationPath, jobId, phase = "copying") {
+  if (isCancelled(jobId)) return { cancelled: true };
   const destinationStat = await statNoException(destinationPath);
+  if (isCancelled(jobId)) return { cancelled: true };
   if (destinationStat) {
     const error = new Error(`'${destinationPath}' already exists.`);
     error.code = "EEXIST";
@@ -62,6 +69,7 @@ async function copyPath(sourcePath, destinationPath, jobId, phase = "copying") {
   }
 
   const sourceStat = await fsp.lstat(sourcePath);
+  if (isCancelled(jobId)) return { cancelled: true };
   emit({
     type: "progress",
     jobId,
@@ -77,10 +85,16 @@ async function copyPath(sourcePath, destinationPath, jobId, phase = "copying") {
     force: false,
     errorOnExist: true,
     filter() {
+      if (isCancelled(jobId)) return false;
       return progress.visit();
     },
   });
+  if (isCancelled(jobId)) {
+    await fsp.rm(destinationPath, { recursive: true, force: true });
+    return { cancelled: true };
+  }
   progress.finish();
+  return { copied: true };
 }
 
 function askConflict(jobId, conflict) {
@@ -92,27 +106,31 @@ function askConflict(jobId, conflict) {
 }
 
 async function copyThenRemove(sourcePath, destinationPath, jobId) {
-  await copyPath(sourcePath, destinationPath, jobId, "copying-to-move");
+  const result = await copyPath(sourcePath, destinationPath, jobId, "copying-to-move");
+  if (result.cancelled) return result;
   await fsp.rm(sourcePath, { recursive: true, force: false });
+  return { moved: true };
 }
 
-async function renameFresh(sourcePath, destinationPath, jobId) {
+async function renameFresh(sourcePath, destinationPath, jobId, allowCancellation = true) {
+  if (allowCancellation && isCancelled(jobId)) return { cancelled: true };
   await fsp.mkdir(path.dirname(destinationPath), { recursive: true });
   try {
     await fsp.rename(sourcePath, destinationPath);
+    return { moved: true };
   } catch (error) {
     if (error.code !== "EXDEV") throw error;
-    await copyThenRemove(sourcePath, destinationPath, jobId);
+    return copyThenRemove(sourcePath, destinationPath, jobId);
   }
 }
 
 async function movePath(sourcePath, destinationPath, jobId, relativeTo) {
+  if (isCancelled(jobId)) return { cancelled: true };
   const sourceStat = await fsp.lstat(sourcePath);
   const destinationStat = await statNoException(destinationPath);
 
   if (!destinationStat) {
-    await renameFresh(sourcePath, destinationPath, jobId);
-    return { moved: true };
+    return renameFresh(sourcePath, destinationPath, jobId);
   }
 
   const followedSourceStat = await statNoException(sourcePath, "stat");
@@ -162,15 +180,13 @@ async function movePath(sourcePath, destinationPath, jobId, relativeTo) {
   }
 
   await fsp.rm(destinationPath, { recursive: destinationStat.isDirectory(), force: true });
-  await renameFresh(sourcePath, destinationPath, jobId);
-  return { moved: true };
+  return renameFresh(sourcePath, destinationPath, jobId, false);
 }
 
 async function runJob(message) {
   const { jobId, operation, sourcePath, destinationPath } = message;
   if (operation === "copy") {
-    await copyPath(sourcePath, destinationPath, jobId);
-    return { copied: true };
+    return copyPath(sourcePath, destinationPath, jobId);
   }
   if (operation === "move") {
     emit({ type: "progress", jobId, progress: { phase: "moving" } });
@@ -180,6 +196,15 @@ async function runJob(message) {
 }
 
 process.on("message", async (message) => {
+  if (message?.type === "cancel") {
+    cancelledJobs.add(message.jobId);
+    for (const [key, resolve] of conflictResolvers) {
+      if (!key.startsWith(`${message.jobId}:`)) continue;
+      conflictResolvers.delete(key);
+      resolve("cancel");
+    }
+    return;
+  }
   if (message?.type === "resolve-conflict") {
     const key = `${message.jobId}:${message.conflictId}`;
     const resolve = conflictResolvers.get(key);
@@ -196,6 +221,8 @@ process.on("message", async (message) => {
     emit({ type: "complete", jobId: message.jobId, result });
   } catch (error) {
     emit({ type: "error", jobId: message.jobId, error: serializeError(error) });
+  } finally {
+    cancelledJobs.delete(message.jobId);
   }
 });
 

@@ -54,7 +54,11 @@ module.exports = class CopyDialog extends Dialog {
     }
     this.close();
     try {
-      await this.copy(this.initialPath, newPath);
+      const result = await this.copy(this.initialPath, newPath);
+      if (result?.cancelled) {
+        this.onCopyFailed?.({ initialPath: this.initialPath, newPath });
+        return;
+      }
       this.onCopy?.({ initialPath: this.initialPath, newPath });
       if (!fs.isDirectorySync(newPath) && atom.config.get("tree-view.openAfterCopy")) {
         const openOptions = { activatePane: true };

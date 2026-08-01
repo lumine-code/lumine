@@ -99,10 +99,6 @@ class TreeView {
     this.operationStatus = document.createElement("div");
     this.operationStatus.classList.add("tree-view-operation-status");
     this.operationStatus.hidden = true;
-    this.operationSpinner = document.createElement("span");
-    this.operationSpinner.classList.add("loading", "loading-spinner-tiny", "inline-block");
-    this.operationStatusLabel = document.createElement("span");
-    this.operationStatus.append(this.operationSpinner, this.operationStatusLabel);
     this.element.appendChild(this.operationStatus);
 
     this.stickyHeadersEnabled = false;
@@ -127,6 +123,7 @@ class TreeView {
       onDidStart: (operation) => this.beginOperationStatus(operation),
       onDidProgress: (progress) => this.updateOperationStatus(progress),
       onDidFinish: () => this.finishOperationStatus(),
+      onDidChange: (operations) => this.fileOperationQueueChanged(operations),
       onConflict: (conflict) => this.resolveFileOperationConflict(conflict),
     });
     this.disposables.add(
@@ -154,7 +151,7 @@ class TreeView {
 
     this.openExternalService = null;
 
-    this.editorsToMove = [];
+    this.editorsToMove = new Map();
     this.editorsToDestroy = [];
 
     this.dragEventCounts = new WeakMap();
@@ -208,31 +205,32 @@ class TreeView {
       this.onWillMoveEntry(({ initialPath }) => {
         let isDir = fs.isDirectorySync(initialPath);
         if (isDir) initialPath += path.sep;
+        const editorPaths = new Set();
         for (let editor of atom.workspace.getTextEditors()) {
           let filePath = editor.getPath();
           if (isDir ? filePath?.startsWith(initialPath) : filePath === initialPath) {
-            this.editorsToMove.push(filePath);
+            editorPaths.add(filePath);
           }
         }
+        this.editorsToMove.set(initialPath, editorPaths);
       }),
       this.onEntryMoved(({ initialPath, newPath }) => {
-        for (let editor of atom.workspace.getTextEditors()) {
-          let filePath = editor.getPath();
-          let index = this.editorsToMove.indexOf(filePath);
-          if (index !== -1) {
-            editor.getBuffer().setPath(filePath.replace(initialPath, newPath));
-            this.editorsToMove.splice(index, 1);
+        const moveKey = fs.isDirectorySync(newPath) ? initialPath + path.sep : initialPath;
+        const editorPaths = this.editorsToMove.get(moveKey);
+        if (editorPaths) {
+          for (let editor of atom.workspace.getTextEditors()) {
+            let filePath = editor.getPath();
+            if (editorPaths.has(filePath)) {
+              editor.getBuffer().setPath(filePath.replace(initialPath, newPath));
+            }
           }
+          this.editorsToMove.delete(moveKey);
         }
         this.refreshSpecialRoots();
       }),
       this.onMoveEntryFailed(({ initialPath }) => {
-        const directoryPrefix = initialPath.endsWith(path.sep)
-          ? initialPath
-          : initialPath + path.sep;
-        this.editorsToMove = this.editorsToMove.filter(
-          (editorPath) => editorPath !== initialPath && !editorPath.startsWith(directoryPrefix),
-        );
+        this.editorsToMove.delete(initialPath);
+        this.editorsToMove.delete(initialPath + path.sep);
       }),
       this.onWillDeleteEntry(({ pathToDelete }) => {
         let isDir = fs.isDirectorySync(pathToDelete);
@@ -329,9 +327,7 @@ class TreeView {
     this.operationStatusDelay = setTimeout(() => {
       this.operationStatusDelay = null;
       if (!this.currentFileOperation) return;
-      this.operationStatus.hidden = false;
-      this.renderOperationStatus();
-      this.operationStatusInterval = setInterval(() => this.renderOperationStatus(), 1000);
+      this.showOperationStatus();
     }, 250);
   }
 
@@ -343,12 +339,30 @@ class TreeView {
     if (this.operationBusyProvider && previousTitle !== nextTitle) {
       this.operationBusyProvider.changeTitle(nextTitle, previousTitle);
     }
-    if (!this.operationStatus.hidden) this.renderOperationStatus();
+    if (!this.operationStatus.hidden) this.renderCurrentOperationStatus();
   }
 
   finishOperationStatus() {
     this.clearOperationStatus();
     this.currentFileOperation = null;
+  }
+
+  fileOperationQueueChanged(operations) {
+    if (operations.length > 1) {
+      this.showOperationStatus();
+    } else if (!this.operationStatus.hidden) {
+      this.renderOperationStatus();
+    }
+  }
+
+  showOperationStatus() {
+    clearTimeout(this.operationStatusDelay);
+    this.operationStatusDelay = null;
+    this.operationStatus.hidden = false;
+    this.renderOperationStatus();
+    if (!this.operationStatusInterval) {
+      this.operationStatusInterval = setInterval(() => this.renderCurrentOperationStatus(), 1000);
+    }
   }
 
   clearOperationStatus() {
@@ -357,7 +371,7 @@ class TreeView {
     this.operationStatusDelay = null;
     this.operationStatusInterval = null;
     this.operationStatus.hidden = true;
-    this.operationStatusLabel.textContent = "";
+    this.operationStatus.replaceChildren();
     this.operationBusyProvider?.dispose();
     this.operationBusyProvider = null;
   }
@@ -368,14 +382,16 @@ class TreeView {
     this.operationBusyProvider.add(this.getBusyOperationTitle());
   }
 
-  getOperationAction() {
-    switch (this.currentFileOperation?.phase) {
+  getOperationAction(operation = this.currentFileOperation) {
+    switch (operation?.phase) {
       case "copying":
         return "Copying";
       case "copying-to-move":
         return "Copying to move";
+      case "cancelling":
+        return "Cancelling";
       default:
-        return "Moving";
+        return operation?.operation === "copy" ? "Copying" : "Moving";
     }
   }
 
@@ -385,19 +401,76 @@ class TreeView {
   }
 
   renderOperationStatus() {
+    const operations = this.fileOperationProcess.getOperations();
+    this.operationStatus.replaceChildren();
+    for (let index = 0; index < operations.length; index++) {
+      let operation = operations[index];
+      if (operation.id === this.currentFileOperation?.id) {
+        operation = { ...operation, ...this.currentFileOperation };
+      }
+
+      const row = document.createElement("div");
+      row.classList.add("tree-view-operation-row");
+      row.classList.toggle("is-queued", operation.state === "queued");
+      row.dataset.operationId = operation.id;
+      row.title = `${operation.sourcePath}\n${operation.destinationPath}`;
+
+      const indicator = document.createElement("span");
+      if (operation.state === "running") {
+        indicator.classList.add("loading", "loading-spinner-tiny", "inline-block");
+      } else {
+        indicator.classList.add("icon", "icon-clock");
+      }
+
+      const label = document.createElement("span");
+      label.classList.add("tree-view-operation-label");
+      label.textContent = this.getOperationLabel(operation, index);
+
+      const cancelButton = document.createElement("button");
+      cancelButton.type = "button";
+      cancelButton.classList.add("btn", "btn-xs", "icon", "icon-x", "tree-view-operation-cancel");
+      cancelButton.disabled = operation.cancelRequested;
+      cancelButton.title = operation.cancelRequested
+        ? "Cancellation requested"
+        : "Cancel operation";
+      cancelButton.setAttribute("aria-label", cancelButton.title);
+      cancelButton.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        this.fileOperationProcess.cancel(operation.id);
+      });
+
+      row.append(indicator, label, cancelButton);
+      this.operationStatus.appendChild(row);
+    }
+  }
+
+  renderCurrentOperationStatus() {
     const operation = this.currentFileOperation;
     if (!operation) return;
+    const row = this.operationStatus.querySelector(`[data-operation-id="${operation.id}"]`);
+    const label = row?.querySelector(".tree-view-operation-label");
+    if (label) label.textContent = this.getOperationLabel(operation, 0);
+  }
 
-    const parts = [`${this.getOperationAction()} ${path.basename(operation.sourcePath)}`];
-    if (operation.entries > 1) {
-      parts.push(`${operation.entries} items`);
+  getOperationLabel(operation, index) {
+    const parts = [];
+    if (operation.state === "queued") {
+      parts.push(index === 1 ? "Next" : "Queued");
+      parts.push(operation.operation === "copy" ? "Copy" : "Move");
+      parts.push(path.basename(operation.sourcePath));
     } else {
-      const size = formatBytes(operation.bytesTotal);
-      if (size) parts.push(size);
+      parts.push(`${this.getOperationAction(operation)} ${path.basename(operation.sourcePath)}`);
+      if (operation.entries > 1) {
+        parts.push(`${operation.entries} items`);
+      } else {
+        const size = formatBytes(operation.bytesTotal);
+        if (size) parts.push(size);
+      }
+      const elapsed = Math.floor((Date.now() - operation.startedAt) / 1000);
+      parts.push(elapsed === 0 ? "<1s" : `${elapsed}s`);
     }
-    const elapsed = Math.floor((Date.now() - operation.startedAt) / 1000);
-    parts.push(elapsed === 0 ? "<1s" : `${elapsed}s`);
-    this.operationStatusLabel.textContent = parts.join(" · ");
+    return parts.join(" · ");
   }
 
   resolveFileOperationConflict({ relativePath }) {
@@ -1964,19 +2037,19 @@ class TreeView {
   }
 
   async pastePaths(initialPaths, operation, newDirectoryPath) {
-    let results = [];
+    const pendingOperations = [];
+    const reservedPaths = new Set();
     for (let initialPath of initialPaths) {
       if (fs.existsSync(initialPath)) {
         if (operation === "copy") {
-          results.push(await this.copyEntry(initialPath, newDirectoryPath));
+          pendingOperations.push(this.copyEntry(initialPath, newDirectoryPath, { reservedPaths }));
         } else if (operation === "cut") {
-          if (!(await this.moveEntry(initialPath, newDirectoryPath))) {
-            break;
-          }
+          pendingOperations.push(this.moveEntry(initialPath, newDirectoryPath));
         }
       }
     }
-    return results.length > 0 || operation === "cut";
+    const results = await Promise.all(pendingOperations);
+    return results.some(Boolean) || operation === "cut";
   }
 
   add(isCreatingFile) {
@@ -2161,7 +2234,7 @@ class TreeView {
   //
   // If the entry already exists in `newDirectoryPath`, a number is appended to
   // the basename.
-  async copyEntry(initialPath, newDirectoryPath) {
+  async copyEntry(initialPath, newDirectoryPath, { reservedPaths } = {}) {
     let initialPathIsDirectory = fs.isDirectorySync(initialPath);
     // Do not allow copying test/a/ into test/a/b/
     // Note: A trailing path.sep is added to prevent false positives, such as test/a -> test/ab
@@ -2176,13 +2249,19 @@ class TreeView {
     }
     let newPath = getDuplicateCopyPath(initialPath, newDirectoryPath, {
       isDirectory: initialPathIsDirectory,
-      pathExists: fs.existsSync,
+      pathExists: (candidatePath) =>
+        fs.existsSync(candidatePath) || reservedPaths?.has(candidatePath),
       style: atom.config.get("tree-view.duplicateCopyNameStyle"),
     });
+    reservedPaths?.add(newPath);
 
     try {
       this.emitter.emit("will-copy-entry", { initialPath, newPath });
-      await this.fileOperationProcess.run("copy", initialPath, newPath);
+      const result = await this.fileOperationProcess.run("copy", initialPath, newPath);
+      if (result.cancelled) {
+        this.emitter.emit("copy-entry-failed", { initialPath, newPath });
+        return false;
+      }
       this.emitter.emit("entry-copied", { initialPath, newPath });
       let repo = repoForPath(newPath);
       if (repo) {
@@ -2195,6 +2274,8 @@ class TreeView {
         detail: error.message,
       });
       return false;
+    } finally {
+      reservedPaths?.delete(newPath);
     }
   }
 
@@ -2572,6 +2653,8 @@ class TreeView {
         entryElement.classList.remove("drag-over", "selected");
         // Iterate backwards so that files in a dir are moved before the dir
         // itself.
+        const pendingOperations = [];
+        const reservedPaths = new Set();
         for (let j = initialPaths.length - 1; j >= 0; j -= 1) {
           // Note: This is necessary on Windows to circumvent node-pathwatcher
           // holding a lock on expanded folders and preventing them from being
@@ -2584,23 +2667,31 @@ class TreeView {
           if ((process.platform === "darwin" && event.metaKey) || event.ctrlKey) {
             // Mimic OS-specific conventions in which holding down a modifier
             // key means that an entry is copied rather than moved.
-            await this.copyEntry(initialPath, newDirectoryPath);
-          } else if (!(await this.moveEntry(initialPath, newDirectoryPath))) {
-            break;
+            pendingOperations.push(
+              this.copyEntry(initialPath, newDirectoryPath, { reservedPaths }),
+            );
+          } else {
+            pendingOperations.push(this.moveEntry(initialPath, newDirectoryPath));
           }
         }
+        await Promise.all(pendingOperations);
       } else {
         // Drop event from OS
         entryElement.classList.remove("selected");
+        const pendingOperations = [];
+        const reservedPaths = new Set();
         for (let file of event.dataTransfer.files) {
           const droppedPath = getPathForDroppedFile(file);
           if (!droppedPath) continue;
           if ((process.platform === "darwin" && event.metaKey) || event.ctrlKey) {
-            await this.copyEntry(droppedPath, newDirectoryPath);
-          } else if (!(await this.moveEntry(droppedPath, newDirectoryPath))) {
-            break;
+            pendingOperations.push(
+              this.copyEntry(droppedPath, newDirectoryPath, { reservedPaths }),
+            );
+          } else {
+            pendingOperations.push(this.moveEntry(droppedPath, newDirectoryPath));
           }
         }
+        await Promise.all(pendingOperations);
       }
     } else if (event.dataTransfer.files.length) {
       // A drop event from the OS that isn't targeting a specific folder in the

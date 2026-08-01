@@ -30,12 +30,44 @@ describe("TreeView file operation process", () => {
     const copyPromise = operations.run("copy", sourcePath, copyPath);
     const movePromise = operations.run("move", copyPath, movedPath);
 
+    expect(operations.getOperations().map(({ state }) => state)).toEqual(["running", "queued"]);
+
     expect(await copyPromise).toEqual({ copied: true });
     expect(await movePromise).toEqual({ moved: true });
     expect(fs.existsSync(copyPath)).toBe(false);
     expect(fs.readFileSync(movedPath)).toEqual(contents);
     expect(phases).toContain("copying");
     expect(phases).toContain("moving");
+  });
+
+  it("cancels an active copy and removes its partial destination", async () => {
+    const sourcePath = path.join(rootPath, "source.bin");
+    const copyPath = path.join(rootPath, "copy.bin");
+    fs.writeFileSync(sourcePath, Buffer.alloc(1024 * 1024, 7));
+    operations = new FileOperationProcess();
+
+    const copyPromise = operations.run("copy", sourcePath, copyPath);
+    expect(operations.cancel(copyPromise.operationId)).toBe(true);
+
+    expect(await copyPromise).toEqual({ cancelled: true });
+    expect(fs.existsSync(sourcePath)).toBe(true);
+    expect(fs.existsSync(copyPath)).toBe(false);
+  });
+
+  it("removes a queued operation without starting it", async () => {
+    const sourcePath = path.join(rootPath, "source.bin");
+    const firstCopyPath = path.join(rootPath, "first.bin");
+    const queuedCopyPath = path.join(rootPath, "queued.bin");
+    fs.writeFileSync(sourcePath, Buffer.alloc(1024 * 1024, 7));
+    operations = new FileOperationProcess();
+
+    const firstCopy = operations.run("copy", sourcePath, firstCopyPath);
+    const queuedCopy = operations.run("copy", sourcePath, queuedCopyPath);
+    expect(operations.cancel(queuedCopy.operationId)).toBe(true);
+
+    expect(await queuedCopy).toEqual({ cancelled: true });
+    expect(await firstCopy).toEqual({ copied: true });
+    expect(fs.existsSync(queuedCopyPath)).toBe(false);
   });
 
   it("asks the renderer before replacing a conflicting file", async () => {

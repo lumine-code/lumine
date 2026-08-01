@@ -162,6 +162,72 @@ describe("TreeView construction", () => {
     expect(provider.dispose).toHaveBeenCalled();
   });
 
+  it("renders the current operation and queue with cancel buttons", () => {
+    treeView = new TreeView({});
+    const sourcePath = path.join("root", "large.bin");
+    const nextPath = path.join("root", "next.bin");
+    treeView.currentFileOperation = {
+      id: 1,
+      operation: "copy",
+      sourcePath,
+      phase: "copying",
+      startedAt: Date.now(),
+    };
+    spyOn(treeView.fileOperationProcess, "getOperations").and.returnValue([
+      {
+        id: 1,
+        operation: "copy",
+        sourcePath,
+        destinationPath: sourcePath + ".copy",
+        state: "running",
+      },
+      {
+        id: 2,
+        operation: "copy",
+        sourcePath: nextPath,
+        destinationPath: nextPath + ".copy",
+        state: "queued",
+      },
+    ]);
+    spyOn(treeView.fileOperationProcess, "cancel").and.returnValue(true);
+
+    treeView.showOperationStatus();
+
+    const rows = treeView.operationStatus.querySelectorAll(".tree-view-operation-row");
+    expect(rows.length).toBe(2);
+    expect(rows[0].textContent).toContain("Copying large.bin");
+    expect(rows[1].textContent).toContain("Next · Copy · next.bin");
+    expect(rows[0].querySelector("button")).toHaveClass("tree-view-operation-cancel");
+    rows[0].querySelector("button").click();
+    rows[1].querySelector("button").click();
+    expect(treeView.fileOperationProcess.cancel).toHaveBeenCalledWith(1);
+    expect(treeView.fileOperationProcess.cancel).toHaveBeenCalledWith(2);
+  });
+
+  it("keeps editor path tracking isolated between queued moves", () => {
+    treeView = new TreeView({});
+    const firstPath = path.join("root", "first.txt");
+    const secondPath = path.join("root", "second.txt");
+    const firstBuffer = { setPath: jasmine.createSpy("firstSetPath") };
+    const secondBuffer = { setPath: jasmine.createSpy("secondSetPath") };
+    const editors = [
+      { getPath: () => firstPath, getBuffer: () => firstBuffer },
+      { getPath: () => secondPath, getBuffer: () => secondBuffer },
+    ];
+    spyOn(atom.workspace, "getTextEditors").and.returnValue(editors);
+
+    treeView.emitter.emit("will-move-entry", { initialPath: firstPath });
+    treeView.emitter.emit("will-move-entry", { initialPath: secondPath });
+    treeView.emitter.emit("entry-moved", {
+      initialPath: firstPath,
+      newPath: path.join("root", "moved-first.txt"),
+    });
+
+    expect(firstBuffer.setPath).toHaveBeenCalledWith(path.join("root", "moved-first.txt"));
+    expect(secondBuffer.setPath).not.toHaveBeenCalled();
+    expect(treeView.editorsToMove.has(secondPath)).toBe(true);
+  });
+
   it("keeps registered root sections before mounted project rows", () => {
     treeView = new TreeView({});
     const section = treeView.addSpecialRoot({

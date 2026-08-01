@@ -9,7 +9,7 @@ Explore and open project files in a tree-like view of your directories.
 - **Flexible sorting**: choose locale-aware or natural sort, list folders before files, and group entries by base name.
 - **Sticky navigation**: keep project roots and expanded ancestor directories visible while scrolling.
 - **Native clipboard**: copy or cut entries across windows and external applications while preserving platform-specific duplicate names.
-- **Responsive file operations**: copy and move entries in a separate process with lightweight progress status.
+- **Responsive file operations**: copy and move entries in a separate process with a cancellable operation queue.
 - **Debounced file watching**: rapid file creation and deletion is batched so the tree does not reload excessively.
 - **Virtual root sections**: let external packages inject their own root sections above the project folders.
 
