@@ -34,9 +34,6 @@ The palette is rendered inside a modal panel with the `command-palette` class. A
   .list-group {
     max-height: 20em;
   }
-  .recent {
-    background: transparent;
-  }
 }
 ```
 

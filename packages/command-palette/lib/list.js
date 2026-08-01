@@ -28,6 +28,8 @@ class CommandPalette {
       className: "command-palette",
       crumb: "Commands",
       emptyMessage: "No matches found",
+      separatorIds: [],
+      idForItem: (item) => (this.selectListView.getQuery() === "" ? item.name : null),
 
       order: (a, b) => {
         if (this.selectListView.getQuery() === "") {
@@ -72,16 +74,13 @@ class CommandPalette {
         }
         if (this.needsUpdate) {
           this.needsUpdate = false;
-          this.selectListView.update({ items: this.commands });
+          this.selectListView.update(this.listProps());
         }
       },
 
       elementForItem: (item, { matchIndices, highlight }) => {
         const li = document.createElement("li");
         li.classList.add("event", "two-lines");
-        if (this.selectListView.getQuery() === "" && this.recentlyUsed.includes(item.name)) {
-          li.classList.add("recent");
-        }
         li.dataset.eventName = item.name;
 
         // Key bindings on the right
@@ -181,6 +180,23 @@ class CommandPalette {
     this.needsUpdate = true;
   }
 
+  recentSeparatorIds() {
+    const recentNames = new Set(this.recentlyUsed);
+    if (!this.commands.some((command) => recentNames.has(command.name))) return [];
+
+    const firstNonRecent = this.commands
+      .filter((command) => !recentNames.has(command.name))
+      .sort((a, b) => a.displayName.localeCompare(b.displayName))[0];
+    return firstNonRecent ? [firstNonRecent.name] : [];
+  }
+
+  listProps() {
+    return {
+      items: this.commands,
+      separatorIds: this.recentSeparatorIds(),
+    };
+  }
+
   // Swaps the open palette between the visible commands and the ones packages
   // hide from it, keeping the commands of the originally focused element.
   toggleHiddenCommands() {
@@ -188,7 +204,7 @@ class CommandPalette {
     this.showHiddenCommands = !this.showHiddenCommands;
     this.refreshCommands();
     this.needsUpdate = false;
-    this.selectListView.update({ items: this.commands });
+    this.selectListView.update(this.listProps());
   }
 
   toggle() {
@@ -212,7 +228,7 @@ class CommandPalette {
     this.needsUpdate = true;
 
     if (this.selectListView.isVisible?.()) {
-      this.selectListView.update({ items: this.commands });
+      this.selectListView.update(this.listProps());
     }
   }
 }

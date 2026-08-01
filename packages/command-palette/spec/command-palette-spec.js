@@ -160,17 +160,20 @@ describe("command-palette", () => {
       expect(palette.recentlyUsed).toEqual(["command-palette-spec:c", "command-palette-spec:b"]);
     });
 
-    it("marks recent commands in the rendered list", async () => {
+    it("separates recent commands from the rest of the rendered list", async () => {
       await openPalette();
       const item = palette.commands.find((command) => command.name === "command-palette-spec:noop");
       palette.selectListView.props.didConfirmSelection(item);
 
-      await openPalette();
-      const li = palette.selectListView.element.querySelector(
-        "li[data-event-name='command-palette-spec:noop']",
-      );
-      expect(li.classList.contains("recent")).toBe(true);
+      const selectListView = await openPalette();
+      const separator = selectListView.element.querySelector(".select-list-separator");
+      expect(separator.previousElementSibling.dataset.eventName).toBe("command-palette-spec:noop");
+      expect(separator.nextElementSibling.dataset.eventName).toBeTruthy();
       expect(listedCommandNames()[0]).toBe("command-palette-spec:noop");
+
+      selectListView.refs.queryEditor.setText("noop");
+      await atom.views.getNextUpdatePromise();
+      expect(selectListView.element.querySelector(".select-list-separator")).toBeNull();
     });
 
     it("clears the list with command-palette:clear-recent", async () => {
