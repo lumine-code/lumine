@@ -214,10 +214,10 @@ describe("aura-theme", () => {
     expect(getComputedStyle(paneTab).borderTopRightRadius).toBe("0px");
 
     const activeTabSignalStyle = getComputedStyle(paneTab, "::before");
-    expect(activeTabSignalStyle.top).toBe("1px");
-    expect(activeTabSignalStyle.right).toBe("6px");
-    expect(activeTabSignalStyle.left).toBe("6px");
-    expect(activeTabSignalStyle.height).toBe("2px");
+    expect(activeTabSignalStyle.top).toBe("7px");
+    expect(activeTabSignalStyle.bottom).toBe("7px");
+    expect(activeTabSignalStyle.left).toBe("3px");
+    expect(activeTabSignalStyle.width).toBe("4px");
     expect(activeTabSignalStyle.borderTopLeftRadius).toBe("999px");
     paneTabBar.remove();
 

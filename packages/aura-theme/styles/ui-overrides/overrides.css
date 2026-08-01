@@ -132,12 +132,12 @@ atom-panel.modal {
 .tab-bar .tab.active::before,
 atom-pane-axis > atom-pane.active .tab.active::before,
 atom-pane-container > atom-pane.pane .tab.active::before {
-  top: 1px;
-  right: var(--component-border-radius);
-  bottom: auto;
-  left: var(--component-border-radius);
-  width: auto;
-  height: 2px;
+  top: calc(var(--component-border-radius) + 1px);
+  right: auto;
+  bottom: calc(var(--component-border-radius) + 1px);
+  left: var(--aura-tab-inset);
+  width: 4px;
+  height: auto;
   border-radius: 999px;
 }
 
