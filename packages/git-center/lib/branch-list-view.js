@@ -1,27 +1,87 @@
 const { CompositeDisposable } = require("atom");
 
 const BranchNameDialog = require("./branch-name-dialog");
-const {
-  applySwitchItem,
-  buildSwitchItems,
-  checkoutBranch,
-  updateListPreservingScroll,
-} = require("./helpers");
-const { divergenceChips, statusChips } = require("./status-summary");
+const { applySwitchItem, checkoutBranch, updateListPreservingScroll } = require("./helpers");
+const { divergenceChips, statusChips, summarizeStatus } = require("./status-summary");
 
 const ACTIONS = [
-  { action: "create", branch: "Create new branch...", icon: "icon-plus", crumb: "New branch" },
   {
+    id: "action:create",
+    action: "create",
+    branch: "Create new branch...",
+    icon: "icon-plus",
+    crumb: "New branch",
+  },
+  {
+    id: "action:create-from",
     action: "create-from",
     branch: "Create new branch from...",
     icon: "icon-plus",
     crumb: "Create from",
   },
-  { action: "detach", branch: "Checkout detached...", icon: "icon-git-commit", crumb: "Detach" },
+  {
+    id: "action:detach",
+    action: "detach",
+    branch: "Checkout detached...",
+    icon: "icon-git-commit",
+    crumb: "Detach",
+  },
 ];
 
-// Branch picker for the active repository. Selecting a non-current branch
-// checks it out through the repository's operations facade.
+const RELATIVE_TIME_UNITS = [
+  ["year", 365 * 24 * 60 * 60 * 1000],
+  ["month", 30 * 24 * 60 * 60 * 1000],
+  ["week", 7 * 24 * 60 * 60 * 1000],
+  ["day", 24 * 60 * 60 * 1000],
+  ["hour", 60 * 60 * 1000],
+  ["minute", 60 * 1000],
+];
+
+function formatRelativeTime(date, now = Date.now()) {
+  const timestamp = date instanceof Date ? date.getTime() : Number.NaN;
+  if (!Number.isFinite(timestamp)) return null;
+
+  const elapsed = now - timestamp;
+  const magnitude = Math.abs(elapsed);
+  if (magnitude < 60 * 1000) return "now";
+
+  for (const [unit, milliseconds] of RELATIVE_TIME_UNITS) {
+    if (magnitude < milliseconds) continue;
+    const value = Math.max(1, Math.round(magnitude / milliseconds));
+    const amount = `${value} ${unit}${value === 1 ? "" : "s"}`;
+    return elapsed >= 0 ? `${amount} ago` : `in ${amount}`;
+  }
+  return "now";
+}
+
+function primaryForItem(item, highlight) {
+  const primary = document.createDocumentFragment();
+  primary.appendChild(highlight(item.branch));
+  const relativeTime = formatRelativeTime(item.lastCommit?.committerDate);
+  if (relativeTime) {
+    const time = document.createElement("span");
+    time.classList.add("git-center-ref-time");
+    time.textContent = ` ${relativeTime}`;
+    primary.appendChild(time);
+  }
+  return primary;
+}
+
+function detailForItem(item) {
+  const commit = item.lastCommit;
+  if (!commit) return undefined;
+  return [commit.authorName, commit.oid?.slice(0, 7), commit.subject]
+    .filter((part) => part !== null && part !== undefined && part !== "")
+    .join(" • ");
+}
+
+function labelFirstItem(items, groupLabel) {
+  if (items.length > 0) items[0].groupLabel = groupLabel;
+  return items;
+}
+
+// Checkout picker for the active repository. Local branches switch directly,
+// remote branches resolve to a tracking local branch, and tags detach HEAD.
 module.exports = class BranchListView {
   constructor() {
     this.subscriptions = new CompositeDisposable();
@@ -36,35 +96,43 @@ module.exports = class BranchListView {
       className: "git-center-branch-list",
       crumb: "Branches",
       items: [],
-      emptyMessage: "No branches yet",
-      filterKeyForItem: (item) => item.branch,
+      separatorIds: [],
+      emptyMessage: "No branches or tags yet",
+      filterKeyForItem: (item) =>
+        item.action
+          ? item.branch
+          : [
+              item.branch,
+              item.lastCommit?.authorName,
+              item.lastCommit?.oid,
+              item.lastCommit?.subject,
+            ]
+              .filter(Boolean)
+              .join(" "),
       elementForItem: (item, { highlight }) => {
         const className = ["git-center-item"];
         if (item.action) {
           className.push("git-center-branch-action");
           if (item.action === "detach") className.push("git-center-branch-action-last");
         }
-
         return {
           className,
           icon: [item.icon || "icon-git-branch"],
-          primary: highlight(item.branch),
-          // Action rows stay one line; branch rows name their upstream below.
-          secondary: item.action ? undefined : item.upstream?.name || "(no upstream)",
+          primary: item.action ? highlight(item.branch) : primaryForItem(item, highlight),
+          // Action rows stay one line; refs carry their target commit below.
+          secondary: item.action ? undefined : detailForItem(item),
           trailing: [
             // Only the checked-out branch has a working tree to report on.
             ...(item.current ? statusChips(item.status) : []),
             ...divergenceChips(item.upstream),
             item.current && { text: "current", className: "badge" },
+            item.groupLabel && { text: item.groupLabel, className: "git-center-ref-group" },
           ],
         };
       },
       didConfirmSelection: (item) => {
         if (item.action) this.performAction(item.action);
-        else {
-          this.hide();
-          applySwitchItem(item);
-        }
+        else this.confirmCheckoutItem(item);
       },
       didCancelSelection: () => this.hide(),
     });
@@ -173,7 +241,15 @@ module.exports = class BranchListView {
         this.hide();
         return;
       }
-      const items = [...ACTIONS, ...(await buildSwitchItems()).filter((item) => item.active)];
+      const [refs, statusSnapshot] = await Promise.all([
+        repository.ensureRefsSnapshot?.().catch(() => null),
+        repository.ensureStatusSnapshot?.().catch(() => null),
+      ]);
+      const items = [
+        ...ACTIONS,
+        ...this.buildCheckoutItems(repository, refs, summarizeStatus(statusSnapshot)),
+      ];
+      const separatorIds = items.filter((item) => item.groupLabel).map((item) => item.id);
       if (
         !this.selectListView.isVisible() ||
         atom.repositories.getActiveRepository() !== repository
@@ -182,8 +258,122 @@ module.exports = class BranchListView {
       }
       await updateListPreservingScroll(this.selectListView, {
         items,
+        separatorIds,
         loadingMessage: null,
       });
+    }
+  }
+
+  buildCheckoutItems(repository, refs, status) {
+    const localBranches = (refs?.branches || [])
+      .map((branch) => ({
+        id: `branch:${branch.name}`,
+        repository,
+        kind: "local",
+        branch: branch.name,
+        reference: branch.name,
+        oid: branch.oid,
+        icon: "icon-git-branch",
+        current: branch.isHead,
+        status,
+        upstream: branch.upstream || null,
+        lastCommit: branch.lastCommit || null,
+      }))
+      .sort((a, b) => {
+        if (a.current !== b.current) return a.current ? -1 : 1;
+        return a.branch.localeCompare(b.branch);
+      });
+
+    if (!localBranches.some((item) => item.current)) {
+      const head = refs?.head;
+      const matchingRef = [
+        ...(refs?.branches || []),
+        ...(refs?.remoteBranches || []),
+        ...(refs?.tags || []),
+      ].find((entry) => entry.lastCommit?.oid === head?.oid);
+      localBranches.unshift({
+        id: "head",
+        repository,
+        kind: "head",
+        branch: head?.name || (head?.oid ? head.oid.slice(0, 7) : "(no branch)"),
+        reference: "HEAD",
+        oid: head?.oid || null,
+        icon: "icon-git-commit",
+        current: true,
+        status,
+        upstream: null,
+        lastCommit: matchingRef?.lastCommit || null,
+      });
+    }
+
+    const remoteBranches = (refs?.remoteBranches || [])
+      .filter((branch) => !branch.symrefTarget)
+      .map((branch) => {
+        const trackingBranch = (refs?.branches || []).find(
+          (localBranch) => localBranch.upstream?.ref === branch.ref,
+        );
+        return {
+          id: `remote:${branch.name}`,
+          repository,
+          kind: "remote",
+          branch: branch.name,
+          reference: branch.name,
+          oid: branch.oid,
+          icon: "icon-cloud-download",
+          current: false,
+          status: null,
+          upstream: null,
+          trackingBranch: trackingBranch?.name || null,
+          trackingBranchCurrent: Boolean(trackingBranch?.isHead),
+          localBranchName: branch.name.slice(branch.remoteName.length + 1),
+          lastCommit: branch.lastCommit || null,
+        };
+      })
+      .sort((a, b) => a.branch.localeCompare(b.branch));
+
+    const tags = (refs?.tags || [])
+      .map((tag) => ({
+        id: `tag:${tag.name}`,
+        repository,
+        kind: "tag",
+        branch: tag.name,
+        reference: tag.ref,
+        oid: tag.targetOid,
+        icon: "icon-tag",
+        current: false,
+        status: null,
+        upstream: null,
+        lastCommit: tag.lastCommit || null,
+      }))
+      .sort((a, b) => a.branch.localeCompare(b.branch));
+
+    return [
+      ...labelFirstItem(localBranches, "branches"),
+      ...labelFirstItem(remoteBranches, "remote branches"),
+      ...labelFirstItem(tags, "tags"),
+    ];
+  }
+
+  confirmCheckoutItem(item) {
+    this.hide();
+    if (item.kind === "local" || item.kind === "head") {
+      applySwitchItem(item);
+      return;
+    }
+    if (item.kind === "remote") {
+      if (item.trackingBranch) {
+        if (!item.trackingBranchCurrent) checkoutBranch(item.repository, item.trackingBranch);
+      } else {
+        checkoutBranch(item.repository, item.localBranchName, {
+          createNew: true,
+          track: true,
+          startPoint: item.reference,
+        });
+      }
+      return;
+    }
+    if (item.kind === "tag") {
+      checkoutBranch(item.repository, item.reference, { detach: true });
     }
   }
 

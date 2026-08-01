@@ -836,9 +836,10 @@ module.exports = class GitRepository {
   // Public: Return the latest immutable refs snapshot. It contains `head`,
   // local `branches` with upstream tracking, `remoteBranches`, `tags`,
   // `remotes` with fetch and push URLs, `worktrees`, and a monotonic
-  // `generation`. The initial snapshot has `initialized: false`; subscribe
-  // with {::onDidChangeRefsSnapshot} or call {::ensureRefsSnapshot} to load
-  // it.
+  // `generation`. Branch and tag entries include `lastCommit` metadata for
+  // their target commit. The initial snapshot has `initialized: false`;
+  // subscribe with {::onDidChangeRefsSnapshot} or call
+  // {::ensureRefsSnapshot} to load it.
   getRefsSnapshot() {
     return this.refsSnapshot;
   }

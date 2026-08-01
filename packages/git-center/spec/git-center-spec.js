@@ -371,6 +371,84 @@ describe("git-center", () => {
     expect(repoA.repository.getRefsSnapshot().head.name).toBe("feature");
   });
 
+  it("lists local branches, remote branches, and tags with last-commit details", async () => {
+    const operations = repoA.repository.getOperations();
+    const remoteDir = makeWorkdir("git-center-checkout-remote-");
+    await atom.repositories.executeGit(["init", "--bare", "--initial-branch=main", "."], remoteDir);
+    await operations.addRemote("origin", remoteDir);
+    await operations.push("origin", "main", { setUpstream: true });
+
+    await operations.checkout("remote-only", { createNew: true });
+    await operations.push("origin", "remote-only");
+    await operations.checkout("main");
+    await atom.repositories.executeGit(["branch", "-D", "remote-only"], repoA.workingDirectory);
+    await atom.repositories.executeGit(
+      ["tag", "-a", "v1.0.0", "-m", "Release v1.0.0"],
+      repoA.workingDirectory,
+    );
+    await repoA.repository.refreshRefsSnapshot();
+
+    const branchListView = mainModule.getBranchListView();
+    await branchListView.toggle();
+    const listView = branchListView.selectListView;
+    const refs = listView.props.items.filter((item) => !item.action);
+
+    expect(refs.map((item) => item.kind)).toEqual(["local", "remote", "remote", "tag"]);
+    expect(refs.map((item) => item.branch)).toEqual([
+      "main",
+      "origin/main",
+      "origin/remote-only",
+      "v1.0.0",
+    ]);
+    expect(refs.map((item) => item.groupLabel || null)).toEqual([
+      "branches",
+      "remote branches",
+      null,
+      "tags",
+    ]);
+    expect(refs.every((item) => item.lastCommit?.subject === "Initial commit")).toBe(true);
+
+    const separators = Array.from(
+      listView.element.querySelectorAll(".list-group > .select-list-separator"),
+    );
+    expect(separators.length).toBe(3);
+    const firstRowsAfterSeparators = separators.map((separator) =>
+      separator.nextElementSibling.querySelector(".primary-text").textContent.trim(),
+    );
+    expect(firstRowsAfterSeparators[0]).toMatch(/^main /);
+    expect(firstRowsAfterSeparators[1]).toMatch(/^origin\/main /);
+    expect(firstRowsAfterSeparators[2]).toMatch(/^v1\.0\.0 /);
+
+    const mainRow = Array.from(listView.element.querySelectorAll(".list-group li")).find(
+      (element) =>
+        element
+          .querySelector(".primary-line.icon-git-branch .primary-text")
+          ?.textContent.startsWith("main "),
+    );
+    const shortHead = repoA.repository.getRefsSnapshot().head.oid.slice(0, 7);
+    expect(mainRow.querySelector(".git-center-ref-time").textContent.trim()).toMatch(
+      /^(?:now|in \d+ \w+|\d+ \w+ ago)$/,
+    );
+    expect(mainRow.querySelector(".secondary-line").textContent).toBe(
+      `Git Center Specs • ${shortHead} • Initial commit`,
+    );
+    expect(mainRow.querySelector(".git-center-ref-group").textContent).toBe("branches");
+
+    spyOn(operations, "checkout").andReturn(Promise.resolve());
+    branchListView.confirmCheckoutItem(refs.find((item) => item.branch === "origin/main"));
+    expect(operations.checkout).not.toHaveBeenCalled();
+
+    listView.props.didConfirmSelection(refs.find((item) => item.branch === "origin/remote-only"));
+    expect(operations.checkout).toHaveBeenCalledWith("remote-only", {
+      createNew: true,
+      track: true,
+      startPoint: "origin/remote-only",
+    });
+
+    branchListView.confirmCheckoutItem(refs.find((item) => item.kind === "tag"));
+    expect(operations.checkout).toHaveBeenCalledWith("refs/tags/v1.0.0", { detach: true });
+  });
+
   it("refreshes an open branch picker without moving its scroll position", async () => {
     const branchListView = mainModule.getBranchListView();
     await branchListView.toggle();
@@ -487,10 +565,13 @@ describe("git-center", () => {
     expect(item.upstream.name).toBe("origin/main");
     expect(item.upstream.ahead).toBe(1);
 
-    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find(
-      (element) => element.querySelector(".secondary-line")?.textContent === "origin/main",
+    const row = Array.from(listView.element.querySelectorAll(".list-group li")).find((element) =>
+      element
+        .querySelector(".primary-line.icon-git-branch .primary-text")
+        ?.textContent.startsWith("main "),
     );
-    expect(chipTexts(row.querySelector(".trailing-block"))).toEqual(["↑1", "current"]);
+    expect(row.querySelector(".secondary-line").textContent).toContain("Commit that the remote");
+    expect(chipTexts(row.querySelector(".trailing-block"))).toEqual(["↑1", "current", "branches"]);
   });
 
   it("reports a deleted upstream instead of claiming the branch is up to date", async () => {
@@ -544,10 +625,12 @@ describe("git-center", () => {
     expect(atom.repositories.setActiveRepository).toHaveBeenCalledWith(sorted[0], { pin: false });
   });
 
-  it("leaves branch actions on a single line and labels branches with no upstream", async () => {
+  it("leaves branch actions on one line and shows commit details below refs", async () => {
     await mainModule.getBranchListView().toggle();
     const listView = mainModule.branchListView.selectListView;
-    const rows = Array.from(listView.element.querySelectorAll(".list-group li"));
+    const rows = Array.from(
+      listView.element.querySelectorAll(".list-group > li:not(.select-list-separator)"),
+    );
 
     // The three action rows carry no secondary line, so they stay compact.
     for (const row of rows.slice(0, 3)) {
@@ -557,7 +640,10 @@ describe("git-center", () => {
 
     const branchRow = rows[3];
     expect(branchRow.classList.contains("two-lines")).toBe(true);
-    expect(branchRow.querySelector(".secondary-line").textContent).toBe("(no upstream)");
+    expect(branchRow.querySelector(".secondary-line").textContent).toMatch(
+      /^Git Center Specs • [0-9a-f]{7} • Initial commit$/,
+    );
+    expect(branchRow.querySelector(".git-center-ref-group").textContent).toBe("branches");
   });
 
   it("creates branches from HEAD or another ref and checks out detached", async () => {

@@ -14,6 +14,17 @@ const FOR_EACH_REF_FORMAT = [
   "%(push:track,nobracket)",
   "%(HEAD)",
   "%(symref)",
+  // These pairs describe the commit at each ref without a second `git log`
+  // per row. Starred atoms peel annotated tags; ordinary branches, remote
+  // branches, and lightweight tags use the unstarred value.
+  "%(parent)",
+  "%(*parent)",
+  "%(authorname)",
+  "%(*authorname)",
+  "%(committerdate:unix)",
+  "%(*committerdate:unix)",
+  "%(subject)",
+  "%(*subject)",
 ].join("%00");
 
 // Collects the raw command outputs that repository-refs-snapshot.js parses.

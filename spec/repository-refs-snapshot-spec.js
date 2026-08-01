@@ -21,6 +21,14 @@ function refRecord({
   pushTrack = "",
   headMarker = "",
   symref = "",
+  parents = "",
+  peeledParents = "",
+  authorName = "",
+  peeledAuthorName = "",
+  committerDate = "",
+  peeledCommitterDate = "",
+  subject = "",
+  peeledSubject = "",
 }) {
   return [
     ref,
@@ -36,6 +44,14 @@ function refRecord({
     pushTrack,
     headMarker,
     symref,
+    parents,
+    peeledParents,
+    authorName,
+    peeledAuthorName,
+    committerDate,
+    peeledCommitterDate,
+    subject,
+    peeledSubject,
   ].join("\0");
 }
 
@@ -158,11 +174,21 @@ describe("repository refs snapshot", () => {
           oid: "2222222222222222222222222222222222222222",
           objectType: "tag",
           peeledOid: "3333333333333333333333333333333333333333",
+          peeledParents: "1111111111111111111111111111111111111111",
+          authorName: "Release Bot",
+          peeledAuthorName: "Commit Author",
+          committerDate: "1700000000",
+          peeledCommitterDate: "1710000000",
+          subject: "Annotated tag message",
+          peeledSubject: "Release commit",
         }),
         refRecord({
           ref: "refs/tags/lightweight",
           shortName: "lightweight",
           oid: "4444444444444444444444444444444444444444",
+          authorName: "Commit Author",
+          committerDate: "1720000000",
+          subject: "Lightweight release commit",
         }),
       ].join("\n");
 
@@ -170,8 +196,18 @@ describe("repository refs snapshot", () => {
 
       expect(tags[0].annotated).toBe(true);
       expect(tags[0].targetOid).toBe("3333333333333333333333333333333333333333");
+      expect(tags[0].lastCommit).toEqual({
+        oid: "3333333333333333333333333333333333333333",
+        parents: ["1111111111111111111111111111111111111111"],
+        authorName: "Commit Author",
+        committerDate: new Date(1710000000 * 1000),
+        subject: "Release commit",
+      });
       expect(tags[1].annotated).toBe(false);
       expect(tags[1].targetOid).toBe("4444444444444444444444444444444444444444");
+      expect(tags[1].lastCommit.authorName).toBe("Commit Author");
+      expect(Object.isFrozen(tags[0].lastCommit)).toBe(true);
+      expect(Object.isFrozen(tags[0].lastCommit.parents)).toBe(true);
     });
 
     it("classifies remote branches and the origin/HEAD symref", () => {
@@ -283,9 +319,17 @@ describe("repository refs snapshot", () => {
       expect(annotated.annotated).toBe(true);
       expect(annotated.targetOid).toBe(snapshot.head.oid);
       expect(annotated.oid).not.toBe(annotated.targetOid);
+      expect(annotated.lastCommit.oid).toBe(snapshot.head.oid);
+      expect(annotated.lastCommit.authorName).toBe("Lumine Specs");
+      expect(annotated.lastCommit.subject).toBe("Initial commit");
+      expect(annotated.lastCommit.committerDate instanceof Date).toBe(true);
       const lightweight = snapshot.tags.find((tag) => tag.name === "lightweight");
       expect(lightweight.annotated).toBe(false);
       expect(lightweight.targetOid).toBe(snapshot.head.oid);
+      expect(lightweight.lastCommit.oid).toBe(snapshot.head.oid);
+
+      const main = snapshot.branches.find((branch) => branch.name === "main");
+      expect(main.lastCommit.subject).toBe("Initial commit");
 
       expect(snapshot.remotes).toEqual([
         {

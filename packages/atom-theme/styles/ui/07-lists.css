@@ -75,7 +75,7 @@
   &.mark-active {
     /* Pad in front of the text where the icon would be. Non-active items get a
        'fake' icon so other classes can pad the item without worrying about it. */
-    li::before {
+    li:not(.select-list-separator)::before {
       content: "";
       position: static;
       display: inline-block;
@@ -86,7 +86,7 @@
       background-color: transparent;
     }
 
-    > li:not(.active)::before {
+    > li:not(.active, .select-list-separator)::before {
       margin-right: var(--component-icon-padding);
     }
 

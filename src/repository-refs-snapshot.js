@@ -10,7 +10,37 @@ const EMPTY_REFS_SNAPSHOT = Object.freeze({
   worktrees: Object.freeze([]),
 });
 
-const FOR_EACH_REF_FIELD_COUNT = 13;
+const LEGACY_FOR_EACH_REF_FIELD_COUNT = 13;
+const FOR_EACH_REF_FIELD_COUNT = 21;
+
+function parseLastCommit({
+  oid,
+  peeledOid,
+  parents,
+  peeledParents,
+  authorName,
+  peeledAuthorName,
+  committerDate,
+  peeledCommitterDate,
+  subject,
+  peeledSubject,
+}) {
+  const usePeeledCommit = Boolean(peeledCommitterDate);
+  const dateValue = usePeeledCommit ? peeledCommitterDate : committerDate;
+  if (!dateValue) return null;
+
+  const date = new Date(Number(dateValue) * 1000);
+  if (Number.isNaN(date.getTime())) return null;
+
+  const parentValue = usePeeledCommit ? peeledParents : parents;
+  return Object.freeze({
+    oid: usePeeledCommit ? peeledOid : oid,
+    parents: Object.freeze(parentValue ? parentValue.split(" ") : []),
+    authorName: (usePeeledCommit ? peeledAuthorName : authorName) || null,
+    committerDate: date,
+    subject: (usePeeledCommit ? peeledSubject : subject) || "",
+  });
+}
 
 function parseUpstreamTrack(track) {
   if (track === "gone") return { ahead: 0, behind: 0, gone: true };
@@ -31,7 +61,10 @@ function parseForEachRef(output) {
   for (const record of String(output).split("\n")) {
     if (!record) continue;
     const fields = record.split("\0");
-    if (fields.length !== FOR_EACH_REF_FIELD_COUNT) {
+    if (
+      fields.length !== FOR_EACH_REF_FIELD_COUNT &&
+      fields.length !== LEGACY_FOR_EACH_REF_FIELD_COUNT
+    ) {
       throw new Error(`Invalid Git for-each-ref record: ${record}`);
     }
     const [
@@ -48,7 +81,27 @@ function parseForEachRef(output) {
       pushTrack,
       headMarker,
       symref,
+      parents = "",
+      peeledParents = "",
+      authorName = "",
+      peeledAuthorName = "",
+      committerDate = "",
+      peeledCommitterDate = "",
+      subject = "",
+      peeledSubject = "",
     ] = fields;
+    const lastCommit = parseLastCommit({
+      oid,
+      peeledOid,
+      parents,
+      peeledParents,
+      authorName,
+      peeledAuthorName,
+      committerDate,
+      peeledCommitterDate,
+      subject,
+      peeledSubject,
+    });
 
     if (ref.startsWith("refs/heads/")) {
       branches.push(
@@ -71,6 +124,7 @@ function parseForEachRef(output) {
                 ...parseUpstreamTrack(pushTrack),
               })
             : null,
+          lastCommit,
         }),
       );
     } else if (ref.startsWith("refs/remotes/")) {
@@ -81,6 +135,7 @@ function parseForEachRef(output) {
           oid,
           remoteName: ref.split("/")[2],
           symrefTarget: symref || null,
+          lastCommit,
         }),
       );
     } else if (ref.startsWith("refs/tags/")) {
@@ -91,6 +146,7 @@ function parseForEachRef(output) {
           oid,
           targetOid: peeledOid || oid,
           annotated: objectType === "tag",
+          lastCommit,
         }),
       );
     }

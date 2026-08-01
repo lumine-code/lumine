@@ -153,6 +153,12 @@ describe("the theme variable contract", () => {
     expect(textSource).toContain(".character-match");
     expect(selectListSource).not.toContain(".character-match");
     expect(selectListSource).toContain("&:hover:not(.selected)");
+    expect(selectListSource).toContain('> li.select-list-separator[role="separator"]');
+    expect(selectListSource).toContain("height: 1px");
+    expect(selectListSource).toContain("width: auto");
+    expect(selectListSource).toContain("margin: var(--select-list-separator-inset)");
+    expect(selectListSource).toContain("border-radius: 0");
+    expect(selectListSource).toContain("background-color: var(--select-list-separator-color)");
     expect(selectListSource).toContain("--popover-list-padding");
     expect(modalSource).toContain("max-height: min(70vh, calc(var(--ui-line-height) * 24))");
     expect(modalSource).toContain(".select-list .key-binding");

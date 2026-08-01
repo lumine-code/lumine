@@ -1,5 +1,7 @@
 .select-list {
   --select-list-hover-tint: color-mix(in srgb, var(--text-color) 8%, transparent);
+  --select-list-separator-color: color-mix(in srgb, var(--text-color-subtle) 20%, transparent);
+  --select-list-separator-inset: calc(var(--component-padding) / 2);
 
   .loading {
     .loading-message {
@@ -76,6 +78,25 @@
       }
     }
 
+    /* Separators are their own non-interactive list chrome, not a border on a
+       row. The role attribute raises specificity above modal-theme row rules,
+       which may otherwise add item padding, height, margins, or rounding. */
+    > li.select-list-separator[role="separator"] {
+      display: block;
+      box-sizing: border-box;
+      width: auto;
+      height: 1px;
+      min-height: 0;
+      margin: var(--select-list-separator-inset);
+      padding: 0;
+      border: 0;
+      border-radius: 0;
+      background-color: var(--select-list-separator-color);
+      background-image: none;
+      list-style: none;
+      pointer-events: none;
+    }
+
     li.two-lines {
       .secondary-line {
         color: var(--text-color-subtle);
@@ -101,7 +122,7 @@
       --active-icon-size: 14px;
 
       /* Reserve the same icon carrier for active and inactive rows. */
-      li::before {
+      li:not(.select-list-separator)::before {
         content: "";
         background-color: transparent;
         position: static;
@@ -116,7 +137,7 @@
         vertical-align: text-bottom;
       }
 
-      > li:not(.active)::before {
+      > li:not(.active, .select-list-separator)::before {
         margin-right: var(--ui-padding-icon);
       }
 
