@@ -215,6 +215,11 @@ module.exports = class FindView {
             <rect x="7" y="4" width="2" height="8" rx="1" transform="rotate(-45 8 8)"></rect>
             <text x="13" y="12" font-size="8" font-weight="bold" font-family="sans-serif">2</text>
           </symbol>
+
+          <symbol id="search-panel-icon-include-ignored" viewBox="0 0 20 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M1.5,8 C3.5,5 6.4,3.5 10,3.5 C13.6,3.5 16.5,5 18.5,8 C16.5,11 13.6,12.5 10,12.5 C6.4,12.5 3.5,11 1.5,8 Z"></path>
+            <circle cx="10" cy="8" r="2" fill="currentColor" stroke="none"></circle>
+          </symbol>
         `,
       }),
     );

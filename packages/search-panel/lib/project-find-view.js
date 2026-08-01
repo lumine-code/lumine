@@ -35,6 +35,9 @@ module.exports = class ProjectFindView {
       atom.textEditors.add(this.refs.findEditor),
       atom.textEditors.add(this.refs.replaceEditor),
       atom.textEditors.add(this.refs.pathsEditor),
+      atom.config.onDidChange("core.excludeVcsIgnoredPaths", ({ newValue }) => {
+        this.model.getFindOptions().set({ includeVcsIgnoredPaths: !newValue });
+      }),
     );
 
     this.handleEvents();
@@ -113,7 +116,10 @@ module.exports = class ProjectFindView {
                 ref: "includeVcsIgnoredPathsOptionButton",
                 className: "btn option-include-vcs-ignored-paths",
               },
-              $.i({ className: "icon icon-eye" }),
+              $.svg({
+                className: "icon",
+                innerHTML: `<use xlink:href="#search-panel-icon-include-ignored" />`,
+              }),
             ),
           ),
         ),

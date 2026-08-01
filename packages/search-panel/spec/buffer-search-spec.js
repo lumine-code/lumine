@@ -85,6 +85,22 @@ describe("BufferSearch", () => {
     });
   });
 
+  describe("the VCS-ignored files option", () => {
+    it("defaults to the core VCS ignore preference", () => {
+      const originalValue = atom.config.get("core.excludeVcsIgnoredPaths");
+
+      try {
+        atom.config.set("core.excludeVcsIgnoredPaths", true);
+        expect(new FindOptions().includeVcsIgnoredPaths).toBe(false);
+
+        atom.config.set("core.excludeVcsIgnoredPaths", false);
+        expect(new FindOptions().includeVcsIgnoredPaths).toBe(true);
+      } finally {
+        atom.config.set("core.excludeVcsIgnoredPaths", originalValue);
+      }
+    });
+  });
+
   describe("replace", () => {
     it("replaces the given markers and shrinks the marker set", () => {
       model.search("one", { caseSensitive: true });

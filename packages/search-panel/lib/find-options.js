@@ -13,6 +13,8 @@ const Params = [
   "trailingContextLineCount",
 ];
 
+const SerializedParams = Params.filter((param) => param !== "includeVcsIgnoredPaths");
+
 module.exports = class FindOptions {
   constructor(state) {
     let left, left1, left2, left3, left4, left5;
@@ -42,8 +44,7 @@ module.exports = class FindOptions {
       null
         ? left2
         : false;
-    this.includeVcsIgnoredPaths =
-      state.includeVcsIgnoredPaths != null ? state.includeVcsIgnoredPaths : false;
+    this.includeVcsIgnoredPaths = !atom.config.get("core.excludeVcsIgnoredPaths");
     this.inCurrentSelection =
       (left3 =
         state.inCurrentSelection != null
@@ -81,7 +82,7 @@ module.exports = class FindOptions {
 
   serialize() {
     const result = {};
-    for (let param of Array.from(Params)) {
+    for (let param of Array.from(SerializedParams)) {
       result[param] = this[param];
     }
     return result;

@@ -2,6 +2,7 @@ describe("search-panel integration", () => {
   let workspaceElement, editor, mainModule;
 
   beforeEach(async () => {
+    atom.config.set("core.excludeVcsIgnoredPaths", true);
     workspaceElement = atom.views.getView(atom.workspace);
     editor = await atom.workspace.open();
     editor.setText("one two one\nthree one four\n");
@@ -95,6 +96,17 @@ describe("search-panel integration", () => {
       expect(button.classList.contains("selected")).toBe(false);
 
       button.click();
+
+      expect(atom.config.get("core.excludeVcsIgnoredPaths")).toBe(true);
+      expect(mainModule.resultsModel.getFindOptions().includeVcsIgnoredPaths).toBe(true);
+      expect(button.classList.contains("selected")).toBe(true);
+    });
+
+    it("updates the option when the core VCS ignore preference changes", () => {
+      atom.commands.dispatch(workspaceElement, "search-panel:project-show");
+      const button = workspaceElement.querySelector(".option-include-vcs-ignored-paths");
+
+      atom.config.set("core.excludeVcsIgnoredPaths", false);
 
       expect(mainModule.resultsModel.getFindOptions().includeVcsIgnoredPaths).toBe(true);
       expect(button.classList.contains("selected")).toBe(true);
