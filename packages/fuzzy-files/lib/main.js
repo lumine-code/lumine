@@ -26,19 +26,32 @@ module.exports = {
   separator: 0,
   initialLine: 0,
   projectCount: 0,
+  recentlyUsed: [],
+  recentCount: 0,
   loadPathsTask: null,
   projectPathsSubscription: null,
   cacheCallbacks: [],
 
-  activate() {
+  activate(state) {
     this.building = false;
     this.cacheCallbacks = [];
     this.projectCount = atom.project.getPaths().length;
+    this.recentlyUsed = [
+      ...new Set(
+        (Array.isArray(state?.recentlyUsed) ? state.recentlyUsed : []).filter(
+          (aPath) => typeof aPath === "string",
+        ),
+      ),
+    ];
+    this.recentCount = atom.config.get("fuzzy-files.recentCount");
+    this.trimRecent();
 
     this.selectList = atom.workspace.buildSelectList({
       className: "fuzzy-files",
       crumb: "Files",
       emptyMessage: "No matches found",
+      separatorIds: [],
+      idForItem: (item) => (this.selectList.getQuery() === "" ? item.aPath : null),
       removeDiacritics: true,
       algorithm: "command-t",
       loadingSpinner: true,
@@ -48,6 +61,15 @@ module.exports = {
       willShow: () => this.update(),
       filterKeyForItem: (item) => this.displayPath(item),
       filterQuery: (query) => this.parseQuery(query),
+      order: (a, b) => {
+        if (this.selectList.getQuery() !== "") return 0;
+        const aRecent = this.recentlyUsed.indexOf(a.aPath);
+        const bRecent = this.recentlyUsed.indexOf(b.aPath);
+        if (aRecent !== -1 && bRecent !== -1) return aRecent - bRecent;
+        if (aRecent !== -1) return -1;
+        if (bRecent !== -1) return 1;
+        return 0;
+      },
       filterScoreModifier: (score, item) => {
         const depth = (item.fPath.match(/[\\/]/g) || []).length + 1;
         score = score / (item.distance * Math.sqrt(depth));
@@ -62,9 +84,16 @@ module.exports = {
       atom.config.observe("fuzzy-files.separator", (value) => {
         this.separator = value;
       }),
+      atom.config.onDidChange("fuzzy-files.recentCount", ({ newValue }) => {
+        this.recentCount = newValue;
+        if (!this.trimRecent()) return;
+        this.viewSynced = false;
+        if (this.selectList.isVisible()) this.syncList();
+      }),
       atom.commands.add("atom-workspace", {
         "fuzzy-files:toggle": () => this.selectList.toggle(),
         "fuzzy-files:refresh": () => this.cache(),
+        "fuzzy-files:clear-recent": () => this.clearRecent(),
       }),
       // Registered in the package's own namespace: the item-actions list
       // (F12) derives its rows — label, description, keybinding — from these
@@ -210,6 +239,10 @@ module.exports = {
     );
 
     process.nextTick(() => this.startLoadPathsTask());
+  },
+
+  serialize() {
+    return { recentlyUsed: this.recentlyUsed };
   },
 
   deactivate() {
@@ -422,6 +455,47 @@ module.exports = {
     return item.fPath;
   },
 
+  trimRecent() {
+    const oldLength = this.recentlyUsed.length;
+    while (this.recentlyUsed.length > this.recentCount) this.recentlyUsed.pop();
+    return this.recentlyUsed.length !== oldLength;
+  },
+
+  recordRecent(item) {
+    const index = this.recentlyUsed.indexOf(item.aPath);
+    if (index !== -1) this.recentlyUsed.splice(index, 1);
+    this.recentlyUsed.unshift(item.aPath);
+    this.trimRecent();
+    this.viewSynced = false;
+  },
+
+  clearRecent() {
+    if (this.recentlyUsed.length === 0) return;
+    this.recentlyUsed.length = 0;
+    this.viewSynced = false;
+    if (this.selectList.isVisible()) this.syncList();
+  },
+
+  recentSeparatorIds(items = this.items) {
+    const recentPaths = new Set(this.recentlyUsed);
+    if (!items.some((item) => recentPaths.has(item.aPath))) return [];
+    const firstNonRecent = items.find((item) => !recentPaths.has(item.aPath));
+    return firstNonRecent ? [firstNonRecent.aPath] : [];
+  },
+
+  listProps(items = this.items, props = {}) {
+    return {
+      items,
+      separatorIds: this.recentSeparatorIds(items),
+      ...props,
+    };
+  },
+
+  syncList(props = {}) {
+    this.viewSynced = true;
+    return this.selectList.update(this.listProps(this.items, props));
+  },
+
   parseQuery(query) {
     if (query.length === 0) {
       this.initialLine = 0;
@@ -447,14 +521,13 @@ module.exports = {
 
   update() {
     if (this.needRebuild) {
-      this.selectList.update({
-        items: [],
-        loadingMessage: "Indexing project\u2026",
-      });
+      this.selectList.update(
+        this.listProps([], {
+          loadingMessage: "Indexing project\u2026",
+        }),
+      );
       this.cache(() => {
-        this.viewSynced = true;
-        this.selectList.update({
-          items: this.items,
+        this.syncList({
           loadingMessage: null,
           infoMessage: this.infoLine(),
         });
@@ -462,10 +535,7 @@ module.exports = {
     } else if (!this.viewSynced) {
       this.viewSynced = true;
       this.relativize();
-      this.selectList.update({
-        items: this.items,
-        infoMessage: this.infoLine(),
-      });
+      this.syncList({ infoMessage: this.infoLine() });
     } else {
       this.relativize();
     }
@@ -504,6 +574,7 @@ module.exports = {
     this.selectList.hide();
 
     if (mode === "open") {
+      this.recordRecent(item);
       atom.workspace.open(item.aPath, {
         initialLine: this.initialLine,
         pending: atom.config.get("core.allowPendingPaneItems"),
@@ -550,6 +621,7 @@ module.exports = {
       aPath = item.aPath;
       try {
         if (fs.lstatSync(aPath).isFile()) {
+          this.recordRecent(item);
           atom.workspace.open(aPath, {
             initialLine: this.initialLine,
             split: params.side,

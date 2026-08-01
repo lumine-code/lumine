@@ -6,6 +6,7 @@ Quickly find and take an action over project files.
 
 - **Fast fuzzy search**: ranks results by match quality, adjusted by distance from the active file and directory depth.
 - **Line navigation**: jumps to a specific line using `:` syntax such as `file.js:42`.
+- **Recent files**: recently opened files stay on top while the query is empty.
 - **Multiple projects**: searches across every open project path.
 - **Real-time updates**: auto-refreshes on file create, delete, and rename.
 - **Path actions**: copies, inserts, or reveals file paths in several formats.
@@ -16,7 +17,8 @@ Quickly find and take an action over project files.
 Commands available in `atom-workspace`:
 
 - `fuzzy-files:toggle`: toggle the fuzzy files panel,
-- `fuzzy-files:refresh`: refresh the file cache.
+- `fuzzy-files:refresh`: refresh the file cache,
+- `fuzzy-files:clear-recent`: forget the recently opened files.
 
 Commands available in `.fuzzy-files`, all listed with their keybindings in the item-actions list (F12):
 

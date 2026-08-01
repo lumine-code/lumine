@@ -23,7 +23,8 @@
   "activationCommands": {
     "atom-workspace": [
       "fuzzy-files:toggle",
-      "fuzzy-files:refresh"
+      "fuzzy-files:refresh",
+      "fuzzy-files:clear-recent"
     ]
   },
   "providedServices": {
@@ -59,6 +60,13 @@
     "picomatch": "^4.0.5"
   },
   "configSchema": {
+    "recentCount": {
+      "title": "Number of Recent Files",
+      "description": "How many recently opened files to keep at the top of the list.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 10
+    },
     "ignoredNames": {
       "title": "List of ignore glob patterns",
       "description": "Files and directories matching these patterns are ignored. This list is merged with the list defined by the core `Ignored Names' configuration setting.",
