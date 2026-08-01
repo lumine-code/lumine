@@ -28,6 +28,8 @@
     "shift-backspace": "core:backspace",
     "ctrl-pageup": "pane:show-previous-item",
     "ctrl-pagedown": "pane:show-next-item",
+    "ctrl-shift-pageup": "pane:move-item-left",
+    "ctrl-shift-pagedown": "pane:move-item-right",
     "ctrl-tab": "pane:show-next-recently-used-item",
     "ctrl-tab ^ctrl": "pane:move-active-item-to-top-of-stack",
     "ctrl-shift-tab": "pane:show-previous-recently-used-item",

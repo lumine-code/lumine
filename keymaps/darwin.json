@@ -21,8 +21,6 @@
     "ctrl-alt-cmd-l": "window:reload",
     "alt-cmd-i": "window:toggle-dev-tools",
     "cmd-alt-ctrl-p": "window:run-package-specs",
-    "ctrl-shift-left": "pane:move-item-left",
-    "ctrl-shift-right": "pane:move-item-right",
     // Sublime Parity
     "cmd-o": "application:open",
     "cmd-shift-o": "application:add-project-folder",

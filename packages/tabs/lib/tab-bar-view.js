@@ -717,7 +717,12 @@ class TabBarView {
       // handled it in the mousedown handler.
       return;
     } else if (event.button === 0 && !event.target.classList.contains("close-icon")) {
-      return this.pane.activateItem(tab.item);
+      this.pane.activateItem(tab.item);
+      // The tab bar is programmatically focusable and tabs are draggable, so
+      // Chromium may focus the tab bar after mousedown. Explicitly enter the
+      // pane again even when the clicked tab was already active (and therefore
+      // did not emit an active-item change that would focus its view).
+      return this.paneElement.focus();
     } else if (event.button === 1) {
       return this.pane.destroyItem(tab.item);
     }

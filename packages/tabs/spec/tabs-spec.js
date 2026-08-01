@@ -416,6 +416,45 @@ describe("TabBarView", () => {
       expect(pane.activate.callCount).toBe(2);
     });
 
+    it("focuses the pane item when the active tab is clicked", () => {
+      const paneElement = pane.getElement();
+      paneElement.insertBefore(tabBar.element, paneElement.firstChild);
+      jasmine.attachToDOM(paneElement);
+      pane.activateItem(editor1);
+
+      tabBar.element.focus();
+      expect(document.activeElement).toBe(tabBar.element);
+
+      triggerClickEvent(tabBar.tabForItem(editor1).element, { button: 0 });
+
+      expect(atom.views.getView(editor1).contains(document.activeElement)).toBe(true);
+    });
+
+    it("can reorder tabs while the pane item has focus", () => {
+      const paneElement = pane.getElement();
+      paneElement.insertBefore(tabBar.element, paneElement.firstChild);
+      jasmine.attachToDOM(atom.workspace.getElement());
+      pane.activateItem(editor1);
+      pane.activate();
+
+      const editorElement = atom.views.getView(editor1);
+      editorElement.focus();
+      const press = (key) =>
+        atom.keymaps.handleKeyboardEvent(
+          atom.keymaps.constructor.buildKeydownEvent(key, {
+            ctrl: true,
+            shift: true,
+            target: document.activeElement,
+          }),
+        );
+
+      press("pageup");
+      expect(pane.getItems()).toEqual([editor1, item1, item2]);
+
+      press("pagedown");
+      expect(pane.getItems()).toEqual([item1, editor1, item2]);
+    });
+
     it("closes the tab when middle clicked", () => {
       const { click } = triggerClickEvent(tabBar.tabForItem(editor1).element, { button: 1 });
 
