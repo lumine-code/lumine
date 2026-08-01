@@ -279,20 +279,6 @@ module.exports = class ContextMenuManager {
   clear() {
     this.activeElement = null;
     this.itemSets = [];
-    const inspectElement = {
-      "atom-workspace": [
-        {
-          label: "Inspect Element",
-          command: "application:inspect",
-          devMode: true,
-          created: function (event) {
-            const { pageX, pageY } = event;
-            this.commandDetail = { x: pageX, y: pageY };
-          },
-        },
-      ],
-    };
-    this.add(inspectElement, false);
   }
 };
 

@@ -559,10 +559,6 @@ module.exports = class AtomApplication extends EventEmitter {
     this.on("application:new-file", () => (this.focusedWindow() || this).openPath());
     this.on("application:open-dev", () => this.promptForPathToOpen("all", { devMode: true }));
     this.on("application:open-safe", () => this.promptForPathToOpen("all", { safeMode: true }));
-    this.on("application:inspect", ({ x, y, atomWindow }) => {
-      if (!atomWindow) atomWindow = this.focusedWindow();
-      if (atomWindow) atomWindow.browserWindow.inspectElement(x, y);
-    });
 
     this.on("application:open-documentation", () =>
       shell.openExternal("https://lumine-code.github.io/"),
