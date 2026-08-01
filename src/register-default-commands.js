@@ -85,17 +85,8 @@ module.exports = function ({
       "application:quit": function () {
         return ipcRenderer.send("command", "application:quit");
       },
-      "application:hide": function () {
-        return ipcRenderer.send("command", "application:hide");
-      },
-      "application:hide-other-applications": function () {
-        return ipcRenderer.send("command", "application:hide-other-applications");
-      },
       "application:install-update": function () {
         return ipcRenderer.send("command", "application:install-update");
-      },
-      "application:unhide-all-applications": function () {
-        return ipcRenderer.send("command", "application:unhide-all-applications");
       },
       "application:new-window": function () {
         return ipcRenderer.send("command", "application:new-window");
@@ -153,9 +144,6 @@ module.exports = function ({
       },
       "application:zoom": function () {
         return ipcRenderer.send("command", "application:zoom");
-      },
-      "application:bring-all-windows-to-front": function () {
-        return ipcRenderer.send("command", "application:bring-all-windows-to-front");
       },
       "application:open-your-config": function () {
         return ipcRenderer.send("command", "application:open-your-config");
@@ -279,9 +267,22 @@ module.exports = function ({
   if (process.platform === "darwin") {
     commandRegistry.add(
       "atom-workspace",
-      "window:install-shell-commands",
-      function () {
-        return commandInstaller.installShellCommandsInteractively();
+      {
+        "application:hide": function () {
+          return ipcRenderer.send("command", "application:hide");
+        },
+        "application:hide-other-applications": function () {
+          return ipcRenderer.send("command", "application:hide-other-applications");
+        },
+        "application:unhide-all-applications": function () {
+          return ipcRenderer.send("command", "application:unhide-all-applications");
+        },
+        "application:bring-all-windows-to-front": function () {
+          return ipcRenderer.send("command", "application:bring-all-windows-to-front");
+        },
+        "window:install-shell-commands": function () {
+          return commandInstaller.installShellCommandsInteractively();
+        },
       },
       false,
     );
