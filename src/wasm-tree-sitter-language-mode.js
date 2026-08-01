@@ -25,7 +25,10 @@ const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 const REPARSE_BUDGET_PER_TRANSACTION_MILLIS = 10;
 
 const PARSE_JOB_LIMIT_MICROS = 3000;
-const INITIAL_PARSE_JOB_LIMIT_MICROS = 30000;
+// Give an opened file up to 100 ms to produce its initial syntax tree. This
+// avoids showing an unhighlighted editor for most moderately sized files while
+// keeping subsequent edits responsive with the shorter incremental budget.
+const INITIAL_PARSE_JOB_LIMIT_MICROS = 100000;
 const PARSERS_IN_USE = new Set();
 
 const FUNCTION_TRUE = () => true;
