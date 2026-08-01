@@ -164,10 +164,6 @@ module.exports = class TextEditorComponent {
     this.scrollLeftPending = false;
     this.scrollTop = 0;
     this.scrollLeft = 0;
-    // Tracks whether the last vertical viewport change was a manual scroll (as
-    // opposed to a cursor/autoscroll move). Used to pick the scroll anchor that
-    // keeps the viewport visually stable across soft-wrap reflows.
-    this.lastScrollWasManual = false;
     this.scrollAnchorBeforeReset = null;
     // A viewport anchor captured just before a display-layer reset, to be
     // re-applied on the next update once the spatial index has been repopulated.
@@ -2100,7 +2096,6 @@ module.exports = class TextEditorComponent {
         smoothness: model.getWheelSmoothness(),
       });
       if (accepted) {
-        this.lastScrollWasManual = true;
         // The user took over the viewport; stop pinning the inherited anchor.
         this.settlingScrollAnchor = null;
       }
@@ -2111,7 +2106,6 @@ module.exports = class TextEditorComponent {
     const scrollTopChanged = y !== 0 && this.setScrollTop(this.getScrollTop() + y);
 
     if (scrollTopChanged) {
-      this.lastScrollWasManual = true;
       // The user took over the viewport; stop pinning the inherited anchor.
       this.settlingScrollAnchor = null;
     }
@@ -2165,7 +2159,6 @@ module.exports = class TextEditorComponent {
     if (!this.scrollTopPending) {
       scrollTopChanged = this.setScrollTop(this.refs.verticalScrollbar?.element.scrollTop ?? 0);
       if (scrollTopChanged) {
-        this.lastScrollWasManual = true;
         // The user took over the viewport; stop pinning the inherited anchor.
         this.settlingScrollAnchor = null;
       }
@@ -2780,9 +2773,6 @@ module.exports = class TextEditorComponent {
 
   didRequestAutoscroll(autoscroll) {
     this.pendingAutoscroll = autoscroll;
-    // An autoscroll request reflects a cursor/selection move rather than a
-    // manual scroll, so anchor to the cursor line on the next reflow.
-    this.lastScrollWasManual = false;
     // The user took over the viewport; stop pinning the inherited anchor.
     this.settlingScrollAnchor = null;
     this.scheduleUpdate();
@@ -2831,11 +2821,6 @@ module.exports = class TextEditorComponent {
     const anchor = this.pendingScrollAnchor;
     this.pendingScrollAnchor = null;
     this.pendingScrollTopRow = null;
-    // Inherit the source's anchor mode so later reflows re-anchor the same way
-    // (scroll midpoint vs. cursor) instead of snapping to the cursor.
-    if (anchor.wasManual != null) {
-      this.lastScrollWasManual = anchor.wasManual;
-    }
     // Keep re-applying this anchor across the reflows a new split pane goes
     // through while the panes resize into place; drop any reflow anchor
     // captured from the transient geometry before this authoritative restore.
@@ -3624,11 +3609,11 @@ module.exports = class TextEditorComponent {
   }
 
   // Records a viewport anchor in buffer coordinates that survives a soft-wrap
-  // reflow. When the last vertical movement was a cursor/autoscroll and the
-  // cursor is on-screen, the cursor's line is anchored; otherwise the row at
-  // the vertical midpoint of the viewport is anchored. `offset` is the pixel
-  // distance from the viewport top to the top of the anchored row, so the row
-  // can be placed back at the same visual position after re-wrapping.
+  // reflow. The last cursor is anchored whenever it is on-screen, regardless
+  // of how the viewport last moved; otherwise the row at the vertical midpoint
+  // of the viewport is anchored. `offset` is the pixel distance from the
+  // viewport top to the top of the anchored row, so the row can be placed back
+  // at the same visual position after re-wrapping.
   captureScrollAnchor() {
     if (!this.hasInitialMeasurements) return null;
 
@@ -3637,17 +3622,15 @@ module.exports = class TextEditorComponent {
 
     let screenRow = null;
     let bufferPosition = null;
-    if (!this.lastScrollWasManual) {
-      const cursorScreenPosition = model.getCursorScreenPosition();
-      const cursorRow = cursorScreenPosition.row;
-      if (cursorRow >= this.getFirstVisibleRow() && cursorRow <= this.getLastVisibleRow()) {
-        screenRow = cursorRow;
-        // Anchor the cursor's actual buffer position, not column 0 of its
-        // current wrapped screen row. After the width changes, that wrapped
-        // segment may start at a different buffer column; anchoring its old
-        // start would therefore preserve the wrong visual row.
-        bufferPosition = model.getCursorBufferPosition();
-      }
+    const cursorScreenPosition = model.getCursorScreenPosition();
+    const cursorRow = cursorScreenPosition.row;
+    if (cursorRow >= this.getFirstVisibleRow() && cursorRow <= this.getLastVisibleRow()) {
+      screenRow = cursorRow;
+      // Anchor the cursor's actual buffer position, not column 0 of its
+      // current wrapped screen row. After the width changes, that wrapped
+      // segment may start at a different buffer column; anchoring its old
+      // start would therefore preserve the wrong visual row.
+      bufferPosition = model.getCursorBufferPosition();
     }
     if (screenRow === null) {
       const midpointPixel = scrollTop + this.getScrollContainerClientHeight() / 2;
@@ -3662,7 +3645,6 @@ module.exports = class TextEditorComponent {
         return {
           type: "bottom",
           bottomOffset: Math.max(0, this.getMaxScrollTop() - scrollTop),
-          wasManual: this.lastScrollWasManual,
         };
       }
       // Otherwise anchor the row at the vertical midpoint of the viewport.
@@ -3673,13 +3655,10 @@ module.exports = class TextEditorComponent {
       bufferPosition = model.bufferPositionForScreenPosition(Point(screenRow, 0));
     }
     const rowTop = this.pixelPositionBeforeBlocksForRow(screenRow);
-    // Carry the anchor mode (scroll midpoint vs. cursor) so an editor restoring
-    // this anchor keeps re-anchoring the same way across later reflows.
     return {
       type: "row",
       bufferPosition,
       offset: rowTop - scrollTop,
-      wasManual: this.lastScrollWasManual,
     };
   }
 

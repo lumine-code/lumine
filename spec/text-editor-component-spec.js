@@ -6179,7 +6179,7 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollTopRow()).toBe(4);
     });
 
-    it("keeps the viewport visually stable when a soft-wrap reflow follows a manual scroll", async () => {
+    it("keeps the viewport midpoint stable across a soft-wrap reflow when the cursor is not visible", async () => {
       const { component } = buildComponent({
         softWrapped: true,
         autoHeight: false,
@@ -6187,9 +6187,12 @@ describe("TextEditorComponent", () => {
       await setEditorHeightInLines(component, 10);
       await setEditorWidthInCharacters(component, 40);
 
-      // Scroll into the middle of the document via a manual scroll.
+      // Scroll into the middle of the document, leaving the cursor at the top
+      // of the buffer and outside the viewport.
       await setScrollTop(component, Math.round(component.getMaxScrollTop() / 2));
-      component.lastScrollWasManual = true;
+      expect(component.props.model.getCursorScreenPosition().row).toBeLessThan(
+        component.getFirstVisibleRow(),
+      );
 
       // Distance from the viewport top to the top of the row at the midpoint.
       const midPixel = component.getScrollTop() + component.getScrollContainerClientHeight() / 2;
@@ -6211,17 +6214,29 @@ describe("TextEditorComponent", () => {
       expect(Math.abs(offsetAfter - offsetBefore)).toBeLessThan(component.getLineHeight());
     });
 
-    it("keeps the cursor line visually stable when a soft-wrap reflow follows a cursor move", async () => {
+    it("keeps a visible cursor stable across a soft-wrap reflow after a manual scroll", async () => {
       const { component, editor } = buildComponent({
+        text: ("x".repeat(70) + "\n").repeat(30),
         softWrapped: true,
         autoHeight: false,
+        smoothScrolling: false,
       });
       await setEditorHeightInLines(component, 10);
       await setEditorWidthInCharacters(component, 40);
 
-      // Move the cursor down; autoscroll marks this as a non-manual movement.
-      editor.setCursorScreenPosition([12, 0]);
+      editor.setCursorBufferPosition([10, 0], { autoscroll: false });
       await component.getNextUpdatePromise();
+      const cursorRow = editor.getCursorScreenPosition().row;
+      await setScrollTop(
+        component,
+        component.pixelPositionBeforeBlocksForRow(cursorRow) - 2 * component.getLineHeight(),
+      );
+
+      // Manually scroll one row while leaving the cursor visible. Cursor
+      // visibility, not this last action, determines the reflow anchor.
+      expect(component.applyWheelScroll(0, component.getLineHeight())).toBe(true);
+      expect(cursorRow).toBeGreaterThanOrEqual(component.getFirstVisibleRow());
+      expect(cursorRow).toBeLessThanOrEqual(component.getLastVisibleRow());
       const offsetBefore =
         component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
         component.getScrollTop();
@@ -6264,7 +6279,6 @@ describe("TextEditorComponent", () => {
       // Scroll to the very bottom so the last line sits in the top half of the
       // viewport (more than half a screen past the end).
       await setScrollTop(component, component.getMaxScrollTop());
-      component.lastScrollWasManual = true;
 
       const lastRow = editor.getLastScreenRow();
       const offsetBefore =
@@ -6463,7 +6477,6 @@ describe("TextEditorComponent", () => {
       // it) and scroll into the past-end zone.
       editor.setCursorBufferPosition(editor.getEofBufferPosition());
       await setScrollTop(component, component.getMaxScrollTop());
-      component.lastScrollWasManual = true;
 
       const lastRow = editor.getLastScreenRow();
       const anchorBufferPosition = editor.bufferPositionForScreenPosition([lastRow, 0]);

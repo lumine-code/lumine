@@ -1061,7 +1061,6 @@ describe("WorkspaceElement", () => {
       await sourceComponent.getNextUpdatePromise();
 
       sourceComponent.setScrollTop(Math.round(sourceComponent.getMaxScrollTop() / 2));
-      sourceComponent.lastScrollWasManual = true;
       await sourceComponent.getNextUpdatePromise();
 
       const midPixel =

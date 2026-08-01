@@ -843,13 +843,11 @@ var scrollEditorByPage = function (editor, direction) {
       reset: true,
     });
     if (accepted) {
-      component.lastScrollWasManual = true;
       // The user took over the viewport; stop pinning the inherited anchor.
       component.settlingScrollAnchor = null;
     }
   } else {
     if (component.setScrollTop(component.getScrollTop() + deltaY)) {
-      component.lastScrollWasManual = true;
       // The user took over the viewport; stop pinning the inherited anchor.
       component.settlingScrollAnchor = null;
       component.updateSync();
