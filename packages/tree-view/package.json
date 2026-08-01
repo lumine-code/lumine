@@ -31,6 +31,11 @@
     "TreeView": "getTreeViewInstance"
   },
   "consumedServices": {
+    "busy-signal": {
+      "versions": {
+        "^1.0.0": "consumeBusySignal"
+      }
+    },
     "open-external": {
       "versions": {
         "^1.0.0": "consumeOpenExternal"

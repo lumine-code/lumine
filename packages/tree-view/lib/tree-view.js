@@ -9,6 +9,7 @@ const { repoForPath, getStyleObject, getDuplicateCopyPath } = require("./helpers
 const AddDialog = require("./add-dialog");
 const MoveDialog = require("./move-dialog");
 const CopyDialog = require("./copy-dialog");
+const FileOperationProcess = require("./file-operation-process");
 
 let IgnoredNames; // Defer requiring until actually needed
 
@@ -35,6 +36,19 @@ function debounce(fn, wait) {
   };
 }
 
+function formatBytes(bytes) {
+  if (!Number.isFinite(bytes) || bytes < 0) return null;
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let value = bytes;
+  let unit = units[0];
+  for (let i = 1; i < units.length && value >= 1024; i++) {
+    value /= 1024;
+    unit = units[i];
+  }
+  const digits = value >= 10 || unit === "B" ? 0 : 1;
+  return `${value.toFixed(digits)} ${unit}`;
+}
+
 let nextId = 1;
 
 class TreeView {
@@ -43,8 +57,6 @@ class TreeView {
     this.onDragEnter = this.onDragEnter.bind(this);
 
     this.onStylesheetsChanged = this.onStylesheetsChanged.bind(this);
-    this.moveConflictingEntry = this.moveConflictingEntry.bind(this);
-
     this.id = nextId++;
 
     this.element = document.createElement("div");
@@ -84,6 +96,15 @@ class TreeView {
     this.viewport.append(this.scroller, this.stickyHeaderLayer);
     this.element.appendChild(this.viewport);
 
+    this.operationStatus = document.createElement("div");
+    this.operationStatus.classList.add("tree-view-operation-status");
+    this.operationStatus.hidden = true;
+    this.operationSpinner = document.createElement("span");
+    this.operationSpinner.classList.add("loading", "loading-spinner-tiny", "inline-block");
+    this.operationStatusLabel = document.createElement("span");
+    this.operationStatus.append(this.operationSpinner, this.operationStatusLabel);
+    this.element.appendChild(this.operationStatus);
+
     this.stickyHeadersEnabled = false;
     this.stickyHeaderEntries = [];
     this.stickyHeaderUpdateFrame = null;
@@ -102,6 +123,12 @@ class TreeView {
 
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
+    this.fileOperationProcess = new FileOperationProcess({
+      onDidStart: (operation) => this.beginOperationStatus(operation),
+      onDidProgress: (progress) => this.updateOperationStatus(progress),
+      onDidFinish: () => this.finishOperationStatus(),
+      onConflict: (conflict) => this.resolveFileOperationConflict(conflict),
+    });
     this.disposables.add(
       atom.config.observe("tree-view.stickyHeaders", (stickyHeaders) => {
         this.setStickyHeadersEnabled(stickyHeaders);
@@ -200,8 +227,12 @@ class TreeView {
         this.refreshSpecialRoots();
       }),
       this.onMoveEntryFailed(({ initialPath }) => {
-        let index = this.editorsToMove.indexOf(initialPath);
-        if (index !== -1) this.editorsToMove.splice(index, 1);
+        const directoryPrefix = initialPath.endsWith(path.sep)
+          ? initialPath
+          : initialPath + path.sep;
+        this.editorsToMove = this.editorsToMove.filter(
+          (editorPath) => editorPath !== initialPath && !editorPath.startsWith(directoryPrefix),
+        );
       }),
       this.onWillDeleteEntry(({ pathToDelete }) => {
         let isDir = fs.isDirectorySync(pathToDelete);
@@ -258,6 +289,8 @@ class TreeView {
   }
 
   destroy() {
+    this.fileOperationProcess.destroy();
+    this.clearOperationStatus();
     if (this.stickyHeaderUpdateFrame != null) {
       cancelAnimationFrame(this.stickyHeaderUpdateFrame);
       this.stickyHeaderUpdateFrame = null;
@@ -276,6 +309,104 @@ class TreeView {
     this.disposables.dispose();
     this.rootDragAndDrop.dispose();
     return this.emitter.emit("did-destroy");
+  }
+
+  setBusySignal(busySignal) {
+    this.operationBusyProvider?.dispose();
+    this.operationBusyProvider = null;
+    this.busySignal = busySignal;
+    if (this.currentFileOperation) this.showBusyOperationStatus();
+  }
+
+  beginOperationStatus(operation) {
+    this.currentFileOperation = {
+      ...operation,
+      phase: operation.operation === "copy" ? "copying" : "moving",
+      startedAt: Date.now(),
+    };
+    this.showBusyOperationStatus();
+    clearTimeout(this.operationStatusDelay);
+    this.operationStatusDelay = setTimeout(() => {
+      this.operationStatusDelay = null;
+      if (!this.currentFileOperation) return;
+      this.operationStatus.hidden = false;
+      this.renderOperationStatus();
+      this.operationStatusInterval = setInterval(() => this.renderOperationStatus(), 1000);
+    }, 250);
+  }
+
+  updateOperationStatus(progress) {
+    if (!this.currentFileOperation || progress.id !== this.currentFileOperation.id) return;
+    const previousTitle = this.getBusyOperationTitle();
+    Object.assign(this.currentFileOperation, progress);
+    const nextTitle = this.getBusyOperationTitle();
+    if (this.operationBusyProvider && previousTitle !== nextTitle) {
+      this.operationBusyProvider.changeTitle(nextTitle, previousTitle);
+    }
+    if (!this.operationStatus.hidden) this.renderOperationStatus();
+  }
+
+  finishOperationStatus() {
+    this.clearOperationStatus();
+    this.currentFileOperation = null;
+  }
+
+  clearOperationStatus() {
+    clearTimeout(this.operationStatusDelay);
+    clearInterval(this.operationStatusInterval);
+    this.operationStatusDelay = null;
+    this.operationStatusInterval = null;
+    this.operationStatus.hidden = true;
+    this.operationStatusLabel.textContent = "";
+    this.operationBusyProvider?.dispose();
+    this.operationBusyProvider = null;
+  }
+
+  showBusyOperationStatus() {
+    if (!this.busySignal || !this.currentFileOperation) return;
+    this.operationBusyProvider = this.busySignal.create();
+    this.operationBusyProvider.add(this.getBusyOperationTitle());
+  }
+
+  getOperationAction() {
+    switch (this.currentFileOperation?.phase) {
+      case "copying":
+        return "Copying";
+      case "copying-to-move":
+        return "Copying to move";
+      default:
+        return "Moving";
+    }
+  }
+
+  getBusyOperationTitle() {
+    const name = path.basename(this.currentFileOperation.sourcePath);
+    return `tree-view: ${this.getOperationAction()} ${name}`;
+  }
+
+  renderOperationStatus() {
+    const operation = this.currentFileOperation;
+    if (!operation) return;
+
+    const parts = [`${this.getOperationAction()} ${path.basename(operation.sourcePath)}`];
+    if (operation.entries > 1) {
+      parts.push(`${operation.entries} items`);
+    } else {
+      const size = formatBytes(operation.bytesTotal);
+      if (size) parts.push(size);
+    }
+    const elapsed = Math.floor((Date.now() - operation.startedAt) / 1000);
+    parts.push(elapsed === 0 ? "<1s" : `${elapsed}s`);
+    this.operationStatusLabel.textContent = parts.join(" · ");
+  }
+
+  resolveFileOperationConflict({ relativePath }) {
+    const chosen = atom.confirm({
+      message: `'${relativePath}' already exists`,
+      detailedMessage: "Do you want to replace it?",
+      buttons: ["Replace file", "Skip", "Cancel"],
+    });
+    return ["replace", "skip", "cancel"][chosen] ?? "cancel";
   }
 
   onDidDestroy(callback) {
@@ -1557,6 +1688,7 @@ class TreeView {
     }
     if (!oldPath) return;
     let dialog = new MoveDialog(oldPath, {
+      move: (initialPath, newPath) => this.fileOperationProcess.run("move", initialPath, newPath),
       willMove: ({ initialPath, newPath }) => {
         return this.emitter.emit("will-move-entry", { initialPath, newPath });
       },
@@ -1627,8 +1759,12 @@ class TreeView {
     if (!oldPath) return;
 
     let dialog = new CopyDialog(oldPath, {
+      copy: (initialPath, newPath) => this.fileOperationProcess.run("copy", initialPath, newPath),
       onCopy: ({ initialPath, newPath }) => {
         return this.emitter.emit("entry-copied", { initialPath, newPath });
+      },
+      onCopyFailed: ({ initialPath, newPath }) => {
+        return this.emitter.emit("copy-entry-failed", { initialPath, newPath });
       },
     });
     return dialog.attach();
@@ -1827,14 +1963,14 @@ class TreeView {
     return selectedEntry.kind === "file" ? path.dirname(selectedPath) : selectedPath;
   }
 
-  pastePaths(initialPaths, operation, newDirectoryPath) {
+  async pastePaths(initialPaths, operation, newDirectoryPath) {
     let results = [];
     for (let initialPath of initialPaths) {
       if (fs.existsSync(initialPath)) {
         if (operation === "copy") {
-          results.push(this.copyEntry(initialPath, newDirectoryPath));
+          results.push(await this.copyEntry(initialPath, newDirectoryPath));
         } else if (operation === "cut") {
-          if (!this.moveEntry(initialPath, newDirectoryPath)) {
+          if (!(await this.moveEntry(initialPath, newDirectoryPath))) {
             break;
           }
         }
@@ -2025,7 +2161,7 @@ class TreeView {
   //
   // If the entry already exists in `newDirectoryPath`, a number is appended to
   // the basename.
-  copyEntry(initialPath, newDirectoryPath) {
+  async copyEntry(initialPath, newDirectoryPath) {
     let initialPathIsDirectory = fs.isDirectorySync(initialPath);
     // Do not allow copying test/a/ into test/a/b/
     // Note: A trailing path.sep is added to prevent false positives, such as test/a -> test/ab
@@ -2046,28 +2182,24 @@ class TreeView {
 
     try {
       this.emitter.emit("will-copy-entry", { initialPath, newPath });
-      if (initialPathIsDirectory) {
-        // use fs.copy to copy directories since read/write will fail for
-        // directories
-        fs.copySync(initialPath, newPath);
-      } else {
-        fs.copyFileSync(initialPath, newPath);
-      }
+      await this.fileOperationProcess.run("copy", initialPath, newPath);
       this.emitter.emit("entry-copied", { initialPath, newPath });
       let repo = repoForPath(newPath);
       if (repo) {
         repo.scheduleStatusSnapshotRefresh();
       }
+      return true;
     } catch (error) {
       this.emitter.emit("copy-entry-failed", { initialPath, newPath });
       atom.notifications.addWarning(`Failed to copy entry ${initialPath} to ${newDirectoryPath}`, {
         detail: error.message,
       });
+      return false;
     }
   }
 
   // Moves an entry from `initialPath` to `newDirectoryPath`.
-  moveEntry(initialPath, newDirectoryPath) {
+  async moveEntry(initialPath, newDirectoryPath) {
     // Do not allow moving test/a/ into test/a/b/
     // Note: A trailing path.sep is added to prevent false positives, such as test/a -> test/ab
     try {
@@ -2088,76 +2220,42 @@ class TreeView {
     let newPath = path.join(newDirectoryPath, path.basename(initialPath));
     try {
       this.emitter.emit("will-move-entry", { initialPath, newPath });
-      fs.moveSync(initialPath, newPath);
+      const result = await this.fileOperationProcess.run("move", initialPath, newPath);
+      if (result.cancelled || result.skipped) {
+        if (result.partial) {
+          this.updateEditorsAfterPartialMove(initialPath, newPath);
+          repoForPath(newPath)?.scheduleStatusSnapshotRefresh();
+        }
+        this.emitter.emit("move-entry-failed", { initialPath, newPath });
+        return !result.cancelled;
+      }
       this.emitter.emit("entry-moved", { initialPath, newPath });
       let repo = repoForPath(newPath);
       if (repo) {
         repo.scheduleStatusSnapshotRefresh();
       }
     } catch (error) {
-      if (error.code === "EEXIST") {
-        return this.moveConflictingEntry(initialPath, newPath, newDirectoryPath);
-      } else {
-        this.emitter.emit("move-entry-failed", { initialPath, newPath });
-        atom.notifications.addWarning(
-          `Failed to move entry ${initialPath} to ${newDirectoryPath}`,
-          { detail: error.message },
-        );
-      }
+      this.emitter.emit("move-entry-failed", { initialPath, newPath });
+      atom.notifications.addWarning(`Failed to move entry ${initialPath} to ${newDirectoryPath}`, {
+        detail: error.message,
+      });
+      return false;
     }
     return true;
   }
 
-  moveConflictingEntry(initialPath, newPath, newDirectoryPath) {
-    try {
-      if (!fs.isDirectorySync(initialPath)) {
-        // Files, symlinks, anything but a directory
-        let chosen = atom.confirm({
-          message: `'${path.relative(newDirectoryPath, newPath)}' already exists`,
-          detailedMessage: "Do you want to replace it?",
-          buttons: ["Replace file", "Skip", "Cancel"],
-        });
-        switch (chosen) {
-          case 0: {
-            // Replace
-            fs.renameSync(initialPath, newPath);
-            this.emitter.emit("entry-moved", { initialPath, newPath });
-            let repo = repoForPath(newPath);
-            if (repo) {
-              repo.scheduleStatusSnapshotRefresh();
-            }
-            break;
-          }
-          case 2: // Cancel
-            return false;
-        }
-      } else {
-        let entries = fs.readdirSync(initialPath);
-        for (let entry of entries) {
-          if (fs.existsSync(path.join(newPath, entry))) {
-            let result = this.moveConflictingEntry(
-              path.join(initialPath, entry),
-              path.join(newPath, entry),
-              newDirectoryPath,
-            );
-            if (!result) return false;
-          } else {
-            this.moveEntry(path.join(initialPath, entry), newPath);
-          }
-        }
-        if (!fs.readdirSync(initialPath).length) {
-          // "Move" the containing folder by deleting it, since we've already
-          // moved everything in it
-          fs.rmdirSync(initialPath);
-        }
+  updateEditorsAfterPartialMove(initialPath, newPath) {
+    const initialPrefix = initialPath.endsWith(path.sep) ? initialPath : initialPath + path.sep;
+    for (const editor of atom.workspace.getTextEditors()) {
+      const editorPath = editor.getPath();
+      if (editorPath !== initialPath && !editorPath?.startsWith(initialPrefix)) continue;
+
+      const movedPath = newPath + editorPath.slice(initialPath.length);
+      if (!fs.existsSync(editorPath) && fs.existsSync(movedPath)) {
+        editor.getBuffer().setPath(movedPath);
       }
-    } catch (error) {
-      this.emitter.emit("move-entry-failed", { initialPath, newPath });
-      atom.notifications.addWarning(`Failed to move entry ${initialPath} to ${newPath}`, {
-        detail: error.message,
-      });
     }
-    return true;
+    this.refreshSpecialRoots();
   }
 
   onStylesheetsChanged() {
@@ -2439,7 +2537,7 @@ class TreeView {
   }
 
   // Handle entry drop event.
-  onDrop(event) {
+  async onDrop(event) {
     this.dragEventCounts = new WeakMap();
     const entryElement = event.target.closest(".entry.directory");
     let entry = this.treeEntryForElement(entryElement);
@@ -2486,8 +2584,8 @@ class TreeView {
           if ((process.platform === "darwin" && event.metaKey) || event.ctrlKey) {
             // Mimic OS-specific conventions in which holding down a modifier
             // key means that an entry is copied rather than moved.
-            this.copyEntry(initialPath, newDirectoryPath);
-          } else if (!this.moveEntry(initialPath, newDirectoryPath)) {
+            await this.copyEntry(initialPath, newDirectoryPath);
+          } else if (!(await this.moveEntry(initialPath, newDirectoryPath))) {
             break;
           }
         }
@@ -2498,8 +2596,8 @@ class TreeView {
           const droppedPath = getPathForDroppedFile(file);
           if (!droppedPath) continue;
           if ((process.platform === "darwin" && event.metaKey) || event.ctrlKey) {
-            this.copyEntry(droppedPath, newDirectoryPath);
-          } else if (!this.moveEntry(droppedPath, newDirectoryPath)) {
+            await this.copyEntry(droppedPath, newDirectoryPath);
+          } else if (!(await this.moveEntry(droppedPath, newDirectoryPath))) {
             break;
           }
         }

@@ -45,6 +45,33 @@
     background: inherit;
   }
 
+  .tree-view-operation-status {
+    display: flex;
+    box-sizing: border-box;
+    min-width: 0;
+    align-items: center;
+    gap: var(--component-icon-padding);
+    padding: var(--component-padding) var(--component-padding);
+    border-top: 1px solid var(--base-border-color);
+    color: var(--text-color-subtle);
+    white-space: nowrap;
+
+    &[hidden] {
+      display: none;
+    }
+
+    .loading-spinner-tiny {
+      flex: none;
+      margin: 0;
+    }
+
+    > span:last-child {
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+  }
+
   #add-projects-view {
     display: flex;
     flex: 1;

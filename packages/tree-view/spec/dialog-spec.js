@@ -74,7 +74,7 @@ describe("TreeView dialogs", () => {
   });
 
   describe("MoveDialog", () => {
-    it("moves the entry and reports the move", () => {
+    it("moves the entry and reports the move", async () => {
       const source = fixture("old.txt", "content");
       let moved = null;
       const dialog = track(
@@ -84,7 +84,7 @@ describe("TreeView dialogs", () => {
       );
       dialog.attach();
       dialog.miniEditor.setText("renamed.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      await dialog.onConfirm(dialog.miniEditor.getText());
 
       const destination = path.join(projectPath, "renamed.txt");
       expect(fs.existsSync(source)).toBe(false);
@@ -131,7 +131,7 @@ describe("TreeView dialogs", () => {
       expect(dialog.inputDialogView.element.querySelector(".input-checkbox").checked).toBe(true);
     });
 
-    it("opens the duplicate when openAfterCopy is enabled", () => {
+    it("opens the duplicate when openAfterCopy is enabled", async () => {
       atom.config.set("tree-view.openAfterCopy", true);
       // Run the copy callback synchronously so the open decision is testable
       // without depending on real async filesystem timing.
@@ -141,7 +141,7 @@ describe("TreeView dialogs", () => {
       const dialog = makeCopyDialog(fixture("a.txt", "hi"));
       dialog.attach();
       dialog.miniEditor.setText("b.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      await dialog.onConfirm(dialog.miniEditor.getText());
 
       expect(fsCompat.copy).toHaveBeenCalled();
       expect(atom.workspace.open).toHaveBeenCalledWith(path.join(projectPath, "b.txt"), {
@@ -149,7 +149,7 @@ describe("TreeView dialogs", () => {
       });
     });
 
-    it("does not open the duplicate when openAfterCopy is disabled", () => {
+    it("does not open the duplicate when openAfterCopy is disabled", async () => {
       atom.config.set("tree-view.openAfterCopy", false);
       spyOn(fsCompat, "copy").and.callFake((source, destination, callback) => callback());
       spyOn(atom.workspace, "open").and.returnValue(Promise.resolve());
@@ -157,7 +157,7 @@ describe("TreeView dialogs", () => {
       const dialog = makeCopyDialog(fixture("a.txt", "hi"));
       dialog.attach();
       dialog.miniEditor.setText("b.txt");
-      dialog.onConfirm(dialog.miniEditor.getText());
+      await dialog.onConfirm(dialog.miniEditor.getText());
 
       expect(fsCompat.copy).toHaveBeenCalled();
       expect(atom.workspace.open).not.toHaveBeenCalled();

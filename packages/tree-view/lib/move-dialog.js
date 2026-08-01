@@ -4,7 +4,7 @@ const Dialog = require("./dialog");
 const { repoForPath } = require("./helpers");
 
 module.exports = class MoveDialog extends Dialog {
-  constructor(initialPath, { willMove, onMove, onMoveFailed }) {
+  constructor(initialPath, { move, willMove, onMove, onMoveFailed }) {
     let prompt;
     if (fs.isDirectorySync(initialPath)) {
       prompt = "Enter the new path for the directory.";
@@ -21,12 +21,18 @@ module.exports = class MoveDialog extends Dialog {
     });
 
     this.initialPath = initialPath;
+    this.move =
+      move ??
+      (async (sourcePath, destinationPath) => {
+        await fs.promises.mkdir(path.dirname(destinationPath), { recursive: true });
+        await fs.promises.rename(sourcePath, destinationPath);
+      });
     this.willMove = willMove;
     this.onMove = onMove;
     this.onMoveFailed = onMoveFailed;
   }
 
-  onConfirm(newPath) {
+  async onConfirm(newPath) {
     newPath = newPath.replace(/\s+$/, ""); // Remove trailing whitespace
     if (!path.isAbsolute(newPath)) {
       let [rootPath] = Array.from(atom.project.relativizePath(this.initialPath));
@@ -64,22 +70,21 @@ module.exports = class MoveDialog extends Dialog {
       return;
     }
 
-    const directoryPath = path.dirname(newPath);
     try {
       let repo;
       this.willMove?.({ initialPath: this.initialPath, newPath });
-      if (!fs.existsSync(directoryPath)) {
-        fs.makeTreeSync(directoryPath);
-      }
-      fs.moveSync(this.initialPath, newPath);
+      this.close();
+      await this.move(this.initialPath, newPath);
       this.onMove?.({ initialPath: this.initialPath, newPath });
       if ((repo = repoForPath(newPath))) {
         repo.scheduleStatusSnapshotRefresh();
       }
-      return this.close();
     } catch (error) {
-      this.showError(`${error.message}.`);
-      return this.onMoveFailed?.({ initialPath: this.initialPath, newPath });
+      this.onMoveFailed?.({ initialPath: this.initialPath, newPath });
+      atom.notifications.addWarning(`Failed to move '${this.initialPath}'`, {
+        detail: error.message,
+        dismissable: true,
+      });
     }
   }
 

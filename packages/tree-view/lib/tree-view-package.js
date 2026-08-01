@@ -96,6 +96,15 @@ module.exports = class TreeViewPackage {
     });
   }
 
+  consumeBusySignal(busySignal) {
+    this.busySignal = busySignal;
+    if (this.treeView) this.treeView.setBusySignal(busySignal);
+    return new Disposable(() => {
+      this.busySignal = null;
+      if (this.treeView) this.treeView.setBusySignal(null);
+    });
+  }
+
   provideTreeViewSelection() {
     return {
       selectedPaths: () => this.getTreeViewInstance().selectedPaths(),
@@ -146,6 +155,7 @@ module.exports = class TreeViewPackage {
         this.treeView = null;
       });
       if (this.openExternalService) this.treeView.openExternalService = this.openExternalService;
+      if (this.busySignal) this.treeView.setBusySignal(this.busySignal);
       if (this.projectList) {
         this.treeView.projectList = this.projectList;
         if (this.treeView.addProjectsView)

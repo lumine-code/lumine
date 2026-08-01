@@ -4,7 +4,7 @@ const Dialog = require("./dialog");
 const { repoForPath } = require("./helpers");
 
 module.exports = class CopyDialog extends Dialog {
-  constructor(initialPath, { onCopy }) {
+  constructor(initialPath, { copy, onCopy, onCopyFailed }) {
     const checkboxes = fs.isDirectorySync(initialPath)
       ? undefined
       : [{ label: "Open file after copying", config: "tree-view.openAfterCopy" }];
@@ -18,10 +18,17 @@ module.exports = class CopyDialog extends Dialog {
     });
 
     this.initialPath = initialPath;
+    this.copy =
+      copy ??
+      ((sourcePath, destinationPath) =>
+        new Promise((resolve, reject) => {
+          fs.copy(sourcePath, destinationPath, (error) => (error ? reject(error) : resolve()));
+        }));
     this.onCopy = onCopy;
+    this.onCopyFailed = onCopyFailed;
   }
 
-  onConfirm(newPath) {
+  async onConfirm(newPath) {
     newPath = newPath.replace(/\s+$/, ""); // Remove trailing whitespace
     if (!path.isAbsolute(newPath)) {
       const [rootPath] = Array.from(atom.project.relativizePath(this.initialPath));
@@ -45,31 +52,28 @@ module.exports = class CopyDialog extends Dialog {
     if (activeEditor?.getPath() !== this.initialPath) {
       activeEditor = null;
     }
+    this.close();
     try {
-      let repo;
-      if (fs.isDirectorySync(this.initialPath)) {
-        fs.copySync(this.initialPath, newPath);
-        this.onCopy?.({ initialPath: this.initialPath, newPath });
-      } else {
-        fs.copy(this.initialPath, newPath, () => {
-          this.onCopy?.({ initialPath: this.initialPath, newPath });
-          if (!atom.config.get("tree-view.openAfterCopy")) {
-            return;
-          }
-          const openOptions = { activatePane: true };
-          if (activeEditor) {
-            openOptions.initialLine = activeEditor.getLastCursor().getBufferRow();
-            openOptions.initialColumn = activeEditor.getLastCursor().getBufferColumn();
-          }
-          return atom.workspace.open(newPath, openOptions);
-        });
+      await this.copy(this.initialPath, newPath);
+      this.onCopy?.({ initialPath: this.initialPath, newPath });
+      if (!fs.isDirectorySync(newPath) && atom.config.get("tree-view.openAfterCopy")) {
+        const openOptions = { activatePane: true };
+        if (activeEditor) {
+          openOptions.initialLine = activeEditor.getLastCursor().getBufferRow();
+          openOptions.initialColumn = activeEditor.getLastCursor().getBufferColumn();
+        }
+        await atom.workspace.open(newPath, openOptions);
       }
+      let repo;
       if ((repo = repoForPath(newPath))) {
         repo.scheduleStatusSnapshotRefresh();
       }
-      return this.close();
     } catch (error) {
-      return this.showError(`${error.message}.`);
+      this.onCopyFailed?.({ initialPath: this.initialPath, newPath });
+      atom.notifications.addWarning(`Failed to copy '${this.initialPath}'`, {
+        detail: error.message,
+        dismissable: true,
+      });
     }
   }
 };

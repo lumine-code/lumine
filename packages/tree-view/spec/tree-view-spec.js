@@ -134,6 +134,32 @@ describe("TreeView construction", () => {
     expect(treeView.scroller.contains(treeView.elementForTreeEntry(treeView.roots[0]))).toBe(true);
     expect(treeView.scroller.contains(treeView.stickyHeaderLayer)).toBe(false);
     expect(treeView.stickyHeaderLayer.parentElement).toBe(treeView.viewport);
+    expect(treeView.operationStatus.parentElement).toBe(treeView.element);
+    expect(treeView.operationStatus.hidden).toBe(true);
+    expect(treeView.fileOperationProcess.childProcess).toBeUndefined();
+  });
+
+  it("reports long-running cross-volume moves through the busy service", () => {
+    treeView = new TreeView({});
+    const provider = {
+      add: jasmine.createSpy("add"),
+      changeTitle: jasmine.createSpy("changeTitle"),
+      dispose: jasmine.createSpy("dispose"),
+    };
+    treeView.setBusySignal({ create: () => provider });
+    const sourcePath = path.join("root", "large.bin");
+
+    treeView.beginOperationStatus({ id: 7, operation: "move", sourcePath });
+    expect(provider.add).toHaveBeenCalledWith("tree-view: Moving large.bin");
+
+    treeView.updateOperationStatus({ id: 7, phase: "copying-to-move" });
+    expect(provider.changeTitle).toHaveBeenCalledWith(
+      "tree-view: Copying to move large.bin",
+      "tree-view: Moving large.bin",
+    );
+
+    treeView.finishOperationStatus();
+    expect(provider.dispose).toHaveBeenCalled();
   });
 
   it("keeps registered root sections before mounted project rows", () => {
