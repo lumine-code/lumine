@@ -381,6 +381,47 @@ describe("LanguageServerManager capabilities", () => {
   });
 });
 
+describe("LanguageServerManager diagnostics", () => {
+  let manager;
+  let session;
+  const uri = "file:///project/main.test";
+
+  beforeEach(() => {
+    manager = new LanguageServerManager();
+    session = { documents: new Map([[uri, { version: 4 }]]) };
+  });
+
+  afterEach(async () => manager.deactivate());
+
+  it("accepts diagnostics for the current document version", () => {
+    manager.publishDiagnostics(session, { uri, version: 4, diagnostics: [{ message: "current" }] });
+    expect(manager.diagnosticsFor(session, uri)[0].message).toBe("current");
+  });
+
+  it("drops versioned diagnostics for any other document snapshot", () => {
+    const published = jasmine.createSpy("published");
+    manager.onDidPublishDiagnostics(published);
+    manager.publishDiagnostics(session, { uri, version: 3, diagnostics: [{ message: "old" }] });
+    manager.publishDiagnostics(session, { uri, version: 5, diagnostics: [{ message: "future" }] });
+
+    expect(manager.diagnosticsFor(session, uri)).toEqual([]);
+    expect(published).not.toHaveBeenCalled();
+  });
+
+  it("accepts unversioned diagnostics and diagnostics for unopened files", () => {
+    manager.publishDiagnostics(session, { uri, diagnostics: [{ message: "unversioned" }] });
+    const unopened = "file:///project/other.test";
+    manager.publishDiagnostics(session, {
+      uri: unopened,
+      version: 12,
+      diagnostics: [{ message: "workspace" }],
+    });
+
+    expect(manager.diagnosticsFor(session, uri)[0].message).toBe("unversioned");
+    expect(manager.diagnosticsFor(session, unopened)[0].message).toBe("workspace");
+  });
+});
+
 describe("languageIdForEditor", () => {
   const editorWith = (scopeName, name) => ({
     getGrammar: () => ({ scopeName, name }),

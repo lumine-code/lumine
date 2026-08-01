@@ -106,6 +106,7 @@ describe("ide-client package", () => {
 
   it("publishes LSP diagnostics through linter.registry", () => {
     const main = atom.packages.getActivePackage("ide-client").mainModule;
+    let indieConfig;
     const delegate = {
       batches: [],
       setMessages(filePath, messages) {
@@ -113,7 +114,10 @@ describe("ide-client package", () => {
       },
       dispose() {},
     };
-    const registration = main.consumeLinterRegistry(() => delegate);
+    const registration = main.consumeLinterRegistry((config) => {
+      indieConfig = config;
+      return delegate;
+    });
     const filePath = require("path").resolve("project", "main.ts");
     main.manager.publishDiagnostics(
       {},
@@ -141,6 +145,7 @@ describe("ide-client package", () => {
     expect(delegate.batches[0].messages[0].severity).toBe("warning");
     expect(delegate.batches[0].messages[1].severity).toBe("hint");
     expect(delegate.batches[0].messages[1].tags).toEqual(["unnecessary"]);
+    expect(indieConfig.markerInvalidation).toBe("never");
     registration.dispose();
   });
 });

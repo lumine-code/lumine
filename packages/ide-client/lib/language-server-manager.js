@@ -321,6 +321,13 @@ module.exports = class LanguageServerManager {
   // Diagnostics are stored per session as well as per document: several
   // servers commonly report on the same file, and one must not erase another.
   publishDiagnostics(session, params) {
+    const document = session.documents?.get(params.uri);
+    // versionSupport is advertised, so a versioned result belongs to exactly
+    // the document snapshot that produced it. An older response must not
+    // repaint markers after a newer keystroke; an impossible future version is
+    // equally unsafe to apply. Unversioned diagnostics remain valid because
+    // servers are not required to send the optional field.
+    if (params.version != null && document && params.version !== document.version) return;
     const byUri = this.diagnostics.get(session) || new Map();
     byUri.set(params.uri, { session, ...params });
     this.diagnostics.set(session, byUri);

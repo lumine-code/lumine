@@ -183,7 +183,10 @@ module.exports = {
       const key = adapter?.id || "unknown";
       let delegate = this.indieDelegates.get(key);
       if (!delegate) {
-        delegate = registerIndie({ name: adapter?.displayName || "Language Server" });
+        delegate = registerIndie({
+          name: adapter?.displayName || "Language Server",
+          markerInvalidation: "never",
+        });
         this.indieDelegates.set(key, delegate);
       }
       delegate.setMessages(batch.filePath, batch.messages);
