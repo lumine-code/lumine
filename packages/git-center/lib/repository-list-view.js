@@ -11,12 +11,22 @@ module.exports = class RepositoryListView {
     this.repositorySubscriptions = null;
     this.refreshRequested = false;
     this.refreshPromise = null;
+    this.activeRescanIds = new Set();
+    this.rescanScrollTop = null;
     this.selectListView = atom.workspace.buildSelectList({
       className: "git-center-repository-list",
       items: [],
       emptyMessage: "No repositories in this window",
       filterKeyForItem: (item) => item.repoName,
       elementForItem: (item, { highlight }) => {
+        if (item.rescan) {
+          return {
+            className: "git-center-item",
+            icon: ["icon-sync"],
+            primary: highlight(item.repoName),
+            secondary: "Scan project roots again for Git repositories.",
+          };
+        }
         if (item.auto) {
           return {
             className: "git-center-item",
@@ -41,6 +51,10 @@ module.exports = class RepositoryListView {
         };
       },
       didConfirmSelection: (item) => {
+        if (item.rescan) {
+          atom.commands.dispatch(atom.workspace.getElement(), "repositories:rescan");
+          return;
+        }
         this.hide();
         if (item.auto) {
           atom.repositories.setActiveRepository(null);
@@ -58,6 +72,8 @@ module.exports = class RepositoryListView {
           this.requestRefresh().catch(() => {});
         } else {
           this.stopObservingRepositories();
+          this.activeRescanIds.clear();
+          this.rescanScrollTop = null;
         }
       }),
     );
@@ -76,6 +92,32 @@ module.exports = class RepositoryListView {
       }),
       atom.repositories.onDidChangeActiveRepository(() => {
         this.requestRefresh().catch(() => {});
+      }),
+      atom.repositories.onDidStartRescan(({ id }) => {
+        if (this.activeRescanIds.size === 0) {
+          this.rescanScrollTop = this.selectListView.refs.items?.scrollTop ?? null;
+        }
+        this.activeRescanIds.add(id);
+        this.selectListView
+          .update({
+            items: [],
+            loadingMessage: "Loading repositories…",
+          })
+          .catch(() => {});
+      }),
+      atom.repositories.onDidFinishRescan(({ id }) => {
+        this.activeRescanIds.delete(id);
+        if (this.activeRescanIds.size === 0) {
+          const scrollTop = this.rescanScrollTop;
+          this.rescanScrollTop = null;
+          this.requestRefresh()
+            .then(() => {
+              if (scrollTop != null && this.selectListView.refs.items) {
+                this.selectListView.refs.items.scrollTop = scrollTop;
+              }
+            })
+            .catch(() => {});
+        }
       }),
     );
 
@@ -111,8 +153,16 @@ module.exports = class RepositoryListView {
   async refreshItems() {
     while (this.refreshRequested && this.selectListView.isVisible()) {
       this.refreshRequested = false;
+      if (this.activeRescanIds.size > 0) {
+        await this.selectListView.update({
+          items: [],
+          loadingMessage: "Loading repositories…",
+        });
+        continue;
+      }
       const items = [
         { auto: true, repoName: "Auto" },
+        { rescan: true, repoName: "Rescan repositories" },
         ...(await buildSwitchItems()).filter((item) => item.current),
       ];
       if (!this.selectListView.isVisible()) return;

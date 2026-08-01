@@ -9,7 +9,7 @@ Ahead and behind counts compare local refs only; nothing here fetches on your be
 - **Repository tile**: shows the window's active repository and how many files are added, modified, deleted, or conflicted, or the focused folder dimmed when it is not part of a repository; choosing a repository locks it, while `Auto` follows the active workspace item.
 - **Branch tile**: shows the active repository's branch and how far it has drifted from its upstream, and offers branch creation, start-point selection, and detached checkout; hides itself outside every repository, where there is no branch to show.
 - **Filterable pickers**: clicking a tile opens a list for switching repositories or checking out branches, with working-tree counts and upstream drift on the rows that have them.
-- **Quick switching**: the mouse wheel over the repository tile cycles through repositories, and middle click locks or unlocks the current selection.
+- **Quick switching**: the mouse wheel over the repository tile cycles through repositories, middle click locks or unlocks the current selection, and the repository picker's rescan item scans the project roots again.
 
 ## Commands
 

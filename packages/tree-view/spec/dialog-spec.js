@@ -60,6 +60,22 @@ describe("TreeView dialogs", () => {
       expect(fs.existsSync(created)).toBe(true);
     });
 
+    it("places the caret after the default path for new files and folders", () => {
+      const directory = path.join(projectPath, "nested");
+      fs.mkdirSync(directory);
+      const initialText = `nested${path.sep}`;
+
+      for (const isCreatingFile of [true, false]) {
+        const dialog = track(new AddDialog(directory, isCreatingFile));
+        dialog.attach();
+
+        expect(dialog.miniEditor.getText()).toBe(initialText);
+        expect(dialog.miniEditor.getSelectedText()).toBe("");
+        expect(dialog.miniEditor.getCursorBufferPosition()).toEqual([0, initialText.length]);
+        dialog.inputDialogView.destroy();
+      }
+    });
+
     it("shows an error when the target already exists", async () => {
       fixture("exists.txt");
       const dialog = track(new AddDialog(projectPath, true));

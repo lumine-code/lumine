@@ -249,11 +249,15 @@ describe("git-center", () => {
     const items = listView.props.items;
     expect(items[0].auto).toBe(true);
     expect(items[0].repoName).toBe("Auto");
-    const autoElement = listView.element.querySelector(".list-group li");
+    expect(items[1].rescan).toBe(true);
+    expect(items[2].repository).toBe(repoA.repository);
+    const autoElement = Array.from(listView.element.querySelectorAll(".list-group li")).find(
+      (element) => element.textContent.includes("Auto"),
+    );
     expect(autoElement.querySelector(".secondary-line").textContent).toBe(
       "The active repository is updated based on the active editor.",
     );
-    expect(items.slice(1).every((item) => item.current)).toBe(true);
+    expect(items.slice(2).every((item) => item.current)).toBe(true);
     const target = items.find((item) => item.repository === repoB.repository);
     expect(target).toBeTruthy();
     listView.props.didConfirmSelection(target);
@@ -266,6 +270,47 @@ describe("git-center", () => {
     const auto = listView.props.items.find((item) => item.auto);
     listView.props.didConfirmSelection(auto);
     expect(atom.repositories.isActiveRepositoryPinned()).toBe(false);
+  });
+
+  it("shows a loading status while the rescan item scans repositories", async () => {
+    let finishScan;
+    spyOn(atom.repositories, "setProjectRoots");
+    const scan = spyOn(atom.repositories, "scanProjectRoots").andReturn(
+      new Promise((resolve) => (finishScan = resolve)),
+    );
+    const rescanFinished = new Promise((resolve) => {
+      const subscription = atom.repositories.onDidFinishRescan((event) => {
+        subscription.dispose();
+        resolve(event);
+      });
+    });
+    const repositoryListView = mainModule.getRepositoryListView();
+    await repositoryListView.toggle();
+    const listView = repositoryListView.selectListView;
+    const rescanItem = listView.props.items.find((item) => item.rescan);
+    Object.defineProperty(listView.refs.items, "scrollTop", {
+      configurable: true,
+      value: 41,
+      writable: true,
+    });
+
+    expect(rescanItem.repoName).toBe("Rescan repositories");
+    listView.props.didConfirmSelection(rescanItem);
+    expect(scan).toHaveBeenCalled();
+    expect(listView.isVisible()).toBe(true);
+    await listView.update({});
+    expect(listView.refs.loadingMessage.textContent).toBe("Loading repositories…");
+    expect(listView.props.items).toEqual([]);
+    expect(listView.element.querySelectorAll(".list-group li").length).toBe(0);
+    expect(repositoryListView.rescanScrollTop).toBe(41);
+
+    finishScan([]);
+    await rescanFinished;
+    await repositoryListView.requestRefresh();
+    await Promise.resolve();
+    expect(listView.props.loadingMessage).toBeNull();
+    expect(listView.props.items.length).toBeGreaterThan(0);
+    expect(repositoryListView.rescanScrollTop).toBeNull();
   });
 
   it("refreshes an open repository picker without moving its scroll position", async () => {

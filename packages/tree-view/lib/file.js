@@ -24,8 +24,13 @@ module.exports = class File {
         if (this.destroyed) return;
         if (error) {
           // Resolving the real path is best-effort; keep the original path and
-          // carry on rather than dropping the entry.
-          console.warn(`tree-view: could not resolve real path for ${this.path}: ${error.message}`);
+          // carry on rather than dropping the entry. A missing path is an
+          // expected race with watcher-driven moves and removals.
+          if (!fs.isMissingPathError(error)) {
+            console.warn(
+              `tree-view: could not resolve real path for ${this.path}: ${error.message}`,
+            );
+          }
           return;
         }
         if (realPath && realPath !== this.path) {

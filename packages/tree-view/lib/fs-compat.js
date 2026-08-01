@@ -17,6 +17,10 @@ function lstatSyncNoException(filePath) {
   }
 }
 
+function isMissingPathError(error) {
+  return error?.code === "ENOENT" || error?.code === "ENOTDIR";
+}
+
 function isFileSync(filePath) {
   const stat = statSyncNoException(filePath);
   return stat ? stat.isFile() : false;
@@ -178,6 +182,7 @@ module.exports = Object.assign({}, fs, {
   absolute,
   statSyncNoException,
   lstatSyncNoException,
+  isMissingPathError,
   isFileSync,
   isDirectorySync,
   isSymbolicLinkSync,

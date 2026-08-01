@@ -71,6 +71,7 @@ module.exports = class RepositoryRegistry {
     this.scanGeneration = 0;
     this.version = 0;
     this.nextOperationId = 1;
+    this.nextRescanId = 1;
     this.destroyed = false;
     this.didNotifyRepositoryLimit = false;
 
@@ -447,6 +448,14 @@ module.exports = class RepositoryRegistry {
 
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);
+  }
+
+  onDidStartRescan(callback) {
+    return this.emitter.on("did-start-rescan", callback);
+  }
+
+  onDidFinishRescan(callback) {
+    return this.emitter.on("did-finish-rescan", callback);
   }
 
   onDidQueueOperation(callback) {
@@ -1136,9 +1145,27 @@ module.exports = class RepositoryRegistry {
   }
 
   async rescan() {
-    if (!this.project) return [];
-    this.setProjectRoots(this.project.getDirectories(), { scan: false });
-    return this.scanProjectRoots({ generation: this.scanGeneration });
+    const id = this.nextRescanId++;
+    this.emitter.emit("did-start-rescan", Object.freeze({ id }));
+
+    let repositories = [];
+    let error = null;
+    try {
+      if (!this.project) return repositories;
+      this.setProjectRoots(this.project.getDirectories(), { scan: false });
+      repositories = await this.scanProjectRoots({ generation: this.scanGeneration });
+      return repositories;
+    } catch (caughtError) {
+      error = caughtError;
+      throw caughtError;
+    } finally {
+      if (!this.destroyed) {
+        this.emitter.emit(
+          "did-finish-rescan",
+          Object.freeze({ id, repositories: Object.freeze(repositories.slice()), error }),
+        );
+      }
+    }
   }
 
   async scanProjectRoots({ generation = this.scanGeneration, depth } = {}) {

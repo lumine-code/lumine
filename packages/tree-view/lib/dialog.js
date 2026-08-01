@@ -44,15 +44,18 @@ module.exports = class Dialog {
         selectionEnd = initialPath.length - extension.length;
       }
       this.selectionRange = Range(Point(0, selectionStart), Point(0, selectionEnd));
+    } else {
+      // InputDialogView selects the full query when it opens. Add dialogs keep
+      // their seeded directory prefix and append the new name at its end.
+      const cursor = Point(0, initialPath.length);
+      this.selectionRange = Range(cursor, cursor);
     }
   }
 
   attach() {
     this.inputDialogView.show();
-    // Show() selects the whole query; restore the narrower base-name selection.
-    if (this.selectionRange) {
-      this.miniEditor.setSelectedBufferRange(this.selectionRange);
-    }
+    // Show() selects the whole query; restore the requested selection or caret.
+    this.miniEditor.setSelectedBufferRange(this.selectionRange);
     this.miniEditor.scrollToCursorPosition();
   }
 

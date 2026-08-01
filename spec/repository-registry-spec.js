@@ -1181,6 +1181,19 @@ describe("RepositoryRegistry", () => {
     expect(repository.isDestroyed()).toBe(true);
   });
 
+  it("emits lifecycle events around a manual rescan", async () => {
+    const events = [];
+    registry.onDidStartRescan((event) => events.push({ phase: "start", event }));
+    registry.onDidFinishRescan((event) => events.push({ phase: "finish", event }));
+
+    const repositories = await registry.rescan();
+
+    expect(events.map(({ phase }) => phase)).toEqual(["start", "finish"]);
+    expect(events[1].event.id).toBe(events[0].event.id);
+    expect(events[1].event.repositories).toEqual(repositories);
+    expect(events[1].event.error).toBeNull();
+  });
+
   it("optionally detects repositories added and removed below a root", () => {
     registry.destroy();
     registry = new RepositoryRegistry({
