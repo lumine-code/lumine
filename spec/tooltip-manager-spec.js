@@ -59,6 +59,44 @@ describe("TooltipManager", () => {
         disposables.dispose();
       });
 
+      it("displays the next tooltip immediately while the previous one is hiding", () => {
+        const element1 = createElement("foo");
+        const element2 = createElement("bar");
+        const disposables = new CompositeDisposable(
+          manager.add(element1, { title: "Title 1" }),
+          manager.add(element2, { title: "Title 2" }),
+        );
+
+        // Clear any follow-through state left by an earlier tooltip before
+        // setting up the handoff being tested below.
+        mouseEnter(element1);
+        advanceClock(manager.hoverDefaults.delay.show);
+        mouseLeave(element1);
+        advanceClock(manager.hoverDefaults.delay.hide);
+        advanceClock(Tooltip.FOLLOW_THROUGH_DURATION);
+
+        mouseEnter(element1);
+        advanceClock(manager.hoverDefaults.delay.show);
+        expect(document.body.querySelector(".tooltip")).toHaveText("Title 1");
+
+        mouseLeave(element1);
+        mouseEnter(element2);
+
+        expect(
+          Array.from(document.body.querySelectorAll(".tooltip")).some(
+            (tooltip) => tooltip.textContent === "Title 2",
+          ),
+        ).toBe(true);
+
+        advanceClock(manager.hoverDefaults.delay.hide);
+        expect(document.body.querySelectorAll(".tooltip").length).toBe(1);
+        expect(document.body.querySelector(".tooltip")).toHaveText("Title 2");
+
+        mouseLeave(element2);
+        advanceClock(manager.hoverDefaults.delay.hide);
+        disposables.dispose();
+      });
+
       it("hides the tooltip on keydown events", () => {
         const disposable = manager.add(element, {
           title: "Title",

@@ -9,6 +9,13 @@ const listen = require("./delegated-listener");
 
 let followThroughTimer = null;
 
+function startFollowThroughTimer() {
+  clearTimeout(followThroughTimer);
+  followThroughTimer = setTimeout(function () {
+    followThroughTimer = null;
+  }, Tooltip.FOLLOW_THROUGH_DURATION);
+}
+
 const Tooltip = function (element, options, viewRegistry) {
   this.options = null;
   this.enabled = null;
@@ -228,6 +235,13 @@ Tooltip.prototype.leave = function (event) {
 
   this.hoverState = "out";
 
+  // Start the follow-through window as soon as a visible tooltip is left so
+  // entering another tooltip before this one finishes its hide delay does
+  // not wait for the normal show delay.
+  if (this.getTooltipElement().classList.contains("in")) {
+    startFollowThroughTimer();
+  }
+
   if (!this.options.delay || !this.options.delay.hide) return this.hide();
 
   this.timeout = setTimeout(
@@ -412,10 +426,7 @@ Tooltip.prototype.hide = function (callback) {
 
   this.hoverState = null;
 
-  clearTimeout(followThroughTimer);
-  followThroughTimer = setTimeout(function () {
-    followThroughTimer = null;
-  }, Tooltip.FOLLOW_THROUGH_DURATION);
+  startFollowThroughTimer();
 
   return this;
 };
