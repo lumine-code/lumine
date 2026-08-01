@@ -70,5 +70,20 @@ describe("search-panel integration", () => {
       expect(mainModule.projectFindPanel.isVisible()).toBe(true);
       expect(workspaceElement.querySelector(".search-panel-project")).toExist();
     });
+
+    it("orders search options by regex engine, case, and word matching", () => {
+      atom.commands.dispatch(workspaceElement, "search-panel:project-show");
+
+      const optionClasses = Array.from(
+        workspaceElement.querySelectorAll(".search-panel-project .btn-group-options > .btn"),
+      ).map((button) => button.classList[1]);
+
+      expect(optionClasses).toEqual([
+        "option-regex",
+        "option-pcre2",
+        "option-case-sensitive",
+        "option-whole-word",
+      ]);
+    });
   });
 });

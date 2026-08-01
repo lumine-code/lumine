@@ -82,6 +82,13 @@ module.exports = class ProjectFindView {
               }),
             ),
             $.button(
+              { ref: "pcre2OptionButton", className: "btn option-pcre2" },
+              $.svg({
+                className: "icon",
+                innerHTML: `<use xlink:href="#search-panel-icon-pcre2" />`,
+              }),
+            ),
+            $.button(
               {
                 ref: "caseOptionButton",
                 className: "btn option-case-sensitive",
@@ -99,13 +106,6 @@ module.exports = class ProjectFindView {
               $.svg({
                 className: "icon",
                 innerHTML: `<use xlink:href="#search-panel-icon-word" />`,
-              }),
-            ),
-            $.button(
-              { ref: "pcre2OptionButton", className: "btn option-pcre2" },
-              $.svg({
-                className: "icon",
-                innerHTML: `<use xlink:href="#search-panel-icon-pcre2" />`,
               }),
             ),
           ),
