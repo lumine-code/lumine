@@ -649,7 +649,7 @@ describe("AtomEnvironment", () => {
         const persistentItem = {
           element: document.createElement("div"),
           getTitle: () => "Persistent Item",
-          getURI: () => "atom://persistent-item",
+          getURI: () => "lumine://persistent-item",
           getDefaultLocation: () => "left",
           isPersistentDockItem: () => true,
         };
@@ -658,7 +658,7 @@ describe("AtomEnvironment", () => {
 
         await env2.attemptRestoreProjectStateForPaths(env1State, [projectPath]);
 
-        expect(env2.workspace.paneForURI("atom://persistent-item")).toBeTruthy();
+        expect(env2.workspace.paneForURI("lumine://persistent-item")).toBeTruthy();
         expect(env2.workspace.getLeftDock().isVisible()).toBe(true);
         env2.destroy();
       });

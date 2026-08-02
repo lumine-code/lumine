@@ -63,7 +63,7 @@ export default class EditorPanel {
   didClick(event) {
     const target = event.target.closest(".languages-open");
     if (target) {
-      atom.workspace.open("atom://config/languages");
+      atom.workspace.open("lumine://config/languages");
     }
   }
 

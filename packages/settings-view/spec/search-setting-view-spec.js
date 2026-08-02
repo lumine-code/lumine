@@ -36,7 +36,7 @@ describe("SearchSettingView", () => {
 
   it("renders a native keyboard-focusable link", () => {
     expect(view.refs.settingLink.getAttribute("href")).toBe(
-      "atom://config/packages/search-test-package",
+      "lumine://config/packages/search-test-package",
     );
     expect(view.refs.settingLink.tabIndex).toBe(0);
   });

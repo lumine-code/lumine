@@ -293,9 +293,7 @@ let options = {
       CFBundleDocumentTypes: macBundleDocumentTypes.create(),
       CFBundleURLTypes: [
         {
-          // The `atom://` scheme is a technical identifier baked throughout the
-          // source, so it stays; only the display name is branded.
-          CFBundleURLSchemes: ["atom"],
+          CFBundleURLSchemes: ["lumine"],
           CFBundleURLName: "Lumine Shared Session Protocol",
         },
       ],

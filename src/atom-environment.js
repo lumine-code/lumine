@@ -425,13 +425,13 @@ class AtomEnvironment {
   registerDefaultOpeners() {
     this.workspace.addOpener((uri) => {
       switch (uri) {
-        case "atom://.lumine/stylesheet":
+        case "lumine://.lumine/stylesheet":
           return this.workspace.openTextFile(this.styles.getUserStyleSheetPath());
-        case "atom://.lumine/keymap":
+        case "lumine://.lumine/keymap":
           return this.workspace.openTextFile(this.keymaps.getUserKeymapPath());
-        case "atom://.lumine/config":
+        case "lumine://.lumine/config":
           return this.workspace.openTextFile(this.config.getUserConfigPath());
-        case "atom://.lumine/init-script":
+        case "lumine://.lumine/init-script":
           return this.workspace.openTextFile(this.getUserInitScriptPath());
       }
     });

@@ -411,33 +411,33 @@ export default class SettingsView {
   openSetting(path) {
     const namespace = path.split(".")[0];
     let panelName;
-    let options = { uri: `atom://config/${namespace}` };
+    let options = { uri: `lumine://config/${namespace}` };
 
     if (path === "core.themes") {
       panelName = "Themes";
-      options.uri = "atom://config/themes";
+      options.uri = "lumine://config/themes";
     } else if (path === "core.disabledPackages") {
       panelName = "Packages";
-      options.uri = "atom://config/packages";
+      options.uri = "lumine://config/packages";
     } else if (path === "core.uriHandlerRegistration") {
       panelName = "URI Handling";
-      options.uri = "atom://config/uri-handling";
+      options.uri = "lumine://config/uri-handling";
     } else if (namespace === "core") {
       panelName = "Core";
-      options.uri = "atom://config/core";
+      options.uri = "lumine://config/core";
     } else if (namespace === "editor") {
       panelName = "Editor";
-      options.uri = "atom://config/editor";
+      options.uri = "lumine://config/editor";
     } else if (namespace === "language") {
       panelName = "Languages";
-      options.uri = "atom://config/languages";
+      options.uri = "lumine://config/languages";
     } else if (namespace === "git") {
       panelName = "Git";
-      options.uri = "atom://config/git";
+      options.uri = "lumine://config/git";
     } else {
       panelName = namespace;
       options = {
-        uri: `atom://config/packages/${namespace}`,
+        uri: `lumine://config/packages/${namespace}`,
         pack: { name: namespace },
         back: "Search",
       };

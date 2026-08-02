@@ -11,7 +11,7 @@ const SnippetsProvider = {
   },
 };
 
-const CONFIG_URI = "atom://config";
+const CONFIG_URI = "lumine://config";
 
 module.exports = {
   handleURI(parsed) {
@@ -22,7 +22,7 @@ module.exports = {
   },
 
   showPackage(packageName) {
-    atom.workspace.open(`atom://config/packages/${packageName}`);
+    atom.workspace.open(`lumine://config/packages/${packageName}`);
   },
 
   activate() {

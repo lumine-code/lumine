@@ -2,7 +2,7 @@ const { CompositeDisposable } = require("atom");
 
 const KeyBindingResolverView = require("./keybinding-resolver-view");
 
-const KEYBINDING_RESOLVER_URI = "atom://keybinding-resolver";
+const KEYBINDING_RESOLVER_URI = "lumine://keybinding-resolver";
 
 module.exports = {
   activate() {

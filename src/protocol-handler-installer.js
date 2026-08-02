@@ -12,7 +12,7 @@ module.exports = class ProtocolHandlerInstaller {
 
   async isDefaultProtocolClient() {
     return ipcRenderer.invoke("isDefaultProtocolClient", {
-      protocol: "atom",
+      protocol: "lumine",
       path: process.execPath,
       args: ["--uri-handler", "--"],
     });
@@ -24,7 +24,7 @@ module.exports = class ProtocolHandlerInstaller {
     return (
       this.isSupported() &&
       ipcRenderer.invoke("setAsDefaultProtocolClient", {
-        protocol: "atom",
+        protocol: "lumine",
         path: process.execPath,
         args: ["--uri-handler", "--"],
       })
@@ -52,7 +52,7 @@ module.exports = class ProtocolHandlerInstaller {
         if (process.platform === "win32") {
           // Only win32 supports deregistration
           const Registry = require("./win-registry.js");
-          const commandKey = new Registry({ hive: "HKCR", key: `\\atom` });
+          const commandKey = new Registry({ hive: "HKCR", key: `\\lumine` });
           commandKey.destroy((_err, _val) => {
             /* no op */
           });
@@ -81,12 +81,12 @@ module.exports = class ProtocolHandlerInstaller {
       notification.dismiss();
     };
 
-    notification = notifications.addInfo("Register as default atom:// URI handler?", {
+    notification = notifications.addInfo("Register as default lumine:// URI handler?", {
       dismissable: true,
       icon: "link",
       description:
-        "Lumine is not currently set as the default handler for atom:// URIs. Would you like Lumine to handle " +
-        "atom:// URIs?",
+        "Lumine is not currently set as the default handler for lumine:// URIs. Would you like Lumine to handle " +
+        "lumine:// URIs?",
       buttons: [
         {
           text: "Yes",

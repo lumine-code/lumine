@@ -138,7 +138,7 @@ module.exports = {
     this.subscriptions = new CompositeDisposable();
     this.subscriptions.add(
       atom.workspace.addOpener((uri) => {
-        if (uri === "atom://.lumine/snippets") {
+        if (uri === "lumine://.lumine/snippets") {
           return atom.workspace.openTextFile(this.getUserSnippetsPath());
         }
       }),

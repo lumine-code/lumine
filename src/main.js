@@ -8,12 +8,12 @@ const CSON = require("@lumine-code/season");
 const yargs = require("yargs");
 const { app, protocol } = require("electron");
 
-// Declare the `atom://` scheme privileged before the app is ready, so packages
-// can load fonts and use fetch/XHR against atom:// URLs from the file://
+// Declare the `lumine://` scheme privileged before the app is ready, so packages
+// can load fonts and use fetch/XHR against lumine:// URLs from the file://
 // renderer (otherwise Chromium blocks them as cross-origin/CORS violations).
 protocol.registerSchemesAsPrivileged([
   {
-    scheme: "atom",
+    scheme: "lumine",
     privileges: { standard: true, secure: true, supportFetchAPI: true, corsEnabled: true },
   },
 ]);

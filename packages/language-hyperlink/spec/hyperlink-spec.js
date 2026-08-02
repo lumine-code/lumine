@@ -73,10 +73,10 @@ describe("Hyperlink grammar", function () {
     });
 
     ({ tokens } = plainGrammar.tokenizeLine(
-      "atom://core/open/file?filename=urlEncodedFileName&line=n&column=n",
+      "lumine://core/open/file?filename=urlEncodedFileName&line=n&column=n",
     ));
     expect(tokens[0]).toEqual({
-      value: "atom://core/open/file?filename=urlEncodedFileName&line=n&column=n",
+      value: "lumine://core/open/file?filename=urlEncodedFileName&line=n&column=n",
       scopes: ["text.plain.null-grammar", "markup.underline.link.atom.hyperlink"],
     });
   });

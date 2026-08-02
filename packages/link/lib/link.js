@@ -25,7 +25,7 @@ module.exports = {
     }
 
     const protocol = URL.parse(link)?.protocol;
-    if (protocol === "http:" || protocol === "https:" || protocol === "atom:") {
+    if (protocol === "http:" || protocol === "https:" || protocol === "lumine:") {
       atom.openExternal(link);
     }
   },

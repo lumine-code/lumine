@@ -1,7 +1,7 @@
 const { Disposable, CompositeDisposable } = require("atom");
 const DeprecationCopView = require("./deprecation-cop-view");
 const DeprecationCopStatusBarView = require("./deprecation-cop-status-bar-view");
-const ViewURI = "atom://deprecation-cop";
+const ViewURI = "lumine://deprecation-cop";
 
 class DeprecationCopPackage {
   activate() {

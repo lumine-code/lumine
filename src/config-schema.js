@@ -50,20 +50,20 @@ const configSchema = {
       },
       uriHandlerRegistration: {
         title: "URI Handler Registration",
-        description: "When should Lumine register itself as the default handler for atom:// URIs",
+        description: "When should Lumine register itself as the default handler for lumine:// URIs",
         type: "string",
         enum: [
           {
             value: "prompt",
-            description: "Prompt to register Lumine as the default atom:// URI handler",
+            description: "Prompt to register Lumine as the default lumine:// URI handler",
           },
           {
             value: "always",
-            description: "Always become the default atom:// URI handler automatically",
+            description: "Always become the default lumine:// URI handler automatically",
           },
           {
             value: "never",
-            description: "Never become the default atom:// URI handler",
+            description: "Never become the default lumine:// URI handler",
           },
         ],
         default: "prompt",

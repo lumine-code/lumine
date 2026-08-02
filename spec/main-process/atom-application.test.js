@@ -552,7 +552,7 @@ describe("AtomApplication", function () {
       });
     });
 
-    describe("atom:// URLs", function () {
+    describe("lumine:// URLs", function () {
       describe("with a package-name host", function () {
         it("loads the package's urlMain in a new window", async function () {
           await scenario.launch({});
@@ -567,8 +567,8 @@ describe("AtomApplication", function () {
 
           const [w1, w2] = await scenario.open(
             parseCommandLine([
-              "atom://package-with-url-main/test1",
-              "atom://package-with-url-main/test2",
+              "lumine://package-with-url-main/test1",
+              "lumine://package-with-url-main/test2",
             ]),
           );
 
@@ -576,13 +576,13 @@ describe("AtomApplication", function () {
             w1.loadSettings.windowInitializationScript,
             path.resolve("dot-atom/package-with-url-main/some/url-main"),
           );
-          assert.strictEqual(w1.loadSettings.urlToOpen, "atom://package-with-url-main/test1");
+          assert.strictEqual(w1.loadSettings.urlToOpen, "lumine://package-with-url-main/test1");
 
           assert.strictEqual(
             w2.loadSettings.windowInitializationScript,
             path.resolve("dot-atom/package-with-url-main/some/url-main"),
           );
-          assert.strictEqual(w2.loadSettings.urlToOpen, "atom://package-with-url-main/test2");
+          assert.strictEqual(w2.loadSettings.urlToOpen, "lumine://package-with-url-main/test2");
         });
 
         it("sends a URI message to the most recently focused non-spec window", async function () {
@@ -597,11 +597,11 @@ describe("AtomApplication", function () {
           };
 
           const [uw] = await scenario.open(
-            parseCommandLine(["atom://package-without-url-main/test"]),
+            parseCommandLine(["lumine://package-without-url-main/test"]),
           );
           assert.strictEqual(uw, w2);
 
-          assert.isTrue(w2.sendURIMessage.calledWith("atom://package-without-url-main/test"));
+          assert.isTrue(w2.sendURIMessage.calledWith("lumine://package-without-url-main/test"));
           assert.strictEqual(w2.focus.callCount, 2);
 
           for (const other of [w0, w1, w3]) {
@@ -618,7 +618,7 @@ describe("AtomApplication", function () {
           };
 
           const [uw] = await scenario.open(
-            parseCommandLine(["atom://package-without-url-main/test"]),
+            parseCommandLine(["lumine://package-without-url-main/test"]),
           );
           assert.notStrictEqual(uw, w0);
           assert.strictEqual(
@@ -627,7 +627,7 @@ describe("AtomApplication", function () {
           );
 
           uw.emit("window:loaded");
-          assert.isTrue(uw.sendURIMessage.calledWith("atom://package-without-url-main/test"));
+          assert.isTrue(uw.sendURIMessage.calledWith("lumine://package-without-url-main/test"));
         });
       });
 
@@ -637,7 +637,7 @@ describe("AtomApplication", function () {
           const w1 = await scenario.open(parseCommandLine(["--new-window", "a"]));
           const w2 = await scenario.open(parseCommandLine(["--new-window", "b"]));
 
-          const uri = `atom://core/open/file?filename=${encodeURIComponent(
+          const uri = `lumine://core/open/file?filename=${encodeURIComponent(
             scenario.convertEditorPath("a/1.md"),
           )}`;
           const [uw] = await scenario.open(parseCommandLine([uri]));
@@ -652,7 +652,7 @@ describe("AtomApplication", function () {
         it("creates a new window and sends a URI message to it once it loads", async function () {
           const [w0] = await scenario.launch(parseCommandLine(["--test", "a/1.md"]));
 
-          const uri = `atom://core/open/file?filename=${encodeURIComponent(
+          const uri = `lumine://core/open/file?filename=${encodeURIComponent(
             scenario.convertEditorPath("b/2.md"),
           )}`;
           const [uw] = await scenario.open(parseCommandLine([uri]));
@@ -1668,7 +1668,7 @@ class LaunchScenario {
   }
 
   convertRootPath(shortRootPath) {
-    if (shortRootPath.startsWith("atom://") || shortRootPath.startsWith("remote://")) {
+    if (shortRootPath.startsWith("lumine://") || shortRootPath.startsWith("remote://")) {
       return shortRootPath;
     }
 
@@ -1690,7 +1690,7 @@ class LaunchScenario {
 
   convertPaths(paths) {
     return paths.map((shortPath) => {
-      if (shortPath.startsWith("atom://") || shortPath.startsWith("remote://")) {
+      if (shortPath.startsWith("lumine://") || shortPath.startsWith("remote://")) {
         return shortPath;
       }
 

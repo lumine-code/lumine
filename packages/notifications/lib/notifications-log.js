@@ -108,7 +108,7 @@ module.exports = NotificationsLog = (function () {
     }
 
     getURI() {
-      return "atom://notifications/log";
+      return "lumine://notifications/log";
     }
 
     getTitle() {

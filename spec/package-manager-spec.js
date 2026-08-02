@@ -794,7 +794,7 @@ describe("PackageManager", () => {
         it("defers requiring/activating the main module until a registered opener is called", async () => {
           promise = atom.packages.activatePackage("package-with-workspace-openers");
           expect(Package.prototype.requireMainModule.calls.count()).toBe(0);
-          atom.workspace.open("atom://fictitious");
+          atom.workspace.open("lumine://fictitious");
 
           await promise;
           expect(Package.prototype.requireMainModule.calls.count()).toBe(1);
@@ -1262,7 +1262,7 @@ describe("PackageManager", () => {
 
     describe("URI handler registration", () => {
       it("registers the package's specified URI handler", async () => {
-        const uri = "atom://package-with-uri-handler/some/url?with=args";
+        const uri = "lumine://package-with-uri-handler/some/url?with=args";
         const mod = require("./fixtures/packages/package-with-uri-handler");
         spyOn(mod, "handleURI");
         spyOn(atom.packages, "hasLoadedInitialPackages").and.returnValue(true);
@@ -1271,7 +1271,7 @@ describe("PackageManager", () => {
         await activationPromise;
         expect(mod.handleURI).toHaveBeenCalledWith(
           {
-            protocol: "atom:",
+            protocol: "lumine:",
             slashes: true,
             auth: null,
             host: "package-with-uri-handler",

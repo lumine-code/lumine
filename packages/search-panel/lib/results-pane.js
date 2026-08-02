@@ -477,4 +477,4 @@ module.exports = class ResultsPaneView {
   }
 };
 
-module.exports.URI = "atom://search-panel/project-results";
+module.exports.URI = "lumine://search-panel/project-results";

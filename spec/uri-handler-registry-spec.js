@@ -6,7 +6,7 @@ import URIHandlerRegistry from "../src/uri-handler-registry";
 // with the output of Node's legacy `url.parse(uri, true)`.
 function parsedUri(host, pathname, href) {
   return {
-    protocol: "atom:",
+    protocol: "lumine:",
     slashes: true,
     auth: null,
     host,
@@ -35,21 +35,21 @@ describe("URIHandlerRegistry", () => {
     registry.registerHostHandler("test-package", testPackageSpy);
     registry.registerHostHandler("other-package", otherPackageSpy);
 
-    await registry.handleURI("atom://yet-another-package/path");
+    await registry.handleURI("lumine://yet-another-package/path");
     expect(testPackageSpy).not.toHaveBeenCalled();
     expect(otherPackageSpy).not.toHaveBeenCalled();
 
-    await registry.handleURI("atom://test-package/path");
+    await registry.handleURI("lumine://test-package/path");
     expect(testPackageSpy).toHaveBeenCalledWith(
-      parsedUri("test-package", "/path", "atom://test-package/path"),
-      "atom://test-package/path",
+      parsedUri("test-package", "/path", "lumine://test-package/path"),
+      "lumine://test-package/path",
     );
     expect(otherPackageSpy).not.toHaveBeenCalled();
 
-    await registry.handleURI("atom://other-package/path");
+    await registry.handleURI("lumine://other-package/path");
     expect(otherPackageSpy).toHaveBeenCalledWith(
-      parsedUri("other-package", "/path", "atom://other-package/path"),
-      "atom://other-package/path",
+      parsedUri("other-package", "/path", "lumine://other-package/path"),
+      "lumine://other-package/path",
     );
   });
 
@@ -62,11 +62,11 @@ describe("URIHandlerRegistry", () => {
     registry.onHistoryChange(changeSpy);
 
     const uris = [
-      "atom://one/something?asdf=1",
-      "atom://fake/nothing",
-      "atom://two/other/stuff",
-      "atom://one/more/thing",
-      "atom://two/more/stuff",
+      "lumine://one/something?asdf=1",
+      "lumine://fake/nothing",
+      "lumine://two/other/stuff",
+      "lumine://one/more/thing",
+      "lumine://two/more/stuff",
     ];
 
     for (const u of uris) {
@@ -87,11 +87,11 @@ describe("URIHandlerRegistry", () => {
         .reverse(),
     );
 
-    await registry.handleURI("atom://another/url");
+    await registry.handleURI("lumine://another/url");
     expect(changeSpy.calls.count()).toBe(6);
     const history = registry.getRecentlyHandledURIs();
     expect(history.length).toBe(5);
-    expect(history[0].uri).toBe("atom://another/url");
+    expect(history[0].uri).toBe("lumine://another/url");
     expect(history[4].uri).toBe(uris[1]);
   });
 
@@ -99,7 +99,7 @@ describe("URIHandlerRegistry", () => {
     const invalidUris = [
       "atom:package/path",
       "atom:8080://package/path",
-      "user:pass@atom://package/path",
+      "user:pass@lumine://package/path",
       "smth://package/path",
     ];
 

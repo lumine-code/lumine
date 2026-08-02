@@ -29,7 +29,7 @@ module.exports = function parseCommandLine(processArgs) {
     A file may be opened at the desired line (and optionally column) by
     appending the numbers right after the file name, e.g. \`lumine file:5:8\`.
 
-    Paths that start with \`atom://\` will be interpreted as URLs.
+    Paths that start with \`lumine://\` will be interpreted as URLs.
 
     Package Management:
       lumine --install <repository>   Install a package from its latest semver tag.
@@ -161,7 +161,7 @@ module.exports = function parseCommandLine(processArgs) {
     args = {
       uriHandler: true,
       "uri-handler": true,
-      _: args._.filter((str) => str.startsWith("atom://")).slice(0, 1),
+      _: args._.filter((str) => str.startsWith("lumine://")).slice(0, 1),
     };
   }
 
@@ -208,7 +208,7 @@ module.exports = function parseCommandLine(processArgs) {
       // In the next block, .startsWith() only works on strings. So, skip non-string arguments.
       continue;
     }
-    if (path.startsWith("atom://")) {
+    if (path.startsWith("lumine://")) {
       urlsToOpen.push(path);
     } else {
       pathsToOpen.push(path);

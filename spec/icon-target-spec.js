@@ -39,7 +39,7 @@ describe("icon targets", () => {
 
       it("falls back to a URI only when it is not a scheme", () => {
         expect(normalizeTarget({ item: { getURI: () => "/a/b.md" } }).path).toBe("/a/b.md");
-        expect(normalizeTarget({ item: { getURI: () => "atom://config" } }).type).toBe("none");
+        expect(normalizeTarget({ item: { getURI: () => "lumine://config" } }).type).toBe("none");
       });
 
       it("lets an explicit path or name on the target win", () => {

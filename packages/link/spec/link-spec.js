@@ -47,11 +47,11 @@ describe("link package", () => {
     // `tree-sitter-markdown` parser doesn't recognize these as URLs. We'd need
     // our custom `tree-sitter-hyperlink` to support this, and it doesn't right
     // now, but I'll keep it in mind for the future.
-    xit("opens an 'atom:' link", async () => {
+    xit("opens a 'lumine:' link", async () => {
       await atom.workspace.open("sample.md");
 
       const editor = atom.workspace.getActiveTextEditor();
-      editor.setText("// atom://core/open/file?filename=sample.js&line=1&column=2 ");
+      editor.setText("// lumine://core/open/file?filename=sample.js&line=1&column=2 ");
 
       spyOn(atom, "openExternal");
       atom.commands.dispatch(atom.views.getView(editor), "link:open");
@@ -62,7 +62,7 @@ describe("link package", () => {
 
       expect(atom.openExternal).toHaveBeenCalled();
       expect(atom.openExternal.argsForCall[0][0]).toBe(
-        "atom://core/open/file?filename=sample.js&line=1&column=2",
+        "lumine://core/open/file?filename=sample.js&line=1&column=2",
       );
 
       atom.openExternal.reset();
@@ -71,7 +71,7 @@ describe("link package", () => {
 
       expect(atom.openExternal).toHaveBeenCalled();
       expect(atom.openExternal.argsForCall[0][0]).toBe(
-        "atom://core/open/file?filename=sample.js&line=1&column=2",
+        "lumine://core/open/file?filename=sample.js&line=1&column=2",
       );
 
       atom.openExternal.reset();
@@ -80,7 +80,7 @@ describe("link package", () => {
 
       expect(atom.openExternal).toHaveBeenCalled();
       expect(atom.openExternal.argsForCall[0][0]).toBe(
-        "atom://core/open/file?filename=sample.js&line=1&column=2",
+        "lumine://core/open/file?filename=sample.js&line=1&column=2",
       );
     });
 

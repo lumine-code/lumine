@@ -1,7 +1,7 @@
 const { CompositeDisposable } = require("atom");
 let StyleguideView = null;
 
-const STYLEGUIDE_URI = "atom://styleguide";
+const STYLEGUIDE_URI = "lumine://styleguide";
 
 module.exports = {
   activate() {

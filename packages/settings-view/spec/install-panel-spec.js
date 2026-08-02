@@ -53,10 +53,10 @@ describe("InstallPanel", function () {
   });
 
   it("keeps legacy package and theme install URIs as source aliases", function () {
-    expect(panel.extractQueryFromURI("atom://config/install/package:sample-package")).toBe(
+    expect(panel.extractQueryFromURI("lumine://config/install/package:sample-package")).toBe(
       "sample-package",
     );
-    expect(panel.extractQueryFromURI("atom://config/install/theme:sample-theme")).toBe(
+    expect(panel.extractQueryFromURI("lumine://config/install/theme:sample-theme")).toBe(
       "sample-theme",
     );
   });

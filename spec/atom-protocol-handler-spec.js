@@ -4,7 +4,7 @@ describe('"atom" protocol URL', () => {
     request.addEventListener("load", () => {
       done();
     });
-    request.open("GET", "atom://async/package.json", true);
+    request.open("GET", "lumine://async/package.json", true);
     request.send();
   });
 });

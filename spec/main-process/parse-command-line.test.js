@@ -28,13 +28,13 @@ describe("parseCommandLine", () => {
         "--safe",
         "--test",
         "/some/path",
-        "atom://test/url",
-        "atom://other/url",
+        "lumine://test/url",
+        "lumine://other/url",
       ]);
       assert.isTrue(args.devMode);
       assert.isTrue(args.safeMode);
       assert.isTrue(args.test);
-      assert.deepEqual(args.urlsToOpen, ["atom://test/url", "atom://other/url"]);
+      assert.deepEqual(args.urlsToOpen, ["lumine://test/url", "lumine://other/url"]);
       assert.deepEqual(args.pathsToOpen, ["/some/path"]);
     });
 
@@ -50,16 +50,16 @@ describe("parseCommandLine", () => {
           "-_",
           "-_",
           "some/other/path",
-          "atom://test/url",
+          "lumine://test/url",
           "--_",
-          "atom://other/url",
+          "lumine://other/url",
           "-_",
           "./another-path.file",
           "-_",
           "-_",
           "-_",
         ]);
-        assert.deepEqual(args.urlsToOpen, ["atom://test/url", "atom://other/url"]);
+        assert.deepEqual(args.urlsToOpen, ["lumine://test/url", "lumine://other/url"]);
         assert.deepEqual(args.pathsToOpen, [
           "/some/path",
           "some/other/path",
@@ -76,13 +76,13 @@ describe("parseCommandLine", () => {
           "22",
           "97",
           "some/other/path",
-          "atom://test/url",
+          "lumine://test/url",
           "885",
-          "atom://other/url",
+          "lumine://other/url",
           "42",
           "./another-path.file",
         ]);
-        assert.deepEqual(args.urlsToOpen, ["atom://test/url", "atom://other/url"]);
+        assert.deepEqual(args.urlsToOpen, ["lumine://test/url", "lumine://other/url"]);
         assert.deepEqual(args.pathsToOpen, [
           "/some/path",
           "some/other/path",
@@ -100,13 +100,13 @@ describe("parseCommandLine", () => {
         "--safe",
         "--test",
         "/some/path",
-        "atom://test/url",
-        "atom://other/url",
+        "lumine://test/url",
+        "lumine://other/url",
       ]);
       assert.isUndefined(args.devMode);
       assert.isUndefined(args.safeMode);
       assert.isUndefined(args.test);
-      assert.deepEqual(args.urlsToOpen, ["atom://test/url"]);
+      assert.deepEqual(args.urlsToOpen, ["lumine://test/url"]);
       assert.deepEqual(args.pathsToOpen, []);
     });
   });
@@ -122,15 +122,15 @@ describe("parseCommandLine", () => {
 
     // The variable is the developer's own machine-wide choice and a URL cannot
     // reach it, so `--uri-handler` sanitizing the arguments is not a reason to
-    // ignore it: a developer who opted into dev mode wants their `atom://` URLs
+    // ignore it: a developer who opted into dev mode wants their `lumine://` URLs
     // to land in the dev instance too.
     it("still applies under --uri-handler, which only strips arguments", () => {
       process.env.LUMINE_DEV_MODE = "1";
 
-      const args = parseCommandLine(["--uri-handler", "atom://test/url"]);
+      const args = parseCommandLine(["--uri-handler", "lumine://test/url"]);
 
       assert.isTrue(args.devMode);
-      assert.deepEqual(args.urlsToOpen, ["atom://test/url"]);
+      assert.deepEqual(args.urlsToOpen, ["lumine://test/url"]);
     });
 
     it("takes precedence over --no-dev", () => {
@@ -161,13 +161,13 @@ describe("parseCommandLine", () => {
         getPsnFlag(),
         getPsnFlag(),
         "some/other/path",
-        "atom://test/url",
+        "lumine://test/url",
         getPsnFlag(),
-        "atom://other/url",
+        "lumine://other/url",
         '-psn_ Any argument starting with "-psn_" should be ignored, even this one.',
         "./another-path.file",
       ]);
-      assert.deepEqual(args.urlsToOpen, ["atom://test/url", "atom://other/url"]);
+      assert.deepEqual(args.urlsToOpen, ["lumine://test/url", "lumine://other/url"]);
       assert.deepEqual(args.pathsToOpen, ["/some/path", "some/other/path", "./another-path.file"]);
     });
   });

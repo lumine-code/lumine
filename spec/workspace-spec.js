@@ -223,7 +223,7 @@ describe("Workspace", () => {
 
           it("finds items in docks", async () => {
             const dock = atom.workspace.getRightDock();
-            const ITEM_URI = "atom://test";
+            const ITEM_URI = "lumine://test";
             const item = {
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
@@ -309,7 +309,7 @@ describe("Workspace", () => {
           });
 
           it("prefers the last location the user used for that item", async () => {
-            const ITEM_URI = "atom://test";
+            const ITEM_URI = "lumine://test";
             const item = {
               getURI: () => ITEM_URI,
               getDefaultLocation: () => "left",
@@ -318,7 +318,7 @@ describe("Workspace", () => {
             const opener = (uri) => (uri === ITEM_URI ? item : null);
             const dock = atom.workspace.getRightDock();
             spyOn(atom.workspace.itemLocationStore, "load").and.callFake((uri) =>
-              uri === "atom://test" ? Promise.resolve("right") : Promise.resolve(),
+              uri === "lumine://test" ? Promise.resolve("right") : Promise.resolve(),
             );
             spyOn(atom.workspace, "getOpeners").and.returnValue([opener]);
             expect(dock.getPaneItems()).toHaveLength(0);
@@ -399,7 +399,7 @@ describe("Workspace", () => {
 
         it("activates the pane in the dock with the matching item", async () => {
           const dock = atom.workspace.getRightDock();
-          const ITEM_URI = "atom://test";
+          const ITEM_URI = "lumine://test";
           const item = {
             getURI: () => ITEM_URI,
             getDefaultLocation: jasmine.createSpy().and.returnValue("left"),
@@ -998,7 +998,7 @@ describe("Workspace", () => {
 
   describe("finding items in the workspace", () => {
     it("can identify the pane and pane container for a given item or URI", () => {
-      const uri = "atom://test-pane-for-item";
+      const uri = "lumine://test-pane-for-item";
       const item = {
         element: document.createElement("div"),
         getURI() {
@@ -1023,7 +1023,7 @@ describe("Workspace", () => {
 
   describe("::hide(uri)", () => {
     let item;
-    const URI = "atom://hide-test";
+    const URI = "lumine://hide-test";
 
     beforeEach(() => {
       const el = document.createElement("div");
@@ -3679,7 +3679,7 @@ describe("Workspace", () => {
     });
 
     it("stores the new location if it's not the default", () => {
-      const ITEM_URI = "atom://test";
+      const ITEM_URI = "lumine://test";
       const item = {
         getURI: () => ITEM_URI,
         getDefaultLocation: () => "left",
@@ -3694,7 +3694,7 @@ describe("Workspace", () => {
     });
 
     it("clears the location if it's the default", () => {
-      const ITEM_URI = "atom://test";
+      const ITEM_URI = "lumine://test";
       const item = {
         getURI: () => ITEM_URI,
         getDefaultLocation: () => "right",

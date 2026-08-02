@@ -20,7 +20,7 @@ const TreeEntry = require("./tree-entry");
 const TreeRowView = require("./tree-row-view");
 const TreeRootSection = require("./tree-root-section");
 
-const TREE_VIEW_URI = "atom://tree-view";
+const TREE_VIEW_URI = "lumine://tree-view";
 const TREE_VIEW_CLIPBOARD_FORMAT = "application/lumine-tree-view";
 const TREE_VIEW_CLIPBOARD_VERSION = 1;
 

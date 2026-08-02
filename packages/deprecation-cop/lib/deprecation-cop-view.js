@@ -485,7 +485,7 @@ export default class DeprecationCopView {
   }
 
   checkForUpdates() {
-    atom.workspace.open("atom://config/updates");
+    atom.workspace.open("lumine://config/updates");
   }
 
   disablePackage(packageName) {

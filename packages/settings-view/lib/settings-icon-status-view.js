@@ -15,7 +15,7 @@ export default class SettingsIconStatusView {
     this.element.appendChild(iconPackage);
 
     const clickHandler = () => {
-      atom.workspace.open("atom://config");
+      atom.workspace.open("lumine://config");
     };
     this.element.addEventListener("click", clickHandler);
     this.disposables.add(

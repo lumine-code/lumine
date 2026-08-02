@@ -262,7 +262,7 @@ describe("SettingsView", function () {
           runs(() =>
             expect(atom.workspace.getActivePaneItem().activePanel).toEqual({
               name: "Core",
-              options: { uri: "atom://config/core" },
+              options: { uri: "lumine://config/core" },
             }),
           );
         }));
@@ -273,7 +273,7 @@ describe("SettingsView", function () {
           runs(() =>
             expect(atom.workspace.getActivePaneItem().activePanel).toEqual({
               name: "Editor",
-              options: { uri: "atom://config/editor" },
+              options: { uri: "lumine://config/editor" },
             }),
           );
         }));
@@ -284,7 +284,7 @@ describe("SettingsView", function () {
           runs(() =>
             expect(atom.workspace.getActivePaneItem().activePanel).toEqual({
               name: "Keybindings",
-              options: { uri: "atom://config/keybindings" },
+              options: { uri: "lumine://config/keybindings" },
             }),
           );
         }));
@@ -309,7 +309,7 @@ describe("SettingsView", function () {
           runs(() =>
             expect(atom.workspace.getActivePaneItem().activePanel).toEqual({
               name: "Themes",
-              options: { uri: "atom://config/themes" },
+              options: { uri: "lumine://config/themes" },
             }),
           );
         }));
@@ -320,7 +320,7 @@ describe("SettingsView", function () {
           runs(() =>
             expect(atom.workspace.getActivePaneItem().activePanel).toEqual({
               name: "Packages",
-              options: { uri: "atom://config/packages" },
+              options: { uri: "lumine://config/packages" },
             }),
           );
         }));
@@ -331,7 +331,7 @@ describe("SettingsView", function () {
           runs(() =>
             expect(atom.workspace.getActivePaneItem().activePanel).toEqual({
               name: "Install",
-              options: { uri: "atom://config/install" },
+              options: { uri: "lumine://config/install" },
             }),
           );
         }));
@@ -358,8 +358,10 @@ describe("SettingsView", function () {
 
       beforeEach(() => (settingsView = null));
 
-      it("opens the settings to the correct panel with atom://config/<panel-name> and that panel is keyboard-scrollable", function () {
-        waitsForPromise(() => atom.workspace.open("atom://config").then((s) => (settingsView = s)));
+      it("opens the settings to the correct panel with lumine://config/<panel-name> and that panel is keyboard-scrollable", function () {
+        waitsForPromise(() =>
+          atom.workspace.open("lumine://config").then((s) => (settingsView = s)),
+        );
 
         waitsFor((done) => process.nextTick(done));
         runs(function () {
@@ -369,63 +371,63 @@ describe("SettingsView", function () {
         });
 
         waitsForPromise(() =>
-          atom.workspace.open("atom://config/editor").then((s) => (settingsView = s)),
+          atom.workspace.open("lumine://config/editor").then((s) => (settingsView = s)),
         );
 
         waits(1);
         runs(function () {
           expect(settingsView.activePanel).toEqual({
             name: "Editor",
-            options: { uri: "atom://config/editor" },
+            options: { uri: "lumine://config/editor" },
           });
           expect(focusIsWithinActivePanel()).toBe(true);
           expectActivePanelToBeKeyboardScrollable();
         });
 
         waitsForPromise(() =>
-          atom.workspace.open("atom://config/keybindings").then((s) => (settingsView = s)),
+          atom.workspace.open("lumine://config/keybindings").then((s) => (settingsView = s)),
         );
 
         waits(1);
         runs(function () {
           expect(settingsView.activePanel).toEqual({
             name: "Keybindings",
-            options: { uri: "atom://config/keybindings" },
+            options: { uri: "lumine://config/keybindings" },
           });
           expect(focusIsWithinActivePanel()).toBe(true);
           expectActivePanelToBeKeyboardScrollable();
         });
 
         waitsForPromise(() =>
-          atom.workspace.open("atom://config/packages").then((s) => (settingsView = s)),
+          atom.workspace.open("lumine://config/packages").then((s) => (settingsView = s)),
         );
 
         waits(1);
         runs(function () {
           expect(settingsView.activePanel).toEqual({
             name: "Packages",
-            options: { uri: "atom://config/packages" },
+            options: { uri: "lumine://config/packages" },
           });
           expect(focusIsWithinActivePanel()).toBe(true);
           expectActivePanelToBeKeyboardScrollable();
         });
 
         waitsForPromise(() =>
-          atom.workspace.open("atom://config/themes").then((s) => (settingsView = s)),
+          atom.workspace.open("lumine://config/themes").then((s) => (settingsView = s)),
         );
 
         waits(1);
         runs(function () {
           expect(settingsView.activePanel).toEqual({
             name: "Themes",
-            options: { uri: "atom://config/themes" },
+            options: { uri: "lumine://config/themes" },
           });
           expect(focusIsWithinActivePanel()).toBe(true);
           expectActivePanelToBeKeyboardScrollable();
         });
 
         waitsForPromise(() =>
-          atom.workspace.open("atom://config/updates").then((s) => (settingsView = s)),
+          atom.workspace.open("lumine://config/updates").then((s) => (settingsView = s)),
         );
 
         waits(1);
@@ -433,14 +435,14 @@ describe("SettingsView", function () {
           // The legacy updates URI redirects to the Update panel.
           expect(settingsView.activePanel).toEqual({
             name: "Update",
-            options: { uri: "atom://config/updates" },
+            options: { uri: "lumine://config/updates" },
           });
           expect(focusIsWithinActivePanel()).toBe(true);
           expectActivePanelToBeKeyboardScrollable();
         });
 
         waitsForPromise(() =>
-          atom.workspace.open("atom://config/install").then((s) => (settingsView = s)),
+          atom.workspace.open("lumine://config/install").then((s) => (settingsView = s)),
         );
 
         let hasSystemPanel = false;
@@ -448,7 +450,7 @@ describe("SettingsView", function () {
         runs(function () {
           expect(settingsView.activePanel).toEqual({
             name: "Install",
-            options: { uri: "atom://config/install" },
+            options: { uri: "lumine://config/install" },
           });
           expect(focusIsWithinActivePanel()).toBe(true);
           expectActivePanelToBeKeyboardScrollable();
@@ -457,14 +459,14 @@ describe("SettingsView", function () {
 
         if (hasSystemPanel) {
           waitsForPromise(() =>
-            atom.workspace.open("atom://config/system").then((s) => (settingsView = s)),
+            atom.workspace.open("lumine://config/system").then((s) => (settingsView = s)),
           );
 
           waits(1);
           runs(function () {
             expect(settingsView.activePanel).toEqual({
               name: "System",
-              options: { uri: "atom://config/system" },
+              options: { uri: "lumine://config/system" },
             });
             expect(focusIsWithinActivePanel()).toBe(true);
             expectActivePanelToBeKeyboardScrollable();
@@ -472,14 +474,14 @@ describe("SettingsView", function () {
         }
       });
 
-      it("opens the package settings view with atom://config/packages/<package-name>", function () {
+      it("opens the package settings view with lumine://config/packages/<package-name>", function () {
         waitsForPromise(() =>
           atom.packages.activatePackage(path.join(__dirname, "fixtures", "package-with-readme")),
         );
 
         waitsForPromise(() =>
           atom.workspace
-            .open("atom://config/packages/package-with-readme")
+            .open("lumine://config/packages/package-with-readme")
             .then((s) => (settingsView = s)),
         );
 
@@ -488,7 +490,7 @@ describe("SettingsView", function () {
           expect(settingsView.activePanel).toEqual({
             name: "package-with-readme",
             options: {
-              uri: "atom://config/packages/package-with-readme",
+              uri: "lumine://config/packages/package-with-readme",
               pack: {
                 name: "package-with-readme",
                 metadata: {
@@ -507,7 +509,9 @@ describe("SettingsView", function () {
         await atom.packages.activatePackage(
           path.join(__dirname, "fixtures", "package-with-readme"),
         );
-        let settingsView = await atom.workspace.open("atom://config/packages/package-with-readme");
+        let settingsView = await atom.workspace.open(
+          "lumine://config/packages/package-with-readme",
+        );
 
         await wait(10);
 
@@ -518,7 +522,7 @@ describe("SettingsView", function () {
         await atom.packages.activatePackage(
           path.join(__dirname, "fixtures", "package-with-readme"),
         );
-        await atom.workspace.open("atom://config/packages/package-with-readme");
+        await atom.workspace.open("lumine://config/packages/package-with-readme");
 
         // The panel the reader has open is the one that must reflect the change,
         // so it stays and updates itself rather than being dropped and rebuilt
@@ -567,7 +571,7 @@ describe("SettingsView", function () {
 
         waitsForPromise(() =>
           atom.workspace
-            .open("atom://config/install/package:something")
+            .open("lumine://config/install/package:something")
             .then((s) => (settingsView = s)),
         );
 
@@ -576,10 +580,10 @@ describe("SettingsView", function () {
         runs(function () {
           expect(settingsView.activePanel).toEqual({
             name: "Install",
-            options: { uri: "atom://config/install/package:something" },
+            options: { uri: "lumine://config/install/package:something" },
           });
           expect(InstallPanel.prototype.beforeShow).toHaveBeenCalledWith({
-            uri: "atom://config/install/package:something",
+            uri: "lumine://config/install/package:something",
           });
         });
       });
@@ -588,7 +592,9 @@ describe("SettingsView", function () {
         const InstallPanel = require("../lib/install-panel");
         spyOn(InstallPanel.prototype, "beforeShow");
 
-        waitsForPromise(() => atom.workspace.open("atom://config").then((s) => (settingsView = s)));
+        waitsForPromise(() =>
+          atom.workspace.open("lumine://config").then((s) => (settingsView = s)),
+        );
 
         waitsFor((done) => process.nextTick(done));
 
@@ -596,7 +602,7 @@ describe("SettingsView", function () {
 
         waitsForPromise(() =>
           atom.workspace
-            .open("atom://config/install/package:something")
+            .open("lumine://config/install/package:something")
             .then((s) => (settingsView = s)),
         );
 
@@ -604,10 +610,10 @@ describe("SettingsView", function () {
         runs(function () {
           expect(settingsView.activePanel).toEqual({
             name: "Install",
-            options: { uri: "atom://config/install/package:something" },
+            options: { uri: "lumine://config/install/package:something" },
           });
           expect(InstallPanel.prototype.beforeShow).toHaveBeenCalledWith({
-            uri: "atom://config/install/package:something",
+            uri: "lumine://config/install/package:something",
           });
         });
       });
@@ -667,12 +673,12 @@ describe("SettingsView", function () {
 
       settingsView.openSetting("core.themes");
       expect(settingsView.showPanel).toHaveBeenCalledWith("Themes", {
-        uri: "atom://config/themes",
+        uri: "lumine://config/themes",
       });
 
       settingsView.openSetting("core.uriHandlerRegistration");
       expect(settingsView.showPanel).toHaveBeenCalledWith("URI Handling", {
-        uri: "atom://config/uri-handling",
+        uri: "lumine://config/uri-handling",
       });
     });
 

@@ -1,3 +1,3 @@
 /** @babel */
 
-export default "atom://incompatible-packages";
+export default "lumine://incompatible-packages";

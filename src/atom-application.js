@@ -631,13 +631,13 @@ module.exports = class AtomApplication extends EventEmitter {
       });
     }
 
-    this.openPathOnEvent("application:about", "atom://about");
-    this.openPathOnEvent("application:show-settings", "atom://config");
-    this.openPathOnEvent("application:open-your-config", "atom://.lumine/config");
-    this.openPathOnEvent("application:open-your-init-script", "atom://.lumine/init-script");
-    this.openPathOnEvent("application:open-your-keymap", "atom://.lumine/keymap");
-    this.openPathOnEvent("application:open-your-snippets", "atom://.lumine/snippets");
-    this.openPathOnEvent("application:open-your-stylesheet", "atom://.lumine/stylesheet");
+    this.openPathOnEvent("application:about", "lumine://about");
+    this.openPathOnEvent("application:show-settings", "lumine://config");
+    this.openPathOnEvent("application:open-your-config", "lumine://.lumine/config");
+    this.openPathOnEvent("application:open-your-init-script", "lumine://.lumine/init-script");
+    this.openPathOnEvent("application:open-your-keymap", "lumine://.lumine/keymap");
+    this.openPathOnEvent("application:open-your-snippets", "lumine://.lumine/snippets");
+    this.openPathOnEvent("application:open-your-stylesheet", "lumine://.lumine/stylesheet");
     this.openPathOnEvent("application:open-license", path.join(process.resourcesPath, "LICENSE"));
 
     this.configFile.onDidChange((settings) => {
@@ -1424,19 +1424,19 @@ module.exports = class AtomApplication extends EventEmitter {
     }
   }
 
-  // Open an atom:// url.
+  // Open an lumine:// url.
   //
   // The host of the URL being opened is assumed to be the package name
   // responsible for opening the URL.  A new window will be created with
   // that package's `urlMain` as the bootstrap script.
   //
   // options -
-  //   :urlToOpen - The atom:// url to open.
+  //   :urlToOpen - The lumine:// url to open.
   //   :devMode - Boolean to control the opened window's dev mode.
   //   :safeMode - Boolean to control the opened window's safe mode.
   openUrl({ urlToOpen, devMode, safeMode, env }) {
     const parsedUrl = parseUri(urlToOpen);
-    if (!parsedUrl || parsedUrl.protocol !== "atom:") return;
+    if (!parsedUrl || parsedUrl.protocol !== "lumine:") return;
 
     const pack = this.findPackageWithName(parsedUrl.host, devMode);
     if (pack && pack.urlMain) {

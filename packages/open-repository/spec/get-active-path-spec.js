@@ -65,7 +65,7 @@ xdescribe("getActivePath", function () {
   it("returns project when active pane is not a file", async function () {
     await atom.packages.activatePackage("settings-view");
     await atom.workspace.open(file1);
-    await atom.workspace.open("atom://config");
+    await atom.workspace.open("lumine://config");
 
     const itemPath = getActivePath(workspaceElement);
     expect(itemPath).toBe(projectPath);

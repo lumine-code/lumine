@@ -2,10 +2,10 @@ const { protocol } = require("electron");
 const fs = require("fs");
 const path = require("path");
 
-// Handles requests with 'atom' protocol.
+// Handles requests with 'lumine' protocol.
 //
 // It's created by {AtomApplication} upon instantiation and is used to create a
-// custom resource loader for 'atom://' URLs.
+// custom resource loader for 'lumine://' URLs.
 //
 // The following directories are searched in order:
 //   * ~/.lumine/assets
@@ -28,10 +28,10 @@ module.exports = class AtomProtocolHandler {
     this.registerAtomProtocol();
   }
 
-  // Creates the 'atom' custom protocol handler.
+  // Creates the 'lumine' custom protocol handler.
   registerAtomProtocol() {
-    protocol.registerFileProtocol("atom", (request, callback) => {
-      const relativePath = path.normalize(request.url.substr(7));
+    protocol.registerFileProtocol("lumine", (request, callback) => {
+      const relativePath = path.normalize(request.url.slice("lumine://".length));
 
       let filePath;
       if (relativePath.indexOf("assets/") === 0) {

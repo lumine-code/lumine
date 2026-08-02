@@ -815,7 +815,7 @@ export default class PackageCard {
       if (target) {
         event.stopPropagation();
         event.preventDefault();
-        if (target.href && target.href.startsWith("atom:")) {
+        if (target.href && target.href.startsWith("lumine:")) {
           atom.workspace.open(target.href);
         }
       }

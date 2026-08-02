@@ -30,7 +30,7 @@ export default class IncompatiblePackagesComponent {
       } else if (event.target === this.refs.reloadButton) {
         atom.reload();
       } else if (event.target.classList.contains("view-settings")) {
-        atom.workspace.open(`atom://config/packages/${event.target.package.name}`);
+        atom.workspace.open(`lumine://config/packages/${event.target.package.name}`);
       }
     });
   }

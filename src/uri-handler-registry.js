@@ -4,7 +4,7 @@ const { Emitter, Disposable } = require("event-kit");
 // Private: Associates listener functions with URIs from outside the application.
 //
 // The global URI handler registry maps URIs to listener functions. URIs are mapped
-// based on the hostname of the URI; the format is atom://package/command?args.
+// based on the hostname of the URI; the format is lumine://package/command?args.
 // The "core" package name is reserved for URIs handled by Lumine Core (it is not possible
 // to register a package with the name "core").
 //
@@ -35,7 +35,7 @@ const { Emitter, Disposable } = require("event-kit");
 // ## Example
 //
 // Here is a sample package that will be activated and have its `handleURI` method called
-// when a URI beginning with `atom://my-package` is triggered:
+// when a URI beginning with `lumine://my-package` is triggered:
 //
 // `package.json`:
 //
@@ -94,7 +94,7 @@ module.exports = class URIHandlerRegistry {
       throw new Error(`URIHandlerRegistry#handleURI asked to handle an invalid URI: ${uri}`);
     }
     const { protocol, slashes, auth, port, host } = parsed;
-    if (protocol !== "atom:" || slashes !== true || auth || port) {
+    if (protocol !== "lumine:" || slashes !== true || auth || port) {
       throw new Error(`URIHandlerRegistry#handleURI asked to handle an invalid URI: ${uri}`);
     }
 

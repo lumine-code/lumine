@@ -12,7 +12,7 @@ export default class PackagePanelView {
     const clickHandler = (event) => {
       const target = event.target.closest("a.package");
       if (target) {
-        atom.workspace.open(`atom://config/packages/${target.dataset.package}`);
+        atom.workspace.open(`lumine://config/packages/${target.dataset.package}`);
       }
     };
     this.element.addEventListener("click", clickHandler);

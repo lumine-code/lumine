@@ -20,7 +20,7 @@ function setAsDefaultProtocolClient() {
   // hacks to make it work on Linux; see https://github.com/electron/electron/issues/6440
   return (
     isSupported() &&
-    require("@electron/remote").app.setAsDefaultProtocolClient("atom", process.execPath, [
+    require("@electron/remote").app.setAsDefaultProtocolClient("lumine", process.execPath, [
       "--uri-handler",
       "--",
     ])
@@ -81,7 +81,7 @@ export default class UriHandlerPanel {
             <div className="section-container">
               <div className="block section-heading icon icon-device-desktop">URI Handling</div>
               <div className="text icon icon-question">
-                These settings determine how Lumine handles atom:// URIs.
+                These settings determine how Lumine handles lumine:// URIs.
               </div>
               <div className="section-body">
                 <div className="control-group">
@@ -98,7 +98,7 @@ export default class UriHandlerPanel {
                       style={{ fontSize: "1.25em", display: "block" }}
                       onClick={this.handleBecomeProtocolClient}
                     >
-                      Register as default atom:// protocol handler
+                      Register as default lumine:// protocol handler
                     </button>
                   </div>
                 </div>
@@ -158,7 +158,7 @@ export default class UriHandlerPanel {
       return <em>core</em>;
     } else {
       return (
-        <a href={`atom://config/packages/${item.host}`} onClick={this.handlePackageLinkClicked}>
+        <a href={`lumine://config/packages/${item.host}`} onClick={this.handlePackageLinkClicked}>
           {item.host}
         </a>
       );
@@ -172,11 +172,11 @@ export default class UriHandlerPanel {
 
   renderRegistrationDescription() {
     if (this.isDefaultProtocolClient) {
-      return "Lumine is already the default handler for atom:// URIs.";
+      return "Lumine is already the default handler for lumine:// URIs.";
     } else if (isSupported()) {
-      return "Register Lumine as the default handler for atom:// URIs.";
+      return "Register Lumine as the default handler for lumine:// URIs.";
     } else {
-      return "Registration as the default handler for atom:// URIs is only supported on Windows and macOS.";
+      return "Registration as the default handler for lumine:// URIs is only supported on Windows and macOS.";
     }
   }
 
