@@ -376,21 +376,27 @@ module.exports = class AtomWindow extends EventEmitter {
   // message instead of letting Electron log a disposed-frame error.
   //
   // The window and its `webContents` both outlive that disposal, so neither
-  // `isDestroyed()` catches it: `webContents.send()` forwards to the main
-  // frame, and sending through a frame whose render frame is gone throws
-  // inside Electron, which swallows the error and logs it. `isDestroyed()` on
-  // the frame is the accessor that stays safe once it is disposed, so it has
+  // `isDestroyed()` catches it: only `isDestroyed()` on the frame does, and it
+  // is the one accessor that stays safe once the frame is disposed, so it has
   // to come before any other frame property.
   //
-  // Returns true when the message reached a frame, so a caller that waits for a
+  // `frame.detached` is deliberately NOT part of that liveness check. After a
+  // renderer crash and reload (a Windows resume from hibernation kills
+  // renderers this way), the main-frame wrapper of the replacement page can
+  // report `detached: true` forever while the page is alive and interactive.
+  // Dropping on that flag silently voids every main→renderer message for the
+  // window for the rest of the session — `open-locations` and with it the
+  // whole File menu, drag-and-drop, and the Open dialog.
+  //
+  // Returns true when the message was sent, so a caller that waits for a
   // reply can tell a dropped message apart from one still in flight.
   sendToRenderer(channel, ...args) {
     if (this.browserWindow.isDestroyed()) return false;
     const contents = this.browserWindow.webContents;
     if (contents.isDestroyed()) return false;
     const frame = contents.mainFrame;
-    if (!frame || frame.isDestroyed() || frame.detached) return false;
-    frame.send(channel, ...args);
+    if (!frame || frame.isDestroyed()) return false;
+    contents.send(channel, ...args);
     return true;
   }
 

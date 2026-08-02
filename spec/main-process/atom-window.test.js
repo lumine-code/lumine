@@ -246,16 +246,20 @@ describe("AtomWindow", function () {
       assert.lengthOf(w.browserWindow.sent, 0);
     });
 
-    it("drops messages once the main frame is detached", function () {
+    // A crashed-then-reloaded renderer (Windows hibernation resume does this)
+    // can leave the live page's main-frame wrapper flagged `detached` for the
+    // rest of the session. That flag must never gate sending: trusting it
+    // silently voids every main→renderer message for an otherwise healthy
+    // window — the whole File menu, drag-and-drop, and the Open dialog.
+    it("still delivers messages when the main frame is merely detached", function () {
       const w = new AtomWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.browserWindow.webContents.mainFrame.detached = true;
 
-      w.browserWindow.emit("blur");
       w.sendMessage("some-message");
 
-      assert.lengthOf(w.browserWindow.sent, 0);
+      assert.deepEqual(w.browserWindow.sent, [["message", "some-message", undefined]]);
     });
   });
 
@@ -587,17 +591,20 @@ class StubBrowserWindow extends EventEmitter {
     this.webContents = new EventEmitter();
     this.webContents.setVisualZoomLevelLimits = () => {};
     this.webContents.isDestroyed = () => this.destroyed;
-    // IPC leaves through the main frame rather than `webContents.send`: a
-    // disposed render frame outlives both `isDestroyed()` checks, so that is
-    // the only place AtomWindow can tell there is no renderer left to send to.
+    this.webContents.send = (...args) => {
+      this.sent.push(args);
+    };
+    // IPC is gated on the main frame's liveness even though it leaves through
+    // `webContents.send`: a disposed render frame outlives both `isDestroyed()`
+    // checks above, so `mainFrame.isDestroyed()` is the only place AtomWindow
+    // can tell there is no renderer left to send to. Its `detached` flag is
+    // NOT part of that gate — it can stay stale-true on a healthy window after
+    // a crash-and-reload.
     this.webContents.mainFrame = {
       detached: false,
       destroyed: false,
       isDestroyed() {
         return this.destroyed;
-      },
-      send: (...args) => {
-        this.sent.push(args);
       },
     };
   }
