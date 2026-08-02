@@ -256,13 +256,28 @@ module.exports = class AtomWindow extends EventEmitter {
     });
 
     this.browserWindow.webContents.on("render-process-gone", async (event, details) => {
+      const { reason, exitCode } = details;
+      // Always leave a trace: the dialog below is deliberately not shown for
+      // every departure, and a renderer that goes away without one is
+      // otherwise silent.
+      console.log(`Renderer process gone (reason: ${reason}, exitCode: ${exitCode})`);
+
       if (this.headless) {
-        console.log(
-          `Renderer process gone (reason: ${details.reason}, exitCode: ${details.exitCode}), exiting`,
-        );
         this.atomApplication.exit(100);
         return;
       }
+
+      // Not every departure is a crash. Electron reports a renderer that
+      // exited with status zero as `clean-exit` and one taken down by the OS
+      // or by us as `killed`, and both arrive here during ordinary teardown —
+      // quitting, reloading, closing a window. Prompting for those turns a
+      // normal restart into a crash report.
+      if (reason === "clean-exit" || reason === "killed") return;
+
+      // A window already on its way out has nothing left to recover or
+      // reload, and a modal at that point can only get in the way of the
+      // quit it is interrupting.
+      if (this.unloading || this.atomApplication.quitting) return;
 
       await this.fileRecoveryService.didCrashWindow(this);
 
@@ -271,7 +286,9 @@ module.exports = class AtomWindow extends EventEmitter {
         buttons: ["Close Window", "Reload", "Keep It Open"],
         cancelId: 2, // Canceling should be the least destructive action
         message: "The editor has crashed",
-        detail: "Please report this issue to https://github.com/lumine-code/lumine",
+        detail:
+          `Reason: ${reason} (exit code ${exitCode}).\n\n` +
+          "Please report this issue to https://github.com/lumine-code/lumine",
       });
 
       switch (result.response) {

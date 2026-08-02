@@ -7,7 +7,7 @@ const { EventEmitter } = require("events");
 const temp = require("@lumine-code/temp").track();
 const sandbox = require("sinon").createSandbox();
 const dedent = require("dedent");
-const { BrowserWindow, webContents } = require("electron");
+const { BrowserWindow, dialog, webContents } = require("electron");
 
 const AtomWindow = require("../../src/atom-window");
 const { emitterEventPromise } = require("../helpers/async-spec-helpers");
@@ -260,6 +260,74 @@ describe("AtomWindow", function () {
       w.sendMessage("some-message");
 
       assert.deepEqual(w.browserWindow.sent, [["message", "some-message", undefined]]);
+    });
+  });
+
+  describe("render-process-gone", function () {
+    let showMessageBox;
+
+    beforeEach(function () {
+      showMessageBox = sinon.stub(dialog, "showMessageBox").resolves({ response: 2 });
+    });
+
+    function goneWith(w, reason, exitCode = 0) {
+      w.browserWindow.webContents.emit("render-process-gone", {}, { reason, exitCode });
+      // The handler is async; let its first awaits settle.
+      return new Promise((resolve) => setImmediate(resolve));
+    }
+
+    // Electron reports an ordinary renderer exit here too. Treating those as
+    // crashes is what makes "The editor has crashed" appear on a normal quit
+    // or restart.
+    it("stays quiet when the renderer merely exited or was killed", async function () {
+      const w = new AtomWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+
+      await goneWith(w, "clean-exit");
+      await goneWith(w, "killed");
+
+      assert.isFalse(showMessageBox.called);
+      assert.isFalse(service.didCrashWindow.called);
+    });
+
+    it("reports a real crash", async function () {
+      const w = new AtomWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+
+      await goneWith(w, "crashed", 133);
+
+      assert.isTrue(service.didCrashWindow.calledWith(w));
+      assert.isTrue(showMessageBox.calledOnce);
+      const { message, detail } = showMessageBox.firstCall.args[1];
+      assert.strictEqual(message, "The editor has crashed");
+      // The reason and exit code are the whole diagnosis for a crash that
+      // leaves no dump, so they belong in front of the user.
+      assert.include(detail, "crashed");
+      assert.include(detail, "133");
+    });
+
+    it("does not interrupt a window that is already unloading", async function () {
+      const w = new AtomWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+      w.unloading = true;
+
+      await goneWith(w, "crashed", 1);
+
+      assert.isFalse(showMessageBox.called);
+    });
+
+    it("does not interrupt a quit in progress", async function () {
+      app.quitting = true;
+      const w = new AtomWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+
+      await goneWith(w, "crashed", 1);
+
+      assert.isFalse(showMessageBox.called);
     });
   });
 
