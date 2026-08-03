@@ -120,14 +120,17 @@ describe("port-nvim-queries", () => {
       let result = translate("(#has-ancestor? @a function_definition)");
 
       expect(result.kind).toBe("rewrite");
-      expect(result.text).toBe('(#is? @a test.descendantOfType "function_definition")');
+      // Lumine's #is? takes the test and its value and applies to the capture
+      // in the same pattern; a capture argument makes it three and the query
+      // engine rejects it.
+      expect(result.text).toBe('(#is? test.descendantOfType "function_definition")');
     });
 
     it("negates has-parent? into is-not?", () => {
       let result = translate("(#not-has-parent? @a block)");
 
       expect(result.kind).toBe("rewrite");
-      expect(result.text).toBe('(#is-not? @a test.childOfType "block")');
+      expect(result.text).toBe('(#is-not? test.childOfType "block")');
     });
 
     it("converts a column-only offset into adjust settings", () => {
@@ -180,9 +183,8 @@ describe("port-nvim-queries", () => {
     it("rewrites captures inside a predicate it replaces", () => {
       let output = port("((a) @variable\n  (#has-ancestor? @variable function_definition))\n");
 
-      expect(output).toContain("test.descendantOfType");
+      expect(output).toContain('(#is? test.descendantOfType "function_definition")');
       expect(output).toContain("@variable.other.lua");
-      expect(output).not.toContain("@variable ");
     });
 
     it("leaves a capture that appears only in a kept predicate consistent", () => {

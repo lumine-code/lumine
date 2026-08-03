@@ -220,12 +220,16 @@ function translatePredicate(predicate) {
 
 function rewriteAncestorPredicate(text, negated, test) {
   // (#has-ancestor? @cap type_a type_b) -> (#is? test.descendantOfType "type_a type_b")
+  //
+  // Lumine's `#is?` takes the test name and its value, and applies to the
+  // capture in the same pattern — it does NOT take the capture as a first
+  // argument. Passing one gives three arguments, which the query engine
+  // rejects outright with "Expected 1 or 2".
   const parts = text.slice(1, -1).trim().split(/\s+/);
-  const capture = parts.find((part) => part.startsWith("@")) ?? "";
   const types = parts.slice(1).filter((part) => !part.startsWith("@"));
   const predicate = negated ? "#is-not?" : "#is?";
   const argument = types.join(" ").replace(/"/g, "");
-  return `(${predicate} ${capture} test.${test} "${argument}")`.replace("  ", " ");
+  return `(${predicate} test.${test} "${argument}")`;
 }
 
 function rewriteOffsetPredicate(text) {
