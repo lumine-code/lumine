@@ -11,7 +11,7 @@ module.exports = [
   {
     // Fixtures are asserted content, not source: their scopes and columns are
     // checked by the specs, and some are deliberately not valid programs.
-    ignores: ["spec/fixtures/**", ".dev/**"],
+    ignores: ["spec/fixtures/**"],
   },
   js.configs.recommended,
   n.configs["flat/recommended-script"],

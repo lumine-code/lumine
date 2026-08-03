@@ -1,5 +1,4 @@
 node_modules
-.dev
 package-lock.json
 
 # Scopes are asserted at exact columns; reformatting breaks the assertions.

@@ -1,10 +1,6 @@
 # Dependencies
 node_modules/
 
-# Working clone of the upstream parser, kept for looking up node types and for
-# the next version bump. `script/clone-parser.js` in the editor puts it here.
-.dev/
-
 # Build artifacts
 *.log
 npm-debug.log*
