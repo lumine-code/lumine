@@ -214,8 +214,10 @@ function main() {
 
   const tokens = buildTokens(options);
   const workspaceRoot = path.resolve(__dirname, "..", "..");
-  const defaultParent = options.kind === "bundled" ? "pkg_bundled" : "pkg_lumine";
-  const outDir = path.resolve(options.out ?? path.join(workspaceRoot, defaultParent, options.name));
+  // Every language package lives in pkg_bundled whichever tier it ships in;
+  // the tier is decided by which registry lists it, not by which directory it
+  // sits in.
+  const outDir = path.resolve(options.out ?? path.join(workspaceRoot, "pkg_bundled", options.name));
 
   if (fs.existsSync(outDir) && !options.force) {
     fail(`${outDir} already exists (pass --force to write into it anyway)`);
