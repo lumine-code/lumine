@@ -91,8 +91,7 @@ function parseArgs(argv) {
     diffNodeTypes: false,
     source: null,
     cliVersion: DEFAULT_TREE_SITTER_CLI,
-    cacheDir:
-      process.env.LUMINE_GRAMMAR_CACHE || path.join(os.homedir(), ".lumine-grammar-cache"),
+    cacheDir: process.env.LUMINE_GRAMMAR_CACHE || path.join(os.homedir(), ".lumine-grammar-cache"),
     packageRoots: [],
   };
   for (let i = 0; i < argv.length; i++) {
