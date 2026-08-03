@@ -36,6 +36,17 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
 
   app.commandLine.appendSwitch("enable-experimental-web-platform-features");
 
+  // Without this feature a page that is not cross-origin isolated gets legacy
+  // SharedArrayBuffer treatment: the global is hidden and `postMessage`
+  // refuses to transfer one, even though Node modules like `worker_threads`
+  // still create SABs internally. The renderer runs trusted code with full
+  // Node access, so isolation would buy nothing — enable SAB outright. Note
+  // that no flag suppresses the DevTools issue a SAB construction files in a
+  // non-isolated page (that gate is reserved for extension schemes); only not
+  // constructing one does. Chromium honours only the last `enable-features`
+  // switch, so future features must merge into this one.
+  app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer");
+
   const args = parseCommandLine(process.argv.slice(1));
 
   args.resourcePath = normalizeDriveLetterName(resourcePath);

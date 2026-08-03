@@ -1,4 +1,26 @@
 (function () {
+  // `util.setTraceSigInt` is a lazy getter whose module requires
+  // `worker_threads`, and requiring `worker_threads` makes Node allocate a
+  // SharedArrayBuffer — which Chromium reports in DevTools as a
+  // cross-origin-isolation violation and a deprecation, once per window. The
+  // getter fires whenever any ES module loaded through `require()` imports
+  // `node:util`, because building the module facade snapshots every export
+  // (@babel/core is such a module, so any cold transpile used to trip this).
+  // Replace the getter with a function that defers the load to call time;
+  // remove once Node loads `isMainThread` lazily in internal/util/trace_sigint.
+  {
+    const util = require("util");
+    const descriptor = Object.getOwnPropertyDescriptor(util, "setTraceSigInt");
+    if (descriptor?.get) {
+      Object.defineProperty(util, "setTraceSigInt", {
+        configurable: true,
+        enumerable: descriptor.enumerable,
+        writable: true,
+        value: (...args) => descriptor.get.call(util)(...args),
+      });
+    }
+  }
+
   // Define the window start time before the requires so we get a more accurate
   // window:start marker.
   const startWindowTime = Date.now();
