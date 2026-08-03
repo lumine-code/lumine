@@ -355,7 +355,8 @@ describe("bracket matching", () => {
           buffer = editor.buffer;
           atom.grammars.assignLanguageMode(buffer, scopeName);
           languageMode = buffer.getLanguageMode();
-          languageMode.syncOperationLimit = Infinity;
+          languageMode.useAsyncParsing = false;
+          languageMode.useAsyncIndent = false;
           await languageMode.ready;
         });
 
@@ -641,7 +642,8 @@ describe("bracket matching", () => {
             buffer = editor.buffer;
             atom.grammars.assignLanguageMode(buffer, scopeName);
             const languageMode = buffer.getLanguageMode();
-            languageMode.syncOperationLimit = Infinity;
+            languageMode.useAsyncParsing = false;
+            languageMode.useAsyncIndent = false;
             await languageMode.ready;
           });
 
@@ -882,7 +884,8 @@ describe("bracket matching", () => {
           buffer = editor.buffer;
           atom.grammars.assignLanguageMode(buffer, scopeName);
           const languageMode = buffer.getLanguageMode();
-          languageMode.syncOperationLimit = Infinity;
+          languageMode.useAsyncParsing = false;
+          languageMode.useAsyncIndent = false;
           await languageMode.ready;
         });
 
