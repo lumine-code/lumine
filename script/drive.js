@@ -54,6 +54,7 @@ Commands:
   dispatch <command>     Dispatch a Lumine command (--target <selector>)
   reload                 Reload the window, wait until its packages are back
   console                Stream console output, uncaught errors and rejections
+  issues                 Stream DevTools issues — deprecations never reach the console
   shot <selector>        Screenshot one element, clipped to its rect
   throttle <rate>        Hold renderer CPU throttling (--ms, default 30000)
   targets                List the debuggable windows
@@ -66,7 +67,7 @@ Options:
   --link <dir>           launch: symlink a package checkout into <home>/packages, repeatable
   --fresh                launch: also pass --clear-window-state
   --no-dev               launch: omit --dev
-  --ms <n>               console: how long to stream, 0 to stream until killed (default 5000)
+  --ms <n>               console/issues: how long to stream, 0 to stream until killed (default 5000)
   --out <file>           shot: output path (default drive-shot.png)
   --scale <n>            shot: capture scale (default 1)
   --index <n>            shot: which match to capture when the selector hits several
@@ -343,6 +344,27 @@ async function tailConsole({ options }) {
   }
 }
 
+// Deprecations (and the rest of the DevTools "Issues" panel) never reach the
+// console — Chromium files them on the Audits domain, so `console` is blind to
+// them. Subscribing before `Audits.enable` matters: enabling replays the
+// issues the page has already collected, so this also shows issues filed
+// before the connection existed.
+async function tailIssues({ options }) {
+  const client = await clientFor(options);
+  const started = Date.now();
+  const stamp = () => String(Date.now() - started).padStart(6, " ");
+  client.on("Audits.issueAdded", ({ issue }) => {
+    console.log(`${stamp()}ms [${issue.code}] ${JSON.stringify(issue.details)}`);
+  });
+  await client.send("Audits.enable");
+
+  const ms = options.ms === undefined ? 5000 : Number(options.ms);
+  if (ms > 0) {
+    await sleep(ms);
+    client.close();
+  }
+}
+
 async function shot({ positional, options }) {
   const selector = positional[0];
   if (!selector) fail("which selector?");
@@ -446,6 +468,7 @@ const COMMANDS = {
   dispatch,
   reload,
   console: tailConsole,
+  issues: tailIssues,
   shot,
   throttle,
   targets,
