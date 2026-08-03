@@ -77,7 +77,7 @@ describe("Hyperlink grammar", function () {
     ));
     expect(tokens[0]).toEqual({
       value: "lumine://core/open/file?filename=urlEncodedFileName&line=n&column=n",
-      scopes: ["text.plain.null-grammar", "markup.underline.link.atom.hyperlink"],
+      scopes: ["text.plain.null-grammar", "markup.underline.link.lumine.hyperlink"],
     });
   });
 
