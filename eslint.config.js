@@ -29,6 +29,9 @@ module.exports = [
       "dist/**",
       "**/fixtures/**",
       ".dev/**",
+      // Scaffolding for `script/new-grammar-package.js`; {{token}} placeholders
+      // rather than valid source.
+      "script/templates/**",
       // PEG.js-generated parser; edit snippet-body.pegjs and regenerate instead.
       "packages/snippets/lib/snippet-body.js",
     ],

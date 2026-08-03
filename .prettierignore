@@ -18,3 +18,7 @@ packages/snippets/lib/snippet-body.js
 
 # Test fixtures — exact content is asserted by specs; must not be reformatted
 **/fixtures/
+
+# Scaffolding for `script/new-grammar-package.js`; holds {{token}} placeholders
+# rather than valid source, and is formatted where it lands, not here.
+script/templates/

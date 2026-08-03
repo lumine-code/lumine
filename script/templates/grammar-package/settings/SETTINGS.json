@@ -1,0 +1,12 @@
+{
+  "{{scopeSelector}}": {
+    "language": {
+      "commentStart": "{{commentStart}}",
+      "increaseIndentPattern": "{{increaseIndentPattern}}",
+      "decreaseIndentPattern": "{{decreaseIndentPattern}}"
+    },
+    "bracket-matcher": {
+      "autocompleteCharacters": ["()", "[]", "{}", "\"\"", "''"]
+    }
+  }
+}

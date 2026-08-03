@@ -1,0 +1,5 @@
+# Grammar wasm files are binary; never attempt text merges or EOL conversion
+*.wasm binary
+
+# Grammar fixtures assert exact scopes at exact columns; check out verbatim
+spec/fixtures/** -text

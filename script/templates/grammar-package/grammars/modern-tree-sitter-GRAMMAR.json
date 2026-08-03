@@ -1,0 +1,22 @@
+{
+  "name": "{{Title}}",
+  "scopeName": "{{scope}}",
+  "type": "modern-tree-sitter",
+  "parser": "{{parser}}",
+  "injectionRegex": "{{injectionRegex}}",
+  "fileTypes": {{fileTypes}},
+  "comments": {
+    "start": "{{commentStart}}"
+  },
+  "treeSitter": {
+    // Pin a tag or a full SHA, never a branch. Verify the ref is on the main
+    // line before trusting it — `gh api repos/OWNER/REPO/compare/<ref>...HEAD`
+    // reporting `diverged` or a nonzero `behind` means it is not.
+    "parserSource": "{{parserSource}}",
+    "grammar": "{{parser}}/{{parser}}.wasm",
+    "highlightsQuery": "{{parser}}/highlights.scm",
+    "foldsQuery": "{{parser}}/folds.scm",
+    "indentsQuery": "{{parser}}/indents.scm",
+    "tagsQuery": "{{parser}}/tags.scm"
+  }
+}
