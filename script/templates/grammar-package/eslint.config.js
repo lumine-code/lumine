@@ -8,6 +8,11 @@ const prettier = require("eslint-config-prettier");
 const runtimeModules = ["atom"];
 
 module.exports = [
+  {
+    // Fixtures are asserted content, not source: their scopes and columns are
+    // checked by the specs, and some are deliberately not valid programs.
+    ignores: ["spec/fixtures/**", ".dev/**"],
+  },
   js.configs.recommended,
   n.configs["flat/recommended-script"],
   {

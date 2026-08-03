@@ -282,7 +282,7 @@ describe("GrammarRegistry", () => {
 
       // TODO: Why doesn't this path resolution work like the one above?
       const modernTreeSitterGrammar = grammarRegistry.loadGrammarSync(
-        require.resolve("../packages/language-javascript/grammars/modern-tree-sitter-javascript.json"),
+        require.resolve("language-javascript/grammars/modern-tree-sitter-javascript.json"),
       );
       expectEquivalentGrammars(buffer.getLanguageMode().grammar, modernTreeSitterGrammar);
       grammarRegistry.loadGrammarSync(
@@ -307,7 +307,7 @@ describe("GrammarRegistry", () => {
 
       // TODO: Why doesn't this path resolution work like the one above?
       grammarRegistry.loadGrammarSync(
-        require.resolve("../packages/language-javascript/grammars/modern-tree-sitter-javascript.json"),
+        require.resolve("language-javascript/grammars/modern-tree-sitter-javascript.json"),
       );
 
       expectEquivalentGrammars(buffer.getLanguageMode().grammar, textmateGrammar);
