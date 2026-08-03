@@ -2438,7 +2438,12 @@ class TextBuffer {
       this.fileHasChangedSinceLastLoad = true;
 
       if (this.isModified()) {
-        const source = this.file.getPath();
+        // Read the file the same way `load` does. A custom data source (see
+        // `setFile`) may transform its contents on the way in and out, so its
+        // raw bytes on disk are not what the base text was loaded from —
+        // comparing against the path would report a conflict for every save.
+        const source =
+          this.file instanceof File ? this.file.getPath() : this.file.createReadStream();
         if (!(await this.buffer.baseTextMatchesFile(source, this.getEncoding()))) {
           // Emit `did-conflict` and take no other action. We will keep the
           // current buffer contents so that the user's changes are not lost.

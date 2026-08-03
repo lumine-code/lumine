@@ -462,28 +462,24 @@ describe("TextBuffer IO", () => {
         done();
       });
 
-      it("does not emit a conflict event due to the save", async (done) => {
+      it("does not emit a conflict event due to the save", async () => {
         const events = [];
         buffer.onDidConflict((event) => events.push(event));
 
+        // `ReverseCaseFile` uses `fs.watch` to set up file-watching. This
+        // built-in method is fast, but not instantaneous. Let the buffer's
+        // watch arm before the save writes the file, or there is no change
+        // notification for this spec to prove is harmless.
+        await wait(process.env.CI ? 500 : 200);
+
         buffer.setText("Buffer contents");
-        buffer.save();
-
-        // Modify the file after the save has been asynchronously initiated
+        // Modify the buffer after the save has been asynchronously initiated
         buffer.onDidSave(() => buffer.append("!"));
+        await buffer.save();
 
-        let subscription;
-        let settled = false;
-        let handler = () => {
-          if (settled) return;
-          settled = true;
-          subscription?.dispose();
-          setTimeout(() => {
-            expect(events.length).toBe(0);
-            done();
-          }, buffer.fileChangeDelay);
-        };
-        subscription = buffer.file.onDidChange(handler);
+        // Wait long enough for the file watcher to (not) react to our own write.
+        await wait(buffer.fileChangeDelay + 250);
+        expect(events.length).toBe(0);
       });
     });
 
