@@ -4,7 +4,7 @@
 
 ## Features
 
-- **Grammars**: provides Tree-sitter grammars.
+- **Grammars**: provides Tree-sitter grammars, built from {{parserRepoLink}}.
 - **Syntax highlighting**: full tree-sitter grammar coverage for {{Title}} files.
 - **Folding**: folds blocks from the parse tree rather than by indentation.
 {{installationSection}}

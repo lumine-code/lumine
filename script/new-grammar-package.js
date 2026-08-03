@@ -97,6 +97,16 @@ function jsonInner(value) {
   return JSON.stringify(value).slice(1, -1);
 }
 
+// `github:org/repo[/subdir]#ref` -> a markdown link to the parser's repository.
+// The package ships someone else's parser; a reader should be one click from
+// the source it was built out of.
+function parserRepoLink(parserSource) {
+  const match = /^github:([^/]+)\/([^/#]+)/.exec(parserSource ?? "");
+  if (!match) return "its upstream parser";
+  const [, org, repo] = match;
+  return `[${repo}](https://github.com/${org}/${repo})`;
+}
+
 function buildTokens(options) {
   const segment = options.segment ?? defaultSegment(options.scope);
   const fileTypes = options.fileTypes
@@ -126,6 +136,7 @@ function buildTokens(options) {
     fileTypes: JSON.stringify(fileTypes).replace(/,/g, ", "),
     ext: fileTypes[0],
     parserSource: options.parserSource ?? "github:ORG/REPO#REF",
+    parserRepoLink: parserRepoLink(options.parserSource),
     injectionRegex: `^(${segment})$`,
     commentStart: options.commentStart,
     commentRegex: escapeRegex(options.commentStart.trim()),
