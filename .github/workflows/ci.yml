@@ -55,6 +55,11 @@ jobs:
       # static/atom-ui/styles/icons.css is its single owner.
       - name: Check icon contract
         run: npm run check:icons
+      # A capture left with its Neovim name compiles and matches, so the query
+      # sweep in the spec suite passes while the scope themes as nothing. This
+      # is the only gate that sees it.
+      - name: Check grammar captures
+        run: npm run check:grammar-captures
 
   test:
     name: Test on ${{ matrix.os }}
