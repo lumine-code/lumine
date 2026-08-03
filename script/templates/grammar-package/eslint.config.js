@@ -44,7 +44,15 @@ module.exports = [
     // Jasmine specs run in the editor's test runner with its fake-clock helper.
     files: ["spec/**", "**/*-spec.js"],
     languageOptions: {
-      globals: { ...globals.jasmine, advanceClock: "readonly" },
+      globals: {
+        ...globals.jasmine,
+        advanceClock: "readonly",
+        // Grammar-test helpers the spec runner puts on `window`
+        // (spec/helpers/normalize-comments.js in the editor).
+        runGrammarTests: "readonly",
+        runFoldsTests: "readonly",
+        normalizeTreeSitterTextData: "readonly",
+      },
     },
     rules: {
       "n/no-missing-require": "off",

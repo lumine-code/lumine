@@ -91,6 +91,12 @@ function escapeRegex(text) {
   return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
+// JSON-escapes a value that will be substituted between quotes already present
+// in a template.
+function jsonInner(value) {
+  return JSON.stringify(value).slice(1, -1);
+}
+
 function buildTokens(options) {
   const segment = options.segment ?? defaultSegment(options.scope);
   const fileTypes = options.fileTypes
@@ -123,8 +129,11 @@ function buildTokens(options) {
     injectionRegex: `^(${segment})$`,
     commentStart: options.commentStart,
     commentRegex: escapeRegex(options.commentStart.trim()),
-    increaseIndentPattern: "\\{[^}\"']*$",
-    decreaseIndentPattern: "^\\s*\\}",
+    // These land inside JSON string literals, and the patterns contain both
+    // backslashes and a double quote, so they have to be escaped for JSON —
+    // minus the surrounding quotes, which the template already supplies.
+    increaseIndentPattern: jsonInner("\\{[^}\"']*$"),
+    decreaseIndentPattern: jsonInner("^\\s*\\}"),
     enginesAtom: options.kind === "bundled" ? "*" : ">=1.100.0 <2.0.0",
   };
 }
