@@ -1,6 +1,10 @@
 .select-list {
   --select-list-hover-tint: color-mix(in srgb, var(--text-color) 8%, transparent);
-  --select-list-separator-color: color-mix(in srgb, var(--text-color-subtle) 20%, transparent);
+  /* The separator stands in for the row border it suppresses, so it has to be
+     at least as visible as one. A tint of the subtle text colour was not: at
+     20% over a light overlay it landed lighter than the row borders around it
+     and read as nothing. Borrow the theme's own line colour instead. */
+  --select-list-separator-color: var(--overlay-border-color);
 
   .loading {
     .loading-message {
@@ -77,14 +81,10 @@
       }
     }
 
-    /* A themed row border immediately before the standalone line would draw a
-       distracting double rule (notably in One and Atom). Suppress it here
-       rather than in each theme: a theme that gives rows a bottom border has
-       no reason to know about separators, and the one that forgets ships the
-       double rule. Keep normal row borders everywhere else. */
-    > li:has(+ li.select-list-separator[role="separator"]) {
-      border-bottom: 0;
-    }
+    /* Row borders next to a separator are deliberately left alone: in a theme
+       that draws them, the separator reads as a band - the row border above,
+       the line, and a matching border below - rather than a single rule. The
+       theme owns that, since only it knows whether its rows have borders. */
 
     /* Separators are their own non-interactive list chrome, not a border on a
        row. The role attribute raises specificity above modal-theme row rules,

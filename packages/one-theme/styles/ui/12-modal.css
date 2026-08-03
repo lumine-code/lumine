@@ -46,6 +46,13 @@ atom-panel.modal {
       &:last-of-type {
         border-bottom: none;
       }
+
+      /* Close the band a separator opens: the row above keeps its bottom
+         border, the separator draws the line, and this restores the rule on
+         the far side. */
+      &.select-list-separator[role="separator"] + li {
+        border-top: 1px solid var(--overlay-border-color);
+      }
     }
   }
 

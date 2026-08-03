@@ -153,7 +153,6 @@ describe("the theme variable contract", () => {
     expect(textSource).toContain(".character-match");
     expect(selectListSource).not.toContain(".character-match");
     expect(selectListSource).toContain("&:hover:not(.selected)");
-    expect(selectListSource).toContain('> li:has(+ li.select-list-separator[role="separator"])');
     expect(selectListSource).toContain('> li.select-list-separator[role="separator"]');
     expect(selectListSource).toContain("height: 1px");
     expect(selectListSource).toContain("width: auto");
