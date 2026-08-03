@@ -58,6 +58,13 @@ atom-panel.modal {
       margin: 2px 3px;
       border-bottom: none;
       border-radius: var(--component-border-radius);
+
+      /* Rows here carry no borders, so drop the band border One draws after a
+         separator - it inherits through one-theme::styles/ui and would be the
+         only rule in the list. */
+      &.select-list-separator[role="separator"] + li {
+        border-top: none;
+      }
     }
   }
 

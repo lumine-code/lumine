@@ -130,6 +130,12 @@
 
 /* Modals */
 
+/* Rows here run the full width of the list, so inset the separator to where
+   their text starts rather than letting it reach the modal edges. */
+.select-list {
+  --select-list-separator-inset: calc(var(--ui-padding) / 1.5);
+}
+
 atom-panel.modal {
   max-width: min(92vw, calc(var(--ui-size) * 50));
 
@@ -150,6 +156,13 @@ atom-panel.modal {
     li {
       padding: calc(var(--ui-padding) * 0.15) calc(var(--ui-padding) / 1.5);
       border-bottom: none;
+
+      /* Rows here carry no borders, so drop the band border One draws after a
+         separator - it inherits through one-theme::styles/ui and would be the
+         only rule in the list. */
+      &.select-list-separator[role="separator"] + li {
+        border-top: none;
+      }
 
       &:hover:not(.selected) {
         background-color: var(--background-color-highlight);

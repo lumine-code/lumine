@@ -193,6 +193,11 @@ atom-text-editor[mini] {
   border-radius: var(--component-border-radius);
 }
 
+/* Rows sit 4px in from the list edge; the separator lines up with them. */
+.select-list {
+  --select-list-separator-inset: 4px;
+}
+
 atom-panel.modal {
   .select-list ol.list-group,
   &.select-list ol.list-group {
@@ -208,6 +213,13 @@ atom-panel.modal {
       padding: calc(var(--ui-padding) * 0.5) calc(var(--ui-padding) / 1.5);
       border-bottom: none;
       border-radius: var(--component-border-radius);
+
+      /* Rows here carry no borders, so drop the band border One draws after a
+         separator - it inherits through one-theme::styles/ui and would be the
+         only rule in the list. */
+      &.select-list-separator[role="separator"] + li {
+        border-top: none;
+      }
     }
   }
 
