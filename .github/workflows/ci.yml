@@ -164,8 +164,25 @@ jobs:
           fi
           status=0
           failed=""
-          for d in packages/*/spec; do
+          # A bundled package is either vendored into packages/ or delivered
+          # through node_modules/ from a Git pin. Both ship with the editor, so
+          # both are covered here — otherwise moving a package out of the tree
+          # would silently stop running its specs against core changes.
+          dirs=$(node -e '
+            const fs = require("fs"), path = require("path");
+            const names = Object.keys(require("./package.json").packageDependencies ?? {});
+            const out = [];
+            for (const name of names) {
+              for (const base of ["packages", "node_modules"]) {
+                const dir = path.join(base, name, "spec");
+                if (fs.existsSync(dir)) { out.push(dir); break; }
+              }
+            }
+            console.log(out.join("\n"));
+          ')
+          for d in $dirs; do
             pkg="${d#packages/}"
+            pkg="${pkg#node_modules/}"
             pkg="${pkg%/spec}"
             echo "::group::$pkg"
             # Run once. A failure here is a real regression or a flaky spec;
