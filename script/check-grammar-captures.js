@@ -18,9 +18,9 @@
 //
 // Two classes are reported. A capture whose first segment is not a TextMate
 // root is an error and fails the build. A capture missing its language segment
-// is a warning: several are legitimate scope names that simply carry no segment
-// (`markup.list.numbered`, `meta.diff.header`), so gating on it would mean
-// maintaining an allowlist, and an allowlist rots.
+// is a warning: a scope can legitimately carry the segment somewhere other than
+// last (`meta.diff.header`, whose family is fixed by the TextMate diff bundle),
+// so gating on it would mean maintaining an allowlist, and an allowlist rots.
 
 const fs = require("fs");
 const path = require("path");
@@ -144,19 +144,29 @@ function capturesIn(queryPath) {
   return captures;
 }
 
-// The language segment is read off the file — the final segment most of its own
+// The language segment is read off the queries — the segment most of the
 // captures already end in — rather than derived from the scope name, which is
 // wrong for text.html.basic (html), source.json.jsonc (json), source.makefile
 // (make) and source.python.ipy (python).
-function segmentsUsedBy(captures) {
+//
+// It has to be an outright majority. A "used at least N times" threshold looks
+// equivalent and is not: `begin`, `end` and `control` each end enough captures
+// to clear one, so a package that had never been segmented at all read as a
+// handful of stragglers. The two cases are far apart once measured — a file
+// that carries its segment carries it on essentially every capture
+// (ipython-highlights.scm 3/3, python's highlights.scm 139/139), while
+// language-clojure's unsegmented queries peaked at 19%.
+function dominantSegment(captures) {
+  if (captures.length < 3) return null;
   const tally = new Map();
   for (const capture of captures) {
     const last = capture.split(".").pop();
     tally.set(last, (tally.get(last) ?? 0) + 1);
   }
-  const used = new Set(["_LANG_"]);
-  for (const [segment, count] of tally) if (count >= 3) used.add(segment);
-  return used;
+  for (const [segment, count] of tally) {
+    if (count * 2 > captures.length) return segment;
+  }
+  return null;
 }
 
 function main() {
@@ -174,16 +184,26 @@ function main() {
   for (const packageDir of packageDirs) {
     const { files, declaredSegments } = highlightsIn(packageDir);
 
-    // Pool the package's captures before measuring segment frequency, so a
-    // dialect or injection grammar with three captures is judged by what the
-    // package as a whole uses rather than by its own handful.
+    // Pool the package's captures as a fallback, so an injection grammar with
+    // two captures is judged by what the package as a whole uses rather than by
+    // its own handful.
     const pooled = files.flatMap((queryPath) => capturesIn(queryPath));
-    const accepted = new Set([...segmentsUsedBy(pooled), ...declaredSegments]);
+    const packageSegments = new Set(["_LANG_", ...declaredSegments]);
+    const pooledSegment = dominantSegment(pooled);
+    if (pooledSegment) packageSegments.add(pooledSegment);
 
     for (const queryPath of files) {
       scanned++;
       const captures = capturesIn(queryPath);
       if (captures.length === 0) continue;
+
+      // A file gets its own segment too. language-python's ipython queries are
+      // wholly `.ipython`, but they load alongside 139 `.python` captures, so
+      // the package-wide answer buries them; the same goes for any package
+      // shipping more than one language (csv/tsv, the five git grammars).
+      const accepted = new Set(packageSegments);
+      const ownSegment = dominantSegment(captures);
+      if (ownSegment) accepted.add(ownSegment);
 
       const where = path.relative(ROOT, queryPath).replace(/\\/g, "/");
 
@@ -192,7 +212,14 @@ function main() {
         errors.push(`${where}: not a TextMate scope: ${notScopes.join(" ")}`);
       }
 
-      const odd = [...new Set(captures.filter((c) => !accepted.has(c.split(".").pop())))];
+      // Any position counts, not just the last. `meta.diff.header` and
+      // `meta.diff.range.unified` are the scope names the TextMate diff bundle
+      // fixed a decade ago, and the tree-sitter grammar has to match its own
+      // TextMate twin; appending a second `.diff` to satisfy a last-segment
+      // rule would be the wrong fix.
+      const odd = [
+        ...new Set(captures.filter((c) => !c.split(".").some((segment) => accepted.has(segment)))),
+      ];
       if (odd.length > 0) {
         warnings.push(`${where}: no language segment: ${odd.join(" ")}`);
       }
