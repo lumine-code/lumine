@@ -4021,14 +4021,15 @@ module.exports = class TextEditor {
     this.getLastSelection().clear(options);
   }
 
-  // Reduce multiple selections to the least recently added selection.
+  // Reduce multiple selections to the most recently added selection.
   consolidateSelections() {
     const selections = this.getSelections();
     if (selections.length > 1) {
-      for (let selection of selections.slice(1, selections.length)) {
+      const lastSelection = selections.pop();
+      for (let selection of selections) {
         selection.destroy();
       }
-      selections[0].autoscroll({ center: true });
+      lastSelection.autoscroll({ center: true });
       return true;
     } else {
       return false;

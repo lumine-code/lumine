@@ -3553,21 +3553,22 @@ describe("TextEditor", () => {
         return [selection, selection2, selection3, selection4];
       };
 
-      it("destroys all selections but the oldest selection and autoscrolls to it, returning true if any selections were destroyed", () => {
-        const [selection1] = makeMultipleSelections();
+      it("destroys all selections but the most recent selection and autoscrolls to it, returning true if any selections were destroyed", () => {
+        const selections = makeMultipleSelections();
+        const lastSelection = selections[selections.length - 1];
 
         const autoscrollEvents = [];
         editor.onDidRequestAutoscroll((event) => autoscrollEvents.push(event));
 
         expect(editor.consolidateSelections()).toBeTruthy();
-        expect(editor.getSelections()).toEqual([selection1]);
-        expect(selection1.isEmpty()).toBeFalsy();
+        expect(editor.getSelections()).toEqual([lastSelection]);
+        expect(lastSelection.isEmpty()).toBeFalsy();
         expect(editor.consolidateSelections()).toBeFalsy();
-        expect(editor.getSelections()).toEqual([selection1]);
+        expect(editor.getSelections()).toEqual([lastSelection]);
 
         expect(autoscrollEvents).toEqual([
           {
-            screenRange: selection1.getScreenRange(),
+            screenRange: lastSelection.getScreenRange(),
             options: { center: true, reversed: false },
           },
         ]);
