@@ -55,7 +55,7 @@ describe("one-theme", () => {
     expect(configPath).toContain(path.join("one-theme", "styles", "one-ui"));
   });
 
-  it("keeps rounded modal-list scrollbars clear of the list corners", async () => {
+  it("runs the modal-list scrollbar track the full height of the list", async () => {
     await atom.packages.activatePackage("one-theme");
     await atom.packages.activatePackage("one-day-ui");
 
@@ -69,11 +69,15 @@ describe("one-theme", () => {
     modal.appendChild(selectList);
     document.body.appendChild(modal);
 
+    // Anything that stops the track short of the scrollbar's ends — a margin,
+    // or a radius large enough to round them off — uncovers `::-webkit-scrollbar`
+    // itself, and nothing paints that, so the list background shows through as a
+    // pale stub at each end instead of the track colour.
     const trackStyle = getComputedStyle(list, "::-webkit-scrollbar-track");
     const cornerStyle = getComputedStyle(list, "::-webkit-scrollbar-corner");
-    expect(trackStyle.marginTop).toBe("3px");
-    expect(trackStyle.marginBottom).toBe("3px");
-    expect(trackStyle.borderRadius).toBe("999px");
+    expect(trackStyle.marginTop).toBe("0px");
+    expect(trackStyle.marginBottom).toBe("0px");
+    expect(trackStyle.borderRadius).toBe("0px");
     expect(cornerStyle.backgroundColor).toBe("rgba(0, 0, 0, 0)");
 
     modal.remove();
