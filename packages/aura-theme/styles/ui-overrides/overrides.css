@@ -58,10 +58,6 @@ atom-panel.modal {
       margin: 2px 3px;
       border-bottom: none;
       border-radius: var(--component-border-radius);
-
-      &.select-list-separator[role="separator"] + li {
-        border-top: none;
-      }
     }
   }
 

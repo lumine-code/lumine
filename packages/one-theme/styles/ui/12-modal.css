@@ -46,10 +46,6 @@ atom-panel.modal {
       &:last-of-type {
         border-bottom: none;
       }
-
-      &.select-list-separator[role="separator"] + li {
-        border-top: 1px solid var(--overlay-border-color);
-      }
     }
   }
 

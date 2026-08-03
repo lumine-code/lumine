@@ -77,11 +77,18 @@
       }
     }
 
+    /* A themed row border immediately before the standalone line would draw a
+       distracting double rule (notably in One and Atom). Suppress it here
+       rather than in each theme: a theme that gives rows a bottom border has
+       no reason to know about separators, and the one that forgets ships the
+       double rule. Keep normal row borders everywhere else. */
+    > li:has(+ li.select-list-separator[role="separator"]) {
+      border-bottom: 0;
+    }
+
     /* Separators are their own non-interactive list chrome, not a border on a
        row. The role attribute raises specificity above modal-theme row rules,
-       which may otherwise add item padding, height, margins, or rounding.
-       Suppressing the double rule a themed row border draws next to one
-       belongs to the themes that draw those borders. */
+       which may otherwise add item padding, height, margins, or rounding. */
     > li.select-list-separator[role="separator"] {
       display: block;
       box-sizing: border-box;
