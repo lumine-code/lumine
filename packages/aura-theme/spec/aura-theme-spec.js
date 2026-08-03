@@ -227,6 +227,9 @@ describe("aura-theme", () => {
     statusBarLeft.className = "status-bar-left";
     const statusBarItem = document.createElement("span");
     statusBarItem.className = "inline-block";
+    const statusBarItemLink = document.createElement("a");
+    statusBarItemLink.className = "inline-block";
+    statusBarItem.appendChild(statusBarItemLink);
     statusBarLeft.appendChild(statusBarItem);
     statusBar.appendChild(statusBarLeft);
     const statusBarRight = document.createElement("div");
@@ -234,15 +237,35 @@ describe("aura-theme", () => {
     const settingsItem = document.createElement("span");
     settingsItem.className = "inline-block settings-icon";
     statusBarRight.appendChild(settingsItem);
+    // git-panel and github-panel portal their tiles into a host element rather
+    // than handing the tile itself to the status bar.
+    const portalHost = document.createElement("div");
+    portalHost.className = "react-atom-status-bar";
+    const portalTile = document.createElement("button");
+    portalTile.className = "inline-block";
+    portalHost.appendChild(portalTile);
+    statusBarRight.appendChild(portalHost);
     statusBar.appendChild(statusBarRight);
     document.body.appendChild(statusBar);
 
     const statusBarItemStyle = getComputedStyle(statusBarItem);
     expect(getComputedStyle(statusBarLeft).paddingLeft).toBe("4px");
     expect(getComputedStyle(statusBarRight).paddingRight).toBe("4px");
+    expect(statusBarItemStyle.height).toBe("26px");
     expect(statusBarItemStyle.marginTop).toBe("3px");
     expect(statusBarItemStyle.marginBottom).toBe("3px");
     expect(statusBarItemStyle.borderRadius).toBe("6px");
+
+    // A tile's own nested blocks lay the tile out; only the tile is inset.
+    const statusBarItemLinkStyle = getComputedStyle(statusBarItemLink);
+    expect(statusBarItemLinkStyle.marginTop).toBe("0px");
+    expect(statusBarItemLinkStyle.marginBottom).toBe("0px");
+
+    const portalTileStyle = getComputedStyle(portalTile);
+    expect(portalTileStyle.height).toBe("26px");
+    expect(portalTileStyle.marginTop).toBe("3px");
+    expect(portalTileStyle.marginBottom).toBe("3px");
+    expect(portalTileStyle.borderRadius).toBe("6px");
     statusBar.remove();
 
     const titleBar = document.createElement("div");

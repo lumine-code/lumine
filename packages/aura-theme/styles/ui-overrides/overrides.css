@@ -220,8 +220,11 @@ atom-pane-container > atom-pane.pane .tab.active::before {
     border-radius: var(--component-border-radius);
   }
 
-  .status-bar-left > .inline-block,
-  .status-bar-right > .inline-block {
+  /* A tile is the outermost `.inline-block` under a panel, not necessarily a
+     direct child of it: git-panel and github-panel portal their tiles into a
+     host element of their own. Match by descendant, and exclude the blocks a
+     tile nests inside itself — those carry the tile's internal layout. */
+  :is(.status-bar-left, .status-bar-right) .inline-block:not(.inline-block .inline-block) {
     height: calc(var(--ui-tab-height) - 6px);
     margin-block: 3px;
     line-height: calc(var(--ui-tab-height) - 6px);
