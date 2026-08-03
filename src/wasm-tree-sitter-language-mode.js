@@ -801,7 +801,23 @@ class WASMTreeSitterLanguageMode {
     return point;
   }
 
-  parseAsync(language, oldTree, includedRanges, { tag = null } = {}) {
+  // A fault inside a grammar's wasm surfaces as a bare
+  // `RuntimeError: memory access out of bounds` whose stack stops at
+  // `Parser.parse` — it names neither the grammar nor what it was parsing, and
+  // an injection layer means the file's own grammar is not even a good guess.
+  // This says which grammar faulted and on what, which is the whole difference
+  // between a reportable bug and a shrug.
+  describeParseFailure(error, { scopeName, includedRanges }) {
+    let where = scopeName ? `grammar '${scopeName}'` : "an unknown grammar";
+    let ranges = includedRanges?.length ? ` over ${includedRanges.length} included range(s)` : "";
+    let detail = `${where}${ranges}, buffer length ${this.buffer.getLength()}`;
+    let wrapped = new Error(`Tree-sitter parse failed in ${detail}: ${error.message}`);
+    wrapped.stack = `${wrapped.message}\n${error.stack ?? ""}`;
+    wrapped.cause = error;
+    return wrapped;
+  }
+
+  parseAsync(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
     let devMode = atom.inDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
     let timeoutMicros = oldTree ? this.syncTimeoutMicros : INITIAL_PARSE_JOB_LIMIT_MICROS;
@@ -862,7 +878,12 @@ class WASMTreeSitterLanguageMode {
     }
 
     // Attempt a synchronous parse.
-    tree = parseWithProgressTimeout(parser, callback, oldTree, includedRanges, timeoutMicros);
+    try {
+      tree = parseWithProgressTimeout(parser, callback, oldTree, includedRanges, timeoutMicros);
+    } catch (error) {
+      cleanup();
+      throw this.describeParseFailure(error, { scopeName, includedRanges });
+    }
 
     if (tree === null) {
       // The parse couldn't be completed in the allotted time, so we'll go
@@ -880,7 +901,8 @@ class WASMTreeSitterLanguageMode {
               timeoutMicros,
             );
           } catch (err) {
-            return reject(err);
+            cleanup();
+            return reject(this.describeParseFailure(err, { scopeName, includedRanges }));
           }
           if (tree === null) {
             setImmediate(parseJob);
@@ -898,7 +920,7 @@ class WASMTreeSitterLanguageMode {
     return tree;
   }
 
-  parse(language, oldTree, includedRanges, { tag = null } = {}) {
+  parse(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
     let devMode = atom.inDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
     parser.reset();
@@ -910,9 +932,15 @@ class WASMTreeSitterLanguageMode {
     if (devMode && tag) {
       console.time(tag);
     }
-    const result = parser.parse(callback, oldTree, { includedRanges });
-    if (devMode && tag) {
-      console.timeEnd(tag);
+    let result;
+    try {
+      result = parser.parse(callback, oldTree, { includedRanges });
+    } catch (error) {
+      throw this.describeParseFailure(error, { scopeName, includedRanges });
+    } finally {
+      if (devMode && tag) {
+        console.timeEnd(tag);
+      }
     }
 
     return result;
@@ -3665,6 +3693,7 @@ class LanguageLayer {
         this.tree,
         includedRanges,
         // { tag: `Parsing ${this.inspect()} (async) ${params.id}` }
+        { scopeName: this.grammar.scopeName },
       );
       if (tree.then) {
         params.async = true;
@@ -3676,6 +3705,7 @@ class LanguageLayer {
         this.tree,
         includedRanges,
         // { tag: `Parsing ${this.inspect()} (sync) ${params.id}` }
+        { scopeName: this.grammar.scopeName },
       );
     }
 
