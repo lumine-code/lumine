@@ -24,7 +24,6 @@
     "generate-github-markdown-css": "node scripts/generate-github-markdown-css.js"
   },
   "dependencies": {
-    "cheerio": "^1.2.0",
     "dedent": "^1.7.2",
     "dompurify": "^3.4.12",
     "emoji-images": "^0.1.1",

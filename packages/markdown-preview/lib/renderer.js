@@ -7,7 +7,6 @@ let marked = null; // Defer until used
 let githubSlugger = null;
 let innertext = null;
 let renderer = null;
-let cheerio = null;
 let grayMatter = null;
 
 const { scopeForFenceName } = require("./extension-helper");
@@ -169,12 +168,11 @@ exports.toHTML = async function (text, filePath, grammar) {
 
 // Render with the package's own `marked` library.
 function render(text, filePath) {
-  if (marked == null || grayMatter == null || cheerio == null) {
+  if (marked == null || grayMatter == null) {
     marked = require("marked");
     const GithubSlugger = require("github-slugger");
     innertext = require("innertext");
     grayMatter = require("gray-matter");
-    cheerio = require("cheerio");
 
     renderer = new marked.Renderer();
     githubSlugger = new GithubSlugger();
@@ -209,12 +207,15 @@ function render(text, filePath) {
   let html = marked.parse(renderYamlTable(vars) + __content);
 
   // emoji-images is too aggressive, so replace images in monospace tags with
-  // the actual emoji text.
-  const $ = cheerio.load(emoji(html, emojiFolder, 20));
-  $("pre img").each((_index, element) => $(element).replaceWith($(element).attr("title")));
-  $("code img").each((_index, element) => $(element).replaceWith($(element).attr("title")));
+  // the actual emoji text. A template's content is inert — nothing loads or
+  // executes while we rewrite it, and DOMPurify sanitizes the result below.
+  const emojiTemplate = document.createElement("template");
+  emojiTemplate.innerHTML = emoji(html, emojiFolder, 20);
+  for (const img of emojiTemplate.content.querySelectorAll("pre img, code img")) {
+    img.replaceWith(img.getAttribute("title") ?? "");
+  }
 
-  html = $.html();
+  html = emojiTemplate.innerHTML;
 
   html = createDOMPurify().sanitize(html, {
     ALLOW_UNKNOWN_PROTOCOLS: atom.config.get("markdown-preview.allowUnsafeProtocols"),
