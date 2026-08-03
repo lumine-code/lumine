@@ -1,5 +1,3 @@
-"use babel";
-
 module.exports = class PartialKeyupMatcher {
   constructor() {
     this._pendingMatches = new Set();
