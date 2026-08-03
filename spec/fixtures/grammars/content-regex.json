@@ -1,0 +1,7 @@
+{
+  "name": "Content Regex",
+  "scopeName": "source.content-regex",
+  "fileTypes": ["content-regex-sentinel"],
+  "contentRegex": "CONTENT-REGEX-SENTINEL",
+  "patterns": []
+}

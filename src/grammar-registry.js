@@ -321,10 +321,21 @@ module.exports = class GrammarRegistry {
 
       // Prefer grammars with matching content regexes. Prefer a grammar with
       // no content regex over one with a non-matching content regex.
+      //
+      // There may be no contents to match against: the caller passed none and
+      // the path is not a file on disk — an unsaved buffer, a remote path, a
+      // package calling `selectGrammar(path)`. The prefix check above guards
+      // for that and this one did not, so a Tree-sitter grammar quietly tested
+      // the literal string "undefined" while a TextMate one threw out of
+      // Oniguruma and took the whole selection with it. Count it a miss either
+      // way, which is what the Tree-sitter half already did.
       if (grammar.contentRegex) {
-        const contentMatch = isTreeSitter
-          ? grammar.contentRegex.test(contents)
-          : grammar.contentRegex.findNextMatchSync(contents);
+        let contentMatch = false;
+        if (typeof contents === "string") {
+          contentMatch = isTreeSitter
+            ? grammar.contentRegex.test(contents)
+            : grammar.contentRegex.findNextMatchSync(contents);
+        }
         if (contentMatch) {
           score += 0.05;
         } else {

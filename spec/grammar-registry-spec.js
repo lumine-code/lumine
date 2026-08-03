@@ -509,6 +509,36 @@ describe("GrammarRegistry", () => {
       ).toBe("Two Line Prefix");
     });
 
+    it("scores a grammar with a content regex when there are no contents to match", () => {
+      // A TextMate `contentRegex` is an Oniguruma scanner, and handing it
+      // `undefined` threw from inside the WASM rather than returning no match,
+      // taking the whole selection down with it. That needs no contents *and*
+      // a path that is not a file on disk, or the fallback read hides it.
+      atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/content-regex.json"));
+
+      expect(() =>
+        atom.grammars.selectGrammar("/no/such/file.content-regex-sentinel"),
+      ).not.toThrow();
+      expect(atom.grammars.selectGrammar("/no/such/file.content-regex-sentinel").name).toBe(
+        "Content Regex",
+      );
+
+      // Matching contents still win it the bonus.
+      expect(
+        atom.grammars.getGrammarScore(
+          atom.grammars.grammarForScopeName("source.content-regex"),
+          "/no/such/file.content-regex-sentinel",
+          "CONTENT-REGEX-SENTINEL",
+        ),
+      ).toBeGreaterThan(
+        atom.grammars.getGrammarScore(
+          atom.grammars.grammarForScopeName("source.content-regex"),
+          "/no/such/file.content-regex-sentinel",
+          undefined,
+        ),
+      );
+    });
+
     it("doesn't read the file when the file contents are specified", async () => {
       await atom.packages.activatePackage("language-ruby");
 
