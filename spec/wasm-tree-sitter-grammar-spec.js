@@ -5,13 +5,10 @@ const CSON = require("@lumine-code/season");
 const WASMTreeSitterGrammar = require("../src/wasm-tree-sitter-grammar");
 const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mode");
 
-const jsGrammarPath = path.resolve(
-  __dirname,
-  "..",
-  "packages",
-  "language-javascript",
-  "grammars",
-  "modern-tree-sitter-javascript.json",
+// Language packages live in their own repositories and arrive through
+// node_modules, so resolve by name rather than by a path into packages/.
+const jsGrammarPath = require.resolve(
+  "language-javascript/grammars/modern-tree-sitter-javascript.json",
 );
 
 function wait(ms) {

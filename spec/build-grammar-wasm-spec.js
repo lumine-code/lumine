@@ -71,12 +71,13 @@ describe("build-grammar-wasm root resolution", () => {
 
   describe("collectAllConfigs", () => {
     it("defaults to this repository's packages", () => {
-      let configs = collectAllConfigs();
-
-      expect(configs.length).toBeGreaterThan(0);
-      for (let entry of configs) {
+      // Every grammar package now lives in its own repository, so packages/
+      // legitimately holds none. What matters is that the default scan looks
+      // only there, not that it finds anything.
+      for (let entry of collectAllConfigs()) {
         expect(entry.configPath.startsWith(PACKAGES_DIR)).toBe(true);
       }
+      expect(collectAllConfigs([tempRoot])).toEqual([]);
     });
 
     it("collects configs from an out-of-tree package root", () => {

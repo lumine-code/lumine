@@ -11,9 +11,10 @@ const ScopeResolver = require("../src/scope-resolver");
 const Random = require("random-seed");
 const { getRandomBufferRange, buildRandomLines } = require("./helpers/random");
 
-let PATH = path.resolve(path.join(__dirname, "..", "packages"));
+// Language packages live in their own repositories and arrive through
+// node_modules, so resolve them by name rather than by a path into packages/.
 function resolve(modulePath) {
-  return require.resolve(`${PATH}/${modulePath}`);
+  return require.resolve(modulePath);
 }
 
 // Just for syntax highlighting.

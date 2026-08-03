@@ -1,5 +1,4 @@
 const Grim = require("grim");
-const path = require("path");
 const dedent = require("dedent");
 const TextBuffer = require("../src/text-buffer");
 const { Point, Range } = TextBuffer;
@@ -8,9 +7,10 @@ const ScopeResolver = require("../src/scope-resolver.js");
 const WASMTreeSitterGrammar = require("../src/wasm-tree-sitter-grammar");
 const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mode");
 
-let PATH = path.resolve(path.join(__dirname, "..", "packages"));
+// Language packages live in their own repositories and arrive through
+// node_modules, so resolve them by name rather than by a path into packages/.
 function resolve(modulePath) {
-  return require.resolve(`${PATH}/${modulePath}`);
+  return require.resolve(modulePath);
 }
 
 const jsGrammarPath = resolve("language-javascript/grammars/modern-tree-sitter-javascript.json");
