@@ -1,0 +1,6 @@
+{
+  "name": "One Line Prefix",
+  "scopeName": "source.one-line-prefix",
+  "firstLineMatch": "^ONE-LINE-SENTINEL",
+  "patterns": []
+}

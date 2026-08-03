@@ -1,0 +1,5 @@
+{
+  "name": "Included",
+  "scopeName": "source.included",
+  "patterns": [{ "match": "SENTINEL", "name": "keyword.sentinel.included" }]
+}

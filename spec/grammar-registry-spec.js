@@ -485,23 +485,28 @@ describe("GrammarRegistry", () => {
       expect(atom.grammars.selectGrammar(filePath).name).toBe("Ruby");
     });
 
-    it("uses the number of newlines in the first line regex to determine the number of lines to test against", async () => {
-      await atom.packages.activatePackage("language-property-list");
-      await atom.packages.activatePackage("language-coffee-script");
+    it("uses the number of newlines in the first line regex to determine the number of lines to test against", () => {
+      // Fixtures rather than a real language: the property under test is a
+      // `firstLineMatch` that spans a line break, which almost no grammar has,
+      // so borrowing one meant the test's precondition lived in someone else's
+      // repository and was invisible here.
+      atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/one-line-prefix.json"));
+      atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/two-line-prefix.json"));
 
-      let fileContent = "first-line\n<html>";
-      expect(atom.grammars.selectGrammar("dummy.coffee", fileContent).name).toBe("CoffeeScript");
+      // A single-line pattern is matched against the first line alone, so
+      // anything after it is irrelevant.
+      expect(atom.grammars.selectGrammar("unknown.ext", "ONE-LINE-SENTINEL\nnoise").name).toBe(
+        "One Line Prefix",
+      );
 
-      fileContent = '<?xml version="1.0" encoding="UTF-8"?>';
-      expect(atom.grammars.selectGrammar("grammar.tmLanguage", fileContent).name).toBe(
+      // A pattern containing a newline needs that many lines before it can
+      // match — one line is not enough.
+      expect(atom.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL").name).toBe(
         "Null Grammar",
       );
-
-      fileContent +=
-        '\n<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">';
-      expect(atom.grammars.selectGrammar("grammar.tmLanguage", fileContent).name).toBe(
-        "Property List (XML)",
-      );
+      expect(
+        atom.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL\nSECOND-LINE").name,
+      ).toBe("Two Line Prefix");
     });
 
     it("doesn't read the file when the file contents are specified", async () => {

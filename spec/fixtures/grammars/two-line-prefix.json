@@ -1,0 +1,6 @@
+{
+  "name": "Two Line Prefix",
+  "scopeName": "source.two-line-prefix",
+  "firstLineMatch": "^TWO-LINE-SENTINEL\\nSECOND-LINE",
+  "patterns": []
+}

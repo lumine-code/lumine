@@ -525,33 +525,36 @@ describe("TextMateLanguageMode", () => {
         expect(tokenizationCount).toBe(1);
       });
 
-      it("retokenizes the buffer", async () => {
-        await atom.packages.activatePackage("language-ruby-on-rails");
-        await atom.packages.activatePackage("language-ruby");
+      it("retokenizes the buffer", () => {
+        // Fixtures rather than a real language pair: what this needs is a
+        // grammar whose `include` points at a scope that is not loaded yet, so
+        // that loading it later changes the tokens. Borrowing two packages for
+        // that put the test's precondition — and the exact scopes it asserts —
+        // in someone else's repository.
+        atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/includer.json"));
 
         buffer = atom.project.bufferForPathSync();
-        buffer.setText("<div class='name'><%= User.find(2).full_name %></div>");
+        buffer.setText("SENTINEL");
 
         languageMode = new TextMateLanguageMode({
           buffer,
           config,
-          grammar: atom.grammars.selectGrammar("test.erb"),
+          grammar: atom.grammars.grammarForScopeName("source.includer"),
         });
         fullyTokenize(languageMode);
+
+        // The include resolves to nothing, so the line is one plain run.
         expect(languageMode.tokenizedLines[0].tokens[0]).toEqual({
-          value: "<div class='name'>",
-          scopes: ["text.html.ruby"],
+          value: "SENTINEL",
+          scopes: ["source.includer"],
         });
 
-        await atom.packages.activatePackage("language-html");
+        atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/included.json"));
         fullyTokenize(languageMode);
+
         expect(languageMode.tokenizedLines[0].tokens[0]).toEqual({
-          value: "<",
-          scopes: [
-            "text.html.ruby",
-            "meta.tag.block.div.html",
-            "punctuation.definition.tag.begin.html",
-          ],
+          value: "SENTINEL",
+          scopes: ["source.includer", "keyword.sentinel.included"],
         });
       });
     });

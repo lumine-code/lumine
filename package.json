@@ -301,8 +301,6 @@
     "test:only": "npm start -- --test"
   },
   "devDependencies": {
-    "language-property-list": "https://github.com/lumine-code/language-property-list.git#1f07719457c15c20b2f4cb46997aac353b4175cf",
-    "language-ruby-on-rails": "https://github.com/lumine-code/language-ruby-on-rails.git#b283cee857c222dc0ac07ead2773c3cd8e3b7078",
     "@electron/notarize": "^3.1.1",
     "@electron/rebuild": "4.2.0",
     "@eslint/js": "^10.0.1",

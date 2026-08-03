@@ -1,0 +1,6 @@
+{
+  "name": "Includer",
+  "scopeName": "source.includer",
+  "fileTypes": ["includer"],
+  "patterns": [{ "include": "source.included" }]
+}
