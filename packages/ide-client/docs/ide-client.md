@@ -71,13 +71,20 @@ The service you receive:
 | `sessionForEditor(editor)`                                        | The session serving that editor, or `null`. May still be starting.                       |
 | `activeSessionForEditor(editor)`                                  | Resolves once the session has finished starting; `null` when absent, failed, or stopped. |
 | `getSessions()`                                                   | Every session.                                                                           |
-| `request(editor, method, params, opts)`                           | Sends an arbitrary LSP request through that editor's session. `opts.signal` cancels it.  |
+| `request(editor, method, params, opts)`                           | Sends an arbitrary LSP request through that editor's session. See the options below.     |
 | `onDidChangeSession(fn)`                                          | `{ session, state, error? }` on every state transition.                                  |
 | `onDidPublishDiagnostics(fn)`                                     | Raw `textDocument/publishDiagnostics` payloads.                                          |
 | `onDidLog(fn)`, `getLog(adapterId)`                               | Server stderr and protocol log.                                                          |
 | `restart(session)`, `stop(session)`                               | Lifecycle control.                                                                       |
 | `applyWorkspaceEdit(edit, label)`                                 | Applies an LSP `WorkspaceEdit` to the workspace.                                         |
 | `openNotebook`, `changeNotebook`, `saveNotebook`, `closeNotebook` | The notebook document half of LSP.                                                       |
+
+`opts` for `request` — both optional:
+
+| Option           | Description                                                                                                                                                               |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal`         | An `AbortSignal`. Aborting settles the returned promise straight away, whatever the server does next.                                                                     |
+| `cancelOnServer` | Whether aborting also sends `$/cancelRequest`. Defaults to `true`. Pass `false` to abandon the request without telling the server, for a method it supersedes on its own. |
 
 ## Minimal example
 

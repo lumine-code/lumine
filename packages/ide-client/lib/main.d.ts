@@ -47,6 +47,15 @@ export interface LanguageServerAdapter {
   restoreDocumentText?(text: string, context: DocumentTextContext): string;
   transformServerCapabilities?(capabilities: Record<string, unknown>): Record<string, unknown>;
 }
+export interface RequestOptions {
+  /** Aborting settles the request locally, whatever the server does next. */
+  signal?: AbortSignal;
+  /**
+   * Send `$/cancelRequest` when the signal aborts. Defaults to `true`; pass
+   * `false` to abandon the request without telling the server about it.
+   */
+  cancelOnServer?: boolean;
+}
 export interface LanguageServerSession {
   adapter: LanguageServerAdapter;
   rootPath: string;
@@ -54,7 +63,7 @@ export interface LanguageServerSession {
   capabilities: Record<string, any>;
   /** True when the session serves the request method for the editor, honoring dynamic registrations. */
   supports(method: string, editor?: TextEditor): boolean;
-  request(method: string, params?: unknown, options?: { signal?: AbortSignal }): Promise<any>;
+  request(method: string, params?: unknown, options?: RequestOptions): Promise<any>;
   notify(method: string, params?: unknown): void;
 }
 export interface LanguageServerService {
@@ -71,7 +80,7 @@ export interface LanguageServerService {
     editor: TextEditor,
     method: string,
     params?: unknown,
-    options?: { signal?: AbortSignal },
+    options?: RequestOptions,
   ): Promise<any> | undefined;
   restart(session: LanguageServerSession): Promise<LanguageServerSession>;
   stop(session: LanguageServerSession): Promise<void>;

@@ -73,23 +73,28 @@ module.exports = class RpcConnection {
     this.connection.trace(Trace.fromString(value), tracer).catch(() => {});
   }
 
-  request(method, params, { signal } = {}) {
+  // `cancelOnServer: false` abandons the request here without telling the
+  // server, for the methods where asking it to stop costs more than letting it
+  // finish. Nothing is lost by staying quiet: a server that supersedes its own
+  // requests drops the stale one the moment the replacement arrives, and the
+  // reply to a request nobody is waiting for is discarded either way.
+  request(method, params, { signal, cancelOnServer = true } = {}) {
     if (!signal) return this.send(method, params);
     if (signal.aborted) return Promise.reject(abortReason(signal));
-    const source = new CancellationTokenSource();
+    const source = cancelOnServer ? new CancellationTokenSource() : null;
     let abandon;
     const abandoned = new Promise((resolve, reject) => (abandon = reject));
     // `$/cancelRequest` is advisory: a server answers a cancelled request when
     // it gets round to it, and some never answer at all. The caller stopped
     // waiting the moment it aborted, so settle here rather than sit it out.
     const onAbort = () => {
-      source.cancel();
+      source?.cancel();
       abandon(abortReason(signal));
     };
     signal.addEventListener("abort", onAbort, { once: true });
-    return Promise.race([this.send(method, params, source.token), abandoned]).finally(() => {
+    return Promise.race([this.send(method, params, source?.token), abandoned]).finally(() => {
       signal.removeEventListener("abort", onAbort);
-      source.dispose();
+      source?.dispose();
     });
   }
 

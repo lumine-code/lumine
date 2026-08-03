@@ -119,6 +119,28 @@ describe("RpcConnection", () => {
       expect(cancel.params.id).toBe(0);
     });
 
+    it("abandons without $/cancelRequest when the caller asked it not to", async () => {
+      const controller = new AbortController();
+      const pending = connection.request(
+        "slow",
+        {},
+        {
+          signal: controller.signal,
+          cancelOnServer: false,
+        },
+      );
+      await waitUntil(() => sent(writer).length === 1);
+      controller.abort();
+      await expectAsync(pending).toBeRejected();
+      await flush();
+      expect(sent(writer).some((message) => message.method === "$/cancelRequest")).toBe(false);
+
+      // The answer still arrives; nobody is waiting for it, and it must not
+      // surface as an unhandled rejection or a second settle.
+      reader.write(frame({ jsonrpc: "2.0", id: 0, result: [] }));
+      await flush();
+    });
+
     it("rejects an already-aborted request without sending it", async () => {
       const controller = new AbortController();
       controller.abort();
