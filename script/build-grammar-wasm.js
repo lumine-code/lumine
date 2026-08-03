@@ -489,6 +489,8 @@ async function buildOne(entry, options, toolchain) {
 
   for (const member of family) {
     const memberWasm = wasmPathForConfig(member);
+    // A grammar being added for the first time has no query directory yet.
+    fs.mkdirSync(path.dirname(memberWasm), { recursive: true });
     fs.copyFileSync(builtWasm, memberWasm);
     writeBackMetadata(member.configPath, {
       parserSource: options.source ?? null,
