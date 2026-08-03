@@ -5,12 +5,13 @@
 ## Features
 
 - **Grammars**: provides Tree-sitter grammars.
-- **Highlighting**: scopes {{Title}} source for the editor's themes.
+- **Syntax highlighting**: full tree-sitter grammar coverage for {{Title}} files.
 - **Folding**: folds blocks from the parse tree rather than by indentation.
+{{installationSection}}
+## Services
 
-## Installation
-
-To install `{{name}}` search for *{{name}}* in the Install pane of the Lumine settings or run `lumine --install lumine-code/{{name}}`.
+- **hyperlink.injection** (`^1.0.0`): consumed to highlight URLs inside {{Title}} files as clickable links.
+- **todo.injection** (`^1.0.0`): consumed to highlight `TODO`-style markers inside comments.
 
 ## Contributing
 

@@ -11,7 +11,12 @@
 function normalizeTreeSitterTextData(editor, commentRegex, trailingCommentRegex) {
   let allMatches = [],
     lastNonComment = 0;
-  const checkAssert = new RegExp("^\\s*" + commentRegex.source + "\\s*[\\<\\-|\\^]");
+  // An assertion line is a comment followed by `<-` or `^`. This used to be a
+  // character class, which also accepted a lone `-`, so in any language whose
+  // comment marker is `--` a line beginning `---` was taken for a malformed
+  // assertion and threw. That rules out doc comments in Lua, SQL, Haskell and
+  // Ada fixtures, none of which is a case anyone would think to check.
+  const checkAssert = new RegExp("^\\s*" + commentRegex.source + "\\s*(<-|\\^)");
   editor
     .getBuffer()
     .getLines()
