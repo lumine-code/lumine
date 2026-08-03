@@ -409,12 +409,6 @@ describe("git-center", () => {
       "origin/remote-only",
       "v1.0.0",
     ]);
-    expect(refs.map((item) => item.groupLabel || null)).toEqual([
-      "branches",
-      "remote branches",
-      null,
-      "tags",
-    ]);
     expect(refs.every((item) => item.lastCommit?.subject === "Initial commit")).toBe(true);
 
     const separators = Array.from(
@@ -427,6 +421,8 @@ describe("git-center", () => {
     expect(firstRowsAfterSeparators[0]).toMatch(/^main /);
     expect(firstRowsAfterSeparators[1]).toMatch(/^origin\/main /);
     expect(firstRowsAfterSeparators[2]).toMatch(/^v1\.0\.0 /);
+    // The rules are the whole of the grouping: no kind carries a label.
+    expect(listView.element.querySelector(".git-center-ref-group")).toBeNull();
 
     const mainRow = Array.from(listView.element.querySelectorAll(".list-group li")).find(
       (element) =>
@@ -441,7 +437,6 @@ describe("git-center", () => {
     expect(mainRow.querySelector(".secondary-line").textContent).toBe(
       `Git Center Specs • ${shortHead} • Initial commit`,
     );
-    expect(mainRow.querySelector(".git-center-ref-group").textContent).toBe("branches");
 
     spyOn(operations, "checkout").andReturn(Promise.resolve());
     branchListView.confirmCheckoutItem(refs.find((item) => item.branch === "origin/main"));
@@ -580,7 +575,7 @@ describe("git-center", () => {
         ?.textContent.startsWith("main "),
     );
     expect(row.querySelector(".secondary-line").textContent).toContain("Commit that the remote");
-    expect(chipTexts(row.querySelector(".trailing-block"))).toEqual(["↑1", "current", "branches"]);
+    expect(chipTexts(row.querySelector(".trailing-block"))).toEqual(["↑1", "current"]);
   });
 
   it("reports a deleted upstream instead of claiming the branch is up to date", async () => {
@@ -652,7 +647,6 @@ describe("git-center", () => {
     expect(branchRow.querySelector(".secondary-line").textContent).toMatch(
       /^Git Center Specs • [0-9a-f]{7} • Initial commit$/,
     );
-    expect(branchRow.querySelector(".git-center-ref-group").textContent).toBe("branches");
   });
 
   it("creates branches from HEAD or another ref and checks out detached", async () => {

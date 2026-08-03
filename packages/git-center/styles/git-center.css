@@ -2,25 +2,15 @@
   color: var(--text-color-subtle);
 }
 
-/* Checkout refs mirror the compact two-line layout used by VS Code: the
-   relative commit time follows the ref name, while the first row in each ref
-   kind carries a quiet group label at the far edge. */
+/* Checkout refs mirror the compact two-line layout used by VS Code, with the
+   relative commit time following the ref name. */
 .git-center-branch-list {
-  .git-center-ref-time,
-  .git-center-ref-group {
+  .git-center-ref-time {
     color: var(--text-color-subtle);
   }
 
-  .git-center-ref-group {
-    font-size: 0.9em;
-    font-weight: normal;
-  }
-
-  .selected {
-    .git-center-ref-time,
-    .git-center-ref-group {
-      color: inherit;
-    }
+  .selected .git-center-ref-time {
+    color: inherit;
   }
 }
 

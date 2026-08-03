@@ -75,11 +75,6 @@ function detailForItem(item) {
     .join(" • ");
 }
 
-function labelFirstItem(items, groupLabel) {
-  if (items.length > 0) items[0].groupLabel = groupLabel;
-  return items;
-}
-
 // Checkout picker for the active repository. Local branches switch directly,
 // remote branches resolve to a tracking local branch, and tags detach HEAD.
 module.exports = class BranchListView {
@@ -126,7 +121,6 @@ module.exports = class BranchListView {
             ...(item.current ? statusChips(item.status) : []),
             ...divergenceChips(item.upstream),
             item.current && { text: "current", className: "badge" },
-            item.groupLabel && { text: item.groupLabel, className: "git-center-ref-group" },
           ],
         };
       },
@@ -245,11 +239,11 @@ module.exports = class BranchListView {
         repository.ensureRefsSnapshot?.().catch(() => null),
         repository.ensureStatusSnapshot?.().catch(() => null),
       ]);
-      const items = [
-        ...ACTIONS,
-        ...this.buildCheckoutItems(repository, refs, summarizeStatus(statusSnapshot)),
-      ];
-      const separatorIds = items.filter((item) => item.groupLabel).map((item) => item.id);
+      const groups = this.buildCheckoutGroups(repository, refs, summarizeStatus(statusSnapshot));
+      const items = [...ACTIONS, ...groups.flat()];
+      // A rule below the actions and above each further kind of ref, which is
+      // all that marks the groups apart.
+      const separatorIds = groups.filter((group) => group.length > 0).map((group) => group[0].id);
       if (
         !this.selectListView.isVisible() ||
         atom.repositories.getActiveRepository() !== repository
@@ -264,7 +258,7 @@ module.exports = class BranchListView {
     }
   }
 
-  buildCheckoutItems(repository, refs, status) {
+  buildCheckoutGroups(repository, refs, status) {
     const localBranches = (refs?.branches || [])
       .map((branch) => ({
         id: `branch:${branch.name}`,
@@ -347,11 +341,7 @@ module.exports = class BranchListView {
       }))
       .sort((a, b) => a.branch.localeCompare(b.branch));
 
-    return [
-      ...labelFirstItem(localBranches, "branches"),
-      ...labelFirstItem(remoteBranches, "remote branches"),
-      ...labelFirstItem(tags, "tags"),
-    ];
+    return [localBranches, remoteBranches, tags];
   }
 
   confirmCheckoutItem(item) {
