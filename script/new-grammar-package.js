@@ -149,12 +149,11 @@ function buildTokens(options) {
     increaseIndentPattern: jsonInner("\\{[^}\"']*$"),
     decreaseIndentPattern: jsonInner("^\\s*\\}"),
     enginesAtom: options.kind === "bundled" ? "*" : ">=1.100.0 <2.0.0",
-    // A bundled package ships with the editor, so telling the reader to install
-    // it from the Install pane would be wrong.
-    installationSection:
-      options.kind === "bundled"
-        ? ""
-        : `\n## Installation\n\nTo install \`${options.name}\` search for *${options.name}* in the Install pane of the Lumine settings or run \`lumine --install lumine-code/${options.name}\`.\n`,
+    // Every package carries the same Installation note, whichever tier it
+    // ships in: a reader should not have to know the tier to find out how to
+    // get it, and a package can move between tiers without its README
+    // changing shape.
+    installationSection: `\n## Installation\n\nTo install \`${options.name}\` search for *${options.name}* in the Install pane of the Lumine settings or run \`lumine --install lumine-code/${options.name}\`.\n`,
   };
 }
 
