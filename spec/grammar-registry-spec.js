@@ -691,7 +691,7 @@ describe("GrammarRegistry", () => {
       });
     });
 
-    xdescribe("tree-sitter grammars with content regexes", () => {
+    describe("tree-sitter grammars with content regexes", () => {
       it("recognizes C++ header files", () => {
         setConfigForLanguageMode("tree-sitter");
 
