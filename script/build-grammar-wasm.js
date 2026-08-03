@@ -14,6 +14,12 @@
  *   --cli-version <x.y.z>  override the default tree-sitter-cli version
  *   --cache-dir <dir>      cache root (default ~/.lumine-grammar-build, or
  *                          env LUMINE_GRAMMAR_BUILD_CACHE)
+ *   --package-root <dir>   additional package root to scan, repeatable; also
+ *                          read from LUMINE_GRAMMAR_PACKAGE_ROOTS. Use for
+ *                          grammar packages that live in their own repository
+ *                          (pkg_bundled/, pkg_lumine/). The package owning an
+ *                          explicitly passed config is always in scope, so a
+ *                          single-config build needs no flag.
  *   --diff-node-types      diff node types/fields of old vs new wasm
  *   --regenerate           run `tree-sitter generate` instead of using the
  *                          shipped src/parser.c (lifts the wasm to this CLI's
@@ -38,9 +44,8 @@ const REPO_ROOT = path.resolve(__dirname, "..");
 const PACKAGES_DIR = path.join(REPO_ROOT, "packages");
 // An emsdk checkout inside the build cache keeps the whole toolchain
 // self-contained: `git clone https://github.com/emscripten-core/emsdk` there,
-// then `emsdk install latest && emsdk activate latest`.
-const DEFAULT_EMSDK_DIR =
-  process.env.EMSDK || path.join(os.homedir(), ".lumine-grammar-build", "emsdk");
+// then `emsdk install latest && emsdk activate latest`. `ensureEmscripten`
+// resolves it against $EMSDK, the active cache dir, and the default cache.
 
 function fail(message) {
   console.error(`ERROR: ${message}`);
@@ -88,6 +93,7 @@ function parseArgs(argv) {
     cliVersion: DEFAULT_TREE_SITTER_CLI,
     cacheDir:
       process.env.LUMINE_GRAMMAR_BUILD_CACHE || path.join(os.homedir(), ".lumine-grammar-build"),
+    packageRoots: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
@@ -115,6 +121,9 @@ function parseArgs(argv) {
         break;
       case "--cache-dir":
         options.cacheDir = argv[++i] ?? fail("--cache-dir needs a value");
+        break;
+      case "--package-root":
+        options.packageRoots.push(argv[++i] ?? fail("--package-root needs a value"));
         break;
       default:
         if (arg.startsWith("--")) fail(`Unknown option: ${arg}`);
@@ -147,25 +156,59 @@ function parseParserSource(parserSource) {
   };
 }
 
-function collectAllConfigs() {
+// A root is either a single package checkout (it holds `grammars/` itself, as
+// `pkg_bundled/language-lua` does) or a directory of packages (`packages/`).
+function packageDirsInRoot(root) {
+  if (!fs.existsSync(root)) return [];
+  if (fs.existsSync(path.join(root, "grammars"))) return [root];
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((dirent) => dirent.isDirectory())
+    .map((dirent) => path.join(root, dirent.name));
+}
+
+function collectAllConfigs(roots = [PACKAGES_DIR]) {
   const configs = [];
-  for (const packageName of fs.readdirSync(PACKAGES_DIR)) {
-    const grammarsDir = path.join(PACKAGES_DIR, packageName, "grammars");
-    if (!fs.existsSync(grammarsDir)) continue;
-    for (const fileName of fs.readdirSync(grammarsDir)) {
-      if (!/\.(json|cson)$/.test(fileName)) continue;
-      const configPath = path.join(grammarsDir, fileName);
-      let config;
-      try {
-        config = CSON.readFileSync(configPath);
-      } catch {
-        continue;
+  const seen = new Set();
+  for (const root of roots) {
+    for (const packageDir of packageDirsInRoot(root)) {
+      const grammarsDir = path.join(packageDir, "grammars");
+      if (!fs.existsSync(grammarsDir)) continue;
+      for (const fileName of fs.readdirSync(grammarsDir)) {
+        if (!/\.(json|cson)$/.test(fileName)) continue;
+        const configPath = path.join(grammarsDir, fileName);
+        // Roots may overlap; a config must never join a family twice.
+        const key = configPath.toLowerCase();
+        if (seen.has(key)) continue;
+        let config;
+        try {
+          config = CSON.readFileSync(configPath);
+        } catch {
+          continue;
+        }
+        if (config.type !== "modern-tree-sitter" || !config.treeSitter?.grammar) continue;
+        seen.add(key);
+        configs.push({ packageName: path.basename(packageDir), configPath, config });
       }
-      if (config.type !== "modern-tree-sitter" || !config.treeSitter?.grammar) continue;
-      configs.push({ packageName, configPath, config });
     }
   }
   return configs;
+}
+
+// `--all` and `--check` deliberately default to this repository's packages
+// only: a gate whose membership depends on what happens to be checked out
+// beside it means something different on CI than it does on a developer's
+// disk. Extra roots are always opt-in, via `--package-root` or the env var.
+function resolvePackageRoots(options) {
+  const roots = [
+    PACKAGES_DIR,
+    ...(process.env.LUMINE_GRAMMAR_PACKAGE_ROOTS ?? "").split(path.delimiter).filter(Boolean),
+    ...options.packageRoots,
+  ];
+  // The package owning an explicitly passed config is always in scope, so
+  // building an out-of-tree grammar needs no flags at all.
+  if (options.configPath) roots.push(path.resolve(path.dirname(options.configPath), ".."));
+  return [...new Set(roots.map((root) => path.resolve(root)))];
 }
 
 function wasmPathForConfig(entry) {
@@ -258,18 +301,26 @@ function ensureTreeSitterCli(version, cacheDir) {
   return binary;
 }
 
-function ensureEmscripten() {
+function ensureEmscripten(cacheDir) {
   const probe = tryRun("emcc --version", [], { shell: true });
   if (probe.status === 0) {
     return { env: process.env, version: probe.stdout.split("\n")[0].trim() };
   }
-  // Fall back to the local emsdk if one exists.
-  const emscriptenDir = path.join(DEFAULT_EMSDK_DIR, "upstream", "emscripten");
-  if (fs.existsSync(emscriptenDir)) {
+  // Fall back to a local emsdk if one exists. The emsdk lives inside the build
+  // cache, so a relocated cache has to be searched too — otherwise moving the
+  // cache silently breaks the fallback and reports emcc as simply missing.
+  const candidates = [
+    ...(process.env.EMSDK ? [process.env.EMSDK] : []),
+    ...(cacheDir ? [path.join(cacheDir, "emsdk")] : []),
+    path.join(os.homedir(), ".lumine-grammar-build", "emsdk"),
+  ];
+  for (const emsdkDir of [...new Set(candidates.map((dir) => path.resolve(dir)))]) {
+    const emscriptenDir = path.join(emsdkDir, "upstream", "emscripten");
+    if (!fs.existsSync(emscriptenDir)) continue;
     const env = {
       ...process.env,
-      EMSDK: DEFAULT_EMSDK_DIR,
-      PATH: `${emscriptenDir}${path.delimiter}${DEFAULT_EMSDK_DIR}${path.delimiter}${process.env.PATH}`,
+      EMSDK: emsdkDir,
+      PATH: `${emscriptenDir}${path.delimiter}${emsdkDir}${path.delimiter}${process.env.PATH}`,
     };
     const retry = tryRun("emcc --version", [], { shell: true, env });
     if (retry.status === 0) {
@@ -278,8 +329,9 @@ function ensureEmscripten() {
   }
   fail(
     "emcc not found. Run in an emscripten-activated shell, or clone " +
-      "emscripten-core/emsdk to ~/.lumine-grammar-build/emsdk (or $EMSDK) and " +
-      "run `emsdk install latest && emsdk activate latest` there.",
+      "emscripten-core/emsdk into the build cache (or $EMSDK) and run " +
+      "`emsdk install latest && emsdk activate latest` there. Looked in: " +
+      candidates.join(", "),
   );
   return null;
 }
@@ -326,8 +378,8 @@ function diffSets(before, after) {
 
 // --- main modes --------------------------------------------------------------
 
-async function checkAllWasms() {
-  const entries = collectAllConfigs();
+async function checkAllWasms(roots) {
+  const entries = collectAllConfigs(roots);
   const seen = new Map();
   let bad = 0;
   for (const entry of entries) {
@@ -421,11 +473,18 @@ async function buildOne(entry, options, toolchain) {
   // (the regex wasm is copied into three packages; shared-wasm pairs like
   // json/jsonc live in one package).
   const wasmBuildTool = `tree-sitter-cli#v${options.cliVersion}`;
-  const family = collectAllConfigs().filter(
+  const family = collectAllConfigs(options.roots).filter(
     (candidate) =>
       candidate.config.treeSitter.parserSource === treeSitter.parserSource &&
       path.basename(candidate.config.treeSitter.grammar) === targetWasmName,
   );
+  // A config built by path is always its own family member. Without this a
+  // config outside every known root would compile for ten minutes and then be
+  // thrown away for having no one to install into.
+  const isSameConfig = (a, b) => path.resolve(a).toLowerCase() === path.resolve(b).toLowerCase();
+  if (!family.some((member) => isSameConfig(member.configPath, entry.configPath))) {
+    family.unshift(entry);
+  }
   if (family.length === 0) fail("Internal error: config family is empty");
 
   for (const member of family) {
@@ -438,7 +497,10 @@ async function buildOne(entry, options, toolchain) {
     console.log(`    installed -> ${path.relative(REPO_ROOT, memberWasm)}`);
   }
 
-  if (changed && !options.source && wasmBuildTool === treeSitter.wasmBuildTool) {
+  // The provenance gate only runs on this repository, so the warning would be
+  // wrong for a config that lives in its own package repo.
+  const isInRepo = entry.configPath.toLowerCase().startsWith(PACKAGES_DIR.toLowerCase());
+  if (isInRepo && changed && !options.source && wasmBuildTool === treeSitter.wasmBuildTool) {
     console.log(
       "    WARNING: wasm bytes changed but neither parserSource nor wasmBuildTool did — " +
         "script/validate-wasm-grammar-prs.js will reject this commit.",
@@ -449,21 +511,22 @@ async function buildOne(entry, options, toolchain) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2));
+  options.roots = resolvePackageRoots(options);
 
   if (options.check) {
-    await checkAllWasms();
+    await checkAllWasms(options.roots);
     return;
   }
 
   const toolchain = {
-    emscripten: ensureEmscripten(),
+    emscripten: ensureEmscripten(options.cacheDir),
     cli: ensureTreeSitterCli(options.cliVersion, options.cacheDir),
   };
 
   if (options.all) {
     if (options.source) fail("--source cannot be combined with --all");
     // Build each distinct (parserSource, wasm basename) family once.
-    const entries = collectAllConfigs();
+    const entries = collectAllConfigs(options.roots);
     const families = new Map();
     for (const entry of entries) {
       const key = `${entry.config.treeSitter.parserSource}::${path.basename(entry.config.treeSitter.grammar)}`;
@@ -486,10 +549,16 @@ async function main() {
   await buildOne({ configPath: options.configPath, config }, options, toolchain);
 }
 
-main().then(
-  () => process.exit(0),
-  (error) => {
-    console.error(error);
-    process.exit(1);
-  },
-);
+// Exported for `spec/build-grammar-wasm-spec.js`; running as a CLI is still
+// the only thing that starts a build.
+module.exports = { packageDirsInRoot, collectAllConfigs, resolvePackageRoots, PACKAGES_DIR };
+
+if (require.main === module) {
+  main().then(
+    () => process.exit(0),
+    (error) => {
+      console.error(error);
+      process.exit(1);
+    },
+  );
+}
