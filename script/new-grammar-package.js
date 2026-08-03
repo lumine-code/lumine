@@ -7,6 +7,10 @@
  *        --kind bundled|community [--out <dir>] [--title Lua] \
  *        [--comment-start "-- "] [--description "…"] [--keywords a,b,c]
  *
+ * `--out` is the directory to write, and defaults to the package name under the
+ * current working directory. Where these checkouts live is a local choice, so
+ * nothing here assumes one.
+ *
  * Both kinds produce a full repository: its own CI, lockfile scaffolding,
  * lint/format configuration, LICENSE, README, specs, and a `.gitattributes`
  * that keeps the committed wasm from being mangled by EOL conversion.
@@ -213,11 +217,10 @@ function main() {
   }
 
   const tokens = buildTokens(options);
-  const workspaceRoot = path.resolve(__dirname, "..", "..");
-  // Every language package lives in pkg_langus whichever tier it ships in;
-  // the tier is decided by which registry lists it, not by which directory it
-  // sits in.
-  const outDir = path.resolve(options.out ?? path.join(workspaceRoot, "pkg_langus", options.name));
+  // A grammar package is its own repository, and where a developer keeps their
+  // checkouts is their business — there is no layout to default to. `--out` is
+  // the directory the package is written into, named for the package.
+  const outDir = path.resolve(options.out ?? options.name);
 
   if (fs.existsSync(outDir) && !options.force) {
     fail(`${outDir} already exists (pass --force to write into it anyway)`);

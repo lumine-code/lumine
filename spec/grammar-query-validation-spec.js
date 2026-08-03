@@ -30,10 +30,9 @@ function resolveBundledPackageDir(packageName) {
   return null;
 }
 
-// Grammar packages under development live outside this repository entirely
-// (`pkg_langus/`, `pkg_lumine/`), before they are pinned and installed. Point
-// `LUMINE_GRAMMAR_PACKAGE_ROOTS` at a package checkout or at a directory of
-// them to sweep those too. They are compiled but deliberately not counted:
+// Grammar packages under development live outside this repository entirely,
+// before they are pinned and installed. Point `LUMINE_GRAMMAR_PACKAGE_ROOTS`
+// at a package checkout or at a directory of them to sweep those too. They are compiled but deliberately not counted:
 // `EXPECTED_GRAMMAR_COUNT` guards the shipped set, and a tripwire whose value
 // depends on a developer's environment is not a tripwire.
 function packageDirsInRoot(root) {

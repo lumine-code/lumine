@@ -4,7 +4,7 @@
  *
  * Usage:
  *   node script/clone-parser.js <package-dir>...
- *   node script/clone-parser.js --all --package-root ../pkg_langus
+ *   node script/clone-parser.js --all --package-root <dir-of-packages>
  *
  * Working on a grammar means constantly asking what the parse tree actually
  * looks like — which node types exist, which tokens are anonymous, what the

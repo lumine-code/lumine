@@ -17,7 +17,7 @@
  *   --package-root <dir>   additional package root to scan, repeatable; also
  *                          read from LUMINE_GRAMMAR_PACKAGE_ROOTS. Use for
  *                          grammar packages that live in their own repository
- *                          (pkg_langus/, pkg_lumine/). The package owning an
+ *                          rather than in packages/. The package owning an
  *                          explicitly passed config is always in scope, so a
  *                          single-config build needs no flag.
  *   --diff-node-types      diff node types/fields of old vs new wasm
@@ -157,7 +157,7 @@ function parseParserSource(parserSource) {
 }
 
 // A root is either a single package checkout (it holds `grammars/` itself, as
-// `pkg_langus/language-lua` does) or a directory of packages (`packages/`).
+// a language-* repository does) or a directory of packages (`packages/`).
 function packageDirsInRoot(root) {
   if (!fs.existsSync(root)) return [];
   if (fs.existsSync(path.join(root, "grammars"))) return [root];
