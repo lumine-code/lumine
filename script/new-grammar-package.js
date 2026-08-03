@@ -87,8 +87,11 @@ function defaultSegment(scope) {
   return scope.split(".").pop();
 }
 
+// The result is substituted into a regex *literal*, so the delimiter has to be
+// escaped too: a `//` comment marker would otherwise emit `///`, which is an
+// empty regex followed by a stray slash.
 function escapeRegex(text) {
-  return text.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return text.replace(/[.*+?^${}()|[\]\\/]/g, "\\$&");
 }
 
 // JSON-escapes a value that will be substituted between quotes already present

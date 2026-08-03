@@ -162,7 +162,18 @@ function translatePredicate(predicate) {
   if (NATIVE_PREDICATES.has(name)) return { kind: "keep" };
   // Lumine's own vocabulary: `#is?`/`#is-not?` with test.*, `#set!` with
   // adjust.* / capture.* / indent.* / fold.*. Already in the right shape.
-  if (name === "is?" || name === "is-not?") return { kind: "keep" };
+  if (name === "is?" || name === "is-not?") {
+    // Neovim spells its locals-based checks the same way — `(#is? @cap
+    // parameter)` — but the argument there names a local kind, not one of
+    // Lumine's tests, and passing it through fails to compile at all.
+    if (/#is(-not)?\?\s+\S+\s+test\./.test(text) || /#is(-not)?\?\s+test\./.test(text)) {
+      return { kind: "keep" };
+    }
+    return {
+      kind: "remove",
+      reason: `#${name} argument is not one of Lumine's test.* checks — nvim's locals-based form has no equivalent`,
+    };
+  }
   if (name === "set!" && /#set!\s+(adjust|capture|indent|fold|highlight)\./.test(text)) {
     return { kind: "keep" };
   }

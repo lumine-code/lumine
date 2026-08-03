@@ -151,4 +151,37 @@ module.exports = [
   ["spell",                      null,                                "drop"],
   ["nospell",                    null,                                "drop"],
   ["conceal",                    null,                                "drop"],
+
+  // --- Neovim's pre-2023 names ---------------------------------------------
+  // nvim renamed most of its highlight groups; plenty of upstream queries were
+  // written before that and still use the old ones. They are listed last so a
+  // current name always wins, and specific before general within the block.
+  ["parameter.reference",        "variable.parameter",                "safe"],
+  ["parameter",                  "variable.parameter",                "safe"],
+  ["var.reference",              "variable.other",                    "safe"],
+  ["field",                      "variable.other.member",             "safe"],
+  ["method.call",                "support.other.function.method",     "safe"],
+  ["method",                     "entity.name.function.method",       "safe"],
+  ["namespace",                  "entity.name.namespace",             "safe"],
+  ["float",                      "constant.numeric.float",            "safe"],
+  ["repeat",                     "keyword.control.loop",              "safe"],
+  ["conditional",                "keyword.control.conditional",       "safe"],
+  ["exception",                  "keyword.control.exception",         "safe"],
+  ["include",                    "keyword.control.import",            "safe"],
+  ["define",                     "keyword.control.directive.define",  "safe"],
+  ["preproc",                    "keyword.control.directive",         "safe"],
+  ["storageclass",               "storage.modifier",                  "safe"],
+  ["symbol",                     "constant.other.symbol",             "safe"],
+  ["text.strong",                "markup.bold",                       "safe"],
+  ["text.emphasis",              "markup.italic",                     "safe"],
+  ["text.strike",                "markup.strikethrough",              "safe"],
+  ["text.underline",             "markup.underline",                  "safe"],
+  ["text.title",                 "markup.heading",                    "safe"],
+  ["text.literal",               "markup.raw",                        "safe"],
+  ["text.uri",                   "markup.underline.link",             "safe"],
+  ["text.reference",             "markup.underline.link",             "safe"],
+  ["text.quote",                 "markup.quote",                      "safe"],
+  ["text.math",                  "markup.math",                       "safe"],
+  ["text",                       "markup.other",                      "review",
+    "a bare @text meant 'prose' in the old scheme; check what it actually marks"],
 ];
