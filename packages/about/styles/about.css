@@ -138,8 +138,18 @@
   text-align: center;
 }
 
+/* An icon-only span still lays out a line box from its own font, so the flex
+   row centres a box several pixels taller than the glyph. Collapsing that
+   strut makes the item exactly the glyph; the raise then corrects what
+   `align-items: center` cannot know — it centres each item's box, and a text
+   box carries descender space its cap centre sits above. Both measured. */
 .about-copy-version {
   margin-left: 0.5em;
+  line-height: 0;
+
+  &::before {
+    translate: 0 -1.5px;
+  }
 }
 
 /* Actions -------------------------------- */
@@ -189,6 +199,12 @@
   gap: 0.75em;
   color: var(--text-color-subtle);
 
+  /* As with the copy buttons: collapse the icon-only span's strut so the flex
+     row centres the glyph itself rather than a taller line box. */
+  .icon {
+    line-height: 0;
+  }
+
   .icon::before {
     /* Make these octicons look good inlined with text: hug the glyph instead
        of the icon-contract box and center on the text. */
@@ -199,6 +215,8 @@
     vertical-align: middle;
     margin-right: 0;
     font-size: 1.5em;
+    /* Measured: lands the mark on the label's cap centre. */
+    translate: 0 -0.9px;
   }
 
   .icon-code::before {
