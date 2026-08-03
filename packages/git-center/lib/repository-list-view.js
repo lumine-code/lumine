@@ -3,6 +3,11 @@ const { CompositeDisposable } = require("atom");
 const { applySwitchItem, buildSwitchItems, updateListPreservingScroll } = require("./helpers");
 const { divergenceChips, statusChips } = require("./status-summary");
 
+const ACTIONS = [
+  { id: "action:auto", auto: true, repoName: "Auto" },
+  { id: "action:rescan", rescan: true, repoName: "Rescan repositories" },
+];
+
 // Repository picker. Selecting a repository makes it the window's active
 // repository (unpinned).
 module.exports = class RepositoryListView {
@@ -16,6 +21,7 @@ module.exports = class RepositoryListView {
     this.selectListView = atom.workspace.buildSelectList({
       className: "git-center-repository-list",
       items: [],
+      separatorIds: [],
       emptyMessage: "No repositories in this window",
       filterKeyForItem: (item) => item.repoName,
       elementForItem: (item, { highlight }) => {
@@ -160,14 +166,16 @@ module.exports = class RepositoryListView {
         });
         continue;
       }
-      const items = [
-        { auto: true, repoName: "Auto" },
-        { rescan: true, repoName: "Rescan repositories" },
-        ...(await buildSwitchItems()).filter((item) => item.current),
-      ];
+      // One row per repository, so the working directory identifies it.
+      const repositories = (await buildSwitchItems())
+        .filter((item) => item.current)
+        .map((item) => ({ ...item, id: `repo:${item.workingDirectory}` }));
+      const items = [...ACTIONS, ...repositories];
       if (!this.selectListView.isVisible()) return;
       await updateListPreservingScroll(this.selectListView, {
         items,
+        // A rule below the actions, as in the branch list.
+        separatorIds: repositories.length > 0 ? [repositories[0].id] : [],
         loadingMessage: null,
       });
     }

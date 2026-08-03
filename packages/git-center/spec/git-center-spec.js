@@ -258,6 +258,15 @@ describe("git-center", () => {
       "The active repository is updated based on the active editor.",
     );
     expect(items.slice(2).every((item) => item.current)).toBe(true);
+
+    const separators = Array.from(
+      listView.element.querySelectorAll(".list-group > .select-list-separator"),
+    );
+    expect(separators.length).toBe(1);
+    expect(separators[0].nextElementSibling.querySelector(".primary-text").textContent).toBe(
+      items[2].repoName,
+    );
+
     const target = items.find((item) => item.repository === repoB.repository);
     expect(target).toBeTruthy();
     listView.props.didConfirmSelection(target);
