@@ -190,7 +190,7 @@ describe("watchPath", function () {
     });
   }
 
-  // `@parcel/watcher` is the only watcher backend.
+  // `@lumine-code/watcher` is the only watcher backend.
   const WATCHER_IMPLEMENTATIONS = ["parcel"];
 
   for (let impl of WATCHER_IMPLEMENTATIONS) {

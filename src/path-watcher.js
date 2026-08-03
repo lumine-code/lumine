@@ -525,7 +525,7 @@ class WorkerProcessWatcher extends NativeWatcher {
   }
 }
 
-// Private: A file-watcher implementation that uses `@parcel/watcher`.
+// Private: A file-watcher implementation that uses `@lumine-code/watcher`.
 //
 // We briefly experimented with importing it directly into the renderer
 // process, but it caused crashes on window reload for reasons that haven't
@@ -893,7 +893,7 @@ class PathWatcher {
 }
 
 // Private: Globally tracked state used to de-duplicate related
-// [PathWatchers]{PathWatcher} backed by the `@parcel/watcher` worker.
+// [PathWatchers]{PathWatcher} backed by the `@lumine-code/watcher` worker.
 class PathWatcherManager {
   // Private: Access the currently active manager instance, creating one if
   // necessary.
@@ -905,7 +905,7 @@ class PathWatcherManager {
   }
 
   // Private: Initialize global {PathWatcher} state. All watching is served by
-  // the `@parcel/watcher` worker: recursive trees via `@parcel/watcher` itself
+  // the `@lumine-code/watcher` worker: recursive trees via `@lumine-code/watcher` itself
   // and single files / non-recursive directories via its Node fallback.
   constructor() {
     this.live = new Map();
@@ -922,7 +922,7 @@ class PathWatcherManager {
     // Recursive tree watches (e.g. project roots) consolidate onto shared parent
     // watchers. Single-file / non-recursive watches use a separate registry so
     // they are never adopted by a recursive parent: a recursive parent is backed
-    // by `@parcel/watcher`, which reports a move as delete+create and so cannot
+    // by `@lumine-code/watcher`, which reports a move as delete+create and so cannot
     // follow renames or coalesce atomic saves the way the per-file Node watcher
     // does. Keeping them separate guarantees each file gets its own Node watcher.
     this.nativeRegistry = new NativeWatcherRegistry(createNative);
@@ -1150,7 +1150,7 @@ watchPath.settlePendingTeardown = async function settlePendingTeardown() {
 };
 
 // Private: Retained for spec compatibility. Backend switching was removed when
-// `@parcel/watcher` became the only watcher, so there is nothing to wait for.
+// `@lumine-code/watcher` became the only watcher, so there is nothing to wait for.
 watchPath.waitForTransition = async function waitForTransition() {};
 
 // Private: Stop all watchers and reset `PathWatcherManager` to its initial

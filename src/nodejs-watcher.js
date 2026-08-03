@@ -1,7 +1,7 @@
 // Non-recursive filesystem watcher built on Node's `fs.watch`, used inside the
 // watcher worker (see parcel-watcher-worker.js) for single files and for
 // non-recursive directory watches. Recursive tree watching is handled
-// separately by `@parcel/watcher`.
+// separately by `@lumine-code/watcher`.
 //
 // The design follows VS Code's non-recursive watcher, and exists because
 // `fs.watch` pointed *directly* at a file is unreliable: editors save

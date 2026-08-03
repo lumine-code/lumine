@@ -43,7 +43,7 @@
     "@lumine-code/superstring": "https://github.com/lumine-code/superstring.git#72dcab5bf7c9615ed15cbffe58a78142998ffff5",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0",
     "@lumine-code/underscore-plus": "https://github.com/lumine-code/underscore-plus.git#2b75d264c2ca01d27ee69d7cd05610a097011274",
-    "@parcel/watcher": "^2.6.0",
+    "@lumine-code/watcher": "https://github.com/lumine-code/watcher.git#3ba5e35b2c38b5d95b766fb6c5e71498c0e3ded1",
     "@typescript/typescript6": "6.0.2",
     "@vscode/ripgrep": "1.18.0",
     "about": "file:packages/about",
@@ -318,7 +318,7 @@
     "github:lumine-code/fuzzy-native#dfbb859c80003849be3d404f0795cdc69a5a6702": true,
     "github:lumine-code/keyboard-layout#b3c034f622c2ab36edc6abb101b0fd7a8e42da50": true,
     "github:lumine-code/superstring#72dcab5bf7c9615ed15cbffe58a78142998ffff5": true,
-    "@parcel/watcher@2.6.0": true,
+    "github:lumine-code/watcher#3ba5e35b2c38b5d95b766fb6c5e71498c0e3ded1": true,
     "electron-winstaller@5.4.0": true,
     "fs-admin": true
   }

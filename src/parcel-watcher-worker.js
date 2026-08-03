@@ -1,6 +1,6 @@
 /* global emit */
 
-// A worker script for `@parcel/watcher`. Runs as a `WatcherTask` (see
+// A worker script for `@lumine-code/watcher`. Runs as a `WatcherTask` (see
 // src/watcher-task.js).
 //
 // Manages any number of individual folder watchers in a single process,
@@ -9,7 +9,7 @@
 // Requests to watch files (rather than directories) are handled via Node's
 // builtin `fs.watch` API.
 
-const watcher = require("@parcel/watcher");
+const watcher = require("@lumine-code/watcher");
 const fs = require("fs");
 const nodejsWatcher = require("./nodejs-watcher");
 
@@ -125,7 +125,7 @@ async function handleMessage(message) {
         }
         let handle;
         if (isDirectory && recursive) {
-          // Recursive tree watch → `@parcel/watcher`.
+          // Recursive tree watch → `@lumine-code/watcher`.
           let ignore = ignored.reduce((prev, ignoredName) => {
             prev.push(`${ignoredName}`, `**/${ignoredName}`);
             return prev;
@@ -172,7 +172,7 @@ async function handleMessage(message) {
 function run() {
   // Run a no-op on an interval just to keep the task alive.
   setInterval(() => {}, 10000);
-  console.log("@parcel/watcher worker starting");
+  console.log("@lumine-code/watcher worker starting");
   process.on("message", handleMessage);
   emit("watcher:ready");
 }
