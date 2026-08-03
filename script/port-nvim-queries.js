@@ -240,15 +240,32 @@ const QUERY_KINDS = {
   "injections.scm": "injections",
 };
 
+// Rewrites every capture in a fragment that is not itself part of the source
+// being edited — used for predicate replacements, whose text this tool builds.
+function mapCapturesIn(text, options) {
+  return text.replace(/@[a-zA-Z_][a-zA-Z0-9_.-]*/g, (capture) => {
+    return `@${mapCapture(capture.slice(1), options).name}`;
+  });
+}
+
 function portHighlights(source, options, findings, fileName) {
   const mask = codeMask(source);
   const edits = [];
+  // Predicates are rewritten or removed wholesale, so a capture inside one must
+  // not also be edited: two overlapping edits applied to the same string cut
+  // each other's ranges and silently corrupt the output.
+  const rewritten = [];
 
   for (const predicate of findPredicates(source, mask)) {
     const result = translatePredicate(predicate);
     if (result.kind === "keep") continue;
+    rewritten.push([predicate.start, predicate.end]);
     if (result.kind === "rewrite") {
-      edits.push({ start: predicate.start, end: predicate.end, text: result.text });
+      edits.push({
+        start: predicate.start,
+        end: predicate.end,
+        text: mapCapturesIn(result.text, options),
+      });
       continue;
     }
     edits.push({ start: predicate.start, end: predicate.end, text: "" });
@@ -261,9 +278,13 @@ function portHighlights(source, options, findings, fileName) {
     });
   }
 
+  const insideRewrittenPredicate = (index) =>
+    rewritten.some(([start, end]) => index >= start && index < end);
+
   const capturePattern = /@[a-zA-Z_][a-zA-Z0-9_.-]*/g;
   for (const match of source.matchAll(capturePattern)) {
     if (!mask[match.index]) continue;
+    if (insideRewrittenPredicate(match.index)) continue;
     const original = match[0].slice(1);
     const mapped = mapCapture(original, options);
     if (mapped.name !== original) {
@@ -547,6 +568,14 @@ function main() {
   );
 }
 
-module.exports = { codeMask, findPredicates, mapCapture, translatePredicate, portLocals, verify };
+module.exports = {
+  codeMask,
+  findPredicates,
+  mapCapture,
+  translatePredicate,
+  portLocals,
+  portHighlights,
+  verify,
+};
 
 if (require.main === module) main();

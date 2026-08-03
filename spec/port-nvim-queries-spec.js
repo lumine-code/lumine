@@ -8,6 +8,7 @@ const {
   mapCapture,
   translatePredicate,
   portLocals,
+  portHighlights,
   verify,
 } = require("../script/port-nvim-queries");
 
@@ -153,6 +154,42 @@ describe("port-nvim-queries", () => {
       expect(result.kind).toBe("remove");
       expect(result.reason).toContain("sql");
       expect(result.reason).toContain("lib/main.js");
+    });
+  });
+
+  describe("porting a highlights file", () => {
+    function port(source) {
+      return portHighlights(source, { segment: "lua" }, [], "highlights.scm");
+    }
+
+    it("removes a predicate without eating the pattern around it", () => {
+      // The capture inside the predicate must not also be edited: two
+      // overlapping edits applied to one string cut each other's ranges, which
+      // used to leave a fragment of the removed regex behind as broken syntax.
+      let output = port(
+        '((identifier) @constant\n  (#lua-match? @constant "^[A-Z][A-Z_0-9]*$"))\n',
+      );
+
+      expect(output).toContain("@constant.other.lua");
+      expect(output).not.toContain("lua-match");
+      expect(output).not.toContain("Z_0-9");
+      // Parentheses still balance, so the query can compile.
+      expect((output.match(/\(/g) ?? []).length).toBe((output.match(/\)/g) ?? []).length);
+    });
+
+    it("rewrites captures inside a predicate it replaces", () => {
+      let output = port("((a) @variable\n  (#has-ancestor? @variable function_definition))\n");
+
+      expect(output).toContain("test.descendantOfType");
+      expect(output).toContain("@variable.other.lua");
+      expect(output).not.toContain("@variable ");
+    });
+
+    it("leaves a capture that appears only in a kept predicate consistent", () => {
+      let output = port('((a) @keyword\n  (#eq? @keyword "then"))\n');
+
+      expect(output).toContain("(#eq? @keyword.control.lua");
+      expect((output.match(/@keyword\.control\.lua/g) ?? []).length).toBe(2);
     });
   });
 
