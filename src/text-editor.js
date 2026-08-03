@@ -4677,7 +4677,7 @@ module.exports = class TextEditor {
 
       if (languageMode.atTransactionEnd && options.autoIndent && text.includes("\n")) {
         // The `autoIndent` option as passed to `Selection#insertText` has no
-        // effect in `WASMTreeSitterLanguageMode` because it asks what the
+        // effect in `TreeSitterLanguageMode` because it asks what the
         // right indent level would be for the given text _before_ inserting
         // it, and that question can't be answered because the text isn't part
         // of the buffer yet and can't be parsed.

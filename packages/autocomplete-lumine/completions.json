@@ -5404,7 +5404,7 @@
       "type": "method"
     }
   ],
-  "WASMTreeSitterGrammar": [
+  "TreeSitterGrammar": [
     {
       "name": "addInjectionPoint",
       "text": null,

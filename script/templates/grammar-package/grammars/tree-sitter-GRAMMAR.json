@@ -1,7 +1,7 @@
 {
   "name": "{{Title}}",
   "scopeName": "{{scope}}",
-  "type": "modern-tree-sitter",
+  "type": "tree-sitter",
   "parser": "{{parser}}",
   "injectionRegex": "{{injectionRegex}}",
   "fileTypes": {{fileTypes}},

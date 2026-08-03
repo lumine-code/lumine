@@ -4,8 +4,8 @@ const TextBuffer = require("../src/text-buffer");
 const { Point, Range } = TextBuffer;
 const CSON = require("@lumine-code/season");
 const ScopeResolver = require("../src/scope-resolver.js");
-const WASMTreeSitterGrammar = require("../src/wasm-tree-sitter-grammar");
-const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mode");
+const TreeSitterGrammar = require("../src/tree-sitter-grammar");
+const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 // Language packages live in their own repositories and arrive through
 // node_modules, so resolve them by name rather than by a path into packages/.
@@ -13,10 +13,10 @@ function resolve(modulePath) {
   return require.resolve(modulePath);
 }
 
-const jsGrammarPath = resolve("language-javascript/grammars/modern-tree-sitter-javascript.json");
+const jsGrammarPath = resolve("language-javascript/grammars/tree-sitter-javascript.json");
 let jsConfig = CSON.readFileSync(jsGrammarPath);
 
-const jsRegexGrammarPath = resolve("language-javascript/grammars/modern-tree-sitter-regex.json");
+const jsRegexGrammarPath = resolve("language-javascript/grammars/tree-sitter-regex.json");
 let jsRegexConfig = CSON.readFileSync(jsRegexGrammarPath);
 
 async function getAllCapturesWithScopeResolver(grammar, languageMode, scopeResolver, layer = null) {
@@ -80,7 +80,7 @@ describe("ScopeResolver", () => {
   let editor, buffer, grammar;
 
   beforeEach(async () => {
-    grammar = new WASMTreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+    grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
     editor = await atom.workspace.open("");
     buffer = editor.getBuffer();
     atom.grammars.addGrammar(grammar);
@@ -104,7 +104,7 @@ describe("ScopeResolver", () => {
     `,
     );
 
-    const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
     buffer.setLanguageMode(languageMode);
     buffer.setText(dedent`
       // this is a comment
@@ -134,7 +134,7 @@ describe("ScopeResolver", () => {
     `,
     );
 
-    const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
     buffer.setLanguageMode(languageMode);
     buffer.setText(dedent`
       // this is a comment
@@ -171,7 +171,7 @@ describe("ScopeResolver", () => {
       return original(scope, text);
     };
 
-    const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
     buffer.setLanguageMode(languageMode);
     buffer.setText("aa.bb(cc.dd());");
     await languageMode.ready;
@@ -189,7 +189,7 @@ describe("ScopeResolver", () => {
     `,
     );
 
-    const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
     buffer.setLanguageMode(languageMode);
     buffer.setText(dedent`
       // this is a comment
@@ -217,7 +217,7 @@ describe("ScopeResolver", () => {
     `,
     );
 
-    const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
     buffer.setLanguageMode(languageMode);
     buffer.setText(dedent`
       // this is a comment
@@ -252,7 +252,7 @@ describe("ScopeResolver", () => {
     `,
     );
 
-    const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
     buffer.setLanguageMode(languageMode);
     buffer.setText(dedent`
       // this is a comment
@@ -285,7 +285,7 @@ describe("ScopeResolver", () => {
     `,
     );
 
-    const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
     buffer.setLanguageMode(languageMode);
     buffer.setText(dedent`
       // this is a comment
@@ -318,7 +318,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         try { x++ } catch (e) {}
@@ -343,7 +343,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         {from: 'x', to: 'y'}
@@ -369,7 +369,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         {from: 'x', to: 'y'}
@@ -399,7 +399,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         let foo = "this is a line above a comment"
@@ -435,7 +435,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // TODO: Do something
@@ -478,7 +478,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // this is a comment
@@ -517,7 +517,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // this is a comment
@@ -556,7 +556,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // this is a comment
@@ -592,7 +592,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // this is a comment
@@ -627,7 +627,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // this is a comment
@@ -666,7 +666,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // this is a comment
@@ -708,7 +708,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         // this is a comment
@@ -751,7 +751,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud, troz) {}
@@ -786,7 +786,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         let x = foo ||
@@ -821,7 +821,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         let x = foo
@@ -856,7 +856,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         let foo, bar, baz;
@@ -883,7 +883,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         let foo, bar, baz;
@@ -912,7 +912,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo () {}
@@ -937,7 +937,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo () {}
@@ -970,7 +970,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {}
@@ -1001,7 +1001,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {}
@@ -1032,7 +1032,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {}
@@ -1055,7 +1055,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {}
@@ -1081,7 +1081,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {}
@@ -1102,7 +1102,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1130,7 +1130,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1158,7 +1158,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1188,7 +1188,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1217,7 +1217,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1246,7 +1246,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1271,7 +1271,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1301,7 +1301,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1333,7 +1333,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1363,7 +1363,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1393,7 +1393,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1423,7 +1423,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new WASMTreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1465,11 +1465,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      let regexGrammar = new WASMTreeSitterGrammar(
-        atom.grammars,
-        jsRegexGrammarPath,
-        jsRegexConfig,
-      );
+      let regexGrammar = new TreeSitterGrammar(atom.grammars, jsRegexGrammarPath, jsRegexConfig);
       await regexGrammar.setQueryForTest(
         "highlightsQuery",
         `
@@ -1487,7 +1483,7 @@ describe("ScopeResolver", () => {
         languageScope: null,
       });
 
-      const languageMode = new WASMTreeSitterLanguageMode({
+      const languageMode = new TreeSitterLanguageMode({
         grammar,
         buffer,
         config: atom.config,

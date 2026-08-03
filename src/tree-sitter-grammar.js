@@ -81,7 +81,7 @@ const QUERY_ERROR_KIND_LABELS = {
 };
 
 // Extended: This class holds an instance of a Tree-sitter grammar.
-module.exports = class WASMTreeSitterGrammar {
+module.exports = class TreeSitterGrammar {
   // Cache each `Language` instance at its own path.
   static LANGUAGE_CACHE = new Map();
 
@@ -114,7 +114,7 @@ module.exports = class WASMTreeSitterGrammar {
   constructor(registry, grammarPath, params) {
     this.registry = registry;
     this.name = params.name;
-    this.type = "modern-tree-sitter";
+    this.type = "tree-sitter";
     this.scopeName = params.scopeName;
 
     this.contentRegex = buildRegex(params.contentRegex);
@@ -244,7 +244,7 @@ module.exports = class WASMTreeSitterGrammar {
     await parserInitPromise;
     if (!this._language) {
       try {
-        this._language = await WASMTreeSitterGrammar.loadLanguage(this.treeSitterGrammarPath);
+        this._language = await TreeSitterGrammar.loadLanguage(this.treeSitterGrammarPath);
       } catch (err) {
         console.error(`Error loading grammar for ${this.scopeName}; original error follows`);
         console.error(err);
@@ -486,7 +486,7 @@ module.exports = class WASMTreeSitterGrammar {
     this.reportedQueryErrors.add(dedupeKey);
 
     let descriptor = error.queryDescriptor ?? this.describeQueryError(error, queryType);
-    let formatted = WASMTreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
+    let formatted = TreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
     console.error(formatted, error);
     if (atom.inDevMode() && !atom.inSpecMode()) {
       atom.notifications.addError(`Tree-sitter query error in ${this.scopeName}`, {
@@ -660,7 +660,7 @@ module.exports = class WASMTreeSitterGrammar {
   // grammar's default queries.
   //
   // * callback A function with the following argument:
-  //   * grammar The {WASMTreeSitterGrammar} whose queries have loaded.
+  //   * grammar The {TreeSitterGrammar} whose queries have loaded.
   onDidLoadQueryFiles(callback) {
     return this.emitter.on("did-load-query-files", callback);
   }
@@ -670,7 +670,7 @@ module.exports = class WASMTreeSitterGrammar {
   //
   // * callback A function with the following argument:
   //   * injectionPoint The injection point added to the grammar. See
-  //     {WASMTreeSitterGrammar::addInjectionPoint}.
+  //     {TreeSitterGrammar::addInjectionPoint}.
   onDidAddInjectionPoint(callback) {
     return this.emitter.on("did-add-injection-point", callback);
   }
@@ -680,7 +680,7 @@ module.exports = class WASMTreeSitterGrammar {
   //
   // * callback A function with the following argument:
   //   * injectionPoint The injection point removed from this grammar. See
-  //     {WASMTreeSitterGrammar::addInjectionPoint}.
+  //     {TreeSitterGrammar::addInjectionPoint}.
   onDidRemoveInjectionPoint(callback) {
     return this.emitter.on("did-remove-injection-point", callback);
   }
@@ -719,10 +719,8 @@ module.exports = class WASMTreeSitterGrammar {
   // language scope as the first argument.
   //
   // NOTE: Packages will call {::addInjectionPoint} with a given scope name,
-  // and that call will be delegated to any Tree-sitter grammars that match
-  // that scope name, whether they're legacy Tree-sitter or modern Tree-sitter.
-  // But modern Tree-sitter grammars cannot be injected into legacy Tree-sitter
-  // grammars, and vice versa.
+  // and that call will be delegated to any Tree-sitter grammar matching that
+  // scope name.
   //
   // * `injectionPoint` The options for the injection point:
   //   * `type` A {String} describing the type of node to inject into.
@@ -791,7 +789,7 @@ module.exports = class WASMTreeSitterGrammar {
   }
 
   inspect() {
-    return `WASMTreeSitterGrammar {scopeName: ${this.scopeName}}`;
+    return `TreeSitterGrammar {scopeName: ${this.scopeName}}`;
   }
 
   /*

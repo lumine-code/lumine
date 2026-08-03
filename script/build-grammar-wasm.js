@@ -186,7 +186,7 @@ function collectAllConfigs(roots = [PACKAGES_DIR]) {
         } catch {
           continue;
         }
-        if (config.type !== "modern-tree-sitter" || !config.treeSitter?.grammar) continue;
+        if (config.type !== "tree-sitter" || !config.treeSitter?.grammar) continue;
         seen.add(key);
         configs.push({ packageName: path.basename(packageDir), configPath, config });
       }
@@ -545,8 +545,8 @@ async function main() {
   }
 
   const config = CSON.readFileSync(options.configPath);
-  if (config.type !== "modern-tree-sitter" || !config.treeSitter?.grammar) {
-    fail(`${options.configPath} is not a modern-tree-sitter grammar config`);
+  if (config.type !== "tree-sitter" || !config.treeSitter?.grammar) {
+    fail(`${options.configPath} is not a tree-sitter grammar config`);
   }
   await buildOne({ configPath: options.configPath, config }, options, toolchain);
 }

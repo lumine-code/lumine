@@ -2,13 +2,12 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const CSON = require("@lumine-code/season");
-const WASMTreeSitterGrammar = require("../src/wasm-tree-sitter-grammar");
-const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mode");
+const TreeSitterGrammar = require("../src/tree-sitter-grammar");
+const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 // Language packages live in their own repositories and arrive through
 // node_modules, so resolve by name rather than by a path into packages/.
-const jsGrammarPath =
-  require.resolve("language-javascript/grammars/modern-tree-sitter-javascript.json");
+const jsGrammarPath = require.resolve("language-javascript/grammars/tree-sitter-javascript.json");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -24,7 +23,7 @@ async function conditionPromise(predicate, timeoutMs = 4000) {
   }
 }
 
-describe("WASMTreeSitterGrammar", () => {
+describe("TreeSitterGrammar", () => {
   let tempDir, wasmPath;
 
   beforeEach(() => {
@@ -50,10 +49,10 @@ describe("WASMTreeSitterGrammar", () => {
   }
 
   function makeGrammar(treeSitterOverrides = {}) {
-    return new WASMTreeSitterGrammar(atom.grammars, path.join(tempDir, "grammar.json"), {
+    return new TreeSitterGrammar(atom.grammars, path.join(tempDir, "grammar.json"), {
       name: "Test JavaScript",
       scopeName: "source.test-js",
-      type: "modern-tree-sitter",
+      type: "tree-sitter",
       parser: "tree-sitter-javascript",
       treeSitter: {
         grammar: "grammar.wasm",
@@ -91,7 +90,7 @@ describe("WASMTreeSitterGrammar", () => {
       expect(descriptor.word).toBe("bogus_node_type");
       expect(descriptor.lineText).toContain("bogus_node_type");
 
-      let formatted = WASMTreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
+      let formatted = TreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
       expect(formatted).toContain("second.scm:3");
       expect(formatted).toContain("unknown node type: 'bogus_node_type'");
     });
@@ -138,7 +137,7 @@ describe("WASMTreeSitterGrammar", () => {
       expect(path.basename(descriptor.candidateFiles[0])).toBe("predicate.scm");
       expect(descriptor.message).toBeTruthy();
 
-      let formatted = WASMTreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
+      let formatted = TreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
       expect(formatted).toContain("predicate.scm");
       expect(formatted).toContain(descriptor.message);
     });
@@ -194,7 +193,7 @@ describe("WASMTreeSitterGrammar", () => {
 
       let editor = await atom.workspace.open("");
       let buffer = editor.getBuffer();
-      let languageMode = new WASMTreeSitterLanguageMode({ buffer, grammar });
+      let languageMode = new TreeSitterLanguageMode({ buffer, grammar });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
@@ -234,7 +233,7 @@ describe("WASMTreeSitterGrammar", () => {
       let editor = await atom.workspace.open("");
       let buffer = editor.getBuffer();
       buffer.setText("function f() { return 1; }\n");
-      let languageMode = new WASMTreeSitterLanguageMode({ buffer, grammar });
+      let languageMode = new TreeSitterLanguageMode({ buffer, grammar });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 

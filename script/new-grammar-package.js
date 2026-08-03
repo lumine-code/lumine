@@ -172,7 +172,7 @@ function render(text, tokens) {
 // and the settings file are both named after the language.
 function targetNameFor(relativePath, tokens) {
   return relativePath
-    .replace("modern-tree-sitter-GRAMMAR.json", `modern-tree-sitter-${tokens.segment}.json`)
+    .replace("tree-sitter-GRAMMAR.json", `tree-sitter-${tokens.segment}.json`)
     .replace(path.join("settings", "SETTINGS.json"), path.join("settings", `${tokens.name}.json`));
 }
 
@@ -258,7 +258,7 @@ function main() {
 
   const steps = [
     `Build the wasm:\n` +
-      `     node script/build-grammar-wasm.js ${path.join(outDir, "grammars", `modern-tree-sitter-${tokens.segment}.json`)} \\\n` +
+      `     node script/build-grammar-wasm.js ${path.join(outDir, "grammars", `tree-sitter-${tokens.segment}.json`)} \\\n` +
       `          --source "${tokens.parserSource}"`,
     `Port the queries into grammars/${tokens.parser}/:\n` +
       `     node script/port-nvim-queries.js <upstream-queries> --out ${path.join(outDir, "grammars", tokens.parser)} --segment ${tokens.segment}\n` +

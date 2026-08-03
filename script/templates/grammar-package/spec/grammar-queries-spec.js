@@ -26,7 +26,7 @@ describe(`${PACKAGE_NAME} Tree-sitter queries`, () => {
     const packageDir = path.resolve(__dirname, "..");
     grammars = atom.grammars
       .getGrammars({ includeTreeSitter: true })
-      .filter((grammar) => grammar.constructor.name === "WASMTreeSitterGrammar")
+      .filter((grammar) => grammar.constructor.name === "TreeSitterGrammar")
       .filter((grammar) => grammar.grammarFilePath?.startsWith(packageDir));
   });
 

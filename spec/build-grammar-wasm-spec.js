@@ -26,7 +26,7 @@ describe("build-grammar-wasm root resolution", () => {
     return {
       name: scopeName,
       scopeName,
-      type: "modern-tree-sitter",
+      type: "tree-sitter",
       treeSitter: { parserSource: "github:example/example#v1.0.0", grammar: wasm },
     };
   }
@@ -91,12 +91,12 @@ describe("build-grammar-wasm root resolution", () => {
       expect(configs[0].config.scopeName).toBe("source.example");
     });
 
-    it("skips configs that are not modern-tree-sitter grammars", () => {
+    it("skips configs that are not tree-sitter grammars", () => {
       let packageDir = path.join(tempRoot, "language-example");
       writeConfig(packageDir, "textmate.json", { scopeName: "source.textmate", patterns: [] });
       writeConfig(packageDir, "no-wasm.json", {
         scopeName: "source.incomplete",
-        type: "modern-tree-sitter",
+        type: "tree-sitter",
         treeSitter: {},
       });
 

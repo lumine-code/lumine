@@ -219,7 +219,7 @@ let nextLanguageModeId = 0;
 const COMMENT_MATCHER = matcherForSelector("comment");
 const MAX_RANGE = new Range(Point.ZERO, Point.INFINITY).freeze();
 
-class WASMTreeSitterLanguageMode {
+class TreeSitterLanguageMode {
   constructor({ buffer, grammar, config, grammars, syncTimeoutMicros }) {
     this.id = nextLanguageModeId++;
     this.buffer = buffer;
@@ -281,7 +281,7 @@ class WASMTreeSitterLanguageMode {
     // whether to dedent the line. There are no simplicity gains to be made.
     //
     // `IndentResolver` _could_ therefore fold its methods into
-    // `WASMTreeSitterLanguageMode`, but is separate from it for reasons of
+    // `TreeSitterLanguageMode`, but is separate from it for reasons of
     // code organization.
     this.indentResolver = new IndentResolver(this.buffer, this);
 
@@ -593,8 +593,8 @@ class WASMTreeSitterLanguageMode {
       // grammar to use it for injection.
       return;
     }
-    if (grammar.type !== "modern-tree-sitter") {
-      // Only other `WASMTreeSitterGrammar`s can be injected into this language
+    if (grammar.type !== "tree-sitter") {
+      // Only other `TreeSitterGrammar`s can be injected into this language
       // mode.
       return;
     }
@@ -1567,7 +1567,7 @@ class WASMTreeSitterLanguageMode {
   // validates edits made to query files after the grammar first loaded.
   //
   // Returns an {Array} of failure descriptors (see
-  // {WASMTreeSitterGrammar::describeQueryError}); the array is empty when
+  // {TreeSitterGrammar::describeQueryError}); the array is empty when
   // every query compiled.
   validateGrammarQueries() {
     const queryTypes = [
@@ -3082,7 +3082,7 @@ class LanguageLayer {
   // query files, but those edits are only monitored in dev mode.
   //
   // It can also happen if a community package uses an API on
-  // {WASMTreeSitterGrammar} to modify a query after initial load.
+  // {TreeSitterGrammar} to modify a query after initial load.
   observeQueryChanges() {
     this.grammar.onDidChangeQuery(async ({ queryType }) => {
       if (this._pendingQueryFileChange) {
@@ -4014,7 +4014,7 @@ class LanguageLayer {
     return results;
   }
 
-  // Like `WASMTreeSitterLanguageMode#getSyntaxNodeAtPosition`, but for just this
+  // Like `TreeSitterLanguageMode#getSyntaxNodeAtPosition`, but for just this
   // layer.
   getSyntaxNodeAtPosition(position, where = FUNCTION_TRUE) {
     if (!this.language || !this.tree) {
@@ -4644,7 +4644,7 @@ class RangeList {
 
 // Private: A class that manages indentation hinting for a single editor.
 //
-// Each instance of `WASMTreeSitterLanguageMode` has exactly one instance of
+// Each instance of `TreeSitterLanguageMode` has exactly one instance of
 // `IndentResolver`; the purpose of this class is to encapsulate indentation
 // logic instead of having it dominate the language mode for those
 // familiarizing themselves with the code.
@@ -4658,7 +4658,7 @@ class IndentResolver {
   // Get the suggested indentation level for an existing line in the
   // buffer.
   //
-  // See {WASMTreeSitterLanguageMode::suggestedIndentForBufferRow}.
+  // See {TreeSitterLanguageMode::suggestedIndentForBufferRow}.
   suggestedIndentForBufferRow(row, tabLength, rawOptions = {}) {
     if (row === 0) {
       return 0;
@@ -5886,4 +5886,4 @@ IndentResolver.TESTS = {
   },
 };
 
-module.exports = WASMTreeSitterLanguageMode;
+module.exports = TreeSitterLanguageMode;

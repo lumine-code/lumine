@@ -11,7 +11,7 @@ const Pane = require("../src/pane");
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
 const TextMateLanguageMode = require("../src/text-mate-language-mode");
-const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mode");
+const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 async function languageModeReady(editor) {
   let languageMode = editor.getBuffer().getLanguageMode();
@@ -9826,7 +9826,7 @@ describe("TextEditor", () => {
       });
     });
 
-    it("returns comment delimiters on a modern Tree-sitter grammar", async () => {
+    it("returns comment delimiters on a Tree-sitter grammar", async () => {
       jasmine.useRealClock();
       atom.config.set("language.useTreeSitterParsers", true);
 
@@ -9835,7 +9835,7 @@ describe("TextEditor", () => {
 
       let buffer = editor.getBuffer();
 
-      let languageMode = new WASMTreeSitterLanguageMode({
+      let languageMode = new TreeSitterLanguageMode({
         buffer,
         grammar: atom.grammars.grammarForScopeName("source.js"),
         grammars: atom.grammars,
@@ -9890,7 +9890,7 @@ describe("TextEditor", () => {
 
       let buffer = editor.getBuffer();
 
-      let languageMode = new WASMTreeSitterLanguageMode({
+      let languageMode = new TreeSitterLanguageMode({
         buffer,
         grammar: atom.grammars.grammarForScopeName("source.js"),
         grammars: atom.grammars,

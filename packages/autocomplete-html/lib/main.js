@@ -1,4 +1,3 @@
-const getSuggestionsWithTreeSitter = require("./tree-sitter-provider");
 const getSuggestionsWithTextMate = require("./text-mate-provider");
 
 const provider = {
@@ -8,12 +7,19 @@ const provider = {
 
   getSuggestions(request) {
     try {
-      let languageMode = request.editor.getBuffer().getLanguageMode();
-      if (languageMode.constructor.name === "TreeSitterLanguageMode") {
-        return getSuggestionsWithTreeSitter(request);
-      } else {
-        return getSuggestionsWithTextMate(request);
-      }
+      // Every buffer, Tree-sitter or not, goes through the TextMate provider.
+      //
+      // `lib/tree-sitter-provider.js` was written against an older
+      // tree-sitter-html and no longer matches the trees the current one
+      // produces: for `<` it yields `(document (ERROR))`, in which the provider
+      // finds no token to complete from, so it returns nothing at all. It is
+      // kept as the starting point for a rewrite, and is not wired up.
+      //
+      // This was already the behaviour — the branch that chose between the two
+      // compared `constructor.name` against a class name that had not existed
+      // for a long time, so it always fell through to here. That is now a
+      // decision rather than an accident.
+      return getSuggestionsWithTextMate(request);
     } catch (err) {
       // We avoid creating any actual error messages, as this is intended to fix
       // the case when providing completions for EJS that multiple continious

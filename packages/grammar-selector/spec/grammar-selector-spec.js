@@ -93,7 +93,7 @@ describe("GrammarSelector", () => {
       grammarView.props.didConfirmSelection(grammarView.items[0]);
       let currentGrammar = editor.getGrammar();
       expect(currentGrammar.scopeName).toBe("source.js");
-      expect(currentGrammar.constructor.name).toBe("WASMTreeSitterGrammar");
+      expect(currentGrammar.constructor.name).toBe("TreeSitterGrammar");
     });
   });
 
@@ -232,8 +232,8 @@ describe("GrammarSelector", () => {
           const grammar = listItems[i];
           const name = grammar.name;
           if (cppCount === 0 && name === "C++") {
-            // First C++ entry should be modern Tree-sitter.
-            expect(grammar.constructor.name).toBe("WASMTreeSitterGrammar");
+            // First C++ entry should be Tree-sitter.
+            expect(grammar.constructor.name).toBe("TreeSitterGrammar");
             cppCount++;
           } else if (cppCount === 1) {
             // immediate next grammar should be the TextMate version
@@ -263,8 +263,8 @@ describe("GrammarSelector", () => {
             expect(grammar.constructor.name).toBe("Grammar");
             cppCount++;
           } else if (cppCount === 1) {
-            // next C++ entry should be modern Tree-sitter
-            expect(grammar.constructor.name).toBe("WASMTreeSitterGrammar");
+            // next C++ entry should be Tree-sitter
+            expect(grammar.constructor.name).toBe("TreeSitterGrammar");
             cppCount++;
           } else {
             expect(name).not.toBe("C++"); // there should not be any other C++ grammars
@@ -321,9 +321,9 @@ describe("GrammarSelector", () => {
 
   // TODO: These tests will need to be altered when we remove legacy
   // tree-sitter altogether.
-  describe('when language parser is "wasm-tree-sitter"', () => {
+  describe('when language parser is "tree-sitter"', () => {
     beforeEach(() => {
-      setConfigForLanguageMode("wasm-tree-sitter");
+      setConfigForLanguageMode("tree-sitter");
     });
 
     describe("when grammar-selector:show is triggered", () => {
@@ -352,7 +352,7 @@ describe("GrammarSelector", () => {
         atom.config.set("grammar-selector.hideDuplicateTextMateGrammars", true);
         const grammarView = await getGrammarView(editor);
         const observedNames = new Map();
-        // Show a maximum of one grammar (the modern tree-sitter variant).
+        // Show a maximum of one grammar (the tree-sitter variant).
         grammarView.element.querySelectorAll("li").forEach((li) => {
           const name = li.getAttribute("data-grammar");
           if (!observedNames.has(name)) {
@@ -369,7 +369,7 @@ describe("GrammarSelector", () => {
         const list = atom.workspace.getModalPanels()[0].item;
         for (const item of list.items) {
           if (item.name === "JavaScript") {
-            expect(item.constructor.name).toBe("WASMTreeSitterGrammar");
+            expect(item.constructor.name).toBe("TreeSitterGrammar");
           }
         }
       });
@@ -395,7 +395,7 @@ describe("GrammarSelector", () => {
         const list = atom.workspace.getModalPanels()[0].item;
         for (const item of list.items) {
           if (item.name === "JavaScript") {
-            expect(item.constructor.name).toBe("WASMTreeSitterGrammar");
+            expect(item.constructor.name).toBe("TreeSitterGrammar");
           }
         }
       });
@@ -437,7 +437,7 @@ describe("GrammarSelector", () => {
           const grammar = listItems[i];
           const name = grammar.name;
           if (cppCount === 0 && name === "C++") {
-            expect(grammar.constructor.name).toBe("WASMTreeSitterGrammar"); // first C++ entry should be Modern Tree-sitter
+            expect(grammar.constructor.name).toBe("TreeSitterGrammar"); // first C++ entry should be Tree-sitter
             cppCount++;
           } else if (cppCount === 1) {
             expect(name).toBe("C++");
@@ -466,11 +466,10 @@ describe("GrammarSelector", () => {
               element.childNodes[1].childNodes[0].className.startsWith("grammar-selector-parser"),
             ).toBe(true);
           }
-          if (item.constructor.name === "TreeSitterGrammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-warning")).toBe(
-              true,
-            );
-          } else if (item.constructor.name === "WASMTreeSitterGrammar") {
+          // Green for the kind the setting prefers, which here is Tree-sitter.
+          // This used to have a `badge-warning` branch first, for a second
+          // Tree-sitter class that has not existed for a long time.
+          if (item.type === "tree-sitter") {
             expect(element.childNodes[1].childNodes[0].classList.contains("badge-success")).toBe(
               true,
             );
@@ -528,7 +527,7 @@ describe("GrammarSelector", () => {
         const list = atom.workspace.getModalPanels()[0].item;
         for (const item of list.items) {
           if (item.name === "JavaScript") {
-            expect(item.constructor.name).toBe("WASMTreeSitterGrammar");
+            expect(item.constructor.name).toBe("TreeSitterGrammar");
           }
         }
       });
@@ -544,7 +543,7 @@ describe("GrammarSelector", () => {
           const grammar = listItems[i];
           const name = grammar.name;
           if (cppCount === 0 && name === "C++") {
-            expect(grammar.constructor.name).toBe("WASMTreeSitterGrammar"); // next C++ entry should be legacy Tree-sitter
+            expect(grammar.constructor.name).toBe("TreeSitterGrammar"); // next C++ entry should be legacy Tree-sitter
             cppCount++;
           } else if (cppCount === 1) {
             expect(name).toBe("C++");
@@ -573,7 +572,7 @@ describe("GrammarSelector", () => {
               element.childNodes[1].childNodes[0].className.startsWith("grammar-selector-parser"),
             ).toBe(true);
           }
-          if (item.constructor.name === "WASMTreeSitterGrammar") {
+          if (item.constructor.name === "TreeSitterGrammar") {
             expect(element.childNodes[1].childNodes[0].classList.contains("badge-success")).toBe(
               true,
             );
@@ -596,12 +595,8 @@ describe("GrammarSelector", () => {
               element.childNodes[1].childNodes[0].className.startsWith("grammar-selector-parser"),
             ).toBe(false);
           }
-          if (item.constructor.name === "TreeSitterGrammar") {
+          if (item.type === "tree-sitter") {
             expect(element.childNodes[1].childNodes[0].classList.contains("badge-success")).toBe(
-              false,
-            );
-          } else if (item.constructor.name === "WASMTreeSitterGrammar") {
-            expect(element.childNodes[1].childNodes[0].classList.contains("badge-warning")).toBe(
               false,
             );
           }

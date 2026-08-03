@@ -5,7 +5,7 @@ const CSON = require("@lumine-code/season");
 // `Parser.init()`, so they must be read lazily — not destructured at require
 // time, when they are still undefined.
 const TreeSitter = require("web-tree-sitter");
-const WASMTreeSitterGrammar = require("../src/wasm-tree-sitter-grammar");
+const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 
 // Compiles every query of every bundled Tree-sitter grammar against its
 // committed wasm. This is the safety net for grammar bumps: a parser update
@@ -32,9 +32,10 @@ function resolveBundledPackageDir(packageName) {
 
 // Grammar packages under development live outside this repository entirely,
 // before they are pinned and installed. Point `LUMINE_GRAMMAR_PACKAGE_ROOTS`
-// at a package checkout or at a directory of them to sweep those too. They are compiled but deliberately not counted:
-// `EXPECTED_GRAMMAR_COUNT` guards the shipped set, and a tripwire whose value
-// depends on a developer's environment is not a tripwire.
+// at a package checkout or at a directory of them to sweep those too. They are
+// compiled but deliberately not counted: `EXPECTED_GRAMMAR_COUNT` guards the
+// shipped set, and a tripwire whose value depends on a developer's environment
+// is not a tripwire.
 function packageDirsInRoot(root) {
   if (!fs.existsSync(root)) return [];
   if (fs.existsSync(path.join(root, "grammars"))) return [root];
@@ -65,7 +66,7 @@ function collectConfigsInPackage(packageDir, bundled) {
     } catch {
       continue;
     }
-    if (config.type !== "modern-tree-sitter") continue;
+    if (config.type !== "tree-sitter") continue;
     configs.push({ packageName, fileName, configPath, config, bundled });
   }
   return configs;
@@ -114,7 +115,7 @@ describe("bundled Tree-sitter grammars", () => {
   for (let { packageName, fileName, configPath, config, bundled } of grammarConfigs) {
     let label = bundled ? `${packageName}/${fileName}` : `${packageName}/${fileName} (out of tree)`;
     it(`${label} (${config.scopeName}) loads and compiles all queries`, async () => {
-      let grammar = new WASMTreeSitterGrammar(atom.grammars, configPath, config);
+      let grammar = new TreeSitterGrammar(atom.grammars, configPath, config);
       try {
         let language = await grammar.getLanguage();
 
@@ -128,7 +129,7 @@ describe("bundled Tree-sitter grammars", () => {
             await grammar.getQuery(key);
           } catch (error) {
             let descriptor = error.queryDescriptor ?? grammar.describeQueryError(error, key);
-            failures.push(WASMTreeSitterGrammar.formatQueryErrorDescriptor(descriptor));
+            failures.push(TreeSitterGrammar.formatQueryErrorDescriptor(descriptor));
           }
         }
         expect(failures).toEqual([]);

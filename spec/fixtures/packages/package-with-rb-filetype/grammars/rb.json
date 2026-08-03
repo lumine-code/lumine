@@ -1,6 +1,6 @@
 {
   "name": "Test Ruby",
-  "type": "modern-tree-sitter",
+  "type": "tree-sitter",
   "scopeName": "test.rb",
   "parser": "tree-sitter-ruby",
   "firstLineRegex": "^\\#!.*(?:\\s|\\/)(?:testruby)(?:$|\\s)",

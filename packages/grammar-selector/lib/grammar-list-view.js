@@ -28,7 +28,10 @@ module.exports = class GrammarListView {
         const div = document.createElement("div");
         div.classList.add("pull-right");
 
-        if (!this.hideDuplicateGrammars) {
+        // "Auto Detect" is a placeholder rather than a grammar, so it gets no
+        // parser badge — the switch this replaced happened to return undefined
+        // for it, which was load-bearing by accident.
+        if (!this.hideDuplicateGrammars && grammar !== this.autoDetect) {
           // When we show all grammars, we should add a badge to each grammar
           // to distinguish them from one another in the list.
           const parser = document.createElement("span");
@@ -38,7 +41,7 @@ module.exports = class GrammarListView {
 
           parser.classList.add("grammar-selector-parser", "badge", badgeColor);
           parser.textContent = badgeText;
-          if (isModernTreeSitter(grammar)) {
+          if (isTreeSitter(grammar)) {
             parser.setAttribute(
               "title",
               "(Recommended) A faster parser with improved syntax highlighting & code navigation support.",
@@ -148,11 +151,16 @@ module.exports = class GrammarListView {
 // manner.
 function getLanguageModeConfig() {
   let isTreeSitterMode = atom.config.get("language.useTreeSitterParsers");
-  return isTreeSitterMode ? "web-tree-sitter" : "textmate";
+  return isTreeSitterMode ? "tree-sitter" : "textmate";
 }
 
-function isModernTreeSitter(grammar) {
-  return grammar.constructor.name === "WASMTreeSitterGrammar";
+// The grammar's own `type`, not `constructor.name`: the class name is a string
+// that any rename silently breaks, and a bundled package must not reach into
+// the editor's `src/` to get at the class for an `instanceof`. This file used
+// to carry entries for a second, long-removed Tree-sitter class that nothing
+// could ever match.
+function isTreeSitter(grammar) {
+  return grammar.type === "tree-sitter";
 }
 
 function compareGrammarType(a, b) {
@@ -169,40 +177,24 @@ function getParserPreferenceForScopeName(scopeName) {
   if (!useTreeSitterParsers) {
     return "textmate";
   } else {
-    return "web-tree-sitter";
+    return "tree-sitter";
   }
 }
 
 function getBadgeTextForGrammar(grammar) {
-  switch (grammar.constructor.name) {
-    case "Grammar":
-      return "TextMate";
-    case "WASMTreeSitterGrammar":
-      return "Tree-sitter";
-  }
+  return isTreeSitter(grammar) ? "Tree-sitter" : "TextMate";
 }
 
-const BADGE_COLORS_BY_LANGUAGE_MODE_CONFIG = {
-  textmate: {
-    Grammar: "badge-success",
-    TreeSitterGrammar: "badge-info",
-    WASMTreeSitterGrammar: "badge-info",
-  },
-  "web-tree-sitter": {
-    WASMTreeSitterGrammar: "badge-success",
-    TreeSitterGrammar: "badge-warning",
-    Grammar: "badge-info",
-  },
-};
-
+// Green for the kind the user's setting prefers, blue for the other. There are
+// exactly two kinds, so this is a choice rather than a lookup table — the table
+// this replaced was keyed by class name and had a third, dead entry.
 function getBadgeColorForGrammar(grammar) {
-  let languageModeConfig = getLanguageModeConfig();
-  let classNameMap = BADGE_COLORS_BY_LANGUAGE_MODE_CONFIG[languageModeConfig];
-  return classNameMap[grammar.constructor.name];
+  let preferred = getLanguageModeConfig() === "tree-sitter";
+  return isTreeSitter(grammar) === preferred ? "badge-success" : "badge-info";
 }
 
 function getGrammarScore(grammar) {
   let languageParser = getParserPreferenceForScopeName(grammar.scopeName);
-  if (isModernTreeSitter(grammar)) return -2;
+  if (isTreeSitter(grammar)) return -2;
   return languageParser === "textmate" ? -3 : 0;
 }

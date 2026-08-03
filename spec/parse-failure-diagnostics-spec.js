@@ -1,7 +1,7 @@
 const CSON = require("@lumine-code/season");
 const TextBuffer = require("../src/text-buffer");
-const WASMTreeSitterGrammar = require("../src/wasm-tree-sitter-grammar");
-const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mode");
+const TreeSitterGrammar = require("../src/tree-sitter-grammar");
+const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 // A fault inside a grammar's wasm arrives as a bare
 // `RuntimeError: memory access out of bounds` whose stack stops at
@@ -9,8 +9,7 @@ const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mod
 // because injection layers parse through the same path, the file's own grammar
 // is not even a reliable guess. Everything here is about the message.
 
-const jsGrammarPath =
-  require.resolve("language-javascript/grammars/modern-tree-sitter-javascript.json");
+const jsGrammarPath = require.resolve("language-javascript/grammars/tree-sitter-javascript.json");
 
 describe("parse failure diagnostics", () => {
   let buffer, languageMode, grammar;
@@ -18,12 +17,8 @@ describe("parse failure diagnostics", () => {
   beforeEach(async () => {
     jasmine.useRealClock();
     buffer = new TextBuffer("const answer = 42;\n");
-    grammar = new WASMTreeSitterGrammar(
-      atom.grammars,
-      jsGrammarPath,
-      CSON.readFileSync(jsGrammarPath),
-    );
-    languageMode = new WASMTreeSitterLanguageMode({ buffer, grammar });
+    grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, CSON.readFileSync(jsGrammarPath));
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
     buffer.setLanguageMode(languageMode);
     await languageMode.ready;
   });

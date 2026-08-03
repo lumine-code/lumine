@@ -3,7 +3,7 @@ const { Point } = require("./text-buffer");
 const ScopeDescriptor = require("./scope-descriptor");
 
 // TODO: These utility functions are duplicated between this file and
-// `wasm-tree-sitter-language-mode.js`. Eventually they might need to be moved
+// `tree-sitter-language-mode.js`. Eventually they might need to be moved
 // into a `utils` file somewhere.
 
 // Compares “informal” points like the ones in a tree-sitter tree; saves us
