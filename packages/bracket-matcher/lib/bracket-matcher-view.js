@@ -289,14 +289,29 @@ module.exports = class BracketMatcherView {
     }
   }
 
-  findMatchingTagsWithSyntaxTree() {
+  // The Tree-sitter counterpart of `TagFinder#findStartEndTags`, and it takes
+  // the same argument for the same reason: `fullRange` spans the whole tag,
+  // delimiters included, while the default spans only the tag name. Without
+  // that distinction this returned the full range unconditionally and
+  // `go-to-enclosing-bracket` put the cursor on the `<` rather than on the name
+  // — one column off from where the TextMate path has always put it, and from
+  // where this file's own highlighting puts it.
+  findMatchingTagsWithSyntaxTree(fullRange = false) {
     const position = this.editor.getCursorBufferPosition();
     const { startTag, endTag } = this.findContainingTagsWithSyntaxTree(position);
-    if (startTag) {
+    if (!startTag) return {};
+
+    if (fullRange) {
       return { startRange: startTag.range, endRange: endTag.range };
-    } else {
-      return {};
     }
+
+    // Child 1 is the tag name, so this skips the `<` — which is the difference
+    // between the two. It cannot delegate to
+    // findMatchingTagNameRangesWithSyntaxTree: that one first requires the
+    // cursor to be inside one of the two tags, and the caller that wants name
+    // ranges here is `go-to-enclosing-bracket`, which runs with the cursor in
+    // the element's content, between them.
+    return { startRange: startTag.child(1).range, endRange: endTag.child(1).range };
   }
 
   findContainingTagsWithSyntaxTree(position) {
@@ -592,7 +607,7 @@ module.exports = class BracketMatcherView {
       } else {
         let startRange, endRange;
         if (this.hasSyntaxTree()) {
-          ({ startRange, endRange } = this.findMatchingTagsWithSyntaxTree());
+          ({ startRange, endRange } = this.findMatchingTagsWithSyntaxTree(true));
         } else {
           ({ startRange, endRange } = this.tagFinder.findStartEndTags(true));
           if (startRange && startRange.compare(endRange) > 0) {
@@ -617,7 +632,7 @@ module.exports = class BracketMatcherView {
 
       if (this.tagHighlighted) {
         if (this.hasSyntaxTree()) {
-          ({ startRange, endRange } = this.findMatchingTagsWithSyntaxTree());
+          ({ startRange, endRange } = this.findMatchingTagsWithSyntaxTree(true));
         } else {
           ({ startRange, endRange } = this.tagFinder.findStartEndTags(true));
           if (startRange && startRange.compare(endRange) > 0) {

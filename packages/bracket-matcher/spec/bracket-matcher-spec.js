@@ -629,18 +629,20 @@ describe("bracket matching", () => {
 
       forEachLanguageWithTags((scopeName) => {
         describe(`in ${scopeName} files`, () => {
-          beforeEach(() => {
-            waitsForPromise(() =>
-              atom.workspace.open(path.join(__dirname, "fixtures", "sample.xml")),
-            );
+          // Tag matching reads scopes, and a Tree-sitter grammar has none to
+          // give until its first parse finishes. Dispatching before that just
+          // leaves the cursor where it was, which is indistinguishable from
+          // tag matching being broken.
+          beforeEach(async () => {
+            await atom.workspace.open(path.join(__dirname, "fixtures", "sample.xml"));
 
-            runs(() => {
-              editor = atom.workspace.getActiveTextEditor();
-              editorElement = atom.views.getView(editor);
-              buffer = editor.buffer;
-              atom.grammars.assignLanguageMode(buffer, scopeName);
-              buffer.getLanguageMode().syncOperationLimit = Infinity;
-            });
+            editor = atom.workspace.getActiveTextEditor();
+            editorElement = atom.views.getView(editor);
+            buffer = editor.buffer;
+            atom.grammars.assignLanguageMode(buffer, scopeName);
+            const languageMode = buffer.getLanguageMode();
+            languageMode.syncOperationLimit = Infinity;
+            await languageMode.ready;
           });
 
           describe("when within a <tag></tag> pair", () => {
@@ -869,16 +871,19 @@ describe("bracket matching", () => {
 
     forEachLanguageWithTags((scopeName) => {
       describe(`${scopeName} tag matching`, () => {
-        beforeEach(() => {
-          waitsForPromise(() =>
-            atom.workspace.open(path.join(__dirname, "fixtures", "sample.xml")),
-          );
+        // As above: wait for the parse. This block also never assigned
+        // scopeName, so both iterations were testing whichever grammar
+        // sample.xml happened to select, rather than the two named ones.
+        beforeEach(async () => {
+          await atom.workspace.open(path.join(__dirname, "fixtures", "sample.xml"));
 
-          runs(() => {
-            editor = atom.workspace.getActiveTextEditor();
-            editorElement = atom.views.getView(editor);
-            buffer = editor.buffer;
-          });
+          editor = atom.workspace.getActiveTextEditor();
+          editorElement = atom.views.getView(editor);
+          buffer = editor.buffer;
+          atom.grammars.assignLanguageMode(buffer, scopeName);
+          const languageMode = buffer.getLanguageMode();
+          languageMode.syncOperationLimit = Infinity;
+          await languageMode.ready;
         });
 
         describe("when the cursor is on a starting tag", () => {
