@@ -122,6 +122,12 @@ class TextBuffer {
     // further edits are made.
     this.retainsUnmodifiedTraitAfterDeletion = false;
 
+    // The path `subscribeToFile` currently watches through `watchPath`, and
+    // the teardown of the previous subscription's watcher — settles once the
+    // worker has confirmed the release (see `subscribeToFile`).
+    this.watchedFilePath = null;
+    this.fileWatcherTeardownPromise = null;
+
     this.setEncoding(params.encoding);
     this.setPreferredLineEnding(params.preferredLineEnding);
 
@@ -2499,6 +2505,7 @@ class TextBuffer {
           }),
         );
       }
+      this.watchedFilePath = null;
     } else if (typeof this.file.getPath === "function") {
       // The default data source does no watching of its own, so lumine core
       // watches the path through `watchPath` (served by the file-watcher
@@ -2506,7 +2513,8 @@ class TextBuffer {
       // across atomic saves — see `nodejs-watcher.js`.
       const filePath = this.file.getPath();
       let disposed = false;
-      const watcherPromise = watchPath(filePath, { recursive: false }, (events) => {
+
+      const onWatcherEvents = (events) => {
         for (const event of events) {
           if (event.action === "deleted") {
             onDidDelete();
@@ -2530,7 +2538,34 @@ class TextBuffer {
             onDidChange();
           }
         }
-      });
+      };
+
+      // When the watched path changes (`saveAs`, following a rename), release
+      // the old watch and wait for the worker to confirm it BEFORE arming the
+      // new one. On macOS every released `fs.watch` handle rebuilds the
+      // process-wide FSEventStream "since now"; released after the new watch
+      // has armed, that rebuild permanently discards any event still in the
+      // stream's latency buffer — such as an external change made the moment
+      // the arm promise resolved. A same-path resubscribe keeps the overlapped
+      // switch at the bottom of this method instead, so the registry can reuse
+      // the native watcher and nothing is released at all.
+      let previousTeardown = null;
+      if (this.oldFileSubscriptions && this.watchedFilePath !== filePath) {
+        this.oldFileSubscriptions.dispose();
+        this.oldFileSubscriptions = null;
+        previousTeardown = this.fileWatcherTeardownPromise;
+      }
+      this.watchedFilePath = filePath;
+
+      const startWatching = () => watchPath(filePath, { recursive: false }, onWatcherEvents);
+      const watcherPromise = previousTeardown
+        ? previousTeardown.then(() => {
+            // The buffer may have resubscribed again or been destroyed while
+            // the old watch was shutting down; don't arm a watcher nobody owns.
+            if (disposed || this.destroyed) return null;
+            return startWatching();
+          })
+        : startWatching();
       // Expose when the watcher is armed so callers (and tests) can wait for it
       // before relying on external-change detection.
       this.fileWatchStartPromise = watcherPromise.then(
@@ -2559,8 +2594,16 @@ class TextBuffer {
       this.fileSubscriptions.add(
         new Disposable(() => {
           disposed = true;
-          watcherPromise.then(
-            (watcher) => watcher.dispose(),
+          // Record the teardown so the next subscription can serialize its own
+          // watch behind the confirmed release (see above). Resolves `null`
+          // without ever arming when this subscription was already torn down
+          // mid-chain.
+          this.fileWatcherTeardownPromise = watcherPromise.then(
+            (watcher) => {
+              if (!watcher) return;
+              watcher.dispose();
+              return watcher.getStopPromise();
+            },
             () => {},
           );
         }),

@@ -112,7 +112,11 @@ class NativeWatcher {
     return new Disposable(() => {
       sub.dispose();
       if (this.emitter.listenerCountForEventName("did-change") === 0) {
-        this.stop().catch((error) => this.onError(error));
+        // Keep the teardown's completion observable: `stop()` on a watcher
+        // that is still arming waits out the start first, so this promise
+        // settles only once the backend has acknowledged the release. Exposed
+        // through {PathWatcher::getStopPromise}.
+        this.stopPromise = this.stop().catch((error) => this.onError(error));
       }
     });
   }
@@ -882,6 +886,9 @@ class PathWatcher {
   // broadcasting events immediately.
   dispose() {
     this.disposing = true;
+    // Snapshot the native watcher first: if disposing the last change
+    // callback below stops it, its `will-stop` handler clears `this.native`.
+    const native = this.native;
     this.nativeWatcherRegistry.detach(this);
     for (const sub of this.changeCallbacks.values()) {
       sub.dispose();
@@ -889,6 +896,19 @@ class PathWatcher {
 
     this.emitter.dispose();
     this.subs.dispose();
+    this.stopPromise = native?.stopPromise ?? Promise.resolve();
+  }
+
+  // Private: Return a {Promise} resolving once the native resources this
+  // watcher held have been confirmed released by the backend — immediately
+  // when `dispose()` has not run, or when the native watcher is shared and
+  // stays in use. On macOS, releasing an `fs.watch` handle rebuilds the
+  // process-wide FSEventStream "since now", discarding any event still in its
+  // latency buffer; work that must observe the next filesystem change on
+  // another watch serializes behind this promise (see
+  // `TextBuffer::subscribeToFile`).
+  getStopPromise() {
+    return this.stopPromise ?? Promise.resolve();
   }
 }
 
@@ -1071,12 +1091,28 @@ function watchFile(filePath) {
     if (disposed || target === currentPath) return;
     currentPath = target;
     const previous = watcherPromise;
-    watcherPromise = attach(target);
-    if (previous)
-      previous.then(
-        (watcher) => watcher.dispose(),
-        () => {},
-      );
+    // Release the old watch and wait for the backend to confirm it before
+    // arming the new one. Done the other way around, the release can land
+    // after the new watch has armed — and on macOS a release rebuilds the
+    // process-wide FSEventStream "since now", permanently discarding any
+    // event still in its latency buffer.
+    watcherPromise = (async () => {
+      if (previous) {
+        await previous.then(
+          (watcher) => {
+            if (!watcher) return;
+            watcher.dispose();
+            return watcher.getStopPromise();
+          },
+          () => {},
+        );
+        // The handle may have been disposed, or repointed again, while the
+        // old watch was shutting down.
+        if (disposed || target !== currentPath) return null;
+      }
+      return attach(target);
+    })();
+    watcherPromise.catch(() => {});
   };
 
   watcherPromise = attach(currentPath);
@@ -1108,7 +1144,8 @@ function watchFile(filePath) {
       emitter.dispose();
       if (watcherPromise) {
         watcherPromise.then(
-          (watcher) => watcher.dispose(),
+          // A repoint chain resolves `null` when it aborts (see above).
+          (watcher) => watcher?.dispose(),
           () => {},
         );
       }
