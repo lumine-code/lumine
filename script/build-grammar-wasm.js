@@ -12,8 +12,8 @@
  * Options:
  *   --source <github:org/repo[/subdir]#ref>  bump parserSource before building
  *   --cli-version <x.y.z>  override the default tree-sitter-cli version
- *   --cache-dir <dir>      cache root (default ~/.lumine-grammar-build, or
- *                          env LUMINE_GRAMMAR_BUILD_CACHE)
+ *   --cache-dir <dir>      cache root (default ~/.lumine-grammar-cache, or
+ *                          env LUMINE_GRAMMAR_CACHE)
  *   --package-root <dir>   additional package root to scan, repeatable; also
  *                          read from LUMINE_GRAMMAR_PACKAGE_ROOTS. Use for
  *                          grammar packages that live in their own repository
@@ -29,7 +29,7 @@
  *   --dry-run              build and verify but do not touch the repo
  *
  * Requires emscripten: `emcc` on PATH, or an emsdk checkout at $EMSDK or
- * ~/.lumine-grammar-build/emsdk (clone emscripten-core/emsdk there and run
+ * ~/.lumine-grammar-cache/emsdk (clone emscripten-core/emsdk there and run
  * `emsdk install latest && emsdk activate latest`).
  */
 
@@ -92,7 +92,7 @@ function parseArgs(argv) {
     source: null,
     cliVersion: DEFAULT_TREE_SITTER_CLI,
     cacheDir:
-      process.env.LUMINE_GRAMMAR_BUILD_CACHE || path.join(os.homedir(), ".lumine-grammar-build"),
+      process.env.LUMINE_GRAMMAR_CACHE || path.join(os.homedir(), ".lumine-grammar-cache"),
     packageRoots: [],
   };
   for (let i = 0; i < argv.length; i++) {
@@ -312,7 +312,7 @@ function ensureEmscripten(cacheDir) {
   const candidates = [
     ...(process.env.EMSDK ? [process.env.EMSDK] : []),
     ...(cacheDir ? [path.join(cacheDir, "emsdk")] : []),
-    path.join(os.homedir(), ".lumine-grammar-build", "emsdk"),
+    path.join(os.homedir(), ".lumine-grammar-cache", "emsdk"),
   ];
   for (const emsdkDir of [...new Set(candidates.map((dir) => path.resolve(dir)))]) {
     const emscriptenDir = path.join(emsdkDir, "upstream", "emscripten");
