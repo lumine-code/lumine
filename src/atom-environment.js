@@ -195,6 +195,7 @@ class AtomEnvironment {
     // A forge-agnostic, OS-encrypted secret store (VS Code SecretStorage-style)
     // for tokens and other sensitive strings packages must persist. Exposed as
     // `atom.secrets`.
+    /** @type {SecretStore} */
     this.secrets = new SecretStore({
       storagePath: path.join(this.getConfigDirPath(), "secret-store.json"),
       notify: (message) => this.notifications.addWarning(message, { dismissable: true }),
@@ -219,6 +220,7 @@ class AtomEnvironment {
       assert: this.assert.bind(this),
       packageManager: this.packages,
     });
+    /** @type {PasteProviderRegistry} */
     this.pasteProviders = new PasteProviderRegistry();
     TextEditor.setPasteProviderRegistry(this.pasteProviders);
 
@@ -270,6 +272,11 @@ class AtomEnvironment {
       urlCoreRepo: packagejson.repository.url,
     };
 
+    /**
+     * Editor utilities a package can reuse instead of vendoring its own:
+     * `markdown`, `fuzzyMatcher`, and `removeDiacritics`.
+     * @type {Object}
+     */
     this.tools = Tools;
 
     // Keep instances of HistoryManager in sync
