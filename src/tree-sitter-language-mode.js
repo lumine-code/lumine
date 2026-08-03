@@ -297,6 +297,10 @@ class TreeSitterLanguageMode {
   }
 
   destroy() {
+    // Read by the async parse loop, which runs across `setImmediate` and so can
+    // still have a batch queued when this returns.
+    this.destroyed = true;
+
     let layers = this.getAllLanguageLayers();
     for (let layer of layers) {
       layer?.destroy();
@@ -306,9 +310,14 @@ class TreeSitterLanguageMode {
     this.subscriptions?.dispose();
 
     // Clean up all `Parser` instances created during the lifetime of this
-    // buffer.
+    // buffer — except any still mid-parse. Deleting one of those frees the
+    // wasm memory its next batch is about to read, which faults the renderer
+    // with `RuntimeError: memory access out of bounds` and a stack that names
+    // nothing useful. The parse loop sees `destroyed`, stops, and deletes its
+    // own parser.
     for (let parsers of this.parsersByLanguage.values()) {
       for (let parser of parsers) {
+        if (PARSERS_IN_USE.has(parser)) continue;
         parser.delete();
       }
     }
@@ -891,6 +900,15 @@ class TreeSitterLanguageMode {
       // parse rather than starting over.
       return new Promise((resolve, reject) => {
         const parseJob = () => {
+          // The buffer can be destroyed between batches — closing a window
+          // during a long first parse, which is most of what a spec run does.
+          // `destroy` leaves a parser that is still in use alone precisely so
+          // that this check gets to run first.
+          if (this.destroyed) {
+            cleanup();
+            parser.delete();
+            return resolve(null);
+          }
           try {
             batchCount++;
             tree = parseWithProgressTimeout(
@@ -3698,6 +3716,10 @@ class LanguageLayer {
       if (tree.then) {
         params.async = true;
         tree = await tree;
+        // An async parse abandoned because the buffer went away resolves with
+        // no tree. The entry guard above cannot cover this: the layer was alive
+        // when the parse started.
+        if (!tree) return;
       }
     } else {
       tree = this.languageMode.parse(
