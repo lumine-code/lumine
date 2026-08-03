@@ -260,9 +260,9 @@ function main() {
     `Build the wasm:\n` +
       `     node script/build-grammar-wasm.js ${path.join(outDir, "grammars", `tree-sitter-${tokens.segment}.json`)} \\\n` +
       `          --source "${tokens.parserSource}"`,
-    `Port the queries into grammars/${tokens.parser}/:\n` +
-      `     node script/port-nvim-queries.js <upstream-queries> --out ${path.join(outDir, "grammars", tokens.parser)} --segment ${tokens.segment}\n` +
-      `   then resolve every marker and confirm with --verify.`,
+    `Port the queries into grammars/${tokens.parser}/.\n` +
+      `   Upstream capture names are not TextMate scopes, so every one has to be\n` +
+      `   rewritten; check the result with 'npm run check:grammar-captures'.`,
     "Write the fixture assertions, and mutation-test them.",
     ...registration,
     `git init, commit, create lumine-code/${tokens.name}, push, and set the\n` +
