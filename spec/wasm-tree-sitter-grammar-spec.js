@@ -7,9 +7,8 @@ const WASMTreeSitterLanguageMode = require("../src/wasm-tree-sitter-language-mod
 
 // Language packages live in their own repositories and arrive through
 // node_modules, so resolve by name rather than by a path into packages/.
-const jsGrammarPath = require.resolve(
-  "language-javascript/grammars/modern-tree-sitter-javascript.json",
-);
+const jsGrammarPath =
+  require.resolve("language-javascript/grammars/modern-tree-sitter-javascript.json");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
