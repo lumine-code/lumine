@@ -64,10 +64,11 @@ module.exports = class ThemeSelector {
   async show() {
     if (this.selectList.isVisible()) return;
 
+    // The mode is deliberately absent: it is committed as soon as it is picked
+    // and survives a cancellation. Only the previewed pack is restored.
     this.snapshot = {
       light: this.getConfiguredPair("theme.light"),
       dark: this.getConfiguredPair("theme.dark"),
-      mode: atom.config.get("theme.mode"),
     };
 
     this.selectList.reset();
@@ -113,8 +114,7 @@ module.exports = class ThemeSelector {
     if (!snapshot) return;
     if (
       this.pairsMatch(this.getConfiguredPair("theme.light"), snapshot.light) &&
-      this.pairsMatch(this.getConfiguredPair("theme.dark"), snapshot.dark) &&
-      atom.config.get("theme.mode") === snapshot.mode
+      this.pairsMatch(this.getConfiguredPair("theme.dark"), snapshot.dark)
     ) {
       return;
     }
@@ -122,7 +122,6 @@ module.exports = class ThemeSelector {
     atom.config.transact(() => {
       atom.config.set("theme.light", snapshot.light);
       atom.config.set("theme.dark", snapshot.dark);
-      atom.config.set("theme.mode", snapshot.mode);
     });
   }
 

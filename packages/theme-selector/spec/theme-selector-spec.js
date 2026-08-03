@@ -73,6 +73,19 @@ describe("theme-selector", () => {
     expect(selector.selectList.isVisible()).toBe(false);
   });
 
+  it("keeps the selected mode when cancelled", async () => {
+    await selector.show();
+    const nova = atom.themes.getThemePacks().find(({ name }) => name === "Nova");
+
+    await selector.selectList.selectItem(nova);
+    atom.commands.dispatch(selector.selectList.element, "theme-selector:use-dark-mode");
+
+    selector.selectList.cancelSelection();
+    expect(atom.config.get("theme.mode")).toBe("dark");
+    expect(atom.config.get("theme.light")).toEqual(["one-day-ui", "one-day-syntax"]);
+    expect(atom.config.get("theme.dark")).toEqual(["one-night-ui", "one-night-syntax"]);
+  });
+
   it("selects system, light, and dark modes with selector commands", async () => {
     await selector.show();
 
@@ -95,6 +108,6 @@ describe("theme-selector", () => {
     expect(atom.config.get("theme.mode")).toBe("system");
 
     selector.selectList.cancelSelection();
-    expect(atom.config.get("theme.mode")).toBe("light");
+    expect(atom.config.get("theme.mode")).toBe("system");
   });
 });

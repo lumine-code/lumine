@@ -5,9 +5,9 @@ Preview and select registered light/dark theme packs.
 ## Features
 
 - **Live preview**: applies each theme pack while navigating the selector.
-- **Safe cancellation**: restores the previous themes and appearance mode.
+- **Safe cancellation**: restores the previously configured theme pack.
 - **Paired themes**: changes the configured light and dark theme stacks together.
-- **Appearance modes**: switches between light, dark, and system-controlled modes.
+- **Appearance modes**: switches between light, dark, and system-controlled modes, and keeps the choice whether the selector is confirmed or cancelled.
 
 ## Commands
 
@@ -21,7 +21,9 @@ Commands available in `atom-workspace`:
 ## Usage
 
 Open the selector and navigate through the registered packs to preview them.
-Confirm a pack to keep it, or cancel to restore the previous settings.
+Confirm a pack to keep it, or cancel to restore the previous one. The
+appearance mode is saved as soon as it is chosen, so cancelling never undoes
+it.
 
 Theme packages can declare one or more packs in `package.json`:
 
