@@ -46,9 +46,13 @@ module.exports = [
     languageOptions: {
       globals: {
         ...globals.jasmine,
+        // Globals the editor's spec runner installs on `window`; see
+        // spec/helpers/ and spec/runners/ in the editor.
         advanceClock: "readonly",
-        // Grammar-test helpers the spec runner puts on `window`
-        // (spec/helpers/normalize-comments.js in the editor).
+        waits: "readonly",
+        waitsFor: "readonly",
+        waitsForPromise: "readonly",
+        runs: "readonly",
         runGrammarTests: "readonly",
         runFoldsTests: "readonly",
         normalizeTreeSitterTextData: "readonly",

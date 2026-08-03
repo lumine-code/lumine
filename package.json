@@ -138,7 +138,7 @@
     "language-sql": "file:packages/language-sql",
     "language-text": "file:packages/language-text",
     "language-todo": "file:packages/language-todo",
-    "language-toml": "file:packages/language-toml",
+    "language-toml": "https://github.com/lumine-code/language-toml.git#ea00966c1a79d3764495b51825f5dac670c8b2ce",
     "language-typescript": "file:packages/language-typescript",
     "language-xml": "file:packages/language-xml",
     "language-yaml": "file:packages/language-yaml",
@@ -297,7 +297,7 @@
     "language-sql": "file:./packages/language-sql",
     "language-text": "file:./packages/language-text",
     "language-todo": "file:./packages/language-todo",
-    "language-toml": "file:./packages/language-toml",
+    "language-toml": "github:lumine-code/language-toml#ea00966c1a79d3764495b51825f5dac670c8b2ce",
     "language-typescript": "file:./packages/language-typescript",
     "language-xml": "file:./packages/language-xml",
     "language-yaml": "file:./packages/language-yaml"
