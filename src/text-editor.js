@@ -4029,7 +4029,7 @@ module.exports = class TextEditor {
       for (let selection of selections) {
         selection.destroy();
       }
-      lastSelection.autoscroll({ center: true });
+      lastSelection.autoscroll({ center: false });
       return true;
     } else {
       return false;

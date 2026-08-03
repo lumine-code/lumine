@@ -3569,7 +3569,7 @@ describe("TextEditor", () => {
         expect(autoscrollEvents).toEqual([
           {
             screenRange: lastSelection.getScreenRange(),
-            options: { center: true, reversed: false },
+            options: { center: false, reversed: false },
           },
         ]);
       });
