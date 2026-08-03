@@ -258,6 +258,42 @@ describe("ServerSession against a fake server", () => {
     expect(session.supports("textDocument/rename", jsEditor)).toBe(false);
   });
 
+  // Pyright wedges permanently on a cancelled find-all-references: the next one
+  // fails with "this._token.cancel is not a function" for the life of the
+  // server. Both methods here are ones a server supersedes or completes on its
+  // own, so there is nothing to gain by asking it to stop.
+  describe("cancelling an in-flight request", () => {
+    const HANGING = ["textDocument/references", "workspace/executeCommand", "textDocument/hover"];
+
+    const cancelDuring = async (method, options) => {
+      const session = await startSession({ hang: HANGING });
+      const controller = new AbortController();
+      const pending = session.request(method, {}, { signal: controller.signal, ...options });
+      await until(async () =>
+        (await receivedMessages(session)).some((message) => message.method === method),
+      );
+      controller.abort();
+      await pending.catch(() => {});
+      // `$/cancelRequest` is written from the abort listener itself, so it is
+      // already queued ahead of this round trip if it was going to be sent.
+      const received = await receivedMessages(session);
+      return received.some((message) => message.method === "$/cancelRequest");
+    };
+
+    it("abandons references and commands without telling the server", async () => {
+      expect(await cancelDuring("textDocument/references")).toBe(false);
+      expect(await cancelDuring("workspace/executeCommand")).toBe(false);
+    });
+
+    it("still sends $/cancelRequest for everything else", async () => {
+      expect(await cancelDuring("textDocument/hover")).toBe(true);
+    });
+
+    it("lets a caller ask for the cancellation anyway", async () => {
+      expect(await cancelDuring("textDocument/references", { cancelOnServer: true })).toBe(true);
+    });
+  });
+
   it("marks the session failed when the server dies", async () => {
     const session = await startSession();
     const states = [];

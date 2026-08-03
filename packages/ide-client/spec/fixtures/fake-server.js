@@ -3,6 +3,7 @@
 //   capabilities  initialize result capabilities
 //   serverInfo    initialize result serverInfo
 //   responses     { method: cannedResult } for any other request
+//   hang          methods recorded but never answered, to keep a request in flight
 //   onOpen        messages the server emits after receiving didOpen
 // Test-only requests: test/getReceived returns every message received so far,
 // test/notify emits params verbatim (server-initiated traffic), test/crash
@@ -39,6 +40,7 @@ function handle(message) {
     for (const item of config.onOpen || []) send(item);
     return;
   }
+  if ((config.hang || []).includes(method)) return;
   if (id != null) {
     const canned = (config.responses || {})[method];
     reply(id, canned === undefined ? null : canned);

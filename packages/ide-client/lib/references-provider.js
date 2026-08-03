@@ -44,16 +44,7 @@ module.exports = class ReferencesProvider {
               position: C.pointToPosition(point),
               context: { includeDeclaration: true },
             },
-            // Superseded requests are abandoned quietly rather than cancelled
-            // on the wire. Auto-highlight reissues this on every cursor move,
-            // and `$/cancelRequest` on a find-all-references is a path no
-            // editor before this one exercised: Pyright answers it by first
-            // awaiting `window/workDoneProgress/create`, and a token already
-            // cancelled by the time that returns leaves its own cancellation
-            // source in a state the *next* request throws on for the life of
-            // the server. Servers supersede find-all-references themselves, so
-            // the request we are replacing is dropped regardless.
-            { signal, cancelOnServer: false },
+            { signal },
           ),
         ),
       );

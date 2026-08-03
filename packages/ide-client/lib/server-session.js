@@ -9,6 +9,21 @@ const { languageIdForEditor } = require("./language-ids");
 // How long a server gets to exit on its own after `exit` before it is killed.
 const EXIT_GRACE_MS = 1000;
 
+// Methods an aborted request abandons quietly, without `$/cancelRequest`.
+// `$/cancelRequest` is advisory, and for these two it buys nothing: a server
+// supersedes find-all-references on its own as soon as the replacement lands,
+// and a command is a mutation that nobody gains from stopping half way.
+//
+// It also costs. Pyright answers both by first awaiting
+// `window/workDoneProgress/create`; a cancellation arriving during that round
+// trip leaves its `CancelAfter` holding a cancellation source it never read the
+// token of, and the handler's next call to `cancel()` throws
+// `this._token.cancel is not a function` — for every later request of that
+// method, until the server is restarted. The policy lives here rather than at
+// the call sites because every request but `initialize` and `shutdown` passes
+// through, including the `request` this package hands to other packages.
+const ABANDON_QUIETLY = new Set(["textDocument/references", "workspace/executeCommand"]);
+
 module.exports = class ServerSession {
   constructor(manager, adapter, rootPath, launch) {
     this.manager = manager;
@@ -243,10 +258,14 @@ module.exports = class ServerSession {
     this.connection.notify("textDocument/didClose", { textDocument: { uri } });
     if (!this.documents.size) this.manager.didCloseDocument(this);
   }
+  // An explicit `cancelOnServer` still wins, for a caller that knows better.
   request(method, params, options) {
     if (this.state !== "running")
       return Promise.reject(new Error("Language server is not running"));
-    return this.connection.request(method, params, options);
+    return this.connection.request(method, params, {
+      cancelOnServer: !ABANDON_QUIETLY.has(method),
+      ...options,
+    });
   }
   notify(method, params) {
     if (this.state === "running") this.connection.notify(method, params);

@@ -166,26 +166,6 @@ describe("ReferencesProvider", () => {
     expect(await superseded).toBeNull();
     expect((await current).references.length).toBe(1);
   });
-  it("abandons a superseded request instead of cancelling it on the server", async () => {
-    // Auto-highlight reissues this on every cursor move, and Pyright answers a
-    // cancelled find-all-references by wedging its own cancellation source:
-    // every later request then fails with "this._token.cancel is not a
-    // function" until the server is restarted.
-    let options = null;
-    const session = {
-      state: "running",
-      capabilities: {},
-      supports: () => true,
-      request: async (_method, _params, received) => {
-        options = received;
-        return [];
-      },
-    };
-    const provider = new ReferencesProvider(managerWith(session));
-    await provider.findReferences(stubEditor(), { row: 0, column: 8 });
-    expect(options.signal instanceof AbortSignal).toBe(true);
-    expect(options.cancelOnServer).toBe(false);
-  });
   it("still rejects when the server genuinely fails", async () => {
     const session = sessionWith(() => {
       throw new Error("server exploded");

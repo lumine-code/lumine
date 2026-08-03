@@ -81,10 +81,10 @@ The service you receive:
 
 `opts` for `request` — both optional:
 
-| Option           | Description                                                                                                                                                               |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `signal`         | An `AbortSignal`. Aborting settles the returned promise straight away, whatever the server does next.                                                                     |
-| `cancelOnServer` | Whether aborting also sends `$/cancelRequest`. Defaults to `true`. Pass `false` to abandon the request without telling the server, for a method it supersedes on its own. |
+| Option           | Description                                                                                                                                                                                                                                 |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `signal`         | An `AbortSignal`. Aborting settles the returned promise straight away, whatever the server does next.                                                                                                                                       |
+| `cancelOnServer` | Whether aborting also sends `$/cancelRequest`. Defaults to `true`, except for `textDocument/references` and `workspace/executeCommand`, which are abandoned quietly — servers supersede the first themselves, and the second is a mutation. |
 
 ## Minimal example
 
