@@ -45,7 +45,7 @@
     "You can jump to the next match without reopening the panel using {{ 'search-panel:find-next' | keystroke }}"
   ],
   "dependencies": {
-    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#5801d1e3dd5078db7b575d55e72c6e85bd0dcf53"
+    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#9c74208ad932e0694cb3f7ad575e7205154dea8f"
   },
   "consumedServices": {
     "autocomplete.watch-editor": {

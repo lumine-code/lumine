@@ -23,7 +23,7 @@
     "keybinding-resolver/KeyBindingResolverView": "deserializeKeyBindingResolverView"
   },
   "dependencies": {
-    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#5801d1e3dd5078db7b575d55e72c6e85bd0dcf53",
+    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#9c74208ad932e0694cb3f7ad575e7205154dea8f",
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"
   }
