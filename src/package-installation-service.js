@@ -324,7 +324,7 @@ class PackageInstallationService {
       if (!/^\.lumine-(stage|backup)-/.test(entry.name)) continue;
       const target = path.join(packagesDirectory, entry.name);
       try {
-        await fs.promises.rm(target, { recursive: true, force: true, maxRetries: 3 });
+        await PackageInstallationService.removePath(target);
         swept.push(target);
       } catch {
         // Still locked, or gone already. The next launch tries again.
@@ -342,7 +342,37 @@ class PackageInstallationService {
   }
 
   remove(target) {
-    return fs.promises.rm(target, {
+    return PackageInstallationService.removePath(target);
+  }
+
+  // Delete a package directory, a file, or a link to one.
+  //
+  // A linked package is an entry pointing at a working copy somewhere else, and
+  // that working copy is the user's. Removing the entry must remove the link
+  // and never look through it, so a link is unlinked outright — a recursive
+  // removal is only ever handed a real directory.
+  static async removePath(target) {
+    let stats;
+    try {
+      stats = await fs.promises.lstat(target);
+    } catch (error) {
+      if (error.code === "ENOENT") return;
+      throw error;
+    }
+
+    if (stats.isSymbolicLink()) {
+      try {
+        await fs.promises.unlink(target);
+      } catch (error) {
+        // Windows refuses `unlink` on some directory reparse points; removing
+        // the reparse point as a directory leaves what it points at alone.
+        if (error.code !== "EPERM" && error.code !== "EISDIR") throw error;
+        await fs.promises.rmdir(target);
+      }
+      return;
+    }
+
+    await fs.promises.rm(target, {
       recursive: true,
       force: true,
       maxRetries: 10,

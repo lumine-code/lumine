@@ -352,6 +352,47 @@ describe("PackageInstallationService", function () {
     );
   });
 
+  describe("::removePath()", function () {
+    // A linked package points at a working copy that belongs to the user.
+    // Removing the package removes the link and nothing behind it.
+    function linkedPackage(kind) {
+      const source = path.join(root, `source-${kind}`);
+      const link = path.join(root, `link-${kind}`);
+      fs.mkdirSync(path.join(source, "lib"), { recursive: true });
+      fs.writeFileSync(path.join(source, "package.json"), "{}");
+      fs.writeFileSync(path.join(source, "lib", "main.js"), "module.exports = {};");
+      fs.symlinkSync(source, link, kind);
+      return { source, link };
+    }
+
+    it("removes a link without touching what it points at", function () {
+      // "junction" on Windows, a directory symlink everywhere else: both are
+      // what `lumine --link` creates on their platform.
+      const kind = process.platform === "win32" ? "junction" : "dir";
+      const { source, link } = linkedPackage(kind);
+
+      waitsForPromise(() => PackageInstallationService.removePath(link));
+      runs(() => {
+        expect(fs.existsSync(link)).toBe(false);
+        expect(fs.readdirSync(source).sort()).toEqual(["lib", "package.json"]);
+        expect(fs.existsSync(path.join(source, "lib", "main.js"))).toBe(true);
+      });
+    });
+
+    it("removes a real package directory and everything in it", function () {
+      const packagePath = path.join(root, "a-package");
+      fs.mkdirSync(path.join(packagePath, "lib"), { recursive: true });
+      fs.writeFileSync(path.join(packagePath, "lib", "main.js"), "module.exports = {};");
+
+      waitsForPromise(() => PackageInstallationService.removePath(packagePath));
+      runs(() => expect(fs.existsSync(packagePath)).toBe(false));
+    });
+
+    it("does nothing for a path that is already gone", function () {
+      waitsForPromise(() => PackageInstallationService.removePath(path.join(root, "nothing-here")));
+    });
+  });
+
   it("sweeps the directories an interrupted install left behind", function () {
     const stage = path.join(root, ".lumine-stage-abc123");
     const backup = path.join(root, ".lumine-backup-sample-package-1-2");

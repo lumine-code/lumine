@@ -570,13 +570,10 @@ module.exports = class PackageManager {
   // and freezes the editor. Node's rm also retries on Windows' transient
   // ENOTEMPTY/EBUSY/EPERM (antivirus/indexer locks) and force-removes read-only
   // entries such as those under .git — fs-plus's bundled rimraf does neither.
+  // Removing a linked package removes the link, never the working copy it
+  // points at — see PackageInstallationService.removePath.
   removePackageDir(dirPath) {
-    return require("fs").promises.rm(dirPath, {
-      recursive: true,
-      force: true,
-      maxRetries: 10,
-      retryDelay: 100,
-    });
+    return PackageInstallationService.removePath(dirPath);
   }
 
   async installGitHubPackage(pack, options = {}) {

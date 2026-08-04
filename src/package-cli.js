@@ -75,6 +75,33 @@ function capture(command, args, options = {}) {
   return result.stdout;
 }
 
+// Delete a package directory or a link to one. A link is unlinked outright: it
+// points at a working copy that belongs to the user, and removing the entry
+// must never look through it.
+function removePath(target) {
+  let stats;
+  try {
+    stats = fs.lstatSync(target);
+  } catch (error) {
+    if (error.code === "ENOENT") return;
+    throw error;
+  }
+
+  if (stats.isSymbolicLink()) {
+    try {
+      fs.unlinkSync(target);
+    } catch (error) {
+      // Windows refuses `unlink` on some directory reparse points; removing the
+      // reparse point as a directory leaves what it points at alone.
+      if (error.code !== "EPERM" && error.code !== "EISDIR") throw error;
+      fs.rmdirSync(target);
+    }
+    return;
+  }
+
+  fs.rmSync(target, { recursive: true, force: true });
+}
+
 function readMetadata(packagePath) {
   const metadataPath = CSON.resolve(path.join(packagePath, "package"));
   if (!metadataPath) {
@@ -165,7 +192,7 @@ function uninstall(nameOrPath) {
     );
   }
 
-  fs.rmSync(matches[0].path, { recursive: true, force: true });
+  removePath(matches[0].path);
   console.log(`Uninstalled ${matches[0].name} from ${matches[0].path}`);
 }
 
@@ -222,7 +249,7 @@ function link(target, { dev } = {}) {
   const linkPath = path.join(linkDirectory, name);
 
   fs.mkdirSync(linkDirectory, { recursive: true });
-  fs.rmSync(linkPath, { recursive: true, force: true });
+  removePath(linkPath);
   fs.symlinkSync(packagePath, linkPath, symlinkType());
 
   console.log(`Linked ${packagePath} -> ${linkPath}`);
@@ -252,7 +279,7 @@ function unlink(target, { dev } = {}) {
         (targetName != null && pack.name === targetName);
       if (!matches) continue;
       if (!fs.lstatSync(pack.path).isSymbolicLink()) continue;
-      fs.rmSync(pack.path, { recursive: true, force: true });
+      removePath(pack.path);
       console.log(`Unlinked ${pack.path}`);
       unlinked = true;
     }
