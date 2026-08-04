@@ -51,6 +51,26 @@ describe("Babel transpiler support", function () {
       expect(element[1]).toEqual({ className: "settings-view" });
     }));
 
+  describe("when a .jsx file has no pragma", function () {
+    it("transpiles it with etch.dom as the default JSX factory", function () {
+      const element = require("./fixtures/babel/default-factory.jsx");
+      expect(element[0]).toBe("div");
+      expect(element[1]).toEqual({ className: "settings-view" });
+    });
+
+    it("resolves .jsx for an extensionless require", function () {
+      const element = require("./fixtures/babel/default-factory");
+      expect(element[0]).toBe("div");
+    });
+  });
+
+  describe("when a .jsx file carries its own JSX pragma", () =>
+    it("prefers the per-file factory over etch.dom", function () {
+      const element = require("./fixtures/babel/factory-override.jsx");
+      expect(element[0]).toBe("custom");
+      expect(element[1]).toBe("span");
+    }));
+
   describe("when JSX text contains legacy unescaped characters", function () {
     it("escapes them before transpiling", function () {
       const source = `/** @babel */

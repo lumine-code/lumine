@@ -91,6 +91,19 @@ describe("CompileCache", () => {
       });
     });
 
+    describe("when the given file is JSX", () => {
+      it("compiles the file with babel unconditionally and caches it", function () {
+        babelCompiler.compile.and.returnValue("the-jsx-code");
+        CompileCache.addPathToCache(path.join(fixtures, "babel", "default-factory.jsx"), atomHome);
+        expect(CompileCache.getCacheStats()[".jsx"]).toEqual({ hits: 0, misses: 1 });
+        expect(babelCompiler.compile.calls.count()).toBe(1);
+
+        CompileCache.addPathToCache(path.join(fixtures, "babel", "default-factory.jsx"), atomHome);
+        expect(CompileCache.getCacheStats()[".jsx"]).toEqual({ hits: 1, misses: 1 });
+        expect(babelCompiler.compile.calls.count()).toBe(1);
+      });
+    });
+
     describe("when the given file is CSON", () => {
       it("compiles the file to JSON and caches it", function () {
         spyOn(CSON, "setCacheDir").and.callThrough();

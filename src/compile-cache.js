@@ -13,8 +13,17 @@ let CSON = null;
 
 const packageTranspilationRegistry = new PackageTranspilationRegistry();
 
+const babelCompiler = require("./babel");
+// A .jsx file is always compiled — no pragma sniffing — through the same Babel
+// pipeline and on-disk cache as pragma-carrying .js files. Prototype delegation
+// rather than a copy, so spies on the babel module stay visible.
+const jsxCompiler = Object.assign(Object.create(babelCompiler), {
+  shouldCompile: () => true,
+});
+
 const COMPILERS = {
-  ".js": packageTranspilationRegistry.wrapTranspiler(require("./babel")),
+  ".js": packageTranspilationRegistry.wrapTranspiler(babelCompiler),
+  ".jsx": packageTranspilationRegistry.wrapTranspiler(jsxCompiler),
   ".ts": packageTranspilationRegistry.wrapTranspiler(require("./typescript")),
   ".tsx": packageTranspilationRegistry.wrapTranspiler(require("./typescript")),
   ".coffee": packageTranspilationRegistry.wrapTranspiler(require("./coffee-script")),
