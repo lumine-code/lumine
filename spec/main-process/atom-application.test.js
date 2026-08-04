@@ -562,7 +562,7 @@ describe("AtomApplication", function () {
             getAvailablePackageMetadata: () => [
               { name: "package-with-url-main", urlMain: "some/url-main" },
             ],
-            resolvePackagePath: () => path.resolve("dot-atom/package-with-url-main"),
+            resolvePackagePath: () => path.resolve("packages/package-with-url-main"),
           };
 
           const [w1, w2] = await scenario.open(
@@ -574,13 +574,13 @@ describe("AtomApplication", function () {
 
           assert.strictEqual(
             w1.loadSettings.windowInitializationScript,
-            path.resolve("dot-atom/package-with-url-main/some/url-main"),
+            path.resolve("packages/package-with-url-main/some/url-main"),
           );
           assert.strictEqual(w1.loadSettings.urlToOpen, "lumine://package-with-url-main/test1");
 
           assert.strictEqual(
             w2.loadSettings.windowInitializationScript,
-            path.resolve("dot-atom/package-with-url-main/some/url-main"),
+            path.resolve("packages/package-with-url-main/some/url-main"),
           );
           assert.strictEqual(w2.loadSettings.urlToOpen, "lumine://package-with-url-main/test2");
         });

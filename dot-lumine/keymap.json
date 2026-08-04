@@ -20,14 +20,12 @@
 //   }
 // }
 //
-// You can find more information about keymaps in these guides:
-// * https://docs.pulsar-edit.dev/customizing-lumine/customizing-keybindings/
-// * https://docs.pulsar-edit.dev/infrastructure/keymaps-in-depth/
+// You can find more information about keymaps in this guide:
+// * https://lumine-code.github.io/docs.html#customizing-lumine/keybindings
 //
 // If you're having trouble with your keybindings not working, try the
-// Keybinding Resolver: `Cmd+.` on macOS and `Ctrl+.` on other platforms. See the
-// Debugging Guide for more information:
-// * https://pulsar-edit.dev/docs/launch-manual/sections/core-hacking/#check-your-keybindings
+// Keybinding Resolver: `Cmd+.` on macOS and `Ctrl+.` on other platforms. The
+// same guide explains how to read what it shows you.
 //
 // This file uses JSON with Comments (JSONC).
 {}

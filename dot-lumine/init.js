@@ -12,6 +12,6 @@
 //   )
 // );
 //
-// See the Lumine Launch manual for more information on this file and how to
+// See the Lumine documentation for more information on this file and how to
 // customize it.
-// https://pulsar-edit.dev/docs/launch-manual/sections/core-hacking/#the-init-file
+// https://lumine-code.github.io/docs.html#customizing-lumine/the-init-file

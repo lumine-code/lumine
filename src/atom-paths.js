@@ -64,7 +64,7 @@ module.exports = {
     }
   },
 
-  // Seed a brand-new `LUMINE_HOME` with the bundled default config (`dot-atom`:
+  // Seed a brand-new `LUMINE_HOME` with the bundled default config (`dot-lumine`:
   // init script, keymap, snippets, styles, packages README). This must run
   // before anything else — the compile cache and crash reporter both create
   // `LUMINE_HOME` as a side effect, which would otherwise defeat the "does the
@@ -75,7 +75,7 @@ module.exports = {
       return;
     }
 
-    const templateConfigDirPath = fs.resolve(resourcePath, "dot-atom");
+    const templateConfigDirPath = fs.resolve(resourcePath, "dot-lumine");
     if (templateConfigDirPath) {
       fs.copySync(templateConfigDirPath, configDirPath);
     }

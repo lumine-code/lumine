@@ -90,7 +90,7 @@ let options = {
     // --- Inclusions ---
     // Core Repo Inclusions
     "package.json",
-    "dot-atom/**/*",
+    "dot-lumine/**/*",
     "exports/**/*",
     "resources/**/*",
     "src/**/*",
