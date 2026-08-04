@@ -1,8 +1,6 @@
-"use babel";
+const repositoryForPath = require("./helpers");
 
-import repositoryForPath from "./helpers";
-
-export default class DiffListView {
+module.exports = class DiffListView {
   constructor() {
     this.selectListView = atom.workspace.buildSelectList({
       className: "diff-list-view",
@@ -54,4 +52,4 @@ export default class DiffListView {
       this.selectListView.show();
     }
   }
-}
+};

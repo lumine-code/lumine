@@ -1,14 +1,12 @@
-"use babel";
-
-import {
+const {
   waitForAutocomplete,
   triggerAutocompletion,
   conditionPromise,
   waitForAutocompleteToDisappear,
-} from "./spec-helper";
-import path from "path";
+} = require("./spec-helper");
+const path = require("path");
 
-import { Range } from "atom";
+const { Range } = require("atom");
 
 describe("Provider API", () => {
   let [editor, mainModule, autocompleteManager, registration, testProvider, testProvider2] = [];

@@ -1,9 +1,7 @@
-"use babel";
-
 let temp = require("@lumine-code/temp").track();
-import path from "path";
-import fs from "@lumine-code/fs-plus";
-import { conditionPromise } from "./spec-helper";
+const path = require("path");
+const fs = require("@lumine-code/fs-plus");
+const { conditionPromise } = require("./spec-helper");
 
 describe("Autocomplete Manager", () => {
   let directory;

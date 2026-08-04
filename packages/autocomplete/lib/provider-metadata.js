@@ -1,9 +1,7 @@
-"use babel";
+const { Selector } = require("selector-kit");
+const { selectorForScopeChain, selectorsMatchScopeChain } = require("./scope-helpers");
 
-import { Selector } from "selector-kit";
-import { selectorForScopeChain, selectorsMatchScopeChain } from "./scope-helpers";
-
-export default class ProviderMetadata {
+module.exports = class ProviderMetadata {
   constructor(provider) {
     this.provider = provider;
 
@@ -42,4 +40,4 @@ export default class ProviderMetadata {
       return 0;
     }
   }
-}
+};

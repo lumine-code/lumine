@@ -1,7 +1,5 @@
-"use babel";
-
-import { conditionPromise, waitForAutocomplete } from "./spec-helper";
-import path from "path";
+const { conditionPromise, waitForAutocomplete } = require("./spec-helper");
+const path = require("path");
 
 describe("Autocomplete", () => {
   let editorView;

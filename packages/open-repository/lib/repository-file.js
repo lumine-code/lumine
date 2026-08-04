@@ -1,7 +1,5 @@
-/** @babel */
-
-import { Range } from "atom";
-import path from "path";
+const { Range } = require("atom");
+const path = require("path");
 
 // Web-URL schemes for the supported hosting providers. Each entry maps a
 // repository web URL (`base`), a git ref and a repo-relative path to the routes
@@ -47,7 +45,7 @@ const PROVIDERS = {
   },
 };
 
-export default class RepositoryFile {
+module.exports = class RepositoryFile {
   // Public: Resolve a RepositoryFile whose git data (refs snapshot + the git
   // config keys it consults) has been loaded off the renderer thread. The URL
   // builders below stay synchronous by reading the values cached here.
@@ -487,4 +485,4 @@ export default class RepositoryFile {
       return "master";
     }
   }
-}
+};

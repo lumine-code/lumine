@@ -1,6 +1,4 @@
-"use babel";
-
-import ProviderManager from "../lib/provider-manager";
+const ProviderManager = require("../lib/provider-manager");
 
 describe("Provider Manager", () => {
   let [providerManager, testProvider, registration] = [];

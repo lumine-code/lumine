@@ -1,8 +1,6 @@
-/** @babel */
+const _ = require("@lumine-code/underscore-plus");
 
-import _ from "@lumine-code/underscore-plus";
-
-export default class SnippetsAvailable {
+module.exports = class SnippetsAvailable {
   constructor(snippets) {
     this.snippets = snippets;
     this.selectListView = atom.workspace.buildSelectList({
@@ -58,4 +56,4 @@ export default class SnippetsAvailable {
     }
     return this.selectListView.update({ items: snippets });
   }
-}
+};

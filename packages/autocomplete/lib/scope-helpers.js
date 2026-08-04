@@ -1,6 +1,4 @@
-"use babel";
-
-import slick from "atom-slick";
+const slick = require("atom-slick");
 
 const EscapeCharacterRegex = /[-!"#$%&'*+,/:;=?@|^~()<>{}[\]]/g;
 
@@ -75,4 +73,4 @@ const buildScopeChainString = (scopes) => {
   return `.${scopes.join(" .")}`;
 };
 
-export { selectorsMatchScopeChain, selectorForScopeChain, buildScopeChainString };
+module.exports = { selectorsMatchScopeChain, selectorForScopeChain, buildScopeChainString };
