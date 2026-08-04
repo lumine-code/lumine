@@ -1,12 +1,10 @@
-/** @babel */
+const { CompositeDisposable, Disposable } = require("atom");
 
-import { CompositeDisposable, Disposable } from "atom";
+const path = require("path");
 
-import path from "path";
+const FileView = require("./file-view");
 
-import FileView from "./file-view";
-
-export default class DirectoryView {
+module.exports = class DirectoryView {
   constructor(parentView, indexInParentView, archivePath, entry) {
     this.disposables = new CompositeDisposable();
     this.entries = [];
@@ -144,4 +142,4 @@ export default class DirectoryView {
 
     return false;
   }
-}
+};

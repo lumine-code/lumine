@@ -1,22 +1,21 @@
-/** @babel */
-/** @jsx etch.dom */
+const fs = require("fs");
+const path = require("path");
+const humanize = require("humanize-plus");
+const atomAPI = require("atom");
+const { CompositeDisposable, Disposable, Emitter } = atomAPI;
+const etch = require("@lumine-code/etch");
 
-import fs from "fs";
-import path from "path";
-import humanize from "humanize-plus";
-import { CompositeDisposable, Disposable, Emitter, watchFile } from "atom";
-import etch from "@lumine-code/etch";
+const archive = require("./archive");
+const FileView = require("./file-view");
+const DirectoryView = require("./directory-view");
 
-import archive from "./archive";
-import FileView from "./file-view";
-import DirectoryView from "./directory-view";
-
-export default class ArchiveEditorView {
+module.exports = class ArchiveEditorView {
   constructor(archivePath) {
     this.disposables = new CompositeDisposable();
     this.emitter = new Emitter();
     this.path = archivePath;
-    this.file = watchFile(this.path);
+    // Called off the module object so a spec can spy on `watchFile`.
+    this.file = atomAPI.watchFile(this.path);
     this.entries = [];
     etch.initialize(this);
 
@@ -216,4 +215,4 @@ export default class ArchiveEditorView {
   focus() {
     this.focusSelectedFile();
   }
-}
+};

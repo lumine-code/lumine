@@ -1,6 +1,4 @@
-/** @babel */
-
-export async function conditionPromise(condition, description = "anonymous condition") {
+async function conditionPromise(condition, description = "anonymous condition") {
   const startTime = Date.now();
 
   while (true) {
@@ -21,3 +19,5 @@ function timeoutPromise(timeout) {
     global.setTimeout(resolve, timeout);
   });
 }
+
+module.exports = { conditionPromise };

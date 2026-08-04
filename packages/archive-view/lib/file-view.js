@@ -1,13 +1,11 @@
-/** @babel */
+const { CompositeDisposable, Disposable } = require("atom");
+const path = require("path");
+const fs = require("fs");
+const temp = require("@lumine-code/temp");
 
-import { CompositeDisposable, Disposable } from "atom";
-import path from "path";
-import fs from "fs";
-import temp from "@lumine-code/temp";
+const archive = require("./archive");
 
-import archive from "./archive";
-
-export default class FileView {
+module.exports = class FileView {
   constructor(parentView, indexInParentView, archivePath, entry) {
     this.disposables = new CompositeDisposable();
     this.parentView = parentView;
@@ -126,4 +124,4 @@ export default class FileView {
     }
     this.element.classList.add("selected");
   }
-}
+};
