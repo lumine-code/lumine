@@ -1,9 +1,6 @@
-"use babel";
+const { TextEditor } = require("atom");
 
-import { TextEditor } from "atom";
-import { setLineEnding } from "./main";
-
-export class Selector {
+class Selector {
   lineEndingListView;
 
   // Make a selector object (should be called once)
@@ -30,7 +27,9 @@ export class Selector {
       didConfirmSelection: (lineEnding) => {
         const editor = atom.workspace.getActiveTextEditor();
         if (editor instanceof TextEditor) {
-          setLineEnding(editor, lineEnding.value);
+          // Required here rather than at the top: main.js requires this module,
+          // so a load-time require would see a half-built exports object.
+          require("./main").setLineEnding(editor, lineEnding.value);
         }
         this.hide();
       },
@@ -58,3 +57,5 @@ export class Selector {
     this.lineEndingListView.destroy();
   }
 }
+
+module.exports = { Selector };
