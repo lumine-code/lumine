@@ -1,10 +1,7 @@
-/** @babel */
-/** @jsx etch.dom */
+const path = require("path");
+const etch = require("@lumine-code/etch");
 
-import path from "path";
-import etch from "@lumine-code/etch";
-
-export default class CachePanelView {
+module.exports = class CachePanelView {
   constructor() {
     etch.initialize(this);
   }
@@ -111,4 +108,4 @@ export default class CachePanelView {
       return 0;
     }
   }
-}
+};

@@ -1,10 +1,7 @@
-/** @babel */
-/** @jsx etch.dom */
+const { Disposable } = require("atom");
+const etch = require("@lumine-code/etch");
 
-import { Disposable } from "atom";
-import etch from "@lumine-code/etch";
-
-export default class PackagePanelView {
+module.exports = class PackagePanelView {
   constructor({ title }) {
     this.title = title;
     etch.initialize(this);
@@ -74,4 +71,4 @@ export default class PackagePanelView {
 
     this.refs.list.appendChild(li);
   }
-}
+};

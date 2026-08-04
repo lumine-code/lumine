@@ -1,14 +1,11 @@
-/** @babel */
-/** @jsx etch.dom */
+const _ = require("@lumine-code/underscore-plus");
+const dedent = require("dedent");
+const etch = require("@lumine-code/etch");
+const CachePanelView = require("./cache-panel-view");
+const PackagePanelView = require("./package-panel-view");
+const WindowPanelView = require("./window-panel-view");
 
-import _ from "@lumine-code/underscore-plus";
-import dedent from "dedent";
-import etch from "@lumine-code/etch";
-import CachePanelView from "./cache-panel-view";
-import PackagePanelView from "./package-panel-view";
-import WindowPanelView from "./window-panel-view";
-
-export default class TimecopView {
+module.exports = class TimecopView {
   constructor({ uri }) {
     this.uri = uri;
     etch.initialize(this);
@@ -140,4 +137,4 @@ export default class TimecopView {
   getIconName() {
     return "dashboard";
   }
-}
+};

@@ -1,10 +1,7 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
 
-import { CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
-
-export default class WindowPanelView {
+module.exports = class WindowPanelView {
   constructor() {
     etch.initialize(this);
 
@@ -112,4 +109,4 @@ export default class WindowPanelView {
       return "highlight-info";
     }
   }
-}
+};
