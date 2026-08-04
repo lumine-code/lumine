@@ -1,6 +1,8 @@
 const parseUri = require("./parse-uri");
 const { Emitter, Disposable } = require("event-kit");
 
+const SerializationVersion = 1;
+
 // Private: Associates listener functions with URIs from outside the application.
 //
 // The global URI handler registry maps URIs to listener functions. URIs are mapped
@@ -116,6 +118,29 @@ module.exports = class URIHandlerRegistry {
 
   getRecentlyHandledURIs() {
     return this.history;
+  }
+
+  serialize() {
+    return {
+      version: SerializationVersion,
+      history: this.history,
+      nextId: this._id,
+    };
+  }
+
+  deserialize(state) {
+    if (!state || state.version !== SerializationVersion || !Array.isArray(state.history)) {
+      return;
+    }
+
+    this.history = state.history.slice(0, this.maxHistoryLength);
+    // Ids have to keep climbing past whatever was restored: the settings panel
+    // keys its rows on them, so a repeat would collide with a row it already
+    // renders.
+    this._id = this.history.reduce(
+      (highest, entry) => Math.max(highest, entry.id || 0),
+      state.nextId || 0,
+    );
   }
 
   onHistoryChange(cb) {

@@ -1157,6 +1157,7 @@ class AtomEnvironment {
       workspace: this.workspace.serialize(),
       packageStates: this.packages.serialize(),
       grammars: this.grammars.serialize(),
+      uriHistory: this.uriHandlerRegistry.serialize(),
       fullScreen: this.isFullScreen(),
       windowDimensions: this.windowDimensions,
     };
@@ -1565,6 +1566,7 @@ or use Pane::saveItemAs for programmatic saving.`);
     const missingProjectPaths = [];
 
     this.packages.packageStates = state.packageStates || {};
+    this.uriHandlerRegistry.deserialize(state.uriHistory);
 
     let startTime = Date.now();
     if (state.project) {

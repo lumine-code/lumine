@@ -95,6 +95,48 @@ describe("URIHandlerRegistry", () => {
     expect(history[4].uri).toBe(uris[1]);
   });
 
+  it("restores its history from serialized state", async () => {
+    registry.registerHostHandler("one", jasmine.createSpy());
+    await registry.handleURI("lumine://one/first");
+    await registry.handleURI("lumine://fake/second");
+
+    const restored = new URIHandlerRegistry(5);
+    restored.deserialize(JSON.parse(JSON.stringify(registry.serialize())));
+    expect(restored.getRecentlyHandledURIs()).toEqual(registry.getRecentlyHandledURIs());
+
+    // Ids keep climbing past the restored entries, so the settings panel never
+    // renders two rows sharing a key.
+    await restored.handleURI("lumine://one/third");
+    const ids = restored.getRecentlyHandledURIs().map((entry) => entry.id);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(ids[0]).toBeGreaterThan(ids[1]);
+  });
+
+  it("keeps the restored history within the maximum length", async () => {
+    for (const uri of ["one", "two", "three", "four", "five", "six"]) {
+      await registry.handleURI(`lumine://host/${uri}`);
+    }
+
+    const restored = new URIHandlerRegistry(3);
+    restored.deserialize(registry.serialize());
+    expect(restored.getRecentlyHandledURIs().length).toBe(3);
+    expect(restored.getRecentlyHandledURIs()[0].uri).toBe("lumine://host/six");
+  });
+
+  it("ignores serialized state it cannot read", async () => {
+    await registry.handleURI("lumine://host/something");
+
+    const current = registry.serialize();
+    const fromAnotherVersion = { ...current, version: current.version + 1 };
+    const withoutHistory = { ...current, history: undefined };
+
+    for (const state of [undefined, null, {}, fromAnotherVersion, withoutHistory]) {
+      const restored = new URIHandlerRegistry(5);
+      restored.deserialize(state);
+      expect(restored.getRecentlyHandledURIs()).toEqual([]);
+    }
+  });
+
   it("refuses to handle bad URLs", async () => {
     const invalidUris = [
       "atom:package/path",
