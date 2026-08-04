@@ -203,11 +203,10 @@ atom-text-editor {
   user-select: none;
 }
 
+/* A mini editor is an input; its size and chrome live with the other input
+   controls in atom-ui/styles/inputs.css. Only the structure is here. */
 atom-text-editor[mini] {
   contain: style; /* see the atom-text-editor rule: overlays must escape */
-  font-size: var(--input-font-size);
-  line-height: var(--component-line-height);
-  max-height: calc(var(--component-line-height) + 2px); /* +2 for borders */
   overflow: auto;
 }
 

@@ -290,6 +290,7 @@
     "lint": "eslint . --max-warnings 0",
     "lint:fix": "eslint . --fix --max-warnings 0",
     "check:icons": "node script/check-icons.js",
+    "check:editors": "node script/check-editors.js",
     "check:grammar-captures": "node script/check-grammar-captures.js",
     "drive": "node script/drive.js",
     "generate:branding": "electron --no-sandbox script/generate-branding.js",

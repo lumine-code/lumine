@@ -435,3 +435,40 @@ input.input-toggle {
     }
   }
 }
+
+/*
+ * Editors used as inputs
+ * -------------------------
+ *
+ * `atom-text-editor[input]` marks an editor that is a form control rather
+ * than a document: the select-list query, a search field, an expression box.
+ * The package sets the attribute on the element and core never writes it, so
+ * it survives every render. `mini` implies it, which is why the selectors
+ * below pair the two.
+ *
+ * Core owns the resting box, as it does for the controls above; the UI theme
+ * owns the focus ring. Unlike those controls this is not gated on
+ * `--use-custom-controls` — an editor has no native widget to fall back to.
+ */
+
+atom-text-editor:is([mini], [input]) {
+  border: 1px solid var(--input-border-color);
+  border-radius: var(--component-border-radius);
+}
+
+atom-text-editor[mini] {
+  font-size: var(--ui-input-size);
+  line-height: var(--ui-line-height);
+  max-height: calc(var(--ui-line-height) * 5); /* rows */
+  padding-left: calc(var(--ui-padding) / 3);
+  color: var(--text-color-highlight);
+  background-color: var(--input-background-color);
+}
+
+/* A multi-line input shows highlighted code, so it keeps the syntax
+   background every editor already gets; only the padding is ours. Height
+   stays the widget's own business — a shared max-height would clamp the
+   boxes that are meant to grow with their content. */
+atom-text-editor[input]:where(:not([mini])) {
+  padding: calc(var(--component-padding) / 2);
+}

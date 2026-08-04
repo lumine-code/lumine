@@ -171,8 +171,7 @@
 
 /* Editors and inputs */
 
-atom-panel-container atom-text-editor.is-focused,
-atom-text-editor[mini].is-focused,
+atom-text-editor:is([mini], [input]).is-focused,
 .input-checkbox:focus,
 .input-text:focus,
 .input-search:focus,
@@ -183,7 +182,7 @@ atom-text-editor[mini].is-focused,
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-color) 35%, transparent);
 }
 
-atom-text-editor[mini] {
+atom-text-editor:is([mini], [input]) {
   border-radius: calc(var(--component-border-radius) * 1.5);
 }
 

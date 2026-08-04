@@ -55,6 +55,10 @@ jobs:
       # static/atom-ui/styles/icons.css is its single owner.
       - name: Check icon contract
         run: npm run check:icons
+      # A theme that reaches an editor through atom-panel-container styles it by
+      # where its panel docked, not by what it is. Nothing at runtime notices.
+      - name: Check editor contract
+        run: npm run check:editors
       # A capture left with its Neovim name compiles and matches, so the query
       # sweep in the spec suite passes while the scope themes as nothing. This
       # is the only gate that sees it.

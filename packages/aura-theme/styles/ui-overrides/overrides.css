@@ -19,7 +19,7 @@
   }
 }
 
-atom-text-editor[mini],
+atom-text-editor:is([mini], [input]),
 .input-text,
 .input-search,
 .input-number,
@@ -30,8 +30,7 @@ atom-text-editor[mini],
   border-radius: var(--component-border-radius);
 }
 
-atom-text-editor[mini]:focus,
-atom-text-editor[mini].is-focused,
+atom-text-editor:is([mini], [input]).is-focused,
 .input-text:focus,
 .input-search:focus,
 .input-number:focus,
