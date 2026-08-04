@@ -90,65 +90,10 @@
     font-size: 0.75em;
   }
 
-  /* .btn-variant(@accent-bg-color) inlined; contrast() -> --accent-bg-text-color */
-  .install-button {
-    color: var(--text-color-highlight);
-    text-shadow: none;
-    border: 1px solid var(--settings-view-install-border-color, var(--button-border-color));
-    background-color: var(--accent-bg-color);
-    background-image: var(
-      --settings-view-install-background-image,
-      linear-gradient(hsl(from var(--accent-bg-color) h s calc(l + 2)), var(--accent-bg-color))
-    );
-    color: var(--accent-bg-text-color);
-
-    &:hover {
-      color: var(--text-color-highlight);
-      background-color: var(--settings-view-install-hover-background-color, transparent);
-      background-image: var(
-        --settings-view-install-hover-background-image,
-        linear-gradient(
-          hsl(from var(--accent-bg-color) h s calc(l + 5)),
-          hsl(from var(--accent-bg-color) h s calc(l + 3))
-        )
-      );
-    }
-    &:active {
-      background: hsl(from var(--accent-bg-color) h s calc(l - 4));
-      box-shadow: none;
-    }
-    &.selected {
-      background: hsl(from var(--accent-bg-color) h calc(s + 20) calc(l - 12));
-    }
-    &.selected:focus,
-    &.selected:hover {
-      background: hsl(from var(--accent-bg-color) h calc(s + 20) calc(l - 10));
-    }
-    &:focus {
-      /* unfortunately :focus styles stay even after releasing mouse. */
-      outline: none;
-      border-color: var(--accent-color);
-      box-shadow: 0 0 0 1px var(--accent-color);
-    }
-
-    &:hover,
-    &:focus {
-      color: var(--accent-bg-text-color);
-    }
-    &:focus {
-      border-color: transparent;
-      background-clip: padding-box;
-      box-shadow: var(
-        --settings-view-install-focus-box-shadow,
-        inset 0 0 0 1px rgb(from var(--base-border-color) r g b / 50%),
-        0 0 0 1px var(--accent-bg-color)
-      );
-    }
-
-    &.icon:before {
-      color: var(--accent-bg-text-color);
-    }
-  }
+  /* The install button is a `btn btn-info`, and that is the whole of its
+     styling: whatever the active theme paints an info button, the install
+     button is. It used to be repainted here in the accent colour, which made
+     one button in the editor answer to a rule no theme could see. */
 
   input[type="checkbox"] {
     background-color: var(--background-color-selected);

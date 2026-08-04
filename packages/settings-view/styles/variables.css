@@ -23,4 +23,25 @@
   --settings-view-package-card-dark-flag: hsl(
     from var(--package-card-background-color) 0 0 calc((50 - l) * infinity) / 1
   );
+
+  /*
+   * The status-dot palette — the one place these colors are written down.
+   *
+   * A dot is recognised by its color, and people talk to each other about "the
+   * yellow dot", so a state must look the same on every machine and in every
+   * theme. These are deliberately NOT theme variables. They sit at a lightness
+   * that stays legible on light and dark card backgrounds alike.
+   *
+   * `lib/status-dots.js` lists which state each one belongs to.
+   */
+  --package-dot-error: #e5484d; /* red */
+  --package-dot-stale: #f76b15; /* orange */
+  --package-dot-shadowed: #ffc53d; /* yellow */
+  --package-dot-success: #30a46c; /* green */
+  --package-dot-symlink: #00a2c7; /* cyan */
+  --package-dot-source: #3e63dd; /* blue */
+  --package-dot-pulsar: #8e4ec6; /* purple */
+  --package-dot-origin: #e93d82; /* pink */
+  --package-dot-selector: #a18072; /* brown */
+  --package-dot-default: #8b8d98; /* grey */
 }

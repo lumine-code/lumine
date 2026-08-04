@@ -239,56 +239,10 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
         this.displayPackageUpdates(packagesWithUpdates);
 
         this.matchPackages();
-        this.warnDuplicatePackageNames();
       })
       .catch((error) => {
         console.error(error.message, error.stack);
       });
-  }
-
-  // Two directories in the same place providing the same package name is almost
-  // always an accident — a stale clone, a copied folder — and only one of them
-  // loads. Shadowing across places (a dev checkout over an install, an install
-  // over a bundled package) is deliberate and gets a dot on the card instead of
-  // a notification. Each duplicate is reported once per panel.
-  warnDuplicatePackageNames() {
-    if (!this.warnedDuplicates) this.warnedDuplicates = new Set();
-
-    const duplicates = [];
-    for (const type of ["dev", "core", "community"]) {
-      const byName = new Map();
-      for (const pack of this.packages[type] || []) {
-        const copies = byName.get(pack.name) || [];
-        copies.push(pack);
-        byName.set(pack.name, copies);
-      }
-      for (const [name, copies] of byName) {
-        if (copies.length < 2 || this.warnedDuplicates.has(name)) continue;
-        this.warnedDuplicates.add(name);
-        duplicates.push({ name, copies });
-      }
-    }
-    if (duplicates.length === 0) return;
-
-    const list = duplicates
-      .map(({ name, copies }) => {
-        const directories = copies.map((pack) => `\`${pack.directoryName}\``).join(", ");
-        const loaded = copies.find((pack) => !pack.isShadowed);
-        const loadedNote = loaded ? ` — \`${loaded.directoryName}\` is the one that loads` : "";
-        return `- **${name}**: ${directories}${loadedNote}`;
-      })
-      .join("\n");
-    atom.notifications.addWarning(
-      duplicates.length === 1
-        ? "Two directories provide the same package"
-        : "Some package names are provided by more than one directory",
-      {
-        description:
-          "A package is identified by the `name` in its `package.json`, and only one " +
-          `copy of a name loads.\n\n${list}`,
-        dismissable: true,
-      },
-    );
   }
 
   displayPackageUpdates(packagesWithUpdates) {

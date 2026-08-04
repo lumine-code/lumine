@@ -209,6 +209,13 @@ export default class PackageDetailView {
     const loadedPackage = atom.packages.getLoadedPackage(this.pack.name);
     if (!loadedPackage) return null;
 
+    // A card that stands for a directory on disk is the loaded package only if
+    // it is the directory that loaded. Another copy of the same name — even one
+    // of the same repository — contributes nothing to this install: no
+    // settings, no keybindings, no grammars, no snippets.
+    const packagePath = this.pack.path || (this.pack.metadata && this.pack.metadata.path);
+    if (packagePath) return packagePath === loadedPackage.path ? loadedPackage : null;
+
     const requested = this.pack.metadata || this.pack;
     const requestedOrigin = packageOrigin(requested);
     const loadedOrigin = packageOrigin(loadedPackage.metadata);
@@ -470,6 +477,15 @@ export default class PackageDetailView {
     return !!this.getMatchingLoadedPackage() && !atom.packages.isPackageDisabled(this.pack.name);
   }
 
+  // A copy of a package name that another directory owns. It is on disk and
+  // nothing else: it runs nowhere, so its details read like a package that is
+  // not installed — the README, and nothing that would describe it as part of
+  // this install.
+  packageIsShadowed() {
+    const metadata = this.pack.metadata;
+    return !!(this.pack.isShadowed || (metadata && metadata.isShadowed));
+  }
+
   // Rebuilds the sections that describe the package as it runs here. A disabled
   // package contributes none of them, so they are dropped until it is enabled
   // again — and rebuilt from the freshly loaded package when it is.
@@ -503,7 +519,9 @@ export default class PackageDetailView {
 
     // The documents a package ships in `docs/` are files on disk, so unlike the
     // sections above they read the same whether or not the package is enabled.
-    if (this.pack.path) {
+    // A copy that does not load describes nothing that is running, so it is
+    // left with its README alone.
+    if (this.pack.path && !this.packageIsShadowed()) {
       this.docsView = new PackageDocsView(this.pack.path);
       this.appendSection(this.docsView.element, "docs");
     }

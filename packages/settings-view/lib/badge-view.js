@@ -3,6 +3,7 @@
 
 import { CompositeDisposable, Disposable } from "atom";
 import etch from "@lumine-code/etch";
+import { STATUS_DOT_TYPES } from "./status-dots";
 
 // Renders a package badge (e.g. Pulsar's "Outdated" / "Made for Pulsar") as a
 // small colored dot. The badge title and text are shown in a hover tooltip, and
@@ -54,20 +55,10 @@ export default class BadgeView {
     return typeof this.badge.link === "string";
   }
 
+  // See `status-dots.js` for what each type means and what colour it carries.
   dotClass() {
-    switch (this.badge.type) {
-      case "warn":
-        return "badge-dot-warn";
-      case "success":
-        return "badge-dot-success";
-      case "info":
-        return "badge-dot-info";
-      case "error":
-        return "badge-dot-error";
-      case "pulsar":
-        return "badge-dot-pulsar";
-      default:
-        return "badge-dot-default";
-    }
+    return STATUS_DOT_TYPES.has(this.badge.type)
+      ? `badge-dot-${this.badge.type}`
+      : "badge-dot-default";
   }
 }

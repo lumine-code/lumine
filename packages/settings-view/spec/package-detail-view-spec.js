@@ -135,6 +135,42 @@ describe("PackageDetailView", function () {
     expect(view.refs.startupTime.style.display).toBe("");
   });
 
+  it("shows a shadowed copy like a package that is not installed", () => {
+    // The loaded package of this name lives somewhere else, so this directory
+    // contributes nothing to the install: no settings, no keybindings, and not
+    // even the documents it ships, since none of it is running.
+    atom.packages.loadPackage(path.join(__dirname, "fixtures", "package-with-config"));
+    const loadedPackage = atom.packages.getLoadedPackage("package-with-config");
+    const shadowedCopy = {
+      ...loadedPackage.metadata,
+      name: loadedPackage.name,
+      path: path.join(path.dirname(loadedPackage.path), "zz-another-copy"),
+      directoryName: "zz-another-copy",
+      isShadowed: true,
+      shadowedBy: {
+        name: loadedPackage.name,
+        dirname: path.basename(loadedPackage.path),
+        path: loadedPackage.path,
+        tier: "community",
+      },
+      metadata: loadedPackage.metadata,
+    };
+
+    view = new PackageDetailView(
+      shadowedCopy,
+      new SettingsView(),
+      packageManager,
+      SnippetsProvider,
+    );
+
+    const sectionKeys = Array.from(view.refs.sections.children).map(
+      (element) => element.dataset.section,
+    );
+    expect(sectionKeys).toEqual(["readme"]);
+    expect(view.getMatchingLoadedPackage()).toBeNull();
+    expect(view.packageIsEnabled()).toBe(false);
+  });
+
   describe("the documents a package ships in docs/", () => {
     const openDetailView = (fixture, settingsView = new SettingsView()) => {
       atom.packages.loadPackage(path.join(__dirname, "fixtures", fixture));

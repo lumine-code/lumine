@@ -960,7 +960,10 @@ export default class PackageCard {
 
   // The card's own status dots, shown ahead of any registry badges. States can
   // coexist (e.g. a stale record from the Pulsar registry, installed as a
-  // symlink); each dot carries its details in a hover tooltip.
+  // symlink), so each state has its own colour rather than sharing a severity
+  // with the others: the colour is what a dot is recognised by, and it means
+  // the same thing on every card, in every theme. Each dot carries its details
+  // in a hover tooltip.
   statusBadges() {
     const badges = [];
     if (this.pack.status === "error") {
@@ -971,30 +974,30 @@ export default class PackageCard {
       });
     } else if (this.pack.status === "stale") {
       badges.push({
-        type: "warn",
+        type: "stale",
         title: "Stale",
         text: this.pack.error || "The newest catalog fetch failed; showing the last good data.",
       });
     } else if (this.pack.status === "validating") {
       badges.push({
-        type: "default",
+        type: "validating",
         title: "Validating",
         text: "The package's manifest is being fetched and validated.",
       });
     }
     if (this.isShadowed) {
       badges.push({
-        type: "warn",
+        type: "shadowed",
         title: "Shadowed",
         text: `“${this.pack.name}” is provided by ${this.shadowedByDescription()}, which loads instead of this copy.`,
       });
     }
     if (this.pack.originWarning) {
-      badges.push({ type: "warn", title: "Origin", text: this.pack.originWarning });
+      badges.push({ type: "origin", title: "Origin", text: this.pack.originWarning });
     }
     if (this.pack.selectorConflict) {
       badges.push({
-        type: "warn",
+        type: "selector",
         title: "Selector conflict",
         text: "The catalogs disagree about which version to track; the first one wins.",
       });
@@ -1020,7 +1023,7 @@ export default class PackageCard {
   sourceCheckoutBadge() {
     if (this.pack.tier !== "bundled" || this.pack.isBundled !== false) return null;
     return {
-      type: "info",
+      type: "source",
       title: "From the source checkout",
       text: this.pack.path || "Loaded from the repository, not from a build.",
     };
@@ -1042,7 +1045,7 @@ export default class PackageCard {
     if (!linkPath) return null;
     try {
       if (!fs.lstatSync(linkPath).isSymbolicLink()) return null;
-      return { type: "info", title: "Installed as symlink", text: fs.realpathSync(linkPath) };
+      return { type: "symlink", title: "Installed as symlink", text: fs.realpathSync(linkPath) };
     } catch {
       return null;
     }

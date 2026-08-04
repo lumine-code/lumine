@@ -1568,7 +1568,7 @@ describe("PackageCard", function () {
       );
       const dot = card.refs.badges.querySelector(".package-badge-dot");
       expect(dot).not.toBeNull();
-      expect(dot.classList.contains("badge-dot-warn")).toBe(true);
+      expect(dot.classList.contains("badge-dot-stale")).toBe(true);
     });
 
     it("shows a purple dot for a Pulsar-registry listing", function () {
@@ -1607,11 +1607,11 @@ describe("PackageCard", function () {
       );
       const badge = card.badgeViews.find((view) => view.badge.title === "Origin");
       expect(badge).toBeTruthy();
-      expect(badge.badge.type).toBe("warn");
+      expect(badge.badge.type).toBe("origin");
       expect(badge.badge.text).toContain("missing or mismatched");
     });
 
-    it("shows a warning dot for a catalog selector conflict", function () {
+    it("shows the selector-conflict dot when catalogs disagree", function () {
       setPackageStatusSpies({ installed: false, disabled: false });
       card = new PackageCard(
         {
@@ -1626,10 +1626,10 @@ describe("PackageCard", function () {
       );
       const badge = card.badgeViews.find((view) => view.badge.title === "Selector conflict");
       expect(badge).toBeTruthy();
-      expect(badge.badge.type).toBe("warn");
+      expect(badge.badge.type).toBe("selector");
     });
 
-    it("shows a warning dot naming the copy that loads instead", function () {
+    it("shows the shadowed dot naming the copy that loads instead", function () {
       setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
       card = new PackageCard(
         {
@@ -1644,11 +1644,11 @@ describe("PackageCard", function () {
       );
       const badge = card.badgeViews.find((view) => view.badge.title === "Shadowed");
       expect(badge).toBeTruthy();
-      expect(badge.badge.type).toBe("warn");
+      expect(badge.badge.type).toBe("shadowed");
       expect(badge.badge.text).toContain("my-checkout");
     });
 
-    it("shows an info dot on a bundled package running from the source checkout", function () {
+    it("shows the source dot on a bundled package running from the source checkout", function () {
       setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
       card = new PackageCard(
         {
@@ -1665,7 +1665,7 @@ describe("PackageCard", function () {
       );
       const badge = card.badgeViews.find((view) => view.badge.title === "From the source checkout");
       expect(badge).toBeTruthy();
-      expect(badge.badge.type).toBe("info");
+      expect(badge.badge.type).toBe("source");
       expect(badge.badge.text).toContain(path.join("packages", "tabs"));
     });
 

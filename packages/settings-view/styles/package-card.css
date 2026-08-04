@@ -187,25 +187,45 @@
       margin-right: 0.4em;
       border-radius: 50%;
       vertical-align: middle;
-      background-color: var(--text-color-subtle);
+      background-color: var(--package-dot-default);
       &.has-link {
         cursor: pointer;
       }
+      &.badge-dot-error {
+        background-color: var(--package-dot-error);
+      }
+      &.badge-dot-stale {
+        background-color: var(--package-dot-stale);
+      }
+      &.badge-dot-validating {
+        background-color: var(--package-dot-default);
+      }
+      &.badge-dot-shadowed {
+        background-color: var(--package-dot-shadowed);
+      }
+      &.badge-dot-origin {
+        background-color: var(--package-dot-origin);
+      }
+      &.badge-dot-selector {
+        background-color: var(--package-dot-selector);
+      }
+      &.badge-dot-source {
+        background-color: var(--package-dot-source);
+      }
+      &.badge-dot-symlink {
+        background-color: var(--package-dot-symlink);
+      }
+      &.badge-dot-pulsar {
+        background-color: var(--package-dot-pulsar);
+      }
       &.badge-dot-warn {
-        background-color: var(--background-color-warning);
+        background-color: var(--package-dot-stale);
       }
       &.badge-dot-success {
-        background-color: var(--background-color-success);
+        background-color: var(--package-dot-success);
       }
       &.badge-dot-info {
-        background-color: var(--background-color-info);
-      }
-      &.badge-dot-error {
-        background-color: var(--background-color-error);
-      }
-      /* Pulsar-registry provenance, in the registry's purple. */
-      &.badge-dot-pulsar {
-        background-color: hsl(266, 55%, 50%);
+        background-color: var(--package-dot-source);
       }
     }
 
