@@ -12,7 +12,7 @@ function mockDebounce(func, wait, immediate) {
   var restArguments = function (func, startIndex) {
     startIndex = startIndex == null ? func.length - 1 : +startIndex;
     return function () {
-      var length = Math.max((arguments.length = startIndex), 0),
+      var length = Math.max(arguments.length - startIndex, 0),
         rest = Array(length),
         index = 0;
       for (; index < length; index++) {
