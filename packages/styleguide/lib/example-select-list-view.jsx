@@ -1,11 +1,8 @@
-/** @babel */
-/** @jsx etch.dom */
+const etch = require("@lumine-code/etch");
+const dedent = require("dedent");
+const CodeBlock = require("./code-block");
 
-import etch from "@lumine-code/etch";
-import dedent from "dedent";
-import CodeBlock from "./code-block";
-
-export default class ExampleSelectListView {
+module.exports = class ExampleSelectListView {
   constructor() {
     this.jsExampleCode = dedent`
     const selectListView = atom.workspace.buildSelectList({
@@ -79,4 +76,4 @@ export default class ExampleSelectListView {
     this.selectListView.destroy();
     return etch.destroy(this);
   }
-}
+};

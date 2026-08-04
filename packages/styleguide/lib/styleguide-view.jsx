@@ -1,14 +1,11 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const dedent = require("dedent");
+const CodeBlock = require("./code-block");
+const StyleguideSection = require("./styleguide-section");
+const ExampleSelectListView = require("./example-select-list-view");
 
-import { CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
-import dedent from "dedent";
-import CodeBlock from "./code-block";
-import StyleguideSection from "./styleguide-section";
-import ExampleSelectListView from "./example-select-list-view";
-
-export default class StyleguideView {
+module.exports = class StyleguideView {
   constructor(props) {
     this.uri = props.uri;
     this.collapsedSections = props.collapsedSections ? new Set(props.collapsedSections) : new Set();
@@ -1625,4 +1622,4 @@ export default class StyleguideView {
   didInitializeSection(section) {
     this.sections.push(section);
   }
-}
+};

@@ -1,9 +1,6 @@
-/** @babel */
-/** @jsx etch.dom */
+const etch = require("@lumine-code/etch");
 
-import etch from "@lumine-code/etch";
-
-export default class StyleguideSection {
+module.exports = class StyleguideSection {
   constructor(props, children) {
     this.collapsed = props.collapsed;
     this.title = props.title;
@@ -74,4 +71,4 @@ export default class StyleguideSection {
     this.collapsed = true;
     return etch.update(this);
   }
-}
+};
