@@ -7,6 +7,13 @@ describe("TypeScript transpiler support", function () {
       expect(transpiled(3)).toBe(4);
     }));
 
+  describe("when there is a .tsx file", () =>
+    it("transpiles it with etch.dom as the default JSX factory", function () {
+      const element = require("./fixtures/typescript/jsx.tsx");
+      expect(element[0]).toBe("div");
+      expect(element[1]).toEqual({ className: "settings-view" });
+    }));
+
   describe("when the .ts file is invalid", () => {
     it("does not transpile", () => {
       expect(() => {

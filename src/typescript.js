@@ -11,6 +11,10 @@ const defaultOptions = {
   // Preserve the permissive runtime transpilation behavior used before
   // TypeScript 6 enabled strict mode by default.
   strict: false,
+  // etch is the editor's JSX factory; a per-file /** @jsx */ comment
+  // overrides it. Matches the Babel pipeline's default for .jsx files.
+  jsx: "react",
+  jsxFactory: "etch.dom",
   // By default, do not complain if definition files are missing.
   skipLibCheck: true,
   types: [],
