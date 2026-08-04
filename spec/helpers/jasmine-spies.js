@@ -32,14 +32,18 @@ exports.register = (jasmineEnv) => {
 
     atom.project.setPaths([specProjectPath]);
 
-    atom.packages._originalResolvePackagePath = atom.packages.resolvePackagePath;
-    const spy = spyOn(atom.packages, "resolvePackagePath");
-    spy.and.callFake(function (packageName) {
-      if (specPackageName && packageName === specPackageName) {
-        return atom.packages._originalResolvePackagePath(specPackagePath);
-      } else {
-        return atom.packages._originalResolvePackagePath(packageName);
+    // The package under test is not installed into the scratch LUMINE_HOME, so
+    // its name is not in the package index and `activatePackage("<name>")`
+    // would fail. Substitute the checkout's path whenever its name is
+    // resolved. `resolveAvailablePackage` is the seam every name passes
+    // through — `loadPackage` and the public `resolvePackagePath` both call
+    // it, so faking anything shallower leaves `activatePackage` unfixed.
+    const resolveAvailablePackage = atom.packages.resolveAvailablePackage.bind(atom.packages);
+    spyOn(atom.packages, "resolveAvailablePackage").and.callFake(function (nameOrPath) {
+      if (specPackageName && nameOrPath === specPackageName) {
+        return resolveAvailablePackage(specPackagePath);
       }
+      return resolveAvailablePackage(nameOrPath);
     });
 
     // prevent specs from modifying Atom's menus
