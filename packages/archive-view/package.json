@@ -13,7 +13,7 @@
   ],
   "main": "./lib/archive-editor",
   "dependencies": {
-    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74",
+    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#5801d1e3dd5078db7b575d55e72c6e85bd0dcf53",
     "@lumine-code/ls-archive": "https://github.com/lumine-code/node-ls-archive.git#f897b86effcc50a6a1a41f04cdc3f4d6f288212d",
     "humanize-plus": "~1.8.2",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"

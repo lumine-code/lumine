@@ -11,7 +11,7 @@ let presets = [
       notStrictCommentTriggers: ["@babel", "@flow", "* @babel", "* @flow"],
       // etch is the editor's JSX factory; a per-file /** @jsx */ comment
       // overrides it. The classic runtime is required for pragma support.
-      react: { runtime: "classic", pragma: "etch.dom" },
+      react: { runtime: "classic", pragma: "etch.dom", pragmaFrag: "etch.Fragment" },
     },
   ],
 ];

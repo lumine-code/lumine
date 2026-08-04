@@ -64,6 +64,13 @@ describe("Babel transpiler support", function () {
     });
   });
 
+  describe("when a .jsx file uses a fragment", () =>
+    it("groups the siblings without wrapping them in an element", function () {
+      const node = require("./fixtures/babel/fragment.jsx");
+      expect(node.tag).toBe("div");
+      expect(node.children.map((child) => child.tag)).toEqual(["span", "span"]);
+    }));
+
   describe("when a .jsx file carries its own JSX pragma", () =>
     it("prefers the per-file factory over etch.dom", function () {
       const element = require("./fixtures/babel/factory-override.jsx");

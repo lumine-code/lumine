@@ -15,6 +15,7 @@ const defaultOptions = {
   // overrides it. Matches the Babel pipeline's default for .jsx files.
   jsx: "react",
   jsxFactory: "etch.dom",
+  jsxFragmentFactory: "etch.Fragment",
   // By default, do not complain if definition files are missing.
   skipLibCheck: true,
   types: [],

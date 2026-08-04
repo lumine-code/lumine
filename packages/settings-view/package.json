@@ -69,7 +69,7 @@
   },
   "dependencies": {
     "async": "^3.2.0",
-    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#ace74599f9d6b54e9eb24ecb1e2407e9c35fcc74",
+    "@lumine-code/etch": "https://github.com/lumine-code/etch.git#5801d1e3dd5078db7b575d55e72c6e85bd0dcf53",
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
     "picomatch": "^4.0.5",
     "@lumine-code/season": "https://github.com/lumine-code/season.git#ec9adb297202dd01a425113a4edc2c189d82c14e",
