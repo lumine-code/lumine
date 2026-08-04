@@ -35,12 +35,12 @@ describe("Renders Markdown", () => {
         '<p><a href="https://github.com">Hello World</a></p>\n',
       );
     });
-    it("resolves package links to lumine", () => {
+    it("leaves a retired package link alone, having nowhere to send it", () => {
       expect(atom.tools.markdown.render("[Hello](https://atom.io/packages/hey-pane)")).toBe(
-        '<p><a href="https://web.pulsar-edit.dev/packages/hey-pane">Hello</a></p>\n',
+        '<p><a href="https://atom.io/packages/hey-pane">Hello</a></p>\n',
       );
     });
-    it("resolves atom links to web archive", () => {
+    it("resolves flight-manual links to web archive", () => {
       expect(atom.tools.markdown.render("[Hello](https://flight-manual.atom.io/some-docs)")).toBe(
         '<p><a href="https://web.archive.org/web/20221215003438/https://flight-manual.atom.io/some-docs">Hello</a></p>\n',
       );

@@ -58,9 +58,9 @@ KeymapManager.prototype.loadUserKeymap = function () {
       const message = `Unable to watch path: \`${path.basename(userKeymapPath)}\`. Make sure you \
         have permission to read \`${userKeymapPath}\`.
 
-        On linux there are currently problems with watch sizes. See \
+        On Linux the per-user inotify watch limit is often too low. See \
         [this document][watches] for more info. \
-        [watches]:https://pulsar-edit.dev/docs/atom-archive/hacking-atom/#typeerror-unable-to-watch-path`; //TODO: Update the above to Lumine docs if we choose to add this
+        [watches]:https://lumine-code.github.io/docs.html#troubleshooting/common-issues`;
       this.notificationManager.addError(message, { dismissable: true });
     } else {
       const detail = error.path;

@@ -519,8 +519,8 @@ you have permissions to \`${userStylesheetPath}\`.
       if (process.platform === "linux") {
         message = `${message}
 
-On Linux there are currently problems with watch sizes. See [this document][watches] for more info.
-[watches]:https://pulsar-edit.dev/docs/atom-archive/hacking-atom/#typeerror-unable-to-watch-path
+On Linux the per-user inotify watch limit is often too low. See [this document][watches] for more info.
+[watches]:https://lumine-code.github.io/docs.html#troubleshooting/common-issues
 `;
       }
       this.notificationManager.addError(message, { dismissable: true });

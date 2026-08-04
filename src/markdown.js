@@ -22,8 +22,7 @@ const mdComponents = {
     globalLinks: {
       base64: new RegExp(/^data:image\/.*;base64/, "i"),
     },
-    atomLinks: {
-      package: new RegExp(/^https:\/\/atom\.io\/packages\/(.*)$/),
+    legacyLinks: {
       flightManual: new RegExp(/^https:\/\/flight-manual\.atom\.io\//),
     },
   },
@@ -59,8 +58,8 @@ const mdComponents = {
  * `divWrap` option. False by default.
  * @param {boolean} givenOpts.transformImageLinks - Attempt to resolve image URLs.
  * True by default.
- * @param {boolean} givenOpts.transformAtomLinks - Attempt to resolve links
- * pointing to Atom. True by Default.
+ * @param {boolean} givenOpts.transformLegacyLinks - Attempt to redirect links
+ * pointing at retired resources to an archived copy. True by Default.
  * @param {boolean} givenOpts.transformNonFqdnLinks - Attempt to resolve links
  * that are not fully qualified domain names. True by Default.
  * @param {string} givenOpts.rootDomain - The root URL of the online resource.
@@ -89,7 +88,7 @@ function renderMarkdown(content, givenOpts = {}) {
     taskCheckboxDisabled: true, // `markdown-it-task-checkbox`: Disable checkbox interactivity
     taskCheckboxDivWrap: false, // `markdown-it-task-checkbox`: Wrap div arround checkboc
     transformImageLinks: true, // Attempt to resolve image urls
-    transformAtomLinks: true, // Attempt to rewrite links to Atom pages, changing them to Lumine
+    transformLegacyLinks: true, // Attempt to redirect links to retired resources at their archived copy
     transformNonFqdnLinks: true, // Attempt to resolve non-FQDN links
     rootDomain: "", // The root URL that should be used for the above 'transform' options
     filePath: "", // The path to the file where this markdown is generated from,
@@ -255,9 +254,9 @@ function renderMarkdown(content, givenOpts = {}) {
         }
       });
     });
-  } else if (opts.transformAtomLinks) {
-    // This is a separate if since transforming Atom links does not need a valid root domain provided
-    md.core.ruler.after("inline", "fix-atom-links", (state) => {
+  } else if (opts.transformLegacyLinks) {
+    // This is a separate if since transforming legacy links does not need a valid root domain provided
+    md.core.ruler.after("inline", "fix-legacy-links", (state) => {
       state.tokens.forEach((blockToken) => {
         if (blockToken.type === "inline" && blockToken.children) {
           blockToken.children.forEach((token) => {
@@ -266,13 +265,10 @@ function renderMarkdown(content, givenOpts = {}) {
                 if (attr[0] === "href") {
                   let link = attr[1];
 
-                  if (mdComponents.reg.atomLinks.package.test(link)) {
-                    // Fix any links that attempt to point to packages on `https://atom.io/packages/...`
-                    attr[1] = `https://web.pulsar-edit.dev/packages/${link.match(mdComponents.reg.atomLinks.package)[1]}`;
-                  } else if (mdComponents.reg.atomLinks.flightManual.test(link)) {
+                  if (mdComponents.reg.legacyLinks.flightManual.test(link)) {
                     // Resolve any links to the flight manual to web archive
                     attr[1] = link.replace(
-                      mdComponents.reg.atomLinks.flightManual,
+                      mdComponents.reg.legacyLinks.flightManual,
                       "https://web.archive.org/web/20221215003438/https://flight-manual.atom.io/",
                     );
                   }

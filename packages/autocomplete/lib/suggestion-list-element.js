@@ -207,7 +207,7 @@ module.exports = class SuggestionListElement {
       // A docstring opening with `---` is a rule, not YAML front matter.
       handleFrontMatter: false,
       // Documentation comes from the provider; its links are already correct.
-      transformAtomLinks: false,
+      transformLegacyLinks: false,
     });
     const fragment = atom.tools.markdown.convertToDOM(html);
     // "fragment" is the mode that runs synchronously and leaves the editors

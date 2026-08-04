@@ -79,7 +79,7 @@ const schemaEnforcers = {};
 //   # ...
 // ```
 //
-// See the [package tutorial](https://docs.pulsar-edit.dev/developing-for-pulsar/package-word-count/) for
+// See the [package tutorial](https://lumine-code.github.io/docs.html#developing-for-lumine/developing-a-package) for
 // more info.
 //
 // ## Config Schemas
@@ -329,7 +329,7 @@ const schemaEnforcers = {};
 //
 // * **bold** - `**bold**`
 // * *italics* - `*italics*`
-// * [links](https://pulsar-edit.dev) - `[links](https://pulsar-edit.dev)`
+// * [links](https://lumine-code.github.io) - `[links](https://lumine-code.github.io)`
 // * `code spans` - `` `code spans` ``
 // * line breaks - `line breaks<br/>`
 // * ~~strikethrough~~ - `~~strikethrough~~`
@@ -474,7 +474,7 @@ class Config {
   //   * `scope` (optional) {ScopeDescriptor} describing a path from
   //     the root of the syntax tree to a token. Get one by calling
   //     {editor.getLastCursor().getScopeDescriptor()}. See {::get} for examples.
-  //     See [the scopes docs](https://docs.pulsar-edit.dev/infrastructure/scoped-settings/)
+  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
   //     for more information.
   // * `callback` {Function} to call when the value of the key changes.
   //   * `value` the new value of the key
@@ -511,7 +511,7 @@ class Config {
   //   * `scope` (optional) {ScopeDescriptor} describing a path from
   //     the root of the syntax tree to a token. Get one by calling
   //     {editor.getLastCursor().getScopeDescriptor()}. See {::get} for examples.
-  //     See [the scopes docs](https://docs.pulsar-edit.dev/infrastructure/scoped-settings/)
+  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
   //     for more information.
   // * `callback` {Function} to call when the value of the key changes.
   //   * `event` {Object}
@@ -593,7 +593,7 @@ class Config {
   //   * `scope` (optional) {ScopeDescriptor} describing a path from
   //     the root of the syntax tree to a token. Get one by calling
   //     {editor.getLastCursor().getScopeDescriptor()}
-  //     See [the scopes docs](https://docs.pulsar-edit.dev/infrastructure/scoped-settings/)
+  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
   //     for more information.
   //
   // Returns the value from Lumine's default settings, the user's configuration
@@ -694,7 +694,7 @@ class Config {
   //   setting to the default value.
   // * `options` (optional) {Object}
   //   * `scopeSelector` (optional) {String}. eg. '.source.ruby'
-  //     See [the scopes docs](https://docs.pulsar-edit.dev/infrastructure/scoped-settings/)
+  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
   //     for more information.
   //   * `source` (optional) {String} The name of a file with which the setting
   //     is associated. Defaults to the user's config file.

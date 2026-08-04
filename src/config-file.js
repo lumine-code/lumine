@@ -89,11 +89,11 @@ module.exports = class ConfigFile {
         Unable to watch path: \`${Path.basename(this.path)}\`.
 
         Make sure you have permissions to \`${this.path}\`.
-        On linux there are currently problems with watch sizes.
+        On Linux the per-user inotify watch limit is often too low.
         See [this document][watches] for more info.
 
-        [watches]:https://pulsar-edit.dev/docs/atom-archive/hacking-atom/#typeerror-unable-to-watch-path
-      `, //TODO: Update the above to the lumine docs if we choose to add this
+        [watches]:https://lumine-code.github.io/docs.html#troubleshooting/common-issues
+      `,
       );
       return new Disposable();
     }
