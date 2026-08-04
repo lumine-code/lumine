@@ -169,8 +169,13 @@ export default class UriHandlerPanel {
   }
 
   handlePackageLinkClicked(evt) {
+    // Claim the click outright. Preventing the default alone leaves the window's
+    // delegated link handler to run as well, which would route the same href
+    // through the URI handler registry — adding a spurious unhandled row to the
+    // very table the link sits in, on top of opening the package here.
     evt.preventDefault();
-    atom.workspace.open(evt.target.getAttribute("href"));
+    evt.stopPropagation();
+    atom.workspace.open(evt.currentTarget.getAttribute("href"));
   }
 
   renderRegistrationDescription() {
