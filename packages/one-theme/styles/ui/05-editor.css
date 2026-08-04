@@ -5,6 +5,12 @@
  * so with `[input]` — `mini` implies it — never because of where its panel
  * happens to sit. */
 
+/* Declared on the resting state, not inside `.is-focused`, so the ring eases
+   out on blur as well as in on focus. */
+atom-text-editor:is([mini], [input]) {
+  transition: border-color 0.15s ease;
+}
+
 atom-text-editor:is([mini], [input]).is-focused {
   outline: none;
   border-color: var(--accent-color);
