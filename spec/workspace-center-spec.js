@@ -1,5 +1,3 @@
-/** @babel */
-
 const TextEditor = require("../src/text-editor");
 
 describe("WorkspaceCenter", () => {

@@ -1,5 +1,3 @@
-/** @babel */
-
 const fs = require("fs");
 const path = require("path");
 // Electron 43 ships the synchronous Node SQLite API used by the state store.

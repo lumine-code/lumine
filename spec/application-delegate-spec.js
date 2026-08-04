@@ -1,6 +1,4 @@
-/** @babel */
-
-import ApplicationDelegate from "../src/application-delegate";
+const ApplicationDelegate = require("../src/application-delegate");
 
 describe("ApplicationDelegate", function () {
   describe("set/getTemporaryWindowState", function () {

@@ -1,6 +1,4 @@
-/** @babel */
-
-import etch from "@lumine-code/etch";
+const etch = require("@lumine-code/etch");
 
 const Grim = require("grim");
 

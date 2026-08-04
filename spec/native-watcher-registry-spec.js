@@ -1,9 +1,7 @@
-/** @babel */
+const path = require("path");
+const { Emitter } = require("event-kit");
 
-import path from "path";
-import { Emitter } from "event-kit";
-
-import { NativeWatcherRegistry } from "../src/native-watcher-registry";
+const { NativeWatcherRegistry } = require("../src/native-watcher-registry");
 
 function findRootDirectory() {
   let current = process.cwd();

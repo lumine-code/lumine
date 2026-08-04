@@ -1,7 +1,6 @@
-/** @babel */
-import path from "path";
+const path = require("path");
 
-import PackageTranspilationRegistry from "../src/package-transpilation-registry";
+const PackageTranspilationRegistry = require("../src/package-transpilation-registry");
 
 const originalCompiler = {
   getCachePath: (_sourceCode, _filePath) => {

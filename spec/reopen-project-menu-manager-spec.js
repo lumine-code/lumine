@@ -1,6 +1,4 @@
-/** @babel */
-
-import { Disposable } from "event-kit";
+const { Disposable } = require("event-kit");
 
 const ReopenProjectMenuManager = require("../src/reopen-project-menu-manager");
 

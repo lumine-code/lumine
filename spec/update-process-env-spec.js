@@ -1,10 +1,7 @@
-/** @babel */
-"not strict";
-
-import path from "path";
-import childProcess from "child_process";
-import { updateProcessEnv, shouldGetEnvFromShell } from "../src/update-process-env";
-import mockSpawn from "mock-spawn";
+const path = require("path");
+const childProcess = require("child_process");
+const { updateProcessEnv, shouldGetEnvFromShell } = require("../src/update-process-env");
+const mockSpawn = require("mock-spawn");
 const temp = require("@lumine-code/temp").track();
 
 describe("updateProcessEnv(launchEnv)", function () {

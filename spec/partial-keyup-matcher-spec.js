@@ -1,5 +1,4 @@
 const assert = require("./keymap-spec-helpers/assert");
-/** @babel */
 
 const PartialKeyupMatcher = require("../src/partial-keyup-matcher.js");
 const { KeyBinding } = require("../src/key-binding");

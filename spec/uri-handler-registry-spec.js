@@ -1,6 +1,4 @@
-/** @babel */
-
-import URIHandlerRegistry from "../src/uri-handler-registry";
+const URIHandlerRegistry = require("../src/uri-handler-registry");
 
 // The object shape handlers receive is public API: it must stay compatible
 // with the output of Node's legacy `url.parse(uri, true)`.

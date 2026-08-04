@@ -1,8 +1,6 @@
-/** @babel */
-
-import atomPaths from "../src/atom-paths";
-import fs from "@lumine-code/fs-plus";
-import path from "path";
+const atomPaths = require("../src/atom-paths");
+const fs = require("@lumine-code/fs-plus");
+const path = require("path");
 const remote = require("@electron/remote");
 const app = remote.app;
 const temp = require("@lumine-code/temp").track();
