@@ -1017,9 +1017,24 @@ export default class PackageCard {
         text: "Listed by the Pulsar package registry.",
       });
     }
+    const sourceCheckoutBadge = this.sourceCheckoutBadge();
+    if (sourceCheckoutBadge) badges.push(sourceCheckoutBadge);
     const symlinkBadge = this.symlinkBadge();
     if (symlinkBadge) badges.push(symlinkBadge);
     return badges;
+  }
+
+  // A dot for a bundled package the editor is running out of its own source
+  // checkout rather than out of a build. The package ships with Lumine, but the
+  // files being loaded are the ones on disk in the repository, so editing them
+  // changes what runs.
+  sourceCheckoutBadge() {
+    if (this.pack.tier !== "bundled" || this.pack.isBundled !== false) return null;
+    return {
+      type: "info",
+      title: "From the source checkout",
+      text: this.pack.path || "Loaded from the repository, not from a build.",
+    };
   }
 
   // A Pulsar-registry result carries `source: "pulsar"` directly from the

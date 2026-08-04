@@ -656,6 +656,10 @@ module.exports = class PackageManager {
       directoryName: availablePackage.dirname || path.basename(availablePackage.path || ""),
       tier: availablePackage.tier,
       nameSource: availablePackage.nameSource,
+      // False for a bundled package while the editor runs from a source
+      // checkout: it ships with Lumine, but the files being loaded are the
+      // ones in the checkout.
+      isBundled: availablePackage.isBundled,
       isShadowed: availablePackage.isWinner === false,
       shadowedBy: availablePackage.shadowedBy,
     });

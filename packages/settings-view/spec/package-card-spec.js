@@ -1619,6 +1619,39 @@ describe("PackageCard", function () {
       expect(badge.badge.text).toContain("my-checkout");
     });
 
+    it("shows an info dot on a bundled package running from the source checkout", function () {
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      card = new PackageCard(
+        {
+          name: "tabs",
+          version: "1.0.0",
+          tier: "bundled",
+          // What the loader reports while the editor runs from its repository
+          // rather than from a build.
+          isBundled: false,
+          path: path.join("checkout", "packages", "tabs"),
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      const badge = card.badgeViews.find((view) => view.badge.title === "From the source checkout");
+      expect(badge).toBeTruthy();
+      expect(badge.badge.type).toBe("info");
+      expect(badge.badge.text).toContain(path.join("packages", "tabs"));
+    });
+
+    it("shows no source dot for a bundled package in a build", function () {
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      card = new PackageCard(
+        { name: "tabs", version: "1.0.0", tier: "bundled", isBundled: true },
+        new SettingsView(),
+        packageManager,
+      );
+      expect(
+        card.badgeViews.find((view) => view.badge.title === "From the source checkout"),
+      ).toBeUndefined();
+    });
+
     it("treats a record hydrated from the Pulsar registry as Pulsar-sourced", function () {
       setPackageStatusSpies({ installed: false, disabled: false });
       card = new PackageCard(
