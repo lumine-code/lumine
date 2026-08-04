@@ -9,7 +9,7 @@ function isSupported() {
 }
 
 function isDefaultProtocolClient() {
-  return require("@electron/remote").app.isDefaultProtocolClient("atom", process.execPath, [
+  return require("@electron/remote").app.isDefaultProtocolClient("lumine", process.execPath, [
     "--uri-handler",
     "--",
   ]);
@@ -32,7 +32,10 @@ export default class UriHandlerPanel {
     this.handleChange = this.handleChange.bind(this);
     this.handleBecomeProtocolClient = this.handleBecomeProtocolClient.bind(this);
     this.isDefaultProtocolClient = isDefaultProtocolClient();
-    this.uriHistory = [];
+    // Seed from the registry rather than starting empty: the panel is built
+    // lazily, on the first switch to it, so every URI handled before that point
+    // is already in the history and would otherwise never be shown.
+    this.uriHistory = atom.uriHandlerRegistry.getRecentlyHandledURIs();
     etch.initialize(this);
 
     this.subscriptions = new CompositeDisposable();
