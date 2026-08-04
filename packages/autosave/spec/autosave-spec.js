@@ -313,7 +313,7 @@ describe("Autosave", () => {
         !deactivatePromise.then ||
         typeof deactivatePromise.then !== "function"
       ) {
-        // Atom does not support asynchronous package deactivation.
+        // The editor does not support asynchronous package deactivation.
         // This keeps us from failing on 1.20
         asyncDeactivateSupported = false;
         deactivatePromise = Promise.resolve();

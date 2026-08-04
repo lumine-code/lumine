@@ -318,7 +318,7 @@ module.exports = class SnippetExpansion {
   //
   // All else being equal, that content should get added to the marker (if any)
   // whose tab stop is active, or else the marker whose tab stop's placeholder
-  // references an active tab stop. To use the terminology of Atom's
+  // references an active tab stop. To use the terminology of the editor's
   // `DisplayMarker`, all markers related to the active tab stop should be
   // "inclusive," and all others should be "exclusive."
   //

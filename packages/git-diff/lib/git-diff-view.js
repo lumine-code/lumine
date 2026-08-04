@@ -7,7 +7,7 @@ const MAX_BUFFER_LENGTH_TO_DIFF = 2 * 1024 * 1024;
 
 /**
  * @describe Handles per-editor event and repository subscriptions.
- * @param editor {Atom.TextEditor} - The editor this view will manage.
+ * @param editor {TextEditor} - The editor this view will manage.
  */
 export default class GitDiffView {
   constructor(editor, editorElement) {

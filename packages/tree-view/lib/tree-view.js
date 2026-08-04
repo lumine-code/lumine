@@ -1898,7 +1898,7 @@ class TreeView {
             // Don't delete entries which no longer exist. This can happen, for
             // example, when
             //
-            // * the entry is deleted outside of Atom before "Move to Trash" is
+            // * the entry is deleted outside the editor before "Move to Trash" is
             //   selected;
             // * a folder and one of its children are both selected for deletion,
             //   but the parent folder is deleted first.
@@ -2642,7 +2642,7 @@ class TreeView {
 
       let initialPaths = event.dataTransfer.getData("initialPaths");
       if (initialPaths) {
-        // Drop event from Atom
+        // Drop event from the editor
         initialPaths = JSON.parse(initialPaths);
         if (initialPaths.includes(newDirectoryPath)) return;
 

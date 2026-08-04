@@ -4,7 +4,7 @@ import path from "path";
 import IncompatiblePackagesComponent from "../lib/incompatible-packages-component";
 import StatusIconComponent from "../lib/status-icon-component";
 
-// This exists only so that CI passes on both Atom 1.6 and Atom 1.8+.
+// Falls back to the bottom panels when no footer panel holds the status bar.
 function findStatusBar() {
   if (typeof atom.workspace.getFooterPanels === "function") {
     const footerPanels = atom.workspace.getFooterPanels();

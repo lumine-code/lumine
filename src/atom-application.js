@@ -1652,7 +1652,7 @@ module.exports = class AtomApplication extends EventEmitter {
     try {
       testRunnerPath = Resolve.sync(atomTestRunner, {
         basedir: packageRoot,
-        // eslint-disable-next-line n/no-deprecated-api -- Atom module system relies on require.extensions
+        // eslint-disable-next-line n/no-deprecated-api -- the editor's module system relies on require.extensions
         extensions: Object.keys(require.extensions),
       });
 
@@ -1667,7 +1667,7 @@ module.exports = class AtomApplication extends EventEmitter {
     try {
       testRunnerPath = Resolve.sync(`./spec/${atomTestRunner}`, {
         basedir: this.devResourcePath,
-        // eslint-disable-next-line n/no-deprecated-api -- Atom module system relies on require.extensions
+        // eslint-disable-next-line n/no-deprecated-api -- the editor's module system relies on require.extensions
         extensions: Object.keys(require.extensions),
       });
 

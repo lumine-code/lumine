@@ -200,7 +200,7 @@ describe("IncompatiblePackagesComponent", () => {
         });
       });
 
-      it("displays a prompt to reload Atom when the packages finish rebuilding", () => {
+      it("displays a prompt to reload the editor when the packages finish rebuilding", () => {
         waitsForPromise(async () => {
           let component = new IncompatiblePackagesComponent({
             getActivePackages: () => packages,

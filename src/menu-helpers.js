@@ -100,7 +100,7 @@ function cloneMenuItem(item) {
   return item;
 }
 
-// Determine the Electron accelerator for a given Atom keystroke.
+// Determine the Electron accelerator for a given editor keystroke.
 //
 // keystroke - The keystroke.
 //

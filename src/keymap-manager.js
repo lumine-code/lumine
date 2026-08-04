@@ -32,7 +32,7 @@ const Platforms = ["darwin", "freebsd", "linux", "sunos", "win32"];
 const OtherPlatforms = Platforms.filter((platform) => platform !== process.platform);
 
 // Extended: Allows commands to be associated with keystrokes in a
-// context-sensitive way. In Atom, you can access a global instance of this
+// context-sensitive way. You can access a global instance of this
 // object via `atom.keymaps`.
 //
 // Key bindings are plain JavaScript objects containing **CSS selectors** as
@@ -845,7 +845,7 @@ module.exports = KeymapManager = (function () {
     }
 
     // Public: Customize translation of raw keyboard events to keystroke strings.
-    // This API is useful for working around Chrome bugs or changing how Atom
+    // This API is useful for working around Chrome bugs or changing how the editor
     // resolves certain key combinations. If multiple resolvers are installed,
     // the most recently-added resolver returning a string for a given keystroke
     // takes precedence.
@@ -853,7 +853,7 @@ module.exports = KeymapManager = (function () {
     // * `resolver` A {Function} that returns a keystroke {String} and is called
     //    with an object containing the following keys:
     //    * `keystroke` The currently resolved keystroke string. If your function
-    //      returns a falsy value, this is how Atom will resolve your keystroke.
+    //      returns a falsy value, this is how the editor will resolve your keystroke.
     //    * `event` The raw DOM 3 `KeyboardEvent` being resolved. See the DOM API
     //      documentation for more details.
     //    * `layoutName` The OS-specific name of the current keyboard layout.

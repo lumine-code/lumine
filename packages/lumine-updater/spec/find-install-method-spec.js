@@ -6,7 +6,7 @@ describe("find-install-method main", async () => {
 
   it("Returns custom release channel if applicable", async () => {
     // We can't mock the atom api return from a package,
-    // So we will just know that if tests are running, it's in the Atom SpecMode
+    // So we will just know that if tests are running, it's in spec mode
 
     let method = await findInstallMethod();
 

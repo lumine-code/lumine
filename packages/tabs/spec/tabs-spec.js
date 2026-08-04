@@ -1505,7 +1505,7 @@ describe("TabBarView", () => {
         }
       }));
 
-    describe("when a tab is dragged to another Atom window", () => {
+    describe("when a tab is dragged to another editor window", () => {
       beforeEach(() => spyOn(pane, "destroyItem").andCallThrough());
 
       it("closes the tab in the first window and opens the tab in the second window", () => {
