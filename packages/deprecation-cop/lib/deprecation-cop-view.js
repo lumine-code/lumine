@@ -413,7 +413,7 @@ export default class DeprecationCopView {
         let packageName;
         let packagePath;
         if (packagesComponentIndex === -1) {
-          packageName = "Other"; // could be Atom Core or the personal style sheet
+          packageName = "Other"; // could be the editor itself or the personal style sheet
           packagePath = "";
         } else {
           packageName = components[packagesComponentIndex + 1];

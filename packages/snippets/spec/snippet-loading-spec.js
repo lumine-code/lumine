@@ -56,14 +56,14 @@ describe("Snippet Loading", () => {
 
     runs(() => {
       const jsonSnippet = snippetsService.snippetsForScopes([".source.json"])["snip"];
-      expect(jsonSnippet.name).toBe("Atom Snippet");
+      expect(jsonSnippet.name).toBe("Lumine Snippet");
       expect(jsonSnippet.prefix).toBe("snip");
       expect(jsonSnippet.body).toContain('"prefix":');
       expect(jsonSnippet.body).toContain('"body":');
       expect(jsonSnippet.tabStopList.length).toBeGreaterThan(0);
 
       const csonSnippet = snippetsService.snippetsForScopes([".source.coffee"])["snip"];
-      expect(csonSnippet.name).toBe("Atom Snippet");
+      expect(csonSnippet.name).toBe("Lumine Snippet");
       expect(csonSnippet.prefix).toBe("snip");
       expect(csonSnippet.body).toContain("'prefix':");
       expect(csonSnippet.body).toContain("'body':");
