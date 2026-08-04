@@ -109,6 +109,11 @@
       margin: 0;
     }
 
+    /* One note per line, each carrying its own severity colour. */
+    .package-message-line + .package-message-line {
+      margin-top: 2px;
+    }
+
     .downloads {
       color: var(--text-color-highlight);
       overflow: hidden;

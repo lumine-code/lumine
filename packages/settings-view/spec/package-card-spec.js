@@ -129,7 +129,13 @@ describe("PackageCard", function () {
     expect(client.avatar.mostRecentCall.args[0]).toBe("owner");
   });
 
-  describe("directory name", function () {
+  describe("package notes", function () {
+    function noteLines(card) {
+      return Array.from(card.refs.packageMessage.querySelectorAll(".package-message-line")).map(
+        (line) => ({ text: line.textContent, className: line.className }),
+      );
+    }
+
     it("names the directory when it is not the package's own name", function () {
       setPackageStatusSpies({ installed: true, disabled: false });
       card = new PackageCard(
@@ -137,11 +143,32 @@ describe("PackageCard", function () {
         new SettingsView(),
         packageManager,
       );
-      expect(card.refs.packageMessage.textContent).toContain("pulsar-invert-colors");
+      const lines = noteLines(card);
+      expect(lines.length).toBe(1);
+      expect(lines[0].text).toContain("pulsar-invert-colors");
       // A directory name carries no meaning of its own, so this is information,
       // not a problem to fix.
-      expect(card.refs.packageMessage).not.toHaveClass("text-error");
-      expect(card.refs.packageMessage).toHaveClass("text-subtle");
+      expect(lines[0].className).toContain("text-info");
+    });
+
+    it("colours each note by how much it matters", function () {
+      setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
+      card = new PackageCard(
+        {
+          name: "invert-colors",
+          directoryName: "zz-old-copy",
+          isShadowed: true,
+          shadowedBy: { name: "invert-colors", dirname: "invert-colors", tier: "community" },
+        },
+        new SettingsView(),
+        packageManager,
+      );
+      const lines = noteLines(card);
+      expect(lines.length).toBe(2);
+      expect(lines[0].text).toContain("Shadowed by");
+      expect(lines[0].className).toContain("text-warning");
+      expect(lines[1].text).toContain("zz-old-copy");
+      expect(lines[1].className).toContain("text-info");
     });
 
     it("says nothing when the directory matches the package name", function () {
@@ -152,7 +179,7 @@ describe("PackageCard", function () {
         packageManager,
       );
       expect(card.refs.packageMessage.textContent).toBe("");
-      expect(card.refs.packageMessage).not.toHaveClass("text-subtle");
+      expect(noteLines(card).length).toBe(0);
     });
 
     it("does not warn for a card without directory information", function () {

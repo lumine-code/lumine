@@ -139,7 +139,7 @@ export default class PackageCard {
       this.refs.uninstallButton.remove();
     }
 
-    this.updateDirectoryNameWarning();
+    this.updatePackageNotes();
 
     this.disposables.add(
       atom.tooltips.add(this.refs.packageActionButtonGroup, {
@@ -900,7 +900,7 @@ export default class PackageCard {
     this.updateSettingsState();
     this.updateInstalledState();
     this.updateDisabledState();
-    this.updateDirectoryNameWarning();
+    this.updatePackageNotes();
   }
 
   // Keeps the version indicator current whether it is a plain label or the
@@ -916,34 +916,36 @@ export default class PackageCard {
     }
   }
 
-  // Names the directory a package lives in when that is not the package's own
-  // name, and names the copy that loads instead of this one when this copy is
-  // shadowed. A directory name carries no meaning of its own — the package.json
-  // "name" is the identity — so this is information, never a warning.
-  updateDirectoryNameWarning() {
+  // What is worth saying about this copy of the package: that another copy
+  // loads instead of it, and what its directory is called when that is not the
+  // package's own name. Each note is its own line, coloured by how much it
+  // matters — the same severities the status dots use, so a line and its dot
+  // read as one thing.
+  updatePackageNotes() {
     const message = this.refs.packageMessage;
-    const dirName = this.pack.directoryName;
-    const lines = [];
+    const notes = [];
 
     if (this.isShadowed) {
-      lines.push(
-        `Shadowed by ${this.shadowedByDescription()}. Only one copy of a package name loads.`,
-      );
+      notes.push({
+        severity: "warning",
+        text: `Shadowed by ${this.shadowedByDescription()}. Only one copy of a package name loads.`,
+      });
     }
-    if (dirName && this.pack.name && dirName !== this.pack.name) {
-      lines.push(`Installed in a directory named “${dirName}”.`);
+    const directoryName = this.pack.directoryName;
+    if (directoryName && this.pack.name && directoryName !== this.pack.name) {
+      // A directory name carries no meaning of its own — the package.json
+      // "name" is the identity — so this is information, never a warning.
+      notes.push({ severity: "info", text: `Installed in a directory named “${directoryName}”.` });
     }
 
-    message.classList.remove("text-error");
-    if (lines.length > 0) {
-      message.classList.add("text-subtle");
-      message.textContent = lines.join(" ");
-      message.style.display = "";
-    } else {
-      message.classList.remove("text-subtle");
-      message.textContent = "";
-      message.style.display = "none";
+    message.textContent = "";
+    for (const note of notes) {
+      const line = document.createElement("div");
+      line.className = `package-message-line text-${note.severity}`;
+      line.textContent = note.text;
+      message.appendChild(line);
     }
+    message.style.display = notes.length > 0 ? "" : "none";
   }
 
   updateSettingsState() {
