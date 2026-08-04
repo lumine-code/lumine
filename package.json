@@ -24,7 +24,7 @@
   },
   "atomTestRunner": "runners/jasmine-test-runner",
   "license": "MIT",
-  "electronVersion": "43.2.0",
+  "electronVersion": "43.3.0",
   "dependencies": {
     "@atom/source-map-support": "^0.3.4",
     "@babel/core": "8.0.1",
@@ -305,7 +305,7 @@
     "@electron/notarize": "^3.1.1",
     "@electron/rebuild": "4.2.0",
     "@eslint/js": "^10.0.1",
-    "electron": "43.2.0",
+    "electron": "43.3.0",
     "electron-builder": "26.15.6",
     "eslint": "^10.8.0",
     "eslint-config-prettier": "^10.1.8",
