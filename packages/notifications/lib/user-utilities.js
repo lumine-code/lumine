@@ -6,7 +6,6 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
  */
 const os = require("os");
-const path = require("path");
 const semver = require("semver");
 const { BufferedProcess } = require("atom");
 
@@ -152,60 +151,42 @@ module.exports = {
     });
   },
 
-  checkLumineUpToDate() {
-    const installedVersion = atom.getVersion().replace(/-.*$/, "");
-    return {
-      upToDate: true,
-      latestVersion: installedVersion,
-      installedVersion,
-    };
-  },
-
   getPackageVersion(packageName) {
     const pack = atom.packages.getLoadedPackage(packageName);
     return pack != null ? pack.metadata.version : undefined;
   },
 
+  // The version of `packageName` that ships with this build, or undefined when
+  // the package is not bundled. It has to come from the bundled copy's own
+  // manifest: `packageDependencies` records a `file:` install spec, not a
+  // version. Asking for the shadowed copy matters — when a local install wins
+  // the name, the bundled one is the loser of that scan.
   getPackageVersionShippedWithLumine(packageName) {
-    return require(path.join(atom.getLoadSettings().resourcePath, "package.json"))
-      .packageDependencies[packageName];
+    const bundled = atom.packages
+      .getAvailablePackages({ includeShadowed: true })
+      .find((pack) => pack.name === packageName && pack.tier === "bundled");
+    return bundled != null ? bundled.metadata.version : undefined;
   },
 
-  getLatestPackageData(packageName) {
-    const githubHeaders = new Headers({
-      accept: "application/json",
-      contentType: "application/json",
-    });
-    const apiURL = process.env.LUMINE_API_URL || "https://api.pulsar-edit.dev/api";
-    return fetch(`${apiURL}/${packageName}`, { headers: githubHeaders }).then((r) => {
-      if (r.ok) {
-        return r.json();
-      } else {
-        return Promise.reject(new Error(`Fetching updates resulted in status ${r.status}`));
-      }
-    });
-  },
-
+  // Community packages install from their own Git origin rather than a registry,
+  // so there is no single endpoint to ask "what is the latest version?" — the
+  // Install tab's Updates view answers that per package, against the origin
+  // recorded at install time. This check therefore only has an opinion about a
+  // bundled package that has been shadowed by an older local copy.
   checkPackageUpToDate(packageName) {
-    return this.getLatestPackageData(packageName).then((latestPackageData) => {
-      let isCore;
-      const installedVersion = this.getPackageVersion(packageName);
-      let upToDate =
-        installedVersion != null &&
-        semver.gte(installedVersion, latestPackageData?.releases?.latest);
-      const latestVersion = latestPackageData?.releases?.latest;
-      const versionShippedWithLumine = this.getPackageVersionShippedWithLumine(packageName);
+    const installedVersion = this.getPackageVersion(packageName);
+    const versionShippedWithLumine = this.getPackageVersionShippedWithLumine(packageName);
+    const isCore = versionShippedWithLumine != null;
 
-      if ((isCore = versionShippedWithLumine != null)) {
-        // A core package is out of date if the version which is being used
-        // is lower than the version which normally ships with the version
-        // of Lumine which is running. This will happen when there's a locally
-        // installed version of the package with a lower version than Lumine's.
-        upToDate =
-          installedVersion != null && semver.gte(installedVersion, versionShippedWithLumine);
-      }
+    // A core package is out of date if the version which is being used is lower
+    // than the version which normally ships with the version of Lumine which is
+    // running. This will happen when there's a locally installed version of the
+    // package with a lower version than Lumine's. Anything unparseable on either
+    // side means no opinion rather than a thrown error.
+    const comparable =
+      semver.valid(installedVersion) != null && semver.valid(versionShippedWithLumine) != null;
+    const upToDate = comparable ? semver.gte(installedVersion, versionShippedWithLumine) : true;
 
-      return { isCore, upToDate, latestVersion, installedVersion, versionShippedWithLumine };
-    });
+    return { isCore, upToDate, installedVersion, versionShippedWithLumine };
   },
 };

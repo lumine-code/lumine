@@ -915,89 +915,10 @@
             });
             return spyOn(atom, "inDevMode").andReturn(false);
           });
-          describe("when the package is a non-core package", function () {
-            beforeEach(function () {
-              generateFakeFetchResponses({
-                packageResponse: {
-                  repository: {
-                    url: "https://github.com/someguy/somepackage",
-                  },
-                  releases: {
-                    latest: "0.10.0",
-                  },
-                },
-              });
-              spyOn(NotificationIssue.prototype, "getPackageName").andCallFake(function () {
-                return "somepackage";
-              });
-              spyOn(NotificationIssue.prototype, "getRepoUrl").andCallFake(function () {
-                return "https://github.com/someguy/somepackage";
-              });
-              generateException();
-              fatalError = notificationContainer.querySelector("atom-notification.fatal");
-              return waitsForPromise(function () {
-                return fatalError.getRenderPromise().then(function () {
-                  return (issueBody = fatalError.issue.issueBody);
-                });
-              });
-            });
-            return it("asks the user to update their packages", function () {
-              var button, fatalNotification;
-              fatalNotification = fatalError.querySelector(".fatal-notification");
-              button = fatalError.querySelector(".btn");
-              expect(button.textContent).toContain("Check for package updates");
-              expect(fatalNotification.textContent).toContain("Upgrading to the latest");
-              return expect(button.getAttribute("href")).toBe("#");
-            });
-          });
-          describe("when the package is an atom-owned non-core package", function () {
-            beforeEach(function () {
-              generateFakeFetchResponses({
-                packageResponse: {
-                  repository: {
-                    url: "https://github.com/pulsar-edit/sort-lines",
-                  },
-                  releases: {
-                    latest: "0.10.0",
-                  },
-                },
-              });
-              spyOn(NotificationIssue.prototype, "getPackageName").andCallFake(function () {
-                return "sort-lines";
-              });
-              spyOn(NotificationIssue.prototype, "getRepoUrl").andCallFake(function () {
-                return "https://github.com/pulsar-edit/sort-lines";
-              });
-              generateException();
-              fatalError = notificationContainer.querySelector("atom-notification.fatal");
-              return waitsForPromise(function () {
-                return fatalError.getRenderPromise().then(function () {
-                  return (issueBody = fatalError.issue.issueBody);
-                });
-              });
-            });
-            return it("asks the user to update their packages", function () {
-              var button, fatalNotification;
-              fatalNotification = fatalError.querySelector(".fatal-notification");
-              button = fatalError.querySelector(".btn");
-              expect(button.textContent).toContain("Check for package updates");
-              expect(fatalNotification.textContent).toContain("Upgrading to the latest");
-              return expect(button.getAttribute("href")).toBe("#");
-            });
-          });
+          // A community package installs from its own Git origin, so nothing here
+          // can say whether it is out of date — only a bundled package shadowed by
+          // an older local copy reports itself out of date.
           return describe("when the package is a core package", function () {
-            beforeEach(function () {
-              return generateFakeFetchResponses({
-                packageResponse: {
-                  repository: {
-                    url: "https://github.com/pulsar-edit/notifications",
-                  },
-                  releases: {
-                    latest: "0.11.0",
-                  },
-                },
-              });
-            });
             describe("when the locally installed version is lower than Lumine's version", function () {
               beforeEach(function () {
                 var UserUtilities, versionShippedWithLumine;
@@ -1044,7 +965,7 @@
                   });
                 });
               });
-              return it("ignores the out of date package because they cant upgrade it without upgrading atom", function () {
+              return it("ignores the out of date package because they cant upgrade it without upgrading Lumine", function () {
                 var button;
                 fatalError = notificationContainer.querySelector("atom-notification.fatal");
                 button = fatalError.querySelector(".btn");

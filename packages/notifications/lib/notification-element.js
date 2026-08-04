@@ -218,14 +218,13 @@ module.exports = NotificationElement = (function () {
 
         const promises = [];
         promises.push(this.issue.findSimilarIssues());
-        promises.push(UserUtilities.checkLumineUpToDate());
         if (packageName != null) {
           promises.push(UserUtilities.checkPackageUpToDate(packageName));
         }
 
         return Promise.all(promises).then((allData) => {
           let issue;
-          const [issues, atomCheck, packageCheck] = Array.from(allData);
+          const [issues, packageCheck] = Array.from(allData);
 
           if (
             (issues != null ? issues.open : undefined) ||
@@ -235,21 +234,9 @@ module.exports = NotificationElement = (function () {
             issueButton.setAttribute("href", issue.html_url);
             issueButton.textContent = "View Issue";
             fatalNotification.innerHTML += " This issue has already been reported.";
-          } else if (packageCheck != null && !packageCheck.upToDate && !packageCheck.isCore) {
-            issueButton.setAttribute("href", "#");
-            issueButton.textContent = "Check for package updates";
-            issueButton.addEventListener("click", function (e) {
-              e.preventDefault();
-              const command = "settings-view:check-updates";
-              return atom.commands.dispatch(atom.views.getView(atom.workspace), command);
-            });
-
-            fatalNotification.innerHTML += `\
-<code>${packageName}</code> is out of date: ${packageCheck.installedVersion} installed;
-${packageCheck.latestVersion} latest.
-Upgrading to the latest version may fix this issue.\
-`;
-          } else if (packageCheck != null && !packageCheck.upToDate && packageCheck.isCore) {
+          } else if (packageCheck != null && !packageCheck.upToDate) {
+            // Only a bundled package shadowed by an older local copy can report
+            // itself out of date — see `checkPackageUpToDate`.
             issueButton.remove();
 
             fatalNotification.innerHTML += `\
@@ -266,17 +253,9 @@ Removing the locally installed version may fix this issue.\
             if (fs.isSymbolicLinkSync(packagePath)) {
               fatalNotification.innerHTML += `\
 <br><br>
-Use: <code>apm unlink ${packagePath}</code>\
+It is a symbolic link at <code>${packagePath}</code>; removing that link restores the bundled version.\
 `;
             }
-          } else if (atomCheck != null && !atomCheck.upToDate) {
-            issueButton.remove();
-
-            fatalNotification.innerHTML += `\
-Lumine is out of date: ${atomCheck.installedVersion} installed;
-${atomCheck.latestVersion} latest.
-Upgrading to the <a href='https://github.com/lumine-code/lumine/releases/tag/v${atomCheck.latestVersion}'>latest version</a> may fix this issue.\
-`;
           } else {
             fatalNotification.innerHTML +=
               " You can help by creating an issue. Please explain what actions triggered this error.";

@@ -24,28 +24,16 @@ bug report purposes.
       if (!window.fetch.isSpy) {
         spyOn(window, "fetch");
       }
-      return fetch.andCallFake(function (url) {
-        var ref, ref1;
-        if (url.indexOf("api.pulsar-edit.dev/api") > -1) {
-          return jsonPromise(
-            (ref = options != null ? options.packageResponse : void 0) != null
-              ? ref
-              : {
-                  repository: {
-                    url: "https://github.com/pulsar-edit/notifications",
-                  },
-                  releases: {
-                    latest: "0.0.0",
-                  },
-                },
-          );
-        }
+      // The only remaining network call is the GitHub issue search; package
+      // update checks are answered locally.
+      return fetch.andCallFake(function () {
+        var ref;
         if ((options != null ? options.issuesErrorResponse : void 0) != null) {
           return Promise.reject(options != null ? options.issuesErrorResponse : void 0);
         }
         return jsonPromise(
-          (ref1 = options != null ? options.issuesResponse : void 0) != null
-            ? ref1
+          (ref = options != null ? options.issuesResponse : void 0) != null
+            ? ref
             : {
                 items: [],
               },

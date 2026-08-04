@@ -177,25 +177,20 @@
             return expect(copyReport).toBeDefined();
           });
         });
-        describe("when the package is out of date", function () {
+        describe("when a locally installed core package is out of date", function () {
           beforeEach(function () {
-            var UserUtilities, installedVersion;
+            var UserUtilities, installedVersion, versionShippedWithLumine;
             installedVersion = "0.9.0";
+            versionShippedWithLumine = "0.10.0";
             UserUtilities = require("../lib/user-utilities");
             spyOn(UserUtilities, "getPackageVersion").andCallFake(function () {
               return installedVersion;
             });
-            spyOn(atom, "inDevMode").andReturn(false);
-            generateFakeFetchResponses({
-              packageResponse: {
-                repository: {
-                  url: "https://github.com/someguy/somepackage",
-                },
-                releases: {
-                  latest: "0.10.0",
-                },
-              },
+            spyOn(UserUtilities, "getPackageVersionShippedWithLumine").andCallFake(function () {
+              return versionShippedWithLumine;
             });
+            spyOn(atom, "inDevMode").andReturn(false);
+            generateFakeFetchResponses();
             spyOn(NotificationIssue.prototype, "getPackageName").andCallFake(function () {
               return "somepackage";
             });
@@ -208,11 +203,8 @@
               return fatalError.getRenderPromise();
             });
           });
-          return it("asks the user to update their packages", function () {
-            var button;
-            button = fatalError.querySelector(".btn");
-            expect(button.textContent).toContain("Check for package updates");
-            return expect(button.getAttribute("href")).toBe("#");
+          return it("removes the Create Issue button", function () {
+            return expect(fatalError.querySelector(".btn-issue")).not.toExist();
           });
         });
         return describe("when the error has been reported", function () {
