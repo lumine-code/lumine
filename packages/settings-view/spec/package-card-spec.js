@@ -151,7 +151,7 @@ describe("PackageCard", function () {
       expect(lines[0].className).toContain("text-info");
     });
 
-    it("colours each note by how much it matters", function () {
+    it("leaves shadowing to the status dot", function () {
       setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
       card = new PackageCard(
         {
@@ -164,11 +164,13 @@ describe("PackageCard", function () {
         packageManager,
       );
       const lines = noteLines(card);
-      expect(lines.length).toBe(2);
-      expect(lines[0].text).toContain("Shadowed by");
-      expect(lines[0].className).toContain("text-warning");
-      expect(lines[1].text).toContain("zz-old-copy");
-      expect(lines[1].className).toContain("text-info");
+      expect(lines.length).toBe(1);
+      expect(lines[0].text).toContain("zz-old-copy");
+      expect(lines[0].className).toContain("text-info");
+      expect(card.refs.packageMessage.textContent).not.toContain("Shadowed");
+      // The dot still says it, once.
+      const badge = card.badgeViews.find((view) => view.badge.title === "Shadowed");
+      expect(badge.badge.text).toContain("invert-colors");
     });
 
     it("says nothing when the directory matches the package name", function () {

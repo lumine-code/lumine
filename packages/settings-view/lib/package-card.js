@@ -120,11 +120,11 @@ export default class PackageCard {
   }
 
   // A directory whose package name is owned by another directory. It is on
-  // disk but never loads, so the card shows what it is and where it lives and
-  // offers nothing that would act on the copy that did load: settings, the
-  // enable toggle, and updates all belong to the name, which this copy does not
-  // own. Removing the directory is the one thing that only applies here, so a
-  // copy the user can delete keeps its Uninstall button.
+  // disk but never loads, so its dot says which copy loads instead of it and
+  // the card offers nothing that would act on that copy: settings, the enable
+  // toggle, and updates all belong to the name, which this copy does not own.
+  // Removing the directory is the one thing that only applies here, so a copy
+  // the user can delete keeps its Uninstall button.
   setupShadowedCard() {
     this.element.classList.add("is-shadowed");
     this.refs.updateButtonGroup.remove();
@@ -140,12 +140,6 @@ export default class PackageCard {
     }
 
     this.updatePackageNotes();
-
-    this.disposables.add(
-      atom.tooltips.add(this.refs.packageActionButtonGroup, {
-        title: `“${this.pack.name}” is provided by ${this.shadowedByDescription()}, which loads instead of this copy.`,
-      }),
-    );
   }
 
   // Where the copy that owns this card's package name lives, phrased for a
@@ -916,21 +910,14 @@ export default class PackageCard {
     }
   }
 
-  // What is worth saying about this copy of the package: that another copy
-  // loads instead of it, and what its directory is called when that is not the
-  // package's own name. Each note is its own line, coloured by how much it
-  // matters — the same severities the status dots use, so a line and its dot
-  // read as one thing.
+  // What is worth saying about this copy of the package beyond what its status
+  // dots already say. Each note is its own line, coloured by how much it
+  // matters — the same severities the dots use, so a line and a dot never
+  // disagree about how loud something is.
   updatePackageNotes() {
     const message = this.refs.packageMessage;
     const notes = [];
 
-    if (this.isShadowed) {
-      notes.push({
-        severity: "warning",
-        text: `Shadowed by ${this.shadowedByDescription()}. Only one copy of a package name loads.`,
-      });
-    }
     const directoryName = this.pack.directoryName;
     if (directoryName && this.pack.name && directoryName !== this.pack.name) {
       // A directory name carries no meaning of its own — the package.json
