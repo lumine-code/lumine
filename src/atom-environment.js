@@ -580,7 +580,9 @@ class AtomEnvironment {
   //
   // * `callback` {Function} to be called whenever there is an unhandled error
   //   * `event` {Object}
-  //     * `originalError` {Object} the original error object
+  //     * `originalError` {Error} the original error object. Never null: an
+  //       error the browser could not hand over, and a rejection with a
+  //       non-Error value, both arrive as a stand-in carrying no stack.
   //     * `message` {String} the error message
   //     * `url` {String} URL to the file where the error originated.
   //     * `line` {Number}
@@ -597,7 +599,9 @@ class AtomEnvironment {
   //
   // * `callback` {Function} to be called whenever there is an unhandled error
   //   * `event` {Object}
-  //     * `originalError` {Object} the original error object
+  //     * `originalError` {Error} the original error object. Never null: an
+  //       error the browser could not hand over, and a rejection with a
+  //       non-Error value, both arrive as a stand-in carrying no stack.
   //     * `message` {String} the error message
   //     * `url` {String} URL to the file where the error originated.
   //     * `line` {Number}
@@ -1224,7 +1228,19 @@ class AtomEnvironment {
       column = mapping.column;
       if (url === "<embedded>") url = mapping.source;
 
-      this.reportUncaughtError({ message, url, line, column, originalError });
+      this.reportUncaughtError({
+        message,
+        url,
+        line,
+        column,
+        // Chromium hands over no error object at all for one it could not
+        // marshal — thrown across an origin, or an `ErrorEvent` dispatched
+        // without one — and every handler downstream reads this without
+        // asking. A value that merely is not an Error is left alone: whatever
+        // was thrown still describes the fault better than anything made up
+        // here would.
+        originalError: originalError ?? untraceableError(message),
+      });
     };
 
     // A promise nobody handled is as much a fault as a thrown one, and on its
@@ -1843,9 +1859,15 @@ or use Pane::saveItemAs for programmatic saving.`);
 // an uncaught error — the notifications package first — expects an Error.
 function asError(reason) {
   if (reason instanceof Error) return reason;
-  const error = new Error(`Promise rejected with ${util.inspect(reason)}`);
-  // Its stack would describe this reporter rather than whatever went wrong,
-  // and a handler that decides by stack would read that as a fault in core.
+  return untraceableError(`Promise rejected with ${util.inspect(reason)}`);
+}
+
+// An Error standing in for one there is nothing more to say about. It carries
+// no stack: a synthesized one would describe this reporter rather than
+// whatever went wrong, and a handler that decides by stack would read that as
+// a fault in core.
+function untraceableError(message) {
+  const error = new Error(message);
   error.stack = undefined;
   return error;
 }

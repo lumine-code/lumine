@@ -133,6 +133,28 @@ describe("AtomEnvironment", () => {
         });
       });
 
+      // Chromium hands over no error object at all for one it could not
+      // marshal, and every handler downstream — the notifications package
+      // first — reads `originalError` without asking.
+      it("stands an Error in when the browser reports none", () => {
+        subscription = atom.onWillThrowError(willThrowSpy);
+        expect(() => window.onerror("Uncaught Error: nope", "abc", 2, 3, null)).not.toThrow();
+
+        const { originalError } = willThrowSpy.calls.mostRecent().args[0];
+        expect(originalError instanceof Error).toBe(true);
+        expect(originalError.message).toBe("Uncaught Error: nope");
+        // Reporting this file's own stack would read as a fault in core.
+        expect(originalError.stack).toBeUndefined();
+      });
+
+      it("passes on a thrown non-Error untouched", () => {
+        subscription = atom.onWillThrowError(willThrowSpy);
+        const thrown = { name: "BufferedProcessError" };
+        window.onerror("Uncaught BufferedProcessError: nope", "abc", 2, 3, thrown);
+
+        expect(willThrowSpy.calls.mostRecent().args[0].originalError).toBe(thrown);
+      });
+
       it("will not show the devtools when preventDefault() is called", () => {
         willThrowSpy.and.callFake((errorObject) => errorObject.preventDefault());
         subscription = atom.onWillThrowError(willThrowSpy);
