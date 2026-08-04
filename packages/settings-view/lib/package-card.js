@@ -119,23 +119,47 @@ export default class PackageCard {
     return atom.packages.isBundledPackage(this.pack.name);
   }
 
+  // A directory whose package name is owned by another directory. It is on
+  // disk but never loads, so the card shows what it is and where it lives and
+  // offers nothing that would act on the copy that did load: settings, the
+  // enable toggle, and updates all belong to the name, which this copy does not
+  // own. Removing the directory is the one thing that only applies here, so a
+  // copy the user can delete keeps its Uninstall button.
   setupShadowedCard() {
     this.element.classList.add("is-shadowed");
-    // Informational only: keep the normal Settings + Disable layout (greyed via
-    // .is-shadowed), but no install/update/override and no uninstall — a bundled
-    // package can't be removed. The buttons are inert while it is overridden.
     this.refs.updateButtonGroup.remove();
     this.refs.installButtonGroup.remove();
-    this.refs.uninstallButton.remove();
     this.refs.statusIndicator.remove();
     this.refs.settingsButton.disabled = true;
     this.refs.enablementButton.disabled = true;
     if (!this.hasSettings()) this.refs.settingsButton.style.display = "none";
+
+    // Bundled packages ship with the editor and cannot be removed.
+    if (this.pack.tier === "bundled" || this.isBundledInstance()) {
+      this.refs.uninstallButton.remove();
+    }
+
+    this.updateDirectoryNameWarning();
+
     this.disposables.add(
       atom.tooltips.add(this.refs.packageActionButtonGroup, {
-        title: `The bundled “${this.pack.name}” is overridden by an installed community package of the same name. Uninstall it to restore the bundled package.`,
+        title: `“${this.pack.name}” is provided by ${this.shadowedByDescription()}, which loads instead of this copy.`,
       }),
     );
+  }
+
+  // Where the copy that owns this card's package name lives, phrased for a
+  // sentence: "the dev package in my-checkout", "another directory (foo)".
+  shadowedByDescription() {
+    const winner = this.pack.shadowedBy;
+    if (!winner) return "another copy of this package";
+    const tierLabel = {
+      dev: "the dev package",
+      community: "the community package",
+      bundled: "the bundled package",
+    };
+    const label = tierLabel[winner.tier] || "the copy";
+    return winner.dirname ? `${label} in ${winner.dirname}` : label;
   }
 
   render() {
@@ -892,23 +916,31 @@ export default class PackageCard {
     }
   }
 
-  // Warns when a package's install directory does not match its package.json
-  // "name". The directory IS the install slot, so a mismatch silently breaks the
-  // package's require path, command prefix, config namespace, and activation.
-  // This happens with packages placed or linked by hand — e.g. a repository
-  // cloned into a folder named after the repo rather than the package.
+  // Names the directory a package lives in when that is not the package's own
+  // name, and names the copy that loads instead of this one when this copy is
+  // shadowed. A directory name carries no meaning of its own — the package.json
+  // "name" is the identity — so this is information, never a warning.
   updateDirectoryNameWarning() {
     const message = this.refs.packageMessage;
     const dirName = this.pack.directoryName;
+    const lines = [];
+
+    if (this.isShadowed) {
+      lines.push(
+        `Shadowed by ${this.shadowedByDescription()}. Only one copy of a package name loads.`,
+      );
+    }
     if (dirName && this.pack.name && dirName !== this.pack.name) {
-      message.classList.add("text-error");
-      message.textContent =
-        `This package is installed in a directory named “${dirName}”, but its ` +
-        `package.json name is “${this.pack.name}”. Rename the directory to ` +
-        `“${this.pack.name}” so its commands, settings, and activation work.`;
+      lines.push(`Installed in a directory named “${dirName}”.`);
+    }
+
+    message.classList.remove("text-error");
+    if (lines.length > 0) {
+      message.classList.add("text-subtle");
+      message.textContent = lines.join(" ");
       message.style.display = "";
-    } else if (message.classList.contains("text-error")) {
-      message.classList.remove("text-error");
+    } else {
+      message.classList.remove("text-subtle");
       message.textContent = "";
       message.style.display = "none";
     }
@@ -964,8 +996,8 @@ export default class PackageCard {
     if (this.isShadowed) {
       badges.push({
         type: "warn",
-        title: "Overridden",
-        text: `An installed community package overrides the bundled “${this.pack.name}”.`,
+        title: "Shadowed",
+        text: `“${this.pack.name}” is provided by ${this.shadowedByDescription()}, which loads instead of this copy.`,
       });
     }
     if (this.pack.originWarning) {
@@ -1018,17 +1050,7 @@ export default class PackageCard {
   installedPackagePath() {
     if (this.pack.path) return this.pack.path;
     if (!this.isInstalled() || this.installedOriginDiffers()) return null;
-    for (const dirPath of atom.packages.getPackageDirPaths()) {
-      const candidate = path.join(dirPath, this.pack.name);
-      try {
-        fs.lstatSync(candidate);
-        return candidate;
-      } catch {
-        // not installed in this directory; keep looking
-      }
-    }
-    const loaded = atom.packages.getLoadedPackage(this.pack.name);
-    return loaded ? loaded.path : null;
+    return this.packageManager.installedPackagePath(this.pack);
   }
 
   // Section: disabled state updates
@@ -1303,11 +1325,23 @@ export default class PackageCard {
       this.refs.installButtonGroup.style.display = "none";
     } else {
       // Usable Install, optionally with an informational compatibility note.
-      this.setInstallNote(this.compatibleVersionNote || null, false);
+      this.setInstallNote(this.shadowedInstallNote() || this.compatibleVersionNote || null, false);
       this.refs.updateButtonGroup.style.display = "none";
       this.refs.installButtonGroup.style.display = "";
     }
     this.refs.packageActionButtonGroup.style.display = "none";
+  }
+
+  // Installing puts a package in the community directory, which a dev checkout
+  // of the same name outranks. The install still succeeds and the files are
+  // there, but the dev copy keeps loading — say so before the click, not after.
+  shadowedInstallNote() {
+    const owner = atom.packages.getAvailablePackage(this.pack.name);
+    if (!owner || owner.tier !== "dev") return null;
+    return (
+      `Your dev package in “${owner.dirname}” provides “${this.pack.name}”, ` +
+      "so it will keep loading instead of this one."
+    );
   }
 
   installedSameOriginInOtherSlot() {

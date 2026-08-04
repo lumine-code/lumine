@@ -1,6 +1,10 @@
 const { Emitter } = require("atom");
 
 module.exports = class List {
+  // * `key` the name of the property identifying an item, or a {Function} that
+  //   returns an item's identity. Items sharing an identity collapse into one
+  //   entry, so a list that can hold several items with the same name — two
+  //   directories providing the same package, say — keys on something unique.
   constructor(key) {
     this.key = key;
     this.items = [];
@@ -22,13 +26,14 @@ module.exports = class List {
   }
 
   keyForItem(item) {
-    return item[this.key];
+    return typeof this.key === "function" ? this.key(item) : item[this.key];
   }
 
   setItems(items) {
     items = items.slice();
-    const setToAdd = difference(items, this.items, this.key);
-    const setToRemove = difference(this.items, items, this.key);
+    const keyForItem = this.keyForItem.bind(this);
+    const setToAdd = difference(items, this.items, keyForItem);
+    const setToRemove = difference(this.items, items, keyForItem);
 
     this.items = items;
 
@@ -50,21 +55,19 @@ module.exports = class List {
   }
 };
 
-const difference = (array1, array2, key) => {
-  const obj1 = {};
-  for (const item of array1) {
-    obj1[item[key]] = item;
-  }
-
-  const obj2 = {};
+const difference = (array1, array2, keyForItem) => {
+  const keys = new Set();
   for (const item of array2) {
-    obj2[item[key]] = item;
+    keys.add(keyForItem(item));
   }
 
   const diff = [];
-  for (const k in obj1) {
-    const v = obj1[k];
-    if (obj2[k] == null) diff.push(v);
+  const seen = new Set();
+  for (const item of array1) {
+    const key = keyForItem(item);
+    if (keys.has(key) || seen.has(key)) continue;
+    seen.add(key);
+    diff.push(item);
   }
   return diff;
 };

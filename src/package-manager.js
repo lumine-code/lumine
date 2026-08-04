@@ -43,6 +43,7 @@ module.exports = class PackageManager {
     this.emitter = new Emitter();
     this.activationHookEmitter = new Emitter();
     this.packageDirPaths = [];
+    this.packageManifestCache = new Map();
     this.deferredActivationHooks = [];
     this.triggeredActivationHooks = new Set();
     this.packagesCache = packageJSON._atomPackages != null ? packageJSON._atomPackages : {};
@@ -65,15 +66,17 @@ module.exports = class PackageManager {
   initialize(params) {
     this.devMode = params.devMode;
     this.resourcePath = params.resourcePath;
+    this.bundledPackagesPath =
+      this.resourcePath != null ? path.join(this.resourcePath, "packages") : null;
     if (params.configDirPath != null && !params.safeMode) {
       this.userPackagesPath = path.join(params.configDirPath, "packages");
-      if (this.devMode) {
-        this.packageDirPaths.push(path.join(params.configDirPath, "dev", "packages"));
-      }
-      // User packages are ahead of bundled source-checkout packages so manual
-      // installs shadow built-ins consistently in development and production.
+      this.devPackagesPath = path.join(params.configDirPath, "packages-dev");
+      // Ordered by descending priority: a package name claimed by an earlier
+      // directory shadows every later copy of that name. Dev packages outrank
+      // manual installs, which outrank the packages bundled with the editor.
+      if (this.devMode) this.packageDirPaths.push(this.devPackagesPath);
       this.packageDirPaths.push(this.userPackagesPath);
-      if (this.devMode) this.packageDirPaths.push(path.join(this.resourcePath, "packages"));
+      if (this.devMode) this.packageDirPaths.push(this.bundledPackagesPath);
     }
   }
 
@@ -92,6 +95,7 @@ module.exports = class PackageManager {
   async reset() {
     this.serviceHub.clear();
     await this.deactivatePackages();
+    this.packageManifestCache.clear();
     this.loadedPackages = {};
     this.preloadedPackages = {};
     this.packageStates = {};
@@ -194,21 +198,54 @@ module.exports = class PackageManager {
   //
   // Return a {String} folder path or undefined if it could not be resolved.
   resolvePackagePath(name) {
-    if (fs.isDirectorySync(name)) {
-      return name;
+    const availablePackage = this.resolveAvailablePackage(name);
+    return availablePackage != null ? availablePackage.path : null;
+  }
+
+  // Resolve a package name — or a path to a package directory — to the
+  // descriptor of the copy that owns that name.
+  //
+  // Returns a package descriptor or null.
+  resolveAvailablePackage(nameOrPath) {
+    if (fs.isDirectorySync(nameOrPath)) {
+      return this.describePackagePath(nameOrPath);
     }
 
-    let packagePath = fs.resolve(...this.packageDirPaths, name);
-    if (fs.isDirectorySync(packagePath)) {
-      return packagePath;
+    const availablePackage = this.getAvailablePackage(nameOrPath);
+    if (availablePackage != null) {
+      return availablePackage;
     }
 
-    packagePath = path.join(this.resourcePath, "node_modules", name);
+    // A package inside node_modules that no manifest pins, recognised by its
+    // Atom engine declaration alone.
+    const packagePath = path.join(this.resourcePath, "node_modules", nameOrPath);
     if (this.hasAtomEngine(packagePath)) {
-      return packagePath;
+      return this.describePackagePath(packagePath);
     }
 
     return null;
+  }
+
+  // Build the descriptor for a single package directory: what it is called,
+  // where it lives, and which tier it belongs to.
+  describePackagePath(packagePath, options = {}) {
+    const dirname = path.basename(packagePath);
+    const isBundled =
+      options.isBundled != null ? options.isBundled : this.isBundledPackagePath(packagePath);
+    const manifest = this.readPackageManifest(packagePath, isBundled);
+    const name = manifest.name || dirname;
+    // Everything downstream reads the identity off the metadata as well.
+    manifest.metadata.name = name;
+    return {
+      name,
+      dirname,
+      path: packagePath,
+      tier: options.tier != null ? options.tier : this.getPackageDirTier(path.dirname(packagePath)),
+      isBundled,
+      metadata: manifest.metadata,
+      nameSource: manifest.name ? "manifest" : "dirname",
+      error: manifest.error,
+    };
   }
 
   // Public: Is the package with the given name bundled with Lumine?
@@ -356,87 +393,156 @@ module.exports = class PackageManager {
     return packages;
   }
 
-  getAvailablePackages() {
+  // Public: Returns the available packages that own their name.
+  //
+  // * `options` (optional) {Object}
+  //   * `includeShadowed` When `true`, also returns the copies whose name is
+  //     owned by another directory. Those never load; they exist so the UI can
+  //     list every directory on disk.
+  //
+  // Returns an {Array} of package descriptors sorted by name.
+  getAvailablePackages(options) {
+    const packages = this.scanAvailablePackages();
+    const visible =
+      options != null && options.includeShadowed ? packages : packages.filter((p) => p.isWinner);
+    return visible.sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+  }
+
+  // Public: Get the available package that owns the given name.
+  //
+  // Returns a package descriptor or undefined.
+  getAvailablePackage(name) {
+    return this.scanAvailablePackages().find((pack) => pack.isWinner && pack.name === name);
+  }
+
+  // Public: Forget everything read from package manifests.
+  //
+  // The directory scan itself always runs fresh, so this only has to be called
+  // when a manifest changes on disk — after an install, update, or uninstall.
+  refreshPackageIndex() {
+    this.packageManifestCache.clear();
+  }
+
+  // Scan every package directory and decide which copy owns each package name.
+  //
+  // A package's identity is the `name` in its manifest; the directory name only
+  // breaks ties. Directories are visited in `packageDirPaths` order — dev, then
+  // community, then bundled — and within a directory in dirname order, so the
+  // first copy carrying a name is the one that loads. Every later copy is
+  // returned as a shadowed descriptor: it never loads, but it is real, it is on
+  // disk, and the UI lists it.
+  scanAvailablePackages() {
     const packages = [];
-    const packagesByName = new Set();
+    const winnersByName = new Map();
+    const bundledNames = new Set();
+
+    const add = (packagePath, options) => {
+      const pack = this.describePackagePath(packagePath, options);
+
+      // A bundled package vendored into packages/ is delivered through
+      // node_modules/ as well, by the `file:` pin that installs it. Those are
+      // two deliveries of one bundled package, not two copies to choose
+      // between, so only the first is listed.
+      if (pack.tier === "bundled") {
+        if (bundledNames.has(pack.name)) return;
+        bundledNames.add(pack.name);
+      }
+
+      const winner = winnersByName.get(pack.name);
+      if (winner == null) {
+        pack.isWinner = true;
+        winnersByName.set(pack.name, pack);
+      } else {
+        pack.isWinner = false;
+        pack.shadowedBy = {
+          name: winner.name,
+          dirname: winner.dirname,
+          path: winner.path,
+          tier: winner.tier,
+        };
+      }
+
+      packages.push(pack);
+    };
 
     for (const packageDirPath of this.packageDirPaths) {
-      if (fs.isDirectorySync(packageDirPath)) {
-        // checks for directories.
-        // dirent is faster, but for checking symbolic link we need stat.
-        const packageNames = fs
-          .readdirSync(packageDirPath, { withFileTypes: true })
-          .filter(
-            (dirent) =>
-              dirent.isDirectory() ||
-              (dirent.isSymbolicLink() &&
-                fs.isDirectorySync(path.join(packageDirPath, dirent.name))),
-          )
-          .map((dirent) => dirent.name);
+      if (!fs.isDirectorySync(packageDirPath)) continue;
 
-        for (const packageName of packageNames) {
-          if (!packageName.startsWith(".") && !packagesByName.has(packageName)) {
-            const packagePath = path.join(packageDirPath, packageName);
-            packages.push({
-              name: packageName,
-              path: packagePath,
-              isBundled: false,
-            });
-            packagesByName.add(packageName);
-          }
-        }
+      const tier = this.getPackageDirTier(packageDirPath);
+      // dirent is faster than stat, but a symlink needs stat to know whether it
+      // points at a directory.
+      const dirnames = fs
+        .readdirSync(packageDirPath, { withFileTypes: true })
+        .filter(
+          (dirent) =>
+            !dirent.name.startsWith(".") &&
+            (dirent.isDirectory() ||
+              (dirent.isSymbolicLink() &&
+                fs.isDirectorySync(path.join(packageDirPath, dirent.name)))),
+        )
+        .map((dirent) => dirent.name)
+        .sort((a, b) => a.localeCompare(b) || (a < b ? -1 : a > b ? 1 : 0));
+
+      for (const dirname of dirnames) {
+        add(path.join(packageDirPath, dirname), { isBundled: false, tier });
       }
     }
 
     for (const packageName in this.packageDependencies) {
-      if (!packagesByName.has(packageName)) {
-        // Bundled dependencies delivered through node_modules (e.g. Git-sourced
-        // packages that aren't vendored into packages/). Derive isBundled from
-        // the path so that, in dev mode running from source, they are treated
-        // as non-bundled like the packages/ entries instead of being singled
-        // out under "Bundled Packages".
-        const packagePath = path.join(this.resourcePath, "node_modules", packageName);
-        packages.push({
-          name: packageName,
-          path: packagePath,
-          isBundled: this.isBundledPackagePath(packagePath),
-        });
-      }
+      // Bundled dependencies delivered through node_modules (e.g. Git-sourced
+      // packages that aren't vendored into packages/). Derive isBundled from
+      // the path so that, in dev mode running from source, they are treated
+      // as non-bundled like the packages/ entries instead of being singled
+      // out under "Bundled Packages".
+      const packagePath = path.join(this.resourcePath, "node_modules", packageName);
+      add(packagePath, { isBundled: this.isBundledPackagePath(packagePath), tier: "bundled" });
     }
 
-    return packages.sort((a, b) => a.name.localeCompare(b.name));
+    return packages;
   }
 
-  getBundledPackageDescriptors() {
-    const descriptors = [];
-    for (const packageName of Object.keys(this.packageDependencies)) {
-      const candidates = [
-        path.join(this.resourcePath, "packages", packageName),
-        path.join(this.resourcePath, "node_modules", packageName),
-      ];
-      const packagePath = candidates.find((candidate) => fs.isDirectorySync(candidate));
-      if (!packagePath) continue;
-      const metadata = this.loadPackageMetadata(packagePath, true) || { name: packageName };
-      descriptors.push({
-        name: packageName,
-        path: packagePath,
-        metadata,
-        packageKind: "builtin",
-        isBuiltinDescriptor: true,
-      });
-      for (const theme of Array.isArray(metadata.themes) ? metadata.themes : []) {
-        if (!theme || typeof theme.name !== "string" || !theme.theme) continue;
-        descriptors.push({
-          name: theme.name,
-          path: packagePath,
-          metadata: { ...metadata, ...theme, name: theme.name },
-          packageKind: "builtin",
-          isBuiltinDescriptor: true,
-          virtualTheme: true,
-        });
+  // Which tier a package directory belongs to. Spec fixture directories and
+  // anything else pushed onto `packageDirPaths` report "other".
+  getPackageDirTier(packageDirPath) {
+    if (packageDirPath === this.devPackagesPath) return "dev";
+    if (packageDirPath === this.userPackagesPath) return "community";
+    if (packageDirPath === this.bundledPackagesPath) return "bundled";
+    return "other";
+  }
+
+  // Read a package manifest for the scan: the parsed metadata, the name it
+  // declares (if any), and the error that stopped it from parsing (if any).
+  // Results are memoized per path until `refreshPackageIndex()`.
+  readPackageManifest(packagePath, isBundled) {
+    let manifest = this.packageManifestCache.get(packagePath);
+    if (manifest != null) return manifest;
+
+    manifest = { metadata: {}, name: null, error: null };
+    const cacheName = path.basename(packagePath);
+    if (isBundled && this.packagesCache[cacheName] != null) {
+      manifest.metadata = this.packagesCache[cacheName].metadata || {};
+    } else {
+      const metadataPath = CSON.resolve(path.join(packagePath, "package"));
+      if (metadataPath) {
+        try {
+          manifest.metadata = CSON.readFileSync(metadataPath) || {};
+          this.normalizePackageMetadata(manifest.metadata);
+        } catch (error) {
+          manifest.error = error;
+        }
       }
     }
-    return descriptors;
+
+    const name = manifest.metadata.name;
+    if (typeof name === "string" && name.length > 0) manifest.name = name;
+
+    const { repository } = manifest.metadata;
+    if (repository && repository.type === "git" && typeof repository.url === "string") {
+      repository.url = repository.url.replace(/(^git\+)|(\.git$)/g, "");
+    }
+
+    this.packageManifestCache.set(packagePath, manifest);
+    return manifest;
   }
 
   /*
@@ -601,18 +707,62 @@ module.exports = class PackageManager {
       return pack;
     }
 
-    const packagePath = this.resolvePackagePath(nameOrPath);
-    if (packagePath) {
-      const name = path.basename(nameOrPath);
-      return this.loadAvailablePackage({
-        name,
-        path: packagePath,
-        isBundled: this.isBundledPackagePath(packagePath),
-      });
+    const availablePackage = this.resolveAvailablePackage(nameOrPath);
+    if (availablePackage) {
+      return this.loadAvailablePackage(availablePackage);
     }
 
     console.warn(`Could not resolve '${nameOrPath}' to a package path`);
     return null;
+  }
+
+  // Make the loaded copy of `name` match the copy that currently owns the name
+  // on disk. Loading a package is the point where its keymaps, menus, config
+  // schema, and deserializers become visible, so only ever one copy of a name
+  // is loaded — this is what swaps that copy when an install or an uninstall
+  // changes who wins.
+  //
+  // * `name` - The {String} package name.
+  // * `options` (optional) {Object}
+  //   * `activate` Whether the new copy should be activated. Defaults to
+  //     activating whenever the copy being replaced was active.
+  //
+  // Returns a {Promise} that resolves with the loaded {Package}, or null when
+  // no copy of the name is left on disk.
+  async reconcilePackage(name, options = {}) {
+    this.refreshPackageIndex();
+
+    const availablePackage = this.getAvailablePackage(name);
+    const loadedPackage = this.getLoadedPackage(name);
+    if (
+      loadedPackage != null &&
+      availablePackage != null &&
+      loadedPackage.path === availablePackage.path
+    ) {
+      return loadedPackage;
+    }
+
+    const wasActive = loadedPackage != null && this.isPackageActive(name);
+    if (loadedPackage != null) {
+      await this.deactivatePackage(name);
+      this.unloadPackage(name);
+    }
+
+    if (availablePackage == null) return null;
+
+    const pack = this.loadAvailablePackage(availablePackage);
+    if (pack == null) return null;
+
+    const shouldActivate = options.activate != null ? options.activate : wasActive;
+    if (shouldActivate && !this.isPackageDisabled(name)) {
+      // Deferred-activation packages resolve this promise only once their hook
+      // fires, so callers are never made to wait on it.
+      this.activatePackage(name).catch((error) => {
+        console.warn(`Failed to activate the '${name}' package: ${error.message}`);
+      });
+    }
+
+    return pack;
   }
 
   loadAvailablePackage(availablePackage, disabledPackageNames) {
@@ -621,7 +771,7 @@ module.exports = class PackageManager {
     if (disabledPackageNames != null && disabledPackageNames.has(availablePackage.name)) {
       if (preloadedPackage != null) {
         preloadedPackage.deactivate();
-        delete preloadedPackage[availablePackage.name];
+        delete this.preloadedPackages[availablePackage.name];
       }
       return null;
     }
@@ -658,7 +808,7 @@ module.exports = class PackageManager {
         return preloadedPackage;
       } else {
         preloadedPackage.deactivate();
-        delete preloadedPackage[availablePackage.name];
+        delete this.preloadedPackages[availablePackage.name];
       }
     }
 
@@ -745,10 +895,11 @@ module.exports = class PackageManager {
         continue;
       }
 
-      const userThemePath = this.userPackagesPath && path.join(this.userPackagesPath, entry.name);
+      // A real package owning the name always beats a virtual theme, wherever
+      // that package lives.
       if (
         this.getLoadedPackage(entry.name) != null ||
-        (userThemePath && fs.isDirectorySync(userThemePath))
+        this.getAvailablePackage(entry.name) != null
       ) {
         continue;
       }
@@ -1086,30 +1237,15 @@ module.exports = class PackageManager {
       isBundled = this.isBundledPackagePath(packagePath);
     }
 
-    let metadata;
-    if (isBundled && this.packagesCache[packageName] != null) {
-      metadata = this.packagesCache[packageName].metadata;
+    const manifest = this.readPackageManifest(packagePath, isBundled);
+    if (manifest.error != null && !ignoreErrors) {
+      throw manifest.error;
     }
 
-    if (metadata == null) {
-      const metadataPath = CSON.resolve(path.join(packagePath, "package"));
-      if (metadataPath) {
-        try {
-          metadata = CSON.readFileSync(metadataPath);
-          this.normalizePackageMetadata(metadata);
-        } catch (error) {
-          if (!ignoreErrors) {
-            throw error;
-          }
-        }
-      }
-    }
-
-    if (metadata == null) {
-      metadata = {};
-    }
-
+    const metadata = manifest.metadata;
     if (typeof metadata.name !== "string" || metadata.name.length <= 0) {
+      // A manifest that declares no name falls back to the directory it lives
+      // in. That fallback is the only thing the directory name still decides.
       metadata.name = packageName;
     }
 

@@ -129,8 +129,8 @@ describe("PackageCard", function () {
     expect(client.avatar.mostRecentCall.args[0]).toBe("owner");
   });
 
-  describe("directory name mismatch", function () {
-    it("warns when the install directory does not match the package name", function () {
+  describe("directory name", function () {
+    it("names the directory when it is not the package's own name", function () {
       setPackageStatusSpies({ installed: true, disabled: false });
       card = new PackageCard(
         { name: "invert-colors", directoryName: "pulsar-invert-colors" },
@@ -138,11 +138,13 @@ describe("PackageCard", function () {
         packageManager,
       );
       expect(card.refs.packageMessage.textContent).toContain("pulsar-invert-colors");
-      expect(card.refs.packageMessage.textContent).toContain("invert-colors");
-      expect(card.refs.packageMessage).toHaveClass("text-error");
+      // A directory name carries no meaning of its own, so this is information,
+      // not a problem to fix.
+      expect(card.refs.packageMessage).not.toHaveClass("text-error");
+      expect(card.refs.packageMessage).toHaveClass("text-subtle");
     });
 
-    it("does not warn when the directory matches the package name", function () {
+    it("says nothing when the directory matches the package name", function () {
       setPackageStatusSpies({ installed: true, disabled: false });
       card = new PackageCard(
         { name: "invert-colors", directoryName: "invert-colors" },
@@ -150,7 +152,7 @@ describe("PackageCard", function () {
         packageManager,
       );
       expect(card.refs.packageMessage.textContent).toBe("");
-      expect(card.refs.packageMessage).not.toHaveClass("text-error");
+      expect(card.refs.packageMessage).not.toHaveClass("text-subtle");
     });
 
     it("does not warn for a card without directory information", function () {
@@ -1598,16 +1600,23 @@ describe("PackageCard", function () {
       expect(badge.badge.type).toBe("warn");
     });
 
-    it("shows a warning dot on the shadowed bundled card", function () {
+    it("shows a warning dot naming the copy that loads instead", function () {
       setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
       card = new PackageCard(
-        { name: "x-pkg", repository: "owner/x-pkg", version: "1.0.0", isShadowed: true },
+        {
+          name: "x-pkg",
+          repository: "owner/x-pkg",
+          version: "1.0.0",
+          isShadowed: true,
+          shadowedBy: { name: "x-pkg", dirname: "my-checkout", tier: "dev" },
+        },
         new SettingsView(),
         packageManager,
       );
-      const badge = card.badgeViews.find((view) => view.badge.title === "Overridden");
+      const badge = card.badgeViews.find((view) => view.badge.title === "Shadowed");
       expect(badge).toBeTruthy();
       expect(badge.badge.type).toBe("warn");
+      expect(badge.badge.text).toContain("my-checkout");
     });
 
     it("treats a record hydrated from the Pulsar registry as Pulsar-sourced", function () {

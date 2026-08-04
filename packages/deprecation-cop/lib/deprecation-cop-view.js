@@ -434,12 +434,14 @@ export default class DeprecationCopView {
   }
 
   getPackageName(stack) {
+    // Stack frames report the real path of a symlinked package, so match
+    // against that for anything installed under a package directory.
+    const packageDirPaths = atom.packages
+      .getPackageDirPaths()
+      .map((packageDirPath) => path.normalize(packageDirPath + path.sep));
     const packagePaths = this.getPackagePathsByPackageName();
     for (const [packageName, packagePath] of packagePaths) {
-      if (
-        packagePath.includes(".lumine/dev/packages") ||
-        packagePath.includes(".lumine/packages")
-      ) {
+      if (packageDirPaths.some((packageDirPath) => packagePath.startsWith(packageDirPath))) {
         packagePaths.set(packageName, fs.absolute(packagePath));
       }
     }

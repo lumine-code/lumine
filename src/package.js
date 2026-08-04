@@ -1201,12 +1201,19 @@ module.exports = class Package {
     });
   }
 
+  // Memo keys carry the install path as well as the name and version: two
+  // copies of a name can differ in code while sharing both, and one copy's memo
+  // must never decide anything for the other.
+  getStorageKeyPrefix() {
+    return `installed-packages:${this.name}:${this.metadata.version}:${this.path}`;
+  }
+
   getBuildFailureOutputStorageKey() {
-    return `installed-packages:${this.name}:${this.metadata.version}:build-error`;
+    return `${this.getStorageKeyPrefix()}:build-error`;
   }
 
   getCanDeferMainModuleRequireStorageKey() {
-    return `installed-packages:${this.name}:${this.metadata.version}:can-defer-main-module-require`;
+    return `${this.getStorageKeyPrefix()}:can-defer-main-module-require`;
   }
 
   // Get the incompatible native modules that this package depends on.

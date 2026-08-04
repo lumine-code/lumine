@@ -1,7 +1,9 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+const zlib = require("zlib");
 const CSON = require("@lumine-code/season");
+const tar = require("tar");
 const PackageInstallationService = require("../src/package-installation-service");
 
 const SHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
@@ -10,6 +12,7 @@ describe("PackageInstallationService", function () {
   let root;
   let npmCalls;
   let manifest;
+  let writeSourceFiles;
   let service;
 
   beforeEach(function () {
@@ -21,13 +24,18 @@ describe("PackageInstallationService", function () {
       repository: "https://github.com/owner/repo.git",
       engines: { atom: "*" },
     };
+    // What the repository holds at the installed commit, written into whatever
+    // directory the fetch puts it in — a staged checkout or an archive.
+    writeSourceFiles = (directory) => {
+      fs.writeFileSync(path.join(directory, "package.json"), `${JSON.stringify(manifest)}\n`);
+    };
     service = new PackageInstallationService({
       packagesDirectory: root,
       gitCommand: "git",
       npmCommand: "npm",
       run: async (command, args, options) => {
         if (command === "git" && args[0] === "checkout") {
-          fs.writeFileSync(path.join(options.cwd, "package.json"), `${JSON.stringify(manifest)}\n`);
+          writeSourceFiles(options.cwd);
           fs.mkdirSync(path.join(options.cwd, ".git"));
         }
         if (command === "npm") npmCalls++;
@@ -37,6 +45,7 @@ describe("PackageInstallationService", function () {
       resolveSource: async () => {
         throw new Error("moving refs must not be resolved for a hydrated card");
       },
+      fetchUrl: async () => tarballResponse(),
       atomVersion: "1.132.1",
     });
   });
@@ -44,6 +53,59 @@ describe("PackageInstallationService", function () {
   afterEach(function () {
     fs.rmSync(root, { recursive: true, force: true });
   });
+
+  // A GitHub archive of the installed commit: one root directory holding the
+  // repository's files, gzipped, served as a fetch response. `archivedSha`
+  // states which commit the archive says it holds.
+  function tarballResponse({ archivedSha } = {}) {
+    const scratch = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-installer-archive-"));
+    const rootName = `repo-${SHA}`;
+    fs.mkdirSync(path.join(scratch, rootName));
+    writeSourceFiles(path.join(scratch, rootName));
+    const archivePath = path.join(scratch, "archive.tar");
+    tar.c({ sync: true, cwd: scratch, file: archivePath }, [rootName]);
+    let body = fs.readFileSync(archivePath);
+    if (archivedSha) body = Buffer.concat([paxGlobalHeader(archivedSha), body]);
+    body = zlib.gzipSync(body);
+    fs.rmSync(scratch, { recursive: true, force: true });
+    return {
+      ok: true,
+      status: 200,
+      arrayBuffer: async () =>
+        body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength),
+    };
+  }
+
+  // The two blocks a `git archive` puts first: a header of type "g" and the
+  // extended records it announces, of which only `comment` matters here.
+  function paxGlobalHeader(sha) {
+    let record = "";
+    for (let length = 1; length < 512; length++) {
+      const candidate = `${length} comment=${sha}\n`;
+      if (candidate.length === length) {
+        record = candidate;
+        break;
+      }
+    }
+
+    const header = Buffer.alloc(512, 0);
+    header.write("pax_global_header", 0, "ascii");
+    header.write("0000644\0", 100, "ascii"); // mode
+    header.write("0000000\0", 108, "ascii"); // uid
+    header.write("0000000\0", 116, "ascii"); // gid
+    header.write(`${record.length.toString(8).padStart(11, "0")}\0`, 124, "ascii"); // size
+    header.write("00000000000\0", 136, "ascii"); // mtime
+    header.write("        ", 148, "ascii"); // checksum, blank while it is summed
+    header.write("g", 156, "ascii"); // type
+    header.write("ustar\0" + "00", 257, "ascii");
+    let checksum = 0;
+    for (const byte of header) checksum += byte;
+    header.write(`${checksum.toString(8).padStart(6, "0")}\0 `, 148, "ascii");
+
+    const payload = Buffer.alloc(512, 0);
+    payload.write(record, 0, "ascii");
+    return Buffer.concat([header, payload]);
+  }
 
   function pack(overrides = {}) {
     return {
@@ -76,13 +138,12 @@ describe("PackageInstallationService", function () {
   });
 
   it("uses a temporary package.json to install a CSON manifest", function () {
+    writeSourceFiles = (directory) => {
+      CSON.writeFileSync(path.join(directory, "package.cson"), manifest);
+    };
     const originalRun = service.run;
     service.run = async (command, args, options) => {
       const result = await originalRun(command, args, options);
-      if (command === "git" && args[0] === "checkout") {
-        fs.rmSync(path.join(options.cwd, "package.json"));
-        CSON.writeFileSync(path.join(options.cwd, "package.cson"), manifest);
-      }
       if (command === "npm") {
         expect(fs.existsSync(path.join(options.cwd, "package.json"))).toBe(true);
       }
@@ -95,6 +156,60 @@ describe("PackageInstallationService", function () {
         const written = CSON.readFileSync(path.join(installed.target, "package.cson"));
         expect(written.apmInstallSource.sha).toBe(SHA);
       }),
+    );
+  });
+
+  it("downloads a GitHub package as an archive of the resolved commit", function () {
+    const requested = [];
+    service.fetchUrl = async (url) => {
+      requested.push(url);
+      return tarballResponse();
+    };
+    const gitCalls = [];
+    const originalRun = service.run;
+    service.run = async (command, args, options) => {
+      gitCalls.push(command);
+      return originalRun(command, args, options);
+    };
+
+    waitsForPromise(() =>
+      service.install(pack()).then((installed) => {
+        // The commit addresses the archive, never the tag that resolved to it.
+        expect(requested).toEqual([`https://codeload.github.com/owner/repo/tar.gz/${SHA}`]);
+        expect(gitCalls).toEqual(["npm"]);
+        expect(installed.resolvedSha).toBe(SHA);
+        const written = JSON.parse(fs.readFileSync(path.join(installed.target, "package.json")));
+        expect(written.apmInstallSource.sha).toBe(SHA);
+      }),
+    );
+  });
+
+  it("fetches a package hosted anywhere else with git", function () {
+    manifest.repository = "https://git.example.test/owner/repo.git";
+    service.fetchUrl = async () => {
+      throw new Error("a non-GitHub package has no archive to download");
+    };
+    const gitCalls = [];
+    const originalRun = service.run;
+    service.run = async (command, args, options) => {
+      if (command === "git") gitCalls.push(args[0]);
+      return originalRun(command, args, options);
+    };
+
+    waitsForPromise(() =>
+      service
+        .install(
+          pack({
+            repository: "https://git.example.test/owner/repo.git",
+            installSource: "https://git.example.test/owner/repo.git#tag:v1.0.0",
+            selectedRef: { type: "tag", value: "v1.0.0" },
+          }),
+        )
+        .then((installed) => {
+          expect(gitCalls).toEqual(["init", "remote", "fetch", "checkout"]);
+          expect(fs.existsSync(path.join(installed.target, ".git"))).toBe(false);
+          expect(installed.metadata.apmInstallSource.origin).toBe("git.example.test/owner/repo");
+        }),
     );
   });
 
@@ -189,8 +304,67 @@ describe("PackageInstallationService", function () {
     waitsForPromise(() =>
       service.install(pack()).then(
         () => Promise.reject(new Error("expected rejection")),
-        (error) => expect(error.message).toContain("already installed in slot"),
+        (error) => expect(error.message).toContain('already installed as "old-package-name"'),
       ),
+    );
+  });
+
+  it("replaces the directory an installed package occupies, whatever it is called", function () {
+    const existing = path.join(root, "sample-package-checkout");
+    fs.mkdirSync(existing);
+    fs.writeFileSync(
+      path.join(existing, "package.json"),
+      JSON.stringify({
+        name: "sample-package",
+        version: "0.9.0",
+        repository: "owner/repo",
+        engines: { atom: "*" },
+        apmInstallSource: { type: "git", origin: "github.com/owner/repo", sha: "b".repeat(40) },
+      }),
+    );
+
+    waitsForPromise(() =>
+      service.install(pack()).then((installed) => {
+        // Updating in place, rather than leaving the old directory next to a
+        // new one that would shadow it.
+        expect(installed.target).toBe(existing);
+        expect(fs.existsSync(path.join(root, "sample-package"))).toBe(false);
+        const written = JSON.parse(fs.readFileSync(path.join(existing, "package.json")));
+        expect(written.version).toBe("1.0.0");
+        expect(written.apmInstallSource.sha).toBe(SHA);
+      }),
+    );
+  });
+
+  it("refuses an archive whose commit is not the one that was resolved", function () {
+    // GitHub states the commit an archive was made from in its pax global
+    // header; a moved tag would deliver a different one.
+    service.fetchUrl = async () => tarballResponse({ archivedSha: "c".repeat(40) });
+
+    waitsForPromise(() =>
+      service.install(pack()).then(
+        () => Promise.reject(new Error("expected rejection")),
+        (error) => {
+          expect(error.message).toContain("Repository ref changed while installing");
+          expect(npmCalls).toBe(0);
+        },
+      ),
+    );
+  });
+
+  it("sweeps the directories an interrupted install left behind", function () {
+    const stage = path.join(root, ".lumine-stage-abc123");
+    const backup = path.join(root, ".lumine-backup-sample-package-1-2");
+    const keep = path.join(root, "sample-package");
+    for (const directory of [stage, backup, keep]) fs.mkdirSync(directory);
+
+    waitsForPromise(() =>
+      PackageInstallationService.sweep(root).then((swept) => {
+        expect(swept.sort()).toEqual([backup, stage].sort());
+        expect(fs.existsSync(stage)).toBe(false);
+        expect(fs.existsSync(backup)).toBe(false);
+        expect(fs.existsSync(keep)).toBe(true);
+      }),
     );
   });
 
@@ -287,7 +461,7 @@ describe("PackageInstallationService", function () {
           expect(error.message).toContain("swap failed");
           // The active instance was unloaded, so rollback must reload it and
           // must not run the success path.
-          expect(service.beforeSwap).toHaveBeenCalledWith("sample-package");
+          expect(service.beforeSwap).toHaveBeenCalledWith("sample-package", target);
           expect(service.afterRollback).toHaveBeenCalled();
           expect(service.afterRollback.argsForCall[0][0]).toBe("sample-package");
           expect(service.afterSwap).not.toHaveBeenCalled();

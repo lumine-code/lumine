@@ -5,6 +5,13 @@ const net = require("net");
 
 const SELECTOR_TYPES = new Set(["branch", "tag", "commit"]);
 const CASE_INSENSITIVE_PATH_HOSTS = new Set(["github.com"]);
+// npm's hosted-git shorthands, which a manifest's `repository` field is free to
+// use. They look like an SCP-style URL and must be recognised before one.
+const HOSTED_GIT_SHORTHANDS = new Map([
+  ["github", "github.com"],
+  ["gitlab", "gitlab.com"],
+  ["bitbucket", "bitbucket.org"],
+]);
 const DEFAULT_PORTS = new Map([
   ["http:", "80"],
   ["https:", "443"],
@@ -132,14 +139,25 @@ function normalizeRepositoryOrigin(repository) {
     return `github.com/${shorthand[1].toLowerCase()}/${shorthand[2].toLowerCase()}`;
   }
 
-  // SCP-style SSH URL: git@example.test:Owner/Repo.git
-  const scp = bare.match(/^(?:[^@/:]+@)?([^/:]+):(.+)$/);
+  // npm hosted-git shorthand: github:Owner/Repo
+  const hosted = bare.match(/^([a-z]+):([\w.-]+\/[\w.-]+?)(?:\.git)?$/i);
+  if (hosted && HOSTED_GIT_SHORTHANDS.has(hosted[1].toLowerCase())) {
+    const hostedHost = HOSTED_GIT_SHORTHANDS.get(hosted[1].toLowerCase());
+    const hostedPath = hosted[2];
+    return `${hostedHost}/${
+      CASE_INSENSITIVE_PATH_HOSTS.has(hostedHost) ? hostedPath.toLowerCase() : hostedPath
+    }`;
+  }
+
+  // SCP-style SSH URL: git@example.test:Owner/Repo.git. A host is only a host
+  // if it is named like one — otherwise `scheme:owner/repo` reads as one.
+  const scp = bare.match(/^(?:([^@/:]+)@)?([^/:]+):(.+)$/);
   let host;
   let port = "";
   let pathname;
-  if (scp && !/^[a-z][a-z\d+.-]*:\/\//i.test(bare)) {
-    host = scp[1];
-    pathname = scp[2];
+  if (scp && (scp[1] != null || scp[2].includes(".")) && !/^[a-z][a-z\d+.-]*:\/\//i.test(bare)) {
+    host = scp[2];
+    pathname = scp[3];
   } else {
     let parsed;
     try {

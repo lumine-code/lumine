@@ -1,5 +1,3 @@
-const path = require("path");
-const CSON = require("@lumine-code/season");
 // eslint-disable-next-line n/no-unpublished-require
 const { normalizeRepositoryOrigin, repositoryReference } = require("../../../src/package-source");
 
@@ -81,11 +79,14 @@ const repoReferenceFromRepository = (repository) => repositoryReference(reposito
 
 // Package identity, in one place.
 //
-// A package has two identities that must not be confused:
-//   * its NAME is the install SLOT — the install directory, command prefix,
-//     config namespace, and activation. Only one package per name can be
-//     installed, so the name is unique *among installed packages* but NOT
-//     globally: the same name may be published from many sources.
+// A package has three identities that must not be confused:
+//   * its NAME comes from package.json and is what the editor loads it under —
+//     the command prefix, config namespace, and activation. Only one copy of a
+//     name loads, so among *loaded* packages the name is unique, but it is
+//     unique nowhere else: several directories may provide it, and the same
+//     name may be published from many sources.
+//   * its DIRECTORY is where one copy lives. It is what tells two copies of a
+//     name apart, and the only thing that can be uninstalled.
 //   * its ORIGIN is the SOURCE PATH (the repository / install source). This is
 //     the globally unique identity used to browse, deduplicate catalogs, match
 //     update candidates, and decide whether an install would collide.
@@ -122,8 +123,13 @@ const packageCoordinate = (pack) => ({
   originKey: packageOrigin(pack),
 });
 
+// The key a package's detail panel is registered under. An installed copy is
+// keyed by the directory it occupies, so two copies of one name get two panels
+// rather than overwriting each other; a catalog card, which has no directory
+// yet, is keyed by its origin.
 const packagePanelKey = (pack) => {
   if (!pack) return "package:unknown";
+  if (pack.path) return `path:${pack.path}`;
   if (pack.packageKind === "builtin" || pack.isBuiltinDescriptor) return `builtin:${pack.name}`;
   const origin = packageOrigin(pack);
   if (origin) return `community:${origin}`;
@@ -139,37 +145,29 @@ const installedOriginKeys = (metadata) => {
 };
 
 // Returns the metadata of the installed package with the given name, whether
-// it is loaded or merely present in a package directory, or null.
+// it is loaded or merely present in a package directory, or null. Where that
+// package lives is the package manager's to know — its directory need not be
+// named after it.
 const getInstalledPackageMetadata = (name) => {
   const loadedPackage = atom.packages.getLoadedPackage(name);
   if (loadedPackage && loadedPackage.metadata) return loadedPackage.metadata;
-  for (const dirPath of atom.packages.getPackageDirPaths()) {
-    try {
-      const metadataPath = CSON.resolve(path.join(dirPath, name, "package"));
-      if (metadataPath) return CSON.readFileSync(metadataPath);
-    } catch {
-      // not installed in this directory; keep looking
-    }
-  }
-  return null;
+  const availablePackage = atom.packages.getAvailablePackage(name);
+  return availablePackage ? availablePackage.metadata : null;
 };
 
+// Sorted in reverse, because the list renders its rows bottom-up.
 const packageComparatorAscending = (left, right) => {
   const leftStatus = atom.packages.isPackageDisabled(left.name);
   const rightStatus = atom.packages.isPackageDisabled(right.name);
-  if (leftStatus === rightStatus) {
-    if (left.name > right.name) {
-      return -1;
-    } else if (left.name < right.name) {
-      return 1;
-    } else {
-      return 0;
-    }
-  } else if (leftStatus > rightStatus) {
-    return -1;
-  } else {
-    return 1;
-  }
+  if (leftStatus !== rightStatus) return leftStatus > rightStatus ? -1 : 1;
+  if (left.name !== right.name) return left.name > right.name ? -1 : 1;
+
+  // Several directories providing one name are listed in the order the editor
+  // ranks them, so the copy that loads is the one shown first.
+  const leftDirectory = left.directoryName || "";
+  const rightDirectory = right.directoryName || "";
+  if (leftDirectory === rightDirectory) return 0;
+  return leftDirectory > rightDirectory ? -1 : 1;
 };
 
 module.exports = {

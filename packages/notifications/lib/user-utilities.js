@@ -15,8 +15,6 @@ A collection of methods for retrieving information about the user's system for
 bug report purposes.
 */
 
-const DEV_PACKAGE_PATH = path.join("dev", "packages");
-
 module.exports = {
   /*
   Section: System Information
@@ -142,18 +140,14 @@ module.exports = {
 
   getNonCorePackages() {
     return new Promise(function (resolve, _reject) {
-      const nonCorePackages = atom.packages
-        .getAvailablePackageMetadata()
-        .filter((p) => !atom.packages.isBundledPackage(p.name));
-      const devPackageNames = atom.packages
-        .getAvailablePackagePaths()
-        .filter((p) => p.includes(DEV_PACKAGE_PATH))
-        .map((p) => path.basename(p));
+      const packages = atom.packages
+        .getAvailablePackages()
+        .filter((pack) => !atom.packages.isBundledPackage(pack.name));
       return resolve(
-        Array.from(nonCorePackages).map(
-          (pack) =>
-            `${pack.name} ${pack.version} ${Array.from(devPackageNames).includes(pack.name) ? "(dev)" : ""}`,
-        ),
+        packages.map((pack) => {
+          const version = pack.metadata != null ? pack.metadata.version : undefined;
+          return `${pack.name} ${version} ${pack.tier === "dev" ? "(dev)" : ""}`;
+        }),
       );
     });
   },

@@ -602,12 +602,14 @@ export default class ThemesPanel extends CollapsibleSectionPanel {
     const themeName = this.refs[menuRef].value;
     const pack = atom.packages.getLoadedPackage(themeName);
     if (pack != null) {
-      const isBuiltin =
-        typeof atom.packages.getBundledPackageDescriptors === "function" &&
-        atom.packages
-          .getBundledPackageDescriptors()
-          .some((descriptor) => descriptor.name === themeName && descriptor.path === pack.path);
-      const metadata = { ...pack.metadata, packageKind: isBuiltin ? "builtin" : undefined };
+      // Carry the directory the theme loaded from, so this opens the same panel
+      // its card in the list opens.
+      const available = atom.packages.getAvailablePackage(themeName);
+      const metadata = {
+        ...pack.metadata,
+        path: pack.path,
+        packageKind: available && available.tier === "bundled" ? "builtin" : undefined,
+      };
       this.settingsView.showPanel(packagePanelKey(metadata), {
         back: "Themes",
         pack: metadata,

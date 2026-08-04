@@ -11,6 +11,10 @@ import List from "./list";
 import ListView from "./list-view";
 import { ownerFromRepository, packageComparatorAscending } from "./utils";
 
+// One directory is one entry, so entries are told apart by where they live —
+// two directories may provide the same package name.
+const packageEntryKey = (pack) => pack.path || pack.name;
+
 export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
   static loadPackagesDelay() {
     return 300;
@@ -22,9 +26,9 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
     this.settingsView = settingsView;
     this.packageManager = packageManager;
     this.items = {
-      dev: new List("name"),
-      core: new List("name"),
-      community: new List("name"),
+      dev: new List(packageEntryKey),
+      core: new List(packageEntryKey),
+      community: new List(packageEntryKey),
     };
     this.itemViews = {
       dev: new ListView(this.items.dev, this.refs.devPackages, this.createPackageCard.bind(this)),
@@ -235,47 +239,53 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
         this.displayPackageUpdates(packagesWithUpdates);
 
         this.matchPackages();
-        this.warnDirectoryNameMismatches();
+        this.warnDuplicatePackageNames();
       })
       .catch((error) => {
         console.error(error.message, error.stack);
       });
   }
 
-  // A package's install directory is its identity, so a folder that does not
-  // match the package.json "name" silently breaks its commands, settings, and
-  // activation. Surface these once so the user can rename the directory. Each
-  // name is warned at most once per panel so repeated loads don't spam.
-  warnDirectoryNameMismatches() {
-    if (!this.warnedMismatches) this.warnedMismatches = new Set();
-    const mismatched = [];
-    for (const type of ["dev", "community"]) {
+  // Two directories in the same place providing the same package name is almost
+  // always an accident — a stale clone, a copied folder — and only one of them
+  // loads. Shadowing across places (a dev checkout over an install, an install
+  // over a bundled package) is deliberate and gets a dot on the card instead of
+  // a notification. Each duplicate is reported once per panel.
+  warnDuplicatePackageNames() {
+    if (!this.warnedDuplicates) this.warnedDuplicates = new Set();
+
+    const duplicates = [];
+    for (const type of ["dev", "core", "community"]) {
+      const byName = new Map();
       for (const pack of this.packages[type] || []) {
-        if (
-          pack.directoryName &&
-          pack.name &&
-          pack.directoryName !== pack.name &&
-          !this.warnedMismatches.has(pack.name)
-        ) {
-          this.warnedMismatches.add(pack.name);
-          mismatched.push(pack);
-        }
+        const copies = byName.get(pack.name) || [];
+        copies.push(pack);
+        byName.set(pack.name, copies);
+      }
+      for (const [name, copies] of byName) {
+        if (copies.length < 2 || this.warnedDuplicates.has(name)) continue;
+        this.warnedDuplicates.add(name);
+        duplicates.push({ name, copies });
       }
     }
-    if (mismatched.length === 0) return;
+    if (duplicates.length === 0) return;
 
-    const list = mismatched
-      .map((pack) => `- \`${pack.directoryName}\` should be \`${pack.name}\``)
+    const list = duplicates
+      .map(({ name, copies }) => {
+        const directories = copies.map((pack) => `\`${pack.directoryName}\``).join(", ");
+        const loaded = copies.find((pack) => !pack.isShadowed);
+        const loadedNote = loaded ? ` — \`${loaded.directoryName}\` is the one that loads` : "";
+        return `- **${name}**: ${directories}${loadedNote}`;
+      })
       .join("\n");
     atom.notifications.addWarning(
-      mismatched.length === 1
-        ? "A package is installed in a directory that does not match its name"
-        : "Some packages are installed in directories that do not match their names",
+      duplicates.length === 1
+        ? "Two directories provide the same package"
+        : "Some package names are provided by more than one directory",
       {
         description:
-          "The install directory is the package's identity, so a mismatch breaks its " +
-          "commands, settings, and activation. Rename each directory to match its " +
-          `\`package.json\` name:\n\n${list}`,
+          "A package is identified by the `name` in its `package.json`, and only one " +
+          `copy of a name loads.\n\n${list}`,
         dismissable: true,
       },
     );
@@ -284,6 +294,9 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
   displayPackageUpdates(packagesWithUpdates) {
     for (const packageType of ["dev", "core", "community"]) {
       for (const packageCard of this.itemViews[packageType].getViews()) {
+        // A shadowed copy does not own its name, so an update found for that
+        // name belongs to the copy that loads, not to this one.
+        if (packageCard.pack.isShadowed) continue;
         const newVersion = packagesWithUpdates[packageCard.pack.name];
         if (newVersion) {
           packageCard.displayAvailableUpdate(newVersion);

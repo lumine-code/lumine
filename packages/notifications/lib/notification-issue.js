@@ -259,29 +259,40 @@ ${copyText}\
     return repoUrl != null ? repoUrl.replace(/\.git$/, "").replace(/^git\+/, "") : undefined;
   }
 
+  // Last resort for a file that belongs to no loaded package: take the
+  // directory the path sits in under one of the package directories. That
+  // directory is not necessarily the package's name, so ask the package
+  // manager what lives there before falling back to the directory name.
   getPackageNameFromFilePath(filePath) {
     if (!filePath) {
       return;
     }
 
-    let packageName = __guard__(/\/\.atom\/dev\/packages\/([^/]+)\//.exec(filePath), (x) => x[1]);
-    if (packageName) {
-      return packageName;
-    }
-
-    packageName = __guard__(/\\\.atom\\dev\\packages\\([^\\]+)\\/.exec(filePath), (x1) => x1[1]);
-    if (packageName) {
-      return packageName;
-    }
-
-    packageName = __guard__(/\/\.atom\/packages\/([^/]+)\//.exec(filePath), (x2) => x2[1]);
-    if (packageName) {
-      return packageName;
-    }
-
-    packageName = __guard__(/\\\.atom\\packages\\([^\\]+)\\/.exec(filePath), (x3) => x3[1]);
-    if (packageName) {
-      return packageName;
+    const normalized = path.normalize(filePath);
+    for (const packageDirPath of atom.packages.getPackageDirPaths()) {
+      const prefix = path.normalize(packageDirPath + path.sep);
+      if (!normalized.startsWith(prefix)) {
+        continue;
+      }
+      const dirname = normalized.slice(prefix.length).split(path.sep)[0];
+      if (!dirname) {
+        continue;
+      }
+      const packagePath = path.join(packageDirPath, dirname);
+      const pack = atom.packages
+        .getLoadedPackages()
+        .find((loadedPackage) => loadedPackage.path === packagePath);
+      if (pack != null) {
+        return pack.name;
+      }
+      // The directory is not necessarily named after the package in it, and a
+      // path under a package directory is not necessarily a package at all.
+      const availablePackage = atom.packages
+        .getAvailablePackages({ includeShadowed: true })
+        .find((available) => available.path === packagePath);
+      if (availablePackage != null) {
+        return availablePackage.name;
+      }
     }
   }
 
@@ -296,14 +307,20 @@ ${copyText}\
       return;
     }
 
+    // Stack frames report the real path of a symlinked package, so match
+    // against that for anything installed under a package directory.
+    const packageDirPaths = atom.packages
+      .getPackageDirPaths()
+      .map((packageDirPath) => path.normalize(packageDirPath + path.sep));
     const packagePaths = this.getPackagePathsByPackageName();
     for (packageName in packagePaths) {
       packagePath = packagePaths[packageName];
-      if (
-        packagePath.indexOf(path.join(".atom", "dev", "packages")) > -1 ||
-        packagePath.indexOf(path.join(".atom", "packages")) > -1
-      ) {
-        packagePaths[packageName] = fs.realpathSync(packagePath);
+      if (packageDirPaths.some((packageDirPath) => packagePath.startsWith(packageDirPath))) {
+        try {
+          packagePaths[packageName] = fs.realpathSync(packagePath);
+        } catch {
+          /* the package directory went away; keep the recorded path */
+        }
       }
     }
 
@@ -366,7 +383,3 @@ ${copyText}\
     return packagePathsByPackageName;
   }
 };
-
-function __guard__(value, transform) {
-  return typeof value !== "undefined" && value !== null ? transform(value) : undefined;
-}

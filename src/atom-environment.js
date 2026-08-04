@@ -386,6 +386,16 @@ class AtomEnvironment {
     return this.packages.preloadPackages();
   }
 
+  // Remove what an interrupted package install left in the packages directory.
+  // Failures are the normal case for a file another process still holds, and
+  // the next launch tries again, so nothing here is reported.
+  sweepInterruptedInstalls() {
+    const packagesPath = this.packages.userPackagesPath;
+    if (!packagesPath) return;
+    const PackageInstallationService = require("./package-installation-service");
+    PackageInstallationService.sweep(packagesPath).catch(() => {});
+  }
+
   attachSaveStateListeners() {
     const saveState = _.debounce(() => {
       this.window.requestIdleCallback(() => {
@@ -734,7 +744,7 @@ class AtomEnvironment {
   //     reusing existing windows depending on the paths to open.
   //   * `devMode` A {Boolean}, true to open the window in development mode.
   //     Development mode loads the Lumine source from the locally cloned
-  //     repository and also loads all the packages in ~/.lumine/dev/packages
+  //     repository and also loads all the packages in ~/.lumine/packages-dev
   //   * `safeMode` A {Boolean}, true to open the window in safe mode. Safe
   //     mode prevents all packages installed to ~/.lumine/packages from loading.
   open(params) {
@@ -1060,6 +1070,11 @@ class AtomEnvironment {
       );
 
       this.registerDefaultTargetForKeymaps();
+
+      // An install interrupted by a crash or a quit leaves its staging and
+      // backup directories behind, and a backup holding a native module can
+      // only be deleted before anything loads it.
+      this.sweepInterruptedInstalls();
 
       StartupTime.addMarker("window:environment:start-editor-window:load-packages");
       this.packages.loadPackages();

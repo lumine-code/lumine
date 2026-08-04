@@ -167,6 +167,7 @@
     "symbol-provider-tree-sitter": "file:packages/symbol-provider-tree-sitter",
     "symbols-view": "file:packages/symbols-view",
     "tabs": "file:packages/tabs",
+    "tar": "7.5.22",
     "theme-selector": "file:packages/theme-selector",
     "timecop": "file:packages/timecop",
     "tinyglobby": "^0.2.17",

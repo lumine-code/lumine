@@ -285,7 +285,11 @@ module.exports = class AtomApplication extends EventEmitter {
     global.atomApplication = this;
 
     this.applicationMenu = new ApplicationMenu(this.version);
-    this.atomProtocolHandler = new AtomProtocolHandler(this.resourcePath, this.safeMode);
+    this.atomProtocolHandler = new AtomProtocolHandler(
+      this.resourcePath,
+      this.safeMode,
+      (packageName) => this.getPackageManager(this.devMode).resolvePackagePath(packageName),
+    );
 
     let socketServerPromise;
     if (options.test) {
@@ -1545,7 +1549,7 @@ module.exports = class AtomApplication extends EventEmitter {
   //   :resourcePath - The path to include specs from.
   //   :specPath - The directory to load specs from.
   //   :safeMode - A Boolean that, if true, won't run specs from ~/.lumine/packages
-  //               and ~/.lumine/dev/packages, defaults to false.
+  //               and ~/.lumine/packages-dev, defaults to false.
   runTests({ headless, resourcePath, executedFrom, pathsToOpen, logFile, safeMode, timeout, env }) {
     let windowInitializationScript;
     if (resourcePath !== this.resourcePath && !fs.existsSync(resourcePath)) {

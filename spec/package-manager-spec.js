@@ -35,8 +35,25 @@ describe("PackageManager", () => {
       packageManger.initialize({ configDirPath, resourcePath, devMode: true });
       expect(packageManger.packageDirPaths.length).toBe(3);
       expect(packageManger.packageDirPaths).toContain(path.join(configDirPath, "packages"));
-      expect(packageManger.packageDirPaths).toContain(path.join(configDirPath, "dev", "packages"));
+      expect(packageManger.packageDirPaths).toContain(path.join(configDirPath, "packages-dev"));
       expect(packageManger.packageDirPaths).toContain(path.join(resourcePath, "packages"));
+    });
+
+    it("orders package paths so dev packages shadow user packages, which shadow bundled ones", () => {
+      const packageManger = new PackageManager({});
+      const configDirPath = path.join("~", "someConfig");
+      const resourcePath = path.join("~", "/atom");
+      packageManger.initialize({ configDirPath, resourcePath, devMode: true });
+      expect(packageManger.packageDirPaths).toEqual([
+        path.join(configDirPath, "packages-dev"),
+        path.join(configDirPath, "packages"),
+        path.join(resourcePath, "packages"),
+      ]);
+      expect(packageManger.packageDirPaths.map((p) => packageManger.getPackageDirTier(p))).toEqual([
+        "dev",
+        "community",
+        "bundled",
+      ]);
     });
   });
 
@@ -118,7 +135,9 @@ describe("PackageManager", () => {
     });
 
     it("trims git+ from the beginning and .git from the end of repository URLs, even if npm already normalized them ", () => {
-      const { metadata } = atom.packages.loadPackage("package-with-prefixed-and-suffixed-repo-url");
+      // The fixture lives in a directory named after what it tests; the package
+      // is called what its manifest says, which is the only name that loads it.
+      const { metadata } = atom.packages.loadPackage("package-with-a-git-prefixed-git-repo-url");
       expect(metadata.repository.type).toBe("git");
       expect(metadata.repository.url).toBe("https://github.com/example/repo");
     });
@@ -1711,6 +1730,128 @@ describe("PackageManager", () => {
       } finally {
         removeLink(destination);
       }
+    });
+  });
+
+  describe("package identity and shadowing", () => {
+    let packagesDirPath;
+
+    beforeEach(() => {
+      packagesDirPath = fs.realpathSync(temp.mkdirSync("lumine-package-identity-"));
+      // Ahead of every other directory, so these fixtures decide the outcome.
+      atom.packages.packageDirPaths.unshift(packagesDirPath);
+      atom.packages.refreshPackageIndex();
+    });
+
+    afterEach(() => {
+      const index = atom.packages.packageDirPaths.indexOf(packagesDirPath);
+      if (index > -1) atom.packages.packageDirPaths.splice(index, 1);
+      atom.packages.refreshPackageIndex();
+      fs.removeSync(packagesDirPath);
+    });
+
+    function writePackage(dirname, metadata, directory = packagesDirPath) {
+      const packagePath = path.join(directory, dirname);
+      fs.makeTreeSync(packagePath);
+      fs.writeFileSync(
+        path.join(packagePath, "package.json"),
+        `${JSON.stringify(metadata, null, 2)}\n`,
+      );
+      atom.packages.refreshPackageIndex();
+      return packagePath;
+    }
+
+    it("identifies a package by its manifest name, not by its directory", () => {
+      const packagePath = writePackage("some-checkout", { name: "renamed-package" });
+
+      expect(atom.packages.getAvailablePackageNames()).toContain("renamed-package");
+      expect(atom.packages.getAvailablePackageNames()).not.toContain("some-checkout");
+      expect(atom.packages.resolvePackagePath("renamed-package")).toBe(packagePath);
+      expect(atom.packages.resolvePackagePath("some-checkout")).toBeNull();
+
+      const pack = atom.packages.loadPackage("renamed-package");
+      expect(pack.name).toBe("renamed-package");
+      expect(pack.path).toBe(packagePath);
+      atom.packages.unloadPackage("renamed-package");
+    });
+
+    it("falls back to the directory name when the manifest declares none", () => {
+      writePackage("nameless-package", { version: "1.0.0" });
+
+      const available = atom.packages.getAvailablePackage("nameless-package");
+      expect(available.name).toBe("nameless-package");
+      expect(available.nameSource).toBe("dirname");
+    });
+
+    it("loads only the first directory providing a name, and reports the rest", () => {
+      const winnerPath = writePackage("aaa-copy", { name: "duplicated-package" });
+      const loserPath = writePackage("zzz-copy", { name: "duplicated-package" });
+
+      const winners = atom.packages
+        .getAvailablePackages()
+        .filter((pack) => pack.name === "duplicated-package");
+      expect(winners.map((pack) => pack.path)).toEqual([winnerPath]);
+
+      const everyCopy = atom.packages
+        .getAvailablePackages({ includeShadowed: true })
+        .filter((pack) => pack.name === "duplicated-package");
+      expect(everyCopy.map((pack) => pack.path)).toEqual([winnerPath, loserPath]);
+      expect(everyCopy.map((pack) => pack.isWinner)).toEqual([true, false]);
+      expect(everyCopy[1].shadowedBy.path).toBe(winnerPath);
+
+      expect(atom.packages.loadPackage("duplicated-package").path).toBe(winnerPath);
+      atom.packages.unloadPackage("duplicated-package");
+    });
+
+    it("prefers a package directory that comes earlier in the search path", () => {
+      const otherDirPath = fs.realpathSync(temp.mkdirSync("lumine-package-identity-lower-"));
+      atom.packages.packageDirPaths.push(otherDirPath);
+      try {
+        writePackage("zzz-higher-priority", { name: "tiered-package" });
+        writePackage("aaa-lower-priority", { name: "tiered-package" }, otherDirPath);
+
+        const winner = atom.packages.getAvailablePackage("tiered-package");
+        expect(winner.dirname).toBe("zzz-higher-priority");
+      } finally {
+        const index = atom.packages.packageDirPaths.indexOf(otherDirPath);
+        if (index > -1) atom.packages.packageDirPaths.splice(index, 1);
+        atom.packages.refreshPackageIndex();
+        fs.removeSync(otherDirPath);
+      }
+    });
+
+    describe("::reconcilePackage(name)", () => {
+      it("loads the copy that takes over when the loaded one is removed", async () => {
+        const winnerPath = writePackage("aaa-copy", { name: "duplicated-package" });
+        const loserPath = writePackage("zzz-copy", { name: "duplicated-package" });
+
+        expect(atom.packages.loadPackage("duplicated-package").path).toBe(winnerPath);
+
+        fs.removeSync(winnerPath);
+        const pack = await atom.packages.reconcilePackage("duplicated-package");
+
+        expect(pack.path).toBe(loserPath);
+        expect(atom.packages.getLoadedPackage("duplicated-package").path).toBe(loserPath);
+        atom.packages.unloadPackage("duplicated-package");
+      });
+
+      it("unloads the package when nothing on disk provides its name any more", async () => {
+        const packagePath = writePackage("only-copy", { name: "solo-package" });
+        expect(atom.packages.loadPackage("solo-package").path).toBe(packagePath);
+
+        fs.removeSync(packagePath);
+        expect(await atom.packages.reconcilePackage("solo-package")).toBeNull();
+        expect(atom.packages.isPackageLoaded("solo-package")).toBe(false);
+      });
+
+      it("keeps the loaded package when it still owns the name", async () => {
+        const packagePath = writePackage("only-copy", { name: "solo-package" });
+        const loaded = atom.packages.loadPackage("solo-package");
+
+        expect(await atom.packages.reconcilePackage("solo-package")).toBe(loaded);
+        expect(atom.packages.getLoadedPackage("solo-package").path).toBe(packagePath);
+        atom.packages.unloadPackage("solo-package");
+      });
     });
   });
 });

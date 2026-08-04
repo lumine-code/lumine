@@ -21,7 +21,7 @@ function packagesDirectory() {
 }
 
 function devPackagesDirectory() {
-  return path.join(process.env.LUMINE_HOME, "dev", "packages");
+  return path.join(process.env.LUMINE_HOME, "packages-dev");
 }
 
 function gitCommand() {
@@ -109,25 +109,9 @@ async function install(source) {
   console.log(`Installed ${installed.packageName} to ${installed.target}`);
 }
 
-function uninstall(name) {
-  if (!name) {
-    throw new Error("Specify a package to uninstall, e.g. `lumine --uninstall my-package`.");
-  }
-
-  const targetDir = path.join(packagesDirectory(), name);
-  if (!fs.existsSync(targetDir)) {
-    throw new Error(`'${name}' is not installed in ${packagesDirectory()}.`);
-  }
-
-  fs.rmSync(targetDir, { recursive: true, force: true });
-  console.log(`Uninstalled ${name}`);
-}
-
-function readVersion(packagePath) {
-  const read = readMetadata(packagePath);
-  return read && read.metadata && read.metadata.version ? read.metadata.version : null;
-}
-
+// Every package directory under `directory`, described by what its manifest
+// says rather than by what the directory is called. A directory whose manifest
+// declares no name falls back to the directory name.
 function listDirectory(directory) {
   if (!fs.existsSync(directory)) {
     return [];
@@ -138,28 +122,81 @@ function listDirectory(directory) {
       (entry) => !entry.name.startsWith(".") && (entry.isDirectory() || entry.isSymbolicLink()),
     )
     .map((entry) => {
-      const version = readVersion(path.join(directory, entry.name));
-      return version ? `${entry.name}@${version}` : entry.name;
+      const packagePath = path.join(directory, entry.name);
+      let metadata = null;
+      try {
+        const read = readMetadata(packagePath);
+        metadata = read ? read.metadata : null;
+      } catch {
+        // An unreadable manifest still leaves a directory worth listing.
+      }
+      const name = metadata && metadata.name ? metadata.name : entry.name;
+      return {
+        name,
+        dirname: entry.name,
+        path: packagePath,
+        version: metadata && metadata.version,
+      };
     })
-    .sort();
+    .sort((a, b) => a.dirname.localeCompare(b.dirname));
+}
+
+function uninstall(nameOrPath) {
+  if (!nameOrPath) {
+    throw new Error("Specify a package to uninstall, e.g. `lumine --uninstall my-package`.");
+  }
+
+  const directory = packagesDirectory();
+  const installed = listDirectory(directory);
+  const resolved = path.resolve(nameOrPath);
+  const matches = installed.filter(
+    (pack) => pack.name === nameOrPath || pack.dirname === nameOrPath || pack.path === resolved,
+  );
+
+  if (matches.length === 0) {
+    throw new Error(`'${nameOrPath}' is not installed in ${directory}.`);
+  }
+
+  if (matches.length > 1) {
+    const dirnames = matches.map((pack) => pack.dirname).join(", ");
+    throw new Error(
+      `More than one directory in ${directory} provides '${nameOrPath}': ${dirnames}. ` +
+        "Pass the directory to uninstall a specific copy.",
+    );
+  }
+
+  fs.rmSync(matches[0].path, { recursive: true, force: true });
+  console.log(`Uninstalled ${matches[0].name} from ${matches[0].path}`);
+}
+
+// A package is described as `name@version`, plus the directory it lives in when
+// that is called something else.
+function describePackage(pack) {
+  const version = pack.version ? `@${pack.version}` : "";
+  const dirname = pack.dirname === pack.name ? "" : ` (in ${pack.dirname})`;
+  return `${pack.name}${version}${dirname}`;
 }
 
 function list() {
+  // Highest priority first, matching how the editor resolves a name.
   const sections = [
-    { title: "Community Packages", directory: packagesDirectory() },
     { title: "Development Packages", directory: devPackagesDirectory() },
+    { title: "Community Packages", directory: packagesDirectory() },
   ];
 
+  const claimed = new Set();
   let printedAny = false;
   for (const { title, directory } of sections) {
-    const names = listDirectory(directory);
-    if (names.length === 0) {
+    const packages = listDirectory(directory);
+    if (packages.length === 0) {
       continue;
     }
     printedAny = true;
-    console.log(`${title} (${names.length})`);
-    for (const name of names) {
-      console.log(`└── ${name}`);
+    console.log(`${title} (${packages.length})`);
+    for (const pack of packages) {
+      const shadowed = claimed.has(pack.name) ? " — shadowed" : "";
+      claimed.add(pack.name);
+      console.log(`└── ${describePackage(pack)}${shadowed}`);
     }
     console.log("");
   }
@@ -196,24 +233,41 @@ function unlink(target, { dev } = {}) {
     throw new Error("Specify a package name or directory to unlink, e.g. `lumine --unlink .`.");
   }
 
-  // Accept either a package name or a path to the linked directory.
-  const name = fs.existsSync(target) ? path.basename(path.resolve(target)) : target;
+  // Accept a package name, the name of the link, or a path to either the link
+  // or the checkout it points at.
+  const resolved = path.resolve(target);
+  const read = fs.existsSync(resolved) ? safeReadMetadata(resolved) : null;
+  const targetName = read && read.metadata && read.metadata.name;
   const directories = dev
     ? [devPackagesDirectory()]
-    : [packagesDirectory(), devPackagesDirectory()];
+    : [devPackagesDirectory(), packagesDirectory()];
 
   let unlinked = false;
   for (const directory of directories) {
-    const linkPath = path.join(directory, name);
-    if (fs.existsSync(linkPath) && fs.lstatSync(linkPath).isSymbolicLink()) {
-      fs.rmSync(linkPath, { recursive: true, force: true });
-      console.log(`Unlinked ${linkPath}`);
+    for (const pack of listDirectory(directory)) {
+      const matches =
+        pack.name === target ||
+        pack.dirname === target ||
+        pack.path === resolved ||
+        (targetName != null && pack.name === targetName);
+      if (!matches) continue;
+      if (!fs.lstatSync(pack.path).isSymbolicLink()) continue;
+      fs.rmSync(pack.path, { recursive: true, force: true });
+      console.log(`Unlinked ${pack.path}`);
       unlinked = true;
     }
   }
 
   if (!unlinked) {
-    throw new Error(`No linked package named '${name}' was found.`);
+    throw new Error(`No linked package named '${target}' was found.`);
+  }
+}
+
+function safeReadMetadata(packagePath) {
+  try {
+    return readMetadata(packagePath);
+  } catch {
+    return null;
   }
 }
 

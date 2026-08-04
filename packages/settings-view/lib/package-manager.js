@@ -16,6 +16,32 @@ const { packageCoordinate, packageOrigin, packageOriginKey } = require("./utils"
 // package activation. They are only needed when the user opens the Install or
 // Updates tabs, so require them lazily inside their getters instead of eagerly.
 
+// Whether a package tree carries a compiled native module. Once one of those is
+// loaded, the process holds it until it exits, so the files underneath it can
+// be replaced but the code cannot.
+function containsNativeModule(packagePath) {
+  const nodeModulesPath = path.join(packagePath, "node_modules");
+  if (!fs.isDirectorySync(nodeModulesPath)) return false;
+  const stack = [nodeModulesPath];
+  while (stack.length > 0) {
+    const directory = stack.pop();
+    let entries;
+    try {
+      entries = fs.readdirSync(directory, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        stack.push(path.join(directory, entry.name));
+      } else if (entry.name.endsWith(".node")) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 module.exports = class PackageManager {
   constructor() {
     // Millisecond expiry for cached loadOutdated, etc. values
@@ -121,7 +147,10 @@ module.exports = class PackageManager {
   }
 
   loadPackage(packageName, callback) {
-    const pack = this.getAllLocalPackages().find((pack) => pack.name === packageName);
+    // Answer for the copy that owns the name, the one whose settings, commands,
+    // and version the rest of the UI is talking about.
+    const candidates = this.getAllLocalPackages().filter((pack) => pack.name === packageName);
+    const pack = candidates.find((candidate) => !candidate.isShadowed) || candidates[0];
     if (pack) {
       return callback(null, pack);
     } else {
@@ -299,48 +328,58 @@ module.exports = class PackageManager {
 
     try {
       this.emitPackageEvent("uninstalling", pack);
-      // resolvePackagePath() canonicalizes symlinks, which would make uninstall
-      // remove a linked package's source instead of its entry in the user
-      // packages directory.
-      const packagePath = path.join(this.getAtomPackagesDirectory(), name);
-      if (atom.packages.isPackageActive(name)) {
-        // Await async deactivation before unloading (see ::unload).
-        await atom.packages.deactivatePackage(name);
+      // The directory this card stands for, never a directory derived from the
+      // package's name: a name can be provided by more than one directory, and
+      // uninstalling one of them must not touch the others. The path is used
+      // as recorded — resolving it would canonicalize a symlink and delete a
+      // linked package's source instead of the link.
+      const packagePath = this.installedPackagePath(pack);
+      if (!packagePath) {
+        throw new Error(`Could not find where “${name}” is installed.`);
       }
-      if (atom.packages.isPackageLoaded(name)) {
+
+      // Only the copy that actually loaded owns the loaded package for this
+      // name; a shadowed copy is removed from disk and nothing else.
+      const loadedPackage = atom.packages.getLoadedPackage(name);
+      const removingLoadedPackage = loadedPackage != null && loadedPackage.path === packagePath;
+      if (removingLoadedPackage) {
+        if (atom.packages.isPackageActive(name)) {
+          // Await async deactivation before unloading (see ::unload).
+          await atom.packages.deactivatePackage(name);
+        }
         atom.packages.unloadPackage(name);
       }
+
       if (fs.isDirectorySync(packagePath) || fs.isSymbolicLinkSync(packagePath)) {
         await this.removePackageDir(packagePath);
       }
       this.clearOutdatedCache();
-      const restoresBundled = atom.packages.isBundledPackage(name);
-      if (!restoresBundled) {
+      atom.packages.refreshPackageIndex();
+
+      // Another directory may still provide this name — a bundled package that
+      // was overridden, a dev checkout, a second copy. Its disabled preference
+      // belongs to the name, so it survives as long as any copy does.
+      const remainingCopy = atom.packages.getAvailablePackage(name);
+      if (remainingCopy == null) {
         this.removePackageNameFromDisabledPackages(name);
       }
 
-      // Signal completion as soon as the package is gone from disk. The bundled
-      // restore below is best-effort and runs afterwards, so a slow, deferred, or
-      // failing activation can never hang or fail an uninstall that already
-      // succeeded (and left the UI spinner stuck until a restart).
+      // Signal completion as soon as the package is gone from disk. Loading
+      // whichever copy takes over is best-effort and runs afterwards, so a
+      // slow, deferred, or failing activation can never hang or fail an
+      // uninstall that already succeeded (and left the UI spinner stuck until
+      // a restart).
       if (typeof callback === "function") {
         callback();
       }
       const result = this.emitPackageEvent("uninstalled", pack);
 
-      if (restoresBundled) {
-        // Reveal the overridden bundled package again. The name's disabled
-        // preference belongs to the slot and is preserved; activation is
-        // fire-and-forget because a package that defers activation only resolves
-        // activatePackage once its trigger fires.
-        try {
-          atom.packages.loadPackage(name);
-          if (!atom.packages.isPackageDisabled(name)) {
-            atom.packages.activatePackage(name).catch(() => {});
-          }
-        } catch {
-          // The bundled package will load on the next restart.
-        }
+      if (removingLoadedPackage && remainingCopy != null) {
+        // Activation is fire-and-forget because a package that defers
+        // activation only resolves activatePackage once its trigger fires.
+        atom.packages.reconcilePackage(name, { activate: true }).catch(() => {
+          // The remaining copy will load on the next restart.
+        });
       }
 
       return result;
@@ -429,6 +468,18 @@ module.exports = class PackageManager {
 
   getAtomPackagesDirectory() {
     return path.join(process.env.LUMINE_HOME, "packages");
+  }
+
+  // The directory a package occupies. A list entry knows its own directory —
+  // one entry is one directory — while a catalog card knows only a name, which
+  // resolves to whichever copy owns it.
+  installedPackagePath(pack) {
+    if (pack && pack.path) return pack.path;
+    const name = pack && pack.name;
+    if (!name) return null;
+    const loadedPackage = atom.packages.getLoadedPackage(name);
+    if (loadedPackage) return loadedPackage.path;
+    return atom.packages.resolvePackagePath(name);
   }
 
   getGitCommand() {
@@ -537,19 +588,30 @@ module.exports = class PackageManager {
       capture: this.runProcess.bind(this),
       resolveSource: this.resolvePackageSource.bind(this),
       atomVersion: this.normalizeVersion(atom.getVersion()),
-      beforeSwap: async (name) => {
+      beforeSwap: async (name, target) => {
+        const loadedPackage = atom.packages.getLoadedPackage(name);
+        // Only the copy being replaced is unloaded. When the install lands in
+        // a different directory than the one that loaded — a second copy of
+        // the name — the running package is left alone.
+        if (loadedPackage == null || loadedPackage.path !== target) return { replaced: false };
         const wasActive = atom.packages.isPackageActive(name);
+        const hadNativeModules = containsNativeModule(target);
         await this.unload(name);
-        return { wasActive };
+        return { replaced: true, wasActive, hadNativeModules };
       },
-      afterSwap: async (name, metadata) => this.activateInstalledPackage(name, metadata),
-      afterRollback: async (name, { wasActive } = {}) => {
+      afterSwap: async (name, metadata, state = {}) => {
+        // Native modules stay loaded in the process for as long as it lives:
+        // the old binding cannot be unmapped, so the new files would run
+        // against it. Leave the swapped package for the next launch, which the
+        // card's "Restart" prompt asks for.
+        if (state.hadNativeModules) return;
+        this.activateInstalledPackage(name, metadata);
+      },
+      afterRollback: async (name, { replaced, wasActive } = {}) => {
+        if (!replaced) return;
         if (atom.packages.isPackageActive(name)) await atom.packages.deactivatePackage(name);
         if (atom.packages.isPackageLoaded(name)) atom.packages.unloadPackage(name);
-        atom.packages.loadPackage(name);
-        if (wasActive && !atom.packages.isPackageDisabled(name)) {
-          atom.packages.activatePackage(name).catch(() => {});
-        }
+        atom.packages.reconcilePackage(name, { activate: wasActive }).catch(() => {});
       },
     });
     const installed = await service.install(pack, options);
@@ -567,6 +629,7 @@ module.exports = class PackageManager {
   // activatePackage once its trigger fires, so awaiting it would hang the
   // install until then — leaving the swapped files unusable until a restart.
   activateInstalledPackage(name, metadata) {
+    atom.packages.refreshPackageIndex();
     atom.packages.loadPackage(name);
     if (!metadata.theme && !atom.packages.isPackageDisabled(name)) {
       atom.packages.activatePackage(name).catch(() => {});
@@ -575,17 +638,26 @@ module.exports = class PackageManager {
 
   getDevPackagesPath() {
     const configDirPath = atom.getConfigDirPath ? atom.getConfigDirPath() : process.env.LUMINE_HOME;
-    return path.join(configDirPath, "dev", "packages");
+    return path.join(configDirPath, "packages-dev");
   }
 
   // Buckets a single available package into dev/user/core/git on `packages`.
   // Shared by the synchronous getLocalPackages() and the chunked async
   // loadInstalledPackages() so both classify identically.
-  classifyLocalPackage(packages, availablePackage, metadata, devPackagesPath) {
-    metadata = metadata || {};
+  //
+  // One directory produces one entry. Several directories may provide the same
+  // package name; only the first of them loads, and the rest are listed as
+  // shadowed so the user can see what is on disk and act on it.
+  classifyLocalPackage(packages, availablePackage, metadata) {
+    metadata = metadata || availablePackage.metadata || {};
     const packageInfo = _.extend({}, metadata, {
-      name: metadata.name || availablePackage.name,
+      name: availablePackage.name,
       path: availablePackage.path,
+      directoryName: availablePackage.dirname || path.basename(availablePackage.path || ""),
+      tier: availablePackage.tier,
+      nameSource: availablePackage.nameSource,
+      isShadowed: availablePackage.isWinner === false,
+      shadowedBy: availablePackage.shadowedBy,
     });
     if (metadata.apmInstallSource && metadata.apmInstallSource.type === "git") {
       const installedOrigin = packageOriginKey(metadata.apmInstallSource.origin);
@@ -596,65 +668,29 @@ module.exports = class PackageManager {
       }
     }
 
-    // Determine "bundled" from the package name rather than pack.isBundled.
-    // The per-package flag is false for everything under packages/ when
-    // running in dev mode from a source checkout, which would misfile every
-    // bundled package as a community package. isBundledPackage() checks
-    // packageDependencies membership and is mode-independent.
-    const isBundled = atom.packages.isBundledPackage(availablePackage.name);
-
-    // Record the install directory's own name so the UI can flag a package
-    // whose folder does not match its package.json "name" — the folder IS the
-    // install slot, so a mismatch breaks require, commands, config, and
-    // activation. Bundled packages are curated and always match; skip them.
-    if (!isBundled && availablePackage.path) {
-      packageInfo.directoryName = path.basename(availablePackage.path);
-    }
-
-    // Order matters: a bundled package shadowed by a copy in dev/packages
-    // must be filed under Development, so the dev-path check precedes the
-    // bundled check.
-    if (packageInfo.apmInstallSource && packageInfo.apmInstallSource.type === "git") {
-      packages.git.push(packageInfo);
-    } else if (availablePackage.path && availablePackage.path.startsWith(devPackagesPath)) {
-      packages.dev.push(packageInfo);
-    } else if (isBundled) {
+    // The tier a package's directory sits in decides where it is listed, and it
+    // is what the loader ranks names by, so the two never disagree. A package
+    // delivered through node_modules reports the bundled tier as well.
+    const tier = availablePackage.tier;
+    if (tier === "bundled") {
+      packageInfo.packageKind = "builtin";
       packages.core.push(packageInfo);
+    } else if (tier === "dev") {
+      packages.dev.push(packageInfo);
+    } else if (packageInfo.apmInstallSource && packageInfo.apmInstallSource.type === "git") {
+      packages.git.push(packageInfo);
     } else {
       packages.user.push(packageInfo);
     }
   }
 
-  // Adds a shadow entry for every bundled package that a same-named community
-  // package is currently overriding, so the detail UI can still reach it.
-  appendShadowedBundledDescriptors(packages) {
-    if (typeof atom.packages.getBundledPackageDescriptors !== "function") return;
-    const visibleNames = new Set(packages.core.map((pack) => pack.name));
-    const communityNames = new Set(
-      [...packages.dev, ...packages.user, ...packages.git].map((pack) => pack.name),
-    );
-    for (const descriptor of atom.packages.getBundledPackageDescriptors()) {
-      if (!communityNames.has(descriptor.name) || visibleNames.has(descriptor.name)) continue;
-      packages.core.push(
-        _.extend({}, descriptor.metadata, descriptor, {
-          isShadowed: true,
-          packageKind: "builtin",
-        }),
-      );
-      visibleNames.add(descriptor.name);
-    }
-  }
-
   getLocalPackages() {
     const packages = { dev: [], user: [], core: [], git: [] };
-    const devPackagesPath = this.getDevPackagesPath();
 
-    for (const pack of atom.packages.getAvailablePackages()) {
-      const metadata = atom.packages.loadPackageMetadata(pack, true) || {};
-      this.classifyLocalPackage(packages, pack, metadata, devPackagesPath);
+    for (const pack of atom.packages.getAvailablePackages({ includeShadowed: true })) {
+      this.classifyLocalPackage(packages, pack, pack.metadata);
     }
 
-    this.appendShadowedBundledDescriptors(packages);
     return packages;
   }
 
@@ -664,20 +700,17 @@ module.exports = class PackageManager {
   // renderer long enough to drop frames or freeze input. Returns the same shape.
   async loadInstalledPackages() {
     const packages = { dev: [], user: [], core: [], git: [] };
-    const devPackagesPath = this.getDevPackagesPath();
-    const available = atom.packages.getAvailablePackages();
+    const available = atom.packages.getAvailablePackages({ includeShadowed: true });
     const BATCH_SIZE = 20;
 
     for (let i = 0; i < available.length; i++) {
       const pack = available[i];
-      const metadata = atom.packages.loadPackageMetadata(pack, true) || {};
-      this.classifyLocalPackage(packages, pack, metadata, devPackagesPath);
+      this.classifyLocalPackage(packages, pack, pack.metadata);
       if ((i + 1) % BATCH_SIZE === 0 && i + 1 < available.length) {
         await new Promise((resolve) => setTimeout(resolve));
       }
     }
 
-    this.appendShadowedBundledDescriptors(packages);
     return packages;
   }
 
@@ -691,11 +724,12 @@ module.exports = class PackageManager {
     if (!normalizedOrigin) return null;
 
     const packages = this.getLocalPackages();
-    return (
-      [].concat(packages.dev, packages.user, packages.git).find((pack) => {
-        return packageOrigin(pack) === normalizedOrigin;
-      }) || null
-    );
+    const candidates = [].concat(packages.dev, packages.user, packages.git).filter((pack) => {
+      return packageOrigin(pack) === normalizedOrigin;
+    });
+    // A repository installed into more than one directory is answered for by
+    // the copy that loads.
+    return candidates.find((pack) => !pack.isShadowed) || candidates[0] || null;
   }
 
   inspectPackageUpdate(pack, resolvedSha, selectedRef) {
@@ -704,7 +738,11 @@ module.exports = class PackageManager {
 
   async getGitPackageUpdates() {
     const updates = [];
-    const gitPackages = this.getLocalPackages().git;
+    // Only the copy that owns a name can be updated in place: an update swaps
+    // the directory the package loads from, and a shadowed copy loads from
+    // nowhere. Checking one anyway would poll a remote for a package the user
+    // is not running.
+    const gitPackages = this.getLocalPackages().git.filter((pack) => !pack.isShadowed);
 
     for (const pack of gitPackages) {
       const source = pack.apmInstallSource && pack.apmInstallSource.source;

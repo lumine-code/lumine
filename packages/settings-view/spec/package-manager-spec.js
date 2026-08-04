@@ -26,30 +26,39 @@ describe("PackageManager", function () {
   });
 
   describe("::getLocalPackages()", function () {
-    let [configDirPath, devPackagesPath] = [];
+    let [configDirPath, devPackagesPath, bundledPackagesPath] = [];
 
     beforeEach(function () {
       configDirPath = path.join(os.tmpdir(), "settings-view-config");
-      devPackagesPath = path.join(configDirPath, "dev", "packages");
+      devPackagesPath = path.join(configDirPath, "packages-dev");
+      bundledPackagesPath = path.join(path.sep, "app", "packages");
       spyOn(atom, "getConfigDirPath").andReturn(configDirPath);
-      spyOn(atom.packages, "loadPackageMetadata").andCallFake(
-        (pack) => pack.metadata || { name: pack.name },
-      );
     });
+
+    // A descriptor shaped like the ones PackageManager::scanAvailablePackages
+    // produces: one per directory, carrying the tier it was found in.
+    function descriptor(tier, directory, dirname, metadata = {}) {
+      return {
+        name: metadata.name || dirname,
+        dirname,
+        path: path.join(directory, dirname),
+        tier,
+        isBundled: tier === "bundled",
+        metadata,
+        nameSource: metadata.name ? "manifest" : "dirname",
+        isWinner: true,
+      };
+    }
 
     function availablePackages(...packs) {
       spyOn(atom.packages, "getAvailablePackages").andReturn(packs);
     }
 
-    it("files a bundled package under core even when its isBundled flag is false (dev mode from source)", function () {
+    it("files a package found in the bundled directory under core", function () {
       // Running in dev mode from a source checkout, every packages/ entry
-      // reports isBundled: false, but isBundledPackage() still identifies it.
-      availablePackages({
-        name: "tree-view",
-        path: path.join(path.sep, "app", "packages", "tree-view"),
-        isBundled: false,
-      });
-      spyOn(atom.packages, "isBundledPackage").andCallFake((name) => name === "tree-view");
+      // reports isBundled: false; the directory it was found in still says
+      // what it is.
+      availablePackages(descriptor("bundled", bundledPackagesPath, "tree-view"));
 
       const packages = packageManager.getLocalPackages();
       expect(packages.core.map((p) => p.name)).toEqual(["tree-view"]);
@@ -57,109 +66,94 @@ describe("PackageManager", function () {
     });
 
     it("files a community package under user", function () {
-      availablePackages({
-        name: "some-community-package",
-        path: path.join(configDirPath, "packages", "some-community-package"),
-        isBundled: false,
-      });
-      spyOn(atom.packages, "isBundledPackage").andReturn(false);
+      availablePackages(
+        descriptor("community", path.join(configDirPath, "packages"), "some-community-package"),
+      );
 
       const packages = packageManager.getLocalPackages();
       expect(packages.user.map((p) => p.name)).toEqual(["some-community-package"]);
       expect(packages.core).toEqual([]);
     });
 
-    it("files a dev/packages override of a bundled name under dev, not core", function () {
-      availablePackages({
+    it("files a dev override of a bundled name under dev and keeps the shadowed bundled entry", function () {
+      const shadowedBundled = descriptor("bundled", bundledPackagesPath, "tree-view");
+      shadowedBundled.isWinner = false;
+      shadowedBundled.shadowedBy = {
         name: "tree-view",
+        dirname: "tree-view",
         path: path.join(devPackagesPath, "tree-view"),
-        isBundled: false,
-      });
-      spyOn(atom.packages, "isBundledPackage").andReturn(true);
+        tier: "dev",
+      };
+      availablePackages(descriptor("dev", devPackagesPath, "tree-view"), shadowedBundled);
 
       const packages = packageManager.getLocalPackages();
       expect(packages.dev.map((p) => p.name)).toEqual(["tree-view"]);
       expect(packages.core.map((p) => p.name)).toEqual(["tree-view"]);
       expect(packages.core[0].isShadowed).toBe(true);
+      expect(packages.core[0].shadowedBy.tier).toBe("dev");
     });
 
     it("files a git-sourced package under git", function () {
-      availablePackages({
-        name: "git-package",
-        path: path.join(configDirPath, "packages", "git-package"),
-        isBundled: false,
-        metadata: { name: "git-package", apmInstallSource: { type: "git" } },
-      });
-      spyOn(atom.packages, "isBundledPackage").andReturn(false);
+      availablePackages(
+        descriptor("community", path.join(configDirPath, "packages"), "git-package", {
+          name: "git-package",
+          apmInstallSource: { type: "git" },
+        }),
+      );
 
       const packages = packageManager.getLocalPackages();
       expect(packages.git.map((p) => p.name)).toEqual(["git-package"]);
     });
 
     it("keeps a legacy Git install active but warns when its receipt has no origin", function () {
-      availablePackages({
-        name: "legacy-package",
-        path: path.join(configDirPath, "packages", "legacy-package"),
-        metadata: {
+      availablePackages(
+        descriptor("community", path.join(configDirPath, "packages"), "legacy-package", {
           name: "legacy-package",
           repository: "owner/legacy-package",
           apmInstallSource: { type: "git", source: "owner/legacy-package", sha: "abc123" },
-        },
-      });
-      spyOn(atom.packages, "isBundledPackage").andReturn(false);
+        }),
+      );
 
       const packages = packageManager.getLocalPackages();
       expect(packages.git[0].originWarning).toContain("missing or mismatched");
     });
 
-    it("records directoryName for community but not bundled packages", function () {
+    it("records the directory a package lives in, whatever the package is called", function () {
       availablePackages(
-        {
-          name: "tree-view",
-          path: path.join(path.sep, "app", "packages", "tree-view"),
-          isBundled: false,
-        },
-        {
+        descriptor("bundled", bundledPackagesPath, "tree-view"),
+        descriptor("community", path.join(configDirPath, "packages"), "installed-as-other", {
           name: "some-community-package",
-          path: path.join(configDirPath, "packages", "installed-as-other"),
-          isBundled: false,
-        },
+        }),
       );
-      spyOn(atom.packages, "isBundledPackage").andCallFake((name) => name === "tree-view");
 
       const packages = packageManager.getLocalPackages();
-      expect(packages.core[0].directoryName).toBeUndefined();
+      expect(packages.core[0].directoryName).toBe("tree-view");
+      expect(packages.user[0].name).toBe("some-community-package");
       expect(packages.user[0].directoryName).toBe("installed-as-other");
     });
 
-    it("keeps both cards when a community package shadows a virtual built-in theme", function () {
-      availablePackages({
-        name: "one-day-ui",
-        path: path.join(configDirPath, "packages", "one-day-ui"),
-        isBundled: false,
-        metadata: {
-          name: "one-day-ui",
-          theme: "ui",
-          repository: "owner/one-day-ui",
-          apmInstallSource: { type: "git", origin: "github.com/owner/one-day-ui" },
-        },
+    it("lists every directory providing one name, marking the copies that do not load", function () {
+      const stale = descriptor("community", path.join(configDirPath, "packages"), "zz-old-copy", {
+        name: "duplicated-package",
       });
-      spyOn(atom.packages, "isBundledPackage").andReturn(false);
-      spyOn(atom.packages, "getBundledPackageDescriptors").andReturn([
-        {
-          name: "one-day-ui",
-          path: path.join(path.sep, "app", "packages", "one-theme"),
-          metadata: { name: "one-day-ui", theme: "ui" },
-          packageKind: "builtin",
-          isBuiltinDescriptor: true,
-          virtualTheme: true,
-        },
-      ]);
+      stale.isWinner = false;
+      stale.shadowedBy = {
+        name: "duplicated-package",
+        dirname: "duplicated-package",
+        path: path.join(configDirPath, "packages", "duplicated-package"),
+        tier: "community",
+      };
+      availablePackages(
+        descriptor("community", path.join(configDirPath, "packages"), "duplicated-package"),
+        stale,
+      );
 
       const packages = packageManager.getLocalPackages();
-      expect(packages.git.map((pack) => pack.name)).toEqual(["one-day-ui"]);
-      expect(packages.core.map((pack) => pack.name)).toEqual(["one-day-ui"]);
-      expect(packages.core[0].isShadowed).toBe(true);
+      expect(packages.user.map((pack) => pack.directoryName)).toEqual([
+        "duplicated-package",
+        "zz-old-copy",
+      ]);
+      expect(packages.user.map((pack) => pack.isShadowed)).toEqual([false, true]);
     });
   });
 
@@ -168,11 +162,6 @@ describe("PackageManager", function () {
       jasmine.useRealClock();
       const configDirPath = path.join(os.tmpdir(), "settings-view-config");
       spyOn(atom, "getConfigDirPath").andReturn(configDirPath);
-      spyOn(atom.packages, "loadPackageMetadata").andCallFake(
-        (pack) => pack.metadata || { name: pack.name },
-      );
-      spyOn(atom.packages, "isBundledPackage").andReturn(false);
-      spyOn(atom.packages, "getBundledPackageDescriptors").andReturn([]);
 
       // More than one batch (BATCH_SIZE = 20) so the async path exercises its
       // yield-between-chunks loop rather than only the single-batch fast path.
@@ -180,8 +169,12 @@ describe("PackageManager", function () {
       for (let i = 0; i < 45; i++) {
         this.packs.push({
           name: `community-${i}`,
+          dirname: `community-${i}`,
           path: path.join(configDirPath, "packages", `community-${i}`),
+          tier: "community",
           isBundled: false,
+          metadata: { name: `community-${i}` },
+          isWinner: true,
         });
       }
       spyOn(atom.packages, "getAvailablePackages").andReturn(this.packs);
@@ -375,132 +368,201 @@ describe("PackageManager", function () {
   });
 
   describe("::uninstall()", function () {
-    it("removes the package from the core.disabledPackages list", function () {
-      const uninstallCallback = jasmine.createSpy("uninstallCallback");
-      atom.config.set("core.disabledPackages", ["something"]);
+    // Uninstalling removes one directory. Which directory that is comes from
+    // the entry being uninstalled, never from the package's name — a name can
+    // be provided by several directories.
+    function installedAt(root, dirname) {
+      const packagesDir = path.join(root, "packages");
+      const packagePath = path.join(packagesDir, dirname);
+      fs.makeTreeSync(packagePath);
+      return packagePath;
+    }
 
-      waitsForPromise(() => packageManager.uninstall({ name: "something" }, uninstallCallback));
+    function tempRoot(prefix) {
+      return fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), prefix)));
+    }
+
+    it("removes the package from the core.disabledPackages list when no copy is left", function () {
+      const root = tempRoot("lumine-uninstall-disabled-");
+      const packagePath = installedAt(root, "something");
+      atom.config.set("core.disabledPackages", ["something"]);
+      spyOn(atom.packages, "getAvailablePackage").andReturn(undefined);
+
+      const uninstallCallback = jasmine.createSpy("uninstallCallback");
+      waitsForPromise(() =>
+        packageManager.uninstall({ name: "something", path: packagePath }, uninstallCallback),
+      );
 
       runs(() => {
         expect(uninstallCallback).toHaveBeenCalled();
         expect(atom.config.get("core.disabledPackages")).not.toContain("something");
+        expect(fs.existsSync(packagePath)).toBe(false);
+        fs.removeSync(root);
       });
     });
 
     it("awaits async deactivation before unloading an active package", function () {
       // Reproduces the "Tried to unload active package" error: deactivation is
       // async, so unloading must wait for it to complete.
+      const root = tempRoot("lumine-uninstall-active-");
+      const packagePath = installedAt(root, "active-pkg");
       let deactivated = false;
+      spyOn(atom.packages, "getLoadedPackage").andReturn({ name: "active-pkg", path: packagePath });
       spyOn(atom.packages, "isPackageActive").andCallFake(() => !deactivated);
       spyOn(atom.packages, "deactivatePackage").andCallFake(() =>
         Promise.resolve().then(() => {
           deactivated = true;
         }),
       );
-      spyOn(atom.packages, "isPackageLoaded").andReturn(true);
       spyOn(atom.packages, "unloadPackage").andCallFake((name) => {
         if (atom.packages.isPackageActive(name)) {
           throw new Error(`Tried to unload active package '${name}'`);
         }
       });
-      spyOn(atom.packages, "resolvePackagePath").andReturn(null);
+      spyOn(atom.packages, "getAvailablePackage").andReturn(undefined);
 
       const uninstallCallback = jasmine.createSpy("uninstallCallback");
-      waitsForPromise(() => packageManager.uninstall({ name: "active-pkg" }, uninstallCallback));
+      waitsForPromise(() =>
+        packageManager.uninstall({ name: "active-pkg", path: packagePath }, uninstallCallback),
+      );
 
       runs(() => {
         expect(atom.packages.deactivatePackage).toHaveBeenCalledWith("active-pkg");
         expect(atom.packages.unloadPackage).toHaveBeenCalledWith("active-pkg");
         expect(uninstallCallback).toHaveBeenCalled();
         expect(uninstallCallback.mostRecentCall.args[0]).toBeUndefined();
+        fs.removeSync(root);
       });
     });
 
-    it("reveals a bundled package and preserves the disabled slot after removing an override", function () {
-      const packagesDir = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), "lumine-override-uninstall-")),
-      );
-      fs.makeTreeSync(path.join(packagesDir, "search-panel"));
-      atom.config.set("core.disabledPackages", ["search-panel"]);
-      spyOn(packageManager, "getAtomPackagesDirectory").andReturn(packagesDir);
-      spyOn(atom.packages, "isBundledPackage").andReturn(true);
-      spyOn(atom.packages, "isPackageActive").andReturn(false);
-      spyOn(atom.packages, "isPackageLoaded").andReturn(false);
-      spyOn(atom.packages, "isPackageDisabled").andReturn(true);
-      spyOn(atom.packages, "loadPackage");
-      spyOn(atom.packages, "activatePackage");
+    it("leaves the loaded package alone when a shadowed copy is uninstalled", function () {
+      const root = tempRoot("lumine-uninstall-shadowed-");
+      const loadedPath = installedAt(root, "duplicated-package");
+      const shadowedPath = installedAt(root, "zz-old-copy");
+      spyOn(atom.packages, "getLoadedPackage").andReturn({
+        name: "duplicated-package",
+        path: loadedPath,
+      });
+      spyOn(atom.packages, "deactivatePackage");
+      spyOn(atom.packages, "unloadPackage");
+      spyOn(atom.packages, "reconcilePackage");
+      spyOn(atom.packages, "getAvailablePackage").andReturn({
+        name: "duplicated-package",
+        path: loadedPath,
+      });
 
-      waitsForPromise(() => packageManager.uninstall({ name: "search-panel" }));
+      waitsForPromise(() =>
+        packageManager.uninstall({ name: "duplicated-package", path: shadowedPath }),
+      );
+
       runs(() => {
-        expect(atom.packages.loadPackage).toHaveBeenCalledWith("search-panel");
-        expect(atom.packages.activatePackage).not.toHaveBeenCalled();
-        expect(atom.config.get("core.disabledPackages")).toContain("search-panel");
-        fs.removeSync(packagesDir);
+        expect(atom.packages.deactivatePackage).not.toHaveBeenCalled();
+        expect(atom.packages.unloadPackage).not.toHaveBeenCalled();
+        expect(atom.packages.reconcilePackage).not.toHaveBeenCalled();
+        expect(fs.existsSync(shadowedPath)).toBe(false);
+        expect(fs.existsSync(loadedPath)).toBe(true);
+        fs.removeSync(root);
       });
     });
 
-    it("does not wait for the restored bundled package to finish activating", function () {
-      // A bundled package that defers activation never resolves activatePackage
-      // until its trigger fires; awaiting it would hang the uninstall.
-      const packagesDir = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), "lumine-override-activate-")),
-      );
-      fs.makeTreeSync(path.join(packagesDir, "deferred-bundled"));
-      spyOn(packageManager, "getAtomPackagesDirectory").andReturn(packagesDir);
-      spyOn(atom.packages, "isBundledPackage").andReturn(true);
+    it("loads whichever copy is left and preserves the disabled slot", function () {
+      const root = tempRoot("lumine-uninstall-promote-");
+      const packagePath = installedAt(root, "search-panel");
+      const bundledPath = path.join(path.sep, "app", "packages", "search-panel");
+      atom.config.set("core.disabledPackages", ["search-panel"]);
+      spyOn(atom.packages, "getLoadedPackage").andReturn({
+        name: "search-panel",
+        path: packagePath,
+      });
       spyOn(atom.packages, "isPackageActive").andReturn(false);
-      spyOn(atom.packages, "isPackageLoaded").andReturn(false);
-      spyOn(atom.packages, "isPackageDisabled").andReturn(false);
-      spyOn(atom.packages, "loadPackage");
+      spyOn(atom.packages, "unloadPackage");
+      spyOn(atom.packages, "getAvailablePackage").andReturn({
+        name: "search-panel",
+        path: bundledPath,
+        tier: "bundled",
+      });
+      spyOn(atom.packages, "reconcilePackage").andReturn(Promise.resolve(null));
+
+      waitsForPromise(() => packageManager.uninstall({ name: "search-panel", path: packagePath }));
+      runs(() => {
+        expect(atom.packages.reconcilePackage).toHaveBeenCalledWith("search-panel", {
+          activate: true,
+        });
+        expect(atom.config.get("core.disabledPackages")).toContain("search-panel");
+        fs.removeSync(root);
+      });
+    });
+
+    it("does not wait for the copy it loads to finish activating", function () {
+      // A package that defers activation never resolves activatePackage until
+      // its trigger fires; awaiting it would hang the uninstall.
+      const root = tempRoot("lumine-uninstall-deferred-");
+      const packagePath = installedAt(root, "deferred-bundled");
+      spyOn(atom.packages, "getLoadedPackage").andReturn({
+        name: "deferred-bundled",
+        path: packagePath,
+      });
+      spyOn(atom.packages, "isPackageActive").andReturn(false);
+      spyOn(atom.packages, "unloadPackage");
+      spyOn(atom.packages, "getAvailablePackage").andReturn({
+        name: "deferred-bundled",
+        path: path.join(path.sep, "app", "packages", "deferred-bundled"),
+      });
       // Never resolves — mimics a package that defers activation.
-      spyOn(atom.packages, "activatePackage").andReturn(new Promise(() => {}));
+      spyOn(atom.packages, "reconcilePackage").andReturn(new Promise(() => {}));
 
       const uninstallCallback = jasmine.createSpy("uninstallCallback");
       waitsForPromise(() =>
-        packageManager.uninstall({ name: "deferred-bundled" }, uninstallCallback),
+        packageManager.uninstall(
+          { name: "deferred-bundled", path: packagePath },
+          uninstallCallback,
+        ),
       );
 
       runs(() => {
-        expect(atom.packages.activatePackage).toHaveBeenCalledWith("deferred-bundled");
+        expect(atom.packages.reconcilePackage).toHaveBeenCalled();
         // The uninstall completes even though activation never resolves.
         expect(uninstallCallback).toHaveBeenCalled();
         expect(uninstallCallback.mostRecentCall.args[0]).toBeUndefined();
-        fs.removeSync(packagesDir);
+        fs.removeSync(root);
       });
     });
 
-    it("still completes the uninstall when restoring the bundled package throws", function () {
-      const packagesDir = fs.realpathSync(
-        fs.mkdtempSync(path.join(os.tmpdir(), "lumine-override-throw-")),
-      );
-      fs.makeTreeSync(path.join(packagesDir, "broken-bundled"));
-      spyOn(packageManager, "getAtomPackagesDirectory").andReturn(packagesDir);
-      spyOn(atom.packages, "isBundledPackage").andReturn(true);
-      spyOn(atom.packages, "isPackageActive").andReturn(false);
-      spyOn(atom.packages, "isPackageLoaded").andReturn(false);
-      spyOn(atom.packages, "isPackageDisabled").andReturn(false);
-      spyOn(atom.packages, "loadPackage").andCallFake(() => {
-        throw new Error("cannot load bundled package");
+    it("still completes the uninstall when loading the remaining copy fails", function () {
+      const root = tempRoot("lumine-uninstall-throw-");
+      const packagePath = installedAt(root, "broken-bundled");
+      spyOn(atom.packages, "getLoadedPackage").andReturn({
+        name: "broken-bundled",
+        path: packagePath,
       });
-      spyOn(atom.packages, "activatePackage");
+      spyOn(atom.packages, "isPackageActive").andReturn(false);
+      spyOn(atom.packages, "unloadPackage");
+      spyOn(atom.packages, "getAvailablePackage").andReturn({
+        name: "broken-bundled",
+        path: path.join(path.sep, "app", "packages", "broken-bundled"),
+      });
+      // Built inside the fake, not ahead of it: a rejected promise created
+      // before the call it answers is unhandled until the caller gets to it.
+      spyOn(atom.packages, "reconcilePackage").andCallFake(() =>
+        Promise.reject(new Error("cannot load bundled package")),
+      );
 
       const uninstallCallback = jasmine.createSpy("uninstallCallback");
       waitsForPromise(() =>
-        packageManager.uninstall({ name: "broken-bundled" }, uninstallCallback),
+        packageManager.uninstall({ name: "broken-bundled", path: packagePath }, uninstallCallback),
       );
 
       runs(() => {
         // The on-disk removal succeeded, so the uninstall reports success even
-        // though the best-effort bundled restore threw.
+        // though the best-effort load of the remaining copy failed.
         expect(uninstallCallback).toHaveBeenCalled();
         expect(uninstallCallback.mostRecentCall.args[0]).toBeUndefined();
-        expect(atom.packages.activatePackage).not.toHaveBeenCalled();
-        fs.removeSync(packagesDir);
+        fs.removeSync(root);
       });
     });
 
     it("removes only a user package symlink and preserves its source directory", function () {
-      const root = fs.realpathSync(fs.mkdtempSync(path.join(os.tmpdir(), "lumine-uninstall-")));
+      const root = tempRoot("lumine-uninstall-");
       const packagesDir = path.join(root, "packages");
       const sourceDir = path.join(root, "linked-package-source");
       const packagePath = path.join(packagesDir, "linked-package");
@@ -509,12 +571,11 @@ describe("PackageManager", function () {
       fs.makeTreeSync(sourceDir);
       fs.writeFileSync(sourceFile, "keep");
       fs.symlinkSync(sourceDir, packagePath, process.platform === "win32" ? "junction" : "dir");
+      spyOn(atom.packages, "getAvailablePackage").andReturn(undefined);
 
-      spyOn(packageManager, "getAtomPackagesDirectory").andReturn(packagesDir);
-      // This is the dangerous value returned by core for a linked package.
-      spyOn(atom.packages, "resolvePackagePath").andReturn(sourceDir);
-
-      waitsForPromise(() => packageManager.uninstall({ name: "linked-package" }));
+      waitsForPromise(() =>
+        packageManager.uninstall({ name: "linked-package", path: packagePath }),
+      );
 
       runs(() => {
         const packageEntryExists = fs.existsSync(packagePath);

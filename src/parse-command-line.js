@@ -72,7 +72,7 @@ module.exports = function parseCommandLine(processArgs) {
     .describe("r", "Set the path to the Lumine source directory and enable dev-mode.");
   options
     .boolean("safe")
-    .describe("safe", "Do not load packages from ~/.lumine/packages or ~/.lumine/dev/packages.");
+    .describe("safe", "Do not load packages from ~/.lumine/packages or ~/.lumine/packages-dev.");
   options
     .alias("t", "test")
     .boolean("t")
@@ -120,13 +120,13 @@ module.exports = function parseCommandLine(processArgs) {
     .string("link")
     .describe(
       "link",
-      "Symlink a local package directory into ~/.lumine/packages (add --dev to link into dev/packages).",
+      "Symlink a local package directory into ~/.lumine/packages (add --dev to link into packages-dev).",
     );
   options
     .string("unlink")
     .describe(
       "unlink",
-      "Remove a symlinked package by name or path (add --dev to only affect dev/packages).",
+      "Remove a symlinked package by name or path (add --dev to only affect packages-dev).",
     );
   options.boolean("uri-handler");
   options
@@ -227,7 +227,7 @@ module.exports = function parseCommandLine(processArgs) {
 
   // Headless package-management commands. When present, `start.js` runs the
   // command and exits without opening an editor window. `--dev` links/unlinks
-  // packages under `dev/packages` instead of `packages`.
+  // packages under `packages-dev` instead of `packages`.
   let packageCommand = null;
   const linkToDev = Boolean(args["dev"]);
   if (typeof args["install"] === "string") {

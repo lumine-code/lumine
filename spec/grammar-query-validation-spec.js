@@ -20,8 +20,7 @@ const packageDependencies = Object.keys(require("../package.json").packageDepend
 
 // Bundled packages are either vendored into `packages/` or delivered through
 // `node_modules/` from a Git pin, so enumerate `packageDependencies` rather
-// than reading `packages/` — that is the actual definition of "bundled", and
-// it is how `PackageManager.getBundledPackageDescriptors` resolves them too.
+// than reading `packages/` — that is the actual definition of "bundled".
 function resolveBundledPackageDir(packageName) {
   for (let base of ["packages", "node_modules"]) {
     let packageDir = path.join(repoRoot, base, packageName);
