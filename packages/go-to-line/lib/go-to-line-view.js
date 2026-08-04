@@ -1,6 +1,4 @@
-"use babel";
-
-import { Point } from "atom";
+const { Point } = require("atom");
 
 const HELP_MESSAGE =
   'Enter a <row> or <row>:<column> to go there, or <row>:<column>-<row>:<column> to select.\nExamples: "3" for row 3, "2:7" for row 2 and column 7, or "2:7-4:1" to select from row 2 column 7 to row 4 column 1';
@@ -100,7 +98,7 @@ class GoToLineView {
   }
 }
 
-export default {
+module.exports = {
   activate() {
     return new GoToLineView();
   },
