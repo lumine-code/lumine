@@ -1,14 +1,11 @@
-/** @babel */
-/** @jsx etch.dom */
+const _ = require("@lumine-code/underscore-plus");
+const { CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const fs = require("@lumine-code/fs-plus");
+const Grim = require("grim");
+const path = require("path");
 
-import _ from "@lumine-code/underscore-plus";
-import { CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
-import fs from "@lumine-code/fs-plus";
-import Grim from "grim";
-import path from "path";
-
-export default class DeprecationCopView {
+module.exports = class DeprecationCopView {
   constructor({ uri }) {
     this.uri = uri;
     this.subscriptions = new CompositeDisposable();
@@ -539,4 +536,4 @@ export default class DeprecationCopView {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};
