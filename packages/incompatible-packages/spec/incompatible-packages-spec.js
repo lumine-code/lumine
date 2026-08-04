@@ -1,8 +1,6 @@
-/** @babel */
-
-import path from "path";
-import IncompatiblePackagesComponent from "../lib/incompatible-packages-component";
-import StatusIconComponent from "../lib/status-icon-component";
+const path = require("path");
+const IncompatiblePackagesComponent = require("../lib/incompatible-packages-component");
+const StatusIconComponent = require("../lib/status-icon-component");
 
 // Falls back to the bottom panels when no footer panel holds the status bar.
 function findStatusBar() {

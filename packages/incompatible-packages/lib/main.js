@@ -1,11 +1,9 @@
-/** @babel */
-
-import { Disposable, CompositeDisposable } from "atom";
-import VIEW_URI from "./view-uri";
+const { Disposable, CompositeDisposable } = require("atom");
+const VIEW_URI = require("./view-uri");
 
 let disposables = null;
 
-export function activate() {
+function activate() {
   disposables = new CompositeDisposable();
 
   disposables.add(
@@ -25,11 +23,11 @@ export function activate() {
   );
 }
 
-export function deactivate() {
+function deactivate() {
   disposables.dispose();
 }
 
-export function consumeStatusBar(statusBar) {
+function consumeStatusBar(statusBar) {
   let incompatibleCount = 0;
   for (let pack of atom.packages.getLoadedPackages()) {
     if (!pack.isCompatible()) incompatibleCount++;
@@ -46,7 +44,7 @@ export function consumeStatusBar(statusBar) {
   }
 }
 
-export function deserializeIncompatiblePackagesComponent() {
+function deserializeIncompatiblePackagesComponent() {
   const IncompatiblePackagesComponent = require("./incompatible-packages-component");
   return new IncompatiblePackagesComponent(atom.packages);
 }
@@ -55,3 +53,10 @@ function createIcon(count) {
   const StatusIconComponent = require("./status-icon-component");
   return new StatusIconComponent({ count });
 }
+
+module.exports = {
+  activate,
+  deactivate,
+  consumeStatusBar,
+  deserializeIncompatiblePackagesComponent,
+};

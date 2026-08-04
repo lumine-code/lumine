@@ -1,7 +1,5 @@
-/** @babel */
-
-import etch from "@lumine-code/etch";
-import IncompatiblePackagesComponent from "../lib/incompatible-packages-component";
+const etch = require("@lumine-code/etch");
+const IncompatiblePackagesComponent = require("../lib/incompatible-packages-component");
 
 describe("IncompatiblePackagesComponent", () => {
   let packages, etchScheduler;

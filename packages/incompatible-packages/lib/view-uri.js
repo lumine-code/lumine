@@ -1,3 +1,1 @@
-/** @babel */
-
-export default "lumine://incompatible-packages";
+module.exports = "lumine://incompatible-packages";
