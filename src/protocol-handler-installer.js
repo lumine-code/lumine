@@ -31,8 +31,14 @@ module.exports = class ProtocolHandlerInstaller {
     );
   }
 
-  async initialize(config, notifications) {
-    if (!this.isSupported()) {
+  async initialize(config, notifications, devMode) {
+    // Running from source, `process.execPath` is node_modules/electron's binary,
+    // which is never what an installed Lumine registers. Every branch below would
+    // then act on the wrong executable: `prompt` and `always` would point
+    // lumine:// at the Electron binary, and `never` would delete the installed
+    // build's registration. The config directory is shared between the two, so
+    // the choice cannot be scoped to the dev instance either — skip it outright.
+    if (!this.isSupported() || devMode) {
       return;
     }
 

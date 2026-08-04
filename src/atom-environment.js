@@ -346,7 +346,7 @@ class AtomEnvironment {
     this.commandInstaller.initialize(this.getVersion());
     this.uriHandlerRegistry.registerHostHandler("core", CoreURIHandlers.create(this));
 
-    this.protocolHandlerInstaller.initialize(this.config, this.notifications);
+    this.protocolHandlerInstaller.initialize(this.config, this.notifications, devMode);
 
     this.themes.loadBaseStylesheets();
     this.initialStyleElements = this.styles.getSnapshot();
