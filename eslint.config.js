@@ -25,6 +25,7 @@ module.exports = [
     // experiments) with deps that aren't installed in the workspace.
     ignores: [
       "**/*.ts",
+      "**/*.tsx",
       "vendor/**",
       "dist/**",
       "**/fixtures/**",
@@ -39,11 +40,15 @@ module.exports = [
   js.configs.recommended,
   n.configs["flat/recommended-script"],
   {
+    // Flat config only lints .js/.mjs/.cjs by default; .jsx must be named
+    // explicitly or renamed files silently drop out of `eslint .`.
+    files: ["**/*.js", "**/*.mjs", "**/*.cjs", "**/*.jsx"],
     plugins: { jsdoc },
     settings: {
       // This is an Electron app bundling its own Node 24 runtime, so lint
       // syntax/builtins support against that — not each package's stale engines.
-      n: { version: ">=24.0.0" },
+      // tryExtensions lets extensionless requires resolve .jsx files.
+      n: { version: ">=24.0.0", tryExtensions: [".js", ".json", ".node", ".mjs", ".cjs", ".jsx"] },
     },
     languageOptions: {
       ecmaVersion: "latest",
@@ -118,7 +123,7 @@ module.exports = [
     // `*.test.js` suites (the main-process specs, the completion updaters), and
     // Atom's async helpers. Also relax dependency-resolution rules: specs require
     // devDependencies and load fixture modules by path the resolver can't follow.
-    files: ["spec/**", "**/spec/**", "**/*-spec.js", "**/*.test.js"],
+    files: ["spec/**", "**/spec/**", "**/*-spec.js", "**/*-spec.jsx", "**/*.test.js"],
     languageOptions: {
       globals: {
         ...globals.jasmine,

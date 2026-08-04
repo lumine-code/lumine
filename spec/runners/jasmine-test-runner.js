@@ -596,7 +596,7 @@ const unrequire = (requiredPath) => {
 const requireSpecs = (testPath) => {
   if (fs.isDirectorySync(testPath)) {
     for (let testFilePath of fs.listTreeSync(testPath)) {
-      if (/-spec\.js$/.test(testFilePath)) {
+      if (/-spec\.jsx?$/.test(testFilePath)) {
         unrequire(testFilePath);
         require(testFilePath);
         // Set spec directory on spec for setting up the project in spec-helper
