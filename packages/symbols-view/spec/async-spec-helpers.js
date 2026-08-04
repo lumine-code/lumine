@@ -1,6 +1,4 @@
-/** @babel */
-
-export function beforeEach(fn) {
+function beforeEach(fn) {
   global.beforeEach(function () {
     const result = fn();
     if (result instanceof Promise) {
@@ -9,7 +7,7 @@ export function beforeEach(fn) {
   });
 }
 
-export function afterEach(fn) {
+function afterEach(fn) {
   global.afterEach(function () {
     const result = fn();
     if (result instanceof Promise) {
@@ -29,7 +27,7 @@ export function afterEach(fn) {
   };
 });
 
-export async function conditionPromise(condition) {
+async function conditionPromise(condition) {
   const startTime = Date.now();
 
   while (true) {
@@ -50,7 +48,7 @@ export async function conditionPromise(condition) {
   }
 }
 
-export function timeoutPromise(timeout) {
+function timeoutPromise(timeout) {
   return new Promise(function (resolve) {
     global.setTimeout(resolve, timeout);
   });
@@ -65,3 +63,7 @@ function waitsForPromise(fn) {
     });
   });
 }
+
+// Merge rather than assign: the forEach above already hung it/fit/ffit/fffit
+// onto module.exports.
+Object.assign(module.exports, { beforeEach, afterEach, conditionPromise, timeoutPromise });

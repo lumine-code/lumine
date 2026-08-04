@@ -1,6 +1,4 @@
-/** @babel */
-
-export function beforeEach(fn) {
+function beforeEach(fn) {
   global.beforeEach(function () {
     const result = fn();
     if (result instanceof Promise) {
@@ -9,7 +7,7 @@ export function beforeEach(fn) {
   });
 }
 
-export function afterEach(fn) {
+function afterEach(fn) {
   global.afterEach(function () {
     const result = fn();
     if (result instanceof Promise) {
@@ -34,7 +32,7 @@ export function afterEach(fn) {
   };
 });
 
-export async function conditionPromise(condition, description = "anonymous condition") {
+async function conditionPromise(condition, description = "anonymous condition") {
   const startTime = Date.now();
 
   while (true) {
@@ -50,7 +48,7 @@ export async function conditionPromise(condition, description = "anonymous condi
   }
 }
 
-export function timeoutPromise(timeout) {
+function timeoutPromise(timeout) {
   return new Promise(function (resolve) {
     global.setTimeout(resolve, timeout);
   });
@@ -66,7 +64,7 @@ function waitsForPromise(fn) {
   });
 }
 
-export function emitterEventPromise(emitter, event, timeout = 15000) {
+function emitterEventPromise(emitter, event, timeout = 15000) {
   return new Promise((resolve, reject) => {
     const timeoutHandle = setTimeout(() => {
       reject(new Error(`Timed out waiting for '${event}' event`));
@@ -78,7 +76,7 @@ export function emitterEventPromise(emitter, event, timeout = 15000) {
   });
 }
 
-export function promisify(original) {
+function promisify(original) {
   return function (...args) {
     return new Promise((resolve, reject) => {
       args.push((err, ...results) => {
@@ -94,10 +92,22 @@ export function promisify(original) {
   };
 }
 
-export function promisifySome(obj, fnNames) {
+function promisifySome(obj, fnNames) {
   const result = {};
   for (const fnName of fnNames) {
     result[fnName] = promisify(obj[fnName]);
   }
   return result;
 }
+
+// Merge rather than assign: the forEach above already hung it/fit/ffit/fffit
+// onto module.exports.
+Object.assign(module.exports, {
+  beforeEach,
+  afterEach,
+  conditionPromise,
+  timeoutPromise,
+  emitterEventPromise,
+  promisify,
+  promisifySome,
+});
