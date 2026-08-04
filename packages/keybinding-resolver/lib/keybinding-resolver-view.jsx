@@ -1,12 +1,9 @@
-/** @babel */
-/** @jsx etch.dom */
+const fs = require("@lumine-code/fs-plus");
+const etch = require("@lumine-code/etch");
+const { CompositeDisposable } = require("atom");
+const path = require("path");
 
-import fs from "@lumine-code/fs-plus";
-import etch from "@lumine-code/etch";
-import { CompositeDisposable } from "atom";
-import path from "path";
-
-export default class KeyBindingResolverView {
+module.exports = class KeyBindingResolverView {
   constructor() {
     this.keystrokes = null;
     this.usedKeyBinding = null;
@@ -308,4 +305,4 @@ export default class KeyBindingResolverView {
     atom.notifications.addInfo("Keybinding Copied");
     return atom.clipboard.write(content);
   }
-}
+};

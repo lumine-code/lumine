@@ -1,6 +1,4 @@
-/** @babel */
-
-export function beforeEach(fn) {
+function beforeEach(fn) {
   global.beforeEach(function () {
     const result = fn();
     if (result instanceof Promise) {
@@ -9,7 +7,7 @@ export function beforeEach(fn) {
   });
 }
 
-export function afterEach(fn) {
+function afterEach(fn) {
   global.afterEach(function () {
     const result = fn();
     if (result instanceof Promise) {
@@ -38,3 +36,7 @@ function waitsForPromise(fn) {
     });
   });
 }
+
+// Merge rather than assign: the forEach above already hung it/fit/ffit/fffit
+// onto module.exports.
+Object.assign(module.exports, { beforeEach, afterEach });
