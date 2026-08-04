@@ -1,8 +1,6 @@
-/** @babel */
-
 // Displays the readme for a package, if it has one
 // TODO Decide to keep this or current button-to-new-tab view
-export default class PackageReadmeView {
+module.exports = class PackageReadmeView {
   constructor(readme, readmeSrc, readmeIsLocal) {
     this.element = document.createElement("section");
     this.element.classList.add("section");
@@ -83,4 +81,4 @@ export default class PackageReadmeView {
     this.packageReadme.removeEventListener("click", this.handleAnchorClick);
     this.element.remove();
   }
-}
+};

@@ -1,4 +1,4 @@
-const PackageKeymapView = require("../lib/package-keymap-view.js");
+const PackageKeymapView = require("../lib/package-keymap-view");
 let view;
 
 describe("PackageKeymapView", () => {

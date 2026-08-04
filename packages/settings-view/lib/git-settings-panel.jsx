@@ -1,11 +1,8 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const SettingsPanel = require("./settings-panel");
 
-import { CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
-import SettingsPanel from "./settings-panel";
-
-export default class GitSettingsPanel {
+module.exports = class GitSettingsPanel {
   constructor() {
     etch.initialize(this);
     this.subscriptions = new CompositeDisposable();
@@ -83,4 +80,4 @@ export default class GitSettingsPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

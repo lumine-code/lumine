@@ -1,19 +1,16 @@
-/** @babel */
-/** @jsx etch.dom */
+const etch = require("@lumine-code/etch");
+const _ = require("@lumine-code/underscore-plus");
+const { CompositeDisposable, TextEditor } = require("atom");
 
-import etch from "@lumine-code/etch";
-import _ from "@lumine-code/underscore-plus";
-import { CompositeDisposable, TextEditor } from "atom";
+const CollapsibleSectionPanel = require("./collapsible-section-panel");
+const PackageCard = require("./package-card");
+const notifyPackageError = require("./notify-error");
 
-import CollapsibleSectionPanel from "./collapsible-section-panel";
-import PackageCard from "./package-card";
-import notifyPackageError from "./notify-error";
+const List = require("./list");
+const ListView = require("./list-view");
+const { ownerFromRepository, packageComparatorAscending, packagePanelKey } = require("./utils");
 
-import List from "./list";
-import ListView from "./list-view";
-import { ownerFromRepository, packageComparatorAscending, packagePanelKey } from "./utils";
-
-export default class ThemesPanel extends CollapsibleSectionPanel {
+module.exports = class ThemesPanel extends CollapsibleSectionPanel {
   static loadPackagesDelay() {
     return 300;
   }
@@ -640,4 +637,4 @@ export default class ThemesPanel extends CollapsibleSectionPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

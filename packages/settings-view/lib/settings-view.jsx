@@ -1,26 +1,23 @@
-/** @babel */
-/** @jsx etch.dom */
+const path = require("path");
+const etch = require("@lumine-code/etch");
+const _ = require("@lumine-code/underscore-plus");
+const { CompositeDisposable, Disposable } = require("atom");
 
-import path from "path";
-import etch from "@lumine-code/etch";
-import _ from "@lumine-code/underscore-plus";
-import { CompositeDisposable, Disposable } from "atom";
+const GeneralPanel = require("./general-panel");
+const EditorPanel = require("./editor-panel");
+const LanguagesPanel = require("./languages-panel");
+const GitSettingsPanel = require("./git-settings-panel");
+const PackageDetailView = require("./package-detail-view");
+const KeybindingsPanel = require("./keybindings-panel");
+const InstallPanel = require("./install-panel");
+const UpdatesPanel = require("./updates-panel");
+const ThemesPanel = require("./themes-panel");
+const InstalledPackagesPanel = require("./installed-packages-panel");
+const UriHandlerPanel = require("./uri-handler-panel");
+const SearchSettingsPanel = require("./search-settings-panel");
+const notifyPackageError = require("./notify-error");
 
-import GeneralPanel from "./general-panel";
-import EditorPanel from "./editor-panel";
-import LanguagesPanel from "./languages-panel";
-import GitSettingsPanel from "./git-settings-panel";
-import PackageDetailView from "./package-detail-view";
-import KeybindingsPanel from "./keybindings-panel";
-import InstallPanel from "./install-panel";
-import UpdatesPanel from "./updates-panel";
-import ThemesPanel from "./themes-panel";
-import InstalledPackagesPanel from "./installed-packages-panel";
-import UriHandlerPanel from "./uri-handler-panel";
-import SearchSettingsPanel from "./search-settings-panel";
-import notifyPackageError from "./notify-error";
-
-export default class SettingsView {
+module.exports = class SettingsView {
   constructor({ uri, packageManager, snippetsProvider, activePanel } = {}) {
     this.uri = uri;
     this.packageManager = packageManager;
@@ -602,4 +599,4 @@ export default class SettingsView {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

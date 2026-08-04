@@ -1,14 +1,11 @@
-/** @babel */
-/** @jsx etch.dom */
-
-import { CompositeDisposable, Disposable } from "atom";
-import etch from "@lumine-code/etch";
-import { STATUS_DOT_TYPES } from "./status-dots";
+const { CompositeDisposable, Disposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const { STATUS_DOT_TYPES } = require("./status-dots");
 
 // Renders a package badge (e.g. Pulsar's "Outdated" / "Made for Pulsar") as a
 // small colored dot. The badge title and text are shown in a hover tooltip, and
 // clicking a badge that carries a link opens it in the browser.
-export default class BadgeView {
+module.exports = class BadgeView {
   constructor(badge) {
     this.badge = badge;
     this.disposables = new CompositeDisposable();
@@ -61,4 +58,4 @@ export default class BadgeView {
       ? `badge-dot-${this.badge.type}`
       : "badge-dot-default";
   }
-}
+};

@@ -1,14 +1,11 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable, Disposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const BadgeView = require("./badge-view");
+const fs = require("fs");
+const path = require("path");
+const semver = require("semver");
 
-import { CompositeDisposable, Disposable } from "atom";
-import etch from "@lumine-code/etch";
-import BadgeView from "./badge-view";
-import fs from "fs";
-import path from "path";
-import semver from "semver";
-
-import {
+const {
   ownerFromRepository,
   repoUrlFromRepository,
   repoReferenceFromRepository,
@@ -16,7 +13,7 @@ import {
   packageOrigin,
   packagePanelKey,
   getInstalledPackageMetadata,
-} from "./utils";
+} = require("./utils");
 
 function escapeHtml(text) {
   return String(text).replace(
@@ -33,7 +30,7 @@ function updatePolicyForVersionSelector(selector) {
   return selector.type === "branch" || selector.type === "default" ? "branch" : "pinned";
 }
 
-export default class PackageCard {
+module.exports = class PackageCard {
   constructor(pack, settingsView, packageManager, options = {}) {
     this.pack = pack;
     this.settingsView = settingsView;
@@ -1663,4 +1660,4 @@ export default class PackageCard {
       }
     });
   }
-}
+};

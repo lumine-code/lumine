@@ -1,15 +1,12 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
 
-import { CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
-
-import PackageCard from "./package-card";
+const PackageCard = require("./package-card");
 
 // Lists the installed Git packages that have a newer version available (from
 // their install receipts, not the catalog). This is its own panel rather than a
 // filter on the Install tab.
-export default class UpdatesPanel {
+module.exports = class UpdatesPanel {
   constructor(settingsView, packageManager) {
     etch.initialize(this);
     this.settingsView = settingsView;
@@ -143,4 +140,4 @@ export default class UpdatesPanel {
     this.subscriptions.dispose();
     return etch.destroy(this);
   }
-}
+};

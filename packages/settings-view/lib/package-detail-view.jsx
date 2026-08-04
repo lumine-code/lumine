@@ -1,21 +1,18 @@
-/** @babel */
-/** @jsx etch.dom */
+const path = require("path");
 
-import path from "path";
+const _ = require("@lumine-code/underscore-plus");
+const fs = require("@lumine-code/fs-plus");
+const { CompositeDisposable, Disposable } = require("atom");
+const etch = require("@lumine-code/etch");
 
-import _ from "@lumine-code/underscore-plus";
-import fs from "@lumine-code/fs-plus";
-import { CompositeDisposable, Disposable } from "atom";
-import etch from "@lumine-code/etch";
-
-import PackageCard from "./package-card";
-import PackageDocsView from "./package-docs-view";
-import PackageGrammarsView from "./package-grammars-view";
-import PackageKeymapView from "./package-keymap-view";
-import PackageReadmeView from "./package-readme-view";
-import PackageSnippetsView from "./package-snippets-view";
-import SettingsPanel from "./settings-panel";
-import { packageOrigin } from "./utils";
+const PackageCard = require("./package-card");
+const PackageDocsView = require("./package-docs-view");
+const PackageGrammarsView = require("./package-grammars-view");
+const PackageKeymapView = require("./package-keymap-view");
+const PackageReadmeView = require("./package-readme-view");
+const PackageSnippetsView = require("./package-snippets-view");
+const SettingsPanel = require("./settings-panel");
+const { packageOrigin } = require("./utils");
 
 const NORMALIZE_PACKAGE_DATA_README_ERROR = "ERROR: No README data found!";
 
@@ -42,7 +39,7 @@ const SECTION_META = {
 
 const SECTION_ORDER = Object.keys(SECTION_META);
 
-export default class PackageDetailView {
+module.exports = class PackageDetailView {
   constructor(pack, settingsView, packageManager, snippetsProvider) {
     this.pack = pack;
     if (Array.isArray(pack.badges)) {
@@ -933,7 +930,7 @@ export default class PackageDetailView {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};
 
 class PackageCardComponent {
   constructor(props) {

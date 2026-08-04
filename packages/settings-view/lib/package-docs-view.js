@@ -1,8 +1,6 @@
-/** @babel */
+const path = require("path");
 
-import path from "path";
-
-import fs from "@lumine-code/fs-plus";
+const fs = require("@lumine-code/fs-plus");
 
 // Displays the markdown documents a package ships in `docs/`.
 //
@@ -10,7 +8,7 @@ import fs from "@lumine-code/fs-plus";
 // package that defines them rather than to any central reference, so this is
 // where they are read: from the installed copy on disk, in the package's own
 // detail view.
-export default class PackageDocsView {
+module.exports = class PackageDocsView {
   constructor(packagePath) {
     this.element = document.createElement("section");
     this.element.classList.add("section");
@@ -96,7 +94,7 @@ export default class PackageDocsView {
     this.packageDocs.removeEventListener("click", this.handleAnchorClick);
     this.element.remove();
   }
-}
+};
 
 // The markdown a package ships in `docs/`, read in file-name order. That order is
 // the only one there is, so a package that wants a particular reading order says

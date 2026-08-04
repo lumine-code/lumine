@@ -1,15 +1,12 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable, TextEditor } = require("atom");
+const etch = require("@lumine-code/etch");
 
-import { CompositeDisposable, TextEditor } from "atom";
-import etch from "@lumine-code/etch";
+const CollapsibleSectionPanel = require("./collapsible-section-panel");
+const PackageCard = require("./package-card");
 
-import CollapsibleSectionPanel from "./collapsible-section-panel";
-import PackageCard from "./package-card";
-
-import List from "./list";
-import ListView from "./list-view";
-import { ownerFromRepository, packageComparatorAscending } from "./utils";
+const List = require("./list");
+const ListView = require("./list-view");
+const { ownerFromRepository, packageComparatorAscending } = require("./utils");
 
 // One directory is one entry, so entries are told apart by where they live —
 // two directories may provide the same package name.
@@ -21,7 +18,7 @@ import { ownerFromRepository, packageComparatorAscending } from "./utils";
 const packageEntryKey = (pack) =>
   `${pack.path || pack.name}${pack.isShadowed ? " (shadowed)" : ""}`;
 
-export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
+module.exports = class InstalledPackagesPanel extends CollapsibleSectionPanel {
   static loadPackagesDelay() {
     return 300;
   }
@@ -409,4 +406,4 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

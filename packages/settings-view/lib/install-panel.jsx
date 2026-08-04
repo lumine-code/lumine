@@ -1,23 +1,20 @@
-/** @babel */
-/** @jsx etch.dom */
-
-import path from "path";
-import etch from "@lumine-code/etch";
-import gitHubUrlInfo from "./github-url-info";
+const path = require("path");
+const etch = require("@lumine-code/etch");
+const gitHubUrlInfo = require("./github-url-info");
 
 // eslint-disable-next-line n/no-unpublished-require
 const { cloneUrlForRepository, parsePackageSource } = require("../../../src/package-source");
 
-import { CompositeDisposable, Disposable, TextEditor } from "atom";
+const { CompositeDisposable, Disposable, TextEditor } = require("atom");
 
-import PackageCard from "./package-card";
-import notifyPackageError from "./notify-error";
-import { packageOrigin } from "./utils";
+const PackageCard = require("./package-card");
+const notifyPackageError = require("./notify-error");
+const { packageOrigin } = require("./utils");
 const { normalizeCatalogSource } = require("./community-package-catalog-client");
 
 const PackageNameRegex = /config\/install\/(?:package|theme):([a-z0-9-_]+)/i;
 
-export default class InstallPanel {
+module.exports = class InstallPanel {
   constructor(settingsView, packageManager) {
     this.settingsView = settingsView;
     this.packageManager = packageManager;
@@ -1021,4 +1018,4 @@ export default class InstallPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

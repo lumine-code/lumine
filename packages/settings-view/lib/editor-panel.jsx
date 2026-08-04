@@ -1,11 +1,8 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const SettingsPanel = require("./settings-panel");
 
-import { CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
-import SettingsPanel from "./settings-panel";
-
-export default class GeneralPanel {
+module.exports = class EditorPanel {
   constructor() {
     etch.initialize(this);
     this.subscriptions = new CompositeDisposable();
@@ -44,10 +41,9 @@ export default class GeneralPanel {
     return (
       <div tabIndex="0" className="panels-item" onclick={this.didClick}>
         <SettingsPanel
-          ref="panel"
-          namespace="core"
-          icon="settings"
-          note={`<div class="text icon icon-question" id="core-settings-note" tabindex="-1">These are Lumine's core settings which affect behavior unrelated to text editing. Individual packages may have their own additional settings found within their package card in the <a class="link packages-open">Packages list</a>.</div>`}
+          namespace="editor"
+          icon="code"
+          note={`<div class="text icon icon-question" id="editor-settings-note" tabindex="-1">These settings apply to every text editor. Settings that can differ per language, such as indentation and soft wrap, live in the <a class="link languages-open">Languages panel</a>.</div>`}
         />
       </div>
     );
@@ -62,9 +58,9 @@ export default class GeneralPanel {
   }
 
   didClick(event) {
-    const target = event.target.closest(".packages-open");
+    const target = event.target.closest(".languages-open");
     if (target) {
-      atom.workspace.open("lumine://config/packages");
+      atom.workspace.open("lumine://config/languages");
     }
   }
 
@@ -91,4 +87,4 @@ export default class GeneralPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

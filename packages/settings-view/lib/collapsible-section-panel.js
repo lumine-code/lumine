@@ -1,8 +1,6 @@
-/** @babel */
+const { Disposable } = require("atom");
 
-import { Disposable } from "atom";
-
-export default class CollapsibleSectionPanel {
+module.exports = class CollapsibleSectionPanel {
   notHiddenCardsLength(sectionElement) {
     return sectionElement.querySelectorAll(".package-card:not(.hidden)").length;
   }
@@ -50,4 +48,4 @@ export default class CollapsibleSectionPanel {
   resetCollapsibleSection(headerSection) {
     headerSection.classList.remove("has-items");
   }
-}
+};

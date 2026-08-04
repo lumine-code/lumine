@@ -1,12 +1,10 @@
-/** @babel */
+const { CompositeDisposable, Disposable, TextEditor } = require("atom");
+const _ = require("@lumine-code/underscore-plus");
+const CollapsibleSectionPanel = require("./collapsible-section-panel");
+const { getSettingDescription } = require("./rich-description");
+const { getSettingTitle } = require("./rich-title");
 
-import { CompositeDisposable, Disposable, TextEditor } from "atom";
-import _ from "@lumine-code/underscore-plus";
-import CollapsibleSectionPanel from "./collapsible-section-panel";
-import { getSettingDescription } from "./rich-description";
-import { getSettingTitle } from "./rich-title";
-
-export default class SettingsPanel extends CollapsibleSectionPanel {
+module.exports = class SettingsPanel extends CollapsibleSectionPanel {
   constructor(options = {}) {
     super();
     let namespace = options.namespace;
@@ -389,7 +387,7 @@ export default class SettingsPanel extends CollapsibleSectionPanel {
       return value;
     }
   }
-}
+};
 
 /*
  * Space Pen Helpers

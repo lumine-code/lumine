@@ -1,5 +1,3 @@
-/** @babel */
-
 // Surfaces a package-operation failure as an editor notification instead of an
 // in-panel message. In-panel error boxes were easy to miss behind a scrolled
 // panel or a different tab; a notification is always visible. This preserves
@@ -8,7 +6,7 @@
 //
 // Returns the error Notification so callers that re-run an operation can dismiss
 // a stale one.
-export default function notifyPackageError(packageManager, error, fallbackMessage) {
+module.exports = function notifyPackageError(packageManager, error, fallbackMessage) {
   error = error || {};
   const message = error.message || fallbackMessage || "The package operation failed.";
   const options = { dismissable: true };
@@ -31,4 +29,4 @@ export default function notifyPackageError(packageManager, error, fallbackMessag
   }
 
   return notification;
-}
+};

@@ -1,13 +1,10 @@
-/** @babel */
-/** @jsx etch.dom */
-
-import path from "path";
-import _ from "@lumine-code/underscore-plus";
-import etch from "@lumine-code/etch";
-import { CompositeDisposable, Disposable } from "atom";
+const path = require("path");
+const _ = require("@lumine-code/underscore-plus");
+const etch = require("@lumine-code/etch");
+const { CompositeDisposable, Disposable } = require("atom");
 
 // View to display the snippets that a package has registered.
-export default class PackageSnippetsView {
+module.exports = class PackageSnippetsView {
   constructor(pack, snippetsProvider) {
     this.pack = pack;
     this.namespace = this.pack.name;
@@ -288,4 +285,4 @@ ${triggers.join(",\n")}
 
     atom.clipboard.write(content);
   }
-}
+};

@@ -1,11 +1,9 @@
-/** @babel */
-
-import path from "path";
-import { CompositeDisposable } from "atom";
-import SettingsPanel from "./settings-panel";
+const path = require("path");
+const { CompositeDisposable } = require("atom");
+const SettingsPanel = require("./settings-panel");
 
 // View to display the grammars that a package has registered.
-export default class PackageGrammarsView {
+module.exports = class PackageGrammarsView {
   constructor(packagePath) {
     this.element = document.createElement("section");
     this.element.classList.add("package-grammars");
@@ -94,4 +92,4 @@ export default class PackageGrammarsView {
       this.grammarSettings.appendChild(panel.element);
     }
   }
-}
+};

@@ -1,12 +1,9 @@
-/** @babel */
-/** @jsx etch.dom */
+const { CompositeDisposable, Disposable, TextEditor } = require("atom");
+const etch = require("@lumine-code/etch");
+const _ = require("@lumine-code/underscore-plus");
+const path = require("path");
 
-import { CompositeDisposable, Disposable, TextEditor } from "atom";
-import etch from "@lumine-code/etch";
-import _ from "@lumine-code/underscore-plus";
-import path from "path";
-
-export default class KeybindingsPanel {
+module.exports = class KeybindingsPanel {
   constructor() {
     this.activeSourceFilter = "all";
     this.copyFeedbackTimeouts = new Set();
@@ -450,4 +447,4 @@ export default class KeybindingsPanel {
     const packageName = pathParts[pathParts.length - 3] || "";
     return packageName ? _.undasherize(_.uncamelcase(packageName)) : "Unknown";
   }
-}
+};

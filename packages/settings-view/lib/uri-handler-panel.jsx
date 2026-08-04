@@ -1,8 +1,5 @@
-/** @babel */
-/** @jsx etch.dom */
-
-import { CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
+const { CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
 
 function isSupported() {
   return ["win32", "darwin"].includes(process.platform);
@@ -27,7 +24,7 @@ function setAsDefaultProtocolClient() {
   );
 }
 
-export default class UriHandlerPanel {
+module.exports = class UriHandlerPanel {
   constructor() {
     this.handleChange = this.handleChange.bind(this);
     this.handleBecomeProtocolClient = this.handleBecomeProtocolClient.bind(this);
@@ -233,4 +230,4 @@ export default class UriHandlerPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

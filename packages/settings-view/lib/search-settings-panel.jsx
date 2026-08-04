@@ -1,15 +1,12 @@
-/** @babel */
-/** @jsx etch.dom */
-
-import { TextEditor, CompositeDisposable, Disposable } from "atom";
-import etch from "@lumine-code/etch";
-import CollapsibleSectionPanel from "./collapsible-section-panel";
-import SearchSettingView from "./search-setting-view";
+const { TextEditor, CompositeDisposable, Disposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const CollapsibleSectionPanel = require("./collapsible-section-panel");
+const SearchSettingView = require("./search-setting-view");
 
 const CORE_NAMESPACES = new Set(["core", "editor", "language", "git"]);
 const MAX_RESULTS = 100;
 
-export default class SearchSettingsPanel extends CollapsibleSectionPanel {
+module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
   constructor(settingsView) {
     super();
     this.settingsView = settingsView;
@@ -352,4 +349,4 @@ export default class SearchSettingsPanel extends CollapsibleSectionPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

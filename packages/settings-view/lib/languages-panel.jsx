@@ -1,16 +1,13 @@
-/** @babel */
-/** @jsx etch.dom */
-
-import { CompositeDisposable, Disposable } from "atom";
-import etch from "@lumine-code/etch";
-import SettingsPanel from "./settings-panel";
+const { CompositeDisposable, Disposable } = require("atom");
+const etch = require("@lumine-code/etch");
+const SettingsPanel = require("./settings-panel");
 
 const DEFAULTS_VALUE = "";
 
 // Panel with a language picker and the `language` namespace settings for the
 // chosen scope: the global defaults, or per-grammar overrides stored as
 // scoped settings.
-export default class LanguagesPanel {
+module.exports = class LanguagesPanel {
   constructor() {
     etch.initialize(this);
     this.subscriptions = new CompositeDisposable();
@@ -227,4 +224,4 @@ export default class LanguagesPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

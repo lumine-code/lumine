@@ -1,10 +1,7 @@
-/** @babel */
-/** @jsx etch.dom */
+const { WinShell, CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
 
-import { WinShell, CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
-
-export default class SystemPanel {
+module.exports = class SystemPanel {
   constructor() {
     etch.initialize(this);
     this.subscriptions = new CompositeDisposable();
@@ -177,4 +174,4 @@ export default class SystemPanel {
   scrollToBottom() {
     this.element.scrollTop = this.element.scrollHeight;
   }
-}
+};

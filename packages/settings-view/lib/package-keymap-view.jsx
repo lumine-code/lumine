@@ -1,13 +1,10 @@
-/** @babel */
-/** @jsx etch.dom */
-
-import path from "path";
-import _ from "@lumine-code/underscore-plus";
-import { Disposable, CompositeDisposable } from "atom";
-import etch from "@lumine-code/etch";
+const path = require("path");
+const _ = require("@lumine-code/underscore-plus");
+const { Disposable, CompositeDisposable } = require("atom");
+const etch = require("@lumine-code/etch");
 
 // Displays the keybindings for a package namespace
-export default class PackageKeymapView {
+module.exports = class PackageKeymapView {
   constructor(pack) {
     this.pack = pack;
     this.namespace = this.pack.name;
@@ -253,4 +250,4 @@ export default class PackageKeymapView {
 
     return !(otherPlatformPattern.test(selector) && !currentPlatformPattern.test(selector));
   }
-}
+};

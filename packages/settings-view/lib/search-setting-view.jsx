@@ -1,13 +1,10 @@
-/** @babel */
-/** @jsx etch.dom */
+const etch = require("@lumine-code/etch");
+const _ = require("@lumine-code/underscore-plus");
+const { Disposable, CompositeDisposable } = require("atom");
+const { getSettingDescription } = require("./rich-description");
+const { getSettingTitle } = require("./rich-title");
 
-import etch from "@lumine-code/etch";
-import _ from "@lumine-code/underscore-plus";
-import { Disposable, CompositeDisposable } from "atom";
-import { getSettingDescription } from "./rich-description";
-import { getSettingTitle } from "./rich-title";
-
-export default class SearchSettingView {
+module.exports = class SearchSettingView {
   constructor(setting, settingsView, query = "") {
     this.settingsView = settingsView;
     this.setting = setting;
@@ -139,4 +136,4 @@ export default class SearchSettingView {
       }),
     );
   }
-}
+};
