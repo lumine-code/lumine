@@ -129,29 +129,22 @@ describe("PackageCard", function () {
     expect(client.avatar.mostRecentCall.args[0]).toBe("owner");
   });
 
-  describe("package notes", function () {
-    function noteLines(card) {
-      return Array.from(card.refs.packageMessage.querySelectorAll(".package-message-line")).map(
-        (line) => ({ text: line.textContent, className: line.className }),
-      );
-    }
-
-    it("names the directory when it is not the package's own name", function () {
+  describe("the directory a package lives in", function () {
+    it("is named beside the repository when it is not the package's own name", function () {
       setPackageStatusSpies({ installed: true, disabled: false });
       card = new PackageCard(
         { name: "invert-colors", directoryName: "pulsar-invert-colors" },
         new SettingsView(),
         packageManager,
       );
-      const lines = noteLines(card);
-      expect(lines.length).toBe(1);
-      expect(lines[0].text).toContain("pulsar-invert-colors");
-      // A directory name carries no meaning of its own, so this is information,
-      // not a problem to fix.
-      expect(lines[0].className).toContain("text-info");
+      expect(card.refs.packageDirectory.textContent).toBe("pulsar-invert-colors");
+      expect(card.refs.packageDirectory.style.display).toBe("");
+      // It says where this copy is, not where to go: the repository is the link.
+      expect(card.refs.packageDirectory.tagName).toBe("SPAN");
+      expect(card.refs.packageMessage.textContent).toBe("");
     });
 
-    it("leaves shadowing to the status dot", function () {
+    it("is named on a shadowed copy too", function () {
       setPackageStatusSpies({ installed: true, disabled: false, hasSettings: false });
       card = new PackageCard(
         {
@@ -163,12 +156,9 @@ describe("PackageCard", function () {
         new SettingsView(),
         packageManager,
       );
-      const lines = noteLines(card);
-      expect(lines.length).toBe(1);
-      expect(lines[0].text).toContain("zz-old-copy");
-      expect(lines[0].className).toContain("text-info");
-      expect(card.refs.packageMessage.textContent).not.toContain("Shadowed");
-      // The dot still says it, once.
+      expect(card.refs.packageDirectory.textContent).toBe("zz-old-copy");
+      // Which copy loads is the dot's to say, and it says it once.
+      expect(card.refs.packageMessage.textContent).toBe("");
       const badge = card.badgeViews.find((view) => view.badge.title === "Shadowed");
       expect(badge.badge.text).toContain("invert-colors");
     });
@@ -180,18 +170,18 @@ describe("PackageCard", function () {
         new SettingsView(),
         packageManager,
       );
-      expect(card.refs.packageMessage.textContent).toBe("");
-      expect(noteLines(card).length).toBe(0);
+      expect(card.refs.packageDirectory.textContent).toBe("");
+      expect(card.refs.packageDirectory.style.display).toBe("none");
     });
 
-    it("does not warn for a card without directory information", function () {
+    it("says nothing for a card without directory information", function () {
       setPackageStatusSpies({ installed: false, disabled: false });
       card = new PackageCard(
         { name: "some-package", repository: "owner/some-package" },
         new SettingsView(),
         packageManager,
       );
-      expect(card.refs.packageMessage.textContent).toBe("");
+      expect(card.refs.packageDirectory.textContent).toBe("");
     });
   });
 

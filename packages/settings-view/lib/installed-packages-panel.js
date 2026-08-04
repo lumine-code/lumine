@@ -13,7 +13,13 @@ import { ownerFromRepository, packageComparatorAscending } from "./utils";
 
 // One directory is one entry, so entries are told apart by where they live —
 // two directories may provide the same package name.
-const packageEntryKey = (pack) => pack.path || pack.name;
+//
+// Whether the copy loads is part of the key as well: a card decides at build
+// time whether it is the live package or a shadowed copy, and the two are
+// different cards. Keying on it means a copy that gains or loses the name is
+// rebuilt rather than left rendering its old self.
+const packageEntryKey = (pack) =>
+  `${pack.path || pack.name}${pack.isShadowed ? " (shadowed)" : ""}`;
 
 export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
   static loadPackagesDelay() {
@@ -51,18 +57,27 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
       }),
     );
     let loadPackagesTimeout;
-    // Rebuild the list when a package is installed or updated. Uninstalls are
-    // deliberately excluded: the card flips itself to the not-installed state
-    // (showing an Install button) and stays in place, which reads better than
-    // the whole list flickering. The uninstalled package drops out on the next
-    // full load (e.g. reopening the panel).
+    const reloadSoon = () => {
+      clearTimeout(loadPackagesTimeout);
+      loadPackagesTimeout = setTimeout(
+        this.loadPackages.bind(this),
+        InstalledPackagesPanel.loadPackagesDelay(),
+      );
+    };
+    // Rebuild the list when a package is installed or updated.
+    this.subscriptions.add(this.packageManager.on("package-updated package-installed", reloadSoon));
+
+    // An uninstall usually leaves its card in place, flipped to the
+    // not-installed state, which reads better than the whole list flickering —
+    // but not when more than one directory provides the package's name. The
+    // copy that was removed has no not-installed state to fall back to (an
+    // entry is a directory, and that directory is gone), and removing the copy
+    // that loaded hands the name to another entry, which has to stop rendering
+    // as shadowed. Neither can be done to a card in place.
     this.subscriptions.add(
-      this.packageManager.on("package-updated package-installed", () => {
-        clearTimeout(loadPackagesTimeout);
-        loadPackagesTimeout = setTimeout(
-          this.loadPackages.bind(this),
-          InstalledPackagesPanel.loadPackagesDelay(),
-        );
+      this.packageManager.on("package-uninstalled theme-uninstalled", ({ pack }) => {
+        if (!pack || !this.packages) return;
+        if (pack.isShadowed || this.countCopies(pack.name) > 1) reloadSoon();
       }),
     );
 
@@ -182,6 +197,15 @@ export default class InstalledPackagesPanel extends CollapsibleSectionPanel {
           </div>
         </section>
       </div>
+    );
+  }
+
+  // How many directories the list is showing for a package name.
+  countCopies(name) {
+    return ["dev", "core", "community"].reduce(
+      (total, type) =>
+        total + (this.packages[type] || []).filter((pack) => pack.name === name).length,
+      0,
     );
   }
 

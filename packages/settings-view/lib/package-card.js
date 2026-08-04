@@ -139,7 +139,7 @@ export default class PackageCard {
       this.refs.uninstallButton.remove();
     }
 
-    this.updatePackageNotes();
+    this.updateDirectoryLabel();
   }
 
   // Where the copy that owns this card's package name lives, phrased for a
@@ -240,6 +240,15 @@ export default class PackageCard {
                 {repoReference}
               </a>
             ) : null}
+            {/* Where this copy lives, when that is not the package's own name.
+                It sits with the repository because both answer "where is this
+                from", and outside the link because a directory is not part of
+                the repository's address. */}
+            <span
+              ref="packageDirectory"
+              className="package-directory icon icon-file-directory"
+              style={{ display: "none" }}
+            />
           </div>
           <div className="meta-controls">
             <div className="btn-toolbar">
@@ -894,7 +903,7 @@ export default class PackageCard {
     this.updateSettingsState();
     this.updateInstalledState();
     this.updateDisabledState();
-    this.updatePackageNotes();
+    this.updateDirectoryLabel();
   }
 
   // Keeps the version indicator current whether it is a plain label or the
@@ -910,29 +919,22 @@ export default class PackageCard {
     }
   }
 
-  // What is worth saying about this copy of the package beyond what its status
-  // dots already say. Each note is its own line, coloured by how much it
-  // matters — the same severities the dots use, so a line and a dot never
-  // disagree about how loud something is.
-  updatePackageNotes() {
-    const message = this.refs.packageMessage;
-    const notes = [];
+  // Names the directory this copy lives in, beside the repository it came from,
+  // when the directory is called something other than the package. A directory
+  // name carries no meaning of its own — the package.json "name" is the
+  // identity — so it is shown, not warned about.
+  updateDirectoryLabel() {
+    const label = this.refs.packageDirectory;
+    if (!label) return;
 
     const directoryName = this.pack.directoryName;
     if (directoryName && this.pack.name && directoryName !== this.pack.name) {
-      // A directory name carries no meaning of its own — the package.json
-      // "name" is the identity — so this is information, never a warning.
-      notes.push({ severity: "info", text: `Installed in a directory named “${directoryName}”.` });
+      label.textContent = directoryName;
+      label.style.display = "";
+    } else {
+      label.textContent = "";
+      label.style.display = "none";
     }
-
-    message.textContent = "";
-    for (const note of notes) {
-      const line = document.createElement("div");
-      line.className = `package-message-line text-${note.severity}`;
-      line.textContent = note.text;
-      message.appendChild(line);
-    }
-    message.style.display = notes.length > 0 ? "" : "none";
   }
 
   updateSettingsState() {
