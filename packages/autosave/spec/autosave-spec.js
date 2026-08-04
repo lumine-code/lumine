@@ -1,10 +1,16 @@
 const fs = require("fs");
-const { it, fit, ffit, beforeEach } = require("./async-spec-helpers"); // eslint-disable-line
+const path = require("path");
+const { Disposable } = require("atom");
+const { it, fit, ffit, beforeEach, afterEach } = require("./async-spec-helpers"); // eslint-disable-line
 
 describe("Autosave", () => {
   let workspaceElement, initialActiveItem, otherItem1, otherItem2;
 
   beforeEach(async () => {
+    // Without this the fixtures resolve against the harness's default project
+    // root, so every item opened below is a path that does not exist and
+    // autosave declines to save it.
+    atom.project.setPaths([path.join(__dirname, "fixtures")]);
     atom.config.set("core.promptOnSaveConflictedFile", true);
     workspaceElement = atom.views.getView(atom.workspace);
     jasmine.attachToDOM(workspaceElement);
@@ -236,6 +242,43 @@ describe("Autosave", () => {
 
       expect(initialActiveItem.save).toHaveBeenCalled();
       expect(otherItem1.save).toHaveBeenCalled();
+    });
+  });
+
+  // A reload unloads the window with `deactivatePackages: false`, so
+  // `deactivate` never runs and `will-destroy` is the only signal that can take
+  // the blur listener off. Left on, the blur on the way out reaches for a
+  // workspace the environment has already dropped, and throws.
+  describe("when the environment is destroying", () => {
+    let autosave, willDestroyCallbacks;
+
+    beforeEach(async () => {
+      willDestroyCallbacks = [];
+      await atom.packages.deactivatePackage("autosave");
+      spyOn(atom, "onWillDestroy").andCallFake((callback) => {
+        willDestroyCallbacks.push(callback);
+        return new Disposable(() => {});
+      });
+      autosave = (await atom.packages.activatePackage("autosave")).mainModule;
+      spyOn(autosave, "autosaveAllPaneItems");
+    });
+
+    afterEach(async () => {
+      // will-destroy disposed the package's subscriptions, so the next spec's
+      // activatePackage would otherwise be a no-op on a torn-down instance.
+      await atom.packages.deactivatePackage("autosave");
+    });
+
+    it("stops autosaving when the window blurs", () => {
+      expect(willDestroyCallbacks.length).toBe(1);
+
+      window.dispatchEvent(new FocusEvent("blur"));
+      expect(autosave.autosaveAllPaneItems.calls.count()).toBe(1);
+
+      willDestroyCallbacks[0]();
+      window.dispatchEvent(new FocusEvent("blur"));
+
+      expect(autosave.autosaveAllPaneItems.calls.count()).toBe(1);
     });
   });
 

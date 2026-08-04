@@ -25,6 +25,12 @@ module.exports = {
       new Disposable(() => window.removeEventListener("blur", handleBlur, true)),
     );
 
+    // A window reload unloads with `deactivatePackages: false`, so `deactivate`
+    // never runs and this listener would outlive the environment: the window
+    // blurs once more on the way out, and by then the workspace it reaches for
+    // is gone. `will-destroy` fires while the workspace is still there.
+    this.subscriptions.add(atom.onWillDestroy(() => this.subscriptions.dispose()));
+
     this.subscriptions.add(
       atom.workspace.onDidAddPaneItem(({ item }) => this.autosavePaneItem(item, true)),
     );
