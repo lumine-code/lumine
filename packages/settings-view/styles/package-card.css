@@ -79,7 +79,6 @@
       font-weight: normal;
       color: var(--text-color-subtle);
       margin-left: var(--component-padding);
-      vertical-align: middle;
       &:hover {
         color: var(--text-color-info);
         text-decoration: underline;
@@ -87,14 +86,22 @@
     }
 
     /* The directory a copy lives in, beside the repository it came from. Subtle
-       and unlinked: it says where this one is, not where to go. */
+       and unlinked: it says where this one is, not where to go.
+
+       Both of these sit at the baseline rather than `middle`: the icon
+       contract anchors a glyph to its element's own content area, so moving
+       the element moves the glyph with it, and `middle` dropped the folder
+       mark two pixels below the label. The raise that remains is this row's
+       larger label — a card runs 14.4px against the glyph box's 16px, where
+       the tree view that box is tuned for runs 12px. */
     .package-directory {
       font-weight: normal;
       color: var(--text-color-subtle);
       margin-left: var(--component-padding);
-      vertical-align: middle;
       &:before {
         margin-right: 0.3em;
+        position: relative;
+        top: -1.2px;
       }
     }
 
@@ -265,6 +272,9 @@
       margin-top: var(--component-padding);
       margin-right: var(--component-padding);
 
+      /* Deliberately `middle` rather than the glyph box's `text-bottom`: a
+         round mark reads as sitting low when its box is aligned like a
+         glyph's, so it keeps the higher position. */
       .avatar {
         border-radius: var(--component-border-radius);
         height: 16px;
