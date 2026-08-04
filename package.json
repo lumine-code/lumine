@@ -35,7 +35,7 @@
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
     "@lumine-code/fuzzy-native": "https://github.com/lumine-code/fuzzy-native.git#dfbb859c80003849be3d404f0795cdc69a5a6702",
     "@lumine-code/keyboard-layout": "https://github.com/lumine-code/keyboard-layout.git#b3c034f622c2ab36edc6abb101b0fd7a8e42da50",
-    "@lumine-code/node-pty": "https://github.com/lumine-code/node-pty.git#c9c7646d0db00a084b114b6c563e1c08dedc6688",
+    "@lumine-code/node-pty": "https://github.com/lumine-code/node-pty.git#77252d15965121022a4ea9beec34350ee3481db7",
     "@lumine-code/scoped-property-store": "https://github.com/lumine-code/scoped-property-store.git#e8921f85773c625dd95d6711969bfa8d1d42369f",
     "@lumine-code/season": "https://github.com/lumine-code/season.git#ec9adb297202dd01a425113a4edc2c189d82c14e",
     "@lumine-code/second-mate": "https://github.com/lumine-code/second-mate.git#4127deccad62905de7464ed456e0a205f064800b",
@@ -319,7 +319,7 @@
     "sinon": "22.1.0"
   },
   "allowScripts": {
-    "github:lumine-code/node-pty#c9c7646d0db00a084b114b6c563e1c08dedc6688": true,
+    "github:lumine-code/node-pty#77252d15965121022a4ea9beec34350ee3481db7": true,
     "github:lumine-code/node-ctags#c4272afbc8dcd3c0acd137d85d1127995dd31f76": true,
     "github:lumine-code/fuzzy-native#dfbb859c80003849be3d404f0795cdc69a5a6702": true,
     "github:lumine-code/keyboard-layout#b3c034f622c2ab36edc6abb101b0fd7a8e42da50": true,
