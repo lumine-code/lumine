@@ -57,6 +57,22 @@ describe("LanguageServerManager session lifetime", () => {
     expect(manager.sessions.size).toBe(0);
   });
 
+  it("reclaims one that cannot be stopped without rejecting at nobody", async () => {
+    // The reclaim runs from a timer, so a rejection here reaches no caller and
+    // would be reported to the user as an unhandled one instead.
+    spyOn(console, "error");
+    const session = sessionAt(path.join(path.sep, "tmp", "loose"));
+    session.stop.and.returnValue(Promise.reject(new Error("broken pipe")));
+
+    manager.didCloseDocument(session);
+    advanceClock(1000);
+    await Promise.resolve();
+
+    expect(session.stop).toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(0);
+    expect(console.error).toHaveBeenCalled();
+  });
+
   it("keeps a session rooted at a project path warm", () => {
     const [root] = atom.project.getPaths();
     expect(root).toBeDefined();

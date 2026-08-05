@@ -104,15 +104,9 @@ module.exports = class LanguageServerManager {
     const owned = new Set(
       this.allSessions().filter((session) => session.adapter.id === adapter.id),
     );
-    // Nothing awaits this: it runs from the disposable an adapter package drops
-    // on its own deactivation, so a rejection here would surface as an unhandled
-    // one rather than reaching anybody who could act on it.
-    await Promise.all(
-      [...owned].map((session) => {
-        this.forget(session);
-        return this.stopSession(session);
-      }),
-    );
+    // Reclaimed rather than disconnected: this runs from the disposable an
+    // adapter package drops on its own deactivation, and nothing awaits that.
+    await Promise.all([...owned].map((session) => this.reclaim(session)));
   }
   // Every adapter that serves this editor. More than one is normal and
   // intended: a type checker and a linter/formatter commonly cover the same
@@ -664,9 +658,18 @@ module.exports = class LanguageServerManager {
     for (const editor of atom.workspace.getTextEditors()) await this.attachEditor(editor);
     return replacement;
   }
+  // Both take a session out of the map and shut it down; what differs is who
+  // hears about a failure. `disconnect` is for a stop somebody asked for and
+  // rejects, so the caller can report it. `reclaim` runs where nothing awaits
+  // the result — a timer, a disposable, a project that changed under a server —
+  // so a failure is logged rather than left as an unhandled rejection.
   async disconnect(session) {
     this.forget(session);
     await session.stop();
+  }
+  reclaim(session) {
+    this.forget(session);
+    return this.stopSession(session);
   }
   // A session outlives the editors it serves on purpose: reopening a file in a
   // project should not pay for another server start. That only holds while
@@ -701,7 +704,7 @@ module.exports = class LanguageServerManager {
       .getTextEditors()
       .some((editor) => this.sessionsForEditor(editor).includes(session));
     if (stillServesAnEditor) return;
-    this.disconnect(session);
+    this.reclaim(session);
   }
   cancelIdleChecks() {
     for (const timer of this.idleChecks.values()) clearTimeout(timer);
@@ -717,10 +720,7 @@ module.exports = class LanguageServerManager {
       const gone = [...session.folders].filter((folder) => !roots.includes(folder));
       if (!gone.length) continue;
       if (gone.length === session.folders.size) {
-        this.forget(session);
-        // Reclaiming a server nothing can reach any more: not awaited, and not
-        // something the user did, so it must not reject at nobody.
-        this.stopSession(session);
+        this.reclaim(session);
         continue;
       }
       for (const folder of gone) {
@@ -736,8 +736,7 @@ module.exports = class LanguageServerManager {
   // Teardown must not be abortable: one server that cannot be shut down cleanly
   // — a broken pipe, a process already gone — must not strand the servers beside
   // it or the cleanup that follows them, so the failure is reported rather than
-  // thrown. Only for the paths nobody asked for; `disconnect` stays rejecting so
-  // that stopping a server by hand can still say it failed.
+  // thrown. See `reclaim` for which callers want this and which want to hear it.
   async stopSession(session) {
     try {
       await session.stop();
