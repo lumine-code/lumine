@@ -152,20 +152,6 @@ const configSchema = {
         ],
         default: "default",
       },
-      transformDeprecatedStyleSheetSelectors: {
-        title: "Transform Deprecated Style Sheet Selectors",
-        description:
-          "Whether Lumine should transform deprecated DOM Selectors in community package style sheets.",
-        type: "boolean",
-        default: true,
-      },
-      transformDeprecatedStyleSheetMathExpressions: {
-        title: "Transform Deprecated Style Sheet Math Expressions",
-        description:
-          "Whether Lumine should transform deprecated Mathematical Expressions in community package style sheets.",
-        type: "boolean",
-        default: true,
-      },
     },
   },
   theme: {
