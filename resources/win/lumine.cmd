@@ -19,6 +19,11 @@ FOR %%a IN (%*) DO (
   IF /I "%%a"=="--benchmark-test"           SET EXPECT_OUTPUT=YES
   IF /I "%%a"=="-v"                         SET EXPECT_OUTPUT=YES
   IF /I "%%a"=="--version"                  SET EXPECT_OUTPUT=YES
+  IF /I "%%a"=="--install"                  SET EXPECT_OUTPUT=YES
+  IF /I "%%a"=="--uninstall"                SET EXPECT_OUTPUT=YES
+  IF /I "%%a"=="--list"                     SET EXPECT_OUTPUT=YES
+  IF /I "%%a"=="--link"                     SET EXPECT_OUTPUT=YES
+  IF /I "%%a"=="--unlink"                   SET EXPECT_OUTPUT=YES
   IF /I "%%a"=="--enable-electron-logging"  SET ELECTRON_ENABLE_LOGGING=YES
   IF /I "%%a"=="-a"                         SET LUMINE_ADD=YES
   IF /I "%%a"=="--add"                      SET LUMINE_ADD=YES
