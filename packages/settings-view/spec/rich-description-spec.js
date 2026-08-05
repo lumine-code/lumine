@@ -122,6 +122,15 @@ Description without table
           type: "string",
           default: "",
         },
+        multipleParagraphs: {
+          description: `\
+First paragraph
+
+Second paragraph\
+`,
+          type: "string",
+          default: "",
+        },
       },
     };
 
@@ -190,5 +199,15 @@ Description without table
 
     it("strips tables", () =>
       expect(getSettingDescription("foo.table")).toEqual("Description without table"));
+  });
+
+  describe("paragraphs", () => {
+    it("unwraps a description that renders to one paragraph", () =>
+      expect(getSettingDescription("foo.plainText")).toEqual("Plain text description"));
+
+    it("keeps the wrappers when a description renders to several", () =>
+      expect(getSettingDescription("foo.multipleParagraphs")).toEqual(
+        "<p>First paragraph</p>\n<p>Second paragraph</p>",
+      ));
   });
 });
