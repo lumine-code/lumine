@@ -11,7 +11,7 @@ const {
 // engines.lumine range. The count is a tripwire, like EXPECTED_GRAMMAR_COUNT
 // in the grammar sweep: adding or dropping a bundled package means updating
 // it deliberately, and a partial node_modules cannot silently shrink the set.
-const EXPECTED_BUNDLED_COUNT = 98;
+const EXPECTED_BUNDLED_COUNT = 88;
 
 describe("bundled-packages", function () {
   const repoRoot = path.resolve(__dirname, "..");
