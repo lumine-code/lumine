@@ -87,7 +87,7 @@
     "grammar-selector": "https://github.com/lumine-code/grammar-selector.git#4a4420c19f70d64c4c95f66b968ea5da02075f81",
     "gray-matter": "^4.0.3",
     "grim": "2.0.3",
-    "ide-client": "https://github.com/lumine-code/ide-client.git#745fb5c8e20270c5d2ea10313593692a9256c78a",
+    "ide-client": "https://github.com/lumine-code/ide-client.git#2a005b503deb3caf67ffa982eea9bc4f4dd76c27",
     "image-paste": "https://github.com/lumine-code/image-paste.git#8523ce52c4062ec991be1cbecf5cffa1e0273203",
     "incompatible-packages": "https://github.com/lumine-code/incompatible-packages.git#7dca2c9b0bff48c81d59bdb8b70787c7727ce890",
     "indent-guide": "https://github.com/lumine-code/indent-guide.git#e3fa9d7b640c5ef26f35f91c3add1db4f9850a69",
