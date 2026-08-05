@@ -443,6 +443,14 @@ input[type="button"] {
     margin-right: 0;
     top: auto;
   }
+  /* Except at the smallest size, where that stops holding: the size class
+     shrinks the glyph but the contract's line box around it stays, so the
+     glyph rides high in the button — measured a pixel and a half up on the
+     notebook cell actions. Sizing the box down instead moves the button's
+     own middle with it, which is why this is a nudge and not a line-height. */
+  &.btn-xs:empty:before {
+    top: 1.5px;
+  }
 }
 
 /* Button Toolbar
