@@ -28,6 +28,7 @@
     }
   },
   "devDependencies": {
+    "@babel/core": "^8.0.1",
     "@webref/elements": "^2.1.0",
     "chrome-devtools-frontend": "1.0.1070764",
     "content": "github:mdn/content",

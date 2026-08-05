@@ -20,6 +20,7 @@
   ],
   "main": "./lib/main",
   "dependencies": {
+    "@lumine-code/season": "https://github.com/lumine-code/season.git#ec9adb297202dd01a425113a4edc2c189d82c14e",
     "tinyglobby": "^0.2.17"
   },
   "providedServices": {
@@ -56,5 +57,8 @@
       "type": "boolean",
       "default": true
     }
+  },
+  "devDependencies": {
+    "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"
   }
 }

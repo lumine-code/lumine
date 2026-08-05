@@ -34,9 +34,10 @@
     }
   },
   "dependencies": {
-    "async": "3.2.6",
+    "@lumine-code/ctags": "https://github.com/lumine-code/node-ctags.git#c4272afbc8dcd3c0acd137d85d1127995dd31f76",
     "@lumine-code/fs-plus": "https://github.com/lumine-code/fs-plus.git#742e3e166f56261189ff245a63967b8f1970fadd",
-    "@lumine-code/ctags": "https://github.com/lumine-code/node-ctags.git#c4272afbc8dcd3c0acd137d85d1127995dd31f76"
+    "@lumine-code/underscore-plus": "https://github.com/lumine-code/underscore-plus.git#2b75d264c2ca01d27ee69d7cd05610a097011274",
+    "async": "3.2.6"
   },
   "devDependencies": {
     "eslint": "^10.8.0",
