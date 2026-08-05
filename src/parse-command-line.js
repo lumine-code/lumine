@@ -180,9 +180,13 @@ module.exports = function parseCommandLine(processArgs) {
   }
 
   if (newWindow && addToLastWindow) {
+    // `help()` configures the help option and returns yargs itself, so
+    // interpolating it printed "[object Object]". `showHelp()` is what renders
+    // the usage text, and it writes to stderr like the message above it.
     process.stderr.write(
-      `Only one of the --add and --new-window options may be specified at the same time.\n\n${options.help()}`,
+      "Only one of the --add and --new-window options may be specified at the same time.\n\n",
     );
+    options.showHelp();
 
     // Exiting the main process with a nonzero exit code on macOS causes the app open to fail with the mysterious
     // message "LSOpenURLsWithRole() failed for the application /Applications/Lumine Dev.app with error -10810."
