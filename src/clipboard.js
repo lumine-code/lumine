@@ -14,6 +14,11 @@ const LUMINE_EDITOR_DATA_VERSION = 1;
 //
 // An instance of this class is always available as the `atom.clipboard` global.
 //
+// This class owns what the clipboard holds, not what a paste does with it. To
+// intercept a paste before the editor inserts it as text — to handle an image,
+// say — register a provider with {PasteProviderRegistry} through
+// `atom.pasteProviders`.
+//
 // ## Examples
 //
 // ```js
@@ -21,17 +26,6 @@ const LUMINE_EDITOR_DATA_VERSION = 1;
 //
 // console.log(atom.clipboard.read()) // 'hello'
 // ```
-/**
- * @class Clipboard
- * @desc Represents the clipboard used for copying and pasting in Lumine.
- *
- * An instance of this class is always available as the `atom.clipboard` global.
- * @example
- * // returns 'hello'
- * atom.clipboard.write('hello');
- *
- * console.log(atom.clipboard.read());
- */
 module.exports = class Clipboard {
   constructor() {
     this.reset();
