@@ -1,1 +1,0 @@
-This is not a stylesheet and should not receive an individual file watcher.

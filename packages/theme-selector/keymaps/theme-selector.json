@@ -1,7 +1,0 @@
-{
-  ".theme-selector": {
-    "ctrl-1": "theme-selector:use-system-mode",
-    "ctrl-2": "theme-selector:use-light-mode",
-    "ctrl-3": "theme-selector:use-dark-mode"
-  }
-}

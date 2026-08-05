@@ -1,4 +1,0 @@
-/* Preserve the newline in the help message so the examples sit on their own line. */
-.go-to-line .info-message {
-  white-space: pre-line;
-}
