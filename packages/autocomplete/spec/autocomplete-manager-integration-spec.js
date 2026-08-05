@@ -2643,6 +2643,13 @@ defm`);
       // containing block for its position-fixed atom-overlay child and
       // paint-clipped it, so the suggestion list of a panel editor (e.g. the
       // search-panel find field) was confirmed "blind" — active but invisible.
+      // The suite attaches the workspace without a height, which collapses it
+      // to a zero-height scroller; focusing anything inside then scrolls it,
+      // and a scrolled `contain: strict` ancestor drags every "fixed" overlay
+      // with it. A real workspace always fills the window, so give it one —
+      // the assertions below still catch any re-rooting or containment leak.
+      workspaceElement.style.height = "400px";
+
       const miniEditor = new TextEditor({ mini: true });
       const miniView = atom.views.getView(miniEditor);
       const container = document.createElement("div");
@@ -2669,6 +2676,8 @@ defm`);
       expect(Math.abs(overlayRect.left - parseFloat(overlay.style.left))).toBeLessThan(2);
       expect(overlayRect.top).toBeGreaterThanOrEqual(0);
       expect(overlayRect.bottom).toBeLessThanOrEqual(window.innerHeight);
+
+      workspaceElement.style.height = "";
     });
   });
 });

@@ -467,7 +467,13 @@ atom-text-editor:is([mini], [input]) .line.cursor-line {
 atom-text-editor[mini] {
   font-size: var(--ui-input-size);
   line-height: var(--ui-line-height);
-  max-height: calc(var(--ui-line-height) * 5); /* rows */
+  /* One row plus the borders this rule's sibling draws. The old theme rule
+     carried a five-row clamp, but it reached minis through
+     `atom-panel-container atom-text-editor`, which the core [mini] rule
+     always outranked — minis have rendered single-line all along, and a
+     taller mini overflows the workspace and drags every fixed overlay with
+     the scroll. */
+  max-height: calc(var(--ui-line-height) + 2px);
   padding-left: calc(var(--ui-padding) / 3);
   color: var(--text-color-highlight);
   background-color: var(--input-background-color);
