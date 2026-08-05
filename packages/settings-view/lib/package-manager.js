@@ -57,10 +57,10 @@ module.exports = class PackageManager {
     this.emitter = new Emitter();
   }
 
-  getClient() {
-    if (this.client != null) return this.client;
-    const Client = require("./atom-io-client");
-    return (this.client = new Client(this));
+  getAvatarCache() {
+    if (this.avatarCache != null) return this.avatarCache;
+    const AvatarCache = require("./avatar-cache");
+    return (this.avatarCache = new AvatarCache(this));
   }
 
   getCatalogClient() {

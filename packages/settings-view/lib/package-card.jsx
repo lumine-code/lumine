@@ -41,7 +41,7 @@ module.exports = class PackageCard {
     // ::validate method, or add a method here. At the moment I think all cases
     // of malformed package metadata are handled here and in ::content but belt
     // and suspenders, you know
-    this.client = this.packageManager.getClient();
+    this.avatarCache = this.packageManager.getAvatarCache();
     // A catalog record that failed hydration carries no manifest. When the
     // package is installed anyway, its local package.json knows everything the
     // card shows, so fill the gaps from it rather than presenting a bare card.
@@ -884,7 +884,7 @@ module.exports = class PackageCard {
       // login, never the package registry, so it is safe for catalog cards too.
       const owner = ownerFromRepository(this.pack.repository);
       if (!owner) return;
-      this.client.avatar(owner, (err, avatarPath) => {
+      this.avatarCache.avatar(owner, (err, avatarPath) => {
         if (!err && avatarPath) {
           this.refs.avatar.src = `file://${avatarPath}`;
         }

@@ -20,7 +20,6 @@ module.exports = class InstallPanel {
     this.packageManager = packageManager;
     this.disposables = new CompositeDisposable();
     this.sourceDisposables = new CompositeDisposable();
-    this.client = this.packageManager.getClient();
     this.catalogClient = this.packageManager.getCatalogClient();
     this.pulsarClient = this.packageManager.getPulsarClient();
     this.catalogPackages = [];

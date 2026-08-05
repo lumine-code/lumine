@@ -109,8 +109,8 @@ describe("PackageCard", function () {
 
   it("loads the author avatar for a hydrated community card", function () {
     setPackageStatusSpies({ installed: false, disabled: false });
-    const client = { avatar: jasmine.createSpy("avatar") };
-    spyOn(packageManager, "getClient").andReturn(client);
+    const avatarCache = { avatar: jasmine.createSpy("avatar") };
+    spyOn(packageManager, "getAvatarCache").andReturn(avatarCache);
 
     card = new PackageCard(
       {
@@ -125,8 +125,8 @@ describe("PackageCard", function () {
 
     // The avatar comes from the author's GitHub avatar URL by owner login, not
     // the package registry, so catalog cards show it too.
-    expect(client.avatar).toHaveBeenCalled();
-    expect(client.avatar.mostRecentCall.args[0]).toBe("owner");
+    expect(avatarCache.avatar).toHaveBeenCalled();
+    expect(avatarCache.avatar.mostRecentCall.args[0]).toBe("owner");
   });
 
   describe("the directory a package lives in", function () {

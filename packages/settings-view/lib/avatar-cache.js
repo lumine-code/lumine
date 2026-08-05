@@ -4,7 +4,7 @@ const path = require("path");
 const remote = require("@electron/remote");
 const picomatch = require("picomatch");
 
-module.exports = class AtomIoClient {
+module.exports = class AvatarCache {
   constructor(packageManager) {
     this.packageManager = packageManager;
     // 5 hour expiry, used to keep the newest cached avatar around

@@ -1,24 +1,24 @@
-const AtomIoClient = require("../lib/atom-io-client");
+const AvatarCache = require("../lib/avatar-cache");
 
-describe("AtomIoClient", function () {
+describe("AvatarCache", function () {
   beforeEach(function () {
-    return (this.client = new AtomIoClient());
+    return (this.cache = new AvatarCache());
   });
 
   it("fetches avatar from cache if the network is unavailable", function () {
-    spyOn(this.client, "online").andReturn(false);
-    spyOn(this.client, "fetchAndCacheAvatar");
-    expect(this.client.fetchAndCacheAvatar).not.toHaveBeenCalled();
-    return this.client.avatar("test-user", function () {});
+    spyOn(this.cache, "online").andReturn(false);
+    spyOn(this.cache, "fetchAndCacheAvatar");
+    expect(this.cache.fetchAndCacheAvatar).not.toHaveBeenCalled();
+    return this.cache.avatar("test-user", function () {});
   });
 
   it("handles glob errors", function () {
     // The glob library no longer lists directories through the callback `fs`
     // API, so inject the failure at the client's own glob seam.
-    spyOn(this.client, "glob").andReturn(Promise.reject(new Error("readdir error")));
+    spyOn(this.cache, "glob").andReturn(Promise.reject(new Error("readdir error")));
 
     const callback = jasmine.createSpy("cacheAvatar callback");
-    this.client.cachedAvatar("fakeperson", callback);
+    this.cache.cachedAvatar("fakeperson", callback);
 
     waitsFor(() => callback.callCount === 1);
 
