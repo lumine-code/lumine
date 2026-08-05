@@ -2,6 +2,10 @@ const temp = require("@lumine-code/temp").track();
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const StyleManager = require("../src/style-manager");
+const {
+  transformDeprecatedShadowDOMSelectors,
+  transformDeprecatedMathUsage,
+} = require("../src/deprecated-style-transforms");
 
 describe("StyleManager", () => {
   let [styleManager, addEvents, removeEvents, updateEvents] = [];
@@ -163,70 +167,40 @@ describe("StyleManager", () => {
     });
 
     describe("css mathematical expression calc() wrap upgrades", () => {
-      const mathStyleManager = new StyleManager();
-      mathStyleManager.configDirPath = null; // Ensures for testing that we never
-      // go looking for cached files, and will always use the css provided
-
       it("does not upgrade already wrapped math", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: calc(10px/2); }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: calc(10px/2); }");
         expect(upgradedSheet.source).toEqual("p { padding: calc(10px/2); }");
       });
 
       it("does not upgrade negative numbers", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: 0 -1px; }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: 0 -1px; }");
         expect(upgradedSheet.source).toEqual("p { padding: 0 -1px; }");
       });
 
       it("upgrades simple division", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: 10px/2; }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: 10px/2; }");
         expect(upgradedSheet.source).toEqual("p { padding: calc(10px/2); }");
       });
 
       it("upgrades multi parameter math", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: 0 10px/2 5em; }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: 0 10px/2 5em; }");
         expect(upgradedSheet.source).toEqual("p { padding: 0 calc(10px/2) 5em; }");
       });
 
       it("upgrades math with spaces", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: 10px / 2; }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: 10px / 2; }");
         expect(upgradedSheet.source).toEqual("p { padding: calc(10px / 2); }");
       });
 
       it("upgrades multiple math expressions in a single line", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: 10px/2 10px/3; }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: 10px/2 10px/3; }");
         expect(upgradedSheet.source).toEqual("p { padding: calc(10px/2) calc(10px/3); }");
       });
 
       it("does not upgrade base64 strings", () => {
         // Regression Check
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
+        let upgradedSheet = transformDeprecatedMathUsage(
           "p { cursor: -webkit-image-set(url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAL0lEQVQoz2NgCD3x//9/BhBYBWdhgFVAiVW4JBFKGIa4AqD0//9D3pt4I4tAdAMAHTQ/j5Zom30AAAAASUVORK5CYII=')); }",
-          {},
-          "math",
         );
         expect(upgradedSheet.source).toEqual(
           "p { cursor: -webkit-image-set(url('data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAAAL0lEQVQoz2NgCD3x//9/BhBYBWdhgFVAiVW4JBFKGIa4AqD0//9D3pt4I4tAdAMAHTQ/j5Zom30AAAAASUVORK5CYII=')); }",
@@ -234,39 +208,54 @@ describe("StyleManager", () => {
       });
 
       it("does not modify hsl function where `/` is valid", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
+        let upgradedSheet = transformDeprecatedMathUsage(
           "p { caret-color: hsl(228deg 4% 24% / 0.8); }",
-          {},
-          "math",
         );
         expect(upgradedSheet.source).toEqual("p { caret-color: hsl(228deg 4% 24% / 0.8); }");
       });
 
       it("does not modify acos function, where math is valid", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
+        let upgradedSheet = transformDeprecatedMathUsage(
           "p { transform: rotate(acos(2 * 0.125)); }",
-          {},
-          "math",
         );
         expect(upgradedSheet.source).toEqual("p { transform: rotate(acos(2 * 0.125)); }");
       });
 
       it("recognizes valid less variables: right side", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: @size + 12px; }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: @size + 12px; }");
         expect(upgradedSheet.source).toEqual("p { padding: calc(@size + 12px); }");
       });
 
       it("recognizes valid less variables: left side", () => {
-        let upgradedSheet = mathStyleManager.upgradeStyleSheet(
-          "p { padding: 12px + @size; }",
-          {},
-          "math",
-        );
+        let upgradedSheet = transformDeprecatedMathUsage("p { padding: 12px + @size; }");
         expect(upgradedSheet.source).toEqual("p { padding: calc(12px + @size); }");
+      });
+
+      it("does not read back another transformation's cached result", () => {
+        // Both transformations run over the same style sheet in turn, and the
+        // math pass sees the selector pass's output unchanged whenever the
+        // selector pass is a no-op. The memo has to tell them apart, or the
+        // math pass returns the selector pass's untransformed result.
+        const cachingStyleManager = new StyleManager();
+        cachingStyleManager.initialize({
+          configDirPath: temp.mkdirSync("atom-config-transform-cache"),
+        });
+
+        const source = "p { padding: 10px/2; }";
+        const afterSelectors = cachingStyleManager.upgradeStyleSheet(
+          source,
+          undefined,
+          transformDeprecatedShadowDOMSelectors,
+        ).source;
+        expect(afterSelectors).toBe(source);
+
+        expect(
+          cachingStyleManager.upgradeStyleSheet(
+            afterSelectors,
+            undefined,
+            transformDeprecatedMathUsage,
+          ).source,
+        ).toBe("p { padding: calc(10px/2); }");
       });
     });
 
