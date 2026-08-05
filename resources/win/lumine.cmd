@@ -1,5 +1,10 @@
 @echo off
 
+REM Keep the flags below out of the caller's environment. A batch file invoked
+REM from an interactive cmd prompt runs in that same shell, so without SETLOCAL
+REM every SET here would linger after the command finishes.
+SETLOCAL
+
 SET EXPECT_OUTPUT=
 SET WAIT=
 SET PSARGS=%*
@@ -47,25 +52,37 @@ set LUMINE_CHANNEL=stable
 set EXE_NAME=Lumine
 set LUMINE_EXECUTABLE=%~dp0..\%EXE_NAME%.exe
 
-IF "%LUMINE_ADD%"=="YES" (
-  IF "%LUMINE_NEW_WINDOW%"=="YES" (
-    SET EXPECT_OUTPUT=YES
-  )
-)
+REM Every `exit /b` below sits at the top level on purpose. Inside a
+REM parenthesized block cmd swallows the code and the script reports 0, so the
+REM branches are reached by GOTO rather than by nesting.
 
-IF "%EXPECT_OUTPUT%"=="YES" (
-  IF "%WAIT%"=="YES" (
-    REM --wait blocks until the editor is done with the file. The editor kills
-    REM the pid it is handed, so this PowerShell is here only to be a killable
-    REM process that blocks; `Wait-Event` waits on an event that never comes.
-    REM Exit 64 is a sentinel for "the editor never launched" — a killed
-    REM PowerShell exits 1, so ERRORLEVEL 1 cannot mean failure here.
-    powershell -NoProfile -NonInteractive -Command "try { Start-Process -FilePath $env:LUMINE_EXECUTABLE -ArgumentList \"--pid=$PID $env:PSARGS\" -ErrorAction Stop } catch { Write-Error $_.Exception.Message; exit 64 }; Wait-Event"
-    IF ERRORLEVEL 64 exit 1
-    exit 0
-  ) ELSE (
-    "%~dp0\..\%EXE_NAME%.exe" %*
-  )
-) ELSE (
-  start "" "%~dp0\..\%EXE_NAME%.exe" %*
-)
+REM --add and --new-window contradict each other. The editor prints the error
+REM and then exits 0, because a nonzero exit makes `open` fail on macOS, so
+REM reporting the failure is the launcher's job on every platform. Run it in
+REM the foreground for the message and never fall through to --wait: nothing
+REM is opened, so nothing would ever arrive to end the wait.
+IF NOT "%LUMINE_ADD%"=="YES"        GOTO :dispatch
+IF NOT "%LUMINE_NEW_WINDOW%"=="YES" GOTO :dispatch
+"%LUMINE_EXECUTABLE%" %*
+exit /b 1
+
+:dispatch
+IF NOT "%EXPECT_OUTPUT%"=="YES" GOTO :detached
+IF NOT "%WAIT%"=="YES"          GOTO :foreground
+
+REM --wait blocks until the editor is done with the file. The editor kills the
+REM pid it is handed, so this PowerShell is here only to be a killable process
+REM that blocks; Wait-Event waits on an event that never comes. Exit 64 is a
+REM sentinel for "the editor never launched": a killed PowerShell exits 1, so
+REM ERRORLEVEL 1 cannot be read as failure here.
+powershell -NoProfile -NonInteractive -Command "try { Start-Process -FilePath $env:LUMINE_EXECUTABLE -ArgumentList \"--pid=$PID $env:PSARGS\" -ErrorAction Stop } catch { Write-Error $_.Exception.Message; exit 64 }; Wait-Event"
+IF ERRORLEVEL 64 exit /b 1
+exit /b 0
+
+:foreground
+"%LUMINE_EXECUTABLE%" %*
+exit /b %ERRORLEVEL%
+
+:detached
+start "" "%LUMINE_EXECUTABLE%" %*
+exit /b 0
