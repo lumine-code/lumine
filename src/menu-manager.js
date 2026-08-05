@@ -20,7 +20,7 @@ if (buildMetadata) {
 // ## Menu Object Format
 //
 // Here is an example from Lumine's bundled
-// [tree-view](https://github.com/lumine-code/lumine/blob/master/packages/tree-view/menus/tree-view-plus.json):
+// [tree-view](https://github.com/lumine-code/tree-view/blob/master/menus/tree-view-plus.json):
 //
 // ```coffee
 // [

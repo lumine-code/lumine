@@ -72,6 +72,9 @@ if (wasmFilesChanged.length === 0) {
 function collectGrammarConfigs() {
   const configs = [];
   const packagesDir = path.join(__dirname, "..", "packages");
+  // Every grammar lives in its own repository now, so an editor checkout
+  // usually has no packages/ directory at all — nothing to validate here.
+  if (!fs.existsSync(packagesDir)) return configs;
 
   for (const pkg of fs.readdirSync(packagesDir)) {
     const grammarsDir = path.join(packagesDir, pkg, "grammars");

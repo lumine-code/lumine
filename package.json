@@ -198,7 +198,6 @@
     "format": "prettier . --write",
     "format:check": "prettier . --check",
     "test:editor": "npm run test:only -- spec",
-    "test:pkgs": "npm run test:only -- packages",
     "test:main": "npm run test:only -- --main-process spec/main-process",
     "test:only": "npm start -- --test"
   },

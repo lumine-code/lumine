@@ -146,9 +146,11 @@ let options = {
     "!**/pegjs/examples",
     "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
     "!**/node_modules/babel-core/lib/transformation/transforers/spec", // Ignore babel-core spec
-    "!**/{oniguruma,dev-live-reload,deprecation-cop,one-dark-ui,incompatible-packages,git-diff,line-ending-selector}/spec",
-    "!**/{link,grammar-selector,json-schema-traverse,one-light-ui,autoflow,about,go-to-line,sylvester,apparatus}/spec",
-    "!**/{archive-view,autocomplete,autocomplete-lumine,autocomplete-css,autosave}/spec",
+    // Every bundled package ships its spec directory in its git tarball;
+    // none of them is needed at runtime. The editor's own top-level spec
+    // inclusions (the runner and its helpers) are unaffected.
+    "!**/node_modules/*/spec",
+    "!**/node_modules/@*/*/spec",
 
     // Other Exclusions
     "!**/._*",

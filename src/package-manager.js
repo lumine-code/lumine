@@ -66,17 +66,16 @@ module.exports = class PackageManager {
   initialize(params) {
     this.devMode = params.devMode;
     this.resourcePath = params.resourcePath;
-    this.bundledPackagesPath =
-      this.resourcePath != null ? path.join(this.resourcePath, "packages") : null;
     if (params.configDirPath != null && !params.safeMode) {
       this.userPackagesPath = path.join(params.configDirPath, "packages");
       this.devPackagesPath = path.join(params.configDirPath, "packages-dev");
       // Ordered by descending priority: a package name claimed by an earlier
       // directory shadows every later copy of that name. Dev packages outrank
-      // manual installs, which outrank the packages bundled with the editor.
+      // manual installs, which outrank the packages bundled with the editor —
+      // those are delivered through node_modules and enumerated by the
+      // engines.lumine scan, never through a directory of their own.
       if (this.devMode) this.packageDirPaths.push(this.devPackagesPath);
       this.packageDirPaths.push(this.userPackagesPath);
-      if (this.devMode) this.packageDirPaths.push(this.bundledPackagesPath);
     }
   }
 
@@ -505,7 +504,6 @@ module.exports = class PackageManager {
   getPackageDirTier(packageDirPath) {
     if (packageDirPath === this.devPackagesPath) return "dev";
     if (packageDirPath === this.userPackagesPath) return "community";
-    if (packageDirPath === this.bundledPackagesPath) return "bundled";
     return "other";
   }
 

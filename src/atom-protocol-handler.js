@@ -30,7 +30,6 @@ module.exports = class AtomProtocolHandler {
       this.loadPaths.push(path.join(process.env.LUMINE_HOME, "packages"));
     }
 
-    this.loadPaths.push(path.join(resourcePath, "packages"));
     this.loadPaths.push(path.join(resourcePath, "node_modules"));
 
     this.registerAtomProtocol();

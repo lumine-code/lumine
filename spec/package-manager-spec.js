@@ -28,18 +28,17 @@ describe("PackageManager", () => {
       expect(packageManger.packageDirPaths[0]).toBe(path.join(configDirPath, "packages"));
     });
 
-    it("adds regular package path, dev package path, and Atom repo package path in dev mode and dev resource path is set", () => {
+    it("adds the dev package path in dev mode; bundled packages come from node_modules", () => {
       const packageManger = new PackageManager({});
       const configDirPath = path.join("~", "someConfig");
       const resourcePath = path.join("~", "/atom");
       packageManger.initialize({ configDirPath, resourcePath, devMode: true });
-      expect(packageManger.packageDirPaths.length).toBe(3);
+      expect(packageManger.packageDirPaths.length).toBe(2);
       expect(packageManger.packageDirPaths).toContain(path.join(configDirPath, "packages"));
       expect(packageManger.packageDirPaths).toContain(path.join(configDirPath, "packages-dev"));
-      expect(packageManger.packageDirPaths).toContain(path.join(resourcePath, "packages"));
     });
 
-    it("orders package paths so dev packages shadow user packages, which shadow bundled ones", () => {
+    it("orders package paths so dev packages shadow user packages", () => {
       const packageManger = new PackageManager({});
       const configDirPath = path.join("~", "someConfig");
       const resourcePath = path.join("~", "/atom");
@@ -47,12 +46,10 @@ describe("PackageManager", () => {
       expect(packageManger.packageDirPaths).toEqual([
         path.join(configDirPath, "packages-dev"),
         path.join(configDirPath, "packages"),
-        path.join(resourcePath, "packages"),
       ]);
       expect(packageManger.packageDirPaths.map((p) => packageManger.getPackageDirTier(p))).toEqual([
         "dev",
         "community",
-        "bundled",
       ]);
     });
   });
