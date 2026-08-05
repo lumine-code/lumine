@@ -3,6 +3,7 @@ const { TextEditor, CompositeDisposable, Disposable } = require("atom");
 const etch = require("@lumine-code/etch");
 const CollapsibleSectionPanel = require("./collapsible-section-panel");
 const SearchSettingView = require("./search-setting-view");
+const recentSettings = require("./recent-settings");
 
 const CORE_NAMESPACES = new Set(["core", "editor", "language", "git"]);
 const MAX_RESULTS = 100;
@@ -12,6 +13,8 @@ module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
     super();
     this.settingsView = settingsView;
     this.searchResults = [];
+    this.recentViews = [];
+    this.searchState = "initial";
     this.activeFilter = "all";
     this.settingsSchema = atom.config.schema.properties;
 
@@ -49,6 +52,17 @@ module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
         this.matchSettings();
       }),
     );
+
+    // A package that declares its settings from its main module rather than from
+    // `package.json` only registers them once it activates, which is after a
+    // restored window has already painted this panel. Recompose the list then so
+    // a recently-opened setting belonging to such a package is not dropped.
+    this.subscriptions.add(
+      atom.packages.onDidActivateInitialPackages(() => {
+        if (this.searchState === "initial") this.renderRecentSettings();
+      }),
+    );
+
     this.updateSearchState("initial");
   }
 
@@ -58,10 +72,15 @@ module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
 
   show() {
     this.element.style.display = "";
+    // Opening a setting leaves this panel and comes back to it, so the list is
+    // stale by the time it is shown again.
+    if (this.searchState === "initial") this.renderRecentSettings();
   }
 
   destroy() {
     this.subscriptions.dispose();
+    this.clearSearchResults();
+    this.clearRecentSettings();
     return etch.destroy(this);
   }
 
@@ -118,6 +137,11 @@ module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
               role="status"
               aria-live="polite"
             />
+
+            <section ref="recentSection" className="sub-section search-results">
+              <h3 className="sub-section-heading icon icon-history">Recently opened</h3>
+              <div ref="recentResults" className="container package-container" role="list" />
+            </section>
 
             <section ref="resultsSection" className="sub-section search-results">
               <h3 ref="searchHeader" className="sub-section-heading icon icon-list-unordered">
@@ -180,9 +204,47 @@ module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
     this.filterSettings(query);
   }
 
+  // `etch.destroy` detaches on the next animation frame, so the container has to
+  // be emptied here or the outgoing cards linger beside the incoming ones.
   clearSearchResults() {
     for (const result of this.searchResults) result.destroy();
     this.searchResults = [];
+    this.refs.searchResults.innerHTML = "";
+  }
+
+  clearRecentSettings() {
+    for (const view of this.recentViews) view.destroy();
+    this.recentViews = [];
+    this.refs.recentResults.innerHTML = "";
+  }
+
+  // Rebuilds the recently-opened list and shows or hides its section to match.
+  // Every path that can change the list routes through here, so the section is
+  // never left standing with stale or no content.
+  renderRecentSettings() {
+    this.clearRecentSettings();
+
+    const paths = recentSettings.getPaths();
+    // Skipped rather than folded into the loop below: with nothing to show there
+    // is no reason to walk the whole config schema.
+    if (paths.length > 0) {
+      const settingsByPath = new Map(
+        this.collectSettings(this.settingsSchema).map((setting) => [setting.path, setting]),
+      );
+
+      for (const path of paths) {
+        // A setting whose package has since been uninstalled is no longer in the
+        // schema, and one the Settings UI cannot represent was never collected.
+        const setting = settingsByPath.get(path);
+        if (!setting) continue;
+        const view = new SearchSettingView(setting, this.settingsView);
+        this.refs.recentResults.appendChild(view.element);
+        this.recentViews.push(view);
+      }
+    }
+
+    this.refs.recentSection.style.display =
+      this.searchState === "initial" && this.recentViews.length ? "" : "none";
   }
 
   filterSettings(text) {
@@ -302,12 +364,18 @@ module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
   }
 
   updateSearchState(state, { query = "", visibleCount = 0, totalCount = 0 } = {}) {
+    this.searchState = state;
     this.refs.resultsSection.style.display = state === "results" ? "" : "none";
+    // Recently-opened belongs to the landing state alone and never shares the
+    // panel with a result list; `renderRecentSettings` brings it back if the
+    // list has anything in it.
+    this.refs.recentSection.style.display = "none";
     this.refs.clearButton.style.visibility = this.refs.searchEditor.getText()
       ? "visible"
       : "hidden";
 
     if (state === "initial") {
+      this.renderRecentSettings();
       this.refs.searchStatus.textContent =
         "Type a setting name, description, or configuration key to begin.";
     } else if (state === "empty") {

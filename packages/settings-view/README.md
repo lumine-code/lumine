@@ -8,7 +8,7 @@ Edit config settings, install packages, and change themes.
 - **Package management**: install, uninstall, and update community packages.
 - **Theme management**: install, uninstall, and switch between UI and syntax themes.
 - **Keybinding browser**: view all active keybindings in one place.
-- **Settings search**: find individual settings by name across every panel.
+- **Settings search**: find individual settings by name across every panel, with the ones you opened most recently listed first.
 - **Status bar integration**: open settings from the status bar and see when package updates are available.
 
 ## Commands
@@ -28,6 +28,7 @@ Commands available in `atom-workspace`:
 - `settings-view:view-installed-packages`: open the packages panel,
 - `settings-view:uninstall-packages`: open the packages panel to manage packages,
 - `settings-view:check-updates`: open the install panel and check for package updates,
+- `settings-view:clear-recent-settings`: forget the settings listed as recently opened in the search panel,
 - `settings-view:system`: open the system panel (Windows only).
 
 ## Services

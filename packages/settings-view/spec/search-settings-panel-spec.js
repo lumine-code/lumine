@@ -1,9 +1,13 @@
 const SearchSettingsPanel = require("../lib/search-settings-panel");
+const recentSettings = require("../lib/recent-settings");
 
 describe("SearchSettingsPanel", () => {
   let searchSettingsPanel;
 
   beforeEach(() => {
+    // The store is a module singleton, so anything an earlier spec opened would
+    // otherwise still be listed here.
+    recentSettings.clear();
     searchSettingsPanel = new SearchSettingsPanel(null);
   });
 
@@ -148,6 +152,75 @@ describe("SearchSettingsPanel", () => {
       searchSettingsPanel.updateSearchState("empty", { query: "does-not-exist" });
       expect(searchSettingsPanel.refs.resultsSection).toBeHidden();
       expect(searchSettingsPanel.refs.searchStatus.textContent).toContain("No settings found");
+    });
+  });
+
+  describe("recently opened settings", () => {
+    const cardKeys = (panel) =>
+      Array.from(panel.refs.recentResults.querySelectorAll(".search-id")).map((element) =>
+        element.textContent.trim(),
+      );
+
+    // The panel is never attached to the document here, which makes `toBeHidden`
+    // trivially true, so assert on the property the panel actually sets.
+    const sectionDisplay = (panel) => panel.refs.recentSection.style.display;
+
+    it("hides the section when nothing has been opened yet", () => {
+      expect(sectionDisplay(searchSettingsPanel)).toBe("none");
+      expect(searchSettingsPanel.refs.recentResults.children.length).toBe(0);
+    });
+
+    it("lists the opened settings most recent first", () => {
+      recentSettings.add("editor.fontSize");
+      recentSettings.add("core.closeDeletedFileTabs");
+      searchSettingsPanel.renderRecentSettings();
+
+      expect(sectionDisplay(searchSettingsPanel)).toBe("");
+      expect(cardKeys(searchSettingsPanel)).toEqual([
+        "core.closeDeletedFileTabs",
+        "editor.fontSize",
+      ]);
+    });
+
+    it("skips a setting that is no longer in the schema", () => {
+      recentSettings.add("no-such-package.someSetting");
+      recentSettings.add("editor.fontSize");
+      searchSettingsPanel.renderRecentSettings();
+
+      expect(cardKeys(searchSettingsPanel)).toEqual(["editor.fontSize"]);
+    });
+
+    it("renders a card even when search metadata is enabled", () => {
+      // Recent entries carry no search score, so the card must not reach for one.
+      atom.config.set("settings-view.searchSettingsMetadata", true);
+      recentSettings.add("editor.fontSize");
+      searchSettingsPanel.renderRecentSettings();
+
+      expect(cardKeys(searchSettingsPanel)).toEqual(["editor.fontSize"]);
+    });
+
+    it("replaces the list rather than appending to it on a rebuild", () => {
+      recentSettings.add("editor.fontSize");
+      searchSettingsPanel.renderRecentSettings();
+      searchSettingsPanel.renderRecentSettings();
+
+      expect(searchSettingsPanel.refs.recentResults.children.length).toBe(1);
+    });
+
+    it("hides the section once a query is being shown", () => {
+      recentSettings.add("editor.fontSize");
+      searchSettingsPanel.renderRecentSettings();
+      expect(sectionDisplay(searchSettingsPanel)).toBe("");
+
+      searchSettingsPanel.updateSearchState("results", {
+        query: "font",
+        visibleCount: 1,
+        totalCount: 1,
+      });
+      expect(sectionDisplay(searchSettingsPanel)).toBe("none");
+
+      searchSettingsPanel.updateSearchState("initial");
+      expect(sectionDisplay(searchSettingsPanel)).toBe("");
     });
   });
 });

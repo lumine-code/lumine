@@ -17,6 +17,7 @@ const InstalledPackagesPanel = require("./installed-packages-panel");
 const UriHandlerPanel = require("./uri-handler-panel");
 const SearchSettingsPanel = require("./search-settings-panel");
 const notifyPackageError = require("./notify-error");
+const recentSettings = require("./recent-settings");
 
 module.exports = class SettingsView {
   constructor({ uri, packageManager, snippetsProvider, activePanel } = {}) {
@@ -407,6 +408,8 @@ module.exports = class SettingsView {
   }
 
   openSetting(path) {
+    recentSettings.add(path);
+
     const namespace = path.split(".")[0];
     let panelName;
     let options = { uri: `lumine://config/${namespace}` };

@@ -24,9 +24,12 @@ module.exports = class SearchSettingView {
     const namespaceLabel = this.getNamespaceLabel(namespace);
     const icon = this.getIcon(namespace);
     const description = getSettingDescription(this.setting.path);
-    const metadata = atom.config.get("settings-view.searchSettingsMetadata")
-      ? `${this.setting.rank.totalScore.toFixed(2)} search score`
-      : "";
+    // Recently-opened entries reuse this card but were never scored, so there is
+    // no rank to report for them.
+    const metadata =
+      this.setting.rank && atom.config.get("settings-view.searchSettingsMetadata")
+        ? `${this.setting.rank.totalScore.toFixed(2)} search score`
+        : "";
 
     return (
       <div className="search-result" role="listitem">

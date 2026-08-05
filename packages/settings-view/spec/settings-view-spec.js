@@ -1,6 +1,7 @@
 const path = require("path");
 const main = require("../lib/main");
 const PackageManager = require("../lib/package-manager");
+const recentSettings = require("../lib/recent-settings");
 const SnippetsProvider = {
   getSnippets() {
     return {};
@@ -14,6 +15,9 @@ describe("SettingsView", function () {
   const packageManager = new PackageManager();
 
   beforeEach(function () {
+    // `openSetting` records into a module singleton, so specs below would
+    // otherwise seed the Search panel for every later spec in the run.
+    recentSettings.clear();
     settingsView = main.createSettingsView({ packageManager, snippetsProvider: SnippetsProvider });
     spyOn(settingsView, "initializePanels").andCallThrough();
     window.advanceClock(10000);
@@ -699,6 +703,37 @@ describe("SettingsView", function () {
       expect(settingsView.showPanel).toHaveBeenCalledWith("Language", {
         uri: "lumine://config/language",
       });
+    });
+
+    it("round-trips the recently opened list through the package state", () => {
+      spyOn(settingsView, "showPanel");
+      spyOn(settingsView, "revealSetting");
+
+      settingsView.openSetting("editor.fontSize");
+      const state = main.serialize();
+      recentSettings.clear();
+
+      main.initialize(state);
+      expect(recentSettings.getPaths()).toEqual(["editor.fontSize"]);
+
+      // `initialize` runs again after a disable/enable cycle, and the package
+      // state is `{}` on a first run.
+      main.initialize(state);
+      expect(recentSettings.getPaths()).toEqual(["editor.fontSize"]);
+
+      main.initialize({});
+      expect(recentSettings.getPaths()).toEqual([]);
+    });
+
+    it("records the setting as recently opened, most recent first", () => {
+      spyOn(settingsView, "showPanel");
+      spyOn(settingsView, "revealSetting");
+
+      settingsView.openSetting("editor.fontSize");
+      settingsView.openSetting("core.closeDeletedFileTabs");
+      settingsView.openSetting("editor.fontSize");
+
+      expect(recentSettings.getPaths()).toEqual(["editor.fontSize", "core.closeDeletedFileTabs"]);
     });
 
     it("expands, scrolls to, focuses, and highlights a nested setting", () => {

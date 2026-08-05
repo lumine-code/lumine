@@ -5,6 +5,8 @@ let statusViewIcon = null;
 const PackageManager = require("./package-manager");
 let packageManager = null;
 
+const recentSettings = require("./recent-settings");
+
 const SnippetsProvider = {
   getSnippets() {
     return atom.config.scopedSettingsStore.propertySets;
@@ -23,6 +25,18 @@ module.exports = {
 
   showPackage(packageName) {
     atom.workspace.open(`lumine://config/packages/${packageName}`);
+  },
+
+  // Restoring a window deserializes the Settings pane item before packages are
+  // activated, so the recently-opened list has to be read here rather than in
+  // `activate` — otherwise the Search panel paints an empty list on exactly the
+  // session where it was left open.
+  initialize(state) {
+    recentSettings.load(state.recentSettings);
+  },
+
+  serialize() {
+    return { recentSettings: recentSettings.serialize() };
   },
 
   activate() {
@@ -79,6 +93,9 @@ module.exports = {
       },
       "settings-view:check-updates"() {
         atom.workspace.open(`${CONFIG_URI}/update`);
+      },
+      "settings-view:clear-recent-settings"() {
+        recentSettings.clear();
       },
     });
 
