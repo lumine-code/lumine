@@ -2,14 +2,18 @@ const path = require("path");
 const fs = require("fs");
 
 const { UI_VARIABLES, UI_VARIABLES_EXTENDED, SYNTAX_VARIABLES } = require("../src/theme-variables");
+const { resolveBundledPackageDir } = require("../src/bundled-packages");
 
 // The theme variable contract exists in three places that must stay in sync:
 // the manifest in src/theme-variables.js, the legacy Less fallbacks in
 // static/variables/*.less, and the CSS custom-property fallbacks in
 // static/variables/base-variables.css.
 describe("the theme variable contract", () => {
-  const variablesDir = path.join(__dirname, "..", "static", "variables");
-  const packagesDir = path.join(__dirname, "..", "packages");
+  const repoRoot = path.join(__dirname, "..");
+  const variablesDir = path.join(repoRoot, "static", "variables");
+  // Bundled packages live wherever their pin delivers them, so resolve each
+  // one instead of assuming a packages/ checkout.
+  const packageDir = (name) => resolveBundledPackageDir(repoRoot, name);
 
   function lessVariableNames(fileName) {
     const source = fs.readFileSync(path.join(variablesDir, fileName), "utf8");
@@ -105,7 +109,7 @@ describe("the theme variable contract", () => {
     ];
 
     for (const themeName of themeNames) {
-      const themeDir = path.join(packagesDir, themeName);
+      const themeDir = packageDir(themeName);
       for (const relativePath of removedOverrideFiles) {
         expect(fs.existsSync(path.join(themeDir, relativePath))).toBe(false);
       }
@@ -167,15 +171,18 @@ describe("the theme variable contract", () => {
     expect(modalSource).toContain(".select-list .primary-line");
 
     for (const relativePath of packageStylePaths) {
-      const packageStylePath = path.join(packagesDir, relativePath);
-      const packageSource = fs.existsSync(packageStylePath)
-        ? fs.readFileSync(packageStylePath, "utf8")
-        : "";
+      const [packageName, ...rest] = relativePath.split("/");
+      const packageRoot = packageDir(packageName);
+      const packageStylePath = packageRoot ? path.join(packageRoot, ...rest) : null;
+      const packageSource =
+        packageStylePath && fs.existsSync(packageStylePath)
+          ? fs.readFileSync(packageStylePath, "utf8")
+          : "";
       expect(packageSource).not.toContain(".character-match");
     }
 
     for (const themeName of themeNames) {
-      const stylesDir = path.join(packagesDir, themeName, "styles");
+      const stylesDir = path.join(packageDir(themeName), "styles");
       const themeSource = fs
         .readdirSync(stylesDir, { recursive: true })
         .filter((relativePath) => relativePath.endsWith(".css"))
