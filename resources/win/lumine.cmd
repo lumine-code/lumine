@@ -45,6 +45,7 @@ set LUMINE_CHANNEL=
 set LUMINE_BASE_NAME=%~n0
 set LUMINE_CHANNEL=stable
 set EXE_NAME=Lumine
+set LUMINE_EXECUTABLE=%~dp0..\%EXE_NAME%.exe
 
 IF "%LUMINE_ADD%"=="YES" (
   IF "%LUMINE_NEW_WINDOW%"=="YES" (
@@ -54,7 +55,13 @@ IF "%LUMINE_ADD%"=="YES" (
 
 IF "%EXPECT_OUTPUT%"=="YES" (
   IF "%WAIT%"=="YES" (
-    powershell -noexit "Start-Process -FilePath \"%~dp0\..\%EXE_NAME%.exe\" -ArgumentList \"--pid=$pid $env:PSARGS\" ; wait-event"
+    REM --wait blocks until the editor is done with the file. The editor kills
+    REM the pid it is handed, so this PowerShell is here only to be a killable
+    REM process that blocks; `Wait-Event` waits on an event that never comes.
+    REM Exit 64 is a sentinel for "the editor never launched" — a killed
+    REM PowerShell exits 1, so ERRORLEVEL 1 cannot mean failure here.
+    powershell -NoProfile -NonInteractive -Command "try { Start-Process -FilePath $env:LUMINE_EXECUTABLE -ArgumentList \"--pid=$PID $env:PSARGS\" -ErrorAction Stop } catch { Write-Error $_.Exception.Message; exit 64 }; Wait-Event"
+    IF ERRORLEVEL 64 exit 1
     exit 0
   ) ELSE (
     "%~dp0\..\%EXE_NAME%.exe" %*
