@@ -53,7 +53,7 @@
       display: block;
       content: "Loading Markdown…";
       margin: auto;
-      background-image: url(images/octocat-spinner-128.gif);
+      background-image: url(images/loading-spinner-128.gif);
       background-repeat: no-repeat;
       background-size: 64px;
       background-position: top center;
