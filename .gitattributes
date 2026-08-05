@@ -18,6 +18,12 @@ spec/fixtures/sample.txt text eol=lf
 # Windows bash scripts are also Unix LF endings
 *.sh		eol=lf
 
+# cmd.exe needs CRLF. An LF-only batch file parses correctly only while it is
+# small; past a buffer boundary cmd drops the first byte of every line, so the
+# shim breaks the moment someone adds to it.
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
 # Grammar wasm files are binary; never attempt text merges or EOL conversion
 *.wasm binary
 
