@@ -2827,8 +2827,8 @@ describe("KeymapManager", function () {
         // timers; the fake clock can't drive it.
         beforeEach(() => useRealClock());
         beforeEach(async function () {
-          keymapFilePath = path.join(temp.mkdirSync("keymap-manager-spec"), "keymapManager.cson");
-          fs.writeFileSync(keymapFilePath, `'.a': 'ctrl-a': 'x'`);
+          keymapFilePath = path.join(temp.mkdirSync("keymap-manager-spec"), "keymapManager.json");
+          fs.writeFileSync(keymapFilePath, `{ ".a": { "ctrl-a": "x" } }`);
           keymapManager.loadKeymap(keymapFilePath, {
             watch: true,
           });
@@ -2859,8 +2859,7 @@ describe("KeymapManager", function () {
             });
             fs.writeFileSync(
               keymapFilePath,
-              `'.a': 'ctrl-a': 'y'
-'.b': 'ctrl-b': 'z'`,
+              `{ ".a": { "ctrl-a": "y" }, ".b": { "ctrl-b": "z" } }`,
             );
           });
           it("reloads the file's key bindings and notifies ::onDidReloadKeymap observers with the keymap path even if the file is empty", function (done) {
@@ -2885,8 +2884,8 @@ describe("KeymapManager", function () {
             });
             fs.writeFileSync(
               keymapFilePath,
-              `#  '.a': 'ctrl-a': 'y'
-#  '.b': 'ctrl-b': 'z'`,
+              `// { ".a": { "ctrl-a": "y" } }
+{}`,
             );
           });
           return it("emits an event, logs a warning and does not reload if there is a problem reloading the file", function (done) {
@@ -2920,7 +2919,7 @@ describe("KeymapManager", function () {
         describe("when the file is moved", function () {
           return it("removes the bindings", function (done) {
             var newFilePath;
-            newFilePath = path.join(temp.mkdirSync("keymap-manager-spec"), "other-guy.cson");
+            newFilePath = path.join(temp.mkdirSync("keymap-manager-spec"), "other-guy.json");
             keymapManager.onDidUnloadKeymap(function (event) {
               assert.equal(event.path, keymapFilePath);
               assert.equal(

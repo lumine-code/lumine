@@ -103,7 +103,9 @@ function removePath(target) {
 }
 
 function readMetadata(packagePath) {
-  const metadataPath = CSON.resolve(path.join(packagePath, "package"));
+  const metadataPath = ["package.json", "package.jsonc"]
+    .map((filename) => path.join(packagePath, filename))
+    .find((candidate) => fs.existsSync(candidate));
   if (!metadataPath) {
     return null;
   }

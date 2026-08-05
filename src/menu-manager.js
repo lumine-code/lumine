@@ -213,11 +213,7 @@ module.exports = class MenuManager {
       return this.add(platformMenu);
     } else {
       const menusDirPath = path.join(this.resourcePath, "menus");
-      const platformMenuPath = fs.resolve(menusDirPath, process.platform, [
-        "json",
-        "jsonc",
-        "cson",
-      ]);
+      const platformMenuPath = fs.resolve(menusDirPath, process.platform, ["json", "jsonc"]);
       const { menu } = CSON.readFileSync(platformMenuPath);
       return this.add(menu);
     }

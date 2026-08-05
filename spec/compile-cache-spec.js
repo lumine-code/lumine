@@ -7,35 +7,25 @@
  */
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
-const fs = require("@lumine-code/fs-plus");
 const babelCompiler = require("../src/babel");
-// The core module and the package entry share one export object, but the
-// entry requires vm, which Electron rejects in renderer processes.
-const CoffeeScript = require("coffeescript/lib/coffeescript/coffeescript");
-const CSON = require("@lumine-code/season");
 const TypeScriptTranspiler = require("../src/typescript");
 const CompileCache = require("../src/compile-cache");
 
 describe("CompileCache", () => {
-  let atomHome, csonFixturePath, fixtures;
+  let atomHome, fixtures;
 
   beforeEach(() => {
     fixtures = atom.project.getPaths()[0];
     atomHome = temp.mkdirSync("fake-atom-home");
-    csonFixturePath = path.join(temp.mkdirSync("cson-fixture"), "fixture.cson");
-    fs.writeFileSync(csonFixturePath, "a: 4");
 
-    CSON.setCacheDir(null);
     CompileCache.resetCacheStats();
 
     spyOn(babelCompiler, "compile");
-    spyOn(CoffeeScript, "compile").and.returnValue("the-coffee-code");
     spyOn(TypeScriptTranspiler, "compile").and.returnValue("the-typescript-code");
   });
 
   afterEach(() => {
     CompileCache.setAtomHomeDirectory(process.env.LUMINE_HOME);
-    CSON.setCacheDir(CompileCache.getCacheDirectory());
     try {
       temp.cleanupSync();
     } catch {
@@ -67,18 +57,6 @@ describe("CompileCache", () => {
       });
     });
 
-    describe("when the given file is coffee-script", () => {
-      it("compiles the file with coffee-script and caches it", function () {
-        CompileCache.addPathToCache(path.join(fixtures, "coffee.coffee"), atomHome);
-        expect(CompileCache.getCacheStats()[".coffee"]).toEqual({ hits: 0, misses: 1 });
-        expect(CoffeeScript.compile.calls.count()).toBe(1);
-
-        CompileCache.addPathToCache(path.join(fixtures, "coffee.coffee"), atomHome);
-        expect(CompileCache.getCacheStats()[".coffee"]).toEqual({ hits: 1, misses: 1 });
-        expect(CoffeeScript.compile.calls.count()).toBe(1);
-      });
-    });
-
     describe("when the given file is typescript", () => {
       it("compiles the file with typescript and caches it", function () {
         CompileCache.addPathToCache(path.join(fixtures, "typescript", "valid.ts"), atomHome);
@@ -101,23 +79,6 @@ describe("CompileCache", () => {
         CompileCache.addPathToCache(path.join(fixtures, "babel", "default-factory.jsx"), atomHome);
         expect(CompileCache.getCacheStats()[".jsx"]).toEqual({ hits: 1, misses: 1 });
         expect(babelCompiler.compile.calls.count()).toBe(1);
-      });
-    });
-
-    describe("when the given file is CSON", () => {
-      it("compiles the file to JSON and caches it", function () {
-        spyOn(CSON, "setCacheDir").and.callThrough();
-        spyOn(CSON, "readFileSync").and.callThrough();
-
-        CompileCache.addPathToCache(csonFixturePath, atomHome);
-        expect(CSON.readFileSync).toHaveBeenCalledWith(csonFixturePath);
-        expect(CSON.setCacheDir).toHaveBeenCalledWith(path.join(atomHome, "/compile-cache"));
-
-        CSON.readFileSync.calls.reset();
-        CSON.setCacheDir.calls.reset();
-        CompileCache.addPathToCache(csonFixturePath, atomHome);
-        expect(CSON.readFileSync).toHaveBeenCalledWith(csonFixturePath);
-        expect(CSON.setCacheDir).not.toHaveBeenCalled();
       });
     });
   });

@@ -26,13 +26,9 @@ describe("get-app-details", () => {
     );
   });
 
-  it("prefers JSON and JSONC while retaining CSON support", () => {
-    const csonPath = path.join(process.env.LUMINE_HOME, "config.cson");
+  it("prefers JSON over JSONC", () => {
     const jsoncPath = path.join(process.env.LUMINE_HOME, "config.jsonc");
     const jsonPath = path.join(process.env.LUMINE_HOME, "config.json");
-
-    fs.writeFileSync(csonPath, "core: telemetryConsent: 'no'");
-    expect(getConfigFilePath()).toBe(csonPath);
 
     fs.writeFileSync(jsoncPath, "{ // comment\n}");
     expect(getConfigFilePath()).toBe(jsoncPath);

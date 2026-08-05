@@ -66,11 +66,7 @@ module.exports = class ContextMenuManager {
       return this.add(platformContextMenu, this.devMode || false);
     } else {
       const menusDirPath = path.join(this.resourcePath, "menus");
-      const platformMenuPath = fs.resolve(menusDirPath, process.platform, [
-        "json",
-        "jsonc",
-        "cson",
-      ]);
+      const platformMenuPath = fs.resolve(menusDirPath, process.platform, ["json", "jsonc"]);
       const map = CSON.readFileSync(platformMenuPath);
       return this.add(map["context-menu"]);
     }

@@ -517,7 +517,7 @@ module.exports = class PackageManager {
     if (isBundled && this.packagesCache[cacheName] != null) {
       manifest.metadata = this.packagesCache[cacheName].metadata || {};
     } else {
-      const metadataPath = CSON.resolve(path.join(packagePath, "package"));
+      const metadataPath = fs.resolve(packagePath, "package", ["json", "jsonc"]);
       if (metadataPath) {
         try {
           manifest.metadata = CSON.readFileSync(metadataPath) || {};

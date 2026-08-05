@@ -1,4 +1,4 @@
 {
-  "main": "main-module.coffee",
+  "main": "main-module.js",
   "version": "2.3.4"
 }

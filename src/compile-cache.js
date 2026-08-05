@@ -8,11 +8,6 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const sourceMapSupport = require("@atom/source-map-support");
 
-const PackageTranspilationRegistry = require("./package-transpilation-registry");
-let CSON = null;
-
-const packageTranspilationRegistry = new PackageTranspilationRegistry();
-
 const babelCompiler = require("./babel");
 // A .jsx file is always compiled — no pragma sniffing — through the same Babel
 // pipeline and on-disk cache as pragma-carrying .js files. Prototype delegation
@@ -22,26 +17,10 @@ const jsxCompiler = Object.assign(Object.create(babelCompiler), {
 });
 
 const COMPILERS = {
-  ".js": packageTranspilationRegistry.wrapTranspiler(babelCompiler),
-  ".jsx": packageTranspilationRegistry.wrapTranspiler(jsxCompiler),
-  ".ts": packageTranspilationRegistry.wrapTranspiler(require("./typescript")),
-  ".tsx": packageTranspilationRegistry.wrapTranspiler(require("./typescript")),
-  ".coffee": packageTranspilationRegistry.wrapTranspiler(require("./coffee-script")),
-};
-
-exports.addTranspilerConfigForPath = function (packagePath, packageName, packageMeta, config) {
-  packagePath = fs.realpathSync(packagePath);
-  packageTranspilationRegistry.addTranspilerConfigForPath(
-    packagePath,
-    packageName,
-    packageMeta,
-    config,
-  );
-};
-
-exports.removeTranspilerConfigForPath = function (packagePath) {
-  packagePath = fs.realpathSync(packagePath);
-  packageTranspilationRegistry.removeTranspilerConfigForPath(packagePath);
+  ".js": babelCompiler,
+  ".jsx": jsxCompiler,
+  ".ts": require("./typescript"),
+  ".tsx": require("./typescript"),
 };
 
 const cacheStats = {};
@@ -71,17 +50,9 @@ exports.addPathToCache = function (filePath, atomHome) {
   this.setAtomHomeDirectory(atomHome);
   const extension = path.extname(filePath);
 
-  if (extension === ".cson") {
-    if (!CSON) {
-      CSON = require("@lumine-code/season");
-      CSON.setCacheDir(this.getCacheDirectory());
-    }
-    return CSON.readFileSync(filePath);
-  } else {
-    const compiler = COMPILERS[extension];
-    if (compiler) {
-      return compileFileAtPath(compiler, filePath, extension);
-    }
+  const compiler = COMPILERS[extension];
+  if (compiler) {
+    return compileFileAtPath(compiler, filePath, extension);
   }
 };
 

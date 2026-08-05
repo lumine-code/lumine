@@ -27,11 +27,4 @@ describe("keymap-extensions", function () {
       path.join(atom.keymaps.configDirPath, "keymap.json"),
     );
   });
-
-  it("continues to resolve an existing CSON keymap", () => {
-    fs.removeSync(atom.keymaps.getUserKeymapPath());
-    const csonPath = path.join(atom.keymaps.configDirPath, "keymap.cson");
-    fs.writeFileSync(csonPath, "'.workspace': 'ctrl-l': 'core:move-left'");
-    expect(atom.keymaps.getUserKeymapPath()).toBe(csonPath);
-  });
 });

@@ -429,7 +429,7 @@ module.exports = KeymapManager = (function () {
             : undefined
           : true;
       if (checkIfDirectory && fs.isDirectorySync(bindingsPath)) {
-        for (var filePath of Array.from(fs.listSync(bindingsPath, [".json", ".jsonc", ".cson"]))) {
+        for (var filePath of Array.from(fs.listSync(bindingsPath, [".json", ".jsonc"]))) {
           if (this.filePathMatchesPlatform(filePath)) {
             this.loadKeymap(filePath, { checkIfDirectory: false });
           }

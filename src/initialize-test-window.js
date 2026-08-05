@@ -22,7 +22,6 @@ module.exports = async function ({ blobStore }) {
   try {
     const path = require("path");
     const { ipcRenderer } = require("electron");
-    const CompileCache = require("./compile-cache");
     const AtomEnvironment = require("../src/atom-environment");
     const ApplicationDelegate = require("../src/application-delegate");
     const Clipboard = require("../src/clipboard");
@@ -107,20 +106,6 @@ module.exports = async function ({ blobStore }) {
     updateProcessEnv(env);
 
     // Set up optional transpilation for packages under test if any
-    const FindParentDir = require("./find-parent-dir");
-    const packageRoot = FindParentDir.sync(testPaths[0], "package.json");
-    if (packageRoot) {
-      const packageMetadata = require(path.join(packageRoot, "package.json"));
-      if (packageMetadata.atomTranspilers) {
-        CompileCache.addTranspilerConfigForPath(
-          packageRoot,
-          packageMetadata.name,
-          packageMetadata,
-          packageMetadata.atomTranspilers,
-        );
-      }
-    }
-
     document.title = "Spec Suite";
 
     const clipboard = new Clipboard();

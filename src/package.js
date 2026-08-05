@@ -98,7 +98,6 @@ module.exports = class Package {
         this.registerDeserializerMethods();
         this.activateCoreStartupServices();
         this.registerURIHandler();
-        this.registerTranspilerConfig();
         this.configSchemaRegisteredOnLoad = this.registerConfigSchemaFromMetadata();
         this.settingsPromise = this.loadSettings();
         if (this.shouldRequireMainModuleOnLoad() && this.mainModule == null) {
@@ -111,9 +110,7 @@ module.exports = class Package {
     return this;
   }
 
-  unload() {
-    this.unregisterTranspilerConfig();
-  }
+  unload() {}
 
   shouldRequireMainModuleOnLoad() {
     return !(
@@ -424,23 +421,6 @@ module.exports = class Package {
     if (!this.mainActivated) this.activateNow();
   }
 
-  registerTranspilerConfig() {
-    if (this.metadata.atomTranspilers) {
-      CompileCache.addTranspilerConfigForPath(
-        this.path,
-        this.name,
-        this.metadata,
-        this.metadata.atomTranspilers,
-      );
-    }
-  }
-
-  unregisterTranspilerConfig() {
-    if (this.metadata.atomTranspilers) {
-      CompileCache.removeTranspilerConfigForPath(this.path);
-    }
-  }
-
   loadKeymaps() {
     if (this.bundledPackage && this.packageManager.packagesCache[this.name]) {
       this.keymaps = [];
@@ -475,10 +455,10 @@ module.exports = class Package {
     const keymapsDirPath = path.join(this.path, "keymaps");
     if (this.metadata.keymaps) {
       return this.metadata.keymaps.map((name) =>
-        fs.resolve(keymapsDirPath, name, ["json", "jsonc", "cson", ""]),
+        fs.resolve(keymapsDirPath, name, ["json", "jsonc", ""]),
       );
     } else {
-      return fs.listSync(keymapsDirPath, ["json", "jsonc", "cson"]);
+      return fs.listSync(keymapsDirPath, ["json", "jsonc"]);
     }
   }
 
@@ -486,10 +466,10 @@ module.exports = class Package {
     const menusDirPath = path.join(this.path, "menus");
     if (this.metadata.menus) {
       return this.metadata.menus.map((name) =>
-        fs.resolve(menusDirPath, name, ["json", "jsonc", "cson", ""]),
+        fs.resolve(menusDirPath, name, ["json", "jsonc", ""]),
       );
     } else {
-      return fs.listSync(menusDirPath, ["json", "jsonc", "cson"]);
+      return fs.listSync(menusDirPath, ["json", "jsonc"]);
     }
   }
 
@@ -592,7 +572,7 @@ module.exports = class Package {
   loadGrammarsSync() {
     if (this.grammarsLoaded) return;
 
-    const grammarPaths = fs.listSync(path.join(this.path, "grammars"), ["json", "jsonc", "cson"]);
+    const grammarPaths = fs.listSync(path.join(this.path, "grammars"), ["json", "jsonc"]);
 
     for (const grammarPath of grammarPaths) {
       try {
@@ -638,7 +618,7 @@ module.exports = class Package {
       const grammarsDirPath = path.join(this.path, "grammars");
       fs.exists(grammarsDirPath, (grammarsDirExists) => {
         if (!grammarsDirExists) return resolve();
-        fs.list(grammarsDirPath, ["json", "jsonc", "cson"], (error, grammarPaths) => {
+        fs.list(grammarsDirPath, ["json", "jsonc"], (error, grammarPaths) => {
           if (error || !grammarPaths) return resolve();
           asyncEach(grammarPaths, loadGrammar, () => resolve());
         });
@@ -670,7 +650,7 @@ module.exports = class Package {
       const settingsDirPath = path.join(this.path, "settings");
       fs.exists(settingsDirPath, (settingsDirExists) => {
         if (!settingsDirExists) return resolve();
-        fs.list(settingsDirPath, ["json", "jsonc", "cson"], (error, settingsPaths) => {
+        fs.list(settingsDirPath, ["json", "jsonc"], (error, settingsPaths) => {
           if (error || !settingsPaths) return resolve();
           asyncEach(settingsPaths, loadSettingsFile, () => resolve());
         });

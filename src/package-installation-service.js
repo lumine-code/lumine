@@ -15,6 +15,17 @@ const {
 } = require("./package-source");
 const { validateCommunityPackageMetadata } = require("./package-validation");
 
+// The manifest forms the editor loads, most preferred first.
+const MANIFEST_FILENAMES = ["package.json", "package.jsonc"];
+
+function resolveManifestPath(directory) {
+  for (const filename of MANIFEST_FILENAMES) {
+    const candidate = path.join(directory, filename);
+    if (fs.existsSync(candidate)) return candidate;
+  }
+  return null;
+}
+
 class PackageInstallationService {
   constructor({
     packagesDirectory,
@@ -87,11 +98,9 @@ class PackageInstallationService {
     try {
       const sha = await this.fetchPackageFiles(stage, resolved, requestedSource);
 
-      const metadataPath = CSON.resolve(path.join(stage, "package"));
+      const metadataPath = resolveManifestPath(stage);
       if (!metadataPath) {
-        throw new Error(
-          "The repository does not contain a package.json, package.jsonc, or package.cson file.",
-        );
+        throw new Error("The repository does not contain a package.json or package.jsonc file.");
       }
       const originKey = normalizeRepositoryOrigin(resolved.repository);
       const semanticTag =
@@ -118,7 +127,7 @@ class PackageInstallationService {
         sha,
       };
 
-      // npm only understands package.json. For JSONC/CSON packages, expose a
+      // npm only understands package.json. For a JSONC manifest, expose a
       // temporary equivalent after validation, then retain the original
       // manifest format as the authoritative installed file.
       const npmMetadataPath = path.join(stage, "package.json");
@@ -189,7 +198,7 @@ class PackageInstallationService {
         continue;
       }
       const packagePath = path.join(this.packagesDirectory, entry.name);
-      const metadataPath = CSON.resolve(path.join(packagePath, "package"));
+      const metadataPath = resolveManifestPath(packagePath);
       if (!metadataPath) continue;
       let metadata;
       try {
@@ -333,12 +342,11 @@ class PackageInstallationService {
     return swept;
   }
 
+  // Written as JSON whichever of the two forms the manifest arrived in: JSONC
+  // is JSON plus comments, and the install source's comments do not survive
+  // the parse that produced this object anyway.
   writeMetadata(metadataPath, metadata) {
-    if (path.extname(metadataPath) === ".json") {
-      fs.writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
-    } else {
-      CSON.writeFileSync(metadataPath, metadata);
-    }
+    fs.writeFileSync(metadataPath, `${JSON.stringify(metadata, null, 2)}\n`);
   }
 
   remove(target) {

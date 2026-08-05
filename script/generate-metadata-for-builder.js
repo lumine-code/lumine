@@ -6,7 +6,7 @@ const normalizePackageData = require("normalize-package-data");
 const path = require("path");
 const { scanBundledPackageNames } = require("../src/bundled-packages");
 
-const objectFileExtensions = ["json", "jsonc", "cson"];
+const objectFileExtensions = ["json", "jsonc"];
 
 function isObjectFile(filePath) {
   return objectFileExtensions.includes(path.extname(filePath).slice(1));

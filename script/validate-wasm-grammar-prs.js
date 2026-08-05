@@ -12,7 +12,7 @@ const path = require("node:path");
 const fs = require("node:fs");
 const CSON = require("@lumine-code/season");
 
-const objectFileExtensions = new Set([".json", ".jsonc", ".cson"]);
+const objectFileExtensions = new Set([".json", ".jsonc"]);
 
 // Change this if you want more logs
 let verbose = true;

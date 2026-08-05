@@ -377,7 +377,7 @@ describe("PackageManager", () => {
       });
 
       describe("when the metadata does not specify a main module", () => {
-        it("requires index.coffee", async () => {
+        it("requires index.js", async () => {
           const indexModule = require("./fixtures/packages/package-with-index/index");
           spyOn(indexModule, "activate");
 
@@ -942,7 +942,7 @@ describe("PackageManager", () => {
         let element, events, userKeymapPath;
 
         beforeEach(() => {
-          userKeymapPath = path.join(temp.mkdirSync(), "user-keymaps.cson");
+          userKeymapPath = path.join(temp.mkdirSync(), "user-keymaps.json");
           spyOn(atom.keymaps, "getUserKeymapPath").and.returnValue(userKeymapPath);
 
           element = createTestElement("test-1");
@@ -964,7 +964,7 @@ describe("PackageManager", () => {
         });
 
         it("doesn't override user-defined keymaps", async () => {
-          fs.writeFileSync(userKeymapPath, `".test-1": {"ctrl-z": "user-command"}`);
+          fs.writeFileSync(userKeymapPath, `{ ".test-1": { "ctrl-z": "user-command" } }`);
           atom.keymaps.loadUserKeymap();
 
           await atom.packages.activatePackage("package-with-keymaps");

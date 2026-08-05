@@ -40,7 +40,7 @@ function getConfigFilePath(opts = {}) {
   const fs = require("fs");
   const path = require("path");
 
-  let configFilePath = ["config.json", "config.jsonc", "config.cson"]
+  let configFilePath = ["config.json", "config.jsonc"]
     .map((file) => path.join(process.env.LUMINE_HOME, file))
     .find((f) => fs.existsSync(f));
 

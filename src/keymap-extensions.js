@@ -1,7 +1,6 @@
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const KeymapManager = require("./keymap-manager");
-const CSON = require("@lumine-code/season");
 
 const buildMetadata = require("../package.json");
 var bundledKeymaps;
@@ -39,7 +38,7 @@ KeymapManager.prototype.getUserKeymapPath = function () {
   if (this.configDirPath == null) {
     return "";
   }
-  let userKeymapPath = CSON.resolve(path.join(this.configDirPath, "keymap"));
+  let userKeymapPath = fs.resolve(this.configDirPath, "keymap", ["json", "jsonc"]);
   if (userKeymapPath) {
     return userKeymapPath;
   }

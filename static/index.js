@@ -115,9 +115,6 @@
       return documentRegisterElement(type, options);
     };
 
-    const CSON = require("@lumine-code/season");
-    CSON.setCacheDir(path.join(CompileCache.getCacheDirectory(), "cson"));
-
     const initScriptPath = path.relative(
       entryPointDirPath,
       getWindowLoadSettings().windowInitializationScript,

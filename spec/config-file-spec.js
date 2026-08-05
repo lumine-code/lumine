@@ -101,14 +101,6 @@ describe("ConfigFile", () => {
     });
   });
 
-  it("continues to load CSON configuration files", async () => {
-    const csonPath = path.join(path.dirname(filePath), "legacy-config.cson");
-    writeFileSync(csonPath, "'*': foo: 'bar'");
-    configFile = new ConfigFile(csonPath);
-    subscription = await configFile.watch();
-    expect(configFile.get()).toEqual({ "*": { foo: "bar" } });
-  });
-
   describe("ConfigFile.at()", () => {
     let path0, path1;
 

@@ -137,9 +137,14 @@ describe("PackageInstallationService", function () {
     );
   });
 
-  it("uses a temporary package.json to install a CSON manifest", function () {
+  it("uses a temporary package.json to install a JSONC manifest", function () {
     writeSourceFiles = (directory) => {
-      CSON.writeFileSync(path.join(directory, "package.cson"), manifest);
+      fs.writeFileSync(
+        path.join(directory, "package.jsonc"),
+        `// the manifest
+${JSON.stringify(manifest, null, 2)}
+`,
+      );
     };
     const originalRun = service.run;
     service.run = async (command, args, options) => {
@@ -153,7 +158,7 @@ describe("PackageInstallationService", function () {
     waitsForPromise(() =>
       service.install(pack()).then((installed) => {
         expect(fs.existsSync(path.join(installed.target, "package.json"))).toBe(false);
-        const written = CSON.readFileSync(path.join(installed.target, "package.cson"));
+        const written = CSON.readFileSync(path.join(installed.target, "package.jsonc"));
         expect(written.apmInstallSource.sha).toBe(SHA);
       }),
     );

@@ -1678,7 +1678,7 @@ or use Pane::saveItemAs for programmatic saving.`);
   }
 
   getUserInitScriptPath() {
-    const initScriptPath = fs.resolve(this.getConfigDirPath(), "init", ["js", "coffee"]);
+    const initScriptPath = fs.resolve(this.getConfigDirPath(), "init", ["js"]);
     return initScriptPath || path.join(this.getConfigDirPath(), "init.js");
   }
 

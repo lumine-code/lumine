@@ -98,7 +98,7 @@ function highlightsIn(packageDir) {
   const declaredSegments = new Set();
 
   for (const fileName of fs.readdirSync(grammarsDir)) {
-    if (!/\.(json|jsonc|cson)$/.test(fileName)) continue;
+    if (!/\.(json|jsonc)$/.test(fileName)) continue;
     let config;
     try {
       config = CSON.readFileSync(path.join(grammarsDir, fileName));
