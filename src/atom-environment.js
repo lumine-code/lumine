@@ -686,7 +686,13 @@ class AtomEnvironment {
    * @see {@link https://github.com/npm/node-semver#ranges}
    */
   versionSatisfies(value) {
-    return semver.satisfies(this.getVersion(), value);
+    // A prerelease build carries the API surface of the version it precedes —
+    // `1.1.0-rc.1` has everything `1.1.0` has — but semver ranges exclude
+    // prereleases, so `^1.1.0` would reject it. Compare against the release the
+    // build is a candidate for, which is what the package install path already
+    // does when it measures a manifest's engines range.
+    const [version] = this.getVersion().split("-");
+    return semver.satisfies(version, value);
   }
 
   // Public: Gets the release channel of the Lumine application.
@@ -699,8 +705,12 @@ class AtomEnvironment {
   }
 
   // Public: Returns a {Boolean} that is `true` if the current version is an official release.
+  //
+  // A release candidate counts: it is tagged, built and published like any
+  // other release, just flagged as a pre-release. Only builds that never went
+  // through that pipeline — `dev` above all — are excluded.
   isReleasedVersion() {
-    return this.getReleaseChannel().match(/stable|beta|nightly/) != null;
+    return this.getReleaseChannel().match(/stable|beta|rc|nightly/) != null;
   }
 
   // Public: Get the time taken to completely load the current window.
@@ -1439,7 +1449,12 @@ class AtomEnvironment {
     }
 
     this.emitter.emit("did-fail-assertion", error);
-    if (!this.isReleasedVersion()) throw error;
+    // A broken invariant is a hard error while developing and under test, and
+    // telemetry in a build a user is running. That distinction is about who is
+    // at the keyboard, not about what the version string says — keying it on
+    // the release channel meant a dev build silently swallowed assertions the
+    // moment master stopped carrying a prerelease suffix.
+    if (this.inDevMode() || this.inSpecMode()) throw error;
 
     return false;
   }

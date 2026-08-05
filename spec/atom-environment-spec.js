@@ -44,6 +44,16 @@ describe("AtomEnvironment", () => {
       version = "36b5518";
       expect(atom.isReleasedVersion()).toBe(false);
     });
+
+    it("counts every channel that went through the release pipeline", () => {
+      let version = "1.1.0";
+      spyOn(atom, "getVersion").and.callFake(() => version);
+      for (version of ["1.1.0", "1.1.0-beta.1", "1.1.0-rc.1", "1.1.0-nightly1"]) {
+        expect(atom.isReleasedVersion()).toBe(true);
+      }
+      version = "1.1.0-dev";
+      expect(atom.isReleasedVersion()).toBe(false);
+    });
   });
 
   describe(".versionSatisfies()", () => {
@@ -53,6 +63,15 @@ describe("AtomEnvironment", () => {
       expect(atom.versionSatisfies(">0.2.0")).toBe(false);
       expect(atom.versionSatisfies(">=0.x.x <=2.x.x")).toBe(true);
       expect(atom.versionSatisfies("^0.1.x")).toBe(true);
+    });
+
+    // Every package declares an `engines.lumine` range, so a prerelease build
+    // rejecting its own version line would report the whole fleet incompatible.
+    it("measures a prerelease build against the release it precedes", () => {
+      spyOn(atom, "getVersion").and.returnValue("1.1.0-rc.1");
+      expect(atom.versionSatisfies("^1.0.0")).toBe(true);
+      expect(atom.versionSatisfies("^1.1.0")).toBe(true);
+      expect(atom.versionSatisfies("^1.2.0")).toBe(false);
     });
   });
 
@@ -280,7 +299,10 @@ describe("AtomEnvironment", () => {
 
     beforeEach(() => {
       errors = [];
-      spyOn(atom, "isReleasedVersion").and.returnValue(true);
+      // Stand in for a build a user is running: neither dev mode nor the spec
+      // runner, so a failed assertion reports instead of throwing.
+      spyOn(atom, "inDevMode").and.returnValue(false);
+      spyOn(atom, "inSpecMode").and.returnValue(false);
       atom.onDidFailAssertion((error) => errors.push(error));
     });
 
@@ -308,9 +330,19 @@ describe("AtomEnvironment", () => {
         });
       });
 
-      describe("when Atom has been built from source", () => {
+      // Whether a broken invariant is fatal depends on who is at the keyboard,
+      // never on the version string: a release carrying no prerelease suffix
+      // must not silence assertions for the person developing against it.
+      describe("when running in dev mode", () => {
         it("throws an error", () => {
-          atom.isReleasedVersion.and.returnValue(false);
+          atom.inDevMode.and.returnValue(true);
+          expect(() => atom.assert(false, "testing")).toThrowError("Assertion failed: testing");
+        });
+      });
+
+      describe("when running under the spec runner", () => {
+        it("throws an error", () => {
+          atom.inSpecMode.and.returnValue(true);
           expect(() => atom.assert(false, "testing")).toThrowError("Assertion failed: testing");
         });
       });

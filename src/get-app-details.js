@@ -2,14 +2,18 @@
 // (eg renderer or main process) is different depending on where these functions
 // are being called.
 
+// The channel is the alphabetic part of a semver prerelease, so `1.2.3-rc.1`,
+// `1.2.3-rc1` and `1.2.3-dev-a1b2c3d` all read as their channel and a plain
+// `1.2.3` reads as stable. Both the dotted and undotted prerelease spellings
+// are accepted: release tags are written `vX.Y.Z-rc.N`, which is the form npm
+// and GitHub tooling produce, and the undotted form is what earlier builds
+// used.
 function getReleaseChannel(version) {
-  // This matches stable, dev (with or without commit hash) and any other
-  // release channel following the pattern '1.00.0-channel0'
-  const match = version?.match(/\d+\.\d+\.\d+(-([a-z]+)(\d+|-\w{4,})?)?$/);
+  const match = version?.match(/^\d+\.\d+\.\d+(?:-([a-z]+)[.-]?(?:\d+|\w{4,})?)?$/);
   if (!match) {
     return "unrecognized";
-  } else if (match[2]) {
-    return match[2];
+  } else if (match[1]) {
+    return match[1];
   }
 
   return "stable";
