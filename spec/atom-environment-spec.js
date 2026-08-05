@@ -874,6 +874,48 @@ describe("AtomEnvironment", () => {
     });
   });
 
+  describe("::whenWindowLoaded()", () => {
+    let atomEnvironment, spy;
+
+    beforeEach(() => {
+      atomEnvironment = new AtomEnvironment({
+        applicationDelegate: atom.applicationDelegate,
+      });
+      atomEnvironment.initialize({ window, document });
+      spy = jasmine.createSpy();
+    });
+
+    afterEach(() => atomEnvironment.destroy());
+
+    it("is triggered once the window load time is recorded", () => {
+      atomEnvironment.whenWindowLoaded(spy);
+      expect(spy).not.toHaveBeenCalled();
+
+      atomEnvironment.setWindowLoadTime(42);
+      expect(spy).toHaveBeenCalledWith(42);
+      expect(atomEnvironment.getWindowLoadTime()).toBe(42);
+    });
+
+    it("triggers the callback immediately if the window has already loaded", () => {
+      atomEnvironment.setWindowLoadTime(42);
+      atomEnvironment.whenWindowLoaded(spy);
+      expect(spy).toHaveBeenCalledWith(42);
+    });
+
+    it("triggers each callback only once", () => {
+      atomEnvironment.whenWindowLoaded(spy);
+      atomEnvironment.setWindowLoadTime(42);
+      atomEnvironment.setWindowLoadTime(43);
+      expect(spy.calls.count()).toBe(1);
+    });
+
+    it("does not trigger a disposed callback", () => {
+      atomEnvironment.whenWindowLoaded(spy).dispose();
+      atomEnvironment.setWindowLoadTime(42);
+      expect(spy).not.toHaveBeenCalled();
+    });
+  });
+
   describe("::openLocations(locations)", () => {
     beforeEach(() => {
       atom.project.setPaths([]);

@@ -622,6 +622,27 @@ class AtomEnvironment {
     }
   }
 
+  // Extended: Invoke the given callback as soon as the window has finished
+  // loading (or immediately if it already has).
+  //
+  // A window deserializes its previously opened items, and activates its
+  // packages, before it is finished loading, so a view restored into it sees
+  // {::getWindowLoadTime} return null however late in activation it looks.
+  // Waiting on this is the only way to read that number from a restored view.
+  //
+  // * `callback` {Function} to be called once the window has loaded.
+  //   * `loadTime` The {Number} of milliseconds the window took to load.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  whenWindowLoaded(callback) {
+    if (this.loadTime != null) {
+      callback(this.loadTime);
+      return new Disposable();
+    } else {
+      return this.emitter.once("window-loaded", callback);
+    }
+  }
+
   /*
   Section: Lumine Details
   */
@@ -712,6 +733,13 @@ class AtomEnvironment {
   // if the window hasn't finished loading yet.
   getWindowLoadTime() {
     return this.loadTime;
+  }
+
+  // Record how long the window took to load and notify anything waiting on it.
+  // Called once by the window entry point, after the window is set up.
+  setWindowLoadTime(loadTime) {
+    this.loadTime = loadTime;
+    this.emitter.emit("window-loaded", loadTime);
   }
 
   // Public: Get all markers containing startup timing information.
