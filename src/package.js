@@ -34,7 +34,6 @@ module.exports = class Package {
 
     this.mainModule = null;
     this.path = params.path;
-    this.preloadedPackage = params.preloadedPackage;
     this.metadata = params.metadata || this.packageManager.loadPackageMetadata(this.path);
     this.bundledPackage =
       params.bundledPackage != null
@@ -86,37 +85,6 @@ module.exports = class Package {
 
   getStyleSheetPriority() {
     return 0;
-  }
-
-  preload() {
-    this.loadKeymaps();
-    this.loadMenus();
-    this.registerDeserializerMethods();
-    this.activateCoreStartupServices();
-    this.registerURIHandler();
-    this.configSchemaRegisteredOnLoad = this.registerConfigSchemaFromMetadata();
-    this.requireMainModule();
-    this.settingsPromise = this.loadSettings();
-
-    this.activationDisposables = new CompositeDisposable();
-    this.activateKeymaps();
-    this.activateMenus();
-    for (let settings of this.settings) {
-      settings.activate(this.config);
-    }
-    this.settingsActivated = true;
-  }
-
-  finishLoading() {
-    this.measure("loadTime", () => {
-      this.path = path.join(this.packageManager.resourcePath, this.path);
-      ModuleCache.add(this.path, this.metadata);
-
-      this.loadStylesheets();
-      // Unfortunately some packages are accessing `@mainModulePath`, so we need
-      // to compute that variable eagerly also for preloaded packages.
-      this.getMainModulePath();
-    });
   }
 
   load() {
@@ -339,7 +307,7 @@ module.exports = class Package {
 
     this.keymapDisposables = new CompositeDisposable();
 
-    const validateSelectors = !this.preloadedPackage;
+    const validateSelectors = !this.bundledPackage;
     for (let [keymapPath, map] of this.keymaps) {
       this.keymapDisposables.add(this.keymapManager.add(keymapPath, map, 0, validateSelectors));
     }
@@ -365,7 +333,7 @@ module.exports = class Package {
   }
 
   activateMenus() {
-    const validateSelectors = !this.preloadedPackage;
+    const validateSelectors = !this.bundledPackage;
     for (const [menuPath, map] of this.menus) {
       if (map["context-menu"]) {
         try {
@@ -624,18 +592,9 @@ module.exports = class Package {
   loadGrammarsSync() {
     if (this.grammarsLoaded) return;
 
-    let grammarPaths;
-    if (this.preloadedPackage && this.packageManager.packagesCache[this.name]) {
-      ({ grammarPaths } = this.packageManager.packagesCache[this.name]);
-    } else {
-      grammarPaths = fs.listSync(path.join(this.path, "grammars"), ["json", "jsonc", "cson"]);
-    }
+    const grammarPaths = fs.listSync(path.join(this.path, "grammars"), ["json", "jsonc", "cson"]);
 
-    for (let grammarPath of grammarPaths) {
-      if (this.preloadedPackage && this.packageManager.packagesCache[this.name]) {
-        grammarPath = path.resolve(this.packageManager.resourcePath, grammarPath);
-      }
-
+    for (const grammarPath of grammarPaths) {
       try {
         const grammar = this.grammarRegistry.readGrammarSync(grammarPath);
         grammar.packageName = this.name;
@@ -655,10 +614,6 @@ module.exports = class Package {
     if (this.grammarsLoaded) return Promise.resolve();
 
     const loadGrammar = (grammarPath, callback) => {
-      if (this.preloadedPackage) {
-        grammarPath = path.resolve(this.packageManager.resourcePath, grammarPath);
-      }
-
       return this.grammarRegistry.readGrammar(grammarPath, (error, grammar) => {
         if (error) {
           const detail = `${error.message} in ${grammarPath}`;
@@ -680,19 +635,14 @@ module.exports = class Package {
     };
 
     return new Promise((resolve) => {
-      if (this.preloadedPackage && this.packageManager.packagesCache[this.name]) {
-        const { grammarPaths } = this.packageManager.packagesCache[this.name];
-        return asyncEach(grammarPaths, loadGrammar, () => resolve());
-      } else {
-        const grammarsDirPath = path.join(this.path, "grammars");
-        fs.exists(grammarsDirPath, (grammarsDirExists) => {
-          if (!grammarsDirExists) return resolve();
-          fs.list(grammarsDirPath, ["json", "jsonc", "cson"], (error, grammarPaths) => {
-            if (error || !grammarPaths) return resolve();
-            asyncEach(grammarPaths, loadGrammar, () => resolve());
-          });
+      const grammarsDirPath = path.join(this.path, "grammars");
+      fs.exists(grammarsDirPath, (grammarsDirExists) => {
+        if (!grammarsDirExists) return resolve();
+        fs.list(grammarsDirPath, ["json", "jsonc", "cson"], (error, grammarPaths) => {
+          if (error || !grammarPaths) return resolve();
+          asyncEach(grammarPaths, loadGrammar, () => resolve());
         });
-      }
+      });
     });
   }
 
@@ -716,25 +666,16 @@ module.exports = class Package {
       });
     };
 
-    if (this.preloadedPackage && this.packageManager.packagesCache[this.name]) {
-      for (let settingsPath in this.packageManager.packagesCache[this.name].settings) {
-        const properties = this.packageManager.packagesCache[this.name].settings[settingsPath];
-        const settingsFile = new SettingsFile(`core:${settingsPath}`, properties || {});
-        this.settings.push(settingsFile);
-        if (this.settingsActivated) settingsFile.activate(this.config);
-      }
-    } else {
-      return new Promise((resolve) => {
-        const settingsDirPath = path.join(this.path, "settings");
-        fs.exists(settingsDirPath, (settingsDirExists) => {
-          if (!settingsDirExists) return resolve();
-          fs.list(settingsDirPath, ["json", "jsonc", "cson"], (error, settingsPaths) => {
-            if (error || !settingsPaths) return resolve();
-            asyncEach(settingsPaths, loadSettingsFile, () => resolve());
-          });
+    return new Promise((resolve) => {
+      const settingsDirPath = path.join(this.path, "settings");
+      fs.exists(settingsDirPath, (settingsDirExists) => {
+        if (!settingsDirExists) return resolve();
+        fs.list(settingsDirPath, ["json", "jsonc", "cson"], (error, settingsPaths) => {
+          if (error || !settingsPaths) return resolve();
+          asyncEach(settingsPaths, loadSettingsFile, () => resolve());
         });
       });
-    }
+    });
   }
 
   serialize() {
@@ -1144,9 +1085,7 @@ module.exports = class Package {
   // Returns a {Boolean}, true if compatible, false if incompatible.
   isCompatible() {
     if (this.compatible == null) {
-      if (this.preloadedPackage) {
-        this.compatible = true;
-      } else if (this.getMainModulePath()) {
+      if (this.getMainModulePath()) {
         this.incompatibleModules = this.getIncompatibleNativeModules();
         this.compatible = this.incompatibleModules.length === 0;
       } else {

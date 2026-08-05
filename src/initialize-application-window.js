@@ -23,7 +23,6 @@ TextEditor.setScheduler(global.atom.views);
 // and bundled packages) need the view registry installed separately so their
 // updates stay coordinated with the editor's read/write batching.
 require("@lumine-code/etch").setScheduler(global.atom.views);
-global.atom.preloadPackages();
 
 // Like sands through the hourglass, so are the days of our lives.
 module.exports = function ({ blobStore }) {

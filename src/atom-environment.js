@@ -376,16 +376,6 @@ class AtomEnvironment {
     );
   }
 
-  /**
-   * @name preloadPackages
-   * @private
-   * @memberof AtomEnvironment
-   * @desc Returns the result of calling `preloadPackages()` on this environment's package manager.
-   */
-  preloadPackages() {
-    return this.packages.preloadPackages();
-  }
-
   // Remove what an interrupted package install left in the packages directory.
   // Failures are the normal case for a file another process still holds, and
   // the next launch tries again, so nothing here is reported.

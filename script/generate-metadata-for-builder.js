@@ -66,11 +66,7 @@ function buildBundledPackagesMetadata() {
       metadata: packageMetadata,
       keymaps: {},
       menus: {},
-      grammarPaths: [],
-      settings: {},
     };
-
-    packageNewMetadata.rootDirPath = packagePath;
 
     if (packageMetadata.main) {
       const mainPath = require.resolve(path.resolve(packagePath, packageMetadata.main));
@@ -101,16 +97,6 @@ function buildBundledPackagesMetadata() {
         }
       }
     }
-    const packageGrammarsPath = path.join(packagePath, "grammars");
-    for (let packageGrammarPath of fs.listSync(packageGrammarsPath, objectFileExtensions)) {
-      packageNewMetadata.grammarPaths.push(packageGrammarPath);
-    }
-
-    const packageSettingsPath = path.join(packagePath, "settings");
-    for (let packageSettingPath of fs.listSync(packageSettingsPath, objectFileExtensions)) {
-      packageNewMetadata.settings[packageSettingPath] = CSON.readFileSync(packageSettingPath);
-    }
-
     const packageStyleSheetsPath = path.join(packagePath, "styles");
     let styleSheets;
     if (packageMetadata.mainStyleSheet) {
