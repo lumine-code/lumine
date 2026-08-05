@@ -45,7 +45,13 @@ jobs:
       - name: Install Linux build dependencies
         if: runner.os == 'Linux'
         run: |
-          sudo apt-get update
+          # A third-party repository on the runner image answering 403 must not fail
+
+          # the job: the Ubuntu lists this needs still fetched, and the install below
+
+          # stays strict, so a genuinely missing package still stops us.
+
+          sudo apt-get update || true
           sudo apt-get install -y libx11-dev libxkbfile-dev libsecret-1-dev
       # npm records the @lumine-code git forks with ssh URLs, but the runners
       # have no ssh key. Rewrite them to anonymous HTTPS (the forks are public).
