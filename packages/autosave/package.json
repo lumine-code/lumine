@@ -3,7 +3,6 @@
   "author": "lumine-code",
   "main": "./lib/autosave",
   "version": "1.0.0",
-  "private": true,
   "description": "Save editors when they lose focus or are closed.",
   "keywords": [
     "persist",
@@ -33,5 +32,6 @@
       "type": "boolean",
       "default": false
     }
-  }
+  },
+  "license": "MIT"
 }

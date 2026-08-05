@@ -16,9 +16,7 @@
   "engines": {
     "lumine": "^1.0.0"
   },
-  "dependencies": {
-    "grim": "^2.0.1"
-  },
+  "dependencies": {},
   "providedServices": {
     "status-bar": {
       "description": "A container for indicators at the bottom of the workspace",

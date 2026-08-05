@@ -22,7 +22,12 @@ const fs = require("fs");
 const path = require("path");
 const parser = require("@babel/parser");
 
-const CORE_ROOT = path.join(__dirname, "..", "..", "..");
+// From the editor checkout this climbs to the repository root; once the
+// package lives in its own repository, point LUMINE_CORE_ROOT at an editor
+// checkout instead.
+const CORE_ROOT = process.env.LUMINE_CORE_ROOT
+  ? path.resolve(process.env.LUMINE_CORE_ROOT)
+  : path.join(__dirname, "..", "..", "..");
 const SRC_DIR = path.join(CORE_ROOT, "src");
 const OUTPUT = path.join(__dirname, "..", "completions.json");
 

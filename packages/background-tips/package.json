@@ -3,7 +3,6 @@
   "author": "lumine-code",
   "main": "./lib/background-tips",
   "version": "1.0.0",
-  "private": true,
   "description": "Displays tips about Lumine in the background when no editors are open.",
   "keywords": [
     "hints",
