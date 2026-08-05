@@ -860,6 +860,113 @@ h2 {
       expect(findBridgeElement()).toBeUndefined();
     });
   });
+
+  describe("reloadThemeVariables", () => {
+    let packageDirPath;
+
+    beforeEach(() => {
+      packageDirPath = temp.mkdirSync("theme-variables-packages-");
+      atom.packages.packageDirPaths.unshift(packageDirPath);
+    });
+
+    afterEach(async () => {
+      // The outer afterEach deactivates too late for the unload below.
+      await atom.themes.deactivateThemes();
+      const index = atom.packages.packageDirPaths.indexOf(packageDirPath);
+      if (index >= 0) atom.packages.packageDirPaths.splice(index, 1);
+      for (const name of ["theme-mutable-ui", "theme-mutable-legacy-ui"]) {
+        if (atom.packages.isPackageLoaded(name)) atom.packages.unloadPackage(name);
+      }
+    });
+
+    // A ui theme whose styles can be rewritten mid-spec, unlike the
+    // checked-in fixtures. Returns its styles directory.
+    function writeThemePackage(name, styleFiles) {
+      const stylesDirPath = path.join(packageDirPath, name, "styles");
+      fs.makeTreeSync(stylesDirPath);
+      fs.writeFileSync(
+        path.join(packageDirPath, name, "package.json"),
+        JSON.stringify({ name, theme: "ui", version: "1.0.0" }),
+      );
+      for (const [fileName, content] of Object.entries(styleFiles)) {
+        fs.writeFileSync(path.join(stylesDirPath, fileName), content);
+      }
+      return stylesDirPath;
+    }
+
+    function shimDir() {
+      return atom.themes.getImportPaths().find((importPath) => importPath.includes("theme-shims"));
+    }
+
+    function compileProbe() {
+      const lessPath = path.join(temp.mkdirSync("atom"), "probe.less");
+      fs.writeFileSync(lessPath, '@import "ui-variables";\n.probe { color: @text-color; }');
+      return atom.themes.loadLessStylesheet(lessPath);
+    }
+
+    it("regenerates the shim so Less consumers see an edited modern palette", async () => {
+      const stylesDirPath = writeThemePackage("theme-mutable-ui", {
+        "variables.css": ":root { --text-color: #111111; }",
+      });
+      setActiveThemes(["theme-mutable-ui", "theme-modern-syntax"]);
+      await atom.themes.activateThemes();
+
+      const shimDirBefore = shimDir();
+      expect(compileProbe()).toContain("#111111");
+
+      fs.writeFileSync(
+        path.join(stylesDirPath, "variables.css"),
+        ":root { --text-color: #222222; }",
+      );
+      expect(atom.themes.reloadThemeVariables()).toBe(true);
+      expect(shimDir()).not.toBe(shimDirBefore);
+      expect(compileProbe()).toContain("#222222");
+    });
+
+    it("reports an unmoved Less-visible palette so callers can skip recompiles", async () => {
+      const stylesDirPath = writeThemePackage("theme-mutable-ui", {
+        "variables.css": ":root { --text-color: #111111; }",
+      });
+      setActiveThemes(["theme-mutable-ui", "theme-modern-syntax"]);
+      await atom.themes.activateThemes();
+
+      const shimDirBefore = shimDir();
+      // A property outside the contract never reaches the shim, so the
+      // Less-visible palette is byte-identical after this edit.
+      fs.writeFileSync(
+        path.join(stylesDirPath, "variables.css"),
+        ":root { --text-color: #111111; --mutable-local-accent: #333333; }",
+      );
+      expect(atom.themes.reloadThemeVariables()).toBe(false);
+      expect(shimDir()).toBe(shimDirBefore);
+    });
+
+    it("recompiles the custom-properties bridge for an edited legacy theme", async () => {
+      const stylesDirPath = writeThemePackage("theme-mutable-legacy-ui", {
+        "ui-variables.less": "@text-color: #445566;",
+      });
+      setActiveThemes(["theme-mutable-legacy-ui", "theme-modern-syntax"]);
+      await atom.themes.activateThemes();
+
+      const findBridgeElement = () =>
+        atom.styles
+          .getStyleElements()
+          .find((element) =>
+            (element.getAttribute("source-path") || "").endsWith("custom-properties-bridge.css"),
+          );
+
+      const bridgeBefore = findBridgeElement();
+      expect(bridgeBefore.textContent).toContain("--text-color: #445566");
+
+      fs.writeFileSync(path.join(stylesDirPath, "ui-variables.less"), "@text-color: #667788;");
+      expect(atom.themes.reloadThemeVariables()).toBe(true);
+
+      // Updated in place: same element, new palette, cascade order untouched.
+      const bridgeAfter = findBridgeElement();
+      expect(bridgeAfter).toBe(bridgeBefore);
+      expect(bridgeAfter.textContent).toContain("--text-color: #667788");
+    });
+  });
 });
 
 function getAbsolutePath(directory, relativePath) {

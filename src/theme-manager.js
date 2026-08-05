@@ -446,6 +446,49 @@ module.exports = class ThemeManager {
     }
   }
 
+  // The contract sides (ui / syntax) provided by legacy Less themes among
+  // `themeNames` -- the sides the custom-properties bridge has to cover.
+  legacyThemeTypes(themeNames) {
+    const legacyTypes = new Set();
+    for (const themeName of themeNames) {
+      if (this.getThemeVariablesPaths(themeName).length > 0) continue;
+      legacyTypes.add(this.getThemeType(themeName) === "syntax" ? "syntax" : "ui");
+    }
+    return legacyTypes;
+  }
+
+  // Re-derive the plumbing the enabled themes' variable definitions feed --
+  // the generated Less shim, the Less import paths, and the custom-properties
+  // bridge of a legacy theme -- after those definitions changed on disk,
+  // without switching themes. Stylesheets already compiled against the old
+  // values are not re-attached; that is the caller's job.
+  //
+  // Returns whether the Less-visible palette may have moved. `false`
+  // guarantees a recompile would reproduce what is already attached, so a
+  // caller can skip recompiling Less consumers.
+  reloadThemeVariables() {
+    const enabledThemeNames = this.getEnabledThemeNames();
+    const previousShimDir = this.themeShimDir;
+    this.refreshThemeImportPaths(enabledThemeNames);
+
+    // A modern theme's palette lands in the shim, whose directory is named by
+    // content hash: an unchanged path means the contract-visible values are
+    // byte-identical. A legacy theme's palette lives in its own Less files,
+    // where no such comparison is available -- assume it moved and recompile
+    // the bridge that derives the custom properties from it.
+    const legacyTypes = this.legacyThemeTypes(enabledThemeNames);
+    if (legacyTypes.size > 0) {
+      const bridgeCss = this.compileCustomPropertiesBridge(
+        legacyTypes.has("ui"),
+        legacyTypes.has("syntax"),
+      );
+      if (bridgeCss != null) {
+        this.applyStylesheet(this.getBridgeSourcePath(), bridgeCss, 1, true, true);
+      }
+    }
+    return this.themeShimDir !== previousShimDir || legacyTypes.size > 0;
+  }
+
   // Resolve and apply the stylesheet specified by the path.
   //
   // This supports both CSS and Less stylesheets.
@@ -745,12 +788,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     // Compile against the new theme set's import paths even though the old
     // themes are still active. A dual theme additionally contributes the
     // generated Less shim directory derived from its CSS palette.
-    this.themeShimDir = this.generateThemeShims(enabledThemeNames);
-    this.themeImportPathsOverride = this.getImportPathsForThemeNames(enabledThemeNames);
-    if (this.themeShimDir) {
-      this.themeImportPathsOverride.push(this.themeShimDir);
-    }
-    this.refreshLessCache();
+    this.refreshThemeImportPaths(enabledThemeNames);
 
     const newThemes = [];
     for (const themeName of enabledThemeNames) {
@@ -782,11 +820,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     // themselves; compile the bridge that derives it from their Less
     // variables. Only the sides actually provided by legacy themes are
     // bridged, so a modern theme paired with a legacy one is not overridden.
-    const legacyTypes = new Set();
-    for (const themeName of enabledThemeNames) {
-      if (this.getThemeVariablesPaths(themeName).length > 0) continue;
-      legacyTypes.add(this.getThemeType(themeName) === "syntax" ? "syntax" : "ui");
-    }
+    const legacyTypes = this.legacyThemeTypes(enabledThemeNames);
     const needsBridge = legacyTypes.size > 0;
     const bridgeCss = needsBridge
       ? this.compileCustomPropertiesBridge(legacyTypes.has("ui"), legacyTypes.has("syntax"))
@@ -939,6 +973,18 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
 
   refreshLessCache() {
     if (this.lessCache) this.lessCache.setImportPaths(this.getImportPaths());
+  }
+
+  // Point the Less import paths at `themeNames`' style directories plus the
+  // generated variable shim, and drop compile-cache entries the new paths
+  // invalidate.
+  refreshThemeImportPaths(themeNames) {
+    this.themeShimDir = this.generateThemeShims(themeNames);
+    this.themeImportPathsOverride = this.getImportPathsForThemeNames(themeNames);
+    if (this.themeShimDir) {
+      this.themeImportPathsOverride.push(this.themeShimDir);
+    }
+    this.refreshLessCache();
   }
 
   getImportPaths() {
