@@ -375,6 +375,7 @@ let options = {
     "node_modules/github/lib/*", // Resolves error in console
     "**/node_modules/spellchecker/**", // Matching upstream glob
     "**/node_modules/@vscode/ripgrep*/**", // rg binary must be spawnable outside asar
+    "node_modules/symbol-provider-ctags/vendor/**", // ctags binaries must be spawnable outside asar
   ],
 };
 
