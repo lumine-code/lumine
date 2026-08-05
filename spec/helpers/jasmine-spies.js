@@ -22,7 +22,11 @@ let specProjectPath;
 if (specDirectory) {
   specProjectPath = path.join(specDirectory, "fixtures");
 } else {
-  specProjectPath = require("os").tmpdir();
+  // A fresh, empty directory — never the shared OS tmpdir, which accumulates
+  // git checkouts (npm clones git dependencies there) until repository
+  // discovery hits its limit and posts a notification into unrelated specs.
+  const os = require("os");
+  specProjectPath = require("fs").mkdtempSync(path.join(os.tmpdir(), "lumine-spec-project-"));
 }
 
 exports.register = (jasmineEnv) => {
