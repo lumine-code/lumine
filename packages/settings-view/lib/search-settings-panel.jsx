@@ -105,7 +105,7 @@ module.exports = class SearchSettingsPanel extends CollapsibleSectionPanel {
                 Editor
               </button>
               <button ref="languageFilter" type="button" className="btn">
-                Languages
+                Language
               </button>
               <button ref="packagesFilter" type="button" className="btn">
                 Packages

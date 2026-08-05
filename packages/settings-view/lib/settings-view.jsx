@@ -165,7 +165,7 @@ module.exports = class SettingsView {
 
     this.addCorePanel("Core", "settings", () => new GeneralPanel());
     this.addCorePanel("Editor", "code", () => new EditorPanel());
-    this.addCorePanel("Languages", "globe", () => new LanguagesPanel());
+    this.addCorePanel("Language", "globe", () => new LanguagesPanel());
     this.addCorePanel("Git", "git-branch", () => new GitSettingsPanel());
     if (atom.config.getSchema("core.uriHandlerRegistration").type !== "any") {
       // "feature flag" based on core support for URI handling
@@ -427,8 +427,8 @@ module.exports = class SettingsView {
       panelName = "Editor";
       options.uri = "lumine://config/editor";
     } else if (namespace === "language") {
-      panelName = "Languages";
-      options.uri = "lumine://config/languages";
+      panelName = "Language";
+      options.uri = "lumine://config/language";
     } else if (namespace === "git") {
       panelName = "Git";
       options.uri = "lumine://config/git";

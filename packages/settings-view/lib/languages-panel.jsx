@@ -70,7 +70,7 @@ module.exports = class LanguagesPanel {
       <div tabIndex="0" className="panels-item languages-panel">
         <section className="section">
           <div className="section-container">
-            <div className="block section-heading icon icon-globe">Languages</div>
+            <div className="block section-heading icon icon-globe">Language Settings</div>
             <div className="text icon icon-question" tabIndex="-1">
               Language-specific editor settings. Pick a language to override the defaults for files
               of that language; empty fields inherit the default value.

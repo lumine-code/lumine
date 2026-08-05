@@ -44,7 +44,7 @@ module.exports = class EditorPanel {
         <SettingsPanel
           namespace="editor"
           icon="code"
-          note={`<div class="text icon icon-question" id="editor-settings-note" tabindex="-1">These settings apply to every text editor. Settings that can differ per language, such as indentation and soft wrap, live in the <a class="link languages-open">Languages panel</a>.</div>`}
+          note={`<div class="text icon icon-question" id="editor-settings-note" tabindex="-1">These settings apply to every text editor. Settings that can differ per language, such as indentation and soft wrap, live in the <a class="link languages-open">Language panel</a>.</div>`}
         />
       </div>
     );
@@ -61,7 +61,7 @@ module.exports = class EditorPanel {
   didClick(event) {
     const target = event.target.closest(".languages-open");
     if (target) {
-      atom.workspace.open("lumine://config/languages");
+      atom.workspace.open("lumine://config/language");
     }
   }
 

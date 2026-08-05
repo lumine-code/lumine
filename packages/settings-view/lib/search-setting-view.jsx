@@ -62,7 +62,7 @@ module.exports = class SearchSettingView {
       case "editor":
         return "Editor";
       case "language":
-        return "Languages";
+        return "Language";
       case "git":
         return "Git";
       default:
@@ -79,7 +79,7 @@ module.exports = class SearchSettingView {
     const namespace = path.split(".")[0];
     if (namespace === "core") return "lumine://config/core";
     if (namespace === "editor") return "lumine://config/editor";
-    if (namespace === "language") return "lumine://config/languages";
+    if (namespace === "language") return "lumine://config/language";
     if (namespace === "git") return "lumine://config/git";
     return `lumine://config/packages/${namespace}`;
   }

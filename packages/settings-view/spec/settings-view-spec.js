@@ -385,6 +385,20 @@ describe("SettingsView", function () {
         });
 
         waitsForPromise(() =>
+          atom.workspace.open("lumine://config/language").then((s) => (settingsView = s)),
+        );
+
+        waits(1);
+        runs(function () {
+          expect(settingsView.activePanel).toEqual({
+            name: "Language",
+            options: { uri: "lumine://config/language" },
+          });
+          expect(focusIsWithinActivePanel()).toBe(true);
+          expectActivePanelToBeKeyboardScrollable();
+        });
+
+        waitsForPromise(() =>
           atom.workspace.open("lumine://config/keybindings").then((s) => (settingsView = s)),
         );
 
@@ -679,6 +693,11 @@ describe("SettingsView", function () {
       settingsView.openSetting("core.uriHandlerRegistration");
       expect(settingsView.showPanel).toHaveBeenCalledWith("URI Handling", {
         uri: "lumine://config/uri-handling",
+      });
+
+      settingsView.openSetting("language.tabLength");
+      expect(settingsView.showPanel).toHaveBeenCalledWith("Language", {
+        uri: "lumine://config/language",
       });
     });
 
