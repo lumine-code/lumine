@@ -305,8 +305,14 @@ function mergeJsdocData(classes, jsdoc) {
 }
 
 function update() {
+  // `--api <path>` additionally writes the raw tello digest — the api.json
+  // shape the website's API reference is built from — to the given path.
+  const apiIndex = process.argv.indexOf("--api");
+  const apiOut = apiIndex === -1 ? null : process.argv[apiIndex + 1];
+
   const jsFiles = listSrcFiles();
-  const { classes } = generateApi(jsFiles);
+  const api = generateApi(jsFiles);
+  const { classes } = api;
   mergeJsdocData(classes, extractJsdocData(jsFiles));
 
   const publicClasses = {};
@@ -327,6 +333,11 @@ function update() {
 
   fs.writeFileSync(OUTPUT, `${JSON.stringify(publicClasses, null, "  ")}\n`);
   console.log(`Updated ${Object.keys(publicClasses).length} classes in completions.json`);
+
+  if (apiOut) {
+    fs.writeFileSync(apiOut, `${JSON.stringify(api, null, "  ")}\n`);
+    console.log(`Wrote the API digest to ${apiOut}`);
+  }
 }
 
 try {
