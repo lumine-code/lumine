@@ -25,15 +25,15 @@ const normalizeDecorationProperties = function (decoration, decorationParams) {
 // {Decoration} objects are not meant to be created directly, but created with
 // {TextEditor::decorateMarker}. eg.
 //
-// ```coffee
-// range = editor.getSelectedBufferRange() # any range you like
-// marker = editor.markBufferRange(range)
-// decoration = editor.decorateMarker(marker, {type: 'line', class: 'my-line-class'})
+// ```js
+// const range = editor.getSelectedBufferRange() // any range you like
+// const marker = editor.markBufferRange(range)
+// const decoration = editor.decorateMarker(marker, { type: 'line', class: 'my-line-class' })
 // ```
 //
 // Best practice for destroying the decoration is by destroying the {DisplayMarker}.
 //
-// ```coffee
+// ```js
 // marker.destroy()
 // ```
 //
@@ -168,8 +168,8 @@ module.exports = class Decoration {
   //
   // ## Examples
   //
-  // ```coffee
-  // decoration.setProperties({type: 'line-number', class: 'my-new-class'})
+  // ```js
+  // decoration.setProperties({ type: 'line-number', class: 'my-new-class' })
   // ```
   //
   // * `newProperties` {Object} eg. `{type: 'line-number', class: 'my-new-class'}`

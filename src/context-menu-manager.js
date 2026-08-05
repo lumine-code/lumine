@@ -26,24 +26,34 @@ if (
 //
 // ## Context Menu Object Format
 //
-// ```coffee
-// 'atom-workspace': [{label: 'Help', command: 'application:open-documentation'}]
-// 'atom-text-editor': [{
-//   label: 'History',
-//   submenu: [
-//     {label: 'Undo', command:'core:undo'}
-//     {label: 'Redo', command:'core:redo'}
+// ```json
+// {
+//   "atom-workspace": [
+//     { "label": "Help", "command": "application:open-documentation" }
+//   ],
+//   "atom-text-editor": [
+//     {
+//       "label": "History",
+//       "submenu": [
+//         { "label": "Undo", "command": "core:undo" },
+//         { "label": "Redo", "command": "core:redo" }
+//       ]
+//     }
 //   ]
-// }]
+// }
 // ```
 //
-// In your package's menu JSON, JSONC, or CSON file you need to specify it under a
-// `context-menu` key:
+// A package declares its context menu in a file under `menus/`, with the
+// structure above under a `context-menu` key:
 //
-// ```coffee
-// 'context-menu':
-//   'atom-workspace': [{label: 'Help', command: 'application:open-documentation'}]
-//   ...
+// ```json
+// {
+//   "context-menu": {
+//     "atom-workspace": [
+//       { "label": "Help", "command": "application:open-documentation" }
+//     ]
+//   }
+// }
 // ```
 //
 // The format for use in {::add} is the same minus the `context-menu` key. See

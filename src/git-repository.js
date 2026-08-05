@@ -57,25 +57,25 @@ function summaryFromStatusEntry(entry) {
 //
 // For a repository with submodules this would have the following outcome:
 //
-// ```coffee
-// repo = atom.repositories.getRepositories()[0]
-// repo.getShortHead() # 'master'
-// repo.getShortHead('vendor/path/to/a/submodule') # 'dead1234'
+// ```js
+// const repo = atom.repositories.getRepositories()[0]
+// repo.getShortHead() // 'master'
+// repo.getShortHead('vendor/path/to/a/submodule') // 'dead1234'
 // ```
 //
 // ## Examples
 //
 // ### Logging the URL of the origin remote
 //
-// ```coffee
-// git = atom.repositories.getRepositories()[0]
-// console.log git.getOriginURL()
+// ```js
+// const git = atom.repositories.getRepositories()[0]
+// console.log(git.getOriginURL())
 // ```
 //
 // ### Requiring in packages
 //
-// ```coffee
-// {GitRepository} = require 'atom'
+// ```js
+// const { GitRepository } = require('atom')
 // ```
 module.exports = class GitRepository {
   static exists(path) {

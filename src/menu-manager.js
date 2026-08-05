@@ -22,41 +22,45 @@ if (buildMetadata) {
 // Here is an example from Lumine's bundled
 // [tree-view](https://github.com/lumine-code/tree-view/blob/master/menus/tree-view-plus.json):
 //
-// ```coffee
+// ```json
 // [
 //   {
-//     'label': 'View'
-//     'submenu': [
-//       { 'label': 'Toggle Tree View', 'command': 'tree-view:toggle' }
+//     "label": "View",
+//     "submenu": [
+//       { "label": "Toggle Tree View", "command": "tree-view:toggle" }
 //     ]
-//   }
+//   },
 //   {
-//     'label': 'Packages'
-//     'submenu': [
-//       'label': 'Tree View'
-//       'submenu': [
-//         { 'label': 'Focus', 'command': 'tree-view:toggle-focus' }
-//         { 'label': 'Toggle', 'command': 'tree-view:toggle' }
-//         { 'label': 'Reveal Active File', 'command': 'tree-view:reveal-active-file' }
-//         { 'label': 'Toggle Tree Side', 'command': 'tree-view:toggle-side' }
-//       ]
+//     "label": "Packages",
+//     "submenu": [
+//       {
+//         "label": "Tree View",
+//         "submenu": [
+//           { "label": "Focus", "command": "tree-view:toggle-focus" },
+//           { "label": "Toggle", "command": "tree-view:toggle" },
+//           { "label": "Reveal Active File", "command": "tree-view:reveal-active-file" },
+//           { "label": "Toggle Tree Side", "command": "tree-view:toggle-side" }
+//         ]
+//       }
 //     ]
 //   }
 // ]
 // ```
 //
-// Use in your package's menu JSON, JSONC, or CSON file requires that you place your menu
-// structure under a `menu` key.
+// A package declares its menu in a file under `menus/`, with the structure
+// above under a `menu` key:
 //
-// ```coffee
-// 'menu': [
-//   {
-//     'label': 'View'
-//     'submenu': [
-//       { 'label': 'Toggle Tree View', 'command': 'tree-view:toggle' }
-//     ]
-//   }
-// ]
+// ```json
+// {
+//   "menu": [
+//     {
+//       "label": "View",
+//       "submenu": [
+//         { "label": "Toggle Tree View", "command": "tree-view:toggle" }
+//       ]
+//     }
+//   ]
+// }
 // ```
 //
 // See {::add} for more information about adding menus directly.

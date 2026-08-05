@@ -7,18 +7,27 @@ const { Disposable } = require("event-kit");
 //
 // ## Examples
 //
-// ```coffee
-// class MyPackageView extends View
-//   atom.deserializers.add(this)
+// ```js
+// class MyPackageView {
+//   static deserialize(state) {
+//     return new MyPackageView(state)
+//   }
 //
-//   @deserialize: (state) ->
-//     new MyPackageView(state)
+//   constructor(state) {
+//     this.state = state
+//   }
 //
-//   constructor: (@state) ->
+//   serialize() {
+//     return { deserializer: 'MyPackageView', ...this.state }
+//   }
+// }
 //
-//   serialize: ->
-//     @state
+// atom.deserializers.add(MyPackageView)
 // ```
+//
+// Serialized state has to carry the `deserializer` key: it is the name
+// {::deserialize} looks the class up by, and state without it is dropped with a
+// warning rather than restored.
 module.exports = class DeserializerManager {
   constructor(atomEnvironment) {
     this.atomEnvironment = atomEnvironment;

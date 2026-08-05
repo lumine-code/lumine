@@ -47,11 +47,12 @@ module.exports = class ViewRegistry {
   // to get the model object. We display text editors on screen by teaching the
   // workspace what view constructor it should use to represent them:
   //
-  // ```coffee
-  // atom.views.addViewProvider TextEditor, (textEditor) ->
-  //   textEditorElement = new TextEditorElement
+  // ```js
+  // atom.views.addViewProvider(TextEditor, (textEditor) => {
+  //   const textEditorElement = new TextEditorElement()
   //   textEditorElement.initialize(textEditor)
-  //   textEditorElement
+  //   return textEditorElement
+  // })
   // ```
   //
   // * `modelConstructor` (optional) Constructor {Function} for your model. If

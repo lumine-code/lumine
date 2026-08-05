@@ -627,18 +627,18 @@ module.exports = class Project extends Model {
   //
   // Basic operation
   //
-  // ```coffee
-  // # Project's root directory is /foo/bar
-  // project.contains('/foo/bar/baz')        # => true
-  // project.contains('/usr/lib/baz')        # => false
+  // ```js
+  // // Project's root directory is /foo/bar
+  // project.contains('/foo/bar/baz')        // => true
+  // project.contains('/usr/lib/baz')        // => false
   // ```
   //
   // Existence of the path is not required
   //
-  // ```coffee
-  // # Project's root directory is /foo/bar
-  // fs.existsSync('/foo/bar/baz')           # => false
-  // project.contains('/foo/bar/baz')        # => true
+  // ```js
+  // // Project's root directory is /foo/bar
+  // fs.existsSync('/foo/bar/baz')           // => false
+  // project.contains('/foo/bar/baz')        // => true
   // ```
   //
   // * `pathToCheck` {String} path

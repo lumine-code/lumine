@@ -1666,10 +1666,10 @@ module.exports = class Workspace extends Model {
   //
   // ## Examples
   //
-  // ```coffee
-  // atom.workspace.addOpener (uri) ->
-  //   if path.extname(uri) is '.toml'
-  //     return new TomlEditor(uri)
+  // ```js
+  // atom.workspace.addOpener((uri) => {
+  //   if (path.extname(uri) === '.toml') return new TomlEditor(uri)
+  // })
   // ```
   //
   // * `opener` A {Function} to be called when a path is being opened.
