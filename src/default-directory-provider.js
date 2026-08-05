@@ -10,6 +10,11 @@ function hostForURI(uri) {
   }
 }
 
+// Public: Turns a project URI into a {Directory}, for local paths.
+//
+// This is the provider {Project} falls back to when no package claims a URI. A
+// package supplies its own by providing the `project.directory-provider`
+// service; the methods below are the shape that contract expects.
 module.exports = class DefaultDirectoryProvider {
   // Public: Create a Directory that corresponds to the specified URI.
   //

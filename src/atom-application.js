@@ -179,10 +179,11 @@ ipcMain.handle("openExternal", async (_, url) => {
   }
 });
 
-// The application's singleton class.
+// Private: The application's singleton class.
 //
 // It's the entry point into the Lumine application and maintains the global state
-// of the application.
+// of the application. It runs in the main process, so it is not part of the API
+// a package can reach.
 //
 module.exports = class AtomApplication extends EventEmitter {
   // Public: The entry point into the Lumine application.

@@ -6,7 +6,7 @@ const path = require("path");
 // per file while still letting consumers render results before the crawl ends.
 const PathsChunkSize = 100;
 
-// Lists the files under a set of directories.
+// Private: Lists the files under a set of directories.
 //
 // This is the file-listing counterpart to `RipgrepDirectorySearcher`, which
 // searches file *contents*. Both drive the bundled ripgrep binary, so the crawl

@@ -219,6 +219,9 @@ let nextLanguageModeId = 0;
 const COMMENT_MATCHER = matcherForSelector("comment");
 const MAX_RANGE = new Range(Point.ZERO, Point.INFINITY).freeze();
 
+// Private: The language mode a grammar with a tree-sitter parser installs on a
+// buffer. Packages reach what it computes through {TextEditor} rather than
+// holding one directly.
 class TreeSitterLanguageMode {
   constructor({ buffer, grammar, config, grammars, syncTimeoutMicros }) {
     this.id = nextLanguageModeId++;

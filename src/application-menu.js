@@ -2,10 +2,11 @@ const { app, Menu } = require("electron");
 const _ = require("@lumine-code/underscore-plus");
 const MenuHelpers = require("./menu-helpers");
 
-// Used to manage the global application menu.
+// Private: Used to manage the global application menu.
 //
 // It's created by {AtomApplication} upon instantiation and used to add, remove
-// and maintain the state of all menu items.
+// and maintain the state of all menu items. It runs in the main process; a
+// package reaches the menu through {MenuManager} instead.
 module.exports = class ApplicationMenu {
   constructor(version) {
     this.version = version;
