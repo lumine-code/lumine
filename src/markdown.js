@@ -54,20 +54,20 @@ const mdComponents = {
  * should be enabled. True by default.
  * @param {boolean} givenOpts.taskCheckboxDisabled - Controls `markdown-it-task-checkbox`
  * `disabled` option. True by default.
- * @param {boolean} givenOpts.taskCheckboxDivWrap - Controls `markdown-it-task-checkboc`
+ * @param {boolean} givenOpts.taskCheckboxDivWrap - Controls `markdown-it-task-checkbox`
  * `divWrap` option. False by default.
  * @param {boolean} givenOpts.transformImageLinks - Attempt to resolve image URLs.
  * True by default.
  * @param {boolean} givenOpts.transformLegacyLinks - Attempt to redirect links
- * pointing at retired resources to an archived copy. True by Default.
+ * pointing at retired resources to an archived copy. True by default.
  * @param {boolean} givenOpts.transformNonFqdnLinks - Attempt to resolve links
- * that are not fully qualified domain names. True by Default.
+ * that are not fully qualified domain names. True by default.
  * @param {string} givenOpts.rootDomain - The root URL of the online resource.
  * Useful when attempting to resolve any links on the page. Only works for online
  * resources.
  * @param {string} givenOpts.filePath - The local alternative to `rootDomain`.
  * Used to resolve incomplete paths, but locally on the file system.
- * @param {string} givenOpts.disabledMode - The level of disabling of markdown features.
+ * @param {string} givenOpts.disableMode - The level of disabling of markdown features.
  * `none` by default. But supports: "none", "strict"
  * @returns {string} Parsed HTML content.
  */
@@ -86,7 +86,7 @@ function renderMarkdown(content, givenOpts = {}) {
     useGitHubHeadings: false, // Use `markdown-it-github-headings`
     useTaskCheckbox: true, // Use `markdown-it-task-checkbox`
     taskCheckboxDisabled: true, // `markdown-it-task-checkbox`: Disable checkbox interactivity
-    taskCheckboxDivWrap: false, // `markdown-it-task-checkbox`: Wrap div arround checkboc
+    taskCheckboxDivWrap: false, // `markdown-it-task-checkbox`: Wrap div around checkbox
     transformImageLinks: true, // Attempt to resolve image urls
     transformLegacyLinks: true, // Attempt to redirect links to retired resources at their archived copy
     transformNonFqdnLinks: true, // Attempt to resolve non-FQDN links
@@ -282,7 +282,7 @@ function renderMarkdown(content, givenOpts = {}) {
   }
 
   // Here we can add some simple additions that make code highlighting possible later on,
-  // but doesn't actually preform any code highlighting.
+  // but doesn't actually perform any code highlighting.
   md.options.highlight = function (str, lang) {
     return `<pre><code class="language-${lang}">${md.utils.escapeHtml(str)}</code></pre>`;
   };
@@ -484,12 +484,12 @@ function renderMarkdown(content, givenOpts = {}) {
  * @desc Uses Lumine's built-in Syntax Highlighting system to apply the same syntax
  * highlighting to code blocks within markdown. Modifies the existing object passed.
  * @param {HTMLFragment} content - The HTML Node/Fragment to apply syntax highlighting on.
- * Will modifyn the original object.
+ * Will modify the original object.
  * @param {object} givenOpts - Optional Arguments:
  * @param {function} givenOpts.syntaxScopeNameFunc - A function that can be called with
  * any given language ID from a code block scope, and returns the grammar source id
- * that should be used to preform syntax highlighting.
- * @param {string} givenOpts.renderMode - Whether we are rdnering a document fragment
+ * that should be used to perform syntax highlighting.
+ * @param {string} givenOpts.renderMode - Whether we are rendering a document fragment
  * or a full document. Valid values: "full", "fragment".
  * @param {object} givenOpts.grammar - The grammar of the source file. Carryover from
  * original `markdown-preview` functionality.

@@ -13,22 +13,28 @@ function parse(selector) {
 
 const always = (_scope) => true;
 
-// Essential: Return a matcher function for a selector.
+// Essential: Build a reusable test for a scope selector.
 //
-// * selector, a {String} selector
-// Returns {(scope: String) -> Boolean}, a matcher function returning
-// true iff the scope matches the selector.
+// Parsing the selector once and testing many scopes with the result is what
+// makes this worth having over {selectorMatchesAnyScope} in a loop.
+//
+// * `selector` A {String} selector such as `"source.js"`, or an {Array} of the
+//   parts it is made of. An empty selector matches everything.
+//
+// Returns a {Function} taking a scope {String} and returning a {Boolean}, true
+// when the scope matches the selector.
 function matcherForSelector(selector) {
   const parts = parse(selector);
   if (typeof parts === "function") return parts;
   return selector ? (scope) => isSubset(parts, parse(scope)) : always;
 }
 
-// Essential: Return true iff the selector matches any provided scope.
+// Essential: Whether any of the given scopes matches a selector.
 //
-// * {String} selector
-// * {Array<String>} scopes
-// Returns {Boolean} true if any scope matches the selector.
+// * `selector` A {String} selector. An empty selector matches everything.
+// * `scopes` An {Array} of scope {String}s to test.
+//
+// Returns a {Boolean}.
 function selectorMatchesAnyScope(selector, scopes) {
   return !selector || scopes.some(matcherForSelector(selector));
 }

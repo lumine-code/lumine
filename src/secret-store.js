@@ -2,18 +2,31 @@ const fs = require("fs");
 const path = require("path");
 const { Emitter } = require("event-kit");
 
-// A small, forge-agnostic secret store for tokens and other sensitive strings a
-// package must persist across sessions. It follows VS Code's SecretStorage
-// shape: opaque string keys, string values, async get/set/delete, and a change
-// event; callers namespace their own keys.
+// Public: Somewhere to keep an access token, available as `atom.secrets`.
 //
-// Values are encrypted at rest with Electron's safeStorage — OS-backed (DPAPI on
-// Windows, Keychain on macOS, libsecret/kwallet on Linux) — and stored as base64
-// in a single JSON file under the config directory. safeStorage is a main-process
-// module, so the renderer reaches it through @electron/remote (resolved lazily so
-// specs can inject a fake). When OS encryption is unavailable (e.g. a headless
-// Linux box with no keyring) the store degrades to an in-memory, session-only
-// map and warns once, rather than writing secrets to disk in the clear.
+// For the sensitive strings a package must remember between sessions — a
+// forge token, an API key, a password. Never `atom.config`: everything in
+// there is written to disk in plain text and shown in the settings view.
+//
+// Keys are opaque strings and values are strings. Namespace your own keys, by
+// convention with the package name:
+//
+// ```js
+// await atom.secrets.set('github.token', token)
+// const token = await atom.secrets.get('github.token')
+// ```
+//
+// ## Storage
+//
+// Values are encrypted with the operating system's own facility — DPAPI on
+// Windows, the Keychain on macOS, libsecret or kwallet on Linux — and kept as
+// base64 in one file under the config directory.
+//
+// Where the OS offers no encryption, typically a headless Linux box with no
+// keyring, the store keeps values in memory for the session only and warns the
+// user once. It never writes a secret to disk in the clear. A package should
+// therefore expect {::get} to return `null` for something it stored in an
+// earlier session, and ask again rather than fail.
 class SecretStore {
   constructor({ safeStorage, storagePath, notify } = {}) {
     this._safeStorage = safeStorage;
@@ -33,6 +46,17 @@ class SecretStore {
     return this._safeStorage;
   }
 
+  /*
+  Section: Storing Secrets
+  */
+
+  // Extended: Whether the operating system will encrypt what is stored.
+  //
+  // When it will not, secrets last for this session only. Worth checking before
+  // telling the user that a token has been saved — the first call warns them
+  // once on its own.
+  //
+  // Returns a {Boolean}.
   isEncryptionAvailable() {
     if (this.encryptionAvailable === null) {
       try {
@@ -78,7 +102,14 @@ class SecretStore {
     fs.writeFileSync(this.storagePath, JSON.stringify(object), { mode: 0o600 });
   }
 
-  // Resolve to the stored string for `key`, or null if absent or undecryptable.
+  // Essential: Read a secret.
+  //
+  // * `key` The {String} key it was stored under.
+  //
+  // Returns a {Promise} that resolves to the {String} value, or to `null` when
+  // nothing is stored under the key or it can no longer be decrypted — which
+  // happens after the OS credential store is reset, or when this session has no
+  // encryption and an earlier one did.
   async get(key) {
     if (!this.isEncryptionAvailable()) {
       return this.memory.has(key) ? this.memory.get(key) : null;
@@ -92,7 +123,13 @@ class SecretStore {
     }
   }
 
-  // Store `value` (a string) under `key`. A null/undefined value deletes it.
+  // Essential: Store a secret.
+  //
+  // * `key` The {String} key to store it under.
+  // * `value` The {String} to store. `null` or `undefined` deletes the key, as
+  //   {::delete} would.
+  //
+  // Returns a {Promise} that resolves once the value is written.
   async set(key, value) {
     if (value == null) return this.delete(key);
     if (!this.isEncryptionAvailable()) {
@@ -106,6 +143,13 @@ class SecretStore {
     this.emitter.emit("did-change", { key });
   }
 
+  // Public: Forget a secret.
+  //
+  // Deleting a key that was never stored is not an error and emits nothing.
+  //
+  // * `key` The {String} key to remove.
+  //
+  // Returns a {Promise} that resolves once the key is gone.
   async delete(key) {
     let changed = this.memory.delete(key);
     if (this.loadEntries().delete(key)) {
@@ -115,6 +159,19 @@ class SecretStore {
     if (changed) this.emitter.emit("did-change", { key });
   }
 
+  /*
+  Section: Event Subscription
+  */
+
+  // Public: Invoke the callback when a secret is stored or removed.
+  //
+  // The event names the key but never carries the value; read it with {::get}
+  // if you need it.
+  //
+  // * `callback` {Function} called with an {Object}.
+  //   * `key` The {String} key that changed.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);
   }
