@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const { WinShell, CompositeDisposable } = require("atom");
 const etch = require("@lumine-code/etch");
 

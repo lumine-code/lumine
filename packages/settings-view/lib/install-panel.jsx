@@ -1,3 +1,5 @@
+/** @jsx etch.dom */
+/** @jsxFrag etch.Fragment */
 const path = require("path");
 const etch = require("@lumine-code/etch");
 const gitHubUrlInfo = require("./github-url-info");

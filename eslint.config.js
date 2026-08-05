@@ -3,6 +3,7 @@ const n = require("eslint-plugin-n");
 const jsdoc = require("eslint-plugin-jsdoc");
 const globals = require("globals");
 const prettier = require("eslint-config-prettier");
+const jsx = require("./eslint-jsx");
 
 // Modules provided by the Lumine/Electron runtime or the editor's root
 // dependencies — not resolvable from a bundled package's own manifest, so allow
@@ -43,7 +44,7 @@ module.exports = [
     // Flat config only lints .js/.mjs/.cjs by default; .jsx must be named
     // explicitly or renamed files silently drop out of `eslint .`.
     files: ["**/*.js", "**/*.mjs", "**/*.cjs", "**/*.jsx"],
-    plugins: { jsdoc },
+    plugins: { jsdoc, jsx },
     settings: {
       // This is an Electron app bundling its own Node 24 runtime, so lint
       // syntax/builtins support against that — not each package's stale engines.
@@ -61,6 +62,12 @@ module.exports = [
       },
     },
     rules: {
+      // Each file carrying JSX names its own factory in a `/** @jsx ... */`
+      // pragma: `require-pragma` insists on it, and `jsx-uses` reads the
+      // factory from there so `no-unused-vars` sees the import as referenced.
+      // babel.config.js still sets etch.dom for anything this never lints.
+      "jsx/require-pragma": "error",
+      "jsx/jsx-uses": "error",
       "no-constant-condition": "off",
       "no-unused-vars": [
         "warn",

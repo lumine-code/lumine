@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const etch = require("@lumine-code/etch");
 
 module.exports = class StyleguideSection {

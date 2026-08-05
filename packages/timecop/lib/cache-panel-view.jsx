@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const path = require("path");
 const etch = require("@lumine-code/etch");
 

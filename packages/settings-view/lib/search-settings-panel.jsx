@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const { TextEditor, CompositeDisposable, Disposable } = require("atom");
 const etch = require("@lumine-code/etch");
 const CollapsibleSectionPanel = require("./collapsible-section-panel");

@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const fs = require("@lumine-code/fs-plus");
 const etch = require("@lumine-code/etch");
 const { CompositeDisposable } = require("atom");

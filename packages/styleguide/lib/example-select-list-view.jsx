@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const etch = require("@lumine-code/etch");
 const dedent = require("dedent");
 const CodeBlock = require("./code-block");

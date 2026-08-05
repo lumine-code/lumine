@@ -1,3 +1,5 @@
+/** @jsx etch.dom */
+/** @jsxFrag etch.Fragment */
 const { CompositeDisposable, Disposable } = require("atom");
 const etch = require("@lumine-code/etch");
 const BadgeView = require("./badge-view");

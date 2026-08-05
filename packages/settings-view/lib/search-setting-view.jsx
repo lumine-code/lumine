@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const etch = require("@lumine-code/etch");
 const _ = require("@lumine-code/underscore-plus");
 const { Disposable, CompositeDisposable } = require("atom");

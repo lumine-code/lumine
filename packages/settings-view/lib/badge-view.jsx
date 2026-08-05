@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const { CompositeDisposable, Disposable } = require("atom");
 const etch = require("@lumine-code/etch");
 const { STATUS_DOT_TYPES } = require("./status-dots");

@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const { CompositeDisposable } = require("atom");
 const etch = require("@lumine-code/etch");
 const dedent = require("dedent");

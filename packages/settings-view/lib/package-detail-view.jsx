@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const path = require("path");
 
 const _ = require("@lumine-code/underscore-plus");

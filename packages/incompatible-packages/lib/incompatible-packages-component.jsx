@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const etch = require("@lumine-code/etch");
 
 const VIEW_URI = require("./view-uri");

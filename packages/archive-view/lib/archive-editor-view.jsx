@@ -1,3 +1,4 @@
+/** @jsx etch.dom */
 const fs = require("fs");
 const path = require("path");
 const humanize = require("humanize-plus");
