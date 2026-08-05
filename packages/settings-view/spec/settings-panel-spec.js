@@ -104,6 +104,88 @@ describe("SettingsPanel", () => {
     });
   });
 
+  describe("copying a setting key", () => {
+    beforeEach(() => {
+      atom.config.setSchema("kopy", {
+        type: "object",
+        properties: {
+          flag: {
+            title: "Flag",
+            description: "A boolean, so its key sits inside the label",
+            type: "boolean",
+            default: false,
+          },
+          group: {
+            title: "Group",
+            description: "An object, so its key sits inside the collapsible heading",
+            type: "object",
+            properties: {
+              nested: {
+                title: "Nested",
+                description: "The nested setting",
+                type: "string",
+                default: "nested",
+              },
+            },
+          },
+        },
+      });
+      settingsPanel = new SettingsPanel({ namespace: "kopy", includeTitle: false });
+      jasmine.attachToDOM(settingsPanel.element);
+      atom.clipboard.write("");
+    });
+
+    afterEach(() => {
+      settingsPanel.destroy();
+    });
+
+    const keyElementFor = (keyPath) =>
+      Array.from(settingsPanel.element.querySelectorAll(".setting-key")).find(
+        (element) => element.textContent === keyPath,
+      );
+
+    it("writes the key path to the clipboard and flashes the span", () => {
+      const keyElement = keyElementFor("kopy.flag");
+      keyElement.click();
+
+      expect(atom.clipboard.read()).toBe("kopy.flag");
+      expect(keyElement.classList.contains("copied")).toBe(true);
+
+      advanceClock(1200);
+      expect(keyElement.classList.contains("copied")).toBe(false);
+    });
+
+    it("does not toggle the setting when the key belongs to a checkbox", () => {
+      expect(atom.config.get("kopy.flag")).toBe(false);
+
+      keyElementFor("kopy.flag").click();
+
+      expect(atom.clipboard.read()).toBe("kopy.flag");
+      expect(atom.config.get("kopy.flag")).toBe(false);
+    });
+
+    it("does not collapse the group when the key belongs to a sub-section heading", () => {
+      const section = settingsPanel.element.querySelector(".sub-section");
+      expect(section.classList.contains("collapsed")).toBe(false);
+
+      keyElementFor("kopy.group").click();
+
+      expect(atom.clipboard.read()).toBe("kopy.group");
+      expect(section.classList.contains("collapsed")).toBe(false);
+    });
+
+    it("moves the flash to the most recently copied key", () => {
+      const flag = keyElementFor("kopy.flag");
+      const nested = keyElementFor("kopy.group.nested");
+
+      flag.click();
+      nested.click();
+
+      expect(flag.classList.contains("copied")).toBe(false);
+      expect(nested.classList.contains("copied")).toBe(true);
+    });
+  });
+
   describe("default settings", () => {
     beforeEach(() => {
       const config = {

@@ -435,8 +435,20 @@
     font-size: 0.85em;
     color: var(--text-color-subtle);
     -webkit-user-select: text;
+    cursor: pointer;
     opacity: 0;
     transition: opacity 0.1s ease-in-out;
+
+    &:hover {
+      color: var(--text-color-highlight);
+    }
+
+    /* Clicking copies the key path. Held visible for the flash so the
+       confirmation survives the pointer leaving the row. */
+    &.copied {
+      color: var(--text-color-success);
+      opacity: 1;
+    }
   }
   .setting-title:hover .setting-key,
   .sub-section-heading:hover .setting-key {

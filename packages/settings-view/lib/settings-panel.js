@@ -33,10 +33,12 @@ module.exports = class SettingsPanel extends CollapsibleSectionPanel {
     this.disposables.add(this.bindSelectFields());
     this.disposables.add(this.bindEditors());
     this.disposables.add(this.bindTooltips());
+    this.disposables.add(this.bindSettingKeys());
     this.disposables.add(this.handleEvents());
   }
 
   destroy() {
+    clearTimeout(this.copiedTimeout);
     this.disposables.dispose();
     this.element.remove();
   }
@@ -318,6 +320,43 @@ module.exports = class SettingsPanel extends CollapsibleSectionPanel {
     return new CompositeDisposable(...disposables);
   }
 
+  // Clicking the greyed key path beside a setting copies it. The listener sits on
+  // each span rather than on the panel so that `stopPropagation` beats the
+  // collapse handler `CollapsibleSectionPanel` binds on `this.element`: an object
+  // group renders its key inside the `.has-items` heading, and a bare click there
+  // would fold the group away. `preventDefault` is for the checkbox and colour
+  // forms, where the key sits inside the `<label>` and a click would otherwise
+  // toggle the setting or open the colour picker.
+  bindSettingKeys() {
+    const disposables = Array.from(this.element.querySelectorAll(".setting-key")).map((keySpan) => {
+      const clickHandler = (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        atom.clipboard.write(keySpan.textContent);
+        this.showCopiedFeedback(keySpan);
+      };
+
+      keySpan.addEventListener("click", clickHandler);
+      return new Disposable(() => keySpan.removeEventListener("click", clickHandler));
+    });
+
+    return new CompositeDisposable(...disposables);
+  }
+
+  showCopiedFeedback(keySpan) {
+    clearTimeout(this.copiedTimeout);
+    if (this.copiedElement) {
+      this.copiedElement.classList.remove("copied");
+    }
+
+    this.copiedElement = keySpan;
+    keySpan.classList.add("copied");
+    this.copiedTimeout = setTimeout(() => {
+      keySpan.classList.remove("copied");
+      if (this.copiedElement === keySpan) this.copiedElement = null;
+    }, 1200);
+  }
+
   bindTooltips() {
     const disposables = Array.from(
       this.element.querySelectorAll("input[id], select[id], atom-text-editor[id]"),
@@ -517,6 +556,7 @@ function settingKeyElement(keyPath) {
   const keySpan = document.createElement("span");
   keySpan.classList.add("setting-key");
   keySpan.textContent = keyPath;
+  keySpan.title = "Click to copy";
   return keySpan;
 }
 
