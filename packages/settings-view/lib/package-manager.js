@@ -3,12 +3,10 @@ const { BufferedProcess, CompositeDisposable, Emitter } = require("atom");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const semver = require("semver");
-const {
-  cloneUrlForRepository,
-  parsePackageSource,
-  resolvePackageSource,
-} = require("../../../src/package-source"); // eslint-disable-line n/no-unpublished-require
-const PackageInstallationService = require("../../../src/package-installation-service"); // eslint-disable-line n/no-unpublished-require
+const requireCore = require("./require-core");
+const { cloneUrlForRepository, parsePackageSource, resolvePackageSource } =
+  requireCore("package-source");
+const PackageInstallationService = requireCore("package-installation-service");
 
 const { packageCoordinate, packageOrigin, packageOriginKey } = require("./utils");
 

@@ -228,7 +228,7 @@ ${copyText}\
       .replace(/[/]/g, "\\") // Temp switch for Windows home matching
       .replace(fs.getHomeDirectory(), "~") // Remove users home dir for apm-dev'ed packages
       .replace(/\\/g, "/") // Switch \ back to / for everyone
-      .replace(/.*(\/(app\.asar|packages\/).*)/, "$1"); // Remove everything before app.asar or pacakges
+      .replace(/.*(\/(app\.asar|node_modules\/|packages\/).*)/, "$1"); // Remove everything before app.asar or pacakges
   }
 
   getRepoUrl() {

@@ -1,5 +1,5 @@
-// eslint-disable-next-line n/no-unpublished-require
-const { normalizeRepositoryOrigin, repositoryReference } = require("../../../src/package-source");
+const requireCore = require("./require-core");
+const { normalizeRepositoryOrigin, repositoryReference } = requireCore("package-source");
 
 const ownerFromRepository = (repository) => {
   if (!repository) return "";

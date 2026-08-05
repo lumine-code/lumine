@@ -4,6 +4,7 @@ const os = require("os");
 const path = require("path");
 const { fileURLToPath, pathToFileURL } = require("url");
 const CSON = require("@lumine-code/season");
+const requireCore = require("./require-core");
 
 const {
   assertSafeCatalogPackageSource,
@@ -13,8 +14,8 @@ const {
   normalizeRepositoryOrigin,
   parsePackageSource,
   resolvePackageSource,
-} = require("../../../src/package-source"); // eslint-disable-line n/no-unpublished-require
-const { validateCommunityPackageMetadata } = require("../../../src/package-validation"); // eslint-disable-line n/no-unpublished-require
+} = requireCore("package-source");
+const { validateCommunityPackageMetadata } = requireCore("package-validation");
 
 const CACHE_SCHEMA_VERSION = 2;
 const MAX_REPOSITORIES = 2000;

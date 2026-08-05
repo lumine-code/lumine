@@ -438,8 +438,9 @@ describe("Markdown Preview", function () {
   describe("markdown-preview:preview-file", function () {
     // The real row builder, so this covers the actual DOM contract rather than
     // a stand-in that could drift from it.
-    const TreeEntry = require("../../tree-view/lib/tree-entry");
-    const TreeRowView = require("../../tree-view/lib/tree-row-view");
+    const treeViewPath = atom.packages.resolvePackagePath("tree-view");
+    const TreeEntry = require(path.join(treeViewPath, "lib", "tree-entry"));
+    const TreeRowView = require(path.join(treeViewPath, "lib", "tree-row-view"));
     const rowViews = [];
 
     afterEach(function () {

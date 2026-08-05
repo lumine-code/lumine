@@ -4,8 +4,8 @@ const path = require("path");
 const etch = require("@lumine-code/etch");
 const gitHubUrlInfo = require("./github-url-info");
 
-// eslint-disable-next-line n/no-unpublished-require
-const { cloneUrlForRepository, parsePackageSource } = require("../../../src/package-source");
+const requireCore = require("./require-core");
+const { cloneUrlForRepository, parsePackageSource } = requireCore("package-source");
 
 const { CompositeDisposable, Disposable, TextEditor } = require("atom");
 
