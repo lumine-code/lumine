@@ -15,13 +15,15 @@ describe("ide-client status-bar item", () => {
     },
   });
 
-  // `stop` is what the manager calls on teardown for whatever is left in the
-  // map; without it deactivation throws and the manager never finishes.
+  // Teardown takes whatever is left in the map through one of these — `stop` on
+  // deactivation, `kill` on unload — so a double stands in for a session only if
+  // it answers both.
   const stubSession = (state, id = "stub", rootPath = "/project") => ({
     adapter: { id, displayName: `${id} Server` },
     rootPath,
     state,
     stop() {},
+    kill() {},
   });
 
   // The batched write is flushed by hand so the assertions stay synchronous.

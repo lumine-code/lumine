@@ -50,6 +50,10 @@ describe("ide-client item actions", () => {
       rootPath: "/project",
       state: "running",
       folders: new Set(["/project"]),
+      // The manager takes every entry of its session map through teardown, so a
+      // double that leaves these out is not a session it can shut down.
+      stop() {},
+      kill() {},
     };
     main.manager.sessions.set("pyright:/project", session);
     spyOn(atom.project, "getPaths").and.returnValue(["/project"]);

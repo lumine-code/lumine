@@ -422,6 +422,127 @@ describe("LanguageServerManager diagnostics", () => {
   });
 });
 
+describe("LanguageServerManager teardown", () => {
+  let manager;
+  const add = (key, session) => {
+    manager.sessions.set(key, session);
+    return session;
+  };
+  const stubSession = (id) => ({
+    adapter: { id, displayName: `${id} Server` },
+    stop: jasmine.createSpy(`${id}.stop`),
+    kill: jasmine.createSpy(`${id}.kill`),
+  });
+
+  beforeEach(() => {
+    manager = new LanguageServerManager();
+    // Activated for real here: the unload teardown is one of its subscriptions.
+    manager.activate();
+    // Reported per failure, and two of these tests cause one on purpose.
+    spyOn(console, "error");
+  });
+
+  // Every test above leaves the manager torn down already; this is for the ones
+  // that stop at `will-destroy`, which does not touch the subscriptions.
+  afterEach(async () => manager.deactivate());
+
+  it("stops every session and empties the map", async () => {
+    const first = add("a:/project", stubSession("a"));
+    const second = add("b:/project", stubSession("b"));
+
+    await manager.deactivate();
+
+    expect(first.stop).toHaveBeenCalled();
+    expect(second.stop).toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(0);
+  });
+
+  it("finishes tearing down when one session cannot be stopped", async () => {
+    // A server whose pipe is already gone, and — as the package's own doubles
+    // used to be — an entry that is not a session at all. Either one used to
+    // reject the whole `Promise.all`, which left the map full and the manager
+    // half torn down while core logged the failure and moved on.
+    const rejecting = add("a:/project", {
+      adapter: { id: "a" },
+      stop: jasmine.createSpy("a.stop").and.returnValue(Promise.reject(new Error("broken pipe"))),
+    });
+    const foreign = add("b:/project", { adapter: { id: "b" } });
+    const healthy = add("c:/project", stubSession("c"));
+
+    await manager.deactivate();
+
+    expect(rejecting.stop).toHaveBeenCalled();
+    expect(healthy.stop).toHaveBeenCalled();
+    expect(foreign.stop).toBeUndefined();
+    expect(manager.sessions.size).toBe(0);
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it("drops an adapter's sessions even when one of them refuses to stop", async () => {
+    // The path an ide-* package takes when it deactivates. Nothing awaits the
+    // disposable it drops, so a rejection would only ever be an unhandled one.
+    const adapter = {
+      id: "test",
+      displayName: "Test",
+      grammarScopes: ["source.test"],
+      resolveServer: async () => null,
+    };
+    manager.registerAdapter(adapter);
+    const rejecting = add("test:/a", {
+      adapter,
+      stop: jasmine.createSpy("stop").and.returnValue(Promise.reject(new Error("broken pipe"))),
+    });
+    const healthy = add("test:/b", { adapter, stop: jasmine.createSpy("stop") });
+
+    await manager.unregisterAdapter(adapter);
+
+    expect(rejecting.stop).toHaveBeenCalled();
+    expect(healthy.stop).toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(0);
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it("kills the servers when the window goes away without deactivating", () => {
+    // A reload never calls `deactivate`, so `will-destroy` is the only teardown
+    // it reaches; a server that outlives its stdin is orphaned without it.
+    const session = add("a:/project", stubSession("a"));
+
+    atom.emitter.emit("will-destroy");
+
+    expect(session.kill).toHaveBeenCalled();
+    expect(session.stop).not.toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(0);
+  });
+
+  it("keeps a failing kill from stranding the rest", () => {
+    const failing = add("a:/project", {
+      adapter: { id: "a" },
+      kill: jasmine.createSpy("a.kill").and.throwError("already gone"),
+    });
+    const healthy = add("b:/project", stubSession("b"));
+
+    atom.emitter.emit("will-destroy");
+
+    expect(failing.kill).toHaveBeenCalled();
+    expect(healthy.kill).toHaveBeenCalled();
+    expect(manager.sessions.size).toBe(0);
+    expect(console.error).toHaveBeenCalled();
+  });
+
+  it("does not kill anything a close already stopped", async () => {
+    // Both paths run on a window close: `deactivate` first, from
+    // `prepareToUnloadEditorWindow`, and `will-destroy` as the window goes. The
+    // second must not undo the graceful shutdown the first performed.
+    const session = add("a:/project", stubSession("a"));
+
+    await manager.deactivate();
+    atom.emitter.emit("will-destroy");
+
+    expect(session.stop).toHaveBeenCalled();
+    expect(session.kill).not.toHaveBeenCalled();
+  });
+});
+
 describe("languageIdForEditor", () => {
   const editorWith = (scopeName, name) => ({
     getGrammar: () => ({ scopeName, name }),

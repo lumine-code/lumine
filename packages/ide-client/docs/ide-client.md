@@ -135,6 +135,10 @@ The `languageId` sent to the server is resolved in order: `languageIdForScope(sc
 
 `registerAdapter` returns a `Disposable` that unregisters the adapter and stops its sessions — return it directly from `consumeIdeClient`, as in the example. Sessions are also stopped when `ide-client` deactivates, so an adapter needs no shutdown logic of its own.
 
+That holds for a window reload too, which never deactivates a package: the servers are killed as the window goes away rather than asked to shut down, since no LSP round trip can finish at that point. Do not add an unload handler of your own — a language server is a child process, and one left running is orphaned for the life of the machine.
+
+Teardown never stops early. A server that cannot be shut down cleanly is reported and skipped, so it cannot strand the servers beside it. The one exception is `stop(session)`, which rejects, because a stop somebody asked for should be able to say it failed.
+
 ## Versioning
 
 `1.0.0` provided, `^1.0.0` consumed. A change that breaks this shape gets a new service name rather than a new major version, and both sides move in the same release.

@@ -38,6 +38,9 @@ module.exports = class LanguageServerManager {
       atom.config.onDidChange("ide-client.trace", () => {
         for (const session of this.allSessions()) session.applyTrace();
       }),
+      // Package deactivation is skipped on a reload, and a language server is a
+      // child process that outlives the window it was started from.
+      atom.onWillDestroy(() => this.killAllSessions()),
     );
   }
   onDidChangeSession(fn) {
@@ -101,10 +104,13 @@ module.exports = class LanguageServerManager {
     const owned = new Set(
       this.allSessions().filter((session) => session.adapter.id === adapter.id),
     );
+    // Nothing awaits this: it runs from the disposable an adapter package drops
+    // on its own deactivation, so a rejection here would surface as an unhandled
+    // one rather than reaching anybody who could act on it.
     await Promise.all(
-      [...owned].map(async (session) => {
+      [...owned].map((session) => {
         this.forget(session);
-        await session.stop();
+        return this.stopSession(session);
       }),
     );
   }
@@ -265,7 +271,9 @@ module.exports = class LanguageServerManager {
     } catch (error) {
       if (this.sessions.get(key) === session) {
         this.sessions.delete(key);
-        session.stop();
+        // The start already failed; the reason the user needs is reported below,
+        // and cleaning up after it must not add a rejection nobody is awaiting.
+        this.stopSession(session);
       }
       this.reportStartFailure(adapter, rootPath, error);
     }
@@ -710,7 +718,9 @@ module.exports = class LanguageServerManager {
       if (!gone.length) continue;
       if (gone.length === session.folders.size) {
         this.forget(session);
-        session.stop();
+        // Reclaiming a server nothing can reach any more: not awaited, and not
+        // something the user did, so it must not reject at nobody.
+        this.stopSession(session);
         continue;
       }
       for (const folder of gone) {
@@ -723,6 +733,42 @@ module.exports = class LanguageServerManager {
       });
     }
   }
+  // Teardown must not be abortable: one server that cannot be shut down cleanly
+  // — a broken pipe, a process already gone — must not strand the servers beside
+  // it or the cleanup that follows them, so the failure is reported rather than
+  // thrown. Only for the paths nobody asked for; `disconnect` stays rejecting so
+  // that stopping a server by hand can still say it failed.
+  async stopSession(session) {
+    try {
+      await session.stop();
+    } catch (error) {
+      console.error(
+        `ide-client: failed to stop ${session?.adapter?.id ?? "a language server"}`,
+        error,
+      );
+    }
+  }
+  async stopAllSessions() {
+    await Promise.all(this.allSessions().map((session) => this.stopSession(session)));
+    this.sessions.clear();
+  }
+  // A reload never reaches `deactivate`, so this is the only teardown both paths
+  // run. See `ServerSession#kill` for why the servers are killed here rather
+  // than asked to shut down. On a window close `deactivate` has already emptied
+  // the map, which leaves this a no-op.
+  killAllSessions() {
+    for (const session of this.allSessions()) {
+      try {
+        session.kill();
+      } catch (error) {
+        console.error(
+          `ide-client: failed to kill ${session?.adapter?.id ?? "a language server"}`,
+          error,
+        );
+      }
+    }
+    this.sessions.clear();
+  }
   async deactivate() {
     this.cancelIdleChecks();
     this.subscriptions.dispose();
@@ -730,8 +776,7 @@ module.exports = class LanguageServerManager {
     this.editorSubscriptions.clear();
     for (const subs of this.adapterSubscriptions.values()) subs.dispose();
     this.adapterSubscriptions.clear();
-    await Promise.all(this.allSessions().map((session) => session.stop()));
-    this.sessions.clear();
+    await this.stopAllSessions();
     this.emitter.dispose();
   }
 };

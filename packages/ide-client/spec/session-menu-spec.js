@@ -6,7 +6,10 @@ describe("ide-client session menu", () => {
     rootPath,
     state,
     folders: new Set(folders),
+    // Teardown takes whatever is left in the map through one of these — `stop`
+    // on deactivation, `kill` on unload.
     stop() {},
+    kill() {},
   });
 
   // elementForItem returns a row descriptor, so go through the list to get the

@@ -306,6 +306,24 @@ module.exports = class ServerSession {
       });
     });
   }
+  // Immediate teardown for window unload, where `stop()` is no use: a reload
+  // never calls `deactivate`, and the `shutdown`/`exit` round trip it waits on
+  // cannot finish while the environment is going away. A server that does not
+  // die with its stdin would otherwise be orphaned — one more for every reload —
+  // so the process is killed outright instead of asked to leave. Synchronous on
+  // purpose: nothing awaits a `will-destroy` handler.
+  kill() {
+    if (this.state === "stopped") return;
+    // Assigned rather than `setState`: that reports the change onward, and the
+    // views it would repaint are being torn down in the same breath.
+    this.state = "stopped";
+    try {
+      this.connection?.dispose();
+    } catch {
+      /* The connection is going down with the window either way. */
+    }
+    this.process?.kill();
+  }
   async stop() {
     if (this.state === "stopped") return;
     const wasRunning = this.state === "running";
