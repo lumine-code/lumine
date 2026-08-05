@@ -95,12 +95,9 @@ jobs:
         # fonts-noto-cjk backs the editor's double-width/half-width/Korean
         # character measurements in the text-editor-component specs.
         run: |
-          # A third-party repository on the runner image answering 403 must not fail
-
-          # the job: the Ubuntu lists this needs still fetched, and the install below
-
-          # stays strict, so a genuinely missing package still stops us.
-
+          # A third-party repository on the runner image answering 403 must not
+          # fail the job: the lists this actually needs still fetched, and the
+          # install below stays strict, so a missing package still stops us.
           sudo apt-get update || true
           sudo apt-get install -y xvfb libx11-dev libxkbfile-dev libsecret-1-dev fonts-noto-cjk
       # Most native install scripts are wasted here: those modules are rebuilt
