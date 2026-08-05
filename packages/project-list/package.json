@@ -13,7 +13,7 @@
   "version": "1.0.0",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can switch to another project with {{ 'project-list:toggle' | keystroke }}"

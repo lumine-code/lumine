@@ -13,7 +13,7 @@
   ],
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "Lumine can save an editor the moment it loses focus. Turn on autosave in the Settings view."

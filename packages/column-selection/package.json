@@ -14,7 +14,7 @@
   "repository": "https://github.com/lumine-code/lumine",
   "main": "./lib/main",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can keep rectangular selection on for repeated mouse gestures with {{ 'column-selection:sticky' | keystroke }}"

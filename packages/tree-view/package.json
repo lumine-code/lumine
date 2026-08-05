@@ -17,7 +17,7 @@
   },
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "dependencies": {
     "picomatch": "^4.0.5",

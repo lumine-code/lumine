@@ -19,7 +19,7 @@
   },
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can jump straight to a line number with {{ 'go-to-line:toggle' | keystroke }}"

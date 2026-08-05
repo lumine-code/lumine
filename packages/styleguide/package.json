@@ -21,6 +21,6 @@
     "StyleguideView": "createStyleguideView"
   },
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   }
 }

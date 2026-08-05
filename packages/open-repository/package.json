@@ -28,7 +28,7 @@
     ]
   },
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can open the current file on its Git host's website with {{ 'open-repository:file' | keystroke }}",

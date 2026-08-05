@@ -14,7 +14,7 @@
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can jump to the bracket matching the one at the cursor with {{ 'bracket-matcher:go-to-matching-bracket' | keystroke }}",

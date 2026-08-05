@@ -14,7 +14,7 @@
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "dependencies": {
     "@lumine-code/etch": "https://github.com/lumine-code/etch.git#9c74208ad932e0694cb3f7ad575e7205154dea8f",

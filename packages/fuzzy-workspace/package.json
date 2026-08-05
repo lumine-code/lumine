@@ -13,7 +13,7 @@
   "version": "1.0.0",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can jump to anything already open in the workspace with {{ 'fuzzy-workspace:toggle' | keystroke }}"

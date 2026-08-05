@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "scripts": {
     "update": "node ./update/update.js",

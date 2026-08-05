@@ -15,7 +15,7 @@
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can split your editor into multiple panes with {{ 'pane:split-right-and-copy-active-item' | keystroke }}",

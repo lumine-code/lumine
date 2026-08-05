@@ -14,7 +14,7 @@
   ],
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "{% if keys['notifications:toggle-log'] %}You can reread every notification you have dismissed with {{ 'notifications:toggle-log' | keystroke }}{% else %}Every notification you dismiss is kept in the notifications log, so nothing is lost.{% endif %}"

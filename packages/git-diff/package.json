@@ -15,7 +15,7 @@
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can step through the lines you changed since the last commit with {{ 'git-diff:move-to-next-diff' | keystroke }}",

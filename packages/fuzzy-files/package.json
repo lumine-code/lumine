@@ -13,7 +13,7 @@
   "version": "1.0.0",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can open any file in the project by typing part of its name with {{ 'fuzzy-files:toggle' | keystroke }}",

@@ -20,7 +20,7 @@
     "@electron/remote": "2.1.3"
   },
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "{% if keys['image-paste:paste'] %}You can paste an image from the clipboard into the project with {{ 'image-paste:paste' | keystroke }}{% else %}You can paste an image from the clipboard straight into the project and have its relative path inserted.{% endif %}"

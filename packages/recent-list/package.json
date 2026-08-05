@@ -13,7 +13,7 @@
   "version": "1.0.0",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can reopen a project you worked on earlier with {{ 'recent-list:toggle' | keystroke }}"

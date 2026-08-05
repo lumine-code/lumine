@@ -13,7 +13,7 @@
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "{% if keys['tabs:close-other-tabs'] %}You can close every tab but the active one with {{ 'tabs:close-other-tabs' | keystroke }}{% else %}You can close every tab but the active one from the tab's context menu.{% endif %}"

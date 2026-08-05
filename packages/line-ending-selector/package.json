@@ -14,7 +14,7 @@
   "license": "MIT",
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "{% if keys['line-ending-selector:show'] %}You can switch the current file between LF and CRLF with {{ 'line-ending-selector:show' | keystroke }}{% else %}The status bar shows whether the current file uses LF or CRLF, and clicking it converts the file.{% endif %}"

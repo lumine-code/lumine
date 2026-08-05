@@ -37,7 +37,7 @@
   },
   "repository": "https://github.com/lumine-code/lumine",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can find and replace inside the current file with {{ 'search-panel:show' | keystroke }}",

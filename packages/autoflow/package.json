@@ -19,7 +19,7 @@
   "repository": "https://github.com/lumine-code/lumine",
   "license": "MIT",
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "backgroundTips": [
     "You can reflow the selected text to your preferred line length with {{ 'autoflow:reflow-selection' | keystroke }}"

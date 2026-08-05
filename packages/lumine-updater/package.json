@@ -14,7 +14,7 @@
     "test": "lumine --test spec"
   },
   "engines": {
-    "atom": "*"
+    "lumine": "^1.0.0"
   },
   "author": "lumine-code",
   "license": "MIT",
