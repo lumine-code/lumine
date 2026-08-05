@@ -950,6 +950,16 @@ module.exports = class RepositoryRegistry {
     return Object.freeze(operations);
   }
 
+  /*
+  Section: Creating Repositories
+  */
+
+  // Public: Which of `initialize` and `clone` a provider can perform.
+  //
+  // These belong to no repository — they are what creates one — so they are
+  // asked for separately from {::getOperationCapabilities}.
+  //
+  // Returns a frozen {Array} of {String} operation names.
   getWorkspaceOperationCapabilities() {
     const capabilities = [];
     if (this.findWorkspaceOperationProvider("initialize")) capabilities.push("initialize");
@@ -957,14 +967,39 @@ module.exports = class RepositoryRegistry {
     return Object.freeze(capabilities);
   }
 
+  // Public: Whether a repository-creating operation can be performed.
+  //
+  // * `operationName` A {String}, `"initialize"` or `"clone"`.
+  //
+  // Returns a {Boolean}.
   canPerformWorkspaceOperation(operationName) {
     return this.findWorkspaceOperationProvider(operationName) != null;
   }
 
+  /*
+  Section: Running Git
+  */
+
+  // Public: Whether any provider can run raw Git commands.
+  //
+  // Returns a {Boolean}.
   canExecuteGitCommands() {
     return this.findGitCommandProvider() != null;
   }
 
+  // Extended: Run a Git command through whichever provider offers one.
+  //
+  // The escape hatch for what the operation set does not cover. Prefer a named
+  // operation where one exists — it is the part a provider can implement
+  // without shelling out.
+  //
+  // * `args` An {Array} of {String} arguments, without the leading `git`.
+  // * `workingDirectory` The {String} directory to run in.
+  // * `options` (optional) {Object} passed through to the provider.
+  //
+  // Returns a {Promise} for the provider's result. It rejects with a {TypeError}
+  // if `args` is not an array, and with an {Error} whose `code` is
+  // `ERR_GIT_EXECUTION_UNAVAILABLE` when no provider runs Git commands.
   executeGit(args, workingDirectory, options) {
     if (this.destroyed) {
       return Promise.reject(new Error("Cannot execute Git with a destroyed RepositoryRegistry"));
@@ -982,14 +1017,39 @@ module.exports = class RepositoryRegistry {
     return provider.executeGit(args, workingDirectory, options);
   }
 
+  // Extended: The Git binary the active provider runs.
+  //
+  // Returns a {String} path, or `null` when no provider runs Git commands or it
+  // does not say which binary it uses.
   getGitExecutablePath() {
     return this.findGitCommandProvider()?.getGitExecutablePath?.() || null;
   }
 
+  /*
+  Section: Creating Repositories
+  */
+
+  // Public: Create a repository in a directory and register it.
+  //
+  // * `directoryPath` The {String} directory to initialize.
+  // * `options` (optional) {Object} passed through to the provider.
+  //
+  // Returns a {Promise} that resolves to the new {GitRepository}. It rejects
+  // when no provider implements `initialize`, and with an {Error} whose `code`
+  // is `ERR_REPOSITORY_DISCOVERY_FAILED` if the command succeeded but nothing
+  // was found at the path afterwards.
   initialize(directoryPath, options) {
     return this.performWorkspaceOperation("initialize", directoryPath, [directoryPath, options]);
   }
 
+  // Public: Clone a remote into a directory and register the result.
+  //
+  // * `remoteUrl` The {String} URL to clone.
+  // * `destinationPath` The {String} directory to clone into.
+  // * `options` (optional) {Object} passed through to the provider.
+  //
+  // Returns a {Promise} that resolves to the new {GitRepository}, and rejects
+  // the same way {::initialize} does.
   clone(remoteUrl, destinationPath, options) {
     return this.performWorkspaceOperation("clone", destinationPath, [
       remoteUrl,
@@ -1311,6 +1371,25 @@ module.exports = class RepositoryRegistry {
     });
   }
 
+  /*
+  Section: Managing Repositories
+  */
+
+  // Public: Register the repository containing a path, and keep it.
+  //
+  // For a repository the user chose that no project root covers. It is held
+  // until the returned handle is disposed, and by default remembered across
+  // window reloads.
+  //
+  // * `filePath` The {String} path inside the repository to add.
+  // * `options` (optional) {Object}
+  //   * `persist` (optional) {Boolean}, `true` by default. Pass `false` to hold
+  //     the repository for this session only.
+  //
+  // Returns a {Promise} that resolves to an {Object}, or to `null` when the path
+  // is not in a repository.
+  // * `repository` The {GitRepository}.
+  // * `dispose` A {Function} that releases it.
   async add(filePath, { persist = true } = {}) {
     const repository = await this.resolveForPath(filePath);
     if (!repository) return null;
@@ -1330,6 +1409,14 @@ module.exports = class RepositoryRegistry {
     };
   }
 
+  // Public: Drop every manual hold {::add} placed on a repository.
+  //
+  // The repository stays registered while a project root or an open buffer
+  // still owns it.
+  //
+  // * `repository` The {GitRepository} to forget.
+  //
+  // Returns a {Boolean}: `true` if the repository was registered.
   forget(repository) {
     const entry = this.entryByRepository.get(repository);
     if (!entry) return false;
