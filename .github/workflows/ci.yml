@@ -64,6 +64,13 @@ jobs:
       # is the only gate that sees it.
       - name: Check grammar captures
         run: npm run check:grammar-captures
+      # A lockfile entry for a bundled package records the dependency list of
+      # the commit it was written for, and npm re-reads a git dependency only
+      # when the entry disagrees with the manifest — so an entry naming one
+      # commit while describing another installs the wrong tree and reports
+      # success. This runs against the tree `npm ci` just built.
+      - name: Check bundled dependencies
+        run: npm run check:bundled-deps
 
   test:
     name: Test on ${{ matrix.os }}

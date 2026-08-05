@@ -190,6 +190,7 @@
     "check:icons": "node script/check-icons.js",
     "check:editors": "node script/check-editors.js",
     "check:grammar-captures": "node script/check-grammar-captures.js",
+    "check:bundled-deps": "node script/check-bundled-deps.js",
     "drive": "node script/drive.js",
     "generate:branding": "electron --no-sandbox script/generate-branding.js",
     "check:branding": "electron --no-sandbox script/generate-branding.js --check",
