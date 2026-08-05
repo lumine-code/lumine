@@ -3,6 +3,22 @@
    its own spacing. `.ide-client-session-state` stays on it as the hook a user
    stylesheet can target. */
 
+/* A detail row puts its value in the same trailing block, so the values line up
+   down the right edge. That block is floated, and nothing truncates it: a value
+   as long as a server's whole command line would run to the card edge and be
+   clipped there, taking the ellipsis away from the label instead of itself.
+   Cap the block and let the value end in its own ellipsis. `min-width` is what
+   makes the cap bite — a flex item will not shrink below its content without
+   it. */
+.ide-client-session-detail .trailing-block {
+  max-width: 75%;
+}
+.ide-client-session-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Status-bar item. It keeps the status bar's own text color in every state:
    the count and the alert glyph already say what is going on, and a tile that
    repaints itself pulls the eye off whatever was being read. `has-starting`

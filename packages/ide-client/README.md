@@ -17,9 +17,9 @@ Starts language servers lazily when matching editors open and exposes UI-indepen
 - **Inlay hints**: renders inline type and parameter-name labels for the visible part of the editor.
 - **Code lens**: shows actionable command links above symbols; disabled by default.
 - **Semantic tokens**: layers server-computed highlighting over the grammar's own; disabled by default.
-- **Server list**: lists every running server with its state, and restarts, stops, or opens the log of any of them.
+- **Server list**: lists every running server with its state and what it covers — a project root, the workspace, or a file opened outside the project — and restarts, stops, or opens the log of any of them without leaving the list.
+- **Server details**: reports what a server says about itself — the process it runs in, the command that started it, the documents and diagnostics it holds, and the capabilities it advertised.
 - **Status bar**: counts the running servers in a permanent status-bar item, flags the failed ones, and opens the server list on click.
-- **Server list**: names what each running server covers — a project root, the workspace, or a file opened outside the project — with its path.
 - **Logging**: keeps a per-server log buffer with optional protocol tracing.
 
 ## Commands
@@ -32,6 +32,14 @@ Commands available in `atom-workspace`:
 - `ide-client:format`: format the active document,
 - `ide-client:show-log`: open the active server's log in a new editor,
 - `ide-client:open-custom-servers-file`: open the custom servers configuration file.
+
+Commands available in `.ide-client-session-menu`:
+
+- `ide-client:show-details`: show what the selected server reports about itself,
+- `ide-client:restart-server`: restart the selected server without leaving the list,
+- `ide-client:stop-server`: stop the selected server until a matching editor opens again,
+- `ide-client:show-server-log`: open the selected server's log in a new editor,
+- `ide-client:show-problems`: open the linter panel with the diagnostics of every server.
 
 ## Usage
 
@@ -71,13 +79,16 @@ Saving the file restarts exactly the servers whose entries changed.
 
 ## Customization
 
-Tweak the server list and the status-bar item from your stylesheet. The item
-stays the color of the status bar whatever the servers are doing, but it carries
-`has-starting` and `has-failed` so you can say otherwise:
+Tweak the server list, its details step, and the status-bar item from your
+stylesheet. The item stays the color of the status bar whatever the servers are
+doing, but it carries `has-starting` and `has-failed` so you can say otherwise:
 
 ```css
 .ide-client-session-state {
   font-weight: bold;
+}
+.ide-client-session-detail .ide-client-session-value {
+  color: var(--text-color-subtle);
 }
 .ide-client-server-status .ide-client-server-label {
   color: var(--text-color-info);

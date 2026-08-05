@@ -12,6 +12,7 @@ describe("ide-client session menu", () => {
   // elementForItem returns a row descriptor, so go through the list to get the
   // element it actually renders — the same path a real row takes.
   const render = (item) => menu.serverList.resolveElement(item, {});
+  const renderDetail = (item) => menu.detailsList.resolveElement(item, {});
 
   beforeEach(async () => {
     await atom.packages.activatePackage("ide-client");
@@ -57,10 +58,14 @@ describe("ide-client session menu", () => {
     expect(element.querySelector(".secondary-line").textContent).toBe("/project");
   });
 
-  it("leaves out the trailing block for the action items, which have no state", () => {
-    const element = render({ label: "Restart", detail: "Restart stub Server" });
-    expect(element.querySelector(".trailing-block")).toBe(null);
-    expect(element.querySelector(".primary-text").textContent).toBe("Restart");
+  it("puts a detail's value in the trailing block, so the values line up", () => {
+    const element = renderDetail({ label: "Command", value: "pyright-langserver --stdio" });
+    expect(element.querySelector(".primary-text").textContent).toBe("Command");
+
+    // The value carries its own class: the trailing block is floated and would
+    // otherwise run a long command line off the edge of the card.
+    const value = element.querySelector(".trailing-block .ide-client-session-value");
+    expect(value.textContent).toBe("pyright-langserver --stdio");
   });
 
   it("hosts the list in the view's own panel, so a click outside cancels it", async () => {
@@ -143,44 +148,110 @@ describe("ide-client session menu", () => {
     expect(menu.serverItems().map((item) => item.label)).toEqual(["zeta Server", "alpha Server"]);
   });
 
-  describe("stepping into a server's actions", () => {
+  describe("stepping into a server's details", () => {
     let session;
 
     beforeEach(() => {
       session = stubSession("running", "pyright");
+      session.serverInfo = { name: "basedpyright", version: "1.31.0" };
+      session.launch = { command: "basedpyright-langserver", args: ["--stdio"] };
+      session.process = { pid: 24180 };
+      session.capabilities = {
+        hoverProvider: true,
+        definitionProvider: {},
+        renameProvider: false,
+      };
+      session.documents = new Map([
+        ["file:///a.py", {}],
+        ["file:///b.py", {}],
+      ]);
       main.manager.sessions.set("pyright:/project", session);
+      main.manager.diagnostics.set(
+        session,
+        new Map([
+          ["file:///a.py", { diagnostics: [{}, {}, {}] }],
+          ["file:///b.py", { diagnostics: [] }],
+        ]),
+      );
       spyOn(atom.project, "getPaths").and.returnValue(["/project"]);
     });
 
-    it("routes a confirmed server row into showActions", async () => {
-      spyOn(menu, "showActions");
+    it("routes a confirmed server row into showDetails", async () => {
+      spyOn(menu, "showDetails");
       await menu.toggle();
       expect(menu.serverList.props.items.length).toBe(1);
 
       menu.serverList.confirmSelection();
-      expect(menu.showActions).toHaveBeenCalledWith(session);
+      expect(menu.showDetails).toHaveBeenCalledWith(session);
     });
 
-    it("shows the actions as a flow step named after the server, with no Back row", async () => {
+    it("shows the details as a flow step named after the server", async () => {
       await menu.toggle();
-      await menu.showActions(session);
+      await menu.showDetails(session);
 
       expect(menu.serverList.isVisible()).toBeFalsy();
-      expect(menu.actionsList.isVisible()).toBeTruthy();
+      expect(menu.detailsList.isVisible()).toBeTruthy();
       expect(atom.workspace.getModalTrail()).toEqual(["Servers", "pyright Server"]);
-      expect(menu.actionsList.props.items.map((item) => item.label)).toEqual([
-        "Restart",
-        "Stop",
-        "Show Server Log",
-        "Show Problems",
+      expect(menu.detailsList.props.items.map((item) => item.label)).toEqual([
+        "State",
+        "Scope",
+        "Server",
+        "Process",
+        "Command",
+        "Documents",
+        "Diagnostics",
+        "Capabilities",
       ]);
+    });
+
+    it("reports what the session knows about itself", () => {
+      const values = new Map(menu.detailItems(session).map((item) => [item.label, item.value]));
+
+      expect(values.get("State")).toBe("running");
+      expect(values.get("Server")).toBe("basedpyright 1.31.0");
+      expect(values.get("Process")).toBe("pid 24180 · stdio");
+      expect(values.get("Command")).toBe("basedpyright-langserver --stdio");
+      expect(values.get("Documents")).toBe("2");
+      // A document whose diagnostics were cleared keeps its entry, and is not
+      // a file with problems.
+      expect(values.get("Diagnostics")).toBe("3 in 1 file");
+      // Only what the server actually advertised, with the suffix off. A
+      // capability the server declared false is not one it has.
+      expect(values.get("Capabilities")).toBe("definition, hover");
+    });
+
+    it("says how often a server has been restarted out from under the user", () => {
+      session.restartCount = 2;
+      const [state] = menu.detailItems(session);
+      expect(state.value).toBe("running · restarted 2×");
+    });
+
+    it("leaves out the rows a session has nothing to report for", () => {
+      const bare = stubSession("starting", "bare");
+      main.manager.sessions.set("bare:/project", bare);
+      expect(menu.detailItems(bare).map((item) => item.label)).toEqual(["State", "Scope"]);
+    });
+
+    it("copies a confirmed value and stays open to show what it took", async () => {
+      await menu.toggle();
+      await menu.showDetails(session);
+
+      const index = menu.detailsList.items.findIndex((item) => item.label === "Command");
+      await menu.detailsList.selectIndex(index);
+      // Through the list's own wiring, but awaited: `confirmSelection` drops
+      // what the handler returns, so the render would still be pending here.
+      await menu.detailsList.props.didConfirmSelection(menu.detailsList.getSelectedItem());
+
+      expect(atom.clipboard.read()).toBe("basedpyright-langserver --stdio");
+      expect(menu.detailsList.isVisible()).toBeTruthy();
+      expect(menu.detailsList.refs.infoMessage.textContent).toBe("Copied Command");
     });
 
     it("returns to a freshly built server list on back navigation", async () => {
       await menu.toggle();
-      await menu.showActions(session);
+      await menu.showDetails(session);
 
-      // A server that appeared while the actions were open must be in the
+      // A server that appeared while the details were open must be in the
       // list the back navigation re-shows.
       main.manager.sessions.set("late:/project", stubSession("starting", "late"));
 
@@ -192,16 +263,72 @@ describe("ide-client session menu", () => {
       ]);
       expect(atom.workspace.getModalTrail()).toEqual(["Servers"]);
     });
+  });
 
-    it("ends the flow when an action is confirmed", async () => {
+  describe("acting on a server from the list", () => {
+    let first, second;
+
+    beforeEach(async () => {
+      // Sorted by display name, so `alpha` is the row above `zeta`.
+      first = stubSession("running", "alpha");
+      second = stubSession("running", "zeta");
+      main.manager.sessions.set("alpha:/project", first);
+      main.manager.sessions.set("zeta:/project", second);
+      spyOn(atom.project, "getPaths").and.returnValue(["/project"]);
       await menu.toggle();
-      await menu.showActions(session);
+    });
 
-      menu.actionsList.props.didConfirmSelection({ action: () => {} });
+    it("acts on the row the selection is on, not on the first one", async () => {
+      spyOn(main.manager, "restart").and.returnValue(Promise.resolve(second));
+      await menu.serverList.selectIndex(1);
 
-      expect(menu.actionsList.isVisible()).toBeFalsy();
-      expect(menu.serverList.isVisible()).toBeFalsy();
-      expect(atom.workspace.getModalTrail()).toEqual([]);
+      atom.commands.dispatch(menu.serverList.element, "ide-client:restart-server");
+      expect(main.manager.restart).toHaveBeenCalledWith(second);
+
+      spyOn(main.manager, "disconnect").and.returnValue(Promise.resolve());
+      atom.commands.dispatch(menu.serverList.element, "ide-client:stop-server");
+      expect(main.manager.disconnect).toHaveBeenCalledWith(second);
+
+      spyOn(main, "showLogForAdapter").and.returnValue(Promise.resolve());
+      atom.commands.dispatch(menu.serverList.element, "ide-client:show-server-log");
+      expect(main.showLogForAdapter).toHaveBeenCalledWith("zeta");
+    });
+
+    it("keeps the list open and reports a failure where the row still is", async () => {
+      spyOn(main.manager, "restart").and.returnValue(Promise.reject(new Error("no such command")));
+      spyOn(atom.notifications, "addError");
+
+      await menu.run(main.manager.restart(first));
+
+      expect(menu.serverList.isVisible()).toBeTruthy();
+      expect(atom.notifications.addError.calls.mostRecent().args[0]).toBe(
+        "Language server action failed",
+      );
+    });
+
+    it("repaints the open list on a state change, keeping the selection put", async () => {
+      await menu.serverList.selectIndex(1);
+      expect(menu.serverList.getSelectedItem().session).toBe(second);
+
+      // What a restart reports: the row's own session object is replaced, and
+      // only the key it is filed under carries the identity across.
+      const replacement = stubSession("starting", "zeta");
+      main.manager.sessions.set("zeta:/project", replacement);
+      await menu.refresh();
+
+      expect(menu.serverList.props.items.map((item) => item.state)).toEqual([
+        "running",
+        "starting",
+      ]);
+      expect(menu.serverList.getSelectedItem().session).toBe(replacement);
+    });
+
+    it("leaves a hidden list alone, so reopening it is what rebuilds the rows", async () => {
+      await menu.toggle();
+      spyOn(menu, "serverItems");
+
+      await menu.refresh();
+      expect(menu.serverItems).not.toHaveBeenCalled();
     });
   });
 });

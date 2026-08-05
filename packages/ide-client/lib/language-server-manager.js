@@ -339,6 +339,19 @@ module.exports = class LanguageServerManager {
   allDiagnostics() {
     return [...this.diagnostics.values()].flatMap((byUri) => [...byUri.values()]);
   }
+  // What one session has reported, for the UIs that summarize a server rather
+  // than a file. Files with nothing left to say are not counted: a cleared
+  // document keeps its entry with an empty list.
+  diagnosticCountFor(session) {
+    let total = 0;
+    let files = 0;
+    for (const entry of this.diagnostics.get(session)?.values() || []) {
+      if (!entry.diagnostics?.length) continue;
+      total += entry.diagnostics.length;
+      files++;
+    }
+    return { total, files };
+  }
   clearDiagnosticsForSession(session) {
     const byUri = this.diagnostics.get(session);
     if (!byUri) return;
