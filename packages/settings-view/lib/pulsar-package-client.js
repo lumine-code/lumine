@@ -35,7 +35,10 @@ function normalizePulsarPackage(entry) {
       ? metadata.keywords.filter((keyword) => typeof keyword === "string")
       : [],
     theme: metadata.theme === "ui" || metadata.theme === "syntax" ? metadata.theme : false,
-    engines: metadata.engines || { atom: "*" },
+    // Passed through untranslated: legacy registry manifests declare
+    // engines.atom, which the editor no longer reads, so they surface as
+    // incompatible until republished with an engines.lumine range.
+    engines: metadata.engines || {},
     badges: Array.isArray(entry.badges) ? entry.badges : [],
     source: "pulsar",
   };

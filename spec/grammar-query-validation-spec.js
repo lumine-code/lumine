@@ -16,18 +16,11 @@ const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const EXPECTED_GRAMMAR_COUNT = 50;
 
 const repoRoot = path.resolve(__dirname, "..");
-const packageDependencies = Object.keys(require("../package.json").packageDependencies ?? {});
-
-// Bundled packages are either vendored into `packages/` or delivered through
-// `node_modules/` from a Git pin, so enumerate `packageDependencies` rather
-// than reading `packages/` — that is the actual definition of "bundled".
-function resolveBundledPackageDir(packageName) {
-  for (let base of ["packages", "node_modules"]) {
-    let packageDir = path.join(repoRoot, base, packageName);
-    if (fs.existsSync(packageDir)) return packageDir;
-  }
-  return null;
-}
+// The bundled set is defined by src/bundled-packages.js — every dependency
+// whose own manifest declares an engines.lumine range — resolved wherever
+// each copy lives.
+const { scanBundledPackageNames, resolveBundledPackageDir } = require("../src/bundled-packages");
+const bundledPackageNames = scanBundledPackageNames(repoRoot);
 
 // Grammar packages under development live outside this repository entirely,
 // before they are pinned and installed. Point `LUMINE_GRAMMAR_PACKAGE_ROOTS`
@@ -75,8 +68,8 @@ function collectGrammarConfigs() {
   let configs = [];
   let seen = new Set();
   let roots = [
-    ...packageDependencies
-      .map(resolveBundledPackageDir)
+    ...bundledPackageNames
+      .map((name) => resolveBundledPackageDir(repoRoot, name))
       .filter(Boolean)
       .map((dir) => [dir, true]),
     ...extraPackageDirs().map((dir) => [dir, false]),

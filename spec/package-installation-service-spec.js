@@ -22,7 +22,7 @@ describe("PackageInstallationService", function () {
       name: "sample-package",
       version: "1.0.0",
       repository: "https://github.com/owner/repo.git",
-      engines: { atom: "*" },
+      engines: { lumine: "*" },
     };
     // What the repository holds at the installed commit, written into whatever
     // directory the fetch puts it in — a staged checkout or an archive.
@@ -247,7 +247,7 @@ describe("PackageInstallationService", function () {
       JSON.stringify({
         name: "sample-package",
         repository: "other/repo",
-        engines: { atom: "*" },
+        engines: { lumine: "*" },
       }),
     );
     waitsForPromise(() =>
@@ -268,7 +268,7 @@ describe("PackageInstallationService", function () {
       JSON.stringify({
         name: "sample-package",
         repository: "other/repo",
-        engines: { atom: "*" },
+        engines: { lumine: "*" },
       }),
     );
     fs.symlinkSync(
@@ -296,7 +296,7 @@ describe("PackageInstallationService", function () {
       JSON.stringify({
         name: "old-package-name",
         repository: "owner/repo",
-        engines: { atom: "*" },
+        engines: { lumine: "*" },
         apmInstallSource: { type: "git", origin: "github.com/owner/repo" },
       }),
     );
@@ -318,7 +318,7 @@ describe("PackageInstallationService", function () {
         name: "sample-package",
         version: "0.9.0",
         repository: "owner/repo",
-        engines: { atom: "*" },
+        engines: { lumine: "*" },
         apmInstallSource: { type: "git", origin: "github.com/owner/repo", sha: "b".repeat(40) },
       }),
     );
@@ -438,7 +438,7 @@ describe("PackageInstallationService", function () {
       JSON.stringify({
         name: "sample-package",
         repository: "other/repo",
-        engines: { atom: "*" },
+        engines: { lumine: "*" },
       }),
     );
     fs.writeFileSync(path.join(target, "old-marker"), "old");
@@ -473,7 +473,7 @@ describe("PackageInstallationService", function () {
         name: "sample-package",
         version: "0.9.0",
         repository: "owner/repo",
-        engines: { atom: "*" },
+        engines: { lumine: "*" },
         apmInstallSource: {
           type: "git",
           origin: "github.com/owner/repo",

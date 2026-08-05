@@ -17,6 +17,18 @@ describe("PulsarPackageClient", function () {
       expect(pack.keywords).toEqual(["run"]);
       expect(pack.theme).toBe(false);
       expect(pack.source).toBe("pulsar");
+      // Registry engines pass through untranslated: a legacy engines.atom
+      // declaration is not an engines.lumine range, so the card reports the
+      // package incompatible until it is republished.
+      expect(pack.engines).toEqual({ atom: "*" });
+    });
+
+    it("defaults missing engines to an empty object, never a compatible range", function () {
+      const pack = normalizePulsarPackage({
+        name: "hydrogen",
+        repository: { url: "https://github.com/nteract/hydrogen" },
+      });
+      expect(pack.engines).toEqual({});
     });
 
     it("passes badges through for display in the card", function () {

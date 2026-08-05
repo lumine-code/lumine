@@ -59,7 +59,7 @@ module.exports = {
   },
 
   isLuminePackage(metadata) {
-    return metadata?.engines?.atom?.length > 0;
+    return metadata?.engines?.lumine?.length > 0;
   },
 
   isLumineCore(metadata) {

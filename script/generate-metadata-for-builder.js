@@ -4,6 +4,7 @@ const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
 const normalizePackageData = require("normalize-package-data");
 const path = require("path");
+const { scanBundledPackageNames } = require("../src/bundled-packages");
 
 const objectFileExtensions = ["json", "jsonc", "cson"];
 
@@ -13,15 +14,19 @@ function isObjectFile(filePath) {
 
 module.exports = function (packageJSON) {
   return {
-    _atomPackages: buildBundledPackagesMetadata(packageJSON),
+    _atomPackages: buildBundledPackagesMetadata(),
     _atomMenu: buildPlatformMenuMetadata(packageJSON),
     _atomKeymaps: buildPlatformKeymapsMetadata(packageJSON),
   };
 };
 
-function buildBundledPackagesMetadata(packageJSON) {
+function buildBundledPackagesMetadata() {
   const packages = {};
-  for (let packageName of Object.keys(packageJSON.packageDependencies)) {
+  const bundledPackageNames = scanBundledPackageNames(path.resolve("."));
+  if (bundledPackageNames.length === 0) {
+    throw new Error("No bundled packages found — is node_modules installed?");
+  }
+  for (let packageName of bundledPackageNames) {
     const packagePath = path.join("node_modules", packageName);
     const packageMetadataPath = path.join(packagePath, "package.json");
     const packageMetadata = JSON.parse(fs.readFileSync(packageMetadataPath, "utf8"));

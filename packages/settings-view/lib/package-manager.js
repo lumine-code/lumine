@@ -211,13 +211,12 @@ module.exports = class PackageManager {
   }
 
   satisfiesVersion(version, metadata) {
-    const engine =
-      (metadata.engines != null ? metadata.engines.atom : undefined) != null
-        ? metadata.engines != null
-          ? metadata.engines.atom
-          : undefined
-        : "*";
-    if (!semver.validRange(engine)) {
+    // A manifest that declares no engines.lumine range is incompatible: the
+    // key is what marks a Lumine package, and install validation rejects a
+    // manifest without it, so the card must not offer an install that would
+    // only fail there.
+    const engine = metadata.engines != null ? metadata.engines.lumine : undefined;
+    if (typeof engine !== "string" || !semver.validRange(engine)) {
       return false;
     }
     return semver.satisfies(version, engine);

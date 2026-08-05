@@ -258,7 +258,7 @@ describe("PackageCard", function () {
           installSource: "owner/ref-package",
           originKey: "github.com/owner/ref-package",
           status: "ready",
-          engines: { atom: "*" },
+          engines: { lumine: "*" },
           selectedRef: { type: "latest", value: "v2.0.0" },
           resolvedSha: "a".repeat(40),
           refs: {
@@ -307,7 +307,7 @@ describe("PackageCard", function () {
           repository: "owner/lazy-refs",
           originKey: "github.com/owner/lazy-refs",
           status: "ready",
-          engines: { atom: "*" },
+          engines: { lumine: "*" },
           apmInstallSource: {
             type: "git",
             origin: "github.com/owner/lazy-refs",
@@ -395,7 +395,7 @@ describe("PackageCard", function () {
           repository: "asiloisad/pulsar-invert-colors",
           originKey: "github.com/asiloisad/pulsar-invert-colors",
           status: "ready",
-          engines: { atom: "*" },
+          engines: { lumine: "*" },
           selectedRef: { type: "latest", value: "v0.5.0" },
           resolvedSha: "a".repeat(40),
           // A prior update check recorded that master advanced.
@@ -429,7 +429,7 @@ describe("PackageCard", function () {
           repository: "owner/repo",
           originKey: "github.com/owner/repo",
           status: "ready",
-          engines: { atom: "*" },
+          engines: { lumine: "*" },
           resolvedSha: "a".repeat(40),
         },
         new SettingsView(),
@@ -535,7 +535,7 @@ describe("PackageCard", function () {
       {
         name: "test-engines-package",
         repository: "owner/test-engines-package",
-        engines: { atom: ">=100.0.0" },
+        engines: { lumine: ">=100.0.0" },
       },
       new SettingsView(),
       packageManager,
@@ -558,7 +558,7 @@ describe("PackageCard", function () {
         repository: "asiloisad/pulsar-invert-colors",
         originKey: "github.com/asiloisad/pulsar-invert-colors",
         status: "ready",
-        engines: { atom: ">=100.0.0" },
+        engines: { lumine: ">=100.0.0" },
         selectedRef: { type: "latest", value: "v0.5.0" },
         resolvedSha: "a".repeat(40),
         refs: {
@@ -651,7 +651,12 @@ describe("PackageCard", function () {
     beforeEach(function () {
       setPackageStatusSpies({ installed: false, disabled: false });
       card = new PackageCard(
-        { name: "hydrogen-next", version: "4.14.1", repository: "asiloisad/pulsar-hydrogen-next" },
+        {
+          name: "hydrogen-next",
+          version: "4.14.1",
+          repository: "asiloisad/pulsar-hydrogen-next",
+          engines: { lumine: "*" },
+        },
         new SettingsView(),
         packageManager,
       );
@@ -1102,7 +1107,11 @@ describe("PackageCard", function () {
       setPackageStatusSpies({ installed: false, disabled: false });
       spyOn(packageManager, "install");
 
-      card = new PackageCard({ name: "test-package" }, new SettingsView(), packageManager);
+      card = new PackageCard(
+        { name: "test-package", engines: { lumine: "*" } },
+        new SettingsView(),
+        packageManager,
+      );
       expect(card.refs.installButton.style.display).not.toBe("none");
       expect(card.refs.uninstallButton.style.display).toBe("none");
       card.refs.installButton.click();
@@ -1117,7 +1126,7 @@ describe("PackageCard", function () {
             name: packageName,
             version: "0.1.0",
             engines: {
-              atom: ">0.50.0",
+              lumine: ">0.50.0",
             },
           };
 
@@ -1132,7 +1141,7 @@ describe("PackageCard", function () {
           name: "test-package",
           version: "0.1.0",
           engines: {
-            atom: ">0.50.0",
+            lumine: ">0.50.0",
           },
         },
         new SettingsView(),
@@ -1150,7 +1159,7 @@ describe("PackageCard", function () {
         name: "test-package",
         version: "0.1.0",
         engines: {
-          atom: ">0.50.0",
+          lumine: ">0.50.0",
         },
       });
     });
@@ -1163,7 +1172,7 @@ describe("PackageCard", function () {
             name: packageName,
             version: "0.0.1",
             engines: {
-              atom: ">0.50.0",
+              lumine: ">0.50.0",
             },
           };
 
@@ -1178,7 +1187,7 @@ describe("PackageCard", function () {
           name: "test-package",
           version: "0.1.0",
           engines: {
-            atom: ">99.0.0",
+            lumine: ">99.0.0",
           },
         },
         new SettingsView(),
@@ -1199,7 +1208,7 @@ describe("PackageCard", function () {
         name: "test-package",
         version: "0.0.1",
         engines: {
-          atom: ">0.50.0",
+          lumine: ">0.50.0",
         },
       });
     });
@@ -1218,7 +1227,7 @@ describe("PackageCard", function () {
       const pack = {
         name: "test-package",
         engines: {
-          atom: ">=99.0.0",
+          lumine: ">=99.0.0",
         },
       };
       card = new PackageCard(pack, new SettingsView(), packageManager);

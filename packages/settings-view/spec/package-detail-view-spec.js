@@ -328,7 +328,7 @@ describe("PackageDetailView", function () {
       version: "1.0.0",
       repository: "owner/pkg-with-license",
       owner: "owner",
-      engines: { atom: "*" },
+      engines: { lumine: "*" },
       originKey: `github.com/owner/pkg-with-license`,
       resolvedSha: sha,
       readme: "# pkg-with-license",
@@ -367,7 +367,7 @@ describe("PackageDetailView", function () {
       version: "1.0.0",
       repository: "owner/pkg-lazy-license",
       owner: "owner",
-      engines: { atom: "*" },
+      engines: { lumine: "*" },
       originKey: "github.com/owner/pkg-lazy-license",
       resolvedSha: "b".repeat(40),
       readme: "# pkg-lazy-license",
@@ -454,7 +454,7 @@ describe("PackageDetailView", function () {
       version: "1.0.0",
       repository: "owner/toc-pkg",
       owner: "owner",
-      engines: { atom: "*" },
+      engines: { lumine: "*" },
       readme: "# Title\n\nintro\n\n## Features\n\n- a\n\n## Usage\n\ntext",
     };
     view = new PackageDetailView(
@@ -518,7 +518,7 @@ describe("PackageDetailView", function () {
       repository: "https://github.com/different/package-with-config",
       originKey: "github.com/different/package-with-config",
       resolvedSha: "a".repeat(40),
-      engines: { atom: "*" },
+      engines: { lumine: "*" },
     };
 
     view = new PackageDetailView(

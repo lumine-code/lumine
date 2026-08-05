@@ -563,7 +563,7 @@ describe("SettingsView", function () {
             resolvedSha: "a".repeat(40),
             selectedRef: { type: "tag", value: "v1.0.0" },
             status: "ready",
-            engines: { atom: "*" },
+            engines: { lumine: "*" },
           },
         });
         const detailAfterRename = settingsView.getOrCreatePanel(`community:${originKey}`, {
@@ -574,7 +574,7 @@ describe("SettingsView", function () {
             resolvedSha: "b".repeat(40),
             selectedRef: { type: "tag", value: "v2.0.0" },
             status: "ready",
-            engines: { atom: "*" },
+            engines: { lumine: "*" },
           },
         });
 

@@ -22,16 +22,15 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 
 function themeDirs() {
-  const packagesDir = path.join(ROOT, "packages");
-  return fs
-    .readdirSync(packagesDir)
-    .filter((name) => {
-      const manifest = path.join(packagesDir, name, "package.json");
-      if (!fs.existsSync(manifest)) return false;
-      const { themes } = JSON.parse(fs.readFileSync(manifest, "utf8"));
+  const { scanBundledPackageNames, resolveBundledPackageDir } = require("../src/bundled-packages");
+  return scanBundledPackageNames(ROOT)
+    .map((name) => resolveBundledPackageDir(ROOT, name))
+    .filter(Boolean)
+    .filter((dir) => {
+      const { themes } = JSON.parse(fs.readFileSync(path.join(dir, "package.json"), "utf8"));
       return Array.isArray(themes) && themes.some((theme) => theme.theme === "ui");
     })
-    .map((name) => path.join(packagesDir, name, "styles"));
+    .map((dir) => path.join(dir, "styles"));
 }
 
 // The same tolerant scanner check-icons.js uses: track nesting so a rule's

@@ -35,9 +35,9 @@ function validateCommunityPackageMetadata(
     );
   }
 
-  const engine = metadata.engines && metadata.engines.atom;
+  const engine = metadata.engines && metadata.engines.lumine;
   if (typeof engine !== "string" || !semver.validRange(engine)) {
-    throw new Error('Package manifest must contain a valid "engines.atom" range.');
+    throw new Error('Package manifest must contain a valid "engines.lumine" range.');
   }
   // An engine mismatch is a soft state during catalog hydration: the package is
   // still shown (with its Install action disabled and switchable to another ref)

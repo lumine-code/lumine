@@ -1138,7 +1138,10 @@ module.exports = class PackageCard {
   }
 
   incompatibleMessage() {
-    const engine = this.pack.engines && this.pack.engines.atom ? this.pack.engines.atom : "*";
+    const engine = this.pack.engines && this.pack.engines.lumine;
+    if (!engine) {
+      return "This package declares no engines.lumine range, so it predates the engines rename and needs republishing before it can be installed.";
+    }
     return `No version of this package is compatible with your Lumine version. It requires ${engine}.`;
   }
 

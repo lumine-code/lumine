@@ -158,9 +158,10 @@ module.exports = {
 
   // The version of `packageName` that ships with this build, or undefined when
   // the package is not bundled. It has to come from the bundled copy's own
-  // manifest: `packageDependencies` records a `file:` install spec, not a
-  // version. Asking for the shadowed copy matters — when a local install wins
-  // the name, the bundled one is the loser of that scan.
+  // manifest — the bundled tier is derived from each dependency's manifest,
+  // which is also where the shipped version lives. Asking for the shadowed
+  // copy matters — when a local install wins the name, the bundled one is the
+  // loser of that scan.
   getPackageVersionShippedWithLumine(packageName) {
     const bundled = atom.packages
       .getAvailablePackages({ includeShadowed: true })

@@ -55,7 +55,7 @@ function createFetch(catalogs = {}) {
           version: "1.0.0",
           description: "From its repository",
           repository: "https://github.com/OWNER/package.git",
-          engines: { atom: "*" },
+          engines: { lumine: "*" },
           readme: "# Must remain lazy",
           badges: [{ image: "https://example.test/badge.svg" }],
         }),
@@ -181,7 +181,7 @@ describe("CommunityPackageCatalogClient", function () {
             name: "sample-package",
             version: "1.0.0",
             repository: "https://github.com/owner/package.git",
-            engines: { atom: ">=999.0.0" },
+            engines: { lumine: ">=999.0.0" },
           }),
         );
       }
@@ -203,7 +203,7 @@ describe("CommunityPackageCatalogClient", function () {
             status: "ready",
           }),
         );
-        expect(catalog.packages[0].engines).toEqual({ atom: ">=999.0.0" });
+        expect(catalog.packages[0].engines).toEqual({ lumine: ">=999.0.0" });
       }),
     );
   });
@@ -231,7 +231,7 @@ describe("CommunityPackageCatalogClient", function () {
             name: "sample-package",
             version: "1.0.0",
             repository: "https://github.com/someone-else/package.git",
-            engines: { atom: "*" },
+            engines: { lumine: "*" },
           }),
         );
       }
@@ -241,7 +241,7 @@ describe("CommunityPackageCatalogClient", function () {
             name: "sample-package",
             version: "1.1.0",
             repository: "https://github.com/owner/package.git",
-            engines: { atom: "*" },
+            engines: { lumine: "*" },
           }),
         );
       }
@@ -296,7 +296,7 @@ describe("CommunityPackageCatalogClient", function () {
         name: "renamed-package",
         version: "2.0.0",
         repository: "owner/package",
-        engines: { atom: "*" },
+        engines: { lumine: "*" },
       }),
     );
 
@@ -473,7 +473,7 @@ describe("CommunityPackageCatalogClient", function () {
           name: "sample-package",
           version: "1.0.0",
           repository: "owner/package",
-          engines: { atom: "*" },
+          engines: { lumine: "*" },
         }),
       );
     });
@@ -578,7 +578,7 @@ describe("CommunityPackageCatalogClient", function () {
           name: match[1],
           version: "1.0.0",
           repository: `owner/${match[1]}`,
-          engines: { atom: "*" },
+          engines: { lumine: "*" },
         });
       });
     });

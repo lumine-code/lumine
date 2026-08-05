@@ -65,22 +65,14 @@ function parseArgs(argv) {
   return { packageRoots };
 }
 
-// A bundled package is either vendored into packages/ or delivered through
-// node_modules/ from a Git pin, which is the same rule the grammar sweep and
-// the wasm builder use.
+// The bundled set is defined by src/bundled-packages.js: every dependency
+// whose own manifest declares an engines.lumine range, resolved wherever the
+// copy lives.
 function bundledPackageDirs() {
-  const names = Object.keys(require(path.join(ROOT, "package.json")).packageDependencies ?? {});
-  const dirs = [];
-  for (const name of names) {
-    for (const base of ["packages", "node_modules"]) {
-      const dir = path.join(ROOT, base, name);
-      if (fs.existsSync(dir)) {
-        dirs.push(dir);
-        break;
-      }
-    }
-  }
-  return dirs;
+  const { scanBundledPackageNames, resolveBundledPackageDir } = require("../src/bundled-packages");
+  return scanBundledPackageNames(ROOT)
+    .map((name) => resolveBundledPackageDir(ROOT, name))
+    .filter(Boolean);
 }
 
 // A root is either a package checkout (it holds grammars/ itself) or a

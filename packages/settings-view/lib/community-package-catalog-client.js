@@ -459,7 +459,7 @@ module.exports = class CommunityPackageCatalogClient {
       originKey: record.originKey,
       semanticTag: selected.semanticTag,
       atomVersion: typeof currentAtomVersion === "string" ? currentAtomVersion.split("-")[0] : null,
-      // A version whose engines.atom does not match is shown (with a disabled
+      // A version whose engines.lumine does not match is shown (with a disabled
       // Install) rather than dropped, so another ref can be selected.
       allowIncompatible: true,
     });

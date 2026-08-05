@@ -328,7 +328,7 @@ describe("InstallPanel", function () {
       name: `package-${String(index).padStart(4, "0")}`,
       repository: `owner/package-${index}`,
       installSource: `owner/package-${index}`,
-      engines: { atom: "*" },
+      engines: { lumine: "*" },
     }));
     panel.renderBrowseList();
 
