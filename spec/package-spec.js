@@ -179,11 +179,11 @@ describe("Package", function () {
         expect(getComputedStyle(editorElement).paddingTop).toBe("1234px");
       });
 
-      it("parses, loads and applies less", function () {
+      it("loads and applies a stylesheet at the theme root", function () {
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("1234px");
         const themePath = atom.project
           .getDirectories()[0]
-          ?.resolve("packages/theme-with-index-less");
+          ?.resolve("packages/theme-with-index-at-root");
         theme = buildThemePackage(themePath);
         theme.activate();
         expect(getComputedStyle(editorElement).paddingTop).toBe("4321px");

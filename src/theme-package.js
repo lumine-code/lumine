@@ -3,7 +3,7 @@ const fs = require("@lumine-code/fs-plus");
 const { globSync } = require("tinyglobby");
 const Package = require("./package");
 
-const STYLESHEET_EXTENSIONS = new Set([".css", ".less"]);
+const STYLESHEET_EXTENSIONS = new Set([".css"]);
 
 module.exports = class ThemePackage extends Package {
   // A theme provided by a multi-theme package (a `themes` array in
@@ -35,7 +35,7 @@ module.exports = class ThemePackage extends Package {
     if (this.themeStylesDirectories != null) {
       const stylesheetPaths = this.getExtendedStylesheetPaths();
       for (const directory of this.themeStylesDirectories) {
-        stylesheetPaths.push(...fs.listSync(directory, ["css", "less"]).sort());
+        stylesheetPaths.push(...fs.listSync(directory, ["css"]).sort());
       }
       return stylesheetPaths;
     }

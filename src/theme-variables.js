@@ -1,19 +1,12 @@
 // Single source of truth for the theme variable contract.
 //
-// Each name exists in two forms:
-//   - CSS custom property `--<name>` — the source of truth, defined by modern
-//     ("dual") themes in styles/variables.css and by the fallbacks in
-//     static/variables/base-variables.css.
-//   - Less variable `@<name>` — the legacy contract consumed by community
-//     packages and provided by legacy ui/syntax themes. The two are bridged
-//     automatically by the theme manager (see theme-variable-shim.js and the
-//     custom-properties bridge in theme-manager.js).
+// Every name is a CSS custom property `--<name>`, defined by a theme in its
+// styles/variables.css and by the fallbacks in static/variables/base-variables.css.
 //
-// UI_VARIABLES and SYNTAX_VARIABLES mirror the legacy Less contracts in
-// static/variables/ui-variables.less and syntax-variables.less name for name.
-// UI_VARIABLES_EXTENDED exists only on the CSS side: fallback values in
-// base-variables.css derive them from the core contract, so legacy themes get
-// them for free while modern themes may override them with exact values.
+// UI_VARIABLES and SYNTAX_VARIABLES are the contract a theme is expected to
+// define. UI_VARIABLES_EXTENDED is derived: base-variables.css computes those
+// from the core contract, so a theme gets them for free and may override any
+// of them with an exact value.
 
 const UI_VARIABLES = [
   // Text

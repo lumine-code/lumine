@@ -1,4 +1,5 @@
 {
   "name": "theme-with-invalid-styles",
-  "theme": "ui"
+  "theme": "ui",
+  "styleSheets": ["missing"]
 }

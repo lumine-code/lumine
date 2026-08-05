@@ -579,12 +579,12 @@ module.exports = class Package {
         return [fs.resolve(this.path, this.metadata.mainStyleSheet)];
       } else if (this.metadata.styleSheets) {
         return this.metadata.styleSheets.map((name) =>
-          fs.resolve(stylesheetDirPath, name, ["css", "less", ""]),
+          fs.resolve(stylesheetDirPath, name, ["css", ""]),
         );
-      } else if ((indexStylesheet = fs.resolve(this.path, "index", ["css", "less"]))) {
+      } else if ((indexStylesheet = fs.resolve(this.path, "index", ["css"]))) {
         return [indexStylesheet];
       } else {
-        return fs.listSync(stylesheetDirPath, ["css", "less"]);
+        return fs.listSync(stylesheetDirPath, ["css"]);
       }
     }
   }
@@ -1199,10 +1199,6 @@ module.exports = class Package {
       }`;
       detail = `${error.message} in ${location}`;
       stack = "SyntaxError: " + error.message + "\n" + "at " + location;
-    } else if (error.less && error.filename && error.column != null && error.line != null) {
-      location = `${error.filename}:${error.line}:${error.column}`;
-      detail = `${error.message} in ${location}`;
-      stack = "LessError: " + error.message + "\n" + "at " + location;
     } else {
       detail = error.message;
       stack = error.stack || error;

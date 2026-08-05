@@ -161,12 +161,6 @@ let options = {
     "!node_modules/@lumine-code/fuzzy-native/node_modules",
     "!**/node_modules/spellchecker/vendor/hunspell/.*",
     "!**/oniguruma/deps",
-    // Modern `less` resolves `require("less")` to dist/less-node.cjs, so only
-    // the browser bundles in dist/ are safe to exclude.
-    "!**/less/dist/less.js",
-    "!**/less/dist/less.min.js",
-    "!**/less/dist/less.cjs",
-    "!**/less/dist/less.min.cjs",
     "!**/get-parameter-names/node_modules/testla",
     "!**/get-parameter-names/node_modules/.bin/testla",
     "!**/jasmine-reporters/ext",

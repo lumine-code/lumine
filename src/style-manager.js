@@ -302,7 +302,7 @@ module.exports = class StyleManager {
     if (this.configDirPath == null) {
       return "";
     } else {
-      const stylesheetPath = fs.resolve(path.join(this.configDirPath, "styles"), ["css", "less"]);
+      const stylesheetPath = fs.resolve(path.join(this.configDirPath, "styles"), ["css"]);
       if (fs.isFileSync(stylesheetPath)) {
         return stylesheetPath;
       } else {

@@ -48,16 +48,8 @@ describe("StyleManager", () => {
       expect(styleManager.getUserStyleSheetPath()).toBe(path.join(configDirPath, "styles.css"));
     });
 
-    it("continues to use an existing legacy Less stylesheet", () => {
-      const legacyStylesheetPath = path.join(configDirPath, "styles.less");
-      fs.writeFileSync(legacyStylesheetPath, "body { color: @text-color; }");
-
-      expect(styleManager.getUserStyleSheetPath()).toBe(fs.realpathSync(legacyStylesheetPath));
-    });
-
-    it("prefers an existing CSS stylesheet over a legacy Less stylesheet", () => {
+    it("uses an existing styles.css", () => {
       const cssStylesheetPath = path.join(configDirPath, "styles.css");
-      fs.writeFileSync(path.join(configDirPath, "styles.less"), "body { color: @text-color; }");
       fs.writeFileSync(cssStylesheetPath, "body { color: var(--text-color); }");
 
       expect(styleManager.getUserStyleSheetPath()).toBe(fs.realpathSync(cssStylesheetPath));

@@ -85,7 +85,7 @@ describe("PackageManager", () => {
       expect(pack.metadata.name).toBe("package-with-broken-keymap");
     });
 
-    it("returns the package if it has an invalid stylesheet", () => {
+    it("returns the package if a stylesheet cannot be read", () => {
       spyOn(atom, "inSpecMode").and.returnValue(false);
       const pack = atom.packages.loadPackage("package-with-invalid-styles");
       expect(pack instanceof Package).toBe(true);
@@ -95,11 +95,11 @@ describe("PackageManager", () => {
       const addErrorHandler = jasmine.createSpy();
       atom.notifications.onDidAddNotification(addErrorHandler);
       expect(() => pack.reloadStylesheets()).not.toThrow();
-      expect(addErrorHandler.calls.count()).toBe(2);
-      expect(addErrorHandler.calls.argsFor(1)[0].message).toContain(
+      expect(addErrorHandler.calls.count()).toBe(1);
+      expect(addErrorHandler.calls.argsFor(0)[0].message).toContain(
         "Failed to reload the package-with-invalid-styles package stylesheets",
       );
-      expect(addErrorHandler.calls.argsFor(1)[0].options.packageName).toEqual(
+      expect(addErrorHandler.calls.argsFor(0)[0].options.packageName).toEqual(
         "package-with-invalid-styles",
       );
     });
@@ -1030,7 +1030,7 @@ describe("PackageManager", () => {
           const one =
             require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/1.css");
           const two =
-            require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/2.less");
+            require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/2.css");
           const three =
             require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/3.css");
 
@@ -1049,7 +1049,7 @@ describe("PackageManager", () => {
       describe("when the metadata does not contain a 'styleSheets' manifest", () => {
         it("loads all style sheets from the styles directory", async () => {
           const one = require.resolve("./fixtures/packages/package-with-styles/styles/1.css");
-          const two = require.resolve("./fixtures/packages/package-with-styles/styles/2.less");
+          const two = require.resolve("./fixtures/packages/package-with-styles/styles/2.css");
           const three =
             require.resolve("./fixtures/packages/package-with-styles/styles/3.test-context.css");
           const four = require.resolve("./fixtures/packages/package-with-styles/styles/4.css");
@@ -1078,7 +1078,7 @@ describe("PackageManager", () => {
             count++;
           }
 
-          if (styleElement.sourcePath.match(/2.less/)) {
+          if (styleElement.sourcePath.match(/2.css/)) {
             expect(styleElement.context).toBe(undefined);
             count++;
           }
@@ -1356,7 +1356,7 @@ describe("PackageManager", () => {
       const one =
         require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/1.css");
       const two =
-        require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/2.less");
+        require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/2.css");
       const three =
         require.resolve("./fixtures/packages/package-with-style-sheets-manifest/styles/3.css");
       expect(atom.themes.stylesheetElementForId(one)).not.toExist();

@@ -134,28 +134,6 @@ describe("atom.themes", () => {
     });
   });
 
-  describe("::getImportPaths()", () => {
-    it("returns the theme directories before the themes are loaded", () => {
-      setActiveThemes([
-        "theme-with-index-less",
-        "theme-with-ui-variables",
-        "theme-with-syntax-variables",
-      ]);
-
-      const paths = atom.themes.getImportPaths();
-
-      // theme-with-index-less has no styles directory at this time, so only two.
-      expect(paths.length).toBe(2);
-      expect(paths[0]).toContain("theme-with-syntax-variables");
-      expect(paths[1]).toContain("theme-with-ui-variables");
-    });
-
-    it("ignores themes that cannot be resolved to a directory", () => {
-      setActiveThemes(["definitely-not-a-theme"]);
-      expect(() => atom.themes.getImportPaths()).not.toThrow();
-    });
-  });
-
   describe("when the active theme pair changes", () => {
     it("add/removes stylesheets to reflect the new config value", async () => {
       jasmine.useRealClock();
@@ -181,14 +159,10 @@ describe("atom.themes", () => {
       });
 
       didChangeActiveThemesHandler.calls.reset();
-      // The legacy theme's stylesheet plus the custom-properties bridge
-      // compiled from its Less variables.
+      // The theme's two stylesheets.
       expect(document.querySelectorAll('style[priority="1"]')).toHaveLength(2);
       expect(
         document.querySelectorAll('style[priority="1"]')[0].getAttribute("source-path"),
-      ).toMatch(/custom-properties-bridge/);
-      expect(
-        document.querySelectorAll('style[priority="1"]')[1].getAttribute("source-path"),
       ).toMatch(/theme-with-ui-variables/);
       setActiveThemes(["theme-with-syntax-variables", "theme-with-ui-variables"]);
 
@@ -197,11 +171,11 @@ describe("atom.themes", () => {
       });
 
       didChangeActiveThemesHandler.calls.reset();
-      // Both legacy theme stylesheets plus the bridge; the first configured
-      // theme is attached last so that it wins.
+      // The ui theme's two stylesheets and the syntax theme's one; the first
+      // configured theme is attached last so that it wins.
       expect(document.querySelectorAll('style[priority="1"]')).toHaveLength(3);
       expect(
-        document.querySelectorAll('style[priority="1"]')[1].getAttribute("source-path"),
+        document.querySelectorAll('style[priority="1"]')[0].getAttribute("source-path"),
       ).toMatch(/theme-with-ui-variables/);
       expect(
         document.querySelectorAll('style[priority="1"]')[2].getAttribute("source-path"),
@@ -215,19 +189,15 @@ describe("atom.themes", () => {
       didChangeActiveThemesHandler.calls.reset();
       expect(document.querySelectorAll('style[priority="1"]')).toHaveLength(0);
 
-      // theme-with-ui-variables has a styles directory, theme-with-index-less doesn't
-      setActiveThemes(["theme-with-index-less", "theme-with-ui-variables"]);
+      // theme-with-ui-variables has a styles directory, theme-with-index-at-root doesn't
+      setActiveThemes(["theme-with-index-at-root", "theme-with-ui-variables"]);
 
       await waitForCondition(() => {
         return didChangeActiveThemesHandler.calls.count() === 1;
       });
 
-      // Two theme stylesheets plus the bridge.
+      // One root stylesheet plus the ui theme's two.
       expect(document.querySelectorAll('style[priority="1"]')).toHaveLength(3);
-
-      const importPaths = atom.themes.getImportPaths();
-      expect(importPaths.length).toBe(1);
-      expect(importPaths[0]).toContain("theme-with-ui-variables");
     });
 
     it("adds theme-* classes to the workspace for each active theme", async () => {
@@ -403,47 +373,13 @@ describe("atom.themes", () => {
         styleElement.remove();
       });
     });
-
-    it("synchronously loads and parses less files at the given path and installs a style tag for it in the head", () => {
-      const lessPath = getAbsolutePath(atom.project.getDirectories()[0], "sample.less");
-      const lengthBefore = document.querySelectorAll("head style").length;
-      atom.themes.requireStylesheet(lessPath);
-      expect(document.querySelectorAll("head style").length).toBe(lengthBefore + 1);
-
-      const element = document.querySelector('head style[source-path*="sample.less"]');
-      expect(element.getAttribute("source-path")).toEqualPath(lessPath);
-      expect(element.textContent.toLowerCase()).toBe(`\
-#header {
-  color: #4d926f;
-}
-h2 {
-  color: #4d926f;
-}
-\
-`);
-
-      // doesn't append twice
-      atom.themes.requireStylesheet(lessPath);
-      expect(document.querySelectorAll("head style").length).toBe(lengthBefore + 1);
-      document.querySelectorAll('head style[id*="sample.less"]').forEach((styleElement) => {
-        styleElement.remove();
-      });
-    });
-
-    it("supports requiring css and less stylesheets without an explicit extension", () => {
+    it("supports requiring a stylesheet without an explicit extension", () => {
       atom.themes.requireStylesheet(path.join(__dirname, "fixtures", "css"));
       expect(
         document.querySelector('head style[source-path*="css.css"]').getAttribute("source-path"),
       ).toEqualPath(getAbsolutePath(atom.project.getDirectories()[0], "css.css"));
-      atom.themes.requireStylesheet(path.join(__dirname, "fixtures", "sample"));
-      expect(
-        document
-          .querySelector('head style[source-path*="sample.less"]')
-          .getAttribute("source-path"),
-      ).toEqualPath(getAbsolutePath(atom.project.getDirectories()[0], "sample.less"));
 
       document.querySelector('head style[source-path*="css.css"]').remove();
-      document.querySelector('head style[source-path*="sample.less"]').remove();
     });
 
     it("returns a disposable allowing styles applied by the given path to be removed", () => {
@@ -475,7 +411,7 @@ h2 {
       await atom.themes.activateThemes();
     });
 
-    it("loads the correct values from the theme's ui-variables file", async () => {
+    it("loads the correct values from the theme's variables file", async () => {
       let didChangeActiveThemesHandler = jasmine.createSpy();
       atom.themes.onDidChangeActiveThemes(didChangeActiveThemesHandler);
       setActiveThemes(["theme-with-ui-variables", "theme-with-syntax-variables"]);
@@ -490,43 +426,15 @@ h2 {
       );
 
       // from within the theme itself
-      expect(getComputedStyle(document.querySelector("atom-text-editor")).paddingTop).toBe("150px");
-      expect(getComputedStyle(document.querySelector("atom-text-editor")).paddingRight).toBe(
-        "150px",
-      );
-      expect(getComputedStyle(document.querySelector("atom-text-editor")).paddingBottom).toBe(
-        "150px",
+      expect(getComputedStyle(document.querySelector("atom-text-editor")).paddingTop).toBe("10px");
+      expect(getComputedStyle(document.querySelector("atom-text-editor")).color).toBe(
+        "rgb(255, 0, 0)",
       );
     });
 
-    describe("when there is a theme with incomplete variables", () => {
-      it("loads the correct values from the fallback ui-variables", async () => {
-        let didChangeActiveThemesHandler = jasmine.createSpy();
-        atom.themes.onDidChangeActiveThemes(didChangeActiveThemesHandler);
-
-        setActiveThemes(["theme-with-incomplete-ui-variables", "theme-with-syntax-variables"]);
-
-        await waitForCondition(() => {
-          return didChangeActiveThemesHandler.calls.count() > 0;
-        });
-
-        // an override loaded in the base css
-        expect(getComputedStyle(atom.workspace.getElement())["background-color"]).toBe(
-          "rgb(0, 0, 255)",
-        );
-
-        // from within the theme itself
-        expect(getComputedStyle(document.querySelector("atom-text-editor")).backgroundColor).toBe(
-          "rgb(0, 152, 255)",
-        );
-      });
-    });
-  });
-
-  describe("user stylesheet", () => {
     let userStylesheetPath;
     beforeEach(async () => {
-      userStylesheetPath = path.join(temp.mkdirSync("atom"), "styles.less");
+      userStylesheetPath = path.join(temp.mkdirSync("atom"), "styles.css");
       fs.writeFileSync(userStylesheetPath, "body {border-style: dotted !important;}");
       spyOn(atom.styles, "getUserStyleSheetPath").and.returnValue(userStylesheetPath);
     });
@@ -576,8 +484,8 @@ h2 {
       beforeEach(async () => {
         addErrorHandler = jasmine.createSpy();
         await atom.themes.loadUserStylesheet();
-        spyOn(atom.themes.lessCache, "cssForFile").and.callFake(() => {
-          throw new Error('EACCES permission denied "styles.less"');
+        spyOn(atom.themes, "loadStylesheet").and.callFake(() => {
+          throw new Error('EACCES permission denied "styles.css"');
         });
         atom.notifications.onDidAddNotification(addErrorHandler);
       });
@@ -617,7 +525,7 @@ h2 {
       });
     });
 
-    it("adds a notification when a theme's stylesheet is invalid", () => {
+    it("adds a notification when a theme's stylesheet cannot be read", () => {
       const addErrorHandler = jasmine.createSpy();
       atom.notifications.onDidAddNotification(addErrorHandler);
       expect(() =>
@@ -626,8 +534,8 @@ h2 {
           () => {},
         ),
       ).not.toThrow();
-      expect(addErrorHandler.calls.count()).toBe(2);
-      expect(addErrorHandler.calls.argsFor(1)[0].message).toContain(
+      expect(addErrorHandler.calls.count()).toBe(1);
+      expect(addErrorHandler.calls.argsFor(0)[0].message).toContain(
         "Failed to activate the theme-with-invalid-styles theme",
       );
     });
@@ -798,173 +706,28 @@ h2 {
     });
   });
 
-  describe("modern themes (CSS custom-property palettes)", () => {
-    it("keeps the legacy atom Less import available to community packages", async () => {
+  describe("themes without a palette", () => {
+    it("warns once that the theme defines none of the color custom properties", async () => {
+      setActiveThemes(["theme-with-package-file", "theme-modern-syntax"]);
+      await atom.themes.activateThemes();
+
+      const warnings = console.warn.calls
+        .allArgs()
+        .map(([message]) => String(message))
+        .filter((message) => message.includes("theme-with-package-file"));
+      expect(warnings.length).toBe(1);
+      expect(warnings[0]).toContain("variables.css");
+    });
+
+    it("says nothing about a theme that ships one", async () => {
       setActiveThemes(["theme-modern-ui", "theme-modern-syntax"]);
       await atom.themes.activateThemes();
 
-      const lessPath = path.join(temp.mkdirSync("atom"), "legacy-import.less");
-      fs.writeFileSync(
-        lessPath,
-        '@import "atom";\n.legacy-import { color: @text-color; background: @syntax-background-color; }',
-      );
-
-      const css = atom.themes.loadLessStylesheet(lessPath);
-      expect(css).toContain("#123456");
-      expect(css).toContain("#654321");
-    });
-
-    it("exposes the palette to Less through a generated shim directory", async () => {
-      setActiveThemes(["theme-modern-ui", "theme-modern-syntax"]);
-
-      await atom.themes.activateThemes();
-
-      const importPaths = atom.themes.getImportPaths();
-      expect(importPaths.some((importPath) => importPath.includes("theme-shims"))).toBe(true);
-
-      const lessPath = path.join(temp.mkdirSync("atom"), "shim-consumer.less");
-      fs.writeFileSync(
-        lessPath,
-        '@import "ui-variables";\n@import "syntax-variables";\n' +
-          ".shim-consumer { color: @text-color; background: @syntax-background-color; }",
-      );
-
-      const css = atom.themes.loadLessStylesheet(lessPath);
-      expect(css).toContain("#123456");
-      expect(css).toContain("#654321");
-    });
-
-    it("compiles a custom-properties bridge for legacy themes and drops it for modern ones", async () => {
-      const findBridgeElement = () =>
-        atom.styles
-          .getStyleElements()
-          .find((element) =>
-            (element.getAttribute("source-path") || "").endsWith("custom-properties-bridge.css"),
-          );
-
-      setActiveThemes(["theme-with-ui-variables", "theme-with-syntax-variables"]);
-      await atom.themes.activateThemes();
-
-      const bridgeElement = findBridgeElement();
-      expect(bridgeElement).toBeDefined();
-      expect(bridgeElement.textContent).toContain("--text-color:");
-
-      let didChangeActiveThemesHandler = jasmine.createSpy();
-      atom.themes.onDidChangeActiveThemes(didChangeActiveThemesHandler);
-      setActiveThemes(["theme-modern-ui", "theme-modern-syntax"]);
-
-      await waitForCondition(() => {
-        return didChangeActiveThemesHandler.calls.count() > 0;
-      });
-
-      expect(findBridgeElement()).toBeUndefined();
-    });
-  });
-
-  describe("reloadThemeVariables", () => {
-    let packageDirPath;
-
-    beforeEach(() => {
-      packageDirPath = temp.mkdirSync("theme-variables-packages-");
-      atom.packages.packageDirPaths.unshift(packageDirPath);
-    });
-
-    afterEach(async () => {
-      // The outer afterEach deactivates too late for the unload below.
-      await atom.themes.deactivateThemes();
-      const index = atom.packages.packageDirPaths.indexOf(packageDirPath);
-      if (index >= 0) atom.packages.packageDirPaths.splice(index, 1);
-      for (const name of ["theme-mutable-ui", "theme-mutable-legacy-ui"]) {
-        if (atom.packages.isPackageLoaded(name)) atom.packages.unloadPackage(name);
-      }
-    });
-
-    // A ui theme whose styles can be rewritten mid-spec, unlike the
-    // checked-in fixtures. Returns its styles directory.
-    function writeThemePackage(name, styleFiles) {
-      const stylesDirPath = path.join(packageDirPath, name, "styles");
-      fs.makeTreeSync(stylesDirPath);
-      fs.writeFileSync(
-        path.join(packageDirPath, name, "package.json"),
-        JSON.stringify({ name, theme: "ui", version: "1.0.0" }),
-      );
-      for (const [fileName, content] of Object.entries(styleFiles)) {
-        fs.writeFileSync(path.join(stylesDirPath, fileName), content);
-      }
-      return stylesDirPath;
-    }
-
-    function shimDir() {
-      return atom.themes.getImportPaths().find((importPath) => importPath.includes("theme-shims"));
-    }
-
-    function compileProbe() {
-      const lessPath = path.join(temp.mkdirSync("atom"), "probe.less");
-      fs.writeFileSync(lessPath, '@import "ui-variables";\n.probe { color: @text-color; }');
-      return atom.themes.loadLessStylesheet(lessPath);
-    }
-
-    it("regenerates the shim so Less consumers see an edited modern palette", async () => {
-      const stylesDirPath = writeThemePackage("theme-mutable-ui", {
-        "variables.css": ":root { --text-color: #111111; }",
-      });
-      setActiveThemes(["theme-mutable-ui", "theme-modern-syntax"]);
-      await atom.themes.activateThemes();
-
-      const shimDirBefore = shimDir();
-      expect(compileProbe()).toContain("#111111");
-
-      fs.writeFileSync(
-        path.join(stylesDirPath, "variables.css"),
-        ":root { --text-color: #222222; }",
-      );
-      expect(atom.themes.reloadThemeVariables()).toBe(true);
-      expect(shimDir()).not.toBe(shimDirBefore);
-      expect(compileProbe()).toContain("#222222");
-    });
-
-    it("reports an unmoved Less-visible palette so callers can skip recompiles", async () => {
-      const stylesDirPath = writeThemePackage("theme-mutable-ui", {
-        "variables.css": ":root { --text-color: #111111; }",
-      });
-      setActiveThemes(["theme-mutable-ui", "theme-modern-syntax"]);
-      await atom.themes.activateThemes();
-
-      const shimDirBefore = shimDir();
-      // A property outside the contract never reaches the shim, so the
-      // Less-visible palette is byte-identical after this edit.
-      fs.writeFileSync(
-        path.join(stylesDirPath, "variables.css"),
-        ":root { --text-color: #111111; --mutable-local-accent: #333333; }",
-      );
-      expect(atom.themes.reloadThemeVariables()).toBe(false);
-      expect(shimDir()).toBe(shimDirBefore);
-    });
-
-    it("recompiles the custom-properties bridge for an edited legacy theme", async () => {
-      const stylesDirPath = writeThemePackage("theme-mutable-legacy-ui", {
-        "ui-variables.less": "@text-color: #445566;",
-      });
-      setActiveThemes(["theme-mutable-legacy-ui", "theme-modern-syntax"]);
-      await atom.themes.activateThemes();
-
-      const findBridgeElement = () =>
-        atom.styles
-          .getStyleElements()
-          .find((element) =>
-            (element.getAttribute("source-path") || "").endsWith("custom-properties-bridge.css"),
-          );
-
-      const bridgeBefore = findBridgeElement();
-      expect(bridgeBefore.textContent).toContain("--text-color: #445566");
-
-      fs.writeFileSync(path.join(stylesDirPath, "ui-variables.less"), "@text-color: #667788;");
-      expect(atom.themes.reloadThemeVariables()).toBe(true);
-
-      // Updated in place: same element, new palette, cascade order untouched.
-      const bridgeAfter = findBridgeElement();
-      expect(bridgeAfter).toBe(bridgeBefore);
-      expect(bridgeAfter.textContent).toContain("--text-color: #667788");
+      const warnings = console.warn.calls
+        .allArgs()
+        .map(([message]) => String(message))
+        .filter((message) => message.includes("variables.css"));
+      expect(warnings).toEqual([]);
     });
   });
 });

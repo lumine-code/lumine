@@ -1,12 +1,7 @@
-/* global snapshotAuxiliaryData */
-
 const path = require("path");
 const _ = require("@lumine-code/underscore-plus");
 const { Disposable, Emitter } = require("event-kit");
 const fs = require("@lumine-code/fs-plus");
-const LessCompileCache = require("./less-compile-cache");
-const { UI_VARIABLES, SYNTAX_VARIABLES } = require("./theme-variables");
-const { writeShimDirectory } = require("./theme-variable-shim");
 
 // Keeping a reference to the entire object so that it can be mocked more
 // easily in the specs.
@@ -73,10 +68,7 @@ module.exports = class ThemeManager {
     this.viewRegistry = viewRegistry;
     this.emitter = new Emitter();
     this.styleSheetDisposablesBySourcePath = {};
-    this.lessCache = null;
     this.initialLoadComplete = false;
-    this.themeImportPathsOverride = null;
-    this.themeShimDir = null;
     this.themeSwitchPromise = Promise.resolve();
     this.themePacks = new Set();
     this.packageManager.registerPackageActivator(this, ["theme"]);
@@ -86,19 +78,10 @@ module.exports = class ThemeManager {
     }, 20);
   }
 
-  initialize({ resourcePath, configDirPath, safeMode, devMode }) {
+  initialize({ resourcePath, configDirPath, safeMode }) {
     this.resourcePath = resourcePath;
     this.configDirPath = configDirPath;
     this.safeMode = safeMode;
-    this.lessSourcesByRelativeFilePath = null;
-    if (devMode || typeof snapshotAuxiliaryData === "undefined") {
-      this.lessSourcesByRelativeFilePath = {};
-      this.importedFilePathsByRelativeImportPath = {};
-    } else {
-      this.lessSourcesByRelativeFilePath = snapshotAuxiliaryData.lessSourcesByRelativeFilePath;
-      this.importedFilePathsByRelativeImportPath =
-        snapshotAuxiliaryData.importedFilePathsByRelativeImportPath;
-    }
   }
 
   /*
@@ -263,6 +246,22 @@ module.exports = class ThemeManager {
     }
   }
 
+  // A theme states its palette as CSS custom properties in variables.css.
+  // One that ships none was written against the Less variable contract, which
+  // the editor no longer compiles: it will load, and the parts of the window
+  // it does not restyle itself keep the previous theme's colors. Said once per
+  // theme so a switch back and forth is not noisy.
+  warnForThemeWithoutVariables(themeName) {
+    this.themesWarnedForMissingVariables ??= new Set();
+    if (this.themesWarnedForMissingVariables.has(themeName)) return;
+    if (this.getThemeVariablesPaths(themeName).length > 0) return;
+    this.themesWarnedForMissingVariables.add(themeName);
+    console.warn(
+      `Theme '${themeName}' ships no variables.css, so it defines none of the color ` +
+        `custom properties the editor and its packages read.`,
+    );
+  }
+
   // A theme is installed when it is already loaded (which covers themes
   // provided by multi-theme packages) or when its name resolves to a package
   // on disk.
@@ -330,9 +329,9 @@ module.exports = class ThemeManager {
     return path.join(packagePath, "styles");
   }
 
-  // A modern theme defines its palette as CSS custom properties in one or more
+  // A theme defines its palette as CSS custom properties in one or more
   // variables.css files in its resolved stylesheet chain. Returns those paths
-  // in cascade order, or an empty array for legacy Less themes.
+  // in cascade order, or an empty array for a theme that defines none.
   getThemeVariablesPaths(themeName) {
     const loadedPackage = this.packageManager.getLoadedPackage(themeName);
     if (loadedPackage) {
@@ -347,151 +346,7 @@ module.exports = class ThemeManager {
     return fs.isFileSync(variablesPath) ? [variablesPath] : [];
   }
 
-  // For the modern themes in `themeNames`, write the generated Less shim
-  // (ui-variables.less / syntax-variables.less derived from their CSS
-  // palettes) and return its directory; returns null when no enabled theme is
-  // modern. The directory is added to the Less import path so community
-  // stylesheets keep compiling against the classic contract. Only the sides
-  // (ui / syntax) provided by modern themes are generated — a legacy theme in
-  // the pair keeps providing its own Less variables directly.
-  generateThemeShims(themeNames) {
-    const paletteSources = [];
-    const modernThemeNames = [];
-    const modernTypes = new Set();
-
-    for (const themeName of themeNames) {
-      const variablesPaths = this.getThemeVariablesPaths(themeName);
-      if (variablesPaths.length === 0) continue;
-      let readPalette = false;
-      for (const variablesPath of variablesPaths) {
-        try {
-          paletteSources.push(fs.readFileSync(variablesPath, "utf8"));
-          readPalette = true;
-        } catch (error) {
-          this.notificationManager.addError(
-            `Failed to read the '${themeName}' theme's variables.css`,
-            { detail: error.message, dismissable: true },
-          );
-        }
-      }
-      if (!readPalette) continue;
-      modernThemeNames.push(themeName);
-      modernTypes.add(this.getThemeType(themeName) === "syntax" ? "syntax" : "ui");
-    }
-
-    if (paletteSources.length === 0) return null;
-
-    try {
-      return writeShimDirectory(modernThemeNames.join("+"), paletteSources.join("\n"), {
-        includeUi: modernTypes.has("ui"),
-        includeSyntax: modernTypes.has("syntax"),
-      });
-    } catch (error) {
-      this.notificationManager.addError("Failed to generate the theme's Less variable shim", {
-        detail: error.message,
-        dismissable: true,
-      });
-      return null;
-    }
-  }
-
-  // The custom-properties bridge exposes a legacy (ui/syntax) theme's Less
-  // variables as CSS custom properties on :root, so core and bundled-package
-  // CSS is themed correctly by community themes that predate the custom
-  // property contract.
-  getBridgeSourcePath() {
-    return path.join(this.resourcePath, "static", "custom-properties-bridge.css");
-  }
-
-  buildBridgeSource(includeUi, includeSyntax) {
-    const lines = [
-      // Fallbacks first, then the
-      // active theme's definitions (Less last-wins). The syntax pair must come
-      // before the ui pair — a ui theme may itself import "syntax-variables",
-      // and Less's import-once semantics would otherwise let the fallback
-      // shadow the theme's values.
-      '@import "variables/syntax-variables";',
-      '@import "syntax-variables";',
-      '@import "variables/ui-variables";',
-      '@import "ui-variables";',
-      ":root {",
-    ];
-    const names = [...(includeUi ? UI_VARIABLES : []), ...(includeSyntax ? SYNTAX_VARIABLES : [])];
-    for (const name of names) {
-      lines.push(`  --${name}: @${name};`);
-    }
-    lines.push("}");
-    return lines.join("\n");
-  }
-
-  // Compile the bridge against the current import paths, covering only the
-  // given sides of the contract. Returns the CSS or null when compilation
-  // fails (a notification is shown).
-  compileCustomPropertiesBridge(includeUi, includeSyntax) {
-    this.ensureLessCache();
-    // The virtual path lives directly under static/ so that relative
-    // resolution does not shadow the theme's own ui-variables.less.
-    const virtualPath = path.join(this.resourcePath, "static", "custom-properties-bridge.less");
-    try {
-      return this.lessCache.cssForFile(
-        virtualPath,
-        this.buildBridgeSource(includeUi, includeSyntax),
-      );
-    } catch (error) {
-      this.notificationManager.addError("Failed to compile the theme variables bridge", {
-        detail: error.message,
-        dismissable: true,
-      });
-      return null;
-    }
-  }
-
-  // The contract sides (ui / syntax) provided by legacy Less themes among
-  // `themeNames` -- the sides the custom-properties bridge has to cover.
-  legacyThemeTypes(themeNames) {
-    const legacyTypes = new Set();
-    for (const themeName of themeNames) {
-      if (this.getThemeVariablesPaths(themeName).length > 0) continue;
-      legacyTypes.add(this.getThemeType(themeName) === "syntax" ? "syntax" : "ui");
-    }
-    return legacyTypes;
-  }
-
-  // Re-derive the plumbing the enabled themes' variable definitions feed --
-  // the generated Less shim, the Less import paths, and the custom-properties
-  // bridge of a legacy theme -- after those definitions changed on disk,
-  // without switching themes. Stylesheets already compiled against the old
-  // values are not re-attached; that is the caller's job.
-  //
-  // Returns whether the Less-visible palette may have moved. `false`
-  // guarantees a recompile would reproduce what is already attached, so a
-  // caller can skip recompiling Less consumers.
-  reloadThemeVariables() {
-    const enabledThemeNames = this.getEnabledThemeNames();
-    const previousShimDir = this.themeShimDir;
-    this.refreshThemeImportPaths(enabledThemeNames);
-
-    // A modern theme's palette lands in the shim, whose directory is named by
-    // content hash: an unchanged path means the contract-visible values are
-    // byte-identical. A legacy theme's palette lives in its own Less files,
-    // where no such comparison is available -- assume it moved and recompile
-    // the bridge that derives the custom properties from it.
-    const legacyTypes = this.legacyThemeTypes(enabledThemeNames);
-    if (legacyTypes.size > 0) {
-      const bridgeCss = this.compileCustomPropertiesBridge(
-        legacyTypes.has("ui"),
-        legacyTypes.has("syntax"),
-      );
-      if (bridgeCss != null) {
-        this.applyStylesheet(this.getBridgeSourcePath(), bridgeCss, 1, true, true);
-      }
-    }
-    return this.themeShimDir !== previousShimDir || legacyTypes.size > 0;
-  }
-
   // Resolve and apply the stylesheet specified by the path.
-  //
-  // This supports both CSS and Less stylesheets.
   //
   // * `stylesheetPath` A {String} path to the stylesheet that can be an absolute
   //   path or a relative path that will be resolved against the load path.
@@ -577,10 +432,14 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     }
 
     try {
-      return { sourcePath, exists: true, contents: this.loadStylesheet(sourcePath, true) };
-    } catch {
-      // Compile error — the notification was already shown; keep the
-      // previous styles applied.
+      return { sourcePath, exists: true, contents: this.loadStylesheet(sourcePath) };
+    } catch (error) {
+      // Unreadable — say so and keep the previous styles applied, rather than
+      // leaving the window silently stuck on them.
+      this.notificationManager.addError(`Error loading \`${path.basename(sourcePath)}\``, {
+        detail: error.message,
+        dismissable: true,
+      });
       return { sourcePath, exists: true, contents: null };
     }
   }
@@ -639,74 +498,12 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     if (path.extname(stylesheetPath).length > 0) {
       return fs.resolveOnLoadPath(stylesheetPath);
     } else {
-      return fs.resolveOnLoadPath(stylesheetPath, ["css", "less"]);
+      return fs.resolveOnLoadPath(stylesheetPath, ["css"]);
     }
   }
 
-  loadStylesheet(stylesheetPath, importFallbackVariables) {
-    if (path.extname(stylesheetPath) === ".less") {
-      return this.loadLessStylesheet(stylesheetPath, importFallbackVariables);
-    } else {
-      return fs.readFileSync(stylesheetPath, "utf8");
-    }
-  }
-
-  ensureLessCache() {
-    if (this.lessCache == null) {
-      this.lessCache = new LessCompileCache({
-        resourcePath: this.resourcePath,
-        lessSourcesByRelativeFilePath: this.lessSourcesByRelativeFilePath,
-        importedFilePathsByRelativeImportPath: this.importedFilePathsByRelativeImportPath,
-        importPaths: this.getImportPaths(),
-      });
-    }
-    return this.lessCache;
-  }
-
-  loadLessStylesheet(lessStylesheetPath, importFallbackVariables = false) {
-    this.ensureLessCache();
-
-    try {
-      if (importFallbackVariables) {
-        const baseVarImports = `\
-@import "variables/ui-variables";
-@import "variables/syntax-variables";\
-`;
-        const relativeFilePath = path.relative(this.resourcePath, lessStylesheetPath);
-        const lessSource = this.lessSourcesByRelativeFilePath[relativeFilePath];
-
-        let content, digest;
-        if (lessSource != null) {
-          ({ content } = lessSource);
-          ({ digest } = lessSource);
-        } else {
-          content = baseVarImports + "\n" + fs.readFileSync(lessStylesheetPath, "utf8");
-          digest = null;
-        }
-
-        return this.lessCache.cssForFile(lessStylesheetPath, content, digest);
-      } else {
-        return this.lessCache.read(lessStylesheetPath);
-      }
-    } catch (error) {
-      let detail, message;
-      error.less = true;
-      if (error.line != null) {
-        // Adjust line numbers for import fallbacks
-        if (importFallbackVariables) {
-          error.line -= 2;
-        }
-
-        message = `Error compiling Less stylesheet: \`${lessStylesheetPath}\``;
-        detail = `Line number: ${error.line}\n${error.message}`;
-      } else {
-        message = `Error loading Less stylesheet: \`${lessStylesheetPath}\``;
-        detail = error.message;
-      }
-
-      this.notificationManager.addError(message, { detail, dismissable: true });
-      throw error;
-    }
+  loadStylesheet(stylesheetPath) {
+    return fs.readFileSync(stylesheetPath, "utf8");
   }
 
   removeStylesheet(stylesheetPath) {
@@ -785,11 +582,6 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     const oldThemes = this.getActiveThemes();
     const enabledThemeNames = this.getEnabledThemeNames();
 
-    // Compile against the new theme set's import paths even though the old
-    // themes are still active. A dual theme additionally contributes the
-    // generated Less shim directory derived from its CSS palette.
-    this.refreshThemeImportPaths(enabledThemeNames);
-
     const newThemes = [];
     for (const themeName of enabledThemeNames) {
       if (!this.isThemeInstalled(themeName)) {
@@ -798,9 +590,9 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       }
       const pack = this.packageManager.loadPackage(themeName);
       if (pack == null) continue;
-      // Theme packages compile their style sheets on activation, not on load,
-      // so compile here — before the swap — against the new import paths.
-      // `activate` recompiles later, but that hits the compile cache.
+      this.warnForThemeWithoutVariables(themeName);
+      // Theme packages read their style sheets on activation, not on load, so
+      // read here — before the swap — so the whole window can restyle at once.
       try {
         pack.loadStylesheets();
       } catch (error) {
@@ -809,22 +601,9 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       newThemes.push(pack);
     }
 
-    // Everything else that bakes theme variables into its compiled CSS — the
-    // user stylesheet and the active packages' style sheets — also compiles
-    // now, so the whole window can restyle in a single frame. The core base
-    // stylesheet is plain CSS on the custom-property contract and never needs
-    // recompiling.
+    // The user stylesheet and the active packages' style sheets are read now
+    // too, so the whole window can restyle in a single frame.
     const userStylesheet = this.readUserStylesheet();
-
-    // Legacy Less themes don't define the CSS custom-property contract
-    // themselves; compile the bridge that derives it from their Less
-    // variables. Only the sides actually provided by legacy themes are
-    // bridged, so a modern theme paired with a legacy one is not overridden.
-    const legacyTypes = this.legacyThemeTypes(enabledThemeNames);
-    const needsBridge = legacyTypes.size > 0;
-    const bridgeCss = needsBridge
-      ? this.compileCustomPropertiesBridge(legacyTypes.has("ui"), legacyTypes.has("syntax"))
-      : null;
 
     const activePackages = this.packageManager
       .getActivePackages()
@@ -842,11 +621,6 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     const applyStyles = () => {
       this.removeActiveThemeClasses(oldThemes);
       for (const pack of oldThemes) pack.deactivateStylesheets();
-      if (bridgeCss != null) {
-        this.applyStylesheet(this.getBridgeSourcePath(), bridgeCss, 1, true, true);
-      } else if (!needsBridge) {
-        this.removeStylesheet(this.getBridgeSourcePath());
-      }
       for (const pack of newThemes) pack.activateStylesheets();
       this.addActiveThemeClasses(newThemes);
       this.applyUserStylesheet(userStylesheet);
@@ -868,9 +642,9 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       themesToDeactivate.map((pack) => this.packageManager.deactivatePackage(pack.name)),
     );
     // Re-register sequentially so the active-package order — which
-    // `getImportPaths` and `getActiveThemes` reflect — matches the enabled
-    // order. Continuing themes are dropped from the registry first (their
-    // style sheets stay attached) and re-added at the right position.
+    // `getActiveThemes` reflects — matches the enabled order. Continuing
+    // themes are dropped from the registry first (their style sheets stay
+    // attached) and re-added at the right position.
     for (const pack of newThemes) {
       delete this.packageManager.activePackages[pack.name];
     }
@@ -878,8 +652,6 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       await this.packageManager.activatePackage(pack.name);
     }
 
-    this.themeImportPathsOverride = null;
-    this.refreshLessCache(); // Update cache again now that @getActiveThemes() is populated
     await this.watchUserStylesheet();
     this.initialLoadComplete = true;
     this.emitter.emit("did-change-active-themes");
@@ -941,7 +713,6 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
   }
 
   deactivateThemes() {
-    this.themeShimDir = null;
     this.removeActiveThemeClasses();
     this.unwatchUserStylesheet();
     this.removeUserStylesheet();
@@ -969,55 +740,5 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     for (const pack of themes) {
       workspaceElement.classList.remove(`theme-${pack.name}`);
     }
-  }
-
-  refreshLessCache() {
-    if (this.lessCache) this.lessCache.setImportPaths(this.getImportPaths());
-  }
-
-  // Point the Less import paths at `themeNames`' style directories plus the
-  // generated variable shim, and drop compile-cache entries the new paths
-  // invalidate.
-  refreshThemeImportPaths(themeNames) {
-    this.themeShimDir = this.generateThemeShims(themeNames);
-    this.themeImportPathsOverride = this.getImportPathsForThemeNames(themeNames);
-    if (this.themeShimDir) {
-      this.themeImportPathsOverride.push(this.themeShimDir);
-    }
-    this.refreshLessCache();
-  }
-
-  getImportPaths() {
-    if (this.themeImportPathsOverride) {
-      return this.themeImportPathsOverride;
-    }
-
-    let themePaths;
-    const activeThemes = this.getActiveThemes();
-    if (activeThemes.length > 0) {
-      themePaths = activeThemes
-        .filter((theme) => theme)
-        .map((theme) => theme.getStylesheetsPath())
-        .filter((themePath) => fs.isDirectorySync(themePath));
-    } else {
-      themePaths = this.getImportPathsForThemeNames(this.getEnabledThemeNames());
-    }
-
-    if (this.themeShimDir) {
-      themePaths = themePaths.concat([this.themeShimDir]);
-    }
-    return themePaths;
-  }
-
-  getImportPathsForThemeNames(themeNames) {
-    const themePaths = [];
-    for (const themeName of themeNames) {
-      const stylesPath = this.getThemeStylesPath(themeName);
-      if (stylesPath) {
-        themePaths.push(stylesPath);
-      }
-    }
-
-    return themePaths.filter((themePath) => fs.isDirectorySync(themePath));
   }
 };
