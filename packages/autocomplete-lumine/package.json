@@ -26,6 +26,8 @@
     "update": "node ./update/update.js"
   },
   "devDependencies": {
+    "@babel/parser": "^8.0.1",
+    "babylon": "^6.18.0",
     "joanna": "^0.0.11",
     "tello": "^1.2.0",
     "@lumine-code/temp": "https://github.com/lumine-code/node-temp.git#929dfd04196566b21baef93fddc24a19db329bd0"

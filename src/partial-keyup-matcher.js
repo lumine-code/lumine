@@ -26,7 +26,7 @@ module.exports = class PartialKeyupMatcher {
     return [...matches];
   }
 
-  /** Private Section **/
+  /* Private section */
 
   _normalizeKeystroke(keystroke) {
     if (keystroke[0] === "^") return keystroke.substring(1);
