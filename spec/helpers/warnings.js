@@ -44,20 +44,3 @@ exports.ensureNoDeprecatedFunctionCalls = function () {
     throw error;
   }
 };
-
-exports.ensureNoDeprecatedStylesheets = function () {
-  const deprecations = _.clone(atom.styles.getDeprecations());
-  atom.styles.clearDeprecations();
-  return (() => {
-    const result = [];
-    for (let sourcePath in deprecations) {
-      const deprecation = deprecations[sourcePath];
-      const title =
-        sourcePath !== "undefined"
-          ? `Deprecated stylesheet at '${sourcePath}':`
-          : "Deprecated stylesheet:";
-      throw new Error(`${title}\n${deprecation.message}`);
-    }
-    return result;
-  })();
-};

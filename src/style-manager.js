@@ -13,7 +13,6 @@ module.exports = class StyleManager {
     this.emitter = new Emitter();
     this.styleElements = [];
     this.styleElementsBySourcePath = {};
-    this.deprecationsBySourcePath = {};
   }
 
   initialize({ configDirPath }) {
@@ -94,10 +93,6 @@ module.exports = class StyleManager {
     return this.emitter.on("did-update-style-element", callback);
   }
 
-  onDidUpdateDeprecations(callback) {
-    return this.emitter.on("did-update-deprecations", callback);
-  }
-
   /*
   Section: Reading Style Elements
   */
@@ -174,14 +169,6 @@ module.exports = class StyleManager {
       }
       this.emitter.emit("did-remove-style-element", styleElement);
     }
-  }
-
-  getDeprecations() {
-    return this.deprecationsBySourcePath;
-  }
-
-  clearDeprecations() {
-    this.deprecationsBySourcePath = {};
   }
 
   getSnapshot() {

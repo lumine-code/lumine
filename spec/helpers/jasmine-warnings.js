@@ -1,13 +1,8 @@
-const {
-  ensureNoDeprecatedFunctionCalls,
-  ensureNoDeprecatedStylesheets,
-  warnIfLeakingPathSubscriptions,
-} = require("./warnings");
+const { ensureNoDeprecatedFunctionCalls, warnIfLeakingPathSubscriptions } = require("./warnings");
 
 exports.register = (jasmineEnv) => {
   jasmineEnv.afterEach((done) => {
     ensureNoDeprecatedFunctionCalls();
-    ensureNoDeprecatedStylesheets();
 
     atom
       .reset()
