@@ -3399,8 +3399,10 @@ describe("TextEditorComponent", () => {
         component.getScrollContainerClientWidth() * 2 +
         verticalScrollbarWidth +
         "px";
+      // Drive the resize directly instead of waiting on ResizeObserver
+      // delivery; didResize performs the update synchronously, so awaiting
+      // getNextUpdatePromise() here would hang.
       component.didResize();
-      await component.getNextUpdatePromise();
       expect(component.getRenderedStartRow()).toBe(0);
       expect(component.getRenderedEndRow()).toBe(9);
       expect(component.getScrollHeight()).toBeNear(
