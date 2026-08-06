@@ -51,7 +51,9 @@ describe("PackageInstallationService", function () {
   });
 
   afterEach(function () {
-    fs.rmSync(root, { recursive: true, force: true });
+    // Retries because Windows keeps a directory non-empty until the last handle on a child
+    // closes, and `force` swallows only ENOENT.
+    fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
   });
 
   // A GitHub archive of the installed commit: one root directory holding the
@@ -67,7 +69,7 @@ describe("PackageInstallationService", function () {
     let body = fs.readFileSync(archivePath);
     if (archivedSha) body = Buffer.concat([paxGlobalHeader(archivedSha), body]);
     body = zlib.gzipSync(body);
-    fs.rmSync(scratch, { recursive: true, force: true });
+    fs.rmSync(scratch, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 });
     return {
       ok: true,
       status: 200,
@@ -289,7 +291,9 @@ ${JSON.stringify(manifest, null, 2)}
           () => Promise.reject(new Error("expected rejection")),
           (error) => expect(error.message).toContain("Use Replace"),
         )
-        .finally(() => fs.rmSync(linkedSource, { recursive: true, force: true })),
+        .finally(() =>
+          fs.rmSync(linkedSource, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
+        ),
     );
   });
 

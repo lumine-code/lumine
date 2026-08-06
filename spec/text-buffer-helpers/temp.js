@@ -5,7 +5,11 @@ const { randomUUID } = require("crypto");
 
 const rootPath = fs.mkdtempSync(path.join(os.tmpdir(), "text-buffer-"));
 
-process.on("exit", () => fs.rmSync(rootPath, { recursive: true, force: true }));
+// Retries because Windows keeps a directory non-empty until the last handle on a child
+// closes, and `force` swallows only ENOENT.
+process.on("exit", () =>
+  fs.rmSync(rootPath, { recursive: true, force: true, maxRetries: 10, retryDelay: 50 }),
+);
 
 module.exports = {
   track() {},
