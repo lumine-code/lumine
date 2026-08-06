@@ -112,9 +112,7 @@ module.exports = function parseCommandLine(processArgs) {
       "install",
       "Install from owner/repo[@tag|#commit|~branch], or use #branch:, #tag:, or #commit: with a Git URL.",
     );
-  options
-    .string("uninstall")
-    .describe("uninstall", "Uninstall an installed package by name.");
+  options.string("uninstall").describe("uninstall", "Uninstall an installed package by name.");
   options.boolean("list").describe("list", "List installed and development packages.");
   options
     .string("link")
