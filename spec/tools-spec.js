@@ -125,11 +125,11 @@ describe("Renders Markdown", () => {
         "fixtures",
         "packages",
         "package-with-index",
-        "index.coffee",
+        "index.js",
       );
 
       expect(
-        atom.tools.markdown.render("![Local image](./index.coffee)", {
+        atom.tools.markdown.render("![Local image](./index.js)", {
           filePath: readmePath,
         }),
       ).toBe(`<p><img src="${pathToFileURL(readmePath).href}" alt="Local image"></p>\n`);

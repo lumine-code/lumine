@@ -38,9 +38,14 @@ KeymapManager.prototype.getUserKeymapPath = function () {
   if (this.configDirPath == null) {
     return "";
   }
-  let userKeymapPath = fs.resolve(this.configDirPath, "keymap", ["json", "jsonc"]);
-  if (userKeymapPath) {
-    return userKeymapPath;
+  // Joined rather than resolved: `fs.resolve` reports the real path, and on
+  // macOS the config directory is usually reached through a symlinked temp or
+  // home directory, so the answer would not be under `configDirPath`.
+  for (const extension of ["json", "jsonc"]) {
+    const candidate = path.join(this.configDirPath, `keymap.${extension}`);
+    if (fs.isFileSync(candidate)) {
+      return candidate;
+    }
   }
   return path.join(this.configDirPath, "keymap.json");
 };

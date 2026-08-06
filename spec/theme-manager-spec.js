@@ -707,6 +707,13 @@ describe("atom.themes", () => {
   });
 
   describe("themes without a palette", () => {
+    // The warning is said once per theme for the life of the window, and the
+    // whole editor suite shares one, so an earlier spec activating this theme
+    // would otherwise have spent it.
+    beforeEach(() => {
+      atom.themes.themesWarnedForMissingVariables = null;
+    });
+
     it("warns once that the theme defines none of the color custom properties", async () => {
       setActiveThemes(["theme-with-package-file", "theme-modern-syntax"]);
       await atom.themes.activateThemes();
