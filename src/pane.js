@@ -1,4 +1,3 @@
-const Grim = require("grim");
 const { CompositeDisposable, Emitter } = require("event-kit");
 const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
@@ -587,15 +586,6 @@ module.exports = class Pane {
   //
   // Returns the added item.
   addItem(item, options = {}) {
-    // Backward compat with old API:
-    //   addItem(item, index=@getActiveItemIndex() + 1)
-    if (typeof options === "number") {
-      Grim.deprecate(
-        `Pane::addItem(item, ${options}) is deprecated in favor of Pane::addItem(item, {index: ${options}})`,
-      );
-      options = { index: options };
-    }
-
     const index = options.index != null ? options.index : this.getActiveItemIndex() + 1;
     const moved = options.moved != null ? options.moved : false;
     const pending = options.pending != null ? options.pending : false;

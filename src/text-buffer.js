@@ -140,13 +140,6 @@ class TextBuffer {
 
     if (params.filePath) {
       this.setPath(params.filePath);
-      if (params.load) {
-        Grim.deprecate(
-          "The `load` option to the TextBuffer constructor is deprecated. " +
-            "Get a loaded buffer using TextBuffer.load(filePath) instead.",
-        );
-        this.load({ internal: true });
-      }
     }
   }
 
@@ -2221,12 +2214,6 @@ class TextBuffer {
   }
 
   loadSync(options) {
-    if (!options || !options.internal) {
-      Grim.deprecate(
-        "The .loadSync instance method is deprecated. Create a loaded buffer using TextBuffer.loadSync(filePath) instead.",
-      );
-    }
-
     let patch;
     let checkpoint = null;
     try {
@@ -2255,12 +2242,6 @@ class TextBuffer {
   }
 
   async load(options) {
-    if (!options || !options.internal) {
-      Grim.deprecate(
-        "The .load instance method is deprecated. Create a loaded buffer using TextBuffer.load(filePath) instead.",
-      );
-    }
-
     if (this.file instanceof File) {
       // The consumer is allowed to set a `File` instance with a path that does
       // not currently exist on disk.

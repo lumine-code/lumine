@@ -4,7 +4,6 @@ const { Emitter, Disposable, CompositeDisposable } = require("event-kit");
 const fs = require("@lumine-code/fs-plus");
 const picomatch = require("picomatch");
 const ProjectDirectory = require("./project-directory");
-const Grim = require("grim");
 const RipgrepDirectorySearcher = require("./ripgrep-directory-searcher");
 const Dock = require("./dock");
 const Model = require("./model");
@@ -403,13 +402,6 @@ module.exports = class Workspace extends Model {
     };
 
     this.incoming = new Map();
-  }
-
-  get paneContainer() {
-    Grim.deprecate(
-      "`atom.workspace.paneContainer` has always been private, but it is now gone. Please use `atom.workspace.getCenter()` instead and consult the workspace API docs for public methods.",
-    );
-    return this.paneContainers.center.paneContainer;
   }
 
   getElement() {

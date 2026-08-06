@@ -68,7 +68,6 @@
     "dev-live-reload": "https://github.com/lumine-code/dev-live-reload.git#63fd8038e8fab13c15f4d85f7349598ae38f2f9b",
     "diacritic": "^0.0.2",
     "diff": "^9.0.0",
-    "document-register-element": "https://github.com/pulsar-edit/document-register-element.git#4db07dd",
     "dompurify": "^3.4.12",
     "editor-status": "https://github.com/lumine-code/editor-status.git#697be7ac4f28935abccfd161733be3cce562516b",
     "encoding-selector": "https://github.com/lumine-code/encoding-selector.git#ce2e25e0cf08d2b44ebb8cfb16dd8550cf209ef4",

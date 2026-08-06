@@ -1,6 +1,5 @@
 const { extend } = require("@lumine-code/underscore-plus");
 const { Emitter } = require("event-kit");
-const Grim = require("grim");
 const fs = require("fs");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
@@ -274,29 +273,6 @@ describe("Pane", () => {
       pane.addItem(item);
 
       expect(spy).toHaveBeenCalled();
-    });
-
-    describe("when using the old API of ::addItem(item, index)", () => {
-      beforeEach(() => spyOn(Grim, "deprecate"));
-
-      it("supports the older public API", () => {
-        const pane = new Pane(paneParams({ items: [] }));
-        const itemA = new Item("A");
-        const itemB = new Item("B");
-        const itemC = new Item("C");
-        pane.addItem(itemA, 0);
-        pane.addItem(itemB, 0);
-        pane.addItem(itemC, 0);
-        expect(pane.getItems()).toEqual([itemC, itemB, itemA]);
-      });
-
-      it("shows a deprecation warning", () => {
-        const pane = new Pane(paneParams({ items: [] }));
-        pane.addItem(new Item(), 2);
-        expect(Grim.deprecate).toHaveBeenCalledWith(
-          "Pane::addItem(item, 2) is deprecated in favor of Pane::addItem(item, {index: 2})",
-        );
-      });
     });
   });
 

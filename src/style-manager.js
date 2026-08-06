@@ -1,12 +1,7 @@
 const { Emitter, Disposable } = require("event-kit");
-const crypto = require("crypto");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { createStylesElement } = require("./styles-element");
-const {
-  transformDeprecatedShadowDOMSelectors,
-  transformDeprecatedMathUsage,
-} = require("./deprecated-style-transforms");
 
 // Extended: A singleton instance of this class available via `atom.styles`,
 // which you can use to globally query and observe the set of active style
@@ -23,9 +18,6 @@ module.exports = class StyleManager {
 
   initialize({ configDirPath }) {
     this.configDirPath = configDirPath;
-    if (this.configDirPath != null) {
-      this.cacheDirPath = path.join(this.configDirPath, "compile-cache", "style-manager");
-    }
   }
 
   /*
@@ -138,53 +130,7 @@ module.exports = class StyleManager {
       }
     }
 
-    let textContent = source;
-    let deprecationMessages = [];
-
-    // The deprecated-style transformations upgrade stylesheets authored as
-    // Less for older versions of the editor. Hand-authored plain CSS must
-    // never be rewritten — the math transform in particular can mangle
-    // data: URIs and modern CSS functions.
-    const lessSource = params.sourcePath == null || path.extname(params.sourcePath) === ".less";
-
-    if (lessSource && !params.skipDeprecatedSelectorsTransformation) {
-      const transformed = this.upgradeStyleSheet(
-        textContent,
-        params.context,
-        transformDeprecatedShadowDOMSelectors,
-      );
-
-      textContent = transformed.source;
-      deprecationMessages.push(transformed.deprecationMessage);
-    }
-
-    if (lessSource && !params.skipDeprecatedMathUsageTransformation) {
-      const transformed = this.upgradeStyleSheet(
-        textContent,
-        params.context,
-        transformDeprecatedMathUsage,
-      );
-
-      textContent = transformed.source;
-      deprecationMessages.push(transformed.deprecationMessage);
-    }
-
-    // Once done with any and all transformations we can apply our new textContent
-    styleElement.textContent = textContent;
-
-    // Reduce the deprecation messages array to remove any null, undefined, or empty text values
-    // Anything not 'truthy'
-    deprecationMessages = deprecationMessages.filter((ele) => ele);
-
-    if (deprecationMessages.length > 0) {
-      // we do in fact have deprecations
-      let deprecationMsg = deprecationMessages.join("\n");
-
-      this.deprecationsBySourcePath[params.sourcePath] = {
-        message: deprecationMsg,
-      };
-      this.emitter.emit("did-update-deprecations");
-    }
+    styleElement.textContent = source;
 
     if (updated) {
       this.emitter.emit("did-update-style-element", styleElement);
@@ -227,34 +173,6 @@ module.exports = class StyleManager {
         delete this.styleElementsBySourcePath[styleElement.sourcePath];
       }
       this.emitter.emit("did-remove-style-element", styleElement);
-    }
-  }
-
-  // Applies one of the transformations in `./deprecated-style-transforms`,
-  // memoizing the result on disk so a style sheet is only transformed once.
-  upgradeStyleSheet(styleSheet, context, transform) {
-    if (this.cacheDirPath != null) {
-      const hash = crypto.createHash("sha1");
-      // The transform has to be part of the key. Both transforms run over the
-      // same style sheet in turn, and the second one sees the first one's
-      // output unchanged whenever the first is a no-op — so keying on the
-      // source alone makes the second read back the first's cached result and
-      // never run at all.
-      hash.update(transform.name);
-      if (context != null) {
-        hash.update(context);
-      }
-      hash.update(styleSheet);
-      const cacheFilePath = path.join(this.cacheDirPath, hash.digest("hex"));
-      try {
-        return JSON.parse(fs.readFileSync(cacheFilePath));
-      } catch {
-        const transformed = transform(styleSheet, context);
-        fs.writeFileSync(cacheFilePath, JSON.stringify(transformed));
-        return transformed;
-      }
-    } else {
-      return transform(styleSheet, context);
     }
   }
 

@@ -1,8 +1,6 @@
 const _ = require("@lumine-code/underscore-plus");
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
-const Grim = require("grim");
-const dedent = require("dedent");
 const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
 const TextBuffer = require("./text-buffer");
 const { Point, Range } = TextBuffer;
@@ -322,27 +320,6 @@ module.exports = class TextEditor {
 
   get element() {
     return this.getElement();
-  }
-
-  get editorElement() {
-    Grim.deprecate(dedent`\
-      \`TextEditor.prototype.editorElement\` has always been private, but now
-      it is gone. Reading the \`editorElement\` property still returns a
-      reference to the editor element but this field will be removed in a
-      later version of Lumine, so we recommend using the \`element\` property instead.\
-    `);
-
-    return this.getElement();
-  }
-
-  get displayBuffer() {
-    Grim.deprecate(dedent`\
-      \`TextEditor.prototype.displayBuffer\` has always been private, but now
-      it is gone. Reading the \`displayBuffer\` property now returns a reference
-      to the containing \`TextEditor\`, which now provides *some* of the API of
-      the defunct \`DisplayBuffer\` class.\
-    `);
-    return this;
   }
 
   get languageMode() {
@@ -1228,20 +1205,6 @@ module.exports = class TextEditor {
   // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
   onDidChangePlaceholderText(callback) {
     return this.emitter.on("did-change-placeholder-text", callback);
-  }
-
-  onDidChangeScrollTop(callback) {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::onDidChangeScrollTop instead.",
-    );
-    return this.getElement().onDidChangeScrollTop(callback);
-  }
-
-  onDidChangeScrollLeft(callback) {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::onDidChangeScrollLeft instead.",
-    );
-    return this.getElement().onDidChangeScrollLeft(callback);
   }
 
   onDidRequestAutoscroll(callback) {
@@ -2539,27 +2502,6 @@ module.exports = class TextEditor {
   //
   // Returns a {Point}.
   screenPositionForBufferPosition(bufferPosition, options) {
-    if (options && options.clip) {
-      Grim.deprecate(
-        "The `clip` parameter has been deprecated and will be removed soon. Please, use `clipDirection` instead.",
-      );
-      if (options.clipDirection) options.clipDirection = options.clip;
-    }
-    if (options && options.wrapAtSoftNewlines != null) {
-      Grim.deprecate(
-        "The `wrapAtSoftNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapAtSoftNewlines ? "forward" : "backward";
-    }
-    if (options && options.wrapBeyondNewlines != null) {
-      Grim.deprecate(
-        "The `wrapBeyondNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapBeyondNewlines ? "forward" : "backward";
-    }
-
     return this.displayLayer.translateBufferPosition(bufferPosition, options);
   }
 
@@ -2572,27 +2514,6 @@ module.exports = class TextEditor {
   //
   // Returns a {Point}.
   bufferPositionForScreenPosition(screenPosition, options) {
-    if (options && options.clip) {
-      Grim.deprecate(
-        "The `clip` parameter has been deprecated and will be removed soon. Please, use `clipDirection` instead.",
-      );
-      if (options.clipDirection) options.clipDirection = options.clip;
-    }
-    if (options && options.wrapAtSoftNewlines != null) {
-      Grim.deprecate(
-        "The `wrapAtSoftNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapAtSoftNewlines ? "forward" : "backward";
-    }
-    if (options && options.wrapBeyondNewlines != null) {
-      Grim.deprecate(
-        "The `wrapBeyondNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapBeyondNewlines ? "forward" : "backward";
-    }
-
     return this.displayLayer.translateScreenPosition(screenPosition, options);
   }
 
@@ -2679,27 +2600,6 @@ module.exports = class TextEditor {
   //
   // Returns a {Point}.
   clipScreenPosition(screenPosition, options) {
-    if (options && options.clip) {
-      Grim.deprecate(
-        "The `clip` parameter has been deprecated and will be removed soon. Please, use `clipDirection` instead.",
-      );
-      if (options.clipDirection) options.clipDirection = options.clip;
-    }
-    if (options && options.wrapAtSoftNewlines != null) {
-      Grim.deprecate(
-        "The `wrapAtSoftNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapAtSoftNewlines ? "forward" : "backward";
-    }
-    if (options && options.wrapBeyondNewlines != null) {
-      Grim.deprecate(
-        "The `wrapBeyondNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapBeyondNewlines ? "forward" : "backward";
-    }
-
     return this.displayLayer.clipScreenPosition(screenPosition, options);
   }
 
@@ -3168,27 +3068,6 @@ module.exports = class TextEditor {
   //   * `autoscroll` Determines whether the editor scrolls to the new cursor's
   //     position. Defaults to true.
   setCursorScreenPosition(position, options) {
-    if (options && options.clip) {
-      Grim.deprecate(
-        "The `clip` parameter has been deprecated and will be removed soon. Please, use `clipDirection` instead.",
-      );
-      if (options.clipDirection) options.clipDirection = options.clip;
-    }
-    if (options && options.wrapAtSoftNewlines != null) {
-      Grim.deprecate(
-        "The `wrapAtSoftNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapAtSoftNewlines ? "forward" : "backward";
-    }
-    if (options && options.wrapBeyondNewlines != null) {
-      Grim.deprecate(
-        "The `wrapBeyondNewlines` parameter has been deprecated and will be removed soon. Please, use `clipDirection: 'forward'` instead.",
-      );
-      if (options.clipDirection)
-        options.clipDirection = options.wrapBeyondNewlines ? "forward" : "backward";
-    }
-
     return this.moveCursors((cursor) => cursor.setScreenPosition(position, options));
   }
 
@@ -5039,35 +4918,11 @@ module.exports = class TextEditor {
     this.scrollToScreenRange(new Range(screenPosition, screenPosition), options);
   }
 
-  scrollToTop() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::scrollToTop instead.");
-    this.getElement().scrollToTop();
-  }
-
-  scrollToBottom() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::scrollToTop instead.");
-    this.getElement().scrollToBottom();
-  }
-
   scrollToScreenRange(screenRange, options = {}) {
     if (options.clip !== false) screenRange = this.clipScreenRange(screenRange);
     const scrollEvent = { screenRange, options };
     if (this.component) this.component.didRequestAutoscroll(scrollEvent);
     this.emitter.emit("did-request-autoscroll", scrollEvent);
-  }
-
-  getHorizontalScrollbarHeight() {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::getHorizontalScrollbarHeight instead.",
-    );
-    return this.getElement().getHorizontalScrollbarHeight();
-  }
-
-  getVerticalScrollbarWidth() {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::getVerticalScrollbarWidth instead.",
-    );
-    return this.getElement().getVerticalScrollbarWidth();
   }
 
   pageUp() {
@@ -5276,20 +5131,6 @@ module.exports = class TextEditor {
     this.updatePlaceholderText(placeholderText, true);
   }
 
-  pixelPositionForBufferPosition(bufferPosition) {
-    Grim.deprecate(
-      "This method is deprecated on the model layer. Use `TextEditorElement::pixelPositionForBufferPosition` instead",
-    );
-    return this.getElement().pixelPositionForBufferPosition(bufferPosition);
-  }
-
-  pixelPositionForScreenPosition(screenPosition) {
-    Grim.deprecate(
-      "This method is deprecated on the model layer. Use `TextEditorElement::pixelPositionForScreenPosition` instead",
-    );
-    return this.getElement().pixelPositionForScreenPosition(screenPosition);
-  }
-
   getVerticalScrollMargin() {
     const maxScrollMargin = Math.floor((this.height / this.getLineHeightInPixels() - 1) / 2);
     return Math.min(this.verticalScrollMargin, maxScrollMargin);
@@ -5373,32 +5214,12 @@ module.exports = class TextEditor {
     return defaultCharWidth;
   }
 
-  setHeight(height) {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::setHeight instead.");
-    this.getElement().setHeight(height);
-  }
-
-  getHeight() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getHeight instead.");
-    return this.getElement().getHeight();
-  }
-
   getAutoHeight() {
     return this.autoHeight != null ? this.autoHeight : true;
   }
 
   getAutoWidth() {
     return this.autoWidth != null ? this.autoWidth : false;
-  }
-
-  setWidth(width) {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::setWidth instead.");
-    this.getElement().setWidth(width);
-  }
-
-  getWidth() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getWidth instead.");
-    return this.getElement().getWidth();
   }
 
   // Use setScrollTopRow instead of this method
@@ -5427,61 +5248,6 @@ module.exports = class TextEditor {
     return this.getElement().component.getFirstVisibleColumn();
   }
 
-  getScrollTop() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getScrollTop instead.");
-    return this.getElement().getScrollTop();
-  }
-
-  setScrollTop(scrollTop) {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::setScrollTop instead.");
-    this.getElement().setScrollTop(scrollTop);
-  }
-
-  getScrollBottom() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getScrollBottom instead.");
-    return this.getElement().getScrollBottom();
-  }
-
-  setScrollBottom(scrollBottom) {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::setScrollBottom instead.");
-    this.getElement().setScrollBottom(scrollBottom);
-  }
-
-  getScrollLeft() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getScrollLeft instead.");
-    return this.getElement().getScrollLeft();
-  }
-
-  setScrollLeft(scrollLeft) {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::setScrollLeft instead.");
-    this.getElement().setScrollLeft(scrollLeft);
-  }
-
-  getScrollRight() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getScrollRight instead.");
-    return this.getElement().getScrollRight();
-  }
-
-  setScrollRight(scrollRight) {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::setScrollRight instead.");
-    this.getElement().setScrollRight(scrollRight);
-  }
-
-  getScrollHeight() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getScrollHeight instead.");
-    return this.getElement().getScrollHeight();
-  }
-
-  getScrollWidth() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getScrollWidth instead.");
-    return this.getElement().getScrollWidth();
-  }
-
-  getMaxScrollTop() {
-    Grim.deprecate("This is now a view method. Call TextEditorElement::getMaxScrollTop instead.");
-    return this.getElement().getMaxScrollTop();
-  }
-
   getScrollTopRow() {
     return this.getElement().component.getScrollTopRow();
   }
@@ -5496,34 +5262,6 @@ module.exports = class TextEditor {
 
   setScrollLeftColumn(scrollLeftColumn) {
     this.getElement().component.setScrollLeftColumn(scrollLeftColumn);
-  }
-
-  intersectsVisibleRowRange(startRow, endRow) {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::intersectsVisibleRowRange instead.",
-    );
-    return this.getElement().intersectsVisibleRowRange(startRow, endRow);
-  }
-
-  selectionIntersectsVisibleRowRange(selection) {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::selectionIntersectsVisibleRowRange instead.",
-    );
-    return this.getElement().selectionIntersectsVisibleRowRange(selection);
-  }
-
-  screenPositionForPixelPosition(pixelPosition) {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::screenPositionForPixelPosition instead.",
-    );
-    return this.getElement().screenPositionForPixelPosition(pixelPosition);
-  }
-
-  pixelRectForScreenRange(screenRange) {
-    Grim.deprecate(
-      "This is now a view method. Call TextEditorElement::pixelRectForScreenRange instead.",
-    );
-    return this.getElement().pixelRectForScreenRange(screenRange);
   }
 
   /*

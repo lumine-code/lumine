@@ -353,22 +353,11 @@ module.exports = class ThemeManager {
   //
   // Returns a {Disposable} on which `.dispose()` can be called to remove the
   // required stylesheet.
-  requireStylesheet(
-    stylesheetPath,
-    priority,
-    skipDeprecatedSelectorsTransformation,
-    skipDeprecatedMathUsageTransformation,
-  ) {
+  requireStylesheet(stylesheetPath, priority) {
     let fullPath = this.resolveStylesheet(stylesheetPath);
     if (fullPath) {
       const content = this.loadStylesheet(fullPath);
-      return this.applyStylesheet(
-        fullPath,
-        content,
-        priority,
-        skipDeprecatedSelectorsTransformation,
-        skipDeprecatedMathUsageTransformation,
-      );
+      return this.applyStylesheet(fullPath, content, priority);
     } else {
       throw new Error(`Could not find a file at path '${stylesheetPath}'`);
     }
@@ -486,7 +475,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
   }
 
   reloadBaseStylesheets() {
-    this.applyStylesheet(this.getBaseStylesheetPath(), this.buildBaseStylesheet(), -2, true, true);
+    this.applyStylesheet(this.getBaseStylesheetPath(), this.buildBaseStylesheet(), -2);
   }
 
   stylesheetElementForId(id) {
@@ -512,17 +501,9 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     }
   }
 
-  applyStylesheet(
-    path,
-    text,
-    priority,
-    skipDeprecatedSelectorsTransformation,
-    skipDeprecatedMathUsageTransformation,
-  ) {
+  applyStylesheet(path, text, priority) {
     this.styleSheetDisposablesBySourcePath[path] = this.styleManager.addStyleSheet(text, {
       priority,
-      skipDeprecatedSelectorsTransformation,
-      skipDeprecatedMathUsageTransformation,
       sourcePath: path,
     });
 

@@ -1,7 +1,5 @@
 const etch = require("@lumine-code/etch");
 
-const Grim = require("grim");
-
 const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
 
 describe("Dock", () => {
@@ -518,15 +516,6 @@ describe("Dock", () => {
       dock.setHovered(true);
       await getNextUpdatePromise();
       expect(dock.refs.toggleButton.element).toHaveClass("atom-dock-toggle-button-visible");
-    });
-  });
-
-  describe("::getActiveTextEditor()", () => {
-    it("is deprecated", () => {
-      spyOn(Grim, "deprecate");
-
-      atom.workspace.getLeftDock().getActiveTextEditor();
-      expect(Grim.deprecate.calls.count()).toBe(1);
     });
   });
 });

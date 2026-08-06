@@ -1,5 +1,4 @@
 const _ = require("@lumine-code/underscore-plus");
-const Grim = require("grim");
 const CSON = require("@lumine-code/season");
 const SecondMate = require("@lumine-code/second-mate");
 const { Disposable, CompositeDisposable, Emitter } = require("event-kit");
@@ -446,43 +445,6 @@ module.exports = class GrammarRegistry {
         this.wasmTreeSitterGrammarsById[languageId]
       );
     }
-  }
-
-  // Deprecated: Get the grammar override for the given file path.
-  //
-  // * `filePath` A {String} file path.
-  //
-  // Returns a {String} such as `"source.js"`.
-  grammarOverrideForPath(filePath) {
-    Grim.deprecate("Use buffer.getLanguageMode().getLanguageId() instead");
-    const buffer = atom.project.findBufferForPath(filePath);
-    if (buffer) return this.getAssignedLanguageId(buffer);
-  }
-
-  // Deprecated: Set the grammar override for the given file path.
-  //
-  // * `filePath` A non-empty {String} file path.
-  // * `languageId` A {String} such as `"source.js"`.
-  //
-  // Returns undefined.
-  setGrammarOverrideForPath(filePath, languageId) {
-    Grim.deprecate("Use atom.grammars.assignLanguageMode(buffer, languageId) instead");
-    const buffer = atom.project.findBufferForPath(filePath);
-    if (buffer) {
-      const grammar = this.grammarForScopeName(languageId);
-      if (grammar) this.languageOverridesByBufferId.set(buffer.id, grammar.name);
-    }
-  }
-
-  // Remove the grammar override for the given file path.
-  //
-  // * `filePath` A {String} file path.
-  //
-  // Returns undefined.
-  clearGrammarOverrideForPath(filePath) {
-    Grim.deprecate("Use atom.grammars.autoAssignLanguageMode(buffer) instead");
-    const buffer = atom.project.findBufferForPath(filePath);
-    if (buffer) this.languageOverridesByBufferId.delete(buffer.id);
   }
 
   grammarAddedOrUpdated(grammar) {

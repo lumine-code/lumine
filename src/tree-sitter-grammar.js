@@ -1,7 +1,5 @@
 const fs = require("fs");
 const path = require("path");
-const Grim = require("grim");
-const dedent = require("dedent");
 const { Language, Parser, Query } = require("web-tree-sitter");
 const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
 const { watchPath } = require("./path-watcher");
@@ -15,60 +13,6 @@ const webTreeSitterWasmPath = require.resolve("web-tree-sitter/web-tree-sitter.w
 const parserInitPromise = Parser.init({
   wasmBinary: fs.readFileSync(webTreeSitterWasmPath),
 });
-
-function isPosition(obj) {
-  return "row" in obj && "column" in obj;
-}
-
-const ZERO_POINT = Object.freeze({ row: 0, column: 0 });
-
-const QUERY_CAPTURES_DEPRECATION_EXPLANATION = dedent`\
-  The \`captures\` method available on Tree-sitter query objects uses a new
-  function signature; the old signature is deprecated. The new signature is
-  \`(node, options)\`. If you want to limit a query to a specific range,
-  specify \`startPosition\` and \`endPosition\` properties within \`options\`.
-`;
-
-// When `web-tree-sitter` harmonized its API with that of `node-tree-sitter`,
-// some function signatures changed. The most impactful one for us is probably
-// `Query#captures`, since two crucial positional arguments were moved into a
-// trailing options argument.
-//
-// We've changed all of our usages, but it's possible some community packages
-// won't have been able to update yet. We should emit a deprecation message in
-// those cases and restructure the arguments on the fly.
-function wrapQueryCaptures(QueryPrototype) {
-  let originalCaptures = QueryPrototype.captures;
-  // We put `node` into its own argument so that this new function’s `length`
-  // property matches that of the old function. (Both are inaccurate, but they
-  // should nonetheless agree.)
-  QueryPrototype.captures = function captures(node, ...args) {
-    // When do we think a consumer is using the old signature?
-    if (
-      // If there are too many arguments and either the second or third
-      // argument looks like a position…
-      (args.length >= 2 && (isPosition(args[0]) || isPosition(args[1]))) ||
-      // …or if the second argument looks like a position instead of an options
-      // object.
-      isPosition(args[0])
-    ) {
-      Grim.deprecate(QUERY_CAPTURES_DEPRECATION_EXPLANATION);
-      let startPosition = isPosition(args[0]) ? args[0] : ZERO_POINT;
-      let endPosition = isPosition(args[1]) ? args[1] : args[0];
-      let originalOptions = args[2] ?? {};
-      let newOptions = {
-        ...originalOptions,
-        startPosition,
-        endPosition,
-      };
-      return originalCaptures.call(this, node, newOptions);
-    } else {
-      return originalCaptures.call(this, node, ...args);
-    }
-  };
-}
-
-wrapQueryCaptures(Query.prototype);
 
 // `QueryError.kind` values from `web-tree-sitter`. (The `QueryError` class
 // itself is not exported, so we duck-type it and translate its `kind` here.)

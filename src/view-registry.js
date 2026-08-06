@@ -1,4 +1,3 @@
-const Grim = require("grim");
 const { Disposable } = require("event-kit");
 
 const AnyConstructor = Symbol("any-constructor");
@@ -75,12 +74,6 @@ module.exports = class ViewRegistry {
             createView: modelConstructor,
             modelConstructor: AnyConstructor,
           };
-          break;
-        case "object":
-          Grim.deprecate(
-            "atom.views.addViewProvider now takes 2 arguments: a model constructor and a createView function. See docs for details.",
-          );
-          provider = modelConstructor;
           break;
         default:
           throw new TypeError("Arguments to addViewProvider must be functions");

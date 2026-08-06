@@ -10,7 +10,6 @@ const TextBuffer = require("../src/text-buffer");
 const { Point } = TextBuffer;
 const fs = require("fs");
 const path = require("path");
-const Grim = require("grim");
 const electron = require("electron");
 const clipboard = electron.clipboard;
 
@@ -6843,32 +6842,6 @@ describe("TextEditorComponent", () => {
   });
 
   describe("model methods that delegate to the component / element", () => {
-    it("delegates setHeight and getHeight to the component", async () => {
-      const { component, editor } = buildComponent({
-        autoHeight: false,
-      });
-      spyOn(Grim, "deprecate");
-      expect(editor.getHeight()).toBe(component.getScrollContainerHeight());
-      expect(Grim.deprecate.calls.count()).toBe(1);
-
-      editor.setHeight(100);
-      await component.getNextUpdatePromise();
-      expect(component.getScrollContainerHeight()).toBe(100);
-      expect(Grim.deprecate.calls.count()).toBe(2);
-    });
-
-    it("delegates setWidth and getWidth to the component", async () => {
-      const { component, editor } = buildComponent();
-      spyOn(Grim, "deprecate");
-      expect(editor.getWidth()).toBe(component.getScrollContainerWidth());
-      expect(Grim.deprecate.calls.count()).toBe(1);
-
-      editor.setWidth(100);
-      await component.getNextUpdatePromise();
-      expect(component.getScrollContainerWidth()).toBe(100);
-      expect(Grim.deprecate.calls.count()).toBe(2);
-    });
-
     it("delegates getFirstVisibleScreenRow, getLastVisibleScreenRow, and getVisibleRowRange to the component", async () => {
       const { component, element, editor } = buildComponent({
         rowsPerTile: 3,

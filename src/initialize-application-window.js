@@ -32,7 +32,6 @@ module.exports = function ({ blobStore }) {
   const getWindowLoadSettings = require("./get-window-load-settings");
   const { ipcRenderer } = require("electron");
   const { resourcePath, devMode } = getWindowLoadSettings();
-  require("./electron-shims");
 
   // Expose the bundled `exports/` folder (the `atom` module) to spawned task
   // child processes via NODE_PATH so `require('atom')` resolves inside tasks.

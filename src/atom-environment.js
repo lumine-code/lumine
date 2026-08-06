@@ -4,7 +4,6 @@ const util = require("util");
 const { ipcRenderer } = require("electron");
 
 const _ = require("@lumine-code/underscore-plus");
-const { deprecate } = require("grim");
 const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
 const fs = require("@lumine-code/fs-plus");
 const { mapSourcePosition } = require("@atom/source-map-support");
@@ -1575,13 +1574,6 @@ class AtomEnvironment {
     return this.deserialize(state);
   }
 
-  showSaveDialogSync(options = {}) {
-    deprecate(`atom.showSaveDialogSync is deprecated and will be removed soon.
-Please, implement ::saveAs and ::getSaveDialogOptions instead for pane items
-or use Pane::saveItemAs for programmatic saving.`);
-    return this.applicationDelegate.showSaveDialog(options);
-  }
-
   async saveState(options, storageKey) {
     if (this.enablePersistence && this.project) {
       const state = this.serialize(options);
@@ -1919,9 +1911,3 @@ function firstStackFrame(stack) {
 AtomEnvironment.version = 1;
 AtomEnvironment.prototype.saveStateDebounceInterval = 1000;
 module.exports = AtomEnvironment;
-
-// Preserve this deprecation until 2.0. Sorry. Should have removed Q sooner.
-Promise.prototype.done = function (callback) {
-  deprecate("Lumine now uses ES6 Promises instead of Q. Call promise.then instead of promise.done");
-  return this.then(callback);
-};

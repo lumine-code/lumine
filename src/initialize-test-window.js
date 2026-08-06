@@ -27,7 +27,6 @@ module.exports = async function ({ blobStore }) {
     const Clipboard = require("../src/clipboard");
     const TextEditor = require("../src/text-editor");
     const { updateProcessEnv } = require("./update-process-env");
-    require("./electron-shims");
 
     ipcRenderer.on("environment", (event, env) => updateProcessEnv(env));
 

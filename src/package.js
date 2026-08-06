@@ -251,18 +251,11 @@ module.exports = class Package {
         context = "atom-text-editor";
       }
 
-      // The deprecated-style transformations rescue community packages still
-      // authored as Less for older versions of the editor. Bundled style
-      // sheets are plain CSS on the current contract, so they are never
-      // rewritten; `StyleManager` gates everything else on the source really
-      // being Less.
       this.stylesheetDisposables.add(
         this.styleManager.addStyleSheet(source, {
           sourcePath,
           priority,
           context,
-          skipDeprecatedSelectorsTransformation: this.bundledPackage,
-          skipDeprecatedMathUsageTransformation: this.bundledPackage,
         }),
       );
     }

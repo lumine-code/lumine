@@ -2,7 +2,7 @@ const crypto = require("crypto");
 // Access the clipboard through the main process via `@electron/remote`. Electron
 // deprecated using the `clipboard` module directly from the renderer process, so
 // this routes reads/writes to the main-process clipboard instead. This matches
-// how the rest of the renderer reaches main-process modules (see electron-shims,
+// how the rest of the renderer reaches main-process modules (see
 // context-menu-manager, application-delegate).
 const { clipboard } = require("@electron/remote");
 

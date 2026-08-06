@@ -102,19 +102,6 @@
     const ModuleCache = require("../src/module-cache");
     ModuleCache.register(getWindowLoadSettings());
 
-    require("document-register-element");
-
-    const Grim = require("grim");
-    const documentRegisterElement = document.registerElement;
-
-    document.registerElement = (type, options) => {
-      Grim.deprecate(
-        "Use `customElements.define` instead of `document.registerElement` see https://javascript.info/custom-elements",
-      );
-
-      return documentRegisterElement(type, options);
-    };
-
     const initScriptPath = path.relative(
       entryPointDirPath,
       getWindowLoadSettings().windowInitializationScript,

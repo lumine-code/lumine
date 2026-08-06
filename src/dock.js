@@ -2,8 +2,6 @@ const etch = require("@lumine-code/etch");
 const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable, Emitter } = require("event-kit");
 const PaneContainer = require("./pane-container");
-const TextEditor = require("./text-editor");
-const Grim = require("grim");
 
 const $ = etch.dom;
 const MINIMUM_SIZE = 100;
@@ -656,21 +654,6 @@ module.exports = class Dock {
   // Returns a pane item {Object}.
   getActivePaneItem() {
     return this.paneContainer.getActivePaneItem();
-  }
-
-  // Deprecated: Get the active item if it is a {TextEditor}.
-  //
-  // Returns a {TextEditor} or `undefined` if the current active item is not a
-  // {TextEditor}.
-  getActiveTextEditor() {
-    Grim.deprecate(
-      "Text editors are not allowed in docks. Use atom.workspace.getActiveTextEditor() instead.",
-    );
-
-    const activeItem = this.getActivePaneItem();
-    if (activeItem instanceof TextEditor) {
-      return activeItem;
-    }
   }
 
   // Save all pane items.
