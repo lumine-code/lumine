@@ -57,6 +57,7 @@ Commands:
   issues                 Stream DevTools issues — deprecations never reach the console
   shot <selector>        Screenshot one element, clipped to its rect
   drag <selector>        Drag the mouse across an element (or "drag x1 y1 x2 y2")
+  move <x> <y>           Move the pointer there and leave it, no buttons held
   throttle <rate>        Hold renderer CPU throttling (--ms, default 30000)
   targets                List the debuggable windows
   quit                   Close the driven window
@@ -548,6 +549,34 @@ async function drag({ positional, options }) {
   client.close();
 }
 
+// Moves the pointer and leaves it there, holding nothing. What a hover is:
+// `drag` presses the button, and a press is its own event — it dismisses
+// tooltips, moves carets and takes focus, none of which a hover does.
+async function move({ positional, options }) {
+  const [x, y] = positional.map(Number);
+  if (!Number.isFinite(x) || !Number.isFinite(y)) fail("which two coordinates?");
+  const client = await clientFor(options);
+  // Two steps: something that only reacts to movement needs to see movement,
+  // and one event at the destination is a teleport.
+  await client.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x: x - 8,
+    y,
+    button: "none",
+    buttons: 0,
+  });
+  await sleep(16);
+  await client.send("Input.dispatchMouseEvent", {
+    type: "mouseMoved",
+    x,
+    y,
+    button: "none",
+    buttons: 0,
+  });
+  console.log(`moved to (${x}, ${y})`);
+  client.close();
+}
+
 const COMMANDS = {
   launch,
   eval: evaluate,
@@ -557,6 +586,7 @@ const COMMANDS = {
   issues: tailIssues,
   shot,
   drag,
+  move,
   throttle,
   targets,
   quit,

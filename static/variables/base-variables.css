@@ -74,6 +74,14 @@
   /* --- ui: sizes --- */
   --font-size: 13px;
   --input-font-size: 14px;
+  /* Prose meant to be read rather than scanned: documentation in a hover
+   * tooltip, a completion's description, a message from a linter. The
+   * interface size is set for labels and rows and reads small in a paragraph,
+   * the more so beside code, which carries the editor's own size. A theme that
+   * wants documentation to track its interface size can point this back at
+   * --font-size. */
+  --prose-font-size: calc(var(--font-size) + 1px);
+  --prose-line-height: 1.5;
   --disclosure-arrow-size: 12px;
   --component-padding: 10px;
   --component-icon-padding: 5px;
