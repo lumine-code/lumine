@@ -515,6 +515,22 @@ module.exports = class GrammarRegistry {
     return disposable;
   }
 
+  // Extended: Invoke the given callback when a grammar is removed from the
+  // registry, which happens whenever the package that provides it deactivates.
+  //
+  // * `callback` {Function} to call when a grammar is removed.
+  //   * `grammar` {Grammar} that was removed.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  onDidRemoveGrammar(callback) {
+    let disposable = new CompositeDisposable();
+    disposable.add(
+      this.textmateRegistry.onDidRemoveGrammar(callback),
+      this.emitter.on("did-remove-grammar", callback),
+    );
+    return disposable;
+  }
+
   // Public: Specify a type of syntax node that may embed other languages.
   //
   // * `grammarId` The {String} id of the parent language
@@ -615,6 +631,7 @@ module.exports = class GrammarRegistry {
   removeGrammar(grammar) {
     if (grammar instanceof TreeSitterGrammar) {
       delete this.wasmTreeSitterGrammarsById[grammar.scopeName];
+      this.emitter.emit("did-remove-grammar", grammar);
     } else {
       return this.textmateRegistry.removeGrammar(grammar);
     }

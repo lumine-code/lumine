@@ -858,6 +858,17 @@ describe("GrammarRegistry", () => {
           grammar.constructor.name === newGrammar.constructor.name,
       ).toBe(false);
     });
+
+    it("notifies onDidRemoveGrammar subscribers for every grammar a deactivating package removes", async () => {
+      await atom.packages.activatePackage("language-css");
+      const removed = [];
+      const disposable = atom.grammars.onDidRemoveGrammar((grammar) =>
+        removed.push(grammar.scopeName),
+      );
+      await atom.packages.deactivatePackage("language-css");
+      disposable.dispose();
+      expect(removed).toContain("source.css");
+    });
   });
 
   describe(".addInjectionPoint(languageId, {type, language, content})", () => {
