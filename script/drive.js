@@ -56,6 +56,7 @@ Commands:
   console                Stream console output, uncaught errors and rejections
   issues                 Stream DevTools issues — deprecations never reach the console
   shot <selector>        Screenshot one element, clipped to its rect
+  drag <selector>        Drag the mouse across an element (or "drag x1 y1 x2 y2")
   throttle <rate>        Hold renderer CPU throttling (--ms, default 30000)
   targets                List the debuggable windows
   quit                   Close the driven window
@@ -70,7 +71,8 @@ Options:
   --ms <n>               console/issues: how long to stream, 0 to stream until killed (default 5000)
   --out <file>           shot: output path (default drive-shot.png)
   --scale <n>            shot: capture scale (default 1)
-  --index <n>            shot: which match to capture when the selector hits several
+  --index <n>            shot/drag: which match to use when the selector hits several
+  --steps <n>            drag: how many moves between press and release (default 8)
   --raw                  eval: print strings unquoted
   --throttle <n>         any command: throttle the renderer while it runs (8 = eight times slower)
 `;
@@ -462,6 +464,90 @@ async function quit({ options }) {
   }
 }
 
+// Drags the mouse with TRUSTED events, which is the whole point: a MouseEvent
+// dispatched from `eval` starts no native selection, opens no context menu and
+// carries `isTrusted: false` wherever a listener checks. Anything that asks
+// what the mouse actually does needs this rather than a synthetic dispatch.
+// Takes either four numbers (client coordinates) or a selector, in which case
+// it drags across the element's box from just inside one edge to the other.
+async function drag({ positional, options }) {
+  const client = await clientFor(options);
+  let from;
+  let to;
+
+  if (positional.length >= 4 && positional.every((value) => !Number.isNaN(Number(value)))) {
+    const [x1, y1, x2, y2] = positional.map(Number);
+    from = { x: x1, y: y1 };
+    to = { x: x2, y: y2 };
+  } else {
+    const selector = positional[0];
+    if (!selector) fail("which selector, or which four coordinates?");
+    const rect = await client
+      .evaluate(
+        // Same filter as `shot`, for the same reason: an editor keeps
+        // off-screen measurement copies of its lines, and dragging across one
+        // of those lands on whatever is at those coordinates instead.
+        `(() => {
+          const all = Array.from(document.querySelectorAll(${JSON.stringify(selector)}));
+          const shown = all.filter((el) => {
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0 && r.x >= 0 && r.y >= 0 &&
+              r.right <= window.innerWidth && r.bottom <= window.innerHeight;
+          });
+          const el = shown[${Number(options.index || 0)}];
+          if (!el) return { matched: all.length, shown: shown.length };
+          const r = el.getBoundingClientRect();
+          return { x: r.x, y: r.y, width: r.width, height: r.height, matched: all.length, shown: shown.length };
+        })()`,
+      )
+      .catch((error) => fail(error.message));
+    if (rect.width === undefined) {
+      fail(`selector matched ${rect.matched} element(s), ${rect.shown} of them on screen`);
+    }
+    if (rect.width < 4 || rect.height < 4) fail("that element is too small to drag across");
+    const y = rect.y + rect.height / 2;
+    from = { x: rect.x + 2, y };
+    to = { x: rect.x + rect.width - 2, y };
+  }
+
+  const steps = Math.max(1, Number(options.steps || 8));
+  const move = (x, y, buttons) =>
+    client.send("Input.dispatchMouseEvent", {
+      type: "mouseMoved",
+      x,
+      y,
+      button: buttons ? "left" : "none",
+      buttons,
+    });
+
+  await move(from.x, from.y, 0);
+  await client.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: from.x,
+    y: from.y,
+    button: "left",
+    buttons: 1,
+    clickCount: 1,
+  });
+  for (let i = 1; i <= steps; i++) {
+    const t = i / steps;
+    await move(from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t, 1);
+    await sleep(16);
+  }
+  await client.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: to.x,
+    y: to.y,
+    button: "left",
+    buttons: 0,
+    clickCount: 1,
+  });
+  console.log(
+    `dragged (${Math.round(from.x)}, ${Math.round(from.y)}) → (${Math.round(to.x)}, ${Math.round(to.y)})`,
+  );
+  client.close();
+}
+
 const COMMANDS = {
   launch,
   eval: evaluate,
@@ -470,6 +556,7 @@ const COMMANDS = {
   console: tailConsole,
   issues: tailIssues,
   shot,
+  drag,
   throttle,
   targets,
   quit,
