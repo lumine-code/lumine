@@ -13,7 +13,7 @@ const {
   parsePackageSource,
   sanitizePackageSource,
 } = require("./package-source");
-const { validateCommunityPackageMetadata } = require("./package-validation");
+const { validatePackageMetadata } = require("./package-validation");
 
 // The manifest forms the editor loads, most preferred first.
 const MANIFEST_FILENAMES = ["package.json", "package.jsonc"];
@@ -108,7 +108,7 @@ class PackageInstallationService {
         (resolved.selector.type === "tag" || resolved.selector.type === "latest")
           ? resolved.selector.value
           : null;
-      const metadata = validateCommunityPackageMetadata(CSON.readFileSync(metadataPath), {
+      const metadata = validatePackageMetadata(CSON.readFileSync(metadataPath), {
         originKey,
         semanticTag,
         atomVersion: this.atomVersion,

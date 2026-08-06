@@ -577,7 +577,7 @@ module.exports = class TreeSitterGrammar {
   //
   // - The user is editing query files in dev mode; Lumine will automatically
   //   reload queries in dev mode after changes.
-  // - A community package is altering a query file via an API like
+  // - An installed package is altering a query file via an API like
   //   {::setQueryForTest}.
   //
   // * `callback` {Function}

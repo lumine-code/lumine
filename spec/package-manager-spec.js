@@ -49,7 +49,7 @@ describe("PackageManager", () => {
       ]);
       expect(packageManger.packageDirPaths.map((p) => packageManger.getPackageDirTier(p))).toEqual([
         "dev",
-        "community",
+        "installed",
       ]);
     });
   });

@@ -3102,7 +3102,7 @@ class LanguageLayer {
   // This won't happen very often. It can happen if a user edits a grammar’s
   // query files, but those edits are only monitored in dev mode.
   //
-  // It can also happen if a community package uses an API on
+  // It can also happen if an installed package uses an API on
   // {TreeSitterGrammar} to modify a query after initial load.
   observeQueryChanges() {
     this.grammar.onDidChangeQuery(async ({ queryType }) => {

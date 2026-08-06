@@ -114,8 +114,8 @@ module.exports = function parseCommandLine(processArgs) {
     );
   options
     .string("uninstall")
-    .describe("uninstall", "Uninstall an installed community package by name.");
-  options.boolean("list").describe("list", "List installed community and development packages.");
+    .describe("uninstall", "Uninstall an installed package by name.");
+  options.boolean("list").describe("list", "List installed and development packages.");
   options
     .string("link")
     .describe(

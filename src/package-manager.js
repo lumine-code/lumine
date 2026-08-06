@@ -423,7 +423,7 @@ module.exports = class PackageManager {
   //
   // A package's identity is the `name` in its manifest; the directory name only
   // breaks ties. Directories are visited in `packageDirPaths` order — dev, then
-  // community, then bundled — and within a directory in dirname order, so the
+  // installed, then bundled — and within a directory in dirname order, so the
   // first copy carrying a name is the one that loads. Every later copy is
   // returned as a shadowed descriptor: it never loads, but it is real, it is on
   // disk, and the UI lists it.
@@ -501,7 +501,7 @@ module.exports = class PackageManager {
   // anything else pushed onto `packageDirPaths` report "other".
   getPackageDirTier(packageDirPath) {
     if (packageDirPath === this.devPackagesPath) return "dev";
-    if (packageDirPath === this.userPackagesPath) return "community";
+    if (packageDirPath === this.userPackagesPath) return "installed";
     return "other";
   }
 

@@ -49,7 +49,7 @@ module.exports = class StateStore {
   }
 
   get dbPromise() {
-    // Exposed because the `project-plus` community package reaches for it.
+    // Exposed because the `project-plus` package reaches for it.
     return this._getOrCreateImplementation().dbPromise;
   }
 

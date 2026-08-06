@@ -210,7 +210,7 @@ function list() {
   // Highest priority first, matching how the editor resolves a name.
   const sections = [
     { title: "Development Packages", directory: devPackagesDirectory() },
-    { title: "Community Packages", directory: packagesDirectory() },
+    { title: "Installed Packages", directory: packagesDirectory() },
   ];
 
   const claimed = new Set();

@@ -59,7 +59,7 @@ function interpretPredicateValue(value) {
 }
 
 // Tracks which predicate problems have already been warned about so that a
-// busted community query can't flood the console on every re-highlight. Keyed
+// busted third-party query can't flood the console on every re-highlight. Keyed
 // by grammar scope name plus a problem-specific key.
 const predicateWarningRegistry = new Set();
 

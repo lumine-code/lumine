@@ -11,7 +11,7 @@ function repositoryValue(repository) {
   return "";
 }
 
-function validateCommunityPackageMetadata(
+function validatePackageMetadata(
   metadata,
   { originKey, semanticTag = null, atomVersion = null, allowIncompatible = false } = {},
 ) {
@@ -26,7 +26,7 @@ function validateCommunityPackageMetadata(
 
   const repository = repositoryValue(metadata.repository);
   if (!repository) {
-    throw new Error('Community package manifest must contain a Git "repository".');
+    throw new Error('A package manifest must contain a Git "repository".');
   }
   const manifestOrigin = normalizeRepositoryOrigin(repository);
   if (!manifestOrigin || !originKey || manifestOrigin !== originKey) {
@@ -78,5 +78,5 @@ function validateCommunityPackageMetadata(
 module.exports = {
   PACKAGE_NAME_PATTERN,
   repositoryValue,
-  validateCommunityPackageMetadata,
+  validatePackageMetadata,
 };
