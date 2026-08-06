@@ -493,6 +493,10 @@ function renderMarkdown(content, givenOpts = {}) {
  * or a full document. Valid values: "full", "fragment".
  * @param {object} givenOpts.grammar - The grammar of the source file. Carryover from
  * original `markdown-preview` functionality.
+ * @param {boolean} givenOpts.autoWidth - Whether the editors standing in for code
+ * blocks size themselves to their longest line ("fragment" mode only). A code block
+ * otherwise takes the width its container gives it, which is nothing at all when the
+ * container is sized by its content — a tooltip, a popover. Pass true there.
  */
 function applySyntaxHighlighting(content, givenOpts = {}) {
   const defaultOpts = {
@@ -500,6 +504,7 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
     // to a Lumine Grammar source. Should be a function that takes the declared scope and returns a source,
     grammar: null,
     renderMode: "full", // Just like in `renderMarkdown` this can be full or fragment
+    autoWidth: false, // Whether a code block reports its own width to the layout
   };
 
   const opts = { ...defaultOpts, ...givenOpts };
@@ -548,6 +553,7 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
     const editor = new TextEditor({
       readonly: true,
       keyboardInputEnabled: false,
+      autoWidth: opts.autoWidth,
     });
     const editorElement = editor.getElement();
 
@@ -583,6 +589,7 @@ function makeAtomEditorNonInteractive(editorElement, preElement) {
   preElement.remove();
   editorElement.setAttributeNode(document.createAttribute("gutter-hidden")); // Hide gutter
   editorElement.removeAttribute("tabindex"); // Make read-only
+  editorElement.classList.add("non-interactive"); // Render no caret
 
   // Remove line decorations from code blocks.
   for (const cursorLineDecoration of editorElement.getModel().cursorLineDecorations) {

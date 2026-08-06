@@ -3817,7 +3817,16 @@ module.exports = class TextEditorComponent {
     });
   }
 
+  // An editor sized from its own content in both directions has no size until
+  // it has measured itself, so its first measurement cannot be gated on
+  // having one — it would wait for a size only the measurement can produce.
+  // Being in the document is the whole test until then; every later call
+  // answers from the size, which by that point is real.
   isVisible() {
+    const { model } = this.props;
+    if (!this.hasInitialMeasurements && model.getAutoWidth() && model.getAutoHeight()) {
+      return this.element.isConnected;
+    }
     return this.element.offsetWidth > 0 || this.element.offsetHeight > 0;
   }
 

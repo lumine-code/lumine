@@ -183,6 +183,54 @@ describe("Renders Markdown", () => {
   });
 });
 
+describe("Highlights markdown code blocks", () => {
+  let container;
+
+  beforeEach(() => {
+    container = document.createElement("div");
+    // A box sized by what it holds — a hover tooltip, a completion's
+    // documentation — which is where a code block has to report its own width.
+    container.style.position = "absolute";
+    container.style.width = "max-content";
+    jasmine.attachToDOM(container);
+  });
+
+  afterEach(() => {
+    for (const element of container.querySelectorAll("atom-text-editor")) {
+      element.getModel().destroy();
+    }
+    container.remove();
+  });
+
+  async function render(markdown, opts) {
+    const fragment = atom.tools.markdown.convertToDOM(atom.tools.markdown.render(markdown));
+    await atom.tools.markdown.applySyntaxHighlighting(fragment, {
+      renderMode: "fragment",
+      ...opts,
+    });
+    container.appendChild(fragment);
+    return container.querySelector("atom-text-editor");
+  }
+
+  it("swaps each fence for an editor that renders no caret", async () => {
+    const element = await render("```js\nconst answer = 42;\n```");
+    expect(container.querySelector("pre")).toBeNull();
+    expect(element.getModel().getText()).toBe("const answer = 42;");
+    expect(element.classList.contains("non-interactive")).toBe(true);
+    expect(getComputedStyle(element.querySelector(".cursors")).display).toBe("none");
+  });
+
+  it("sizes a code block to its longest line when asked to", async () => {
+    const element = await render("```js\nconst theAnswerToEverything = 42;\n```", {
+      autoWidth: true,
+    });
+    expect(element.getModel().getAutoWidth()).toBe(true);
+    // Without a width of its own the block fills a container that is itself
+    // waiting on the block, and the whole box collapses to nothing.
+    expect(container.getBoundingClientRect().width).toBeGreaterThan(100);
+  });
+});
+
 describe("Removes diacritics", () => {
   it("folds combining accents onto the base letter", () => {
     expect(atom.tools.removeDiacritics("café")).toBe("cafe");

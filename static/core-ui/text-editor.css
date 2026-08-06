@@ -198,6 +198,15 @@ atom-text-editor {
     opacity: 0;
   }
 
+  /* A code block rendered by `atom.tools.markdown` is a read-only editor
+     embedded in something else — a hover tooltip, a completion's
+     documentation — and has no caret to show. It would show one anyway:
+     both live inside an overlay decoration of the editor the reader is
+     typing in, and `.is-focused .cursor` reaches every nested editor. */
+  &.non-interactive .cursors {
+    display: none;
+  }
+
   /* The editor manages the selection independent of Blink / the OS. We never want a
      native selection. */
   user-select: none;
