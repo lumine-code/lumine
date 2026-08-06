@@ -1853,9 +1853,13 @@ module.exports = class TextEditorComponent {
     // Which side of the line the overlay ended up on, and where the position
     // it annotates now falls inside its own box — a margin of its own moved
     // it, the window edges may have moved it again, and an overlay drawing a
-    // pointer at that position has no other way to know where it went.
+    // pointer at that position has no other way to know where it went. The
+    // margin is reported too: the anchor offset is in the item's coordinates,
+    // and a pointer drawn on the wrapper instead — because the item clips its
+    // overflow — needs the distance between the two boxes, which the margin is.
     decoration.flipped = flipped;
     decoration.anchorOffset = Math.round(anchorLeft - (wrapperLeft + marginLeft));
+    decoration.marginLeft = Math.round(marginLeft);
   }
 
   updateOverlaysToRender() {

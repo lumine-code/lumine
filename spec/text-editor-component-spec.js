@@ -2801,8 +2801,11 @@ describe("TextEditorComponent", () => {
         await nextOverlayUpdate;
       }
       expect(overlayWrapper.dataset.overlayPosition).toBe("below");
-      // The margin is all that moved it, so the position sits that far in.
+      // The margin is all that moved it, so the position sits that far in —
+      // and the margin itself is reported, for a pointer drawn on the wrapper
+      // rather than on an item that clips its overflow.
       expect(overlayWrapper.style.getPropertyValue("--overlay-anchor-offset")).toBe("-3px");
+      expect(overlayWrapper.style.getPropertyValue("--overlay-margin-left")).toBe("3px");
 
       await setScrollTop(component, 0);
       expect(overlayWrapper.dataset.overlayPosition).toBe("above");

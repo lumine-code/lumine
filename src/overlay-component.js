@@ -70,11 +70,14 @@ module.exports = class OverlayComponent {
 
   // Publishes where the annotated position ended up, so that an overlay
   // drawing a pointer at it can follow the fit: `above` when the overlay was
-  // flipped over the line to stay in the window, and the offset by which it
-  // was pushed left off the right edge.
+  // flipped over the line to stay in the window, the offset of the position
+  // inside the item's own box, and the item's margin — the distance between
+  // the item and this wrapper, for a pointer drawn on the wrapper because the
+  // item clips its overflow.
   applyAnchor() {
     this.element.dataset.overlayPosition = this.props.flipped ? "above" : "below";
     this.element.style.setProperty("--overlay-anchor-offset", `${this.props.anchorOffset || 0}px`);
+    this.element.style.setProperty("--overlay-margin-left", `${this.props.marginLeft || 0}px`);
   }
 
   didAttach() {
