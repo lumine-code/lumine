@@ -8,7 +8,7 @@ const {
   splitKeyPath,
 } = require("./key-path");
 const Color = require("./color");
-const ScopedPropertyStore = require("@lumine-code/scoped-property-store");
+const SelectorStore = require("@lumine-code/selector-store");
 const ScopeDescriptor = require("./scope-descriptor");
 
 const schemaEnforcers = {};
@@ -486,7 +486,7 @@ class Config {
     this.projectSettings = {};
     this.projectFile = null;
 
-    this.scopedSettingsStore = new ScopedPropertyStore();
+    this.scopedSettingsStore = new SelectorStore();
 
     this.settingsLoaded = false;
     this.transactDepth = 0;
