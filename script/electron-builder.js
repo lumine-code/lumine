@@ -143,7 +143,6 @@ let options = {
     "!**/build/Release/{obj.target,obj,.deps}",
 
     // Test Exclusions
-    "!**/pegjs/examples",
     "!**/node_modules/*/{test,__tests__,tests,powered-test,example,examples}",
     "!**/node_modules/babel-core/lib/transformation/transforers/spec", // Ignore babel-core spec
     // Every bundled package ships its spec directory in its git tarball;
@@ -165,11 +164,6 @@ let options = {
     "!**/get-parameter-names/node_modules/.bin/testla",
     "!**/jasmine-reporters/ext",
     "!**/deps/libgit2",
-    // These are only required in dev-mode, when pegjs grammars aren't precompiled
-    // "!node_modules/loophole", // Note: We do need these packages. Because our PegJS files _aren't_ all pre-compiled.
-    // "!node_modules/pegjs",    // Note: if these files are excluded, 'snippets' package breaks.
-    // "!node_modules/.bin/pegjs", // Note: https://github.com/lumine-code/lumine/pull/206
-
     // Exclusions borrowed from `node-prune`
     // - Files
     "!**/{Jenkinsfile}",
