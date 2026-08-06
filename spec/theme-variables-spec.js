@@ -115,7 +115,7 @@ describe("the theme variable contract", () => {
     const packageStylePaths = [
       "fuzzy-files/styles/fuzzy-files.css",
       "command-palette/styles/command-palette.css",
-      "symbols-view/styles/symbols-view.css",
+      "symbol/styles/symbol.css",
       "autocomplete/styles/autocomplete.css",
     ];
     const themeNames = ["one-theme", "aura-theme", "nova-theme", "vscode-theme"];

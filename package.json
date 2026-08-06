@@ -79,7 +79,7 @@
     "go-to-line": "github:lumine-code/go-to-line#6fc173b07e9f8e77071394b6d87af7a926c876f6",
     "grammar-selector": "github:lumine-code/grammar-selector#4fb7b50a088b7e8dbc33a5558ec9431eaa22eacd",
     "gray-matter": "^4.0.3",
-    "ide-client": "github:lumine-code/ide-client#188958a4cabd7ae4a15b19c45b3164275b60bee9",
+    "ide-client": "github:lumine-code/ide-client#8bdb36cd1b2f8bf4c479db17effc44ba9aa5132e",
     "incompatible-packages": "github:lumine-code/incompatible-packages#1515d09429dedfac1f01795e5587fec038c6433a",
     "jasmine": "6.3.0",
     "keybinding-resolver": "github:lumine-code/keybinding-resolver#074656521157e1e42e1ee1d956d0de49875b4867",
@@ -147,9 +147,9 @@
     "source-map-support": "^0.5.21",
     "status-bar": "github:lumine-code/status-bar#b7eb9f006b6c21f8b5b5b4f5193622bb5dcba773",
     "styleguide": "github:lumine-code/styleguide#b7c6e5c10f7c1528652ea16039107d287e58c671",
-    "symbol-provider-ctags": "github:lumine-code/symbol-provider-ctags#dd16a4547e6a569a6bd1adc05ca3b49343a5cf96",
-    "symbol-provider-tree-sitter": "github:lumine-code/symbol-provider-tree-sitter#fc824cd4b402a6f0f3217768e49798a233d98130",
-    "symbols-view": "github:lumine-code/symbols-view#edbb459e811ddf8ed19a54eccf62f7e3243dac47",
+    "symbol": "github:lumine-code/symbol#53b5729b389c01c552ed9182206e3cb43256f909",
+    "symbol-ctags": "github:lumine-code/symbol-ctags#de1dafadc1757613efaba6cae770bb85504c2c67",
+    "symbol-tree-sitter": "github:lumine-code/symbol-tree-sitter#ff99ec87af1e739d1c86f419e39b485cd6c9dacf",
     "tabs": "github:lumine-code/tabs#cbf4a247365d5bbca076879d33aba337b3616e18",
     "tar": "7.5.22",
     "theme-selector": "github:lumine-code/theme-selector#bc2034c4bb2bb799acb804e5a05c4907f029ed66",
@@ -207,6 +207,7 @@
     "github:lumine-code/superstring#09847976acaaba8f1d1abb05500a0e1a1709b5b2": true,
     "github:lumine-code/watcher#ffeb0ca350dc9349e7ca95fce3e4e306bec484e6": true,
     "electron-winstaller@5.4.0": true,
-    "github:lumine-code/fs-admin#d7e975e6382fea302953112265e0db99ef6d05f0": true
+    "github:lumine-code/fs-admin#d7e975e6382fea302953112265e0db99ef6d05f0": true,
+    "github:lumine-code/node-ctags#46547ad57ef5a8462ad8e29ce67c51d24553d0c5": true
   }
 }

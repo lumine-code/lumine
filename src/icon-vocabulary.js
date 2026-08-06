@@ -7,7 +7,7 @@ const { Icon } = require("./icon-descriptor");
 // used to prefix with `icon-` by hand.
 //
 // A *kind* is an LSP SymbolKind or something like one. Its table is the one
-// that used to be duplicated between symbols-view and symbol-provider-tree-sitter;
+// that used to be duplicated between the symbol and symbol-tree-sitter packages;
 // a kind with no entry falls back to a single-letter badge so an unrecognized
 // symbol still reads as something.
 
