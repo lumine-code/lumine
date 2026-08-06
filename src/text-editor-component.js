@@ -2743,6 +2743,12 @@ module.exports = class TextEditorComponent {
   }
 
   resumeCursorBlinking() {
+    // Typing pauses the blink and schedules this resume on a debounce that
+    // nothing cancels, so by the time it fires the editor may have blurred or
+    // left the DOM — and blurring already stopped the blink. Restarting the
+    // interval here would tick it forever on an editor nobody is looking at.
+    // Focusing the editor again starts it through didFocus.
+    if (!this.focused || !this.attached) return;
     this.cursorsBlinkedOff = true;
     this.startCursorBlinking();
   }

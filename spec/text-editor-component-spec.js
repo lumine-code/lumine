@@ -609,8 +609,13 @@ describe("TextEditorComponent", () => {
       "blinks cursors when the editor is focused and the cursors are not moving",
       async () => {
         let blink;
-        spyOn(window, "setInterval").and.callFake((callback) => {
-          blink = callback;
+        const cursorBlinkPeriod = 40;
+        // Match this editor's own blink interval by its period rather than
+        // taking whichever callback was registered last: another editor left
+        // over from an earlier spec can start blinking on a real timer while
+        // this one runs, and driving that one blinks nothing here.
+        spyOn(window, "setInterval").and.callFake((callback, period) => {
+          if (period === cursorBlinkPeriod / 2) blink = callback;
           return 1;
         });
         spyOn(window, "clearInterval");
@@ -621,7 +626,7 @@ describe("TextEditorComponent", () => {
         // full-suite load. No spec covers resumption, so push it out of reach
         // rather than depending on the wall clock.
         const { component, element, editor } = buildComponent({
-          cursorBlinkPeriod: 40,
+          cursorBlinkPeriod,
           cursorBlinkResumeDelay: 10000,
         });
         editor.addCursorAtScreenPosition([1, 0]);
