@@ -19,131 +19,150 @@ const schemaEnforcers = {};
 //
 // ## Getting and setting config settings.
 //
-// ```coffee
-// # Note that with no value set, ::get returns the setting's default value.
-// atom.config.get('my-package.myKey') # -> 'defaultValue'
+// ```js
+// // Note that with no value set, ::get returns the setting's default value.
+// atom.config.get('my-package.myKey') // -> 'defaultValue'
 //
 // atom.config.set('my-package.myKey', 'value')
-// atom.config.get('my-package.myKey') # -> 'value'
+// atom.config.get('my-package.myKey') // -> 'value'
 // ```
 //
 // You may want to watch for changes. Use {::observe} to catch changes to the setting.
 //
-// ```coffee
+// ```js
 // atom.config.set('my-package.myKey', 'value')
-// atom.config.observe 'my-package.myKey', (newValue) ->
-//   # `observe` calls immediately and every time the value is changed
-//   console.log 'My configuration changed:', newValue
+// atom.config.observe('my-package.myKey', (newValue) => {
+//   // `observe` calls immediately and every time the value is changed
+//   console.log('My configuration changed:', newValue)
+// })
 // ```
 //
 // If you want a notification only when the value changes, use {::onDidChange}.
 //
-// ```coffee
-// atom.config.onDidChange 'my-package.myKey', ({newValue, oldValue}) ->
-//   console.log 'My configuration changed:', newValue, oldValue
+// ```js
+// atom.config.onDidChange('my-package.myKey', ({ newValue, oldValue }) => {
+//   console.log('My configuration changed:', newValue, oldValue)
+// })
 // ```
 //
 // ### Value Coercion
 //
 // Config settings each have a type specified by way of a
-// [schema](json-schema.org). For example we might want an integer setting that only
+// [schema](https://json-schema.org). For example we might want an integer setting that only
 // allows integers greater than `0`:
 //
-// ```coffee
-// # When no value has been set, `::get` returns the setting's default value
-// atom.config.get('my-package.anInt') # -> 12
+// ```js
+// // When no value has been set, `::get` returns the setting's default value
+// atom.config.get('my-package.anInt') // -> 12
 //
-// # The string will be coerced to the integer 123
+// // The string will be coerced to the integer 123
 // atom.config.set('my-package.anInt', '123')
-// atom.config.get('my-package.anInt') # -> 123
+// atom.config.get('my-package.anInt') // -> 123
 //
-// # The string will be coerced to an integer, but it must be greater than 0, so is set to 1
+// // The string will be coerced to an integer, but it must be greater than 0, so is set to 1
 // atom.config.set('my-package.anInt', '-20')
-// atom.config.get('my-package.anInt') # -> 1
+// atom.config.get('my-package.anInt') // -> 1
 // ```
 //
 // ## Defining settings for your package
 //
-// Define a schema under a `config` key in your package main.
+// Declare a `configSchema` in your package's `package.json`:
 //
-// ```coffee
-// module.exports =
-//   # Your config schema
-//   config:
-//     someInt:
-//       type: 'integer'
-//       default: 23
-//       minimum: 1
-//
-//   activate: (state) -> # ...
-//   # ...
+// ```json
+// {
+//   "name": "my-package",
+//   "configSchema": {
+//     "someInt": {
+//       "title": "Some Int",
+//       "description": "How many of the thing to do.",
+//       "type": "integer",
+//       "minimum": 1,
+//       "default": 23
+//     }
+//   }
+// }
 // ```
+//
+// The schema is read before the package activates, so its settings appear in
+// the settings view and its defaults apply whether or not the package has been
+// loaded yet. Export a `config` object from the package's main module only when
+// the schema cannot be written down ahead of time and has to be built at
+// runtime.
 //
 // See the [package tutorial](https://lumine-code.github.io/docs.html#developing-for-lumine/developing-a-package) for
 // more info.
 //
 // ## Config Schemas
 //
-// We use [json schema](http://json-schema.org) which allows you to define your value's
-// default, the type it should be, etc. A simple example:
+// We use [json schema](https://json-schema.org) which allows you to define your value's
+// default, the type it should be, etc. Every example below is the value of the
+// `configSchema` key. A simple one, providing an `enableThing` and a
+// `thingVolume`:
 //
-// ```coffee
-// # We want to provide an `enableThing`, and a `thingVolume`
-// config:
-//   enableThing:
-//     type: 'boolean'
-//     default: false
-//   thingVolume:
-//     type: 'integer'
-//     default: 5
-//     minimum: 1
-//     maximum: 11
+// ```json
+// {
+//   "enableThing": {
+//     "type": "boolean",
+//     "default": false
+//   },
+//   "thingVolume": {
+//     "type": "integer",
+//     "minimum": 1,
+//     "maximum": 11,
+//     "default": 5
+//   }
+// }
 // ```
 //
 // The type keyword allows for type coercion and validation. If a `thingVolume` is
 // set to a string `'10'`, it will be coerced into an integer.
 //
-// ```coffee
+// ```js
 // atom.config.set('my-package.thingVolume', '10')
-// atom.config.get('my-package.thingVolume') # -> 10
+// atom.config.get('my-package.thingVolume') // -> 10
 //
-// # It respects the min / max
+// // It respects the min / max
 // atom.config.set('my-package.thingVolume', '400')
-// atom.config.get('my-package.thingVolume') # -> 11
+// atom.config.get('my-package.thingVolume') // -> 11
 //
-// # If it cannot be coerced, the value will not be set
+// // If it cannot be coerced, the value will not be set
 // atom.config.set('my-package.thingVolume', 'cats')
-// atom.config.get('my-package.thingVolume') # -> 11
+// atom.config.get('my-package.thingVolume') // -> 11
 // ```
 //
 // ### Supported Types
 //
 // The `type` keyword can be a string with any one of the following. You can also
-// chain them by specifying multiple in an an array. For example
+// chain them by specifying multiple in an array. For example
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: ['boolean', 'integer']
-//     default: 5
+// ```json
+// {
+//   "someSetting": {
+//     "type": ["boolean", "integer"],
+//     "default": 5
+//   }
+// }
+// ```
 //
-// # Then
+// ```js
 // atom.config.set('my-package.someSetting', 'true')
-// atom.config.get('my-package.someSetting') # -> true
+// atom.config.get('my-package.someSetting') // -> true
 //
 // atom.config.set('my-package.someSetting', '12')
-// atom.config.get('my-package.someSetting') # -> 12
+// atom.config.get('my-package.someSetting') // -> 12
 // ```
 //
 // #### string
 //
 // Values must be a string.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'string'
-//     default: 'hello'
+// ```json
+// {
+//   "someSetting": {
+//     "type": "string",
+//     "default": "hello"
+//   }
+// }
 // ```
 //
 // #### integer
@@ -151,27 +170,31 @@ const schemaEnforcers = {};
 // Values will be coerced into integer. Supports the (optional) `minimum` and
 // `maximum` keys.
 //
-//   ```coffee
-//   config:
-//     someSetting:
-//       type: 'integer'
-//       default: 5
-//       minimum: 1
-//       maximum: 11
-//   ```
+// ```json
+// {
+//   "someSetting": {
+//     "type": "integer",
+//     "minimum": 1,
+//     "maximum": 11,
+//     "default": 5
+//   }
+// }
+// ```
 //
 // #### number
 //
 // Values will be coerced into a number, including real numbers. Supports the
 // (optional) `minimum` and `maximum` keys.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'number'
-//     default: 5.3
-//     minimum: 1.5
-//     maximum: 11.5
+// ```json
+// {
+//   "someSetting": {
+//     "type": "number",
+//     "minimum": 1.5,
+//     "maximum": 11.5,
+//     "default": 5.3
+//   }
+// }
 // ```
 //
 // #### boolean
@@ -179,11 +202,13 @@ const schemaEnforcers = {};
 // Values will be coerced into a Boolean. `'true'` and `'false'` will be coerced into
 // a boolean. Numbers, arrays, objects, and anything else will not be coerced.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'boolean'
-//     default: false
+// ```json
+// {
+//   "someSetting": {
+//     "type": "boolean",
+//     "default": false
+//   }
+// }
 // ```
 //
 // #### array
@@ -191,15 +216,18 @@ const schemaEnforcers = {};
 // Value must be an Array. The types of the values can be specified by a
 // subschema in the `items` key.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'array'
-//     default: [1, 2, 3]
-//     items:
-//       type: 'integer'
-//       minimum: 1.5
-//       maximum: 11.5
+// ```json
+// {
+//   "someSetting": {
+//     "type": "array",
+//     "items": {
+//       "type": "integer",
+//       "minimum": 1.5,
+//       "maximum": 11.5
+//     },
+//     "default": [1, 2, 3]
+//   }
+// }
 // ```
 //
 // #### color
@@ -210,11 +238,13 @@ const schemaEnforcers = {};
 // valid CSS color format such as `#abc`, `#abcdef`, `white`,
 // `rgb(50, 100, 150)`, and `rgba(25, 75, 125, .75)`.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'color'
-//     default: 'white'
+// ```json
+// {
+//   "someSetting": {
+//     "type": "color",
+//     "default": "white"
+//   }
+// }
 // ```
 //
 // #### object / Grouping other types
@@ -223,15 +253,19 @@ const schemaEnforcers = {};
 // settings. The group will be visually separated and has its own group headline.
 // The sub options must be listed under a `properties` key.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'object'
-//     properties:
-//       myChildIntOption:
-//         type: 'integer'
-//         minimum: 1.5
-//         maximum: 11.5
+// ```json
+// {
+//   "someSetting": {
+//     "type": "object",
+//     "properties": {
+//       "myChildIntOption": {
+//         "type": "integer",
+//         "minimum": 1.5,
+//         "maximum": 11.5
+//       }
+//     }
+//   }
+// }
 // ```
 //
 // ### Other Supported Keys
@@ -246,57 +280,63 @@ const schemaEnforcers = {};
 //
 // In this example, the setting must be one of the 4 integers:
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'integer'
-//     default: 4
-//     enum: [2, 4, 6, 8]
+// ```json
+// {
+//   "someSetting": {
+//     "type": "integer",
+//     "enum": [2, 4, 6, 8],
+//     "default": 4
+//   }
+// }
 // ```
 //
 // In this example, the setting must be either 'foo' or 'bar', which are
 // presented using the provided descriptions in the settings pane:
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'string'
-//     default: 'foo'
-//     enum: [
-//       {value: 'foo', description: 'Foo mode. You want this.'}
-//       {value: 'bar', description: 'Bar mode. Nobody wants that!'}
-//     ]
+// ```json
+// {
+//   "someSetting": {
+//     "type": "string",
+//     "enum": [
+//       { "value": "foo", "description": "Foo mode. You want this." },
+//       { "value": "bar", "description": "Bar mode. Nobody wants that!" }
+//     ],
+//     "default": "foo"
+//   }
+// }
 // ```
 //
 // If you only have a few elements, you can display your enum as a list of
 // radio buttons in the settings view rather than a select list. To do so,
 // specify `radio: true` as a sibling property to the `enum` array.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     type: 'string'
-//     default: 'foo'
-//     enum: [
-//       {value: 'foo', description: 'Foo mode. You want this.'}
-//       {value: 'bar', description: 'Bar mode. Nobody wants that!'}
-//     ]
-//     radio: true
+// ```json
+// {
+//   "someSetting": {
+//     "type": "string",
+//     "enum": [
+//       { "value": "foo", "description": "Foo mode. You want this." },
+//       { "value": "bar", "description": "Bar mode. Nobody wants that!" }
+//     ],
+//     "radio": true,
+//     "default": "foo"
+//   }
+// }
 // ```
 //
 // Usage:
 //
-// ```coffee
+// ```js
 // atom.config.set('my-package.someSetting', '2')
-// atom.config.get('my-package.someSetting') # -> 2
+// atom.config.get('my-package.someSetting') // -> 2
 //
-// # will not set values outside of the enum values
+// // a value outside the enum is rejected, and the setting keeps what it had
 // atom.config.set('my-package.someSetting', '3')
-// atom.config.get('my-package.someSetting') # -> 2
+// atom.config.get('my-package.someSetting') // -> 2
 //
-// # If it cannot be coerced, the value will not be set
+// // a value inside it is coerced to the declared type and set
 // atom.config.set('my-package.someSetting', '4')
-// atom.config.get('my-package.someSetting') # -> 4
+// atom.config.get('my-package.someSetting') // -> 4
 // ```
 //
 // #### title and description
@@ -311,13 +351,15 @@ const schemaEnforcers = {};
 // For a group of config settings the humanized key or the title and the
 // description are used for the group headline.
 //
-// ```coffee
-// config:
-//   someSetting:
-//     title: 'Setting Magnitude'
-//     description: 'This will affect the blah and the other blah'
-//     type: 'integer'
-//     default: 4
+// ```json
+// {
+//   "someSetting": {
+//     "title": "Setting Magnitude",
+//     "description": "This will affect the blah and the other blah",
+//     "type": "integer",
+//     "default": 4
+//   }
+// }
 // ```
 //
 // __Note__: You should strive to be so clear in your naming of the setting that
@@ -350,17 +392,19 @@ const schemaEnforcers = {};
 // appear in your configuration schema. For example, if the config schema of the
 // package 'some-package' is
 //
-// ```coffee
-// config:
-// someSetting:
-//   type: 'boolean'
-//   default: false
+// ```json
+// {
+//   "someSetting": {
+//     "type": "boolean",
+//     "default": false
+//   }
+// }
 // ```
 //
 // You can still do the following
 //
-// ```coffee
-// let otherSetting  = atom.config.get('some-package.otherSetting')
+// ```js
+// const otherSetting = atom.config.get('some-package.otherSetting')
 // atom.config.set('some-package.stillAnotherSetting', otherSetting * 5)
 // ```
 //
@@ -464,9 +508,10 @@ class Config {
   // You might want to be notified when the theme mode changes. We'll watch
   // `theme.mode` for changes
   //
-  // ```coffee
-  // atom.config.observe 'theme.mode', (value) ->
-  //   # do stuff with value
+  // ```js
+  // atom.config.observe('theme.mode', (value) => {
+  //   // do stuff with value
+  // })
   // ```
   //
   // * `keyPath` {String} name of the key to observe
@@ -549,7 +594,7 @@ class Config {
   //
   // You might want to know what theme mode is enabled, so check `theme.mode`
   //
-  // ```coffee
+  // ```js
   // atom.config.get('theme.mode')
   // ```
   //
@@ -557,30 +602,30 @@ class Config {
   // scope. For example, you might want to know `language.tabLength` for ruby
   // files.
   //
-  // ```coffee
-  // atom.config.get('language.tabLength', scope: ['source.ruby']) # => 2
+  // ```js
+  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
   // ```
   //
   // This setting in ruby files might be different than the global tabLength setting
   //
-  // ```coffee
-  // atom.config.get('language.tabLength') # => 4
-  // atom.config.get('language.tabLength', scope: ['source.ruby']) # => 2
+  // ```js
+  // atom.config.get('language.tabLength') // => 4
+  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
   // ```
   //
   // You can get the language scope descriptor via
   // {TextEditor::getRootScopeDescriptor}. This will get the setting specifically
   // for the editor's language.
   //
-  // ```coffee
-  // atom.config.get('language.tabLength', scope: @editor.getRootScopeDescriptor()) # => 2
+  // ```js
+  // atom.config.get('language.tabLength', { scope: editor.getRootScopeDescriptor() }) // => 2
   // ```
   //
   // Additionally, you can get the setting at the specific cursor position.
   //
-  // ```coffee
-  // scopeDescriptor = @editor.getLastCursor().getScopeDescriptor()
-  // atom.config.get('language.tabLength', scope: scopeDescriptor) # => 2
+  // ```js
+  // const scopeDescriptor = editor.getLastCursor().getScopeDescriptor()
+  // atom.config.get('language.tabLength', { scope: scopeDescriptor }) // => 2
   // ```
   //
   // * `keyPath` The {String} name of the key to retrieve.
@@ -668,25 +713,25 @@ class Config {
   //
   // You might want to change the themes programmatically:
   //
-  // ```coffee
+  // ```js
   // atom.config.set('theme.dark', ['one-night-ui', 'one-night-syntax'])
   // ```
   //
   // You can also set scoped settings. For example, you might want change the
   // `language.tabLength` only for ruby files.
   //
-  // ```coffee
-  // atom.config.get('language.tabLength') # => 4
-  // atom.config.get('language.tabLength', scope: ['source.ruby']) # => 4
-  // atom.config.get('language.tabLength', scope: ['source.js']) # => 4
+  // ```js
+  // atom.config.get('language.tabLength') // => 4
+  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 4
+  // atom.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
   //
-  // # Set ruby to 2
-  // atom.config.set('language.tabLength', 2, scopeSelector: '.source.ruby') # => true
+  // // Set ruby to 2
+  // atom.config.set('language.tabLength', 2, { scopeSelector: '.source.ruby' }) // => true
   //
-  // # Notice it's only set to 2 in the case of ruby
-  // atom.config.get('language.tabLength') # => 4
-  // atom.config.get('language.tabLength', scope: ['source.ruby']) # => 2
-  // atom.config.get('language.tabLength', scope: ['source.js']) # => 4
+  // // Notice it's only set to 2 in the case of ruby
+  // atom.config.get('language.tabLength') // => 4
+  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+  // atom.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
   // ```
   //
   // * `keyPath` The {String} name of the key.
@@ -1196,12 +1241,14 @@ class Config {
 
   // `schema` will look something like this
   //
-  // ```coffee
-  // type: 'string'
-  // default: 'ok'
-  // scopes:
-  //   '.source.js':
-  //     default: 'omg'
+  // ```json
+  // {
+  //   "type": "string",
+  //   "default": "ok",
+  //   "scopes": {
+  //     ".source.js": { "default": "omg" }
+  //   }
+  // }
   // ```
   setScopedDefaultsFromSchema(keyPath, schema) {
     if (schema.scopes != null && isPlainObject(schema.scopes)) {
