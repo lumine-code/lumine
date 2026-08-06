@@ -8,7 +8,7 @@
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
  */
 let isKeyup;
-const { calculateSpecificity } = require("clear-cut");
+const { calculateSpecificity } = require("./css-selectors");
 const KeyboardLayout = require("@lumine-code/keyboard-layout");
 
 const MODIFIERS = new Set(["ctrl", "alt", "shift", "cmd"]);

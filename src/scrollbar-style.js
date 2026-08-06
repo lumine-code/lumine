@@ -1,5 +1,5 @@
 const { EventEmitter } = require("events");
-const { Disposable } = require("event-kit");
+const { Disposable } = require("@lumine-code/event-kit");
 const { systemPreferences } = require("electron");
 
 // Scrollbar style is a macOS-only concern: the "Show scroll bars…" setting in

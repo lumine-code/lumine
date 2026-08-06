@@ -1,5 +1,4 @@
-var $$,
-  KeyboardLayout,
+var KeyboardLayout,
   KeymapManager,
   appendContent,
   buildKeydownEvent,
@@ -14,7 +13,13 @@ var $$,
   stub,
   temp;
 
-({ $$ } = require("space-pencil"));
+// Builds a detached element from markup. Replaces space-pencil's `$$`, whose
+// nested-closure builder did exactly this internally.
+function buildElement(html) {
+  const wrapper = document.createElement("div");
+  wrapper.innerHTML = html;
+  return wrapper.firstChild;
+}
 
 fs = require("@lumine-code/fs-plus");
 
@@ -72,20 +77,7 @@ describe("KeymapManager", function () {
       var elementA, elementB, events;
       [events, elementA, elementB] = [];
       beforeEach(function () {
-        elementA = appendContent(
-          $$(function () {
-            return this.div(
-              {
-                class: "a",
-              },
-              function () {
-                return this.div({
-                  class: "b c",
-                });
-              },
-            );
-          }),
-        );
+        elementA = appendContent(buildElement('<div class="a"><div class="b c"></div></div>'));
         elementB = elementA.firstChild;
         events = [];
         elementA.addEventListener("x-command", function (e) {
@@ -291,20 +283,7 @@ describe("KeymapManager", function () {
       var elementA, elementB, events;
       [elementA, elementB, events] = [];
       beforeEach(function () {
-        elementA = appendContent(
-          $$(function () {
-            return this.div(
-              {
-                class: "a",
-              },
-              function () {
-                return this.div({
-                  class: "b c d",
-                });
-              },
-            );
-          }),
-        );
+        elementA = appendContent(buildElement('<div class="a"><div class="b c d"></div></div>'));
         elementB = elementA.firstChild;
         events = [];
         elementA.addEventListener(
@@ -424,18 +403,7 @@ describe("KeymapManager", function () {
       [workspace, editor, events] = [];
       beforeEach(function () {
         workspace = appendContent(
-          $$(function () {
-            return this.div(
-              {
-                class: "workspace",
-              },
-              function () {
-                return this.div({
-                  class: "editor",
-                });
-              },
-            );
-          }),
+          buildElement('<div class="workspace"><div class="editor"></div></div>'),
         );
         editor = workspace.firstChild;
         keymapManager.add("test", {
@@ -904,13 +872,7 @@ describe("KeymapManager", function () {
       var elementA, events;
       [events, elementA] = [];
       beforeEach(function () {
-        elementA = appendContent(
-          $$(function () {
-            return this.div({
-              class: "a",
-            });
-          }),
-        );
+        elementA = appendContent(buildElement('<div class="a"></div>'));
         events = [];
         elementA.addEventListener("y-command", function (_e) {
           return events.push("y-keydown");
@@ -1226,11 +1188,7 @@ describe("KeymapManager", function () {
     });
     it("only counts entire keystrokes when checking for partial matches", function () {
       var element, events;
-      element = $$(function () {
-        return this.div({
-          class: "a",
-        });
-      });
+      element = buildElement('<div class="a"></div>');
       keymapManager.add("test", {
         ".a": {
           "ctrl-alt-a": "command-a",
@@ -1256,11 +1214,7 @@ describe("KeymapManager", function () {
     });
     it("does not enqueue keydown events consisting only of modifier keys", function () {
       var element, events;
-      element = $$(function () {
-        return this.div({
-          class: "a",
-        });
-      });
+      element = buildElement('<div class="a"></div>');
       keymapManager.add("test", {
         ".a": {
           "ctrl-a ctrl-alt-b": "command",
@@ -1312,11 +1266,7 @@ describe("KeymapManager", function () {
     });
     it("allows solo modifier-keys to be bound", function () {
       var element, events;
-      element = $$(function () {
-        return this.div({
-          class: "a",
-        });
-      });
+      element = buildElement('<div class="a"></div>');
       keymapManager.add("test", {
         ".a": {
           ctrl: "command",
@@ -1336,25 +1286,7 @@ describe("KeymapManager", function () {
     });
     return it("simulates bubbling if the target is detached", function () {
       var elementA, elementB, elementC, events;
-      elementA = $$(function () {
-        return this.div(
-          {
-            class: "a",
-          },
-          function () {
-            return this.div(
-              {
-                class: "b",
-              },
-              function () {
-                return this.div({
-                  class: "c",
-                });
-              },
-            );
-          },
-        );
-      });
+      elementA = buildElement('<div class="a"><div class="b"><div class="c"></div></div></div>');
       elementB = elementA.firstChild;
       elementC = elementB.firstChild;
       keymapManager.add("test", {
@@ -2717,21 +2649,7 @@ describe("KeymapManager", function () {
     [elementA, elementB] = [];
     beforeEach(function () {
       elementA = appendContent(
-        $$(function () {
-          return this.div(
-            {
-              class: "a",
-            },
-            function () {
-              this.div({
-                class: "b c",
-              });
-              return this.div({
-                class: "d",
-              });
-            },
-          );
-        }),
+        buildElement('<div class="a"><div class="b c"></div><div class="d"></div></div>'),
       );
       elementB = elementA.querySelector(".b.c");
       return keymapManager.add("test", {

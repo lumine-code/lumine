@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 const { Language, Parser, Query } = require("web-tree-sitter");
-const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const { watchPath } = require("./path-watcher");
 const { normalizeDelimiters } = require("./comment-utils.js");
 

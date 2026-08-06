@@ -1,4 +1,4 @@
-const { CompositeDisposable, Emitter } = require("event-kit");
+const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");

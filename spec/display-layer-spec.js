@@ -6,7 +6,7 @@ const Range = require("../src/range");
 const { buildRandomLines, getRandomBufferRange } = require("./text-buffer-helpers/random");
 const SAMPLE_TEXT = require("./text-buffer-helpers/sample-text");
 const TestLanguageMode = require("./text-buffer-helpers/test-language-mode");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 const EOL_INVISIBLE = "¬";
 const CR_INVISIBLE = "¤";

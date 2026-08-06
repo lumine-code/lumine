@@ -1,5 +1,5 @@
 const { find } = require("@lumine-code/underscore-plus");
-const { Emitter, CompositeDisposable } = require("event-kit");
+const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 const Pane = require("./pane");
 const ItemRegistry = require("./item-registry");
 const { createPaneContainerElement } = require("./pane-container-element");

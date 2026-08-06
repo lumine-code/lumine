@@ -1,5 +1,5 @@
 const Task = require("../src/task");
-const Grim = require("grim");
+const Grim = require("@lumine-code/grim");
 
 describe("Task", function () {
   describe("@once(taskPath, args..., callback)", () =>

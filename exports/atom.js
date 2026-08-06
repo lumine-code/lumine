@@ -1,6 +1,6 @@
 const TextBuffer = require("../src/text-buffer");
 const { Point, Range } = TextBuffer;
-const { Emitter, Disposable, CompositeDisposable } = require("event-kit");
+const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const BufferedNodeProcess = require("../src/buffered-node-process");
 const BufferedProcess = require("../src/buffered-process");
 const GitRepository = require("../src/git-repository");

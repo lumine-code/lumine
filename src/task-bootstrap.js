@@ -80,7 +80,7 @@ const handleEvents = function () {
 };
 
 const setupDeprecations = function () {
-  const Grim = require("grim");
+  const Grim = require("@lumine-code/grim");
   return Grim.on("updated", function () {
     const deprecations = Grim.getDeprecations().map((deprecation) => deprecation.serialize());
     Grim.clearDeprecations();

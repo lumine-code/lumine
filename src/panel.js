@@ -1,4 +1,4 @@
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 // Extended: A container representing a panel on the edges of the editor window.
 // You should not create a `Panel` directly, instead use {Workspace::addTopPanel}

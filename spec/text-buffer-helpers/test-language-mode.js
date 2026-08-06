@@ -1,5 +1,5 @@
 const { MarkerIndex } = require("@lumine-code/superstring");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("../../src/point");
 const Range = require("../../src/range");
 const { MAX_BUILT_IN_SCOPE_ID } = require("../../src/constants");

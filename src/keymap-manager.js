@@ -11,10 +11,10 @@
 let KeymapManager;
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
-const { isSelectorValid } = require("clear-cut");
+const { isSelectorValid } = require("./css-selectors");
 const path = require("path");
 const { watchPath } = require("./path-watcher");
-const { Emitter, Disposable } = require("event-kit");
+const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const { KeyBinding, MATCH_TYPES } = require("./key-binding");
 const CommandEvent = require("./command-event");
 const {

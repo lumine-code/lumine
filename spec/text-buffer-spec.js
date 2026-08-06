@@ -333,7 +333,7 @@ describe("TextBuffer", function () {
     describe("when the undo option is 'skip'", function () {
       // The `undo` option is deprecated; suppress the deprecation so lumine's
       // no-deprecated-calls spec guard doesn't fail these regression tests.
-      beforeEach(() => spyOn(require("grim"), "deprecate"));
+      beforeEach(() => spyOn(require("@lumine-code/grim"), "deprecate"));
 
       it("replaces the contents of the buffer with the given text", function () {
         buffer.setTextInRange(

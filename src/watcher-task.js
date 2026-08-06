@@ -1,6 +1,6 @@
 const _ = require("@lumine-code/underscore-plus");
 const ChildProcess = require("child_process");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 // Private: Like {Task}, but designed for file-watcher processes. Does not
 // start automatically; once it starts, it expects to run indefinitely.

@@ -1,6 +1,6 @@
 "use strict";
 
-const { Emitter, CompositeDisposable } = require("event-kit");
+const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 const { createPanelContainerElement } = require("./panel-container-element");
 
 module.exports = class PanelContainer {

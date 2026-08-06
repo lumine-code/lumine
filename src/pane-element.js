@@ -1,6 +1,6 @@
 const path = require("path");
 const { webUtils } = require("electron");
-const { CompositeDisposable } = require("event-kit");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 
 class PaneElement extends HTMLElement {
   constructor() {

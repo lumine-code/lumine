@@ -1,4 +1,4 @@
-const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const { normalizeTarget, cacheKeyFor, defaultDataName } = require("./icon-target");
 const { Icon, NONE } = require("./icon-descriptor");
 const createPathProvider = require("./icon-path-provider");

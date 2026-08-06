@@ -1,5 +1,5 @@
 const { Patch } = require("@lumine-code/superstring");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
 const Range = require("./range");
 const DisplayMarkerLayer = require("./display-marker-layer");

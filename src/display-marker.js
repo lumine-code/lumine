@@ -1,4 +1,4 @@
-const { Emitter, Disposable } = require("event-kit");
+const { Emitter, Disposable } = require("@lumine-code/event-kit");
 
 // Essential: Represents a buffer annotation that remains logically stationary
 // even as the buffer changes. This is used to represent cursors, folds, snippet

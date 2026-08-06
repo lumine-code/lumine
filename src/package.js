@@ -2,7 +2,7 @@ const path = require("path");
 const asyncEach = require("async/each");
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
-const { Emitter, CompositeDisposable } = require("event-kit");
+const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 const dedent = require("dedent");
 
 const CompileCache = require("./compile-cache");

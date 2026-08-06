@@ -1,7 +1,7 @@
 const _ = require("@lumine-code/underscore-plus");
 const ChildProcess = require("child_process");
-const { Emitter } = require("event-kit");
-const Grim = require("grim");
+const { Emitter } = require("@lumine-code/event-kit");
+const Grim = require("@lumine-code/grim");
 
 // Extended: Run a node script in a separate process.
 //

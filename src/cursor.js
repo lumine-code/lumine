@@ -1,5 +1,5 @@
 const { Point, Range } = require("./text-buffer");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
 const Model = require("./model");
 

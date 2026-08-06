@@ -1,4 +1,4 @@
-const Disposable = require("event-kit").Disposable;
+const Disposable = require("@lumine-code/event-kit").Disposable;
 let ipcRenderer = null;
 let ipcMain = null;
 let BrowserWindow = null;

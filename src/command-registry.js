@@ -1,7 +1,7 @@
 "use strict";
 
-const { Emitter, Disposable, CompositeDisposable } = require("event-kit");
-const { calculateSpecificity, validateSelector } = require("clear-cut");
+const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
+const { calculateSpecificity, validateSelector } = require("./css-selectors");
 const _ = require("@lumine-code/underscore-plus");
 
 let SequenceCount = 0;

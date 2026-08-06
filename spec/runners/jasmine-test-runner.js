@@ -7,7 +7,7 @@
  * DS207: Consider shorter variations of null checks
  * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
  */
-const Grim = require("grim");
+const Grim = require("@lumine-code/grim");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp");
 const path = require("path");

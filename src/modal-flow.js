@@ -1,4 +1,4 @@
-const { Emitter, CompositeDisposable } = require("event-kit");
+const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 
 // Keeps the window's modal breadcrumb trail and renders it as a strip anchored
 // above the modal card. A modal joins the flow by announcing itself —

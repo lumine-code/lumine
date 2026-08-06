@@ -1,4 +1,4 @@
-const { Emitter, Disposable } = require("event-kit");
+const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { createStylesElement } = require("./styles-element");

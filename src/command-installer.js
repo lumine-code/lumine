@@ -95,7 +95,7 @@ module.exports = class CommandInstaller {
       if (realpath === commandPath) return callback(null, commandName);
       this.createSymlink(fs, commandPath, destinationPath, (error) => {
         if (error && error.code === "EACCES" && askForPrivilege) {
-          const fsAdmin = require("fs-admin");
+          const fsAdmin = require("@lumine-code/fs-admin");
           this.createSymlink(fsAdmin, commandPath, destinationPath, (error) => {
             callback(error, commandName);
           });

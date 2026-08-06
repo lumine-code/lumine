@@ -2,13 +2,13 @@ const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { Writable, Transform } = require("stream");
 const temp = require("./text-buffer-helpers/temp");
-const { Disposable } = require("event-kit");
+const { Disposable } = require("@lumine-code/event-kit");
 const Point = require("../src/point");
 const Range = require("../src/range");
 const TextBuffer = require("../src/text-buffer");
 const TextBufferFile = require("../src/text-buffer-file");
 const { TextBuffer: NativeTextBuffer } = require("@lumine-code/superstring");
-const fsAdmin = require("fs-admin");
+const fsAdmin = require("@lumine-code/fs-admin");
 
 const winattr = require("winattr");
 

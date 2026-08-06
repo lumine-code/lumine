@@ -1,5 +1,5 @@
 const parseUri = require("./parse-uri");
-const { Emitter, Disposable } = require("event-kit");
+const { Emitter, Disposable } = require("@lumine-code/event-kit");
 
 const SerializationVersion = 1;
 

@@ -1,0 +1,17 @@
+let idCounter = 0;
+
+class Node {
+  constructor(parent, distanceFromLeftAncestor) {
+    this.parent = parent;
+    this.left = null;
+    this.right = null;
+    this.distanceFromLeftAncestor = distanceFromLeftAncestor;
+    this.id = ++idCounter;
+    this.priority = null;
+    this.blockHeight = 0;
+    this.followingBlockHeight = 0;
+    this.blockIds = new Set();
+  }
+}
+
+module.exports = Node;

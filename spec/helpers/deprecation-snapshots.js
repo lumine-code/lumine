@@ -1,5 +1,5 @@
 const _ = require("@lumine-code/underscore-plus");
-const Grim = require("grim");
+const Grim = require("@lumine-code/grim");
 
 let grimDeprecationsSnapshot = null;
 let stylesDeprecationsSnapshot = null;

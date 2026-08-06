@@ -2,7 +2,7 @@ const path = require("path");
 let normalizePackageData = null;
 
 const _ = require("@lumine-code/underscore-plus");
-const { CompositeDisposable, Emitter } = require("event-kit");
+const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const CSON = require("@lumine-code/season");
 

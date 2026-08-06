@@ -1,4 +1,4 @@
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const Point = require("./point");
 const Range = require("./range");
 const Marker = require("./marker");

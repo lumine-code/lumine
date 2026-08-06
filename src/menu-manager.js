@@ -3,7 +3,7 @@ const _ = require("@lumine-code/underscore-plus");
 const { ipcRenderer } = require("electron");
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
-const { Disposable } = require("event-kit");
+const { Disposable } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
 
 const buildMetadata = require("../package.json");

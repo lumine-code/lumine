@@ -1,5 +1,5 @@
 const { ipcRenderer } = require("electron");
-const Grim = require("grim");
+const Grim = require("@lumine-code/grim");
 
 module.exports = function ({
   commandRegistry,

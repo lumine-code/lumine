@@ -1,6 +1,6 @@
 const path = require("path");
 const _ = require("@lumine-code/underscore-plus");
-const { Disposable, Emitter } = require("event-kit");
+const { Disposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 
 // Keeping a reference to the entire object so that it can be mocked more

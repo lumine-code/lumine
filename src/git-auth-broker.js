@@ -2,7 +2,7 @@ const net = require("net");
 const os = require("os");
 const path = require("path");
 const fs = require("fs/promises");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 // The auth broker gives the system git that runs in the git-host worker a way to
 // prompt the user for credentials and SSH/GPG passphrases from the editor GUI —

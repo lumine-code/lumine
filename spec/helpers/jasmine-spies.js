@@ -4,7 +4,7 @@ const _ = require("@lumine-code/underscore-plus");
 const TextEditorElement = require("../../src/text-editor-element");
 const TextEditor = require("../../src/text-editor");
 const TextMateLanguageMode = require("../../src/text-mate-language-mode");
-const { CompositeDisposable } = require("event-kit");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 const { clipboard } = require("electron");
 const { clipboard: remoteClipboard } = require("@electron/remote");
 

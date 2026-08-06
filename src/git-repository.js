@@ -1,6 +1,6 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
-const { Emitter, Disposable, CompositeDisposable } = require("event-kit");
+const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const { discoverRepositoryDescriptor } = require("./git-repository-descriptor");
 const {
   GitHostStatusProvider,

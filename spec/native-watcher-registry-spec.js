@@ -1,5 +1,5 @@
 const path = require("path");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 const { NativeWatcherRegistry } = require("../src/native-watcher-registry");
 

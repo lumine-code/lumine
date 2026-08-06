@@ -1,4 +1,4 @@
-const { Emitter, CompositeDisposable, Disposable } = require("event-kit");
+const { Emitter, CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const File = require("./text-buffer-file");
 const { watchPath } = require("./path-watcher");
 const diff = require("diff");
@@ -23,7 +23,7 @@ const {
   debounce,
 } = require("./helpers");
 const { traverse, traversal } = require("./point-helpers");
-const Grim = require("grim");
+const Grim = require("@lumine-code/grim");
 
 // Extended: A mutable text container with undo/redo support and the ability to
 // annotate logical regions in the text.
@@ -2092,7 +2092,7 @@ class TextBuffer {
             throw error;
           }
         } else {
-          const fsAdmin = require("fs-admin");
+          const fsAdmin = require("@lumine-code/fs-admin");
           try {
             await this.buffer.save(fsAdmin.createWriteStream(filePath), this.getEncoding());
           } catch {

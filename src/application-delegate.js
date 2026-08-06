@@ -1,7 +1,7 @@
 const { ipcRenderer } = require("electron");
 const remote = require("@electron/remote");
 const ipcHelpers = require("./ipc-helpers");
-const { Emitter, Disposable } = require("event-kit");
+const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const getWindowLoadSettings = require("./get-window-load-settings");
 
 const WINDOW_EVENT_CHANNEL = "window-event";

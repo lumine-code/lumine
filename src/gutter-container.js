@@ -1,4 +1,4 @@
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const Gutter = require("./gutter");
 
 module.exports = class GutterContainer {

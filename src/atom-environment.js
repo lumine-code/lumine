@@ -4,9 +4,9 @@ const util = require("util");
 const { ipcRenderer } = require("electron");
 
 const _ = require("@lumine-code/underscore-plus");
-const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
-const { mapSourcePosition } = require("@atom/source-map-support");
+const { mapSourcePosition } = require("source-map-support");
 const semver = require("semver");
 const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
@@ -1276,7 +1276,6 @@ class AtomEnvironment {
       const mapping = mapSourcePosition({ source: url, line, column });
       line = mapping.line;
       column = mapping.column;
-      if (url === "<embedded>") url = mapping.source;
 
       this.reportUncaughtError({
         message,

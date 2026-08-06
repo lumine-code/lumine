@@ -1,5 +1,5 @@
 const _ = require("@lumine-code/underscore-plus");
-const { Disposable, CompositeDisposable } = require("event-kit");
+const { Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 let Tooltip = null;
 
 // Essential: Associates tooltips with HTML elements.

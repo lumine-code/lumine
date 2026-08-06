@@ -1,6 +1,6 @@
 const { watchPath, stopAllWatchers } = require("../../src/path-watcher");
 const _ = require("@lumine-code/underscore-plus");
-const Grim = require("grim");
+const Grim = require("@lumine-code/grim");
 
 exports.warnIfLeakingPathSubscriptions = async function () {
   // Watcher teardown is asynchronous: owners dispose via

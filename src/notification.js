@@ -1,4 +1,4 @@
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
 
 // Public: A notification to the user containing a message and type.

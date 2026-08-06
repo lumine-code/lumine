@@ -1,12 +1,12 @@
 const _ = require("@lumine-code/underscore-plus");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const {
   getValueAtKeyPath,
   setValueAtKeyPath,
   deleteValueAtKeyPath,
   pushKeyPath,
   splitKeyPath,
-} = require("key-path-helpers");
+} = require("./key-path");
 const Color = require("./color");
 const ScopedPropertyStore = require("@lumine-code/scoped-property-store");
 const ScopeDescriptor = require("./scope-descriptor");

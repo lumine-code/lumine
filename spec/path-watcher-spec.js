@@ -3,7 +3,7 @@ const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { promisify } = require("util");
 
-const { CompositeDisposable } = require("event-kit");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 const {
   NativeWatcher,
   PathWatcherManager,

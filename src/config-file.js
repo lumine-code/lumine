@@ -1,7 +1,7 @@
 const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
 const dedent = require("dedent");
-const { Disposable, Emitter } = require("event-kit");
+const { Disposable, Emitter } = require("@lumine-code/event-kit");
 const CSON = require("@lumine-code/season");
 const Path = require("path");
 const asyncQueue = require("async/queue");

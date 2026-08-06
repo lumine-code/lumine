@@ -1,6 +1,6 @@
 const fs = require("fs");
 const path = require("path");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 // Public: Somewhere to keep an access token, available as `atom.secrets`.
 //

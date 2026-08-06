@@ -1,4 +1,4 @@
-const { Disposable } = require("event-kit");
+const { Disposable } = require("@lumine-code/event-kit");
 
 const AnyConstructor = Symbol("any-constructor");
 

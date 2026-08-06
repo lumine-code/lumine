@@ -1,4 +1,4 @@
-const { Disposable } = require("event-kit");
+const { Disposable } = require("@lumine-code/event-kit");
 
 // Experimental: Lets a package claim a paste before the editor turns the
 // clipboard into text.

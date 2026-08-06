@@ -1,5 +1,5 @@
 const { Point, Range } = require("./text-buffer");
-const LineTopIndex = require("line-top-index");
+const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
 const ScrollAnimator = require("./scroll-animator");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");

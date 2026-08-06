@@ -1,12 +1,10 @@
 "use strict";
 
-/* global snapshotResult */ // defined when running from a V8 snapshot
-
 // Lumine's compile-cache when installing or updating packages, called by apm's Node-js
 
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
-const sourceMapSupport = require("@atom/source-map-support");
+const sourceMapSupport = require("source-map-support");
 
 const babelCompiler = require("./babel");
 // A .jsx file is always compiled — no pragma sniffing — through the same Babel
@@ -106,18 +104,6 @@ function writeCachedJavaScript(relativeCachePath, code) {
 const INLINE_SOURCE_MAP_REGEXP = /\/\/[#@]\s*sourceMappingURL=([^'"\n]+)\s*$/gm;
 
 exports.install = function (resourcesPath, nodeRequire) {
-  const snapshotSourceMapConsumer = {
-    originalPositionFor({ line, column }) {
-      const { relativePath, row } = snapshotResult.translateSnapshotRow(line);
-      return {
-        column,
-        line: row,
-        source: path.join(resourcesPath, "app", "static", relativePath),
-        name: null,
-      };
-    },
-  };
-
   sourceMapSupport.install({
     handleUncaughtExceptions: false,
 
@@ -125,10 +111,6 @@ exports.install = function (resourcesPath, nodeRequire) {
     // source-map-support module, but we've overridden it to read the javascript
     // code from our cache directory.
     retrieveSourceMap: function (filePath) {
-      if (filePath === "<embedded>") {
-        return { map: snapshotSourceMapConsumer };
-      }
-
       if (!cacheDirectory || !fs.isFileSync(filePath)) {
         return null;
       }

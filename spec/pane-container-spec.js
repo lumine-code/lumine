@@ -1,5 +1,5 @@
 const PaneContainer = require("../src/pane-container");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 describe("PaneContainer", () => {
   let confirm, params;

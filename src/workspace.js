@@ -1,6 +1,6 @@
 const _ = require("@lumine-code/underscore-plus");
 const path = require("path");
-const { Emitter, Disposable, CompositeDisposable } = require("event-kit");
+const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const picomatch = require("picomatch");
 const ProjectDirectory = require("./project-directory");

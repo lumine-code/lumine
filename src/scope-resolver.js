@@ -1,4 +1,4 @@
-const { CompositeDisposable } = require("event-kit");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 const { Point } = require("./text-buffer");
 const ScopeDescriptor = require("./scope-descriptor");
 

@@ -1,6 +1,6 @@
 const _ = require("@lumine-code/underscore-plus");
 const ChildProcess = require("child_process");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const path = require("path");
 
 // Extended: A wrapper which provides standard error/output line buffering for

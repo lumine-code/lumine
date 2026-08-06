@@ -1,4 +1,4 @@
-const { CompositeDisposable } = require("event-kit");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 
 class PaneContainerElement extends HTMLElement {
   constructor() {

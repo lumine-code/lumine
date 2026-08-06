@@ -1,4 +1,4 @@
-const { Emitter, CompositeDisposable, Disposable } = require("event-kit");
+const { Emitter, CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const DisplayMarker = require("./display-marker");
 const Range = require("./range");
 const Point = require("./point");

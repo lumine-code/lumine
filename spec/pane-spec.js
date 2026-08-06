@@ -1,5 +1,5 @@
 const { extend } = require("@lumine-code/underscore-plus");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const fs = require("fs");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();

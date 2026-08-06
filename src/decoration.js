@@ -1,4 +1,4 @@
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 let idCounter = 0;
 const nextId = () => idCounter++;

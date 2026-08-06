@@ -1,4 +1,4 @@
-const { CompositeDisposable } = require("event-kit");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 require("./pane-resize-handle-element");
 
 class PaneAxisElement extends HTMLElement {

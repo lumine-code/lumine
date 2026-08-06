@@ -1,4 +1,4 @@
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 const Decoration = require("./decoration");
 const LayerDecoration = require("./layer-decoration");
 

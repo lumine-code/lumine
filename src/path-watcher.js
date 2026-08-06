@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const crypto = require("crypto");
 
-const { Emitter, Disposable, CompositeDisposable } = require("event-kit");
+const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const { NativeWatcherRegistry } = require("./native-watcher-registry");
 const WatcherTask = require("./watcher-task");
 

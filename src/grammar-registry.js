@@ -1,7 +1,7 @@
 const _ = require("@lumine-code/underscore-plus");
 const CSON = require("@lumine-code/season");
 const SecondMate = require("@lumine-code/second-mate");
-const { Disposable, CompositeDisposable, Emitter } = require("event-kit");
+const { Disposable, CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const TextMateLanguageMode = require("./text-mate-language-mode");
 const TreeSitterLanguageMode = require("./tree-sitter-language-mode");
 const TreeSitterGrammar = require("./tree-sitter-grammar");

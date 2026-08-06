@@ -1,4 +1,4 @@
-const { Disposable, CompositeDisposable } = require("event-kit");
+const { Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const listen = require("./delegated-listener");
 const { debounce } = require("@lumine-code/underscore-plus");
 

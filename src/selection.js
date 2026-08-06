@@ -1,6 +1,6 @@
 const { Point, Range } = require("./text-buffer");
 const { pick } = require("@lumine-code/underscore-plus");
-const { Emitter } = require("event-kit");
+const { Emitter } = require("@lumine-code/event-kit");
 
 const NonWhitespaceRegExp = /\S/;
 let nextId = 0;

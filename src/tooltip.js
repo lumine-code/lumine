@@ -1,6 +1,6 @@
 "use strict";
 
-const EventKit = require("event-kit");
+const EventKit = require("@lumine-code/event-kit");
 const tooltipComponentsByElement = new WeakMap();
 const listen = require("./delegated-listener");
 

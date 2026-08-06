@@ -1,8 +1,8 @@
 const path = require("path");
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
-const { calculateSpecificity, validateSelector } = require("clear-cut");
-const { Disposable } = require("event-kit");
+const { calculateSpecificity, validateSelector } = require("./css-selectors");
+const { Disposable } = require("@lumine-code/event-kit");
 const remote = require("@electron/remote");
 const MenuHelpers = require("./menu-helpers");
 const { sortMenuItems } = require("./menu-sort-helpers");

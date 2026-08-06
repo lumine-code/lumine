@@ -4,7 +4,7 @@ const ipcHelpers = require("./ipc-helpers");
 const { ipcRenderer } = require("electron");
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
-const { CompositeDisposable, Disposable } = require("event-kit");
+const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
 
 // Measures how Chromium renders scrollbars in this window: an off-screen

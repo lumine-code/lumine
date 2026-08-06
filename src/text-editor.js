@@ -1,7 +1,7 @@
 const _ = require("@lumine-code/underscore-plus");
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
-const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const TextBuffer = require("./text-buffer");
 const { Point, Range } = TextBuffer;
 const DecorationManager = require("./decoration-manager");

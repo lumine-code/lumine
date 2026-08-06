@@ -1,7 +1,7 @@
 "use strict";
 
 const { createFocusTrap } = require("focus-trap");
-const { CompositeDisposable } = require("event-kit");
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 
 class PanelContainerElement extends HTMLElement {
   constructor() {

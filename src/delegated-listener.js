@@ -1,4 +1,4 @@
-const EventKit = require("event-kit");
+const EventKit = require("@lumine-code/event-kit");
 
 module.exports = function listen(element, eventName, selector, handler) {
   const innerHandler = function (event) {

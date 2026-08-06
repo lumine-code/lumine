@@ -1,4 +1,4 @@
-const { Emitter, CompositeDisposable } = require("event-kit");
+const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 
 class StylesElement extends HTMLElement {
   constructor() {

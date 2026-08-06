@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const { CompositeDisposable, Disposable, Emitter } = require("event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const RepositoryOperations = require("./repository-operations");
 
 const DEFAULT_EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
