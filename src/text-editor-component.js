@@ -1820,8 +1820,13 @@ module.exports = class TextEditorComponent {
     let wrapperLeft = contentClientRect.left + this.pixelLeftForRowAndColumn(row, column);
     const clientRect = element.getBoundingClientRect();
 
+    const anchorLeft = wrapperLeft;
+    let flipped = false;
+    let marginLeft = 0;
+
     if (avoidOverflow !== false) {
       const computedStyle = window.getComputedStyle(element);
+      marginLeft = parseInt(computedStyle.marginLeft) || 0;
       const elementTop = wrapperTop + parseInt(computedStyle.marginTop);
       const elementBottom = elementTop + clientRect.height;
       const flippedElementTop =
@@ -1829,11 +1834,12 @@ module.exports = class TextEditorComponent {
         this.getLineHeight() -
         clientRect.height -
         parseInt(computedStyle.marginBottom);
-      const elementLeft = wrapperLeft + parseInt(computedStyle.marginLeft);
+      const elementLeft = wrapperLeft + marginLeft;
       const elementRight = elementLeft + clientRect.width;
 
       if (elementBottom > windowInnerHeight && flippedElementTop >= 0) {
         wrapperTop -= elementTop - flippedElementTop;
+        flipped = true;
       }
       if (elementLeft < 0) {
         wrapperLeft -= elementLeft;
@@ -1844,6 +1850,12 @@ module.exports = class TextEditorComponent {
 
     decoration.pixelTop = Math.round(wrapperTop);
     decoration.pixelLeft = Math.round(wrapperLeft);
+    // Which side of the line the overlay ended up on, and where the position
+    // it annotates now falls inside its own box — a margin of its own moved
+    // it, the window edges may have moved it again, and an overlay drawing a
+    // pointer at that position has no other way to know where it went.
+    decoration.flipped = flipped;
+    decoration.anchorOffset = Math.round(anchorLeft - (wrapperLeft + marginLeft));
   }
 
   updateOverlaysToRender() {

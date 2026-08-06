@@ -8,6 +8,7 @@ module.exports = class OverlayComponent {
     this.element.style.zIndex = 4;
     this.element.style.top = (this.props.pixelTop || 0) + "px";
     this.element.style.left = (this.props.pixelLeft || 0) + "px";
+    this.applyAnchor();
     this.currentContentRect = null;
 
     // Synchronous DOM updates in response to resize events might trigger a
@@ -62,8 +63,18 @@ module.exports = class OverlayComponent {
       if (oldProps.className != null) this.element.classList.remove(oldProps.className);
       if (newProps.className != null) this.element.classList.add(newProps.className);
     }
+    this.applyAnchor();
 
     if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
+  }
+
+  // Publishes where the annotated position ended up, so that an overlay
+  // drawing a pointer at it can follow the fit: `above` when the overlay was
+  // flipped over the line to stay in the window, and the offset by which it
+  // was pushed left off the right edge.
+  applyAnchor() {
+    this.element.dataset.overlayPosition = this.props.flipped ? "above" : "below";
+    this.element.style.setProperty("--overlay-anchor-offset", `${this.props.anchorOffset || 0}px`);
   }
 
   didAttach() {

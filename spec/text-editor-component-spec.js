@@ -2788,6 +2788,32 @@ describe("TextEditorComponent", () => {
       }
       expect(overlayWrapper.getBoundingClientRect().top).toBeNear(clientTopForLine(component, 5));
 
+      // Reports where the annotated position ended up, for an overlay that
+      // draws a pointer at it: which side of the line it was placed on, and
+      // how far into its own box the position now falls once its margin and
+      // the window edges have had their say.
+      setScrollLeft(component, 100);
+      await setScrollTop(component, 20);
+      overlayElement.style.height = 50 + "px";
+      {
+        const nextOverlayUpdate = overlayComponent.getNextUpdatePromise();
+        overlayComponent.props.didResize(overlayComponent);
+        await nextOverlayUpdate;
+      }
+      expect(overlayWrapper.dataset.overlayPosition).toBe("below");
+      // The margin is all that moved it, so the position sits that far in.
+      expect(overlayWrapper.style.getPropertyValue("--overlay-anchor-offset")).toBe("-3px");
+
+      await setScrollTop(component, 0);
+      expect(overlayWrapper.dataset.overlayPosition).toBe("above");
+
+      // Pushed off the right edge, the position stays where it was and the
+      // box slides out from under it.
+      await setScrollLeft(component, 30);
+      expect(
+        parseInt(overlayWrapper.style.getPropertyValue("--overlay-anchor-offset"), 10),
+      ).toBeGreaterThan(0);
+
       // Can update overlay wrapper class
       decoration.setProperties({
         type: "overlay",
