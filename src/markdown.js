@@ -591,6 +591,13 @@ function makeAtomEditorNonInteractive(editorElement, preElement) {
   editorElement.removeAttribute("tabindex"); // Make read-only
   editorElement.classList.add("non-interactive"); // Render no caret
 
+  // A stand-in for a `<pre>` does not take the mouse either. Left alone, a
+  // drag across it starts a selection in an editor the reader cannot type in
+  // or copy from; suppressed, the drag selects the text natively, the way it
+  // reads on the page. Capture, so the component's own handler on the content
+  // element never sees the event.
+  editorElement.addEventListener("mousedown", (event) => event.stopPropagation(), true);
+
   // Remove line decorations from code blocks.
   for (const cursorLineDecoration of editorElement.getModel().cursorLineDecorations) {
     cursorLineDecoration.destroy();
