@@ -3,7 +3,10 @@ const { Emitter, Disposable } = require("event-kit");
 
 const SerializationVersion = 1;
 
-// Private: Associates listener functions with URIs from outside the application.
+// Extended: Associates listener functions with URIs from outside the application.
+//
+// An instance of this class is always available as the `atom.uriHandlers`
+// global.
 //
 // The global URI handler registry maps URIs to listener functions. URIs are mapped
 // based on the hostname of the URI; the format is lumine://package/command?args.

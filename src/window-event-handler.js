@@ -287,7 +287,7 @@ module.exports = class WindowEventHandler {
       if (/^https?:\/\//.test(uri)) {
         this.applicationDelegate.openExternal(uri);
       } else if (uri.startsWith("lumine://")) {
-        this.atomEnvironment.uriHandlerRegistry.handleURI(uri);
+        this.atomEnvironment.uriHandlers.handleURI(uri);
       }
     }
   }

@@ -67,6 +67,15 @@ let nextId = 0;
  * An instance of this class is always available as the `atom` global.
  */
 class AtomEnvironment {
+  // Wiring the environment owns and nothing outside it may reach. Everything a
+  // package is meant to use is a namespace carrying a `@type` annotation below;
+  // these four are the machinery behind them, so they are hard-private rather
+  // than merely undocumented.
+  #commandInstaller;
+  #protocolHandlerInstaller;
+  #gitAuthBroker;
+  #windowEventHandler;
+
   constructor(params = {}) {
     this.id = params.id != null ? params.id : nextId++;
 
@@ -79,12 +88,22 @@ class AtomEnvironment {
     this.nextProxyRequestId = 0;
     this.unloading = false;
     this.loadTime = null;
+    /** @private Reachable only because specs fake `will-destroy` through it;
+     * packages subscribe with `onWillDestroy()` and never touch this. */
     this.emitter = new Emitter();
+    /** @private */
     this.disposables = new CompositeDisposable();
     this.pathsWithWaitSessions = new Set();
 
     /** @type {DeserializerManager} */
     this.deserializers = new DeserializerManager(this);
+
+    /**
+     * How long each deserialized top-level object took to restore, in
+     * milliseconds, keyed by name (`project`, `workspace`). The `timecop`
+     * package reads this to report window load cost, and resets it to `{}`.
+     * @type {Object<string, number>}
+     */
     this.deserializeTimings = {};
 
     /** @type {ViewRegistry} */
@@ -106,6 +125,8 @@ class AtomEnvironment {
       properties: _.clone(ConfigSchema),
     });
 
+    /** @private Window-state persistence. `TextEditor` consults it before
+     * prompting to save, and specs stub it; not a package-facing namespace. */
     this.stateStore = new StateStore("AtomEnvironments", 1);
 
     /** @type {KeymapManager} */
@@ -121,7 +142,9 @@ class AtomEnvironment {
 
     /** @type {CommandRegistry} */
     this.commands = new CommandRegistry();
-    this.uriHandlerRegistry = new URIHandlerRegistry();
+
+    /** @type {URIHandlerRegistry} */
+    this.uriHandlers = new URIHandlerRegistry();
 
     /** @type {GrammarRegistry} */
     this.grammars = new GrammarRegistry({ config: this.config });
@@ -139,7 +162,7 @@ class AtomEnvironment {
       grammarRegistry: this.grammars,
       deserializerManager: this.deserializers,
       viewRegistry: this.views,
-      uriHandlerRegistry: this.uriHandlerRegistry,
+      uriHandlerRegistry: this.uriHandlers,
     });
 
     /** @type {ThemeManager} */
@@ -186,9 +209,9 @@ class AtomEnvironment {
     // Interactive credential/passphrase prompting for git operations that run in
     // the git-host worker, so the user's system git credential helpers stay the
     // source of truth and this only supplies the GUI fallback.
-    this.gitAuthBroker = new GitAuthBroker({ promptForInput: promptForGitCredential });
+    this.#gitAuthBroker = new GitAuthBroker({ promptForInput: promptForGitCredential });
     this.repositories.addOperationProvider(
-      new GitRepositoryOperationProvider({ authBroker: this.gitAuthBroker }),
+      new GitRepositoryOperationProvider({ authBroker: this.#gitAuthBroker }),
       { fallback: true },
     );
     // A forge-agnostic, OS-encrypted secret store (VS Code SecretStorage-style)
@@ -209,8 +232,8 @@ class AtomEnvironment {
       repositoryRegistry: this.repositories,
     });
     this.icons.attachProject(this.project);
-    this.commandInstaller = new CommandInstaller(this.applicationDelegate);
-    this.protocolHandlerInstaller = new ProtocolHandlerInstaller();
+    this.#commandInstaller = new CommandInstaller(this.applicationDelegate);
+    this.#protocolHandlerInstaller = new ProtocolHandlerInstaller();
 
     /** @type {TextEditorRegistry} */
     this.textEditors = new TextEditorRegistry({
@@ -250,7 +273,7 @@ class AtomEnvironment {
     this.registerDefaultOpeners();
     this.registerDefaultDeserializers();
 
-    this.windowEventHandler = new WindowEventHandler({
+    this.#windowEventHandler = new WindowEventHandler({
       atomEnvironment: this,
       applicationDelegate: this.applicationDelegate,
     });
@@ -342,10 +365,10 @@ class AtomEnvironment {
       devMode,
     });
 
-    this.commandInstaller.initialize(this.getVersion());
-    this.uriHandlerRegistry.registerHostHandler("core", CoreURIHandlers.create(this));
+    this.#commandInstaller.initialize(this.getVersion());
+    this.uriHandlers.registerHostHandler("core", CoreURIHandlers.create(this));
 
-    this.protocolHandlerInstaller.initialize(this.config, this.notifications, devMode);
+    this.#protocolHandlerInstaller.initialize(this.config, this.notifications, devMode);
 
     this.themes.loadBaseStylesheets();
     this.initialStyleElements = this.styles.getSnapshot();
@@ -359,7 +382,7 @@ class AtomEnvironment {
 
     this.installUncaughtErrorHandler();
     this.attachSaveStateListeners();
-    this.windowEventHandler.initialize(this.window, this.document);
+    this.#windowEventHandler.initialize(this.window, this.document);
 
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
 
@@ -420,7 +443,7 @@ class AtomEnvironment {
     registerDefaultCommands({
       commandRegistry: this.commands,
       config: this.config,
-      commandInstaller: this.commandInstaller,
+      commandInstaller: this.#commandInstaller,
       notificationManager: this.notifications,
       project: this.project,
       repositories: this.repositories,
@@ -532,7 +555,7 @@ class AtomEnvironment {
     this.icons = null;
     this.commands.clear();
     if (this.stylesElement) this.stylesElement.remove();
-    this.uriHandlerRegistry.destroy();
+    this.uriHandlers.destroy();
 
     this.uninstallWindowEventHandler();
   }
@@ -1067,7 +1090,7 @@ class AtomEnvironment {
         StartupTime.addMarker("window:environment:start-editor-window:display-window");
         await this.displayWindow();
       }
-      this.commandInstaller.installAtomCommand(false, (error) => {
+      this.#commandInstaller.installAtomCommand(false, (error) => {
         if (error) console.warn(error.message);
       });
 
@@ -1188,7 +1211,7 @@ class AtomEnvironment {
       workspace: this.workspace.serialize(),
       packageStates: this.packages.serialize(),
       grammars: this.grammars.serialize(),
-      uriHistory: this.uriHandlerRegistry.serialize(),
+      uriHistory: this.uriHandlers.serialize(),
       fullScreen: this.isFullScreen(),
       windowDimensions: this.windowDimensions,
     };
@@ -1225,7 +1248,7 @@ class AtomEnvironment {
     this.unloading = true;
     stopAllWatchers();
     GitHost.reset();
-    if (this.gitAuthBroker) this.gitAuthBroker.terminate();
+    if (this.#gitAuthBroker) this.#gitAuthBroker.terminate();
     if (this.secrets) this.secrets.dispose();
     if (!this.project) return;
 
@@ -1324,18 +1347,18 @@ class AtomEnvironment {
   }
 
   installWindowEventHandler() {
-    this.windowEventHandler = new WindowEventHandler({
+    this.#windowEventHandler = new WindowEventHandler({
       atomEnvironment: this,
       applicationDelegate: this.applicationDelegate,
     });
-    this.windowEventHandler.initialize(this.window, this.document);
+    this.#windowEventHandler.initialize(this.window, this.document);
   }
 
   uninstallWindowEventHandler() {
-    if (this.windowEventHandler) {
-      this.windowEventHandler.unsubscribe();
+    if (this.#windowEventHandler) {
+      this.#windowEventHandler.unsubscribe();
     }
-    this.windowEventHandler = null;
+    this.#windowEventHandler = null;
   }
 
   didChangeStyles(styleElement) {
@@ -1607,7 +1630,7 @@ class AtomEnvironment {
     const missingProjectPaths = [];
 
     this.packages.packageStates = state.packageStates || {};
-    this.uriHandlerRegistry.deserialize(state.uriHistory);
+    this.uriHandlers.deserialize(state.uriHistory);
 
     let startTime = Date.now();
     if (state.project) {
@@ -1712,11 +1735,11 @@ class AtomEnvironment {
 
   dispatchURIMessage(uri) {
     if (this.packages.hasLoadedInitialPackages()) {
-      this.uriHandlerRegistry.handleURI(uri);
+      this.uriHandlers.handleURI(uri);
     } else {
       let subscription = this.packages.onDidLoadInitialPackages(() => {
         subscription.dispose();
-        this.uriHandlerRegistry.handleURI(uri);
+        this.uriHandlers.handleURI(uri);
       });
     }
   }

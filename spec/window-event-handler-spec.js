@@ -106,7 +106,7 @@ describe("WindowEventHandler", () => {
     });
 
     it('opens the "lumine://" links with URL handler', () => {
-      const uriHandler = windowEventHandler.atomEnvironment.uriHandlerRegistry;
+      const uriHandler = windowEventHandler.atomEnvironment.uriHandlers;
       expect(uriHandler).toBeDefined();
       spyOn(uriHandler, "handleURI");
 
