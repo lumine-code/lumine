@@ -1739,29 +1739,47 @@ module.exports = class Workspace extends Model {
     ).then((results) => !results.includes(false));
   }
 
-  // Save the active pane item.
+  // Extended: Save the workspace center's active pane item.
   //
-  // If the active pane item currently has a URI according to the item's
-  // `.getURI` method, calls `.save` on the item. Otherwise
-  // {::saveActivePaneItemAs} # will be called instead. This method does nothing
-  // if the active item does not implement a `.save` method.
+  // If the item has a URI according to its `.getURI` method, calls `.save` on
+  // it; otherwise {::saveActivePaneItemAs} is called instead. Does nothing when
+  // the item implements no `.save` method.
+  //
+  // Targets the center rather than the focused pane container, for the reason
+  // given on {::destroyActivePaneItem}.
   saveActivePaneItem() {
     return this.getCenter().getActivePane().saveActiveItem();
   }
 
-  // Prompt the user for a path and save the active pane item to it.
+  // Extended: Prompt for a path and save the workspace center's active pane
+  // item to it.
   //
   // Opens a native dialog where the user selects a path on disk, then calls
-  // `.saveAs` on the item with the selected path. This method does nothing if
-  // the active item does not implement a `.saveAs` method.
+  // `.saveAs` on the item with the selected path. Does nothing when the item
+  // implements no `.saveAs` method.
+  //
+  // Targets the center rather than the focused pane container, for the reason
+  // given on {::destroyActivePaneItem}.
   saveActivePaneItemAs() {
     this.getCenter().getActivePane().saveActiveItemAs();
   }
 
-  // Destroy (close) the active pane item.
+  // Extended: Destroy (close) the active pane item.
   //
-  // Removes the active pane item and calls the `.destroy` method on it if one is
-  // defined.
+  // Removes the active pane item and calls its `.destroy` method if it has one.
+  //
+  // This one resolves through the *active pane container*, so it closes the
+  // focused dock's item while a dock has focus. That pairs it with
+  // {::getActivePaneItem} and {::getActivePane}, which resolve the same way, and
+  // is what a package wants when it has already inspected the active item and
+  // decided to close it.
+  //
+  // Its neighbours here deliberately differ: {::saveActivePaneItem},
+  // {::saveActivePaneItemAs} and {::closeActivePaneItemOrEmptyPaneOrWindow} are
+  // pinned to the workspace center. They back `core:save`, `core:save-as` and
+  // `core:close`, whose keystrokes fire from anywhere in the window, so
+  // following focus would make Ctrl-S in a search field or a dock try to save
+  // that instead of the document being edited.
   destroyActivePaneItem() {
     return this.getActivePane().destroyActiveItem();
   }
@@ -1862,8 +1880,11 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  // Close the active center pane item, or the active center pane if it is
-  // empty, or the current window if there is only the empty root pane.
+  // Extended: Close the workspace center's active pane item, or its active pane
+  // if that pane is empty, or the window if only the empty root pane is left.
+  //
+  // Targets the center rather than the focused pane container, for the reason
+  // given on {::destroyActivePaneItem}.
   closeActivePaneItemOrEmptyPaneOrWindow() {
     if (this.getCenter().getActivePaneItem() != null) {
       this.getCenter().getActivePane().destroyActiveItem();
