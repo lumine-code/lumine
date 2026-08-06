@@ -29,3 +29,9 @@ spec/fixtures/sample.txt text eol=lf
 
 # Windows installer bitmaps are binary; an EOL conversion would corrupt them
 *.bmp binary
+
+# script/generate-branding.js emits lumine-square.svg and byte-compares it under
+# --check. core.autocrlf would hand a Windows clone CRLF and every check would
+# report the vector as drifted, so pin the whole directory to the LF the master
+# already uses.
+resources/app-icons/*.svg text eol=lf

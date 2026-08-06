@@ -1,8 +1,8 @@
 /*
- * Renders every Lumine branding raster from the master art in
+ * Renders every Lumine branding asset from the master art in
  * `resources/app-icons/lumine.svg`: the application icon for all three
- * platforms, the document icon, and the Windows installer's bitmaps and
- * Start-menu tiles.
+ * platforms, the document icon, the Windows installer's bitmaps and Start-menu
+ * tiles, and the square profile mark.
  *
  * Usage:
  *   electron --no-sandbox script/generate-branding.js [options]
@@ -64,6 +64,12 @@ const MARK_FRACTION = 0.64;
 // The gold disc is r=60 on the 128-unit canvas, so the artwork is 120 units
 // across. Badge placements scale against that, not against the canvas.
 const DISC_DIAMETER = 120;
+
+// The square mark drops the disc, so the ink is free to grow into the corner-to-
+// corner space the disc used to occupy. 1.1 takes the 10..118 ink box out to
+// 4.6..123.4, which fills the square while leaving the four sparkle tips clear
+// of a rounded-corner crop.
+const SQUARE_SCALE = 1.1;
 
 // Throws rather than exiting on the spot: app.exit() only schedules the exit,
 // so the rest of the current async turn would keep running against a torn-down
@@ -132,10 +138,74 @@ function svg(viewBox, body) {
   );
 }
 
+// A standalone .svg document rather than a fragment for the stage: same art,
+// but sized in units so a consumer that ignores viewBox still gets 128x128.
+function svgDocument(viewBox, size, body) {
+  return (
+    `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${viewBox}" ` +
+    `width="${size}" height="${size}">\n  ${body}\n</svg>\n`
+  );
+}
+
 // The application icon, exactly as lumine.svg draws it: gold disc, white mark,
 // transparent outside the disc. Flat — no drop shadow on the white elements.
 function appArt({ gradient, disc, mark }) {
   return svg("0 0 128 128", `<defs>${gradient}</defs>${disc}<g fill="#fff">${mark}</g>`);
+}
+
+// Reads one attribute off an element the master SVG was matched out of, so the
+// square mark's geometry is computed from that file rather than retyped here.
+function attr(element, name, label) {
+  const value = Number.parseFloat(element.match(new RegExp(`\\b${name}="([^"]+)"`))?.[1]);
+  if (!Number.isFinite(value)) fail(`resources/app-icons/lumine.svg: ${label} has no ${name}`);
+  return value;
+}
+
+// The disc's gradient restated in user space, minus its dark end stop.
+//
+// Both changes are forced by painting the mark instead of the disc behind it.
+// objectBoundingBox units resolve against whichever element references the
+// fill, so on a group of a dozen separate paths every path would get its own
+// private gradient; anchoring the field to the coordinates the disc's box
+// occupies keeps one gradient across the whole mark, falling off exactly where
+// the icon puts it. And #9a6214 lands on the lower and right sparkles — a fine
+// edge on a filled disc, far too dim for ink that has to hold its own against a
+// dark page. Dropping that stop lets the field run #f6c952 -> #cf9723 and then
+// hold, so the weakest gold in the mark is still the brand gold.
+function squareGradient({ gradient, disc }) {
+  const stops = gradient.match(/<stop\b[^>]*\/>/g) ?? [];
+  if (stops.length < 3) {
+    fail("resources/app-icons/lumine.svg: the gradient no longer has a dark end stop to drop");
+  }
+  const radius = attr(disc, "r", "the gold disc");
+  const box = {
+    x: attr(disc, "cx", "the gold disc") - radius,
+    y: attr(disc, "cy", "the gold disc") - radius,
+    size: radius * 2,
+  };
+  // Trimmed because 0.36 * 120 is 43.199999999999996 in binary floating point,
+  // and the attribute should read as the number it means.
+  const round = (value) => Number(value.toFixed(3));
+  const fraction = (name) => attr(gradient, name, "the gradient") / 100;
+  return (
+    `<radialGradient id="lumine-gold" gradientUnits="userSpaceOnUse" ` +
+    `cx="${round(box.x + fraction("cx") * box.size)}" ` +
+    `cy="${round(box.y + fraction("cy") * box.size)}" ` +
+    `r="${round(fraction("r") * box.size)}">${stops.slice(0, -1).join("")}</radialGradient>`
+  );
+}
+
+// The square profile mark: the same white mark, grown to fill the square and
+// carrying the gold itself now that the disc is gone. Nothing in the editor
+// loads it — it is the avatar art, for the GitHub organisation and anywhere
+// else the logo has to sit in a square rather than float in one. Backgroundless
+// on purpose, so one asset reads on a light page and a dark one alike.
+function squareBody(art) {
+  return (
+    `<defs>${squareGradient(art)}</defs>` +
+    `<g fill="url(#lumine-gold)" transform="translate(64 64) ` +
+    `scale(${SQUARE_SCALE}) translate(-64 -64)">${art.mark}</g>`
+  );
 }
 
 // The document icon: a page with a dog-eared corner carrying the app icon as a
@@ -217,6 +287,7 @@ function assetList(art) {
   const appIcon = appArt(art);
   const documentIcon = documentArt(art);
   const tile = tileArt(art);
+  const square = squareBody(art);
 
   return [
     // --- application icon ---
@@ -229,6 +300,24 @@ function assetList(art) {
       markup: appIcon,
       size,
     })),
+
+    // --- square profile mark ---
+    // Generated rather than drawn by hand for the reason the whole script
+    // exists: the copy of the logo the website keeps has already drifted from
+    // this one, and a second hand-maintained vector would drift the same way.
+    // The PNG is what GitHub takes — it rejects SVG for an avatar — at 1024 to
+    // match lumine.png and clear the 500px minimum with room to spare.
+    {
+      file: "resources/app-icons/lumine-square.svg",
+      kind: "svg",
+      markup: svgDocument("0 0 128 128", 128, square),
+    },
+    {
+      file: "resources/app-icons/lumine-square.png",
+      kind: "png",
+      markup: svg("0 0 128 128", square),
+      size: 1024,
+    },
 
     // --- document icon ---
     { file: "resources/win/file.ico", kind: "ico", markup: documentIcon, sizes: ICO_SIZES },
@@ -732,6 +821,11 @@ async function renderAsset(win, asset) {
     }
     case "png":
       return renderPng(win, asset.markup, asset.size, label);
+    // Nothing to rasterize: the markup is the file. It still goes through the
+    // asset table so --check covers it and it lands beside the art it derives
+    // from.
+    case "svg":
+      return Buffer.from(asset.markup, "utf8");
     case "ico": {
       const slices = [];
       for (const size of asset.sizes) {
