@@ -32,8 +32,11 @@
     "@jasminejs/reporters": "1.0.0",
     "@lumine-code/babel-preset": "github:lumine-code/babel-preset#7f95fd423c70d8ceb7f2dad0f36e9326510352fa",
     "@lumine-code/etch": "github:lumine-code/etch#ba07febd6dc1df9b0917f9579da85fbd96a16a75",
+    "@lumine-code/event-kit": "github:lumine-code/event-kit#fcd72380dff55925c2224251bc3dc81f35665437",
+    "@lumine-code/fs-admin": "github:lumine-code/fs-admin#d7e975e6382fea302953112265e0db99ef6d05f0",
     "@lumine-code/fs-plus": "github:lumine-code/fs-plus#dbede762a7a1019a024d8f8c8de5e4f04ef2bd78",
     "@lumine-code/fuzzy-native": "github:lumine-code/fuzzy-native#b69baa0320dd5ec28846c1c2c2cd2bdcbd90d03b",
+    "@lumine-code/grim": "github:lumine-code/grim#363f1da2c5a7e25054b5837fa9b62c49f34da834",
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#0879d01b80c95e3e1af9a1d52c0d6db6a092c91b",
     "@lumine-code/node-pty": "github:lumine-code/node-pty#1c45fa49322a31b836f0bd8eadaf1ea8f4a894e6",
     "@lumine-code/scoped-property-store": "github:lumine-code/scoped-property-store#a05ae79feda85e55cb3995f2d50238b5030035ef",
@@ -142,11 +145,13 @@
     "picomatch": "^4.0.5",
     "postcss": "8.5.25",
     "postcss-selector-parser": "7.1.4",
+    "random-seed": "^0.3.0",
     "resolve": "1.22.12",
     "search-panel": "github:lumine-code/search-panel#c64122320cc8fc3023ec3f1929c307cf038fc2d3",
     "semver": "7.8.5",
     "settings-view": "github:lumine-code/settings-view#5dcd91b8bbafd5c9358388f7bb7949d5c201bb95",
     "snippets": "github:lumine-code/snippets#a322563d4b7c205cdca1b28ccaab3220c93720af",
+    "source-map-support": "^0.5.21",
     "space-pencil": "0.3.0",
     "status-bar": "github:lumine-code/status-bar#b7eb9f006b6c21f8b5b5b4f5193622bb5dcba773",
     "styleguide": "github:lumine-code/styleguide#b7c6e5c10f7c1528652ea16039107d287e58c671",
@@ -202,17 +207,16 @@
     "jasmine-json": "^0.0.3",
     "mock-spawn": "^0.2.6",
     "prettier": "^3.9.6",
-    "random-seed": "0.3.0",
     "sinon": "22.1.0"
   },
   "allowScripts": {
     "github:lumine-code/node-pty#1c45fa49322a31b836f0bd8eadaf1ea8f4a894e6": true,
-    "github:lumine-code/node-ctags#46547ad57ef5a8462ad8e29ce67c51d24553d0c5": true,
     "github:lumine-code/fuzzy-native#b69baa0320dd5ec28846c1c2c2cd2bdcbd90d03b": true,
     "github:lumine-code/keyboard-layout#0879d01b80c95e3e1af9a1d52c0d6db6a092c91b": true,
     "github:lumine-code/superstring#09847976acaaba8f1d1abb05500a0e1a1709b5b2": true,
     "github:lumine-code/watcher#ffeb0ca350dc9349e7ca95fce3e4e306bec484e6": true,
     "electron-winstaller@5.4.0": true,
-    "fs-admin": true
+    "fs-admin": true,
+    "github:lumine-code/fs-admin#d7e975e6382fea302953112265e0db99ef6d05f0": true
   }
 }
