@@ -1889,9 +1889,23 @@ class AtomEnvironment {
 
     if (!restoredState) {
       const fileOpenPromises = [];
-      for (const { pathToOpen, initialLine, initialColumn } of fileLocationsToOpen) {
+      // Only the last location ends up active. Activating each one in turn
+      // costs a full activation fan-out per file — and, because a pane keeps
+      // every view it has ever shown mounted, leaves the window carrying an
+      // editor component for each. Dropping a folder's worth of files should
+      // land on one of them, not mount all of them.
+      const lastIndex = fileLocationsToOpen.length - 1;
+      for (const [index, location] of fileLocationsToOpen.entries()) {
+        const { pathToOpen, initialLine, initialColumn } = location;
+        const activate = index === lastIndex;
         fileOpenPromises.push(
-          this.workspace && this.workspace.open(pathToOpen, { initialLine, initialColumn }),
+          this.workspace &&
+            this.workspace.open(pathToOpen, {
+              initialLine,
+              initialColumn,
+              activateItem: activate,
+              activatePane: activate,
+            }),
         );
       }
       await Promise.all(fileOpenPromises);

@@ -1403,7 +1403,7 @@ module.exports = class TextEditor {
       const openEditorPathSegmentsWithSameFilename = [];
       for (const textEditor of atom.workspace.getTextEditors()) {
         if (textEditor.getFileName() === fileName) {
-          const pathSegments = fs.tildify(textEditor.getDirectoryPath()).split(path.sep);
+          const pathSegments = textEditor.getTildifiedDirectorySegments();
           openEditorPathSegmentsWithSameFilename.push(pathSegments);
           if (textEditor === this) myPathSegments = pathSegments;
         }
@@ -1428,6 +1428,20 @@ module.exports = class TextEditor {
     } else {
       return "untitled";
     }
+  }
+
+  // This editor's directory as `~`-abbreviated path segments, remembered until
+  // its path changes. Every editor sharing a file name recomputes these for
+  // every other one each time a long title is asked for, so with many
+  // same-named files open — a project's worth of `LICENSE`, say — the
+  // conversion runs orders of magnitude more often than the paths change.
+  getTildifiedDirectorySegments() {
+    const directoryPath = this.getDirectoryPath();
+    if (this.tildifiedSegmentsForPath !== directoryPath) {
+      this.tildifiedSegmentsForPath = directoryPath;
+      this.tildifiedSegments = fs.tildify(directoryPath).split(path.sep);
+    }
+    return this.tildifiedSegments;
   }
 
   // Essential: Returns the {String} path of this editor's text buffer.

@@ -136,14 +136,15 @@ class PaneElement extends HTMLElement {
     if (!this.itemViews.contains(itemView)) {
       this.itemViews.appendChild(itemView);
     }
-    for (const child of this.itemViews.children) {
-      if (child === itemView) {
-        if (this.attached) {
-          this.showItemView(child);
-        }
-      } else {
-        this.hideItemView(child);
-      }
+    // Exactly one view is ever shown, so hiding the one that was showing beats
+    // walking every view the pane has accumulated — that walk turns switching
+    // tabs into work proportional to how many items have been opened.
+    if (this.visibleItemView && this.visibleItemView !== itemView) {
+      this.hideItemView(this.visibleItemView);
+    }
+    this.visibleItemView = itemView;
+    if (this.attached) {
+      this.showItemView(itemView);
     }
     if (hasFocus) {
       itemView.focus();
@@ -172,6 +173,7 @@ class PaneElement extends HTMLElement {
   itemRemoved({ item, index: _index, destroyed: _destroyed }) {
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
+      if (this.visibleItemView === viewToRemove) this.visibleItemView = null;
       viewToRemove.remove();
     }
   }

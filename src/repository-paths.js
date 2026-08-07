@@ -9,14 +9,47 @@ const IS_WINDOWS = process.platform === "win32";
 // (realpath resolution, Windows 8.3 short-name handling, case-insensitive
 // filesystems, symlinked working directories) and gated by a parity spec.
 
+// Resolving a path is a filesystem round trip, and the git integration asks
+// about the same handful of paths relentlessly: every open editor's path
+// against every repository, once per interested package, on every status
+// refresh — and on Windows every comparison resolves both sides to normalize
+// 8.3 short names. A canonical form does not change while a window is open,
+// since a rename arrives as a different input string, so successful
+// resolutions are remembered. Failures are not: a path that does not exist
+// yet may exist later.
+const realpathCache = new Map();
+const realpathRecursiveCache = new Map();
+// Large enough that no real session evicts, small enough to bound a runaway.
+const REALPATH_CACHE_LIMIT = 20000;
+
+function rememberRealpath(cache, key, value) {
+  if (cache.size >= REALPATH_CACHE_LIMIT) cache.clear();
+  cache.set(key, value);
+  return value;
+}
+
+function realpathSyncNative(target) {
+  return typeof fs.realpathSync.native === "function"
+    ? fs.realpathSync.native(target)
+    : fs.realpathSync(target);
+}
+
 function realpath(unrealPath) {
+  const cached = realpathCache.get(unrealPath);
+  if (cached !== undefined) return cached;
   try {
-    return typeof fs.realpathSync.native === "function"
-      ? fs.realpathSync.native(unrealPath)
-      : fs.realpathSync(unrealPath);
+    return rememberRealpath(realpathCache, unrealPath, realpathSyncNative(unrealPath));
   } catch {
     return unrealPath;
   }
+}
+
+// Forgets every remembered resolution. Only needed when the filesystem is
+// rearranged underneath a running window — a spec moving fixtures around, or a
+// symlink being retargeted.
+function clearRealpathCache() {
+  realpathCache.clear();
+  realpathRecursiveCache.clear();
 }
 
 function isRootPath(candidate) {
@@ -44,12 +77,11 @@ function realpathRecursive(unrealPath) {
   let result = unrealPath;
   let remainder = "";
   if (!path.isAbsolute(unrealPath)) return realpath(unrealPath);
+  const cached = realpathRecursiveCache.get(unrealPath);
+  if (cached !== undefined) return cached;
   while (!isRootPath(currentPath)) {
     try {
-      result =
-        typeof fs.realpathSync.native === "function"
-          ? fs.realpathSync.native(currentPath)
-          : fs.realpathSync(currentPath);
+      result = realpathSyncNative(currentPath);
       break;
     } catch (error) {
       if (error.code === "ENOENT") {
@@ -60,8 +92,15 @@ function realpathRecursive(unrealPath) {
       }
     }
   }
+  // A path with no existing ancestor is not resolvable yet, and may become so.
   if (isRootPath(currentPath)) return unrealPath;
-  return normalizePath(trimPath(`${result}/${remainder}`));
+  const resolved = normalizePath(trimPath(`${result}/${remainder}`));
+  // Only a path that exists resolves to a stable canonical form. One
+  // reconstructed from a tail that does not exist yet can resolve differently
+  // the moment it is created — a new directory picks up its own short name on
+  // Windows — so that answer is computed fresh every time.
+  if (remainder === "") rememberRealpath(realpathRecursiveCache, unrealPath, resolved);
+  return resolved;
 }
 
 function pathStartsWith(pathA, pathB, caseInsensitive = false, useRealpath = true) {
@@ -126,4 +165,5 @@ module.exports = {
   pathStartsWith,
   pathsAreEqual,
   realpathRecursive,
+  clearRealpathCache,
 };
