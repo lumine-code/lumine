@@ -53,6 +53,33 @@ const ACRONYMS = new Map([
   ["sql", "SQL"],
 ]);
 
+// Articles, conjunctions and prepositions stay lowercase inside a title —
+// except as its first word, which is always capitalised.
+const LOWERCASE_WORDS = new Set([
+  "a",
+  "an",
+  "and",
+  "as",
+  "at",
+  "by",
+  "for",
+  "from",
+  "in",
+  "into",
+  "of",
+  "off",
+  "on",
+  "onto",
+  "or",
+  "out",
+  "per",
+  "the",
+  "to",
+  "up",
+  "via",
+  "with",
+]);
+
 const MAX_FLAT_ITEMS = 6;
 const MAX_GROUP_ITEMS = 8;
 const MAX_GROUPS = 5;
@@ -110,28 +137,13 @@ function checkLabels(item, where, report) {
   if (label.includes("...")) {
     report(`${where}: "${label}" uses three periods — write the ellipsis character`);
   }
-  for (const word of label.split(/\s+/)) {
+  const words = label.split(/\s+/);
+  for (const [index, word] of words.entries()) {
     // A filename or an identifier keeps its own case.
     if (word.includes(".") || word.includes("_") || word.length === 0) continue;
-    if (
-      /^[a-z]/.test(word) &&
-      ![
-        "a",
-        "an",
-        "and",
-        "as",
-        "at",
-        "by",
-        "for",
-        "in",
-        "of",
-        "on",
-        "or",
-        "the",
-        "to",
-        "with",
-      ].includes(word)
-    ) {
+    // The first word is capitalised whatever it is.
+    if (index > 0 && LOWERCASE_WORDS.has(word)) continue;
+    if (/^[a-z]/.test(word)) {
       report(`${where}: "${label}" is not Title Case ("${word}")`);
     }
   }
