@@ -1499,13 +1499,6 @@ module.exports = class Workspace extends Model {
     return this.open(uri, { pane });
   }
 
-  // Public: Creates a new item that corresponds to the provided URI.
-  //
-  // If no URI is given, or no registered opener can open the URI, a new empty
-  // {TextEditor} will be created.
-  //
-  // * `uri` A {String} containing a URI.
-  //
   // Whether adding `item` would take the workspace past `core.maxTextEditors`.
   //
   // Only editors are counted, and only editors are refused. They are what the
@@ -1553,6 +1546,13 @@ module.exports = class Workspace extends Model {
     return this.textEditorLimitNotification;
   }
 
+  // Public: Creates a new item that corresponds to the provided URI.
+  //
+  // If no URI is given, or no registered opener can open the URI, a new empty
+  // {TextEditor} will be created.
+  //
+  // * `uri` A {String} containing a URI.
+  //
   // Returns a {Promise} that resolves to the {TextEditor} (or other item) for the given URI.
   async createItemForURI(uri, options) {
     if (uri != null) {

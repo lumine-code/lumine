@@ -10,11 +10,6 @@ function hostForURI(uri) {
   }
 }
 
-// Public: Turns a project URI into a {Directory}, for local paths.
-//
-// This is the provider {Project} falls back to when no package claims a URI. A
-// package supplies its own by providing the `project.directory-provider`
-// service; the methods below are the shape that contract expects.
 // A resolved directory is remembered so that the next question about the same
 // URI costs nothing. Every file opened asks for its directory, and asks again
 // for each interested party — the buffer registering with the repository
@@ -29,6 +24,11 @@ function hostForURI(uri) {
 // which is exactly what would go stale.
 const MAX_REMEMBERED_DIRECTORIES = 5000;
 
+// Public: Turns a project URI into a {Directory}, for local paths.
+//
+// This is the provider {Project} falls back to when no package claims a URI. A
+// package supplies its own by providing the `project.directory-provider`
+// service; the methods below are the shape that contract expects.
 module.exports = class DefaultDirectoryProvider {
   // Public: Create a Directory that corresponds to the specified URI.
   //
