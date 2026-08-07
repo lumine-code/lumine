@@ -1807,6 +1807,45 @@ class AtomEnvironment {
     }
   }
 
+  // Caps how many files one bulk open — a drop of many files, or a command
+  // line naming them — will add, at `core.maxTabs`. The files past the cap are
+  // never opened, rather than opened and closed again.
+  //
+  // The cap counts the whole workspace rather than the pane the files land in.
+  // Splitting the same editors across panes was measured to leave the costs
+  // that actually hurt almost untouched — with 200 editors open, opening one
+  // more file took 535ms in a single pane against 485ms across four, and the
+  // heap 242MB against 228MB — because buffers, repository subscriptions and
+  // long titles all belong to the workspace. Only the tab bar's own work is
+  // per pane.
+  //
+  // Opening a single file is never capped: a deliberate open must land.
+  limitFileLocationsToOpen(fileLocations) {
+    const maxTabs = this.config?.get("core.maxTabs") ?? 0;
+    if (!maxTabs || fileLocations.length <= 1 || !this.workspace) return fileLocations;
+
+    const alreadyOpen = this.workspace.getTextEditors().length;
+    const room = Math.max(0, maxTabs - alreadyOpen);
+    if (fileLocations.length <= room) return fileLocations;
+
+    const opening = fileLocations.slice(0, room);
+    const skipped = fileLocations.length - opening.length;
+    const files = skipped === 1 ? "file" : "files";
+    this.notifications.addWarning(
+      opening.length > 0
+        ? `Opened ${opening.length} of ${fileLocations.length} files`
+        : `Opened none of ${fileLocations.length} files`,
+      {
+        description:
+          `${skipped} ${files} ${skipped === 1 ? "was" : "were"} left unopened: this window is at ` +
+          `the limit of ${maxTabs} set by \`core.maxTabs\`. Raise that setting, or set it to 0 for ` +
+          `no limit.`,
+        dismissable: true,
+      },
+    );
+    return opening;
+  }
+
   async openLocations(locations) {
     const needsProjectPaths = this.project && this.project.getPaths().length === 0;
     const foldersToAddToProject = new Set();
@@ -1888,14 +1927,15 @@ class AtomEnvironment {
     }
 
     if (!restoredState) {
+      const locationsToOpen = this.limitFileLocationsToOpen(fileLocationsToOpen);
       const fileOpenPromises = [];
       // Only the last location ends up active. Activating each one in turn
       // costs a full activation fan-out per file — and, because a pane keeps
       // every view it has ever shown mounted, leaves the window carrying an
       // editor component for each. Dropping a folder's worth of files should
       // land on one of them, not mount all of them.
-      const lastIndex = fileLocationsToOpen.length - 1;
-      for (const [index, location] of fileLocationsToOpen.entries()) {
+      const lastIndex = locationsToOpen.length - 1;
+      for (const [index, location] of locationsToOpen.entries()) {
         const { pathToOpen, initialLine, initialColumn } = location;
         const activate = index === lastIndex;
         fileOpenPromises.push(

@@ -1142,6 +1142,56 @@ describe("AtomEnvironment", () => {
         });
       });
 
+      describe("when more files are opened at once than `core.maxTabs` allows", () => {
+        const locations = (count) =>
+          Array.from({ length: count }, (_, index) => ({
+            pathToOpen: path.join(__dirname, "fixtures", "dir", `file-${index}.txt`),
+            exists: false,
+          }));
+
+        it("opens up to the limit and reports the rest as unopened", async () => {
+          atom.config.set("core.maxTabs", 3);
+          spyOn(atom.notifications, "addWarning");
+
+          await atom.openLocations(locations(7));
+
+          expect(atom.workspace.getTextEditors().length).toBe(3);
+          expect(atom.notifications.addWarning).toHaveBeenCalled();
+          expect(atom.notifications.addWarning.calls.mostRecent().args[0]).toBe(
+            "Opened 3 of 7 files",
+          );
+          expect(atom.notifications.addWarning.calls.mostRecent().args[1].description).toContain(
+            "core.maxTabs",
+          );
+        });
+
+        it("counts editors already open anywhere in the workspace", async () => {
+          atom.config.set("core.maxTabs", 4);
+          await atom.workspace.open(path.join(__dirname, "fixtures", "sample.js"));
+          expect(atom.workspace.getTextEditors().length).toBe(1);
+
+          await atom.openLocations(locations(6));
+
+          expect(atom.workspace.getTextEditors().length).toBe(4);
+        });
+
+        it("never limits a single file, so a deliberate open always lands", async () => {
+          atom.config.set("core.maxTabs", 1);
+          await atom.openLocations(locations(1));
+          await atom.openLocations([
+            { pathToOpen: path.join(__dirname, "fixtures", "dir", "beyond.txt"), exists: false },
+          ]);
+
+          expect(atom.workspace.getTextEditors().length).toBe(2);
+        });
+
+        it("does not limit anything when set to 0", async () => {
+          atom.config.set("core.maxTabs", 0);
+          await atom.openLocations(locations(6));
+          expect(atom.workspace.getTextEditors().length).toBe(6);
+        });
+      });
+
       describe("when the opened path is handled by a registered directory provider", () => {
         let serviceDisposable;
 

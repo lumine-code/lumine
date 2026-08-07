@@ -135,6 +135,14 @@ const configSchema = {
         type: "number",
         default: 40,
       },
+      maxTabs: {
+        title: "Maximum Tabs Per Open",
+        description:
+          "The most tabs a single operation will open, such as dropping a selection of files onto a pane or naming them on the command line. The rest are left unopened and reported, rather than opened and closed again. Opening one file is never limited. Set to 0 for no limit.",
+        type: "integer",
+        minimum: 0,
+        default: 50,
+      },
       colorProfile: {
         title: "Color Profile",
         description:
