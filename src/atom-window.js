@@ -9,9 +9,22 @@ const url = require("url");
 const { EventEmitter } = require("events");
 const StartupTime = require("./startup-time");
 
-let ICON_PATH = path.resolve(process.resourcesPath, "lumine.png");
-if (!fs.existsSync(ICON_PATH)) {
-  ICON_PATH = path.resolve(__dirname, "..", "resources", "app-icons", "lumine.png");
+// Packaged builds ship the icon under resourcesPath; a source checkout falls
+// back to the repo's own copy. Parameterized by filename rather than a single
+// constant so a window can pick the icon for its own run mode.
+function resolveIconPath(fileName) {
+  const packagedPath = path.resolve(process.resourcesPath, fileName);
+  if (fs.existsSync(packagedPath)) return packagedPath;
+  return path.resolve(__dirname, "..", "resources", "app-icons", fileName);
+}
+
+// Safe mode wins over dev mode the same way title-bar's launch-mode badge
+// resolves it: it is the more restrictive state, and a window can be both
+// (npm start --safe) but should read as safe, not dev.
+function iconFileNameForMode(safeMode, devMode) {
+  if (safeMode) return "lumine-safe.png";
+  if (devMode) return "lumine-dev.png";
+  return "lumine.png";
 }
 
 let includeShellLoadTime = true;
@@ -66,11 +79,19 @@ module.exports = class AtomWindow extends EventEmitter {
     };
 
     // Packaged Windows builds inherit the icon from the executable. Source
-    // builds run through Electron's executable, so set the same Lumine icon.
-    if (process.platform === "linux") options.icon = nativeImage.createFromPath(ICON_PATH);
+    // builds run through Electron's executable, so set the same Lumine icon —
+    // colored for safe/dev mode so the taskbar or dock tells you which one
+    // you are looking at before you read a single pixel of the window itself.
+    const iconPath = resolveIconPath(iconFileNameForMode(this.safeMode, this.devMode));
+    if (process.platform === "linux") options.icon = nativeImage.createFromPath(iconPath);
     if (process.platform === "win32" && process.defaultApp) {
-      options.icon = nativeImage.createFromPath(ICON_PATH);
+      options.icon = nativeImage.createFromPath(iconPath);
     }
+    // The dock icon is one per app, not per window, so with several windows
+    // open in different modes the most recently created one wins — the same
+    // "last one drawn" rule the taskbar/dock already applies to everything
+    // else about window state.
+    if (process.platform === "darwin") app.dock.setIcon(iconPath);
     if (this.shouldHideTitleBar()) options.frame = false;
 
     // Enabling window transparency creates several downstream issues relating
