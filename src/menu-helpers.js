@@ -31,7 +31,15 @@ function merge(menu, item, itemSpecificity = Infinity) {
   }
 }
 
-function unmerge(menu, item) {
+// Remove an item previously added by {merge}.
+//
+// * `structuralIds` (optional) A {Set} of ids the caller declared itself and
+//   which must survive even when nothing is left inside them. Only the
+//   top-level call passes it: a menu the platform files declare stays in the
+//   menu bar, in its position, once the package that filled it deactivates.
+//   Without this an emptied menu is spliced out and reappears at the *end* of
+//   the bar when the package activates again, because {merge} only appends.
+function unmerge(menu, item, structuralIds) {
   item = cloneMenuItem(item);
   const matchingItemIndex = findMatchingItemIndex(menu, item);
   if (matchingItemIndex === -1) {
@@ -43,6 +51,10 @@ function unmerge(menu, item) {
     for (let submenuItem of item.submenu) {
       unmerge(matchingItem.submenu, submenuItem);
     }
+  }
+
+  if (structuralIds != null && structuralIds.has(matchingItem.id)) {
+    return;
   }
 
   if (

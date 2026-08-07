@@ -72,8 +72,16 @@ module.exports = class MenuManager {
     this.initialized = false;
     this.pendingUpdateOperation = null;
     this.template = [];
+    // Top-level menus the platform file declares. They belong to the menu bar
+    // rather than to whichever package fills them, so `unmerge` must not splice
+    // one out when it empties. See {MenuHelpers.unmerge}.
+    this.structuralIds = new Set();
     this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems());
     this.packageManager.onDidActivateInitialPackages(() => this.sortPackagesMenu());
+    // A package activated after startup — installed, re-enabled, or deferred
+    // behind `activationCommands` — has already contributed its menus by the
+    // time this fires, so the Packages menu can be put back in order.
+    this.packageManager.onDidActivatePackage(() => this.sortPackagesMenu());
   }
 
   initialize({ resourcePath }) {
@@ -213,14 +221,20 @@ module.exports = class MenuManager {
   }
 
   loadPlatformItems() {
+    let menu;
     if (platformMenu != null) {
-      return this.add(platformMenu);
+      menu = platformMenu;
     } else {
       const menusDirPath = path.join(this.resourcePath, "menus");
       const platformMenuPath = fs.resolve(menusDirPath, process.platform, ["json", "jsonc"]);
-      const { menu } = CSON.readFileSync(platformMenuPath);
-      return this.add(menu);
+      ({ menu } = CSON.readFileSync(platformMenuPath));
     }
+    for (const item of menu) {
+      if (item.label != null) {
+        this.structuralIds.add(item.id != null ? item.id : MenuHelpers.normalizeLabel(item.label));
+      }
+    }
+    return this.add(menu);
   }
 
   // Merges an item in a submenu aware way such that new items are always
@@ -230,7 +244,7 @@ module.exports = class MenuManager {
   }
 
   unmerge(menu, item) {
-    MenuHelpers.unmerge(menu, item);
+    MenuHelpers.unmerge(menu, item, this.structuralIds);
   }
 
   sendToBrowserProcess(template, keystrokesByCommand) {
@@ -254,15 +268,22 @@ module.exports = class MenuManager {
     if (!(packagesMenu && packagesMenu.submenu != null)) {
       return;
     }
-    packagesMenu.submenu.sort((item1, item2) => {
-      if (item1.label && item2.label) {
-        return MenuHelpers.normalizeLabel(item1.label).localeCompare(
-          MenuHelpers.normalizeLabel(item2.label),
-        );
-      } else {
-        return 0;
-      }
-    });
+    // The platform file declares its own items and ends them with a separator;
+    // everything past that separator is a package's contribution and is the
+    // only part that sorts. Sorting the whole array would move the core items,
+    // and a comparator that answers 0 for a separator is not a total order, so
+    // the outcome would depend on the sort algorithm rather than on the menu.
+    // Packages never add a separator to a core menu, so the last separator here
+    // is always the platform file's.
+    const start = packagesMenu.submenu.findLastIndex(({ type }) => type === "separator") + 1;
+    const sorted = packagesMenu.submenu
+      .slice(start)
+      .sort((item1, item2) =>
+        (MenuHelpers.normalizeLabel(item1.label) || "").localeCompare(
+          MenuHelpers.normalizeLabel(item2.label) || "",
+        ),
+      );
+    packagesMenu.submenu.splice(start, sorted.length, ...sorted);
     return this.update();
   }
 };
