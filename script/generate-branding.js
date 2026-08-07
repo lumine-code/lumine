@@ -2,7 +2,14 @@
  * Renders every Lumine branding asset from the master art in
  * `resources/app-icons/lumine.svg`: the application icon for all three
  * platforms, the document icon, the Windows installer's bitmaps and Start-menu
- * tiles, and the square profile mark.
+ * tiles, the raw mark, and the square badge.
+ *
+ * Two sibling SVGs carry the same mark recolored for a run mode --
+ * `lumine-safe.svg` (safe mode) and `lumine-dev.svg` (dev mode). Those only
+ * ever need the runtime app icon and the square badge -- nothing else about a
+ * run mode is a distinct build, so they skip the document icon, the installer
+ * art and the Start-menu tiles, and their PNGs go straight into
+ * `resources/app-icons/` as `lumine-<mode>.png` / `lumine-square-<mode>.png`.
  *
  * Usage:
  *   electron --no-sandbox script/generate-branding.js [options]
@@ -43,7 +50,17 @@ const zlib = require("node:zlib");
 const { app, BrowserWindow } = require("electron");
 
 const REPO_ROOT = path.resolve(__dirname, "..");
-const MASTER_SVG = path.join(REPO_ROOT, "resources", "app-icons", "lumine.svg");
+const APP_ICONS_DIR = path.join(REPO_ROOT, "resources", "app-icons");
+const MASTER_SVG = path.join(APP_ICONS_DIR, "lumine.svg");
+
+// Each run mode gets its own recolored sibling of lumine.svg -- same mark,
+// same gradient shape, different hue. See readMasterArt(): all three are read
+// through the identical extraction, so a shape edit to one and not the others
+// fails loudly via the same "no longer has the expected shape" check.
+const MODE_VARIANTS = [
+  { name: "safe", svg: path.join(APP_ICONS_DIR, "lumine-safe.svg") },
+  { name: "dev", svg: path.join(APP_ICONS_DIR, "lumine-dev.svg") },
+];
 
 // Must be at least the largest asset (the 1024px icns slice). Every capture is
 // a rect out of this one viewport, so the stage is laid out and shown once
@@ -56,20 +73,30 @@ const WORDMARK_FAMILY = "Segoe UI";
 const WORDMARK_WEIGHT = 600;
 const WORDMARK_SIZE = 26;
 
-// The mark's ink spans 10..118 of lumine.svg's 128-unit canvas. Scaling that
-// canvas by 0.64 inside a tile reproduces the ink box of the tiles this repo
-// shipped before (35..115 at 150px), so the tiles do not gratuitously shift.
-const MARK_FRACTION = 0.64;
+// The mark's ink spans 19..109 of lumine.svg's 128-unit canvas (a 90-unit
+// box). Scaling that canvas by 0.77 inside a tile reproduces the ink box of
+// the tiles this repo shipped before (35..115 at 150px), so the tiles do not
+// gratuitously shift when the mark itself changes shape.
+const MARK_FRACTION = 0.77;
 
 // The gold disc is r=60 on the 128-unit canvas, so the artwork is 120 units
 // across. Badge placements scale against that, not against the canvas.
 const DISC_DIAMETER = 120;
 
-// The square mark drops the disc, so the ink is free to grow into the corner-to-
-// corner space the disc used to occupy. 1.1 takes the 10..118 ink box out to
-// 4.6..123.4, which fills the square while leaving the four sparkle tips clear
-// of a rounded-corner crop.
-const SQUARE_SCALE = 1.1;
+// The raw mark drops the disc, so the ink is free to grow into the corner-to-
+// corner space the disc used to occupy. 1.32 takes the 19..109 ink box out to
+// 4.6..123.4, which fills the square while leaving the eight ray tips clear of
+// a rounded-corner crop.
+const RAW_SCALE = 1.32;
+
+// The square badge keeps the disc's own footprint (the same 120-unit box, same
+// 4-unit margin) but swaps the circle for an actual square -- sharp corners,
+// not a rounded rect -- so the mark sits at the exact scale and position it
+// already has on the disc; nothing about squareBody() needs to know the
+// mark's geometry, only the shape behind it.
+const SQUARE_SIDE = DISC_DIAMETER;
+const SQUARE_INSET = (128 - SQUARE_SIDE) / 2;
+const SQUARE_RADIUS = 0;
 
 // Throws rather than exiting on the spot: app.exit() only schedules the exit,
 // so the rest of the current async turn would keep running against a torn-down
@@ -109,18 +136,19 @@ function parseArgs(argv) {
 
 // --- master art -------------------------------------------------------------
 
-// Pull the gradient, the disc and the white mark straight out of lumine.svg so
-// none of it is ever retyped here: the SVG stays the single source of truth,
-// and an edit that changes its shape breaks loudly instead of quietly emitting
-// blank art.
-function readMasterArt() {
-  const source = fs.readFileSync(MASTER_SVG, "utf8");
+// Pull the gradient, the disc and the white mark straight out of the given SVG
+// so none of it is ever retyped here: the SVG stays the single source of
+// truth, and an edit that changes its shape breaks loudly instead of quietly
+// emitting blank art. Takes a path rather than always reading MASTER_SVG so
+// the same extraction serves lumine.svg and its safe/dev siblings alike.
+function readMasterArt(svgPath) {
+  const source = fs.readFileSync(svgPath, "utf8");
   const gradient = source.match(/<radialGradient\b[\s\S]*?<\/radialGradient>/)?.[0];
   const mark = source.match(/<g fill="#fff">([\s\S]*?)<\/g>\s*<\/svg>/)?.[1];
   const disc = source.match(/<circle\b[^>]*r="60"[^>]*\/>/)?.[0];
   if (!gradient || !mark || !disc) {
     fail(
-      "resources/app-icons/lumine.svg no longer has the expected shape " +
+      `${path.relative(REPO_ROOT, svgPath)} no longer has the expected shape ` +
         "(a <radialGradient>, an r=60 <circle>, and a white <g> of paths)",
     );
   }
@@ -153,58 +181,33 @@ function appArt({ gradient, disc, mark }) {
   return svg("0 0 128 128", `<defs>${gradient}</defs>${disc}<g fill="#fff">${mark}</g>`);
 }
 
-// Reads one attribute off an element the master SVG was matched out of, so the
-// square mark's geometry is computed from that file rather than retyped here.
-function attr(element, name, label) {
-  const value = Number.parseFloat(element.match(new RegExp(`\\b${name}="([^"]+)"`))?.[1]);
-  if (!Number.isFinite(value)) fail(`resources/app-icons/lumine.svg: ${label} has no ${name}`);
-  return value;
+// The raw mark: the same mark, grown to fill the square and painted flat
+// black now that the disc (and the gold with it) is gone. Nothing in the
+// editor loads it — it is the avatar art, for the GitHub organisation and
+// anywhere else the logo needs to sit in a square, in one plain ink color,
+// rather than float as a colored badge. Black rather than the brand gold
+// because this is the mark at its most reusable: it prints, it stencils, it
+// reads on any light background without a gradient renderer or a color
+// carrying meaning it doesn't have here.
+function rawBody({ mark }) {
+  return `<g fill="#000" transform="translate(64 64) scale(${RAW_SCALE}) translate(-64 -64)">${mark}</g>`;
 }
 
-// The disc's gradient restated in user space, minus its dark end stop.
-//
-// Both changes are forced by painting the mark instead of the disc behind it.
-// objectBoundingBox units resolve against whichever element references the
-// fill, so on a group of a dozen separate paths every path would get its own
-// private gradient; anchoring the field to the coordinates the disc's box
-// occupies keeps one gradient across the whole mark, falling off exactly where
-// the icon puts it. And #9a6214 lands on the lower and right sparkles — a fine
-// edge on a filled disc, far too dim for ink that has to hold its own against a
-// dark page. Dropping that stop lets the field run #f6c952 -> #cf9723 and then
-// hold, so the weakest gold in the mark is still the brand gold.
-function squareGradient({ gradient, disc }) {
-  const stops = gradient.match(/<stop\b[^>]*\/>/g) ?? [];
-  if (stops.length < 3) {
-    fail("resources/app-icons/lumine.svg: the gradient no longer has a dark end stop to drop");
-  }
-  const radius = attr(disc, "r", "the gold disc");
-  const box = {
-    x: attr(disc, "cx", "the gold disc") - radius,
-    y: attr(disc, "cy", "the gold disc") - radius,
-    size: radius * 2,
-  };
-  // Trimmed because 0.36 * 120 is 43.199999999999996 in binary floating point,
-  // and the attribute should read as the number it means.
-  const round = (value) => Number(value.toFixed(3));
-  const fraction = (name) => attr(gradient, name, "the gradient") / 100;
+// The square badge: the app icon's own disc and mark, at the identical
+// footprint and scale, just with the circle swapped for a rounded rect. Reuses
+// the gradient and the disc's own fill reference verbatim rather than
+// reconstructing either, so it tracks whichever gradient id the source SVG
+// actually declares (lumine-gold, lumine-safe, lumine-dev, ...) instead of
+// assuming one. Body only, no <svg> wrapper — like rawBody(), this feeds both
+// a standalone .svg document and a rasterized .png from the same markup.
+function squareBody({ gradient, disc, mark }) {
+  const fill = disc.match(/fill="(url\([^)]+\))"/)?.[1];
+  if (!fill) fail('the disc has no fill="url(...)" for the square badge to reuse');
   return (
-    `<radialGradient id="lumine-gold" gradientUnits="userSpaceOnUse" ` +
-    `cx="${round(box.x + fraction("cx") * box.size)}" ` +
-    `cy="${round(box.y + fraction("cy") * box.size)}" ` +
-    `r="${round(fraction("r") * box.size)}">${stops.slice(0, -1).join("")}</radialGradient>`
-  );
-}
-
-// The square profile mark: the same white mark, grown to fill the square and
-// carrying the gold itself now that the disc is gone. Nothing in the editor
-// loads it — it is the avatar art, for the GitHub organisation and anywhere
-// else the logo has to sit in a square rather than float in one. Backgroundless
-// on purpose, so one asset reads on a light page and a dark one alike.
-function squareBody(art) {
-  return (
-    `<defs>${squareGradient(art)}</defs>` +
-    `<g fill="url(#lumine-gold)" transform="translate(64 64) ` +
-    `scale(${SQUARE_SCALE}) translate(-64 -64)">${art.mark}</g>`
+    `<defs>${gradient}</defs>` +
+    `<rect x="${SQUARE_INSET}" y="${SQUARE_INSET}" width="${SQUARE_SIDE}" ` +
+    `height="${SQUARE_SIDE}" rx="${SQUARE_RADIUS}" fill="${fill}"/>` +
+    `<g fill="#fff">${mark}</g>`
   );
 }
 
@@ -287,6 +290,7 @@ function assetList(art) {
   const appIcon = appArt(art);
   const documentIcon = documentArt(art);
   const tile = tileArt(art);
+  const raw = rawBody(art);
   const square = squareBody(art);
 
   return [
@@ -301,12 +305,27 @@ function assetList(art) {
       size,
     })),
 
-    // --- square profile mark ---
+    // --- raw mark ---
     // Generated rather than drawn by hand for the reason the whole script
     // exists: the copy of the logo the website keeps has already drifted from
     // this one, and a second hand-maintained vector would drift the same way.
     // The PNG is what GitHub takes — it rejects SVG for an avatar — at 1024 to
     // match lumine.png and clear the 500px minimum with room to spare.
+    {
+      file: "resources/app-icons/lumine-raw.svg",
+      kind: "svg",
+      markup: svgDocument("0 0 128 128", 128, raw),
+    },
+    {
+      file: "resources/app-icons/lumine-raw.png",
+      kind: "png",
+      markup: svg("0 0 128 128", raw),
+      size: 1024,
+    },
+
+    // --- square badge ---
+    // The disc's own gold and mark, on a rounded rect instead of a circle, for
+    // any context that wants a square icon rather than a floating circular one.
     {
       file: "resources/app-icons/lumine-square.svg",
       kind: "svg",
@@ -357,6 +376,30 @@ function assetList(art) {
       kind: "png",
       markup: tile,
       size: 140,
+    },
+  ];
+}
+
+// The two runtime assets a run-mode variant needs: the app icon (the window
+// and dock icon src/atom-window.js swaps between at launch) and the square
+// badge (for any context that wants a square rather than a circle). Everything
+// else in assetList() is packaging-time art that exists once, gold, regardless
+// of which mode the running app happens to be in — a release is one build, not
+// three, so the document icon, the installer bitmaps and the Start-menu tiles
+// never vary by mode.
+function modeVariantAssets(art, name) {
+  return [
+    {
+      file: `resources/app-icons/lumine-${name}.png`,
+      kind: "png",
+      markup: appArt(art),
+      size: 1024,
+    },
+    {
+      file: `resources/app-icons/lumine-square-${name}.png`,
+      kind: "png",
+      markup: svg("0 0 128 128", squareBody(art)),
+      size: 1024,
     },
   ];
 }
@@ -853,8 +896,11 @@ async function renderAsset(win, asset) {
 
 async function main() {
   const options = parseArgs(scriptArgs(process.argv));
-  const art = readMasterArt();
+  const art = readMasterArt(MASTER_SVG);
   const assets = assetList(art);
+  for (const variant of MODE_VARIANTS) {
+    assets.push(...modeVariantAssets(readMasterArt(variant.svg), variant.name));
+  }
 
   const win = await openStage();
   await assertOpaqueBgra(win);
@@ -891,7 +937,8 @@ async function main() {
     fs.writeFileSync(target, asset.bytes);
     console.log(`  ${String(asset.bytes.length).padStart(8)}  ${asset.file}`);
   }
-  console.log(`branding: ${rendered.length} assets written from ${path.basename(MASTER_SVG)}`);
+  const sources = [MASTER_SVG, ...MODE_VARIANTS.map((v) => v.svg)].map((p) => path.basename(p));
+  console.log(`branding: ${rendered.length} assets written from ${sources.join(", ")}`);
   app.exit(0);
 }
 

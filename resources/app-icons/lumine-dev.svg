@@ -1,12 +1,12 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
   <defs>
-    <radialGradient id="lumine-gold" cx="36%" cy="24%" r="74%">
-      <stop offset="0%" stop-color="#f6c952"/>
-      <stop offset="58%" stop-color="#cf9723"/>
-      <stop offset="100%" stop-color="#9a6214"/>
+    <radialGradient id="lumine-dev" cx="36%" cy="24%" r="74%">
+      <stop offset="0%" stop-color="#f66852"/>
+      <stop offset="58%" stop-color="#cf3a23"/>
+      <stop offset="100%" stop-color="#9a2614"/>
     </radialGradient>
   </defs>
-  <circle cx="64" cy="64" r="60" fill="url(#lumine-gold)"/>
+  <circle cx="64" cy="64" r="60" fill="url(#lumine-dev)"/>
   <g fill="#fff">
     <path d="M64 19 69.36 51.07 80.26 47.74 76.93 58.64 109 64 76.93 69.36 80.26 80.26 69.36 76.93 64 109 58.64 76.93 47.74 80.26 51.07 69.36 19 64 51.07 58.64 47.74 47.74 58.64 51.07Z"/>
   </g>
