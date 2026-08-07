@@ -71,6 +71,14 @@ jobs:
       # success. This runs against the tree `npm ci` just built.
       - name: Check bundled dependencies
         run: npm run check:bundled-deps
+      # The application menu normalizes nothing — merge only appends, unmerge
+      # never removes a separator, and the template goes straight to Electron —
+      # so a menu file's shape is exactly what the user sees. Nothing at runtime
+      # reports a package that gets it wrong; a bundled package's context-menu
+      # selectors are not even validated (Package#activateMenus skips that for
+      # bundled packages).
+      - name: Check menu conventions
+        run: npm run check:menus
 
   test:
     name: Test on ${{ matrix.os }}

@@ -178,6 +178,7 @@
     "check:editors": "node script/check-editors.js",
     "check:grammar-captures": "node script/check-grammar-captures.js",
     "check:bundled-deps": "node script/check-bundled-deps.js",
+    "check:menus": "node script/check-menus.js",
     "drive": "node script/drive.js",
     "generate:branding": "electron --no-sandbox script/generate-branding.js",
     "check:branding": "electron --no-sandbox script/generate-branding.js --check",
