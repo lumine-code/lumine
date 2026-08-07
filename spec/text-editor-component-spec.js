@@ -7041,6 +7041,64 @@ describe("TextEditorComponent", () => {
         expect(component.screenPositionForPixelPosition(pixelPosition)).toEqual([3, 4]);
       }
     });
+
+    it("counts characters rather than character widths across a decoration that renders width of its own", async () => {
+      // A text decoration can draw a label through a pseudo-element, which is
+      // how an inlay hint renders: horizontal space inside the line that
+      // belongs to no column at all. Columns past it are no longer where a
+      // character count would put them, and the label itself covers pixels
+      // that no character occupies. Packages that convert a pointer to a
+      // column lean on both answers below.
+      const style = document.createElement("style");
+      style.textContent = '.spec-label::before { content: "LLLLLLLL"; }';
+      document.head.appendChild(style);
+
+      try {
+        const { component, editor } = buildComponent({ text: "0123456789\n" });
+        editor.decorateMarker(
+          editor.markScreenRange([
+            [0, 5],
+            [0, 6],
+          ]),
+          { type: "text", class: "spec-label" },
+        );
+        await component.getNextUpdatePromise();
+
+        const charWidth = component.getBaseCharacterWidth();
+        const top = component.getLineHeight() / 2;
+        const labelStart =
+          component.pixelPositionForScreenPosition({ row: 0, column: 4 }).left + charWidth;
+        const labelEnd = component.pixelPositionForScreenPosition({ row: 0, column: 5 }).left;
+        expect(labelEnd - labelStart).toBeGreaterThan(charWidth);
+
+        // Every point on the label names the column it decorates, both of its
+        // edges being the same boundary in column space.
+        expect(
+          component.screenPositionForPixelPosition({ top, left: (labelStart + labelEnd) / 2 }),
+        ).toEqual([0, 5]);
+        expect(component.screenPositionForPixelPosition({ top, left: labelStart + 1 })).toEqual([
+          0, 5,
+        ]);
+
+        // And a column drawn past the label is still its own column, where
+        // dividing by the character width would have named a later one.
+        const seventh = component.pixelPositionForScreenPosition({ row: 0, column: 7 }).left;
+        expect(seventh).toBeGreaterThan(8 * charWidth);
+        expect(
+          component.screenPositionForPixelPosition({ top, left: seventh + charWidth / 2 }),
+        ).toEqual([0, 7]);
+
+        // Past the end of the line there is nothing left to measure against,
+        // so the position clamps: extending a rectangle out here is the
+        // caller's job.
+        const end = component.pixelPositionForScreenPosition({ row: 0, column: 10 }).left;
+        expect(
+          component.screenPositionForPixelPosition({ top, left: end + 20 * charWidth }),
+        ).toEqual([0, 10]);
+      } finally {
+        style.remove();
+      }
+    });
   });
 
   describe("model methods that delegate to the component / element", () => {
