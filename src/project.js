@@ -400,6 +400,9 @@ module.exports = class Project extends Model {
 
   // Public: Open a different project in this window.
   //
+  // * `projectPaths` {Array} of {String} paths to the directories the window
+  //   should have open.
+  //
   // Where {::setPaths} changes the folders and leaves everything else alone —
   // so the editors open on the old project stay open on the new one — this
   // changes the whole state: the current folders and the editors open on them
@@ -420,9 +423,6 @@ module.exports = class Project extends Model {
   //   save wins.
   // * Package state is not re-applied. A package that follows the project
   //   observes {::onDidChangePaths} and rebuilds itself.
-  //
-  // * `projectPaths` {Array} of {String} paths to the directories the window
-  //   should have open.
   //
   // Returns a {Promise} that resolves to `true` once the new state is in
   // place, or to `false` if the window was left as it was — because the paths
