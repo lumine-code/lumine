@@ -97,6 +97,13 @@ Tooltip.prototype.init = function (element, options) {
 
       if (trigger === "hover") {
         this.hideOnKeydownOutsideOfTooltip = () => this.hide();
+        // A wheel scroll takes the target out from under a pointer that never
+        // moved, and the hover state is recomputed from pointer events alone:
+        // no mouseout arrives to say the pointer has been left behind, so the
+        // tooltip would stand over whatever the scroll brought in its place.
+        // A wheel is the same "moved on" signal a keystroke is, and retires
+        // the tooltip the same way.
+        this.hideOnWheel = () => this.hide();
         if (this.options.selector) {
           eventIn = "mouseover";
           eventOut = "mouseout";
@@ -264,6 +271,13 @@ Tooltip.prototype.show = function () {
       window.addEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
     }
 
+    if (this.hideOnWheel) {
+      window.addEventListener("wheel", this.hideOnWheel, {
+        capture: true,
+        passive: true,
+      });
+    }
+
     const tip = this.getTooltipElement();
     this.startObservingMutations();
     const tipId = this.getUID("tooltip");
@@ -413,6 +427,10 @@ Tooltip.prototype.hide = function (callback) {
 
   if (this.hideOnKeydownOutsideOfTooltip) {
     window.removeEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
+  }
+
+  if (this.hideOnWheel) {
+    window.removeEventListener("wheel", this.hideOnWheel, true);
   }
 
   this.tip && this.tip.classList.remove("in");

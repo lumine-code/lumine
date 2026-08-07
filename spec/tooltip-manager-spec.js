@@ -113,6 +113,25 @@ describe("TooltipManager", () => {
           disposable.dispose();
         });
       });
+
+      // A scroll moves the target out from under a pointer that never moved,
+      // and no mouseout follows to say so.
+      it("hides the tooltip on wheel events", () => {
+        const disposable = manager.add(element, {
+          title: "Title",
+          trigger: "hover",
+        });
+        hover(element, function () {
+          expect(document.body.querySelector(".tooltip")).not.toBeNull();
+          element.dispatchEvent(
+            new CustomEvent("wheel", {
+              bubbles: true,
+            }),
+          );
+          expect(document.body.querySelector(".tooltip")).toBeNull();
+          disposable.dispose();
+        });
+      });
     });
 
     describe("when the trigger is 'manual'", () =>
@@ -165,6 +184,24 @@ describe("TooltipManager", () => {
       // click again to hide the tooltip because otherwise state leaks
       // into other tests.
       element.click();
+    });
+
+    // Only a tooltip the pointer opened is retired by the pointer scrolling
+    // away from it. A manual tooltip stands until it is disposed, and nothing
+    // would bring it back.
+    it("does not hide a manually triggered tooltip on wheel events", () => {
+      const disposable = manager.add(element, {
+        title: "Title",
+        trigger: "manual",
+      });
+      expect(document.body.querySelector(".tooltip")).not.toBeNull();
+      element.dispatchEvent(
+        new CustomEvent("wheel", {
+          bubbles: true,
+        }),
+      );
+      expect(document.body.querySelector(".tooltip")).not.toBeNull();
+      disposable.dispose();
     });
 
     it("allows a custom item to be specified for the content of the tooltip", () => {
