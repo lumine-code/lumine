@@ -84,7 +84,7 @@
     "ide-client": "github:lumine-code/ide-client#3c8de16385d7fb532f354e7fc6e5e06569f1d756",
     "incompatible-packages": "github:lumine-code/incompatible-packages#827c85eb9f1d9e854dd77b82208c982f31820e60",
     "jasmine": "6.3.0",
-    "keybinding-resolver": "github:lumine-code/keybinding-resolver#9eb4241419e39f7968b2362f0c24c5e5d3273af2",
+    "keybinding-resolver": "github:lumine-code/keybinding-resolver#029897f6b2736af0105a0d91f3f6e8e75747f032",
     "language-c": "github:lumine-code/language-c#9c7e1c662e6cd02f18ba3401ab8b58a370a4ff4a",
     "language-cmake": "github:lumine-code/language-cmake#5d785bb3b22993511fa13af98b08b701558fe091",
     "language-coffee-script": "github:lumine-code/language-coffee-script#6869683d04f96e7ff818cd4efced464c6710f224",
