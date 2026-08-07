@@ -78,13 +78,13 @@ module.exports = class AtomWindow extends EventEmitter {
       simpleFullscreen: this.getSimpleFullscreen(),
     };
 
-    // Packaged Windows builds inherit the icon from the executable. Source
-    // builds run through Electron's executable, so set the same Lumine icon —
-    // colored for safe/dev mode so the taskbar or dock tells you which one
-    // you are looking at before you read a single pixel of the window itself.
+    // A packaged Windows build's .exe already has an icon baked in at build
+    // time (electron-builder), but that icon cannot know the runtime mode --
+    // a packaged Lumine.exe launched with --dev still needs the colored icon
+    // set here, the same as an unpackaged source checkout does. So this runs
+    // unconditionally on win32, not just when process.defaultApp is true.
     const iconPath = resolveIconPath(iconFileNameForMode(this.safeMode, this.devMode));
-    if (process.platform === "linux") options.icon = nativeImage.createFromPath(iconPath);
-    if (process.platform === "win32" && process.defaultApp) {
+    if (process.platform === "linux" || process.platform === "win32") {
       options.icon = nativeImage.createFromPath(iconPath);
     }
     // The dock icon is one per app, not per window, so with several windows
