@@ -1808,11 +1808,11 @@ class AtomEnvironment {
   }
 
   // Caps how many files one bulk open — a drop of many files, or a command
-  // line naming them — will add, at `core.maxCenterItems`. The files past the
+  // line naming them — will add, at `core.maxTextEditors`. The files past the
   // cap are never opened, rather than opened and closed again, which would cost
   // strictly more than opening them and stopping.
   //
-  // The cap counts the workspace centre rather than the pane the files land in.
+  // The cap counts the whole workspace rather than the pane the files land in.
   // Splitting the same editors across panes was measured to leave the costs
   // that actually hurt almost untouched — with 200 editors open, opening one
   // more file took 535ms in a single pane against 485ms across four, and the
@@ -1825,14 +1825,14 @@ class AtomEnvironment {
   // item is destroyed, so a file that never opens would leave the caller
   // waiting forever.
   limitFileLocationsToOpen(fileLocations) {
-    const maxCenterItems = this.config?.get("core.maxCenterItems") ?? 0;
-    if (!maxCenterItems || fileLocations.length <= 1 || !this.workspace) return fileLocations;
+    const maxTextEditors = this.config?.get("core.maxTextEditors") ?? 0;
+    if (!maxTextEditors || fileLocations.length <= 1 || !this.workspace) return fileLocations;
 
     const waited = fileLocations.filter((location) => location.hasWaitSession);
     const cappable = fileLocations.filter((location) => !location.hasWaitSession);
 
-    const alreadyOpen = this.workspace.getCenter().getPaneItems().length;
-    const room = Math.max(0, maxCenterItems - alreadyOpen - waited.length);
+    const alreadyOpen = this.workspace.getTextEditors().length;
+    const room = Math.max(0, maxTextEditors - alreadyOpen - waited.length);
     if (cappable.length <= room) return fileLocations;
 
     const opening = waited.concat(cappable.slice(0, room));
@@ -1845,8 +1845,8 @@ class AtomEnvironment {
         : `Opened none of ${fileLocations.length} files`,
       {
         description:
-          `${skipped} ${files} ${skipped === 1 ? "was" : "were"} left unopened: the workspace ` +
-          `centre is at the limit of ${maxCenterItems} set by \`core.maxCenterItems\`. Raise that ` +
+          `${skipped} ${files} ${skipped === 1 ? "was" : "were"} left unopened: the limit of ` +
+          `${maxTextEditors} open editors set by \`core.maxTextEditors\` was reached. Raise that ` +
           `setting, or set it to 0 for no limit.`,
         dismissable: true,
         buttons: [
@@ -1876,7 +1876,7 @@ class AtomEnvironment {
             initialColumn,
             activateItem: activate,
             activatePane: activate,
-            bypassMaxCenterItems: bypassLimit,
+            bypassTextEditorLimit: bypassLimit,
           })
         );
       }),

@@ -1142,7 +1142,7 @@ describe("AtomEnvironment", () => {
         });
       });
 
-      describe("when more files are opened at once than `core.maxCenterItems` allows", () => {
+      describe("when more files are opened at once than `core.maxTextEditors` allows", () => {
         const locations = (count) =>
           Array.from({ length: count }, (_, index) => ({
             pathToOpen: path.join(__dirname, "fixtures", "dir", `file-${index}.txt`),
@@ -1150,7 +1150,7 @@ describe("AtomEnvironment", () => {
           }));
 
         it("opens up to the limit and reports the rest as unopened", async () => {
-          atom.config.set("core.maxCenterItems", 3);
+          atom.config.set("core.maxTextEditors", 3);
           spyOn(atom.notifications, "addWarning");
 
           await atom.openLocations(locations(7));
@@ -1161,12 +1161,12 @@ describe("AtomEnvironment", () => {
             "Opened 3 of 7 files",
           );
           expect(atom.notifications.addWarning.calls.mostRecent().args[1].description).toContain(
-            "core.maxCenterItems",
+            "core.maxTextEditors",
           );
         });
 
         it("offers to open the ones it left alone", async () => {
-          atom.config.set("core.maxCenterItems", 2);
+          atom.config.set("core.maxTextEditors", 2);
           spyOn(atom.notifications, "addWarning");
 
           await atom.openLocations(locations(5));
@@ -1180,7 +1180,7 @@ describe("AtomEnvironment", () => {
         });
 
         it("counts items already in the workspace center", async () => {
-          atom.config.set("core.maxCenterItems", 4);
+          atom.config.set("core.maxTextEditors", 4);
           await atom.workspace.open(path.join(__dirname, "fixtures", "sample.js"));
           expect(atom.workspace.getCenter().getPaneItems().length).toBe(1);
 
@@ -1190,7 +1190,7 @@ describe("AtomEnvironment", () => {
         });
 
         it("never limits a single file, so a deliberate open always lands", async () => {
-          atom.config.set("core.maxCenterItems", 1);
+          atom.config.set("core.maxTextEditors", 1);
           await atom.openLocations(locations(1));
           await atom.openLocations([
             { pathToOpen: path.join(__dirname, "fixtures", "dir", "beyond.txt"), exists: false },
@@ -1202,7 +1202,7 @@ describe("AtomEnvironment", () => {
         // `--wait` resolves when the item is destroyed, so a file that never
         // opens would leave the command line waiting forever.
         it("never limits a file the command line is waiting on", async () => {
-          atom.config.set("core.maxCenterItems", 2);
+          atom.config.set("core.maxTextEditors", 2);
 
           const waited = locations(5).map((location, index) =>
             index >= 3 ? { ...location, hasWaitSession: true } : location,
@@ -1215,7 +1215,7 @@ describe("AtomEnvironment", () => {
         });
 
         it("does not limit anything when set to 0", async () => {
-          atom.config.set("core.maxCenterItems", 0);
+          atom.config.set("core.maxTextEditors", 0);
           await atom.openLocations(locations(6));
           expect(atom.workspace.getTextEditors().length).toBe(6);
         });

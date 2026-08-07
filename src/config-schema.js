@@ -135,10 +135,10 @@ const configSchema = {
         type: "number",
         default: 40,
       },
-      maxCenterItems: {
-        title: "Maximum Center Items",
+      maxTextEditors: {
+        title: "Maximum Open Editors",
         description:
-          "The most items the workspace center will hold. An open that would exceed it is refused and reported, with a button to open it anyway; dropping a selection of files opens as many as fit and leaves the rest unopened, rather than opening and closing them again. Items in the docks do not count, and reopening something already open is never refused. Set to 0 for no limit.",
+          "The most editors the workspace will hold at once. Opening a file past the limit is refused and reported, with a button to open it anyway; dropping a selection of files opens as many as fit and leaves the rest unopened, rather than opening and closing them again. Only editors count, so views such as the settings or a diff always open, and reopening a file already open is never refused. Set to 0 for no limit.",
         type: "integer",
         minimum: 0,
         default: 50,
