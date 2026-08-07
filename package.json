@@ -81,7 +81,7 @@
     "grammar-selector": "github:lumine-code/grammar-selector#4fb7b50a088b7e8dbc33a5558ec9431eaa22eacd",
     "gray-matter": "^4.0.3",
     "hyperclick": "github:lumine-code/hyperclick#f05439797d93890a9f495aa2e915493f83ce5c55",
-    "ide-client": "github:lumine-code/ide-client#f050748fb190f69c7235d63d0c6487abab3c55c7",
+    "ide-client": "github:lumine-code/ide-client#10bb80751d466e6e2cc72b1217f214aafe2673e7",
     "incompatible-packages": "github:lumine-code/incompatible-packages#827c85eb9f1d9e854dd77b82208c982f31820e60",
     "jasmine": "6.3.0",
     "keybinding-resolver": "github:lumine-code/keybinding-resolver#2b0c8f12647fd7421e361d84722563d02ee3ba5a",
