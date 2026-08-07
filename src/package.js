@@ -192,6 +192,11 @@ module.exports = class Package {
   activateNow() {
     try {
       if (!this.mainModule) this.requireMainModule();
+      // {::activate} normally does this first, but a package can be forced
+      // active without it — a deserializer that needs its package up before
+      // initial activation runs, say. Everything here is flag-guarded, so the
+      // ordinary path pays nothing for the second call.
+      this.activateResources();
       this.configSchemaRegisteredOnActivate = this.registerConfigSchemaFromMainModule();
       this.registerViewProviders();
       this.activateStylesheets();

@@ -91,6 +91,32 @@ describe("Package", function () {
     });
   });
 
+  describe("::activateNow()", function () {
+    // A deserializer may need its own package active before initial package
+    // activation has run, so it forces the issue by calling `activateNow()`
+    // without `activate()` ever having prepared the package's resources.
+    it("activates the package's resources when ::activate() has not run", function () {
+      const packagePath = atom.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-provided-services");
+      const pack = buildPackage(packagePath);
+      pack.load();
+
+      expect(pack.activationDisposables).toBeUndefined();
+
+      pack.activateNow();
+
+      expect(pack.mainActivated).toBe(true);
+      expect(pack.activationDisposables).not.toBeUndefined();
+
+      let service;
+      atom.packages.serviceHub.consume("service-2", "^0.2.0", (value) => (service = value));
+      expect(service).toBe("second-service");
+
+      pack.deactivate();
+    });
+  });
+
   describe("::rebuild()", function () {
     beforeEach(function () {
       atom.packages.devMode = false;
