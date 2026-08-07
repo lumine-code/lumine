@@ -10,6 +10,20 @@ const ModuleCache = require("./module-cache");
 const BufferedProcess = require("./buffered-process");
 const { requireModule } = require("./module-utils");
 
+// Lists a directory, carrying each entry's type with it. The native-module walk
+// below asks "what is in here, and which of those are directories" for every
+// module in every package's dependency tree, and answers it here in one syscall
+// per directory rather than a stat per entry — the overwhelming majority of
+// which used to be spent on `build/Release` and nested `node_modules` paths that
+// do not exist. A missing or unreadable directory lists as empty.
+function readdirEntries(directoryPath) {
+  try {
+    return fs.readdirSync(directoryPath, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+}
+
 // Extended: Loads and activates a package's main module and resources such as
 // stylesheets, keymaps, grammar, editor properties, and menus.
 module.exports = class Package {
@@ -985,12 +999,10 @@ module.exports = class Package {
 
   // get the list of `.node` files for the given module path
   getModulePathNodeFiles(modulePath) {
-    try {
-      const modulePathNodeFiles = fs.listSync(path.join(modulePath, "build", "Release"), [".node"]);
-      return modulePathNodeFiles;
-    } catch {
-      return [];
-    }
+    const releasePath = path.join(modulePath, "build", "Release");
+    return readdirEntries(releasePath)
+      .filter((entry) => !entry.isDirectory() && entry.name.endsWith(".node"))
+      .map((entry) => path.join(releasePath, entry.name));
   }
 
   // Get a Map of all the native modules => the `.node` files that this package depends on.
@@ -1021,17 +1033,33 @@ module.exports = class Package {
       return nativeModulePaths;
     }
 
+    const visitModule = (modulePath) => {
+      const modulePathNodeFiles = this.getModulePathNodeFiles(modulePath);
+      // An empty list means the module ships no native code. Recording it anyway
+      // would name every module in the tree a native dependency.
+      if (modulePathNodeFiles.length > 0) {
+        nativeModulePaths.set(modulePath, modulePathNodeFiles);
+      }
+      traversePath(path.join(modulePath, "node_modules"));
+    };
+
     const traversePath = (nodeModulesPath) => {
-      try {
-        for (let modulePath of fs.listSync(nodeModulesPath)) {
-          const modulePathNodeFiles = this.getModulePathNodeFiles(modulePath);
-          if (modulePathNodeFiles) {
-            nativeModulePaths.set(modulePath, modulePathNodeFiles);
+      for (const entry of readdirEntries(nodeModulesPath)) {
+        if (!entry.isDirectory() && !entry.isSymbolicLink()) continue;
+        // `.bin` and npm's own bookkeeping are never modules.
+        if (entry.name.startsWith(".")) continue;
+        const entryPath = path.join(nodeModulesPath, entry.name);
+        // A scope directory holds modules rather than being one, so its native
+        // code sits a level deeper than an unscoped module's.
+        if (entry.name.startsWith("@")) {
+          for (const scoped of readdirEntries(entryPath)) {
+            if (scoped.isDirectory() || scoped.isSymbolicLink()) {
+              visitModule(path.join(entryPath, scoped.name));
+            }
           }
-          traversePath(path.join(modulePath, "node_modules"));
+        } else {
+          visitModule(entryPath);
         }
-      } catch {
-        /* ignore */
       }
     };
 
@@ -1077,6 +1105,7 @@ module.exports = class Package {
   rebuild() {
     return new Promise((resolve) =>
       this.runRebuildProcess((result) => {
+        global.localStorage.removeItem(this.getIncompatibleNativeModulesStorageKey());
         if (result.code === 0) {
           global.localStorage.removeItem(this.getBuildFailureOutputStorageKey());
         } else {
@@ -1129,12 +1158,45 @@ module.exports = class Package {
     return `${this.getStorageKeyPrefix()}:can-defer-main-module-require`;
   }
 
+  // A `.node` file is compatible with an ABI rather than with a Lumine version,
+  // so the ABI belongs in the key: an upgrade that changes it must not reuse the
+  // previous answer, and one that does not may keep it.
+  getIncompatibleNativeModulesStorageKey() {
+    return `${this.getStorageKeyPrefix()}:incompatible-native-modules:${process.versions.modules}`;
+  }
+
+  // What the memo below describes is the package's installed dependency tree, so
+  // the directory a reinstall rewrites is what says whether it still holds.
+  // Returns null for a package with no dependencies at all, which is itself a
+  // usable memo state rather than a miss.
+  getNativeModuleTreeSignature() {
+    try {
+      return fs.statSync(path.join(this.path, "node_modules")).mtimeMs;
+    } catch {
+      return null;
+    }
+  }
+
   // Get the incompatible native modules that this package depends on.
   // This recurses through all dependencies and requires all `.node` files.
   //
-  // This information is cached in local storage on a per package/version basis
-  // to minimize the impact on startup time.
+  // Walking a package's whole dependency tree costs more than activating most
+  // packages does, and every window pays it for every package, so the answer is
+  // memoized in local storage against the ABI it was computed for and the state
+  // of the tree it describes. `rebuild()` discards the memo, since that is the
+  // one operation that changes the answer without touching either.
   getIncompatibleNativeModules() {
+    const storageKey = this.getIncompatibleNativeModulesStorageKey();
+    const signature = this.getNativeModuleTreeSignature();
+    try {
+      const memo = JSON.parse(global.localStorage.getItem(storageKey));
+      if (memo && memo.signature === signature && Array.isArray(memo.incompatibleNativeModules)) {
+        return memo.incompatibleNativeModules;
+      }
+    } catch {
+      /* a corrupt memo is a miss, not a failure */
+    }
+
     const incompatibleNativeModules = [];
     const nativeModulePaths = this.getNativeModuleDependencyPathsMap();
     for (const [nativeModulePath, nodeFilesPaths] of nativeModulePaths) {
@@ -1158,6 +1220,11 @@ module.exports = class Package {
         });
       }
     }
+
+    global.localStorage.setItem(
+      storageKey,
+      JSON.stringify({ signature, incompatibleNativeModules }),
+    );
 
     return incompatibleNativeModules;
   }

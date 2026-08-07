@@ -154,6 +154,125 @@ describe("Package", function () {
     });
   });
 
+  describe("::getNativeModuleDependencyPaths()", function () {
+    const resolveFixture = () =>
+      atom.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-native-and-plain-dependencies");
+
+    beforeEach(function () {
+      atom.packages.devMode = false;
+      mockLocalStorage();
+    });
+
+    afterEach(() => (atom.packages.devMode = true));
+
+    it("reports only the dependencies that actually ship native code", function () {
+      const packagePath = resolveFixture();
+      const paths = buildPackage(packagePath).getNativeModuleDependencyPaths();
+
+      expect(paths).toContain(path.join(packagePath, "node_modules", "native-module"));
+      expect(paths).not.toContain(path.join(packagePath, "node_modules", "plain-module"));
+    });
+
+    it("finds native code inside a scoped dependency", function () {
+      const packagePath = resolveFixture();
+      const paths = buildPackage(packagePath).getNativeModuleDependencyPaths();
+
+      expect(paths).toContain(
+        path.join(packagePath, "node_modules", "@scope", "scoped-native-module"),
+      );
+    });
+
+    it("reports every incompatible native module it finds, scoped or not", function () {
+      const pack = buildPackage(resolveFixture());
+
+      expect(pack.isCompatible()).toBe(false);
+      expect(pack.incompatibleModules.map((module) => module.name).sort()).toEqual([
+        "native-module",
+        "scoped-native-module",
+      ]);
+    });
+  });
+
+  describe("::getIncompatibleNativeModules()", function () {
+    const resolveFixture = () =>
+      atom.project
+        .getDirectories()[0]
+        .resolve("packages/package-with-native-and-plain-dependencies");
+
+    beforeEach(function () {
+      atom.packages.devMode = false;
+      mockLocalStorage();
+    });
+
+    afterEach(() => (atom.packages.devMode = true));
+
+    it("does not walk the dependency tree again for a later package instance", function () {
+      const packagePath = resolveFixture();
+      const first = buildPackage(packagePath);
+      const expected = first.getIncompatibleNativeModules();
+      expect(expected.length).toBe(2);
+
+      // A fresh instance stands in for the next window opening the same package.
+      const second = buildPackage(packagePath);
+      spyOn(second, "getNativeModuleDependencyPathsMap").and.callThrough();
+
+      expect(
+        second
+          .getIncompatibleNativeModules()
+          .map((module) => module.name)
+          .sort(),
+      ).toEqual(["native-module", "scoped-native-module"]);
+      expect(second.getNativeModuleDependencyPathsMap).not.toHaveBeenCalled();
+    });
+
+    it("walks the tree again when the memo was written for a different tree", function () {
+      const packagePath = resolveFixture();
+      const pack = buildPackage(packagePath);
+      pack.getIncompatibleNativeModules();
+
+      global.localStorage.setItem(
+        pack.getIncompatibleNativeModulesStorageKey(),
+        JSON.stringify({ signature: -1, incompatibleNativeModules: [] }),
+      );
+
+      const rescanned = buildPackage(packagePath);
+      spyOn(rescanned, "getNativeModuleDependencyPathsMap").and.callThrough();
+
+      expect(rescanned.getIncompatibleNativeModules().length).toBe(2);
+      expect(rescanned.getNativeModuleDependencyPathsMap).toHaveBeenCalled();
+    });
+
+    it("walks the tree again when the memo is unreadable", function () {
+      const packagePath = resolveFixture();
+      const pack = buildPackage(packagePath);
+      global.localStorage.setItem(pack.getIncompatibleNativeModulesStorageKey(), "not json");
+
+      expect(pack.getIncompatibleNativeModules().length).toBe(2);
+    });
+
+    it("keys the memo on the ABI the answer was computed for", function () {
+      const pack = buildPackage(resolveFixture());
+      expect(pack.getIncompatibleNativeModulesStorageKey()).toContain(process.versions.modules);
+    });
+
+    it("discards the memo when the package is rebuilt", function () {
+      const pack = buildPackage(resolveFixture());
+      pack.getIncompatibleNativeModules();
+      expect(
+        global.localStorage.getItem(pack.getIncompatibleNativeModulesStorageKey()),
+      ).not.toBeNull();
+
+      const rebuildCallbacks = [];
+      spyOn(pack, "runRebuildProcess").and.callFake((callback) => rebuildCallbacks.push(callback));
+      pack.rebuild();
+      rebuildCallbacks[0]({ code: 0, stdout: "It worked" });
+
+      expect(global.localStorage.getItem(pack.getIncompatibleNativeModulesStorageKey())).toBeNull();
+    });
+  });
+
   describe("theme", function () {
     let editorElement, theme;
 

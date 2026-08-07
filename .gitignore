@@ -20,6 +20,7 @@ docs/output
 docs/includes
 spec/fixtures/evil-files/
 !spec/fixtures/packages/package-with-incompatible-native-module-loaded-conditionally/node_modules/
+!spec/fixtures/packages/package-with-native-and-plain-dependencies/node_modules/
 out/
 dist/
 binaries/
