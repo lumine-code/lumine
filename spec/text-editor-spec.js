@@ -9367,13 +9367,26 @@ describe("TextEditor", () => {
       const scrollSpy = jasmine.createSpy("::onDidRequestAutoscroll");
       editor.onDidRequestAutoscroll(scrollSpy);
 
-      editor.scrollToCursorPosition();
+      editor.scrollToCursorPosition({});
       expect(scrollSpy.calls.mostRecent().args[0].options.center).toBe(true);
 
       editor.scrollToCursorPosition({ zone: [0, 50] });
       const { options } = scrollSpy.calls.mostRecent().args[0];
       expect(options.zone).toEqual([0, 50]);
       expect(options.center).toBe(false);
+    });
+
+    it("still does not center when called with no options at all", () => {
+      // The editor's own movement commands call it this way and scroll only as
+      // far as they must; adding `zone` must not quietly turn that into a
+      // recentre on every line move.
+      const scrollSpy = jasmine.createSpy("::onDidRequestAutoscroll");
+      editor.onDidRequestAutoscroll(scrollSpy);
+
+      editor.scrollToCursorPosition();
+      const { options } = scrollSpy.calls.mostRecent().args[0];
+      expect(options.center).toBeFalsy();
+      expect(options.zone).toBeUndefined();
     });
   });
 
