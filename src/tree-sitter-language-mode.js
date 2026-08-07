@@ -25,10 +25,29 @@ const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 const REPARSE_BUDGET_PER_TRANSACTION_MILLIS = 10;
 
 const PARSE_JOB_LIMIT_MICROS = 3000;
-// Give an opened file up to 100 ms to produce its initial syntax tree. This
-// avoids showing an unhighlighted editor for most moderately sized files while
-// keeping subsequent edits responsive with the shorter incremental budget.
-const INITIAL_PARSE_JOB_LIMIT_MICROS = 100000;
+// The first slice of an opened file's initial parse runs inside the task that
+// opens the editor, so together with the editor mount around it it has to fit
+// under Chromium's 50 ms long-task threshold. 25 ms parses roughly the first
+// 60 KB in one go — nearly every source file — so those still paint
+// highlighted; anything larger colorizes progressively instead of blocking
+// the open.
+const INITIAL_PARSE_JOB_LIMIT_MICROS = 25000;
+// What the first slice cannot finish continues in `setImmediate` batches.
+// Each batch is its own task, sized well under the long-task threshold so a
+// large file's background parse never registers as jank.
+const BATCH_PARSE_JOB_LIMIT_MICROS = 15000;
+// After a parse lands, fold data is prefilled eagerly so the gutter's
+// chevrons don't each pay a query. Beyond this many rows the prefill would
+// dwarf the parse itself — a whole-buffer prefill of a 15k-line file costs
+// hundreds of milliseconds — so larger invalidations warm only this many rows
+// and leave the rest to the on-demand path, which windows its own queries.
+const FOLD_PREFILL_MAX_ROWS = 400;
+// How far a fold resolver reads around a single-row request when it has to
+// build fresh boundary data anyway: querying only the asked-for row would
+// make every scrolled-into row pay its own query, and the window costs no
+// more than the row does once the query machinery is warm.
+const FOLD_WINDOW_ROWS_BEHIND = 100;
+const FOLD_WINDOW_ROWS_AHEAD = 300;
 const PARSERS_IN_USE = new Set();
 
 const FUNCTION_TRUE = () => true;
@@ -470,7 +489,15 @@ class TreeSitterLanguageMode {
     for (let row = startRow; row < endRow; row++) {
       this.isFoldableCache[row] = undefined;
     }
-    this.prefillFoldCache(range);
+    // Invalidation must cover the whole range, but eager re-computation must
+    // not: prefilling a whole large buffer after its initial parse costs more
+    // than the parse did. Rows past the cap resolve on demand the first time
+    // the gutter asks about them.
+    let prefillRange = range;
+    if (endRow - startRow > FOLD_PREFILL_MAX_ROWS) {
+      prefillRange = new Range(range.start, new Point(startRow + FOLD_PREFILL_MAX_ROWS, 0));
+    }
+    this.prefillFoldCache(prefillRange);
   }
 
   emitRangeUpdate(range) {
@@ -833,6 +860,10 @@ class TreeSitterLanguageMode {
     let devMode = atom.inDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
     let timeoutMicros = oldTree ? this.syncTimeoutMicros : INITIAL_PARSE_JOB_LIMIT_MICROS;
+    // Async batches of an initial parse get their own, smaller budget; an
+    // incremental parse keeps its configured slice so a zero-budget test
+    // parser still advances one progress tick per batch.
+    let batchTimeoutMicros = oldTree ? this.syncTimeoutMicros : BATCH_PARSE_JOB_LIMIT_MICROS;
     parser.reset();
     PARSERS_IN_USE.add(parser);
 
@@ -919,7 +950,7 @@ class TreeSitterLanguageMode {
               callback,
               oldTree,
               includedRanges,
-              timeoutMicros,
+              batchTimeoutMicros,
             );
           } catch (err) {
             cleanup();
@@ -1947,14 +1978,25 @@ class FoldResolver {
     let scopeResolver = this.layer.scopeResolver;
     scopeResolver.reset();
 
+    // A fresh query pays the same machinery whether it reads one row or a few
+    // hundred, and single-row requests arrive in runs — the gutter resolving
+    // rows as they scroll in. Reading a window around the request lets those
+    // neighbors reuse this pass instead of each running their own.
+    let queryStart = start;
+    let queryEnd = end;
+    if (end.row - start.row <= 1) {
+      queryStart = new Point(Math.max(0, start.row - FOLD_WINDOW_ROWS_BEHIND), 0);
+      queryEnd = new Point(end.row + FOLD_WINDOW_ROWS_AHEAD, 0);
+    }
+
     // Instead of keying off of a plain buffer position, this tree also
     // considers whether the boundary is a fold start or a fold end. If one
     // boundary ends at the same point that another one starts, the ending
     // boundary will be visited first.
     let boundaries = createTree(compareBoundaries);
     let captures = this.layer.queries.foldsQuery.captures(rootNode, {
-      startPosition: start,
-      endPosition: end,
+      startPosition: queryStart,
+      endPosition: queryEnd,
     });
 
     for (let capture of captures) {
@@ -1979,7 +2021,7 @@ class FoldResolver {
         this.layer.foldNodesToInvalidateOnChange.add(capture.node.id);
       }
 
-      if (capture.node.startPosition.row < start.row) {
+      if (capture.node.startPosition.row < queryStart.row) {
         // This fold starts before the range we're interested in. We needed to
         // run these nodes through the scope resolver for various reasons, but
         // they're not relevant to our iterator.
@@ -2002,7 +2044,8 @@ class FoldResolver {
     scopeResolver.reset();
 
     this.boundaries = boundaries;
-    this.boundariesRange = new Range(start, end);
+    // The widened range, so the neighbors this pass read for can reuse it.
+    this.boundariesRange = new Range(queryStart, queryEnd);
 
     return boundaries.ge(start);
   }
