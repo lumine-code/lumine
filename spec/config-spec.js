@@ -1906,6 +1906,52 @@ describe("Config", () => {
       });
     });
 
+    describe('when the value has an "array" type with minItems and maxItems', () => {
+      beforeEach(() => {
+        atom.config.setSchema("foo.bar", {
+          type: "array",
+          default: [0, 50],
+          items: {
+            type: "integer",
+            minimum: 0,
+            maximum: 100,
+          },
+          minItems: 1,
+          maxItems: 2,
+        });
+      });
+
+      it("accepts an array whose length is within the bounds", () => {
+        expect(atom.config.set("foo.bar", [25])).toBe(true);
+        expect(atom.config.get("foo.bar")).toEqual([25]);
+
+        expect(atom.config.set("foo.bar", [10, 75])).toBe(true);
+        expect(atom.config.get("foo.bar")).toEqual([10, 75]);
+      });
+
+      it("rejects an array with too few or too many items, leaving the value alone", () => {
+        atom.config.set("foo.bar", [10, 75]);
+
+        expect(atom.config.set("foo.bar", [])).toBe(false);
+        expect(atom.config.get("foo.bar")).toEqual([10, 75]);
+
+        expect(atom.config.set("foo.bar", [1, 2, 3])).toBe(false);
+        expect(atom.config.get("foo.bar")).toEqual([10, 75]);
+      });
+
+      it("bounds the length that survives item coercion rather than the length given", () => {
+        // Both items fail the item schema and are dropped, so what would have
+        // been set is the empty array rather than the pair that was passed.
+        expect(atom.config.set("foo.bar", ["nope", "also nope"])).toBe(false);
+        expect(atom.config.get("foo.bar")).toEqual([0, 50]);
+      });
+
+      it("still clamps each item to the item schema's minimum and maximum", () => {
+        expect(atom.config.set("foo.bar", [-20, 400])).toBe(true);
+        expect(atom.config.get("foo.bar")).toEqual([0, 100]);
+      });
+    });
+
     describe('when the value has a "color" type', () => {
       beforeEach(() => {
         const schema = {

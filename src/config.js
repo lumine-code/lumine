@@ -214,7 +214,11 @@ const schemaEnforcers = {};
 // #### array
 //
 // Value must be an Array. The types of the values can be specified by a
-// subschema in the `items` key.
+// subschema in the `items` key. An item that does not conform to that subschema
+// is dropped rather than rejecting the whole array. Supports the (optional)
+// `minItems` and `maxItems` keys, which bound the length of the array that
+// survives; a value outside those bounds is rejected and the setting keeps its
+// previous value.
 //
 // ```json
 // {
@@ -225,6 +229,8 @@ const schemaEnforcers = {};
 //       "minimum": 1.5,
 //       "maximum": 11.5
 //     },
+//     "minItems": 1,
+//     "maxItems": 3,
 //     "default": [1, 2, 3]
 //   }
 // }
@@ -1596,6 +1602,29 @@ Config.addSchemaEnforcers({
       } else {
         return value;
       }
+    },
+
+    // Runs after `coerce`, so the length being bounded is the one the setting
+    // would actually take: an item the subschema rejected is already gone.
+    // Unlike `minimum`/`maximum` on a number this rejects rather than clamps —
+    // there is no answer to which of the surplus items the user meant to keep.
+    validateItemCount(keyPath, value, schema) {
+      const { minItems, maxItems } = schema;
+      if (typeof minItems === "number" && value.length < minItems) {
+        throw new Error(
+          `Validation failed at ${keyPath}, ${JSON.stringify(
+            value,
+          )} must have at least ${minItems} item(s)`,
+        );
+      }
+      if (typeof maxItems === "number" && value.length > maxItems) {
+        throw new Error(
+          `Validation failed at ${keyPath}, ${JSON.stringify(
+            value,
+          )} must have at most ${maxItems} item(s)`,
+        );
+      }
+      return value;
     },
   },
 

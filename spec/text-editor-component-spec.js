@@ -1562,6 +1562,172 @@ describe("TextEditorComponent", () => {
       expect(actualScrollCenter).toBeCloseTo(expectedScrollCenter, 0);
     });
 
+    describe("the `zone` option", () => {
+      // A tall buffer of short lines: no soft wrap and no horizontal scrollbar,
+      // so the only geometry these specs depend on is the line height.
+      async function buildZoneComponent() {
+        const { component, element, editor } = buildComponent({
+          autoHeight: false,
+          text: "abcdefgh\n".repeat(50),
+        });
+        element.style.height = 9.5 * component.measurements.lineHeight + "px";
+        await component.getNextUpdatePromise();
+        return { component, element, editor };
+      }
+
+      // The band measures the travel the range has between the two autoscroll
+      // margins, so the expectations are derived the same way rather than
+      // hard-coded against the platform's font metrics.
+      function offsetForPercentage(component, percentage, rangeHeightInLines = 1) {
+        const margin = component.getVerticalAutoscrollMargin();
+        const travel =
+          component.getScrollContainerClientHeight() -
+          2 * margin -
+          rangeHeightInLines * component.getLineHeight();
+        return margin + travel * (percentage / 100);
+      }
+
+      it("pins the range to a single percentage of the viewport", async () => {
+        const { component, editor } = await buildZoneComponent();
+        const lineHeight = component.getLineHeight();
+
+        editor.scrollToScreenPosition([10, 0], { zone: 25 });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          10 * lineHeight - offsetForPercentage(component, 25),
+        );
+
+        // Strict: it scrolls back for a row that is already comfortably on
+        // screen, which the default behaviour never does.
+        editor.scrollToScreenPosition([11, 0], { zone: 25 });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          11 * lineHeight - offsetForPercentage(component, 25),
+        );
+      });
+
+      it("leaves the viewport alone while the range is inside a two-ended zone", async () => {
+        const { component, editor } = await buildZoneComponent();
+
+        editor.scrollToScreenPosition([12, 0], { zone: [0, 100] });
+        await component.getNextUpdatePromise();
+        const scrollTop = component.getScrollTop();
+        expect(scrollTop).toBeGreaterThan(0);
+
+        editor.scrollToScreenPosition([11, 0], { zone: [0, 100] });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBe(scrollTop);
+      });
+
+      it("scrolls to the nearer edge of the zone once the range leaves it", async () => {
+        const { component, editor } = await buildZoneComponent();
+        const lineHeight = component.getLineHeight();
+
+        editor.scrollToScreenPosition([12, 0], { zone: [20, 60] });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          12 * lineHeight - offsetForPercentage(component, 60),
+        );
+
+        // Above the zone now, so the row lands on its upper edge instead.
+        editor.scrollToScreenPosition([9, 0], { zone: [20, 60] });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          9 * lineHeight - offsetForPercentage(component, 20),
+        );
+      });
+
+      it("reproduces the default vertical autoscroll with `[0, 100]`", async () => {
+        const range = [
+          [12, 0],
+          [14, 0],
+        ];
+
+        const byDefault = await buildZoneComponent();
+        byDefault.editor.scrollToScreenRange(range);
+        await byDefault.component.getNextUpdatePromise();
+
+        const byZone = await buildZoneComponent();
+        byZone.editor.scrollToScreenRange(range, { zone: [0, 100] });
+        await byZone.component.getNextUpdatePromise();
+
+        expect(byZone.component.getScrollTop()).toBeNear(byDefault.component.getScrollTop());
+      });
+
+      it("reproduces the `center` option with `50`", async () => {
+        const range = [
+          [12, 0],
+          [14, 0],
+        ];
+
+        const byCenter = await buildZoneComponent();
+        byCenter.editor.scrollToScreenRange(range, { center: true });
+        await byCenter.component.getNextUpdatePromise();
+
+        const byZone = await buildZoneComponent();
+        byZone.editor.scrollToScreenRange(range, { zone: 50 });
+        await byZone.component.getNextUpdatePromise();
+
+        expect(byZone.component.getScrollTop()).toBeNear(byCenter.component.getScrollTop());
+      });
+
+      it("lands on the opposite edge when the pair is inverted", async () => {
+        const { component, editor } = await buildZoneComponent();
+        const lineHeight = component.getLineHeight();
+
+        // Same band as [0, 50], but leaving through the bottom throws the row
+        // up to the top of it rather than resting it on the edge it crossed.
+        editor.scrollToScreenPosition([12, 0], { zone: [50, 0] });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          12 * lineHeight - offsetForPercentage(component, 0),
+        );
+
+        // And leaving through the top throws it down to the bottom of the band.
+        editor.scrollToScreenPosition([11, 0], { zone: [50, 0] });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          11 * lineHeight - offsetForPercentage(component, 50),
+        );
+      });
+
+      it("clamps percentages to 0-100", async () => {
+        const { component, editor } = await buildZoneComponent();
+        const lineHeight = component.getLineHeight();
+
+        editor.scrollToScreenPosition([12, 0], { zone: [-40, 900] });
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          12 * lineHeight - offsetForPercentage(component, 100),
+        );
+      });
+
+      it("rests a range too tall to fit against the top margin", async () => {
+        const { component, editor } = await buildZoneComponent();
+        const lineHeight = component.getLineHeight();
+
+        editor.scrollToScreenRange(
+          [
+            [8, 0],
+            [30, 0],
+          ],
+          { zone: 100 },
+        );
+        await component.getNextUpdatePromise();
+        expect(component.getScrollTop()).toBeNear(
+          8 * lineHeight - component.getVerticalAutoscrollMargin(),
+        );
+      });
+
+      it("rejects a zone that is not a percentage or a pair of them", () => {
+        const { editor } = buildComponent({ autoHeight: false });
+        expect(() => editor.scrollToScreenPosition([2, 0], { zone: "0-50" })).toThrow();
+        expect(() => editor.scrollToScreenPosition([2, 0], { zone: [] })).toThrow();
+        expect(() => editor.scrollToScreenPosition([2, 0], { zone: [0, 50, 100] })).toThrow();
+        expect(() => editor.scrollToScreenPosition([2, 0], { zone: [0, NaN] })).toThrow();
+      });
+    });
+
     it("automatically scrolls horizontally when the requested range is within the horizontal scroll margin of the right edge of the gutter or right edge of the scroll container", async () => {
       const { component, element, editor } = buildComponent();
       element.style.width =

@@ -9339,6 +9339,42 @@ describe("TextEditor", () => {
         options: { center: false, reversed: true },
       });
     });
+
+    it("normalizes a `zone` to a pair of percentages without reordering it", () => {
+      const scrollSpy = jasmine.createSpy("::onDidRequestAutoscroll");
+      editor.onDidRequestAutoscroll(scrollSpy);
+
+      editor.scrollToScreenPosition([8, 20], { zone: 25 });
+      expect(scrollSpy.calls.mostRecent().args[0].options.zone).toEqual([25, 25]);
+
+      // An inverted pair is the maximum-scroll form, not a mistake to fix up.
+      editor.scrollToScreenPosition([8, 20], { zone: [75, 10] });
+      expect(scrollSpy.calls.mostRecent().args[0].options.zone).toEqual([75, 10]);
+
+      editor.scrollToScreenPosition([8, 20], { zone: [-5, 150] });
+      expect(scrollSpy.calls.mostRecent().args[0].options.zone).toEqual([0, 100]);
+    });
+
+    it("does not mutate the options object it was given", () => {
+      const options = { zone: 25 };
+      editor.scrollToScreenPosition([8, 20], options);
+      expect(options).toEqual({ zone: 25 });
+    });
+  });
+
+  describe("::scrollToCursorPosition([options])", () => {
+    it("asks for a zone instead of centering when one is given", () => {
+      const scrollSpy = jasmine.createSpy("::onDidRequestAutoscroll");
+      editor.onDidRequestAutoscroll(scrollSpy);
+
+      editor.scrollToCursorPosition();
+      expect(scrollSpy.calls.mostRecent().args[0].options.center).toBe(true);
+
+      editor.scrollToCursorPosition({ zone: [0, 50] });
+      const { options } = scrollSpy.calls.mostRecent().args[0];
+      expect(options.zone).toEqual([0, 50]);
+      expect(options.center).toBe(false);
+    });
   });
 
   describe("scroll past end", () => {

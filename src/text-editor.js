@@ -4888,10 +4888,14 @@ module.exports = class TextEditor {
   // off-screen.
   //
   // * `options` (optional) {Object}
-  //   * `center` Center the editor around the cursor if possible. (default: true)
-  scrollToCursorPosition(options) {
+  //   * `center` Center the editor around the cursor if possible. (default: true,
+  //     unless `zone` is given)
+  //   * `zone` Land the cursor inside a band of the viewport. See
+  //     {::scrollToScreenRange}.
+  scrollToCursorPosition(options = {}) {
     this.getLastCursor().autoscroll({
-      center: options && options.center !== false,
+      zone: options.zone,
+      center: options.zone == null && options.center !== false,
     });
   }
 
@@ -4901,6 +4905,8 @@ module.exports = class TextEditor {
   //   an {Object} (`{row, column}`), {Array} (`[row, column]`), or {Point}
   // * `options` (optional) {Object}
   //   * `center` Center the editor around the position if possible. (default: false)
+  //   * `zone` Land the position inside a band of the viewport. See
+  //     {::scrollToScreenRange}.
   scrollToBufferPosition(bufferPosition, options) {
     return this.scrollToScreenPosition(
       this.screenPositionForBufferPosition(bufferPosition),
@@ -4914,12 +4920,34 @@ module.exports = class TextEditor {
   //    an {Object} (`{row, column}`), {Array} (`[row, column]`), or {Point}
   // * `options` (optional) {Object}
   //   * `center` Center the editor around the position if possible. (default: false)
+  //   * `zone` Land the position inside a band of the viewport. See
+  //     {::scrollToScreenRange}.
   scrollToScreenPosition(screenPosition, options) {
     this.scrollToScreenRange(new Range(screenPosition, screenPosition), options);
   }
 
+  // Extended: Scrolls the editor to the given screen range.
+  //
+  // * `screenRange` A {Range} or range-compatible {Array}.
+  // * `options` (optional) {Object}
+  //   * `center` Center the editor around the range if possible. (default: false)
+  //   * `zone` Where in the viewport the range should come to rest, as a
+  //     percentage of the travel it has between the vertical scroll margins: `0`
+  //     rests it against the top margin and `100` against the bottom one. A
+  //     {Number} pins the range to that one spot. An {Array} of two numbers
+  //     names where it lands after leaving the band through the top and after
+  //     leaving it through the bottom, and so describes the band itself —
+  //     nothing scrolls while the range is already inside. Ordered
+  //     (`[0, 50]`) that is the edge it just crossed, the smallest scroll that
+  //     brings it back; inverted (`[50, 0]`) it is the opposite edge, throwing
+  //     the range across the viewport to leave the most room ahead of it.
+  //     `[0, 100]` is the default behaviour and `50` is `center`.
+  //   * `reversed` Scroll to the start of the range before its end when both
+  //     are off-screen. (default: true)
+  //   * `clip` Clip the range to the editor's contents first. (default: true)
   scrollToScreenRange(screenRange, options = {}) {
     if (options.clip !== false) screenRange = this.clipScreenRange(screenRange);
+    if (options.zone != null) options = { ...options, zone: normalizeScrollZone(options.zone) };
     const scrollEvent = { screenRange, options };
     if (this.component) this.component.didRequestAutoscroll(scrollEvent);
     this.emitter.emit("did-request-autoscroll", scrollEvent);
@@ -5671,6 +5699,26 @@ function columnRangeForStartDelimiter(line, delimiter) {
   let endColumn = startColumn + delimiter.length;
   if (line[endColumn] === " ") endColumn++;
   return [startColumn, endColumn];
+}
+
+// Normalizes the `zone` autoscroll option to a pair of percentages, so the
+// component never has to ask what shape it was given. A lone number is a band of
+// zero height: the one spot the range is pinned to. The pair is deliberately not
+// reordered — which end comes first is what distinguishes the least possible
+// scroll from the greatest.
+function normalizeScrollZone(zone) {
+  const bounds = Array.isArray(zone) ? zone : [zone];
+  if (bounds.length < 1 || bounds.length > 2 || !bounds.every(Number.isFinite)) {
+    throw new TypeError(
+      `Invalid autoscroll zone: ${JSON.stringify(
+        zone,
+      )} must be a percentage or a pair of percentages`,
+    );
+  }
+  const [afterLeavingTop, afterLeavingBottom = afterLeavingTop] = bounds.map((bound) =>
+    Math.min(100, Math.max(0, bound)),
+  );
+  return [afterLeavingTop, afterLeavingBottom];
 }
 
 function columnRangeForEndDelimiter(line, delimiter) {

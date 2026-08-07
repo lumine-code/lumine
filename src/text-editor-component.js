@@ -2863,6 +2863,16 @@ module.exports = class TextEditorComponent {
       this.pixelPositionAfterBlocksForRow(screenRange.end.row) + this.getLineHeight();
     const verticalScrollMargin = this.getVerticalAutoscrollMargin();
 
+    if (options && options.zone) {
+      this.autoscrollVerticallyIntoZone(
+        screenRangeTop,
+        screenRangeBottom,
+        options.zone,
+        verticalScrollMargin,
+      );
+      return false;
+    }
+
     let desiredScrollTop, desiredScrollBottom;
     if (options && options.center) {
       const desiredScrollCenter = (screenRangeTop + screenRangeBottom) / 2;
@@ -2890,6 +2900,44 @@ module.exports = class TextEditorComponent {
     }
 
     return false;
+  }
+
+  // Brings the range to rest somewhere inside a caller-defined band of the
+  // viewport. The two percentages say where the range lands after it leaves the
+  // band through the top and after it leaves through the bottom; between them
+  // they also describe the band, so nothing moves while the range is already
+  // inside it. Ordered, they name the edge the range just crossed, which moves
+  // it the least. Inverted, they name the opposite edge, which throws it across
+  // the viewport and leaves the most room ahead of it. Equal, there is no band
+  // left and the range is pinned to that one spot.
+  //
+  // A percentage measures the travel the range has between the two autoscroll
+  // margins, so 0 rests it against the top margin and 100 against the bottom
+  // one whatever its height; a range too tall to fit between them has no travel
+  // left and simply rests at the top margin. Both ends are compared against the
+  // range's own top, which is what makes the band an exact generalization of
+  // what the editor already did: `[0, 100]` scrolls precisely when the default
+  // would and to the same place, and `50` matches `center`.
+  autoscrollVerticallyIntoZone(
+    rangeTop,
+    rangeBottom,
+    [afterLeavingTop, afterLeavingBottom],
+    margin,
+  ) {
+    const travel = Math.max(
+      0,
+      this.getScrollContainerClientHeight() - 2 * margin - (rangeBottom - rangeTop),
+    );
+    const offsetForPercentage = (percentage) => margin + travel * (percentage / 100);
+    const topOffset = offsetForPercentage(afterLeavingTop);
+    const bottomOffset = offsetForPercentage(afterLeavingBottom);
+    const relativeTop = rangeTop - this.getScrollTop();
+
+    if (relativeTop < Math.min(topOffset, bottomOffset)) {
+      this.setScrollTop(rangeTop - topOffset);
+    } else if (relativeTop > Math.max(topOffset, bottomOffset)) {
+      this.setScrollTop(rangeTop - bottomOffset);
+    }
   }
 
   autoscrollHorizontally(screenRange, options) {
