@@ -780,6 +780,83 @@ describe("Workspace", () => {
       });
     });
 
+    describe("when the workspace center already holds `core.maxCenterItems` items", () => {
+      beforeEach(() => {
+        // The limit stands down in spec mode, since suites open far more files
+        // than any sane limit; these specs are the ones that want it.
+        spyOn(atom, "inSpecMode").and.returnValue(false);
+      });
+
+      it("refuses the open, resolving with nothing", async () => {
+        await workspace.open("sample.js");
+        atom.config.set("core.maxCenterItems", 1);
+
+        const editor = await workspace.open("sample.txt");
+
+        expect(editor).toBeUndefined();
+        expect(workspace.getCenter().getPaneItems().length).toBe(1);
+      });
+
+      it("says so once, with a button that opens it anyway", async () => {
+        await workspace.open("sample.js");
+        atom.config.set("core.maxCenterItems", 1);
+        spyOn(workspace.notificationManager, "addWarning").and.callThrough();
+
+        await workspace.open("sample.txt");
+        await workspace.open("sample.txt");
+
+        expect(workspace.notificationManager.addWarning.calls.count()).toBe(2);
+        const [message, options] = workspace.notificationManager.addWarning.calls.mostRecent().args;
+        expect(message).toBe("The workspace center is full");
+        expect(options.description).toContain("core.maxCenterItems");
+
+        await options.buttons[0].onDidClick();
+        expect(workspace.getCenter().getPaneItems().length).toBe(2);
+      });
+
+      it("never refuses an item that is already open", async () => {
+        const first = await workspace.open("sample.js");
+        atom.config.set("core.maxCenterItems", 1);
+
+        expect(await workspace.open("sample.js")).toBe(first);
+        expect(workspace.getCenter().getPaneItems().length).toBe(1);
+      });
+
+      it("never refuses an item bound for a dock", async () => {
+        await workspace.open("sample.js");
+        atom.config.set("core.maxCenterItems", 1);
+        workspace.addOpener((uri) =>
+          uri === "atom://docked"
+            ? {
+                getDefaultLocation: () => "right",
+                getTitle: () => "Docked",
+                element: document.createElement("div"),
+              }
+            : undefined,
+        );
+
+        expect(await workspace.open("atom://docked")).not.toBeUndefined();
+        expect(workspace.getRightDock().getPaneItems().length).toBe(1);
+      });
+
+      it("does not count a preview against the limit when one is already pending", async () => {
+        await workspace.open("sample.js", { pending: true });
+        atom.config.set("core.maxCenterItems", 1);
+
+        const editor = await workspace.open("sample.txt", { pending: true });
+
+        expect(editor).not.toBeUndefined();
+        expect(workspace.getCenter().getPaneItems().length).toBe(1);
+      });
+
+      it("does not limit anything when set to 0", async () => {
+        await workspace.open("sample.js");
+        atom.config.set("core.maxCenterItems", 0);
+
+        expect(await workspace.open("sample.txt")).not.toBeUndefined();
+      });
+    });
+
     describe("when passed a path that matches a custom opener", () => {
       it("returns the resource returned by the custom opener", async () => {
         const fooOpener = (pathToOpen, options) => {

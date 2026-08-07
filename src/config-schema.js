@@ -135,10 +135,10 @@ const configSchema = {
         type: "number",
         default: 40,
       },
-      maxTabs: {
-        title: "Maximum Tabs Per Open",
+      maxCenterItems: {
+        title: "Maximum Center Items",
         description:
-          "The most tabs a single operation will open, such as dropping a selection of files onto a pane or naming them on the command line. The rest are left unopened and reported, rather than opened and closed again. Opening one file is never limited. Set to 0 for no limit.",
+          "The most items the workspace center will hold. An open that would exceed it is refused and reported, with a button to open it anyway; dropping a selection of files opens as many as fit and leaves the rest unopened, rather than opening and closing them again. Items in the docks do not count, and reopening something already open is never refused. Set to 0 for no limit.",
         type: "integer",
         minimum: 0,
         default: 50,

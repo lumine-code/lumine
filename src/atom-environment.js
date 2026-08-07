@@ -1808,10 +1808,11 @@ class AtomEnvironment {
   }
 
   // Caps how many files one bulk open — a drop of many files, or a command
-  // line naming them — will add, at `core.maxTabs`. The files past the cap are
-  // never opened, rather than opened and closed again.
+  // line naming them — will add, at `core.maxCenterItems`. The files past the
+  // cap are never opened, rather than opened and closed again, which would cost
+  // strictly more than opening them and stopping.
   //
-  // The cap counts the whole workspace rather than the pane the files land in.
+  // The cap counts the workspace centre rather than the pane the files land in.
   // Splitting the same editors across panes was measured to leave the costs
   // that actually hurt almost untouched — with 200 editors open, opening one
   // more file took 535ms in a single pane against 485ms across four, and the
@@ -1819,17 +1820,24 @@ class AtomEnvironment {
   // long titles all belong to the workspace. Only the tab bar's own work is
   // per pane.
   //
-  // Opening a single file is never capped: a deliberate open must land.
+  // Two things are never capped. A single file, because a deliberate open must
+  // land. And a file the command line is waiting on: `--wait` resolves when the
+  // item is destroyed, so a file that never opens would leave the caller
+  // waiting forever.
   limitFileLocationsToOpen(fileLocations) {
-    const maxTabs = this.config?.get("core.maxTabs") ?? 0;
-    if (!maxTabs || fileLocations.length <= 1 || !this.workspace) return fileLocations;
+    const maxCenterItems = this.config?.get("core.maxCenterItems") ?? 0;
+    if (!maxCenterItems || fileLocations.length <= 1 || !this.workspace) return fileLocations;
 
-    const alreadyOpen = this.workspace.getTextEditors().length;
-    const room = Math.max(0, maxTabs - alreadyOpen);
-    if (fileLocations.length <= room) return fileLocations;
+    const waited = fileLocations.filter((location) => location.hasWaitSession);
+    const cappable = fileLocations.filter((location) => !location.hasWaitSession);
 
-    const opening = fileLocations.slice(0, room);
-    const skipped = fileLocations.length - opening.length;
+    const alreadyOpen = this.workspace.getCenter().getPaneItems().length;
+    const room = Math.max(0, maxCenterItems - alreadyOpen - waited.length);
+    if (cappable.length <= room) return fileLocations;
+
+    const opening = waited.concat(cappable.slice(0, room));
+    const skippedLocations = cappable.slice(room);
+    const skipped = skippedLocations.length;
     const files = skipped === 1 ? "file" : "files";
     this.notifications.addWarning(
       opening.length > 0
@@ -1837,13 +1845,42 @@ class AtomEnvironment {
         : `Opened none of ${fileLocations.length} files`,
       {
         description:
-          `${skipped} ${files} ${skipped === 1 ? "was" : "were"} left unopened: this window is at ` +
-          `the limit of ${maxTabs} set by \`core.maxTabs\`. Raise that setting, or set it to 0 for ` +
-          `no limit.`,
+          `${skipped} ${files} ${skipped === 1 ? "was" : "were"} left unopened: the workspace ` +
+          `centre is at the limit of ${maxCenterItems} set by \`core.maxCenterItems\`. Raise that ` +
+          `setting, or set it to 0 for no limit.`,
         dismissable: true,
+        buttons: [
+          {
+            text: skipped === 1 ? "Open it anyway" : `Open the other ${skipped} anyway`,
+            onDidClick: () => this.openFileLocations(skippedLocations, { bypassLimit: true }),
+          },
+        ],
       },
     );
     return opening;
+  }
+
+  // Opens each location, activating only the last: activating every one costs a
+  // full fan-out per file, and a pane keeps every view it has ever shown
+  // mounted, so a bulk open would otherwise leave the window carrying an editor
+  // component for each.
+  openFileLocations(fileLocations, { bypassLimit = false } = {}) {
+    const lastIndex = fileLocations.length - 1;
+    return Promise.all(
+      fileLocations.map(({ pathToOpen, initialLine, initialColumn }, index) => {
+        const activate = index === lastIndex;
+        return (
+          this.workspace &&
+          this.workspace.open(pathToOpen, {
+            initialLine,
+            initialColumn,
+            activateItem: activate,
+            activatePane: activate,
+            bypassMaxCenterItems: bypassLimit,
+          })
+        );
+      }),
+    );
   }
 
   async openLocations(locations) {
@@ -1927,28 +1964,11 @@ class AtomEnvironment {
     }
 
     if (!restoredState) {
-      const locationsToOpen = this.limitFileLocationsToOpen(fileLocationsToOpen);
-      const fileOpenPromises = [];
-      // Only the last location ends up active. Activating each one in turn
-      // costs a full activation fan-out per file — and, because a pane keeps
-      // every view it has ever shown mounted, leaves the window carrying an
-      // editor component for each. Dropping a folder's worth of files should
-      // land on one of them, not mount all of them.
-      const lastIndex = locationsToOpen.length - 1;
-      for (const [index, location] of locationsToOpen.entries()) {
-        const { pathToOpen, initialLine, initialColumn } = location;
-        const activate = index === lastIndex;
-        fileOpenPromises.push(
-          this.workspace &&
-            this.workspace.open(pathToOpen, {
-              initialLine,
-              initialColumn,
-              activateItem: activate,
-              activatePane: activate,
-            }),
-        );
-      }
-      await Promise.all(fileOpenPromises);
+      // These have already been decided against the limit, so opening them must
+      // not be refused a second time by the check inside `Workspace.open`.
+      await this.openFileLocations(this.limitFileLocationsToOpen(fileLocationsToOpen), {
+        bypassLimit: true,
+      });
     }
 
     if (missingFolders.length > 0) {

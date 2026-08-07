@@ -1258,6 +1258,7 @@ module.exports = class Workspace extends Model {
       if (item) await Promise.resolve();
 
       if (!itemExistsInWorkspace) {
+        const itemWasProvided = item != null;
         item = item || (await this.createItemForURI(uri, options));
         if (!item) return;
 
@@ -1301,6 +1302,18 @@ module.exports = class Workspace extends Model {
               pane = pane.findOrCreateBottommostSibling(splitParams);
               break;
           }
+        }
+
+        // Only here is the destination settled — an item may ask for a dock,
+        // and the limit counts the centre alone — so this is the earliest the
+        // question can be answered correctly. An item already living in the
+        // workspace is being activated rather than added, and is never refused.
+        if (!existingPane && this.centerIsFull(pane, options)) {
+          this.reportCenterIsFull(itemOrURI, options);
+          // Built a moment ago and never shown; leaving it would strand its
+          // buffer in the project.
+          if (!itemWasProvided) item.destroy?.();
+          return;
         }
       }
 
@@ -1493,6 +1506,53 @@ module.exports = class Workspace extends Model {
   //
   // * `uri` A {String} containing a URI.
   //
+  // Whether opening a new item into `pane` would take the workspace centre past
+  // `core.maxCenterItems`. Docked items do not count: the limit exists because
+  // a centre full of items is hard to edit and navigate in, and a dock holds a
+  // fixed handful of its own.
+  //
+  // Never refuses in spec mode. Suites open far more files than any sane limit
+  // and construct their workspaces deliberately; the limit's own specs drive
+  // this method directly.
+  centerIsFull(pane, options = {}) {
+    const limit = this.config.get("core.maxCenterItems");
+    if (!limit || options.bypassMaxCenterItems) return false;
+    if (globalThis.atom?.inSpecMode?.()) return false;
+    // By location, not by identity: a pane's container is the `PaneContainer`,
+    // while `getCenter()` hands back the `WorkspaceCenter` wrapping it.
+    if (pane?.getContainer()?.getLocation() !== "center") return false;
+    // A preview replaces the pending item rather than adding to the centre.
+    if (options.pending && pane.getPendingItem()) return false;
+    return this.getCenter().getPaneItems().length >= limit;
+  }
+
+  // Says an open was refused, and offers to perform it anyway. One notification
+  // stands at a time: a refused burst should say so once rather than stack.
+  reportCenterIsFull(itemOrURI, options) {
+    const limit = this.config.get("core.maxCenterItems");
+    if (this.centerIsFullNotification) this.centerIsFullNotification.dismiss();
+    this.centerIsFullNotification = this.notificationManager.addWarning(
+      "The workspace center is full",
+      {
+        description:
+          `Nothing was opened: the center already holds ${limit} items, the limit set by ` +
+          `\`core.maxCenterItems\`. Close something, raise that setting, or set it to 0 for no ` +
+          `limit.`,
+        dismissable: true,
+        buttons: [
+          {
+            text: "Open anyway",
+            onDidClick: () => {
+              this.centerIsFullNotification?.dismiss();
+              return this.open(itemOrURI, { ...options, bypassMaxCenterItems: true });
+            },
+          },
+        ],
+      },
+    );
+    return this.centerIsFullNotification;
+  }
+
   // Returns a {Promise} that resolves to the {TextEditor} (or other item) for the given URI.
   async createItemForURI(uri, options) {
     if (uri != null) {
