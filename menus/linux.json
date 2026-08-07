@@ -43,6 +43,36 @@
           "type": "separator"
         },
         {
+          "label": "Se&ttings",
+          "command": "application:show-settings"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Config",
+          "command": "application:open-your-config"
+        },
+        {
+          "label": "Init Script",
+          "command": "application:open-your-init-script"
+        },
+        {
+          "label": "Keymap",
+          "command": "application:open-your-keymap"
+        },
+        {
+          "label": "Snippets",
+          "command": "application:open-your-snippets"
+        },
+        {
+          "label": "Stylesheet",
+          "command": "application:open-your-stylesheet"
+        },
+        {
+          "type": "separator"
+        },
+        {
           "label": "&Save",
           "command": "core:save"
         },
@@ -73,7 +103,7 @@
           "type": "separator"
         },
         {
-          "label": "Quit",
+          "label": "&Quit",
           "command": "application:quit"
         }
       ]
@@ -93,11 +123,11 @@
           "type": "separator"
         },
         {
-          "label": "&Cut",
+          "label": "Cu&t",
           "command": "core:cut"
         },
         {
-          "label": "C&opy",
+          "label": "&Copy",
           "command": "core:copy"
         },
         {
@@ -120,7 +150,7 @@
           "type": "separator"
         },
         {
-          "label": "&Toggle Comments",
+          "label": "Toggle Comme&nts",
           "command": "editor:toggle-line-comments"
         },
         {
@@ -274,39 +304,6 @@
               "command": "editor:fold-at-indent-level-9"
             }
           ]
-        },
-        {
-          "type": "separator"
-        },
-        {
-          "label": "&Preferences",
-          "command": "application:show-settings"
-        },
-        {
-          "type": "separator"
-        },
-        {
-          "label": "Config…",
-          "command": "application:open-your-config"
-        },
-        {
-          "label": "Init Script…",
-          "command": "application:open-your-init-script"
-        },
-        {
-          "label": "Keymap…",
-          "command": "application:open-your-keymap"
-        },
-        {
-          "label": "Snippets…",
-          "command": "application:open-your-snippets"
-        },
-        {
-          "label": "Stylesheet…",
-          "command": "application:open-your-stylesheet"
-        },
-        {
-          "type": "separator"
         }
       ]
     },
@@ -495,8 +492,70 @@
       ]
     },
     {
-      "label": "&Search",
-      "submenu": []
+      "label": "Se&arch",
+      "submenu": [
+        {
+          "label": "&Find in Buffer",
+          "command": "search-panel:show"
+        },
+        {
+          "label": "&Replace in Buffer",
+          "command": "search-panel:show-replace"
+        },
+        {
+          "label": "Select &Next",
+          "command": "search-panel:select-next"
+        },
+        {
+          "label": "Select &All",
+          "command": "search-panel:select-all"
+        },
+        {
+          "label": "&Toggle Find in Buffer",
+          "command": "search-panel:toggle"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Find in &Project",
+          "command": "search-panel:project-show"
+        },
+        {
+          "label": "To&ggle Find in Project",
+          "command": "search-panel:project-toggle"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Find A&ll",
+          "command": "search-panel:find-all"
+        },
+        {
+          "label": "Find Ne&xt",
+          "command": "search-panel:find-next"
+        },
+        {
+          "label": "Find Pre&vious",
+          "command": "search-panel:find-previous"
+        },
+        {
+          "label": "R&eplace Next",
+          "command": "search-panel:replace-next"
+        },
+        {
+          "label": "Repla&ce All",
+          "command": "search-panel:replace-all"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Clear &History",
+          "command": "search-panel:clear-history"
+        }
+      ]
     },
     {
       "label": "&Packages",
@@ -545,15 +604,12 @@
         {
           "label": "About Lumine",
           "command": "application:about"
-        },
-        {
-          "type": "separator"
         }
       ]
     }
   ],
   "context-menu": {
-    "atom-text-editor, .overlayer": [
+    "atom-text-editor": [
       {
         "label": "Undo",
         "command": "core:undo"
@@ -589,7 +645,7 @@
         "type": "separator"
       }
     ],
-    "atom-pane": [
+    "atom-pane:not(atom-dock atom-pane) > .item-views": [
       {
         "type": "separator"
       },

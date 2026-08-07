@@ -16,53 +16,33 @@
           "enabled": false
         },
         {
-          "label": "Restart and Install Update",
-          "command": "application:install-update",
-          "visible": false
-        },
-        {
-          "label": "Check for Update",
-          "command": "application:check-for-update",
-          "visible": false
-        },
-        {
-          "label": "Checking for Update",
-          "enabled": false,
-          "visible": false
-        },
-        {
-          "label": "Downloading Update",
-          "enabled": false,
-          "visible": false
-        },
-        {
           "type": "separator"
         },
         {
-          "label": "Preferences…",
+          "label": "Settings",
           "command": "application:show-settings"
         },
         {
           "type": "separator"
         },
         {
-          "label": "Config…",
+          "label": "Config",
           "command": "application:open-your-config"
         },
         {
-          "label": "Init Script…",
+          "label": "Init Script",
           "command": "application:open-your-init-script"
         },
         {
-          "label": "Keymap…",
+          "label": "Keymap",
           "command": "application:open-your-keymap"
         },
         {
-          "label": "Snippets…",
+          "label": "Snippets",
           "command": "application:open-your-snippets"
         },
         {
-          "label": "Stylesheet…",
+          "label": "Stylesheet",
           "command": "application:open-your-stylesheet"
         },
         {
@@ -499,12 +479,12 @@
           "command": "editor:add-selection-below"
         },
         {
-          "label": "Single Selection",
-          "command": "editor:consolidate-selections"
-        },
-        {
           "label": "Split into Lines",
           "command": "editor:split-selections-into-lines"
+        },
+        {
+          "label": "Single Selection",
+          "command": "editor:consolidate-selections"
         },
         {
           "type": "separator"
@@ -552,7 +532,69 @@
     },
     {
       "label": "Search",
-      "submenu": []
+      "submenu": [
+        {
+          "label": "Find in Buffer",
+          "command": "search-panel:show"
+        },
+        {
+          "label": "Replace in Buffer",
+          "command": "search-panel:show-replace"
+        },
+        {
+          "label": "Select Next",
+          "command": "search-panel:select-next"
+        },
+        {
+          "label": "Select All",
+          "command": "search-panel:select-all"
+        },
+        {
+          "label": "Toggle Find in Buffer",
+          "command": "search-panel:toggle"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Find in Project",
+          "command": "search-panel:project-show"
+        },
+        {
+          "label": "Toggle Find in Project",
+          "command": "search-panel:project-toggle"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Find All",
+          "command": "search-panel:find-all"
+        },
+        {
+          "label": "Find Next",
+          "command": "search-panel:find-next"
+        },
+        {
+          "label": "Find Previous",
+          "command": "search-panel:find-previous"
+        },
+        {
+          "label": "Replace Next",
+          "command": "search-panel:replace-next"
+        },
+        {
+          "label": "Replace All",
+          "command": "search-panel:replace-all"
+        },
+        {
+          "type": "separator"
+        },
+        {
+          "label": "Clear History",
+          "command": "search-panel:clear-history"
+        }
+      ]
     },
     {
       "label": "Packages",
@@ -605,15 +647,12 @@
         {
           "label": "Search Issues",
           "command": "application:search-issues"
-        },
-        {
-          "type": "separator"
         }
       ]
     }
   ],
   "context-menu": {
-    "atom-text-editor, .overlayer": [
+    "atom-text-editor": [
       {
         "label": "Undo",
         "command": "core:undo"
@@ -649,7 +688,7 @@
         "type": "separator"
       }
     ],
-    "atom-pane": [
+    "atom-pane:not(atom-dock atom-pane) > .item-views": [
       {
         "type": "separator"
       },

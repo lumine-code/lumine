@@ -76,17 +76,11 @@ module.exports = function ({
       "application:about": function () {
         return ipcRenderer.send("command", "application:about");
       },
-      "application:show-preferences": function () {
-        return ipcRenderer.send("command", "application:show-settings");
-      },
       "application:show-settings": function () {
         return ipcRenderer.send("command", "application:show-settings");
       },
       "application:quit": function () {
         return ipcRenderer.send("command", "application:quit");
-      },
-      "application:install-update": function () {
-        return ipcRenderer.send("command", "application:install-update");
       },
       "application:new-window": function () {
         return ipcRenderer.send("command", "application:new-window");
