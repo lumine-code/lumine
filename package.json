@@ -63,7 +63,7 @@
     "bookmarks": "github:lumine-code/bookmarks#8310ab41399668828d4e653c992eff5dc03ae7f2",
     "bracket-matcher": "github:lumine-code/bracket-matcher#1380e7150c1dde2fb040b05d1edb6e3e8c02ef70",
     "color": "5.0.3",
-    "column-selection": "github:lumine-code/column-selection#87b1550781ba65e4bc13c1a63d039dab58807a6d",
+    "column-selection": "github:lumine-code/column-selection#00c46803ecbdafbc788379c413581e0eff1de244",
     "command-palette": "github:lumine-code/command-palette#d66874ce4d19ade934fa9af49f236289795d3b87",
     "dedent": "^1.7.2",
     "deprecation-cop": "github:lumine-code/deprecation-cop#022a688e2a9443ffde0db093268ab9669f3a315a",
