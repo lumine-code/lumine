@@ -243,6 +243,17 @@ function checkFile(packageName, file, report) {
         } else if (owner !== packageName) {
           report(`${keystrokes}: bare "${first}" belongs to ${owner}`);
         }
+      } else if (ALT_TIER.has(first) && ALT_TIER.get(first) !== packageName) {
+        // A picker's own mini editor may reuse the letter while it is open —
+        // that is how the tree view gets alt-t back from fuzzy-files. Anything
+        // else sits on a deeper element than the workspace binding and takes
+        // the key for as long as that surface has focus.
+        if (!/\[mini\]\s*$/.test(selector)) {
+          report(
+            `${keystrokes}: "${first}" is ${ALT_TIER.get(first)}'s reveal key, and ` +
+              `this selector is deeper, so it takes it whenever "${selector}" has focus`,
+          );
+        }
       }
     }
 
