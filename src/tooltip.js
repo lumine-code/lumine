@@ -97,13 +97,23 @@ Tooltip.prototype.init = function (element, options) {
 
       if (trigger === "hover") {
         this.hideOnKeydownOutsideOfTooltip = () => this.hide();
-        // A wheel scroll takes the target out from under a pointer that never
-        // moved, and the hover state is recomputed from pointer events alone:
-        // no mouseout arrives to say the pointer has been left behind, so the
-        // tooltip would stand over whatever the scroll brought in its place.
-        // A wheel is the same "moved on" signal a keystroke is, and retires
-        // the tooltip the same way.
-        this.hideOnWheel = () => this.hide();
+        // A scroll takes the target out from under a pointer that never moved,
+        // and the hover state is recomputed from pointer events alone: no
+        // mouseout arrives to say the pointer has been left behind. The
+        // tooltip is left describing whatever the scroll brought in its place,
+        // and pointing at where the target used to be, since a placed tooltip
+        // does not follow it.
+        //
+        // Only a scroll that actually moves the target says any of that, so
+        // the question is asked of the target rather than of the wheel:
+        // scrolling something else, or a container already at its end, leaves
+        // a tooltip the pointer is still resting on alone.
+        this.hideOnTargetScrolledAway = () => {
+          if (this.anchorPosition == null) return;
+          const { top, left } = this.element.getBoundingClientRect();
+          if (top === this.anchorPosition.top && left === this.anchorPosition.left) return;
+          this.hide();
+        };
         if (this.options.selector) {
           eventIn = "mouseover";
           eventOut = "mouseout";
@@ -271,8 +281,10 @@ Tooltip.prototype.show = function () {
       window.addEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
     }
 
-    if (this.hideOnWheel) {
-      window.addEventListener("wheel", this.hideOnWheel, {
+    if (this.hideOnTargetScrolledAway) {
+      // In capture, so a scroll of any container reaches this: a scroll event
+      // does not bubble past the element that scrolled.
+      window.addEventListener("scroll", this.hideOnTargetScrolledAway, {
         capture: true,
         passive: true,
       });
@@ -305,7 +317,10 @@ Tooltip.prototype.show = function () {
 
     document.body.appendChild(tip);
 
+    // The rect the tooltip is placed against, and so the one a later scroll is
+    // measured against.
     const pos = this.element.getBoundingClientRect();
+    this.anchorPosition = pos;
     const actualWidth = tip.offsetWidth;
     const actualHeight = tip.offsetHeight;
 
@@ -429,8 +444,8 @@ Tooltip.prototype.hide = function (callback) {
     window.removeEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
   }
 
-  if (this.hideOnWheel) {
-    window.removeEventListener("wheel", this.hideOnWheel, true);
+  if (this.hideOnTargetScrolledAway) {
+    window.removeEventListener("scroll", this.hideOnTargetScrolledAway, true);
   }
 
   this.tip && this.tip.classList.remove("in");
@@ -607,7 +622,10 @@ Tooltip.prototype.recalculatePosition = function () {
 
   tip.classList.add(placement);
 
+  // Re-placing against the target makes its rect the one the next scroll is
+  // measured against.
   const pos = this.element.getBoundingClientRect();
+  this.anchorPosition = pos;
   const actualWidth = tip.offsetWidth;
   const actualHeight = tip.offsetHeight;
 
