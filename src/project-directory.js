@@ -43,11 +43,22 @@ module.exports = class ProjectDirectory {
         this.realPath = FS.realpathSync(this.path);
         if (FS.isCaseInsensitive()) this.lowerCaseRealPath = this.realPath.toLowerCase();
       } catch {
-        this.realPath = this.path;
-        if (FS.isCaseInsensitive()) this.lowerCaseRealPath = this.lowerCasePath;
+        // Not remembered: a directory that cannot be resolved may exist later,
+        // and these instances are shared and long-lived, so an answer kept here
+        // would outlive the reason for it.
+        return this.path;
       }
     }
     return this.realPath;
+  }
+
+  // The real path in the form paths are compared in — lower-cased where the
+  // filesystem ignores case — falling back to the unresolved path for a
+  // directory that cannot be resolved.
+  getComparableRealPathSync() {
+    const realPath = this.getRealPathSync();
+    if (!FS.isCaseInsensitive()) return realPath;
+    return realPath === this.path ? this.lowerCasePath : this.lowerCaseRealPath;
   }
 
   getParent() {
@@ -91,8 +102,7 @@ module.exports = class ProjectDirectory {
     }
 
     // Check the real path.
-    this.getRealPathSync();
-    directoryPath = FS.isCaseInsensitive() ? this.lowerCaseRealPath : this.realPath;
+    directoryPath = this.getComparableRealPathSync();
 
     if (pathToCheck === directoryPath) {
       return "";
@@ -118,8 +128,7 @@ module.exports = class ProjectDirectory {
     if (this.isPathPrefixOf(directoryPath, pathToCheck)) return true;
 
     // Check the real path.
-    this.getRealPathSync();
-    directoryPath = FS.isCaseInsensitive() ? this.lowerCaseRealPath : this.realPath;
+    directoryPath = this.getComparableRealPathSync();
     return this.isPathPrefixOf(directoryPath, pathToCheck);
   }
 
