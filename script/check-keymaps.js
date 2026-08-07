@@ -191,10 +191,15 @@ function checkFile(packageName, file, report) {
     if (selector.includes("!important")) {
       report(`${keystrokes}: !important buys +1 specificity and nothing else`);
     }
-    if (/\.platform-(win32|linux|darwin)\b/.test(selector)) {
+    // A package's keymap files are loaded one by one through `keymapManager.add`
+    // and are never filtered by name, so `keymaps/darwin.json` in a package
+    // would apply on every platform. `.platform-*` is the only mechanism a
+    // package has — but it must qualify a real target. On its own it binds at
+    // `body` with class specificity, which silently outranks all of core.
+    if (selector.split(",").some((branch) => /^\s*\.platform-\w+\s*$/.test(branch))) {
       report(
-        `${keystrokes}: a .platform-* selector scores 10 and outranks core — ` +
-          `use cmdorctrl-, or a keymaps/<platform>.json file`,
+        `${keystrokes}: a bare .platform-* selector scores 10 against core's ` +
+          `body bindings at 1 — prefix it onto the element you mean`,
       );
     }
     if (isGlobal && selector.trim() !== GLOBAL_SELECTOR) {
@@ -279,6 +284,28 @@ function checkFleet(all, report) {
         `${other.package}: "${prefix}" -> ${other.command} is a complete binding and ` +
           `${row.package} uses it as a chord prefix — every press stalls 1000 ms`,
       );
+    }
+  }
+
+  // A `.platform-*` split that is only a cmd/ctrl swap is what `cmdorctrl-`
+  // exists for: one binding instead of two, and it cannot drift.
+  const byCommand = new Map();
+  for (const row of all) {
+    const platform = /\.platform-(win32|linux|darwin)\b/.exec(row.selector);
+    if (!platform) continue;
+    const target = row.selector
+      .replace(/\.platform-\w+\s*/g, "")
+      .split(",")[0]
+      .trim();
+    const key = `${row.command}|${target}|${normalize(row.keystrokes).replace(/\b(cmd|ctrl)-/g, "")}`;
+    if (!byCommand.has(key)) byCommand.set(key, new Set());
+    byCommand.get(key).add(normalize(row.keystrokes).startsWith("cmd-") ? "cmd" : "ctrl");
+    if (byCommand.get(key).size > 1) {
+      report(
+        `${row.package}: "${row.command}" is split across .platform-* selectors ` +
+          `only to swap cmd for ctrl — that is what cmdorctrl- is for`,
+      );
+      byCommand.get(key).clear();
     }
   }
 
