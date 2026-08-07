@@ -80,6 +80,13 @@ jobs:
       - name: Check menu conventions
         run: npm run check:menus
 
+      # Keybindings, same idea. The one that pays for the rest is the
+      # chord-prefix check: a keystroke that is both a complete binding and the
+      # prefix of a longer one stalls for a full second before it fires, and
+      # nothing else reports it.
+      - name: Check keybinding conventions
+        run: npm run check:keymaps
+
   test:
     name: Test on ${{ matrix.os }}
     # The fast lane (lint) runs everywhere; the full matrix is reserved for

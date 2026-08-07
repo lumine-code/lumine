@@ -33,8 +33,9 @@ const ALT_TIER = new Map([
   ["alt-p", "project-list"],
   ["alt-r", "recent-list"],
   ["alt-m", "scrollmap"],
-  ["alt-c", "call-hierarchy"],
+  ["alt-k", "call-hierarchy"],
   ["alt-shift-m", "lumine-mcp"],
+  ["alt-shift-p", "project-list"],
   ["alt-`", "terminal-spawn"],
 ]);
 
@@ -50,6 +51,7 @@ const ALT_FAMILIES = new Map([
       "jupyter-prompt",
       "jupyter-repl",
       "jupyter-variables",
+      "jupyter-view",
       "jupyter-watches",
     ],
   ],
