@@ -558,7 +558,12 @@ module.exports = class TextEditorComponent {
     this.lastBlockDecorationMeasurementAreaWidth = null;
 
     this.element.tabIndex = -1;
-    this.element.addEventListener("wheel", this.didMouseWheel);
+    // Non-passive on purpose: an accepted wheel scroll calls preventDefault so
+    // the page cannot also scroll, and a rejected one chains out to whatever
+    // scrollable holds this editor. Declared explicitly — Chromium logs a
+    // console violation for every editor mount otherwise, and overlays such as
+    // hover tooltips mount editors for their code blocks all the time.
+    this.element.addEventListener("wheel", this.didMouseWheel, { passive: false });
 
     const clientContainer = document.createElement("div");
     let style = clientContainer.style;
