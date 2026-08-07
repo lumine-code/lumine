@@ -43,6 +43,7 @@
     "cmdorctrl-shift-t": "pane:reopen-closed-item",
     "cmdorctrl-s": "core:save",
     "cmdorctrl-shift-s": "core:save-as",
+    "cmdorctrl-alt-s": "window:save-all",
     "cmdorctrl-w": "core:close",
     "cmdorctrl-z": "core:undo",
     "cmdorctrl-shift-z": "core:redo",
@@ -78,9 +79,16 @@
     // Editing
     "cmdorctrl-a": "core:select-all",
     "cmdorctrl-l": "editor:select-line",
-    "cmdorctrl-shift-V": "editor:paste-without-reformatting",
+    "cmdorctrl-d": "editor:select-word",
+    "ctrl-t": "editor:transpose",
+    "cmdorctrl-shift-v": "editor:paste-without-reformatting",
     "cmdorctrl-k cmdorctrl-u": "editor:upper-case",
-    "cmdorctrl-k cmdorctrl-l": "editor:lower-case"
+    "cmdorctrl-k cmdorctrl-l": "editor:lower-case",
+    // Matches mini editors deliberately. `consolidate-selections` calls
+    // `event.abortKeyBinding()` when there is nothing to consolidate, so the
+    // walk carries on up to the `body` binding and Escape still cancels the
+    // dialog the mini editor belongs to.
+    "escape": "editor:consolidate-selections"
   },
   "atom-text-editor:not([mini])": {
     // Lumine Specific
@@ -108,6 +116,12 @@
     "cmdorctrl-/": "editor:toggle-line-comments",
     "cmdorctrl-j": "editor:join-lines",
     "cmdorctrl-shift-d": "editor:duplicate-lines",
+    "cmdorctrl-shift-l": "editor:split-selections-into-lines",
+    "cmdorctrl-alt-shift-left": "editor:move-selection-left",
+    "cmdorctrl-alt-shift-right": "editor:move-selection-right",
+    "cmdorctrl-alt-z": "editor:checkout-head-revision",
+    // A developer command, so it takes a chord nothing reaches by accident.
+    "cmdorctrl-alt-shift-p": "editor:log-cursor-scope",
     "cmdorctrl-alt-[": "editor:fold-current-row",
     "cmdorctrl-alt-]": "editor:unfold-current-row",
     "cmdorctrl-alt-{": "editor:fold-all",
@@ -152,9 +166,6 @@
   },
   ".tool-panel.panel-left, .tool-panel.panel-right": {
     "escape": "tool-panel:unfocus"
-  },
-  "atom-text-editor !important, atom-text-editor[mini] !important": {
-    "escape": "editor:consolidate-selections"
   },
   // Allow standard input fields to work correctly
   "body .native-key-bindings": {
@@ -204,6 +215,9 @@
     "ctrl-d": "native!",
     "cmdorctrl-z": "native!",
     "cmdorctrl-shift-z": "native!",
+    // The Windows spelling of redo. Without it, Ctrl-Y inside a native input
+    // dispatches `core:redo` instead of reaching Chromium like its siblings.
+    "cmdorctrl-y": "native!",
     "cmdorctrl-x": "native!",
     "cmdorctrl-c": "native!",
     "cmdorctrl-v": "native!"

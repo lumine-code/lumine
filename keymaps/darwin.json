@@ -22,9 +22,10 @@
     "alt-cmd-i": "window:toggle-dev-tools",
     "cmd-alt-ctrl-p": "window:run-package-specs",
     // Sublime Parity
+    // macOS has one combined open panel, so there is no open-file/open-folder
+    // split here. `shift-a` for add-project-folder matches win32 and linux.
     "cmd-o": "application:open",
-    "cmd-shift-o": "application:add-project-folder",
-    "cmd-alt-s": "window:save-all",
+    "cmd-shift-a": "application:add-project-folder",
     "cmd-ctrl-f": "window:toggle-full-screen",
     "shift-delete": "core:delete",
     "cmd-up": "core:move-to-top",
@@ -66,10 +67,6 @@
     "ctrl-a": "editor:move-to-first-character-of-line",
     "ctrl-e": "editor:move-to-end-of-line",
     "ctrl-k": "editor:cut-to-end-of-line",
-    // Lumine Specific
-    "ctrl-shift-w": "editor:select-word",
-    "cmd-ctrl-left": "editor:move-selection-left",
-    "cmd-ctrl-right": "editor:move-selection-right",
     // Emacs
     "alt-f": "editor:move-to-end-of-word",
     "alt-ctrl-f": "editor:move-to-next-subword-boundary",
@@ -84,8 +81,6 @@
     "alt-d": "editor:delete-to-end-of-word",
     "alt-ctrl-d": "editor:delete-to-end-of-subword",
     // Sublime Parity
-    "cmd-alt-p": "editor:log-cursor-scope",
-    "ctrl-t": "editor:transpose",
     "ctrl-alt-left": "editor:move-to-previous-subword-boundary",
     "ctrl-alt-right": "editor:move-to-next-subword-boundary",
     "ctrl-alt-shift-left": "editor:select-to-previous-subword-boundary",
@@ -95,14 +90,13 @@
   },
   "atom-workspace atom-text-editor:not([mini])": {
     // Lumine specific
-    "alt-cmd-z": "editor:checkout-head-revision",
     "alt-cmd-ctrl-f": "editor:fold-selection",
     // Sublime Parity
-    "alt-enter": "editor:newline",
     "shift-enter": "editor:newline",
     "ctrl-cmd-up": "editor:move-line-up",
     "ctrl-cmd-down": "editor:move-line-down",
-    "cmd-shift-l": "editor:split-selections-into-lines",
+    // win32 and linux use ctrl-alt-up/down: cursor-leader claims those here,
+    // and macOS takes ctrl-up itself for Mission Control.
     "ctrl-shift-up": "editor:add-selection-above",
     "ctrl-shift-down": "editor:add-selection-below"
   }
