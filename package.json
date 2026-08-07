@@ -76,7 +76,7 @@
     "focus-trap": "8.2.2",
     "fuzzy-files": "github:lumine-code/fuzzy-files#6ecf93173d569ac6e0b9e41a14487f79a7871177",
     "git-center": "github:lumine-code/git-center#3583bf3c7e6dfa01e836ebd4f8bc163a15032465",
-    "git-diff": "github:lumine-code/git-diff#c870e40d3bad3e5c45f7bfe324fe7354537e9b76",
+    "git-diff": "github:lumine-code/git-diff#2293c75361a449ae4746238a3b33d23fdc6307f3",
     "go-to-line": "github:lumine-code/go-to-line#4578c4aeb1afcee5aeb4fab7903f4d0c92e0afa7",
     "grammar-selector": "github:lumine-code/grammar-selector#3fc624f6d57078ce8a82a0e5a84ae77ccaa33ad3",
     "gray-matter": "^4.0.3",
