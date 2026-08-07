@@ -353,6 +353,7 @@ module.exports = class Workspace extends Model {
     this.emitter = new Emitter();
     this.openers = [];
     this.destroyedItemURIs = [];
+    this.longTitles = null;
     this.stoppedChangingActivePaneItemTimeout = null;
 
     this.ripgrepDirectorySearcher = new RipgrepDirectorySearcher();
@@ -504,6 +505,7 @@ module.exports = class Workspace extends Model {
 
     this.openers = [];
     this.destroyedItemURIs = [];
+    this.invalidateLongTitles();
     if (this.element) {
       this.element.destroy();
       this.element = null;
@@ -787,11 +789,16 @@ module.exports = class Workspace extends Model {
         const subscriptions = new CompositeDisposable(
           this.textEditorRegistry.add(item),
           this.textEditorRegistry.maintainConfig(item),
+          // Both of this editor's contributions to every long title: that it
+          // is open at all, and which directory it sits in.
+          item.onDidChangePath(() => this.invalidateLongTitles()),
         );
+        this.invalidateLongTitles();
         if (!this.project.findBufferForId(item.buffer.id)) {
           this.project.addBuffer(item.buffer);
         }
         item.onDidDestroy(() => {
+          this.invalidateLongTitles();
           subscriptions.dispose();
         });
         this.emitter.emit("did-add-text-editor", {
@@ -1776,6 +1783,23 @@ module.exports = class Workspace extends Model {
     return this.getPaneItems().filter((item) => item instanceof TextEditor);
   }
 
+  // Long titles for every open editor, computed together and kept until
+  // something they depend on changes: which editors are open, and where each
+  // one's file lives. A tab bar asks for one per tab and does so again for
+  // every item added, so computing them one at a time — each rescanning the
+  // whole set — is what made opening a folder's worth of same-named files
+  // quadratic in the number of tabs.
+  getLongTitles() {
+    if (this.longTitles === null) {
+      this.longTitles = TextEditor.computeLongTitles(this.getTextEditors());
+    }
+    return this.longTitles;
+  }
+
+  invalidateLongTitles() {
+    this.longTitles = null;
+  }
+
   // Essential: Get the workspace center's active item if it is a {TextEditor}.
   //
   // Returns a {TextEditor} or `undefined` if the workspace center's current
@@ -1988,6 +2012,7 @@ module.exports = class Workspace extends Model {
 
   // Adds the destroyed item's uri to the list of items to reopen.
   didDestroyPaneItem({ item }) {
+    this.invalidateLongTitles();
     let uri;
     if (typeof item.getURI === "function") {
       uri = item.getURI();

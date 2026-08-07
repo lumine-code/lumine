@@ -293,6 +293,93 @@ describe("TextEditor", () => {
         await atom.workspace.getActivePane().close();
         expect(editor.isDestroyed()).toBe(true);
       });
+
+      // `computeLongTitles` derives the shared-prefix length from per-position
+      // tallies rather than by comparing every path against every other, so it
+      // is checked against a transcription of the pairwise definition it
+      // replaced. The shapes below are the ones that definition is sensitive
+      // to: a path that is a prefix of another, siblings, a lone file, and
+      // directory names repeating at different depths.
+      it("agrees with the pairwise definition of a long title", () => {
+        const referenceLongTitle = (segmentsForEditor, fileName, mySegments) => {
+          if (segmentsForEditor.length === 1) return fileName;
+          let commonPathSegmentCount;
+          for (let i = 0, { length } = mySegments; i < length; i++) {
+            const myPathSegment = mySegments[i];
+            if (
+              segmentsForEditor.some(
+                (segments) => segments.length === i + 1 || segments[i] !== myPathSegment,
+              )
+            ) {
+              commonPathSegmentCount = i;
+              break;
+            }
+          }
+          return `${fileName} — ${path.join(...mySegments.slice(commonPathSegmentCount))}`;
+        };
+
+        const cases = [
+          [["a"]],
+          [["a"], ["b"]],
+          [
+            ["a", "b"],
+            ["a", "c"],
+          ],
+          [["a"], ["a", "b"]],
+          [
+            ["a", "b", "c"],
+            ["a", "b"],
+            ["a", "b", "c", "d"],
+          ],
+          [
+            ["src", "js"],
+            ["src", "js", "plugin"],
+          ],
+          [
+            ["x", "y"],
+            ["x", "y"],
+            ["x", "z"],
+          ],
+          [
+            ["deep", "a", "b", "c"],
+            ["deep", "a", "b", "d"],
+            ["other", "a", "b", "c"],
+          ],
+          [["a"], ["b"], ["c"], ["d"], ["e"]],
+        ];
+
+        for (const segmentsList of cases) {
+          const editors = segmentsList.map((segments) => ({
+            getPath: () => `/${segments.join("/")}/shared.txt`,
+            getFileName: () => "shared.txt",
+            getTildifiedDirectorySegments: () => segments,
+          }));
+          const computed = TextEditor.computeLongTitles(editors);
+          for (let i = 0; i < editors.length; i++) {
+            expect(computed.get(editors[i])).toBe(
+              referenceLongTitle(segmentsList, "shared.txt", segmentsList[i]),
+              `case ${JSON.stringify(segmentsList)} member ${i}`,
+            );
+          }
+        }
+      });
+
+      it("groups by file name, so unrelated names never disambiguate each other", () => {
+        const make = (name, segments) => ({
+          getPath: () => `/${segments.join("/")}/${name}`,
+          getFileName: () => name,
+          getTildifiedDirectorySegments: () => segments,
+        });
+        const only = make("alone.txt", ["a"]);
+        const first = make("shared.txt", ["a"]);
+        const second = make("shared.txt", ["b"]);
+
+        const computed = TextEditor.computeLongTitles([only, first, second]);
+
+        expect(computed.get(only)).toBe("alone.txt");
+        expect(computed.get(first)).toBe("shared.txt — a");
+        expect(computed.get(second)).toBe("shared.txt — b");
+      });
     });
 
     it("notifies ::onDidChangeTitle observers when the underlying buffer path changes", () => {

@@ -1396,38 +1396,79 @@ module.exports = class TextEditor {
   //
   // Returns a {String}
   getLongTitle() {
-    if (this.getPath()) {
-      const fileName = this.getFileName();
+    if (!this.getPath()) return "untitled";
+    // A long title is a property of the whole set of open editors \u2014 it says
+    // what distinguishes this one from the others sharing its file name \u2014 so
+    // the workspace computes them all together and hands them out. An editor
+    // the workspace does not hold has nothing to be distinguished from.
+    const longTitle = atom.workspace?.getLongTitles?.().get(this);
+    return longTitle ?? this.getFileName();
+  }
 
-      let myPathSegments;
-      const openEditorPathSegmentsWithSameFilename = [];
-      for (const textEditor of atom.workspace.getTextEditors()) {
-        if (textEditor.getFileName() === fileName) {
-          const pathSegments = textEditor.getTildifiedDirectorySegments();
-          openEditorPathSegmentsWithSameFilename.push(pathSegments);
-          if (textEditor === this) myPathSegments = pathSegments;
-        }
-      }
-
-      if (!myPathSegments || openEditorPathSegmentsWithSameFilename.length === 1) return fileName;
-
-      let commonPathSegmentCount;
-      for (let i = 0, { length } = myPathSegments; i < length; i++) {
-        const myPathSegment = myPathSegments[i];
-        if (
-          openEditorPathSegmentsWithSameFilename.some(
-            (segments) => segments.length === i + 1 || segments[i] !== myPathSegment,
-          )
-        ) {
-          commonPathSegmentCount = i;
-          break;
-        }
-      }
-
-      return `${fileName} \u2014 ${path.join(...myPathSegments.slice(commonPathSegmentCount))}`;
-    } else {
-      return "untitled";
+  // Long titles for every editor given, as a Map. Editors are grouped by file
+  // name, and within a group each one is labelled by the shortest tail of its
+  // directory that no other member of the group shares.
+  //
+  // The number of leading segments to drop is derived from two per-position
+  // facts about the group \u2014 how many members carry each value, and whether any
+  // member's path ends there \u2014 rather than by comparing each member against
+  // every other. Comparing pairwise is quadratic in the size of the group, and
+  // the group can be every editor open: a project's worth of `LICENSE` files
+  // is one group.
+  static computeLongTitles(editors) {
+    const groups = new Map();
+    for (const editor of editors) {
+      if (!editor.getPath()) continue;
+      const fileName = editor.getFileName();
+      let group = groups.get(fileName);
+      if (group === undefined) groups.set(fileName, (group = []));
+      group.push(editor);
     }
+
+    const longTitles = new Map();
+    for (const [fileName, group] of groups) {
+      if (group.length === 1) {
+        longTitles.set(group[0], fileName);
+        continue;
+      }
+
+      const segmentsByEditor = group.map((editor) => editor.getTildifiedDirectorySegments());
+      let deepest = 0;
+      for (const segments of segmentsByEditor) deepest = Math.max(deepest, segments.length);
+
+      // Per position: how many members carry each value, and whether any
+      // member's path ends immediately after it.
+      const countsByPosition = [];
+      const endsAtPosition = new Array(deepest).fill(false);
+      for (let position = 0; position < deepest; position++) countsByPosition.push(new Map());
+      for (const segments of segmentsByEditor) {
+        for (let position = 0; position < deepest; position++) {
+          const counts = countsByPosition[position];
+          const segment = segments[position];
+          counts.set(segment, (counts.get(segment) ?? 0) + 1);
+        }
+        if (segments.length > 0) endsAtPosition[segments.length - 1] = true;
+      }
+
+      for (let index = 0; index < group.length; index++) {
+        const mySegments = segmentsByEditor[index];
+        let commonPathSegmentCount;
+        for (let position = 0, { length } = mySegments; position < length; position++) {
+          const sharedHere = countsByPosition[position].get(mySegments[position]) ?? 0;
+          // Someone's path ends here, or someone differs from mine here.
+          if (endsAtPosition[position] || sharedHere < group.length) {
+            commonPathSegmentCount = position;
+            break;
+          }
+        }
+        longTitles.set(
+          group[index],
+          `${fileName} \u2014 ${path.join(...mySegments.slice(commonPathSegmentCount))}`,
+        );
+      }
+    }
+
+    return longTitles;
   }
 
   // This editor's directory as `~`-abbreviated path segments, remembered until
