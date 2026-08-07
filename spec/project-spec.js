@@ -29,6 +29,22 @@ describe("Project", () => {
     for (const registry of standaloneRegistries.splice(0)) registry.destroy();
   });
 
+  describe("::setState(projectPaths)", () => {
+    // The environment supplies what actually restores the state, because only
+    // it can reach the window state store and the workspace. A project built
+    // without one has no window to change.
+    it("resolves to false with no environment behind it", async () => {
+      const detached = buildProject({
+        notificationManager: atom.notifications,
+        packageManager: atom.packages,
+        grammarRegistry: atom.grammars,
+      });
+
+      expect(await detached.setState([__dirname])).toBe(false);
+      expect(detached.getPaths()).toEqual([]);
+    });
+  });
+
   describe("serialization", () => {
     let deserializedProject = null;
     let notQuittingProject = null;

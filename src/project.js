@@ -25,11 +25,15 @@ module.exports = class Project extends Model {
     applicationDelegate,
     grammarRegistry,
     repositoryRegistry,
+    restoreState,
   }) {
     super();
     this.notificationManager = notificationManager;
     this.applicationDelegate = applicationDelegate;
     this.grammarRegistry = grammarRegistry;
+    // Supplied by the environment, which is the only thing that can reach the
+    // window state store and the workspace. See {::setState}.
+    this.restoreState = restoreState;
 
     this.emitter = new Emitter();
     this.buffers = [];
@@ -392,6 +396,42 @@ module.exports = class Project extends Model {
       err.missingProjectPaths = missingProjectPaths;
       throw err;
     }
+  }
+
+  // Public: Open a different project in this window.
+  //
+  // Where {::setPaths} changes the folders and leaves everything else alone —
+  // so the editors open on the old project stay open on the new one — this
+  // changes the whole state: the current folders and the editors open on them
+  // are saved together, and whatever was last saved for `projectPaths` is
+  // restored in their place. No new window is opened, so packages, themes and
+  // grammars stay loaded.
+  //
+  // Only the workspace center is restored. Docks belong to the window rather
+  // than to the project it has open, so a tree view, a terminal or a panel
+  // keeps running across the change — as does anything a package put there.
+  //
+  // Three things are worth knowing before reaching for this:
+  //
+  // * Development and safe mode belong to the window, so they cannot change
+  //   here. Use {AtomEnvironment::open} with `newWindow` for those.
+  // * State is keyed by the set of folders, so a project already open in
+  //   another window shares one saved state with it and the last window to
+  //   save wins.
+  // * Package state is not re-applied. A package that follows the project
+  //   observes {::onDidChangePaths} and rebuilds itself.
+  //
+  // * `projectPaths` {Array} of {String} paths to the directories the window
+  //   should have open.
+  //
+  // Returns a {Promise} that resolves to `true` once the new state is in
+  // place, or to `false` if the window was left as it was — because the paths
+  // were already open, none was given, or the user cancelled at the save
+  // prompt.
+  async setState(projectPaths) {
+    // A project built outside an environment has no window state to set.
+    if (!this.restoreState) return false;
+    return this.restoreState(projectPaths);
   }
 
   // Public: Add a path to the project's list of root paths

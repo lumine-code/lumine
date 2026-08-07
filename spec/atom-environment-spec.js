@@ -790,6 +790,159 @@ describe("AtomEnvironment", () => {
     });
   });
 
+  describe("project.setState(projectPaths)", () => {
+    let env, dirA, dirB, fileA, fileB;
+
+    // A window of its own, so setting project state can tear down a whole
+    // workspace without taking the spec runner's `atom` with it. Persistence is
+    // on and the state store points at the spec home, because this is nothing
+    // but a state store round trip.
+    const buildEnvironment = () => {
+      const built = new AtomEnvironment({
+        applicationDelegate: atom.applicationDelegate,
+        enablePersistence: true,
+      });
+      const configDirPath = atom.getConfigDirPath();
+      built.stateStore.initialize({ configDirPath });
+      // The workspace keeps a store of its own for remembered item locations,
+      // which ::open consults whenever persistence is on.
+      built.workspace.initialize({ configDirPath });
+      return built;
+    };
+
+    const openPaths = (environment) =>
+      environment.workspace.getTextEditors().map((editor) => editor.getPath());
+
+    beforeEach(async () => {
+      jasmine.useRealClock();
+
+      // `temp` hands back a path that may be shortened or symlinked; the
+      // project resolves what it is given, so settle both sides on the real one
+      // up front.
+      dirA = fs.realpathSync.native(temp.mkdirSync("state-a-"));
+      dirB = fs.realpathSync.native(temp.mkdirSync("state-b-"));
+      fileA = path.join(dirA, "a.txt");
+      fileB = path.join(dirB, "b.txt");
+      fs.writeFileSync(fileA, "aaa");
+      fs.writeFileSync(fileB, "bbb");
+
+      env = buildEnvironment();
+      // State persistence will fail if other Lumine instances are running
+      expect(await env.stateStore.connect()).toBe(true);
+      // Off by default here so an untitled editor does not stand in the way of
+      // asserting what was restored; the spec below turns it back on.
+      env.config.set("core.openEmptyEditorOnStart", false);
+      env.project.setPaths([dirA]);
+    });
+
+    afterEach(() => {
+      env.stateStore.close();
+      env.destroy();
+    });
+
+    it("saves the state of the outgoing project and restores the incoming one's", async () => {
+      await env.workspace.open(fileA);
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      expect(env.project.getPaths()).toEqual([dirB]);
+      expect(openPaths(env)).toEqual([]);
+
+      await env.workspace.open(fileB);
+
+      expect(await env.project.setState([dirA])).toBe(true);
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(openPaths(env)).toEqual([fileA]);
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      expect(openPaths(env)).toEqual([fileB]);
+    });
+
+    it("carries unsaved changes across and back", async () => {
+      const editor = await env.workspace.open(fileA);
+      editor.setText("edited but never saved");
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      expect(await env.project.setState([dirA])).toBe(true);
+
+      expect(openPaths(env)).toEqual([fileA]);
+      expect(env.workspace.getActiveTextEditor().getText()).toBe("edited but never saved");
+      expect(env.workspace.getActiveTextEditor().isModified()).toBe(true);
+    });
+
+    it("starts clean when the incoming project has no saved state", async () => {
+      await env.workspace.open(fileA);
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      expect(env.project.getPaths()).toEqual([dirB]);
+      expect(env.workspace.getCenter().getPaneItems()).toEqual([]);
+    });
+
+    it("opens an empty editor for a project with no saved state when configured to", async () => {
+      env.config.set("core.openEmptyEditorOnStart", true);
+      await env.workspace.open(fileA);
+
+      expect(await env.project.setState([dirB])).toBe(true);
+      expect(openPaths(env)).toEqual([undefined]);
+    });
+
+    it("destroys the outgoing project's buffers", async () => {
+      await env.workspace.open(fileA);
+      const buffer = env.project.getBuffers()[0];
+
+      expect(await env.project.setState([dirB])).toBe(true);
+
+      expect(buffer.isDestroyed()).toBe(true);
+      expect(env.project.getBuffers()).toEqual([]);
+    });
+
+    // The docks belong to the window, not to the project: a tree view, a
+    // terminal or a panel must keep running across a project change.
+    it("leaves the docks alone", async () => {
+      const dockItem = {
+        element: document.createElement("div"),
+        getTitle: () => "Dock Item",
+        getURI: () => "lumine://dock-item",
+        getDefaultLocation: () => "bottom",
+      };
+      await env.workspace.open(dockItem, { activatePane: false });
+      env.workspace.getBottomDock().show();
+      await env.workspace.open(fileA);
+
+      expect(await env.project.setState([dirB])).toBe(true);
+
+      expect(env.workspace.paneForURI("lumine://dock-item")).toBe(
+        env.workspace.getBottomDock().getActivePane(),
+      );
+      expect(env.workspace.getBottomDock().isVisible()).toBe(true);
+      expect(env.workspace.getCenter().getPaneItems()).toEqual([]);
+    });
+
+    it("does nothing when the paths are already open", async () => {
+      await env.workspace.open(fileA);
+
+      expect(await env.project.setState([dirA])).toBe(false);
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(openPaths(env)).toEqual([fileA]);
+    });
+
+    it("does nothing when given no paths", async () => {
+      await env.workspace.open(fileA);
+
+      expect(await env.project.setState([])).toBe(false);
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(openPaths(env)).toEqual([fileA]);
+    });
+
+    it("leaves the window alone when the user cancels at the save prompt", async () => {
+      await env.workspace.open(fileA);
+      spyOn(env.workspace, "confirmClose").and.returnValue(Promise.resolve(false));
+
+      expect(await env.project.setState([dirB])).toBe(false);
+      expect(env.project.getPaths()).toEqual([dirA]);
+      expect(openPaths(env)).toEqual([fileA]);
+    });
+  });
+
   describe("::unloadEditorWindow()", () => {
     it("saves the BlobStore so it can be loaded after reload", () => {
       const configDirPath = temp.mkdirSync("atom-spec-environment");

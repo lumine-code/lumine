@@ -58,6 +58,10 @@ const { stopAllWatchers } = require("./path-watcher");
 const GitHost = require("./git-host");
 const stat = util.promisify(fs.stat);
 
+// Only the workspace center follows the project: the docks belong to the
+// window, so a terminal or a panel keeps running across a project change.
+const PROJECT_STATE_LOCATIONS = ["center"];
+
 let nextId = 0;
 
 /**
@@ -230,6 +234,10 @@ class AtomEnvironment {
       config: this.config,
       applicationDelegate: this.applicationDelegate,
       repositoryRegistry: this.repositories,
+      // `Project::setState` is the public face of this; the mechanics live
+      // here because only the environment can reach the window state store and
+      // the workspace.
+      restoreState: (projectPaths) => this.restoreProjectState(projectPaths),
     });
     this.icons.attachProject(this.project);
     this.#commandInstaller = new CommandInstaller(this.applicationDelegate);
@@ -1589,11 +1597,65 @@ class AtomEnvironment {
     }
   }
 
-  restoreStateIntoThisEnvironment(state) {
+  restoreStateIntoThisEnvironment(state, options) {
     state.fullScreen = this.isFullScreen();
     // The current panes are destroyed by Workspace::deserialize, which carries
     // persistent items over to the restored layout without flicker.
-    return this.deserialize(state);
+    return this.deserialize(state, options);
+  }
+
+  // Private: Implements {Project::setState}, which is where this is
+  // documented. It lives here because the project can reach neither the window
+  // state store nor the workspace.
+  //
+  // Returns a {Promise} that resolves to whether the window changed.
+  async restoreProjectState(projectPaths) {
+    // Resolve the same way ::openLocations does before hashing: the state key
+    // is a hash of the path strings, so an unresolved path would miss its own
+    // saved session.
+    const folders = projectPaths.map((projectPath) =>
+      this.project.getDirectoryForProjectPath(projectPath).getPath(),
+    );
+    if (folders.length === 0) return false;
+
+    const currentPaths = this.project.getPaths();
+    if (this.getStateKey(folders) === this.getStateKey(currentPaths)) return false;
+
+    // Flush the outgoing session before anything is torn down. `isUnloading`
+    // carries marker layers and undo history with it, so coming back lands on
+    // the window as it is now.
+    await this.saveState({ isUnloading: true });
+
+    // The same question ::prepareToUnloadEditorWindow asks, and for the same
+    // reason: with a project and a working state store, only a file that
+    // conflicts with what is on disk still prompts, because everything else
+    // was just persisted.
+    const closing = await this.workspace.confirmClose({
+      windowCloseRequested: true,
+      projectHasPaths: currentPaths.length > 0,
+    });
+    if (!closing) return false;
+
+    const state = await this.loadState(this.getStateKey(folders));
+    const locations = PROJECT_STATE_LOCATIONS;
+
+    await this.workspace.clear({ locations });
+    this.project.destroyUnretainedBuffers();
+    // Settings from a project file are resolved when a window launches, so
+    // they cannot be resolved again here. Clearing them is the honest
+    // direction: better none than the outgoing project's.
+    this.config.clearProjectSettings();
+
+    if (state) {
+      await this.restoreStateIntoThisEnvironment(state, { locations });
+    } else {
+      this.project.setPaths(folders, { mustExist: true, exact: true });
+      if (this.config.get("core.openEmptyEditorOnStart")) {
+        await this.workspace.open(null, { pending: true });
+      }
+    }
+
+    return true;
   }
 
   async saveState(options, storageKey) {
@@ -1621,7 +1683,9 @@ class AtomEnvironment {
     }
   }
 
-  async deserialize(state) {
+  // * `options` An optional {Object} passed on to {Workspace::deserialize},
+  //   which reads `locations` from it.
+  async deserialize(state, options) {
     if (!state) return Promise.resolve();
 
     this.setFullScreen(state.fullScreen);
@@ -1651,7 +1715,7 @@ class AtomEnvironment {
     if (state.grammars) this.grammars.deserialize(state.grammars);
 
     startTime = Date.now();
-    if (state.workspace) this.workspace.deserialize(state.workspace, this.deserializers);
+    if (state.workspace) this.workspace.deserialize(state.workspace, this.deserializers, options);
     this.deserializeTimings.workspace = Date.now() - startTime;
 
     if (missingProjectPaths.length > 0) {

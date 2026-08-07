@@ -544,7 +544,12 @@ module.exports = class Workspace extends Model {
     };
   }
 
-  deserialize(state, deserializerManager) {
+  // * `options` An optional {Object} that may contain the following key:
+  //   * `locations` An {Array} of the pane container locations to restore.
+  //     Defaults to all four. {Project::setState} passes `['center']`, because
+  //     the docks belong to the window rather than to the project it has open.
+  deserialize(state, deserializerManager, options = {}) {
+    const locations = options.locations || ALL_LOCATIONS;
     const packagesWithActiveGrammars =
       state.packagesWithActiveGrammars != null ? state.packagesWithActiveGrammars : [];
     for (let packageName of packagesWithActiveGrammars) {
@@ -561,9 +566,61 @@ module.exports = class Workspace extends Model {
     // them with the current one. The detach, teardown, restore, and re-attach
     // all happen in the same tick so the swap causes no visible flicker.
     const restoringLayout = state.paneContainers;
-    const persistentItems = [];
+    let persistentItems = [];
     if (restoringLayout) {
-      for (const item of this.getPaneItems()) {
+      persistentItems = this.detachPersistentDockItems(locations);
+      this.destroyPanes(locations);
+    }
+
+    if (state.paneContainers) {
+      for (const location of locations) {
+        this.paneContainers[location].deserialize(
+          state.paneContainers[location],
+          deserializerManager,
+        );
+      }
+    }
+
+    this.attachPersistentDockItems(persistentItems);
+
+    this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+  }
+
+  // Extended: Destroy every item in the given pane container locations,
+  // leaving each of them with a single empty pane.
+  //
+  // Nothing is prompted for — the caller decides whether the items may go,
+  // which is why this is not {Pane::destroyItems} on every pane.
+  //
+  // * `options` An optional {Object} that may contain the following key:
+  //   * `locations` An {Array} of the pane container locations to empty.
+  //     Defaults to all four.
+  //
+  // Returns a {Promise} that resolves once they are empty.
+  async clear(options = {}) {
+    const locations = options.locations || ALL_LOCATIONS;
+    const persistentItems = this.detachPersistentDockItems(locations);
+    for (const pane of this.getPanesIn(locations)) {
+      await Promise.all(pane.getItems().map((item) => pane.destroyItem(item, true)));
+    }
+    this.destroyPanes(locations);
+    this.attachPersistentDockItems(persistentItems);
+    this.destroyedItemURIs = [];
+    this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+  }
+
+  // Private: Every pane across the given pane container locations.
+  getPanesIn(locations) {
+    return locations.flatMap((location) => this.paneContainers[location].getPanes());
+  }
+
+  // Private: Removes every persistent dock item from its pane without
+  // destroying it, recording where it came from so
+  // {::attachPersistentDockItems} can put it back.
+  detachPersistentDockItems(locations) {
+    const persistentItems = [];
+    for (const pane of this.getPanesIn(locations)) {
+      for (const item of pane.getItems()) {
         if (typeof item.isPersistentDockItem !== "function" || !item.isPersistentDockItem()) {
           continue;
         }
@@ -573,20 +630,15 @@ module.exports = class Workspace extends Model {
           location: container.getLocation(),
           visible: typeof container.isVisible === "function" ? container.isVisible() : true,
         });
-        this.paneForItem(item).removeItem(item, true);
-      }
-      for (const pane of this.getPanes()) {
-        pane.destroy();
+        pane.removeItem(item, true);
       }
     }
+    return persistentItems;
+  }
 
-    if (state.paneContainers) {
-      this.paneContainers.center.deserialize(state.paneContainers.center, deserializerManager);
-      this.paneContainers.left.deserialize(state.paneContainers.left, deserializerManager);
-      this.paneContainers.right.deserialize(state.paneContainers.right, deserializerManager);
-      this.paneContainers.bottom.deserialize(state.paneContainers.bottom, deserializerManager);
-    }
-
+  // Private: Puts the items {::detachPersistentDockItems} took out back into
+  // whatever layout now exists.
+  attachPersistentDockItems(persistentItems) {
     for (const { item, location, visible } of persistentItems) {
       let uri;
       if (typeof item.getURI === "function") uri = item.getURI();
@@ -608,8 +660,15 @@ module.exports = class Workspace extends Model {
         container.show();
       }
     }
+  }
 
-    this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+  // Private: Destroys every pane in the given locations. A container's last
+  // pane empties itself rather than disappearing, so each one is left with a
+  // single empty pane.
+  destroyPanes(locations) {
+    for (const pane of this.getPanesIn(locations)) {
+      pane.destroy();
+    }
   }
 
   getPackageNamesWithActiveGrammars() {
