@@ -78,6 +78,18 @@ function gitDirectoryRelativePath(gitAliases, directoryPath) {
   return null;
 }
 
+// {relativeToAny} across both sides' aliases: `""` when the two name the same
+// directory, a "/"-joined relative path when the child is below the parent, and
+// `null` when it is not.
+function relativeBetweenAliases(parentPath, childPath) {
+  const parents = pathAliases(parentPath);
+  for (const child of pathAliases(childPath)) {
+    const relativePath = relativeToAny(parents, child);
+    if (relativePath != null) return relativePath;
+  }
+  return null;
+}
+
 function relativeToAny(parentPaths, childPath) {
   for (const parent of parentPaths) {
     if (childPath === parent) return "";
@@ -1788,9 +1800,13 @@ module.exports = class RepositoryRegistry {
         if (!candidatePath || path.basename(candidatePath) !== ".git") continue;
 
         const workingDirectory = path.dirname(candidatePath);
+        // Measure the depth between aliases, never with a bare `path.relative`:
+        // a root known by its long name against a watcher path carrying an 8.3
+        // alias produces a `../..` chain out of the drive and back, which is
+        // deeper than any watchDepth and silently drops the event.
         const rootPath = this.rootPaths.find((root) => {
-          if (!pathContains(root, workingDirectory)) return false;
-          return pathDepth(path.relative(root, workingDirectory)) <= watchDepth;
+          const relativePath = relativeBetweenAliases(root, workingDirectory);
+          return relativePath != null && pathDepth(relativePath) <= watchDepth;
         });
         if (!rootPath) continue;
 
@@ -1815,9 +1831,14 @@ module.exports = class RepositoryRegistry {
             }
           }
         } else {
-          const entry = Array.from(this.entriesById.values()).find(
-            (candidate) =>
-              normalizePath(candidate.workingDirectory) === normalizePath(workingDirectory),
+          // Match the way routing does. A watcher reports whichever spelling the
+          // OS handed it, and a registered repository knows its own — on Windows
+          // an 8.3 alias against a long name, anywhere a symlinked root against
+          // its target. Comparing the two lexically found nothing, so a deleted
+          // `.git` left its repository registered and no consumer was told.
+          const removedAliases = pathAliases(workingDirectory);
+          const entry = Array.from(this.entriesById.values()).find((candidate) =>
+            candidate.routingDirectories.some((directory) => removedAliases.includes(directory)),
           );
           if (entry) {
             entry.missing = true;

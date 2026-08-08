@@ -1229,6 +1229,32 @@ describe("RepositoryRegistry", () => {
     expect(repository.isDestroyed()).toBe(true);
   });
 
+  // A watcher reports whichever spelling the OS handed it and a registered
+  // repository knows its own — on Windows an 8.3 alias against a long name, on
+  // macOS /var against /private/var. The removal branch compared the two
+  // lexically and matched nothing, so a deleted `.git` left its repository
+  // registered and neither the tree view nor the Git panel was ever told.
+  it("removes a repository whose .git disappears under an aliased spelling", () => {
+    registry.destroy();
+    registry = new RepositoryRegistry({
+      project,
+      config: config({ "git.watchDiscovery": true, "git.watchDepth": 1 }),
+    });
+
+    const rawPath = temp.mkdirSync("aliased-repository");
+    const canonicalPath = fs.realpathSync.native(rawPath);
+    const repository = new FakeRepository(canonicalPath);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(canonicalPath)]);
+    expect(registry.getRepositories()).toEqual([repository]);
+
+    fs.rmSync(repository.getPath(), { recursive: true, maxRetries: 10, retryDelay: 50 });
+    project.emitFileChanges([{ action: "deleted", path: path.join(rawPath, ".git") }]);
+
+    expect(registry.getRepositories()).toEqual([]);
+    expect(repository.isDestroyed()).toBe(true);
+  });
+
   // A repository refreshes on window focus, on a buffer save, and after its own
   // operations, so anything that changes the working tree from inside the window
   // without going through a buffer — a build, a `git` command in a terminal, a
