@@ -43,22 +43,31 @@ module.exports = class GitRepositoryHistoryProvider {
     );
   }
 
+  // Never `git show <rev>:<path>` here. When the path is absent at the revision
+  // *and* contains a glob metacharacter (`[`, `]`, `*`, `?`), Git fails to
+  // resolve the argument as an object, decides it "looks like a pathspec"
+  // instead, and falls back to a revision-less `git show` — printing the HEAD
+  // commit message on stdout with exit 0. Every caller then treats that log text
+  // as the file's contents at the revision, which shows an ignored or untracked
+  // file as modified from its first line to its last. `cat-file blob` takes an
+  // object name only and has no pathspec fallback, so an absent path always
+  // reports as absent whatever characters it contains.
   async getFileAtRevision(workingDirectory, relativePosixPath, revision, options = {}) {
     const result = await this.runner.runResult(
-      ["show", `${revision}:${relativePosixPath}`],
+      ["cat-file", "blob", `${revision}:${relativePosixPath}`],
       workingDirectory,
       { ...options, allowedExitCodes: [0, 128] },
     );
     if (result.exitCode === 0) return result.stdout;
     const stderr = String(result.stderr);
     if (
-      /does not exist in|exists on disk, but not in|invalid object name|bad revision|but not in the working tree/.test(
+      /does not exist in|does not exist \(neither on disk nor in the index\)|exists on disk, but not in|invalid object name|bad revision|but not in the working tree/i.test(
         stderr,
       )
     ) {
       return null;
     }
-    throw new GitOperationError("show", result);
+    throw new GitOperationError("cat-file", result);
   }
 
   // Read a blob's contents by object id (`git cat-file -p <oid>`). Returns the

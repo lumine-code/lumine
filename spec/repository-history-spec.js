@@ -231,6 +231,24 @@ describe("repository history", () => {
       expect(Buffer.compare(buffer, Buffer.from([0, 1, 2, 255]))).toBe(0);
     });
 
+    // `git show <rev>:<path>` cannot resolve a path holding a glob
+    // metacharacter that is absent at the revision: it decides the argument is
+    // a pathspec, falls back to a revision-less `git show`, and answers with the
+    // HEAD commit message at exit 0. A caller that believed it would show every
+    // line of such a file as changed against that log text.
+    it("reads paths containing glob metacharacters at a revision", async () => {
+      const trackedPath = "[e] dir/f[1].txt";
+      fs.mkdirSync(path.join(workingDirectory, "[e] dir"));
+      fs.writeFileSync(path.join(workingDirectory, trackedPath), "one\ntwo\n");
+      await operations.stageFiles([trackedPath]);
+      await operations.commit("glob");
+
+      expect(await repo.getFileAtRevision(trackedPath, "HEAD")).toBe("one\ntwo\n");
+      expect(await repo.getFileAtRevision(trackedPath, "HEAD~1")).toBeNull();
+      expect(await repo.getFileAtRevision("[e] dir/absent[1].log", "HEAD")).toBeNull();
+      expect(await repo.getFileAtRevision("plain*.log", "HEAD")).toBeNull();
+    });
+
     it("reads blob contents by object id", async () => {
       const oid = (
         await operationProvider.run(["rev-parse", "HEAD:moved.txt"], workingDirectory)
