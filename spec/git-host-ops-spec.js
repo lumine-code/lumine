@@ -109,7 +109,10 @@ describe("git-host ops", () => {
       { workingDirectory: "/repo", relativePosixPath: "f.txt", headOid: "abc", text: "a\nB\nc\n" },
       {},
     );
-    expect(calls[0].args).toContain("show");
+    // `cat-file blob`, never `show`: `show <rev>:<path>` mistakes a path holding
+    // a glob metacharacter for a pathspec and answers with the commit message.
+    expect(calls[0].args).toContain("cat-file");
+    expect(calls[0].args).toContain("blob");
     expect(calls[0].args).toContain("abc:f.txt");
     expect(hunks).toEqual([{ oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 }]);
   });
