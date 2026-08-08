@@ -44,6 +44,70 @@ function pathDepth(relativePath) {
   return relativePath.split(/[\\/]+/).filter(Boolean).length;
 }
 
+function gitAliasesFor(repository, cache) {
+  if (!cache.has(repository)) {
+    let gitDirectory = null;
+    try {
+      gitDirectory = repository.getPath?.();
+    } catch {
+      // Destroyed mid-batch. Its schedulers no-op, so no aliases are needed.
+    }
+    cache.set(repository, gitDirectory ? pathAliases(gitDirectory) : []);
+  }
+  return cache.get(repository);
+}
+
+// Where a directory sits inside a repository's Git directory: a "/"-joined
+// relative path, `""` for the Git directory itself, or `null` for anything in
+// the working tree.
+//
+// The Git directory's aliases are resolved once per repository, but a watched
+// path is only canonicalized when it carries an unresolved Windows 8.3 alias —
+// the same guard {::getForPath} uses, and for the same reason: one batch can
+// hold thousands of directories and none of them should cost a `realpath`.
+function gitDirectoryRelativePath(gitAliases, directoryPath) {
+  if (gitAliases.length === 0) return null;
+
+  const normalizedDirectory = normalizePath(directoryPath);
+  const relativePath = relativeToAny(gitAliases, normalizedDirectory);
+  if (relativePath != null) return relativePath;
+
+  if (process.platform === "win32" && /~\d/.test(normalizedDirectory)) {
+    return relativeToAny(gitAliases, canonicalPath(directoryPath));
+  }
+  return null;
+}
+
+function relativeToAny(parentPaths, childPath) {
+  for (const parent of parentPaths) {
+    if (childPath === parent) return "";
+    if (childPath.startsWith(`${parent}${path.sep}`)) {
+      return childPath
+        .slice(parent.length + 1)
+        .split(path.sep)
+        .join("/");
+    }
+  }
+  return null;
+}
+
+// Which snapshots one changed path can have invalidated: `"status"`, `"both"`,
+// or `"none"`.
+//
+// Anything in the working tree is a status change. Inside the Git directory
+// most write traffic is noise — the loose objects a fetch unpacks, the lock
+// file every write pairs with — and only HEAD and the refs move a ref.
+function refreshHintForChange(gitRelativeDirectory, name) {
+  if (gitRelativeDirectory == null) return "status";
+  if (name.endsWith(".lock")) return "none";
+
+  const [section] = gitRelativeDirectory.split("/");
+  if (section === "objects") return "none";
+  if (section === "refs" || section === "logs") return "both";
+  if (section === "" && (name === "HEAD" || name === "packed-refs")) return "both";
+  return "status";
+}
+
 // Public: Every Git repository this window knows about, available as
 // `atom.repositories`.
 //
@@ -1647,6 +1711,75 @@ module.exports = class RepositoryRegistry {
   }
 
   handleProjectFileChanges(events) {
+    this.refreshRepositoriesForFileChanges(events);
+    this.discoverRepositoriesForFileChanges(events);
+  }
+
+  // Keep the snapshots current with what actually happens on disk.
+  //
+  // A repository refreshes on window focus, on a buffer save, and after its own
+  // operations — which covers nothing that happens inside the window without
+  // going through a buffer. A build run from the terminal, a `git commit` from a
+  // panel, a file a package rewrites: every colour derived from Git stays as it
+  // was until something else asks for a refresh, and the usual something else is
+  // opening a file, whose diff view subscribes and forces one. The project
+  // already watches every root, so route its events to the repository that owns
+  // them. Both schedulers debounce, coalesce, and no-op without a subscriber, so
+  // even a noisy batch costs one Git process per repository at most.
+  refreshRepositoriesForFileChanges(events) {
+    if (this.destroyed || this.entriesById.size === 0) return;
+
+    // Batches run to thousands of events during an install or a checkout, and
+    // the paths in one arrive in runs from the same directory. Everything the
+    // classification needs is a property of the directory, so each one is
+    // resolved — aliases and all — exactly once per batch.
+    const gitAliasesByRepository = new Map();
+    const contextByDirectory = new Map();
+    const contextFor = (changedPath) => {
+      const directoryPath = path.dirname(changedPath);
+      if (!contextByDirectory.has(directoryPath)) {
+        const repository = this.getForPath(changedPath);
+        contextByDirectory.set(
+          directoryPath,
+          repository
+            ? {
+                repository,
+                gitRelativeDirectory: gitDirectoryRelativePath(
+                  gitAliasesFor(repository, gitAliasesByRepository),
+                  directoryPath,
+                ),
+              }
+            : null,
+        );
+      }
+      return contextByDirectory.get(directoryPath);
+    };
+
+    const pending = new Map();
+    for (const event of events) {
+      for (const changedPath of [event.path, event.oldPath]) {
+        if (!changedPath) continue;
+
+        const context = contextFor(changedPath);
+        if (!context || pending.get(context.repository) === "both") continue;
+
+        const hint = refreshHintForChange(context.gitRelativeDirectory, path.basename(changedPath));
+        if (hint === "none") continue;
+        if (hint === "both" || !pending.has(context.repository)) {
+          pending.set(context.repository, hint);
+        }
+      }
+    }
+
+    for (const [repository, hint] of pending) {
+      repository.scheduleStatusSnapshotRefresh();
+      // Re-reading the refs costs several Git processes, so it is reserved for
+      // the entries that can actually have moved a ref.
+      if (hint === "both") repository.scheduleRefsSnapshotRefresh();
+    }
+  }
+
+  discoverRepositoriesForFileChanges(events) {
     if (!this.config?.get("git.watchDiscovery")) return;
 
     const watchDepth = this.config.get("git.watchDepth") ?? 1;

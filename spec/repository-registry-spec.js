@@ -19,6 +19,8 @@ class FakeRepository {
     this.refreshStatusCount = 0;
     this.refreshStatusSnapshotCount = 0;
     this.refreshRefsSnapshotCount = 0;
+    this.scheduledStatusSnapshotRefreshCount = 0;
+    this.scheduledRefsSnapshotRefreshCount = 0;
     this.statusSnapshot = { initialized: true };
     this.refsSnapshot = { initialized: true };
   }
@@ -37,6 +39,14 @@ class FakeRepository {
 
   async refreshRefsSnapshot() {
     this.refreshRefsSnapshotCount++;
+  }
+
+  scheduleStatusSnapshotRefresh() {
+    this.scheduledStatusSnapshotRefreshCount++;
+  }
+
+  scheduleRefsSnapshotRefresh() {
+    this.scheduledRefsSnapshotRefreshCount++;
   }
 
   getWorkingDirectory() {
@@ -1217,6 +1227,99 @@ describe("RepositoryRegistry", () => {
     project.emitFileChanges([{ path: repository.getPath() }]);
     expect(registry.getForPath(nestedPath)).toBeNull();
     expect(repository.isDestroyed()).toBe(true);
+  });
+
+  // A repository refreshes on window focus, on a buffer save, and after its own
+  // operations, so anything that changes the working tree from inside the window
+  // without going through a buffer — a build, a `git` command in a terminal, a
+  // package rewriting a file — used to leave every Git colour in the window as
+  // it was until an unrelated event forced a refresh.
+  describe("refreshing from watched file changes", () => {
+    let repository, workingDirectory;
+
+    beforeEach(() => {
+      workingDirectory = temp.mkdirSync("watched-repository");
+      repository = new FakeRepository(workingDirectory);
+      repositories.push(repository);
+      registry.setProjectRoots([directoryFor(workingDirectory)]);
+      repository.scheduledStatusSnapshotRefreshCount = 0;
+      repository.scheduledRefsSnapshotRefreshCount = 0;
+    });
+
+    it("refreshes the status once for a batch of working-tree changes", () => {
+      project.emitFileChanges([
+        { action: "modified", path: path.join(workingDirectory, "one.txt") },
+        { action: "modified", path: path.join(workingDirectory, "nested", "two.txt") },
+        {
+          action: "renamed",
+          path: path.join(workingDirectory, "four.txt"),
+          oldPath: path.join(workingDirectory, "three.txt"),
+        },
+      ]);
+
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    });
+
+    it("refreshes the status alone when the index moves", () => {
+      project.emitFileChanges([
+        { action: "created", path: path.join(repository.getPath(), "index.lock") },
+        { action: "modified", path: path.join(repository.getPath(), "index") },
+        { action: "deleted", path: path.join(repository.getPath(), "index.lock") },
+      ]);
+
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    });
+
+    it("refreshes the refs too when a ref moves", () => {
+      project.emitFileChanges([
+        { action: "modified", path: path.join(repository.getPath(), "HEAD") },
+        { action: "modified", path: path.join(repository.getPath(), "refs", "heads", "master") },
+      ]);
+
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+    });
+
+    // A fetch writes thousands of loose objects and every Git write pairs with
+    // a lock file. Neither changes what a status or a ref reads.
+    it("ignores loose objects and lock files", () => {
+      project.emitFileChanges([
+        { action: "created", path: path.join(repository.getPath(), "objects", "96", "7631210c04") },
+        {
+          action: "created",
+          path: path.join(repository.getPath(), "objects", "pack", "pack-a.idx"),
+        },
+        {
+          action: "created",
+          path: path.join(repository.getPath(), "refs", "heads", "master.lock"),
+        },
+      ]);
+
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    });
+
+    it("ignores changes outside every repository", () => {
+      const outsidePath = temp.mkdirSync("outside-every-repository");
+      project.emitFileChanges([{ action: "modified", path: path.join(outsidePath, "one.txt") }]);
+
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    });
+
+    // Discovery is opt-in and expensive; keeping a window's colours honest is
+    // neither, so it must not ride on the same switch.
+    it("does not depend on git.watchDiscovery", () => {
+      expect(registry.config.get("git.watchDiscovery")).toBeFalsy();
+
+      project.emitFileChanges([
+        { action: "modified", path: path.join(workingDirectory, "one.txt") },
+      ]);
+
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+    });
   });
 
   // Resetting the window runs PackageManager#reset, which clears every consumer
