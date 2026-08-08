@@ -345,6 +345,19 @@ describe("AtomWindow", function () {
       assert.isTrue(w.browserWindow.behavior.reloaded);
     });
 
+    it("can reload directly when a replacement window failed after unloading", async function () {
+      const w = new AtomWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+      });
+      w.prepareToUnload = sinon.stub().resolves(true);
+
+      w.reload({ skipPrepareToUnload: true });
+      await Promise.resolve();
+
+      assert.isFalse(w.prepareToUnload.called);
+      assert.isTrue(w.browserWindow.behavior.reloaded);
+    });
+
     it("leaves paths openable when the renderer refuses to unload", async function () {
       const w = new AtomWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,

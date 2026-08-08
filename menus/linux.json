@@ -190,6 +190,10 @@
             {
               "label": "&Join Lines",
               "command": "editor:join-lines"
+            },
+            {
+              "label": "Collapse &Blank Lines",
+              "command": "editor:collapse-blank-lines"
             }
           ]
         },
@@ -218,6 +222,10 @@
               "command": "editor:lower-case"
             },
             {
+              "label": "Collapse Content &Spaces",
+              "command": "editor:collapse-content-spaces"
+            },
+            {
               "type": "separator"
             },
             {
@@ -231,6 +239,10 @@
             {
               "label": "Delete to Next Word Boundary",
               "command": "editor:delete-to-next-word-boundary"
+            },
+            {
+              "label": "Delete to Next Line Content",
+              "command": "editor:delete-to-next-line-content"
             },
             {
               "label": "&Delete Line",
@@ -389,6 +401,10 @@
             {
               "label": "Open In &Dev Mode…",
               "command": "application:open-dev"
+            },
+            {
+              "label": "Reopen Window in Dev &Mode",
+              "command": "application:reopen-window-in-dev-mode"
             },
             {
               "label": "&Reload Window",

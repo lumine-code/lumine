@@ -1060,6 +1060,145 @@ describe("AtomApplication", function () {
     });
   });
 
+  describe("reopening the focused window in development mode", function () {
+    it("opens the same project in a loaded development window before closing the source", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().resolves(true);
+      sinon.spy(sourceWindow, "close");
+
+      const openedWindow = await app.reopenWindowInDevMode();
+
+      assert.isTrue(sourceWindow.prepareToUnload.calledOnce);
+      assert.isTrue(sourceWindow.close.calledOnce);
+      assert.isTrue(openedWindow.devMode);
+      assert.isFalse(openedWindow.safeMode);
+      assert.deepEqual(openedWindow.projectRoots, [scenario.convertRootPath("a")]);
+      assert.deepEqual(app.getAllWindows(), [openedWindow]);
+    });
+
+    it("replaces a window without project roots", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine([]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().resolves(true);
+
+      const openedWindow = await app.reopenWindowInDevMode();
+
+      assert.isTrue(openedWindow.devMode);
+      assert.deepEqual(openedWindow.projectRoots || [], []);
+      assert.deepEqual(app.getAllWindows(), [openedWindow]);
+    });
+
+    it("waits for the replacement renderer to load before closing the source", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().resolves(true);
+      sinon.spy(sourceWindow, "close");
+
+      let resolveLoaded;
+      const replacementWindow = {
+        loadedPromise: new Promise((resolve) => {
+          resolveLoaded = resolve;
+        }),
+      };
+      sinon.stub(app, "openPaths").resolves(replacementWindow);
+
+      const reopenPromise = app.reopenWindowInDevMode();
+      await new Promise(process.nextTick);
+      assert.isFalse(sourceWindow.close.called);
+
+      resolveLoaded();
+      assert.strictEqual(await reopenPromise, replacementWindow);
+      assert.isTrue(sourceWindow.close.calledOnce);
+      assert.isTrue(
+        app.openPaths.calledWith({
+          foldersToOpen: [scenario.convertRootPath("a")],
+          newWindow: true,
+          devMode: true,
+          safeMode: false,
+        }),
+      );
+    });
+
+    it("keeps the source window open when unloading is cancelled", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().resolves(false);
+      sinon.spy(sourceWindow, "close");
+      sinon.spy(app, "openPaths");
+
+      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isFalse(sourceWindow.close.called);
+      assert.isFalse(app.openPaths.called);
+      assert.isFalse(sourceWindow.unloading);
+    });
+
+    it("keeps the source usable when preparing to unload fails", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().rejects(new Error("prepare failed"));
+      sinon.spy(app, "openPaths");
+      sinon.stub(console, "error");
+
+      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isFalse(app.openPaths.called);
+      assert.isFalse(sourceWindow.unloading);
+      assert.isTrue(
+        console.error.calledWithMatch(
+          "Failed to prepare the window for development mode",
+          sinon.match.instanceOf(Error),
+        ),
+      );
+    });
+
+    it("reloads an existing development window instead of replacing it", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["--dev", "a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.reload = sinon.stub().resolves("reloaded");
+      sinon.spy(app, "openPaths");
+
+      assert.strictEqual(await app.reopenWindowInDevMode(), "reloaded");
+      assert.isTrue(sourceWindow.reload.calledOnceWithExactly());
+      assert.isFalse(app.openPaths.called);
+    });
+
+    it("reloads the source window if opening its replacement fails", async function () {
+      const [sourceWindow] = await scenario.launch(parseCommandLine(["a"]));
+      const app = scenario.getApplication(0);
+      sourceWindow.isFocused.returns(true);
+      sourceWindow.prepareToUnload = sinon.stub().resolves(true);
+      sourceWindow.reload = sinon.stub().resolves();
+      sinon.stub(app, "openPaths").rejects(new Error("opening failed"));
+      sinon.stub(console, "error");
+
+      assert.isUndefined(await app.reopenWindowInDevMode());
+      assert.isTrue(sourceWindow.reload.calledOnceWithExactly({ skipPrepareToUnload: true }));
+      assert.isFalse(sourceWindow.unloading);
+      assert.isTrue(
+        console.error.calledWithMatch(
+          "Failed to reopen the window in development mode",
+          sinon.match.instanceOf(Error),
+        ),
+      );
+    });
+
+    it("exposes the operation as an application command", async function () {
+      const app = scenario.addApplication();
+      sinon.stub(app, "reopenWindowInDevMode").resolves();
+
+      app.emit("application:reopen-window-in-dev-mode");
+      await new Promise(process.nextTick);
+
+      assert.isTrue(app.reopenWindowInDevMode.calledOnce);
+    });
+  });
+
   describe("when closing the last window", function () {
     if (process.platform === "linux" || process.platform === "win32") {
       it("quits the application", async function () {
@@ -1240,6 +1379,7 @@ class StubWindow extends EventEmitter {
     this.show = sinon.spy();
     this.hide = sinon.spy();
     this.prepareToUnload = sinon.spy();
+    this.reload = sinon.stub().resolves();
     this.close = () => {
       // A real BrowserWindow emits "closed" when it closes. Emit it here too so
       // AtomApplication#addWindow's teardown runs and disposes per-window

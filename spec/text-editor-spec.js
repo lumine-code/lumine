@@ -8700,6 +8700,113 @@ describe("TextEditor", () => {
     });
   });
 
+  describe(".collapseBlankLines()", () => {
+    it("collapses runs of blank lines across the whole buffer and preserves line endings", () => {
+      buffer.setText("one\r\n\r\n\r\n\r\ntwo\r\n\r\n\r\nthree\r\n");
+      buffer.clearUndoStack();
+
+      editor.collapseBlankLines();
+
+      expect(buffer.getText()).toBe("one\r\n\r\ntwo\r\n\r\nthree\r\n");
+      editor.undo();
+      expect(buffer.getText()).toBe("one\r\n\r\n\r\n\r\ntwo\r\n\r\n\r\nthree\r\n");
+    });
+  });
+
+  describe(".collapseContentSpaces()", () => {
+    it("collapses repeated content spaces without changing indentation", () => {
+      buffer.setText("  one    two\n \t  three  four\nfive\t  six\n    \n");
+      buffer.clearUndoStack();
+
+      editor.collapseContentSpaces();
+
+      expect(buffer.getText()).toBe("  one two\n \t  three four\nfive\t six\n    \n");
+      editor.undo();
+      expect(buffer.getText()).toBe("  one    two\n \t  three  four\nfive\t  six\n    \n");
+    });
+  });
+
+  describe(".deleteToNextLineContent()", () => {
+    it("deletes from an empty selection through the next line's indentation", () => {
+      buffer.setText("one tail\n  two\nthree");
+      editor.setCursorBufferPosition([0, 3]);
+
+      editor.deleteToNextLineContent();
+
+      expect(buffer.getText()).toBe("onetwo\nthree");
+      expect(editor.getCursorBufferPosition()).toEqual([0, 3]);
+    });
+
+    it("uses the logical selection range regardless of selection direction", () => {
+      buffer.setText("zero\none tail\n\t  two\nthree");
+      editor.setSelectedBufferRange(
+        [
+          [0, 2],
+          [1, 3],
+        ],
+        { reversed: true },
+      );
+
+      editor.deleteToNextLineContent();
+
+      expect(buffer.getText()).toBe("zetwo\nthree");
+    });
+
+    it("treats a selection ending at column zero as ending on the preceding line", () => {
+      buffer.setText("zero\none\n  two\nthree");
+      editor.setSelectedBufferRange([
+        [0, 2],
+        [1, 0],
+      ]);
+
+      editor.deleteToNextLineContent();
+
+      expect(buffer.getText()).toBe("zeone\n  two\nthree");
+    });
+
+    it("handles multiple selections in one transaction", () => {
+      buffer.setText("a tail\n  b\nc tail\n\td\ne");
+      buffer.clearUndoStack();
+      editor.setSelectedBufferRanges([
+        [
+          [0, 1],
+          [0, 1],
+        ],
+        [
+          [2, 1],
+          [2, 1],
+        ],
+      ]);
+
+      editor.deleteToNextLineContent();
+
+      expect(buffer.getText()).toBe("ab\ncd\ne");
+      editor.undo();
+      expect(buffer.getText()).toBe("a tail\n  b\nc tail\n\td\ne");
+    });
+
+    it("does nothing for an empty selection on the final line", () => {
+      buffer.setText("one\ntwo");
+      editor.setCursorBufferPosition([1, 1]);
+
+      editor.deleteToNextLineContent();
+
+      expect(buffer.getText()).toBe("one\ntwo");
+    });
+
+    it("deletes a non-empty final-line selection through the end of the buffer", () => {
+      buffer.setText("one\ntwo tail");
+      editor.setSelectedBufferRange([
+        [1, 1],
+        [1, 3],
+      ]);
+
+      editor.deleteToNextLineContent();
+
+      expect(buffer.getText()).toBe("one\nt");
+    });
+  });
+
   describe(".joinLines()", () => {
     describe("when no text is selected", () => {
       describe("when the line below isn't empty", () => {

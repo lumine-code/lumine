@@ -124,6 +124,9 @@ module.exports = function ({
       "application:open-dev": function () {
         return ipcRenderer.send("command", "application:open-dev");
       },
+      "application:reopen-window-in-dev-mode": function () {
+        return ipcRenderer.send("command", "application:reopen-window-in-dev-mode");
+      },
       "application:open-safe": function () {
         return ipcRenderer.send("command", "application:open-safe");
       },
@@ -767,6 +770,15 @@ module.exports = function ({
       },
       "editor:join-lines": function () {
         return this.joinLines();
+      },
+      "editor:delete-to-next-line-content": function () {
+        return this.deleteToNextLineContent();
+      },
+      "editor:collapse-blank-lines": function () {
+        return this.collapseBlankLines();
+      },
+      "editor:collapse-content-spaces": function () {
+        return this.collapseContentSpaces();
       },
     }),
     false,

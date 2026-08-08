@@ -555,8 +555,9 @@ module.exports = class AtomWindow extends EventEmitter {
   // awaits forever. That is silent — `application:open-your-keymap` and the
   // rest of `openPathOnEvent` simply stop doing anything while the renderer
   // itself keeps working normally. Commit to the reload first, latch second.
-  async reload() {
-    const canUnload = await this.prepareToUnload({ deactivatePackages: false });
+  async reload({ skipPrepareToUnload = false } = {}) {
+    const canUnload =
+      skipPrepareToUnload || (await this.prepareToUnload({ deactivatePackages: false }));
     if (!canUnload || this.browserWindow.isDestroyed()) return this.loadedPromise;
 
     this.loadedPromise = new Promise((resolve) => {

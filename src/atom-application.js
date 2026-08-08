@@ -563,6 +563,7 @@ module.exports = class AtomApplication extends EventEmitter {
     this.on("application:new-window", () => this.openPath(createOpenSettings({})));
     this.on("application:new-file", () => (this.focusedWindow() || this).openPath());
     this.on("application:open-dev", () => this.promptForPathToOpen("all", { devMode: true }));
+    this.on("application:reopen-window-in-dev-mode", () => this.reopenWindowInDevMode());
     this.on("application:open-safe", () => this.promptForPathToOpen("all", { safeMode: true }));
 
     this.on("application:open-documentation", () =>
@@ -1086,6 +1087,72 @@ module.exports = class AtomApplication extends EventEmitter {
   // Public: Returns the currently focused {AtomWindow} or undefined if none.
   focusedWindow() {
     return this.getAllWindows().find((window) => window.isFocused());
+  }
+
+  // Replaces the focused window with a development-mode window after its
+  // current state has been saved and the renderer has agreed to unload.
+  async reopenWindowInDevMode() {
+    const sourceWindow = this.focusedWindow();
+    if (!sourceWindow) return;
+    if (sourceWindow.devMode) return sourceWindow.reload();
+
+    try {
+      await this.saveCurrentWindowOptions(false);
+    } catch (error) {
+      console.error("Failed to save the current window before development mode", error);
+      return;
+    }
+    sourceWindow.unloading = true;
+    let canUnload;
+    try {
+      canUnload = await sourceWindow.prepareToUnload();
+    } catch (error) {
+      sourceWindow.unloading = false;
+      console.error("Failed to prepare the window for development mode", error);
+      return;
+    }
+    if (!canUnload) {
+      sourceWindow.unloading = false;
+      return;
+    }
+
+    let openedWindow;
+    try {
+      const projectRoots = sourceWindow.projectRoots || [];
+      const openOptions = {
+        newWindow: true,
+        devMode: true,
+        safeMode: false,
+      };
+      if (projectRoots.length > 0) {
+        openOptions.foldersToOpen = projectRoots;
+      } else {
+        openOptions.pathsToOpen = [null];
+      }
+
+      openedWindow = await this.openPaths(openOptions);
+      if (!openedWindow) throw new Error("Development-mode window was not created");
+      await openedWindow.loadedPromise;
+    } catch (error) {
+      if (openedWindow && openedWindow !== sourceWindow) {
+        try {
+          openedWindow.close();
+        } catch (closeError) {
+          console.error("Failed to close the incomplete development window", closeError);
+        }
+      }
+      sourceWindow.unloading = false;
+      try {
+        await sourceWindow.reload({ skipPrepareToUnload: true });
+      } catch (reloadError) {
+        console.error("Failed to restore the original window", reloadError);
+      }
+      console.error("Failed to reopen the window in development mode", error);
+      return;
+    }
+
+    sourceWindow.close();
+    return openedWindow;
   }
 
   // Get the platform-specific window offset for new windows.

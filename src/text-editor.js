@@ -2292,6 +2292,39 @@ module.exports = class TextEditor {
     this.mutateSelectedText((selection) => selection.joinLines());
   }
 
+  // Extended: Reduce every run of blank lines in the buffer to a single blank line.
+  //
+  // * `options` (optional) {Object}
+  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  collapseBlankLines(options = {}) {
+    if (!this.ensureWritable("collapseBlankLines", options)) return;
+    this.transact(() => {
+      this.backwardsScanInBufferRange(
+        /(?:\r\n|\n|\r){3,}/g,
+        this.buffer.getRange(),
+        ({ replace }) => replace("\n\n"),
+      );
+    });
+  }
+
+  // Extended: Collapse runs of spaces in line content without changing indentation.
+  //
+  // The complete leading whitespace prefix is preserved, including mixed tabs and
+  // spaces. Runs of spaces after that prefix are reduced to one space.
+  //
+  // * `options` (optional) {Object}
+  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  collapseContentSpaces(options = {}) {
+    if (!this.ensureWritable("collapseContentSpaces", options)) return;
+    this.transact(() => {
+      this.backwardsScanInBufferRange(/ {2,}/g, this.buffer.getRange(), ({ range, replace }) => {
+        const indentationLength = this.lineTextForBufferRow(range.start.row).match(/^[ \t]*/)[0]
+          .length;
+        if (range.start.column >= indentationLength) replace(" ");
+      });
+    });
+  }
+
   // Extended: For each cursor, insert a newline at beginning the following line.
   //
   // * `options` (optional) {Object}
@@ -2404,6 +2437,63 @@ module.exports = class TextEditor {
   deleteToEndOfLine(options = {}) {
     if (!this.ensureWritable("deleteToEndOfLine", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToEndOfLine(options));
+  }
+
+  // Extended: Delete through the indentation of the line following each selection.
+  //
+  // Empty selections start at their cursor. Non-empty selections also consume the
+  // rest of their final selected line. Selection direction does not affect the
+  // result.
+  //
+  // * `options` (optional) {Object}
+  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  deleteToNextLineContent(options = {}) {
+    if (!this.ensureWritable("deleteToNextLineContent", options)) return;
+
+    const lastBufferRow = this.getLastBufferRow();
+    const rangesToDelete = [];
+    for (const selectionRange of this.getSelectedBufferRanges()) {
+      let finalSelectedRow = selectionRange.end.row;
+      if (!selectionRange.isEmpty() && selectionRange.end.column === 0) {
+        finalSelectedRow--;
+      }
+
+      const nextRow = finalSelectedRow + 1;
+      if (nextRow > lastBufferRow) {
+        if (!selectionRange.isEmpty()) {
+          rangesToDelete.push(new Range(selectionRange.start, this.buffer.getEndPosition()));
+        }
+        continue;
+      }
+
+      const nextLine = this.lineTextForBufferRow(nextRow);
+      const firstContentColumn = nextLine.search(NON_WHITESPACE_REGEXP);
+      rangesToDelete.push(
+        new Range(
+          selectionRange.start,
+          new Point(nextRow, firstContentColumn === -1 ? nextLine.length : firstContentColumn),
+        ),
+      );
+    }
+
+    rangesToDelete.sort((left, right) => left.start.compare(right.start));
+    const mergedRanges = [];
+    for (const range of rangesToDelete) {
+      const previous = mergedRanges[mergedRanges.length - 1];
+      if (previous && range.start.compare(previous.end) <= 0) {
+        if (range.end.compare(previous.end) > 0) {
+          mergedRanges[mergedRanges.length - 1] = new Range(previous.start, range.end);
+        }
+      } else {
+        mergedRanges.push(new Range(range.start, range.end));
+      }
+    }
+
+    this.transact(() => {
+      for (let index = mergedRanges.length - 1; index >= 0; index--) {
+        this.buffer.delete(mergedRanges[index]);
+      }
+    });
   }
 
   // Extended: For each selection, if the selection is empty, delete all characters

@@ -57,4 +57,13 @@ describe("registerDefaultCommands", () => {
       expect(linuxCommands.has(commandName)).toBe(false);
     }
   });
+
+  it("registers the core commands migrated from Bacadra Tools", () => {
+    const commands = commandNamesRegisteredOn("win32");
+
+    expect(commands.has("application:reopen-window-in-dev-mode")).toBe(true);
+    expect(commands.has("editor:collapse-blank-lines")).toBe(true);
+    expect(commands.has("editor:collapse-content-spaces")).toBe(true);
+    expect(commands.has("editor:delete-to-next-line-content")).toBe(true);
+  });
 });
