@@ -127,6 +127,10 @@ let options = {
     // here -- those are real runtime app art, read by src/atom-window.js.
     "!resources/app-icons/lumine-raw.*",
     "!resources/app-icons/lumine-square*.*",
+    // resources/brand/ is README/marketing art (wallpaper, banner, install
+    // loader) -- nothing in the editor loads any of it at runtime, so it has
+    // no business riding along in every shipped build either.
+    "!resources/brand/",
 
     // Git Related Exclusions
     "!**/{.git,.gitignore,.gitattributes,.git-keep,.github}",
