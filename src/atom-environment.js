@@ -501,10 +501,10 @@ class AtomEnvironment {
         if (newValue === undefined) {
           newValue = true;
         }
-        this.setAutoHideMenuBar(newValue);
+        this.#setAutoHideMenuBar(newValue);
       }),
     );
-    if (this.config.get("core.autoHideMenuBar")) this.setAutoHideMenuBar(true);
+    if (this.config.get("core.autoHideMenuBar")) this.#setAutoHideMenuBar(true);
 
     // The git-host worker reads git.* settings from its fork environment,
     // so restart it when they change; the next Git command lazily re-forks with
@@ -1217,7 +1217,7 @@ class AtomEnvironment {
     if (!state) return Promise.resolve();
 
     await this.window.setFullScreen(Boolean(state.fullScreen));
-    this.setAutoHideMenuBar(this.config.get("core.autoHideMenuBar"));
+    this.#setAutoHideMenuBar(this.config.get("core.autoHideMenuBar"));
 
     const missingProjectPaths = [];
 
@@ -1307,7 +1307,7 @@ class AtomEnvironment {
     this.document.body.classList.add(`platform-${process.platform}`);
   }
 
-  setAutoHideMenuBar(autoHide) {
+  #setAutoHideMenuBar(autoHide) {
     autoHide = Boolean(autoHide);
     return Promise.all([
       this.window.setAutoHideMenuBar(autoHide),
