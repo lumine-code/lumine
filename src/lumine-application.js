@@ -1618,11 +1618,22 @@ module.exports = class LumineApplication extends EventEmitter {
     }
 
     const hasNonEmptyPath = locationsToOpen.some((location) => location.pathToOpen);
-    const createNewWindow = newWindow || !hasNonEmptyPath;
 
     let existingWindow;
 
-    if (!createNewWindow) {
+    if (hasNonEmptyPath && newWindow) {
+      // `newWindow` keeps the request out of windows that already own a
+      // project, but a compatible project-less window is equivalent to a new
+      // one and can be claimed without paying for another renderer.
+      existingWindow = this.getLastFocusedWindow((win) => {
+        return (
+          !win.isSpec &&
+          !win.hasProjectPaths() &&
+          win.devMode === devMode &&
+          win.safeMode === safeMode
+        );
+      });
+    } else if (hasNonEmptyPath) {
       // An explicitly provided LumineWindow has precedence.
       existingWindow = window;
 

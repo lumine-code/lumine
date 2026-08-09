@@ -262,14 +262,14 @@ describe("LumineApplication", function () {
         await scenario.assert("[a _]");
       });
 
-      it("opens a file with --new-window", async function () {
+      it("reuses the empty window for a file with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "a/1.md"]));
-        await scenario.assert("[_ _] [_ 1.md]");
+        await scenario.assert("[_ 1.md]");
       });
 
-      it("opens a directory with --new-window", async function () {
+      it("reuses the empty window for a directory with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "a"]));
-        await scenario.assert("[_ _] [a _]");
+        await scenario.assert("[a _]");
       });
     });
 
@@ -406,22 +406,22 @@ describe("LumineApplication", function () {
 
       it("opens a file within the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "a/1.md"]));
-        await scenario.assert("[a _] [_ _] [_ 1.md]");
+        await scenario.assert("[a _] [_ 1.md]");
       });
 
       it("opens a directory that matches the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "a"]));
-        await scenario.assert("[a _] [_ _] [a _]");
+        await scenario.assert("[a _] [a _]");
       });
 
       it("opens a file outside the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "b/2.md"]));
-        await scenario.assert("[a _] [_ _] [_ 2.md]");
+        await scenario.assert("[a _] [_ 2.md]");
       });
 
       it("opens a directory other than the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "b"]));
-        await scenario.assert("[a _] [_ _] [b _]");
+        await scenario.assert("[a _] [b _]");
       });
     });
 
@@ -482,22 +482,22 @@ describe("LumineApplication", function () {
 
       it("opens a file within the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "a/1.md"]));
-        await scenario.assert("[_ _] [a _] [_ 1.md]");
+        await scenario.assert("[_ 1.md] [a _]");
       });
 
       it("opens a directory that matches the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "a"]));
-        await scenario.assert("[_ _] [a _] [a _]");
+        await scenario.assert("[a _] [a _]");
       });
 
       it("opens a file outside the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "b/2.md"]));
-        await scenario.assert("[_ _] [a _] [_ 2.md]");
+        await scenario.assert("[_ 2.md] [a _]");
       });
 
       it("opens a directory other than the project root with --new-window", async function () {
         await scenario.open(parseCommandLine(["--new-window", "b"]));
-        await scenario.assert("[_ _] [a _] [b _]");
+        await scenario.assert("[b _] [a _]");
       });
     });
 
@@ -849,11 +849,11 @@ describe("LumineApplication", function () {
     let w0, w1, w2, app;
 
     beforeEach(async function () {
-      w0 = (await scenario.launch(parseCommandLine(["a"])))[0];
-      w1 = await scenario.open(parseCommandLine(["--new-window"]));
-      w2 = await scenario.open(parseCommandLine(["--new-window", "b"]));
-
+      await scenario.preconditions("[a _] [_ _] [b _]");
       app = scenario.getApplication(0);
+      w0 = scenario.getWindow(0);
+      w1 = scenario.getWindow(1);
+      w2 = scenario.getWindow(2);
       [w0, w1, w2].forEach((window, index) => {
         const contents = window.browserWindow.webContents;
         contents.id = 7000 + index;
@@ -1739,24 +1739,33 @@ class LaunchScenario {
 
   async preconditions(source) {
     const app = this.addApplication();
-    const windowPromises = [];
 
     for (const windowSpec of this.parseWindowSpecs(source)) {
-      if (windowSpec.editors.length === 0) {
-        windowSpec.editors.push(null);
-      }
-
-      windowPromises.push(
-        ((theApp, foldersToOpen, pathsToOpen) => {
-          return theApp.openPaths({
-            newWindow: true,
-            foldersToOpen,
-            pathsToOpen,
-          });
-        })(app, windowSpec.roots, windowSpec.editors),
-      );
+      // Construct the requested starting layout directly. Using openPaths()
+      // here made the fixture depend on the routing behavior its specs verify,
+      // and cannot represent an empty window followed by an occupied one now
+      // that new-window requests deliberately claim compatible empty windows.
+      const locationsToOpen = [
+        ...windowSpec.roots.map((pathToOpen) => ({
+          pathToOpen,
+          initialLine: null,
+          initialColumn: null,
+          exists: true,
+          isDirectory: true,
+          isFile: false,
+        })),
+        ...windowSpec.editors.map((pathToOpen) => ({
+          pathToOpen,
+          initialLine: null,
+          initialColumn: null,
+          exists: true,
+          isDirectory: false,
+          isFile: true,
+        })),
+      ];
+      const window = app.createWindow({ locationsToOpen });
+      app.addWindow(window);
     }
-    await Promise.all(windowPromises);
   }
 
   launch(options) {
