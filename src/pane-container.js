@@ -88,7 +88,14 @@ module.exports = class PaneContainer {
         ? this.config.get("core.destroyEmptyPanes")
         : options.destroyEmptyPanes;
     if (destroyEmptyPanes) this.destroyEmptyPanes();
-    this.activePane = activePane.isAlive() ? activePane : this.getPanes()[0];
+    const restoredActivePane = activePane.isAlive() ? activePane : this.getPanes()[0];
+    if (restoredActivePane !== this.activePane) {
+      // Views can subscribe while setRoot() installs the restored panes. Tell
+      // them which pane won without emitting did-activate and stealing focus.
+      this.activePane = restoredActivePane;
+      this.emitter.emit("did-change-active-pane", this.activePane);
+      this.didChangeActiveItemOnPane(this.activePane, this.activePane.getActiveItem());
+    }
   }
 
   onDidChangeRoot(fn) {

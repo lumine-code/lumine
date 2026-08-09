@@ -18,7 +18,16 @@ describe("PaneElement", function () {
     paneElement = pane.getElement();
   });
 
-  describe("when the pane's active status changes", () =>
+  describe("when the pane's active status changes", function () {
+    it("preserves the .active class when an active pane is attached", function () {
+      expect(pane.isActive()).toBe(true);
+      expect(paneElement.className).toMatch(/active/);
+
+      jasmine.attachToDOM(paneElement);
+
+      expect(paneElement.className).toMatch(/active/);
+    });
+
     it("adds or removes the .active class as appropriate", function () {
       const pane2 = pane.splitRight();
       expect(pane2.isActive()).toBe(true);
@@ -28,7 +37,8 @@ describe("PaneElement", function () {
       expect(paneElement.className).toMatch(/active/);
       pane2.activate();
       expect(paneElement.className).not.toMatch(/active/);
-    }));
+    });
+  });
 
   describe("when the active item changes", function () {
     it("hides all item elements except the active one", function () {

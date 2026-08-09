@@ -25,7 +25,10 @@ class PaneElement extends HTMLElement {
   }
 
   initializeContent() {
-    this.setAttribute("class", "pane");
+    // `observeActive()` runs during initialization, before this element is
+    // connected. Preserve the class it applies so a restored active pane does
+    // not lose its focused-tab styling when it enters the DOM.
+    this.classList.add("pane");
     this.setAttribute("tabindex", -1);
     this.appendChild(this.itemViews);
     this.itemViews.setAttribute("class", "item-views");

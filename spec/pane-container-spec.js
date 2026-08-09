@@ -57,6 +57,30 @@ describe("PaneContainer", () => {
       expect(containerB.getActivePane()).toBe(pane3B);
     });
 
+    it("updates active-pane observers when the restored pane becomes active", () => {
+      pane3A.activate();
+      const containerB = new PaneContainer(params);
+      const observedActivePanes = [];
+      const activeStatusesByPane = new Map();
+
+      // Workspace views observe panes before deserialization assigns the
+      // restored active pane, so initialize their active-status subscriptions
+      // at the same point in the lifecycle.
+      containerB.observePanes((pane) => {
+        const activeStatuses = [];
+        activeStatusesByPane.set(pane, activeStatuses);
+        pane.observeActive((active) => activeStatuses.push(active));
+      });
+      containerB.onDidChangeActivePane((pane) => observedActivePanes.push(pane));
+      containerB.deserialize(containerA.serialize(), atom.deserializers);
+
+      const pane3B = containerB.getPanes()[2];
+      expect(observedActivePanes).toEqual([pane3B]);
+      expect(activeStatusesByPane.get(pane3B)).toEqual([false, true]);
+      expect(activeStatusesByPane.get(containerB.getPanes()[0])).toEqual([false, false]);
+      expect(activeStatusesByPane.get(containerB.getPanes()[1])).toEqual([false, false]);
+    });
+
     it("makes the first pane active if no pane exists for the activePaneId", () => {
       pane3A.activate();
       const state = containerA.serialize();
