@@ -3799,6 +3799,152 @@ describe("TextEditorComponent", () => {
       ]);
     });
 
+    it("keeps a visible cursor stable while a block above it is added, resized, moved, and removed", async () => {
+      const { editor, component } = buildComponent({ autoHeight: false });
+      await setEditorHeightInLines(component, 8);
+      editor.setCursorScreenPosition([12, 0], { autoscroll: false });
+      await setScrollTop(
+        component,
+        component.pixelPositionBeforeBlocksForRow(12) - 3 * component.getLineHeight(),
+      );
+
+      const cursorOffset = () =>
+        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
+        component.getScrollTop();
+      const expectedOffset = cursorOffset();
+
+      const { item, decoration, marker } = createBlockDecorationAtScreenRow(editor, 10, {
+        height: 30,
+        position: "before",
+      });
+      await component.getNextUpdatePromise();
+      expect(cursorOffset()).toBeNear(expectedOffset);
+
+      item.style.height = "70px";
+      component.didResizeBlockDecorations([{ target: item, contentRect: { height: 70 } }]);
+      await component.getNextUpdatePromise();
+      expect(cursorOffset()).toBeNear(expectedOffset);
+
+      item.style.height = "15px";
+      component.didResizeBlockDecorations([{ target: item, contentRect: { height: 15 } }]);
+      await component.getNextUpdatePromise();
+      expect(cursorOffset()).toBeNear(expectedOffset);
+
+      marker.setHeadScreenPosition([14, 0]);
+      await component.getNextUpdatePromise();
+      expect(cursorOffset()).toBeNear(expectedOffset);
+
+      marker.setHeadScreenPosition([10, 0]);
+      await component.getNextUpdatePromise();
+      expect(cursorOffset()).toBeNear(expectedOffset);
+
+      decoration.destroy();
+      marker.destroy();
+      await component.getNextUpdatePromise();
+      expect(cursorOffset()).toBeNear(expectedOffset);
+
+      // The original regression accumulated one displacement per run/clear
+      // cycle, so exercise the lifecycle repeatedly rather than only once.
+      for (let i = 0; i < 3; i++) {
+        const result = createBlockDecorationAtScreenRow(editor, 10, {
+          height: 20 + i * 5,
+          position: "before",
+        });
+        await component.getNextUpdatePromise();
+        expect(cursorOffset()).toBeNear(expectedOffset);
+        result.decoration.destroy();
+        result.marker.destroy();
+        await component.getNextUpdatePromise();
+        expect(cursorOffset()).toBeNear(expectedOffset);
+      }
+    });
+
+    it("anchors one batch of block measurements without scrolling for blocks below the cursor", async () => {
+      const { editor, component } = buildComponent({ autoHeight: false });
+      await setEditorHeightInLines(component, 8);
+      editor.setCursorScreenPosition([12, 0], { autoscroll: false });
+      await setScrollTop(
+        component,
+        component.pixelPositionBeforeBlocksForRow(12) - 3 * component.getLineHeight(),
+      );
+
+      const cursorOffsetBefore =
+        component.pixelPositionBeforeBlocksForRow(12) - component.getScrollTop();
+      createBlockDecorationAtScreenRow(editor, 9, { height: 12, position: "before" });
+      createBlockDecorationAtScreenRow(editor, 10, { height: 18, position: "before" });
+      await component.getNextUpdatePromise();
+      expect(component.pixelPositionBeforeBlocksForRow(12) - component.getScrollTop()).toBeNear(
+        cursorOffsetBefore,
+      );
+
+      const scrollTopBefore = component.getScrollTop();
+      const { item } = createBlockDecorationAtScreenRow(editor, 14, {
+        height: 25,
+        position: "before",
+      });
+      await component.getNextUpdatePromise();
+      expect(component.getScrollTop()).toBe(scrollTopBefore);
+
+      item.style.height = "50px";
+      component.didResizeBlockDecorations([{ target: item, contentRect: { height: 50 } }]);
+      await component.getNextUpdatePromise();
+      expect(component.getScrollTop()).toBe(scrollTopBefore);
+    });
+
+    it("keeps a visible cursor stable when a block marker is invalidated", async () => {
+      const { editor, component } = buildComponent({ autoHeight: false });
+      await setEditorHeightInLines(component, 8);
+      editor.setCursorScreenPosition([12, 0], { autoscroll: false });
+      await setScrollTop(
+        component,
+        component.pixelPositionBeforeBlocksForRow(12) - 3 * component.getLineHeight(),
+      );
+      const { marker } = createBlockDecorationAtScreenRow(editor, 10, {
+        height: 35,
+        position: "before",
+        invalidate: "touch",
+      });
+      await component.getNextUpdatePromise();
+
+      const offsetBefore =
+        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
+        component.getScrollTop();
+      const range = marker.bufferMarker.getRange();
+      marker.bufferMarker.update(range, { valid: false });
+      await component.getNextUpdatePromise();
+      expect(
+        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
+          component.getScrollTop(),
+      ).toBeNear(offsetBefore);
+    });
+
+    it("preserves the bottom anchor when block geometry changes while scrolled past the end", async () => {
+      const { editor, component } = buildComponent({ autoHeight: false });
+      editor.update({ scrollPastEnd: true });
+      await setEditorHeightInLines(component, 8);
+      await setScrollTop(component, component.getMaxScrollTop());
+
+      const { item, decoration } = createBlockDecorationAtScreenRow(
+        editor,
+        editor.getLastScreenRow(),
+        {
+          height: 30,
+          position: "before",
+        },
+      );
+      await component.getNextUpdatePromise();
+      expect(component.getScrollTop()).toBe(component.getMaxScrollTop());
+
+      item.style.height = "60px";
+      component.didResizeBlockDecorations([{ target: item, contentRect: { height: 60 } }]);
+      await component.getNextUpdatePromise();
+      expect(component.getScrollTop()).toBe(component.getMaxScrollTop());
+
+      decoration.destroy();
+      await component.getNextUpdatePromise();
+      expect(component.getScrollTop()).toBe(component.getMaxScrollTop());
+    });
+
     it("removes block decorations whose markers have been destroyed", async () => {
       const { editor, component } = buildComponent({ rowsPerTile: 3 });
       const { marker } = createBlockDecorationAtScreenRow(editor, 2, {

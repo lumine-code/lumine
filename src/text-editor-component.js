@@ -495,14 +495,25 @@ module.exports = class TextEditorComponent {
         this.lastBlockDecorationMeasurementAreaWidth = width;
       }
 
+      const measurements = [];
       this.blockDecorationsToMeasure.forEach((decoration) => {
         const { item } = decoration.getProperties();
         const decorationElement = TextEditor.viewForItem(item);
         const { previousSibling, nextSibling } = decorationElement;
         const height =
           nextSibling.getBoundingClientRect().top - previousSibling.getBoundingClientRect().bottom;
-        this.heightsByBlockDecoration.set(decoration, height);
-        this.lineTopIndex.resizeBlock(decoration, height);
+        measurements.push([decoration, height]);
+      });
+
+      // Apply every height measured in this frame under one viewport anchor.
+      // New block decorations enter the index at height 0, and rich content can
+      // resize repeatedly after it renders; neither should push a visible
+      // cursor (or the viewport fallback anchor) around the screen.
+      this.withScrollAnchor(() => {
+        for (const [decoration, height] of measurements) {
+          this.heightsByBlockDecoration.set(decoration, height);
+          this.lineTopIndex.resizeBlock(decoration, height);
+        }
       });
 
       sentinelElements.forEach((sentinelElement) => sentinelElement.remove());
@@ -3842,6 +3853,21 @@ module.exports = class TextEditorComponent {
     return changed;
   }
 
+  // Runs a synchronous spatial-index mutation while preserving the editor's
+  // current visual anchor. Explicit cursor autoscroll remains authoritative:
+  // pending autoscroll is applied later in the same update after block
+  // decoration measurements have settled.
+  withScrollAnchor(callback) {
+    if (this.props.model.isDestroyed()) return callback();
+
+    const anchor = this.captureScrollAnchor();
+    try {
+      return callback();
+    } finally {
+      this.restoreScrollAnchor(anchor);
+    }
+  }
+
   didChangeSelectionRange() {
     const { model } = this.props;
 
@@ -3900,13 +3926,15 @@ module.exports = class TextEditorComponent {
           this.heightsByBlockDecoration.delete(decoration);
           this.blockDecorationsByElement.delete(element);
           this.blockDecorationResizeObserver.unobserve(element);
-          this.lineTopIndex.removeBlock(decoration);
+          this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
           this.scheduleUpdate();
         } else if (!wasValid && isValid) {
           wasValid = true;
           this.addBlockDecoration(decoration, false);
         } else if (isValid && !textChanged) {
-          this.lineTopIndex.moveBlock(decoration, marker.getHeadScreenPosition().row);
+          this.withScrollAnchor(() => {
+            this.lineTopIndex.moveBlock(decoration, marker.getHeadScreenPosition().row);
+          });
           this.scheduleUpdate();
         }
       });
@@ -3921,18 +3949,7 @@ module.exports = class TextEditorComponent {
           this.heightsByBlockDecoration.delete(decoration);
           this.blockDecorationsByElement.delete(element);
           this.blockDecorationResizeObserver.unobserve(element);
-          // Removing a block above the viewport shrinks the space above it, so
-          // anchor the viewport to keep the visible content from jumping (e.g.
-          // clearing inline results from a package like Hydrogen). Skip while
-          // the editor is being torn down, where adjusting scroll would fire
-          // spurious scroll events.
-          if (this.props.model.isDestroyed()) {
-            this.lineTopIndex.removeBlock(decoration);
-          } else {
-            const anchor = this.captureScrollAnchor();
-            this.lineTopIndex.removeBlock(decoration);
-            this.restoreScrollAnchor(anchor);
-          }
+          this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
           this.scheduleUpdate();
         }
       });
