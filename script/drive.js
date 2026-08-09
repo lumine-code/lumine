@@ -35,6 +35,7 @@
 
 const { spawn } = require("child_process");
 const fs = require("fs");
+const net = require("net");
 const os = require("os");
 const path = require("path");
 
@@ -118,6 +119,30 @@ function fail(message) {
 
 function homeForPort(port) {
   return path.join(os.tmpdir(), `lumine-drive-${port}`);
+}
+
+function prepareIsolatedHome(home) {
+  fs.mkdirSync(path.join(home, "packages"), { recursive: true });
+  // lumine-paths only redirects Electron's userData when this directory already
+  // exists. Without it, a driven instance falls back to Electron's default
+  // profile and can contend with the editor being used to run the benchmark.
+  fs.mkdirSync(path.join(home, "electronUserData"), { recursive: true });
+}
+
+async function requireAvailablePort(port) {
+  try {
+    await new Promise((resolve, reject) => {
+      const server = net.createServer();
+      server.unref();
+      server.once("error", reject);
+      server.listen({ host: "127.0.0.1", port, exclusive: true }, () => server.close(resolve));
+    });
+  } catch (error) {
+    if (error.code === "EADDRINUSE") {
+      fail(`debugging port ${port} is already in use`);
+    }
+    throw error;
+  }
 }
 
 // A page target per window — plus one for DevTools itself when it is open, which
@@ -246,7 +271,8 @@ function linkPackage(home, source) {
 async function launch({ positional, options }) {
   const port = Number(options.port || DEFAULT_PORT);
   const home = path.resolve(options.home || homeForPort(port));
-  fs.mkdirSync(path.join(home, "packages"), { recursive: true });
+  await requireAvailablePort(port);
+  prepareIsolatedHome(home);
   const linked = [].concat(options.link || []).map((source) => linkPackage(home, source));
 
   const argv = ["--no-sandbox", "--enable-logging", `--remote-debugging-port=${port}`, ROOT];
@@ -382,12 +408,13 @@ async function benchmark({ positional, options }) {
   const home = path.resolve(
     options.home || fs.mkdtempSync(path.join(os.tmpdir(), `lumine-benchmark-${port}-`)),
   );
-  fs.mkdirSync(path.join(home, "packages"), { recursive: true });
+  prepareIsolatedHome(home);
   const linked = [].concat(options.link || []).map((source) => linkPackage(home, source));
   const logPath = path.join(home, "benchmark.log");
   const samples = [];
 
   for (let run = 1; run <= runs; run++) {
+    await requireAvailablePort(port);
     const argv = ["--no-sandbox", "--enable-logging", `--remote-debugging-port=${port}`];
     if (!options.executable) argv.push(ROOT);
     if (!options["no-dev"]) argv.push("--dev");
