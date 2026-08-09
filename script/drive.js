@@ -6,6 +6,7 @@
 // to the wrong row) is invisible there but reproducible here.
 //
 //   node script/drive.js launch ~/some-project
+//   node script/drive.js benchmark --runs 5
 //   node script/drive.js eval "lumine.workspace.getActivePaneItem().getTitle()"
 //   node script/drive.js console --ms 3000
 //   node script/drive.js eval -f repro.js   # a whole scripted repro, instrumented
@@ -49,6 +50,7 @@ const USAGE = `Usage: node script/drive.js <command> [options]
 
 Commands:
   launch [paths...]      Start an isolated instance with CDP enabled, wait until ready
+  benchmark [paths...]   Measure isolated cold/warm startup runs and quit each instance
   eval <expression>      Evaluate in the renderer, print the result as JSON
   eval -f <file>         Evaluate a file's contents instead
   dispatch <command>     Dispatch a Lumine command (--target <selector>)
@@ -69,6 +71,9 @@ Options:
   --link <dir>           launch: symlink a package checkout into <home>/packages, repeatable
   --fresh                launch: also pass --clear-window-state
   --no-dev               launch: omit --dev
+  --runs <n>             benchmark: number of launches (default 5)
+  --executable <file>    benchmark: launch a packaged Lumine executable
+  --json                 benchmark: emit the full samples as JSON
   --ms <n>               console/issues: how long to stream, 0 to stream until killed (default 5000)
   --out <file>           shot: output path (default drive-shot.png)
   --scale <n>            shot: capture scale (default 1)
@@ -78,7 +83,7 @@ Options:
   --throttle <n>         any command: throttle the renderer while it runs (8 = eight times slower)
 `;
 
-const BOOLEAN = new Set(["--fresh", "--no-dev", "--raw", "--help", "-h"]);
+const BOOLEAN = new Set(["--fresh", "--no-dev", "--raw", "--json", "--help", "-h"]);
 
 function parseArgs(argv) {
   const positional = [];
@@ -268,6 +273,229 @@ async function launch({ positional, options }) {
   console.log(`log   ${logPath}`);
   console.log(`pid   ${child.pid}`);
   for (const link of linked) console.log(`link  ${link}`);
+}
+
+const STARTUP_STAGES = [
+  {
+    name: "mainRequire",
+    start: "main-process:lumine-application:require:start",
+    end: "main-process:lumine-application:require:end",
+  },
+  {
+    name: "packageLoad",
+    start: "window:environment:start-editor-window:load-packages",
+    end: "window:environment:start-editor-window:load-packages:end",
+  },
+  {
+    name: "deserialize",
+    start: "window:environment:start-editor-window:deserialize-state",
+    end: "window:environment:start-editor-window:activate-packages",
+  },
+  {
+    name: "packageActivation",
+    start: "window:environment:start-editor-window:activate-packages",
+    end: "window:environment:start-editor-window:activate-packages:end",
+  },
+  {
+    name: "editorStartup",
+    start: "window:environment:start-editor-window:start",
+    end: "window:environment:start-editor-window:end",
+  },
+  {
+    name: "totalToEditorReady",
+    start: "main-process:start",
+    end: "window:environment:start-editor-window:end",
+  },
+];
+
+function startupDurations(markers) {
+  const times = new Map(markers.map(({ label, time }) => [label, time]));
+  return Object.fromEntries(
+    STARTUP_STAGES.map(({ name, start, end }) => {
+      const startTime = times.get(start);
+      const endTime = times.get(end);
+      return [name, startTime == null || endTime == null ? null : endTime - startTime];
+    }),
+  );
+}
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0 ? (sorted[middle - 1] + sorted[middle]) / 2 : sorted[middle];
+}
+
+function summarizeStartup(samples) {
+  return Object.fromEntries(
+    ["wall", ...STARTUP_STAGES.map(({ name }) => name)].map((name) => {
+      const values = samples.map((sample) => sample[name]).filter(Number.isFinite);
+      if (values.length === 0) return [name, null];
+      return [
+        name,
+        {
+          median: median(values),
+          min: Math.min(...values),
+          max: Math.max(...values),
+        },
+      ];
+    }),
+  );
+}
+
+function summarizePackages(samples, timeKey) {
+  const timesByPackage = new Map();
+  for (const sample of samples) {
+    for (const pack of sample.packages) {
+      if (!Number.isFinite(pack[timeKey])) continue;
+      if (!timesByPackage.has(pack.name)) timesByPackage.set(pack.name, []);
+      timesByPackage.get(pack.name).push(pack[timeKey]);
+    }
+  }
+  return [...timesByPackage]
+    .map(([name, values]) => ({ name, median: median(values), max: Math.max(...values) }))
+    .sort((a, b) => b.median - a.median || b.max - a.max || a.name.localeCompare(b.name));
+}
+
+function waitForChildExit(child, timeout = 20000) {
+  if (child.exitCode != null) return Promise.resolve(child.exitCode);
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      child.kill();
+      reject(new Error(`Lumine process ${child.pid} did not exit after the benchmark run`));
+    }, timeout);
+    child.once("exit", (code) => {
+      clearTimeout(timer);
+      resolve(code);
+    });
+  });
+}
+
+async function benchmark({ positional, options }) {
+  const runs = Number(options.runs || 5);
+  if (!Number.isInteger(runs) || runs < 1 || runs > 50) {
+    fail("--runs must be an integer from 1 through 50");
+  }
+
+  const port = Number(options.port || DEFAULT_PORT);
+  const executable = options.executable ? path.resolve(options.executable) : require("electron");
+  if (!fs.existsSync(executable)) fail(`executable does not exist: ${executable}`);
+  const home = path.resolve(
+    options.home || fs.mkdtempSync(path.join(os.tmpdir(), `lumine-benchmark-${port}-`)),
+  );
+  fs.mkdirSync(path.join(home, "packages"), { recursive: true });
+  const linked = [].concat(options.link || []).map((source) => linkPackage(home, source));
+  const logPath = path.join(home, "benchmark.log");
+  const samples = [];
+
+  for (let run = 1; run <= runs; run++) {
+    const argv = ["--no-sandbox", "--enable-logging", `--remote-debugging-port=${port}`];
+    if (!options.executable) argv.push(ROOT);
+    if (!options["no-dev"]) argv.push("--dev");
+    if (options.fresh) argv.push("--clear-window-state");
+    argv.push(...positional.map((item) => path.resolve(item)));
+
+    const log = fs.openSync(logPath, "a");
+    const started = performance.now();
+    const env = { ...process.env, LUMINE_HOME: home };
+    if (options.executable) {
+      delete env.LUMINE_DEV_MODE;
+      delete env.LUMINE_RESOURCE_PATH;
+    }
+    const child = spawn(executable, argv, {
+      stdio: ["ignore", log, log],
+      env,
+    });
+    child.once("exit", () => fs.closeSync(log));
+
+    try {
+      const client = await connect({ port, timeout: 90000 });
+      await waitForReady(client);
+      const snapshot = await client.evaluate(
+        `lumine.window.whenLoaded().then(() => ({
+          markers: lumine.window.getStartupMarkers(),
+          packages: lumine.packages.getActivePackages().map(pack => ({
+            name: pack.name,
+            loadTime: pack.loadTime,
+            initializeTime: pack.initializeTime,
+            activateTime: pack.activateTime,
+            settingsLoadTime: pack.settingsLoadTime,
+            grammarLoadTime: pack.grammarLoadTime
+          }))
+        }))`,
+      );
+      const sample = {
+        run,
+        kind: run === 1 ? "cold" : "warm",
+        wall: performance.now() - started,
+        ...startupDurations(snapshot.markers),
+        packages: snapshot.packages,
+      };
+      samples.push(sample);
+      await client
+        .evaluate(
+          "setTimeout(() => lumine.commands.dispatch(lumine.views.getView(lumine.workspace), 'application:quit'), 50), 'quitting'",
+        )
+        .catch(() => {});
+      client.close();
+      const exitCode = await waitForChildExit(child);
+      if (exitCode !== 0) throw new Error(`Lumine benchmark run ${run} exited with ${exitCode}`);
+    } catch (error) {
+      if (child.exitCode == null) child.kill();
+      throw error;
+    }
+  }
+
+  const warmSamples = samples.length > 1 ? samples.slice(1) : samples;
+  const result = {
+    home,
+    log: logPath,
+    executable,
+    linked,
+    samples,
+    summary: summarizeStartup(warmSamples),
+    packageLoad: summarizePackages(warmSamples, "loadTime"),
+    packageActivation: summarizePackages(warmSamples, "activateTime"),
+    packageSettings: summarizePackages(warmSamples, "settingsLoadTime"),
+    packageGrammars: summarizePackages(warmSamples, "grammarLoadTime"),
+  };
+  if (options.json) {
+    console.log(JSON.stringify(result, null, 2));
+    return;
+  }
+
+  console.log(`home  ${home}`);
+  console.log(`log   ${logPath}`);
+  for (const sample of samples) {
+    console.log(
+      `${String(sample.run).padStart(2)} ${sample.kind.padEnd(4)}  ` +
+        `wall ${sample.wall.toFixed(1)}  total ${sample.totalToEditorReady?.toFixed(1)}  ` +
+        `require ${sample.mainRequire?.toFixed(1)}  load ${sample.packageLoad?.toFixed(1)}  ` +
+        `activate ${sample.packageActivation?.toFixed(1)} ms`,
+    );
+  }
+  console.log("median/min/max (ms)");
+  for (const [name, values] of Object.entries(result.summary)) {
+    if (!values) continue;
+    console.log(
+      `  ${name.padEnd(20)} ${values.median.toFixed(1)} / ${values.min.toFixed(1)} / ${values.max.toFixed(1)}`,
+    );
+  }
+  console.log("slowest warm package activation medians (ms)");
+  for (const pack of result.packageActivation.slice(0, 10)) {
+    console.log(`  ${pack.name.padEnd(28)} ${pack.median.toFixed(1)} (max ${pack.max.toFixed(1)})`);
+  }
+  console.log("slowest warm package load medians (ms)");
+  for (const pack of result.packageLoad.slice(0, 10)) {
+    console.log(`  ${pack.name.padEnd(28)} ${pack.median.toFixed(1)} (max ${pack.max.toFixed(1)})`);
+  }
+  console.log("slowest warm package settings medians (ms)");
+  for (const pack of result.packageSettings.slice(0, 10)) {
+    console.log(`  ${pack.name.padEnd(28)} ${pack.median.toFixed(1)} (max ${pack.max.toFixed(1)})`);
+  }
+  console.log("slowest warm package grammar medians (ms)");
+  for (const pack of result.packageGrammars.slice(0, 10)) {
+    console.log(`  ${pack.name.padEnd(28)} ${pack.median.toFixed(1)} (max ${pack.max.toFixed(1)})`);
+  }
 }
 
 async function evaluate({ positional, options }) {
@@ -581,6 +809,7 @@ async function move({ positional, options }) {
 
 const COMMANDS = {
   launch,
+  benchmark,
   eval: evaluate,
   dispatch,
   reload,

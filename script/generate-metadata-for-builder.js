@@ -66,6 +66,12 @@ function buildBundledPackagesMetadata() {
       metadata: packageMetadata,
       keymaps: {},
       menus: {},
+      grammarPaths: fs
+        .listSync(path.join(packagePath, "grammars"), objectFileExtensions)
+        .map((grammarPath) => path.relative(packagePath, grammarPath)),
+      settingsPaths: fs
+        .listSync(path.join(packagePath, "settings"), objectFileExtensions)
+        .map((settingsPath) => path.relative(packagePath, settingsPath)),
     };
 
     if (packageMetadata.main) {

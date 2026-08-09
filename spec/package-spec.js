@@ -25,6 +25,33 @@ describe("Package", function () {
 
   const buildThemePackage = (themePath) => build(ThemePackage, themePath);
 
+  describe("::getCachedResourcePaths()", function () {
+    it("resolves baked resource paths for bundled packages", function () {
+      const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-index");
+      const pack = buildPackage(packagePath);
+      pack.bundledPackage = true;
+      lumine.packages.packagesCache[pack.name] = {
+        grammarPaths: [path.join("grammars", "language.json")],
+        settingsPaths: [],
+      };
+
+      expect(pack.getCachedResourcePaths("grammarPaths")).toEqual([
+        path.join(packagePath, "grammars", "language.json"),
+      ]);
+      expect(pack.getCachedResourcePaths("settingsPaths")).toEqual([]);
+
+      delete lumine.packages.packagesCache[pack.name];
+    });
+
+    it("returns null when no baked metadata exists", function () {
+      const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-index");
+      const pack = buildPackage(packagePath);
+
+      expect(pack.getCachedResourcePaths("grammarPaths")).toBeNull();
+      expect(pack.getCachedResourcePaths("settingsPaths")).toBeNull();
+    });
+  });
+
   describe("when the package contains incompatible native modules", function () {
     beforeEach(function () {
       lumine.packages.devMode = false;

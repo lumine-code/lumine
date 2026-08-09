@@ -93,6 +93,25 @@ module.exports = class Package {
     return value;
   }
 
+  measureAsync(key, fn) {
+    const startTime = window.performance.now();
+    try {
+      return Promise.resolve(fn()).then(
+        (value) => {
+          this[key] = Math.round(window.performance.now() - startTime);
+          return value;
+        },
+        (error) => {
+          this[key] = Math.round(window.performance.now() - startTime);
+          throw error;
+        },
+      );
+    } catch (error) {
+      this[key] = Math.round(window.performance.now() - startTime);
+      throw error;
+    }
+  }
+
   getType() {
     return "lumine";
   }
@@ -113,7 +132,7 @@ module.exports = class Package {
         this.activateCoreStartupServices();
         this.registerURIHandler();
         this.configSchemaRegisteredOnLoad = this.registerConfigSchemaFromMetadata();
-        this.settingsPromise = this.loadSettings();
+        this.settingsPromise = this.measureAsync("settingsLoadTime", () => this.loadSettings());
         if (this.shouldRequireMainModuleOnLoad() && this.mainModule == null) {
           this.requireMainModule();
         }
@@ -167,7 +186,9 @@ module.exports = class Package {
   }
 
   activate() {
-    if (!this.grammarsPromise) this.grammarsPromise = this.loadGrammars();
+    if (!this.grammarsPromise) {
+      this.grammarsPromise = this.measureAsync("grammarLoadTime", () => this.loadGrammars());
+    }
     if (!this.activationPromise) {
       this.activationPromise = new Promise((resolve, _reject) => {
         this.resolveActivationPromise = resolve;
@@ -626,6 +647,11 @@ module.exports = class Package {
       });
     };
 
+    const cachedGrammarPaths = this.getCachedResourcePaths("grammarPaths");
+    if (cachedGrammarPaths) {
+      return new Promise((resolve) => asyncEach(cachedGrammarPaths, loadGrammar, () => resolve()));
+    }
+
     return new Promise((resolve) => {
       const grammarsDirPath = path.join(this.path, "grammars");
       fs.exists(grammarsDirPath, (grammarsDirExists) => {
@@ -658,6 +684,13 @@ module.exports = class Package {
       });
     };
 
+    const cachedSettingsPaths = this.getCachedResourcePaths("settingsPaths");
+    if (cachedSettingsPaths) {
+      return new Promise((resolve) =>
+        asyncEach(cachedSettingsPaths, loadSettingsFile, () => resolve()),
+      );
+    }
+
     return new Promise((resolve) => {
       const settingsDirPath = path.join(this.path, "settings");
       fs.exists(settingsDirPath, (settingsDirExists) => {
@@ -668,6 +701,14 @@ module.exports = class Package {
         });
       });
     });
+  }
+
+  getCachedResourcePaths(key) {
+    const cachedPackage = this.bundledPackage && this.packageManager.packagesCache[this.name];
+    const cachedPaths = cachedPackage && cachedPackage[key];
+    return Array.isArray(cachedPaths)
+      ? cachedPaths.map((resourcePath) => path.join(this.path, resourcePath))
+      : null;
   }
 
   serialize() {
