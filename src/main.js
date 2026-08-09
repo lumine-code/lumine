@@ -6,7 +6,11 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const CSON = require("@lumine-code/season");
 const yargs = require("yargs");
-const { app, protocol } = require("electron");
+const { app, Menu, protocol } = require("electron");
+
+// Lumine installs its own application menu during initialization. Suppress
+// Electron's default menu before `ready` so it is never built in the meantime.
+Menu.setApplicationMenu(null);
 
 // Declare the `lumine://` scheme privileged before the app is ready, so packages
 // can load fonts and use fetch/XHR against lumine:// URLs from the file://

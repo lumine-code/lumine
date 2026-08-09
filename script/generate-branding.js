@@ -47,7 +47,11 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const zlib = require("node:zlib");
-const { app, BrowserWindow } = require("electron");
+const { app, BrowserWindow, Menu } = require("electron");
+
+// This utility uses a hidden frameless window and never needs an application
+// menu. Suppress Electron's default menu before `ready`.
+Menu.setApplicationMenu(null);
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const APP_ICONS_DIR = path.join(REPO_ROOT, "resources", "app-icons");
