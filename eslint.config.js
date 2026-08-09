@@ -11,7 +11,6 @@ const jsx = require("./eslint-jsx");
 const runtimeModules = [
   "atom",
   "electron",
-  "@electron/remote",
   // Built by its own `prepare` into `lib/`, which the lint job's
   // `--ignore-scripts` install skips, so its `main` is absent there.
   "@lumine-code/node-pty",

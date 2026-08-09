@@ -40,24 +40,24 @@ module.exports = class CommandInstaller {
 
   async installShellCommandsInteractively() {
     const showErrorDialog = (error) => {
-      this.applicationDelegate.confirm(
-        {
+      void this.applicationDelegate
+        .confirm({
           message: "Failed to install shell commands",
           detail: error.message,
-        },
-        () => {},
-      );
+          buttons: ["OK"],
+        })
+        .catch((dialogError) => console.error(dialogError));
     };
 
     this.installAtomCommand(true, (error, atomCommandName) => {
       if (error) return showErrorDialog(error);
-      this.applicationDelegate.confirm(
-        {
+      void this.applicationDelegate
+        .confirm({
           message: "Command installed.",
           detail: `The shell command \`${atomCommandName}\` is installed.`,
-        },
-        () => {},
-      );
+          buttons: ["OK"],
+        })
+        .catch((dialogError) => console.error(dialogError));
     });
   }
 

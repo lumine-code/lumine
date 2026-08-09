@@ -9,7 +9,18 @@ const FileRecoveryService = require("./file-recovery-service");
 const StartupTime = require("./startup-time");
 const ipcHelpers = require("./ipc-helpers");
 const { getConfigFilePath } = require("./get-app-details.js");
-const { BrowserWindow, Menu, app, clipboard, dialog, ipcMain, shell, screen } = require("electron");
+const {
+  BrowserWindow,
+  Menu,
+  app,
+  clipboard,
+  dialog,
+  ipcMain,
+  safeStorage,
+  screen,
+  shell,
+  systemPreferences,
+} = require("electron");
 const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const crypto = require("crypto");
 const fs = require("@lumine-code/fs-plus");
@@ -131,51 +142,439 @@ const decryptOptions = (optionsMessage, secret) => {
   return JSON.parse(message);
 };
 
-ipcMain.handle("isDefaultProtocolClient", (_, { protocol, path, args }) => {
-  return app.isDefaultProtocolClient(protocol, path, args);
-});
+const APP_PATH_NAMES = [
+  "home",
+  "appData",
+  "userData",
+  "sessionData",
+  "temp",
+  "exe",
+  "module",
+  "desktop",
+  "documents",
+  "downloads",
+  "music",
+  "pictures",
+  "videos",
+  "recent",
+  "logs",
+  "crashDumps",
+];
 
-ipcMain.handle("setAsDefaultProtocolClient", (_, { protocol, path, args }) => {
-  return app.setAsDefaultProtocolClient(protocol, path, args);
-});
+function currentApplication() {
+  const application = global.atomApplication;
+  if (!application) throw new Error("Lumine application is not initialized");
+  return application;
+}
 
-// Handle file deletion requests.
-//
-// Works around https://github.com/electron/electron/issues/29598, which seems
-// to be the cause of failed deletion attempts on Windows.
-ipcMain.handle("trashItem", async (_, filePath) => {
-  try {
-    const result = await shell.trashItem(filePath);
-    return { outcome: "success", result };
-  } catch (error) {
-    return { outcome: "failure", error };
+function currentAtomWindow(event) {
+  return currentApplication().atomWindowForSender(event.sender);
+}
+
+function assertString(value, name) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(`${name} must be a non-empty string`);
   }
-});
+}
 
-ipcMain.handle("showItemInFolder", async (_, filePath) => {
-  try {
-    const result = shell.showItemInFolder(filePath);
-    return { outcome: "success", result };
-  } catch (error) {
-    return { outcome: "failure", error };
+function assertBoolean(value, name) {
+  if (typeof value !== "boolean") throw new TypeError(`${name} must be a boolean`);
+}
+
+function assertInteger(value, name, { positive = false } = {}) {
+  if (!Number.isInteger(value) || (positive && value <= 0)) {
+    throw new TypeError(`${name} must be ${positive ? "a positive " : "an "}integer`);
   }
-});
+}
 
-ipcMain.handle("openPath", async (_, filePath) => {
-  try {
-    const result = await shell.openPath(filePath);
-    return { outcome: "success", result };
-  } catch (error) {
-    return { outcome: "failure", error };
+function assertOptionalString(value, name) {
+  if (value != null && typeof value !== "string") {
+    throw new TypeError(`${name} must be a string when provided`);
   }
+}
+
+function assertStringArray(value, name, { optional = false } = {}) {
+  if (optional && value == null) return;
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    throw new TypeError(`${name} must be an array of strings`);
+  }
+}
+
+function appPaths() {
+  return Object.fromEntries(
+    APP_PATH_NAMES.flatMap((name) => {
+      try {
+        return [[name, app.getPath(name)]];
+      } catch {
+        return [];
+      }
+    }),
+  );
+}
+
+const handleWindowBootstrap = (event) => {
+  const atomWindow = currentAtomWindow(event);
+  const loadSettings = JSON.parse(JSON.stringify(atomWindow.getLoadSettingsForRenderer()));
+  return {
+    loadSettings: Object.assign(loadSettings, {
+      windowId: atomWindow.id,
+      appPaths: appPaths(),
+      appLocale: app.getLocale(),
+    }),
+    startupMarkers: atomWindow.consumeStartupMarkers(),
+  };
+};
+ipcMain.handle("lumine:window-bootstrap", handleWindowBootstrap);
+
+const handleWindowAction = async (event, action, ...args) => {
+  const atomWindow = currentAtomWindow(event);
+  const window = atomWindow.browserWindow;
+
+  switch (action) {
+    case "getState": {
+      const [x, y] = window.getPosition();
+      const [width, height] = window.getSize();
+      return {
+        id: atomWindow.id,
+        position: { x, y },
+        size: { width, height },
+        maximized: window.isMaximized(),
+        fullScreen: window.isFullScreen(),
+        visible: window.isVisible(),
+      };
+    }
+    case "getSize": {
+      const [width, height] = window.getSize();
+      return { width, height };
+    }
+    case "setSize":
+      assertInteger(args[0], "width", { positive: true });
+      assertInteger(args[1], "height", { positive: true });
+      window.setSize(args[0], args[1]);
+      return;
+    case "getPosition": {
+      const [x, y] = window.getPosition();
+      return { x, y };
+    }
+    case "setPosition":
+      assertInteger(args[0], "x");
+      assertInteger(args[1], "y");
+      window.setPosition(args[0], args[1]);
+      return;
+    case "center":
+      window.center();
+      return;
+    case "focus":
+      atomWindow.focus();
+      window.webContents.focus();
+      return;
+    case "show":
+      currentApplication().showWindow(atomWindow);
+      return;
+    case "showInactive":
+      if (!atomWindow.isSpec) throw new Error("showInactive is restricted to spec windows");
+      window.showInactive();
+      return;
+    case "hide":
+      window.hide();
+      return;
+    case "close":
+      atomWindow.close();
+      return;
+    case "reload":
+      await atomWindow.reload();
+      return;
+    case "minimize":
+      atomWindow.minimize();
+      return;
+    case "maximize":
+      atomWindow.maximize();
+      return;
+    case "unmaximize":
+      atomWindow.unmaximize();
+      return;
+    case "isMaximized":
+      return window.isMaximized();
+    case "isFullScreen":
+      return window.isFullScreen();
+    case "isVisible":
+      return window.isVisible();
+    case "setFullScreen":
+      assertBoolean(args[0], "fullScreen");
+      atomWindow.setFullScreen(args[0]);
+      return;
+    case "pickFolder": {
+      const { canceled, filePaths } = await dialog.showOpenDialog(window, {
+        properties: ["openDirectory", "multiSelections", "createDirectory"],
+        title: "Open Folder",
+      });
+      return canceled || filePaths.length === 0 ? null : filePaths;
+    }
+    case "showSaveDialog":
+      if (!args[0] || typeof args[0] !== "object" || Array.isArray(args[0])) {
+        throw new TypeError("Save dialog options must be an object");
+      }
+      return atomWindow.showSaveDialog(args[0]);
+    case "confirm": {
+      const options = args[0];
+      if (!options || typeof options !== "object" || Array.isArray(options)) {
+        throw new TypeError("Confirm options must be an object");
+      }
+      if (
+        !Array.isArray(options.buttons) ||
+        !options.buttons.every((item) => typeof item === "string")
+      ) {
+        throw new TypeError("Confirm options.buttons must be an array of strings");
+      }
+      const result = await dialog.showMessageBox(
+        window,
+        Object.assign({ type: "info", normalizeAccessKeys: true }, options),
+      );
+      return result.response;
+    }
+    case "downloadURL":
+      assertString(args[0], "url");
+      window.webContents.downloadURL(args[0]);
+      return;
+    case "getPrimaryDisplayWorkAreaSize": {
+      const { width, height } = screen.getPrimaryDisplay().workAreaSize;
+      return { width, height };
+    }
+    case "setAutoHideMenuBar":
+      assertBoolean(args[0], "autoHide");
+      window.setAutoHideMenuBar(args[0]);
+      return;
+    case "setMenuBarVisibility":
+      assertBoolean(args[0], "visible");
+      window.setMenuBarVisibility(args[0]);
+      return;
+    case "openDevTools":
+      atomWindow.openDevTools();
+      return;
+    case "closeDevTools":
+      atomWindow.closeDevTools();
+      return;
+    case "toggleDevTools":
+      atomWindow.toggleDevTools();
+      return;
+    case "executeJavaScriptInDevTools":
+      assertString(args[0], "code");
+      if (window.webContents.devToolsWebContents) {
+        await window.webContents.devToolsWebContents.executeJavaScript(args[0]);
+      }
+      return;
+    case "getTemporaryState":
+      return window.temporaryState;
+    case "setTemporaryState":
+      window.temporaryState = args[0];
+      return;
+    case "didClosePathWithWaitSession":
+      assertString(args[0], "path");
+      atomWindow.didClosePathWithWaitSession(args[0]);
+      return;
+    case "setDocumentEdited":
+      assertBoolean(args[0], "edited");
+      atomWindow.setDocumentEdited(args[0]);
+      return;
+    case "setRepresentedFilename":
+      if (typeof args[0] !== "string") throw new TypeError("filename must be a string");
+      atomWindow.setRepresentedFilename(args[0]);
+      return;
+    case "setProjectRoots":
+      if (!Array.isArray(args[0]) || !args[0].every((item) => typeof item === "string")) {
+        throw new TypeError("Project roots must be an array of strings");
+      }
+      await atomWindow.setProjectRoots(args[0]);
+      return;
+    case "loaded":
+      window.emit("window:loaded");
+      return;
+    case "locationsOpened":
+      window.emit("window:locations-opened");
+      return;
+    case "updateApplicationMenu":
+      if (!Array.isArray(args[0]) || !args[1] || typeof args[1] !== "object") {
+        throw new TypeError("Application-menu data must be serializable template and keymap data");
+      }
+      if (currentApplication().applicationMenu) {
+        currentApplication().applicationMenu.update(window, args[0], args[1]);
+      }
+      return;
+    case "sendInputEvent":
+      if (!atomWindow.isSpec) throw new Error("Input injection is restricted to spec windows");
+      if (!args[0] || typeof args[0] !== "object" || Array.isArray(args[0])) {
+        throw new TypeError("Input event must be an object");
+      }
+      if (
+        ![
+          "keyDown",
+          "keyUp",
+          "char",
+          "mouseMove",
+          "mouseDown",
+          "mouseUp",
+          "mouseEnter",
+          "mouseLeave",
+          "contextMenu",
+          "mouseWheel",
+        ].includes(args[0].type)
+      ) {
+        throw new TypeError("Unsupported input event type");
+      }
+      window.webContents.sendInputEvent(args[0]);
+      return;
+    case "copy":
+    case "paste":
+    case "undo":
+    case "redo":
+    case "selectAll":
+    case "cut":
+      window.webContents[action]();
+      return;
+    default:
+      throw new Error(`Unsupported window action: ${action}`);
+  }
+};
+ipcMain.handle("lumine:window", handleWindowAction);
+
+const handleWindowBroadcast = (event, eventName, ...args) => {
+  assertString(eventName, "eventName");
+  const application = currentApplication();
+  currentAtomWindow(event);
+  for (const atomWindow of application.getAllWindows()) {
+    const contents = atomWindow.browserWindow.webContents;
+    if (contents === event.sender || contents.isDestroyed?.()) continue;
+    if (application.atomWindowsByWebContentsId.get(contents.id) !== atomWindow) continue;
+    atomWindow.sendToRenderer(WINDOW_EVENT_CHANNEL, eventName, ...args);
+  }
+};
+ipcMain.handle("lumine:window-broadcast", handleWindowBroadcast);
+
+const handleContextMenu = (event, template) => {
+  const atomWindow = currentAtomWindow(event);
+  if (!Array.isArray(template)) throw new TypeError("Context menu template must be an array");
+  const ContextMenu = require("./context-menu");
+  new ContextMenu(template, atomWindow);
+};
+ipcMain.handle("lumine:context-menu", handleContextMenu);
+
+const handleAppAction = async (event, action, ...args) => {
+  currentAtomWindow(event);
+  const application = currentApplication();
+  switch (action) {
+    case "getUserDefault":
+      assertString(args[0], "key");
+      if (
+        !["string", "boolean", "integer", "float", "double", "url", "array", "dictionary"].includes(
+          args[1],
+        )
+      ) {
+        throw new TypeError("Unsupported user-default type");
+      }
+      return systemPreferences.getUserDefault(args[0], args[1]);
+    case "isDefaultProtocolClient":
+      assertString(args[0], "protocol");
+      assertOptionalString(args[1], "path");
+      assertStringArray(args[2], "args", { optional: true });
+      return app.isDefaultProtocolClient(args[0], args[1], args[2]);
+    case "setAsDefaultProtocolClient":
+      assertString(args[0], "protocol");
+      assertOptionalString(args[1], "path");
+      assertStringArray(args[2], "args", { optional: true });
+      return app.setAsDefaultProtocolClient(args[0], args[1], args[2]);
+    case "getFileIcon": {
+      assertString(args[0], "path");
+      const options = args[1] || {};
+      if (typeof options !== "object" || Array.isArray(options)) {
+        throw new TypeError("File-icon options must be an object");
+      }
+      if (options.size != null && !["small", "normal", "large"].includes(options.size)) {
+        throw new TypeError("Unsupported file-icon size");
+      }
+      const icon = await app.getFileIcon(args[0], options);
+      return icon && !icon.isEmpty() ? icon.toDataURL() : null;
+    }
+    case "restart":
+      application.restart();
+      return;
+    case "trashItem":
+    case "showItemInFolder":
+    case "openPath":
+    case "openExternal":
+      try {
+        assertString(args[0], action === "openExternal" ? "url" : "path");
+        const result = await shell[action](args[0]);
+        return { outcome: "success", result };
+      } catch (error) {
+        return { outcome: "failure", error: { message: error.message, code: error.code } };
+      }
+    default:
+      throw new Error(`Unsupported application action: ${action}`);
+  }
+};
+ipcMain.handle("lumine:app", handleAppAction);
+
+const handleSafeStorageAction = async (event, action, value) => {
+  currentAtomWindow(event);
+  switch (action) {
+    case "isEncryptionAvailable":
+      return safeStorage.isAsyncEncryptionAvailable();
+    case "encrypt": {
+      assertString(value, "plaintext");
+      const encrypted = await safeStorage.encryptStringAsync(String(value));
+      return encrypted.toString("base64");
+    }
+    case "decrypt": {
+      assertString(value, "ciphertext");
+      const { result, shouldReEncrypt } = await safeStorage.decryptStringAsync(
+        Buffer.from(value, "base64"),
+      );
+      let replacementCiphertext = null;
+      if (shouldReEncrypt) {
+        replacementCiphertext = (await safeStorage.encryptStringAsync(result)).toString("base64");
+      }
+      return { result, replacementCiphertext };
+    }
+    default:
+      throw new Error(`Unsupported safe-storage action: ${action}`);
+  }
+};
+ipcMain.handle("lumine:safe-storage", handleSafeStorageAction);
+
+ipcMain.handle("lumine:setup-error", (event) => {
+  const window = currentAtomWindow(event).browserWindow;
+  window.setSize(800, 600);
+  window.center();
+  window.show();
+  window.webContents.openDevTools();
 });
 
-ipcMain.handle("openExternal", async (_, url) => {
-  try {
-    const result = await shell.openExternal(url);
-    return { outcome: "success", result };
-  } catch (error) {
-    return { outcome: "failure", error };
+ipcMain.handle("lumine:profile-startup", async (event) => {
+  const contents = currentAtomWindow(event).browserWindow.webContents;
+  if (contents.devToolsWebContents) return;
+  const opened = new Promise((resolve) => contents.once("devtools-opened", resolve));
+  contents.openDevTools();
+  await opened;
+});
+
+ipcMain.handle("lumine:test", async (event, action, value) => {
+  const atomWindow = currentAtomWindow(event);
+  if (!atomWindow.isSpec) throw new Error("Test IPC is restricted to spec windows");
+  switch (action) {
+    case "stdout":
+      return new Promise((resolve, reject) =>
+        process.stdout.write(String(value), (error) => (error ? reject(error) : resolve())),
+      );
+    case "stderr":
+      return new Promise((resolve, reject) =>
+        process.stderr.write(String(value), (error) => (error ? reject(error) : resolve())),
+      );
+    case "exit":
+      assertInteger(value, "exit status");
+      setTimeout(() => currentApplication().exit(value), 0);
+      return;
+    default:
+      throw new Error(`Unsupported test action: ${action}`);
   }
 });
 
@@ -235,6 +634,7 @@ module.exports = class AtomApplication extends EventEmitter {
     StartupTime.addMarker("main-process:atom-application:constructor:start");
 
     super();
+    global.atomApplication = this;
     this.quitting = false;
     this.quittingForUpdate = false;
     this.getAllWindows = this.getAllWindows.bind(this);
@@ -248,6 +648,7 @@ module.exports = class AtomApplication extends EventEmitter {
     this.userDataDir = options.userDataDir;
     this._killProcess = options.killProcess || process.kill.bind(process);
     this.waitSessionsByWindow = new Map();
+    this.atomWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
 
     let configFilePath = getConfigFilePath({ returnPlaceholder: true });
@@ -442,6 +843,7 @@ module.exports = class AtomApplication extends EventEmitter {
 
   // Public: Removes the {AtomWindow} from the global window list.
   removeWindow(window) {
+    this.unregisterAtomWindow(window);
     this.windowStack.removeWindow(window);
     if (this.getAllWindows().length === 0 && process.platform !== "darwin") {
       app.quit();
@@ -452,6 +854,7 @@ module.exports = class AtomApplication extends EventEmitter {
 
   // Public: Adds the {AtomWindow} to the global window list.
   addWindow(window) {
+    this.registerAtomWindow(window);
     this.windowStack.addWindow(window);
     if (this.applicationMenu) this.applicationMenu.addWindow(window.browserWindow);
 
@@ -476,6 +879,31 @@ module.exports = class AtomApplication extends EventEmitter {
 
   getAllWindows() {
     return this.windowStack.all().slice();
+  }
+
+  registerAtomWindow(atomWindow) {
+    const id = atomWindow?.browserWindow?.webContents?.id;
+    if (id != null) this.atomWindowsByWebContentsId.set(id, atomWindow);
+  }
+
+  unregisterAtomWindow(atomWindow) {
+    for (const [id, registeredWindow] of this.atomWindowsByWebContentsId) {
+      if (registeredWindow === atomWindow) this.atomWindowsByWebContentsId.delete(id);
+    }
+  }
+
+  showWindow(atomWindow) {
+    const window = atomWindow.browserWindow;
+    window.show();
+    if (atomWindow.preserveFocus) {
+      atomWindow.preserveFocus = false;
+      return;
+    }
+    if (process.platform === "win32") {
+      window.focus();
+    } else if (process.platform === "darwin") {
+      app.focus({ steal: true });
+    }
   }
 
   getLastFocusedWindow(predicate) {
@@ -743,12 +1171,6 @@ module.exports = class AtomApplication extends EventEmitter {
     );
 
     this.disposable.add(
-      ipcHelpers.on(ipcMain, "restart-application", () => {
-        this.restart();
-      }),
-    );
-
-    this.disposable.add(
       ipcHelpers.on(ipcMain, "resolve-proxy", async (event, requestId, url) => {
         const proxy = await event.sender.session.resolveProxy(url);
         if (!event.sender.isDestroyed()) event.sender.send("did-resolve-proxy", requestId, proxy);
@@ -760,18 +1182,6 @@ module.exports = class AtomApplication extends EventEmitter {
         for (let atomWindow of this.getAllWindows()) {
           if (atomWindow.browserWindow.webContents !== event.sender) {
             atomWindow.sendToRenderer("did-change-history-manager");
-          }
-        }
-      }),
-    );
-
-    this.disposable.add(
-      ipcHelpers.on(ipcMain, WINDOW_EVENT_CHANNEL, (event, eventName, ...args) => {
-        if (typeof eventName !== "string") return;
-
-        for (let atomWindow of this.getAllWindows()) {
-          if (atomWindow.browserWindow.webContents !== event.sender) {
-            atomWindow.sendToRenderer(WINDOW_EVENT_CHANNEL, eventName, ...args);
           }
         }
       }),
@@ -828,13 +1238,6 @@ module.exports = class AtomApplication extends EventEmitter {
     );
 
     this.disposable.add(
-      ipcHelpers.on(ipcMain, "update-application-menu", (event, template, menu) => {
-        const window = BrowserWindow.fromWebContents(event.sender);
-        if (this.applicationMenu) this.applicationMenu.update(window, template, menu);
-      }),
-    );
-
-    this.disposable.add(
       ipcHelpers.on(ipcMain, "run-package-specs", (event, packageSpecPath, options = {}) => {
         this.runTests(
           Object.assign(
@@ -856,73 +1259,10 @@ module.exports = class AtomApplication extends EventEmitter {
     );
 
     this.disposable.add(
-      ipcHelpers.on(ipcMain, "window-command", (event, command, ...args) => {
-        const window = BrowserWindow.fromWebContents(event.sender);
-        return window && window.emit(command, ...args);
-      }),
-    );
-
-    this.disposable.add(
-      ipcHelpers.respondTo("window-method", (browserWindow, method, ...args) => {
-        const window = this.atomWindowForBrowserWindow(browserWindow);
-        if (window) window[method](...args);
-      }),
-    );
-
-    this.disposable.add(
-      ipcHelpers.on(ipcMain, "pick-folder", (event, responseChannel) => {
-        this.promptForPath("folder", (paths) => event.sender.send(responseChannel, paths));
-      }),
-    );
-
-    this.disposable.add(
-      ipcHelpers.respondTo("set-window-size", (window, width, height) => {
-        window.setSize(width, height);
-      }),
-    );
-
-    this.disposable.add(
-      ipcHelpers.respondTo("set-window-position", (window, x, y) => {
-        window.setPosition(x, y);
-      }),
-    );
-
-    this.disposable.add(
       ipcHelpers.respondTo("set-user-settings", (window, settings, filePath) => {
         if (!this.quitting) {
           return ConfigFile.at(filePath || this.configFilePath).update(JSON.parse(settings));
         }
-      }),
-    );
-
-    this.disposable.add(ipcHelpers.respondTo("center-window", (window) => window.center()));
-    this.disposable.add(ipcHelpers.respondTo("focus-window", (window) => window.focus()));
-    this.disposable.add(
-      ipcHelpers.respondTo("show-window", (window) => {
-        window.show();
-        let atomWindow = this.atomWindowForBrowserWindow(window);
-        if (atomWindow?.preserveFocus) {
-          atomWindow.preserveFocus = false;
-          return;
-        }
-        // On Windows, `app.focus()` targets the application's first window,
-        // which may be a different, minimized window. Focus this BrowserWindow
-        // directly so opening a new window leaves existing windows untouched.
-        if (process.platform === "win32") {
-          window.focus();
-        } else if (process.platform === "darwin") {
-          app.focus({ steal: true });
-        }
-      }),
-    );
-    this.disposable.add(ipcHelpers.respondTo("hide-window", (window) => window.hide()));
-    this.disposable.add(
-      ipcHelpers.respondTo("get-temporary-window-state", (window) => window.temporaryState),
-    );
-
-    this.disposable.add(
-      ipcHelpers.respondTo("set-temporary-window-state", (win, state) => {
-        win.temporaryState = state;
       }),
     );
 
@@ -933,26 +1273,8 @@ module.exports = class AtomApplication extends EventEmitter {
     );
 
     this.disposable.add(
-      ipcHelpers.on(ipcMain, "write-to-stdout", (event, output) => process.stdout.write(output)),
-    );
-
-    this.disposable.add(
-      ipcHelpers.on(ipcMain, "write-to-stderr", (event, output) => process.stderr.write(output)),
-    );
-
-    this.disposable.add(
       ipcHelpers.on(ipcMain, "add-recent-document", (event, filename) =>
         app.addRecentDocument(filename),
-      ),
-    );
-
-    this.disposable.add(
-      ipcHelpers.on(
-        ipcMain,
-        "execute-javascript-in-dev-tools",
-        (event, code) =>
-          event.sender.devToolsWebContents &&
-          event.sender.devToolsWebContents.executeJavaScript(code),
       ),
     );
 
@@ -1077,7 +1399,20 @@ module.exports = class AtomApplication extends EventEmitter {
 
   // Returns the {AtomWindow} for the given ipcMain event.
   atomWindowForEvent({ sender }) {
-    return this.atomWindowForBrowserWindow(BrowserWindow.fromWebContents(sender));
+    return this.atomWindowForSender(sender);
+  }
+
+  atomWindowForSender(sender) {
+    const atomWindow = sender && this.atomWindowsByWebContentsId.get(sender.id);
+    if (
+      !atomWindow ||
+      atomWindow.browserWindow.webContents !== sender ||
+      sender.isDestroyed?.() ||
+      atomWindow.browserWindow.isDestroyed?.()
+    ) {
+      throw new Error("IPC sender is not a registered Lumine window");
+    }
+    return atomWindow;
   }
 
   atomWindowForBrowserWindow(browserWindow) {
@@ -1990,3 +2325,12 @@ class WindowStack {
     return this.windows;
   }
 }
+
+Object.assign(module.exports, {
+  handleAppAction,
+  handleContextMenu,
+  handleSafeStorageAction,
+  handleWindowAction,
+  handleWindowBootstrap,
+  handleWindowBroadcast,
+});

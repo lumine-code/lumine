@@ -8,9 +8,7 @@ const nativeNow = Date.now.bind(Date);
 module.exports = async function focusTestWindow() {
   if (document.hasFocus()) return;
 
-  const remote = require("@electron/remote");
-  const currentWindow = remote.getCurrentWindow();
-  const webContents = remote.getCurrentWebContents();
+  const { ipcRenderer } = require("electron");
   const timeoutAt = nativeNow() + 10000;
 
   // BrowserWindow.focus() requests native-window focus, while
@@ -18,8 +16,7 @@ module.exports = async function focusTestWindow() {
   // asynchronous on CI hosts, so do not continue until the renderer confirms
   // that they have completed.
   while (!document.hasFocus()) {
-    currentWindow.focus();
-    webContents.focus();
+    await ipcRenderer.invoke("lumine:window", "focus");
     await new Promise((resolve) => nativeSetTimeout(resolve, 50));
 
     if (nativeNow() >= timeoutAt) {

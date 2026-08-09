@@ -91,7 +91,7 @@ module.exports = class WindowEventHandler {
         this.atomEnvironment.commands.add(
           ".native-key-bindings",
           command,
-          (_event) => this.applicationDelegate.getCurrentWindow().webContents[action](),
+          (_event) => this.applicationDelegate.performWebContentsAction(action),
           false,
         ),
       );
@@ -219,11 +219,15 @@ module.exports = class WindowEventHandler {
 
   handleWindowBlur() {
     this.document.body.classList.add("is-blurred");
-    this.atomEnvironment.storeWindowDimensions();
+    void Promise.resolve(this.atomEnvironment.storeWindowDimensions()).catch((error) =>
+      console.error(error),
+    );
   }
 
   handleWindowResize() {
-    this.atomEnvironment.storeWindowDimensions();
+    void Promise.resolve(this.atomEnvironment.storeWindowDimensions()).catch((error) =>
+      console.error(error),
+    );
   }
 
   handleEnterFullScreen() {
@@ -243,29 +247,31 @@ module.exports = class WindowEventHandler {
       // window's web view focused".
       this.document.hasFocus()
     ) {
-      this.atomEnvironment.hide();
+      void this.atomEnvironment.window.hide();
     }
     this.reloadRequested = false;
-    this.atomEnvironment.storeWindowDimensions();
+    void Promise.resolve(this.atomEnvironment.storeWindowDimensions()).catch((error) =>
+      console.error(error),
+    );
     this.atomEnvironment.unloadEditorWindow();
     this.atomEnvironment.destroy();
   }
 
   handleWindowToggleFullScreen() {
-    this.atomEnvironment.toggleFullScreen();
+    void this.atomEnvironment.window.toggleFullScreen();
   }
 
   handleWindowClose() {
-    this.atomEnvironment.close();
+    void this.atomEnvironment.window.close();
   }
 
   handleWindowReload() {
     this.reloadRequested = true;
-    this.atomEnvironment.reload();
+    void this.atomEnvironment.window.reload();
   }
 
   handleWindowToggleDevTools() {
-    this.atomEnvironment.toggleDevTools();
+    this.atomEnvironment.window.toggleDevTools();
   }
 
   handleWindowToggleMenuBar() {

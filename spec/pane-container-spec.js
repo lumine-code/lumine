@@ -5,9 +5,7 @@ describe("PaneContainer", () => {
   let confirm, params;
 
   beforeEach(() => {
-    confirm = spyOn(atom.applicationDelegate, "confirm").and.callFake((options, callback) =>
-      callback(0),
-    );
+    confirm = spyOn(atom.applicationDelegate, "confirm").and.returnValue(Promise.resolve(0));
     params = {
       location: "center",
       config: atom.config,
@@ -317,14 +315,14 @@ describe("PaneContainer", () => {
     });
 
     it("returns true if the user saves all modified files when prompted", async () => {
-      confirm.and.callFake((options, callback) => callback(0));
+      confirm.and.returnValue(Promise.resolve(0));
       const saved = await container.confirmClose();
       expect(confirm).toHaveBeenCalled();
       expect(saved).toBeTruthy();
     });
 
     it("returns false if the user cancels saving any modified file", async () => {
-      confirm.and.callFake((options, callback) => callback(1));
+      confirm.and.returnValue(Promise.resolve(1));
       const saved = await container.confirmClose();
       expect(confirm).toHaveBeenCalled();
       expect(saved).toBeFalsy();

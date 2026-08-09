@@ -1,6 +1,6 @@
 const TextEditor = require("../src/text-editor");
 const TextEditorComponent = require("../src/text-editor-component");
-const { getCurrentWebContents } = require("@electron/remote");
+const { ipcRenderer } = require("electron");
 
 // Exercises the browser default actions around the editor's hidden input with
 // trusted input events, which `webContents.sendInputEvent` can generate even
@@ -48,13 +48,17 @@ describe("TextEditorComponent hidden input", () => {
       target.addEventListener("scroll", () => scrolled.push(target.className));
     }
 
-    getCurrentWebContents().sendInputEvent({ type: "char", keyCode: " " });
-    await new Promise((resolve) => {
+    const changed = new Promise((resolve) => {
       const subscription = editor.getBuffer().onDidChange(() => {
         subscription.dispose();
         resolve();
       });
     });
+    await ipcRenderer.invoke("lumine:window", "sendInputEvent", {
+      type: "char",
+      keyCode: " ",
+    });
+    await changed;
     for (let i = 0; i < 10; i++) await frame();
 
     expect(editor.lineTextForBufferRow(0)).toBe(" line 0");

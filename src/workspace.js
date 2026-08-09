@@ -1612,24 +1612,16 @@ module.exports = class Workspace extends Model {
 
     if (fileSize >= this.config.get("core.warnOnLargeFileLimit") * 1048576) {
       // 40MB by default
-      await new Promise((resolve, reject) => {
-        this.applicationDelegate.confirm(
-          {
-            message: "Lumine will be unresponsive during the loading of very large files.",
-            detail: "Do you still want to load this file?",
-            buttons: ["Proceed", "Cancel"],
-          },
-          (response) => {
-            if (response === 1) {
-              const error = new Error();
-              error.code = "CANCELLED";
-              reject(error);
-            } else {
-              resolve();
-            }
-          },
-        );
+      const response = await this.applicationDelegate.confirm({
+        message: "Lumine will be unresponsive during the loading of very large files.",
+        detail: "Do you still want to load this file?",
+        buttons: ["Proceed", "Cancel"],
       });
+      if (response === 1) {
+        const error = new Error();
+        error.code = "CANCELLED";
+        throw error;
+      }
     }
 
     const buffer = await this.project.bufferForPath(filePath, options);
@@ -2034,7 +2026,7 @@ module.exports = class Workspace extends Model {
     } else if (this.getCenter().getPanes().length > 1) {
       this.getCenter().destroyActivePane();
     } else if (this.config.get("core.closeEmptyWindows")) {
-      atom.close();
+      atom.window.close();
     }
   }
 
@@ -2834,7 +2826,7 @@ module.exports = class Workspace extends Model {
     });
   }
 
-  checkoutHeadRevision(editor) {
+  async checkoutHeadRevision(editor) {
     if (editor.getPath()) {
       const checkoutHead = async () => {
         const repository = await this.project.repositoryForDirectory(
@@ -2844,18 +2836,14 @@ module.exports = class Workspace extends Model {
       };
 
       if (this.config.get("git.confirmCheckoutHeadRevision")) {
-        this.applicationDelegate.confirm(
-          {
-            message: "Confirm Checkout HEAD Revision",
-            detail: `Are you sure you want to discard all changes to "${editor.getFileName()}" since the last Git commit?`,
-            buttons: ["OK", "Cancel"],
-          },
-          (response) => {
-            if (response === 0) checkoutHead();
-          },
-        );
+        const response = await this.applicationDelegate.confirm({
+          message: "Confirm Checkout HEAD Revision",
+          detail: `Are you sure you want to discard all changes to "${editor.getFileName()}" since the last Git commit?`,
+          buttons: ["OK", "Cancel"],
+        });
+        if (response === 0) await checkoutHead();
       } else {
-        checkoutHead();
+        await checkoutHead();
       }
     }
   }

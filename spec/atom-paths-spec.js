@@ -1,9 +1,20 @@
 const atomPaths = require("../src/atom-paths");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
-const remote = require("@electron/remote");
-const app = remote.app;
 const temp = require("@lumine-code/temp").track();
+
+const appPathValues = new Map([
+  ["home", atom.app.getPath("home")],
+  ["userData", atom.app.getPath("userData")],
+]);
+const app = {
+  getPath(name) {
+    return appPathValues.get(name);
+  },
+  setPath(name, value) {
+    appPathValues.set(name, value);
+  },
+};
 
 describe("AtomPaths", () => {
   const portableAtomHomePath = path.join(atomPaths.getAppDirectory(), "..", ".atom");

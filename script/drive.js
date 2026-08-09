@@ -307,7 +307,7 @@ async function reload({ options }) {
   const client = await clientFor(options);
   // Reloading tears the socket down, so the call cannot be awaited — fire it
   // from a timer and reconnect to the new target.
-  await client.evaluate("setTimeout(() => atom.reload(), 50), 'reloading'").catch(() => {});
+  await client.evaluate("setTimeout(() => atom.window.reload(), 50), 'reloading'").catch(() => {});
   client.close();
   await sleep(2000);
   const next = await clientFor(options, { timeout: 60000 });
@@ -447,7 +447,7 @@ async function quit({ options }) {
   const windows = await listWindows(port).catch(() => []);
   if (windows.length) {
     const client = await clientFor(options);
-    await client.evaluate("setTimeout(() => atom.close(), 50), 'closing'").catch(() => {});
+    await client.evaluate("setTimeout(() => atom.window.close(), 50), 'closing'").catch(() => {});
     client.close();
     console.log("closing");
     return;

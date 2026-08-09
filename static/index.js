@@ -26,22 +26,21 @@
   const startWindowTime = Date.now();
 
   const electron = require("electron");
-  const remote = require("@electron/remote");
   const path = require("path");
   const getWindowLoadSettings = require("../src/get-window-load-settings");
   const StartupTime = require("../src/startup-time");
   const entryPointDirPath = __dirname;
   let blobStore = null;
 
-  const startupMarkers = remote.getCurrentWindow().startupMarkers;
+  const bootstrapPromise = electron.ipcRenderer.invoke("lumine:window-bootstrap").then((data) => {
+    getWindowLoadSettings.set(data.loadSettings);
+    if (data.startupMarkers) StartupTime.importData(data.startupMarkers);
+    StartupTime.addMarker("window:start", startWindowTime);
+  });
 
-  if (startupMarkers) {
-    StartupTime.importData(startupMarkers);
-  }
-  StartupTime.addMarker("window:start", startWindowTime);
-
-  window.onload = async function () {
+  async function onWindowLoad() {
     try {
+      await bootstrapPromise;
       StartupTime.addMarker("window:onload:start");
       const startTime = Date.now();
       await require("@lumine-code/second-mate").ready;
@@ -77,7 +76,13 @@
       handleSetupError(error);
     }
     StartupTime.addMarker("window:onload:end");
-  };
+  }
+
+  if (document.readyState === "loading") {
+    window.addEventListener("load", onWindowLoad, { once: true });
+  } else {
+    void onWindowLoad();
+  }
 
   function setLoadTime(loadTime) {
     if (global.atom) {
@@ -86,11 +91,7 @@
   }
 
   function handleSetupError(error) {
-    const currentWindow = remote.getCurrentWindow();
-    currentWindow.setSize(800, 600);
-    currentWindow.center();
-    currentWindow.show();
-    currentWindow.openDevTools();
+    electron.ipcRenderer.invoke("lumine:setup-error").catch((ipcError) => console.error(ipcError));
     console.error(error.stack || error);
   }
 
@@ -110,9 +111,9 @@
 
     StartupTime.addMarker("window:initialize:start");
 
-    return initialize({ blobStore: blobStore }).then(function () {
+    return initialize({ blobStore: blobStore }).then(async function () {
       StartupTime.addMarker("window:initialize:end");
-      electron.ipcRenderer.send("window-command", "window:loaded");
+      await electron.ipcRenderer.invoke("lumine:window", "loaded");
     });
   }
 
@@ -129,15 +130,10 @@
         .catch(handleSetupError);
     }
 
-    const webContents = remote.getCurrentWindow().webContents;
-    if (webContents.devToolsWebContents) {
-      profile();
-    } else {
-      webContents.once("devtools-opened", () => {
-        setTimeout(profile, 1000);
-      });
-      webContents.openDevTools();
-    }
+    electron.ipcRenderer
+      .invoke("lumine:profile-startup")
+      .then(() => setTimeout(profile, 1000))
+      .catch(handleSetupError);
   }
 
   function setupAtomHome() {

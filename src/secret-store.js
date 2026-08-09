@@ -28,8 +28,9 @@ const { Emitter } = require("@lumine-code/event-kit");
 // therefore expect {::get} to return `null` for something it stored in an
 // earlier session, and ask again rather than fail.
 class SecretStore {
-  constructor({ safeStorage, storagePath, notify } = {}) {
+  constructor({ safeStorage, applicationDelegate, storagePath, notify } = {}) {
     this._safeStorage = safeStorage;
+    this.applicationDelegate = applicationDelegate;
     this.storagePath = storagePath;
     this.notify = notify || null;
     this.emitter = new Emitter();
@@ -37,13 +38,6 @@ class SecretStore {
     this.memory = new Map(); // session-only fallback when encryption is off
     this.encryptionAvailable = null;
     this.warned = false;
-  }
-
-  get safeStorage() {
-    if (this._safeStorage == null) {
-      this._safeStorage = require("@electron/remote").safeStorage;
-    }
-    return this._safeStorage;
   }
 
   /*
@@ -56,16 +50,26 @@ class SecretStore {
   // telling the user that a token has been saved — the first call warns them
   // once on its own.
   //
-  // Returns a {Boolean}.
-  isEncryptionAvailable() {
-    if (this.encryptionAvailable === null) {
+  // Returns a {Promise} resolving to a {Boolean}.
+  async isEncryptionAvailable() {
+    if (typeof this.encryptionAvailable === "boolean") return this.encryptionAvailable;
+    if (this.encryptionAvailable) return this.encryptionAvailable;
+
+    this.encryptionAvailable = (async () => {
       try {
-        this.encryptionAvailable = Boolean(this.safeStorage.isEncryptionAvailable());
+        if (this._safeStorage) {
+          const method =
+            this._safeStorage.isAsyncEncryptionAvailable || this._safeStorage.isEncryptionAvailable;
+          return Boolean(await method.call(this._safeStorage));
+        }
+        return Boolean(await this.applicationDelegate.invokeSafeStorage("isEncryptionAvailable"));
       } catch {
-        this.encryptionAvailable = false;
+        return false;
       }
-      if (!this.encryptionAvailable) this.warnUnavailable();
-    }
+    })();
+
+    this.encryptionAvailable = await this.encryptionAvailable;
+    if (!this.encryptionAvailable) this.warnUnavailable();
     return this.encryptionAvailable;
   }
 
@@ -111,13 +115,29 @@ class SecretStore {
   // happens after the OS credential store is reset, or when this session has no
   // encryption and an earlier one did.
   async get(key) {
-    if (!this.isEncryptionAvailable()) {
+    if (!(await this.isEncryptionAvailable())) {
       return this.memory.has(key) ? this.memory.get(key) : null;
     }
     const ciphertext = this.loadEntries().get(key);
     if (ciphertext == null) return null;
     try {
-      return this.safeStorage.decryptString(Buffer.from(ciphertext, "base64"));
+      let decrypted;
+      if (this._safeStorage) {
+        const buffer = Buffer.from(ciphertext, "base64");
+        if (this._safeStorage.decryptStringAsync) {
+          decrypted = await this._safeStorage.decryptStringAsync(buffer);
+        } else {
+          decrypted = { result: this._safeStorage.decryptString(buffer) };
+        }
+      } else {
+        decrypted = await this.applicationDelegate.invokeSafeStorage("decrypt", ciphertext);
+      }
+
+      if (decrypted.replacementCiphertext) {
+        this.loadEntries().set(key, decrypted.replacementCiphertext);
+        this.persistEntries();
+      }
+      return decrypted.result;
     } catch {
       return null;
     }
@@ -132,12 +152,20 @@ class SecretStore {
   // Returns a {Promise} that resolves once the value is written.
   async set(key, value) {
     if (value == null) return this.delete(key);
-    if (!this.isEncryptionAvailable()) {
+    if (!(await this.isEncryptionAvailable())) {
       this.memory.set(key, String(value));
       this.emitter.emit("did-change", { key });
       return;
     }
-    const ciphertext = this.safeStorage.encryptString(String(value)).toString("base64");
+    let ciphertext;
+    if (this._safeStorage) {
+      const encrypted = this._safeStorage.encryptStringAsync
+        ? await this._safeStorage.encryptStringAsync(String(value))
+        : this._safeStorage.encryptString(String(value));
+      ciphertext = encrypted.toString("base64");
+    } else {
+      ciphertext = await this.applicationDelegate.invokeSafeStorage("encrypt", String(value));
+    }
     this.loadEntries().set(key, ciphertext);
     this.persistEntries();
     this.emitter.emit("did-change", { key });

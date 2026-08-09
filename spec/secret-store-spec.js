@@ -79,4 +79,45 @@ describe("SecretStore", () => {
     await store.get("other"); // a second operation must not warn again
     expect(warnings.length).toBe(1);
   });
+
+  it("uses the asynchronous safe-storage contract and persists replacement ciphertext", async () => {
+    let encryptedValue = "enc:first";
+    const safeStorage = {
+      isAsyncEncryptionAvailable: jasmine
+        .createSpy("isAsyncEncryptionAvailable")
+        .and.returnValue(Promise.resolve(true)),
+      encryptStringAsync: jasmine.createSpy("encryptStringAsync").and.callFake(async (value) => {
+        encryptedValue = `enc:${value}:new`;
+        return Buffer.from(encryptedValue);
+      }),
+      decryptStringAsync: jasmine.createSpy("decryptStringAsync").and.returnValue(
+        Promise.resolve({
+          result: "first",
+          replacementCiphertext: Buffer.from("enc:first:new").toString("base64"),
+        }),
+      ),
+    };
+    const store = new SecretStore({ safeStorage, storagePath });
+    store.entries = new Map([["key", Buffer.from("enc:first").toString("base64")]]);
+    store.persistEntries();
+
+    expect(await store.isEncryptionAvailable()).toBe(true);
+    expect(await store.get("key")).toBe("first");
+    expect(JSON.parse(fs.readFileSync(storagePath, "utf8")).key).toBe(
+      Buffer.from("enc:first:new").toString("base64"),
+    );
+    expect(encryptedValue).toBe("enc:first");
+  });
+
+  it("returns null when asynchronous decryption fails", async () => {
+    const safeStorage = {
+      isAsyncEncryptionAvailable: async () => true,
+      decryptStringAsync: async () => {
+        throw new Error("credential store was reset");
+      },
+    };
+    const store = new SecretStore({ safeStorage, storagePath });
+    store.entries = new Map([["key", Buffer.from("bad").toString("base64")]]);
+    expect(await store.get("key")).toBe(null);
+  });
 });

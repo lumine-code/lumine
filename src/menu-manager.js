@@ -248,7 +248,9 @@ module.exports = class MenuManager {
   }
 
   sendToBrowserProcess(template, keystrokesByCommand) {
-    ipcRenderer.send("update-application-menu", template, keystrokesByCommand);
+    void ipcRenderer
+      .invoke("lumine:window", "updateApplicationMenu", template, keystrokesByCommand)
+      .catch((error) => console.error(error));
   }
 
   // Get an {Array} of {String} classes for the given element.

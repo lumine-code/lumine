@@ -3,7 +3,6 @@ const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
 const { calculateSpecificity, validateSelector } = require("./css-selectors");
 const { Disposable } = require("@lumine-code/event-kit");
-const remote = require("@electron/remote");
 const MenuHelpers = require("./menu-helpers");
 const { sortMenuItems } = require("./menu-sort-helpers");
 const _ = require("@lumine-code/underscore-plus");
@@ -59,8 +58,9 @@ if (
 // The format for use in {::add} is the same minus the `context-menu` key. See
 // {::add} for more information.
 module.exports = class ContextMenuManager {
-  constructor({ keymapManager }) {
+  constructor({ keymapManager, applicationDelegate }) {
     this.keymapManager = keymapManager;
+    this.applicationDelegate = applicationDelegate;
     this.definitions = {};
     this.clear();
     this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems());
@@ -273,13 +273,24 @@ module.exports = class ContextMenuManager {
   }
 
   showForEvent(event) {
-    this.activeElement = event.target;
     const menuTemplate = this.templateForEvent(event);
     if (!(menuTemplate && menuTemplate.length > 0)) {
       return;
     }
     this.appendMultiKeystrokeLabels(menuTemplate);
-    remote.getCurrentWindow().emit("context-menu", menuTemplate);
+    return this.show(event.target, menuTemplate);
+  }
+
+  // Public: Show a native context menu for a DOM target.
+  //
+  // * `target` The local DOM {Element} that receives selected commands.
+  // * `menuTemplate` A serializable Electron menu-template {Array}; functions
+  //   and native Electron objects are not allowed.
+  //
+  // Returns a {Promise} that resolves after the menu is shown.
+  show(target, menuTemplate) {
+    this.activeElement = target;
+    return this.applicationDelegate.showContextMenu(menuTemplate);
   }
 
   clear() {

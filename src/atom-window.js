@@ -1,6 +1,3 @@
-const electronRemote = require("@electron/remote/main");
-electronRemote.initialize();
-
 const { BrowserWindow, app, dialog, ipcMain, nativeImage, webContents } = require("electron");
 const { getAppName } = require("./get-app-details.js");
 const path = require("path");
@@ -106,20 +103,7 @@ module.exports = class AtomWindow extends EventEmitter {
 
     const BrowserWindowConstructor = settings.browserWindowConstructor || BrowserWindow;
     this.browserWindow = new BrowserWindowConstructor(options);
-    electronRemote.enable(this.browserWindow.webContents);
-
-    Object.defineProperty(this.browserWindow, "loadSettingsJSON", {
-      get: () =>
-        JSON.stringify(
-          Object.assign(
-            {
-              configFilePath: this.atomApplication.configFile.path,
-              userSettings: !this.isSpec ? this.atomApplication.configFile.get() : null,
-            },
-            this.loadSettings,
-          ),
-        ),
-    });
+    this.atomApplication.registerAtomWindow?.(this);
 
     this.handleEvents();
 
@@ -140,20 +124,6 @@ module.exports = class AtomWindow extends EventEmitter {
     this.loadSettings.initialProjectRoots = this.projectRoots;
 
     StartupTime.addMarker("main-process:atom-window:end");
-
-    // Expose the startup markers to the renderer process, so we can have unified
-    // measures about startup time between the main process and the renderer process.
-    Object.defineProperty(this.browserWindow, "startupMarkers", {
-      get: () => {
-        // We only want to make the main process startup data available once,
-        // so if the window is refreshed or a new window is opened, the
-        // renderer process won't use it again.
-        const timingData = StartupTime.exportData();
-        StartupTime.deleteData();
-
-        return timingData;
-      },
-    });
 
     // Only send to the first non-spec window created
     if (includeShellLoadTime && !this.isSpec) {
@@ -207,8 +177,6 @@ module.exports = class AtomWindow extends EventEmitter {
       }),
     );
 
-    this.browserWindow.showSaveDialog = this.showSaveDialog.bind(this);
-
     if (this.isSpec) this.browserWindow.focusOnWebView();
 
     const hasPathToOpen = !(locationsToOpen.length === 1 && locationsToOpen[0].pathToOpen == null);
@@ -217,6 +185,22 @@ module.exports = class AtomWindow extends EventEmitter {
 
   hasProjectPaths() {
     return this.projectRoots.length > 0;
+  }
+
+  consumeStartupMarkers() {
+    const timingData = StartupTime.exportData();
+    StartupTime.deleteData();
+    return timingData;
+  }
+
+  getLoadSettingsForRenderer() {
+    return Object.assign(
+      {
+        configFilePath: this.atomApplication.configFile.path,
+        userSettings: !this.isSpec ? this.atomApplication.configFile.get() : null,
+      },
+      this.loadSettings,
+    );
   }
 
   setupContextMenu() {
@@ -567,7 +551,7 @@ module.exports = class AtomWindow extends EventEmitter {
     return this.loadedPromise;
   }
 
-  showSaveDialog(options, callback) {
+  showSaveDialog(options) {
     options = Object.assign(
       {
         title: "Save File",
@@ -576,25 +560,19 @@ module.exports = class AtomWindow extends EventEmitter {
       options,
     );
 
-    let promise = dialog.showSaveDialog(this.browserWindow, options);
-    if (typeof callback === "function") {
-      promise = promise.then(({ filePath, bookmark }) => {
-        callback(filePath, bookmark);
-      });
-    }
-    return promise;
+    return dialog.showSaveDialog(this.browserWindow, options);
   }
 
   toggleDevTools() {
-    return this.browserWindow.toggleDevTools();
+    return this.browserWindow.webContents.toggleDevTools();
   }
 
   openDevTools() {
-    return this.browserWindow.openDevTools();
+    return this.browserWindow.webContents.openDevTools();
   }
 
   closeDevTools() {
-    return this.browserWindow.closeDevTools();
+    return this.browserWindow.webContents.closeDevTools();
   }
 
   setDocumentEdited(documentEdited) {

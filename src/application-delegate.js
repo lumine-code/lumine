@@ -1,5 +1,4 @@
 const { ipcRenderer } = require("electron");
-const remote = require("@electron/remote");
 const ipcHelpers = require("./ipc-helpers");
 const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const getWindowLoadSettings = require("./get-window-load-settings");
@@ -30,96 +29,13 @@ module.exports = class ApplicationDelegate {
     return ipcRenderer.send("open", params);
   }
 
-  pickFolder(callback) {
-    const responseChannel = "atom-pick-folder-response";
-    ipcRenderer.on(responseChannel, function (event, path) {
-      ipcRenderer.removeAllListeners(responseChannel);
-      return callback(path);
-    });
-    return ipcRenderer.send("pick-folder", responseChannel);
-  }
-
-  getCurrentWindow() {
-    return remote.getCurrentWindow();
-  }
-
-  closeWindow() {
-    return ipcHelpers.call("window-method", "close");
-  }
-
   async getTemporaryWindowState() {
-    const stateJSON = await ipcHelpers.call("get-temporary-window-state");
+    const stateJSON = await this.invokeWindow("getTemporaryState");
     return stateJSON && JSON.parse(stateJSON);
   }
 
   setTemporaryWindowState(state) {
-    return ipcHelpers.call("set-temporary-window-state", JSON.stringify(state));
-  }
-
-  getWindowSize() {
-    const [width, height] = Array.from(remote.getCurrentWindow().getSize());
-    return { width, height };
-  }
-
-  setWindowSize(width, height) {
-    return ipcHelpers.call("set-window-size", width, height);
-  }
-
-  getWindowPosition() {
-    const [x, y] = Array.from(remote.getCurrentWindow().getPosition());
-    return { x, y };
-  }
-
-  setWindowPosition(x, y) {
-    return ipcHelpers.call("set-window-position", x, y);
-  }
-
-  centerWindow() {
-    return ipcHelpers.call("center-window");
-  }
-
-  focusWindow() {
-    return ipcHelpers.call("focus-window");
-  }
-
-  showWindow() {
-    return ipcHelpers.call("show-window");
-  }
-
-  hideWindow() {
-    return ipcHelpers.call("hide-window");
-  }
-
-  reloadWindow() {
-    return ipcHelpers.call("window-method", "reload");
-  }
-
-  restartApplication() {
-    return ipcRenderer.send("restart-application");
-  }
-
-  minimizeWindow() {
-    return ipcHelpers.call("window-method", "minimize");
-  }
-
-  isWindowMaximized() {
-    return remote.getCurrentWindow().isMaximized();
-  }
-
-  maximizeWindow() {
-    return ipcHelpers.call("window-method", "maximize");
-  }
-
-  unmaximizeWindow() {
-    return ipcHelpers.call("window-method", "unmaximize");
-  }
-
-  isWindowFullScreen() {
-    return remote.getCurrentWindow().isFullScreen();
-  }
-
-  setWindowFullScreen(fullScreen = false) {
-    return ipcHelpers.call("window-method", "setFullScreen", fullScreen);
+    return this.invokeWindow("setTemporaryState", JSON.stringify(state));
   }
 
   onDidEnterFullScreen(callback) {
@@ -146,44 +62,16 @@ module.exports = class ApplicationDelegate {
     return ipcHelpers.on(ipcRenderer, "did-blur-window", callback);
   }
 
-  async openWindowDevTools() {
-    // Defer DevTools interaction to the next tick, because using them during
-    // event handling causes some wrong input events to be triggered on
-    // `TextEditorComponent` (Ref.: https://github.com/atom/atom/issues/9697).
-    await new Promise(process.nextTick);
-    return ipcHelpers.call("window-method", "openDevTools");
-  }
-
-  async closeWindowDevTools() {
-    // Defer DevTools interaction to the next tick, because using them during
-    // event handling causes some wrong input events to be triggered on
-    // `TextEditorComponent` (Ref.: https://github.com/atom/atom/issues/9697).
-    await new Promise(process.nextTick);
-    return ipcHelpers.call("window-method", "closeDevTools");
-  }
-
-  async toggleWindowDevTools() {
-    // Defer DevTools interaction to the next tick, because using them during
-    // event handling causes some wrong input events to be triggered on
-    // `TextEditorComponent` (Ref.: https://github.com/atom/atom/issues/9697).
-    await new Promise(process.nextTick);
-    return ipcHelpers.call("window-method", "toggleDevTools");
-  }
-
-  executeJavaScriptInWindowDevTools(code) {
-    return ipcRenderer.send("execute-javascript-in-dev-tools", code);
-  }
-
   didClosePathWithWaitSession(path) {
-    return ipcHelpers.call("window-method", "didClosePathWithWaitSession", path);
+    return this.invokeWindow("didClosePathWithWaitSession", path);
   }
 
   setWindowDocumentEdited(edited) {
-    return ipcHelpers.call("window-method", "setDocumentEdited", edited);
+    return this.invokeWindow("setDocumentEdited", edited);
   }
 
   setRepresentedFilename(filename) {
-    return ipcHelpers.call("window-method", "setRepresentedFilename", filename);
+    return this.invokeWindow("setRepresentedFilename", filename);
   }
 
   addRecentDocument(filename) {
@@ -191,23 +79,11 @@ module.exports = class ApplicationDelegate {
   }
 
   setProjectRoots(paths) {
-    return ipcHelpers.call("window-method", "setProjectRoots", paths);
+    return this.invokeWindow("setProjectRoots", paths);
   }
 
-  setAutoHideWindowMenuBar(autoHide) {
-    return ipcHelpers.call("window-method", "setAutoHideMenuBar", autoHide);
-  }
-
-  setWindowMenuBarVisibility(visible) {
-    return remote.getCurrentWindow().setMenuBarVisibility(visible);
-  }
-
-  getPrimaryDisplayWorkAreaSize() {
-    return remote.screen.getPrimaryDisplay().workAreaSize;
-  }
-
-  getUserDefault(key, type) {
-    return remote.systemPreferences.getUserDefault(key, type);
+  performWebContentsAction(action) {
+    return this.invokeWindow(action);
   }
 
   async setUserSettings(config, configFilePath) {
@@ -229,56 +105,14 @@ module.exports = class ApplicationDelegate {
     return this.ipcMessageEmitter().on("did-fail-to-read-user-setting", callback);
   }
 
-  confirm(options, callback) {
-    if (typeof callback === "function") {
-      // Async version: pass options directly to Electron but set sane defaults
-      options = Object.assign({ type: "info", normalizeAccessKeys: true }, options);
-      remote.dialog.showMessageBox(remote.getCurrentWindow(), options).then((result) => {
-        callback(result.response, result.checkboxChecked);
-      });
-    } else {
-      // Legacy sync version: options can only have `message`,
-      // `detailedMessage` (optional), and buttons array or object (optional)
-      let { message, detailedMessage, buttons } = options;
-
-      let buttonLabels;
-      if (!buttons) buttons = {};
-      if (Array.isArray(buttons)) {
-        buttonLabels = buttons;
-      } else {
-        buttonLabels = Object.keys(buttons);
-      }
-
-      const chosen = remote.dialog.showMessageBoxSync(remote.getCurrentWindow(), {
-        type: "info",
-        message,
-        detail: detailedMessage,
-        buttons: buttonLabels,
-        normalizeAccessKeys: true,
-      });
-
-      if (Array.isArray(buttons)) {
-        return chosen;
-      } else {
-        const callback = buttons[buttonLabels[chosen]];
-        if (typeof callback === "function") return callback();
-      }
-    }
+  confirm(options) {
+    return this.invokeWindow("confirm", options);
   }
 
   showMessageDialog(_params) {}
 
-  showSaveDialog(options, callback) {
-    if (typeof callback === "function") {
-      // Async
-      this.getCurrentWindow().showSaveDialog(options, callback);
-    } else {
-      // Sync
-      if (typeof options === "string") {
-        options = { defaultPath: options };
-      }
-      return this.getCurrentWindow().showSaveDialog(options);
-    }
+  showSaveDialog(options = {}) {
+    return this.invokeWindow("showSaveDialog", options);
   }
 
   onDidOpenLocations(callback) {
@@ -340,11 +174,11 @@ module.exports = class ApplicationDelegate {
     return ipcRenderer.send("did-change-history-manager");
   }
 
-  emitToOtherWindows(eventName, ...args) {
+  broadcastToOtherWindows(eventName, ...args) {
     if (typeof eventName !== "string") {
       throw new TypeError("Window event name must be a string");
     }
-    return ipcRenderer.send(WINDOW_EVENT_CHANNEL, eventName, ...args);
+    return ipcRenderer.invoke("lumine:window-broadcast", eventName, ...args);
   }
 
   onDidReceiveWindowEvent(eventName, callback) {
@@ -396,12 +230,28 @@ module.exports = class ApplicationDelegate {
   }
 
   invokeShellMethod(channel, ...args) {
-    return ipcRenderer.invoke(channel, ...args).then(({ outcome, error, result }) => {
+    return this.invokeApp(channel, ...args).then(({ outcome, error, result }) => {
       if (outcome === "success") {
         return result;
       } else if (outcome === "failure") {
         return Promise.reject(error);
       }
     });
+  }
+
+  invokeWindow(action, ...args) {
+    return ipcRenderer.invoke("lumine:window", action, ...args);
+  }
+
+  invokeApp(action, ...args) {
+    return ipcRenderer.invoke("lumine:app", action, ...args);
+  }
+
+  invokeSafeStorage(action, ...args) {
+    return ipcRenderer.invoke("lumine:safe-storage", action, ...args);
+  }
+
+  showContextMenu(template) {
+    return ipcRenderer.invoke("lumine:context-menu", template);
   }
 };

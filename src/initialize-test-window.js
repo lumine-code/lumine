@@ -1,4 +1,3 @@
-const ipcHelpers = require("./ipc-helpers");
 const { requireModule } = require("./module-utils");
 const focusTestWindow = require("./focus-test-window");
 
@@ -11,17 +10,25 @@ function cloneObject(object) {
 }
 
 module.exports = async function ({ blobStore }) {
-  const remote = require("@electron/remote");
   const getWindowLoadSettings = require("./get-window-load-settings");
-
-  const exitWithStatusCode = function (status) {
-    remote.app.emit("will-quit");
-    remote.process.exit(status);
+  const { ipcRenderer } = require("electron");
+  let pendingOutput = Promise.resolve();
+  let flushOutputStreams = () => Promise.resolve();
+  const writeTestOutput = (stream, output, callback) => {
+    pendingOutput = pendingOutput.then(() =>
+      ipcRenderer.invoke("lumine:test", stream, String(output)),
+    );
+    if (typeof callback === "function") pendingOutput.then(() => callback(), callback);
+    return true;
+  };
+  const exitWithStatusCode = async (status) => {
+    await flushOutputStreams();
+    await pendingOutput;
+    await ipcRenderer.invoke("lumine:test", "exit", status);
   };
 
   try {
     const path = require("path");
-    const { ipcRenderer } = require("electron");
     const AtomEnvironment = require("../src/atom-environment");
     const ApplicationDelegate = require("../src/application-delegate");
     const Clipboard = require("../src/clipboard");
@@ -32,15 +39,37 @@ module.exports = async function ({ blobStore }) {
 
     const { testRunnerPath, legacyTestRunnerPath, headless, logFile, testPaths, env } =
       getWindowLoadSettings();
-
     if (headless) {
       // Install console functions that output to stdout and stderr.
       const util = require("util");
+      const { Writable } = require("stream");
+      const createTestOutputStream = (name) => {
+        const stream = new Writable({
+          write(output, _encoding, callback) {
+            writeTestOutput(name, output, callback);
+          },
+        });
+        stream.isTTY = false;
+        return stream;
+      };
 
       Object.defineProperties(process, {
-        stdout: { value: remote.process.stdout },
-        stderr: { value: remote.process.stderr },
+        stdout: {
+          value: createTestOutputStream("stdout"),
+        },
+        stderr: {
+          value: createTestOutputStream("stderr"),
+        },
       });
+      flushOutputStreams = () =>
+        Promise.all(
+          [process.stdout, process.stderr].map(
+            (stream) =>
+              new Promise((resolve, reject) =>
+                stream.write("", (error) => (error ? reject(error) : resolve())),
+              ),
+          ),
+        );
 
       console.log = (...args) => process.stdout.write(`${util.format(...args)}\n`);
       console.error = (...args) => process.stderr.write(`${util.format(...args)}\n`);
@@ -56,23 +85,22 @@ module.exports = async function ({ blobStore }) {
       // are declared with `jasmine.itWithDocumentFocus`/`describeWithDocumentFocus`
       // and report themselves pending instead of failing (see
       // spec/helpers/document-focus.js).
-      const currentWindow = remote.getCurrentWindow();
       if (process.env.CI) {
-        currentWindow.show();
+        await ipcRenderer.invoke("lumine:window", "show");
         await focusTestWindow();
       } else {
-        currentWindow.showInactive();
+        await ipcRenderer.invoke("lumine:window", "showInactive");
       }
     } else {
       // Show window synchronously so a focusout doesn't fire on input elements
       // that are focused in the very first spec run.
-      remote.getCurrentWindow().show();
+      await ipcRenderer.invoke("lumine:window", "show");
     }
 
     const handleKeydown = function (event) {
       // Reload: cmd-r / ctrl-r
       if ((event.metaKey || event.ctrlKey) && event.keyCode === 82) {
-        ipcHelpers.call("window-method", "reload");
+        ipcRenderer.invoke("lumine:window", "reload");
       }
 
       // Toggle Dev Tools: cmd-alt-i (Mac) / ctrl-shift-i (Linux/Windows)
@@ -81,12 +109,12 @@ module.exports = async function ({ blobStore }) {
         ((process.platform === "darwin" && event.metaKey && event.altKey) ||
           (process.platform !== "darwin" && event.ctrlKey && event.shiftKey))
       ) {
-        ipcHelpers.call("window-method", "toggleDevTools");
+        ipcRenderer.invoke("lumine:window", "toggleDevTools");
       }
 
       // Close: cmd-w / ctrl-w
       if ((event.metaKey || event.ctrlKey) && event.keyCode === 87) {
-        ipcHelpers.call("window-method", "close");
+        ipcRenderer.invoke("lumine:window", "close");
       }
 
       // Copy: cmd-c / ctrl-c
@@ -145,12 +173,12 @@ module.exports = async function ({ blobStore }) {
     });
 
     if (getWindowLoadSettings().headless) {
-      exitWithStatusCode(statusCode);
+      await exitWithStatusCode(statusCode);
     }
   } catch (error) {
     if (getWindowLoadSettings().headless) {
       console.error(error.stack || error);
-      exitWithStatusCode(1);
+      await exitWithStatusCode(1);
     } else {
       throw error;
     }

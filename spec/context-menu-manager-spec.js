@@ -1,11 +1,14 @@
 const ContextMenuManager = require("../src/context-menu-manager");
 
 describe("ContextMenuManager", function () {
-  let [contextMenu, parent, child, grandchild] = [];
+  let [contextMenu, applicationDelegate, parent, child, grandchild] = [];
 
   beforeEach(function () {
     const { resourcePath } = atom.getLoadSettings();
-    contextMenu = new ContextMenuManager({ keymapManager: atom.keymaps });
+    applicationDelegate = {
+      showContextMenu: jasmine.createSpy("showContextMenu").and.returnValue(Promise.resolve()),
+    };
+    contextMenu = new ContextMenuManager({ keymapManager: atom.keymaps, applicationDelegate });
     contextMenu.initialize({ resourcePath });
 
     parent = document.createElement("div");
@@ -26,6 +29,13 @@ describe("ContextMenuManager", function () {
   afterEach(function () {
     document.body.blur();
     document.body.removeChild(parent);
+  });
+
+  it("keeps the DOM target local and sends only a serializable menu template", async () => {
+    const template = [{ label: "Run", command: "package:run" }];
+    await contextMenu.show(grandchild, template);
+    expect(contextMenu.activeElement).toBe(grandchild);
+    expect(applicationDelegate.showContextMenu).toHaveBeenCalledWith(template);
   });
 
   describe("::add(itemsBySelector)", function () {

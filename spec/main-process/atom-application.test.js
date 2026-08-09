@@ -854,30 +854,29 @@ describe("AtomApplication", function () {
       w2 = await scenario.open(parseCommandLine(["--new-window", "b"]));
 
       app = scenario.getApplication(0);
+      [w0, w1, w2].forEach((window, index) => {
+        const contents = window.browserWindow.webContents;
+        contents.id = 7000 + index;
+        contents.isDestroyed = () => false;
+        window.browserWindow.isDestroyed = () => false;
+        window.id = index + 1;
+        app.registerAtomWindow(window);
+      });
       sinon.spy(app, "openPaths");
       sinon
         .stub(app, "promptForPath")
         .callsFake((_type, callback, defaultPath) => callback([defaultPath]));
     });
 
-    it('"show-window" focuses only the requested window on Windows', async function () {
+    it("showWindow focuses only the requested window on Windows", function () {
       w1.preserveFocus = false;
       w1.browserWindow.show = w1.show;
       w1.browserWindow.focus = w1.focus;
       w1.focus.resetHistory();
 
-      const sender = {
-        isDestroyed: sinon.stub().returns(false),
-        send: sinon.spy(),
-      };
-      sinon
-        .stub(electron.BrowserWindow, "fromWebContents")
-        .withArgs(sender)
-        .returns(w1.browserWindow);
       const focusApplication = sinon.stub(electron.app, "focus");
 
-      electron.ipcMain.emit("show-window", { sender }, "show-window-response");
-      await conditionPromise(() => sender.send.called);
+      app.showWindow(w1);
 
       assert.isTrue(w1.show.calledOnce);
       if (process.platform === "win32") {
@@ -890,6 +889,173 @@ describe("AtomApplication", function () {
         assert.isFalse(w1.focus.called);
         assert.isFalse(focusApplication.called);
       }
+    });
+
+    it("accepts only the exact live WebContents registered for a Lumine window", function () {
+      const sender = { id: 9001, isDestroyed: () => false };
+      const registeredWindow = {
+        browserWindow: {
+          webContents: sender,
+          isDestroyed: () => false,
+        },
+      };
+
+      app.registerAtomWindow(registeredWindow);
+      assert.strictEqual(app.atomWindowForSender(sender), registeredWindow);
+      assert.throws(
+        () => app.atomWindowForSender({ id: sender.id, isDestroyed: () => false }),
+        /not a registered Lumine window/,
+      );
+
+      sender.isDestroyed = () => true;
+      assert.throws(() => app.atomWindowForSender(sender), /not a registered Lumine window/);
+
+      sender.isDestroyed = () => false;
+      app.unregisterAtomWindow(registeredWindow);
+      assert.throws(() => app.atomWindowForSender(sender), /not a registered Lumine window/);
+    });
+
+    it("bootstraps only serializable settings, cached metadata, and one-shot markers", function () {
+      w1.getLoadSettingsForRenderer = sinon.stub().returns({
+        isSpec: false,
+        callbackThatMustNotCrossIPC: () => {},
+      });
+      w1.consumeStartupMarkers = sinon.stub().returns({ start: 1, ready: 2 });
+
+      const result = AtomApplication.handleWindowBootstrap({
+        sender: w1.browserWindow.webContents,
+      });
+
+      assert.strictEqual(result.loadSettings.windowId, w1.id);
+      assert.isFalse(result.loadSettings.isSpec);
+      assert.isFalse(Object.hasOwn(result.loadSettings, "callbackThatMustNotCrossIPC"));
+      assert.strictEqual(typeof result.loadSettings.appLocale, "string");
+      assert.strictEqual(typeof result.loadSettings.appPaths, "object");
+      assert.deepEqual(result.startupMarkers, { start: 1, ready: 2 });
+      assert.isTrue(w1.consumeStartupMarkers.calledOnce);
+    });
+
+    it("handles allowlisted window state and lifecycle operations for the originating window", async function () {
+      const window = w1.browserWindow;
+      const contents = window.webContents;
+      window.getPosition = sinon.stub().returns([10, 20]);
+      window.getSize = sinon.stub().returns([800, 600]);
+      window.setSize = sinon.spy();
+      window.setPosition = sinon.spy();
+      window.center = sinon.spy();
+      window.hide = sinon.spy();
+      window.isMaximized = sinon.stub().returns(true);
+      window.isFullScreen = sinon.stub().returns(false);
+      window.isVisible = sinon.stub().returns(true);
+      window.setAutoHideMenuBar = sinon.spy();
+      window.setMenuBarVisibility = sinon.spy();
+      contents.focus = sinon.spy();
+      contents.downloadURL = sinon.spy();
+      contents.openDevTools = sinon.spy();
+      contents.closeDevTools = sinon.spy();
+      contents.toggleDevTools = sinon.spy();
+      w1.unmaximize = sinon.spy();
+      w1.setFullScreen = sinon.spy();
+      w1.openDevTools = contents.openDevTools;
+      w1.closeDevTools = contents.closeDevTools;
+      w1.toggleDevTools = contents.toggleDevTools;
+
+      const event = { sender: contents };
+      assert.deepEqual(await AtomApplication.handleWindowAction(event, "getState"), {
+        id: w1.id,
+        position: { x: 10, y: 20 },
+        size: { width: 800, height: 600 },
+        maximized: true,
+        fullScreen: false,
+        visible: true,
+      });
+      assert.deepEqual(await AtomApplication.handleWindowAction(event, "getSize"), {
+        width: 800,
+        height: 600,
+      });
+      assert.deepEqual(await AtomApplication.handleWindowAction(event, "getPosition"), {
+        x: 10,
+        y: 20,
+      });
+
+      await AtomApplication.handleWindowAction(event, "setSize", 900, 700);
+      await AtomApplication.handleWindowAction(event, "setPosition", 30, 40);
+      await AtomApplication.handleWindowAction(event, "center");
+      await AtomApplication.handleWindowAction(event, "focus");
+      await AtomApplication.handleWindowAction(event, "hide");
+      await AtomApplication.handleWindowAction(event, "minimize");
+      await AtomApplication.handleWindowAction(event, "maximize");
+      await AtomApplication.handleWindowAction(event, "unmaximize");
+      await AtomApplication.handleWindowAction(event, "setFullScreen", true);
+      await AtomApplication.handleWindowAction(event, "downloadURL", "https://example.test/a");
+      await AtomApplication.handleWindowAction(event, "setAutoHideMenuBar", true);
+      await AtomApplication.handleWindowAction(event, "setMenuBarVisibility", false);
+      await AtomApplication.handleWindowAction(event, "openDevTools");
+      await AtomApplication.handleWindowAction(event, "closeDevTools");
+      await AtomApplication.handleWindowAction(event, "toggleDevTools");
+
+      assert.isTrue(window.setSize.calledWithExactly(900, 700));
+      assert.isTrue(window.setPosition.calledWithExactly(30, 40));
+      assert.isTrue(window.center.calledOnce);
+      assert.isTrue(w1.focus.called);
+      assert.isTrue(contents.focus.calledOnce);
+      assert.isTrue(window.hide.calledOnce);
+      assert.isTrue(w1.minimize.calledOnce);
+      assert.isTrue(w1.maximize.calledOnce);
+      assert.isTrue(w1.setFullScreen.calledWithExactly(true));
+      assert.isTrue(contents.downloadURL.calledWithExactly("https://example.test/a"));
+      assert.isTrue(window.setAutoHideMenuBar.calledWithExactly(true));
+      assert.isTrue(window.setMenuBarVisibility.calledWithExactly(false));
+      assert.isTrue(contents.openDevTools.calledOnce);
+      assert.isTrue(contents.closeDevTools.calledOnce);
+      assert.isTrue(contents.toggleDevTools.calledOnce);
+
+      await AtomApplication.handleWindowAction(event, "setSize", -1, 10).then(
+        () => assert.fail("invalid size was accepted"),
+        (error) => assert.match(error.message, /positive integer/),
+      );
+      await AtomApplication.handleWindowAction(event, "not-allowlisted").then(
+        () => assert.fail("unknown window action was accepted"),
+        (error) => assert.match(error.message, /Unsupported window action/),
+      );
+    });
+
+    it("broadcasts structured data only to other live registered windows", function () {
+      const payload = { sourceWindowId: w1.id, targetWindowId: w2.id, item: "tab" };
+      AtomApplication.handleWindowBroadcast(
+        { sender: w1.browserWindow.webContents },
+        "tabs:item-dropped",
+        payload,
+      );
+
+      assert.isTrue(
+        w0.sendToRenderer.calledWithExactly("window-event", "tabs:item-dropped", payload),
+      );
+      assert.isFalse(w1.sendToRenderer.called);
+      assert.isTrue(
+        w2.sendToRenderer.calledWithExactly("window-event", "tabs:item-dropped", payload),
+      );
+      assert.throws(
+        () =>
+          AtomApplication.handleWindowBroadcast(
+            { sender: w1.browserWindow.webContents },
+            "",
+            payload,
+          ),
+        /eventName must be a non-empty string/,
+      );
+    });
+
+    it("rejects unknown application and safe-storage operations", async function () {
+      const event = { sender: w1.browserWindow.webContents };
+      await AtomApplication.handleAppAction(event, "not-allowlisted").then(
+        () => assert.fail("unknown application action was accepted"),
+        (error) => assert.match(error.message, /Unsupported application action/),
+      );
+      await AtomApplication.handleSafeStorageAction(event, "not-allowlisted").then(
+        () => assert.fail("unknown safe-storage action was accepted"),
+        (error) => assert.match(error.message, /Unsupported safe-storage action/),
+      );
     });
 
     // This is the IPC message used to handle:

@@ -744,9 +744,7 @@ describe("Workspace", () => {
         fsGetSizeSyncSpy.and.returnValue(size * 1048577);
 
         let selectedButtonIndex = 1; // cancel
-        atom.applicationDelegate.confirm.and.callFake((options, callback) =>
-          callback(selectedButtonIndex),
-        );
+        atom.applicationDelegate.confirm.and.callFake(() => Promise.resolve(selectedButtonIndex));
 
         let editor = await workspace.open("sample.js");
         if (shouldPrompt) {
@@ -3497,7 +3495,7 @@ describe("Workspace", () => {
 
   describe("::closeActivePaneItemOrEmptyPaneOrWindow", () => {
     beforeEach(async () => {
-      spyOn(atom, "close");
+      spyOn(atom.window, "close");
       await atom.workspace.open();
     });
 
@@ -3539,7 +3537,7 @@ describe("Workspace", () => {
 
       expect(atom.workspace.getLeftDock().getPaneItems().length).toBe(2);
       atom.workspace.closeActivePaneItemOrEmptyPaneOrWindow();
-      expect(atom.close).toHaveBeenCalled();
+      expect(atom.window.close).toHaveBeenCalled();
     });
   });
 

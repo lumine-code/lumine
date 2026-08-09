@@ -90,7 +90,7 @@ describe("AtomWindow", function () {
       assert.isFalse(browserWindow.isVisible());
       assert.isTrue(browserWindow.getTitle().startsWith("Lumine"));
 
-      const settings = JSON.parse(browserWindow.loadSettingsJSON);
+      const settings = w.getLoadSettingsForRenderer();
       assert.strictEqual(settings.userSettings, "stub-config");
       assert.strictEqual(settings.extra, "extra-load-setting");
       assert.strictEqual(settings.resourcePath, resourcePath);
@@ -641,6 +641,7 @@ class StubApplication {
       get: (key) => this.config[key] || null,
     };
     this.configFile = {
+      path: "stub-config-path",
       get() {
         return "stub-config";
       },
@@ -648,6 +649,22 @@ class StubApplication {
 
     this.removeWindow = sinon.spy();
     this.saveCurrentWindowOptions = sinon.spy();
+    this.windows = [];
+  }
+
+  registerAtomWindow(atomWindow) {
+    this.windows.push(atomWindow);
+    global.atomApplication = this;
+  }
+
+  atomWindowForSender(sender) {
+    const atomWindow = this.windows.find((window) => window.browserWindow.webContents === sender);
+    if (!atomWindow) throw new Error("IPC sender is not a registered Lumine window");
+    return atomWindow;
+  }
+
+  getAllWindows() {
+    return this.windows.slice();
   }
 }
 

@@ -853,45 +853,35 @@ module.exports = class Pane {
   //
   // Resolves with boolean `true` when a save can proceed… or rejects with an
   // error when the save is aborted.
-  promptOnSaveConflictedFile(item) {
-    return new Promise((resolve, reject) => {
-      // Don't prompt if the user hasn't opted into it.
-      if (!atom.config.get("core.promptOnSaveConflictedFile")) return resolve(true);
+  async promptOnSaveConflictedFile(item) {
+    // Don't prompt if the user hasn't opted into it.
+    if (!atom.config.get("core.promptOnSaveConflictedFile")) return true;
 
-      // Ensure the item implements an `isInConflict` method, and that it
-      // returns `true`.
-      if (!item.isInConflict?.()) {
-        return resolve(true);
-      }
-      // Figure out how to describe the buffer in the dialog.
-      const uri = item.getURI?.() ?? item.getUri?.() ?? null;
-      const title = (typeof item.getTitle === "function" && item.getTitle()) || uri;
+    // Ensure the item implements an `isInConflict` method, and that it
+    // returns `true`.
+    if (!item.isInConflict?.()) {
+      return true;
+    }
+    // Figure out how to describe the buffer in the dialog.
+    const uri = item.getURI?.() ?? item.getUri?.() ?? null;
+    const title = (typeof item.getTitle === "function" && item.getTitle()) || uri;
 
-      this.applicationDelegate.confirm(
-        {
-          message: `'${title}' has changed on disk. Do you want to overwrite this file with your changes?`,
-          detail: "The contents of the buffer may be stale.",
+    const response = await this.applicationDelegate.confirm({
+      message: `'${title}' has changed on disk. Do you want to overwrite this file with your changes?`,
+      detail: "The contents of the buffer may be stale.",
 
-          // TODO: Individual pane items may have additional strategies to
-          // contribute (e.g., conflict resolution view). Implement a way for
-          // them to contribute buttons to this dialog — and to handle them in
-          // the callback below.
-          buttons: ["Overwrite", "Cancel"],
-        },
-        (response) => {
-          switch (response) {
-            case 0:
-              return resolve(true);
-            case 1:
-              return reject(new SaveConflictedError("Save cancelled due to conflict"));
-          }
-        },
-      );
+      // TODO: Individual pane items may have additional strategies to
+      // contribute (e.g., conflict resolution view). Implement a way for
+      // them to contribute buttons to this dialog — and to handle them in
+      // the callback below.
+      buttons: ["Overwrite", "Cancel"],
     });
+    if (response === 0) return true;
+    throw new SaveConflictedError("Save cancelled due to conflict");
   }
 
   promptToSaveItem(item, options = {}) {
-    return new Promise((resolve, _reject) => {
+    return new Promise((resolve, reject) => {
       if (typeof item.shouldPromptToSave !== "function" || !item.shouldPromptToSave(options)) {
         return resolve(true);
       }
@@ -908,13 +898,13 @@ module.exports = class Pane {
       const title = (typeof item.getTitle === "function" && item.getTitle()) || uri;
 
       const saveDialog = (saveButtonText, saveFn, message) => {
-        this.applicationDelegate.confirm(
-          {
+        this.applicationDelegate
+          .confirm({
             message,
             detail: "Your changes will be lost if you close this item without saving.",
             buttons: [saveButtonText, "Cancel", "&Don't Save"],
-          },
-          (response) => {
+          })
+          .then((response) => {
             switch (response) {
               case 0:
                 return saveFn(item, (error) => {
@@ -937,8 +927,8 @@ module.exports = class Pane {
               case 2:
                 return resolve(true);
             }
-          },
-        );
+          })
+          .catch(reject);
       };
 
       // A buffer whose file was deleted on disk (while it still had unsaved
@@ -1053,36 +1043,18 @@ module.exports = class Pane {
     const itemPath = item.getPath();
     if (itemPath && !saveOptions.defaultPath) saveOptions.defaultPath = itemPath;
 
-    let resolveSaveDialogPromise = null;
-    const saveDialogPromise = new Promise((resolve) => {
-      resolveSaveDialogPromise = resolve;
-    });
-    this.applicationDelegate.showSaveDialog(saveOptions, (newItemPath) => {
-      if (newItemPath) {
-        promisify(() => item.saveAs(newItemPath))
-          .then(() => {
-            if (nextAction) {
-              resolveSaveDialogPromise(nextAction());
-            } else {
-              resolveSaveDialogPromise();
-            }
-          })
-          .catch((error) => {
-            if (nextAction) {
-              resolveSaveDialogPromise(nextAction(error));
-            } else {
-              this.handleSaveError(error, item);
-              resolveSaveDialogPromise();
-            }
-          });
-      } else if (nextAction) {
-        resolveSaveDialogPromise(nextAction(new SaveCancelledError("Save Cancelled")));
-      } else {
-        resolveSaveDialogPromise();
-      }
-    });
+    const { filePath: newItemPath } = await this.applicationDelegate.showSaveDialog(saveOptions);
+    if (!newItemPath) {
+      return nextAction ? nextAction(new SaveCancelledError("Save Cancelled")) : undefined;
+    }
 
-    return saveDialogPromise;
+    try {
+      await promisify(() => item.saveAs(newItemPath));
+      return nextAction ? nextAction() : undefined;
+    } catch (error) {
+      if (nextAction) return nextAction(error);
+      this.handleSaveError(error, item);
+    }
   }
 
   // Public: Save all modified items in this pane.

@@ -692,7 +692,7 @@ describe("Pane", () => {
         describe("when the item has a uri", () => {
           it("saves the item before destroying it", async () => {
             itemURI = "test";
-            confirm.and.callFake((options, callback) => callback(0));
+            confirm.and.returnValue(Promise.resolve(0));
 
             const success = await pane.destroyItem(item1);
             expect(item1.save).toHaveBeenCalled();
@@ -708,8 +708,10 @@ describe("Pane", () => {
 
             itemURI = null;
 
-            showSaveDialog.and.callFake((options, callback) => callback("/selected/path"));
-            confirm.and.callFake((options, callback) => callback(0));
+            showSaveDialog.and.returnValue(
+              Promise.resolve({ canceled: false, filePath: "/selected/path" }),
+            );
+            confirm.and.returnValue(Promise.resolve(0));
 
             const success = await pane.destroyItem(item1);
             expect(showSaveDialog.calls.mostRecent().args[0]).toEqual({});
@@ -725,7 +727,7 @@ describe("Pane", () => {
 
       describe("if the [Don't Save] option is selected", () => {
         it("removes and destroys the item without saving it", async () => {
-          confirm.and.callFake((options, callback) => callback(2));
+          confirm.and.returnValue(Promise.resolve(2));
 
           const success = await pane.destroyItem(item1);
           expect(item1.save).not.toHaveBeenCalled();
@@ -737,7 +739,7 @@ describe("Pane", () => {
 
       describe("if the [Cancel] option is selected", () => {
         it("does not save, remove, or destroy the item", async () => {
-          confirm.and.callFake((options, callback) => callback(1));
+          confirm.and.returnValue(Promise.resolve(1));
 
           const success = await pane.destroyItem(item1);
           expect(item1.save).not.toHaveBeenCalled();
@@ -869,7 +871,9 @@ describe("Pane", () => {
 
     beforeEach(() => {
       pane = new Pane(paneParams({ items: [new Item("A")] }));
-      showSaveDialog.and.callFake((options, callback) => callback("/selected/path"));
+      showSaveDialog.and.returnValue(
+        Promise.resolve({ canceled: false, filePath: "/selected/path" }),
+      );
     });
 
     describe("when the active item has a uri", () => {
@@ -913,7 +917,7 @@ describe("Pane", () => {
 
       it("does nothing if the user cancels choosing a path", async () => {
         pane.getActiveItem().saveAs = jasmine.createSpy("saveAs");
-        showSaveDialog.and.callFake((options, callback) => callback(undefined));
+        showSaveDialog.and.returnValue(Promise.resolve({ canceled: true }));
         await pane.saveActiveItem();
         expect(pane.getActiveItem().saveAs).not.toHaveBeenCalled();
       });
@@ -965,7 +969,9 @@ describe("Pane", () => {
 
     beforeEach(() => {
       pane = new Pane(paneParams({ items: [new Item("A")] }));
-      showSaveDialog.and.callFake((options, callback) => callback("/selected/path"));
+      showSaveDialog.and.returnValue(
+        Promise.resolve({ canceled: false, filePath: "/selected/path" }),
+      );
     });
 
     describe("when the current item has a saveAs method", () => {
@@ -1369,7 +1375,7 @@ describe("Pane", () => {
       item1.getURI = () => "/test/path";
       item1.save = jasmine.createSpy("save");
 
-      confirm.and.callFake((options, callback) => callback(0));
+      confirm.and.returnValue(Promise.resolve(0));
       await pane.close();
       expect(confirm).toHaveBeenCalled();
       expect(item1.save).toHaveBeenCalled();
@@ -1384,7 +1390,7 @@ describe("Pane", () => {
       item1.getURI = () => "/test/path";
       item1.save = jasmine.createSpy("save");
 
-      confirm.and.callFake((options, callback) => callback(1));
+      confirm.and.returnValue(Promise.resolve(1));
 
       await pane.close();
       expect(confirm).toHaveBeenCalled();
@@ -1399,8 +1405,8 @@ describe("Pane", () => {
       item1.shouldPromptToSave = () => true;
       item1.saveAs = jasmine.createSpy("saveAs");
 
-      confirm.and.callFake((options, callback) => callback(0));
-      showSaveDialog.and.callFake((options, callback) => callback(undefined));
+      confirm.and.returnValue(Promise.resolve(0));
+      showSaveDialog.and.returnValue(Promise.resolve({ canceled: true }));
 
       await pane.close();
       expect(atom.applicationDelegate.confirm).toHaveBeenCalled();
@@ -1433,12 +1439,12 @@ describe("Pane", () => {
 
       it("does not destroy the pane if save fails and user clicks cancel", async () => {
         let confirmations = 0;
-        confirm.and.callFake((options, callback) => {
+        confirm.and.callFake(() => {
           confirmations++;
           if (confirmations === 1) {
-            callback(0); // click save
+            return Promise.resolve(0); // click save
           } else {
-            callback(1);
+            return Promise.resolve(1);
           }
         }); // click cancel
 
@@ -1453,12 +1459,12 @@ describe("Pane", () => {
         item1.saveAs = jasmine.createSpy("saveAs").and.returnValue(true);
 
         let confirmations = 0;
-        confirm.and.callFake((options, callback) => {
+        confirm.and.callFake(() => {
           confirmations++;
-          callback(0);
+          return Promise.resolve(0);
         }); // save and then save as
 
-        showSaveDialog.and.callFake((options, callback) => callback("new/path"));
+        showSaveDialog.and.returnValue(Promise.resolve({ canceled: false, filePath: "new/path" }));
 
         await pane.close();
         expect(atom.applicationDelegate.confirm).toHaveBeenCalled();
@@ -1478,16 +1484,16 @@ describe("Pane", () => {
         });
 
         let confirmations = 0;
-        confirm.and.callFake((options, callback) => {
+        confirm.and.callFake(() => {
           confirmations++;
           if (confirmations < 3) {
-            callback(0); // save, save as, save as
+            return Promise.resolve(0); // save, save as, save as
           } else {
-            callback(2); // don't save
+            return Promise.resolve(2); // don't save
           }
         });
 
-        showSaveDialog.and.callFake((options, callback) => callback("new/path"));
+        showSaveDialog.and.returnValue(Promise.resolve({ canceled: false, filePath: "new/path" }));
 
         await pane.close();
         expect(atom.applicationDelegate.confirm).toHaveBeenCalled();

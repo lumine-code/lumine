@@ -1,7 +1,6 @@
 const path = require("path");
 const process = require("process");
 const listen = require("../../src/delegated-listener");
-const ipcHelpers = require("../../src/ipc-helpers");
 
 function formatStackTrace(spec, message = "", stackTrace) {
   if (!stackTrace) {
@@ -211,7 +210,7 @@ class AtomReporter {
       event.currentTarget.classList.toggle("expanded"),
     );
 
-    this.reloadButton.addEventListener("click", () => ipcHelpers.call("window-method", "reload"));
+    this.reloadButton.addEventListener("click", () => atom.window.reload());
   }
 
   updateSpecCounts() {

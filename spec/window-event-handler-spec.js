@@ -6,7 +6,7 @@ describe("WindowEventHandler", () => {
 
   beforeEach(() => {
     atom.uninstallWindowEventHandler();
-    spyOn(atom, "hide");
+    spyOn(atom.window, "hide");
     const initialPath = atom.project.getPaths()[0];
     spyOn(atom, "getLoadSettings").and.callFake(() => {
       const loadSettings = atom.getLoadSettings.originalValue.call(atom);
@@ -64,9 +64,9 @@ describe("WindowEventHandler", () => {
 
   describe("window:close event", () =>
     it("closes the window", () => {
-      spyOn(atom, "close");
+      spyOn(atom.window, "close");
       window.dispatchEvent(new CustomEvent("window:close"));
-      expect(atom.close).toHaveBeenCalled();
+      expect(atom.window.close).toHaveBeenCalled();
     }));
 
   describe("when a link is clicked", () => {
@@ -234,11 +234,7 @@ describe("WindowEventHandler", () => {
 
   describe("native key bindings", () =>
     it("correctly dispatches them to active elements with the '.native-key-bindings' class", () => {
-      const webContentsSpy = jasmine.createSpyObj("webContents", ["copy", "paste"]);
-      spyOn(atom.applicationDelegate, "getCurrentWindow").and.returnValue({
-        webContents: webContentsSpy,
-        on: () => {},
-      });
+      spyOn(atom.applicationDelegate, "performWebContentsAction");
 
       const nativeKeyBindingsInput = document.createElement("input");
       nativeKeyBindingsInput.classList.add("native-key-bindings");
@@ -248,11 +244,10 @@ describe("WindowEventHandler", () => {
       atom.dispatchApplicationMenuCommand("core:copy");
       atom.dispatchApplicationMenuCommand("core:paste");
 
-      expect(webContentsSpy.copy).toHaveBeenCalled();
-      expect(webContentsSpy.paste).toHaveBeenCalled();
+      expect(atom.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("copy");
+      expect(atom.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("paste");
 
-      webContentsSpy.copy.calls.reset();
-      webContentsSpy.paste.calls.reset();
+      atom.applicationDelegate.performWebContentsAction.calls.reset();
 
       const normalInput = document.createElement("input");
       jasmine.attachToDOM(normalInput);
@@ -261,7 +256,6 @@ describe("WindowEventHandler", () => {
       atom.dispatchApplicationMenuCommand("core:copy");
       atom.dispatchApplicationMenuCommand("core:paste");
 
-      expect(webContentsSpy.copy).not.toHaveBeenCalled();
-      expect(webContentsSpy.paste).not.toHaveBeenCalled();
+      expect(atom.applicationDelegate.performWebContentsAction).not.toHaveBeenCalled();
     }));
 });

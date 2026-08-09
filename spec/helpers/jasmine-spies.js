@@ -6,7 +6,6 @@ const TextEditor = require("../../src/text-editor");
 const TextMateLanguageMode = require("../../src/text-mate-language-mode");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
 const { clipboard } = require("electron");
-const { clipboard: remoteClipboard } = require("@electron/remote");
 
 const { testPaths } = atom.getLoadSettings();
 let specPackagePath = FindParentDir.sync(testPaths[0], "package.json");
@@ -99,10 +98,8 @@ exports.register = (jasmineEnv) => {
     });
 
     let clipboardContent = "initial clipboard content";
-    for (const clipboardToSpy of new Set([clipboard, remoteClipboard])) {
-      spyOn(clipboardToSpy, "writeText").and.callFake((text) => (clipboardContent = text));
-      spyOn(clipboardToSpy, "readText").and.callFake(() => clipboardContent);
-    }
+    spyOn(clipboard, "writeText").and.callFake((text) => (clipboardContent = text));
+    spyOn(clipboard, "readText").and.callFake(() => clipboardContent);
   });
 };
 

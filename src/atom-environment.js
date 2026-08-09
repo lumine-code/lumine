@@ -1,7 +1,6 @@
 const crypto = require("crypto");
 const path = require("path");
 const util = require("util");
-const { ipcRenderer } = require("electron");
 
 const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
@@ -39,6 +38,8 @@ const GitRepositoryOperationProvider = require("./git-repository-operation-provi
 const GitAuthBroker = require("./git-auth-broker");
 const { promptForGitCredential } = require("./git-credential-dialog");
 const SecretStore = require("./secret-store");
+const WindowService = require("./window-service");
+const AppService = require("./app-service");
 const Workspace = require("./workspace");
 const PaneContainer = require("./pane-container");
 const PaneAxis = require("./pane-axis");
@@ -88,6 +89,10 @@ class AtomEnvironment {
     this.updateProcessEnv = params.updateProcessEnv || updateProcessEnv;
     this.enablePersistence = params.enablePersistence;
     this.applicationDelegate = params.applicationDelegate;
+    /** @type {WindowService} */
+    this.window = new WindowService(this.applicationDelegate);
+    /** @type {AppService} */
+    this.app = new AppService(this.applicationDelegate);
 
     this.nextProxyRequestId = 0;
     this.unloading = false;
@@ -185,7 +190,10 @@ class AtomEnvironment {
     });
 
     /** @type {ContextMenuManager} */
-    this.contextMenu = new ContextMenuManager({ keymapManager: this.keymaps });
+    this.contextMenu = new ContextMenuManager({
+      keymapManager: this.keymaps,
+      applicationDelegate: this.applicationDelegate,
+    });
 
     this.packages.setMenuManager(this.menu);
     this.packages.setContextMenuManager(this.contextMenu);
@@ -223,6 +231,7 @@ class AtomEnvironment {
     // `atom.secrets`.
     /** @type {SecretStore} */
     this.secrets = new SecretStore({
+      applicationDelegate: this.applicationDelegate,
       storagePath: path.join(this.getConfigDirPath(), "secret-store.json"),
       notify: (message) => this.notifications.addWarning(message, { dismissable: true }),
     });
@@ -325,7 +334,7 @@ class AtomEnvironment {
 
     this.isDestroying = false;
 
-    this.window = params.window;
+    this.domWindow = params.window;
     this.document = params.document;
     this.blobStore = params.blobStore;
     this.configDirPath = params.configDirPath;
@@ -357,7 +366,7 @@ class AtomEnvironment {
       this.keymaps.loadBundledKeymaps();
     }
 
-    this.commands.attach(this.window);
+    this.commands.attach(this.domWindow);
 
     this.styles.initialize({ configDirPath: this.configDirPath });
     this.packages.initialize({
@@ -390,7 +399,7 @@ class AtomEnvironment {
 
     this.installUncaughtErrorHandler();
     this.attachSaveStateListeners();
-    this.#windowEventHandler.initialize(this.window, this.document);
+    this.#windowEventHandler.initialize(this.domWindow, this.document);
 
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
 
@@ -418,7 +427,7 @@ class AtomEnvironment {
 
   attachSaveStateListeners() {
     const saveState = _.debounce(() => {
-      this.window.requestIdleCallback(() => {
+      this.domWindow.requestIdleCallback(() => {
         if (!this.unloading) this.saveState({ isUnloading: false });
       });
     }, this.saveStateDebounceInterval);
@@ -813,114 +822,6 @@ class AtomEnvironment {
     return this.applicationDelegate.open(params);
   }
 
-  // Extended: Prompt the user to select one or more folders.
-  //
-  // * `callback` A {Function} to call once the user has confirmed the selection.
-  //   * `paths` An {Array} of {String} paths that the user selected, or `null`
-  //     if the user dismissed the dialog.
-  pickFolder(callback) {
-    return this.applicationDelegate.pickFolder(callback);
-  }
-
-  // Essential: Close the current window.
-  close() {
-    return this.applicationDelegate.closeWindow();
-  }
-
-  // Essential: Get the size of current window.
-  //
-  // Returns an {Object} in the format `{width: 1000, height: 700}`
-  getSize() {
-    return this.applicationDelegate.getWindowSize();
-  }
-
-  // Essential: Set the size of current window.
-  //
-  // * `width` The {Number} of pixels.
-  // * `height` The {Number} of pixels.
-  setSize(width, height) {
-    return this.applicationDelegate.setWindowSize(width, height);
-  }
-
-  // Essential: Get the position of current window.
-  //
-  // Returns an {Object} in the format `{x: 10, y: 20}`
-  getPosition() {
-    return this.applicationDelegate.getWindowPosition();
-  }
-
-  // Essential: Set the position of current window.
-  //
-  // * `x` The {Number} of pixels.
-  // * `y` The {Number} of pixels.
-  setPosition(x, y) {
-    return this.applicationDelegate.setWindowPosition(x, y);
-  }
-
-  // Extended: Get the current window
-  getCurrentWindow() {
-    return this.applicationDelegate.getCurrentWindow();
-  }
-
-  // Extended: Move current window to the center of the screen.
-  center() {
-    return this.applicationDelegate.centerWindow();
-  }
-
-  // Extended: Focus the current window.
-  focus() {
-    this.applicationDelegate.focusWindow();
-    return this.window.focus();
-  }
-
-  // Extended: Show the current window.
-  show() {
-    return this.applicationDelegate.showWindow();
-  }
-
-  // Extended: Hide the current window.
-  hide() {
-    return this.applicationDelegate.hideWindow();
-  }
-
-  // Extended: Reload the current window.
-  reload() {
-    return this.applicationDelegate.reloadWindow();
-  }
-
-  // Extended: Relaunch the entire application.
-  restartApplication() {
-    return this.applicationDelegate.restartApplication();
-  }
-
-  // Extended: Returns a {Boolean} that is `true` if the current window is maximized.
-  isMaximized() {
-    return this.applicationDelegate.isWindowMaximized();
-  }
-
-  maximize() {
-    return this.applicationDelegate.maximizeWindow();
-  }
-
-  // Extended: Returns a {Boolean} that is `true` if the current window is in full screen mode.
-  isFullScreen() {
-    return this.applicationDelegate.isWindowFullScreen();
-  }
-
-  // Extended: Set the full screen state of the current window.
-  setFullScreen(fullScreen = false) {
-    let result = this.applicationDelegate.setWindowFullScreen(fullScreen);
-    // On Linux, setting full screen (no matter the value) hides the menu bar.
-    // Hence we must re-assert this setting.
-    this.setAutoHideMenuBar(this.config.get("core.autoHideMenuBar"));
-    return result;
-  }
-
-  // Extended: Toggle the full screen state of the current window.
-  toggleFullScreen() {
-    return this.setFullScreen(!this.isFullScreen());
-  }
-
   // Extended: Moves an item to the trash.
   //
   // Returns a {Promise} that resolves when the operation has completed or
@@ -971,12 +872,12 @@ class AtomEnvironment {
   // prevent resize glitches.
   async displayWindow() {
     await this.restoreWindowDimensions();
-    const steps = [this.restoreWindowBackground(), this.show(), this.focus()];
+    const steps = [this.restoreWindowBackground(), this.window.show(), this.window.focus()];
     if (this.windowDimensions && this.windowDimensions.fullScreen) {
-      steps.push(this.setFullScreen(true));
+      steps.push(this.window.setFullScreen(true));
     }
     if (this.windowDimensions && this.windowDimensions.maximized && process.platform !== "darwin") {
-      steps.push(this.maximize());
+      steps.push(this.window.maximize());
     }
     await Promise.all(steps);
   }
@@ -988,12 +889,16 @@ class AtomEnvironment {
   //   * `y`      The window's y-position {Number}.
   //   * `width`  The window's width {Number}.
   //   * `height` The window's height {Number}.
-  getWindowDimensions() {
-    const browserWindow = this.getCurrentWindow();
-    const [x, y] = browserWindow.getPosition();
-    const [width, height] = browserWindow.getSize();
-    const maximized = browserWindow.isMaximized();
-    return { x, y, width, height, maximized };
+  async getWindowDimensions() {
+    const state = await this.window.getState();
+    return {
+      x: state.position.x,
+      y: state.position.y,
+      width: state.size.width,
+      height: state.size.height,
+      maximized: state.maximized,
+      fullScreen: state.fullScreen,
+    };
   }
 
   // Set the dimensions of the window.
@@ -1010,12 +915,12 @@ class AtomEnvironment {
   setWindowDimensions({ x, y, width, height }) {
     const steps = [];
     if (width != null && height != null) {
-      steps.push(this.setSize(width, height));
+      steps.push(this.window.setSize(width, height));
     }
     if (x != null && y != null) {
-      steps.push(this.setPosition(x, y));
+      steps.push(this.window.setPosition(x, y));
     } else {
-      steps.push(this.center());
+      steps.push(this.window.center());
     }
     return Promise.all(steps);
   }
@@ -1026,14 +931,14 @@ class AtomEnvironment {
     return width > 0 && height > 0 && x + width > 0 && y + height > 0;
   }
 
-  storeWindowDimensions() {
-    this.windowDimensions = this.getWindowDimensions();
+  async storeWindowDimensions() {
+    this.windowDimensions = await this.getWindowDimensions();
     if (this.isValidDimensions(this.windowDimensions)) {
       localStorage.setItem("defaultWindowDimensions", JSON.stringify(this.windowDimensions));
     }
   }
 
-  getDefaultWindowDimensions() {
+  async getDefaultWindowDimensions() {
     const { windowDimensions } = this.getLoadSettings();
     if (windowDimensions) return windowDimensions;
 
@@ -1048,14 +953,14 @@ class AtomEnvironment {
     if (dimensions && this.isValidDimensions(dimensions)) {
       return dimensions;
     } else {
-      const { width, height } = this.applicationDelegate.getPrimaryDisplayWorkAreaSize();
+      const { width, height } = await this.window.getPrimaryDisplayWorkAreaSize();
       return { x: 0, y: 0, width: Math.min(1024, width), height };
     }
   }
 
   async restoreWindowDimensions() {
     if (!this.windowDimensions || !this.isValidDimensions(this.windowDimensions)) {
-      this.windowDimensions = this.getDefaultWindowDimensions();
+      this.windowDimensions = await this.getDefaultWindowDimensions();
     }
     await this.setWindowDimensions(this.windowDimensions);
     return this.windowDimensions;
@@ -1074,10 +979,10 @@ class AtomEnvironment {
   storeWindowBackground() {
     if (this.inSpecMode()) return;
 
-    const backgroundColor = this.window.getComputedStyle(this.workspace.getElement())[
+    const backgroundColor = this.domWindow.getComputedStyle(this.workspace.getElement())[
       "background-color"
     ];
-    this.window.localStorage.setItem("atom:window-background-color", backgroundColor);
+    this.domWindow.localStorage.setItem("atom:window-background-color", backgroundColor);
   }
 
   // Call this method when establishing a real application window.
@@ -1220,7 +1125,7 @@ class AtomEnvironment {
       packageStates: this.packages.serialize(),
       grammars: this.grammars.serialize(),
       uriHistory: this.uriHandlers.serialize(),
-      fullScreen: this.isFullScreen(),
+      fullScreen: Boolean(this.windowDimensions?.fullScreen),
       windowDimensions: this.windowDimensions,
     };
   }
@@ -1279,8 +1184,8 @@ class AtomEnvironment {
   }
 
   installUncaughtErrorHandler() {
-    this.previousWindowErrorHandler = this.window.onerror;
-    this.window.onerror = (message, url, line, column, originalError) => {
+    this.previousWindowErrorHandler = this.domWindow.onerror;
+    this.domWindow.onerror = (message, url, line, column, originalError) => {
       const mapping = mapSourcePosition({ source: url, line, column });
       line = mapping.line;
       column = mapping.column;
@@ -1304,8 +1209,8 @@ class AtomEnvironment {
     // own it reaches no one: no notification, and no dev tools unless the
     // window already had them open. Where it came from has to be read back out
     // of the stack, since a rejection carries no position of its own.
-    this.previousWindowRejectionHandler = this.window.onunhandledrejection;
-    this.window.onunhandledrejection = ({ reason }) => {
+    this.previousWindowRejectionHandler = this.domWindow.onunhandledrejection;
+    this.domWindow.onunhandledrejection = ({ reason }) => {
       const originalError = asError(reason);
       const origin = firstStackFrame(originalError.stack);
       const { source, line, column } = origin
@@ -1333,8 +1238,9 @@ class AtomEnvironment {
     if (openDevTools) {
       // Swallowed deliberately: an unhandled rejection here would come straight
       // back through this same reporter, and open the dev tools forever.
-      this.openDevTools()
-        .then(() => this.executeJavaScriptInDevTools('DevToolsAPI.showPanel("console")'))
+      this.window
+        .openDevTools()
+        .then(() => this.window.executeJavaScriptInDevTools('DevToolsAPI.showPanel("console")'))
         .catch(() => {});
     }
 
@@ -1349,8 +1255,8 @@ class AtomEnvironment {
   }
 
   uninstallUncaughtErrorHandler() {
-    this.window.onerror = this.previousWindowErrorHandler;
-    this.window.onunhandledrejection = this.previousWindowRejectionHandler;
+    this.domWindow.onerror = this.previousWindowErrorHandler;
+    this.domWindow.onunhandledrejection = this.previousWindowRejectionHandler;
   }
 
   installWindowEventHandler() {
@@ -1358,7 +1264,7 @@ class AtomEnvironment {
       atomEnvironment: this,
       applicationDelegate: this.applicationDelegate,
     });
-    this.#windowEventHandler.initialize(this.window, this.document);
+    this.#windowEventHandler.initialize(this.domWindow, this.document);
   }
 
   uninstallWindowEventHandler() {
@@ -1391,13 +1297,10 @@ class AtomEnvironment {
     this.emitter.emit("did-beep");
   }
 
-  // Essential: A flexible way to open a dialog akin to an alert dialog.
+  // Essential: Show a non-blocking confirmation dialog.
   //
-  // While both async and sync versions are provided, it is recommended to use the async version
-  // such that the renderer process is not blocked while the dialog box is open.
-  //
-  // The async version accepts the same options as Electron's `dialog.showMessageBox`.
-  // For convenience, it sets `type` to `'info'` and `normalizeAccessKeys` to `true` by default.
+  // Accepts serializable Electron `MessageBoxOptions`. `buttons` must be an
+  // array of strings; use `detail` for the secondary message.
   //
   // If the dialog is closed (via `Esc` key or `X` in the top corner) without selecting a button
   // the first button will be clicked unless a "Cancel" or "No" button is provided.
@@ -1405,76 +1308,16 @@ class AtomEnvironment {
   // ## Examples
   //
   // ```js
-  // // Async version (recommended)
-  // atom.confirm({
+  // const response = await atom.confirm({
   //   message: 'How you feeling?',
   //   detail: 'Be honest.',
   //   buttons: ['Good', 'Bad']
-  // }, response => {
-  //   if (response === 0) {
-  //     window.alert('good to hear')
-  //   } else {
-  //     window.alert('bummer')
-  //   }
   // })
   // ```
   //
-  // ```js
-  // // Legacy sync version
-  // const chosen = atom.confirm({
-  //   message: 'How you feeling?',
-  //   detailedMessage: 'Be honest.',
-  //   buttons: {
-  //     Good: () => window.alert('good to hear'),
-  //     Bad: () => window.alert('bummer')
-  //   }
-  // })
-  // ```
-  //
-  // * `options` An {Object} of options. If the callback argument is also supplied, see the documentation at
-  // https://electronjs.org/docs/api/dialog#dialogshowmessageboxbrowserwindow-options-callback for the list of
-  // available options. Otherwise, only the following keys are accepted:
-  //   * `message` The {String} message to display.
-  //   * `detailedMessage` (optional) The {String} detailed message to display.
-  //   * `buttons` (optional) Either an {Array} of {String}s or an {Object} where keys are
-  //     button names and the values are callback {Function}s to invoke when clicked.
-  // * `callback` (optional) A {Function} that will be called with the index of the chosen option.
-  //   If a callback is supplied, the dialog will be non-blocking. This argument is recommended.
-  //
-  // Returns the chosen button index {Number} if the buttons option is an array
-  // or the return value of the callback if the buttons option is an object.
-  // If a callback function is supplied, returns `undefined`.
-  confirm(options = {}, callback) {
-    if (callback) {
-      // Async: no return value
-      this.applicationDelegate.confirm(options, callback);
-    } else {
-      return this.applicationDelegate.confirm(options);
-    }
-  }
-
-  /*
-  Section: Managing the Dev Tools
-  */
-
-  // Extended: Open the dev tools for the current window.
-  //
-  // Returns a {Promise} that resolves when the DevTools have been opened.
-  openDevTools() {
-    return this.applicationDelegate.openWindowDevTools();
-  }
-
-  // Extended: Toggle the visibility of the dev tools for the current window.
-  //
-  // Returns a {Promise} that resolves when the DevTools have been opened or
-  // closed.
-  toggleDevTools() {
-    return this.applicationDelegate.toggleWindowDevTools();
-  }
-
-  // Extended: Execute code in dev tools.
-  executeJavaScriptInDevTools(code) {
-    return this.applicationDelegate.executeJavaScriptInWindowDevTools(code);
+  // Returns a {Promise} resolving to the selected button index.
+  confirm(options) {
+    return this.applicationDelegate.confirm(options);
   }
 
   /*
@@ -1522,12 +1365,9 @@ class AtomEnvironment {
     }
   }
 
-  addProjectFolder() {
-    return new Promise((resolve) => {
-      this.pickFolder((selectedPaths) => {
-        this.addToProject(selectedPaths || []).then(resolve);
-      });
-    });
+  async addProjectFolder() {
+    const selectedPaths = await this.window.pickFolder();
+    return this.addToProject(selectedPaths || []);
   }
 
   async addToProject(projectPaths) {
@@ -1558,47 +1398,34 @@ class AtomEnvironment {
       await this.restoreStateIntoThisEnvironment(state);
       return Promise.all(filesToOpen.map((file) => this.workspace.open(file)));
     } else {
-      let resolveDiscardStatePromise = null;
-      const discardStatePromise = new Promise((resolve) => {
-        resolveDiscardStatePromise = resolve;
-      });
       const nouns = projectPaths.length === 1 ? "folder" : "folders";
-      this.confirm(
-        {
-          message: "Previous automatically-saved project state detected",
-          detail:
-            `There is previously saved state for the selected ${nouns}. ` +
-            `Would you like to add the ${nouns} to this window, permanently discarding the saved state, ` +
-            `or open the ${nouns} in a new window, restoring the saved state?`,
-          buttons: [
-            "&Open in new window and recover state",
-            "&Add to this window and discard state",
-          ],
-        },
-        (response) => {
-          if (response === 0) {
-            this.open({
-              pathsToOpen: projectPaths.concat(filesToOpen),
-              newWindow: true,
-              devMode: this.inDevMode(),
-              safeMode: this.inSafeMode(),
-            });
-            resolveDiscardStatePromise(Promise.resolve(null));
-          } else if (response === 1) {
-            this.project.addPaths(projectPaths);
-            resolveDiscardStatePromise(
-              Promise.all(filesToOpen.map((file) => this.workspace.open(file))),
-            );
-          }
-        },
-      );
+      const response = await this.confirm({
+        message: "Previous automatically-saved project state detected",
+        detail:
+          `There is previously saved state for the selected ${nouns}. ` +
+          `Would you like to add the ${nouns} to this window, permanently discarding the saved state, ` +
+          `or open the ${nouns} in a new window, restoring the saved state?`,
+        buttons: ["&Open in new window and recover state", "&Add to this window and discard state"],
+      });
 
-      return discardStatePromise;
+      if (response === 0) {
+        this.open({
+          pathsToOpen: projectPaths.concat(filesToOpen),
+          newWindow: true,
+          devMode: this.inDevMode(),
+          safeMode: this.inSafeMode(),
+        });
+        return null;
+      }
+      if (response === 1) {
+        this.project.addPaths(projectPaths);
+        return Promise.all(filesToOpen.map((file) => this.workspace.open(file)));
+      }
     }
   }
 
-  restoreStateIntoThisEnvironment(state, options) {
-    state.fullScreen = this.isFullScreen();
+  async restoreStateIntoThisEnvironment(state, options) {
+    state.fullScreen = await this.window.isFullScreen();
     // The current panes are destroyed by Workspace::deserialize, which carries
     // persistent items over to the restored layout without flicker.
     return this.deserialize(state, options);
@@ -1688,7 +1515,8 @@ class AtomEnvironment {
   async deserialize(state, options) {
     if (!state) return Promise.resolve();
 
-    this.setFullScreen(state.fullScreen);
+    await this.window.setFullScreen(Boolean(state.fullScreen));
+    this.setAutoHideMenuBar(this.config.get("core.autoHideMenuBar"));
 
     const missingProjectPaths = [];
 
@@ -1779,8 +1607,11 @@ class AtomEnvironment {
   }
 
   setAutoHideMenuBar(autoHide) {
-    this.applicationDelegate.setAutoHideWindowMenuBar(autoHide);
-    this.applicationDelegate.setWindowMenuBarVisibility(!autoHide);
+    autoHide = Boolean(autoHide);
+    return Promise.all([
+      this.window.setAutoHideMenuBar(autoHide),
+      this.window.setMenuBarVisibility(!autoHide),
+    ]);
   }
 
   dispatchApplicationMenuCommand(command, arg) {
@@ -2022,7 +1853,7 @@ class AtomEnvironment {
       });
     }
 
-    ipcRenderer.send("window-command", "window:locations-opened");
+    void this.applicationDelegate.invokeWindow("locationsOpened");
   }
 
   resolveProxy(url) {

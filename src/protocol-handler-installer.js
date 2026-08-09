@@ -11,11 +11,10 @@ module.exports = class ProtocolHandlerInstaller {
   }
 
   async isDefaultProtocolClient() {
-    return ipcRenderer.invoke("isDefaultProtocolClient", {
-      protocol: "lumine",
-      path: process.execPath,
-      args: ["--uri-handler", "--"],
-    });
+    return ipcRenderer.invoke("lumine:app", "isDefaultProtocolClient", "lumine", process.execPath, [
+      "--uri-handler",
+      "--",
+    ]);
   }
 
   async setAsDefaultProtocolClient() {
@@ -23,11 +22,10 @@ module.exports = class ProtocolHandlerInstaller {
     // hacks to make it work on Linux; see https://github.com/electron/electron/issues/6440
     return (
       this.isSupported() &&
-      ipcRenderer.invoke("setAsDefaultProtocolClient", {
-        protocol: "lumine",
-        path: process.execPath,
-        args: ["--uri-handler", "--"],
-      })
+      ipcRenderer.invoke("lumine:app", "setAsDefaultProtocolClient", "lumine", process.execPath, [
+        "--uri-handler",
+        "--",
+      ])
     );
   }
 
