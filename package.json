@@ -143,7 +143,7 @@
     "resolve": "1.22.12",
     "search-panel": "github:lumine-code/search-panel#3dbd51449ec03486bc1cac3f1a47fa591de587bb",
     "semver": "7.8.5",
-    "settings-view": "github:lumine-code/settings-view#387d7d95975df8f54728d0f15cff95caa27f4aa2",
+    "settings-view": "github:lumine-code/settings-view#4f9aa8ee6656c96b7a652de06f8229c9400e135e",
     "snippets": "github:lumine-code/snippets#6dd7095e7ec61795d50c0d4a24797e1d0e1a6993",
     "source-map-support": "^0.5.21",
     "status-bar": "github:lumine-code/status-bar#6b503a6184ad476603a56c77335ca7972698f739",
