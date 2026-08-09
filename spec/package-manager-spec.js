@@ -67,6 +67,19 @@ describe("PackageManager", () => {
       lumine.packages.loadPackages();
       expect(lumine.packages.hasLoadedInitialPackages()).toBe(true);
     });
+
+    it("reuses its package index for lookups made while packages load", () => {
+      const scan = spyOn(lumine.packages, "scanAvailablePackages").and.callThrough();
+      lumine.packages.loadAvailablePackage.and.callFake(() => {
+        expect(lumine.packages.getAvailablePackage("status-bar")).toBeDefined();
+        expect(lumine.packages.getAvailablePackage("definitely-not-a-package")).toBeUndefined();
+      });
+
+      lumine.packages.loadPackages();
+
+      expect(scan.calls.count()).toBe(1);
+      expect(lumine.packages.availablePackagesByNameDuringLoad).toBeNull();
+    });
   });
 
   describe("::loadPackage(name)", () => {

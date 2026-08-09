@@ -48,6 +48,7 @@ module.exports = class Package {
 
     this.mainModule = null;
     this.path = params.path;
+    this.packageRootEntries = params.packageRootEntries;
     this.metadata = params.metadata || this.packageManager.loadPackageMetadata(this.path);
     this.bundledPackage =
       params.bundledPackage != null
@@ -490,9 +491,10 @@ module.exports = class Package {
       return this.metadata.keymaps.map((name) =>
         fs.resolve(keymapsDirPath, name, ["json", "jsonc", ""]),
       );
-    } else {
+    } else if (this.hasPackageRootEntry("keymaps") !== false) {
       return fs.listSync(keymapsDirPath, ["json", "jsonc"]);
     }
+    return [];
   }
 
   getMenuPaths() {
@@ -501,9 +503,10 @@ module.exports = class Package {
       return this.metadata.menus.map((name) =>
         fs.resolve(menusDirPath, name, ["json", "jsonc", ""]),
       );
-    } else {
+    } else if (this.hasPackageRootEntry("menus") !== false) {
       return fs.listSync(menusDirPath, ["json", "jsonc"]);
     }
+    return [];
   }
 
   loadStylesheets() {
@@ -594,11 +597,15 @@ module.exports = class Package {
         return this.metadata.styleSheets.map((name) =>
           fs.resolve(stylesheetDirPath, name, ["css", ""]),
         );
-      } else if ((indexStylesheet = fs.resolve(this.path, "index", ["css"]))) {
+      } else if (
+        this.hasPackageRootEntry("index.css") !== false &&
+        (indexStylesheet = fs.resolve(this.path, "index", ["css"]))
+      ) {
         return [indexStylesheet];
-      } else {
+      } else if (this.hasPackageRootEntry("styles") !== false) {
         return fs.listSync(stylesheetDirPath, ["css"]);
       }
+      return [];
     }
   }
 
@@ -625,6 +632,7 @@ module.exports = class Package {
 
   loadGrammars() {
     if (this.grammarsLoaded) return Promise.resolve();
+    if (this.hasPackageRootEntry("grammars") === false) return Promise.resolve();
 
     const loadGrammar = (grammarPath, callback) => {
       return this.grammarRegistry.readGrammar(grammarPath, (error, grammar) => {
@@ -666,6 +674,7 @@ module.exports = class Package {
 
   loadSettings() {
     this.settings = [];
+    if (this.hasPackageRootEntry("settings") === false) return Promise.resolve();
 
     const loadSettingsFile = (settingsPath, callback) => {
       return SettingsFile.load(settingsPath, (error, settingsFile) => {
@@ -709,6 +718,10 @@ module.exports = class Package {
     return Array.isArray(cachedPaths)
       ? cachedPaths.map((resourcePath) => path.join(this.path, resourcePath))
       : null;
+  }
+
+  hasPackageRootEntry(name) {
+    return this.packageRootEntries instanceof Set ? this.packageRootEntries.has(name) : null;
   }
 
   serialize() {

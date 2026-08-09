@@ -1,4 +1,5 @@
 const path = require("path");
+const fs = require("@lumine-code/fs-plus");
 const Package = require("../src/package");
 const ThemePackage = require("../src/theme-package");
 const { mockLocalStorage } = require("./helpers/mock-local-storage");
@@ -49,6 +50,19 @@ describe("Package", function () {
 
       expect(pack.getCachedResourcePaths("grammarPaths")).toBeNull();
       expect(pack.getCachedResourcePaths("settingsPaths")).toBeNull();
+    });
+  });
+
+  describe("a package root index", function () {
+    it("skips asynchronous probes for resource directories known to be absent", async function () {
+      const packagePath = lumine.project.getDirectories()[0].resolve("packages/package-with-index");
+      const pack = buildPackage(packagePath);
+      pack.packageRootEntries = new Set();
+      spyOn(fs, "exists");
+
+      await Promise.all([pack.loadGrammars(), pack.loadSettings()]);
+
+      expect(fs.exists).not.toHaveBeenCalled();
     });
   });
 

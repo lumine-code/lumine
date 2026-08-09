@@ -45,6 +45,8 @@ module.exports = class PackageManager {
     this.activationHookEmitter = new Emitter();
     this.packageDirPaths = [];
     this.packageManifestCache = new Map();
+    this.packageRootEntriesCache = new Map();
+    this.availablePackagesByNameDuringLoad = null;
     this.deferredActivationHooks = [];
     this.triggeredActivationHooks = new Set();
     this.packagesCache = packageJSON._luminePackages != null ? packageJSON._luminePackages : {};
@@ -94,6 +96,8 @@ module.exports = class PackageManager {
     this.serviceHub.clear();
     await this.deactivatePackages();
     this.packageManifestCache.clear();
+    this.packageRootEntriesCache.clear();
+    this.availablePackagesByNameDuringLoad = null;
     this.loadedPackages = {};
     this.packageStates = {};
     this.themePackRegistrationsByPackageName.clear();
@@ -239,6 +243,7 @@ module.exports = class PackageManager {
       tier: options.tier != null ? options.tier : this.getPackageDirTier(path.dirname(packagePath)),
       isBundled,
       metadata: manifest.metadata,
+      packageRootEntries: this.readPackageRootEntries(packagePath, isBundled),
       nameSource: manifest.name ? "manifest" : "dirname",
       error: manifest.error,
     };
@@ -408,6 +413,9 @@ module.exports = class PackageManager {
   //
   // Returns a package descriptor or undefined.
   getAvailablePackage(name) {
+    if (this.availablePackagesByNameDuringLoad != null) {
+      return this.availablePackagesByNameDuringLoad.get(name);
+    }
     return this.scanAvailablePackages().find((pack) => pack.isWinner && pack.name === name);
   }
 
@@ -417,6 +425,26 @@ module.exports = class PackageManager {
   // when a manifest changes on disk — after an install, update, or uninstall.
   refreshPackageIndex() {
     this.packageManifestCache.clear();
+    this.packageRootEntriesCache.clear();
+  }
+
+  // Index the names in an external package's root once. Resource loading can
+  // then avoid probing conventional directories that are known not to exist.
+  // A failed read remains "unknown" so callers retain their normal fallback.
+  readPackageRootEntries(packagePath, isBundled) {
+    if (isBundled && this.packagesCache[path.basename(packagePath)] != null) return null;
+    if (this.packageRootEntriesCache.has(packagePath)) {
+      return this.packageRootEntriesCache.get(packagePath);
+    }
+
+    let entries = null;
+    try {
+      entries = new Set(fs.readdirSync(packagePath));
+    } catch {
+      // Leave the index unknown; resource loaders will probe as before.
+    }
+    this.packageRootEntriesCache.set(packagePath, entries);
+    return entries;
   }
 
   // Scan every package directory and decide which copy owns each package name.
@@ -644,11 +672,19 @@ module.exports = class PackageManager {
     require("../exports/lumine");
 
     const disabledPackageNames = new Set(this.config.get("core.disabledPackages"));
-    this.config.transact(() => {
-      for (const pack of this.getAvailablePackages()) {
-        this.loadAvailablePackage(pack, disabledPackageNames);
-      }
-    });
+    const availablePackages = this.getAvailablePackages();
+    this.availablePackagesByNameDuringLoad = new Map(
+      availablePackages.map((pack) => [pack.name, pack]),
+    );
+    try {
+      this.config.transact(() => {
+        for (const pack of availablePackages) {
+          this.loadAvailablePackage(pack, disabledPackageNames);
+        }
+      });
+    } finally {
+      this.availablePackagesByNameDuringLoad = null;
+    }
     this.initialPackagesLoaded = true;
     this.emitter.emit("did-load-initial-packages");
   }
@@ -751,6 +787,7 @@ module.exports = class PackageManager {
       path: availablePackage.path,
       name: availablePackage.name,
       metadata,
+      packageRootEntries: availablePackage.packageRootEntries,
       bundledPackage: availablePackage.isBundled,
       packageManager: this,
       config: this.config,
