@@ -43,22 +43,27 @@ module.exports = async function ({ blobStore }) {
       // Install console functions that output to stdout and stderr.
       const util = require("util");
       const { Writable } = require("stream");
-      const createTestOutputStream = (name) => {
+      const createTestOutputStream = (name, fd) => {
         const stream = new Writable({
           write(output, _encoding, callback) {
             writeTestOutput(name, output, callback);
           },
         });
+        // Child processes accept writable streams for stdio only when they
+        // expose a real file descriptor. Preserve the renderer-to-main IPC
+        // writes while allowing callers such as update-process-env to inherit
+        // the runner's standard output handles on every platform.
+        stream.fd = fd;
         stream.isTTY = false;
         return stream;
       };
 
       Object.defineProperties(process, {
         stdout: {
-          value: createTestOutputStream("stdout"),
+          value: createTestOutputStream("stdout", 1),
         },
         stderr: {
-          value: createTestOutputStream("stderr"),
+          value: createTestOutputStream("stderr", 2),
         },
       });
       flushOutputStreams = () =>
