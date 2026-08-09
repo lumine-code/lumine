@@ -778,6 +778,7 @@ class LumineEnvironment {
 
       StartupTime.addMarker("window:environment:start-editor-window:load-packages");
       this.packages.loadPackages();
+      StartupTime.addMarker("window:environment:start-editor-window:load-packages:end");
 
       const startTime = Date.now();
       StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
@@ -814,6 +815,7 @@ class LumineEnvironment {
 
       StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
       await this.packages.activate();
+      StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
       this.keymaps.loadUserKeymap();
       if (!this.window.isSafeMode()) this.requireUserInitScript();
 

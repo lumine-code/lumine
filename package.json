@@ -162,8 +162,7 @@
     "web-tree-sitter": "0.26.11",
     "whitespace": "github:lumine-code/whitespace#50b118f0cb2f3c682a7c7df0ea64aad6e051cfef",
     "winattr": "^3.0.0",
-    "window-title": "github:lumine-code/window-title#0a32072c09025cd555566fb04cab743998c69efe",
-    "yargs": "18.1.0"
+    "window-title": "github:lumine-code/window-title#0a32072c09025cd555566fb04cab743998c69efe"
   },
   "private": true,
   "scripts": {
@@ -201,7 +200,8 @@
     "globals": "^17.9.0",
     "mock-spawn": "^0.2.6",
     "prettier": "^3.9.6",
-    "sinon": "22.1.0"
+    "sinon": "22.1.0",
+    "yargs": "18.1.0"
   },
   "allowScripts": {
     "github:lumine-code/node-pty#96ee83e84f2e0c57d7abb234d262722e9d94c9b8": true,

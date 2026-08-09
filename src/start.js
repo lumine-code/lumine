@@ -2,6 +2,7 @@ const { app, crashReporter } = require("electron");
 const path = require("path");
 const temp = require("@lumine-code/temp");
 const parseCommandLine = require("./parse-command-line");
+const { getAppArguments } = require("./parse-command-line-options");
 const { getReleaseChannel, getConfigFilePath } = require("./get-app-details.js");
 const luminePaths = require("./lumine-paths");
 const CSON = require("@lumine-code/season");
@@ -47,7 +48,9 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
   // switch, so future features must merge into this one.
   app.commandLine.appendSwitch("enable-features", "SharedArrayBuffer");
 
-  const args = parseCommandLine(process.argv.slice(1));
+  const args = parseCommandLine(
+    getAppArguments(process.argv, { defaultApp: process.defaultApp, appPath: app.getAppPath() }),
+  );
 
   args.resourcePath = normalizeDriveLetterName(resourcePath);
   args.devResourcePath = normalizeDriveLetterName(devResourcePath);
@@ -194,7 +197,9 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
     StartupTime.addMarker("main-process:electron-onready:end");
     app.removeListener("open-file", addPathToOpen);
     app.removeListener("open-url", addUrlToOpen);
+    StartupTime.addMarker("main-process:lumine-application:require:start");
     const LumineApplication = require(path.join(args.resourcePath, "src", "lumine-application"));
+    StartupTime.addMarker("main-process:lumine-application:require:end");
     LumineApplication.open(args);
   });
 };

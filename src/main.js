@@ -5,8 +5,9 @@ StartupTime.setStartTime();
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const CSON = require("@lumine-code/season");
-const yargs = require("yargs");
 const { app, Menu, protocol } = require("electron");
+const parseCommandLineOptions = require("./parse-command-line-options");
+const { getAppArguments } = parseCommandLineOptions;
 
 // Lumine installs its own application menu during initialization. Suppress
 // Electron's default menu before `ready` so it is never built in the meantime.
@@ -22,13 +23,12 @@ protocol.registerSchemesAsPrivileged([
   },
 ]);
 
-const args = yargs(process.argv)
-  // Don't handle --help or --version here; they will be handled later.
-  .help(false)
-  .version(false)
-  .alias("d", "dev")
-  .alias("t", "test")
-  .alias("r", "resource-path").argv;
+// Parse only enough to select the source tree. Full validation and help output
+// happen in start.js, but using the same lightweight parser avoids constructing
+// a second yargs instance on every launch.
+const args = parseCommandLineOptions(
+  getAppArguments(process.argv, { defaultApp: process.defaultApp, appPath: app.getAppPath() }),
+);
 
 function isLumineRepoPath(repoPath) {
   let packageJsonPath = path.join(repoPath, "package.json");
@@ -47,8 +47,8 @@ function isLumineRepoPath(repoPath) {
 let resourcePath;
 let devResourcePath;
 
-if (args.resourcePath) {
-  resourcePath = args.resourcePath;
+if (args["resource-path"]) {
+  resourcePath = args["resource-path"];
   devResourcePath = resourcePath;
 } else {
   const stableResourcePath = path.dirname(__dirname);
