@@ -27,6 +27,13 @@ describe("parseCommandLineOptions", () => {
     assert.deepEqual(args._, ["file.js", "-literal-name", 43]);
   });
 
+  it("retains a string option with no value and continues parsing options", () => {
+    const args = parseCommandLineOptions(["--link", "--dev"]);
+
+    assert.isNull(args.link);
+    assert.isTrue(args.dev);
+  });
+
   it("ignores macOS process serial number and underscore flags", () => {
     const args = parseCommandLineOptions(["-psn_0_123456", "--_", "first.js", "-_", "second.js"]);
 

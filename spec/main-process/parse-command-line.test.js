@@ -194,6 +194,15 @@ describe("parseCommandLine", () => {
       assert.deepEqual(args.packageCommand, { name: "link", arg: "/some/path", dev: true });
     });
 
+    it("keeps package commands headless when their required argument is missing", () => {
+      for (const name of ["install", "uninstall", "link", "unlink"]) {
+        const args = parseCommandLine([`--${name}`]);
+
+        assert.deepEqual(args.packageCommand, { name, arg: null, dev: false });
+        assert.deepEqual(args.pathsToOpen, []);
+      }
+    });
+
     it("parses --unlink", () => {
       const args = parseCommandLine(["--unlink", "my-package"]);
       assert.deepEqual(args.packageCommand, { name: "unlink", arg: "my-package", dev: false });

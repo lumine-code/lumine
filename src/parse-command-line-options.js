@@ -81,9 +81,11 @@ function consumeLongOption(args, index, result) {
     assignOption(result, definition, argument.slice(equalsIndex + 1));
   } else if (definition.type === "boolean") {
     assignOption(result, definition);
-  } else if (index + 1 < args.length) {
+  } else if (index + 1 < args.length && !args[index + 1].startsWith("-")) {
     assignOption(result, definition, args[index + 1]);
     return index + 1;
+  } else {
+    assignOption(result, definition, null);
   }
   return index;
 }

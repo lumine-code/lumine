@@ -106,15 +106,15 @@ module.exports = function parseCommandLine(processArgs) {
   // packages under `packages-dev` instead of `packages`.
   let packageCommand = null;
   const linkToDev = Boolean(args.dev);
-  if (typeof args["install"] === "string") {
+  if (Object.hasOwn(args, "install")) {
     packageCommand = { name: "install", arg: args["install"], dev: linkToDev };
-  } else if (typeof args["uninstall"] === "string") {
+  } else if (Object.hasOwn(args, "uninstall")) {
     packageCommand = { name: "uninstall", arg: args["uninstall"], dev: linkToDev };
   } else if (args["list"]) {
     packageCommand = { name: "list", arg: null, dev: linkToDev };
-  } else if (typeof args["link"] === "string") {
+  } else if (Object.hasOwn(args, "link")) {
     packageCommand = { name: "link", arg: args["link"], dev: linkToDev };
-  } else if (typeof args["unlink"] === "string") {
+  } else if (Object.hasOwn(args, "unlink")) {
     packageCommand = { name: "unlink", arg: args["unlink"], dev: linkToDev };
   }
 
