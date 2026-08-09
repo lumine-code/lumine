@@ -2263,6 +2263,104 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollTop()).toBeNear(2 * 20 * wheelDeltaParity * 0.25);
     });
 
+    it("updates only scroll-position DOM while the viewport stays in the mounted tile", async () => {
+      const { component, element } = buildSmoothComponent({
+        text: `${"x".repeat(200)}\n`.repeat(30),
+      });
+      if (component.updateScheduled) await component.getNextUpdatePromise();
+      const updateSync = spyOn(component, "updateSync").and.callThrough();
+      let notifyingTop = false;
+      let notifyingLeft = false;
+      element.onDidChangeScrollTop(() => {
+        notifyingTop = true;
+      });
+      element.onDidChangeScrollLeft(() => {
+        notifyingLeft = true;
+      });
+
+      component.scrollAnimator.scrollBy({ x: 20, y: 20, smoothness: 8 });
+      component.scrollAnimator.advance(FRAME);
+
+      expect(notifyingTop).toBe(true);
+      expect(notifyingLeft).toBe(true);
+      expect(updateSync).not.toHaveBeenCalled();
+      expect(component.refs.content.style.transform).toBe(
+        `translate(-${component.getScrollLeft()}px, -${component.getScrollTop()}px)`,
+      );
+      expect(component.refs.gutterContainer.innerElement.style.transform).toBe(
+        `translateY(-${component.getScrollTop()}px)`,
+      );
+      expect(component.refs.verticalScrollbar.element.scrollTop).toBeNear(component.getScrollTop());
+      expect(component.refs.horizontalScrollbar.element.scrollLeft).toBeNear(
+        component.getScrollLeft(),
+      );
+      expect(component.scrollTopPending).toBe(false);
+      expect(component.scrollLeftPending).toBe(false);
+
+      // The programmatic scrollbar echo is a no-op, but clearing the pending
+      // flags above lets the next real scrollbar movement take over normally.
+      component.didScrollDummyScrollbar();
+      expect(updateSync).not.toHaveBeenCalled();
+      component.refs.verticalScrollbar.element.scrollTop = component.getScrollTop() + 1;
+      component.didScrollDummyScrollbar();
+      expect(updateSync).toHaveBeenCalledTimes(1);
+    });
+
+    it("falls back to a complete update when scrolling crosses a tile boundary", () => {
+      const { component } = buildSmoothComponent({
+        text: "line\n".repeat(100),
+      });
+      const updateSync = spyOn(component, "updateSync").and.callThrough();
+      const boundaryRow = component.mountedTileStartRow + component.getRowsPerTile();
+      const boundaryTop = component.pixelPositionBeforeBlocksForRow(boundaryRow);
+
+      component.scrollAnimator.scrollTo({ top: boundaryTop, smoothness: 1 });
+      component.scrollAnimator.advance(FRAME);
+
+      expect(updateSync).toHaveBeenCalledTimes(1);
+      expect(component.mountedTileStartRow).toBe(boundaryRow);
+    });
+
+    it("rejects scroll-only updates whenever other editor work is pending", async () => {
+      const { component } = buildSmoothComponent();
+      if (component.updateScheduled) await component.getNextUpdatePromise();
+      expect(component.canUpdateScrollPositionOnly(false, true)).toBe(true);
+
+      const unsafeStates = [
+        ["updateScheduled", true],
+        ["pendingAutoscroll", {}],
+        ["pendingScrollAnchor", {}],
+        ["pendingReflowScrollAnchor", {}],
+        ["remeasureCharacterDimensions", true],
+        ["remeasureAllBlockDecorations", true],
+        ["remeasureGutterDimensions", true],
+        ["remeasureScrollbars", true],
+      ];
+      for (const [property, value] of unsafeStates) {
+        const original = component[property];
+        component[property] = value;
+        expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+        component[property] = original;
+      }
+
+      component.linesToMeasure.set(0, {});
+      expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+      component.linesToMeasure.clear();
+      component.horizontalPositionsToMeasure.set(0, []);
+      expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+      component.horizontalPositionsToMeasure.clear();
+      component.blockDecorationsToMeasure.add({});
+      expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+      component.blockDecorationsToMeasure.clear();
+
+      const updateSync = spyOn(component, "updateSync");
+      component.decorationsToRender.overlays.push({});
+      expect(component.updateScrollAnimationFrame({ horizontal: false, vertical: true })).toBe(
+        false,
+      );
+      expect(updateSync).toHaveBeenCalledTimes(1);
+    });
+
     it("cancels the glide when the scroll position is set directly", () => {
       const { component, element } = buildSmoothComponent();
       let ended = 0;

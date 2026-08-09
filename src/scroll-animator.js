@@ -1,6 +1,6 @@
 const COMPLETION_THRESHOLD = 0.01; // px
 const FRAME_DURATION = 1000 / 60;
-const MAX_FRAME_RATIO = 6;
+const MAX_FRAME_RATIO = 12;
 
 // Computes how far a pending scroll distance should advance this frame.
 // Exponential approach toward the target, normalized against a 60fps frame so
@@ -144,10 +144,16 @@ class ScrollAnimator {
     const changedX =
       this.virtualScrollLeft !== previousVirtualScrollLeft &&
       this.component.setScrollLeft(this.virtualScrollLeft);
-    // Cleared before updateSync: scrolls performed inside the update
-    // (autoscroll, anchor restore) are external takeovers and must cancel us.
+    // Cleared before the component update: scrolls performed inside a full
+    // update (autoscroll, anchor restore) are external takeovers and must
+    // cancel us.
     this.applyingFrame = false;
-    if (changedX || changedY) this.component.updateSync();
+    if (changedX || changedY) {
+      this.component.updateScrollAnimationFrame({
+        horizontal: changedX,
+        vertical: changedY,
+      });
+    }
     if (!this.animating) return;
 
     if (

@@ -44,6 +44,20 @@ module.exports = class DummyScrollbarComponent {
     if (shouldFlushScrollPosition) this.flushScrollPosition();
   }
 
+  // Synchronizes only the native scrollbar position during a smooth-scroll
+  // frame. Geometry and visibility still go through update(), where their
+  // dependencies are reconciled together.
+  updateScrollPosition(position) {
+    if (this.props.orientation === "horizontal") {
+      if (position === this.props.scrollLeft) return;
+      this.props.scrollLeft = position;
+    } else {
+      if (position === this.props.scrollTop) return;
+      this.props.scrollTop = position;
+    }
+    this.flushScrollPosition();
+  }
+
   destroy() {
     this.element.remove();
   }

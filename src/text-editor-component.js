@@ -193,6 +193,11 @@ module.exports = class TextEditorComponent {
     this.idsByTileStartRow = new Map();
     this.nextTileId = 0;
     this.renderedTileStartRows = [];
+    // The row range represented by the DOM after the most recent complete
+    // update. Smooth scrolling can move within this window without querying
+    // and reconciling the same tiles again.
+    this.mountedTileStartRow = null;
+    this.mountedTileEndRow = null;
     this.showLineNumbers = this.props.model.doesShowLineNumbers();
     this.lineNumbersToRender = {
       maxDigits: 2,
@@ -367,6 +372,71 @@ module.exports = class TextEditorComponent {
     this.updateScheduled = false;
   }
 
+  // Smooth scrolling normally changes only the viewport position. If the
+  // mounted tiles still cover that viewport and no other editor work is
+  // pending, update the three position-dependent DOM regions directly.
+  // Everything else retains the complete update path as its correctness
+  // fallback.
+  updateScrollAnimationFrame({ horizontal, vertical }) {
+    if (!this.canUpdateScrollPositionOnly(horizontal, vertical)) {
+      this.updateSync();
+      return false;
+    }
+
+    this.updateContentScrollTransform();
+    if (vertical) {
+      this.refs.gutterContainer.updateScrollTop(this.getScrollTop());
+      this.refs.verticalScrollbar.updateScrollPosition(this.getScrollTop());
+      this.scrollTopPending = false;
+    }
+    if (horizontal) {
+      this.refs.horizontalScrollbar.updateScrollPosition(this.getScrollLeft());
+      this.scrollLeftPending = false;
+    }
+    return true;
+  }
+
+  canUpdateScrollPositionOnly(horizontal, vertical) {
+    if (
+      !this.attached ||
+      !this.visible ||
+      this.suppressUpdates ||
+      this.props.model.isDestroyed() ||
+      !this.hasInitialMeasurements ||
+      !this.measuredContent ||
+      this.updateScheduled ||
+      this.pendingAutoscroll ||
+      this.pendingScrollAnchor ||
+      this.pendingReflowScrollAnchor ||
+      this.remeasureCharacterDimensions ||
+      this.remeasureAllBlockDecorations ||
+      this.remeasureGutterDimensions ||
+      this.remeasureScrollbars ||
+      this.linesToMeasure.size > 0 ||
+      this.horizontalPositionsToMeasure.size > 0 ||
+      this.blockDecorationsToMeasure.size > 0 ||
+      this.decorationsToRender.overlays.length > 0 ||
+      this.overlayComponents.size > 0 ||
+      this.mountedTileStartRow == null ||
+      this.mountedTileEndRow == null ||
+      (vertical && (!this.refs.gutterContainer || !this.refs.verticalScrollbar)) ||
+      (horizontal && !this.refs.horizontalScrollbar)
+    ) {
+      return false;
+    }
+
+    const firstVisibleRow = this.rowForPixelPosition(this.getScrollTop());
+    const lastVisibleRow = Math.min(
+      this.props.model.getApproximateScreenLineCount() - 1,
+      this.rowForPixelPosition(this.getScrollBottom()),
+    );
+    return (
+      this.tileStartRowForRow(firstVisibleRow) === this.mountedTileStartRow &&
+      firstVisibleRow >= this.mountedTileStartRow &&
+      lastVisibleRow < this.mountedTileEndRow
+    );
+  }
+
   measureBlockDecorations() {
     if (this.remeasureAllBlockDecorations) {
       this.remeasureAllBlockDecorations = false;
@@ -536,6 +606,8 @@ module.exports = class TextEditorComponent {
       this.renderSync();
     }
 
+    this.mountedTileStartRow = this.getRenderedStartRow();
+    this.mountedTileEndRow = this.getRenderedEndRow();
     this.derivedDimensionsCache = {};
     if (this.resolveNextUpdatePromise) this.resolveNextUpdatePromise();
   }
@@ -830,9 +902,6 @@ module.exports = class TextEditorComponent {
 
       const width = ceilToPhysicalPixelBoundary(this.getScrollWidth()) + "px";
       const height = ceilToPhysicalPixelBoundary(this.getScrollHeight()) + "px";
-      const transform = `translate(${-roundToPhysicalPixelBoundary(
-        this.getScrollLeft(),
-      )}px, ${-roundToPhysicalPixelBoundary(this.getScrollTop())}px)`;
 
       if (width !== cache.width) {
         style.width = width;
@@ -851,9 +920,19 @@ module.exports = class TextEditorComponent {
       // reads as thin and blurry on Windows. Scrolling a full-window
       // 5000-line editor holds the display's refresh rate either way, because
       // the translate here only moves already-rasterized tiles.
+      this.updateContentScrollTransform();
+    }
+  }
+
+  updateContentScrollTransform() {
+    if (this.hasInitialMeasurements) {
+      const cache = this.contentCache;
+      const transform = `translate(${-roundToPhysicalPixelBoundary(
+        this.getScrollLeft(),
+      )}px, ${-roundToPhysicalPixelBoundary(this.getScrollTop())}px)`;
       if (transform !== cache.transform) {
-        style.transform = transform;
-        cache.transform = transform;
+        this.refs.content.style.transform = transform;
+        this.contentCache.transform = transform;
       }
     }
   }

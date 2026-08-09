@@ -28,8 +28,11 @@ describe("ScrollAnimator", () => {
       expect(calculateTimeBasedStep(100, 8, 2 * FRAME)).toBeCloseTo(43.75, 6);
     });
 
-    it("clamps the frame ratio to avoid huge jumps after a stall", () => {
-      const cappedStep = calculateTimeBasedStep(100, 8, 6 * FRAME);
+    it("catches up after a stall while capping the elapsed frame ratio", () => {
+      const oldCappedStep = calculateTimeBasedStep(100, 8, 6 * FRAME);
+      const cappedStep = calculateTimeBasedStep(100, 8, 12 * FRAME);
+      expect(cappedStep).toBeGreaterThan(oldCappedStep);
+      expect(cappedStep).toBeCloseTo(100 * (1 - Math.pow(0.75, 12)), 6);
       expect(calculateTimeBasedStep(100, 8, 5000)).toBeCloseTo(cappedStep, 6);
       expect(calculateTimeBasedStep(100, 8, -50)).toBe(0);
     });
@@ -49,7 +52,7 @@ describe("ScrollAnimator", () => {
         scrollLeft: 0,
         maxScrollTop: 1000,
         maxScrollLeft: 500,
-        updateSyncCount: 0,
+        scrollFrameUpdateCount: 0,
         element: { emitter: new Emitter() },
         getScrollTop() {
           return this.scrollTop;
@@ -77,8 +80,8 @@ describe("ScrollAnimator", () => {
           this.scrollLeft = value;
           return true;
         },
-        updateSync() {
-          this.updateSyncCount++;
+        updateScrollAnimationFrame() {
+          this.scrollFrameUpdateCount++;
         },
       };
     }
@@ -112,7 +115,7 @@ describe("ScrollAnimator", () => {
       expect(frames).toBeGreaterThan(1);
       expect(component.scrollTop).toBe(100);
       expect(animator.targetScrollTop).toBe(100);
-      expect(component.updateSyncCount).toBeGreaterThan(0);
+      expect(component.scrollFrameUpdateCount).toBeGreaterThan(0);
     });
 
     it("approaches the target monotonically", () => {

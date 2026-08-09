@@ -51,21 +51,10 @@ module.exports = class GutterContainerComponent {
   // line-number gutters unmount entirely; hidden custom gutters stay mounted
   // with display: none.
   updateGutters() {
-    const {
-      hasInitialMeasurements,
-      scrollTop,
-      scrollHeight,
-      guttersToRender,
-      decorationsToRender,
-    } = this.props;
+    const { hasInitialMeasurements, scrollHeight, guttersToRender, decorationsToRender } =
+      this.props;
 
-    if (hasInitialMeasurements) {
-      const transform = `translateY(${-roundToPhysicalPixelBoundary(scrollTop)}px)`;
-      if (transform !== this.lastTransform) {
-        this.innerElement.style.transform = transform;
-        this.lastTransform = transform;
-      }
-    }
+    if (hasInitialMeasurements) this.updateScrollTop(this.props.scrollTop);
 
     const seenGutters = new Set();
     let previousElement = null;
@@ -118,6 +107,18 @@ module.exports = class GutterContainerComponent {
     this.gutterComponentsByGutter.forEach((gutterComponent, gutter) => {
       if (!seenGutters.has(gutter)) this.unmountGutter(gutter, gutterComponent);
     });
+  }
+
+  // Moves the already-rendered gutter tiles without reconciling their rows or
+  // decorations. TextEditorComponent calls this only while its mounted tile
+  // window still covers the viewport.
+  updateScrollTop(scrollTop) {
+    this.props.scrollTop = scrollTop;
+    const transform = `translateY(${-roundToPhysicalPixelBoundary(scrollTop)}px)`;
+    if (transform !== this.lastTransform) {
+      this.innerElement.style.transform = transform;
+      this.lastTransform = transform;
+    }
   }
 
   unmountGutter(gutter, gutterComponent) {
