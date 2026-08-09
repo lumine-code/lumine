@@ -79,14 +79,14 @@ describe("PackageManager", () => {
     });
 
     it("returns the package if it has an invalid keymap", () => {
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
       const pack = atom.packages.loadPackage("package-with-broken-keymap");
       expect(pack instanceof Package).toBe(true);
       expect(pack.metadata.name).toBe("package-with-broken-keymap");
     });
 
     it("returns the package if a stylesheet cannot be read", () => {
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
       const pack = atom.packages.loadPackage("package-with-invalid-styles");
       expect(pack instanceof Package).toBe(true);
       expect(pack.metadata.name).toBe("package-with-invalid-styles");
@@ -105,7 +105,7 @@ describe("PackageManager", () => {
     });
 
     it("returns null if the package has an invalid package.json", () => {
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
       const addErrorHandler = jasmine.createSpy();
       atom.notifications.onDidAddNotification(addErrorHandler);
       expect(atom.packages.loadPackage("package-with-broken-package-json")).toBeNull();
@@ -465,7 +465,7 @@ describe("PackageManager", () => {
         });
 
         it("adds a notification when the activation commands are invalid", () => {
-          spyOn(atom, "inSpecMode").and.returnValue(false);
+          spyOn(atom.window, "isSpecMode").and.returnValue(false);
           const addErrorHandler = jasmine.createSpy();
           atom.notifications.onDidAddNotification(addErrorHandler);
           expect(() =>
@@ -481,7 +481,7 @@ describe("PackageManager", () => {
         });
 
         it("adds a notification when the context menu is invalid", () => {
-          spyOn(atom, "inSpecMode").and.returnValue(false);
+          spyOn(atom.window, "isSpecMode").and.returnValue(false);
           const addErrorHandler = jasmine.createSpy();
           atom.notifications.onDidAddNotification(addErrorHandler);
           expect(() =>
@@ -720,7 +720,7 @@ describe("PackageManager", () => {
 
     describe("when the package's main module throws an error on load", () => {
       it("adds a notification instead of throwing an exception", () => {
-        spyOn(atom, "inSpecMode").and.returnValue(false);
+        spyOn(atom.window, "isSpecMode").and.returnValue(false);
         atom.config.set("core.disabledPackages", []);
         const addErrorHandler = jasmine.createSpy();
         atom.notifications.onDidAddNotification(addErrorHandler);
@@ -1259,7 +1259,7 @@ describe("PackageManager", () => {
 
   describe("::serialize", () => {
     it("does not serialize packages that threw an error during activation", async () => {
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
       spyOn(console, "warn");
 
       const badPack = await atom.packages.activatePackage("package-that-throws-on-activate");
@@ -1298,7 +1298,7 @@ describe("PackageManager", () => {
     afterEach(() => atom.packages.unloadPackages());
 
     it("calls `deactivate` on the package's main module if activate was successful", async () => {
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
 
       const pack = await atom.packages.activatePackage("package-with-deactivate");
       expect(atom.packages.isPackageActive("package-with-deactivate")).toBeTruthy();
@@ -1395,7 +1395,7 @@ describe("PackageManager", () => {
 
   describe("::activate()", () => {
     beforeEach(() => {
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
       jasmine.snapshotDeprecations();
       spyOn(console, "warn");
       atom.packages.loadPackages();

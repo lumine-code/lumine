@@ -145,7 +145,7 @@ describe("MenuManager::sortPackagesMenu", function () {
       packageManager: atom.packages,
     });
     spyOn(menu, "sendToBrowserProcess");
-    menu.initialize({ resourcePath: atom.getLoadSettings().resourcePath });
+    menu.initialize({ resourcePath: atom.app.getResourcePath() });
     menu.template = [
       {
         label: "Packages",

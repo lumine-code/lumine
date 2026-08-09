@@ -241,7 +241,7 @@ module.exports = class WindowEventHandler {
   handleWindowBeforeunload(_event) {
     if (
       !this.reloadRequested &&
-      !this.atomEnvironment.inSpecMode() &&
+      !this.atomEnvironment.window.isSpecMode() &&
       // `BrowserWindow#isWebViewFocused()` no longer exists in modern Electron;
       // `document.hasFocus()` is the renderer-side equivalent of "is this
       // window's web view focused".

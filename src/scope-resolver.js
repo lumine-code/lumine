@@ -190,7 +190,7 @@ class ScopeResolver {
   // Logs a warning about a problematic predicate at most once per grammar and
   // key, and only in dev mode.
   warnOncePerGrammar(key, message) {
-    if (!atom.inDevMode()) return;
+    if (!atom.window.isDevMode()) return;
     let warningKey = `${this.grammar.scopeName}:${key}`;
     if (predicateWarningRegistry.has(warningKey)) return;
     predicateWarningRegistry.add(warningKey);

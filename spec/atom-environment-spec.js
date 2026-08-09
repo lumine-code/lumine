@@ -6,6 +6,58 @@ const AtomEnvironment = require("../src/atom-environment");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
 
 describe("AtomEnvironment", () => {
+  describe("namespaced process APIs", () => {
+    it("does not expose the removed top-level API", () => {
+      for (const method of [
+        "onWillDestroy",
+        "onDidBeep",
+        "onWillThrowError",
+        "onDidThrowError",
+        "whenShellEnvironmentLoaded",
+        "whenWindowLoaded",
+        "inDevMode",
+        "inSafeMode",
+        "inSpecMode",
+        "getAppName",
+        "getVersion",
+        "versionSatisfies",
+        "getReleaseChannel",
+        "isReleasedVersion",
+        "getWindowLoadTime",
+        "getStartupMarkers",
+        "getLoadSettings",
+        "open",
+        "trashItem",
+        "showItemInFolder",
+        "openPath",
+        "openExternal",
+        "beep",
+        "confirm",
+      ]) {
+        expect(atom[method]).toBeUndefined();
+      }
+    });
+
+    it("exposes cached application and window metadata through typed services", () => {
+      const loadSettings = atom.applicationDelegate.getWindowLoadSettings();
+      expect(atom.app.getName()).toBe(loadSettings.appName);
+      expect(atom.app.getVersion()).toBe(loadSettings.appVersion);
+      expect(atom.app.getResourcePath()).toBe(loadSettings.resourcePath);
+      expect(atom.window.isDevMode()).toBe(Boolean(loadSettings.devMode));
+      expect(atom.window.isSafeMode()).toBe(Boolean(loadSettings.safeMode));
+      expect(atom.window.isSpecMode()).toBe(Boolean(loadSettings.isSpec));
+      expect(atom.window.getInitialPaths()).toEqual(loadSettings.initialPaths || []);
+    });
+
+    it("owns beep events on the notification service", () => {
+      const callback = jasmine.createSpy();
+      const subscription = atom.notifications.onDidBeep(callback);
+      atom.notifications.beep();
+      expect(callback).toHaveBeenCalled();
+      subscription.dispose();
+    });
+  });
+
   describe("window sizing methods", () => {
     describe("::getPosition and ::setPosition", () => {
       let originalPosition = null;
@@ -39,39 +91,39 @@ describe("AtomEnvironment", () => {
   describe(".isReleasedVersion()", () => {
     it("returns false if the version is a SHA and true otherwise", () => {
       let version = "0.1.0";
-      spyOn(atom, "getVersion").and.callFake(() => version);
-      expect(atom.isReleasedVersion()).toBe(true);
+      spyOn(atom.app, "getVersion").and.callFake(() => version);
+      expect(atom.app.isReleasedVersion()).toBe(true);
       version = "36b5518";
-      expect(atom.isReleasedVersion()).toBe(false);
+      expect(atom.app.isReleasedVersion()).toBe(false);
     });
 
     it("counts every channel that went through the release pipeline", () => {
       let version = "1.1.0";
-      spyOn(atom, "getVersion").and.callFake(() => version);
+      spyOn(atom.app, "getVersion").and.callFake(() => version);
       for (version of ["1.1.0", "1.1.0-beta.1", "1.1.0-rc.1", "1.1.0-nightly1"]) {
-        expect(atom.isReleasedVersion()).toBe(true);
+        expect(atom.app.isReleasedVersion()).toBe(true);
       }
       version = "1.1.0-dev";
-      expect(atom.isReleasedVersion()).toBe(false);
+      expect(atom.app.isReleasedVersion()).toBe(false);
     });
   });
 
   describe(".versionSatisfies()", () => {
     it("returns appropriately for provided range", () => {
       let testLumineVersion = "0.1.0";
-      spyOn(atom, "getVersion").and.callFake(() => testLumineVersion);
-      expect(atom.versionSatisfies(">0.2.0")).toBe(false);
-      expect(atom.versionSatisfies(">=0.x.x <=2.x.x")).toBe(true);
-      expect(atom.versionSatisfies("^0.1.x")).toBe(true);
+      spyOn(atom.app, "getVersion").and.callFake(() => testLumineVersion);
+      expect(atom.app.versionSatisfies(">0.2.0")).toBe(false);
+      expect(atom.app.versionSatisfies(">=0.x.x <=2.x.x")).toBe(true);
+      expect(atom.app.versionSatisfies("^0.1.x")).toBe(true);
     });
 
     // Every package declares an `engines.lumine` range, so a prerelease build
     // rejecting its own version line would report the whole fleet incompatible.
     it("measures a prerelease build against the release it precedes", () => {
-      spyOn(atom, "getVersion").and.returnValue("1.1.0-rc.1");
-      expect(atom.versionSatisfies("^1.0.0")).toBe(true);
-      expect(atom.versionSatisfies("^1.1.0")).toBe(true);
-      expect(atom.versionSatisfies("^1.2.0")).toBe(false);
+      spyOn(atom.app, "getVersion").and.returnValue("1.1.0-rc.1");
+      expect(atom.app.versionSatisfies("^1.0.0")).toBe(true);
+      expect(atom.app.versionSatisfies("^1.1.0")).toBe(true);
+      expect(atom.app.versionSatisfies("^1.2.0")).toBe(false);
     });
   });
 
@@ -134,7 +186,7 @@ describe("AtomEnvironment", () => {
 
       it("is called when there is an error", () => {
         let error = null;
-        subscription = atom.onWillThrowError(willThrowSpy);
+        subscription = atom.runtime.onWillThrowError(willThrowSpy);
         try {
           a + 1; // eslint-disable-line no-undef
         } catch (e) {
@@ -156,7 +208,7 @@ describe("AtomEnvironment", () => {
       // marshal, and every handler downstream — the notifications package
       // first — reads `originalError` without asking.
       it("stands an Error in when the browser reports none", () => {
-        subscription = atom.onWillThrowError(willThrowSpy);
+        subscription = atom.runtime.onWillThrowError(willThrowSpy);
         expect(() => window.onerror("Uncaught Error: nope", "abc", 2, 3, null)).not.toThrow();
 
         const { originalError } = willThrowSpy.calls.mostRecent().args[0];
@@ -167,7 +219,7 @@ describe("AtomEnvironment", () => {
       });
 
       it("passes on a thrown non-Error untouched", () => {
-        subscription = atom.onWillThrowError(willThrowSpy);
+        subscription = atom.runtime.onWillThrowError(willThrowSpy);
         const thrown = { name: "BufferedProcessError" };
         window.onerror("Uncaught BufferedProcessError: nope", "abc", 2, 3, thrown);
 
@@ -176,7 +228,7 @@ describe("AtomEnvironment", () => {
 
       it("will not show the devtools when preventDefault() is called", () => {
         willThrowSpy.and.callFake((errorObject) => errorObject.preventDefault());
-        subscription = atom.onWillThrowError(willThrowSpy);
+        subscription = atom.runtime.onWillThrowError(willThrowSpy);
 
         try {
           a + 1; // eslint-disable-line no-undef
@@ -198,7 +250,7 @@ describe("AtomEnvironment", () => {
 
       it("is called when there is an error", () => {
         let error = null;
-        subscription = atom.onDidThrowError(didThrowSpy);
+        subscription = atom.runtime.onDidThrowError(didThrowSpy);
         try {
           a + 1; // eslint-disable-line no-undef
         } catch (e) {
@@ -223,7 +275,7 @@ describe("AtomEnvironment", () => {
 
       beforeEach(() => {
         willThrowSpy = jasmine.createSpy();
-        subscription = atom.onWillThrowError(willThrowSpy);
+        subscription = atom.runtime.onWillThrowError(willThrowSpy);
       });
 
       afterEach(() => subscription.dispose());
@@ -301,8 +353,8 @@ describe("AtomEnvironment", () => {
       errors = [];
       // Stand in for a build a user is running: neither dev mode nor the spec
       // runner, so a failed assertion reports instead of throwing.
-      spyOn(atom, "inDevMode").and.returnValue(false);
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isDevMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
       atom.onDidFailAssertion((error) => errors.push(error));
     });
 
@@ -335,14 +387,14 @@ describe("AtomEnvironment", () => {
       // must not silence assertions for the person developing against it.
       describe("when running in dev mode", () => {
         it("throws an error", () => {
-          atom.inDevMode.and.returnValue(true);
+          atom.window.isDevMode.and.returnValue(true);
           expect(() => atom.assert(false, "testing")).toThrowError("Assertion failed: testing");
         });
       });
 
       describe("when running under the spec runner", () => {
         it("throws an error", () => {
-          atom.inSpecMode.and.returnValue(true);
+          atom.window.isSpecMode.and.returnValue(true);
           expect(() => atom.assert(false, "testing")).toThrowError("Assertion failed: testing");
         });
       });
@@ -372,12 +424,12 @@ describe("AtomEnvironment", () => {
 
       const [dir1, dir2] = [temp.mkdirSync("dir1-"), temp.mkdirSync("dir2-")];
 
-      const loadSettings = Object.assign(atom.getLoadSettings(), {
+      const loadSettings = Object.assign(atom.applicationDelegate.getWindowLoadSettings(), {
         initialProjectRoots: [dir1],
         windowState: null,
       });
 
-      spyOn(atom, "getLoadSettings").and.callFake(() => loadSettings);
+      spyOn(atom.applicationDelegate, "getWindowLoadSettings").and.callFake(() => loadSettings);
       spyOn(atom, "serialize").and.returnValue({ stuff: "cool" });
 
       atom.project.setPaths([dir1, dir2]);
@@ -557,7 +609,13 @@ describe("AtomEnvironment", () => {
 
   describe("openInitialEmptyEditorIfNecessary", () => {
     describe("when there are no paths set", () => {
-      beforeEach(() => spyOn(atom, "getLoadSettings").and.returnValue({ hasOpenFiles: false }));
+      beforeEach(() => {
+        const loadSettings = {
+          ...atom.applicationDelegate.getWindowLoadSettings(),
+          hasOpenFiles: false,
+        };
+        spyOn(atom.applicationDelegate, "getWindowLoadSettings").and.returnValue(loadSettings);
+      });
 
       it("opens an empty buffer", () => {
         spyOn(atom.workspace, "open");
@@ -584,7 +642,11 @@ describe("AtomEnvironment", () => {
 
     describe("when the project has a path", () => {
       beforeEach(() => {
-        spyOn(atom, "getLoadSettings").and.returnValue({ hasOpenFiles: true });
+        const loadSettings = {
+          ...atom.applicationDelegate.getWindowLoadSettings(),
+          hasOpenFiles: true,
+        };
+        spyOn(atom.applicationDelegate, "getWindowLoadSettings").and.returnValue(loadSettings);
         spyOn(atom.workspace, "open");
       });
 
@@ -727,9 +789,9 @@ describe("AtomEnvironment", () => {
             element: document.createElement("div"),
           });
           const state = {};
-          spyOn(atom, "confirm");
+          spyOn(atom.window, "confirm");
           await atom.attemptRestoreProjectStateForPaths(state, [__dirname], [__filename]);
-          expect(atom.confirm).not.toHaveBeenCalled();
+          expect(atom.window.confirm).not.toHaveBeenCalled();
         });
       });
     });
@@ -746,24 +808,24 @@ describe("AtomEnvironment", () => {
         it("prompts the user to restore the state", async () => {
           const dock = atom.workspace.getLeftDock();
           dock.getActivePane().addItem(editor);
-          spyOn(atom, "confirm").and.returnValue(Promise.resolve(1));
+          spyOn(atom.window, "confirm").and.returnValue(Promise.resolve(1));
           spyOn(atom.project, "addPath");
           spyOn(atom.workspace, "open");
           const state = Symbol("state");
           await atom.attemptRestoreProjectStateForPaths(state, [__dirname], [__filename]);
-          expect(atom.confirm).toHaveBeenCalled();
+          expect(atom.window.confirm).toHaveBeenCalled();
         });
       });
 
       it("prompts the user to restore the state in a new window, discarding it and adding folder to current window", async () => {
         jasmine.useRealClock();
-        spyOn(atom, "confirm").and.returnValue(Promise.resolve(1));
+        spyOn(atom.window, "confirm").and.returnValue(Promise.resolve(1));
         spyOn(atom.project, "addPaths");
         spyOn(atom.workspace, "open");
         const state = Symbol("state");
 
         await atom.attemptRestoreProjectStateForPaths(state, [__dirname], [__filename]);
-        expect(atom.confirm).toHaveBeenCalled();
+        expect(atom.window.confirm).toHaveBeenCalled();
         await conditionPromise(() => atom.project.addPaths.calls.count() === 1);
 
         expect(atom.project.addPaths).toHaveBeenCalledWith([__dirname]);
@@ -773,18 +835,18 @@ describe("AtomEnvironment", () => {
 
       it("prompts the user to restore the state in a new window, opening a new window", async () => {
         jasmine.useRealClock();
-        spyOn(atom, "confirm").and.returnValue(Promise.resolve(0));
-        spyOn(atom, "open");
+        spyOn(atom.window, "confirm").and.returnValue(Promise.resolve(0));
+        spyOn(atom.app, "openWindow");
         const state = Symbol("state");
 
         await atom.attemptRestoreProjectStateForPaths(state, [__dirname], [__filename]);
-        expect(atom.confirm).toHaveBeenCalled();
-        await conditionPromise(() => atom.open.calls.count() === 1);
-        expect(atom.open).toHaveBeenCalledWith({
+        expect(atom.window.confirm).toHaveBeenCalled();
+        await conditionPromise(() => atom.app.openWindow.calls.count() === 1);
+        expect(atom.app.openWindow).toHaveBeenCalledWith({
           pathsToOpen: [__dirname, __filename],
           newWindow: true,
-          devMode: atom.inDevMode(),
-          safeMode: atom.inSafeMode(),
+          devMode: atom.window.isDevMode(),
+          safeMode: atom.window.isSafeMode(),
         });
       });
     });
@@ -988,8 +1050,8 @@ describe("AtomEnvironment", () => {
     });
   });
 
-  describe("::whenShellEnvironmentLoaded()", () => {
-    let atomEnvironment, envLoaded, spy;
+  describe("RuntimeService::whenShellEnvironmentLoaded()", () => {
+    let atomEnvironment, envLoaded;
 
     beforeEach(() => {
       let resolvePromise = null;
@@ -1007,65 +1069,46 @@ describe("AtomEnvironment", () => {
         },
       });
       atomEnvironment.initialize({ window, document });
-      spy = jasmine.createSpy();
     });
 
     afterEach(() => atomEnvironment.destroy());
 
     it("is triggered once the shell environment is loaded", async () => {
-      atomEnvironment.whenShellEnvironmentLoaded(spy);
+      const loaded = atomEnvironment.runtime.whenShellEnvironmentLoaded();
       atomEnvironment.updateProcessEnvAndTriggerHooks();
       await envLoaded();
-      expect(spy).toHaveBeenCalled();
+      await loaded;
     });
 
-    it("triggers the callback immediately if the shell environment is already loaded", async () => {
+    it("resolves immediately if the shell environment is already loaded", async () => {
       atomEnvironment.updateProcessEnvAndTriggerHooks();
       await envLoaded();
-      atomEnvironment.whenShellEnvironmentLoaded(spy);
-      expect(spy).toHaveBeenCalled();
+      await atomEnvironment.runtime.whenShellEnvironmentLoaded();
     });
   });
 
-  describe("::whenWindowLoaded()", () => {
-    let atomEnvironment, spy;
+  describe("WindowService::whenLoaded()", () => {
+    let atomEnvironment;
 
     beforeEach(() => {
       atomEnvironment = new AtomEnvironment({
         applicationDelegate: atom.applicationDelegate,
       });
       atomEnvironment.initialize({ window, document });
-      spy = jasmine.createSpy();
     });
 
     afterEach(() => atomEnvironment.destroy());
 
-    it("is triggered once the window load time is recorded", () => {
-      atomEnvironment.whenWindowLoaded(spy);
-      expect(spy).not.toHaveBeenCalled();
-
+    it("resolves once the window load time is recorded", async () => {
+      const loaded = atomEnvironment.window.whenLoaded();
       atomEnvironment.setWindowLoadTime(42);
-      expect(spy).toHaveBeenCalledWith(42);
-      expect(atomEnvironment.getWindowLoadTime()).toBe(42);
+      expect(await loaded).toBe(42);
+      expect(atomEnvironment.window.getLoadTime()).toBe(42);
     });
 
-    it("triggers the callback immediately if the window has already loaded", () => {
+    it("resolves immediately if the window has already loaded", async () => {
       atomEnvironment.setWindowLoadTime(42);
-      atomEnvironment.whenWindowLoaded(spy);
-      expect(spy).toHaveBeenCalledWith(42);
-    });
-
-    it("triggers each callback only once", () => {
-      atomEnvironment.whenWindowLoaded(spy);
-      atomEnvironment.setWindowLoadTime(42);
-      atomEnvironment.setWindowLoadTime(43);
-      expect(spy.calls.count()).toBe(1);
-    });
-
-    it("does not trigger a disposed callback", () => {
-      atomEnvironment.whenWindowLoaded(spy).dispose();
-      atomEnvironment.setWindowLoadTime(42);
-      expect(spy).not.toHaveBeenCalled();
+      expect(await atomEnvironment.window.whenLoaded()).toBe(42);
     });
   });
 
@@ -1355,18 +1398,18 @@ describe("AtomEnvironment", () => {
     let version;
 
     beforeEach(() => {
-      spyOn(atom, "getVersion").and.callFake(() => version);
+      spyOn(atom.app, "getVersion").and.callFake(() => version);
     });
 
     it("returns the correct channel based on the version number", () => {
       version = "1.5.6";
-      expect(atom.getReleaseChannel()).toBe("stable");
+      expect(atom.app.getReleaseChannel()).toBe("stable");
 
       version = "1.5.0-beta10";
-      expect(atom.getReleaseChannel()).toBe("beta");
+      expect(atom.app.getReleaseChannel()).toBe("beta");
 
       version = "1.7.0-dev-5340c91";
-      expect(atom.getReleaseChannel()).toBe("dev");
+      expect(atom.app.getReleaseChannel()).toBe("dev");
     });
   });
 
@@ -1387,7 +1430,7 @@ describe("AtomEnvironment", () => {
 
     it("trashes the file", async () => {
       expect(fs.existsSync(fileToBeTrashed)).toBe(true);
-      await atom.trashItem(fileToBeTrashed);
+      await atom.shell.trashItem(fileToBeTrashed);
       expect(atom.applicationDelegate.trashItem).toHaveBeenCalledWith(fileToBeTrashed);
       expect(fs.existsSync(fileToBeTrashed)).toBe(false);
     });
@@ -1398,7 +1441,7 @@ describe("AtomEnvironment", () => {
       let outcome;
 
       try {
-        await atom.trashItem(nonexistentFile);
+        await atom.shell.trashItem(nonexistentFile);
         outcome = "success";
       } catch {
         outcome = "failure";

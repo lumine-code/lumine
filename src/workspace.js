@@ -1514,7 +1514,7 @@ module.exports = class Workspace extends Model {
     const limit = this.config.get("core.maxTextEditors");
     if (!limit || options.bypassTextEditorLimit) return false;
     if (!(item instanceof TextEditor)) return false;
-    if (globalThis.atom?.inSpecMode?.()) return false;
+    if (globalThis.atom?.window?.isSpecMode?.()) return false;
     // A preview replaces the pending item rather than adding another.
     if (options.pending && pane?.getPendingItem()) return false;
     return this.getTextEditors().length >= limit;

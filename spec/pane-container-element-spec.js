@@ -4,7 +4,7 @@ const PaneAxis = require("../src/pane-axis");
 const params = {
   location: "center",
   config: atom.config,
-  confirm: atom.confirm.bind(atom),
+  confirm: atom.window.confirm.bind(atom.window),
   viewRegistry: atom.views,
   applicationDelegate: atom.applicationDelegate,
 };

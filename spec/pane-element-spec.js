@@ -9,7 +9,7 @@ describe("PaneElement", function () {
     container = new PaneContainer({
       location: "center",
       config: atom.config,
-      confirm: atom.confirm.bind(atom),
+      confirm: atom.window.confirm.bind(atom.window),
       viewRegistry: atom.views,
       applicationDelegate: atom.applicationDelegate,
     });

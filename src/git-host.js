@@ -105,7 +105,7 @@ class GitHost {
   shouldFork() {
     if (forkModeOverride !== null) return forkModeOverride;
     // Run in-process under the spec harness; fork in a real window.
-    return !globalThis.atom?.inSpecMode?.();
+    return !globalThis.atom?.window?.isSpecMode?.();
   }
 
   // Whether to trust repositories owned by another user account

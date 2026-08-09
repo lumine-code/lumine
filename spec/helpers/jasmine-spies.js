@@ -6,8 +6,9 @@ const TextEditor = require("../../src/text-editor");
 const TextMateLanguageMode = require("../../src/text-mate-language-mode");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
 const { clipboard } = require("electron");
+const getWindowLoadSettings = require("../../src/get-window-load-settings");
 
-const { testPaths } = atom.getLoadSettings();
+const { testPaths } = getWindowLoadSettings();
 let specPackagePath = FindParentDir.sync(testPaths[0], "package.json");
 
 let specPackageName;

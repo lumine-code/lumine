@@ -2521,7 +2521,7 @@ module.exports = class TextEditor {
   // the editor is read-only, require an explicit opt-in option to proceed (`bypassReadOnly`) or throw an Error.
   ensureWritable(methodName, opts) {
     if (!opts.bypassReadOnly && this.isReadOnly()) {
-      if (atom.inDevMode() || atom.inSpecMode()) {
+      if (atom.window.isDevMode() || atom.window.isSpecMode()) {
         const e = new Error("Attempt to mutate a read-only TextEditor");
         e.detail =
           `Your package is attempting to call ${methodName} on an editor that has been marked read-only. ` +

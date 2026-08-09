@@ -23,7 +23,7 @@ function getAppName() {
   const { app } = require("electron");
 
   if (process.type === "renderer") {
-    return atom.getAppName();
+    return atom.app.getName();
   }
 
   const releaseChannel = getReleaseChannel(app.getVersion());

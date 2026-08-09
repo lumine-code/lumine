@@ -15,7 +15,7 @@ function setActiveThemes(names) {
 describe("atom.themes", () => {
   beforeEach(() => {
     jasmine.useRealClock();
-    spyOn(atom, "inSpecMode").and.returnValue(false);
+    spyOn(atom.window, "isSpecMode").and.returnValue(false);
     spyOn(console, "warn");
   });
 

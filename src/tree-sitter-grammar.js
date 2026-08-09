@@ -95,7 +95,7 @@ module.exports = class TreeSitterGrammar {
 
     this.commentMetadata = params.comments;
 
-    this.shouldObserveQueryFiles = atom.inDevMode() && !atom.inSpecMode();
+    this.shouldObserveQueryFiles = atom.window.isDevMode() && !atom.window.isSpecMode();
     this.getLanguage();
 
     for (const injectionPoint of params.injectionPoints ?? []) {
@@ -432,7 +432,7 @@ module.exports = class TreeSitterGrammar {
     let descriptor = error.queryDescriptor ?? this.describeQueryError(error, queryType);
     let formatted = TreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
     console.error(formatted, error);
-    if (atom.inDevMode() && !atom.inSpecMode()) {
+    if (atom.window.isDevMode() && !atom.window.isSpecMode()) {
       atom.notifications.addError(`Tree-sitter query error in ${this.scopeName}`, {
         detail: formatted,
         dismissable: true,
@@ -453,7 +453,7 @@ module.exports = class TreeSitterGrammar {
     // `getQuery` from multiple buffers will not cause multiple calls to
     // `language.query`, since it's a major bottleneck. Instead they all
     // receive the same unsettled promise.
-    // let inDevMode = atom.inDevMode();
+    // let inDevMode = atom.window.isDevMode();
     let query = this.queryCache.get(queryType);
     if (query) {
       return Promise.resolve(query);
@@ -545,7 +545,7 @@ module.exports = class TreeSitterGrammar {
           try {
             await this.getQuery(queryType);
           } catch (error) {
-            atom.beep();
+            atom.notifications.beep();
             this.reportQueryError(error, queryType);
             this[queryType] = existingQuery;
             this.queryCache.delete(queryType);

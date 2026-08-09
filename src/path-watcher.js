@@ -791,7 +791,7 @@ class PathWatcher {
     );
 
     this.subs.add(
-      atom.onWillDestroy(() => {
+      atom.window.onWillDestroy(() => {
         this.isDestroying = true;
         // TODO: Be proactive about stopping file watchers? Or just set the
         // flag so that they aren't recreated during teardown?

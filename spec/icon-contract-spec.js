@@ -103,7 +103,7 @@ describe("icon geometry contract", () => {
   describe("with a bundled UI theme active", () => {
     beforeEach(async () => {
       jasmine.useRealClock();
-      spyOn(atom, "inSpecMode").and.returnValue(false);
+      spyOn(atom.window, "isSpecMode").and.returnValue(false);
       atom.packages.loadPackage("one-theme");
       atom.themes.systemThemeQuery = { matches: true, addEventListener() {} };
       atom.config.set("theme.light", ["one-night-ui", "one-night-syntax"]);

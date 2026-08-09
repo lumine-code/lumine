@@ -792,7 +792,7 @@ describe("GitRepository", () => {
       project2 = new Project({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
         applicationDelegate: atom.applicationDelegate,
         repositoryRegistry: repositoryRegistry2,

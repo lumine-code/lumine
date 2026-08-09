@@ -6,7 +6,6 @@ const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const { mapSourcePosition } = require("source-map-support");
-const semver = require("semver");
 const WindowEventHandler = require("./window-event-handler");
 const StateStore = require("./state-store");
 const registerDefaultCommands = require("./register-default-commands");
@@ -40,6 +39,8 @@ const { promptForGitCredential } = require("./git-credential-dialog");
 const SecretStore = require("./secret-store");
 const WindowService = require("./window-service");
 const AppService = require("./app-service");
+const ShellService = require("./shell-service");
+const RuntimeService = require("./runtime-service");
 const Workspace = require("./workspace");
 const PaneContainer = require("./pane-container");
 const PaneAxis = require("./pane-axis");
@@ -50,7 +51,6 @@ const TextBuffer = require("./text-buffer");
 const TextEditorRegistry = require("./text-editor-registry");
 const PasteProviderRegistry = require("./paste-provider-registry");
 const StartupTime = require("./startup-time");
-const { getReleaseChannel } = require("./get-app-details.js");
 const Tools = require("./tools");
 const IconRegistry = require("./icon-registry");
 const packagejson = require("../package.json");
@@ -81,6 +81,10 @@ class AtomEnvironment {
   #gitAuthBroker;
   #windowEventHandler;
 
+  #getLoadSettings() {
+    return this.applicationDelegate.getWindowLoadSettings();
+  }
+
   constructor(params = {}) {
     this.id = params.id != null ? params.id : nextId++;
 
@@ -90,15 +94,19 @@ class AtomEnvironment {
     this.enablePersistence = params.enablePersistence;
     this.applicationDelegate = params.applicationDelegate;
     /** @type {WindowService} */
-    this.window = new WindowService(this.applicationDelegate);
+    this.window = new WindowService(this.applicationDelegate, this);
     /** @type {AppService} */
     this.app = new AppService(this.applicationDelegate);
+    /** @type {ShellService} */
+    this.shell = new ShellService(this.applicationDelegate);
+    /** @type {RuntimeService} */
+    this.runtime = new RuntimeService(this);
 
     this.nextProxyRequestId = 0;
     this.unloading = false;
     this.loadTime = null;
     /** @private Reachable only because specs fake `will-destroy` through it;
-     * packages subscribe with `onWillDestroy()` and never touch this. */
+     * packages subscribe with `window.onWillDestroy()` and never touch this. */
     this.emitter = new Emitter();
     /** @private */
     this.disposables = new CompositeDisposable();
@@ -340,7 +348,7 @@ class AtomEnvironment {
     this.configDirPath = params.configDirPath;
 
     const { configFilePath, devMode, safeMode, resourcePath, userSettings, projectSpecification } =
-      this.getLoadSettings();
+      this.#getLoadSettings();
 
     this.stateStore.initialize({
       configDirPath: this.getConfigDirPath(),
@@ -382,7 +390,7 @@ class AtomEnvironment {
       devMode,
     });
 
-    this.#commandInstaller.initialize(this.getVersion());
+    this.#commandInstaller.initialize(this.app.getVersion());
     this.uriHandlers.registerHostHandler("core", CoreURIHandlers.create(this));
 
     this.#protocolHandlerInstaller.initialize(this.config, this.notifications, devMode);
@@ -577,70 +585,6 @@ class AtomEnvironment {
     this.uninstallWindowEventHandler();
   }
 
-  // Extended: Invoke the given callback when the environment is destroying, as
-  // happens during window close or reload.
-  //
-  // * `callback` {Function} to be called when the environment starts destroying
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
-  onWillDestroy(callback) {
-    return this.emitter.on("will-destroy", callback);
-  }
-
-  /**
-   * @memberof AtomEnvironment
-   * @function onDidBeep
-   * @desc Invoke the given callback whenever {@link ::beep} is called.
-   * @listens ::beep
-   * @param {function} callback - Function to be called whenever {@link ::beep} is called.
-   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @category Event Subscription
-   */
-  onDidBeep(callback) {
-    return this.emitter.on("did-beep", callback);
-  }
-
-  // Extended: Invoke the given callback when there is an unhandled error, but
-  // before the devtools pop open
-  //
-  // Both a thrown error and a rejected promise nobody handled arrive here. A
-  // rejection reports no position of its own, so `url`, `line` and `column`
-  // are read back out of its stack, and are undefined when it has none.
-  //
-  // * `callback` {Function} to be called whenever there is an unhandled error
-  //   * `event` {Object}
-  //     * `originalError` {Error} the original error object. Never null: an
-  //       error the browser could not hand over, and a rejection with a
-  //       non-Error value, both arrive as a stand-in carrying no stack.
-  //     * `message` {String} the error message
-  //     * `url` {String} URL to the file where the error originated.
-  //     * `line` {Number}
-  //     * `column` {Number}
-  //     * `preventDefault` {Function} call this to avoid popping up the dev tools.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
-  onWillThrowError(callback) {
-    return this.emitter.on("will-throw-error", callback);
-  }
-
-  // Extended: Invoke the given callback whenever there is an unhandled error,
-  // whether thrown or carried by a rejected promise nobody handled.
-  //
-  // * `callback` {Function} to be called whenever there is an unhandled error
-  //   * `event` {Object}
-  //     * `originalError` {Error} the original error object. Never null: an
-  //       error the browser could not hand over, and a rejection with a
-  //       non-Error value, both arrive as a stand-in carrying no stack.
-  //     * `message` {String} the error message
-  //     * `url` {String} URL to the file where the error originated.
-  //     * `line` {Number}
-  //     * `column` {Number}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
-  onDidThrowError(callback) {
-    return this.emitter.on("did-throw-error", callback);
-  }
-
   // TODO: Make this part of the public API. We should make onDidThrowError
   // match the interface by only yielding an exception object to the handler
   // and deprecating the old behavior.
@@ -648,222 +592,11 @@ class AtomEnvironment {
     return this.emitter.on("did-fail-assertion", callback);
   }
 
-  // Extended: Invoke the given callback as soon as the shell environment is
-  // loaded (or immediately if it was already loaded).
-  //
-  // * `callback` {Function} to be called once the shell environment is loaded.
-  whenShellEnvironmentLoaded(callback) {
-    if (this.shellEnvironmentLoaded) {
-      callback();
-      return new Disposable();
-    } else {
-      return this.emitter.once("loaded-shell-environment", callback);
-    }
-  }
-
-  // Extended: Invoke the given callback as soon as the window has finished
-  // loading (or immediately if it already has).
-  //
-  // A window deserializes its previously opened items, and activates its
-  // packages, before it is finished loading, so a view restored into it sees
-  // {::getWindowLoadTime} return null however late in activation it looks.
-  // Waiting on this is the only way to read that number from a restored view.
-  //
-  // * `callback` {Function} to be called once the window has loaded.
-  //   * `loadTime` The {Number} of milliseconds the window took to load.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
-  whenWindowLoaded(callback) {
-    if (this.loadTime != null) {
-      callback(this.loadTime);
-      return new Disposable();
-    } else {
-      return this.emitter.once("window-loaded", callback);
-    }
-  }
-
-  /*
-  Section: Lumine Details
-  */
-
-  // Public: Returns a {Boolean} that is `true` if the current window is in development mode.
-  inDevMode() {
-    if (this.devMode == null) this.devMode = this.getLoadSettings().devMode;
-    return this.devMode;
-  }
-
-  // Public: Returns a {Boolean} that is `true` if the current window is in safe mode.
-  inSafeMode() {
-    if (this.safeMode == null) this.safeMode = this.getLoadSettings().safeMode;
-    return this.safeMode;
-  }
-
-  // Public: Returns a {Boolean} that is `true` if the current window is running specs.
-  inSpecMode() {
-    if (this.specMode == null) this.specMode = this.getLoadSettings().isSpec;
-    return this.specMode;
-  }
-
-  // Returns a {Boolean} indicating whether this the first time the window's been
-  // loaded.
-  isFirstLoad() {
-    if (this.firstLoad == null) this.firstLoad = this.getLoadSettings().firstLoad;
-    return this.firstLoad;
-  }
-
-  // Public: Get the full name of this Lumine release (e.g. "Lumine", "Lumine Beta")
-  //
-  // Returns the app name {String}.
-  getAppName() {
-    if (this.appName == null) this.appName = this.getLoadSettings().appName;
-    return this.appName;
-  }
-
-  // Public: Get the version of the Lumine application.
-  //
-  // Returns the version text {String}.
-  getVersion() {
-    if (this.appVersion == null) this.appVersion = this.getLoadSettings().appVersion;
-    return this.appVersion;
-  }
-
-  /**
-   * @memberof AtomEnvironment
-   * Compares the current Lumine version against any valid semver range.
-   * @param {string} value - Any valid semver range.
-   * @returns {boolean} True if the current version satisfies the range provided,
-   * false otherwise.
-   * @see {@link https://github.com/npm/node-semver#ranges}
-   */
-  versionSatisfies(value) {
-    // A prerelease build carries the API surface of the version it precedes —
-    // `1.1.0-rc.1` has everything `1.1.0` has — but semver ranges exclude
-    // prereleases, so `^1.1.0` would reject it. Compare against the release the
-    // build is a candidate for, which is what the package install path already
-    // does when it measures a manifest's engines range.
-    const [version] = this.getVersion().split("-");
-    return semver.satisfies(version, value);
-  }
-
-  // Public: Gets the release channel of the Lumine application.
-  //
-  // Returns the release channel as a {String}. Will return a specific release channel
-  // name like 'beta' or 'nightly' if one is found in the Lumine version or 'stable'
-  // otherwise.
-  getReleaseChannel() {
-    return getReleaseChannel(this.getVersion());
-  }
-
-  // Public: Returns a {Boolean} that is `true` if the current version is an official release.
-  //
-  // A release candidate counts: it is tagged, built and published like any
-  // other release, just flagged as a pre-release. Only builds that never went
-  // through that pipeline — `dev` above all — are excluded.
-  isReleasedVersion() {
-    return this.getReleaseChannel().match(/stable|beta|rc|nightly/) != null;
-  }
-
-  // Public: Get the time taken to completely load the current window.
-  //
-  // This time include things like loading and activating packages, creating
-  // DOM elements for the editor, and reading the config.
-  //
-  // Returns the {Number} of milliseconds taken to load the window or null
-  // if the window hasn't finished loading yet.
-  getWindowLoadTime() {
-    return this.loadTime;
-  }
-
   // Record how long the window took to load and notify anything waiting on it.
   // Called once by the window entry point, after the window is set up.
   setWindowLoadTime(loadTime) {
     this.loadTime = loadTime;
     this.emitter.emit("window-loaded", loadTime);
-  }
-
-  // Public: Get all markers containing startup timing information.
-  //
-  // Returns an array of timing markers.
-  // Each timing is an object with two keys:
-  //  * `label`: string
-  //  * `time`:  Time since the `startTime` (in milliseconds).
-  getStartupMarkers() {
-    const data = StartupTime.exportData();
-
-    return data ? data.markers : [];
-  }
-
-  // Public: Get the load settings for the current window.
-  //
-  // Returns an {Object} containing all the load setting key/value pairs.
-  getLoadSettings() {
-    return this.applicationDelegate.getWindowLoadSettings();
-  }
-
-  /*
-  Section: Managing The Lumine Window
-  */
-
-  // Essential: Open a new Lumine window using the given options.
-  //
-  // Calling this method without an options parameter will open a prompt to pick
-  // a file/folder to open in the new window.
-  //
-  // * `params` An {Object} with the following keys:
-  //   * `pathsToOpen`  An {Array} of {String} paths to open.
-  //   * `newWindow` A {Boolean}, true to always open a new window instead of
-  //     reusing existing windows depending on the paths to open.
-  //   * `devMode` A {Boolean}, true to open the window in development mode.
-  //     Development mode loads the Lumine source from the locally cloned
-  //     repository and also loads all the packages in ~/.lumine/packages-dev
-  //   * `safeMode` A {Boolean}, true to open the window in safe mode. Safe
-  //     mode prevents all packages installed to ~/.lumine/packages from loading.
-  open(params) {
-    return this.applicationDelegate.open(params);
-  }
-
-  // Extended: Moves an item to the trash.
-  //
-  // Returns a {Promise} that resolves when the operation has completed or
-  // rejects in the event of failure.
-  trashItem(filePath) {
-    return this.applicationDelegate.trashItem(filePath);
-  }
-
-  // Extended: Reveals the given path in the system's file browser, selecting
-  // it if possible.
-  //
-  // Returns a {Promise} that resolves when the operation has completed or
-  // rejects in the event of failure.
-  showItemInFolder(filePath) {
-    return this.applicationDelegate.showItemInFolder(filePath);
-  }
-
-  // Extended: Opens the given path in the default manner for the operating
-  // system.
-  //
-  // For instance: if you pass the path to a directory, will likely open that
-  // directory in a file browser. If you pass the path to an image file, will
-  // likely open that image file in a web browser or an image editing
-  // application.
-  //
-  // Returns a {Promise} that resolves when the operation has completed or
-  // rejects in the event of failure.
-  openPath(filePath) {
-    return this.applicationDelegate.openPath(filePath);
-  }
-
-  // Extended: Opens the given URL in the default manner for the operating
-  // system.
-  //
-  // For instance: passing an `https:` URI will open it in the default web
-  // browser, and passing a `mailto:` link will open it in the default mail
-  // client.
-  //
-  // Returns a {Promise} that resolves when the operation has completed or
-  // rejects in the event of failure.
-  openExternal(url) {
-    return this.applicationDelegate.openExternalDirect(url);
   }
 
   // Restore the window to its previous dimensions and show it.
@@ -939,7 +672,7 @@ class AtomEnvironment {
   }
 
   async getDefaultWindowDimensions() {
-    const { windowDimensions } = this.getLoadSettings();
+    const { windowDimensions } = this.#getLoadSettings();
     if (windowDimensions) return windowDimensions;
 
     let dimensions;
@@ -977,7 +710,7 @@ class AtomEnvironment {
   }
 
   storeWindowBackground() {
-    if (this.inSpecMode()) return;
+    if (this.window.isSpecMode()) return;
 
     const backgroundColor = this.domWindow.getComputedStyle(this.workspace.getElement())[
       "background-color"
@@ -989,7 +722,7 @@ class AtomEnvironment {
   async startEditorWindow() {
     StartupTime.addMarker("window:environment:start-editor-window:start");
 
-    if (this.getLoadSettings().clearWindowState) {
+    if (this.#getLoadSettings().clearWindowState) {
       await this.stateStore.clear();
     }
 
@@ -999,7 +732,7 @@ class AtomEnvironment {
 
     const loadStatePromise = this.loadState().then(async (state) => {
       this.windowDimensions = state && state.windowDimensions;
-      if (!this.getLoadSettings().headless) {
+      if (!this.window.isHeadless()) {
         StartupTime.addMarker("window:environment:start-editor-window:display-window");
         await this.displayWindow();
       }
@@ -1082,7 +815,7 @@ class AtomEnvironment {
       StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
       await this.packages.activate();
       this.keymaps.loadUserKeymap();
-      if (!this.getLoadSettings().safeMode) this.requireUserInitScript();
+      if (!this.window.isSafeMode()) this.requireUserInitScript();
 
       this.menu.update();
 
@@ -1097,10 +830,10 @@ class AtomEnvironment {
         history: this.history,
         config: this.config,
         open: (paths) =>
-          this.open({
+          this.app.openWindow({
             pathsToOpen: paths,
-            safeMode: this.inSafeMode(),
-            devMode: this.inDevMode(),
+            safeMode: this.window.isSafeMode(),
+            devMode: this.window.isDevMode(),
           }),
       });
       this.reopenProjectMenuManager.update();
@@ -1177,7 +910,7 @@ class AtomEnvironment {
 
   openInitialEmptyEditorIfNecessary() {
     if (!this.config.get("core.openEmptyEditorOnStart")) return;
-    const { hasOpenFiles } = this.getLoadSettings();
+    const { hasOpenFiles } = this.#getLoadSettings();
     if (!hasOpenFiles && this.workspace.getPaneItems().length === 0) {
       return this.workspace.open(null, { pending: true });
     }
@@ -1282,42 +1015,10 @@ class AtomEnvironment {
   }
 
   async updateProcessEnvAndTriggerHooks() {
-    await this.updateProcessEnv(this.getLoadSettings().env);
+    await this.updateProcessEnv(this.#getLoadSettings().env);
     this.shellEnvironmentLoaded = true;
     this.emitter.emit("loaded-shell-environment");
     this.packages.triggerActivationHook("core:loaded-shell-environment");
-  }
-
-  /**
-   * Visually trigger a beep.
-   * @fires beep
-   * @category Messaging the User
-   */
-  beep() {
-    this.emitter.emit("did-beep");
-  }
-
-  // Essential: Show a non-blocking confirmation dialog.
-  //
-  // Accepts serializable Electron `MessageBoxOptions`. `buttons` must be an
-  // array of strings; use `detail` for the secondary message.
-  //
-  // If the dialog is closed (via `Esc` key or `X` in the top corner) without selecting a button
-  // the first button will be clicked unless a "Cancel" or "No" button is provided.
-  //
-  // ## Examples
-  //
-  // ```js
-  // const response = await atom.confirm({
-  //   message: 'How you feeling?',
-  //   detail: 'Be honest.',
-  //   buttons: ['Good', 'Bad']
-  // })
-  // ```
-  //
-  // Returns a {Promise} resolving to the selected button index.
-  confirm(options) {
-    return this.applicationDelegate.confirm(options);
   }
 
   /*
@@ -1344,7 +1045,7 @@ class AtomEnvironment {
     // at the keyboard, not about what the version string says — keying it on
     // the release channel meant a dev build silently swallowed assertions the
     // moment master stopped carrying a prerelease suffix.
-    if (this.inDevMode() || this.inSpecMode()) throw error;
+    if (this.window.isDevMode() || this.window.isSpecMode()) throw error;
 
     return false;
   }
@@ -1399,7 +1100,7 @@ class AtomEnvironment {
       return Promise.all(filesToOpen.map((file) => this.workspace.open(file)));
     } else {
       const nouns = projectPaths.length === 1 ? "folder" : "folders";
-      const response = await this.confirm({
+      const response = await this.window.confirm({
         message: "Previous automatically-saved project state detected",
         detail:
           `There is previously saved state for the selected ${nouns}. ` +
@@ -1409,11 +1110,11 @@ class AtomEnvironment {
       });
 
       if (response === 0) {
-        this.open({
+        this.app.openWindow({
           pathsToOpen: projectPaths.concat(filesToOpen),
           newWindow: true,
-          devMode: this.inDevMode(),
-          safeMode: this.inSafeMode(),
+          devMode: this.window.isDevMode(),
+          safeMode: this.window.isSafeMode(),
         });
         return null;
       }
@@ -1499,7 +1200,7 @@ class AtomEnvironment {
 
   loadState(stateKey) {
     if (this.enablePersistence) {
-      if (!stateKey) stateKey = this.getStateKey(this.getLoadSettings().initialProjectRoots);
+      if (!stateKey) stateKey = this.getStateKey(this.#getLoadSettings().initialProjectRoots);
       if (stateKey) {
         return this.stateStore.load(stateKey);
       } else {

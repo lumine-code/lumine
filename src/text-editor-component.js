@@ -3200,7 +3200,7 @@ module.exports = class TextEditorComponent {
       // reached, poisoning horizontalPositionsToMeasure permanently and
       // causing an infinite error loop on every subsequent animation frame.
       if (!screenLine || !this.lineComponentsByScreenLineId.get(screenLine.id)) {
-        if (atom.inDevMode()) {
+        if (atom.window.isDevMode()) {
           console.warn("measureHorizontalPositions: skipped non-rendered row", row);
         }
         return;

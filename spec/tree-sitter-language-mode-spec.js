@@ -706,7 +706,7 @@ describe("TreeSitterLanguageMode", () => {
       beforeEach(() => {
         jasmine.useRealClock();
         ScopeResolver._clearPredicateWarnings();
-        spyOn(atom, "inDevMode").and.returnValue(true);
+        spyOn(atom.window, "isDevMode").and.returnValue(true);
         spyOn(console, "warn");
         grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
       });

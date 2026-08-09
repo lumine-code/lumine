@@ -7,12 +7,6 @@ describe("WindowEventHandler", () => {
   beforeEach(() => {
     atom.uninstallWindowEventHandler();
     spyOn(atom.window, "hide");
-    const initialPath = atom.project.getPaths()[0];
-    spyOn(atom, "getLoadSettings").and.callFake(() => {
-      const loadSettings = atom.getLoadSettings.originalValue.call(atom);
-      loadSettings.initialPath = initialPath;
-      return loadSettings;
-    });
     atom.project.destroy();
     // Initialization must reconcile stale visual state with the document's
     // current focus rather than waiting for another focus event.

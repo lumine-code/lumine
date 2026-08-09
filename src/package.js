@@ -1235,7 +1235,7 @@ module.exports = class Package {
   }
 
   handleError(message, error) {
-    if (atom.inSpecMode()) throw error;
+    if (atom.window.isSpecMode()) throw error;
 
     let detail, location, stack;
     if (error.filename && error.location && error instanceof SyntaxError) {

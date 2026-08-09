@@ -57,7 +57,7 @@ describe("Workspace", () => {
     atom.project = new Project({
       notificationManager: atom.notifications,
       packageManager: atom.packages,
-      confirm: atom.confirm.bind(atom),
+      confirm: atom.window.confirm.bind(atom.window),
       applicationDelegate: atom.applicationDelegate,
       grammarRegistry: atom.grammars,
       repositoryRegistry: atom.repositories,
@@ -782,7 +782,7 @@ describe("Workspace", () => {
       beforeEach(() => {
         // The limit stands down in spec mode, since suites open far more files
         // than any sane limit; these specs are the ones that want it.
-        spyOn(atom, "inSpecMode").and.returnValue(false);
+        spyOn(atom.window, "isSpecMode").and.returnValue(false);
       });
 
       it("refuses the open, resolving with nothing", async () => {

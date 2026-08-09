@@ -1,17 +1,73 @@
 const getWindowLoadSettings = require("./get-window-load-settings");
+const StartupTime = require("./startup-time");
 
 // Public: Operations on the Lumine window hosting the current renderer.
 //
 // BrowserWindow objects never cross the process boundary. State is returned as
 // plain objects and every operation which reaches the main process is async.
 class WindowService {
-  constructor(applicationDelegate) {
+  constructor(applicationDelegate, atomEnvironment) {
     this.applicationDelegate = applicationDelegate;
+    this.atomEnvironment = atomEnvironment;
   }
 
   // Public: Return the stable numeric id of the current Lumine window.
   getId() {
     return getWindowLoadSettings().windowId;
+  }
+
+  // Extended: Subscribe before the current editor window is destroyed.
+  //
+  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  onWillDestroy(callback) {
+    return this.atomEnvironment.emitter.on("will-destroy", callback);
+  }
+
+  // Extended: Wait until the current editor window has finished loading.
+  //
+  // Returns a {Promise} resolving to the load time in milliseconds.
+  whenLoaded() {
+    if (this.atomEnvironment.loadTime != null) {
+      return Promise.resolve(this.atomEnvironment.loadTime);
+    }
+    return new Promise((resolve) => this.atomEnvironment.emitter.once("window-loaded", resolve));
+  }
+
+  // Public: Determine whether the current window is in development mode.
+  isDevMode() {
+    return Boolean(getWindowLoadSettings().devMode);
+  }
+
+  // Public: Determine whether the current window is in safe mode.
+  isSafeMode() {
+    return Boolean(getWindowLoadSettings().safeMode);
+  }
+
+  // Public: Determine whether the current window is running specs.
+  isSpecMode() {
+    return Boolean(getWindowLoadSettings().isSpec);
+  }
+
+  // Extended: Determine whether the current window is running headlessly.
+  isHeadless() {
+    return Boolean(getWindowLoadSettings().headless);
+  }
+
+  // Extended: Return the paths supplied when the current window was opened.
+  getInitialPaths() {
+    return [...(getWindowLoadSettings().initialPaths || [])];
+  }
+
+  // Public: Return the completed load time for the current window.
+  //
+  // Returns a {Number} in milliseconds, or `null` before loading completes.
+  getLoadTime() {
+    return this.atomEnvironment.loadTime;
+  }
+
+  // Public: Return startup timing markers for the current window.
+  getStartupMarkers() {
+    return StartupTime.exportData()?.markers || [];
   }
 
   // Public: Return a snapshot of the current window state.
@@ -170,6 +226,14 @@ class WindowService {
   // Returns a {Promise} resolving to Electron's serializable save-dialog result.
   showSaveDialog(options = {}) {
     return this.applicationDelegate.invokeWindow("showSaveDialog", options);
+  }
+
+  // Essential: Show a non-blocking confirmation dialog owned by the current
+  // window.
+  //
+  // Returns a {Promise} resolving to the selected button index.
+  confirm(options) {
+    return this.applicationDelegate.confirm(options);
   }
 
   // Public: Start a download in the current window.

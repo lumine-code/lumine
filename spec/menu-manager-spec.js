@@ -10,7 +10,7 @@ describe("MenuManager", function () {
       packageManager: atom.packages,
     });
     spyOn(menu, "sendToBrowserProcess"); // Do not modify Atom's actual menus
-    menu.initialize({ resourcePath: atom.getLoadSettings().resourcePath });
+    menu.initialize({ resourcePath: atom.app.getResourcePath() });
   });
 
   describe("::add(items)", function () {

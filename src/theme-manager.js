@@ -650,7 +650,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       !this.initialLoadComplete ||
       document.hidden ||
       typeof document.startViewTransition !== "function" ||
-      (typeof atom !== "undefined" && atom.inSpecMode())
+      (typeof atom !== "undefined" && atom.window.isSpecMode())
     ) {
       apply();
       return;

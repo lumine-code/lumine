@@ -66,7 +66,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
       const state = atom.project.serialize();
@@ -86,7 +86,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
       atom.project.setPaths([childPath]);
@@ -110,7 +110,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
@@ -126,7 +126,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
@@ -147,7 +147,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
@@ -169,7 +169,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
@@ -189,7 +189,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
@@ -209,7 +209,7 @@ describe("Project", () => {
       deserializedProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
@@ -231,7 +231,7 @@ describe("Project", () => {
       notQuittingProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
@@ -244,7 +244,7 @@ describe("Project", () => {
       quittingProject = buildProject({
         notificationManager: atom.notifications,
         packageManager: atom.packages,
-        confirm: atom.confirm,
+        confirm: atom.window.confirm,
         grammarRegistry: atom.grammars,
       });
 
