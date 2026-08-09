@@ -15,23 +15,23 @@ const schemaEnforcers = {};
 
 // Essential: Used to access all of Lumine's configuration details.
 //
-// An instance of this class is always available as the `atom.config` global.
+// An instance of this class is always available as the `lumine.config` global.
 //
 // ## Getting and setting config settings.
 //
 // ```js
 // // Note that with no value set, ::get returns the setting's default value.
-// atom.config.get('my-package.myKey') // -> 'defaultValue'
+// lumine.config.get('my-package.myKey') // -> 'defaultValue'
 //
-// atom.config.set('my-package.myKey', 'value')
-// atom.config.get('my-package.myKey') // -> 'value'
+// lumine.config.set('my-package.myKey', 'value')
+// lumine.config.get('my-package.myKey') // -> 'value'
 // ```
 //
 // You may want to watch for changes. Use {::observe} to catch changes to the setting.
 //
 // ```js
-// atom.config.set('my-package.myKey', 'value')
-// atom.config.observe('my-package.myKey', (newValue) => {
+// lumine.config.set('my-package.myKey', 'value')
+// lumine.config.observe('my-package.myKey', (newValue) => {
 //   // `observe` calls immediately and every time the value is changed
 //   console.log('My configuration changed:', newValue)
 // })
@@ -40,7 +40,7 @@ const schemaEnforcers = {};
 // If you want a notification only when the value changes, use {::onDidChange}.
 //
 // ```js
-// atom.config.onDidChange('my-package.myKey', ({ newValue, oldValue }) => {
+// lumine.config.onDidChange('my-package.myKey', ({ newValue, oldValue }) => {
 //   console.log('My configuration changed:', newValue, oldValue)
 // })
 // ```
@@ -53,15 +53,15 @@ const schemaEnforcers = {};
 //
 // ```js
 // // When no value has been set, `::get` returns the setting's default value
-// atom.config.get('my-package.anInt') // -> 12
+// lumine.config.get('my-package.anInt') // -> 12
 //
 // // The string will be coerced to the integer 123
-// atom.config.set('my-package.anInt', '123')
-// atom.config.get('my-package.anInt') // -> 123
+// lumine.config.set('my-package.anInt', '123')
+// lumine.config.get('my-package.anInt') // -> 123
 //
 // // The string will be coerced to an integer, but it must be greater than 0, so is set to 1
-// atom.config.set('my-package.anInt', '-20')
-// atom.config.get('my-package.anInt') // -> 1
+// lumine.config.set('my-package.anInt', '-20')
+// lumine.config.get('my-package.anInt') // -> 1
 // ```
 //
 // ## Defining settings for your package
@@ -118,16 +118,16 @@ const schemaEnforcers = {};
 // set to a string `'10'`, it will be coerced into an integer.
 //
 // ```js
-// atom.config.set('my-package.thingVolume', '10')
-// atom.config.get('my-package.thingVolume') // -> 10
+// lumine.config.set('my-package.thingVolume', '10')
+// lumine.config.get('my-package.thingVolume') // -> 10
 //
 // // It respects the min / max
-// atom.config.set('my-package.thingVolume', '400')
-// atom.config.get('my-package.thingVolume') // -> 11
+// lumine.config.set('my-package.thingVolume', '400')
+// lumine.config.get('my-package.thingVolume') // -> 11
 //
 // // If it cannot be coerced, the value will not be set
-// atom.config.set('my-package.thingVolume', 'cats')
-// atom.config.get('my-package.thingVolume') // -> 11
+// lumine.config.set('my-package.thingVolume', 'cats')
+// lumine.config.get('my-package.thingVolume') // -> 11
 // ```
 //
 // ### Supported Types
@@ -145,11 +145,11 @@ const schemaEnforcers = {};
 // ```
 //
 // ```js
-// atom.config.set('my-package.someSetting', 'true')
-// atom.config.get('my-package.someSetting') // -> true
+// lumine.config.set('my-package.someSetting', 'true')
+// lumine.config.get('my-package.someSetting') // -> true
 //
-// atom.config.set('my-package.someSetting', '12')
-// atom.config.get('my-package.someSetting') // -> 12
+// lumine.config.set('my-package.someSetting', '12')
+// lumine.config.get('my-package.someSetting') // -> 12
 // ```
 //
 // #### string
@@ -333,16 +333,16 @@ const schemaEnforcers = {};
 // Usage:
 //
 // ```js
-// atom.config.set('my-package.someSetting', '2')
-// atom.config.get('my-package.someSetting') // -> 2
+// lumine.config.set('my-package.someSetting', '2')
+// lumine.config.get('my-package.someSetting') // -> 2
 //
 // // a value outside the enum is rejected, and the setting keeps what it had
-// atom.config.set('my-package.someSetting', '3')
-// atom.config.get('my-package.someSetting') // -> 2
+// lumine.config.set('my-package.someSetting', '3')
+// lumine.config.get('my-package.someSetting') // -> 2
 //
 // // a value inside it is coerced to the declared type and set
-// atom.config.set('my-package.someSetting', '4')
-// atom.config.get('my-package.someSetting') // -> 4
+// lumine.config.set('my-package.someSetting', '4')
+// lumine.config.get('my-package.someSetting') // -> 4
 // ```
 //
 // #### title and description
@@ -410,8 +410,8 @@ const schemaEnforcers = {};
 // You can still do the following
 //
 // ```js
-// const otherSetting = atom.config.get('some-package.otherSetting')
-// atom.config.set('some-package.stillAnotherSetting', otherSetting * 5)
+// const otherSetting = lumine.config.get('some-package.otherSetting')
+// lumine.config.set('some-package.stillAnotherSetting', otherSetting * 5)
 // ```
 //
 // In other words, if a function asks for a `key-path`, that path doesn't have to
@@ -467,7 +467,7 @@ class Config {
     return value;
   }
 
-  // Created during initialization, available as `atom.config`
+  // Created during initialization, available as `lumine.config`
   constructor(params = {}) {
     this.clear();
     this.initialize(params);
@@ -515,7 +515,7 @@ class Config {
   // `theme.mode` for changes
   //
   // ```js
-  // atom.config.observe('theme.mode', (value) => {
+  // lumine.config.observe('theme.mode', (value) => {
   //   // do stuff with value
   // })
   // ```
@@ -541,7 +541,7 @@ class Config {
       scopeDescriptor = options.scope;
     } else {
       console.error(
-        "An unsupported form of Config::observe is being used. See https://atom.io/docs/api/latest/Config for details",
+        "An unsupported form of Config::observe is being used. See https://lumine-code.github.io/api/#class-config for details",
       );
       return;
     }
@@ -601,7 +601,7 @@ class Config {
   // You might want to know what theme mode is enabled, so check `theme.mode`
   //
   // ```js
-  // atom.config.get('theme.mode')
+  // lumine.config.get('theme.mode')
   // ```
   //
   // With scope descriptors you can get settings within a specific editor
@@ -609,14 +609,14 @@ class Config {
   // files.
   //
   // ```js
-  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
   // ```
   //
   // This setting in ruby files might be different than the global tabLength setting
   //
   // ```js
-  // atom.config.get('language.tabLength') // => 4
-  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+  // lumine.config.get('language.tabLength') // => 4
+  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
   // ```
   //
   // You can get the language scope descriptor via
@@ -624,14 +624,14 @@ class Config {
   // for the editor's language.
   //
   // ```js
-  // atom.config.get('language.tabLength', { scope: editor.getRootScopeDescriptor() }) // => 2
+  // lumine.config.get('language.tabLength', { scope: editor.getRootScopeDescriptor() }) // => 2
   // ```
   //
   // Additionally, you can get the setting at the specific cursor position.
   //
   // ```js
   // const scopeDescriptor = editor.getLastCursor().getScopeDescriptor()
-  // atom.config.get('language.tabLength', { scope: scopeDescriptor }) // => 2
+  // lumine.config.get('language.tabLength', { scope: scopeDescriptor }) // => 2
   // ```
   //
   // * `keyPath` The {String} name of the key to retrieve.
@@ -720,24 +720,24 @@ class Config {
   // You might want to change the themes programmatically:
   //
   // ```js
-  // atom.config.set('theme.dark', ['one-night-ui', 'one-night-syntax'])
+  // lumine.config.set('theme.dark', ['one-night-ui', 'one-night-syntax'])
   // ```
   //
   // You can also set scoped settings. For example, you might want change the
   // `language.tabLength` only for ruby files.
   //
   // ```js
-  // atom.config.get('language.tabLength') // => 4
-  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 4
-  // atom.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
+  // lumine.config.get('language.tabLength') // => 4
+  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 4
+  // lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
   //
   // // Set ruby to 2
-  // atom.config.set('language.tabLength', 2, { scopeSelector: '.source.ruby' }) // => true
+  // lumine.config.set('language.tabLength', 2, { scopeSelector: '.source.ruby' }) // => true
   //
   // // Notice it's only set to 2 in the case of ruby
-  // atom.config.get('language.tabLength') // => 4
-  // atom.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
-  // atom.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
+  // lumine.config.get('language.tabLength') // => 4
+  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+  // lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
   // ```
   //
   // * `keyPath` The {String} name of the key.

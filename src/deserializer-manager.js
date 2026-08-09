@@ -2,7 +2,7 @@ const { Disposable } = require("@lumine-code/event-kit");
 
 // Extended: Manages the deserializers used for serialized state
 //
-// An instance of this class is always available as the `atom.deserializers`
+// An instance of this class is always available as the `lumine.deserializers`
 // global.
 //
 // ## Examples
@@ -22,15 +22,15 @@ const { Disposable } = require("@lumine-code/event-kit");
 //   }
 // }
 //
-// atom.deserializers.add(MyPackageView)
+// lumine.deserializers.add(MyPackageView)
 // ```
 //
 // Serialized state has to carry the `deserializer` key: it is the name
 // {::deserialize} looks the class up by, and state without it is dropped with a
 // warning rather than restored.
 module.exports = class DeserializerManager {
-  constructor(atomEnvironment) {
-    this.atomEnvironment = atomEnvironment;
+  constructor(lumineEnvironment) {
+    this.lumineEnvironment = lumineEnvironment;
     this.deserializers = {};
   }
 
@@ -41,8 +41,8 @@ module.exports = class DeserializerManager {
   //   common approach is to register a *constructor* as the deserializer for its
   //   instances by adding a `.deserialize()` class method. When your method is
   //   called, it will be passed serialized state as the first argument and the
-  //   {AtomEnvironment} object as the second argument, which is useful if you
-  //   wish to avoid referencing the `atom` global.
+  //   {LumineEnvironment} object as the second argument, which is useful if you
+  //   wish to avoid referencing the `lumine` global.
   add(...deserializers) {
     for (let i = 0; i < deserializers.length; i++) {
       let deserializer = deserializers[i];
@@ -76,7 +76,7 @@ module.exports = class DeserializerManager {
       if (deserializer.version != null && deserializer.version !== stateVersion) {
         return;
       }
-      return deserializer.deserialize(state, this.atomEnvironment);
+      return deserializer.deserialize(state, this.lumineEnvironment);
     } else {
       return console.warn("No deserializer found for", state);
     }

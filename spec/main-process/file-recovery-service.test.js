@@ -12,7 +12,7 @@ describe("FileRecoveryService", function () {
   let recoveryService, recoveryDirectory, spies;
 
   beforeEach(() => {
-    recoveryDirectory = temp.mkdirSync("atom-spec-file-recovery");
+    recoveryDirectory = temp.mkdirSync("lumine-spec-file-recovery");
     recoveryService = new FileRecoveryService(recoveryDirectory);
     spies = sinon.createSandbox();
   });

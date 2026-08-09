@@ -1,11 +1,11 @@
 /* Editor panels */
 
-atom-panel-container.left,
-atom-panel-container.right {
+lumine-panel-container.left,
+lumine-panel-container.right {
   display: flex;
 }
 
-atom-panel-container.left {
+lumine-panel-container.left {
   /* Align panels to the right of the panel container. The effect of this is
      that the left dock's toggle button will appear on the right side of the
      empty space when the panel container has a min width in the theme. */
@@ -13,18 +13,18 @@ atom-panel-container.left {
 }
 
 .tool-panel, /* deprecated: .tool-panel */
-atom-panel {
+lumine-panel {
   display: block;
   position: relative;
 }
 
-atom-panel-container > atom-panel.left,
-atom-panel-container > atom-panel.right {
+lumine-panel-container > lumine-panel.left,
+lumine-panel-container > lumine-panel.right {
   display: flex;
 }
 
 /* Some packages use `height: 100%` which doesn't play nice with flexbox */
-atom-panel-container > atom-panel.left > *,
-atom-panel-container > atom-panel.right > * {
+lumine-panel-container > lumine-panel.left > *,
+lumine-panel-container > lumine-panel.right > * {
   height: initial;
 }

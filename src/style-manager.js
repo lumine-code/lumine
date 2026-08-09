@@ -3,10 +3,10 @@ const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { createStylesElement } = require("./styles-element");
 
-// Extended: A singleton instance of this class available via `atom.styles`,
+// Extended: A singleton instance of this class available via `lumine.styles`,
 // which you can use to globally query and observe the set of active style
 // sheets. The `StyleManager` doesn't add any style elements to the DOM on its
-// own, but is instead subscribed to by individual `<atom-styles>` elements,
+// own, but is instead subscribed to by individual `<lumine-styles>` elements,
 // which clone and attach style elements in different contexts.
 module.exports = class StyleManager {
   constructor() {

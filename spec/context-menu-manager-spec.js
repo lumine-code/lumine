@@ -4,11 +4,11 @@ describe("ContextMenuManager", function () {
   let [contextMenu, applicationDelegate, parent, child, grandchild] = [];
 
   beforeEach(function () {
-    const resourcePath = atom.app.getResourcePath();
+    const resourcePath = lumine.app.getResourcePath();
     applicationDelegate = {
       showContextMenu: jasmine.createSpy("showContextMenu").and.returnValue(Promise.resolve()),
     };
-    contextMenu = new ContextMenuManager({ keymapManager: atom.keymaps, applicationDelegate });
+    contextMenu = new ContextMenuManager({ keymapManager: lumine.keymaps, applicationDelegate });
     contextMenu.initialize({ resourcePath });
 
     parent = document.createElement("div");
@@ -317,7 +317,7 @@ describe("ContextMenuManager", function () {
     let [keymaps, item] = [];
 
     beforeEach(function () {
-      keymaps = atom.keymaps.add("source", {
+      keymaps = lumine.keymaps.add("source", {
         ".child": {
           "ctrl-a": "test:my-command",
           "shift-b": "test:my-other-command",
@@ -421,7 +421,7 @@ describe("ContextMenuManager", function () {
     });
 
     it("does not add accelerators for multi-keystroke key bindings", function () {
-      atom.keymaps.add("source", {
+      lumine.keymaps.add("source", {
         ".child": {
           "ctrl-a ctrl-b": "test:multi-keystroke-command",
         },

@@ -5,7 +5,7 @@ module.exports = {
   activate() {
     this.activateCallCount++;
 
-    atom.commands.add("atom-workspace", "activation-command", () => {
+    lumine.commands.add("lumine-workspace", "activation-command", () => {
       this.activationCommandCallCount++;
     });
   },

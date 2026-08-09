@@ -381,7 +381,7 @@ function assetList(art) {
 }
 
 // The two runtime assets a run-mode variant needs: the app icon (the window
-// and dock icon src/atom-window.js swaps between at launch) and the square
+// and dock icon src/lumine-window.js swaps between at launch) and the square
 // badge (for any context that wants a square rather than a circle). Everything
 // else in assetList() is packaging-time art that exists once, gold, regardless
 // of which mode the running app happens to be in — a release is one build, not

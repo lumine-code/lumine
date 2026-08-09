@@ -442,7 +442,7 @@ module.exports = class Selection {
   // the editor is read-only, require an explicit opt-in option to proceed (`bypassReadOnly`) or throw an Error.
   ensureWritable(methodName, opts) {
     if (!opts.bypassReadOnly && this.editor.isReadOnly()) {
-      if (atom.window.isDevMode() || atom.window.isSpecMode()) {
+      if (lumine.window.isDevMode() || lumine.window.isSpecMode()) {
         const e = new Error("Attempt to mutate a read-only TextEditor through a Selection");
         e.detail =
           `Your package is attempting to call ${methodName} on a selection within an editor that has been marked ` +

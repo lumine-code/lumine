@@ -30,7 +30,7 @@ function restartError() {
 // "Uncaught (in promise)" on the way out. Requests are abandoned instead, the
 // same way Task and WatcherTask silently do nothing once this flag is set.
 function isUnloading() {
-  return Boolean(globalThis.window?.atom?.unloading);
+  return Boolean(globalThis.window?.lumine?.unloading);
 }
 
 // A request that can no longer be answered because the window is going away.
@@ -105,21 +105,21 @@ class GitHost {
   shouldFork() {
     if (forkModeOverride !== null) return forkModeOverride;
     // Run in-process under the spec harness; fork in a real window.
-    return !globalThis.atom?.window?.isSpecMode?.();
+    return !globalThis.lumine?.window?.isSpecMode?.();
   }
 
   // Whether to trust repositories owned by another user account
   // (`git.trustAllRepositories`, default true). Passed to the worker via
   // its fork environment and used directly by the in-process runner.
   trustAllRepositories() {
-    const value = globalThis.atom?.config?.get?.("git.trustAllRepositories");
+    const value = globalThis.lumine?.config?.get?.("git.trustAllRepositories");
     return value !== false;
   }
 
   // The configured git binary path (`git.path`), passed to the worker so
   // its runner resolves the same git the renderer would.
   gitPath() {
-    return globalThis.atom?.config?.get?.("git.path") || "";
+    return globalThis.lumine?.config?.get?.("git.path") || "";
   }
 
   childEnv() {

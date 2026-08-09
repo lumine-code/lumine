@@ -92,10 +92,10 @@ type Target = {
 | `async`                 | Declare `true` if answers resolve later. **Meaningless without `onDidChange`** — core warns and later answers never reach the screen. |
 | `onDidChange(callback)` | Invoke the callback when previous answers have changed. Pass a `Scope` to drop only part of the cache; pass nothing to drop it all.   |
 
-Build the return value with the `Icon` factories rather than by hand — `require("atom")` exports them:
+Build the return value with the `Icon` factories rather than by hand — `require("lumine")` exports them:
 
 ```js
-const { Icon } = require("atom");
+const { Icon } = require("lumine");
 ```
 
 `Icon.classes(names)`, `Icon.image(url)`, `Icon.svg(markup)`, `Icon.letter(char)`, and `Icon.none()`. A bare string or array of strings is coerced to `Icon.classes`.
@@ -105,7 +105,7 @@ const { Icon } = require("atom");
 ## Minimal example
 
 ```js
-const { Emitter, Icon } = require("atom");
+const { Emitter, Icon } = require("lumine");
 
 module.exports = {
   provideIcons() {

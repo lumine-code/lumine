@@ -6,9 +6,9 @@
   --editor-font-family: Menlo, Consolas, "DejaVu Sans Mono", monospace;
 }
 
-atom-text-editor {
+lumine-text-editor {
   /* No layout/paint containment here: the editor hosts position-fixed overlay
-     decorations (atom-overlay) that must position and paint in viewport space.
+     decorations (lumine-overlay) that must position and paint in viewport space.
      Layout or paint containment would re-root and clip them — which is why
      autocomplete overlays never showed in mini/panel editors (auto-height
      editors keep this stylesheet value; pane editors get an inline
@@ -198,7 +198,7 @@ atom-text-editor {
     opacity: 0;
   }
 
-  /* A code block rendered by `atom.tools.markdown` is a read-only editor
+  /* A code block rendered by `lumine.tools.markdown` is a read-only editor
      embedded in something else — a hover tooltip, a completion's
      documentation — and has no caret to show. It would show one anyway:
      both live inside an overlay decoration of the editor the reader is
@@ -213,13 +213,13 @@ atom-text-editor {
 }
 
 /* A mini editor is an input; its size and chrome live with the other input
-   controls in atom-ui/styles/inputs.css. Only the structure is here. */
-atom-text-editor[mini] {
-  contain: style; /* see the atom-text-editor rule: overlays must escape */
+   controls in lumine-ui/styles/inputs.css. Only the structure is here. */
+lumine-text-editor[mini] {
+  contain: style; /* see the lumine-text-editor rule: overlays must escape */
   overflow: auto;
 }
 
-atom-overlay {
+lumine-overlay {
   contain: layout style; /* contain_except_size_paint */
   position: fixed;
   display: block;

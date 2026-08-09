@@ -63,7 +63,7 @@ exports.normalizeTreeSitterTextData = normalizeTreeSitterTextData;
 window.normalizeTreeSitterTextData = normalizeTreeSitterTextData;
 
 async function openDocument(fullPath) {
-  const editor = await atom.workspace.open(fullPath);
+  const editor = await lumine.workspace.open(fullPath);
   await editor.languageMode.ready;
   return editor;
 }

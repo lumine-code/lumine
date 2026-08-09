@@ -34,7 +34,7 @@ class PackageInstallationService {
     run,
     capture,
     resolveSource,
-    atomVersion,
+    lumineVersion,
     fetchUrl = (url) => fetch(url, { redirect: "follow" }),
     beforeSwap = async () => ({}),
     afterSwap = async () => {},
@@ -46,7 +46,7 @@ class PackageInstallationService {
     this.run = run;
     this.capture = capture || run;
     this.resolveSource = resolveSource;
-    this.atomVersion = atomVersion;
+    this.lumineVersion = lumineVersion;
     this.fetchUrl = fetchUrl;
     this.beforeSwap = beforeSwap;
     this.afterSwap = afterSwap;
@@ -111,7 +111,7 @@ class PackageInstallationService {
       const metadata = validatePackageMetadata(CSON.readFileSync(metadataPath), {
         originKey,
         semanticTag,
-        atomVersion: this.atomVersion,
+        lumineVersion: this.lumineVersion,
       });
       packageName = metadata.name;
       const existingDirectory = this.assertSlots(packageName, originKey, allowReplace);

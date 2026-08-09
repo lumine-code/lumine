@@ -2,18 +2,18 @@ const fs = require("fs");
 const path = require("path");
 const { Emitter } = require("@lumine-code/event-kit");
 
-// Public: Somewhere to keep an access token, available as `atom.secrets`.
+// Public: Somewhere to keep an access token, available as `lumine.secrets`.
 //
 // For the sensitive strings a package must remember between sessions — a
-// forge token, an API key, a password. Never `atom.config`: everything in
+// forge token, an API key, a password. Never `lumine.config`: everything in
 // there is written to disk in plain text and shown in the settings view.
 //
 // Keys are opaque strings and values are strings. Namespace your own keys, by
 // convention with the package name:
 //
 // ```js
-// await atom.secrets.set('github.token', token)
-// const token = await atom.secrets.get('github.token')
+// await lumine.secrets.set('github.token', token)
+// const token = await lumine.secrets.get('github.token')
 // ```
 //
 // ## Storage

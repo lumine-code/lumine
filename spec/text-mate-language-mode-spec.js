@@ -9,12 +9,12 @@ describe("TextMateLanguageMode", () => {
   let languageMode, buffer, config;
 
   beforeEach(async () => {
-    config = atom.config;
+    config = lumine.config;
     config.set("language.useTreeSitterParsers", false);
     // enable async tokenization
     TextMateLanguageMode.prototype.chunkSize = 5;
     jasmine.unspy(TextMateLanguageMode.prototype, "tokenizeInBackground");
-    await atom.packages.activatePackage("language-javascript");
+    await lumine.packages.activatePackage("language-javascript");
   });
 
   afterEach(() => {
@@ -30,7 +30,7 @@ describe("TextMateLanguageMode", () => {
       expect(buffer.getText().length).toBe(2 * 1024 * 1024);
       languageMode = new TextMateLanguageMode({
         buffer,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
         tabLength: 2,
       });
       buffer.setLanguageMode(languageMode);
@@ -63,7 +63,7 @@ describe("TextMateLanguageMode", () => {
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
       expect(languageMode.largeFileMode).toBe(true);
     });
@@ -75,7 +75,7 @@ describe("TextMateLanguageMode", () => {
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
       expect(languageMode.largeFileMode).toBe(false);
     });
@@ -86,7 +86,7 @@ describe("TextMateLanguageMode", () => {
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
         largeFileMode: true,
       });
       expect(languageMode.largeFileMode).toBe(true);
@@ -96,11 +96,11 @@ describe("TextMateLanguageMode", () => {
   describe("tokenizing", () => {
     describe("when the buffer is destroyed", () => {
       beforeEach(() => {
-        buffer = atom.project.bufferForPathSync("sample.js");
+        buffer = lumine.project.bufferForPathSync("sample.js");
         languageMode = new TextMateLanguageMode({
           buffer,
           config,
-          grammar: atom.grammars.grammarForScopeName("source.js"),
+          grammar: lumine.grammars.grammarForScopeName("source.js"),
         });
         languageMode.startTokenizing();
       });
@@ -115,11 +115,11 @@ describe("TextMateLanguageMode", () => {
 
     describe("when the buffer contains soft-tabs", () => {
       beforeEach(() => {
-        buffer = atom.project.bufferForPathSync("sample.js");
+        buffer = lumine.project.bufferForPathSync("sample.js");
         languageMode = new TextMateLanguageMode({
           buffer,
           config,
-          grammar: atom.grammars.grammarForScopeName("source.js"),
+          grammar: lumine.grammars.grammarForScopeName("source.js"),
         });
         buffer.setLanguageMode(languageMode);
         languageMode.startTokenizing();
@@ -468,13 +468,13 @@ describe("TextMateLanguageMode", () => {
 
     describe("when the buffer contains hard-tabs", () => {
       beforeEach(async () => {
-        atom.packages.activatePackage("language-coffee-script");
+        lumine.packages.activatePackage("language-coffee-script");
 
-        buffer = atom.project.bufferForPathSync("sample-with-tabs.coffee");
+        buffer = lumine.project.bufferForPathSync("sample-with-tabs.coffee");
         languageMode = new TextMateLanguageMode({
           buffer,
           config,
-          grammar: atom.grammars.grammarForScopeName("source.coffee"),
+          grammar: lumine.grammars.grammarForScopeName("source.coffee"),
         });
         languageMode.startTokenizing();
       });
@@ -489,7 +489,7 @@ describe("TextMateLanguageMode", () => {
 
     describe("when tokenization completes", () => {
       it("emits the `tokenized` event", async () => {
-        const editor = await atom.workspace.open("sample.js");
+        const editor = await lumine.workspace.open("sample.js");
 
         const tokenizedHandler = jasmine.createSpy("tokenized handler");
         editor.languageMode.onDidTokenize(tokenizedHandler);
@@ -498,7 +498,7 @@ describe("TextMateLanguageMode", () => {
       });
 
       it("doesn't re-emit the `tokenized` event when it is re-tokenized", async () => {
-        const editor = await atom.workspace.open("sample.js");
+        const editor = await lumine.workspace.open("sample.js");
         fullyTokenize(editor.languageMode);
 
         const tokenizedHandler = jasmine.createSpy("tokenized handler");
@@ -513,14 +513,14 @@ describe("TextMateLanguageMode", () => {
       it("re-emits the `tokenized` event", async () => {
         let tokenizationCount = 0;
 
-        const editor = await atom.workspace.open("coffee.coffee");
+        const editor = await lumine.workspace.open("coffee.coffee");
         editor.onDidTokenize(() => {
           tokenizationCount++;
         });
         fullyTokenize(editor.getBuffer().getLanguageMode());
         tokenizationCount = 0;
 
-        await atom.packages.activatePackage("language-coffee-script");
+        await lumine.packages.activatePackage("language-coffee-script");
         fullyTokenize(editor.getBuffer().getLanguageMode());
         expect(tokenizationCount).toBe(1);
       });
@@ -531,15 +531,15 @@ describe("TextMateLanguageMode", () => {
         // that loading it later changes the tokens. Borrowing two packages for
         // that put the test's precondition — and the exact scopes it asserts —
         // in someone else's repository.
-        atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/includer.json"));
+        lumine.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/includer.json"));
 
-        buffer = atom.project.bufferForPathSync();
+        buffer = lumine.project.bufferForPathSync();
         buffer.setText("SENTINEL");
 
         languageMode = new TextMateLanguageMode({
           buffer,
           config,
-          grammar: atom.grammars.grammarForScopeName("source.includer"),
+          grammar: lumine.grammars.grammarForScopeName("source.includer"),
         });
         fullyTokenize(languageMode);
 
@@ -549,7 +549,7 @@ describe("TextMateLanguageMode", () => {
           scopes: ["source.includer"],
         });
 
-        atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/included.json"));
+        lumine.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/included.json"));
         fullyTokenize(languageMode);
 
         expect(languageMode.tokenizedLines[0].tokens[0]).toEqual({
@@ -562,7 +562,7 @@ describe("TextMateLanguageMode", () => {
     describe("when the buffer is configured with the null grammar", () => {
       it("does not actually tokenize using the grammar", () => {
         spyOn(NullGrammar, "tokenizeLine").and.callThrough();
-        buffer = atom.project.bufferForPathSync("sample.will-use-the-null-grammar");
+        buffer = lumine.project.bufferForPathSync("sample.will-use-the-null-grammar");
         buffer.setText("a\nb\nc");
         languageMode = new TextMateLanguageMode({ buffer, config });
         const tokenizeCallback = jasmine.createSpy("onDidTokenize");
@@ -591,11 +591,11 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("returns the correct token (regression)", () => {
-      buffer = atom.project.bufferForPathSync("sample.js");
+      buffer = lumine.project.bufferForPathSync("sample.js");
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
       fullyTokenize(languageMode);
       expect(languageMode.tokenForPosition([1, 0]).scopes).toEqual(["source.js"]);
@@ -609,11 +609,11 @@ describe("TextMateLanguageMode", () => {
 
   describe(".bufferRangeForScopeAtPosition(selector, position)", () => {
     beforeEach(() => {
-      buffer = atom.project.bufferForPathSync("sample.js");
+      buffer = lumine.project.bufferForPathSync("sample.js");
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
       fullyTokenize(languageMode);
     });
@@ -647,8 +647,8 @@ describe("TextMateLanguageMode", () => {
 
   describe(".tokenizedLineForRow(row)", () => {
     it("returns the tokenized line for a row, or a placeholder line if it hasn't been tokenized yet", () => {
-      buffer = atom.project.bufferForPathSync("sample.js");
-      const grammar = atom.grammars.grammarForScopeName("source.js");
+      buffer = lumine.project.bufferForPathSync("sample.js");
+      const grammar = lumine.grammars.grammarForScopeName("source.js");
       languageMode = new TextMateLanguageMode({ buffer, config, grammar });
       const line0 = buffer.lineForRow(0);
 
@@ -673,8 +673,8 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("returns undefined if the requested row is outside the buffer range", () => {
-      buffer = atom.project.bufferForPathSync("sample.js");
-      const grammar = atom.grammars.grammarForScopeName("source.js");
+      buffer = lumine.project.bufferForPathSync("sample.js");
+      const grammar = lumine.grammars.grammarForScopeName("source.js");
       languageMode = new TextMateLanguageMode({ buffer, config, grammar });
       fullyTokenize(languageMode);
       expect(languageMode.tokenizedLineForRow(999)).toBeUndefined();
@@ -689,7 +689,7 @@ describe("TextMateLanguageMode", () => {
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
       fullyTokenize(languageMode);
 
@@ -834,13 +834,13 @@ describe("TextMateLanguageMode", () => {
     }); // ensure we don't infinitely loop (regression test)
 
     it("does not report columns beyond the length of the line", async () => {
-      await atom.packages.activatePackage("language-coffee-script");
+      await lumine.packages.activatePackage("language-coffee-script");
 
       buffer = new TextBuffer({ text: "# hello\n# world" });
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.coffee"),
+        grammar: lumine.grammars.grammarForScopeName("source.coffee"),
       });
       fullyTokenize(languageMode);
 
@@ -861,7 +861,7 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("correctly terminates scopes at the beginning of the line (regression)", () => {
-      const grammar = atom.grammars.createGrammar("test", {
+      const grammar = lumine.grammars.createGrammar("test", {
         scopeName: "text.broken",
         name: "Broken grammar",
         patterns: [
@@ -996,8 +996,8 @@ describe("TextMateLanguageMode", () => {
 
     describe("javascript", () => {
       beforeEach(async () => {
-        editor = await atom.workspace.open("sample.js", { autoIndent: false });
-        await atom.packages.activatePackage("language-javascript");
+        editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+        await lumine.packages.activatePackage("language-javascript");
       });
 
       it("bases indentation off of the previous non-blank line", () => {
@@ -1024,9 +1024,9 @@ describe("TextMateLanguageMode", () => {
 
     describe("css", () => {
       beforeEach(async () => {
-        editor = await atom.workspace.open("css.css", { autoIndent: true });
-        await atom.packages.activatePackage("language-source");
-        await atom.packages.activatePackage("language-css");
+        editor = await lumine.workspace.open("css.css", { autoIndent: true });
+        await lumine.packages.activatePackage("language-source");
+        await lumine.packages.activatePackage("language-css");
       });
 
       it("does not return negative values (regression)", () => {
@@ -1040,13 +1040,13 @@ describe("TextMateLanguageMode", () => {
     let editor;
 
     beforeEach(() => {
-      buffer = atom.project.bufferForPathSync("sample.js");
+      buffer = lumine.project.bufferForPathSync("sample.js");
       buffer.insert([10, 0], "  // multi-line\n  // comment\n  // block\n");
       buffer.insert([0, 0], "// multi-line\n// comment\n// block\n");
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
       buffer.setLanguageMode(languageMode);
       fullyTokenize(languageMode);
@@ -1115,7 +1115,7 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("returns true if the line starts a multi-line comment", async () => {
-      editor = await atom.workspace.open("sample-with-comments.js");
+      editor = await lumine.workspace.open("sample-with-comments.js");
       fullyTokenize(editor.getBuffer().getLanguageMode());
 
       expect(editor.isFoldableAtBufferRow(1)).toBe(true);
@@ -1130,13 +1130,13 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("returns true for lines that end with a comment and are followed by an indented line", async () => {
-      editor = await atom.workspace.open("sample-with-comments.js");
+      editor = await lumine.workspace.open("sample-with-comments.js");
 
       expect(editor.isFoldableAtBufferRow(5)).toBe(true);
     });
 
     it("does not return true for a line in the middle of a comment that's followed by an indented line", async () => {
-      editor = await atom.workspace.open("sample-with-comments.js");
+      editor = await lumine.workspace.open("sample-with-comments.js");
       fullyTokenize(editor.getBuffer().getLanguageMode());
 
       expect(editor.isFoldableAtBufferRow(7)).toBe(false);
@@ -1209,7 +1209,7 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("folds every foldable range at a given indentLevel", async () => {
-      editor = await atom.workspace.open("sample-with-comments.js");
+      editor = await lumine.workspace.open("sample-with-comments.js");
       fullyTokenize(editor.getBuffer().getLanguageMode());
 
       editor.foldAllAtIndentLevel(2);
@@ -1257,8 +1257,8 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("works with multi-line comments", async () => {
-      await atom.packages.activatePackage("language-javascript");
-      const editor = await atom.workspace.open("sample-with-comments.js", {
+      await lumine.packages.activatePackage("language-javascript");
+      const editor = await lumine.workspace.open("sample-with-comments.js", {
         autoIndent: false,
       });
       fullyTokenize(editor.getBuffer().getLanguageMode());
@@ -1351,8 +1351,8 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("works for coffee-script", async () => {
-      const editor = await atom.workspace.open("coffee.coffee");
-      await atom.packages.activatePackage("language-coffee-script");
+      const editor = await lumine.workspace.open("coffee.coffee");
+      await lumine.packages.activatePackage("language-coffee-script");
       buffer = editor.buffer;
       languageMode = editor.languageMode;
 
@@ -1375,8 +1375,8 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("works for javascript", async () => {
-      const editor = await atom.workspace.open("sample.js");
-      await atom.packages.activatePackage("language-javascript");
+      const editor = await lumine.workspace.open("sample.js");
+      await lumine.packages.activatePackage("language-javascript");
       buffer = editor.buffer;
       languageMode = editor.languageMode;
 
@@ -1399,8 +1399,8 @@ describe("TextMateLanguageMode", () => {
     });
 
     it("searches upward and downward for surrounding comment lines and folds them as a single fold", async () => {
-      await atom.packages.activatePackage("language-javascript");
-      const editor = await atom.workspace.open("sample-with-comments.js");
+      await lumine.packages.activatePackage("language-javascript");
+      const editor = await lumine.workspace.open("sample-with-comments.js");
       editor.buffer.insert(
         [1, 0],
         "  //this is a comment\n  // and\n  //more docs\n\n//second comment",
@@ -1414,7 +1414,7 @@ describe("TextMateLanguageMode", () => {
 
   describe("TokenIterator", () =>
     it("correctly terminates scopes at the beginning of the line (regression)", () => {
-      const grammar = atom.grammars.createGrammar("test", {
+      const grammar = lumine.grammars.createGrammar("test", {
         scopeName: "text.broken",
         name: "Broken grammar",
         patterns: [
@@ -1441,10 +1441,10 @@ describe("TextMateLanguageMode", () => {
       const languageMode = new TextMateLanguageMode({
         buffer,
         grammar,
-        config: atom.config,
-        grammarRegistry: atom.grammars,
-        packageManager: atom.packages,
-        assert: atom.assert,
+        config: lumine.config,
+        grammarRegistry: lumine.grammars,
+        packageManager: lumine.packages,
+        assert: lumine.assert,
       });
 
       fullyTokenize(languageMode);

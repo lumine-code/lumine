@@ -3,7 +3,7 @@ const { Icon } = require("./icon-descriptor");
 // The two closed icon vocabularies: semantic names and kinds.
 //
 // A *name* is what a pane item returns from `getIconName()` and what
-// `atom.notifications.add*({icon})` takes — a bare octicon name the consumer
+// `lumine.notifications.add*({icon})` takes — a bare octicon name the consumer
 // used to prefix with `icon-` by hand.
 //
 // A *kind* is an LSP SymbolKind or something like one. Its table is the one

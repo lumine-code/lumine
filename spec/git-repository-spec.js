@@ -128,8 +128,8 @@ describe("GitRepository", () => {
 
     beforeEach(() => {
       const workingDirPath = copyRepository();
-      atom.project.setPaths([workingDirPath]);
-      repo = atom.repositories.getRepositories()[0];
+      lumine.project.setPaths([workingDirPath]);
+      repo = lumine.repositories.getRepositories()[0];
       filePath = path.join(workingDirPath, "a.txt");
     });
 
@@ -155,12 +155,12 @@ describe("GitRepository", () => {
 
     beforeEach(async () => {
       const workingDirPath = copyRepository();
-      atom.project.setPaths([workingDirPath]);
-      repo = atom.repositories.getRepositories()[0];
+      lumine.project.setPaths([workingDirPath]);
+      repo = lumine.repositories.getRepositories()[0];
       filePath = path.join(workingDirPath, "a.txt");
       fs.writeFileSync(filePath, "ch ch changes");
 
-      editor = await atom.workspace.open(filePath);
+      editor = await lumine.workspace.open(filePath);
     });
 
     it("restores the editor's file to the version at HEAD", (done) => {
@@ -741,9 +741,9 @@ describe("GitRepository", () => {
     let editor, repository;
 
     beforeEach(async () => {
-      atom.project.setPaths([copyRepository()]);
-      editor = await atom.workspace.open("other.txt");
-      repository = atom.repositories.getRepositories()[0];
+      lumine.project.setPaths([copyRepository()]);
+      editor = await lumine.workspace.open("other.txt");
+      repository = lumine.repositories.getRepositories()[0];
     });
 
     it("schedules a status snapshot refresh when a buffer is saved", async () => {
@@ -781,23 +781,23 @@ describe("GitRepository", () => {
     });
 
     it("subscribes to all the serialized buffers in the project", async () => {
-      atom.project.setPaths([copyRepository()]);
+      lumine.project.setPaths([copyRepository()]);
 
-      await atom.workspace.open("file.txt");
+      await lumine.workspace.open("file.txt");
 
       repositoryRegistry2 = new RepositoryRegistry({
-        config: atom.config,
-        notificationManager: atom.notifications,
+        config: lumine.config,
+        notificationManager: lumine.notifications,
       });
       project2 = new Project({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
-        applicationDelegate: atom.applicationDelegate,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
+        applicationDelegate: lumine.applicationDelegate,
         repositoryRegistry: repositoryRegistry2,
       });
-      await project2.deserialize(atom.project.serialize({ isUnloading: false }));
+      await project2.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       buffer = project2.getBuffers()[0];
       buffer.append("changes");
@@ -812,7 +812,7 @@ describe("GitRepository", () => {
 });
 
 function copyRepository() {
-  const workingDirPath = temp.mkdirSync("atom-spec-git");
+  const workingDirPath = temp.mkdirSync("lumine-spec-git");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirPath);
   fs.renameSync(path.join(workingDirPath, "git.git"), path.join(workingDirPath, ".git"));
   return workingDirPath;

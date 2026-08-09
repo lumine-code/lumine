@@ -1,4 +1,4 @@
-atom-text-editor {
+lumine-text-editor {
   .lines {
     .markup {
       &.git-commit {
@@ -34,7 +34,7 @@ atom-text-editor {
   }
 }
 
-atom-text-editor .flash.selection .region {
+lumine-text-editor .flash.selection .region {
   animation-name: flash;
   animation-duration: 0.5s;
   animation-iteration-count: 1;

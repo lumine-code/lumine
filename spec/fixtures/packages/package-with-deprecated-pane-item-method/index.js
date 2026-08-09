@@ -5,5 +5,5 @@ class TestItem {
 }
 
 exports.activate = () => {
-  atom.workspace.addOpener(() => new TestItem());
+  lumine.workspace.addOpener(() => new TestItem());
 };

@@ -2,9 +2,9 @@ const FS = require("@lumine-code/fs-plus");
 const Path = require("path");
 
 // A minimal, watch-free directory value object returned by
-// `DefaultDirectoryProvider` for `atom.project`. It is the path-helper subset
+// `DefaultDirectoryProvider` for `lumine.project`. It is the path-helper subset
 // of the old pathwatcher `Directory` — with no filesystem watching (the project
-// watches its roots through `watchPath`) and no public `require('atom').Directory`
+// watches its roots through `watchPath`) and no public `require('lumine').Directory`
 // export. The path semantics match pathwatcher's `Directory` so that project
 // management, `contains`/`relativize`, and repository discovery are unaffected.
 module.exports = class ProjectDirectory {

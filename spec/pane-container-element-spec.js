@@ -3,10 +3,10 @@ const PaneAxis = require("../src/pane-axis");
 
 const params = {
   location: "center",
-  config: atom.config,
-  confirm: atom.window.confirm.bind(atom.window),
-  viewRegistry: atom.views,
-  applicationDelegate: atom.applicationDelegate,
+  config: lumine.config,
+  confirm: lumine.window.confirm.bind(lumine.window),
+  viewRegistry: lumine.views,
+  applicationDelegate: lumine.applicationDelegate,
 };
 
 describe("PaneContainerElement", function () {
@@ -15,35 +15,35 @@ describe("PaneContainerElement", function () {
       const childTagNames = () =>
         Array.from(paneAxisElement.children).map((child) => child.nodeName.toLowerCase());
 
-      const paneAxis = new PaneAxis({}, atom.views);
+      const paneAxis = new PaneAxis({}, lumine.views);
       var paneAxisElement = paneAxis.getElement();
 
       expect(childTagNames()).toEqual([]);
 
-      paneAxis.addChild(new PaneAxis({}, atom.views));
-      expect(childTagNames()).toEqual(["atom-pane-axis"]);
+      paneAxis.addChild(new PaneAxis({}, lumine.views));
+      expect(childTagNames()).toEqual(["lumine-pane-axis"]);
 
-      paneAxis.addChild(new PaneAxis({}, atom.views));
+      paneAxis.addChild(new PaneAxis({}, lumine.views));
       expect(childTagNames()).toEqual([
-        "atom-pane-axis",
-        "atom-pane-resize-handle",
-        "atom-pane-axis",
+        "lumine-pane-axis",
+        "lumine-pane-resize-handle",
+        "lumine-pane-axis",
       ]);
 
-      paneAxis.addChild(new PaneAxis({}, atom.views));
+      paneAxis.addChild(new PaneAxis({}, lumine.views));
       expect(childTagNames()).toEqual([
-        "atom-pane-axis",
-        "atom-pane-resize-handle",
-        "atom-pane-axis",
-        "atom-pane-resize-handle",
-        "atom-pane-axis",
+        "lumine-pane-axis",
+        "lumine-pane-resize-handle",
+        "lumine-pane-axis",
+        "lumine-pane-resize-handle",
+        "lumine-pane-axis",
       ]);
 
       paneAxis.removeChild(paneAxis.getChildren()[2]);
       expect(childTagNames()).toEqual([
-        "atom-pane-axis",
-        "atom-pane-resize-handle",
-        "atom-pane-axis",
+        "lumine-pane-axis",
+        "lumine-pane-resize-handle",
+        "lumine-pane-axis",
       ]);
     });
 
@@ -66,7 +66,7 @@ describe("PaneContainerElement", function () {
   });
 
   describe("when a pane is split", () =>
-    it("builds appropriately-oriented atom-pane-axis elements", function () {
+    it("builds appropriately-oriented lumine-pane-axis elements", function () {
       const container = new PaneContainer(params);
       const containerElement = container.getElement();
 
@@ -75,13 +75,13 @@ describe("PaneContainerElement", function () {
       const pane3 = pane2.splitDown();
 
       const horizontalPanes = containerElement.querySelectorAll(
-        "atom-pane-container > atom-pane-axis.horizontal > atom-pane",
+        "lumine-pane-container > lumine-pane-axis.horizontal > lumine-pane",
       );
       expect(horizontalPanes.length).toBe(1);
       expect(horizontalPanes[0]).toBe(pane1.getElement());
 
       let verticalPanes = containerElement.querySelectorAll(
-        "atom-pane-container > atom-pane-axis.horizontal > atom-pane-axis.vertical > atom-pane",
+        "lumine-pane-container > lumine-pane-axis.horizontal > lumine-pane-axis.vertical > lumine-pane",
       );
       expect(verticalPanes.length).toBe(2);
       expect(verticalPanes[0]).toBe(pane2.getElement());
@@ -89,7 +89,7 @@ describe("PaneContainerElement", function () {
 
       pane1.destroy();
       verticalPanes = containerElement.querySelectorAll(
-        "atom-pane-container > atom-pane-axis.vertical > atom-pane",
+        "lumine-pane-container > lumine-pane-axis.vertical > lumine-pane",
       );
       expect(verticalPanes.length).toBe(2);
       expect(verticalPanes[0]).toBe(pane2.getElement());
@@ -142,9 +142,10 @@ describe("PaneContainerElement", function () {
         return result;
       })();
 
-    const getResizeElement = (i) => containerElement.querySelectorAll("atom-pane-resize-handle")[i];
+    const getResizeElement = (i) =>
+      containerElement.querySelectorAll("lumine-pane-resize-handle")[i];
 
-    const getPaneElement = (i) => containerElement.querySelectorAll("atom-pane")[i];
+    const getPaneElement = (i) => containerElement.querySelectorAll("lumine-pane")[i];
 
     it("adds and removes panes in the direction that the pane is being dragged", async function () {
       const leftPane = container.getActivePane();
@@ -250,11 +251,11 @@ describe("PaneContainerElement", function () {
         expect(leftPane.getFlexScale()).toBe(1);
         expect(rightPane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(leftPane.getElement(), "pane:increase-size");
+        lumine.commands.dispatch(leftPane.getElement(), "pane:increase-size");
         expect(leftPane.getFlexScale()).toBe(1.1);
         expect(rightPane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(rightPane.getElement(), "pane:increase-size");
+        lumine.commands.dispatch(rightPane.getElement(), "pane:increase-size");
         expect(leftPane.getFlexScale()).toBe(1.1);
         expect(rightPane.getFlexScale()).toBe(1.1);
       }));
@@ -264,11 +265,11 @@ describe("PaneContainerElement", function () {
         expect(leftPane.getFlexScale()).toBe(1);
         expect(rightPane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(leftPane.getElement(), "pane:decrease-size");
+        lumine.commands.dispatch(leftPane.getElement(), "pane:decrease-size");
         expect(leftPane.getFlexScale()).toBe(1 / 1.1);
         expect(rightPane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(rightPane.getElement(), "pane:decrease-size");
+        lumine.commands.dispatch(rightPane.getElement(), "pane:decrease-size");
         expect(leftPane.getFlexScale()).toBe(1 / 1.1);
         expect(rightPane.getFlexScale()).toBe(1 / 1.1);
       }));
@@ -286,10 +287,10 @@ describe("PaneContainerElement", function () {
       it("does not increases the size of the pane", function () {
         expect(singlePane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(singlePane.getElement(), "pane:increase-size");
+        lumine.commands.dispatch(singlePane.getElement(), "pane:increase-size");
         expect(singlePane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(singlePane.getElement(), "pane:increase-size");
+        lumine.commands.dispatch(singlePane.getElement(), "pane:increase-size");
         expect(singlePane.getFlexScale()).toBe(1);
       }));
 
@@ -297,10 +298,10 @@ describe("PaneContainerElement", function () {
       it("does not decreases the size of the pane", function () {
         expect(singlePane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(singlePane.getElement(), "pane:decrease-size");
+        lumine.commands.dispatch(singlePane.getElement(), "pane:decrease-size");
         expect(singlePane.getFlexScale()).toBe(1);
 
-        atom.commands.dispatch(singlePane.getElement(), "pane:decrease-size");
+        lumine.commands.dispatch(singlePane.getElement(), "pane:decrease-size");
         expect(singlePane.getFlexScale()).toBe(1);
       }));
   });

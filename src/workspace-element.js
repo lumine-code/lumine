@@ -9,7 +9,7 @@ const _ = require("@lumine-code/underscore-plus");
 
 // Measures how Chromium renders scrollbars in this window: an off-screen
 // scrollable probe reserves no width for overlay scrollbars and a nonzero
-// width for always-visible ones. The probe lives outside `atom-workspace` so
+// width for always-visible ones. The probe lives outside `lumine-workspace` so
 // the theme's `.scrollbars-visible-* ::-webkit-scrollbar` rules can't affect
 // the measurement.
 function measureScrollbarStyle() {
@@ -25,7 +25,7 @@ function measureScrollbarStyle() {
 // Reports the current scrollbar style, then subscribes to a handler so it can
 // be notified of further changes. Returns a `Disposable`.
 function observeScrollbarStyle(callback) {
-  // We want to act like `atom.config.observe`: set up a change handler, but
+  // We want to act like `lumine.config.observe`: set up a change handler, but
   // immediately invoke the callback with the current value as well. Change
   // notifications come from the main process, which watches the macOS
   // system setting.
@@ -52,10 +52,10 @@ class WorkspaceElement extends HTMLElement {
     this.classList.add("workspace");
     this.setAttribute("tabindex", -1);
 
-    this.verticalAxis = document.createElement("atom-workspace-axis");
+    this.verticalAxis = document.createElement("lumine-workspace-axis");
     this.verticalAxis.classList.add("vertical");
 
-    this.horizontalAxis = document.createElement("atom-workspace-axis");
+    this.horizontalAxis = document.createElement("lumine-workspace-axis");
     this.horizontalAxis.classList.add("horizontal");
     this.horizontalAxis.appendChild(this.verticalAxis);
 
@@ -207,7 +207,7 @@ class WorkspaceElement extends HTMLElement {
       adjustedLineHeight = `${computedLineHeight.toFixed(6)}px`;
     }
 
-    const styleSheetSource = `atom-workspace {
+    const styleSheetSource = `lumine-workspace {
   --editor-font-size: ${fontSize}px;
   --editor-font-family: ${fontFamily};
   --editor-line-height: ${adjustedLineHeight};
@@ -345,7 +345,7 @@ class WorkspaceElement extends HTMLElement {
     if (!this.config.get("editor.ctrlWheelScrollsAllPanes")) return;
     if (!this.paneContainer) return;
     const sourceEditorElement =
-      event.target.closest && event.target.closest("atom-text-editor:not([mini])");
+      event.target.closest && event.target.closest("lumine-text-editor:not([mini])");
     if (!sourceEditorElement || !this.paneContainer.contains(sourceEditorElement)) return;
 
     // Normalize once against the source editor (its line height and element
@@ -473,7 +473,7 @@ class WorkspaceElement extends HTMLElement {
     const paneView = pane.getElement();
     const box = this.boundingBoxForPaneView(paneView);
 
-    const paneViews = atom.workspace
+    const paneViews = lumine.workspace
       .getVisiblePanes()
       .map((otherPane) => otherPane.getElement())
       .filter((otherPaneView) => {
@@ -551,10 +551,10 @@ function isTab(element) {
   return false;
 }
 
-window.customElements.define("atom-workspace", WorkspaceElement);
+window.customElements.define("lumine-workspace", WorkspaceElement);
 
 function createWorkspaceElement() {
-  return document.createElement("atom-workspace");
+  return document.createElement("lumine-workspace");
 }
 
 module.exports = {

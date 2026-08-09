@@ -2,7 +2,7 @@ const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 
 // Extended: History manager for remembering which projects have been opened.
 //
-// An instance of this class is always available as the `atom.history` global.
+// An instance of this class is always available as the `lumine.history` global.
 //
 // The project history is used to populate recent project lists.
 class HistoryManager {
@@ -13,7 +13,7 @@ class HistoryManager {
     this.disposables = new CompositeDisposable();
     this.disposables.add(
       commands.add(
-        "atom-workspace",
+        "lumine-workspace",
         { "application:clear-project-history": this.clearProjects.bind(this) },
         false,
       ),

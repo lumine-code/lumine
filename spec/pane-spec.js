@@ -77,9 +77,9 @@ describe("Pane", () => {
   }
 
   beforeEach(() => {
-    confirm = spyOn(atom.applicationDelegate, "confirm");
-    showSaveDialog = spyOn(atom.applicationDelegate, "showSaveDialog");
-    deserializerDisposable = atom.deserializers.add(Item);
+    confirm = spyOn(lumine.applicationDelegate, "confirm");
+    showSaveDialog = spyOn(lumine.applicationDelegate, "showSaveDialog");
+    deserializerDisposable = lumine.deserializers.add(Item);
   });
 
   afterEach(() => {
@@ -89,10 +89,10 @@ describe("Pane", () => {
   function paneParams(params) {
     return extend(
       {
-        applicationDelegate: atom.applicationDelegate,
-        config: atom.config,
-        deserializerManager: atom.deserializers,
-        notificationManager: atom.notifications,
+        applicationDelegate: lumine.applicationDelegate,
+        config: lumine.config,
+        deserializerManager: lumine.deserializers,
+        notificationManager: lumine.notifications,
       },
       params,
     );
@@ -117,8 +117,8 @@ describe("Pane", () => {
     beforeEach(() => {
       container = new PaneContainer({
         location: "center",
-        config: atom.config,
-        applicationDelegate: atom.applicationDelegate,
+        config: lumine.config,
+        applicationDelegate: lumine.applicationDelegate,
       });
       container.getActivePane().splitRight();
       [pane1, pane2] = container.getPanes();
@@ -199,8 +199,8 @@ describe("Pane", () => {
     it("throws an exception if the item is already present on a pane", () => {
       const item = new Item("A");
       const container = new PaneContainer({
-        config: atom.config,
-        applicationDelegate: atom.applicationDelegate,
+        config: lumine.config,
+        applicationDelegate: lumine.applicationDelegate,
       });
       const pane1 = container.getActivePane();
       pane1.addItem(item);
@@ -332,7 +332,7 @@ describe("Pane", () => {
     let pane = null;
 
     beforeEach(() => {
-      pane = atom.workspace.getActivePane();
+      pane = lumine.workspace.getActivePane();
     });
 
     it("changes the pending item", () => {
@@ -405,7 +405,7 @@ describe("Pane", () => {
     let callbackCalled = false;
 
     beforeEach(() => {
-      pane = atom.workspace.getActivePane();
+      pane = lumine.workspace.getActivePane();
       callbackCalled = false;
     });
 
@@ -434,13 +434,13 @@ describe("Pane", () => {
       const pendingSpy = jasmine.createSpy("onItemDidTerminatePendingState");
       const destroySpy = jasmine.createSpy("onWillDestroyItem");
 
-      await atom.workspace.open("sample.txt", { pending: true });
-      pane = atom.workspace.getActivePane();
+      await lumine.workspace.open("sample.txt", { pending: true });
+      pane = lumine.workspace.getActivePane();
 
       pane.onItemDidTerminatePendingState(pendingSpy);
       pane.onWillDestroyItem(destroySpy);
 
-      await atom.workspace.open("sample.js", { pending: true });
+      await lumine.workspace.open("sample.js", { pending: true });
 
       expect(destroySpy).toHaveBeenCalled();
       expect(pendingSpy).not.toHaveBeenCalled();
@@ -589,9 +589,9 @@ describe("Pane", () => {
 
     it("does nothing if prevented", () => {
       const container = new PaneContainer({
-        config: atom.config,
-        deserializerManager: atom.deserializers,
-        applicationDelegate: atom.applicationDelegate,
+        config: lumine.config,
+        deserializerManager: lumine.deserializers,
+        applicationDelegate: lumine.applicationDelegate,
       });
 
       pane.setContainer(container);
@@ -615,7 +615,7 @@ describe("Pane", () => {
 
     it("invokes ::onWillDestroyItem() and PaneContainer::onWillDestroyPaneItem observers before destroying the item", async () => {
       jasmine.useRealClock();
-      pane.container = new PaneContainer({ config: atom.config, confirm });
+      pane.container = new PaneContainer({ config: lumine.config, confirm });
       const events = [];
 
       pane.onWillDestroyItem(async (event) => {
@@ -763,7 +763,7 @@ describe("Pane", () => {
     describe("when the last item is destroyed", () => {
       describe("when the 'core.destroyEmptyPanes' config option is false (the default)", () => {
         it("does not destroy the pane, but leaves it in place with empty items", () => {
-          expect(atom.config.get("core.destroyEmptyPanes")).toBe(false);
+          expect(lumine.config.get("core.destroyEmptyPanes")).toBe(false);
           for (let item of pane.getItems()) {
             pane.destroyItem(item);
           }
@@ -776,7 +776,7 @@ describe("Pane", () => {
 
       describe("when the 'core.destroyEmptyPanes' config option is true", () => {
         it("destroys the pane", () => {
-          atom.config.set("core.destroyEmptyPanes", true);
+          lumine.config.set("core.destroyEmptyPanes", true);
           for (let item of pane.getItems()) {
             pane.destroyItem(item);
           }
@@ -932,7 +932,7 @@ describe("Pane", () => {
           return Promise.reject(error);
         };
 
-        const subscription = atom.notifications.onDidAddNotification(function (notification) {
+        const subscription = lumine.notifications.onDidAddNotification(function (notification) {
           expect(notification.getType()).toBe("warning");
           expect(notification.getMessage()).toContain("Permission denied");
           expect(notification.getMessage()).toContain("/foo");
@@ -952,7 +952,7 @@ describe("Pane", () => {
           throw error;
         };
 
-        const subscription = atom.notifications.onDidAddNotification(function (notification) {
+        const subscription = lumine.notifications.onDidAddNotification(function (notification) {
           expect(notification.getType()).toBe("warning");
           expect(notification.getMessage()).toContain("Permission denied");
           expect(notification.getMessage()).toContain("/foo");
@@ -1007,7 +1007,7 @@ describe("Pane", () => {
           return Promise.reject(error);
         };
 
-        const subscription = atom.notifications.onDidAddNotification(function (notification) {
+        const subscription = lumine.notifications.onDidAddNotification(function (notification) {
           expect(notification.getType()).toBe("warning");
           expect(notification.getMessage()).toContain("Permission denied");
           expect(notification.getMessage()).toContain("/foo");
@@ -1076,7 +1076,7 @@ describe("Pane", () => {
     let item1, item2, item3, item4, item5;
 
     beforeEach(() => {
-      container = new PaneContainer({ config: atom.config, confirm });
+      container = new PaneContainer({ config: lumine.config, confirm });
       pane1 = container.getActivePane();
       pane1.addItems([new Item("A"), new Item("B"), new Item("C")]);
       pane2 = pane1.splitRight({ items: [new Item("D"), new Item("E")] });
@@ -1126,7 +1126,7 @@ describe("Pane", () => {
 
       describe("when the 'core.destroyEmptyPanes' config option is true", () => {
         it("destroys the pane, but not the item", () => {
-          atom.config.set("core.destroyEmptyPanes", true);
+          lumine.config.set("core.destroyEmptyPanes", true);
           pane2.moveItemToPane(item4, pane1, 0);
           expect(pane2.isDestroyed()).toBe(true);
           expect(item4.isDestroyed()).toBe(false);
@@ -1160,9 +1160,9 @@ describe("Pane", () => {
 
     beforeEach(() => {
       container = new PaneContainer({
-        config: atom.config,
+        config: lumine.config,
         confirm,
-        deserializerManager: atom.deserializers,
+        deserializerManager: lumine.deserializers,
       });
       pane1 = container.getActivePane();
       item1 = new Item("A");
@@ -1409,7 +1409,7 @@ describe("Pane", () => {
       showSaveDialog.and.returnValue(Promise.resolve({ canceled: true }));
 
       await pane.close();
-      expect(atom.applicationDelegate.confirm).toHaveBeenCalled();
+      expect(lumine.applicationDelegate.confirm).toHaveBeenCalled();
       expect(confirm.calls.count()).toBe(1);
       expect(item1.saveAs).not.toHaveBeenCalled();
       expect(pane.isDestroyed()).toBe(false);
@@ -1421,8 +1421,8 @@ describe("Pane", () => {
       beforeEach(() => {
         pane = new Pane({
           items: [new Item("A"), new Item("B")],
-          applicationDelegate: atom.applicationDelegate,
-          config: atom.config,
+          applicationDelegate: lumine.applicationDelegate,
+          config: lumine.config,
         });
         [item1] = pane.getItems();
 
@@ -1449,7 +1449,7 @@ describe("Pane", () => {
         }); // click cancel
 
         await pane.close();
-        expect(atom.applicationDelegate.confirm).toHaveBeenCalled();
+        expect(lumine.applicationDelegate.confirm).toHaveBeenCalled();
         expect(confirmations).toBe(2);
         expect(item1.save).toHaveBeenCalled();
         expect(pane.isDestroyed()).toBe(false);
@@ -1467,9 +1467,9 @@ describe("Pane", () => {
         showSaveDialog.and.returnValue(Promise.resolve({ canceled: false, filePath: "new/path" }));
 
         await pane.close();
-        expect(atom.applicationDelegate.confirm).toHaveBeenCalled();
+        expect(lumine.applicationDelegate.confirm).toHaveBeenCalled();
         expect(confirmations).toBe(2);
-        expect(atom.applicationDelegate.showSaveDialog.calls.mostRecent().args[0]).toEqual({});
+        expect(lumine.applicationDelegate.showSaveDialog.calls.mostRecent().args[0]).toEqual({});
         expect(item1.save).toHaveBeenCalled();
         expect(item1.saveAs).toHaveBeenCalled();
         expect(pane.isDestroyed()).toBe(true);
@@ -1496,9 +1496,9 @@ describe("Pane", () => {
         showSaveDialog.and.returnValue(Promise.resolve({ canceled: false, filePath: "new/path" }));
 
         await pane.close();
-        expect(atom.applicationDelegate.confirm).toHaveBeenCalled();
+        expect(lumine.applicationDelegate.confirm).toHaveBeenCalled();
         expect(confirmations).toBe(3);
-        expect(atom.applicationDelegate.showSaveDialog.calls.mostRecent().args[0]).toEqual({});
+        expect(lumine.applicationDelegate.showSaveDialog.calls.mostRecent().args[0]).toEqual({});
         expect(item1.save).toHaveBeenCalled();
         expect(item1.saveAs).toHaveBeenCalled();
         expect(pane.isDestroyed()).toBe(true);
@@ -1510,7 +1510,7 @@ describe("Pane", () => {
     let container, pane1, pane2;
 
     beforeEach(() => {
-      container = new PaneContainer({ config: atom.config, confirm });
+      container = new PaneContainer({ config: lumine.config, confirm });
       pane1 = container.root;
       pane1.addItems([new Item("A"), new Item("B")]);
       pane2 = pane1.splitRight();
@@ -1568,14 +1568,14 @@ describe("Pane", () => {
     let editor1, pane, eventCount;
 
     beforeEach(async () => {
-      editor1 = await atom.workspace.open("sample.txt", { pending: true });
-      pane = atom.workspace.getActivePane();
+      editor1 = await lumine.workspace.open("sample.txt", { pending: true });
+      pane = lumine.workspace.getActivePane();
       eventCount = 0;
       editor1.onDidTerminatePendingState(() => eventCount++);
     });
 
     it("does not open file in pending state by default", async () => {
-      await atom.workspace.open("sample.js");
+      await lumine.workspace.open("sample.js");
       expect(pane.getPendingItem()).toBeNull();
     });
 
@@ -1640,20 +1640,20 @@ describe("Pane", () => {
     });
 
     it("can serialize and deserialize the pane and all its items", () => {
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.getItems()).toEqual(pane.getItems());
     });
 
     it("restores the active item on deserialization", () => {
       pane.activateItemAtIndex(1);
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.getActiveItem()).toEqual(newPane.itemAtIndex(1));
     });
 
     it("restores the active item when it doesn't implement getURI()", () => {
       pane.items[1].getURI = null;
       pane.activateItemAtIndex(1);
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.getActiveItem()).toEqual(newPane.itemAtIndex(1));
     });
 
@@ -1662,7 +1662,7 @@ describe("Pane", () => {
       pane.addItem(unserializable, { index: 0 });
       pane.items[2].getURI = null;
       pane.activateItemAtIndex(2);
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.getActiveItem()).toEqual(newPane.itemAtIndex(1));
     });
 
@@ -1671,34 +1671,34 @@ describe("Pane", () => {
       const unserializable = {};
       pane.activateItem(unserializable);
 
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.getActiveItem()).toEqual(pane.itemAtIndex(0));
       expect(newPane.getItems().length).toBe(pane.getItems().length - 1);
     });
 
     it("includes the pane's focus state in the serialized state", () => {
       pane.focus();
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.focused).toBe(true);
     });
 
     it("can serialize and deserialize the order of the items in the itemStack", () => {
       const [item1, item2, item3] = pane.getItems();
       pane.itemStack = [item3, item1, item2];
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.itemStack).toEqual(pane.itemStack);
       expect(newPane.itemStack[2]).toEqual(item2);
     });
 
     it("builds the itemStack if the itemStack is not serialized", () => {
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.getItems()).toEqual(newPane.itemStack);
     });
 
     it("rebuilds the itemStack if items.length does not match itemStack.length", () => {
       const [, item2, item3] = pane.getItems();
       pane.itemStack = [item2, item3];
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.getItems()).toEqual(newPane.itemStack);
     });
 
@@ -1708,7 +1708,7 @@ describe("Pane", () => {
       const unserializable = {};
       pane.activateItem(unserializable);
 
-      const newPane = Pane.deserialize(pane.serialize(), atom);
+      const newPane = Pane.deserialize(pane.serialize(), lumine);
       expect(newPane.itemStack).toEqual([item2, item1, item3]);
     });
   });
@@ -1717,18 +1717,18 @@ describe("Pane", () => {
     let editor1, editor2, bufferSubscription, pane;
 
     beforeEach(async () => {
-      const tempDir = temp.mkdirSync({ prefix: "atom-test-pane-" });
+      const tempDir = temp.mkdirSync({ prefix: "lumine-test-pane-" });
       const fixturePath = path.join(__dirname, "fixtures", "sample.js");
       const filePath1 = path.join(tempDir, "sample1.js");
       const filePath2 = path.join(tempDir, "sample2.js");
       fs.copyFileSync(fixturePath, filePath1);
       fs.copyFileSync(fixturePath, filePath2);
 
-      editor1 = await atom.workspace.open(filePath1);
-      editor2 = await atom.workspace.open(filePath2);
+      editor1 = await lumine.workspace.open(filePath1);
+      editor2 = await lumine.workspace.open(filePath2);
 
-      pane = atom.workspace.paneForItem(editor1);
-      expect(atom.workspace.paneForItem(editor2)).toBe(pane);
+      pane = lumine.workspace.paneForItem(editor1);
+      expect(lumine.workspace.paneForItem(editor2)).toBe(pane);
 
       bufferSubscription = editor2.getBuffer().onWillSave(async () => {
         await wait(300);

@@ -137,8 +137,8 @@ describe("URIHandlerRegistry", () => {
 
   it("refuses to handle bad URLs", async () => {
     const invalidUris = [
-      "atom:package/path",
-      "atom:8080://package/path",
+      "lumine:package/path",
+      "lumine:8080://package/path",
       "user:pass@lumine://package/path",
       "smth://package/path",
     ];

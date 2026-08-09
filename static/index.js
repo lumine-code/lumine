@@ -52,7 +52,7 @@
       // Normalize to make sure drive letter case is consistent on Windows
       process.resourcesPath = path.normalize(process.resourcesPath);
 
-      setupAtomHome();
+      setupLumineHome();
 
       // Persist V8 bytecode of compiled modules across launches to speed up
       // startup (supported replacement for the removed native-compile-cache).
@@ -85,19 +85,21 @@
   }
 
   function setLoadTime(loadTime) {
-    if (global.atom) {
-      global.atom.setWindowLoadTime(loadTime);
+    if (global.lumine) {
+      global.lumine.setWindowLoadTime(loadTime);
     }
   }
 
   function handleSetupError(error) {
-    electron.ipcRenderer.invoke("lumine:setup-error").catch((ipcError) => console.error(ipcError));
+    electron.ipcRenderer
+      .invoke("lumine:setup-error", error?.stack || String(error))
+      .catch((ipcError) => console.error(ipcError));
     console.error(error.stack || error);
   }
 
   function setupWindow() {
     const CompileCache = require("../src/compile-cache");
-    CompileCache.setAtomHomeDirectory(process.env.LUMINE_HOME);
+    CompileCache.setLumineHomeDirectory(process.env.LUMINE_HOME);
     CompileCache.install(process.resourcesPath, require);
 
     const ModuleCache = require("../src/module-cache");
@@ -136,15 +138,15 @@
       .catch(handleSetupError);
   }
 
-  function setupAtomHome() {
+  function setupLumineHome() {
     if (process.env.LUMINE_HOME) {
       return;
     }
 
     // Ensure LUMINE_HOME is always set before anything else is required
     // This is because of a difference in Linux not inherited between browser and render processes
-    if (getWindowLoadSettings() && getWindowLoadSettings().atomHome) {
-      process.env.LUMINE_HOME = getWindowLoadSettings().atomHome;
+    if (getWindowLoadSettings() && getWindowLoadSettings().lumineHome) {
+      process.env.LUMINE_HOME = getWindowLoadSettings().lumineHome;
     }
   }
 })();

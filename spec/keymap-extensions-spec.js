@@ -4,27 +4,27 @@ const path = require("path");
 
 describe("keymap-extensions", function () {
   beforeEach(function () {
-    atom.keymaps.configDirPath = temp.path("atom-spec-keymap-ext");
-    fs.writeFileSync(atom.keymaps.getUserKeymapPath(), "// User keymap\n{}");
+    lumine.keymaps.configDirPath = temp.path("lumine-spec-keymap-ext");
+    fs.writeFileSync(lumine.keymaps.getUserKeymapPath(), "// User keymap\n{}");
     this.userKeymapLoaded = function () {};
-    atom.keymaps.onDidLoadUserKeymap(() => this.userKeymapLoaded());
+    lumine.keymaps.onDidLoadUserKeymap(() => this.userKeymapLoaded());
   });
 
   afterEach(function () {
-    fs.removeSync(atom.keymaps.configDirPath);
-    atom.keymaps.destroy();
+    fs.removeSync(lumine.keymaps.configDirPath);
+    lumine.keymaps.destroy();
   });
 
   describe("did-load-user-keymap", () =>
     it("fires when user keymap is loaded", function () {
       spyOn(this, "userKeymapLoaded");
-      atom.keymaps.loadUserKeymap();
+      lumine.keymaps.loadUserKeymap();
       expect(this.userKeymapLoaded).toHaveBeenCalled();
     }));
 
   it("uses keymap.json as the default path", () => {
-    expect(atom.keymaps.getUserKeymapPath()).toBe(
-      path.join(atom.keymaps.configDirPath, "keymap.json"),
+    expect(lumine.keymaps.getUserKeymapPath()).toBe(
+      path.join(lumine.keymaps.configDirPath, "keymap.json"),
     );
   });
 });

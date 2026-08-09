@@ -214,7 +214,7 @@
   padding: var(--popover-list-padding);
   border-radius: var(--component-border-radius);
 
-  atom-text-editor[mini] {
+  lumine-text-editor[mini] {
     margin-bottom: var(--popover-list-padding);
   }
 

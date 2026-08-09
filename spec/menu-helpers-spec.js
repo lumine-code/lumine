@@ -141,11 +141,11 @@ describe("MenuManager::sortPackagesMenu", function () {
 
   beforeEach(function () {
     menu = new MenuManager({
-      keymapManager: atom.keymaps,
-      packageManager: atom.packages,
+      keymapManager: lumine.keymaps,
+      packageManager: lumine.packages,
     });
     spyOn(menu, "sendToBrowserProcess");
-    menu.initialize({ resourcePath: atom.app.getResourcePath() });
+    menu.initialize({ resourcePath: lumine.app.getResourcePath() });
     menu.template = [
       {
         label: "Packages",
@@ -182,7 +182,7 @@ describe("MenuManager::sortPackagesMenu", function () {
   it("sorts when a package activates after startup", function () {
     menu.add([{ label: "Packages", submenu: [{ label: "Zulu", command: "z" }] }]);
     menu.add([{ label: "Packages", submenu: [{ label: "Alpha", command: "a" }] }]);
-    atom.packages.emitter.emit("did-activate-package", {});
+    lumine.packages.emitter.emit("did-activate-package", {});
     expect(labels()).toEqual(["Open Package Manager", "separator", "Alpha", "Zulu"]);
   });
 });

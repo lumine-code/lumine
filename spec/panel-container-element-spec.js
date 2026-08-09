@@ -20,19 +20,24 @@ describe("PanelContainerElement", () => {
     focus() {}
   }
 
-  window.customElements.define("atom-test-container-item-element", TestPanelContainerItemElement_);
+  window.customElements.define(
+    "lumine-test-container-item-element",
+    TestPanelContainerItemElement_,
+  );
 
-  const TestPanelContainerItemElement = document.createElement("atom-test-container-item-element");
+  const TestPanelContainerItemElement = document.createElement(
+    "lumine-test-container-item-element",
+  );
 
   beforeEach(() => {
     jasmineContent = document.body.querySelector("#jasmine-content");
 
-    atom.views.addViewProvider(TestPanelContainerItem, (model) =>
+    lumine.views.addViewProvider(TestPanelContainerItem, (model) =>
       TestPanelContainerItemElement.initialize(model),
     );
 
     container = new PanelContainer({
-      viewRegistry: atom.views,
+      viewRegistry: lumine.views,
       location: "left",
     });
     element = container.getElement();
@@ -51,9 +56,9 @@ describe("PanelContainerElement", () => {
 
   describe("adding and removing panels", () => {
     it("allows panels to be inserted at any position", () => {
-      const panel1 = new Panel({ item: new TestPanelContainerItem(), priority: 10 }, atom.views);
-      const panel2 = new Panel({ item: new TestPanelContainerItem(), priority: 5 }, atom.views);
-      const panel3 = new Panel({ item: new TestPanelContainerItem(), priority: 8 }, atom.views);
+      const panel1 = new Panel({ item: new TestPanelContainerItem(), priority: 10 }, lumine.views);
+      const panel2 = new Panel({ item: new TestPanelContainerItem(), priority: 5 }, lumine.views);
+      const panel3 = new Panel({ item: new TestPanelContainerItem(), priority: 8 }, lumine.views);
 
       container.addPanel(panel1);
       container.addPanel(panel2);
@@ -65,19 +70,19 @@ describe("PanelContainerElement", () => {
     });
 
     describe("when the container is at the left location", () =>
-      it("adds atom-panel elements when a new panel is added to the container; removes them when the panels are destroyed", () => {
+      it("adds lumine-panel elements when a new panel is added to the container; removes them when the panels are destroyed", () => {
         expect(element.childNodes.length).toBe(0);
 
-        const panel1 = new Panel({ item: new TestPanelContainerItem() }, atom.views);
+        const panel1 = new Panel({ item: new TestPanelContainerItem() }, lumine.views);
         container.addPanel(panel1);
         expect(element.childNodes.length).toBe(1);
         expect(element.childNodes[0]).toHaveClass("left");
         expect(element.childNodes[0]).toHaveClass("tool-panel"); // legacy selector support
         expect(element.childNodes[0]).toHaveClass("panel-left"); // legacy selector support
 
-        expect(element.childNodes[0].tagName).toBe("ATOM-PANEL");
+        expect(element.childNodes[0].tagName).toBe("LUMINE-PANEL");
 
-        const panel2 = new Panel({ item: new TestPanelContainerItem() }, atom.views);
+        const panel2 = new Panel({ item: new TestPanelContainerItem() }, lumine.views);
         container.addPanel(panel2);
         expect(element.childNodes.length).toBe(2);
 
@@ -94,31 +99,31 @@ describe("PanelContainerElement", () => {
     describe("when the container is at the bottom location", () => {
       beforeEach(() => {
         container = new PanelContainer({
-          viewRegistry: atom.views,
+          viewRegistry: lumine.views,
           location: "bottom",
         });
         element = container.getElement();
         jasmineContent.appendChild(element);
       });
 
-      it("adds atom-panel elements when a new panel is added to the container; removes them when the panels are destroyed", () => {
+      it("adds lumine-panel elements when a new panel is added to the container; removes them when the panels are destroyed", () => {
         expect(element.childNodes.length).toBe(0);
 
         const panel1 = new Panel(
           { item: new TestPanelContainerItem(), className: "one" },
-          atom.views,
+          lumine.views,
         );
         container.addPanel(panel1);
         expect(element.childNodes.length).toBe(1);
         expect(element.childNodes[0]).toHaveClass("bottom");
         expect(element.childNodes[0]).toHaveClass("tool-panel"); // legacy selector support
         expect(element.childNodes[0]).toHaveClass("panel-bottom"); // legacy selector support
-        expect(element.childNodes[0].tagName).toBe("ATOM-PANEL");
+        expect(element.childNodes[0].tagName).toBe("LUMINE-PANEL");
         expect(panel1.getElement()).toHaveClass("one");
 
         const panel2 = new Panel(
           { item: new TestPanelContainerItem(), className: "two" },
-          atom.views,
+          lumine.views,
         );
         container.addPanel(panel2);
         expect(element.childNodes.length).toBe(2);
@@ -136,7 +141,7 @@ describe("PanelContainerElement", () => {
   describe("when the container is modal", () => {
     beforeEach(() => {
       container = new PanelContainer({
-        viewRegistry: atom.views,
+        viewRegistry: lumine.views,
         location: "modal",
       });
       element = container.getElement();
@@ -144,12 +149,12 @@ describe("PanelContainerElement", () => {
     });
 
     it("allows only one panel to be visible at a time", () => {
-      const panel1 = new Panel({ item: new TestPanelContainerItem() }, atom.views);
+      const panel1 = new Panel({ item: new TestPanelContainerItem() }, lumine.views);
       container.addPanel(panel1);
 
       expect(panel1.getElement().style.display).not.toBe("none");
 
-      const panel2 = new Panel({ item: new TestPanelContainerItem() }, atom.views);
+      const panel2 = new Panel({ item: new TestPanelContainerItem() }, lumine.views);
       container.addPanel(panel2);
 
       expect(panel1.getElement().style.display).toBe("none");
@@ -162,7 +167,7 @@ describe("PanelContainerElement", () => {
     });
 
     it("adds the 'modal' class to panels", () => {
-      const panel1 = new Panel({ item: new TestPanelContainerItem() }, atom.views);
+      const panel1 = new Panel({ item: new TestPanelContainerItem() }, lumine.views);
       container.addPanel(panel1);
 
       expect(panel1.getElement()).toHaveClass("modal");
@@ -181,7 +186,7 @@ describe("PanelContainerElement", () => {
             autoFocus: autoFocus,
             visible: false,
           },
-          atom.views,
+          lumine.views,
         );
 
         container.addPanel(panel);
@@ -248,7 +253,7 @@ describe("PanelContainerElement", () => {
       function createPanel(options = {}) {
         const panel = new Panel(
           { item: new TestPanelContainerItem(), visible: false, ...options },
-          atom.views,
+          lumine.views,
         );
         container.addPanel(panel);
         const inputEl = document.createElement("input");

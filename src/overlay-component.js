@@ -1,7 +1,7 @@
 module.exports = class OverlayComponent {
   constructor(props) {
     this.props = props;
-    this.element = document.createElement("atom-overlay");
+    this.element = document.createElement("lumine-overlay");
     if (this.props.className != null) this.element.classList.add(this.props.className);
     this.element.appendChild(this.props.element);
     this.element.style.position = "fixed";

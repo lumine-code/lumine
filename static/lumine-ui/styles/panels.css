@@ -5,7 +5,7 @@
 
 .tool-panel, /* deprecated: .tool-panel */
 .panel, /* deprecated: .panel */
-atom-panel {
+lumine-panel {
   background-color: var(--tool-panel-background-color);
 }
 

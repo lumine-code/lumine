@@ -4,14 +4,14 @@ describe("PaneElement", function () {
   let [paneElement, container, containerElement, pane] = [];
 
   beforeEach(function () {
-    spyOn(atom.applicationDelegate, "open");
+    spyOn(lumine.applicationDelegate, "open");
 
     container = new PaneContainer({
       location: "center",
-      config: atom.config,
-      confirm: atom.window.confirm.bind(atom.window),
-      viewRegistry: atom.views,
-      applicationDelegate: atom.applicationDelegate,
+      config: lumine.config,
+      confirm: lumine.window.confirm.bind(lumine.window),
+      viewRegistry: lumine.views,
+      applicationDelegate: lumine.applicationDelegate,
     });
     containerElement = container.getElement();
     pane = container.getActivePane();
@@ -84,10 +84,10 @@ describe("PaneElement", function () {
     });
 
     describe("if the active item is a model object", () =>
-      it("retrieves the associated view from atom.views and appends it to the itemViews div", function () {
+      it("retrieves the associated view from lumine.views and appends it to the itemViews div", function () {
         class TestModel {}
 
-        atom.views.addViewProvider(TestModel, function (model) {
+        lumine.views.addViewProvider(TestModel, function (model) {
           const view = document.createElement("div");
           view.model = model;
           return view;
@@ -211,7 +211,7 @@ describe("PaneElement", function () {
       it("removes the model's associated view", function () {
         class TestModel {}
 
-        atom.views.addViewProvider(TestModel, function (model) {
+        lumine.views.addViewProvider(TestModel, function (model) {
           const view = document.createElement("div");
           model.element = view;
           view.model = model;
@@ -306,8 +306,8 @@ describe("PaneElement", function () {
       it("opens it", function () {
         const event = buildDragEvent("drop", [{ path: "/fake1" }, { path: "/fake2" }]);
         paneElement.dispatchEvent(event);
-        expect(atom.applicationDelegate.open.calls.count()).toBe(1);
-        expect(atom.applicationDelegate.open.calls.argsFor(0)[0]).toEqual({
+        expect(lumine.applicationDelegate.open.calls.count()).toBe(1);
+        expect(lumine.applicationDelegate.open.calls.argsFor(0)[0]).toEqual({
           pathsToOpen: ["/fake1", "/fake2"],
           here: true,
         });
@@ -317,14 +317,14 @@ describe("PaneElement", function () {
       it("does nothing", function () {
         const event = buildDragEvent("drop", []);
         paneElement.dispatchEvent(event);
-        expect(atom.applicationDelegate.open).not.toHaveBeenCalled();
+        expect(lumine.applicationDelegate.open).not.toHaveBeenCalled();
       }));
 
     describe("when a dropped file has no resolved path", () =>
       it("does nothing", function () {
         const event = buildDragEvent("drop", [{}]);
         paneElement.dispatchEvent(event);
-        expect(atom.applicationDelegate.open).not.toHaveBeenCalled();
+        expect(lumine.applicationDelegate.open).not.toHaveBeenCalled();
       }));
   });
 

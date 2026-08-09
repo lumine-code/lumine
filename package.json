@@ -22,7 +22,7 @@
   "engines": {
     "node": ">=24.18.0"
   },
-  "atomTestRunner": "runners/jasmine-test-runner",
+  "lumineTestRunner": "runners/jasmine-test-runner",
   "license": "MIT",
   "electronVersion": "43.3.0",
   "dependencies": {

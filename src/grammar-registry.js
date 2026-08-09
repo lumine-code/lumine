@@ -14,7 +14,7 @@ const PATH_SPLIT_REGEX = new RegExp("[/.]");
 
 // Extended: This class holds the grammars used for tokenizing.
 //
-// An instance of this class is always available as the `atom.grammars` global.
+// An instance of this class is always available as the `lumine.grammars` global.
 module.exports = class GrammarRegistry {
   constructor({ config } = {}) {
     this.config = config;
@@ -184,7 +184,7 @@ module.exports = class GrammarRegistry {
   // through `maintainLanguageMode` are released when they are destroyed, but a
   // buffer assigned a grammar directly had nothing releasing it, so every
   // throwaway editor given a language mode — one per fenced code block that
-  // `atom.tools.markdown.applySyntaxHighlighting` renders — stayed alive for the
+  // `lumine.tools.markdown.applySyntaxHighlighting` renders — stayed alive for the
   // lifetime of the window.
   releaseBufferOnDestroy(buffer) {
     if (this.releasedBuffers.has(buffer)) return;

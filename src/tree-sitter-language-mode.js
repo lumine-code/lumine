@@ -246,7 +246,7 @@ class TreeSitterLanguageMode {
     this.id = nextLanguageModeId++;
     this.buffer = buffer;
     this.grammar = grammar;
-    this.config = config ?? atom.config;
+    this.config = config ?? lumine.config;
     this.grammarRegistry = grammars;
 
     this.syncTimeoutMicros = syncTimeoutMicros ?? PARSE_JOB_LIMIT_MICROS;
@@ -857,7 +857,7 @@ class TreeSitterLanguageMode {
   }
 
   parseAsync(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
-    let devMode = atom.window.isDevMode();
+    let devMode = lumine.window.isDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
     let timeoutMicros = oldTree ? this.syncTimeoutMicros : INITIAL_PARSE_JOB_LIMIT_MICROS;
     // Async batches of an initial parse get their own, smaller budget; an
@@ -973,7 +973,7 @@ class TreeSitterLanguageMode {
   }
 
   parse(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
-    let devMode = atom.window.isDevMode();
+    let devMode = lumine.window.isDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
     parser.reset();
 
@@ -1650,7 +1650,7 @@ class TreeSitterLanguageMode {
         } catch (error) {
           let descriptor = error.queryDescriptor ?? grammar.describeQueryError(error, queryType);
           failures.push(descriptor);
-          atom.notifications.addError(`Tree-sitter query error in ${grammar.scopeName}`, {
+          lumine.notifications.addError(`Tree-sitter query error in ${grammar.scopeName}`, {
             detail: grammar.constructor.formatQueryErrorDescriptor(descriptor),
             dismissable: true,
           });
@@ -1659,7 +1659,7 @@ class TreeSitterLanguageMode {
     }
 
     if (failures.length === 0) {
-      atom.notifications.addSuccess(
+      lumine.notifications.addSuccess(
         `All Tree-sitter queries compiled (${grammars.size} grammar${grammars.size === 1 ? "" : "s"}, ${validatedCount} quer${validatedCount === 1 ? "y" : "ies"})`,
       );
     }
@@ -2737,7 +2737,7 @@ class LayerHighlightIterator {
 
   seek(start, endRow) {
     let end = this._getEndPosition(endRow);
-    // let isDevMode = atom.window.isDevMode();
+    // let isDevMode = lumine.window.isDevMode();
 
     // let timeKey;
     // if (isDevMode) {

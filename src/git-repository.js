@@ -48,7 +48,7 @@ function summaryFromStatusEntry(entry) {
 // Extended: Represents the underlying git operations performed by Lumine.
 //
 // This class shouldn't be instantiated directly but instead by accessing the
-// `atom.repositories` and calling `getRepositories()` or `getForPath()`. It is
+// `lumine.repositories` and calling `getRepositories()` or `getForPath()`. It is
 // independent from project roots and may represent containing or nested repos.
 //
 // This class handles submodules automatically by taking a `path` argument to many
@@ -58,7 +58,7 @@ function summaryFromStatusEntry(entry) {
 // For a repository with submodules this would have the following outcome:
 //
 // ```js
-// const repo = atom.repositories.getRepositories()[0]
+// const repo = lumine.repositories.getRepositories()[0]
 // repo.getShortHead() // 'master'
 // repo.getShortHead('vendor/path/to/a/submodule') // 'dead1234'
 // ```
@@ -68,14 +68,14 @@ function summaryFromStatusEntry(entry) {
 // ### Logging the URL of the origin remote
 //
 // ```js
-// const git = atom.repositories.getRepositories()[0]
+// const git = lumine.repositories.getRepositories()[0]
 // console.log(git.getOriginURL())
 // ```
 //
 // ### Requiring in packages
 //
 // ```js
-// const { GitRepository } = require('atom')
+// const { GitRepository } = require('lumine')
 // ```
 module.exports = class GitRepository {
   static exists(path) {
@@ -237,7 +237,7 @@ module.exports = class GitRepository {
     return !this.isDestroyed() && fs.existsSync(this.path || this.getPath());
   }
 
-  // Public: Returns the stable write facade assigned by atom.repositories.
+  // Public: Returns the stable write facade assigned by lumine.repositories.
   // Its methods are enabled by repositories.operations-provider services.
   getOperations() {
     return this.operations;

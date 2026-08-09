@@ -18,16 +18,16 @@ function createClipboardData(initialData = {}) {
 describe("Clipboard", () => {
   describe("write(text, metadata) and read()", () => {
     it("writes and reads text to/from the native clipboard", () => {
-      expect(atom.clipboard.read()).toBe("initial clipboard content");
-      atom.clipboard.write("next");
-      expect(atom.clipboard.read()).toBe("next");
+      expect(lumine.clipboard.read()).toBe("initial clipboard content");
+      lumine.clipboard.write("next");
+      expect(lumine.clipboard.read()).toBe("next");
     });
 
     it("returns metadata if the item on the native clipboard matches the last written item", () => {
-      atom.clipboard.write("next", { meta: "data" });
-      expect(atom.clipboard.read()).toBe("next");
-      expect(atom.clipboard.readWithMetadata().text).toBe("next");
-      expect(atom.clipboard.readWithMetadata().metadata).toEqual({
+      lumine.clipboard.write("next", { meta: "data" });
+      expect(lumine.clipboard.read()).toBe("next");
+      expect(lumine.clipboard.readWithMetadata().text).toBe("next");
+      expect(lumine.clipboard.readWithMetadata().metadata).toEqual({
         meta: "data",
       });
     });
@@ -45,8 +45,8 @@ describe("Clipboard", () => {
       it(`converts line endings to the OS's native line endings on ${platform}`, () => {
         Object.defineProperty(process, "platform", { value: platform });
 
-        atom.clipboard.write("next\ndone\r\n\n", { meta: "data" });
-        expect(atom.clipboard.readWithMetadata()).toEqual({
+        lumine.clipboard.write("next\ndone\r\n\n", { meta: "data" });
+        expect(lumine.clipboard.readWithMetadata()).toEqual({
           text: `next${eol}done${eol}${eol}`,
           metadata: { meta: "data" },
         });
@@ -61,7 +61,7 @@ describe("Clipboard", () => {
       const clipboardData = createClipboardData();
       const metadata = { indentBasis: 0, fullLine: true };
 
-      atom.clipboard.createDataTransferClipboard(clipboardData).write("next\n", metadata);
+      lumine.clipboard.createDataTransferClipboard(clipboardData).write("next\n", metadata);
 
       expect(clipboardData.types).toEqual([
         "text/plain",
@@ -92,7 +92,7 @@ describe("Clipboard", () => {
           { text: "two", indentBasis: 1, fullLine: true },
         ],
       };
-      atom.clipboard.createDataTransferClipboard(clipboardData).write("one\ntwo", metadata);
+      lumine.clipboard.createDataTransferClipboard(clipboardData).write("one\ntwo", metadata);
 
       const otherRendererClipboard = new Clipboard();
       expect(
@@ -131,14 +131,14 @@ describe("Clipboard", () => {
 
     it("falls back to this window's metadata when the custom formats are stripped", () => {
       const clipboardData = createClipboardData();
-      atom.clipboard
+      lumine.clipboard
         .createDataTransferClipboard(clipboardData)
         .write("stripped formats", { fullLine: true });
 
       const textOnly = createClipboardData({
         "text/plain": clipboardData.getData("text/plain"),
       });
-      expect(atom.clipboard.createDataTransferClipboard(textOnly).readWithMetadata()).toEqual({
+      expect(lumine.clipboard.createDataTransferClipboard(textOnly).readWithMetadata()).toEqual({
         text: "stripped formats",
         metadata: { fullLine: true },
       });
@@ -146,19 +146,19 @@ describe("Clipboard", () => {
 
     it("does not reuse this window's metadata once the plain text differs", () => {
       const clipboardData = createClipboardData();
-      atom.clipboard
+      lumine.clipboard
         .createDataTransferClipboard(clipboardData)
         .write("stripped formats", { fullLine: true });
 
       const textOnly = createClipboardData({ "text/plain": "something else" });
-      expect(atom.clipboard.createDataTransferClipboard(textOnly).readWithMetadata()).toEqual({
+      expect(lumine.clipboard.createDataTransferClipboard(textOnly).readWithMetadata()).toEqual({
         text: "something else",
       });
     });
 
     it("ignores stale Lumine metadata when the plain text has changed", () => {
       const clipboardData = createClipboardData();
-      atom.clipboard
+      lumine.clipboard
         .createDataTransferClipboard(clipboardData)
         .write("original", { fullLine: true });
       clipboardData.setData("text/plain", "replacement");
@@ -175,10 +175,14 @@ describe("Clipboard", () => {
     it("writes text and a web custom format through the async clipboard API", async () => {
       spyOn(navigator.clipboard, "write").and.returnValue(Promise.resolve());
 
-      const written = await atom.clipboard.writeNativeData("one two", "application/lumine-probe", {
-        version: 1,
-        value: "data",
-      });
+      const written = await lumine.clipboard.writeNativeData(
+        "one two",
+        "application/lumine-probe",
+        {
+          version: 1,
+          value: "data",
+        },
+      );
 
       expect(written).toBe(true);
       const [items] = navigator.clipboard.write.calls.mostRecent().args;
@@ -195,7 +199,7 @@ describe("Clipboard", () => {
         Promise.reject(new Error("Document is not focused.")),
       );
 
-      const written = await atom.clipboard.writeNativeData(
+      const written = await lumine.clipboard.writeNativeData(
         "fallback text",
         "application/lumine-probe",
         {
@@ -204,7 +208,7 @@ describe("Clipboard", () => {
       );
 
       expect(written).toBe(false);
-      expect(atom.clipboard.read()).toBe("fallback text");
+      expect(lumine.clipboard.read()).toBe("fallback text");
     });
 
     it("reads back the payload for the requested format", async () => {
@@ -219,14 +223,14 @@ describe("Clipboard", () => {
         ]),
       );
 
-      expect(await atom.clipboard.readNativeData("application/lumine-probe")).toEqual(payload);
+      expect(await lumine.clipboard.readNativeData("application/lumine-probe")).toEqual(payload);
     });
 
     it("returns null for missing formats, invalid payloads, and read failures", async () => {
       const read = spyOn(navigator.clipboard, "read");
 
       read.and.returnValue(Promise.resolve([{ types: ["text/plain"] }]));
-      expect(await atom.clipboard.readNativeData("application/lumine-probe")).toBeNull();
+      expect(await lumine.clipboard.readNativeData("application/lumine-probe")).toBeNull();
 
       read.and.returnValue(
         Promise.resolve([
@@ -236,7 +240,7 @@ describe("Clipboard", () => {
           },
         ]),
       );
-      expect(await atom.clipboard.readNativeData("application/lumine-probe")).toBeNull();
+      expect(await lumine.clipboard.readNativeData("application/lumine-probe")).toBeNull();
 
       read.and.returnValue(
         Promise.resolve([
@@ -246,10 +250,10 @@ describe("Clipboard", () => {
           },
         ]),
       );
-      expect(await atom.clipboard.readNativeData("application/lumine-probe")).toBeNull();
+      expect(await lumine.clipboard.readNativeData("application/lumine-probe")).toBeNull();
 
       read.and.returnValue(Promise.reject(new Error("Document is not focused.")));
-      expect(await atom.clipboard.readNativeData("application/lumine-probe")).toBeNull();
+      expect(await lumine.clipboard.readNativeData("application/lumine-probe")).toBeNull();
     });
   });
 });

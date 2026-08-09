@@ -12,11 +12,11 @@ const TypeScriptTranspiler = require("../src/typescript");
 const CompileCache = require("../src/compile-cache");
 
 describe("CompileCache", () => {
-  let atomHome, fixtures;
+  let lumineHome, fixtures;
 
   beforeEach(() => {
-    fixtures = atom.project.getPaths()[0];
-    atomHome = temp.mkdirSync("fake-atom-home");
+    fixtures = lumine.project.getPaths()[0];
+    lumineHome = temp.mkdirSync("fake-lumine-home");
 
     CompileCache.resetCacheStats();
 
@@ -25,7 +25,7 @@ describe("CompileCache", () => {
   });
 
   afterEach(() => {
-    CompileCache.setAtomHomeDirectory(process.env.LUMINE_HOME);
+    CompileCache.setLumineHomeDirectory(process.env.LUMINE_HOME);
     try {
       temp.cleanupSync();
     } catch {
@@ -33,10 +33,10 @@ describe("CompileCache", () => {
     }
   });
 
-  describe("addPathToCache(filePath, atomHome)", () => {
+  describe("addPathToCache(filePath, lumineHome)", () => {
     describe("when the given file is plain javascript", () => {
       it("does not compile or cache the file", function () {
-        CompileCache.addPathToCache(path.join(fixtures, "sample.js"), atomHome);
+        CompileCache.addPathToCache(path.join(fixtures, "sample.js"), lumineHome);
         expect(CompileCache.getCacheStats()[".js"]).toEqual({ hits: 0, misses: 0 });
       });
     });
@@ -47,11 +47,11 @@ describe("CompileCache", () => {
      */
     xdescribe("when the given file uses babel", () => {
       it("compiles the file with babel and caches it", function () {
-        CompileCache.addPathToCache(path.join(fixtures, "babel", "babel-comment.js"), atomHome);
+        CompileCache.addPathToCache(path.join(fixtures, "babel", "babel-comment.js"), lumineHome);
         expect(CompileCache.getCacheStats()[".js"]).toEqual({ hits: 0, misses: 1 });
         expect(babelCompiler.compile.calls.count()).toBe(1);
 
-        CompileCache.addPathToCache(path.join(fixtures, "babel", "babel-comment.js"), atomHome);
+        CompileCache.addPathToCache(path.join(fixtures, "babel", "babel-comment.js"), lumineHome);
         expect(CompileCache.getCacheStats()[".js"]).toEqual({ hits: 1, misses: 1 });
         expect(babelCompiler.compile.calls.count()).toBe(1);
       });
@@ -59,11 +59,11 @@ describe("CompileCache", () => {
 
     describe("when the given file is typescript", () => {
       it("compiles the file with typescript and caches it", function () {
-        CompileCache.addPathToCache(path.join(fixtures, "typescript", "valid.ts"), atomHome);
+        CompileCache.addPathToCache(path.join(fixtures, "typescript", "valid.ts"), lumineHome);
         expect(CompileCache.getCacheStats()[".ts"]).toEqual({ hits: 0, misses: 1 });
         expect(TypeScriptTranspiler.compile.calls.count()).toBe(1);
 
-        CompileCache.addPathToCache(path.join(fixtures, "typescript", "valid.ts"), atomHome);
+        CompileCache.addPathToCache(path.join(fixtures, "typescript", "valid.ts"), lumineHome);
         expect(CompileCache.getCacheStats()[".ts"]).toEqual({ hits: 1, misses: 1 });
         expect(TypeScriptTranspiler.compile.calls.count()).toBe(1);
       });
@@ -72,11 +72,17 @@ describe("CompileCache", () => {
     describe("when the given file is JSX", () => {
       it("compiles the file with babel unconditionally and caches it", function () {
         babelCompiler.compile.and.returnValue("the-jsx-code");
-        CompileCache.addPathToCache(path.join(fixtures, "babel", "default-factory.jsx"), atomHome);
+        CompileCache.addPathToCache(
+          path.join(fixtures, "babel", "default-factory.jsx"),
+          lumineHome,
+        );
         expect(CompileCache.getCacheStats()[".jsx"]).toEqual({ hits: 0, misses: 1 });
         expect(babelCompiler.compile.calls.count()).toBe(1);
 
-        CompileCache.addPathToCache(path.join(fixtures, "babel", "default-factory.jsx"), atomHome);
+        CompileCache.addPathToCache(
+          path.join(fixtures, "babel", "default-factory.jsx"),
+          lumineHome,
+        );
         expect(CompileCache.getCacheStats()[".jsx"]).toEqual({ hits: 1, misses: 1 });
         expect(babelCompiler.compile.calls.count()).toBe(1);
       });

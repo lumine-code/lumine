@@ -4,7 +4,7 @@
  */
 
 .overlay, /* deprecated .overlay */
-atom-panel.modal {
+lumine-panel.modal {
   position: absolute;
   display: block;
   top: 0;
@@ -42,7 +42,7 @@ atom-panel.modal {
     font-size: 1.3em;
   }
 
-  atom-text-editor[mini] {
+  lumine-text-editor[mini] {
     margin-bottom: 10px;
   }
 

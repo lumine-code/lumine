@@ -82,7 +82,7 @@ module.exports = class ConfigFile {
       });
       return { dispose: () => watcher.close() };
     } catch {
-      //TODO_LUMINE: Find out why the atom global variable isn't available at this point
+      //TODO_LUMINE: Find out why the lumine global variable isn't available at this point
       this.emitter.emit(
         "did-error",
         dedent`

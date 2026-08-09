@@ -229,7 +229,7 @@ class MarkerLayer {
     return result;
   }
 
-  // Public: Get the role of the marker layer e.g. `atom.selection`.
+  // Public: Get the role of the marker layer e.g. `lumine.selection`.
 
   // Returns a {String}.
   getRole() {

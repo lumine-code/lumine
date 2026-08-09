@@ -14,9 +14,9 @@ function isObjectFile(filePath) {
 
 module.exports = function (packageJSON) {
   return {
-    _atomPackages: buildBundledPackagesMetadata(),
-    _atomMenu: buildPlatformMenuMetadata(packageJSON),
-    _atomKeymaps: buildPlatformKeymapsMetadata(packageJSON),
+    _luminePackages: buildBundledPackagesMetadata(),
+    _lumineMenu: buildPlatformMenuMetadata(packageJSON),
+    _lumineKeymaps: buildPlatformKeymapsMetadata(packageJSON),
   };
 };
 
@@ -54,7 +54,7 @@ function buildBundledPackagesMetadata() {
     delete packageMetadata["dist"];
     delete packageMetadata["readmeFilename"];
 
-    const packageModuleCache = packageMetadata._atomModuleCache || {};
+    const packageModuleCache = packageMetadata._lumineModuleCache || {};
     if (packageModuleCache.extensions && packageModuleCache.extensions[".json"]) {
       const index = packageModuleCache.extensions[".json"].indexOf("package.json");
       if (index !== -1) {

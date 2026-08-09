@@ -5,7 +5,7 @@ const KeymapManager = require("./keymap-manager");
 const buildMetadata = require("../package.json");
 var bundledKeymaps;
 if (buildMetadata != null) {
-  bundledKeymaps = buildMetadata._atomKeymaps;
+  bundledKeymaps = buildMetadata._lumineKeymaps;
 }
 
 KeymapManager.prototype.onDidLoadBundledKeymaps = function (callback) {

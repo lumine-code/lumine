@@ -4,7 +4,7 @@ module.exports = {
 
   activate() {
     this.activateCallCount++;
-    atom.workspace.addOpener((filePath) => {
+    lumine.workspace.addOpener((filePath) => {
       if (filePath === "lumine://fictitious") {
         this.openerCount++;
       }

@@ -206,14 +206,14 @@ describe("watchPath", function () {
       });
 
       it("resolves the returned promise when the watcher begins listening", async function () {
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
 
         const watcher = await watchPath(rootDir, {}, () => {});
         expect(watcher.constructor.name).toBe("PathWatcher");
       });
 
       it("reuses an existing native watcher and resolves getStartPromise immediately if attached to a running watcher", async function () {
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
 
         const watcher0 = await watchPath(rootDir, {}, () => {});
         const watcher1 = await watchPath(rootDir, {}, () => {});
@@ -227,10 +227,10 @@ describe("watchPath", function () {
       xit("respects `core.ignoredNames`", async () => {
         jasmine.useRealClock();
 
-        let existing = atom.config.get("core.ignoredNames");
-        atom.config.set("core.ignoredNames", [...existing, "some-other-dir"]);
+        let existing = lumine.config.get("core.ignoredNames");
+        lumine.config.set("core.ignoredNames", [...existing, "some-other-dir"]);
 
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
 
         // Create a directory that will be affected by our `core.ignoredNames`
         // value.
@@ -258,14 +258,14 @@ describe("watchPath", function () {
       });
 
       it("resolves the returned promise when the watcher begins listening", async function () {
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
         const watcher = await watchPath(rootDir, {}, () => {});
         disposables.add(watcher);
         expect(watcher.constructor.name).toBe("PathWatcher");
       });
 
       it("reuses an existing native watcher and resolves getStartPromise immediately if attached to a running watcher", async function () {
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
 
         const watcher0 = await watchPath(rootDir, {}, () => {});
         const watcher1 = await watchPath(rootDir, {}, () => {});
@@ -277,7 +277,7 @@ describe("watchPath", function () {
 
       it("returns paths that appear to descend from the given path, even when symlinks are involved, when `realPaths` is `false`", async () => {
         jasmine.useRealClock();
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
         const realRootDir = await realpath(rootDir);
         const symlinkedPath = temp.path({ suffix: "-symlinked" });
         await symlink(realRootDir, symlinkedPath);
@@ -314,7 +314,7 @@ describe("watchPath", function () {
 
       it("returns real paths for events when `realPaths` is `true`", async () => {
         jasmine.useRealClock();
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
         const realRootDir = await realpath(rootDir);
         const symlinkedPath = temp.path({ suffix: "-symlinked" });
         await symlink(realRootDir, symlinkedPath);
@@ -351,7 +351,7 @@ describe("watchPath", function () {
 
       it("normalizes a path without resolving symlinks when `realPaths` is `false`", async () => {
         jasmine.useRealClock();
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
         const realRootDir = await realpath(rootDir);
         const symlinkedPath = temp.path({ suffix: "-symlinked" });
         await symlink(realRootDir, symlinkedPath);
@@ -380,7 +380,7 @@ describe("watchPath", function () {
 
       it("recovers running watchers when the worker process dies", async function () {
         jasmine.useRealClock();
-        const rootDir = await tempMkdir("atom-fsmanager-test-").then(realpath);
+        const rootDir = await tempMkdir("lumine-fsmanager-test-").then(realpath);
         const target = path.join(rootDir, "recovery.txt");
         await writeFile(target, "start\n", { encoding: "utf8" });
 
@@ -407,7 +407,7 @@ describe("watchPath", function () {
 
       it("resolves stopAllWatchers when the worker dies with an unwatch in flight", async function () {
         jasmine.useRealClock();
-        const rootDir = await tempMkdir("atom-fsmanager-test-").then(realpath);
+        const rootDir = await tempMkdir("lumine-fsmanager-test-").then(realpath);
         const watcher = await watchPath(rootDir, {}, () => {});
         disposables.add(watcher);
 
@@ -438,7 +438,7 @@ describe("watchPath", function () {
       });
 
       it("reuses existing native watchers even while they're still starting", async function () {
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
 
         const [watcher0, watcher1] = await Promise.all([
           watchPath(rootDir, {}, () => {}),
@@ -448,7 +448,7 @@ describe("watchPath", function () {
       });
 
       it("doesn't attach new watchers to a native watcher that's stopping", async function () {
-        const rootDir = await tempMkdir("atom-fsmanager-test-");
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
 
         const watcher0 = await watchPath(rootDir, {}, () => {});
         const native0 = watcher0.native;
@@ -460,7 +460,7 @@ describe("watchPath", function () {
       });
 
       it("reuses an existing native watcher on a parent directory and filters events", async function () {
-        const rootDir = await tempMkdir("atom-fsmanager-test-").then(realpath);
+        const rootDir = await tempMkdir("lumine-fsmanager-test-").then(realpath);
         const rootFile = path.join(rootDir, "rootfile.txt");
         const subDir = path.join(rootDir, "subdir");
         const subFile = path.join(subDir, "subfile.txt");
@@ -491,7 +491,7 @@ describe("watchPath", function () {
       });
 
       it("adopts existing child watchers and filters events appropriately to them", async function () {
-        const parentDir = await tempMkdir("atom-fsmanager-test-").then(realpath);
+        const parentDir = await tempMkdir("lumine-fsmanager-test-").then(realpath);
 
         // Create the directory tree
         const rootFile = path.join(parentDir, "rootfile.txt");

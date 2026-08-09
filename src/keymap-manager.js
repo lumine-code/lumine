@@ -33,7 +33,7 @@ const OtherPlatforms = Platforms.filter((platform) => platform !== process.platf
 
 // Extended: Allows commands to be associated with keystrokes in a
 // context-sensitive way. You can access a global instance of this
-// object via `atom.keymaps`.
+// object via `lumine.keymaps`.
 //
 // Key bindings are plain JavaScript objects containing **CSS selectors** as
 // their top level keys, then **keystroke patterns** mapped to commands.
@@ -657,7 +657,7 @@ module.exports = KeymapManager = (function () {
         return;
       }
 
-      // keystroke is the atom keybind syntax, e.g. 'ctrl-a'
+      // keystroke is the lumine keybind syntax, e.g. 'ctrl-a'
       const keystroke = this.keystrokeForKeyboardEvent(event);
 
       // We dont care about bare modifier keys in the bindings. e.g. `ctrl y` isnt going to work.

@@ -1,4 +1,4 @@
-// The editor's own utilities, handed to packages as `atom.tools` so that a
+// The editor's own utilities, handed to packages as `lumine.tools` so that a
 // package needing to render Markdown, match a query against a list of
 // candidates, or fold diacritics does not vendor a second implementation of
 // something the editor already carries.

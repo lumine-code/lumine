@@ -7,9 +7,9 @@ describe("NotificationManager", () => {
     manager = new NotificationManager();
   });
 
-  describe("the atom global", () =>
+  describe("the lumine global", () =>
     it("has a notifications instance", () => {
-      expect(atom.notifications instanceof NotificationManager).toBe(true);
+      expect(lumine.notifications instanceof NotificationManager).toBe(true);
     }));
 
   describe("adding events", () => {

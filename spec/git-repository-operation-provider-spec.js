@@ -98,13 +98,13 @@ describe("GitRepositoryOperationProvider", () => {
     const workingDirectory = temp.mkdirSync("git-signing-env");
     const operations = provider.createRepositoryOperations({ workingDirectory });
 
-    atom.config.set("git.promptForGpgPassphrase", true);
+    lumine.config.set("git.promptForGpgPassphrase", true);
     try {
       await operations.commit("Subject");
       await operations.merge("topic");
       await operations.stageFiles(["a.txt"]);
     } finally {
-      atom.config.set("git.promptForGpgPassphrase", false);
+      lumine.config.set("git.promptForGpgPassphrase", false);
     }
 
     const optionsFor = (command) => calls.find((call) => call.command === command).options;
@@ -143,7 +143,7 @@ describe("GitRepositoryOperationProvider", () => {
     const workingDirectory = temp.mkdirSync("git-signing-off");
     const operations = provider.createRepositoryOperations({ workingDirectory });
 
-    atom.config.set("git.promptForGpgPassphrase", false);
+    lumine.config.set("git.promptForGpgPassphrase", false);
     await operations.commit("Subject");
     await operations.merge("topic");
 
@@ -182,13 +182,13 @@ describe("GitRepositoryOperationProvider", () => {
     const operations = provider.createRepositoryOperations({ workingDirectory });
 
     // A pull fetches (needs credentials) and may sign a merge/rebase commit.
-    atom.config.set("git.promptForGpgPassphrase", false);
+    lumine.config.set("git.promptForGpgPassphrase", false);
     await operations.pull("origin", "main");
-    atom.config.set("git.promptForGpgPassphrase", true);
+    lumine.config.set("git.promptForGpgPassphrase", true);
     try {
       await operations.pull("origin", "main");
     } finally {
-      atom.config.set("git.promptForGpgPassphrase", false);
+      lumine.config.set("git.promptForGpgPassphrase", false);
     }
 
     const [disabled, enabled] = calls;
@@ -386,7 +386,7 @@ describe("GitRepositoryOperationProvider", () => {
 
     // Config writes matter only for the keys the snapshots actually read.
     expect(hint("setConfig", "user.name", "Someone")).toBe("none");
-    expect(hint("setConfig", "atomGithub.historySha", "abcdef")).toBe("none");
+    expect(hint("setConfig", "lumineGithub.historySha", "abcdef")).toBe("none");
     expect(hint("setConfig", "branch.main.remote", "origin")).toBe("both");
     expect(hint("unsetConfig", "remote.origin.url")).toBe("both");
 
@@ -543,7 +543,7 @@ describe("GitRepositoryOperationProvider", () => {
 
   it("drives the public repository API with Git writes and git-utils reads", async () => {
     const workingDirectory = temp.mkdirSync("git-public-repository-api");
-    const repository = await atom.repositories.initialize(workingDirectory, {
+    const repository = await lumine.repositories.initialize(workingDirectory, {
       initialBranch: "main",
     });
 
@@ -565,7 +565,7 @@ describe("GitRepositoryOperationProvider", () => {
       expect(repository.isPathModified("public-api.txt")).toBe(false);
       expect(repository.getStatusSnapshot().files).toEqual([]);
     } finally {
-      atom.repositories.forget(repository);
+      lumine.repositories.forget(repository);
     }
   });
 });

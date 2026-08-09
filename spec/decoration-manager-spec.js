@@ -5,13 +5,13 @@ describe("DecorationManager", function () {
   let decorationManager, buffer, editor, markerLayer1, markerLayer2;
 
   beforeEach(async function () {
-    buffer = atom.project.bufferForPathSync("sample.js");
+    buffer = lumine.project.bufferForPathSync("sample.js");
     editor = new TextEditor({ buffer });
     markerLayer1 = editor.addMarkerLayer();
     markerLayer2 = editor.addMarkerLayer();
     decorationManager = new DecorationManager(editor);
 
-    await atom.packages.activatePackage("language-javascript");
+    await lumine.packages.activatePackage("language-javascript");
   });
 
   afterEach(() => buffer.destroy());

@@ -1,4 +1,4 @@
-atom.deserializers.add('MyDeserializer', function (state) {
+lumine.deserializers.add('MyDeserializer', function (state) {
   return {state: state, a: 'b'}
 })
 

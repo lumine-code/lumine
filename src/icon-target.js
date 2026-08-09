@@ -4,7 +4,7 @@ const path = require("path");
 // `iconFor("markdown")` ambiguous between a file path and a semantic name, and
 // there is no way to guess correctly.
 //
-// This module is pure — no filesystem, no `atom` global — so it stays cheap
+// This module is pure — no filesystem, no `lumine` global — so it stays cheap
 // enough to run once per row of a completion list and trivial to spec.
 
 const EMPTY_HINTS = Object.freeze({});

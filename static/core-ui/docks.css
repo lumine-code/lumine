@@ -2,12 +2,12 @@
 
 /* The actual dock element is used as a kind of placeholder in the DOM, relative
    to which its children can be positioned. */
-atom-dock {
+lumine-dock {
   display: flex;
   position: relative;
 }
 
-.atom-dock-inner {
+.lumine-dock-inner {
   display: flex;
 
   &.bottom {
@@ -46,8 +46,8 @@ atom-dock {
     left: 0;
   }
 
-  &:not(.atom-dock-open) {
-    /* A hidden dock is taken out of the flow so it claims no space. `atom-dock-open`
+  &:not(.lumine-dock-open) {
+    /* A hidden dock is taken out of the flow so it claims no space. `lumine-dock-open`
        covers a dock revealed as a drop target too, so dragging an item into a hidden
        dock opens it for real and pushes the workspace aside, rather than overlaying
        it. Stylesheets that shrink or hide a closed dock must key off this class, or
@@ -57,7 +57,7 @@ atom-dock {
   }
 }
 
-.atom-dock-mask {
+.lumine-dock-mask {
   position: relative;
   background-color: var(--tool-panel-background-color);
   overflow: hidden; /* Mask the content. */
@@ -73,7 +73,7 @@ atom-dock {
   transition: none;
 }
 
-.atom-dock-content-wrapper {
+.lumine-dock-content-wrapper {
   position: absolute;
   display: flex;
   flex: 1;
@@ -107,13 +107,13 @@ atom-dock {
 
 /* Toggle button -------------- */
 
-.atom-dock-toggle-button {
-  --atom-dock-toggle-button-size: 50px;
+.lumine-dock-toggle-button {
+  --lumine-dock-toggle-button-size: 50px;
 
   position: absolute;
   overflow: hidden; /* Mask half of the circle. */
 
-  /* Must be > .scrollbar-content and inactive atom-dock */
+  /* Must be > .scrollbar-content and inactive lumine-dock */
   z-index: 11;
 
   /* Position the toggle button target at the edge of the dock. It's important
@@ -129,20 +129,20 @@ atom-dock {
     left: 100%;
   }
 
-  width: var(--atom-dock-toggle-button-size);
-  height: var(--atom-dock-toggle-button-size);
+  width: var(--lumine-dock-toggle-button-size);
+  height: var(--lumine-dock-toggle-button-size);
   &.bottom {
-    height: calc(var(--atom-dock-toggle-button-size) / 2);
+    height: calc(var(--lumine-dock-toggle-button-size) / 2);
   }
   &.left,
   &.right {
-    width: calc(var(--atom-dock-toggle-button-size) / 2);
+    width: calc(var(--lumine-dock-toggle-button-size) / 2);
   }
 
-  .atom-dock-toggle-button-inner {
-    width: var(--atom-dock-toggle-button-size);
-    height: var(--atom-dock-toggle-button-size);
-    border-radius: calc(var(--atom-dock-toggle-button-size) / 2);
+  .lumine-dock-toggle-button-inner {
+    width: var(--lumine-dock-toggle-button-size);
+    height: var(--lumine-dock-toggle-button-size);
+    border-radius: calc(var(--lumine-dock-toggle-button-size) / 2);
 
     position: absolute;
     display: flex;
@@ -166,8 +166,8 @@ atom-dock {
   }
 
   /* Hide the button. */
-  &:not(.atom-dock-toggle-button-visible) {
-    .atom-dock-toggle-button-inner {
+  &:not(.lumine-dock-toggle-button-visible) {
+    .lumine-dock-toggle-button-inner {
       &.right {
         transform: translateX(50%);
       }
@@ -181,7 +181,7 @@ atom-dock {
   }
 
   /* Center the icon. (@offset: 8px) */
-  .atom-dock-toggle-button-inner {
+  .lumine-dock-toggle-button-inner {
     &.right .icon {
       transform: translateX(-8px);
     }
@@ -204,22 +204,22 @@ atom-dock {
       margin: 0;
     }
   }
-  &:not(.atom-dock-toggle-button-visible) .icon {
+  &:not(.lumine-dock-toggle-button-visible) .icon {
     opacity: 0;
     transition: opacity 0.2s ease-out 0s; /* outro */
   }
 
-  .atom-dock-toggle-button-inner {
+  .lumine-dock-toggle-button-inner {
     background-color: var(--tool-panel-background-color);
     border: 1px solid var(--pane-item-border-color);
     transition: transform 0.2s ease-out 0s; /* intro */
   }
 
-  &:not(.atom-dock-toggle-button-visible) {
+  &:not(.lumine-dock-toggle-button-visible) {
     /* Don't contribute to mouseenter/drag events when not visible. */
     pointer-events: none;
 
-    .atom-dock-toggle-button-inner {
+    .lumine-dock-toggle-button-inner {
       transition: transform 0.2s ease-out 0.1s; /* outro */
     }
   }
@@ -227,15 +227,15 @@ atom-dock {
 
 /* Resize handle -------------- */
 
-.atom-dock-resize-handle {
-  --atom-dock-resize-handle-size: 4px;
+.lumine-dock-resize-handle {
+  --lumine-dock-resize-handle-size: 4px;
 
   width: auto;
   height: auto;
   flex: 0 0 auto;
 
   /* Use the resize cursor when the handle's resizable */
-  &.atom-dock-resize-handle-resizable {
+  &.lumine-dock-resize-handle-resizable {
     &.left,
     &.right {
       cursor: col-resize;
@@ -247,16 +247,16 @@ atom-dock {
 
   &.left,
   &.right {
-    width: var(--atom-dock-resize-handle-size);
+    width: var(--lumine-dock-resize-handle-size);
   }
   &.bottom {
-    height: var(--atom-dock-resize-handle-size);
+    height: var(--lumine-dock-resize-handle-size);
   }
 }
 
 /* Cursor overlay -------------- */
 
-.atom-dock-cursor-overlay {
+.lumine-dock-cursor-overlay {
   position: fixed;
   top: 0;
   bottom: 0;
@@ -273,7 +273,7 @@ atom-dock {
     cursor: row-resize;
   }
 
-  &:not(.atom-dock-cursor-overlay-visible) {
+  &:not(.lumine-dock-cursor-overlay-visible) {
     display: none;
   }
 }

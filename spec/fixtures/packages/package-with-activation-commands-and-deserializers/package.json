@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "main": "./index",
   "activationCommands": {
-    "atom-workspace": [
+    "lumine-workspace": [
       "activation-command-2"
     ]
   },

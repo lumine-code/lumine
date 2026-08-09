@@ -1,6 +1,6 @@
 const { GitError, LargeRepoError } = require("../src/git-error");
 const { filterPatch, MAX_PATCH_CHARS } = require("../src/patch-filter");
-const atomModule = require("../exports/atom");
+const lumineModule = require("../exports/lumine");
 
 describe("shared git core", () => {
   describe("git-error", () => {
@@ -11,10 +11,10 @@ describe("shared git core", () => {
       expect(new LargeRepoError("too big") instanceof Error).toBe(true);
     });
 
-    it("re-exports the same classes from the atom module for packages to share", () => {
-      expect(atomModule.GitError).toBe(GitError);
-      expect(atomModule.LargeRepoError).toBe(LargeRepoError);
-      expect(atomModule.filterPatch).toBe(filterPatch);
+    it("re-exports the same classes from the lumine module for packages to share", () => {
+      expect(lumineModule.GitError).toBe(GitError);
+      expect(lumineModule.LargeRepoError).toBe(LargeRepoError);
+      expect(lumineModule.filterPatch).toBe(filterPatch);
     });
   });
 

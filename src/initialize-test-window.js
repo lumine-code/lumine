@@ -29,7 +29,7 @@ module.exports = async function ({ blobStore }) {
 
   try {
     const path = require("path");
-    const AtomEnvironment = require("../src/atom-environment");
+    const LumineEnvironment = require("../src/lumine-environment");
     const ApplicationDelegate = require("../src/application-delegate");
     const Clipboard = require("../src/clipboard");
     const TextEditor = require("../src/text-editor");
@@ -124,14 +124,14 @@ module.exports = async function ({ blobStore }) {
 
       // Copy: cmd-c / ctrl-c
       if ((event.metaKey || event.ctrlKey) && event.keyCode === 67) {
-        atom.clipboard.write(window.getSelection().toString());
+        lumine.clipboard.write(window.getSelection().toString());
       }
     };
 
     window.addEventListener("keydown", handleKeydown, { capture: true });
 
-    // Expose the bundled `exports/` folder (the `atom` module) to spawned task
-    // child processes via NODE_PATH so `require('atom')` resolves inside tasks.
+    // Expose the bundled `exports/` folder (the `lumine` module) to spawned task
+    // child processes via NODE_PATH so `require('lumine')` resolves inside tasks.
     const exportsPath = path.join(getWindowLoadSettings().resourcePath, "exports");
     process.env.NODE_PATH = exportsPath;
 
@@ -142,12 +142,12 @@ module.exports = async function ({ blobStore }) {
 
     const clipboard = new Clipboard();
     TextEditor.setClipboard(clipboard);
-    TextEditor.viewForItem = (item) => atom.views.getView(item);
+    TextEditor.viewForItem = (item) => lumine.views.getView(item);
 
     const testRunner = requireModule(testRunnerPath);
     const legacyTestRunner = require(legacyTestRunnerPath);
     const buildDefaultApplicationDelegate = () => new ApplicationDelegate();
-    const buildAtomEnvironment = function (params) {
+    const buildLumineEnvironment = function (params) {
       params = cloneObject(params);
       if (!Object.hasOwn(params, "clipboard")) {
         params.clipboard = clipboard;
@@ -158,21 +158,21 @@ module.exports = async function ({ blobStore }) {
       if (!Object.hasOwn(params, "onlyLoadBaseStyleSheets")) {
         params.onlyLoadBaseStyleSheets = true;
       }
-      const atomEnvironment = new AtomEnvironment(params);
-      atomEnvironment.initialize(params);
-      TextEditor.setScheduler(atomEnvironment.views);
+      const lumineEnvironment = new LumineEnvironment(params);
+      lumineEnvironment.initialize(params);
+      TextEditor.setScheduler(lumineEnvironment.views);
       // The editor component has its own scheduler hook; etch consumers (the
       // dock and bundled packages) need the view registry installed separately
       // so their updates stay coordinated during specs.
-      require("@lumine-code/etch").setScheduler(atomEnvironment.views);
-      return atomEnvironment;
+      require("@lumine-code/etch").setScheduler(lumineEnvironment.views);
+      return lumineEnvironment;
     };
 
     const statusCode = await testRunner({
       logFile,
       headless,
       testPaths,
-      buildAtomEnvironment,
+      buildLumineEnvironment,
       buildDefaultApplicationDelegate,
       legacyTestRunner,
     });

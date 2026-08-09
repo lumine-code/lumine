@@ -3,7 +3,7 @@ describe("modal flow", () => {
   let panels;
 
   beforeEach(() => {
-    workspaceElement = atom.workspace.getElement();
+    workspaceElement = lumine.workspace.getElement();
     jasmine.attachToDOM(workspaceElement);
     panels = [];
   });
@@ -14,7 +14,7 @@ describe("modal flow", () => {
 
   function addModal(options = {}) {
     const item = document.createElement("div");
-    const panel = atom.workspace.addModalPanel({ item, visible: false, ...options });
+    const panel = lumine.workspace.addModalPanel({ item, visible: false, ...options });
     panels.push(panel);
     return panel;
   }
@@ -37,7 +37,7 @@ describe("modal flow", () => {
 
       expect(root.isVisible()).toBe(false);
       expect(step.isVisible()).toBe(true);
-      expect(atom.workspace.getModalTrail()).toEqual(["Branches", "Create from"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Branches", "Create from"]);
     });
 
     it("labels an adopted root without a declared crumb as Modal", () => {
@@ -47,7 +47,7 @@ describe("modal flow", () => {
 
       step.show({ crumb: "Details" });
 
-      expect(atom.workspace.getModalTrail()).toEqual(["Modal", "Details"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Modal", "Details"]);
     });
 
     it("uses the declared crumb when the option is true", () => {
@@ -57,7 +57,7 @@ describe("modal flow", () => {
 
       step.show({ crumb: true });
 
-      expect(atom.workspace.getModalTrail()).toEqual(["Servers", "Actions"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Servers", "Actions"]);
     });
 
     it("starts a single-entry trail when no modal is visible", () => {
@@ -66,7 +66,7 @@ describe("modal flow", () => {
       panel.show({ crumb: "Alone" });
 
       expect(panel.isVisible()).toBe(true);
-      expect(atom.workspace.getModalTrail()).toEqual(["Alone"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Alone"]);
       expect(strip()?.style.display ?? "none").toBe("none");
     });
 
@@ -92,10 +92,12 @@ describe("modal flow", () => {
       expect(() => modal.show({ crumb: 5 })).toThrowError(/string or true/);
 
       const item = document.createElement("div");
-      const left = atom.workspace.addLeftPanel({ item, visible: false });
+      const left = lumine.workspace.addLeftPanel({ item, visible: false });
       panels.push(left);
       expect(() => left.show({ crumb: "Nope" })).toThrowError(/only supported on modal panels/);
-      expect(() => atom.workspace.addLeftPanel({ item, visible: false, crumb: "Nope" })).toThrow();
+      expect(() =>
+        lumine.workspace.addLeftPanel({ item, visible: false, crumb: "Nope" }),
+      ).toThrow();
     });
   });
 
@@ -106,19 +108,19 @@ describe("modal flow", () => {
       root.show();
       step.show({ crumb: "Create from" });
 
-      expect(atom.workspace.popModal()).toBe(true);
+      expect(lumine.workspace.popModal()).toBe(true);
 
       expect(step.isVisible()).toBe(false);
       expect(root.isVisible()).toBe(true);
-      expect(atom.workspace.getModalTrail()).toEqual(["Branches"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Branches"]);
     });
 
     it("returns false when there is nothing to go back to", () => {
-      expect(atom.workspace.popModal()).toBe(false);
+      expect(lumine.workspace.popModal()).toBe(false);
 
       const panel = addModal();
       panel.show({ crumb: "Alone" });
-      expect(atom.workspace.popModal()).toBe(false);
+      expect(lumine.workspace.popModal()).toBe(false);
       expect(panel.isVisible()).toBe(true);
     });
 
@@ -133,7 +135,7 @@ describe("modal flow", () => {
         if (!visible) flagDuringHide = step.flowTransition;
       });
 
-      atom.workspace.popModal();
+      lumine.workspace.popModal();
       expect(flagDuringHide).toBe(true);
       expect(step.flowTransition).toBe(false);
     });
@@ -146,12 +148,12 @@ describe("modal flow", () => {
       second.show({ crumb: "Two" });
       third.show({ crumb: "Three" });
 
-      expect(atom.workspace.popModalTo(0)).toBe(true);
+      expect(lumine.workspace.popModalTo(0)).toBe(true);
 
       expect(third.isVisible()).toBe(false);
       expect(second.isVisible()).toBe(false);
       expect(root.isVisible()).toBe(true);
-      expect(atom.workspace.getModalTrail()).toEqual(["One"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["One"]);
     });
 
     it("rejects popModalTo targets that are not earlier steps", () => {
@@ -160,10 +162,10 @@ describe("modal flow", () => {
       root.show();
       second.show({ crumb: "Two" });
 
-      expect(atom.workspace.popModalTo(1)).toBe(false);
-      expect(atom.workspace.popModalTo(5)).toBe(false);
-      expect(atom.workspace.popModalTo(-1)).toBe(false);
-      expect(atom.workspace.getModalTrail()).toEqual(["One", "Two"]);
+      expect(lumine.workspace.popModalTo(1)).toBe(false);
+      expect(lumine.workspace.popModalTo(5)).toBe(false);
+      expect(lumine.workspace.popModalTo(-1)).toBe(false);
+      expect(lumine.workspace.getModalTrail()).toEqual(["One", "Two"]);
     });
 
     it("is dispatched by the modal:go-back command", () => {
@@ -172,10 +174,10 @@ describe("modal flow", () => {
       root.show();
       step.show({ crumb: "Step" });
 
-      atom.commands.dispatch(workspaceElement, "modal:go-back");
+      lumine.commands.dispatch(workspaceElement, "modal:go-back");
 
       expect(root.isVisible()).toBe(true);
-      expect(atom.workspace.getModalTrail()).toEqual(["Root"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Root"]);
     });
   });
 
@@ -188,7 +190,7 @@ describe("modal flow", () => {
 
       step.hide();
 
-      expect(atom.workspace.getModalTrail()).toEqual([]);
+      expect(lumine.workspace.getModalTrail()).toEqual([]);
       expect(root.isVisible()).toBe(false);
       expect(strip().style.display).toBe("none");
     });
@@ -199,12 +201,12 @@ describe("modal flow", () => {
       const unrelated = addModal();
       root.show();
       step.show({ crumb: "Step" });
-      expect(atom.workspace.getModalTrail()).toEqual(["Root", "Step"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Root", "Step"]);
 
       unrelated.show();
 
       expect(step.isVisible()).toBe(false);
-      expect(atom.workspace.getModalTrail()).toEqual([]);
+      expect(lumine.workspace.getModalTrail()).toEqual([]);
     });
 
     it("clears when any panel of the trail is destroyed", () => {
@@ -215,18 +217,18 @@ describe("modal flow", () => {
 
       root.destroy();
 
-      expect(atom.workspace.getModalTrail()).toEqual([]);
+      expect(lumine.workspace.getModalTrail()).toEqual([]);
     });
 
     it("reports changes through onDidChangeModalTrail", () => {
       const trails = [];
-      const subscription = atom.workspace.onDidChangeModalTrail((trail) => trails.push(trail));
+      const subscription = lumine.workspace.onDidChangeModalTrail((trail) => trails.push(trail));
       const root = addModal({ crumb: "Root" });
       const step = addModal();
       root.show();
 
       step.show({ crumb: "Step" });
-      atom.workspace.popModal();
+      lumine.workspace.popModal();
       root.hide();
 
       expect(trails).toEqual([["Root", "Step"], ["Root"], []]);
@@ -266,7 +268,7 @@ describe("modal flow", () => {
       crumb.dispatchEvent(new MouseEvent("click", { bubbles: true }));
 
       expect(root.isVisible()).toBe(true);
-      expect(atom.workspace.getModalTrail()).toEqual(["One"]);
+      expect(lumine.workspace.getModalTrail()).toEqual(["One"]);
     });
   });
 
@@ -279,7 +281,7 @@ describe("modal flow", () => {
       style = document.createElement("style");
       style.textContent = `
         @keyframes flow-spec-appear { from { opacity: 0.99; } to { opacity: 1; } }
-        atom-panel.modal { animation: flow-spec-appear 60s linear; }
+        lumine-panel.modal { animation: flow-spec-appear 60s linear; }
         .flow-spec-spinner { animation: flow-spec-appear 60s linear infinite; }
       `;
       document.head.appendChild(style);
@@ -307,7 +309,7 @@ describe("modal flow", () => {
       step.show({ crumb: "Step" });
       expect(runningPanelAnimations(step).length).toBe(0);
 
-      expect(atom.workspace.popModal()).toBe(true);
+      expect(lumine.workspace.popModal()).toBe(true);
       expect(runningPanelAnimations(root).length).toBe(0);
     });
 
@@ -317,7 +319,7 @@ describe("modal flow", () => {
       const spinner = document.createElement("div");
       spinner.classList.add("flow-spec-spinner");
       item.appendChild(spinner);
-      const step = atom.workspace.addModalPanel({ item, visible: false });
+      const step = lumine.workspace.addModalPanel({ item, visible: false });
       panels.push(step);
 
       root.show();
@@ -340,7 +342,7 @@ describe("modal flow", () => {
       const stepItem = document.createElement("div");
       const inside = document.createElement("input");
       stepItem.appendChild(inside);
-      const step = atom.workspace.addModalPanel({ item: stepItem, visible: false });
+      const step = lumine.workspace.addModalPanel({ item: stepItem, visible: false });
       panels.push(step);
 
       root.show();
@@ -350,7 +352,7 @@ describe("modal flow", () => {
 
       step.hide();
 
-      expect(atom.workspace.getModalTrail()).toEqual([]);
+      expect(lumine.workspace.getModalTrail()).toEqual([]);
       expect(document.activeElement).toBe(outside);
     });
   });

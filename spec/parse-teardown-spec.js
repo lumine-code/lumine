@@ -27,7 +27,11 @@ describe("destroying a buffer during an async parse", () => {
 
   beforeEach(() => {
     jasmine.useRealClock();
-    grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, CSON.readFileSync(jsGrammarPath));
+    grammar = new TreeSitterGrammar(
+      lumine.grammars,
+      jsGrammarPath,
+      CSON.readFileSync(jsGrammarPath),
+    );
   });
 
   afterEach(() => {

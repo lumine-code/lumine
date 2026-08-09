@@ -8,7 +8,7 @@ describe("StyleManager", () => {
 
   beforeEach(() => {
     styleManager = new StyleManager({
-      configDirPath: temp.mkdirSync("atom-config"),
+      configDirPath: temp.mkdirSync("lumine-config"),
     });
     addEvents = [];
     removeEvents = [];
@@ -36,7 +36,7 @@ describe("StyleManager", () => {
     let configDirPath;
 
     beforeEach(() => {
-      configDirPath = temp.mkdirSync("atom-config-styles");
+      configDirPath = temp.mkdirSync("lumine-config-styles");
       styleManager.initialize({ configDirPath });
     });
 

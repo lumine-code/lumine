@@ -1,21 +1,21 @@
 /* Pane-items are things that go inside a pane. Like the UI-Demo, the
    settings-view, the archive-view. Etc. Basically a non-
    editor resource with a tab. */
-atom-pane-container {
+lumine-pane-container {
   position: relative;
   display: flex;
   flex: 1;
   min-width: 0;
   min-height: 0;
 
-  atom-pane-axis {
+  lumine-pane-axis {
     position: relative;
     display: flex;
     flex: 1;
     min-width: 0;
     min-height: 0;
 
-    & > atom-pane-resize-handle {
+    & > lumine-pane-resize-handle {
       position: relative;
       &:before {
         content: "";
@@ -25,10 +25,10 @@ atom-pane-container {
     }
   }
 
-  atom-pane-axis.vertical {
+  lumine-pane-axis.vertical {
     flex-direction: column;
 
-    & > atom-pane-resize-handle {
+    & > lumine-pane-resize-handle {
       border-bottom: none;
       &:before {
         height: 8px;
@@ -40,10 +40,10 @@ atom-pane-container {
     }
   }
 
-  atom-pane-axis.horizontal {
+  lumine-pane-axis.horizontal {
     flex-direction: row;
 
-    & > atom-pane-resize-handle {
+    & > lumine-pane-resize-handle {
       border-right: none;
       &:before {
         width: 8px;
@@ -55,7 +55,7 @@ atom-pane-container {
     }
   }
 
-  atom-pane {
+  lumine-pane {
     position: relative;
     display: flex;
     flex: 1;
@@ -77,7 +77,7 @@ atom-pane-container {
       }
 
       > *,
-      > atom-text-editor.react > * {
+      > lumine-text-editor.react > * {
         position: absolute;
         top: 0;
         right: 0;
@@ -90,22 +90,22 @@ atom-pane-container {
 
 /* Windows doesn't have row- and col-resize cursors */
 .platform-win32 {
-  atom-pane-container {
-    atom-pane-axis.vertical {
-      & > atom-pane-resize-handle {
+  lumine-pane-container {
+    lumine-pane-axis.vertical {
+      & > lumine-pane-resize-handle {
         cursor: ns-resize;
       }
     }
 
-    atom-pane-axis.horizontal {
-      & > atom-pane-resize-handle {
+    lumine-pane-axis.horizontal {
+      & > lumine-pane-resize-handle {
         cursor: ew-resize;
       }
     }
   }
 }
 
-.atom-pane-cursor-overlay {
+.lumine-pane-cursor-overlay {
   position: fixed;
   top: 0;
   bottom: 0;

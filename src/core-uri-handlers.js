@@ -7,10 +7,10 @@ function getLineColNumber(numStr) {
   return Math.max(num - 1, 0);
 }
 
-function openFile(atom, { query }) {
+function openFile(lumine, { query }) {
   const { filename, line, column } = query;
 
-  atom.workspace.open(filename, {
+  lumine.workspace.open(filename, {
     initialLine: getLineColNumber(line),
     initialColumn: getLineColNumber(column),
     searchAllPanes: true,
@@ -35,11 +35,11 @@ const ROUTER = {
 };
 
 module.exports = {
-  create(atomEnv) {
+  create(lumineEnv) {
     return function coreURIHandler(parsed) {
       const config = ROUTER[parsed.pathname];
       if (config) {
-        config.handler(atomEnv, parsed);
+        config.handler(lumineEnv, parsed);
       }
     };
   },

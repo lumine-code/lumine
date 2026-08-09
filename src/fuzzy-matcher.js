@@ -26,9 +26,9 @@ const singleCandidateMatchers = new Map();
 
   ## Examples
   ```js
-  const matcher = atom.tools.fuzzyMatcher.setCandidates(["hello", "world"])
+  const matcher = lumine.tools.fuzzyMatcher.setCandidates(["hello", "world"])
   matcher.match('he') // => will return [{value: "hello", score: <number>}]
-  atom.tools.fuzzyMatcher.setCandidates(matcher, ["hello", "hope"])
+  lumine.tools.fuzzyMatcher.setCandidates(matcher, ["hello", "hope"])
   matcher.match('he') // => will now return "hope" too, but it'll be at
                      // second position with a lower score
   ```
@@ -132,7 +132,7 @@ class Matcher {
 /*
   Essential: The {fuzzyMatcher} API, the same used in the autocomplete,
   fuzzy file search, command palette, etc.
-  An instance of this API is available via the `atom.tools.fuzzyMatcher` global.
+  An instance of this API is available via the `lumine.tools.fuzzyMatcher` global.
 
   This API have two parts - the filtering of an array of candidates, and the
   scoring. Scoring is done via the {fuzzyMatcher.score}, and filtering is

@@ -23,7 +23,7 @@ function getAppName() {
   const { app } = require("electron");
 
   if (process.type === "renderer") {
-    return atom.app.getName();
+    return lumine.app.getName();
   }
 
   const releaseChannel = getReleaseChannel(app.getVersion());
@@ -48,7 +48,7 @@ function getConfigFilePath(opts = {}) {
     return configFilePath;
   } else {
     if (opts.returnPlaceholder) {
-      // This is only used when `./src/main-process/atom-application.js` initializes
+      // This is only used when `./src/main-process/lumine-application.js` initializes
       // the `ConfigFile` instance. Since it must provide a path, even if it turns
       // out the path doesn't exist. By default if the path doesn't exist then
       // `null` is returned.

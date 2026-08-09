@@ -6,7 +6,7 @@ const temp = require("@lumine-code/temp").track();
 describe("DefaultDirectoryProvider", function () {
   let tmp = null;
 
-  beforeEach(() => (tmp = temp.mkdirSync("atom-spec-default-dir-provider")));
+  beforeEach(() => (tmp = temp.mkdirSync("lumine-spec-default-dir-provider")));
 
   afterEach(function () {
     try {

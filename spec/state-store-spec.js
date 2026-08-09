@@ -16,7 +16,7 @@ describe("StateStore", () => {
 
     it("can save, load, and delete states", async () => {
       const store = new StateStore(databaseName, version);
-      store.initialize({ configDirPath: atom.getConfigDirPath() });
+      store.initialize({ configDirPath: lumine.getConfigDirPath() });
 
       await store.save("key", { foo: "bar" });
 
@@ -31,7 +31,7 @@ describe("StateStore", () => {
 
     it("resolves with null when a non-existent key is loaded", () => {
       const store = new StateStore(databaseName, version);
-      store.initialize({ configDirPath: atom.getConfigDirPath() });
+      store.initialize({ configDirPath: lumine.getConfigDirPath() });
       return store.load("no-such-key").then((value) => {
         expect(value).toBeNull();
       });
@@ -39,7 +39,7 @@ describe("StateStore", () => {
 
     it("can clear the state object store", async () => {
       const store = new StateStore(databaseName, version);
-      store.initialize({ configDirPath: atom.getConfigDirPath() });
+      store.initialize({ configDirPath: lumine.getConfigDirPath() });
 
       await store.save("key", { foo: "bar" });
       expect(await store.count()).toBe(1);
@@ -50,14 +50,14 @@ describe("StateStore", () => {
 
     it("returns a database instance via dbPromise", async () => {
       const store = new StateStore(databaseName, version);
-      store.initialize({ configDirPath: atom.getConfigDirPath() });
+      store.initialize({ configDirPath: lumine.getConfigDirPath() });
       const instance = await store.dbPromise;
       expect(instance instanceof DatabaseSync).toBe(true);
     });
 
     it("configures a busy timeout so concurrently restored windows wait for the lock", async () => {
       const store = new StateStore(databaseName, version);
-      store.initialize({ configDirPath: atom.getConfigDirPath() });
+      store.initialize({ configDirPath: lumine.getConfigDirPath() });
       const db = await store.dbPromise;
       expect(db.prepare("PRAGMA busy_timeout").get().timeout).toBe(5000);
     });
@@ -65,7 +65,7 @@ describe("StateStore", () => {
     it("reads state from an existing SQLite database", async () => {
       const existingDatabaseName = `${databaseName}-existing`;
       const table = `${existingDatabaseName}${version}`;
-      const storagePath = path.join(atom.getConfigDirPath(), "storage");
+      const storagePath = path.join(lumine.getConfigDirPath(), "storage");
       fs.mkdirSync(storagePath, { recursive: true });
       const databasePath = path.join(storagePath, "session-store.db");
       const database = new DatabaseSync(databasePath);
@@ -76,7 +76,7 @@ describe("StateStore", () => {
       database.close();
 
       const store = new StateStore(existingDatabaseName, version);
-      store.initialize({ configDirPath: atom.getConfigDirPath() });
+      store.initialize({ configDirPath: lumine.getConfigDirPath() });
       expect(await store.load("existing-key")).toEqual({ migrated: true });
     });
   });

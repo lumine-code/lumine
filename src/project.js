@@ -12,7 +12,7 @@ const GitRepositoryProvider = require("./git-repository-provider");
 
 // Extended: Represents a project that's opened in Lumine.
 //
-// An instance of this class is always available as the `atom.project` global.
+// An instance of this class is always available as the `lumine.project` global.
 module.exports = class Project extends Model {
   /*
   Section: Construction and Destruction
@@ -102,7 +102,7 @@ module.exports = class Project extends Model {
   // on top of the current global config.
   replace(projectSpecification) {
     if (projectSpecification == null) {
-      atom.config.clearProjectSettings();
+      lumine.config.clearProjectSettings();
       this.setPaths([]);
     } else {
       if (projectSpecification.originPath == null) {
@@ -113,7 +113,7 @@ module.exports = class Project extends Model {
       if (!Array.isArray(projectSpecification.paths)) {
         projectSpecification.paths = [path.dirname(projectSpecification.originPath)];
       }
-      atom.config.resetProjectSettings(
+      lumine.config.resetProjectSettings(
         projectSpecification.config,
         projectSpecification.originPath,
       );
@@ -136,7 +136,8 @@ module.exports = class Project extends Model {
 
     const handleBufferState = (bufferState) => {
       if (bufferState.shouldDestroyOnFileDelete == null) {
-        bufferState.shouldDestroyOnFileDelete = () => atom.config.get("core.closeDeletedFileTabs");
+        bufferState.shouldDestroyOnFileDelete = () =>
+          lumine.config.get("core.closeDeletedFileTabs");
       }
 
       // Use a little guilty knowledge of the way TextBuffers are serialized.
@@ -227,7 +228,7 @@ module.exports = class Project extends Model {
   // project path.
   //
   // ```js
-  // const disposable = atom.project.onDidChangeFiles(events => {
+  // const disposable = lumine.project.onDidChangeFiles(events => {
   //   for (const event of events) {
   //     // "created", "modified", "deleted", or "renamed"
   //     console.log(`Event action: ${event.action}`)
@@ -343,7 +344,7 @@ module.exports = class Project extends Model {
     try {
       return this.rootDirectories.map((rootDirectory) => rootDirectory.getPath());
     } catch {
-      atom.notifications.addError(
+      lumine.notifications.addError(
         "Please clear Lumine's window state with: lumine --clear-window-state",
       );
     }
@@ -417,7 +418,7 @@ module.exports = class Project extends Model {
   // Three things are worth knowing before reaching for this:
   //
   // * Development and safe mode belong to the window, so they cannot change
-  //   here. Use {AtomEnvironment::open} with `newWindow` for those.
+  //   here. Use {LumineEnvironment::open} with `newWindow` for those.
   // * State is keyed by the set of folders, so a project already open in
   //   another window shares one saved state with it and the last window to
   //   save wins.
@@ -701,7 +702,7 @@ module.exports = class Project extends Model {
   // are respected here in one place.
   //
   // ```js
-  // const crawl = atom.project.crawl({
+  // const crawl = lumine.project.crawl({
   //   didFindPaths: (paths) => results.push(...paths),
   // });
   // await crawl;
@@ -730,7 +731,7 @@ module.exports = class Project extends Model {
       this.fileCrawler = new RipgrepFileCrawler();
     }
 
-    const config = atom.config;
+    const config = lumine.config;
     const directoryPaths = options.directoryPaths ?? this.getPaths() ?? [];
 
     return this.fileCrawler.crawl(directoryPaths, {
@@ -837,7 +838,7 @@ module.exports = class Project extends Model {
   }
 
   shouldDestroyBufferOnFileDelete() {
-    return atom.config.get("core.closeDeletedFileTabs");
+    return lumine.config.get("core.closeDeletedFileTabs");
   }
 
   // Still needed when deserializing a tokenized buffer

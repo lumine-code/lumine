@@ -502,7 +502,7 @@ module.exports = class GitRepositoryOperationProvider {
   // blocking passphrase dialog off the shared read budget.
   async withSigningEnvironment(workingDirectory, options = {}) {
     if (!this.authBroker) return options;
-    if (!globalThis.atom?.config?.get("git.promptForGpgPassphrase")) return options;
+    if (!globalThis.lumine?.config?.get("git.promptForGpgPassphrase")) return options;
     await this.authBroker.ensureStarted();
     const { env, config } = this.authBroker.getSigningEnvironment({ workingDirectory });
     return {
@@ -538,7 +538,7 @@ module.exports = class GitRepositoryOperationProvider {
   }
 
   getGitExecutablePath() {
-    return resolveGitPath(globalThis.atom?.config?.get("git.path") || "");
+    return resolveGitPath(globalThis.lumine?.config?.get("git.path") || "");
   }
 
   createRepositoryOperations({ workingDirectory, repository }) {

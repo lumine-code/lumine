@@ -65,7 +65,7 @@ function getSpecDirectory(spec) {
   return spec.specDirectory ?? spec.properties?.specDirectory ?? path.dirname(spec.filename ?? "");
 }
 
-class AtomReporter {
+class LumineReporter {
   constructor() {
     this.startedAt = null;
     this.runningSpecCount = 0;
@@ -210,7 +210,7 @@ class AtomReporter {
       event.currentTarget.classList.toggle("expanded"),
     );
 
-    this.reloadButton.addEventListener("click", () => atom.window.reload());
+    this.reloadButton.addEventListener("click", () => lumine.window.reload());
   }
 
   updateSpecCounts() {
@@ -301,7 +301,7 @@ class AtomReporter {
   }
 }
 
-module.exports = AtomReporter;
+module.exports = LumineReporter;
 
 class SuiteResultView {
   constructor(suite) {

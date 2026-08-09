@@ -52,10 +52,10 @@ jobs:
       - name: Check formatting
         run: npm run format:check
       # Themes must not re-declare icon box geometry — the icon contract in
-      # static/atom-ui/styles/icons.css is its single owner.
+      # static/lumine-ui/styles/icons.css is its single owner.
       - name: Check icon contract
         run: npm run check:icons
-      # A theme that reaches an editor through atom-panel-container styles it by
+      # A theme that reaches an editor through lumine-panel-container styles it by
       # where its panel docked, not by what it is. Nothing at runtime notices.
       - name: Check editor contract
         run: npm run check:editors

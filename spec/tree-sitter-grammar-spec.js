@@ -51,7 +51,7 @@ describe("TreeSitterGrammar", () => {
   }
 
   function makeGrammar(treeSitterOverrides = {}) {
-    return new TreeSitterGrammar(atom.grammars, path.join(tempDir, "grammar.json"), {
+    return new TreeSitterGrammar(lumine.grammars, path.join(tempDir, "grammar.json"), {
       name: "Test JavaScript",
       scopeName: "source.test-js",
       type: "tree-sitter",
@@ -193,18 +193,18 @@ describe("TreeSitterGrammar", () => {
       writeQueryFile("ok.scm", "(identifier) @variable\n");
       let grammar = makeGrammar({ highlightsQuery: "ok.scm" });
 
-      let editor = await atom.workspace.open("");
+      let editor = await lumine.workspace.open("");
       let buffer = editor.getBuffer();
       let languageMode = new TreeSitterLanguageMode({ buffer, grammar });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
 
-      spyOn(atom.notifications, "addSuccess");
-      spyOn(atom.notifications, "addError");
+      spyOn(lumine.notifications, "addSuccess");
+      spyOn(lumine.notifications, "addError");
 
       expect(languageMode.validateGrammarQueries()).toEqual([]);
-      expect(atom.notifications.addSuccess).toHaveBeenCalled();
-      expect(atom.notifications.addError).not.toHaveBeenCalled();
+      expect(lumine.notifications.addSuccess).toHaveBeenCalled();
+      expect(lumine.notifications.addError).not.toHaveBeenCalled();
 
       // Simulate a query source that broke after initial load; validation
       // compiles from the current source, not from the query cache.
@@ -213,7 +213,7 @@ describe("TreeSitterGrammar", () => {
       expect(failures.length).toBe(1);
       expect(failures[0].queryType).toBe("highlightsQuery");
       expect(failures[0].word).toBe("bad_node_name");
-      expect(atom.notifications.addError).toHaveBeenCalled();
+      expect(lumine.notifications.addError).toHaveBeenCalled();
 
       languageMode.destroy();
     });
@@ -232,7 +232,7 @@ describe("TreeSitterGrammar", () => {
       });
       spyOn(grammar, "reportQueryError").and.callThrough();
 
-      let editor = await atom.workspace.open("");
+      let editor = await lumine.workspace.open("");
       let buffer = editor.getBuffer();
       buffer.setText("function f() { return 1; }\n");
       let languageMode = new TreeSitterLanguageMode({ buffer, grammar });

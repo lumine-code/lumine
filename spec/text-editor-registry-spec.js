@@ -19,9 +19,9 @@ describe("TextEditorRegistry", function () {
     initialPackageActivation = Promise.resolve();
 
     registry = new TextEditorRegistry({
-      assert: atom.assert,
-      config: atom.config,
-      grammarRegistry: atom.grammars,
+      assert: lumine.assert,
+      config: lumine.config,
+      grammarRegistry: lumine.grammars,
       packageManager: {
         getActivatePromise() {
           return initialPackageActivation;
@@ -30,7 +30,7 @@ describe("TextEditorRegistry", function () {
     });
 
     editor = new TextEditor({ autoHeight: false });
-    expect(atom.grammars.assignLanguageMode(editor, "text.plain.null-grammar")).toBe(true);
+    expect(lumine.grammars.assignLanguageMode(editor, "text.plain.null-grammar")).toBe(true);
   });
 
   afterEach(function () {
@@ -136,7 +136,7 @@ describe("TextEditorRegistry", function () {
 
   describe(".build", function () {
     it("constructs a TextEditor with the right parameters based on its path and text", function () {
-      atom.config.set("language.tabLength", 8, { scope: ".source.js" });
+      lumine.config.set("language.tabLength", 8, { scope: ".source.js" });
 
       const languageMode = {
         grammar: NullGrammar,
@@ -169,11 +169,11 @@ describe("TextEditorRegistry", function () {
 
   describe(".maintainConfig(editor)", function () {
     it("does not update the editor when config settings change for unrelated scope selectors", async function () {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
 
       const editor2 = new TextEditor();
 
-      atom.grammars.assignLanguageMode(editor2, "source.js");
+      lumine.grammars.assignLanguageMode(editor2, "source.js");
 
       registry.maintainConfig(editor);
       registry.maintainConfig(editor2);
@@ -185,10 +185,10 @@ describe("TextEditorRegistry", function () {
       expect(editor.getEncoding()).toBe("utf8");
       expect(editor2.getEncoding()).toBe("utf8");
 
-      atom.config.set("editor.fileEncoding", "utf16le", {
+      lumine.config.set("editor.fileEncoding", "utf16le", {
         scopeSelector: ".text.plain.null-grammar",
       });
-      atom.config.set("editor.fileEncoding", "utf16be", {
+      lumine.config.set("editor.fileEncoding", "utf16be", {
         scopeSelector: ".source.js",
       });
 
@@ -202,13 +202,13 @@ describe("TextEditorRegistry", function () {
         resolveActivatePromise = resolve;
       });
 
-      atom.config.set("editor.fileEncoding", "utf16le");
+      lumine.config.set("editor.fileEncoding", "utf16le");
 
       registry.maintainConfig(editor);
       await Promise.resolve();
       expect(editor.getEncoding()).toBe("utf8");
 
-      atom.config.set("editor.fileEncoding", "utf16be");
+      lumine.config.set("editor.fileEncoding", "utf16be");
       await Promise.resolve();
       expect(editor.getEncoding()).toBe("utf8");
 
@@ -218,37 +218,37 @@ describe("TextEditorRegistry", function () {
     });
 
     it("updates the editor's settings when its grammar changes", async function () {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
 
       registry.maintainConfig(editor);
       await initialPackageActivation;
 
-      atom.config.set("editor.fileEncoding", "utf16be", {
+      lumine.config.set("editor.fileEncoding", "utf16be", {
         scopeSelector: ".source.js",
       });
       expect(editor.getEncoding()).toBe("utf8");
 
-      atom.config.set("editor.fileEncoding", "utf16le", {
+      lumine.config.set("editor.fileEncoding", "utf16le", {
         scopeSelector: ".source.js",
       });
       expect(editor.getEncoding()).toBe("utf8");
 
-      atom.grammars.assignLanguageMode(editor, "source.js");
+      lumine.grammars.assignLanguageMode(editor, "source.js");
       await initialPackageActivation;
       expect(editor.getEncoding()).toBe("utf16le");
 
-      atom.config.set("editor.fileEncoding", "utf16be", {
+      lumine.config.set("editor.fileEncoding", "utf16be", {
         scopeSelector: ".source.js",
       });
       expect(editor.getEncoding()).toBe("utf16be");
 
-      atom.grammars.assignLanguageMode(editor, "text.plain.null-grammar");
+      lumine.grammars.assignLanguageMode(editor, "text.plain.null-grammar");
       await initialPackageActivation;
       expect(editor.getEncoding()).toBe("utf8");
     });
 
     it("preserves editor settings that haven't changed between previous and current language modes", async function () {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
 
       registry.maintainConfig(editor);
       await initialPackageActivation;
@@ -261,23 +261,23 @@ describe("TextEditorRegistry", function () {
       editor.setSoftWrapped(true);
       expect(editor.isSoftWrapped()).toBe(true);
 
-      atom.grammars.assignLanguageMode(editor, "source.js");
+      lumine.grammars.assignLanguageMode(editor, "source.js");
       await initialPackageActivation;
       expect(editor.getEncoding()).toBe("utf16le");
       expect(editor.isSoftWrapped()).toBe(true);
     });
 
     it("updates editor settings that have changed between previous and current language modes", async function () {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
 
       registry.maintainConfig(editor);
       await initialPackageActivation;
 
       expect(editor.getEncoding()).toBe("utf8");
-      atom.config.set("editor.fileEncoding", "utf16be", {
+      lumine.config.set("editor.fileEncoding", "utf16be", {
         scopeSelector: ".text.plain.null-grammar",
       });
-      atom.config.set("editor.fileEncoding", "utf16le", {
+      lumine.config.set("editor.fileEncoding", "utf16le", {
         scopeSelector: ".source.js",
       });
       expect(editor.getEncoding()).toBe("utf16be");
@@ -285,13 +285,13 @@ describe("TextEditorRegistry", function () {
       editor.setEncoding("utf8");
       expect(editor.getEncoding()).toBe("utf8");
 
-      atom.grammars.assignLanguageMode(editor, "source.js");
+      lumine.grammars.assignLanguageMode(editor, "source.js");
       await initialPackageActivation;
       expect(editor.getEncoding()).toBe("utf16le");
     });
 
     it("returns a disposable that can be used to stop the registry from updating the editor's config", async function () {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
 
       const previousSubscriptionCount = getSubscriptionCount(editor);
       const disposable = registry.maintainConfig(editor);
@@ -299,14 +299,14 @@ describe("TextEditorRegistry", function () {
       expect(getSubscriptionCount(editor)).toBeGreaterThan(previousSubscriptionCount);
       expect(registry.editorsWithMaintainedConfig.size).toBe(1);
 
-      atom.config.set("editor.fileEncoding", "utf16be");
+      lumine.config.set("editor.fileEncoding", "utf16be");
       expect(editor.getEncoding()).toBe("utf16be");
-      atom.config.set("editor.fileEncoding", "utf8");
+      lumine.config.set("editor.fileEncoding", "utf8");
       expect(editor.getEncoding()).toBe("utf8");
 
       disposable.dispose();
 
-      atom.config.set("editor.fileEncoding", "utf16be");
+      lumine.config.set("editor.fileEncoding", "utf16be");
       expect(editor.getEncoding()).toBe("utf8");
       expect(getSubscriptionCount(editor)).toBe(previousSubscriptionCount);
       expect(retainedEditorCount(registry)).toBe(0);
@@ -316,12 +316,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ encoding: "utf8" });
       expect(editor.getEncoding()).toBe("utf8");
 
-      atom.config.set("editor.fileEncoding", "utf16le");
+      lumine.config.set("editor.fileEncoding", "utf16le");
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getEncoding()).toBe("utf16le");
 
-      atom.config.set("editor.fileEncoding", "utf8");
+      lumine.config.set("editor.fileEncoding", "utf8");
       expect(editor.getEncoding()).toBe("utf8");
     });
 
@@ -329,24 +329,24 @@ describe("TextEditorRegistry", function () {
       editor.update({ tabLength: 4 });
       expect(editor.getTabLength()).toBe(4);
 
-      atom.config.set("language.tabLength", 8);
+      lumine.config.set("language.tabLength", 8);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getTabLength()).toBe(8);
 
-      atom.config.set("language.tabLength", 4);
+      lumine.config.set("language.tabLength", 4);
       expect(editor.getTabLength()).toBe(4);
     });
 
     it('enables soft tabs when the tabType config setting is "soft"', async function () {
-      atom.config.set("language.tabType", "soft");
+      lumine.config.set("language.tabType", "soft");
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(true);
     });
 
     it('disables soft tabs when the tabType config setting is "hard"', async function () {
-      atom.config.set("language.tabType", "hard");
+      lumine.config.set("language.tabType", "hard");
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(false);
@@ -355,10 +355,10 @@ describe("TextEditorRegistry", function () {
     describe('when the "tabType" config setting is "auto"', function () {
       it("enables or disables soft tabs based on the editor's content", async function () {
         await initialPackageActivation;
-        await atom.packages.activatePackage("language-javascript");
-        atom.grammars.assignLanguageMode(editor, "source.js");
+        await lumine.packages.activatePackage("language-javascript");
+        lumine.grammars.assignLanguageMode(editor, "source.js");
         let languageMode = setupLanguageMode(editor);
-        atom.config.set("language.tabType", "auto");
+        lumine.config.set("language.tabType", "auto");
         await initialPackageActivation;
         await languageMode.ready;
 
@@ -427,11 +427,11 @@ describe("TextEditorRegistry", function () {
         await initialPackageActivation;
 
         editor.setText("abc\ndef");
-        atom.config.set("language.softTabs", true);
-        atom.config.set("language.tabType", "auto");
+        lumine.config.set("language.softTabs", true);
+        lumine.config.set("language.tabType", "auto");
         expect(editor.getSoftTabs()).toBe(true);
 
-        atom.config.set("language.softTabs", false);
+        lumine.config.set("language.softTabs", false);
         expect(editor.getSoftTabs()).toBe(false);
       });
     });
@@ -440,16 +440,16 @@ describe("TextEditorRegistry", function () {
       editor.update({ softTabs: true });
       expect(editor.getSoftTabs()).toBe(true);
 
-      atom.config.set("language.tabType", "hard");
+      lumine.config.set("language.tabType", "hard");
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(false);
 
-      atom.config.set("language.tabType", "soft");
+      lumine.config.set("language.tabType", "soft");
       expect(editor.getSoftTabs()).toBe(true);
 
-      atom.config.set("language.tabType", "auto");
-      atom.config.set("language.softTabs", true);
+      lumine.config.set("language.tabType", "auto");
+      lumine.config.set("language.softTabs", true);
       expect(editor.getSoftTabs()).toBe(true);
     });
 
@@ -457,12 +457,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ atomicSoftTabs: true });
       expect(editor.hasAtomicSoftTabs()).toBe(true);
 
-      atom.config.set("language.atomicSoftTabs", false);
+      lumine.config.set("language.atomicSoftTabs", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.hasAtomicSoftTabs()).toBe(false);
 
-      atom.config.set("language.atomicSoftTabs", true);
+      lumine.config.set("language.atomicSoftTabs", true);
       expect(editor.hasAtomicSoftTabs()).toBe(true);
     });
 
@@ -470,12 +470,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ showLineNumbers: true });
       expect(editor.showLineNumbers).toBe(true);
 
-      atom.config.set("editor.showLineNumbers", false);
+      lumine.config.set("editor.showLineNumbers", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.showLineNumbers).toBe(false);
 
-      atom.config.set("editor.showLineNumbers", true);
+      lumine.config.set("editor.showLineNumbers", true);
       expect(editor.showLineNumbers).toBe(true);
     });
 
@@ -489,16 +489,16 @@ describe("TextEditorRegistry", function () {
       });
       expect(editor.getInvisibles()).toEqual(invisibles1);
 
-      atom.config.set("language.showInvisibles", true);
-      atom.config.set("editor.invisibles", invisibles2);
+      lumine.config.set("language.showInvisibles", true);
+      lumine.config.set("editor.invisibles", invisibles2);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getInvisibles()).toEqual(invisibles2);
 
-      atom.config.set("editor.invisibles", invisibles1);
+      lumine.config.set("editor.invisibles", invisibles1);
       expect(editor.getInvisibles()).toEqual(invisibles1);
 
-      atom.config.set("language.showInvisibles", false);
+      lumine.config.set("language.showInvisibles", false);
       expect(editor.getInvisibles()).toEqual({});
     });
 
@@ -506,12 +506,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ softWrapped: true });
       expect(editor.isSoftWrapped()).toBe(true);
 
-      atom.config.set("language.softWrap", false);
+      lumine.config.set("language.softWrap", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.isSoftWrapped()).toBe(false);
 
-      atom.config.set("language.softWrap", true);
+      lumine.config.set("language.softWrap", true);
       expect(editor.isSoftWrapped()).toBe(true);
     });
 
@@ -519,12 +519,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ softWrapHangingIndentLength: 4 });
       expect(editor.getSoftWrapHangingIndentLength()).toBe(4);
 
-      atom.config.set("language.softWrapHangingIndent", 2);
+      lumine.config.set("language.softWrapHangingIndent", 2);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapHangingIndentLength()).toBe(2);
 
-      atom.config.set("language.softWrapHangingIndent", 4);
+      lumine.config.set("language.softWrapHangingIndent", 4);
       expect(editor.getSoftWrapHangingIndentLength()).toBe(4);
     });
 
@@ -538,13 +538,13 @@ describe("TextEditorRegistry", function () {
 
       expect(editor.getSoftWrapColumn()).toBe(80);
 
-      atom.config.set("language.softWrap", true);
-      atom.config.set("language.softWrapAtPreferredLineLength", false);
+      lumine.config.set("language.softWrap", true);
+      lumine.config.set("language.softWrapAtPreferredLineLength", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapColumn()).toBe(120);
 
-      atom.config.set("language.softWrapAtPreferredLineLength", true);
+      lumine.config.set("language.softWrapAtPreferredLineLength", true);
       expect(editor.getSoftWrapColumn()).toBe(80);
     });
 
@@ -556,8 +556,8 @@ describe("TextEditorRegistry", function () {
 
       expect(editor.getSoftWrapColumn()).toBe(1500);
 
-      atom.config.set("language.softWrap", false);
-      atom.config.set("editor.maxScreenLineLength", 500);
+      lumine.config.set("language.softWrap", false);
+      lumine.config.set("editor.maxScreenLineLength", 500);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapColumn()).toBe(500);
@@ -567,12 +567,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ preferredLineLength: 80 });
       expect(editor.getPreferredLineLength()).toBe(80);
 
-      atom.config.set("language.preferredLineLength", 110);
+      lumine.config.set("language.preferredLineLength", 110);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getPreferredLineLength()).toBe(110);
 
-      atom.config.set("language.preferredLineLength", 80);
+      lumine.config.set("language.preferredLineLength", 80);
       expect(editor.getPreferredLineLength()).toBe(80);
     });
 
@@ -580,12 +580,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ autoIndent: true });
       expect(editor.shouldAutoIndent()).toBe(true);
 
-      atom.config.set("language.autoIndent", false);
+      lumine.config.set("language.autoIndent", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.shouldAutoIndent()).toBe(false);
 
-      atom.config.set("language.autoIndent", true);
+      lumine.config.set("language.autoIndent", true);
       expect(editor.shouldAutoIndent()).toBe(true);
     });
 
@@ -593,12 +593,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ autoIndentOnPaste: true });
       expect(editor.shouldAutoIndentOnPaste()).toBe(true);
 
-      atom.config.set("language.autoIndentOnPaste", false);
+      lumine.config.set("language.autoIndentOnPaste", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.shouldAutoIndentOnPaste()).toBe(false);
 
-      atom.config.set("language.autoIndentOnPaste", true);
+      lumine.config.set("language.autoIndentOnPaste", true);
       expect(editor.shouldAutoIndentOnPaste()).toBe(true);
     });
 
@@ -606,12 +606,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ scrollPastEnd: true });
       expect(editor.getScrollPastEnd()).toBe(true);
 
-      atom.config.set("editor.scrollPastEnd", false);
+      lumine.config.set("editor.scrollPastEnd", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getScrollPastEnd()).toBe(false);
 
-      atom.config.set("editor.scrollPastEnd", true);
+      lumine.config.set("editor.scrollPastEnd", true);
       expect(editor.getScrollPastEnd()).toBe(true);
     });
 
@@ -619,12 +619,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ undoGroupingInterval: 300 });
       expect(editor.getUndoGroupingInterval()).toBe(300);
 
-      atom.config.set("editor.undoGroupingInterval", 600);
+      lumine.config.set("editor.undoGroupingInterval", 600);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getUndoGroupingInterval()).toBe(600);
 
-      atom.config.set("editor.undoGroupingInterval", 300);
+      lumine.config.set("editor.undoGroupingInterval", 300);
       expect(editor.getUndoGroupingInterval()).toBe(300);
     });
 
@@ -632,12 +632,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ scrollSensitivity: 50 });
       expect(editor.getScrollSensitivity()).toBe(50);
 
-      atom.config.set("editor.scrollSensitivity", 60);
+      lumine.config.set("editor.scrollSensitivity", 60);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getScrollSensitivity()).toBe(60);
 
-      atom.config.set("editor.scrollSensitivity", 70);
+      lumine.config.set("editor.scrollSensitivity", 70);
       expect(editor.getScrollSensitivity()).toBe(70);
     });
 
@@ -649,15 +649,15 @@ describe("TextEditorRegistry", function () {
         const disposable2 = registry.maintainConfig(editor);
         await initialPackageActivation;
 
-        atom.config.set("editor.scrollSensitivity", 60);
+        lumine.config.set("editor.scrollSensitivity", 60);
         expect(editor.getScrollSensitivity()).toBe(60);
 
         disposable2.dispose();
-        atom.config.set("editor.scrollSensitivity", 70);
+        lumine.config.set("editor.scrollSensitivity", 70);
         expect(editor.getScrollSensitivity()).toBe(70);
 
         disposable1.dispose();
-        atom.config.set("editor.scrollSensitivity", 80);
+        lumine.config.set("editor.scrollSensitivity", 80);
         expect(editor.getScrollSensitivity()).toBe(70);
       });
     });

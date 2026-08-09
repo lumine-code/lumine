@@ -4,7 +4,7 @@ let Tooltip = null;
 
 // Essential: Associates tooltips with HTML elements.
 //
-// You can get the `TooltipManager` via `atom.tooltips`.
+// You can get the `TooltipManager` via `lumine.tooltips`.
 //
 // ## Examples
 //
@@ -12,7 +12,7 @@ let Tooltip = null;
 //
 // ```js
 // // display it
-// const disposable = atom.tooltips.add(div, {title: 'This is a tooltip'})
+// const disposable = lumine.tooltips.add(div, {title: 'This is a tooltip'})
 //
 // // remove it
 // disposable.dispose()
@@ -22,13 +22,13 @@ let Tooltip = null;
 // CompositeDisposable
 //
 // ```js
-// const {CompositeDisposable} = require('atom')
+// const {CompositeDisposable} = require('lumine')
 // const subscriptions = new CompositeDisposable()
 //
 // const div1 = document.createElement('div')
 // const div2 = document.createElement('div')
-// subscriptions.add(atom.tooltips.add(div1, {title: 'This is a tooltip'}))
-// subscriptions.add(atom.tooltips.add(div2, {title: 'Another tooltip'}))
+// subscriptions.add(lumine.tooltips.add(div1, {title: 'This is a tooltip'}))
+// subscriptions.add(lumine.tooltips.add(div2, {title: 'Another tooltip'}))
 //
 // // remove them all
 // subscriptions.dispose()
@@ -38,7 +38,7 @@ let Tooltip = null;
 // `keyBindingCommand` option.
 //
 // ```js
-// disposable = atom.tooltips.add(this.caseOptionButton, {
+// disposable = lumine.tooltips.add(this.caseOptionButton, {
 //   title: 'Match Case',
 //   keyBindingCommand: 'search-panel:toggle-case-option',
 //   keyBindingTarget: this.findEditor.element
@@ -48,7 +48,7 @@ let Tooltip = null;
 // To display several tooltip entries together, use `addComposite`.
 //
 // ```js
-// disposable = atom.tooltips.addComposite(this.modeIndicator, [
+// disposable = lumine.tooltips.addComposite(this.modeIndicator, [
 //   {title: 'Column selection'},
 //   {
 //     title: 'Toggle sticky mode',

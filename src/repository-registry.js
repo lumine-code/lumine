@@ -121,7 +121,7 @@ function refreshHintForChange(gitRelativeDirectory, name) {
 }
 
 // Public: Every Git repository this window knows about, available as
-// `atom.repositories`.
+// `lumine.repositories`.
 //
 // Project roots are where repositories are discovered and what keeps them
 // alive, but a repository's identity is independent of them: one root can hold
@@ -137,7 +137,7 @@ function refreshHintForChange(gitRelativeDirectory, name) {
 // asynchronous:
 //
 // ```js
-// const repository = atom.repositories.getForPath(editor.getPath())
+// const repository = lumine.repositories.getForPath(editor.getPath())
 // if (repository) console.log(repository.getShortHead())
 // ```
 //
@@ -147,7 +147,7 @@ function refreshHintForChange(gitRelativeDirectory, name) {
 // item, so a status bar or a panel does not have to work it out itself:
 //
 // ```js
-// atom.repositories.observeActiveRepository(({ repository, workingDirectory }) => {
+// lumine.repositories.observeActiveRepository(({ repository, workingDirectory }) => {
 //   // repository is null when the active item belongs to none
 // })
 // ```
@@ -203,7 +203,7 @@ module.exports = class RepositoryRegistry {
   // Resetting the window runs `PackageManager#reset`, which clears every
   // consumer off the service hub. A subscription made only in the constructor
   // would survive that in name alone and no provider would reach the registry
-  // again, so this is re-run from `AtomEnvironment#reset` the same way Project
+  // again, so this is re-run from `LumineEnvironment#reset` the same way Project
   // and Workspace re-run theirs.
   consumeServices(packageManager) {
     this.serviceSubscription?.dispose();

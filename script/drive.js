@@ -6,7 +6,7 @@
 // to the wrong row) is invisible there but reproducible here.
 //
 //   node script/drive.js launch ~/some-project
-//   node script/drive.js eval "atom.workspace.getActivePaneItem().getTitle()"
+//   node script/drive.js eval "lumine.workspace.getActivePaneItem().getTitle()"
 //   node script/drive.js console --ms 3000
 //   node script/drive.js eval -f repro.js   # a whole scripted repro, instrumented
 //   node script/drive.js reload             # after editing package source
@@ -23,7 +23,7 @@
 //
 // `launch` runs an ISOLATED instance: it points `LUMINE_HOME` at a scratch
 // directory, and since the single-instance socket secret lives under
-// `$LUMINE_HOME/storage` (see src/atom-application.js), a scratch home can
+// `$LUMINE_HOME/storage` (see src/lumine-application.js), a scratch home can
 // never hand its paths to the editor you are working in. `--link` symlinks a
 // package checkout into that home so the instance loads the code you are
 // editing.
@@ -40,10 +40,10 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 const DEFAULT_PORT = Number(process.env.LUMINE_DRIVE_PORT || 9223);
 
-// The window is usable once its packages have activated; `atom-workspace` alone
+// The window is usable once its packages have activated; `lumine-workspace` alone
 // is in the DOM well before that.
 const READY =
-  "Boolean(window.atom && atom.packages && atom.packages.getActivePackages().length > 0)";
+  "Boolean(window.lumine && lumine.packages && lumine.packages.getActivePackages().length > 0)";
 
 const USAGE = `Usage: node script/drive.js <command> [options]
 
@@ -285,14 +285,14 @@ async function dispatch({ positional, options }) {
   if (!command) fail("which command?");
   const target = options.target
     ? `document.querySelector(${JSON.stringify(options.target)})`
-    : "atom.views.getView(atom.workspace)";
+    : "lumine.views.getView(lumine.workspace)";
   const client = await clientFor(options);
   const dispatched = await client
     .evaluate(
       `(() => {
         const target = ${target};
         if (!target) return null;
-        return atom.commands.dispatch(target, ${JSON.stringify(command)});
+        return lumine.commands.dispatch(target, ${JSON.stringify(command)});
       })()`,
     )
     .catch((error) => fail(error.message));
@@ -307,7 +307,9 @@ async function reload({ options }) {
   const client = await clientFor(options);
   // Reloading tears the socket down, so the call cannot be awaited — fire it
   // from a timer and reconnect to the new target.
-  await client.evaluate("setTimeout(() => atom.window.reload(), 50), 'reloading'").catch(() => {});
+  await client
+    .evaluate("setTimeout(() => lumine.window.reload(), 50), 'reloading'")
+    .catch(() => {});
   client.close();
   await sleep(2000);
   const next = await clientFor(options, { timeout: 60000 });
@@ -447,7 +449,7 @@ async function quit({ options }) {
   const windows = await listWindows(port).catch(() => []);
   if (windows.length) {
     const client = await clientFor(options);
-    await client.evaluate("setTimeout(() => atom.window.close(), 50), 'closing'").catch(() => {});
+    await client.evaluate("setTimeout(() => lumine.window.close(), 50), 'closing'").catch(() => {});
     client.close();
     console.log("closing");
     return;

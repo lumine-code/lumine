@@ -18,7 +18,7 @@ class WatcherTask {
       ELECTRON_NO_ATTACH_CONSOLE: "1",
       LUMINE_COMPILE_CACHE_PATH: compileCachePath,
     });
-    if (window.atom?.unloading) {
+    if (window.lumine?.unloading) {
       // Guard against spurious re-declarations of a `WatcherTask` while the
       // environment is unloading.
       this.childProcess = null;
@@ -67,7 +67,7 @@ class WatcherTask {
 
   start(...args) {
     // Don't spawn any workers during shutdown.
-    if (window.atom?.unloading) return;
+    if (window.lumine?.unloading) return;
 
     const [callback] = args.splice(-1);
     this.createChildProcess();

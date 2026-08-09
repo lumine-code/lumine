@@ -1,11 +1,11 @@
 const { Menu } = require("electron");
 
 module.exports = class ContextMenu {
-  constructor(template, atomWindow) {
-    this.atomWindow = atomWindow;
+  constructor(template, lumineWindow) {
+    this.lumineWindow = lumineWindow;
     this.createClickHandlers(template);
     const menu = Menu.buildFromTemplate(template);
-    menu.popup(this.atomWindow.browserWindow, { async: true });
+    menu.popup(this.lumineWindow.browserWindow, { async: true });
   }
 
   // It's necessary to build the event handlers in this process, otherwise
@@ -17,9 +17,9 @@ module.exports = class ContextMenu {
         if (!item.commandDetail) item.commandDetail = {};
         item.commandDetail.contextCommand = true;
         item.click = () => {
-          global.atomApplication.sendCommandToWindow(
+          global.lumineApplication.sendCommandToWindow(
             item.command,
-            this.atomWindow,
+            this.lumineWindow,
             item.commandDetail,
           );
         };

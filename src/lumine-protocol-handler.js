@@ -4,7 +4,7 @@ const path = require("path");
 
 // Handles requests with 'lumine' protocol.
 //
-// It's created by {AtomApplication} upon instantiation and is used to create a
+// It's created by {LumineApplication} upon instantiation and is used to create a
 // custom resource loader for 'lumine://' URLs.
 //
 // A URL names a package and a file inside it: `lumine://<package>/<file>`. The
@@ -20,7 +20,7 @@ const path = require("path");
 // A package directory does not have to be named after the package, so when no
 // directory matches, the first segment is resolved as a package name instead.
 //
-module.exports = class AtomProtocolHandler {
+module.exports = class LumineProtocolHandler {
   constructor(resourcePath, safeMode, resolvePackagePath) {
     this.loadPaths = [];
     this.resolvePackagePath = resolvePackagePath;
@@ -32,11 +32,11 @@ module.exports = class AtomProtocolHandler {
 
     this.loadPaths.push(path.join(resourcePath, "node_modules"));
 
-    this.registerAtomProtocol();
+    this.registerLumineProtocol();
   }
 
   // Creates the 'lumine' custom protocol handler.
-  registerAtomProtocol() {
+  registerLumineProtocol() {
     protocol.registerFileProtocol("lumine", (request, callback) => {
       const relativePath = path.normalize(request.url.slice("lumine://".length));
 

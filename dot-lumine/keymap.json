@@ -11,10 +11,10 @@
 // Here's an example taken from Lumine's built-in keymap:
 //
 // {
-//   "atom-text-editor": {
+//   "lumine-text-editor": {
 //     "enter": "editor:newline"
 //   },
-//   "atom-workspace": {
+//   "lumine-workspace": {
 //     "ctrl-shift-p": "core:move-up",
 //     "ctrl-p": "core:move-down"
 //   }

@@ -33,7 +33,7 @@ module.exports = class DefaultDirectoryProvider {
   // Public: Create a Directory that corresponds to the specified URI.
   //
   // * `uri` {String} The path to the directory to add. This is guaranteed not to
-  // be contained by a {Directory} in `atom.project`.
+  // be contained by a {Directory} in `lumine.project`.
   //
   // Returns:
   // * {Directory} if the given URI is compatible with this provider.
@@ -83,7 +83,7 @@ module.exports = class DefaultDirectoryProvider {
   // Public: Create a Directory that corresponds to the specified URI.
   //
   // * `uri` {String} The path to the directory to add. This is guaranteed not to
-  // be contained by a {Directory} in `atom.project`.
+  // be contained by a {Directory} in `lumine.project`.
   //
   // Returns a {Promise} that resolves to:
   // * {Directory} if the given URI is compatible with this provider.

@@ -6,9 +6,9 @@ const StartupTime = require("./startup-time");
 // BrowserWindow objects never cross the process boundary. State is returned as
 // plain objects and every operation which reaches the main process is async.
 class WindowService {
-  constructor(applicationDelegate, atomEnvironment) {
+  constructor(applicationDelegate, lumineEnvironment) {
     this.applicationDelegate = applicationDelegate;
-    this.atomEnvironment = atomEnvironment;
+    this.lumineEnvironment = lumineEnvironment;
   }
 
   // Public: Return the stable numeric id of the current Lumine window.
@@ -20,17 +20,17 @@ class WindowService {
   //
   // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
   onWillDestroy(callback) {
-    return this.atomEnvironment.emitter.on("will-destroy", callback);
+    return this.lumineEnvironment.emitter.on("will-destroy", callback);
   }
 
   // Extended: Wait until the current editor window has finished loading.
   //
   // Returns a {Promise} resolving to the load time in milliseconds.
   whenLoaded() {
-    if (this.atomEnvironment.loadTime != null) {
-      return Promise.resolve(this.atomEnvironment.loadTime);
+    if (this.lumineEnvironment.loadTime != null) {
+      return Promise.resolve(this.lumineEnvironment.loadTime);
     }
-    return new Promise((resolve) => this.atomEnvironment.emitter.once("window-loaded", resolve));
+    return new Promise((resolve) => this.lumineEnvironment.emitter.once("window-loaded", resolve));
   }
 
   // Public: Determine whether the current window is in development mode.
@@ -62,7 +62,7 @@ class WindowService {
   //
   // Returns a {Number} in milliseconds, or `null` before loading completes.
   getLoadTime() {
-    return this.atomEnvironment.loadTime;
+    return this.lumineEnvironment.loadTime;
   }
 
   // Public: Return startup timing markers for the current window.

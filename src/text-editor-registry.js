@@ -44,7 +44,7 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
 const ROLES = new Set(["document", "fragment", "background"]);
 
 // Public: The global registry of every {TextEditor} in the window, available as
-// `atom.textEditors`.
+// `lumine.textEditors`.
 //
 // {Workspace} holds the editors that are pane items; this registry holds all of
 // them, including the ones a package builds for its own interface — a search
@@ -57,7 +57,7 @@ const ROLES = new Set(["document", "fragment", "background"]);
 // registered later:
 //
 // ```js
-// atom.textEditors.observe(editor => {
+// lumine.textEditors.observe(editor => {
 //   // every editor in the window, not just the ones in panes
 // })
 // ```
@@ -69,8 +69,8 @@ const ROLES = new Set(["document", "fragment", "background"]);
 // away**, or the registry keeps it alive:
 //
 // ```js
-// const editor = atom.workspace.buildTextEditor({ mini: true })
-// const registration = atom.textEditors.add(editor, { role: 'fragment' })
+// const editor = lumine.workspace.buildTextEditor({ mini: true })
+// const registration = lumine.textEditors.add(editor, { role: 'fragment' })
 // // …later
 // registration.dispose()
 // ```
@@ -217,13 +217,13 @@ module.exports = class TextEditorRegistry {
   //
   // Returns a {TextEditor}, or `null` if focus is not in one.
   getActiveTextEditor() {
-    let element = document.activeElement?.closest?.("atom-text-editor");
+    let element = document.activeElement?.closest?.("lumine-text-editor");
     while (element) {
       const editor = typeof element.getModel === "function" ? element.getModel() : null;
       if (editor && this.editors.has(editor)) {
         return editor;
       }
-      element = element.parentElement?.closest?.("atom-text-editor");
+      element = element.parentElement?.closest?.("lumine-text-editor");
     }
     return null;
   }

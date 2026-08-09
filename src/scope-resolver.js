@@ -92,8 +92,8 @@ class ConfigCache {
 
     this.subscriptions.add(
       this.config.onDidChange(() => this.clearAll()),
-      atom.grammars.onDidAddGrammar(() => this.clearAll()),
-      atom.grammars.onDidUpdateGrammar(() => this.clearAll()),
+      lumine.grammars.onDidAddGrammar(() => this.clearAll()),
+      lumine.grammars.onDidUpdateGrammar(() => this.clearAll()),
     );
   }
 
@@ -126,7 +126,7 @@ class ConfigCache {
 }
 
 // We can technically have more than one configuration object, though in
-// practice this will only point to `atom.config`. We do it this way for ease
+// practice this will only point to `lumine.config`. We do it this way for ease
 // of testing (e.g., if a test mocks a config object) and to avoid silly hacks.
 ConfigCache.CACHES_FOR_CONFIG_OBJECTS = new Map();
 
@@ -160,7 +160,7 @@ class ScopeResolver {
   constructor(languageLayer, idForScope) {
     this.languageLayer = languageLayer;
     this.buffer = languageLayer.buffer;
-    this.config = languageLayer?.languageMode?.config ?? atom.config;
+    this.config = languageLayer?.languageMode?.config ?? lumine.config;
     this.grammar = languageLayer.grammar;
     this.idForScope = idForScope ?? ((x) => x);
     this.boundaries = new Map();
@@ -190,7 +190,7 @@ class ScopeResolver {
   // Logs a warning about a problematic predicate at most once per grammar and
   // key, and only in dev mode.
   warnOncePerGrammar(key, message) {
-    if (!atom.window.isDevMode()) return;
+    if (!lumine.window.isDevMode()) return;
     let warningKey = `${this.grammar.scopeName}:${key}`;
     if (predicateWarningRegistry.has(warningKey)) return;
     predicateWarningRegistry.add(warningKey);

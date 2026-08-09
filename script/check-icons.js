@@ -1,5 +1,5 @@
 // Verifies the icon geometry contract stays uncontested by the bundled UI
-// themes. The contract (static/atom-ui/styles/icons.css) makes core the only
+// themes. The contract (static/lumine-ui/styles/icons.css) makes core the only
 // owner of icon box geometry: themes own row metrics (container line-height,
 // heights, margins) and colors, never the internals of an `.icon` ::before.
 // A theme that re-declares a geometry property there silently re-splits icon
@@ -145,7 +145,7 @@ function main() {
         errors.push(
           `${path.relative(ROOT, file)}: "${violation.selector}" declares ` +
             `${violation.property} — icon box geometry is owned by the core contract ` +
-            `(static/atom-ui/styles/icons.css); themes own row metrics only`,
+            `(static/lumine-ui/styles/icons.css); themes own row metrics only`,
         );
       }
     }

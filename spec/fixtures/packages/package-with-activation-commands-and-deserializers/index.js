@@ -6,7 +6,7 @@ module.exports = {
   activate () {
     this.activateCallCount++
 
-    atom.commands.add('atom-workspace', 'activation-command-2', () => this.activationCommandCallCount++)
+    lumine.commands.add('lumine-workspace', 'activation-command-2', () => this.activationCommandCallCount++)
   },
 
   deserializeMethod1 (state) {

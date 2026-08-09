@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 const { pathToFileURL } = require("url");
 const MarkdownIt = require("markdown-it");
-const { TextEditor } = require("atom");
+const { TextEditor } = require("lumine");
 
 // Helper Markdown Components
 const mdComponents = {
@@ -21,9 +21,6 @@ const mdComponents = {
     },
     globalLinks: {
       base64: new RegExp(/^data:image\/.*;base64/, "i"),
-    },
-    legacyLinks: {
-      flightManual: new RegExp(/^https:\/\/flight-manual\.atom\.io\//),
     },
   },
 };
@@ -58,8 +55,6 @@ const mdComponents = {
  * `divWrap` option. False by default.
  * @param {boolean} givenOpts.transformImageLinks - Attempt to resolve image URLs.
  * True by default.
- * @param {boolean} givenOpts.transformLegacyLinks - Attempt to redirect links
- * pointing at retired resources to an archived copy. True by default.
  * @param {boolean} givenOpts.transformNonFqdnLinks - Attempt to resolve links
  * that are not fully qualified domain names. True by default.
  * @param {string} givenOpts.rootDomain - The root URL of the online resource.
@@ -88,7 +83,6 @@ function renderMarkdown(content, givenOpts = {}) {
     taskCheckboxDisabled: true, // `markdown-it-task-checkbox`: Disable checkbox interactivity
     taskCheckboxDivWrap: false, // `markdown-it-task-checkbox`: Wrap div around checkbox
     transformImageLinks: true, // Attempt to resolve image urls
-    transformLegacyLinks: true, // Attempt to redirect links to retired resources at their archived copy
     transformNonFqdnLinks: true, // Attempt to resolve non-FQDN links
     rootDomain: "", // The root URL that should be used for the above 'transform' options
     filePath: "", // The path to the file where this markdown is generated from,
@@ -175,7 +169,7 @@ function renderMarkdown(content, givenOpts = {}) {
       if (mdComponents.reg.localLinks.rootDir.test(source)) {
         if (isFile(source)) return pathToFileURL(source).href;
 
-        const [rootDirectory] = atom.project.relativizePath(opts.filePath);
+        const [rootDirectory] = lumine.project.relativizePath(opts.filePath);
         if (!rootDirectory) return null;
 
         const candidate = path.join(
@@ -246,31 +240,6 @@ function renderMarkdown(content, givenOpts = {}) {
                     !link.startsWith("#")
                   ) {
                     attr[1] = `${cleanRootDomain()}/blob/HEAD/${link.replace(".git", "")}`;
-                  }
-                }
-              });
-            }
-          });
-        }
-      });
-    });
-  } else if (opts.transformLegacyLinks) {
-    // This is a separate if since transforming legacy links does not need a valid root domain provided
-    md.core.ruler.after("inline", "fix-legacy-links", (state) => {
-      state.tokens.forEach((blockToken) => {
-        if (blockToken.type === "inline" && blockToken.children) {
-          blockToken.children.forEach((token) => {
-            if (token.type === "link_open") {
-              token.attrs.forEach((attr) => {
-                if (attr[0] === "href") {
-                  let link = attr[1];
-
-                  if (mdComponents.reg.legacyLinks.flightManual.test(link)) {
-                    // Resolve any links to the flight manual to web archive
-                    attr[1] = link.replace(
-                      mdComponents.reg.legacyLinks.flightManual,
-                      "https://web.archive.org/web/20221215003438/https://flight-manual.atom.io/",
-                    );
                   }
                 }
               });
@@ -519,7 +488,7 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
   };
 
   let defaultLanguage;
-  const fontFamily = atom.config.get("editor.fontFamily");
+  const fontFamily = lumine.config.get("editor.fontFamily");
 
   if ((opts.grammar != null ? opts.grammar.scopeName : undefined) === "source.litcoffee") {
     // This behavior is carried over from `markdown-preview` but it's purpose and need
@@ -538,10 +507,10 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
   let editorCallback;
 
   if (opts.renderMode === "fragment") {
-    editorCallback = makeAtomEditorNonInteractive;
+    editorCallback = makeLumineEditorNonInteractive;
   } else {
     // Captures full and defaults
-    editorCallback = convertAtomEditorToStandardElement;
+    editorCallback = convertLumineEditorToStandardElement;
   }
 
   const promises = [];
@@ -562,7 +531,7 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
     preElement.innerHTML = "";
     preElement.parentNode.insertBefore(editorElement, preElement);
     editor.setText(codeBlock.textContent.replace(/\r?\n$/, ""));
-    atom.grammars.assignLanguageMode(editor, scopeForFenceName(fenceName));
+    lumine.grammars.assignLanguageMode(editor, scopeForFenceName(fenceName));
     editor.setVisible(true);
 
     promises.push(editorCallback(editorElement, preElement));
@@ -585,7 +554,7 @@ function convertToDOM(content) {
   return fragment;
 }
 
-function makeAtomEditorNonInteractive(editorElement, preElement) {
+function makeLumineEditorNonInteractive(editorElement, preElement) {
   preElement.remove();
   editorElement.setAttributeNode(document.createAttribute("gutter-hidden")); // Hide gutter
   editorElement.removeAttribute("tabindex"); // Make read-only
@@ -604,7 +573,7 @@ function makeAtomEditorNonInteractive(editorElement, preElement) {
   }
 }
 
-function convertAtomEditorToStandardElement(editorElement, preElement) {
+function convertLumineEditorToStandardElement(editorElement, preElement) {
   return new Promise(function (resolve) {
     const editor = editorElement.getModel();
     const done = () =>

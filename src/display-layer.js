@@ -389,8 +389,8 @@ class DisplayLayer {
       skipSoftWrapIndentation,
     );
 
-    if (global.atom && bufferPosition.row >= this.buffer.getLineCount()) {
-      global.atom.assert(false, "Invalid translated buffer row", {
+    if (global.lumine && bufferPosition.row >= this.buffer.getLineCount()) {
+      global.lumine.assert(false, "Invalid translated buffer row", {
         bufferPosition,
         bufferLineCount: this.buffer.getLineCount(),
       });

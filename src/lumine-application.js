@@ -1,6 +1,6 @@
-const AtomWindow = require("./atom-window");
+const LumineWindow = require("./lumine-window");
 const ApplicationMenu = require("./application-menu");
-const AtomProtocolHandler = require("./atom-protocol-handler");
+const LumineProtocolHandler = require("./lumine-protocol-handler");
 const { onDidChangeScrollbarStyle } = require("./scrollbar-style");
 const StorageFolder = require("./storage-folder");
 const Config = require("./config");
@@ -39,24 +39,24 @@ const LocationSuffixRegExp = /(:\d+)(:\d+)?$/;
 const WINDOW_EVENT_CHANNEL = "window-event";
 
 // Increment this when changing the serialization format of `${LUMINE_HOME}/storage/application.json` used by
-// AtomApplication::saveCurrentWindowOptions() and AtomApplication::loadPreviousWindowOptions() in a backward-
+// LumineApplication::saveCurrentWindowOptions() and LumineApplication::loadPreviousWindowOptions() in a backward-
 // incompatible way.
 const APPLICATION_STATE_VERSION = "1";
 
 const getSocketSecretPath = (applicationVersion) => {
   const { username } = os.userInfo();
-  const atomHome = path.resolve(process.env.LUMINE_HOME);
+  const lumineHome = path.resolve(process.env.LUMINE_HOME);
 
-  return path.join(atomHome, "storage", `socket-secret-${username}-${applicationVersion}`);
+  return path.join(lumineHome, "storage", `socket-secret-${username}-${applicationVersion}`);
 };
 
 // Pre-`storage/` location of the socket secret. Kept only so that upgrading from
 // an older build can clean up the stray file it left at the config root.
 const getLegacySocketSecretPath = (applicationVersion) => {
   const { username } = os.userInfo();
-  const atomHome = path.resolve(process.env.LUMINE_HOME);
+  const lumineHome = path.resolve(process.env.LUMINE_HOME);
 
-  return path.join(atomHome, `.lumine-socket-secret-${username}-${applicationVersion}`);
+  return path.join(lumineHome, `.lumine-socket-secret-${username}-${applicationVersion}`);
 };
 
 const unlinkIfExists = (targetPath) => {
@@ -162,13 +162,13 @@ const APP_PATH_NAMES = [
 ];
 
 function currentApplication() {
-  const application = global.atomApplication;
+  const application = global.lumineApplication;
   if (!application) throw new Error("Lumine application is not initialized");
   return application;
 }
 
-function currentAtomWindow(event) {
-  return currentApplication().atomWindowForSender(event.sender);
+function currentLumineWindow(event) {
+  return currentApplication().lumineWindowForSender(event.sender);
 }
 
 function assertString(value, name) {
@@ -213,29 +213,29 @@ function appPaths() {
 }
 
 const handleWindowBootstrap = (event) => {
-  const atomWindow = currentAtomWindow(event);
-  const loadSettings = JSON.parse(JSON.stringify(atomWindow.getLoadSettingsForRenderer()));
+  const lumineWindow = currentLumineWindow(event);
+  const loadSettings = JSON.parse(JSON.stringify(lumineWindow.getLoadSettingsForRenderer()));
   return {
     loadSettings: Object.assign(loadSettings, {
-      windowId: atomWindow.id,
+      windowId: lumineWindow.id,
       appPaths: appPaths(),
       appLocale: app.getLocale(),
     }),
-    startupMarkers: atomWindow.consumeStartupMarkers(),
+    startupMarkers: lumineWindow.consumeStartupMarkers(),
   };
 };
 ipcMain.handle("lumine:window-bootstrap", handleWindowBootstrap);
 
 const handleWindowAction = async (event, action, ...args) => {
-  const atomWindow = currentAtomWindow(event);
-  const window = atomWindow.browserWindow;
+  const lumineWindow = currentLumineWindow(event);
+  const window = lumineWindow.browserWindow;
 
   switch (action) {
     case "getState": {
       const [x, y] = window.getPosition();
       const [width, height] = window.getSize();
       return {
-        id: atomWindow.id,
+        id: lumineWindow.id,
         position: { x, y },
         size: { width, height },
         maximized: window.isMaximized(),
@@ -265,33 +265,33 @@ const handleWindowAction = async (event, action, ...args) => {
       window.center();
       return;
     case "focus":
-      atomWindow.focus();
+      lumineWindow.focus();
       window.webContents.focus();
       return;
     case "show":
-      currentApplication().showWindow(atomWindow);
+      currentApplication().showWindow(lumineWindow);
       return;
     case "showInactive":
-      if (!atomWindow.isSpec) throw new Error("showInactive is restricted to spec windows");
+      if (!lumineWindow.isSpec) throw new Error("showInactive is restricted to spec windows");
       window.showInactive();
       return;
     case "hide":
       window.hide();
       return;
     case "close":
-      atomWindow.close();
+      lumineWindow.close();
       return;
     case "reload":
-      await atomWindow.reload();
+      await lumineWindow.reload();
       return;
     case "minimize":
-      atomWindow.minimize();
+      lumineWindow.minimize();
       return;
     case "maximize":
-      atomWindow.maximize();
+      lumineWindow.maximize();
       return;
     case "unmaximize":
-      atomWindow.unmaximize();
+      lumineWindow.unmaximize();
       return;
     case "isMaximized":
       return window.isMaximized();
@@ -301,7 +301,7 @@ const handleWindowAction = async (event, action, ...args) => {
       return window.isVisible();
     case "setFullScreen":
       assertBoolean(args[0], "fullScreen");
-      atomWindow.setFullScreen(args[0]);
+      lumineWindow.setFullScreen(args[0]);
       return;
     case "pickFolder": {
       const { canceled, filePaths } = await dialog.showOpenDialog(window, {
@@ -314,7 +314,7 @@ const handleWindowAction = async (event, action, ...args) => {
       if (!args[0] || typeof args[0] !== "object" || Array.isArray(args[0])) {
         throw new TypeError("Save dialog options must be an object");
       }
-      return atomWindow.showSaveDialog(args[0]);
+      return lumineWindow.showSaveDialog(args[0]);
     case "confirm": {
       const options = args[0];
       if (!options || typeof options !== "object" || Array.isArray(options)) {
@@ -349,13 +349,13 @@ const handleWindowAction = async (event, action, ...args) => {
       window.setMenuBarVisibility(args[0]);
       return;
     case "openDevTools":
-      atomWindow.openDevTools();
+      lumineWindow.openDevTools();
       return;
     case "closeDevTools":
-      atomWindow.closeDevTools();
+      lumineWindow.closeDevTools();
       return;
     case "toggleDevTools":
-      atomWindow.toggleDevTools();
+      lumineWindow.toggleDevTools();
       return;
     case "executeJavaScriptInDevTools":
       assertString(args[0], "code");
@@ -370,21 +370,21 @@ const handleWindowAction = async (event, action, ...args) => {
       return;
     case "didClosePathWithWaitSession":
       assertString(args[0], "path");
-      atomWindow.didClosePathWithWaitSession(args[0]);
+      lumineWindow.didClosePathWithWaitSession(args[0]);
       return;
     case "setDocumentEdited":
       assertBoolean(args[0], "edited");
-      atomWindow.setDocumentEdited(args[0]);
+      lumineWindow.setDocumentEdited(args[0]);
       return;
     case "setRepresentedFilename":
       if (typeof args[0] !== "string") throw new TypeError("filename must be a string");
-      atomWindow.setRepresentedFilename(args[0]);
+      lumineWindow.setRepresentedFilename(args[0]);
       return;
     case "setProjectRoots":
       if (!Array.isArray(args[0]) || !args[0].every((item) => typeof item === "string")) {
         throw new TypeError("Project roots must be an array of strings");
       }
-      await atomWindow.setProjectRoots(args[0]);
+      await lumineWindow.setProjectRoots(args[0]);
       return;
     case "loaded":
       window.emit("window:loaded");
@@ -401,7 +401,7 @@ const handleWindowAction = async (event, action, ...args) => {
       }
       return;
     case "sendInputEvent":
-      if (!atomWindow.isSpec) throw new Error("Input injection is restricted to spec windows");
+      if (!lumineWindow.isSpec) throw new Error("Input injection is restricted to spec windows");
       if (!args[0] || typeof args[0] !== "object" || Array.isArray(args[0])) {
         throw new TypeError("Input event must be an object");
       }
@@ -440,26 +440,26 @@ ipcMain.handle("lumine:window", handleWindowAction);
 const handleWindowBroadcast = (event, eventName, ...args) => {
   assertString(eventName, "eventName");
   const application = currentApplication();
-  currentAtomWindow(event);
-  for (const atomWindow of application.getAllWindows()) {
-    const contents = atomWindow.browserWindow.webContents;
+  currentLumineWindow(event);
+  for (const lumineWindow of application.getAllWindows()) {
+    const contents = lumineWindow.browserWindow.webContents;
     if (contents === event.sender || contents.isDestroyed?.()) continue;
-    if (application.atomWindowsByWebContentsId.get(contents.id) !== atomWindow) continue;
-    atomWindow.sendToRenderer(WINDOW_EVENT_CHANNEL, eventName, ...args);
+    if (application.lumineWindowsByWebContentsId.get(contents.id) !== lumineWindow) continue;
+    lumineWindow.sendToRenderer(WINDOW_EVENT_CHANNEL, eventName, ...args);
   }
 };
 ipcMain.handle("lumine:window-broadcast", handleWindowBroadcast);
 
 const handleContextMenu = (event, template) => {
-  const atomWindow = currentAtomWindow(event);
+  const lumineWindow = currentLumineWindow(event);
   if (!Array.isArray(template)) throw new TypeError("Context menu template must be an array");
   const ContextMenu = require("./context-menu");
-  new ContextMenu(template, atomWindow);
+  new ContextMenu(template, lumineWindow);
 };
 ipcMain.handle("lumine:context-menu", handleContextMenu);
 
 const handleAppAction = async (event, action, ...args) => {
-  currentAtomWindow(event);
+  currentLumineWindow(event);
   const application = currentApplication();
   switch (action) {
     case "getUserDefault":
@@ -515,7 +515,7 @@ const handleAppAction = async (event, action, ...args) => {
 ipcMain.handle("lumine:app", handleAppAction);
 
 const handleSafeStorageAction = async (event, action, value) => {
-  currentAtomWindow(event);
+  currentLumineWindow(event);
   switch (action) {
     case "isEncryptionAvailable":
       return safeStorage.isAsyncEncryptionAvailable();
@@ -541,8 +541,14 @@ const handleSafeStorageAction = async (event, action, value) => {
 };
 ipcMain.handle("lumine:safe-storage", handleSafeStorageAction);
 
-ipcMain.handle("lumine:setup-error", (event) => {
-  const window = currentAtomWindow(event).browserWindow;
+ipcMain.handle("lumine:setup-error", (event, detail) => {
+  const lumineWindow = currentLumineWindow(event);
+  if (lumineWindow.isSpec) {
+    process.stderr.write(`${detail || "The spec window failed to initialize."}\n`);
+    app.exit(1);
+    return;
+  }
+  const window = lumineWindow.browserWindow;
   window.setSize(800, 600);
   window.center();
   window.show();
@@ -550,7 +556,7 @@ ipcMain.handle("lumine:setup-error", (event) => {
 });
 
 ipcMain.handle("lumine:profile-startup", async (event) => {
-  const contents = currentAtomWindow(event).browserWindow.webContents;
+  const contents = currentLumineWindow(event).browserWindow.webContents;
   if (contents.devToolsWebContents) return;
   const opened = new Promise((resolve) => contents.once("devtools-opened", resolve));
   contents.openDevTools();
@@ -558,8 +564,8 @@ ipcMain.handle("lumine:profile-startup", async (event) => {
 });
 
 ipcMain.handle("lumine:test", async (event, action, value) => {
-  const atomWindow = currentAtomWindow(event);
-  if (!atomWindow.isSpec) throw new Error("Test IPC is restricted to spec windows");
+  const lumineWindow = currentLumineWindow(event);
+  if (!lumineWindow.isSpec) throw new Error("Test IPC is restricted to spec windows");
   switch (action) {
     case "stdout":
       return new Promise((resolve, reject) =>
@@ -584,17 +590,17 @@ ipcMain.handle("lumine:test", async (event, action, value) => {
 // of the application. It runs in the main process, so it is not part of the API
 // a package can reach.
 //
-module.exports = class AtomApplication extends EventEmitter {
+module.exports = class LumineApplication extends EventEmitter {
   // Public: The entry point into the Lumine application.
   static open(options) {
-    StartupTime.addMarker("main-process:atom-application:open");
+    StartupTime.addMarker("main-process:lumine-application:open");
 
     const socketSecret = getExistingSocketSecret(options.version);
     const socketPath = getSocketPath(socketSecret);
     const createApplication =
       options.createApplication ||
       (async () => {
-        const app = new AtomApplication(options);
+        const app = new LumineApplication(options);
         await app.initialize(options);
         return app;
       });
@@ -631,10 +637,10 @@ module.exports = class AtomApplication extends EventEmitter {
   }
 
   constructor(options) {
-    StartupTime.addMarker("main-process:atom-application:constructor:start");
+    StartupTime.addMarker("main-process:lumine-application:constructor:start");
 
     super();
-    global.atomApplication = this;
+    global.lumineApplication = this;
     this.quitting = false;
     this.quittingForUpdate = false;
     this.getAllWindows = this.getAllWindows.bind(this);
@@ -648,7 +654,7 @@ module.exports = class AtomApplication extends EventEmitter {
     this.userDataDir = options.userDataDir;
     this._killProcess = options.killProcess || process.kill.bind(process);
     this.waitSessionsByWindow = new Map();
-    this.atomWindowsByWebContentsId = new Map();
+    this.lumineWindowsByWebContentsId = new Map();
     this.windowStack = new WindowStack();
 
     let configFilePath = getConfigFilePath({ returnPlaceholder: true });
@@ -674,7 +680,7 @@ module.exports = class AtomApplication extends EventEmitter {
     this.disposable = new CompositeDisposable();
     this.handleEvents();
 
-    StartupTime.addMarker("main-process:atom-application:constructor:end");
+    StartupTime.addMarker("main-process:lumine-application:constructor:end");
   }
 
   // This stuff was previously done in the constructor, but we want to be able to construct this object
@@ -682,12 +688,12 @@ module.exports = class AtomApplication extends EventEmitter {
   // of these various sub-objects into the constructor, but you'll need to remove the side-effects they
   // perform during their construction, adding an initialize method that you call here.
   async initialize(options) {
-    StartupTime.addMarker("main-process:atom-application:initialize:start");
+    StartupTime.addMarker("main-process:lumine-application:initialize:start");
 
-    global.atomApplication = this;
+    global.lumineApplication = this;
 
     this.applicationMenu = new ApplicationMenu(this.version);
-    this.atomProtocolHandler = new AtomProtocolHandler(
+    this.lumineProtocolHandler = new LumineProtocolHandler(
       this.resourcePath,
       this.safeMode,
       (packageName) => this.getPackageManager(this.devMode).resolvePackagePath(packageName),
@@ -705,7 +711,7 @@ module.exports = class AtomApplication extends EventEmitter {
 
     const result = await this.launch(options);
 
-    StartupTime.addMarker("main-process:atom-application:initialize:end");
+    StartupTime.addMarker("main-process:lumine-application:initialize:end");
 
     return result;
   }
@@ -836,14 +842,14 @@ module.exports = class AtomApplication extends EventEmitter {
     }
   }
 
-  // Public: Create a new {AtomWindow} bound to this application.
+  // Public: Create a new {LumineWindow} bound to this application.
   createWindow(settings) {
-    return new AtomWindow(this, this.fileRecoveryService, settings);
+    return new LumineWindow(this, this.fileRecoveryService, settings);
   }
 
-  // Public: Removes the {AtomWindow} from the global window list.
+  // Public: Removes the {LumineWindow} from the global window list.
   removeWindow(window) {
-    this.unregisterAtomWindow(window);
+    this.unregisterLumineWindow(window);
     this.windowStack.removeWindow(window);
     if (this.getAllWindows().length === 0 && process.platform !== "darwin") {
       app.quit();
@@ -852,9 +858,9 @@ module.exports = class AtomApplication extends EventEmitter {
     if (!window.isSpec) this.saveCurrentWindowOptions(true);
   }
 
-  // Public: Adds the {AtomWindow} to the global window list.
+  // Public: Adds the {LumineWindow} to the global window list.
   addWindow(window) {
-    this.registerAtomWindow(window);
+    this.registerLumineWindow(window);
     this.windowStack.addWindow(window);
     if (this.applicationMenu) this.applicationMenu.addWindow(window.browserWindow);
 
@@ -881,22 +887,22 @@ module.exports = class AtomApplication extends EventEmitter {
     return this.windowStack.all().slice();
   }
 
-  registerAtomWindow(atomWindow) {
-    const id = atomWindow?.browserWindow?.webContents?.id;
-    if (id != null) this.atomWindowsByWebContentsId.set(id, atomWindow);
+  registerLumineWindow(lumineWindow) {
+    const id = lumineWindow?.browserWindow?.webContents?.id;
+    if (id != null) this.lumineWindowsByWebContentsId.set(id, lumineWindow);
   }
 
-  unregisterAtomWindow(atomWindow) {
-    for (const [id, registeredWindow] of this.atomWindowsByWebContentsId) {
-      if (registeredWindow === atomWindow) this.atomWindowsByWebContentsId.delete(id);
+  unregisterLumineWindow(lumineWindow) {
+    for (const [id, registeredWindow] of this.lumineWindowsByWebContentsId) {
+      if (registeredWindow === lumineWindow) this.lumineWindowsByWebContentsId.delete(id);
     }
   }
 
-  showWindow(atomWindow) {
-    const window = atomWindow.browserWindow;
+  showWindow(lumineWindow) {
+    const window = lumineWindow.browserWindow;
     window.show();
-    if (atomWindow.preserveFocus) {
-      atomWindow.preserveFocus = false;
+    if (lumineWindow.preserveFocus) {
+      lumineWindow.preserveFocus = false;
       return;
     }
     if (process.platform === "win32") {
@@ -910,9 +916,9 @@ module.exports = class AtomApplication extends EventEmitter {
     return this.windowStack.getLastFocusedWindow(predicate);
   }
 
-  // Creates server to listen for additional atom application launches.
+  // Creates server to listen for additional lumine application launches.
   //
-  // You can run the atom command multiple times, but after the first launch
+  // You can run the lumine command multiple times, but after the first launch
   // the other launches will just pass their information to this server and then
   // close immediately.
   async listenForArgumentsFromNewProcess() {
@@ -979,7 +985,7 @@ module.exports = class AtomApplication extends EventEmitter {
   // Registers basic application commands, non-idempotent.
   handleEvents() {
     const createOpenSettings = ({ event, sameWindow }) => {
-      const targetWindow = event ? this.atomWindowForEvent(event) : this.focusedWindow();
+      const targetWindow = event ? this.lumineWindowForEvent(event) : this.focusedWindow();
       return {
         devMode: targetWindow ? targetWindow.devMode : false,
         safeMode: targetWindow ? targetWindow.safeMode : false,
@@ -1179,9 +1185,9 @@ module.exports = class AtomApplication extends EventEmitter {
 
     this.disposable.add(
       ipcHelpers.on(ipcMain, "did-change-history-manager", (event) => {
-        for (let atomWindow of this.getAllWindows()) {
-          if (atomWindow.browserWindow.webContents !== event.sender) {
-            atomWindow.sendToRenderer("did-change-history-manager");
+        for (let lumineWindow of this.getAllWindows()) {
+          if (lumineWindow.browserWindow.webContents !== event.sender) {
+            lumineWindow.sendToRenderer("did-change-history-manager");
           }
         }
       }),
@@ -1197,7 +1203,7 @@ module.exports = class AtomApplication extends EventEmitter {
           }
 
           if (options.here) {
-            options.window = this.atomWindowForEvent(event);
+            options.window = this.lumineWindowForEvent(event);
           }
 
           if (options.pathsToOpen && options.pathsToOpen.length > 0) {
@@ -1326,12 +1332,12 @@ module.exports = class AtomApplication extends EventEmitter {
   // Public: Executes the given command on the given window.
   //
   // command - The string representing the command.
-  // atomWindow - The {AtomWindow} to send the command to.
+  // lumineWindow - The {LumineWindow} to send the command to.
   // args - The optional arguments to pass along.
-  sendCommandToWindow(command, atomWindow, ...args) {
+  sendCommandToWindow(command, lumineWindow, ...args) {
     if (!this.emit(command, ...args)) {
-      if (atomWindow) {
-        return atomWindow.sendCommand(command, ...args);
+      if (lumineWindow) {
+        return lumineWindow.sendCommand(command, ...args);
       } else {
         return this.sendCommandToFirstResponder(command);
       }
@@ -1386,7 +1392,7 @@ module.exports = class AtomApplication extends EventEmitter {
     });
   }
 
-  // Returns the {AtomWindow} for the given locations.
+  // Returns the {LumineWindow} for the given locations.
   windowForLocations(locationsToOpen, devMode, safeMode) {
     return this.getLastFocusedWindow(
       (window) =>
@@ -1397,29 +1403,31 @@ module.exports = class AtomApplication extends EventEmitter {
     );
   }
 
-  // Returns the {AtomWindow} for the given ipcMain event.
-  atomWindowForEvent({ sender }) {
-    return this.atomWindowForSender(sender);
+  // Returns the {LumineWindow} for the given ipcMain event.
+  lumineWindowForEvent({ sender }) {
+    return this.lumineWindowForSender(sender);
   }
 
-  atomWindowForSender(sender) {
-    const atomWindow = sender && this.atomWindowsByWebContentsId.get(sender.id);
+  lumineWindowForSender(sender) {
+    const lumineWindow = sender && this.lumineWindowsByWebContentsId.get(sender.id);
     if (
-      !atomWindow ||
-      atomWindow.browserWindow.webContents !== sender ||
+      !lumineWindow ||
+      lumineWindow.browserWindow.webContents !== sender ||
       sender.isDestroyed?.() ||
-      atomWindow.browserWindow.isDestroyed?.()
+      lumineWindow.browserWindow.isDestroyed?.()
     ) {
       throw new Error("IPC sender is not a registered Lumine window");
     }
-    return atomWindow;
+    return lumineWindow;
   }
 
-  atomWindowForBrowserWindow(browserWindow) {
-    return this.getAllWindows().find((atomWindow) => atomWindow.browserWindow === browserWindow);
+  lumineWindowForBrowserWindow(browserWindow) {
+    return this.getAllWindows().find(
+      (lumineWindow) => lumineWindow.browserWindow === browserWindow,
+    );
   }
 
-  // Public: Returns the currently focused {AtomWindow} or undefined if none.
+  // Public: Returns the currently focused {LumineWindow} or undefined if none.
   focusedWindow() {
     return this.getAllWindows().find((window) => window.isFocused());
   }
@@ -1522,7 +1530,7 @@ module.exports = class AtomApplication extends EventEmitter {
   //   :devMode - Boolean to control the opened window's dev mode.
   //   :safeMode - Boolean to control the opened window's safe mode.
   //   :profileStartup - Boolean to control creating a profile of the startup time.
-  //   :window - {AtomWindow} to open file paths in.
+  //   :window - {LumineWindow} to open file paths in.
   //   :addToLastWindow - Boolean of whether this should be opened in last focused window.
   openPath({
     pathToOpen,
@@ -1560,7 +1568,7 @@ module.exports = class AtomApplication extends EventEmitter {
   //   :devMode - Boolean to control the opened window's dev mode.
   //   :safeMode - Boolean to control the opened window's safe mode.
   //   :windowDimensions - Object with height and width keys.
-  //   :window - {AtomWindow} to open file paths in.
+  //   :window - {LumineWindow} to open file paths in.
   //   :addToLastWindow - Boolean of whether this should be opened in last focused window.
   async openPaths({
     pathsToOpen,
@@ -1615,7 +1623,7 @@ module.exports = class AtomApplication extends EventEmitter {
     let existingWindow;
 
     if (!createNewWindow) {
-      // An explicitly provided AtomWindow has precedence.
+      // An explicitly provided LumineWindow has precedence.
       existingWindow = window;
 
       // If no window is specified and at least one path is provided, locate an existing window that contains all
@@ -1651,7 +1659,7 @@ module.exports = class AtomApplication extends EventEmitter {
     let openedWindow;
     if (existingWindow) {
       openedWindow = existingWindow;
-      StartupTime.addMarker("main-process:atom-application:open-in-existing");
+      StartupTime.addMarker("main-process:lumine-application:open-in-existing");
       openedWindow.openLocations(locationsToOpen);
       if (!preserveFocus) {
         if (openedWindow.isMinimized()) {
@@ -1686,7 +1694,7 @@ module.exports = class AtomApplication extends EventEmitter {
       if (!resourcePath) resourcePath = this.resourcePath;
       if (!windowDimensions) windowDimensions = this.getDimensionsForNewWindow();
 
-      StartupTime.addMarker("main-process:atom-application:create-window");
+      StartupTime.addMarker("main-process:lumine-application:create-window");
       openedWindow = this.createWindow({
         locationsToOpen,
         windowInitializationScript,
@@ -1944,7 +1952,7 @@ module.exports = class AtomApplication extends EventEmitter {
     return this.packages;
   }
 
-  // Opens up a new {AtomWindow} to run specs within.
+  // Opens up a new {LumineWindow} to run specs within.
   //
   // options -
   //   :headless - A Boolean that, if true, will close the window upon
@@ -2038,22 +2046,24 @@ module.exports = class AtomApplication extends EventEmitter {
     }
 
     const packageMetadata = require(path.join(packageRoot, "package.json"));
-    let atomTestRunner = packageMetadata.atomTestRunner;
+    let lumineTestRunner = packageMetadata.lumineTestRunner;
 
-    if (!atomTestRunner) {
-      process.stdout.write("atomTestRunner was not defined, using runners/jasmine-test-runner.\n");
-      atomTestRunner = "runners/jasmine-test-runner";
+    if (!lumineTestRunner) {
+      process.stdout.write(
+        "lumineTestRunner was not defined, using runners/jasmine-test-runner.\n",
+      );
+      lumineTestRunner = "runners/jasmine-test-runner";
     }
 
-    process.stdout.write(`Using test runner: ${atomTestRunner}\n`);
+    process.stdout.write(`Using test runner: ${lumineTestRunner}\n`);
 
     let testRunnerPath;
     Resolve ||= require("resolve");
 
     // First try to run with local runners (e.g: `./test/runner.js`) or
-    // packages (e.g.: `atom-mocha-test-runner`)
+    // packages (e.g.: `lumine-mocha-test-runner`)
     try {
-      testRunnerPath = Resolve.sync(atomTestRunner, {
+      testRunnerPath = Resolve.sync(lumineTestRunner, {
         basedir: packageRoot,
         // eslint-disable-next-line n/no-deprecated-api -- the editor's module system relies on require.extensions
         extensions: Object.keys(require.extensions),
@@ -2068,7 +2078,7 @@ module.exports = class AtomApplication extends EventEmitter {
 
     // Then try to use one of the runners defined in Lumine
     try {
-      testRunnerPath = Resolve.sync(`./spec/${atomTestRunner}`, {
+      testRunnerPath = Resolve.sync(`./spec/${lumineTestRunner}`, {
         basedir: this.devResourcePath,
         // eslint-disable-next-line n/no-deprecated-api -- the editor's module system relies on require.extensions
         extensions: Object.keys(require.extensions),
@@ -2081,7 +2091,7 @@ module.exports = class AtomApplication extends EventEmitter {
       // Nothing to do, try the next strategy
     }
 
-    process.stderr.write(`Error: Could not resolve test runner path '${atomTestRunner}'.\n`);
+    process.stderr.write(`Error: Could not resolve test runner path '${lumineTestRunner}'.\n`);
     this.exit(1);
     return null;
   }
@@ -2160,7 +2170,7 @@ module.exports = class AtomApplication extends EventEmitter {
 
   // Opens a native dialog to prompt the user for a path.
   //
-  // Once paths are selected, they're opened in a new or existing {AtomWindow}s.
+  // Once paths are selected, they're opened in a new or existing {LumineWindow}s.
   //
   // options -
   //   :type - A String which specifies the type of the dialog, could be 'file',
@@ -2169,7 +2179,7 @@ module.exports = class AtomApplication extends EventEmitter {
   //              should be in dev mode or not.
   //   :safeMode - A Boolean which controls whether any newly opened windows
   //               should be in safe mode or not.
-  //   :window - An {AtomWindow} to use for opening selected file paths as long as
+  //   :window - An {LumineWindow} to use for opening selected file paths as long as
   //             all are files.
   //   :path - An optional String which controls the default path to which the
   //           file dialog opens.

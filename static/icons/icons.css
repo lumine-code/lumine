@@ -1,7 +1,7 @@
 /* Rendering for the icon descriptors that are not glyph-font classes.
  *
  * Every variant has to occupy the same box a font glyph would: list layouts in
- * atom-ui compute their row padding as --component-icon-size plus
+ * lumine-ui compute their row padding as --component-icon-size plus
  * --component-icon-padding and assume the icon sits in a 16px ::before. An
  * icon drawn any other way drifts the indentation of every row around it.
  *

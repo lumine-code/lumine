@@ -8,7 +8,7 @@ let SequenceCount = 0;
 
 // Public: Associates listener functions with commands in a
 // context-sensitive way using CSS selectors. You can access a global instance of
-// this class via `atom.commands`, and commands registered there will be
+// this class via `lumine.commands`, and commands registered there will be
 // presented in the command palette.
 //
 // The global command registry facilitates a style of event handling known as
@@ -16,7 +16,7 @@ let SequenceCount = 0;
 // as custom DOM events that can be invoked on the currently focused element via
 // a key binding or manually via the command palette. Rather than binding
 // listeners for command events directly to DOM nodes, you instead register
-// command event listeners globally on `atom.commands` and constrain them to
+// command event listeners globally on `lumine.commands` and constrain them to
 // specific kinds of elements with CSS selectors.
 //
 // Command names must follow the `namespace:action` pattern, where `namespace`
@@ -39,7 +39,7 @@ let SequenceCount = 0;
 // Here is a command that inserts the current date in an editor:
 //
 // ```js
-// atom.commands.add('atom-text-editor', {
+// lumine.commands.add('lumine-text-editor', {
 //   'user:insert-date'(event) {
 //     const editor = this.getModel()
 //     editor.insertText(new Date().toLocaleString())
@@ -99,7 +99,7 @@ module.exports = class CommandRegistry {
   //       `stopImmediatePropagation` to terminate bubbling early.
   //
   //   Additionally, `listener` may have additional properties which are returned
-  //   to those who query using `atom.commands.findCommands`, as well as several
+  //   to those who query using `lumine.commands.findCommands`, as well as several
   //   meaningful metadata properties:
   //     * `displayName`: Overrides any generated `displayName` that would
   //       otherwise be generated from the event name.

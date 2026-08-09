@@ -4,7 +4,7 @@ exports.register = (jasmineEnv) => {
   jasmineEnv.afterEach((done) => {
     ensureNoDeprecatedFunctionCalls();
 
-    atom
+    lumine
       .reset()
       .then(() => {
         if (!window.debugContent) {

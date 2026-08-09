@@ -40,7 +40,7 @@ module.exports = class SQLStateStore {
         // Nothing more we can do if closing the failed handle also throws.
       }
       const stack = new Error("Error loading SQLite database for state storage").stack;
-      atom.notifications.addFatalError("Error loading database", { stack, dismissable: true });
+      lumine.notifications.addFatalError("Error loading database", { stack, dismissable: true });
       console.error("Error loading SQLite database", error);
       this.connected = false;
       return;

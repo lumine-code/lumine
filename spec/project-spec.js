@@ -12,17 +12,17 @@ describe("Project", () => {
   const standaloneRegistries = [];
   const buildProject = (options) => {
     const repositoryRegistry = new RepositoryRegistry({
-      config: atom.config,
-      notificationManager: atom.notifications,
+      config: lumine.config,
+      notificationManager: lumine.notifications,
     });
     standaloneRegistries.push(repositoryRegistry);
     return new Project({ ...options, repositoryRegistry });
   };
 
   beforeEach(() => {
-    const directory = atom.project.getDirectories()[0];
+    const directory = lumine.project.getDirectories()[0];
     const paths = directory ? [directory.resolve("dir")] : [null];
-    atom.project.setPaths(paths);
+    lumine.project.setPaths(paths);
   });
 
   afterEach(() => {
@@ -35,9 +35,9 @@ describe("Project", () => {
     // without one has no window to change.
     it("resolves to false with no environment behind it", async () => {
       const detached = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        grammarRegistry: lumine.grammars,
       });
 
       expect(await detached.setState([__dirname])).toBe(false);
@@ -64,73 +64,73 @@ describe("Project", () => {
 
     it("does not deserialize paths to directories that don't exist", async () => {
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
-      const state = atom.project.serialize();
+      const state = lumine.project.serialize();
       state.paths.push("/directory/that/does/not/exist");
 
       let err = null;
-      await deserializedProject.deserialize(state, atom.deserializers).catch((e) => (err = e));
+      await deserializedProject.deserialize(state, lumine.deserializers).catch((e) => (err = e));
 
-      expect(deserializedProject.getPaths()).toEqual(atom.project.getPaths());
+      expect(deserializedProject.getPaths()).toEqual(lumine.project.getPaths());
       expect(err.missingProjectPaths).toEqual(["/directory/that/does/not/exist"]);
     });
 
     it("does not deserialize paths that are now files", async () => {
-      const childPath = path.join(temp.mkdirSync("atom-spec-project"), "child");
+      const childPath = path.join(temp.mkdirSync("lumine-spec-project"), "child");
       fs.mkdirSync(childPath);
 
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
-      atom.project.setPaths([childPath]);
-      const state = atom.project.serialize();
+      lumine.project.setPaths([childPath]);
+      const state = lumine.project.serialize();
 
       fs.rmdirSync(childPath);
       fs.writeFileSync(childPath, "surprise!\n");
 
       let err = null;
-      await deserializedProject.deserialize(state, atom.deserializers).catch((e) => (err = e));
+      await deserializedProject.deserialize(state, lumine.deserializers).catch((e) => (err = e));
 
       expect(deserializedProject.getPaths()).toEqual([]);
       expect(err.missingProjectPaths).toEqual([childPath]);
     });
 
     it("does not include unretained buffers in the serialized state", async () => {
-      await atom.project.bufferForPath("a");
+      await lumine.project.bufferForPath("a");
 
-      expect(atom.project.getBuffers().length).toBe(1);
+      expect(lumine.project.getBuffers().length).toBe(1);
 
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await deserializedProject.deserialize(atom.project.serialize({ isUnloading: false }));
+      await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       expect(deserializedProject.getBuffers().length).toBe(0);
     });
 
     it("listens for destroyed events on deserialized buffers and removes them when they are destroyed", async () => {
-      await atom.workspace.open("a");
+      await lumine.workspace.open("a");
 
-      expect(atom.project.getBuffers().length).toBe(1);
+      expect(lumine.project.getBuffers().length).toBe(1);
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await deserializedProject.deserialize(atom.project.serialize({ isUnloading: false }));
+      await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       expect(deserializedProject.getBuffers().length).toBe(1);
       deserializedProject.getBuffers()[0].destroy();
@@ -138,20 +138,20 @@ describe("Project", () => {
     });
 
     it("does not deserialize buffers when their path is now a directory", async () => {
-      const pathToOpen = path.join(temp.mkdirSync("atom-spec-project"), "file.txt");
+      const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
 
-      await atom.workspace.open(pathToOpen);
+      await lumine.workspace.open(pathToOpen);
 
-      expect(atom.project.getBuffers().length).toBe(1);
+      expect(lumine.project.getBuffers().length).toBe(1);
       fs.mkdirSync(pathToOpen);
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await deserializedProject.deserialize(atom.project.serialize({ isUnloading: false }));
+      await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       expect(deserializedProject.getBuffers().length).toBe(0);
     });
@@ -159,96 +159,96 @@ describe("Project", () => {
     it("does not deserialize buffers when their path is inaccessible", async () => {
       jasmine.filterByPlatform({ except: ["win32"] }); // chmod not supported on win32
 
-      const pathToOpen = path.join(temp.mkdirSync("atom-spec-project"), "file.txt");
+      const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
       fs.writeFileSync(pathToOpen, "");
 
-      await atom.workspace.open(pathToOpen);
+      await lumine.workspace.open(pathToOpen);
 
-      expect(atom.project.getBuffers().length).toBe(1);
+      expect(lumine.project.getBuffers().length).toBe(1);
       fs.chmodSync(pathToOpen, "000");
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await deserializedProject.deserialize(atom.project.serialize({ isUnloading: false }));
+      await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       expect(deserializedProject.getBuffers().length).toBe(0);
     });
 
     it("does not deserialize buffers with their path is no longer present", async () => {
-      const pathToOpen = path.join(temp.mkdirSync("atom-spec-project"), "file.txt");
+      const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
       fs.writeFileSync(pathToOpen, "");
 
-      await atom.workspace.open(pathToOpen);
+      await lumine.workspace.open(pathToOpen);
 
-      expect(atom.project.getBuffers().length).toBe(1);
+      expect(lumine.project.getBuffers().length).toBe(1);
       fs.unlinkSync(pathToOpen);
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await deserializedProject.deserialize(atom.project.serialize({ isUnloading: false }));
+      await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       expect(deserializedProject.getBuffers().length).toBe(0);
     });
 
     it("deserializes buffers that have never been saved before", async () => {
-      const pathToOpen = path.join(temp.mkdirSync("atom-spec-project"), "file.txt");
+      const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
 
-      await atom.workspace.open(pathToOpen);
+      await lumine.workspace.open(pathToOpen);
 
-      atom.workspace.getActiveTextEditor().setText("unsaved\n");
-      expect(atom.project.getBuffers().length).toBe(1);
+      lumine.workspace.getActiveTextEditor().setText("unsaved\n");
+      expect(lumine.project.getBuffers().length).toBe(1);
 
       deserializedProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await deserializedProject.deserialize(atom.project.serialize({ isUnloading: false }));
+      await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       expect(deserializedProject.getBuffers().length).toBe(1);
       expect(deserializedProject.getBuffers()[0].getPath()).toBe(pathToOpen);
       expect(deserializedProject.getBuffers()[0].getText()).toBe("unsaved\n");
     });
 
-    it("serializes marker layers and history only if Atom is quitting", async () => {
-      await atom.workspace.open("a");
+    it("serializes marker layers and history only if Lumine is quitting", async () => {
+      await lumine.workspace.open("a");
 
-      let bufferA = atom.project.getBuffers()[0];
+      let bufferA = lumine.project.getBuffers()[0];
       let layerA = bufferA.addMarkerLayer({ persistent: true });
       let markerA = layerA.markPosition([0, 3]);
 
       bufferA.append("!");
       notQuittingProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await notQuittingProject.deserialize(atom.project.serialize({ isUnloading: false }));
+      await notQuittingProject.deserialize(lumine.project.serialize({ isUnloading: false }));
 
       expect(notQuittingProject.getBuffers()[0].getMarkerLayer(layerA.id), (x) =>
         x.getMarker(markerA.id),
       ).toBeUndefined();
       expect(notQuittingProject.getBuffers()[0].undo()).toBe(false);
       quittingProject = buildProject({
-        notificationManager: atom.notifications,
-        packageManager: atom.packages,
-        confirm: atom.window.confirm,
-        grammarRegistry: atom.grammars,
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        confirm: lumine.window.confirm,
+        grammarRegistry: lumine.grammars,
       });
 
-      await quittingProject.deserialize(atom.project.serialize({ isUnloading: true }));
+      await quittingProject.deserialize(lumine.project.serialize({ isUnloading: true }));
 
       expect(quittingProject.getBuffers()[0].getMarkerLayer(layerA.id), (x) =>
         x.getMarker(markerA.id),
@@ -260,20 +260,20 @@ describe("Project", () => {
   describe("when an editor is saved and the project has no path", () => {
     it("sets the project's path to the saved file's parent directory", async () => {
       const tempFile = temp.openSync().path;
-      atom.project.setPaths([]);
-      expect(atom.project.getPaths()[0]).toBeUndefined();
-      let editor = await atom.workspace.open();
+      lumine.project.setPaths([]);
+      expect(lumine.project.getPaths()[0]).toBeUndefined();
+      let editor = await lumine.workspace.open();
 
       await editor.saveAs(tempFile);
 
-      expect(atom.project.getPaths()[0]).toBe(path.dirname(tempFile));
+      expect(lumine.project.getPaths()[0]).toBe(path.dirname(tempFile));
     });
   });
 
   describe(".replace", () => {
     let projectSpecification, projectPath1, projectPath2;
     beforeEach(() => {
-      atom.project.replace(null);
+      lumine.project.replace(null);
       projectPath1 = temp.mkdirSync("project-path1");
       projectPath2 = temp.mkdirSync("project-path2");
       projectSpecification = {
@@ -285,20 +285,20 @@ describe("Project", () => {
       };
     });
     it("sets a project specification", () => {
-      expect(atom.config.get("baz")).toBeUndefined();
-      atom.project.replace(projectSpecification);
-      expect(atom.project.getPaths()).toEqual([projectPath1, projectPath2]);
-      expect(atom.config.get("baz")).toBe("buzz");
+      expect(lumine.config.get("baz")).toBeUndefined();
+      lumine.project.replace(projectSpecification);
+      expect(lumine.project.getPaths()).toEqual([projectPath1, projectPath2]);
+      expect(lumine.config.get("baz")).toBe("buzz");
     });
 
     it("clears a project through replace with no params", () => {
-      expect(atom.config.get("baz")).toBeUndefined();
-      atom.project.replace(projectSpecification);
-      expect(atom.config.get("baz")).toBe("buzz");
-      expect(atom.project.getPaths()).toEqual([projectPath1, projectPath2]);
-      atom.project.replace();
-      expect(atom.config.get("baz")).toBeUndefined();
-      expect(atom.project.getPaths()).toEqual([]);
+      expect(lumine.config.get("baz")).toBeUndefined();
+      lumine.project.replace(projectSpecification);
+      expect(lumine.config.get("baz")).toBe("buzz");
+      expect(lumine.project.getPaths()).toEqual([projectPath1, projectPath2]);
+      lumine.project.replace();
+      expect(lumine.config.get("baz")).toBeUndefined();
+      expect(lumine.project.getPaths()).toEqual([]);
     });
 
     it("responds to change of project specification", () => {
@@ -306,11 +306,11 @@ describe("Project", () => {
       const callback = () => {
         wasCalled = true;
       };
-      atom.project.onDidReplace(callback);
-      atom.project.replace(projectSpecification);
+      lumine.project.onDidReplace(callback);
+      lumine.project.replace(projectSpecification);
       expect(wasCalled).toBe(true);
       wasCalled = false;
-      atom.project.replace();
+      lumine.project.replace();
       expect(wasCalled).toBe(true);
     });
   });
@@ -318,24 +318,24 @@ describe("Project", () => {
   describe("before and after saving a buffer", () => {
     let buffer;
     beforeEach(async () => {
-      buffer = await atom.project.bufferForPath(path.join(__dirname, "fixtures", "sample.js"));
+      buffer = await lumine.project.bufferForPath(path.join(__dirname, "fixtures", "sample.js"));
       buffer.retain();
     });
 
     afterEach(() => buffer.release());
 
     it("emits save events on the main process", async () => {
-      spyOn(atom.project.applicationDelegate, "emitDidSavePath");
-      spyOn(atom.project.applicationDelegate, "emitWillSavePath");
+      spyOn(lumine.project.applicationDelegate, "emitDidSavePath");
+      spyOn(lumine.project.applicationDelegate, "emitWillSavePath");
 
       await buffer.save();
 
-      expect(atom.project.applicationDelegate.emitDidSavePath.calls.count()).toBe(1);
-      expect(atom.project.applicationDelegate.emitDidSavePath).toHaveBeenCalledWith(
+      expect(lumine.project.applicationDelegate.emitDidSavePath.calls.count()).toBe(1);
+      expect(lumine.project.applicationDelegate.emitDidSavePath).toHaveBeenCalledWith(
         buffer.getPath(),
       );
-      expect(atom.project.applicationDelegate.emitWillSavePath.calls.count()).toBe(1);
-      expect(atom.project.applicationDelegate.emitWillSavePath).toHaveBeenCalledWith(
+      expect(lumine.project.applicationDelegate.emitWillSavePath.calls.count()).toBe(1);
+      expect(lumine.project.applicationDelegate.emitWillSavePath).toHaveBeenCalledWith(
         buffer.getPath(),
       );
     });
@@ -344,12 +344,12 @@ describe("Project", () => {
   describe("when a watch error is thrown from the TextBuffer", () => {
     let editor = null;
     beforeEach(async () => {
-      editor = await atom.workspace.open(require.resolve("./fixtures/dir/a"));
+      editor = await lumine.workspace.open(require.resolve("./fixtures/dir/a"));
     });
 
     it("creates a warning notification", () => {
       let noteSpy;
-      atom.notifications.onDidAddNotification((noteSpy = jasmine.createSpy()));
+      lumine.notifications.onDidAddNotification((noteSpy = jasmine.createSpy()));
 
       const error = new Error("SomeError");
       error.eventType = "resurrect";
@@ -404,45 +404,45 @@ describe("Project", () => {
     });
 
     it("uses it to create repositories for any directories that need one", () => {
-      const projectPath = temp.mkdirSync("atom-project");
-      atom.project.setPaths([projectPath]);
-      expect(atom.repositories.getForPath(projectPath)).toBeNull();
+      const projectPath = temp.mkdirSync("lumine-project");
+      lumine.project.setPaths([projectPath]);
+      expect(lumine.repositories.getForPath(projectPath)).toBeNull();
 
-      atom.packages.serviceHub.provide(
+      lumine.packages.serviceHub.provide(
         "project.repository-provider",
         "1.0.0",
         fakeRepositoryProvider,
       );
-      expect(atom.repositories.resolveForPathSync(projectPath)).toBe(fakeRepository);
+      expect(lumine.repositories.resolveForPathSync(projectPath)).toBe(fakeRepository);
     });
 
     it("allows a newly provided repository to become the nearest repository", () => {
-      const projectPath = atom.project.getPaths()[0];
-      const repository = atom.repositories.getForPath(projectPath);
+      const projectPath = lumine.project.getPaths()[0];
+      const repository = lumine.repositories.getForPath(projectPath);
       expect(repository).toBeTruthy();
 
-      atom.packages.serviceHub.provide(
+      lumine.packages.serviceHub.provide(
         "project.repository-provider",
         "1.0.0",
         fakeRepositoryProvider,
       );
-      expect(atom.repositories.getForPath(projectPath)).toBe(fakeRepository);
+      expect(lumine.repositories.getForPath(projectPath)).toBe(fakeRepository);
       expect(repository.isDestroyed()).toBe(false);
     });
 
     it("stops using it to create repositories when the service is removed", () => {
-      atom.project.setPaths([]);
+      lumine.project.setPaths([]);
 
-      const disposable = atom.packages.serviceHub.provide(
+      const disposable = lumine.packages.serviceHub.provide(
         "project.repository-provider",
         "1.0.0",
         fakeRepositoryProvider,
       );
 
       disposable.dispose();
-      const projectPath = temp.mkdirSync("atom-project");
-      atom.project.addPath(projectPath);
-      expect(atom.repositories.getForPath(projectPath)).toBeNull();
+      const projectPath = temp.mkdirSync("lumine-project");
+      lumine.project.addPath(projectPath);
+      expect(lumine.repositories.getForPath(projectPath)).toBeNull();
     });
   });
 
@@ -487,15 +487,19 @@ describe("Project", () => {
     let onDidChangeFilesCallback = null;
 
     beforeEach(() => {
-      serviceDisposable = atom.packages.serviceHub.provide("project.directory-provider", "1.0.0", {
-        directoryForURISync(uri) {
-          if (uri.startsWith("ssh://")) {
-            return new DummyDirectory(uri);
-          } else {
-            return null;
-          }
+      serviceDisposable = lumine.packages.serviceHub.provide(
+        "project.directory-provider",
+        "1.0.0",
+        {
+          directoryForURISync(uri) {
+            if (uri.startsWith("ssh://")) {
+              return new DummyDirectory(uri);
+            } else {
+              return null;
+            }
+          },
         },
-      });
+      );
       onDidChangeFilesCallback = null;
     });
 
@@ -503,9 +507,9 @@ describe("Project", () => {
       const localPath = temp.mkdirSync("local-path");
       const remotePath = "ssh://foreign-directory:8080/does-exist";
 
-      atom.project.setPaths([localPath, remotePath]);
+      lumine.project.setPaths([localPath, remotePath]);
 
-      let directories = atom.project.getDirectories();
+      let directories = lumine.project.getDirectories();
       expect(directories[0].getPath()).toBe(localPath);
       expect(directories[0] instanceof ProjectDirectory).toBe(true);
       expect(directories[1].getPath()).toBe(remotePath);
@@ -513,21 +517,21 @@ describe("Project", () => {
 
       // It does not add new remote paths that do not exist
       const nonExistentRemotePath = "ssh://another-directory:8080/does-not-exist";
-      atom.project.addPath(nonExistentRemotePath);
-      expect(atom.project.getDirectories().length).toBe(2);
+      lumine.project.addPath(nonExistentRemotePath);
+      expect(lumine.project.getDirectories().length).toBe(2);
 
       // It adds new remote paths if their directories exist.
       const newRemotePath = "ssh://another-directory:8080/does-exist";
-      atom.project.addPath(newRemotePath);
-      directories = atom.project.getDirectories();
+      lumine.project.addPath(newRemotePath);
+      directories = lumine.project.getDirectories();
       expect(directories[2].getPath()).toBe(newRemotePath);
       expect(directories[2] instanceof DummyDirectory).toBe(true);
     });
 
     it("stops using the provider when the service is removed", () => {
       serviceDisposable.dispose();
-      atom.project.setPaths(["ssh://foreign-directory:8080/does-exist"]);
-      expect(atom.project.getDirectories().length).toBe(0);
+      lumine.project.setPaths(["ssh://foreign-directory:8080/does-exist"]);
+      expect(lumine.project.getDirectories().length).toBe(0);
     });
 
     it("uses the custom onDidChangeFiles as the watcher if available", async () => {
@@ -535,13 +539,13 @@ describe("Project", () => {
       await stopAllWatchers();
 
       const remotePath = "ssh://another-directory:8080/does-exist";
-      atom.project.setPaths([remotePath]);
-      await atom.project.getWatcherPromise(remotePath);
+      lumine.project.setPaths([remotePath]);
+      await lumine.project.getWatcherPromise(remotePath);
 
       expect(onDidChangeFilesCallback).not.toBeNull();
 
-      const changeSpy = jasmine.createSpy("atom.project.onDidChangeFiles");
-      const disposable = atom.project.onDidChangeFiles(changeSpy);
+      const changeSpy = jasmine.createSpy("lumine.project.onDidChangeFiles");
+      const disposable = lumine.project.onDidChangeFiles(changeSpy);
 
       const events = [{ action: "created", path: remotePath + "/test.txt" }];
       onDidChangeFilesCallback(events);
@@ -557,12 +561,12 @@ describe("Project", () => {
     beforeEach(() => {
       absolutePath = require.resolve("./fixtures/dir/a");
       newBufferHandler = jasmine.createSpy("newBufferHandler");
-      atom.project.onDidAddBuffer(newBufferHandler);
+      lumine.project.onDidAddBuffer(newBufferHandler);
     });
 
     describe("when given an absolute path that isn't currently open", () => {
       it("returns a new edit session for the given path and emits 'buffer-created'", async () => {
-        let editor = await atom.workspace.open(absolutePath);
+        let editor = await lumine.workspace.open(absolutePath);
 
         expect(editor.buffer.getPath()).toBe(absolutePath);
         expect(newBufferHandler).toHaveBeenCalledWith(editor.buffer);
@@ -571,7 +575,7 @@ describe("Project", () => {
 
     describe("when given a relative path that isn't currently opened", () => {
       it("returns a new edit session for the given path (relative to the project root) and emits 'buffer-created'", async () => {
-        let editor = await atom.workspace.open(absolutePath);
+        let editor = await lumine.workspace.open(absolutePath);
 
         expect(editor.buffer.getPath()).toBe(absolutePath);
         expect(newBufferHandler).toHaveBeenCalledWith(editor.buffer);
@@ -580,15 +584,15 @@ describe("Project", () => {
 
     describe("when passed the path to a buffer that is currently opened", () => {
       it("returns a new edit session containing currently opened buffer", async () => {
-        let editor = await atom.workspace.open(absolutePath);
+        let editor = await lumine.workspace.open(absolutePath);
         let buffer;
 
         newBufferHandler.calls.reset();
 
-        buffer = (await atom.workspace.open(absolutePath)).buffer;
+        buffer = (await lumine.workspace.open(absolutePath)).buffer;
         expect(buffer).toBe(editor.buffer);
 
-        buffer = (await atom.workspace.open("a")).buffer;
+        buffer = (await lumine.workspace.open("a")).buffer;
         expect(buffer).toBe(editor.buffer);
         expect(newBufferHandler).not.toHaveBeenCalled();
       });
@@ -596,7 +600,7 @@ describe("Project", () => {
 
     describe("when not passed a path", () => {
       it("returns a new edit session and emits 'buffer-created'", async () => {
-        let editor = await atom.workspace.open();
+        let editor = await lumine.workspace.open();
 
         expect(editor.buffer.getPath()).toBeUndefined();
         expect(newBufferHandler).toHaveBeenCalledWith(editor.buffer);
@@ -608,7 +612,7 @@ describe("Project", () => {
     let buffer = null;
 
     beforeEach(async () => {
-      buffer = await atom.project.bufferForPath("a");
+      buffer = await lumine.project.bufferForPath("a");
       buffer.retain();
     });
 
@@ -616,12 +620,12 @@ describe("Project", () => {
 
     describe("when opening a previously opened path", () => {
       it("does not create a new buffer", async () => {
-        expect(await atom.project.bufferForPath("a")).toBe(buffer);
-        expect(await atom.project.bufferForPath("b")).not.toBe(buffer);
+        expect(await lumine.project.bufferForPath("a")).toBe(buffer);
+        expect(await lumine.project.bufferForPath("b")).not.toBe(buffer);
 
         const [buffer1, buffer2] = await Promise.all([
-          atom.project.bufferForPath("c"),
-          atom.project.bufferForPath("c"),
+          lumine.project.bufferForPath("c"),
+          lumine.project.bufferForPath("c"),
         ]);
 
         expect(buffer1).toBe(buffer2);
@@ -630,15 +634,15 @@ describe("Project", () => {
       it("retries loading the buffer if it previously failed", async () => {
         const error = new Error("Could not open file");
         spyOn(TextBuffer, "load").and.callFake(() => Promise.reject(error));
-        await atom.project.bufferForPath("b").catch((e) => expect(e).toBe(error));
+        await lumine.project.bufferForPath("b").catch((e) => expect(e).toBe(error));
 
         TextBuffer.load.and.callThrough();
-        await atom.project.bufferForPath("b");
+        await lumine.project.bufferForPath("b");
       });
 
       it("creates a new buffer if the previous buffer was destroyed", async () => {
         buffer.release();
-        expect(await atom.project.bufferForPath("b")).not.toBe(buffer);
+        expect(await lumine.project.bufferForPath("b")).not.toBe(buffer);
       });
     });
   });
@@ -646,17 +650,17 @@ describe("Project", () => {
   describe(".repositoryForDirectory(directory)", () => {
     it("resolves to null when the directory does not have a repository", async () => {
       const directory = new ProjectDirectory("/tmp");
-      const result = await atom.project.repositoryForDirectory(directory);
+      const result = await lumine.project.repositoryForDirectory(directory);
 
       expect(result).toBeNull();
-      expect(atom.project.repositoryProviders.length).toBeGreaterThan(0);
-      expect(atom.project.repositoryPromisesByPath.size).toBe(0);
+      expect(lumine.project.repositoryProviders.length).toBeGreaterThan(0);
+      expect(lumine.project.repositoryPromisesByPath.size).toBe(0);
     });
 
     it("resolves to a GitRepository and is cached when the given directory is a Git repo", async () => {
       const directory = new ProjectDirectory(path.join(__dirname, ".."));
 
-      const promise = atom.project.repositoryForDirectory(directory);
+      const promise = lumine.project.repositoryForDirectory(directory);
       const result = await promise;
 
       expect(result).toEqual(jasmine.any(GitRepository));
@@ -664,20 +668,20 @@ describe("Project", () => {
       expect(result.getPath()).toBe(path.join(dirPath, ".git"));
 
       // Verify that the repository identity is cached.
-      expect(await atom.project.repositoryForDirectory(directory)).toBe(result);
+      expect(await lumine.project.repositoryForDirectory(directory)).toBe(result);
     });
 
     it("creates a new repository if a previous one with the same directory had been destroyed", async () => {
       let repository;
       const directory = new ProjectDirectory(path.join(__dirname, ".."));
 
-      repository = await atom.project.repositoryForDirectory(directory);
+      repository = await lumine.project.repositoryForDirectory(directory);
 
       expect(repository.isDestroyed()).toBe(false);
       repository.destroy();
       expect(repository.isDestroyed()).toBe(true);
 
-      repository = await atom.project.repositoryForDirectory(directory);
+      repository = await lumine.project.repositoryForDirectory(directory);
 
       expect(repository.isDestroyed()).toBe(false);
     });
@@ -685,20 +689,20 @@ describe("Project", () => {
 
   describe(".repositoryForPath(filePath)", () => {
     it("resolves to null for a falsy path", async () => {
-      expect(await atom.project.repositoryForPath("")).toBeNull();
-      expect(await atom.project.repositoryForPath(null)).toBeNull();
+      expect(await lumine.project.repositoryForPath("")).toBeNull();
+      expect(await lumine.project.repositoryForPath(null)).toBeNull();
     });
 
     it("resolves to null when the path is not inside a repository", async () => {
       const dir = temp.mkdirSync("linter-no-repo");
-      expect(await atom.project.repositoryForPath(path.join(dir, "file.txt"))).toBeNull();
+      expect(await lumine.project.repositoryForPath(path.join(dir, "file.txt"))).toBeNull();
     });
 
     it("resolves the repository that contains a given file path", async () => {
       // The caller passes a file path (not a Directory); it resolves to the
       // repository containing that file, mirroring repositoryForDirectory.
       const filePath = path.join(__dirname, "project-spec.js");
-      const result = await atom.project.repositoryForPath(filePath);
+      const result = await lumine.project.repositoryForPath(filePath);
 
       expect(result).toEqual(jasmine.any(GitRepository));
       const dirPath = new ProjectDirectory(path.join(__dirname, "..")).getRealPathSync();
@@ -710,9 +714,9 @@ describe("Project", () => {
     describe("when path is a file", () => {
       it("sets its path to the file's parent directory and updates the root directory", () => {
         const filePath = require.resolve("./fixtures/dir/a");
-        atom.project.setPaths([filePath]);
-        expect(atom.project.getPaths()[0]).toEqual(path.dirname(filePath));
-        expect(atom.project.getDirectories()[0].path).toEqual(path.dirname(filePath));
+        lumine.project.setPaths([filePath]);
+        expect(lumine.project.getPaths()[0]).toEqual(path.dirname(filePath));
+        expect(lumine.project.getDirectories()[0].path).toEqual(path.dirname(filePath));
       });
     });
 
@@ -726,11 +730,11 @@ describe("Project", () => {
         fs.copySync(gitDirPath, path.join(directory2, ".git"));
         fs.copySync(gitDirPath, path.join(directory3, ".git"));
 
-        atom.project.setPaths([directory1, directory2, directory3]);
+        lumine.project.setPaths([directory1, directory2, directory3]);
 
-        const repo1 = atom.repositories.getForPath(directory1);
-        const repo2 = atom.repositories.getForPath(directory2);
-        const repo3 = atom.repositories.getForPath(directory3);
+        const repo1 = lumine.repositories.getForPath(directory1);
+        const repo2 = lumine.repositories.getForPath(directory2);
+        const repo3 = lumine.repositories.getForPath(directory3);
         expect(repo1).toBeNull();
         // The short head is read from the refs snapshot, loaded on demand.
         await repo2.ensureRefsSnapshot();
@@ -746,10 +750,10 @@ describe("Project", () => {
 
       it("calls callbacks registered with ::onDidChangePaths", () => {
         const onDidChangePathsSpy = jasmine.createSpy("onDidChangePaths spy");
-        atom.project.onDidChangePaths(onDidChangePathsSpy);
+        lumine.project.onDidChangePaths(onDidChangePathsSpy);
 
         const paths = [temp.mkdirSync("dir1"), temp.mkdirSync("dir2")];
-        atom.project.setPaths(paths);
+        lumine.project.setPaths(paths);
 
         expect(onDidChangePathsSpy.calls.count()).toBe(1);
         expect(onDidChangePathsSpy.calls.mostRecent().args[0]).toEqual(paths);
@@ -764,30 +768,32 @@ describe("Project", () => {
         ];
 
         try {
-          atom.project.setPaths(paths, { mustExist: true });
+          lumine.project.setPaths(paths, { mustExist: true });
           expect("no exception thrown").toBeUndefined();
         } catch (e) {
           expect(e.missingProjectPaths).toEqual([paths[1], paths[3]]);
         }
 
-        expect(atom.project.getPaths()).toEqual([paths[0], paths[2]]);
+        expect(lumine.project.getPaths()).toEqual([paths[0], paths[2]]);
       });
     });
 
     describe("when no paths are given", () => {
       it("clears its path", () => {
-        atom.project.setPaths([]);
-        expect(atom.project.getPaths()).toEqual([]);
-        expect(atom.project.getDirectories()).toEqual([]);
+        lumine.project.setPaths([]);
+        expect(lumine.project.getPaths()).toEqual([]);
+        expect(lumine.project.getDirectories()).toEqual([]);
       });
     });
 
     it("normalizes the path to remove consecutive slashes, ., and .. segments", () => {
-      atom.project.setPaths([
+      lumine.project.setPaths([
         `${require.resolve("./fixtures/dir/a")}${path.sep}b${path.sep}${path.sep}..`,
       ]);
-      expect(atom.project.getPaths()[0]).toEqual(path.dirname(require.resolve("./fixtures/dir/a")));
-      expect(atom.project.getDirectories()[0].path).toEqual(
+      expect(lumine.project.getPaths()[0]).toEqual(
+        path.dirname(require.resolve("./fixtures/dir/a")),
+      );
+      expect(lumine.project.getDirectories()[0].path).toEqual(
         path.dirname(require.resolve("./fixtures/dir/a")),
       );
     });
@@ -796,12 +802,12 @@ describe("Project", () => {
   describe(".addPath(path, options)", () => {
     it("calls callbacks registered with ::onDidChangePaths", () => {
       const onDidChangePathsSpy = jasmine.createSpy("onDidChangePaths spy");
-      atom.project.onDidChangePaths(onDidChangePathsSpy);
+      lumine.project.onDidChangePaths(onDidChangePathsSpy);
 
-      const [oldPath] = atom.project.getPaths();
+      const [oldPath] = lumine.project.getPaths();
 
       const newPath = temp.mkdirSync("dir");
-      atom.project.addPath(newPath);
+      lumine.project.addPath(newPath);
 
       expect(onDidChangePathsSpy.calls.count()).toBe(1);
       expect(onDidChangePathsSpy.calls.mostRecent().args[0]).toEqual([oldPath, newPath]);
@@ -809,35 +815,35 @@ describe("Project", () => {
 
     it("doesn't add redundant paths", () => {
       const onDidChangePathsSpy = jasmine.createSpy("onDidChangePaths spy");
-      atom.project.onDidChangePaths(onDidChangePathsSpy);
-      const [oldPath] = atom.project.getPaths();
+      lumine.project.onDidChangePaths(onDidChangePathsSpy);
+      const [oldPath] = lumine.project.getPaths();
 
       // Doesn't re-add an existing root directory
-      atom.project.addPath(oldPath);
-      expect(atom.project.getPaths()).toEqual([oldPath]);
+      lumine.project.addPath(oldPath);
+      expect(lumine.project.getPaths()).toEqual([oldPath]);
       expect(onDidChangePathsSpy).not.toHaveBeenCalled();
 
       // Doesn't add an entry for a file-path within an existing root directory
-      atom.project.addPath(path.join(oldPath, "some-file.txt"));
-      expect(atom.project.getPaths()).toEqual([oldPath]);
+      lumine.project.addPath(path.join(oldPath, "some-file.txt"));
+      expect(lumine.project.getPaths()).toEqual([oldPath]);
       expect(onDidChangePathsSpy).not.toHaveBeenCalled();
 
       // Does add an entry for a directory within an existing directory
       const newPath = path.join(oldPath, "a-dir");
-      atom.project.addPath(newPath);
-      expect(atom.project.getPaths()).toEqual([oldPath, newPath]);
+      lumine.project.addPath(newPath);
+      expect(lumine.project.getPaths()).toEqual([oldPath, newPath]);
       expect(onDidChangePathsSpy).toHaveBeenCalled();
     });
 
     it("doesn't add non-existent directories", () => {
-      const previousPaths = atom.project.getPaths();
-      atom.project.addPath("/this-definitely/does-not-exist");
-      expect(atom.project.getPaths()).toEqual(previousPaths);
+      const previousPaths = lumine.project.getPaths();
+      lumine.project.addPath("/this-definitely/does-not-exist");
+      expect(lumine.project.getPaths()).toEqual(previousPaths);
     });
 
     it("optionally throws on non-existent directories", () => {
       expect(() =>
-        atom.project.addPath("/this-definitely/does-not-exist", {
+        lumine.project.addPath("/this-definitely/does-not-exist", {
           mustExist: true,
         }),
       ).toThrow();
@@ -847,37 +853,37 @@ describe("Project", () => {
   describe(".addPaths(projectPaths, options)", () => {
     it("adds multiple paths and emits a single did-change-paths event", () => {
       const onDidChangePathsSpy = jasmine.createSpy("onDidChangePaths spy");
-      atom.project.onDidChangePaths(onDidChangePathsSpy);
+      lumine.project.onDidChangePaths(onDidChangePathsSpy);
 
-      const [oldPath] = atom.project.getPaths();
+      const [oldPath] = lumine.project.getPaths();
       const newPath1 = temp.mkdirSync("dir1");
       const newPath2 = temp.mkdirSync("dir2");
-      atom.project.addPaths([newPath1, newPath2]);
+      lumine.project.addPaths([newPath1, newPath2]);
 
-      expect(atom.project.getPaths()).toEqual([oldPath, newPath1, newPath2]);
+      expect(lumine.project.getPaths()).toEqual([oldPath, newPath1, newPath2]);
       expect(onDidChangePathsSpy.calls.count()).toBe(1);
       expect(onDidChangePathsSpy.calls.mostRecent().args[0]).toEqual([oldPath, newPath1, newPath2]);
     });
 
     it("does not fire an event if all paths are already project paths", () => {
       const onDidChangePathsSpy = jasmine.createSpy("onDidChangePaths spy");
-      atom.project.onDidChangePaths(onDidChangePathsSpy);
+      lumine.project.onDidChangePaths(onDidChangePathsSpy);
 
-      const [oldPath] = atom.project.getPaths();
-      atom.project.addPaths([oldPath]);
+      const [oldPath] = lumine.project.getPaths();
+      lumine.project.addPaths([oldPath]);
 
       expect(onDidChangePathsSpy).not.toHaveBeenCalled();
     });
 
     it("fires an event if only some paths are already project paths", () => {
       const onDidChangePathsSpy = jasmine.createSpy("onDidChangePaths spy");
-      atom.project.onDidChangePaths(onDidChangePathsSpy);
+      lumine.project.onDidChangePaths(onDidChangePathsSpy);
 
-      const [oldPath] = atom.project.getPaths();
+      const [oldPath] = lumine.project.getPaths();
       const newPath = temp.mkdirSync("dir");
-      atom.project.addPaths([oldPath, newPath]);
+      lumine.project.addPaths([oldPath, newPath]);
 
-      expect(atom.project.getPaths()).toEqual([oldPath, newPath]);
+      expect(lumine.project.getPaths()).toEqual([oldPath, newPath]);
       expect(onDidChangePathsSpy.calls.count()).toBe(1);
     });
   });
@@ -887,35 +893,35 @@ describe("Project", () => {
 
     beforeEach(() => {
       onDidChangePathsSpy = jasmine.createSpy("onDidChangePaths listener");
-      atom.project.onDidChangePaths(onDidChangePathsSpy);
+      lumine.project.onDidChangePaths(onDidChangePathsSpy);
     });
 
     it("removes the directory and repository for the path", () => {
-      const result = atom.project.removePath(atom.project.getPaths()[0]);
-      expect(atom.project.getDirectories()).toEqual([]);
-      expect(atom.repositories.getRepositories()).toEqual([]);
-      expect(atom.project.getPaths()).toEqual([]);
+      const result = lumine.project.removePath(lumine.project.getPaths()[0]);
+      expect(lumine.project.getDirectories()).toEqual([]);
+      expect(lumine.repositories.getRepositories()).toEqual([]);
+      expect(lumine.project.getPaths()).toEqual([]);
       expect(result).toBe(true);
       expect(onDidChangePathsSpy).toHaveBeenCalled();
     });
 
     it("does nothing if the path is not one of the project's root paths", () => {
-      const originalPaths = atom.project.getPaths();
-      const result = atom.project.removePath(originalPaths[0] + "xyz");
+      const originalPaths = lumine.project.getPaths();
+      const result = lumine.project.removePath(originalPaths[0] + "xyz");
       expect(result).toBe(false);
-      expect(atom.project.getPaths()).toEqual(originalPaths);
+      expect(lumine.project.getPaths()).toEqual(originalPaths);
       expect(onDidChangePathsSpy).not.toHaveBeenCalled();
     });
 
     it("doesn't destroy the repository if it is shared by another root directory", () => {
-      atom.project.setPaths([__dirname, path.join(__dirname, "..", "src")]);
-      atom.project.removePath(__dirname);
-      expect(atom.project.getPaths()).toEqual([path.join(__dirname, "..", "src")]);
-      expect(atom.repositories.getRepositories()[0].isSubmodule("src")).toBe(false);
+      lumine.project.setPaths([__dirname, path.join(__dirname, "..", "src")]);
+      lumine.project.removePath(__dirname);
+      expect(lumine.project.getPaths()).toEqual([path.join(__dirname, "..", "src")]);
+      expect(lumine.repositories.getRepositories()[0].isSubmodule("src")).toBe(false);
     });
 
     it("removes a path that is represented as a URI", () => {
-      atom.packages.serviceHub.provide("project.directory-provider", "1.0.0", {
+      lumine.packages.serviceHub.provide("project.directory-provider", "1.0.0", {
         directoryForURISync(uri) {
           return {
             getPath() {
@@ -937,11 +943,11 @@ describe("Project", () => {
 
       const ftpURI = "ftp://example.com/some/folder";
 
-      atom.project.setPaths([ftpURI]);
-      expect(atom.project.getPaths()).toEqual([ftpURI]);
+      lumine.project.setPaths([ftpURI]);
+      expect(lumine.project.getPaths()).toEqual([ftpURI]);
 
-      atom.project.removePath(ftpURI);
-      expect(atom.project.getPaths()).toEqual([]);
+      lumine.project.removePath(ftpURI);
+      expect(lumine.project.getPaths()).toEqual([]);
     });
   });
 
@@ -952,7 +958,7 @@ describe("Project", () => {
 
     beforeEach(() => {
       events = [];
-      sub = atom.project.onDidChangeFiles((incoming) => {
+      sub = lumine.project.onDidChangeFiles((incoming) => {
         events.push(...incoming);
         checkCallback();
       });
@@ -993,17 +999,17 @@ describe("Project", () => {
       "reports filesystem changes within project paths",
       async () => {
         jasmine.useRealClock();
-        const dirOne = temp.mkdirSync("atom-spec-project-one");
+        const dirOne = temp.mkdirSync("lumine-spec-project-one");
         const fileOne = path.join(dirOne, "file-one.txt");
         const fileTwo = path.join(dirOne, "file-two.txt");
-        const dirTwo = temp.mkdirSync("atom-spec-project-two");
+        const dirTwo = temp.mkdirSync("lumine-spec-project-two");
         const fileThree = path.join(dirTwo, "file-three.txt");
 
         // Ensure that all preexisting watchers are stopped
         await stopAllWatchers();
 
-        atom.project.setPaths([dirOne]);
-        await atom.project.getWatcherPromise(dirOne);
+        lumine.project.setPaths([dirOne]);
+        await lumine.project.getWatcherPromise(dirOne);
 
         // The watcher promise confirms the subscription exists, but events can
         // still be dropped in the watcher's start-up window. Prove the watch is
@@ -1029,7 +1035,7 @@ describe("Project", () => {
         });
         events = [];
 
-        expect(atom.project.watcherPromisesByPath[dirTwo]).toEqual(undefined);
+        expect(lumine.project.watcherPromisesByPath[dirTwo]).toEqual(undefined);
         fs.writeFileSync(fileThree, "three\n");
         fs.writeFileSync(fileTwo, "two\n");
         fs.writeFileSync(fileOne, "one\n");
@@ -1045,12 +1051,12 @@ describe("Project", () => {
       const buffers = [];
       const added = [];
 
-      buffers.push(await atom.project.buildBuffer(require.resolve("./fixtures/dir/a")));
+      buffers.push(await lumine.project.buildBuffer(require.resolve("./fixtures/dir/a")));
 
       expect(buffers.length).toBe(1);
-      atom.project.onDidAddBuffer((buffer) => added.push(buffer));
+      lumine.project.onDidAddBuffer((buffer) => added.push(buffer));
 
-      buffers.push(await atom.project.buildBuffer(require.resolve("./fixtures/dir/b")));
+      buffers.push(await lumine.project.buildBuffer(require.resolve("./fixtures/dir/b")));
 
       expect(buffers.length).toBe(2);
       expect(added).toEqual([buffers[1]]);
@@ -1062,14 +1068,14 @@ describe("Project", () => {
       const buffers = [];
       const observed = [];
 
-      buffers.push(await atom.project.buildBuffer(require.resolve("./fixtures/dir/a")));
-      buffers.push(await atom.project.buildBuffer(require.resolve("./fixtures/dir/b")));
+      buffers.push(await lumine.project.buildBuffer(require.resolve("./fixtures/dir/a")));
+      buffers.push(await lumine.project.buildBuffer(require.resolve("./fixtures/dir/b")));
 
       expect(buffers.length).toBe(2);
-      atom.project.observeBuffers((buffer) => observed.push(buffer));
+      lumine.project.observeBuffers((buffer) => observed.push(buffer));
       expect(observed).toEqual(buffers);
 
-      buffers.push(await atom.project.buildBuffer(require.resolve("./fixtures/dir/b")));
+      buffers.push(await lumine.project.buildBuffer(require.resolve("./fixtures/dir/b")));
 
       expect(observed.length).toBe(3);
       expect(buffers.length).toBe(3);
@@ -1077,7 +1083,7 @@ describe("Project", () => {
     });
   });
 
-  describe("atom.repositories.observeRepositories() driven by project roots", () => {
+  describe("lumine.repositories.observeRepositories() driven by project roots", () => {
     it("invokes the observer with current and future repositories", async () => {
       const observed = [];
 
@@ -1091,18 +1097,18 @@ describe("Project", () => {
       );
       fs.copySync(gitDirPath2, path.join(directory2, ".git"));
 
-      atom.project.setPaths([directory1]);
+      lumine.project.setPaths([directory1]);
 
-      const disposable = atom.repositories.observeRepositories((repo) => observed.push(repo));
-      const firstRepository = atom.repositories.getForPath(directory1);
+      const disposable = lumine.repositories.observeRepositories((repo) => observed.push(repo));
+      const firstRepository = lumine.repositories.getForPath(directory1);
       expect(observed).toContain(firstRepository);
       await firstRepository.ensureRefsSnapshot();
       expect(firstRepository.getReferenceTarget("refs/heads/master")).toBe(
         "ef046e9eecaa5255ea5e9817132d4001724d6ae1",
       );
 
-      atom.project.addPath(directory2);
-      const secondRepository = atom.repositories.getForPath(directory2);
+      lumine.project.addPath(directory2);
+      const secondRepository = lumine.repositories.getForPath(directory2);
       expect(observed).toContain(secondRepository);
       await secondRepository.ensureRefsSnapshot();
       expect(secondRepository.getReferenceTarget("refs/heads/master")).toBe(
@@ -1113,16 +1119,16 @@ describe("Project", () => {
     });
   });
 
-  describe("atom.repositories.onDidAddRepository() driven by project roots", () => {
+  describe("lumine.repositories.onDidAddRepository() driven by project roots", () => {
     it("invokes callback when a path is added and the path is the root of a repository", async () => {
       const observed = [];
-      const disposable = atom.repositories.onDidAddRepository((repo) => observed.push(repo));
+      const disposable = lumine.repositories.onDidAddRepository((repo) => observed.push(repo));
 
       const projectRootPath = temp.mkdirSync();
       const fixtureRepoPath = fs.absolute(path.join(__dirname, "fixtures", "git", "master.git"));
       fs.copySync(fixtureRepoPath, path.join(projectRootPath, ".git"));
 
-      atom.project.addPath(projectRootPath);
+      lumine.project.addPath(projectRootPath);
       expect(observed.length).toBe(1);
       await observed[0].ensureRefsSnapshot();
       expect(observed[0].getOriginURL()).toEqual(
@@ -1134,7 +1140,7 @@ describe("Project", () => {
 
     it("invokes callback when a path is added and the path is subdirectory of a repository", async () => {
       const observed = [];
-      const disposable = atom.repositories.onDidAddRepository((repo) => observed.push(repo));
+      const disposable = lumine.repositories.onDidAddRepository((repo) => observed.push(repo));
 
       const projectRootPath = temp.mkdirSync();
       const fixtureRepoPath = fs.absolute(path.join(__dirname, "fixtures", "git", "master.git"));
@@ -1143,7 +1149,7 @@ describe("Project", () => {
       const projectSubDirPath = path.join(projectRootPath, "sub-dir");
       fs.mkdirSync(projectSubDirPath);
 
-      atom.project.addPath(projectSubDirPath);
+      lumine.project.addPath(projectSubDirPath);
       expect(observed.length).toBe(1);
       await observed[0].ensureRefsSnapshot();
       expect(observed[0].getOriginURL()).toEqual(
@@ -1155,9 +1161,9 @@ describe("Project", () => {
 
     it("does not invoke callback when a path is added and the path is not part of a repository", () => {
       const observed = [];
-      const disposable = atom.repositories.onDidAddRepository((repo) => observed.push(repo));
+      const disposable = lumine.repositories.onDidAddRepository((repo) => observed.push(repo));
 
-      atom.project.addPath(temp.mkdirSync("not-a-repository"));
+      lumine.project.addPath(temp.mkdirSync("not-a-repository"));
       expect(observed.length).toBe(0);
 
       disposable.dispose();
@@ -1168,47 +1174,47 @@ describe("Project", () => {
     it("re-attaches the repository registry when a destroyed project is reset", () => {
       // Legacy window specs destroy the window's project and rely on the
       // between-spec reset to bring it back; the registry must survive that.
-      atom.project.destroy();
-      expect(() => atom.project.reset(atom.packages)).not.toThrow();
+      lumine.project.destroy();
+      expect(() => lumine.project.reset(lumine.packages)).not.toThrow();
 
-      atom.project.setPaths([__dirname]);
-      expect(atom.repositories.getForPath(__dirname)).toBeTruthy();
+      lumine.project.setPaths([__dirname]);
+      expect(lumine.repositories.getForPath(__dirname)).toBeTruthy();
     });
   });
 
   describe(".relativize(path)", () => {
     it("returns the path, relative to whichever root directory it is inside of", () => {
-      atom.project.addPath(temp.mkdirSync("another-path"));
+      lumine.project.addPath(temp.mkdirSync("another-path"));
 
-      let rootPath = atom.project.getPaths()[0];
+      let rootPath = lumine.project.getPaths()[0];
       let childPath = path.join(rootPath, "some", "child", "directory");
-      expect(atom.project.relativize(childPath)).toBe(path.join("some", "child", "directory"));
+      expect(lumine.project.relativize(childPath)).toBe(path.join("some", "child", "directory"));
 
-      rootPath = atom.project.getPaths()[1];
+      rootPath = lumine.project.getPaths()[1];
       childPath = path.join(rootPath, "some", "child", "directory");
-      expect(atom.project.relativize(childPath)).toBe(path.join("some", "child", "directory"));
+      expect(lumine.project.relativize(childPath)).toBe(path.join("some", "child", "directory"));
     });
 
     it("returns the given path if it is not in any of the root directories", () => {
       const randomPath = path.join("some", "random", "path");
-      expect(atom.project.relativize(randomPath)).toBe(randomPath);
+      expect(lumine.project.relativize(randomPath)).toBe(randomPath);
     });
   });
 
   describe(".relativizePath(path)", () => {
     it("returns the root path that contains the given path, and the path relativized to that root path", () => {
-      atom.project.addPath(temp.mkdirSync("another-path"));
+      lumine.project.addPath(temp.mkdirSync("another-path"));
 
-      let rootPath = atom.project.getPaths()[0];
+      let rootPath = lumine.project.getPaths()[0];
       let childPath = path.join(rootPath, "some", "child", "directory");
-      expect(atom.project.relativizePath(childPath)).toEqual([
+      expect(lumine.project.relativizePath(childPath)).toEqual([
         rootPath,
         path.join("some", "child", "directory"),
       ]);
 
-      rootPath = atom.project.getPaths()[1];
+      rootPath = lumine.project.getPaths()[1];
       childPath = path.join(rootPath, "some", "child", "directory");
-      expect(atom.project.relativizePath(childPath)).toEqual([
+      expect(lumine.project.relativizePath(childPath)).toEqual([
         rootPath,
         path.join("some", "child", "directory"),
       ]);
@@ -1217,27 +1223,27 @@ describe("Project", () => {
     describe("when the given path isn't inside of any of the project's path", () => {
       it("returns null for the root path, and the given path unchanged", () => {
         const randomPath = path.join("some", "random", "path");
-        expect(atom.project.relativizePath(randomPath)).toEqual([null, randomPath]);
+        expect(lumine.project.relativizePath(randomPath)).toEqual([null, randomPath]);
       });
     });
 
     describe("when the given path is a URL", () => {
       it("returns null for the root path, and the given path unchanged", () => {
         const url = "http://the-path";
-        expect(atom.project.relativizePath(url)).toEqual([null, url]);
+        expect(lumine.project.relativizePath(url)).toEqual([null, url]);
       });
     });
 
     describe("when the given path is inside more than one root folder", () => {
       it("uses the root folder that is closest to the given path", () => {
-        atom.project.addPath(path.join(atom.project.getPaths()[0], "a-dir"));
+        lumine.project.addPath(path.join(lumine.project.getPaths()[0], "a-dir"));
 
-        const inputPath = path.join(atom.project.getPaths()[1], "somewhere/something.txt");
+        const inputPath = path.join(lumine.project.getPaths()[1], "somewhere/something.txt");
 
-        expect(atom.project.getDirectories()[0].contains(inputPath)).toBe(true);
-        expect(atom.project.getDirectories()[1].contains(inputPath)).toBe(true);
-        expect(atom.project.relativizePath(inputPath)).toEqual([
-          atom.project.getPaths()[1],
+        expect(lumine.project.getDirectories()[0].contains(inputPath)).toBe(true);
+        expect(lumine.project.getDirectories()[1].contains(inputPath)).toBe(true);
+        expect(lumine.project.relativizePath(inputPath)).toEqual([
+          lumine.project.getPaths()[1],
           path.join("somewhere", "something.txt"),
         ]);
       });
@@ -1246,12 +1252,12 @@ describe("Project", () => {
 
   describe(".contains(path)", () => {
     it("returns whether or not the given path is in one of the root directories", () => {
-      const rootPath = atom.project.getPaths()[0];
+      const rootPath = lumine.project.getPaths()[0];
       const childPath = path.join(rootPath, "some", "child", "directory");
-      expect(atom.project.contains(childPath)).toBe(true);
+      expect(lumine.project.contains(childPath)).toBe(true);
 
       const randomPath = path.join("some", "random", "path");
-      expect(atom.project.contains(randomPath)).toBe(false);
+      expect(lumine.project.contains(randomPath)).toBe(false);
     });
   });
 
@@ -1259,7 +1265,7 @@ describe("Project", () => {
     it("normalizes disk drive letter in passed path on win32", (done) => {
       jasmine.filterByPlatform({ only: ["win32"] }, done);
 
-      expect(atom.project.resolvePath("d:\\file.txt")).toEqual("D:\\file.txt");
+      expect(lumine.project.resolvePath("d:\\file.txt")).toEqual("D:\\file.txt");
 
       done();
     });

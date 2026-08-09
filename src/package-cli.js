@@ -132,7 +132,7 @@ async function install(source) {
       resolvePackageSource(value, async (cloneUrl, options, patterns) =>
         capture(gitCommand(), ["ls-remote", ...options, cloneUrl, ...patterns]),
       ),
-    atomVersion: require("../package.json").version.split("-")[0],
+    lumineVersion: require("../package.json").version.split("-")[0],
   });
   const installed = await service.install({ installSource: source, name: source });
   console.log(`Installed ${installed.packageName} to ${installed.target}`);

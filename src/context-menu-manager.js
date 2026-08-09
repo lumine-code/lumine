@@ -11,26 +11,26 @@ const buildMetadata = require("../package.json");
 var platformContextMenu;
 if (
   buildMetadata != null &&
-  buildMetadata._atomMenu != null &&
-  buildMetadata._atomMenu["context-menu"]
+  buildMetadata._lumineMenu != null &&
+  buildMetadata._lumineMenu["context-menu"]
 ) {
-  platformContextMenu = buildMetadata._atomMenu["context-menu"];
+  platformContextMenu = buildMetadata._lumineMenu["context-menu"];
 }
 
 // Extended: Provides a registry for commands that you'd like to appear in the
 // context menu.
 //
-// An instance of this class is always available as the `atom.contextMenu`
+// An instance of this class is always available as the `lumine.contextMenu`
 // global.
 //
 // ## Context Menu Object Format
 //
 // ```json
 // {
-//   "atom-workspace": [
+//   "lumine-workspace": [
 //     { "label": "Help", "command": "application:open-documentation" }
 //   ],
-//   "atom-text-editor": [
+//   "lumine-text-editor": [
 //     {
 //       "label": "History",
 //       "submenu": [
@@ -48,7 +48,7 @@ if (
 // ```json
 // {
 //   "context-menu": {
-//     "atom-workspace": [
+//     "lumine-workspace": [
 //       { "label": "Help", "command": "application:open-documentation" }
 //     ]
 //   }
@@ -93,9 +93,9 @@ module.exports = class ContextMenuManager {
   // not how Lumine's menu is configured by default.
   //
   // ```javascript
-  // atom.contextMenu.add({
-  //   'atom-workspace': [{label: 'Help', command: 'application:open-documentation'}]
-  //   'atom-text-editor': [{
+  // lumine.contextMenu.add({
+  //   'lumine-workspace': [{label: 'Help', command: 'application:open-documentation'}]
+  //   'lumine-text-editor': [{
   //     label: 'History',
   //     submenu: [
   //       {label: 'Undo', command:'core:undo'}

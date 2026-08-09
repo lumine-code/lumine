@@ -41,7 +41,7 @@ module.exports = function parseCommandLine(processArgs) {
     Environment Variables:
 
       LUMINE_RESOURCE_PATH    The path from which Lumine loads source code in dev mode.
-                              Defaults to \`~/github/atom\`.
+                              Defaults to \`~/github/lumine\`.
 
       LUMINE_DEV_MODE         Set to \`1\` to run in development mode regardless of arguments.
 

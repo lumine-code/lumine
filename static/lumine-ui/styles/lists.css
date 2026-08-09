@@ -326,7 +326,7 @@ button.list-group-item {
     /* Nested items always get disclosure arrows. The 12px glyph rides the
        16px icon-contract carrier: line-height centers the ink in the box,
        text-bottom centers the box in the row — the same frame as .icon::before
-       (atom-ui/styles/icons.css), which these elements lack the .icon class
+       (lumine-ui/styles/icons.css), which these elements lack the .icon class
        for. (.octicon(chevron-down, @disclosure-arrow-size) inlined) */
     .list-nested-item > .list-item {
       &::before {

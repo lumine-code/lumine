@@ -138,7 +138,7 @@ function extractProjectRootsFromPathPattern(pathPattern, rootBasenames) {
 }
 
 function getBasenamesFromProjectRoots() {
-  let roots = atom.project.getPaths();
+  let roots = lumine.project.getPaths();
   return roots.map((r) => path.basename(r));
 }
 
@@ -164,7 +164,7 @@ const STOPPED_CHANGING_ACTIVE_PANE_ITEM_DELAY = 100;
 const ALL_LOCATIONS = ["center", "left", "right", "bottom"];
 
 // Essential: Represents the state of the user interface for the entire window.
-// An instance of this class is available via the `atom.workspace` global.
+// An instance of this class is available via the `lumine.workspace` global.
 //
 // Interact with this object to open files, be notified of current and future
 // editors, and manipulate panes. To add panels, use {Workspace::addTopPanel}
@@ -348,7 +348,7 @@ module.exports = class Workspace extends Model {
     this.textEditorRegistry = params.textEditorRegistry;
     this.styleManager = params.styleManager;
     this.draggingItem = false;
-    this.itemLocationStore = new StateStore("AtomPreviousItemLocations", 1);
+    this.itemLocationStore = new StateStore("LuminePreviousItemLocations", 1);
 
     this.emitter = new Emitter();
     this.openers = [];
@@ -1199,7 +1199,7 @@ module.exports = class Workspace extends Model {
     }
 
     try {
-      if (!atom.config.get("core.allowPendingPaneItems")) {
+      if (!lumine.config.get("core.allowPendingPaneItems")) {
         options.pending = false;
       }
 
@@ -1514,7 +1514,7 @@ module.exports = class Workspace extends Model {
     const limit = this.config.get("core.maxTextEditors");
     if (!limit || options.bypassTextEditorLimit) return false;
     if (!(item instanceof TextEditor)) return false;
-    if (globalThis.atom?.window?.isSpecMode?.()) return false;
+    if (globalThis.lumine?.window?.isSpecMode?.()) return false;
     // A preview replaces the pending item rather than adding another.
     if (options.pending && pane?.getPendingItem()) return false;
     return this.getTextEditors().length >= limit;
@@ -1684,7 +1684,7 @@ module.exports = class Workspace extends Model {
   // The base of {::buildSelectList} without the list: a modal panel with a mini
   // editor, for prompts and save dialogs where the typed text is the answer.
   // Extra DOM goes above the editor via `headerElement`, below it via
-  // `contentElement`, and a `checkboxes` row can bind straight to `atom.config`.
+  // `contentElement`, and a `checkboxes` row can bind straight to `lumine.config`.
   //
   // Panel ownership is the same as {::buildSelectList} — the dialog creates and
   // owns its own modal panel.
@@ -1777,7 +1777,7 @@ module.exports = class Workspace extends Model {
   // ## Examples
   //
   // ```js
-  // atom.workspace.addOpener((uri) => {
+  // lumine.workspace.addOpener((uri) => {
   //   if (path.extname(uri) === '.toml') return new TomlEditor(uri)
   // })
   // ```
@@ -2026,7 +2026,7 @@ module.exports = class Workspace extends Model {
     } else if (this.getCenter().getPanes().length > 1) {
       this.getCenter().destroyActivePane();
     } else if (this.config.get("core.closeEmptyWindows")) {
-      atom.window.close();
+      lumine.window.close();
     }
   }
 
@@ -2125,7 +2125,7 @@ module.exports = class Workspace extends Model {
 
   getVisiblePaneContainers() {
     const center = this.getCenter();
-    return atom.workspace
+    return lumine.workspace
       .getPaneContainers()
       .filter((container) => container === center || container.isVisible());
   }
@@ -2375,7 +2375,7 @@ module.exports = class Workspace extends Model {
       options = {};
     }
 
-    const hasMultipleProjectRoots = atom.project.getPaths().length > 1;
+    const hasMultipleProjectRoots = lumine.project.getPaths().length > 1;
     let pathsWithProjectRoots = options.paths?.map((p) => [null, p]) ?? undefined;
     if (hasMultipleProjectRoots) {
       let rootBasenames = getBasenamesFromProjectRoots();
@@ -2620,7 +2620,7 @@ module.exports = class Workspace extends Model {
       const filePath = buffer.getPath();
       // Filter out paths that aren't part of this project.
       if (!this.project.contains(filePath)) continue;
-      let [rootPath, relativizedFilePath] = atom.project.relativizePath(filePath);
+      let [rootPath, relativizedFilePath] = lumine.project.relativizePath(filePath);
       let matchers = customMatchers.get(rootPath) ?? defaultMatchers;
       // If the user specified search globs, we want to ensure that we consider
       // only those modified buffers that would be matched by such globs.
@@ -2775,7 +2775,7 @@ module.exports = class Workspace extends Model {
       //   (a) no path patterns match it, and (b) the user did explicitly
       //   include a path in a different root.)
       //
-      let [rootPath] = atom.project.relativizePath(filePath);
+      let [rootPath] = lumine.project.relativizePath(filePath);
       let basename = path.basename(rootPath);
       let basenameAndPatternPairs = patterns.map((pattern) => {
         return extractProjectRootsFromPathPattern(pattern, rootBasenames);
@@ -2820,7 +2820,7 @@ module.exports = class Workspace extends Model {
 
     let matchers = patterns.map((inclusion) => matcherForPattern(inclusion));
 
-    let relativizedFilePath = atom.project.relativize(filePath);
+    let relativizedFilePath = lumine.project.relativize(filePath);
     return matchers.some((matcher) => {
       return filePathMatchesGlob(relativizedFilePath, matcher);
     });

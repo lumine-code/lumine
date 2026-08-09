@@ -11,7 +11,7 @@ const { OnigScanner } = SecondMate;
 // Expects one of `textmate`, `node-tree-sitter`, or `wasm-tree-sitter`.
 function setConfigForLanguageMode(mode, options = {}) {
   let useTreeSitterParsers = mode !== "textmate";
-  atom.config.set("language.useTreeSitterParsers", useTreeSitterParsers, options);
+  lumine.config.set("language.useTreeSitterParsers", useTreeSitterParsers, options);
 }
 
 describe("GrammarRegistry", () => {
@@ -19,7 +19,7 @@ describe("GrammarRegistry", () => {
 
   beforeEach(async () => {
     await SecondMate.ready;
-    grammarRegistry = new GrammarRegistry({ config: atom.config });
+    grammarRegistry = new GrammarRegistry({ config: lumine.config });
     expect(subscriptionCount(grammarRegistry)).toBe(1);
   });
 
@@ -420,19 +420,19 @@ describe("GrammarRegistry", () => {
 
   describe(".selectGrammar(filePath)", () => {
     it("always returns a grammar", () => {
-      const registry = new GrammarRegistry({ config: atom.config });
+      const registry = new GrammarRegistry({ config: lumine.config });
       expect(registry.selectGrammar().scopeName).toBe("text.plain.null-grammar");
     });
 
     it("selects the text.plain grammar over the null grammar", async () => {
-      await atom.packages.activatePackage("language-text");
-      expect(atom.grammars.selectGrammar("test.txt").scopeName).toBe("text.plain");
+      await lumine.packages.activatePackage("language-text");
+      expect(lumine.grammars.selectGrammar("test.txt").scopeName).toBe("text.plain");
     });
 
     it("selects a grammar based on the file path case insensitively", async () => {
-      await atom.packages.activatePackage("language-coffee-script");
-      expect(atom.grammars.selectGrammar("/tmp/source.coffee").scopeName).toBe("source.coffee");
-      expect(atom.grammars.selectGrammar("/tmp/source.COFFEE").scopeName).toBe("source.coffee");
+      await lumine.packages.activatePackage("language-coffee-script");
+      expect(lumine.grammars.selectGrammar("/tmp/source.coffee").scopeName).toBe("source.coffee");
+      expect(lumine.grammars.selectGrammar("/tmp/source.COFFEE").scopeName).toBe("source.coffee");
     });
 
     describe("on Windows", () => {
@@ -448,41 +448,41 @@ describe("GrammarRegistry", () => {
       });
 
       it("normalizes back slashes to forward slashes when matching the fileTypes", async () => {
-        await atom.packages.activatePackage("language-git");
-        expect(atom.grammars.selectGrammar("something\\.git\\config").scopeName).toBe(
+        await lumine.packages.activatePackage("language-git");
+        expect(lumine.grammars.selectGrammar("something\\.git\\config").scopeName).toBe(
           "source.git-config",
         );
       });
     });
 
     it("can use the filePath to load the correct grammar based on the grammar's filetype", async () => {
-      await atom.packages.activatePackage("language-git");
-      await atom.packages.activatePackage("language-javascript");
-      await atom.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-git");
+      await lumine.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-ruby");
 
-      expect(atom.grammars.selectGrammar("file.js").name).toBe("JavaScript"); // based on extension (.js)
-      expect(atom.grammars.selectGrammar(path.join(temp.dir, ".git", "config")).name).toBe(
+      expect(lumine.grammars.selectGrammar("file.js").name).toBe("JavaScript"); // based on extension (.js)
+      expect(lumine.grammars.selectGrammar(path.join(temp.dir, ".git", "config")).name).toBe(
         "Git Config",
       ); // based on end of the path (.git/config)
-      expect(atom.grammars.selectGrammar("Rakefile").name).toBe("Ruby"); // based on the file's basename (Rakefile)
-      expect(atom.grammars.selectGrammar("curb").name).toBe("Null Grammar");
-      expect(atom.grammars.selectGrammar("/hu.git/config").name).toBe("Null Grammar");
+      expect(lumine.grammars.selectGrammar("Rakefile").name).toBe("Ruby"); // based on the file's basename (Rakefile)
+      expect(lumine.grammars.selectGrammar("curb").name).toBe("Null Grammar");
+      expect(lumine.grammars.selectGrammar("/hu.git/config").name).toBe("Null Grammar");
     });
 
     it(`returns a legacy Tree-sitter grammar if the user opted into it via a scope-specific setting`, async () => {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
       setConfigForLanguageMode("node-tree-sitter", { scopeSelector: ".source.js" });
-      let grammar = atom.grammars.selectGrammar("file.js");
+      let grammar = lumine.grammars.selectGrammar("file.js");
       expect(grammar.name).toBe("JavaScript");
       expect(grammar.constructor.name).toBe("TreeSitterGrammar");
     });
 
     it("uses the filePath's shebang line if the grammar cannot be determined by the extension or basename", async () => {
-      await atom.packages.activatePackage("language-javascript");
-      await atom.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-ruby");
 
       const filePath = require.resolve("./fixtures/shebang");
-      expect(atom.grammars.selectGrammar(filePath).name).toBe("Ruby");
+      expect(lumine.grammars.selectGrammar(filePath).name).toBe("Ruby");
     });
 
     it("uses the number of newlines in the first line regex to determine the number of lines to test against", () => {
@@ -490,22 +490,22 @@ describe("GrammarRegistry", () => {
       // `firstLineMatch` that spans a line break, which almost no grammar has,
       // so borrowing one meant the test's precondition lived in someone else's
       // repository and was invisible here.
-      atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/one-line-prefix.json"));
-      atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/two-line-prefix.json"));
+      lumine.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/one-line-prefix.json"));
+      lumine.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/two-line-prefix.json"));
 
       // A single-line pattern is matched against the first line alone, so
       // anything after it is irrelevant.
-      expect(atom.grammars.selectGrammar("unknown.ext", "ONE-LINE-SENTINEL\nnoise").name).toBe(
+      expect(lumine.grammars.selectGrammar("unknown.ext", "ONE-LINE-SENTINEL\nnoise").name).toBe(
         "One Line Prefix",
       );
 
       // A pattern containing a newline needs that many lines before it can
       // match — one line is not enough.
-      expect(atom.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL").name).toBe(
+      expect(lumine.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL").name).toBe(
         "Null Grammar",
       );
       expect(
-        atom.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL\nSECOND-LINE").name,
+        lumine.grammars.selectGrammar("unknown.ext", "TWO-LINE-SENTINEL\nSECOND-LINE").name,
       ).toBe("Two Line Prefix");
     });
 
@@ -514,25 +514,25 @@ describe("GrammarRegistry", () => {
       // `undefined` threw from inside the WASM rather than returning no match,
       // taking the whole selection down with it. That needs no contents *and*
       // a path that is not a file on disk, or the fallback read hides it.
-      atom.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/content-regex.json"));
+      lumine.grammars.loadGrammarSync(require.resolve("./fixtures/grammars/content-regex.json"));
 
       expect(() =>
-        atom.grammars.selectGrammar("/no/such/file.content-regex-sentinel"),
+        lumine.grammars.selectGrammar("/no/such/file.content-regex-sentinel"),
       ).not.toThrow();
-      expect(atom.grammars.selectGrammar("/no/such/file.content-regex-sentinel").name).toBe(
+      expect(lumine.grammars.selectGrammar("/no/such/file.content-regex-sentinel").name).toBe(
         "Content Regex",
       );
 
       // Matching contents still win it the bonus.
       expect(
-        atom.grammars.getGrammarScore(
-          atom.grammars.grammarForScopeName("source.content-regex"),
+        lumine.grammars.getGrammarScore(
+          lumine.grammars.grammarForScopeName("source.content-regex"),
           "/no/such/file.content-regex-sentinel",
           "CONTENT-REGEX-SENTINEL",
         ),
       ).toBeGreaterThan(
-        atom.grammars.getGrammarScore(
-          atom.grammars.grammarForScopeName("source.content-regex"),
+        lumine.grammars.getGrammarScore(
+          lumine.grammars.grammarForScopeName("source.content-regex"),
           "/no/such/file.content-regex-sentinel",
           undefined,
         ),
@@ -540,12 +540,12 @@ describe("GrammarRegistry", () => {
     });
 
     it("doesn't read the file when the file contents are specified", async () => {
-      await atom.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-ruby");
 
       const filePath = require.resolve("./fixtures/shebang");
       const filePathContents = fs.readFileSync(filePath, "utf8");
       spyOn(fs, "read").and.callThrough();
-      expect(atom.grammars.selectGrammar(filePath, filePathContents).name).toBe("Ruby");
+      expect(lumine.grammars.selectGrammar(filePath, filePathContents).name).toBe("Ruby");
       expect(fs.read).not.toHaveBeenCalled();
     });
 
@@ -560,8 +560,8 @@ describe("GrammarRegistry", () => {
             fileTypes: ["test"],
           }),
         );
-        const grammar1 = atom.grammars.loadGrammarSync(grammarPath1);
-        expect(atom.grammars.selectGrammar("more.test", "")).toBe(grammar1);
+        const grammar1 = lumine.grammars.loadGrammarSync(grammarPath1);
+        expect(lumine.grammars.selectGrammar("more.test", "")).toBe(grammar1);
         fs.removeSync(grammarPath1);
 
         const grammarPath2 = temp.path({ suffix: ".json" });
@@ -573,78 +573,78 @@ describe("GrammarRegistry", () => {
             fileTypes: ["test", "more.test"],
           }),
         );
-        const grammar2 = atom.grammars.loadGrammarSync(grammarPath2);
-        expect(atom.grammars.selectGrammar("more.test", "")).toBe(grammar2);
+        const grammar2 = lumine.grammars.loadGrammarSync(grammarPath2);
+        expect(lumine.grammars.selectGrammar("more.test", "")).toBe(grammar2);
         return fs.removeSync(grammarPath2);
       });
     });
 
     it("favors non-bundled packages when breaking scoring ties", async () => {
-      await atom.packages.activatePackage("language-ruby");
-      await atom.packages.activatePackage(
+      await lumine.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage(
         path.join(__dirname, "fixtures", "packages", "package-with-rb-filetype"),
       );
 
-      atom.grammars.grammarForScopeName("source.ruby").bundledPackage = true;
-      atom.grammars.grammarForScopeName("test.rb").bundledPackage = false;
+      lumine.grammars.grammarForScopeName("source.ruby").bundledPackage = true;
+      lumine.grammars.grammarForScopeName("test.rb").bundledPackage = false;
 
-      expect(atom.grammars.selectGrammar("test.rb", "#!/usr/bin/env ruby").scopeName).toBe(
+      expect(lumine.grammars.selectGrammar("test.rb", "#!/usr/bin/env ruby").scopeName).toBe(
         "source.ruby",
       );
-      expect(atom.grammars.selectGrammar("test.rb", "#!/usr/bin/env testruby").scopeName).toBe(
+      expect(lumine.grammars.selectGrammar("test.rb", "#!/usr/bin/env testruby").scopeName).toBe(
         "test.rb",
       );
-      expect(atom.grammars.selectGrammar("test.rb").scopeName).toBe("test.rb");
+      expect(lumine.grammars.selectGrammar("test.rb").scopeName).toBe("test.rb");
     });
 
     describe("when there is no file path", () => {
       it("does not throw an exception (regression)", () => {
-        expect(() => atom.grammars.selectGrammar(null, "#!/usr/bin/ruby")).not.toThrow();
-        expect(() => atom.grammars.selectGrammar(null, "")).not.toThrow();
-        expect(() => atom.grammars.selectGrammar(null, null)).not.toThrow();
+        expect(() => lumine.grammars.selectGrammar(null, "#!/usr/bin/ruby")).not.toThrow();
+        expect(() => lumine.grammars.selectGrammar(null, "")).not.toThrow();
+        expect(() => lumine.grammars.selectGrammar(null, null)).not.toThrow();
       });
     });
 
     describe("when the user has custom grammar file types", () => {
       it("considers the custom file types as well as those defined in the grammar", async () => {
-        await atom.packages.activatePackage("language-ruby");
-        atom.config.set("core.customFileTypes", {
+        await lumine.packages.activatePackage("language-ruby");
+        lumine.config.set("core.customFileTypes", {
           "source.ruby": ["Cheffile"],
         });
-        expect(atom.grammars.selectGrammar("build/Cheffile", 'cookbook "postgres"').scopeName).toBe(
-          "source.ruby",
-        );
+        expect(
+          lumine.grammars.selectGrammar("build/Cheffile", 'cookbook "postgres"').scopeName,
+        ).toBe("source.ruby");
       });
 
       it("favors user-defined file types over built-in ones of equal length", async () => {
-        await atom.packages.activatePackage("language-ruby");
-        await atom.packages.activatePackage("language-coffee-script");
+        await lumine.packages.activatePackage("language-ruby");
+        await lumine.packages.activatePackage("language-coffee-script");
 
-        atom.config.set("core.customFileTypes", {
+        lumine.config.set("core.customFileTypes", {
           "source.coffee": ["Rakefile"],
           "source.ruby": ["Cakefile"],
         });
-        expect(atom.grammars.selectGrammar("Rakefile", "").scopeName).toBe("source.coffee");
-        expect(atom.grammars.selectGrammar("Cakefile", "").scopeName).toBe("source.ruby");
+        expect(lumine.grammars.selectGrammar("Rakefile", "").scopeName).toBe("source.coffee");
+        expect(lumine.grammars.selectGrammar("Cakefile", "").scopeName).toBe("source.ruby");
       });
 
       it("favors user-defined file types over grammars with matching first-line-regexps", async () => {
-        await atom.packages.activatePackage("language-ruby");
-        await atom.packages.activatePackage("language-javascript");
+        await lumine.packages.activatePackage("language-ruby");
+        await lumine.packages.activatePackage("language-javascript");
 
-        atom.config.set("core.customFileTypes", {
+        lumine.config.set("core.customFileTypes", {
           "source.ruby": ["bootstrap"],
         });
-        expect(atom.grammars.selectGrammar("bootstrap", "#!/usr/bin/env node").scopeName).toBe(
+        expect(lumine.grammars.selectGrammar("bootstrap", "#!/usr/bin/env node").scopeName).toBe(
           "source.ruby",
         );
       });
     });
 
     it("favors a grammar with a matching file type over one with m matching first line pattern", async () => {
-      await atom.packages.activatePackage("language-ruby");
-      await atom.packages.activatePackage("language-javascript");
-      expect(atom.grammars.selectGrammar("foo.rb", "#!/usr/bin/env node").scopeName).toBe(
+      await lumine.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-javascript");
+      expect(lumine.grammars.selectGrammar("foo.rb", "#!/usr/bin/env node").scopeName).toBe(
         "source.ruby",
       );
     });
@@ -849,10 +849,10 @@ describe("GrammarRegistry", () => {
 
   describe(".removeGrammar(grammar)", () => {
     it("removes the grammar, so it won't be returned by selectGrammar", async () => {
-      await atom.packages.activatePackage("language-css");
-      const grammar = atom.grammars.selectGrammar("foo.css");
-      atom.grammars.removeGrammar(grammar);
-      let newGrammar = atom.grammars.selectGrammar("foo.css");
+      await lumine.packages.activatePackage("language-css");
+      const grammar = lumine.grammars.selectGrammar("foo.css");
+      lumine.grammars.removeGrammar(grammar);
+      let newGrammar = lumine.grammars.selectGrammar("foo.css");
       expect(
         grammar.name === newGrammar.name &&
           grammar.constructor.name === newGrammar.constructor.name,
@@ -860,12 +860,12 @@ describe("GrammarRegistry", () => {
     });
 
     it("notifies onDidRemoveGrammar subscribers for every grammar a deactivating package removes", async () => {
-      await atom.packages.activatePackage("language-css");
+      await lumine.packages.activatePackage("language-css");
       const removed = [];
-      const disposable = atom.grammars.onDidRemoveGrammar((grammar) =>
+      const disposable = lumine.grammars.onDidRemoveGrammar((grammar) =>
         removed.push(grammar.scopeName),
       );
-      await atom.packages.deactivatePackage("language-css");
+      await lumine.packages.deactivatePackage("language-css");
       disposable.dispose();
       expect(removed).toContain("source.css");
     });
@@ -899,20 +899,20 @@ describe("GrammarRegistry", () => {
     });
 
     it("adds an injection point to the grammar with the given id", async () => {
-      await atom.packages.activatePackage("language-javascript");
-      atom.grammars.addInjectionPoint("source.js", injectionPoint);
-      const grammar = atom.grammars.grammarForId("source.js");
+      await lumine.packages.activatePackage("language-javascript");
+      lumine.grammars.addInjectionPoint("source.js", injectionPoint);
+      const grammar = lumine.grammars.grammarForId("source.js");
       expect(grammar.injectionPointsByType["some_node_type"]).toContain(injectionPoint);
     });
 
     it("fires the onDidUpdateGrammar callback", async () => {
-      await atom.packages.activatePackage("language-javascript");
-      atom.grammars.onDidUpdateGrammar((grammar) => {
+      await lumine.packages.activatePackage("language-javascript");
+      lumine.grammars.onDidUpdateGrammar((grammar) => {
         if (grammar.scopeName === "source.js") {
           updateCallbackFired = true;
         }
       });
-      atom.grammars.addInjectionPoint("source.js", injectionPoint);
+      lumine.grammars.addInjectionPoint("source.js", injectionPoint);
       expect(updateCallbackFired).toBe(true);
     });
 
@@ -920,7 +920,7 @@ describe("GrammarRegistry", () => {
       it("adds the injection point once the grammar is loaded", async () => {
         // Adding an injection point before a grammar loads should not trigger
         // onDidUpdateGrammar at any point.
-        updateCallbackDisposable = atom.grammars.onDidUpdateGrammar((grammar) => {
+        updateCallbackDisposable = lumine.grammars.onDidUpdateGrammar((grammar) => {
           if (!grammar.scopeName) {
             updateCallbackFired = true;
           }
@@ -928,12 +928,12 @@ describe("GrammarRegistry", () => {
 
         // But onDidAddGrammar should be triggered when the grammar eventually
         // loads.
-        addCallbackDisposable = atom.grammars.onDidAddGrammar((grammar) => {
+        addCallbackDisposable = lumine.grammars.onDidAddGrammar((grammar) => {
           if (grammar.scopeName === "source.js") addCallbackFired = true;
         });
-        atom.grammars.addInjectionPoint("source.js", injectionPoint);
-        await atom.packages.activatePackage("language-javascript");
-        const grammar = atom.grammars.grammarForId("source.js");
+        lumine.grammars.addInjectionPoint("source.js", injectionPoint);
+        await lumine.packages.activatePackage("language-javascript");
+        const grammar = lumine.grammars.grammarForId("source.js");
         expect(grammar.injectionPointsByType["some_node_type"]).toContain(injectionPoint);
         expect(updateCallbackFired).toBe(false);
         expect(addCallbackFired).toBe(true);
@@ -960,7 +960,7 @@ describe("GrammarRegistry", () => {
       const buffer1Copy = await TextBuffer.deserialize(buffer1.serialize());
       const buffer2Copy = await TextBuffer.deserialize(buffer2.serialize());
 
-      const grammarRegistryCopy = new GrammarRegistry({ config: atom.config });
+      const grammarRegistryCopy = new GrammarRegistry({ config: lumine.config });
       grammarRegistryCopy.deserialize(JSON.parse(JSON.stringify(grammarRegistry.serialize())));
 
       grammarRegistryCopy.loadGrammarSync(require.resolve("language-c/grammars/c.json"));
@@ -984,23 +984,23 @@ describe("GrammarRegistry", () => {
 
   describe("when working with grammars", () => {
     beforeEach(async () => {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
     });
 
     it("returns only Tree-sitter grammars by default", async () => {
-      const tmGrammars = atom.grammars.getGrammars();
-      const allGrammars = atom.grammars.getGrammars({
+      const tmGrammars = lumine.grammars.getGrammars();
+      const allGrammars = lumine.grammars.getGrammars({
         includeTreeSitter: true,
       });
       expect(allGrammars.length).toBeGreaterThan(tmGrammars.length);
     });
 
     it("executes the foreach callback on both Tree-sitter and TextMate grammars", async () => {
-      const numAllGrammars = atom.grammars.getGrammars({
+      const numAllGrammars = lumine.grammars.getGrammars({
         includeTreeSitter: true,
       }).length;
       let i = 0;
-      atom.grammars.forEachGrammar(() => i++);
+      lumine.grammars.forEachGrammar(() => i++);
       expect(i).toBe(numAllGrammars);
     });
   });

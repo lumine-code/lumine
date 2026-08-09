@@ -668,7 +668,7 @@
     }
   ],
   "context-menu": {
-    "atom-text-editor": [
+    "lumine-text-editor": [
       {
         "label": "Undo",
         "command": "core:undo"
@@ -704,7 +704,7 @@
         "type": "separator"
       }
     ],
-    "atom-pane:not(atom-dock atom-pane) > .item-views": [
+    "lumine-pane:not(lumine-dock lumine-pane) > .item-views": [
       {
         "type": "separator"
       },

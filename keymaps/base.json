@@ -70,7 +70,7 @@
     "cmdorctrl-k cmdorctrl-left": "window:focus-pane-on-left",
     "cmdorctrl-k cmdorctrl-right": "window:focus-pane-on-right"
   },
-  "atom-text-editor": {
+  "lumine-text-editor": {
     // Platform Bindings
     "home": "editor:move-to-first-character-of-line",
     "end": "editor:move-to-end-of-screen-line",
@@ -90,7 +90,7 @@
     // dialog the mini editor belongs to.
     "escape": "editor:consolidate-selections"
   },
-  "atom-text-editor:not([mini])": {
+  "lumine-text-editor:not([mini])": {
     // Lumine Specific
     "ctrl-shift-c": "editor:copy-path",
     "alt-up": "editor:select-larger-syntax-node",
@@ -105,7 +105,7 @@
     "shift-tab": "editor:outdent-selected-rows",
     "ctrl-shift-k": "editor:delete-line"
   },
-  "atom-workspace atom-text-editor:not([mini])": {
+  "lumine-workspace lumine-text-editor:not([mini])": {
     // Lumine Specific
     "cmdorctrl-<": "editor:scroll-to-cursor",
     // Sublime Parity
@@ -139,21 +139,21 @@
     "cmdorctrl-k cmdorctrl-8": "editor:fold-at-indent-level-8",
     "cmdorctrl-k cmdorctrl-9": "editor:fold-at-indent-level-9"
   },
-  "atom-workspace atom-pane": {
+  "lumine-workspace lumine-pane": {
     "cmdorctrl-alt-=": "pane:increase-size",
     "cmdorctrl-alt--": "pane:decrease-size"
   },
-  "atom-workspace": {
+  "lumine-workspace": {
     // Lumine Specific
     "shift-escape": "pane:toggle-pending-item"
   },
-  "atom-panel.modal": {
-    // More specific than the atom-workspace binding above, so inside a modal
+  "lumine-panel.modal": {
+    // More specific than the lumine-workspace binding above, so inside a modal
     // Shift-Escape walks the breadcrumb trail instead of toggling the pending
     // item.
     "shift-escape": "modal:go-back"
   },
-  ".select-list atom-text-editor[mini]": {
+  ".select-list lumine-text-editor[mini]": {
     "enter": "core:confirm",
     // Opens the item-actions list: the dialog's own commands with their
     // descriptions and keybindings, command-palette style. Package keymaps
@@ -161,7 +161,7 @@
     // Inside the actions list, F12 goes back to the dialog it belongs to.
     "f12": "select-list:actions"
   },
-  ".input-dialog atom-text-editor[mini]": {
+  ".input-dialog lumine-text-editor[mini]": {
     "f12": "select-list:actions"
   },
   ".tool-panel.panel-left, .tool-panel.panel-right": {

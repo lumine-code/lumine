@@ -6,7 +6,7 @@
 // it carries whatever single value git asked for.
 
 function promptForGitCredential(query = {}) {
-  const workspace = globalThis.atom && globalThis.atom.workspace;
+  const workspace = globalThis.lumine && globalThis.lumine.workspace;
   if (!workspace) {
     return Promise.reject(new Error("No workspace is available to prompt for credentials"));
   }

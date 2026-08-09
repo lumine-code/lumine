@@ -5,7 +5,7 @@ describe("StylesElement", function () {
 
   beforeEach(function () {
     element = createStylesElement();
-    element.initialize(atom.styles);
+    element.initialize(lumine.styles);
     document.querySelector("#jasmine-content").appendChild(element);
     addedStyleElements = [];
     removedStyleElements = [];
@@ -18,12 +18,12 @@ describe("StylesElement", function () {
   it("renders a style tag for all currently active stylesheets in the style manager", function () {
     const initialChildCount = element.children.length;
 
-    const disposable1 = atom.styles.addStyleSheet("a {color: red;}");
+    const disposable1 = lumine.styles.addStyleSheet("a {color: red;}");
     expect(element.children.length).toBe(initialChildCount + 1);
     expect(element.children[initialChildCount].textContent).toBe("a {color: red;}");
     expect(addedStyleElements).toEqual([element.children[initialChildCount]]);
 
-    atom.styles.addStyleSheet("a {color: blue;}");
+    lumine.styles.addStyleSheet("a {color: blue;}");
     expect(element.children.length).toBe(initialChildCount + 2);
     expect(element.children[initialChildCount + 1].textContent).toBe("a {color: blue;}");
     expect(addedStyleElements).toEqual([
@@ -40,10 +40,10 @@ describe("StylesElement", function () {
   it("orders style elements by priority", function () {
     const initialChildCount = element.children.length;
 
-    atom.styles.addStyleSheet("a {color: red}", { priority: 1 });
-    atom.styles.addStyleSheet("a {color: blue}", { priority: 0 });
-    atom.styles.addStyleSheet("a {color: green}", { priority: 2 });
-    atom.styles.addStyleSheet("a {color: yellow}", { priority: 1 });
+    lumine.styles.addStyleSheet("a {color: red}", { priority: 1 });
+    lumine.styles.addStyleSheet("a {color: blue}", { priority: 0 });
+    lumine.styles.addStyleSheet("a {color: green}", { priority: 2 });
+    lumine.styles.addStyleSheet("a {color: yellow}", { priority: 1 });
 
     expect(element.children[initialChildCount].textContent).toBe("a {color: blue}");
     expect(element.children[initialChildCount + 1].textContent).toBe("a {color: red}");
@@ -54,8 +54,8 @@ describe("StylesElement", function () {
   it("updates existing style nodes when style elements are updated", function () {
     const initialChildCount = element.children.length;
 
-    atom.styles.addStyleSheet("a {color: red;}", { sourcePath: "/foo/bar" });
-    atom.styles.addStyleSheet("a {color: blue;}", { sourcePath: "/foo/bar" });
+    lumine.styles.addStyleSheet("a {color: red;}", { sourcePath: "/foo/bar" });
+    lumine.styles.addStyleSheet("a {color: blue;}", { sourcePath: "/foo/bar" });
 
     expect(element.children.length).toBe(initialChildCount + 1);
     expect(element.children[initialChildCount].textContent).toBe("a {color: blue;}");
@@ -65,8 +65,8 @@ describe("StylesElement", function () {
   it("only includes style elements matching the 'context' attribute", function () {
     const initialChildCount = element.children.length;
 
-    atom.styles.addStyleSheet("a {color: red;}", { context: "test-context" });
-    atom.styles.addStyleSheet("a {color: green;}");
+    lumine.styles.addStyleSheet("a {color: red;}", { context: "test-context" });
+    lumine.styles.addStyleSheet("a {color: green;}");
 
     expect(element.children.length).toBe(initialChildCount + 2);
     expect(element.children[initialChildCount].textContent).toBe("a {color: red;}");
@@ -77,8 +77,8 @@ describe("StylesElement", function () {
     expect(element.children.length).toBe(1);
     expect(element.children[0].textContent).toBe("a {color: red;}");
 
-    atom.styles.addStyleSheet("a {color: blue;}", { context: "test-context" });
-    atom.styles.addStyleSheet("a {color: yellow;}");
+    lumine.styles.addStyleSheet("a {color: blue;}", { context: "test-context" });
+    lumine.styles.addStyleSheet("a {color: yellow;}");
 
     expect(element.children.length).toBe(2);
     expect(element.children[0].textContent).toBe("a {color: red;}");

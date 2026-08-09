@@ -1,6 +1,6 @@
 const jasmineStyle = document.createElement("style");
-jasmineStyle.textContent = atom.themes.loadStylesheet(
-  atom.themes.resolveStylesheet("../static/jasmine"),
+jasmineStyle.textContent = lumine.themes.loadStylesheet(
+  lumine.themes.resolveStylesheet("../static/jasmine"),
 );
 document.head.appendChild(jasmineStyle);
 

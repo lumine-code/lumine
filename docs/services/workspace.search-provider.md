@@ -9,7 +9,7 @@ Replaces the built-in project search for directories a package understands bette
 | Consumed by | core, in `src/workspace.js`                             |
 | Owner       | the editor itself                                       |
 
-**Nothing provides this today.** It is an open extension point: a remote filesystem, a database-backed project, or an index a package maintains can answer `atom.workspace.scan` for its own directories while ripgrep keeps handling the rest.
+**Nothing provides this today.** It is an open extension point: a remote filesystem, a database-backed project, or an index a package maintains can answer `lumine.workspace.scan` for its own directories while ripgrep keeps handling the rest.
 
 ## Registration
 

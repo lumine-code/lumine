@@ -129,35 +129,37 @@ describe("keymap scope resolution", () => {
     it("puts a .platform-* prefix an order of magnitude above core's body", () => {
       expect(specificityOf("body")).toBe(1);
       expect(specificityOf(".platform-win32")).toBe(10);
-      expect(specificityOf("atom-text-editor")).toBe(1);
-      expect(specificityOf(".platform-win32 atom-text-editor")).toBe(11);
+      expect(specificityOf("lumine-text-editor")).toBe(1);
+      expect(specificityOf(".platform-win32 lumine-text-editor")).toBe(11);
     });
 
     // key-binding.js strips !important from the selector it matches with but
     // scores the unstripped string, where the token falls through as a phantom
     // element. It is worth +1 and nothing else, and loses to any :not([mini]).
     it("scores !important as one extra element and nothing more", () => {
-      expect(specificityOf("atom-text-editor !important")).toBe(
-        specificityOf("atom-text-editor") + 1,
+      expect(specificityOf("lumine-text-editor !important")).toBe(
+        specificityOf("lumine-text-editor") + 1,
       );
-      expect(specificityOf("atom-text-editor !important")).toBeLessThan(
-        specificityOf("atom-text-editor:not([mini])"),
+      expect(specificityOf("lumine-text-editor !important")).toBeLessThan(
+        specificityOf("lumine-text-editor:not([mini])"),
       );
     });
 
     it("matches an !important selector as though the token were absent", () => {
-      expect(new KeyBinding("source", "c", "ctrl-y", "atom-text-editor !important").selector).toBe(
-        "atom-text-editor ",
-      );
+      expect(
+        new KeyBinding("source", "c", "ctrl-y", "lumine-text-editor !important").selector,
+      ).toBe("lumine-text-editor ");
     });
 
     // calculateSpecificity truncates at the first comma, so every branch of a
     // comma list is scored as the first one. A list whose branches differ in
     // depth therefore mis-scores all but one of them.
     it("scores a comma list on its first branch only", () => {
-      expect(specificityOf("body, .command-palette atom-text-editor")).toBe(specificityOf("body"));
-      expect(specificityOf(".command-palette atom-text-editor, body")).toBe(
-        specificityOf(".command-palette atom-text-editor"),
+      expect(specificityOf("body, .command-palette lumine-text-editor")).toBe(
+        specificityOf("body"),
+      );
+      expect(specificityOf(".command-palette lumine-text-editor, body")).toBe(
+        specificityOf(".command-palette lumine-text-editor"),
       );
     });
   });

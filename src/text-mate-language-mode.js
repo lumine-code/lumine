@@ -26,7 +26,7 @@ class TextMateLanguageMode {
     this.tokenizationStarted = false;
     this.id = params.id != null ? params.id : nextId++;
     this.buffer = params.buffer;
-    this.config = params.config ?? atom.config;
+    this.config = params.config ?? lumine.config;
     this.grammar = params.grammar || NullGrammar;
     this.rootScopeDescriptor = new ScopeDescriptor({
       scopes: [this.grammar.scopeName],

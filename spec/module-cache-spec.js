@@ -28,9 +28,17 @@ describe("ModuleCache", function () {
     expect(Module._findPath.calls.count()).toBe(0);
   });
 
+  it("exposes only the Lumine runtime module", function () {
+    const { builtins } = ModuleCache.cache;
+    expect(builtins.lumine).toBeDefined();
+    expect(builtins.atom).toBeUndefined();
+    expect(require("lumine")).toBe(require("../exports/lumine"));
+    expect(() => require("atom")).toThrow();
+  });
+
   it("resolves relative core paths without hitting the filesystem", function () {
-    ModuleCache.add(atom.app.getResourcePath(), {
-      _atomModuleCache: {
+    ModuleCache.add(lumine.app.getResourcePath(), {
+      _lumineModuleCache: {
         extensions: {
           ".json": [path.join("spec", "fixtures", "module-cache", "file.json")],
         },
@@ -41,9 +49,9 @@ describe("ModuleCache", function () {
   });
 
   it("resolves module paths when a compatible version is provided by core", function () {
-    const packagePath = fs.realpathSync(temp.mkdirSync("atom-package"));
+    const packagePath = fs.realpathSync(temp.mkdirSync("lumine-package"));
     ModuleCache.add(packagePath, {
-      _atomModuleCache: {
+      _lumineModuleCache: {
         folders: [
           {
             paths: [""],
@@ -54,8 +62,8 @@ describe("ModuleCache", function () {
         ],
       },
     });
-    ModuleCache.add(atom.app.getResourcePath(), {
-      _atomModuleCache: {
+    ModuleCache.add(lumine.app.getResourcePath(), {
+      _lumineModuleCache: {
         dependencies: [
           {
             name: "@lumine-code/underscore-plus",
@@ -87,9 +95,9 @@ exports.load = function() { require('@lumine-code/underscore-plus'); };\
   });
 
   it("does not resolve module paths when no compatible version is provided by core", function () {
-    const packagePath = fs.realpathSync(temp.mkdirSync("atom-package"));
+    const packagePath = fs.realpathSync(temp.mkdirSync("lumine-package"));
     ModuleCache.add(packagePath, {
-      _atomModuleCache: {
+      _lumineModuleCache: {
         folders: [
           {
             paths: [""],
@@ -100,8 +108,8 @@ exports.load = function() { require('@lumine-code/underscore-plus'); };\
         ],
       },
     });
-    ModuleCache.add(atom.app.getResourcePath(), {
-      _atomModuleCache: {
+    ModuleCache.add(lumine.app.getResourcePath(), {
+      _lumineModuleCache: {
         dependencies: [
           {
             name: "@lumine-code/underscore-plus",

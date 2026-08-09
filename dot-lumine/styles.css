@@ -19,12 +19,12 @@
 }
 
 /* Style the background and foreground colors of text editors. */
-atom-text-editor {
+lumine-text-editor {
   /* color: white; */
   /* background-color: hsl(180, 24%, 12%); */
 }
 
 /* Style UI elements inside text editors. */
-atom-text-editor .cursor {
+lumine-text-editor .cursor {
   /* border-color: red; */
 }

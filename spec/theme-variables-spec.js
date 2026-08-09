@@ -101,15 +101,15 @@ describe("the theme variable contract", () => {
 
   it("owns shared select-list presentation in the static UI layer", () => {
     const selectListSource = fs.readFileSync(
-      path.join(__dirname, "..", "static", "atom-ui", "styles", "select-list.css"),
+      path.join(__dirname, "..", "static", "lumine-ui", "styles", "select-list.css"),
       "utf8",
     );
     const textSource = fs.readFileSync(
-      path.join(__dirname, "..", "static", "atom-ui", "styles", "text.css"),
+      path.join(__dirname, "..", "static", "lumine-ui", "styles", "text.css"),
       "utf8",
     );
     const modalSource = fs.readFileSync(
-      path.join(__dirname, "..", "static", "atom-ui", "styles", "modals.css"),
+      path.join(__dirname, "..", "static", "lumine-ui", "styles", "modals.css"),
       "utf8",
     );
     const packageStylePaths = [

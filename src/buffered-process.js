@@ -9,7 +9,7 @@ const path = require("path");
 // ## Examples
 //
 // ```js
-// {BufferedProcess} = require('atom')
+// {BufferedProcess} = require('lumine')
 //
 // const command = 'ps'
 // const args = ['-ef']

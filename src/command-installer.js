@@ -49,12 +49,12 @@ module.exports = class CommandInstaller {
         .catch((dialogError) => console.error(dialogError));
     };
 
-    this.installAtomCommand(true, (error, atomCommandName) => {
+    this.installLumineCommand(true, (error, lumineCommandName) => {
       if (error) return showErrorDialog(error);
       void this.applicationDelegate
         .confirm({
           message: "Command installed.",
-          detail: `The shell command \`${atomCommandName}\` is installed.`,
+          detail: `The shell command \`${lumineCommandName}\` is installed.`,
           buttons: ["OK"],
         })
         .catch((dialogError) => console.error(dialogError));
@@ -75,7 +75,7 @@ module.exports = class CommandInstaller {
     }
   }
 
-  installAtomCommand(askForPrivilege, callback) {
+  installLumineCommand(askForPrivilege, callback) {
     let scriptName = this.getScriptBaseName();
     this.installCommand(
       path.join(this.getResourcesDirectory(), `${scriptName}.sh`),

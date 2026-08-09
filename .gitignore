@@ -14,7 +14,7 @@ Thumbs.db
 node_modules
 *.log
 /tags
-/atom-shell/
+/lumine-shell/
 /out/
 docs/output
 docs/includes

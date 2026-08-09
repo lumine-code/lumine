@@ -8,7 +8,7 @@ const BufferedProcess = require("./buffered-process");
 // ## Examples
 //
 // ```js
-//   const {BufferedNodeProcess} = require('atom')
+//   const {BufferedNodeProcess} = require('lumine')
 // ```
 module.exports = class BufferedNodeProcess extends BufferedProcess {
   // Public: Runs the given Node script by spawning a new child process.

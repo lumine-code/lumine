@@ -4,18 +4,18 @@ const temp = require("@lumine-code/temp").track();
 const { getConfigFilePath } = require("../src/get-app-details");
 
 describe("get-app-details", () => {
-  let originalAtomHome;
+  let originalLumineHome;
 
   beforeEach(() => {
-    originalAtomHome = process.env.LUMINE_HOME;
+    originalLumineHome = process.env.LUMINE_HOME;
     process.env.LUMINE_HOME = temp.mkdirSync("lumine-config-");
   });
 
   afterEach(() => {
-    if (originalAtomHome == null) {
+    if (originalLumineHome == null) {
       delete process.env.LUMINE_HOME;
     } else {
-      process.env.LUMINE_HOME = originalAtomHome;
+      process.env.LUMINE_HOME = originalLumineHome;
     }
   });
 

@@ -1,4 +1,4 @@
-const { Emitter, Range } = require("atom");
+const { Emitter, Range } = require("lumine");
 const TextEditorComponent = require("./text-editor-component");
 
 class TextEditorElement extends HTMLElement {
@@ -351,10 +351,10 @@ class TextEditorElement extends HTMLElement {
   }
 
   static createTextEditorElement() {
-    return document.createElement("atom-text-editor");
+    return document.createElement("lumine-text-editor");
   }
 }
 
-window.customElements.define("atom-text-editor", TextEditorElement);
+window.customElements.define("lumine-text-editor", TextEditorElement);
 
 module.exports = TextEditorElement;

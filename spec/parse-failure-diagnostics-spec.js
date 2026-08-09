@@ -17,7 +17,11 @@ describe("parse failure diagnostics", () => {
   beforeEach(async () => {
     jasmine.useRealClock();
     buffer = new TextBuffer("const answer = 42;\n");
-    grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, CSON.readFileSync(jsGrammarPath));
+    grammar = new TreeSitterGrammar(
+      lumine.grammars,
+      jsGrammarPath,
+      CSON.readFileSync(jsGrammarPath),
+    );
     languageMode = new TreeSitterLanguageMode({ buffer, grammar });
     buffer.setLanguageMode(languageMode);
     await languageMode.ready;

@@ -3,7 +3,7 @@ const { Disposable } = require("@lumine-code/event-kit");
 // Experimental: Lets a package claim a paste before the editor turns the
 // clipboard into text.
 //
-// An instance of this class is always available as the `atom.pasteProviders`
+// An instance of this class is always available as the `lumine.pasteProviders`
 // global.
 //
 // This is a dispatch table, not a second clipboard. {Clipboard} owns what the
@@ -28,7 +28,7 @@ const { Disposable } = require("@lumine-code/event-kit");
 // Take over pasting an image, and leave every other paste alone:
 //
 // ```js
-// atom.pasteProviders.add({
+// lumine.pasteProviders.add({
 //   handlePaste({ target, clipboardData }) {
 //     if (target.type !== 'text-editor') return false
 //     const image = imageFrom(clipboardData)
@@ -98,7 +98,7 @@ module.exports = class PasteProviderRegistry {
   //   * `clipboard` (optional) The {Clipboard} to read the paste from. Inside a
   //     native paste event this is a DataTransfer-backed clipboard, so
   //     `readWithMetadata()` sees the metadata of the window that did the copy;
-  //     outside one it is `atom.clipboard`. Absent when the caller is not a
+  //     outside one it is `lumine.clipboard`. Absent when the caller is not a
   //     text editor.
   //   * `clipboardData` (optional) The event's `DataTransfer`, or `null` when
   //     the paste did not arrive as a native paste event. Custom formats and

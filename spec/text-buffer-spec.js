@@ -24,7 +24,7 @@ describe("TextBuffer", function () {
   beforeEach(function () {
     temp.track();
     jasmine.addCustomEqualityTester(require("@lumine-code/underscore-plus").isEqual);
-    // When running specs in Atom, setTimeout is spied on by default.
+    // When running specs in Lumine, setTimeout is spied on by default.
     jasmine.useRealClock?.();
   });
 
@@ -80,7 +80,7 @@ describe("TextBuffer", function () {
 
   describe("::destroy()", () =>
     it("clears the buffer's state", function (done) {
-      const filePath = temp.openSync("atom").path;
+      const filePath = temp.openSync("lumine").path;
       buffer = new TextBuffer();
       buffer.setPath(filePath);
       buffer.append("a");
@@ -2511,7 +2511,7 @@ three\
   // (Indeed, this test is tautological, since it manually generates the event.)
   xdescribe("::onWillThrowWatchError", () =>
     it("notifies observers when the file has a watch error", function () {
-      const filePath = temp.openSync("atom").path;
+      const filePath = temp.openSync("lumine").path;
       fs.writeFileSync(filePath, "");
 
       buffer = TextBuffer.loadSync(filePath);
@@ -4746,11 +4746,11 @@ describe("when a buffer is already open", () => {
       expect(buffer.getText()).toBe("tstat_set_curr_setpoint(HEAT_EN, new_tptr->heat_limit);");
     });
 
-    it("replaces atom/flight-manualatomio with $1", () => {
-      buffer.setText("atom/flight-manualatomio");
-      buffer.replace(/\.(atom)\./, "$1");
+    it("leaves unrelated text unchanged", () => {
+      buffer.setText("example/project-name");
+      buffer.replace(/\.(example)\./, "$1");
 
-      expect(buffer.getText()).toBe("atom/flight-manualatomio");
+      expect(buffer.getText()).toBe("example/project-name");
     });
   });
 });

@@ -5,7 +5,7 @@ const SerializationVersion = 1;
 
 // Extended: Associates listener functions with URIs from outside the application.
 //
-// An instance of this class is always available as the `atom.uriHandlers`
+// An instance of this class is always available as the `lumine.uriHandlers`
 // global.
 //
 // The global URI handler registry maps URIs to listener functions. URIs are mapped

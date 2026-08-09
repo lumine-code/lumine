@@ -1,11 +1,11 @@
-const atomPaths = require("../src/atom-paths");
+const luminePaths = require("../src/lumine-paths");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
 
 const appPathValues = new Map([
-  ["home", atom.app.getPath("home")],
-  ["userData", atom.app.getPath("userData")],
+  ["home", lumine.app.getPath("home")],
+  ["userData", lumine.app.getPath("userData")],
 ]);
 const app = {
   getPath(name) {
@@ -16,43 +16,39 @@ const app = {
   },
 };
 
-describe("AtomPaths", () => {
-  const portableAtomHomePath = path.join(atomPaths.getAppDirectory(), "..", ".atom");
+describe("LuminePaths", () => {
+  const portableLumineHomePath = path.join(luminePaths.getAppDirectory(), "..", ".lumine");
 
   afterEach(() => {
-    atomPaths.setAtomHome(app.getPath("home"));
+    luminePaths.setLumineHome(app.getPath("home"));
   });
 
-  describe("SetAtomHomePath", () => {
-    describe("when a portable .atom folder exists", () => {
+  describe("SetLumineHomePath", () => {
+    describe("when a portable .lumine folder exists", () => {
       beforeEach(() => {
         delete process.env.LUMINE_HOME;
-        if (!fs.existsSync(portableAtomHomePath)) {
-          fs.mkdirSync(portableAtomHomePath);
+        if (!fs.existsSync(portableLumineHomePath)) {
+          fs.mkdirSync(portableLumineHomePath);
         }
       });
 
       afterEach(() => {
         delete process.env.LUMINE_HOME;
-        fs.removeSync(portableAtomHomePath);
+        fs.removeSync(portableLumineHomePath);
       });
 
-      /**
-       * TODO: FAILING TEST - This test fails with the following output:
-       * Expected '/home/runner/.lumine' to equal '/home/runner/work/lumine/lumine/node_modules/electron/.atom'
-       */
-      xit("sets LUMINE_HOME to the portable .atom folder if it has permission", () => {
-        atomPaths.setAtomHome(app.getPath("home"));
-        expect(process.env.LUMINE_HOME).toEqual(portableAtomHomePath);
+      it("sets LUMINE_HOME to the portable .lumine folder if it has permission", () => {
+        luminePaths.setLumineHome(app.getPath("home"));
+        expect(process.env.LUMINE_HOME).toEqual(portableLumineHomePath);
       });
 
-      it("uses LUMINE_HOME if no write access to portable .atom folder", (done) => {
+      it("uses LUMINE_HOME if no write access to portable .lumine folder", (done) => {
         jasmine.filterByPlatform({ except: ["win32"] }, done);
 
-        const readOnlyPath = temp.mkdirSync("atom-path-spec-no-write-access");
+        const readOnlyPath = temp.mkdirSync("lumine-path-spec-no-write-access");
         process.env.LUMINE_HOME = readOnlyPath;
-        fs.chmodSync(portableAtomHomePath, 444);
-        atomPaths.setAtomHome(app.getPath("home"));
+        fs.chmodSync(portableLumineHomePath, 0o444);
+        luminePaths.setLumineHome(app.getPath("home"));
         expect(process.env.LUMINE_HOME).toEqual(readOnlyPath);
 
         done();
@@ -62,7 +58,7 @@ describe("AtomPaths", () => {
     describe("when a portable folder does not exist", () => {
       beforeEach(() => {
         delete process.env.LUMINE_HOME;
-        fs.removeSync(portableAtomHomePath);
+        fs.removeSync(portableLumineHomePath);
       });
 
       afterEach(() => {
@@ -70,38 +66,34 @@ describe("AtomPaths", () => {
       });
 
       it("leaves LUMINE_HOME unmodified if it was already set", () => {
-        const temporaryHome = temp.mkdirSync("atom-spec-setatomhomepath");
+        const temporaryHome = temp.mkdirSync("lumine-spec-setluminehomepath");
         process.env.LUMINE_HOME = temporaryHome;
-        atomPaths.setAtomHome(app.getPath("home"));
+        luminePaths.setLumineHome(app.getPath("home"));
         expect(process.env.LUMINE_HOME).toEqual(temporaryHome);
       });
 
-      /**
-       * TODO: FAILING TEST - This test fails with the following output:
-       * Expected '/home/runner/.lumine' to equal '/home/runner/work/lumine/lumine/node_modules/electron/.atom'
-       */
-      xit("sets LUMINE_HOME to a default location if not yet set", () => {
-        const expectedPath = path.join(app.getPath("home"), ".atom");
-        atomPaths.setAtomHome(app.getPath("home"));
+      it("sets LUMINE_HOME to a default location if not yet set", () => {
+        const expectedPath = path.join(app.getPath("home"), ".lumine");
+        luminePaths.setLumineHome(app.getPath("home"));
         expect(process.env.LUMINE_HOME).toEqual(expectedPath);
       });
     });
   });
 
   describe("setUserData", () => {
-    let tempAtomConfigPath = null;
-    let tempAtomHomePath = null;
+    let tempLumineConfigPath = null;
+    let tempLumineHomePath = null;
     let electronUserDataPath = null;
     let defaultElectronUserDataPath = null;
 
     beforeEach(() => {
       defaultElectronUserDataPath = app.getPath("userData");
       delete process.env.LUMINE_HOME;
-      tempAtomHomePath = temp.mkdirSync("atom-paths-specs-userdata-home");
-      tempAtomConfigPath = path.join(tempAtomHomePath, ".atom");
-      fs.mkdirSync(tempAtomConfigPath);
-      electronUserDataPath = path.join(tempAtomConfigPath, "electronUserData");
-      atomPaths.setAtomHome(tempAtomHomePath);
+      tempLumineHomePath = temp.mkdirSync("lumine-paths-specs-userdata-home");
+      tempLumineConfigPath = path.join(tempLumineHomePath, ".lumine");
+      fs.mkdirSync(tempLumineConfigPath);
+      electronUserDataPath = path.join(tempLumineConfigPath, "electronUserData");
+      luminePaths.setLumineHome(tempLumineHomePath);
     });
 
     afterEach(() => {
@@ -116,13 +108,9 @@ describe("AtomPaths", () => {
     });
 
     describe("when an electronUserData folder exists", () => {
-      /**
-       * TODO: FAILING TEST - This test fails with the following output:
-       * Expected '/tmp/atom-test-data2022824-26037-orl5og.n4n0b' to equal '/tmp/atom-paths-specs-userdata-home2022824-26084-14syl0h.bmd6/.atom/electronUserData'.
-       */
-      xit("sets userData path to the folder if it has permission", () => {
+      it("sets userData path to the folder if it has permission", () => {
         fs.mkdirSync(electronUserDataPath);
-        atomPaths.setUserData(app);
+        luminePaths.setUserData(app);
         expect(app.getPath("userData")).toEqual(electronUserDataPath);
       });
 
@@ -133,7 +121,7 @@ describe("AtomPaths", () => {
         // Octal modes: the decimal literals used previously produced modes
         // without owner write/execute, so the folder could never be cleaned up.
         fs.chmodSync(electronUserDataPath, 0o444);
-        atomPaths.setUserData(app);
+        luminePaths.setUserData(app);
         fs.chmodSync(electronUserDataPath, 0o755);
         expect(app.getPath("userData")).toEqual(defaultElectronUserDataPath);
 
@@ -143,7 +131,7 @@ describe("AtomPaths", () => {
 
     describe("when an electronUserDataPath folder does not exist", () => {
       it("leaves userData app path unchanged", () => {
-        atomPaths.setUserData(app);
+        luminePaths.setUserData(app);
         expect(app.getPath("userData")).toEqual(defaultElectronUserDataPath);
       });
     });

@@ -32,9 +32,9 @@ if (specDirectory) {
 exports.register = (jasmineEnv) => {
   jasmineEnv.beforeEach(function () {
     // Do not clobber recent project history
-    spyOn(Object.getPrototypeOf(atom.history), "saveState").and.returnValue(Promise.resolve());
+    spyOn(Object.getPrototypeOf(lumine.history), "saveState").and.returnValue(Promise.resolve());
 
-    atom.project.setPaths([specProjectPath]);
+    lumine.project.setPaths([specProjectPath]);
 
     // The package under test is not installed into the scratch LUMINE_HOME, so
     // its name is not in the package index and `activatePackage("<name>")`
@@ -42,23 +42,23 @@ exports.register = (jasmineEnv) => {
     // resolved. `resolveAvailablePackage` is the seam every name passes
     // through — `loadPackage` and the public `resolvePackagePath` both call
     // it, so faking anything shallower leaves `activatePackage` unfixed.
-    const resolveAvailablePackage = atom.packages.resolveAvailablePackage.bind(atom.packages);
-    spyOn(atom.packages, "resolveAvailablePackage").and.callFake(function (nameOrPath) {
+    const resolveAvailablePackage = lumine.packages.resolveAvailablePackage.bind(lumine.packages);
+    spyOn(lumine.packages, "resolveAvailablePackage").and.callFake(function (nameOrPath) {
       if (specPackageName && nameOrPath === specPackageName) {
         return resolveAvailablePackage(specPackagePath);
       }
       return resolveAvailablePackage(nameOrPath);
     });
 
-    // prevent specs from modifying Atom's menus
-    spyOn(atom.menu, "sendToBrowserProcess");
+    // Prevent specs from modifying Lumine's menus.
+    spyOn(lumine.menu, "sendToBrowserProcess");
 
     // reset config before each spec
-    atom.config.set("core.destroyEmptyPanes", false);
-    atom.config.set("editor.fontFamily", "Courier");
-    atom.config.set("editor.fontSize", 16);
-    atom.config.set("language.autoIndent", false);
-    atom.config.set("core.disabledPackages", [
+    lumine.config.set("core.destroyEmptyPanes", false);
+    lumine.config.set("editor.fontFamily", "Courier");
+    lumine.config.set("editor.fontSize", 16);
+    lumine.config.set("language.autoIndent", false);
+    lumine.config.set("core.disabledPackages", [
       "package-that-throws-an-exception",
       "package-with-broken-package-json",
       "package-with-broken-keymap",

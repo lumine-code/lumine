@@ -9,10 +9,10 @@ const sandbox = require("sinon").createSandbox();
 const dedent = require("dedent");
 const { BrowserWindow, dialog, webContents } = require("electron");
 
-const AtomWindow = require("../../src/atom-window");
+const LumineWindow = require("../../src/lumine-window");
 const { emitterEventPromise } = require("../helpers/async-spec-helpers");
 
-describe("AtomWindow", function () {
+describe("LumineWindow", function () {
   let sinon, app, service;
 
   beforeEach(function () {
@@ -26,7 +26,7 @@ describe("AtomWindow", function () {
   });
 
   describe("creating a real window", function () {
-    let resourcePath, windowInitializationScript, atomHome;
+    let resourcePath, windowInitializationScript, lumineHome;
     let original;
 
     beforeEach(async function () {
@@ -42,7 +42,7 @@ describe("AtomWindow", function () {
         path.join(resourcePath, "src/initialize-application-window"),
       );
 
-      atomHome = await new Promise((resolve, reject) => {
+      lumineHome = await new Promise((resolve, reject) => {
         temp.mkdir("launch-", (err, rootPath) => {
           if (err) {
             reject(err);
@@ -59,7 +59,7 @@ describe("AtomWindow", function () {
               showOnStartup: false
         `;
 
-        fs.writeFile(path.join(atomHome, "config.cson"), config, { encoding: "utf8" }, (err) => {
+        fs.writeFile(path.join(lumineHome, "config.cson"), config, { encoding: "utf8" }, (err) => {
           if (err) {
             reject(err);
           } else {
@@ -68,7 +68,7 @@ describe("AtomWindow", function () {
         });
       });
 
-      process.env.LUMINE_HOME = atomHome;
+      process.env.LUMINE_HOME = lumineHome;
       process.env.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT = "true";
     });
 
@@ -79,7 +79,7 @@ describe("AtomWindow", function () {
     });
 
     it("creates a real, properly configured BrowserWindow", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         resourcePath,
         windowInitializationScript,
         headless: true,
@@ -94,7 +94,7 @@ describe("AtomWindow", function () {
       assert.strictEqual(settings.userSettings, "stub-config");
       assert.strictEqual(settings.extra, "extra-load-setting");
       assert.strictEqual(settings.resourcePath, resourcePath);
-      assert.strictEqual(settings.atomHome, atomHome);
+      assert.strictEqual(settings.lumineHome, lumineHome);
       assert.isFalse(settings.devMode);
       assert.isFalse(settings.safeMode);
       assert.isFalse(settings.clearWindowState);
@@ -114,7 +114,7 @@ describe("AtomWindow", function () {
 
   describe("launch behavior", function () {
     it("sets the Lumine window icon for source launches on Windows", function () {
-      const { browserWindow } = new AtomWindow(app, service, {
+      const { browserWindow } = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
 
@@ -127,12 +127,12 @@ describe("AtomWindow", function () {
     it('sets frame to "false" for a hidden title bar on non-spec windows', function () {
       app.config["core.titleBar"] = "hidden";
 
-      const { browserWindow: w0 } = new AtomWindow(app, service, {
+      const { browserWindow: w0 } = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       assert.isFalse(w0.options.frame);
 
-      const { browserWindow: w1 } = new AtomWindow(app, service, {
+      const { browserWindow: w1 } = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         isSpec: true,
       });
@@ -157,7 +157,7 @@ describe("AtomWindow", function () {
         },
       ];
 
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -171,7 +171,7 @@ describe("AtomWindow", function () {
     });
 
     it("does not open an initial null location", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen: [{ pathToOpen: null }],
       });
@@ -184,7 +184,7 @@ describe("AtomWindow", function () {
     });
 
     it("does not open initial locations in spec mode", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen: [{ pathToOpen: "file.txt" }],
         isSpec: true,
@@ -198,7 +198,7 @@ describe("AtomWindow", function () {
     });
 
     it("focuses the webView for specs", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         isSpec: true,
       });
@@ -209,7 +209,7 @@ describe("AtomWindow", function () {
 
   describe("sendToRenderer", function () {
     it("relays window state events to the renderer", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
 
@@ -220,7 +220,7 @@ describe("AtomWindow", function () {
     });
 
     it("drops messages once the window or its renderer is gone", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.browserWindow.destroy();
@@ -235,7 +235,7 @@ describe("AtomWindow", function () {
     // The window and its webContents both outlive the renderer's main frame, so
     // these two are the only signal that there is nothing left to send to.
     it("drops messages once the main frame is disposed", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.browserWindow.webContents.mainFrame.destroyed = true;
@@ -252,7 +252,7 @@ describe("AtomWindow", function () {
     // silently voids every main→renderer message for an otherwise healthy
     // window — the whole File menu, drag-and-drop, and the Open dialog.
     it("still delivers messages when the main frame is merely detached", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.browserWindow.webContents.mainFrame.detached = true;
@@ -280,7 +280,7 @@ describe("AtomWindow", function () {
     // crashes is what makes "The editor has crashed" appear on a normal quit
     // or restart.
     it("stays quiet when the renderer merely exited or was killed", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
 
@@ -292,7 +292,7 @@ describe("AtomWindow", function () {
     });
 
     it("reports a real crash", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
 
@@ -309,7 +309,7 @@ describe("AtomWindow", function () {
     });
 
     it("does not interrupt a window that is already unloading", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.unloading = true;
@@ -321,7 +321,7 @@ describe("AtomWindow", function () {
 
     it("does not interrupt a quit in progress", async function () {
       app.quitting = true;
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
 
@@ -333,7 +333,7 @@ describe("AtomWindow", function () {
 
   describe("reload", function () {
     it("prepares to unload without waiting for package deactivation", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.prepareToUnload = sinon.stub().resolves(true);
@@ -346,7 +346,7 @@ describe("AtomWindow", function () {
     });
 
     it("can reload directly when a replacement window failed after unloading", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.prepareToUnload = sinon.stub().resolves(true);
@@ -359,7 +359,7 @@ describe("AtomWindow", function () {
     });
 
     it("leaves paths openable when the renderer refuses to unload", async function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       w.resolveLoadedPromise();
@@ -385,7 +385,7 @@ describe("AtomWindow", function () {
     it("returns false when no web contents are focused", function () {
       sinon.stub(webContents, "getFocusedWebContents").returns(null);
 
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
 
@@ -393,7 +393,7 @@ describe("AtomWindow", function () {
     });
 
     it("returns true when this window's web contents are focused", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       sinon.stub(webContents, "getFocusedWebContents").returns(w.browserWindow.webContents);
@@ -402,7 +402,7 @@ describe("AtomWindow", function () {
     });
 
     it("returns true when a webview owned by this window is focused", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       const focusedWebContents = {
@@ -414,7 +414,7 @@ describe("AtomWindow", function () {
     });
 
     it("returns false when another window owns the focused web contents", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       const otherWindow = new StubBrowserWindow({});
@@ -428,7 +428,7 @@ describe("AtomWindow", function () {
 
   describe("project root tracking", function () {
     it("knows when it has no roots", function () {
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       assert.isFalse(w.hasProjectPaths());
@@ -443,7 +443,7 @@ describe("AtomWindow", function () {
         { pathToOpen: null },
       ];
 
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -463,7 +463,7 @@ describe("AtomWindow", function () {
         { pathToOpen: "new-file.txt" },
       ];
 
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
       assert.deepEqual(w.projectRoots, []);
@@ -477,7 +477,7 @@ describe("AtomWindow", function () {
     it("is updated by setProjectRoots", function () {
       const locationsToOpen = [{ pathToOpen: "directory0", exists: true, isDirectory: true }];
 
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -500,7 +500,7 @@ describe("AtomWindow", function () {
         { pathToOpen: null },
       ];
 
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -512,7 +512,7 @@ describe("AtomWindow", function () {
         { pathToOpen: "directory0", exists: true, isDirectory: true },
         { pathToOpen: "directory1", exists: true, isDirectory: true },
       ];
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -526,7 +526,7 @@ describe("AtomWindow", function () {
         { pathToOpen: "directory0", exists: true, isDirectory: true },
         { pathToOpen: "directory1", exists: true, isDirectory: true },
       ];
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -566,7 +566,7 @@ describe("AtomWindow", function () {
         { pathToOpen: "directory0", exists: true, isDirectory: true },
         { pathToOpen: "directory1", exists: true, isDirectory: true },
       ];
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -590,7 +590,7 @@ describe("AtomWindow", function () {
         { pathToOpen: "directory0", exists: true, isDirectory: true },
         { pathToOpen: "directory1", exists: true, isDirectory: true },
       ];
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -609,7 +609,7 @@ describe("AtomWindow", function () {
         { pathToOpen: "directory0", exists: true, isDirectory: true },
         { pathToOpen: "directory1", exists: true, isDirectory: true },
       ];
-      const w = new AtomWindow(app, service, {
+      const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
         locationsToOpen,
       });
@@ -652,15 +652,15 @@ class StubApplication {
     this.windows = [];
   }
 
-  registerAtomWindow(atomWindow) {
-    this.windows.push(atomWindow);
-    global.atomApplication = this;
+  registerLumineWindow(lumineWindow) {
+    this.windows.push(lumineWindow);
+    global.lumineApplication = this;
   }
 
-  atomWindowForSender(sender) {
-    const atomWindow = this.windows.find((window) => window.browserWindow.webContents === sender);
-    if (!atomWindow) throw new Error("IPC sender is not a registered Lumine window");
-    return atomWindow;
+  lumineWindowForSender(sender) {
+    const lumineWindow = this.windows.find((window) => window.browserWindow.webContents === sender);
+    if (!lumineWindow) throw new Error("IPC sender is not a registered Lumine window");
+    return lumineWindow;
   }
 
   getAllWindows() {
@@ -694,7 +694,7 @@ class StubBrowserWindow extends EventEmitter {
     };
     // IPC is gated on the main frame's liveness even though it leaves through
     // `webContents.send`: a disposed render frame outlives both `isDestroyed()`
-    // checks above, so `mainFrame.isDestroyed()` is the only place AtomWindow
+    // checks above, so `mainFrame.isDestroyed()` is the only place LumineWindow
     // can tell there is no renderer left to send to. Its `detached` flag is
     // NOT part of that gate — it can stay stale-true on a healthy window after
     // a crash-and-reload.

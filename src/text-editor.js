@@ -41,12 +41,12 @@ const DEFAULT_NON_WORD_CHARACTERS = "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…";
 // ## Accessing TextEditor Instances
 //
 // The easiest way to get hold of `TextEditor` objects is by registering a callback
-// with `::observeTextEditors` on the `atom.workspace` global. Your callback will
+// with `::observeTextEditors` on the `lumine.workspace` global. Your callback will
 // then be called with all current editor instances and also when any editor is
 // created in the future.
 //
 // ```js
-// atom.workspace.observeTextEditors(editor => {
+// lumine.workspace.observeTextEditors(editor => {
 //   editor.insertText('Hello World')
 // })
 // ```
@@ -102,13 +102,13 @@ module.exports = class TextEditor {
     return item.element || item;
   }
 
-  static deserialize(state, atomEnvironment) {
+  static deserialize(state, lumineEnvironment) {
     if (state.version !== SERIALIZATION_VERSION) return null;
 
     let bufferId = state.tokenizedBuffer ? state.tokenizedBuffer.bufferId : state.bufferId;
 
     try {
-      state.buffer = atomEnvironment.project.bufferForIdSync(bufferId);
+      state.buffer = lumineEnvironment.project.bufferForIdSync(bufferId);
       if (!state.buffer) return null;
     } catch (error) {
       if (error.syscall === "read") {
@@ -118,7 +118,7 @@ module.exports = class TextEditor {
       }
     }
 
-    state.assert = atomEnvironment.assert.bind(atomEnvironment);
+    state.assert = lumineEnvironment.assert.bind(lumineEnvironment);
 
     // Semantics of the readOnly flag have changed since its introduction.
     // Only respect readOnly2, which has been set with the current readOnly semantics.
@@ -133,7 +133,7 @@ module.exports = class TextEditor {
     if (state.registered) {
       // `registered` serializes the registry role; older states stored `true`.
       const role = state.registered === true ? "document" : state.registered;
-      const disposable = atomEnvironment.textEditors.add(editor, { role });
+      const disposable = lumineEnvironment.textEditors.add(editor, { role });
       editor.onDidDestroy(() => disposable.dispose());
     }
     return editor;
@@ -229,11 +229,11 @@ module.exports = class TextEditor {
     } else {
       this.buffer = new TextBuffer({
         shouldDestroyOnFileDelete() {
-          return atom.config.get("core.closeDeletedFileTabs");
+          return lumine.config.get("core.closeDeletedFileTabs");
         },
       });
       this.buffer.setLanguageMode(
-        new TextMateLanguageMode({ buffer: this.buffer, config: atom.config }),
+        new TextMateLanguageMode({ buffer: this.buffer, config: lumine.config }),
       );
     }
 
@@ -1401,7 +1401,7 @@ module.exports = class TextEditor {
     // what distinguishes this one from the others sharing its file name \u2014 so
     // the workspace computes them all together and hands them out. An editor
     // the workspace does not hold has nothing to be distinguished from.
-    const longTitle = atom.workspace?.getLongTitles?.().get(this);
+    const longTitle = lumine.workspace?.getLongTitles?.().get(this);
     return longTitle ?? this.getFileName();
   }
 
@@ -1566,7 +1566,7 @@ module.exports = class TextEditor {
   // Determine whether the user should be prompted to save before closing
   // this editor.
   shouldPromptToSave({ windowCloseRequested, projectHasPaths } = {}) {
-    if (windowCloseRequested && projectHasPaths && atom.stateStore.isConnected()) {
+    if (windowCloseRequested && projectHasPaths && lumine.stateStore.isConnected()) {
       return this.buffer.isInConflict();
     } else {
       // Normally we only prompt when the buffer has unsaved changes. When
@@ -1575,7 +1575,7 @@ module.exports = class TextEditor {
       // time), so the user can save it back rather than lose it silently.
       const promptForDeleted =
         this.isDeleted() &&
-        atom.config.get("core.promptOnCloseDeletedFile", {
+        lumine.config.get("core.promptOnCloseDeletedFile", {
           scope: this.getRootScopeDescriptor(),
         });
       return (this.isModified() || promptForDeleted) && !this.buffer.hasMultipleEditors();
@@ -2521,7 +2521,7 @@ module.exports = class TextEditor {
   // the editor is read-only, require an explicit opt-in option to proceed (`bypassReadOnly`) or throw an Error.
   ensureWritable(methodName, opts) {
     if (!opts.bypassReadOnly && this.isReadOnly()) {
-      if (atom.window.isDevMode() || atom.window.isSpecMode()) {
+      if (lumine.window.isDevMode() || lumine.window.isSpecMode()) {
         const e = new Error("Attempt to mutate a read-only TextEditor");
         e.detail =
           `Your package is attempting to call ${methodName} on an editor that has been marked read-only. ` +
@@ -4483,7 +4483,7 @@ module.exports = class TextEditor {
   // * `grammar` {Grammar}
   setGrammar(grammar) {
     const buffer = this.getBuffer();
-    buffer.setLanguageMode(atom.grammars.languageModeForGrammarAndBuffer(grammar, buffer));
+    buffer.setLanguageMode(lumine.grammars.languageModeForGrammarAndBuffer(grammar, buffer));
   }
 
   // Experimental: Get a notification when async tokenization is completed.
@@ -5170,7 +5170,7 @@ module.exports = class TextEditor {
   // Returns a {Boolean}.
   getSmoothScrolling() {
     if (this.smoothScrolling != null) return this.smoothScrolling;
-    return atom.config.get("editor.smoothScrolling");
+    return lumine.config.get("editor.smoothScrolling");
   }
 
   // Experimental: How gradually does the editor glide toward the target
@@ -5179,7 +5179,7 @@ module.exports = class TextEditor {
   // Returns a positive {Number}.
   getWheelSmoothness() {
     if (this.wheelSmoothness != null) return this.wheelSmoothness;
-    return atom.config.get("editor.wheelSmoothness");
+    return lumine.config.get("editor.wheelSmoothness");
   }
 
   // Experimental: How gradually does the editor glide when scrolling via the
@@ -5188,7 +5188,7 @@ module.exports = class TextEditor {
   // Returns a positive {Number}.
   getCommandSmoothness() {
     if (this.commandSmoothness != null) return this.commandSmoothness;
-    return atom.config.get("editor.commandSmoothness");
+    return lumine.config.get("editor.commandSmoothness");
   }
 
   // Experimental: Speed multiplier applied to wheel scrolling while holding

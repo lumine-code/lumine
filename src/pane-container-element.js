@@ -39,10 +39,10 @@ class PaneContainerElement extends HTMLElement {
   }
 }
 
-window.customElements.define("atom-pane-container", PaneContainerElement);
+window.customElements.define("lumine-pane-container", PaneContainerElement);
 
 function createPaneContainerElement() {
-  return document.createElement("atom-pane-container");
+  return document.createElement("lumine-pane-container");
 }
 
 module.exports = {

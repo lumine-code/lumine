@@ -27,18 +27,18 @@ let currentLegacyContext = undefined;
 const realSetTimeout = window.setTimeout.bind(window);
 const realClearTimeout = window.clearTimeout.bind(window);
 
-module.exports = function ({ logFile, headless, testPaths, buildAtomEnvironment }) {
+module.exports = function ({ logFile, headless, testPaths, buildLumineEnvironment }) {
   // Load Jasmine
   require("../helpers/jasmine-singleton");
   defineJasmineHelpersOnWindow(jasmine.getEnv());
 
-  // Build Atom Environment
-  const { atomHome, applicationDelegate } = require("../helpers/build-atom-environment");
-  window.atom = buildAtomEnvironment({
+  // Build the Lumine environment.
+  const { lumineHome, applicationDelegate } = require("../helpers/build-lumine-environment");
+  window.lumine = buildLumineEnvironment({
     applicationDelegate,
     window,
     document,
-    configDirPath: atomHome,
+    configDirPath: lumineHome,
     enablePersistence: false,
   });
 
@@ -664,8 +664,8 @@ const buildReporter = ({ logFile, headless }) => {
   if (headless) {
     return buildConsoleReporter(logFile);
   } else {
-    const AtomReporter = require("../helpers/jasmine-atom-reporter.js");
-    return new AtomReporter();
+    const LumineReporter = require("../helpers/jasmine-lumine-reporter.js");
+    return new LumineReporter();
   }
 };
 

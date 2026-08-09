@@ -7,12 +7,12 @@ const fs = require("@lumine-code/fs-plus");
 const electron = require("electron");
 const sandbox = require("sinon").createSandbox();
 
-const AtomApplication = require("../../src/atom-application");
+const LumineApplication = require("../../src/lumine-application");
 const parseCommandLine = require("../../src/parse-command-line");
 const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
 
-// These tests use a utility class called LaunchScenario, defined below, to manipulate AtomApplication instances that
-// (1) are stubbed to only simulate AtomWindow creation and (2) allow you to use a shorthand notation to assert the
+// These tests use a utility class called LaunchScenario, defined below, to manipulate LumineApplication instances that
+// (1) are stubbed to only simulate LumineWindow creation and (2) allow you to use a shorthand notation to assert the
 // application state after certain launch actions.
 //
 // Each scenario instance has access to a small set of directories and files created within a dedicated temporary
@@ -25,7 +25,7 @@ const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec
 //
 // To create additional windows, call `await scenario.open({})` with similar arguments. `LaunchScenario::open()` returns
 // a Promise that resolves to the opened or re-used StubWindows. The one exception is if `urlsToOpen` are provided in the open
-// arguments; then it resolves to an Array of StubWindows, because AtomApplication processes each URL individually.
+// arguments; then it resolves to an Array of StubWindows, because LumineApplication processes each URL individually.
 //
 // To ensure that the expected windows have been created, call `await scenario.assert('')` with a string specifying the
 // expected window contents. The specification shorthand language is as follows:
@@ -41,7 +41,7 @@ const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec
 //   two project roots, `./b` and `./c`, and one open editor on `./b/2.md`. The windows are listed in their expected
 //   creation order.
 
-describe("AtomApplication", function () {
+describe("LumineApplication", function () {
   let scenario, sinon, originalDevMode;
 
   beforeEach(async function () {
@@ -76,7 +76,7 @@ describe("AtomApplication", function () {
       });
 
       // This is also the case when a user clicks on a folder in their file manager
-      // (or, on macOS, drags the folder to Atom in their doc)
+      // (or, on macOS, drags the folder to Lumine in their dock)
       it("opens a directory", async function () {
         await scenario.open(parseCommandLine(["a"]));
         await scenario.assert("[a _]");
@@ -741,7 +741,7 @@ describe("AtomApplication", function () {
         app = scenario.getApplication(0);
         app.removeWindow(w);
         sinon.stub(app, "promptForPathToOpen");
-        global.atom = { workspace: { getActiveTextEditor() {} } };
+        global.lumine = { workspace: { getActiveTextEditor() {} } };
       });
 
       it("opens a new file", function () {
@@ -808,18 +808,18 @@ describe("AtomApplication", function () {
     });
 
     it("creates a new application when no socket is present", async function () {
-      const app0 = await AtomApplication.open({ createApplication, version });
+      const app0 = await LumineApplication.open({ createApplication, version });
       await app0.deleteSocketSecretFile();
 
-      const app1 = await AtomApplication.open({ createApplication, version });
+      const app1 = await LumineApplication.open({ createApplication, version });
       assert.isNotNull(app1);
       assert.notStrictEqual(app0, app1);
     });
 
     it("creates a new application for spec windows", async function () {
-      const app0 = await AtomApplication.open({ createApplication, version });
+      const app0 = await LumineApplication.open({ createApplication, version });
 
-      const app1 = await AtomApplication.open({
+      const app1 = await LumineApplication.open({
         createApplication,
         version,
         ...parseCommandLine(["--test", "a"]),
@@ -829,10 +829,10 @@ describe("AtomApplication", function () {
     });
 
     it("sends a request to an existing application when a socket is present", async function () {
-      const app0 = await AtomApplication.open({ createApplication, version });
+      const app0 = await LumineApplication.open({ createApplication, version });
       assert.lengthOf(app0.getAllWindows(), 1);
 
-      const app1 = await AtomApplication.open({
+      const app1 = await LumineApplication.open({
         createApplication,
         version,
         ...parseCommandLine(["--new-window"]),
@@ -860,7 +860,7 @@ describe("AtomApplication", function () {
         contents.isDestroyed = () => false;
         window.browserWindow.isDestroyed = () => false;
         window.id = index + 1;
-        app.registerAtomWindow(window);
+        app.registerLumineWindow(window);
       });
       sinon.spy(app, "openPaths");
       sinon
@@ -900,19 +900,19 @@ describe("AtomApplication", function () {
         },
       };
 
-      app.registerAtomWindow(registeredWindow);
-      assert.strictEqual(app.atomWindowForSender(sender), registeredWindow);
+      app.registerLumineWindow(registeredWindow);
+      assert.strictEqual(app.lumineWindowForSender(sender), registeredWindow);
       assert.throws(
-        () => app.atomWindowForSender({ id: sender.id, isDestroyed: () => false }),
+        () => app.lumineWindowForSender({ id: sender.id, isDestroyed: () => false }),
         /not a registered Lumine window/,
       );
 
       sender.isDestroyed = () => true;
-      assert.throws(() => app.atomWindowForSender(sender), /not a registered Lumine window/);
+      assert.throws(() => app.lumineWindowForSender(sender), /not a registered Lumine window/);
 
       sender.isDestroyed = () => false;
-      app.unregisterAtomWindow(registeredWindow);
-      assert.throws(() => app.atomWindowForSender(sender), /not a registered Lumine window/);
+      app.unregisterLumineWindow(registeredWindow);
+      assert.throws(() => app.lumineWindowForSender(sender), /not a registered Lumine window/);
     });
 
     it("bootstraps only serializable settings, cached metadata, and one-shot markers", function () {
@@ -922,7 +922,7 @@ describe("AtomApplication", function () {
       });
       w1.consumeStartupMarkers = sinon.stub().returns({ start: 1, ready: 2 });
 
-      const result = AtomApplication.handleWindowBootstrap({
+      const result = LumineApplication.handleWindowBootstrap({
         sender: w1.browserWindow.webContents,
       });
 
@@ -961,7 +961,7 @@ describe("AtomApplication", function () {
       w1.toggleDevTools = contents.toggleDevTools;
 
       const event = { sender: contents };
-      assert.deepEqual(await AtomApplication.handleWindowAction(event, "getState"), {
+      assert.deepEqual(await LumineApplication.handleWindowAction(event, "getState"), {
         id: w1.id,
         position: { x: 10, y: 20 },
         size: { width: 800, height: 600 },
@@ -969,30 +969,30 @@ describe("AtomApplication", function () {
         fullScreen: false,
         visible: true,
       });
-      assert.deepEqual(await AtomApplication.handleWindowAction(event, "getSize"), {
+      assert.deepEqual(await LumineApplication.handleWindowAction(event, "getSize"), {
         width: 800,
         height: 600,
       });
-      assert.deepEqual(await AtomApplication.handleWindowAction(event, "getPosition"), {
+      assert.deepEqual(await LumineApplication.handleWindowAction(event, "getPosition"), {
         x: 10,
         y: 20,
       });
 
-      await AtomApplication.handleWindowAction(event, "setSize", 900, 700);
-      await AtomApplication.handleWindowAction(event, "setPosition", 30, 40);
-      await AtomApplication.handleWindowAction(event, "center");
-      await AtomApplication.handleWindowAction(event, "focus");
-      await AtomApplication.handleWindowAction(event, "hide");
-      await AtomApplication.handleWindowAction(event, "minimize");
-      await AtomApplication.handleWindowAction(event, "maximize");
-      await AtomApplication.handleWindowAction(event, "unmaximize");
-      await AtomApplication.handleWindowAction(event, "setFullScreen", true);
-      await AtomApplication.handleWindowAction(event, "downloadURL", "https://example.test/a");
-      await AtomApplication.handleWindowAction(event, "setAutoHideMenuBar", true);
-      await AtomApplication.handleWindowAction(event, "setMenuBarVisibility", false);
-      await AtomApplication.handleWindowAction(event, "openDevTools");
-      await AtomApplication.handleWindowAction(event, "closeDevTools");
-      await AtomApplication.handleWindowAction(event, "toggleDevTools");
+      await LumineApplication.handleWindowAction(event, "setSize", 900, 700);
+      await LumineApplication.handleWindowAction(event, "setPosition", 30, 40);
+      await LumineApplication.handleWindowAction(event, "center");
+      await LumineApplication.handleWindowAction(event, "focus");
+      await LumineApplication.handleWindowAction(event, "hide");
+      await LumineApplication.handleWindowAction(event, "minimize");
+      await LumineApplication.handleWindowAction(event, "maximize");
+      await LumineApplication.handleWindowAction(event, "unmaximize");
+      await LumineApplication.handleWindowAction(event, "setFullScreen", true);
+      await LumineApplication.handleWindowAction(event, "downloadURL", "https://example.test/a");
+      await LumineApplication.handleWindowAction(event, "setAutoHideMenuBar", true);
+      await LumineApplication.handleWindowAction(event, "setMenuBarVisibility", false);
+      await LumineApplication.handleWindowAction(event, "openDevTools");
+      await LumineApplication.handleWindowAction(event, "closeDevTools");
+      await LumineApplication.handleWindowAction(event, "toggleDevTools");
 
       assert.isTrue(window.setSize.calledWithExactly(900, 700));
       assert.isTrue(window.setPosition.calledWithExactly(30, 40));
@@ -1010,11 +1010,11 @@ describe("AtomApplication", function () {
       assert.isTrue(contents.closeDevTools.calledOnce);
       assert.isTrue(contents.toggleDevTools.calledOnce);
 
-      await AtomApplication.handleWindowAction(event, "setSize", -1, 10).then(
+      await LumineApplication.handleWindowAction(event, "setSize", -1, 10).then(
         () => assert.fail("invalid size was accepted"),
         (error) => assert.match(error.message, /positive integer/),
       );
-      await AtomApplication.handleWindowAction(event, "not-allowlisted").then(
+      await LumineApplication.handleWindowAction(event, "not-allowlisted").then(
         () => assert.fail("unknown window action was accepted"),
         (error) => assert.match(error.message, /Unsupported window action/),
       );
@@ -1022,7 +1022,7 @@ describe("AtomApplication", function () {
 
     it("broadcasts structured data only to other live registered windows", function () {
       const payload = { sourceWindowId: w1.id, targetWindowId: w2.id, item: "tab" };
-      AtomApplication.handleWindowBroadcast(
+      LumineApplication.handleWindowBroadcast(
         { sender: w1.browserWindow.webContents },
         "tabs:item-dropped",
         payload,
@@ -1037,7 +1037,7 @@ describe("AtomApplication", function () {
       );
       assert.throws(
         () =>
-          AtomApplication.handleWindowBroadcast(
+          LumineApplication.handleWindowBroadcast(
             { sender: w1.browserWindow.webContents },
             "",
             payload,
@@ -1048,11 +1048,11 @@ describe("AtomApplication", function () {
 
     it("rejects unknown application and safe-storage operations", async function () {
       const event = { sender: w1.browserWindow.webContents };
-      await AtomApplication.handleAppAction(event, "not-allowlisted").then(
+      await LumineApplication.handleAppAction(event, "not-allowlisted").then(
         () => assert.fail("unknown application action was accepted"),
         (error) => assert.match(error.message, /Unsupported application action/),
       );
-      await AtomApplication.handleSafeStorageAction(event, "not-allowlisted").then(
+      await LumineApplication.handleSafeStorageAction(event, "not-allowlisted").then(
         () => assert.fail("unknown safe-storage action was accepted"),
         (error) => assert.match(error.message, /Unsupported safe-storage action/),
       );
@@ -1063,9 +1063,9 @@ describe("AtomApplication", function () {
     // * choosing "open in new window" when adding a folder that has previously saved state
     // * drag and drop
     // * deprecated call links in deprecation-cop
-    // * other direct callers of `atom.app.openWindow()`
+    // * other direct callers of `lumine.app.openWindow()`
     it('"open" opens a fixed path by the standard opening rules', async function () {
-      sinon.stub(app, "atomWindowForEvent").callsFake(() => w1);
+      sinon.stub(app, "lumineWindowForEvent").callsFake(() => w1);
 
       electron.ipcMain.emit("open", {}, { pathsToOpen: [scenario.convertEditorPath("a/1.md")] });
       await app.openPaths.lastCall.returnValue;
@@ -1109,14 +1109,14 @@ describe("AtomApplication", function () {
     });
 
     it('"open" without any option open the prompt for selecting a path', async function () {
-      sinon.stub(app, "atomWindowForEvent").callsFake(() => w1);
+      sinon.stub(app, "lumineWindowForEvent").callsFake(() => w1);
 
       electron.ipcMain.emit("open", {});
       assert.strictEqual(app.promptForPath.lastCall.args[0], "all");
     });
 
     it('"open-chosen-any" opens a file in the sending window', async function () {
-      sinon.stub(app, "atomWindowForEvent").callsFake(() => w2);
+      sinon.stub(app, "lumineWindowForEvent").callsFake(() => w2);
 
       electron.ipcMain.emit("open-chosen-any", {}, scenario.convertEditorPath("a/1.md"));
       await conditionPromise(() => app.openPaths.called);
@@ -1128,7 +1128,7 @@ describe("AtomApplication", function () {
     });
 
     it('"open-chosen-any" opens a directory by the standard opening rules', async function () {
-      sinon.stub(app, "atomWindowForEvent").callsFake(() => w1);
+      sinon.stub(app, "lumineWindowForEvent").callsFake(() => w1);
 
       // Open unrecognized directory in empty window
       electron.ipcMain.emit("open-chosen-any", {}, scenario.convertRootPath("c"));
@@ -1159,7 +1159,7 @@ describe("AtomApplication", function () {
     });
 
     it('"open-chosen-file" opens a file chooser and opens the chosen file in the sending window', async function () {
-      sinon.stub(app, "atomWindowForEvent").callsFake(() => w0);
+      sinon.stub(app, "lumineWindowForEvent").callsFake(() => w0);
 
       electron.ipcMain.emit("open-chosen-file", {}, scenario.convertEditorPath("b/2.md"));
       await app.openPaths.lastCall.returnValue;
@@ -1170,7 +1170,7 @@ describe("AtomApplication", function () {
     });
 
     it('"open-chosen-folder" opens a directory chooser and opens the chosen directory', async function () {
-      sinon.stub(app, "atomWindowForEvent").callsFake(() => w0);
+      sinon.stub(app, "lumineWindowForEvent").callsFake(() => w0);
 
       electron.ipcMain.emit("open-chosen-folder", {}, scenario.convertRootPath("c"));
       await app.openPaths.lastCall.returnValue;
@@ -1548,7 +1548,7 @@ class StubWindow extends EventEmitter {
     this.reload = sinon.stub().resolves();
     this.close = () => {
       // A real BrowserWindow emits "closed" when it closes. Emit it here too so
-      // AtomApplication#addWindow's teardown runs and disposes per-window
+      // LumineApplication#addWindow's teardown runs and disposes per-window
       // subscriptions (e.g. the macOS scrollbar-style listener) rather than
       // leaking them onto the module-level emitter across tests.
       this.browserWindow.emit("closed");
@@ -1663,12 +1663,12 @@ class LaunchScenario {
     this.applications = new Set();
     this.windows = new Set();
     this.root = null;
-    this.atomHome = null;
+    this.lumineHome = null;
     this.projectRootPool = new Map();
     this.filePathPool = new Map();
 
     this.killedPids = [];
-    this.originalAtomHome = null;
+    this.originalLumineHome = null;
   }
 
   async init() {
@@ -1686,9 +1686,9 @@ class LaunchScenario {
       });
     });
 
-    this.atomHome = path.join(this.root, ".atom");
+    this.lumineHome = path.join(this.root, ".lumine");
     await new Promise((resolve, reject) => {
-      fs.makeTree(this.atomHome, (err) => {
+      fs.makeTree(this.lumineHome, (err) => {
         if (err) {
           reject(err);
         } else {
@@ -1696,8 +1696,8 @@ class LaunchScenario {
         }
       });
     });
-    this.originalAtomHome = process.env.LUMINE_HOME;
-    process.env.LUMINE_HOME = this.atomHome;
+    this.originalLumineHome = process.env.LUMINE_HOME;
+    process.env.LUMINE_HOME = this.lumineHome;
 
     await Promise.all(
       ["a", "b", "c", "d"].map(
@@ -1906,15 +1906,15 @@ class LaunchScenario {
   async destroy() {
     await Promise.all(Array.from(this.applications, (app) => app.destroy()));
 
-    if (this.originalAtomHome) {
-      process.env.LUMINE_HOME = this.originalAtomHome;
+    if (this.originalLumineHome) {
+      process.env.LUMINE_HOME = this.originalLumineHome;
     }
   }
 
   addApplication(options = {}) {
-    const app = new AtomApplication({
+    const app = new LumineApplication({
       resourcePath: path.resolve(__dirname, "../.."),
-      atomHomeDirPath: this.atomHome,
+      lumineHomeDirPath: this.lumineHome,
       preserveFocus: true,
       killProcess: (pid) => {
         this.killedPids.push(pid);

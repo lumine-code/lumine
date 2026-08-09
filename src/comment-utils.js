@@ -71,7 +71,7 @@ function commentStringsFromDelimiters(meta) {
 function getDelimitersForScope(scope) {
   let reversed = [...scope.scopes].reverse();
   let mapped = reversed.map((scope) => {
-    return atom.config.get("language.commentDelimiters", { scope: [scope] });
+    return lumine.config.get("language.commentDelimiters", { scope: [scope] });
   });
   let result = mapped.find((setting) => !!setting);
   return result ? normalizeDelimiters(result) : result;

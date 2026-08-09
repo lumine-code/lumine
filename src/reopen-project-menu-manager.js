@@ -17,7 +17,7 @@ module.exports = class ReopenProjectMenuManager {
       config.onDidChange("core.reopenProjectMenuCount", () => {
         this.update();
       }),
-      commands.add("atom-workspace", {
+      commands.add("lumine-workspace", {
         "application:reopen-project": {
           didDispatch: this.reopenProjectCommand.bind(this),
           hiddenInCommandPalette: true,

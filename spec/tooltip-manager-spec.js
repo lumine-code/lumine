@@ -1,4 +1,4 @@
-const { CompositeDisposable } = require("atom");
+const { CompositeDisposable } = require("lumine");
 const TooltipManager = require("../src/tooltip-manager");
 const Tooltip = require("../src/tooltip");
 const _ = require("@lumine-code/underscore-plus");
@@ -19,8 +19,8 @@ describe("TooltipManager", () => {
 
   beforeEach(function () {
     manager = new TooltipManager({
-      keymapManager: atom.keymaps,
-      viewRegistry: atom.views,
+      keymapManager: lumine.keymaps,
+      viewRegistry: lumine.views,
     });
     element = createElement("foo");
   });
@@ -254,7 +254,7 @@ describe("TooltipManager", () => {
     describe("when a keyBindingCommand is specified", () => {
       describe("when a title is specified", () =>
         it("appends the key binding corresponding to the command to the title", () => {
-          atom.keymaps.add("test", {
+          lumine.keymaps.add("test", {
             ".foo": { "ctrl-x ctrl-y": "test-command" },
             ".bar": { "ctrl-x ctrl-z": "test-command" },
           });
@@ -272,7 +272,7 @@ describe("TooltipManager", () => {
 
       describe("when no title is specified", () =>
         it("shows the key binding corresponding to the command alone", () => {
-          atom.keymaps.add("test", {
+          lumine.keymaps.add("test", {
             ".foo": { "ctrl-x ctrl-y": "test-command" },
           });
 
@@ -286,7 +286,7 @@ describe("TooltipManager", () => {
 
       describe("when the title is a function", () => {
         it("calls the function and appends the key binding to the result", () => {
-          atom.keymaps.add("test", {
+          lumine.keymaps.add("test", {
             ".foo": { "ctrl-x ctrl-y": "test-command" },
           });
 
@@ -316,7 +316,7 @@ describe("TooltipManager", () => {
 
       describe("when the keymap changes after the tooltip is registered", () => {
         it("shows the updated key binding when a string title is specified", () => {
-          const initialKeymap = atom.keymaps.add("initial", {
+          const initialKeymap = lumine.keymaps.add("initial", {
             ".foo": { "ctrl-x ctrl-z": "test-command" },
           });
 
@@ -326,7 +326,7 @@ describe("TooltipManager", () => {
           });
 
           initialKeymap.dispose();
-          atom.keymaps.add("test", {
+          lumine.keymaps.add("test", {
             ".foo": { "ctrl-x ctrl-y": "test-command" },
           });
 
@@ -337,14 +337,14 @@ describe("TooltipManager", () => {
         });
 
         it("shows the updated key binding when no title is specified", () => {
-          const initialKeymap = atom.keymaps.add("initial", {
+          const initialKeymap = lumine.keymaps.add("initial", {
             ".foo": { "ctrl-x ctrl-z": "test-command" },
           });
 
           manager.add(element, { keyBindingCommand: "test-command" });
 
           initialKeymap.dispose();
-          atom.keymaps.add("test", {
+          lumine.keymaps.add("test", {
             ".foo": { "ctrl-x ctrl-y": "test-command" },
           });
 
@@ -355,7 +355,7 @@ describe("TooltipManager", () => {
         });
 
         it("shows the updated key binding when the title is a function", () => {
-          const initialKeymap = atom.keymaps.add("initial", {
+          const initialKeymap = lumine.keymaps.add("initial", {
             ".foo": { "ctrl-x ctrl-z": "test-command" },
           });
 
@@ -365,7 +365,7 @@ describe("TooltipManager", () => {
           });
 
           initialKeymap.dispose();
-          atom.keymaps.add("test", {
+          lumine.keymaps.add("test", {
             ".foo": { "ctrl-x ctrl-y": "test-command" },
           });
 
@@ -378,7 +378,7 @@ describe("TooltipManager", () => {
 
       describe("when a keyBindingTarget is specified", () => {
         it("looks up the key binding relative to the target", () => {
-          atom.keymaps.add("test", {
+          lumine.keymaps.add("test", {
             ".bar": { "ctrl-x ctrl-z": "test-command" },
             ".foo": { "ctrl-x ctrl-y": "test-command" },
           });
@@ -411,7 +411,7 @@ describe("TooltipManager", () => {
 
     describe("::addComposite(target, entries)", () => {
       it("renders each tooltip entry on a separate line", () => {
-        atom.keymaps.add("test", {
+        lumine.keymaps.add("test", {
           ".foo": {
             "ctrl-x": "sticky-command",
             "ctrl-y": "picker-command",

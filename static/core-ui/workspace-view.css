@@ -1,7 +1,7 @@
 /* Containment values from core-ui/utils inlined at each use site
    (e.g. `size style` = contain_except_layout_paint). */
 
-atom-workspace {
+lumine-workspace {
   contain: layout size paint style; /* contain_all */
   display: flex;
   flex-direction: column;
@@ -12,12 +12,12 @@ atom-workspace {
   background-color: var(--app-background-color);
   font-family: var(--font-family);
 
-  atom-workspace-axis {
+  lumine-workspace-axis {
     contain: size style; /* contain_except_layout_paint */
     position: relative;
   }
 
-  atom-workspace-axis.horizontal {
+  lumine-workspace-axis.horizontal {
     contain: size style; /* contain_except_layout_paint */
     display: flex;
     flex: 1;
@@ -25,7 +25,7 @@ atom-workspace {
     min-height: 0;
   }
 
-  atom-workspace-axis.vertical {
+  lumine-workspace-axis.vertical {
     contain: size style; /* contain_except_layout_paint */
     display: flex;
     flex: 1;

@@ -14,7 +14,7 @@ const Grim = require("@lumine-code/grim");
 // In your package code:
 //
 // ```javascript
-// const {Task} = require('atom');
+// const {Task} = require('lumine');
 //
 // let task = Task.once('/path/to/task-file.js', parameter1, parameter2, function() {
 //   console.log('task has finished');
@@ -71,7 +71,7 @@ module.exports = class Task {
     taskPath = require.resolve(taskPath);
     const env = Object.assign({}, process.env, { userAgent: navigator.userAgent });
 
-    if (atom.unloading) {
+    if (lumine.unloading) {
       this.childProcess = null;
     } else {
       this.childProcess = ChildProcess.fork(
@@ -131,7 +131,7 @@ module.exports = class Task {
   // * `callback` (optional) A {Function} to call when the task completes.
   start(...args) {
     // Don't spawn any new tasks during shutdown.
-    if (atom.unloading) return;
+    if (lumine.unloading) return;
     const [callback] = args.splice(-1);
     if (this.childProcess == null) {
       throw new Error("Cannot start terminated process");

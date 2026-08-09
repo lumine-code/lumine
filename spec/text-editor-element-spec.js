@@ -9,7 +9,7 @@ describe("TextEditorElement", () => {
     // Force scrollbars to be visible regardless of local system configuration
     const scrollbarStyle = document.createElement("style");
     scrollbarStyle.textContent =
-      "atom-text-editor ::-webkit-scrollbar { -webkit-appearance: none }";
+      "lumine-text-editor ::-webkit-scrollbar { -webkit-appearance: none }";
     jasmine.attachToDOM(scrollbarStyle);
   });
 
@@ -21,7 +21,7 @@ describe("TextEditorElement", () => {
   }
 
   it("honors the 'mini' attribute", () => {
-    jasmineContent.innerHTML = "<atom-text-editor mini>";
+    jasmineContent.innerHTML = "<lumine-text-editor mini>";
     const element = jasmineContent.firstChild;
     expect(element.getModel().isMini()).toBe(true);
 
@@ -35,13 +35,13 @@ describe("TextEditorElement", () => {
 
   it("sets the editor to mini if the model is accessed prior to attaching the element", () => {
     const parent = document.createElement("div");
-    parent.innerHTML = "<atom-text-editor mini>";
+    parent.innerHTML = "<lumine-text-editor mini>";
     const element = parent.firstChild;
     expect(element.getModel().isMini()).toBe(true);
   });
 
   it("honors the 'placeholder-text' attribute", () => {
-    jasmineContent.innerHTML = "<atom-text-editor placeholder-text='testing'>";
+    jasmineContent.innerHTML = "<lumine-text-editor placeholder-text='testing'>";
     const element = jasmineContent.firstChild;
     expect(element.getModel().getPlaceholderText()).toBe("testing");
 
@@ -59,7 +59,7 @@ describe("TextEditorElement", () => {
   });
 
   it("honors the 'gutter-hidden' attribute", () => {
-    jasmineContent.innerHTML = "<atom-text-editor gutter-hidden>";
+    jasmineContent.innerHTML = "<lumine-text-editor gutter-hidden>";
     const element = jasmineContent.firstChild;
     expect(element.getModel().isLineNumberGutterVisible()).toBe(false);
 
@@ -71,7 +71,7 @@ describe("TextEditorElement", () => {
   });
 
   it("honors the 'readonly' attribute", async function () {
-    jasmineContent.innerHTML = "<atom-text-editor readonly>";
+    jasmineContent.innerHTML = "<lumine-text-editor readonly>";
     const element = jasmineContent.firstChild;
 
     expect(element.getComponent().isInputEnabled()).toBe(false);
@@ -84,21 +84,21 @@ describe("TextEditorElement", () => {
   });
 
   it("honors the text content", () => {
-    jasmineContent.innerHTML = "<atom-text-editor>testing</atom-text-editor>";
+    jasmineContent.innerHTML = "<lumine-text-editor>testing</lumine-text-editor>";
     const element = jasmineContent.firstChild;
     expect(element.getModel().getText()).toBe("testing");
   });
 
   describe("tabIndex", () => {
     it("uses a default value of -1", () => {
-      jasmineContent.innerHTML = "<atom-text-editor />";
+      jasmineContent.innerHTML = "<lumine-text-editor />";
       const element = jasmineContent.firstChild;
       expect(element.tabIndex).toBe(-1);
       expect(element.querySelector("input").tabIndex).toBe(-1);
     });
 
     it("uses the custom value when given", () => {
-      jasmineContent.innerHTML = '<atom-text-editor tabIndex="42" />';
+      jasmineContent.innerHTML = '<lumine-text-editor tabIndex="42" />';
       const element = jasmineContent.firstChild;
       expect(element.tabIndex).toBe(-1);
       expect(element.querySelector("input").tabIndex).toBe(42);
@@ -109,7 +109,7 @@ describe("TextEditorElement", () => {
     it("adds the 'mini' attribute if .isMini() returns true on the model", async () => {
       const element = buildTextEditorElement();
       element.getModel().update({ mini: true });
-      await atom.views.getNextUpdatePromise();
+      await lumine.views.getNextUpdatePromise();
       expect(element.hasAttribute("mini")).toBe(true);
     }));
 

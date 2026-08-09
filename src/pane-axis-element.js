@@ -49,7 +49,7 @@ class PaneAxisElement extends HTMLElement {
 
   isPaneResizeHandleElement(element) {
     return (
-      (element != null ? element.nodeName.toLowerCase() : undefined) === "atom-pane-resize-handle"
+      (element != null ? element.nodeName.toLowerCase() : undefined) === "lumine-pane-resize-handle"
     );
   }
 
@@ -61,14 +61,14 @@ class PaneAxisElement extends HTMLElement {
     const prevElement = view.previousSibling;
     // if previous element is not pane resize element, then insert new resize element
     if (prevElement != null && !this.isPaneResizeHandleElement(prevElement)) {
-      resizeHandle = document.createElement("atom-pane-resize-handle");
+      resizeHandle = document.createElement("lumine-pane-resize-handle");
       this.insertBefore(resizeHandle, view);
     }
 
     const nextElement = view.nextSibling;
     // if next element isnot resize element, then insert new resize element
     if (nextElement != null && !this.isPaneResizeHandleElement(nextElement)) {
-      resizeHandle = document.createElement("atom-pane-resize-handle");
+      resizeHandle = document.createElement("lumine-pane-resize-handle");
       return this.insertBefore(resizeHandle, nextElement);
     }
   }
@@ -104,10 +104,10 @@ class PaneAxisElement extends HTMLElement {
   }
 }
 
-window.customElements.define("atom-pane-axis", PaneAxisElement);
+window.customElements.define("lumine-pane-axis", PaneAxisElement);
 
 function createPaneAxisElement() {
-  return document.createElement("atom-pane-axis");
+  return document.createElement("lumine-pane-axis");
 }
 
 module.exports = {

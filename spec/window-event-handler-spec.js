@@ -5,22 +5,22 @@ describe("WindowEventHandler", () => {
   let windowEventHandler;
 
   beforeEach(() => {
-    atom.uninstallWindowEventHandler();
-    spyOn(atom.window, "hide");
-    atom.project.destroy();
+    lumine.uninstallWindowEventHandler();
+    spyOn(lumine.window, "hide");
+    lumine.project.destroy();
     // Initialization must reconcile stale visual state with the document's
     // current focus rather than waiting for another focus event.
     document.body.classList.add("is-blurred");
     windowEventHandler = new WindowEventHandler({
-      atomEnvironment: atom,
-      applicationDelegate: atom.applicationDelegate,
+      lumineEnvironment: lumine,
+      applicationDelegate: lumine.applicationDelegate,
     });
     windowEventHandler.initialize(window, document);
   });
 
   afterEach(() => {
     windowEventHandler.unsubscribe();
-    atom.installWindowEventHandler();
+    lumine.installWindowEventHandler();
   });
 
   describe("when the window is loaded", () =>
@@ -50,7 +50,7 @@ describe("WindowEventHandler", () => {
     it("calls storeWindowDimensions", (done) => {
       jasmine.useRealClock();
 
-      spyOn(atom, "storeWindowDimensions").and.callFake(() => {
+      spyOn(lumine, "storeWindowDimensions").and.callFake(() => {
         done();
       });
       window.dispatchEvent(new CustomEvent("resize"));
@@ -58,14 +58,14 @@ describe("WindowEventHandler", () => {
 
   describe("window:close event", () =>
     it("closes the window", () => {
-      spyOn(atom.window, "close");
+      spyOn(lumine.window, "close");
       window.dispatchEvent(new CustomEvent("window:close"));
-      expect(atom.window.close).toHaveBeenCalled();
+      expect(lumine.window.close).toHaveBeenCalled();
     }));
 
   describe("when a link is clicked", () => {
     it("opens the http/https links in an external application", () => {
-      spyOn(atom.applicationDelegate, "openExternal");
+      spyOn(lumine.applicationDelegate, "openExternal");
 
       const link = document.createElement("a");
       const linkChild = document.createElement("span");
@@ -79,28 +79,30 @@ describe("WindowEventHandler", () => {
       };
 
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(atom.applicationDelegate.openExternal).toHaveBeenCalled();
-      expect(atom.applicationDelegate.openExternal.calls.argsFor(0)[0]).toBe("http://github.com");
-      atom.applicationDelegate.openExternal.calls.reset();
+      expect(lumine.applicationDelegate.openExternal).toHaveBeenCalled();
+      expect(lumine.applicationDelegate.openExternal.calls.argsFor(0)[0]).toBe("http://github.com");
+      lumine.applicationDelegate.openExternal.calls.reset();
 
       link.href = "https://github.com";
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(atom.applicationDelegate.openExternal).toHaveBeenCalled();
-      expect(atom.applicationDelegate.openExternal.calls.argsFor(0)[0]).toBe("https://github.com");
-      atom.applicationDelegate.openExternal.calls.reset();
+      expect(lumine.applicationDelegate.openExternal).toHaveBeenCalled();
+      expect(lumine.applicationDelegate.openExternal.calls.argsFor(0)[0]).toBe(
+        "https://github.com",
+      );
+      lumine.applicationDelegate.openExternal.calls.reset();
 
       link.href = "";
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(atom.applicationDelegate.openExternal).not.toHaveBeenCalled();
-      atom.applicationDelegate.openExternal.calls.reset();
+      expect(lumine.applicationDelegate.openExternal).not.toHaveBeenCalled();
+      lumine.applicationDelegate.openExternal.calls.reset();
 
       link.href = "#scroll-me";
       windowEventHandler.handleLinkClick(fakeEvent);
-      expect(atom.applicationDelegate.openExternal).not.toHaveBeenCalled();
+      expect(lumine.applicationDelegate.openExternal).not.toHaveBeenCalled();
     });
 
     it('opens the "lumine://" links with URL handler', () => {
-      const uriHandler = windowEventHandler.atomEnvironment.uriHandlers;
+      const uriHandler = windowEventHandler.lumineEnvironment.uriHandlers;
       expect(uriHandler).toBeDefined();
       spyOn(uriHandler, "handleURI");
 
@@ -213,9 +215,9 @@ describe("WindowEventHandler", () => {
   describe("when keydown events occur on the document", () =>
     it("dispatches the event via the KeymapManager and CommandRegistry", () => {
       const dispatchedCommands = [];
-      atom.commands.onWillDispatch((command) => dispatchedCommands.push(command));
-      atom.commands.add("*", { "foo-command": () => {} });
-      atom.keymaps.add("source-name", { "*": { x: "foo-command" } });
+      lumine.commands.onWillDispatch((command) => dispatchedCommands.push(command));
+      lumine.commands.add("*", { "foo-command": () => {} });
+      lumine.keymaps.add("source-name", { "*": { x: "foo-command" } });
 
       const event = KeymapManager.buildKeydownEvent("x", {
         target: document.createElement("div"),
@@ -228,28 +230,28 @@ describe("WindowEventHandler", () => {
 
   describe("native key bindings", () =>
     it("correctly dispatches them to active elements with the '.native-key-bindings' class", () => {
-      spyOn(atom.applicationDelegate, "performWebContentsAction");
+      spyOn(lumine.applicationDelegate, "performWebContentsAction");
 
       const nativeKeyBindingsInput = document.createElement("input");
       nativeKeyBindingsInput.classList.add("native-key-bindings");
       jasmine.attachToDOM(nativeKeyBindingsInput);
       nativeKeyBindingsInput.focus();
 
-      atom.dispatchApplicationMenuCommand("core:copy");
-      atom.dispatchApplicationMenuCommand("core:paste");
+      lumine.dispatchApplicationMenuCommand("core:copy");
+      lumine.dispatchApplicationMenuCommand("core:paste");
 
-      expect(atom.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("copy");
-      expect(atom.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("paste");
+      expect(lumine.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("copy");
+      expect(lumine.applicationDelegate.performWebContentsAction).toHaveBeenCalledWith("paste");
 
-      atom.applicationDelegate.performWebContentsAction.calls.reset();
+      lumine.applicationDelegate.performWebContentsAction.calls.reset();
 
       const normalInput = document.createElement("input");
       jasmine.attachToDOM(normalInput);
       normalInput.focus();
 
-      atom.dispatchApplicationMenuCommand("core:copy");
-      atom.dispatchApplicationMenuCommand("core:paste");
+      lumine.dispatchApplicationMenuCommand("core:copy");
+      lumine.dispatchApplicationMenuCommand("core:paste");
 
-      expect(atom.applicationDelegate.performWebContentsAction).not.toHaveBeenCalled();
+      expect(lumine.applicationDelegate.performWebContentsAction).not.toHaveBeenCalled();
     }));
 });

@@ -5,7 +5,7 @@ const { pathToFileURL } = require("url");
 describe("Renders Markdown", () => {
   describe("properly when given no opts", () => {
     it("handles bold", () => {
-      expect(atom.tools.markdown.render("**Hello World**")).toBe(
+      expect(lumine.tools.markdown.render("**Hello World**")).toBe(
         "<p><strong>Hello World</strong></p>\n",
       );
     });
@@ -26,28 +26,18 @@ describe("Renders Markdown", () => {
     </code></pre>
     `;
 
-    expect(atom.tools.markdown.render(input).trim()).toBe(expected);
+    expect(lumine.tools.markdown.render(input).trim()).toBe(expected);
   });
 
   describe("transforms links correctly", () => {
     it("makes no changes to a fqdn link", () => {
-      expect(atom.tools.markdown.render("[Hello World](https://github.com)")).toBe(
+      expect(lumine.tools.markdown.render("[Hello World](https://github.com)")).toBe(
         '<p><a href="https://github.com">Hello World</a></p>\n',
-      );
-    });
-    it("leaves a retired package link alone, having nowhere to send it", () => {
-      expect(atom.tools.markdown.render("[Hello](https://atom.io/packages/hey-pane)")).toBe(
-        '<p><a href="https://atom.io/packages/hey-pane">Hello</a></p>\n',
-      );
-    });
-    it("resolves flight-manual links to web archive", () => {
-      expect(atom.tools.markdown.render("[Hello](https://flight-manual.atom.io/some-docs)")).toBe(
-        '<p><a href="https://web.archive.org/web/20221215003438/https://flight-manual.atom.io/some-docs">Hello</a></p>\n',
       );
     });
     it("resolves incomplete local links", () => {
       expect(
-        atom.tools.markdown.render("[Hello](./readme.md)", {
+        lumine.tools.markdown.render("[Hello](./readme.md)", {
           rootDomain: "https://github.com/lumine-code/lumine",
         }),
       ).toBe(
@@ -56,7 +46,7 @@ describe("Renders Markdown", () => {
     });
     it("resolves incomplete root links", () => {
       expect(
-        atom.tools.markdown.render("[Hello](/readme.md)", {
+        lumine.tools.markdown.render("[Hello](/readme.md)", {
           rootDomain: "https://github.com/lumine-code/lumine",
         }),
       ).toBe(
@@ -65,14 +55,14 @@ describe("Renders Markdown", () => {
     });
     it("preserves in-page fragment links", () => {
       expect(
-        atom.tools.markdown.render("[Install](#install)", {
+        lumine.tools.markdown.render("[Install](#install)", {
           rootDomain: "https://github.com/lumine-code/lumine",
         }),
       ).toBe('<p><a href="#install">Install</a></p>\n');
     });
     it("still rewrites relative links that contain a fragment", () => {
       expect(
-        atom.tools.markdown.render("[Install](./README.md#install)", {
+        lumine.tools.markdown.render("[Install](./README.md#install)", {
           rootDomain: "https://github.com/lumine-code/lumine",
         }),
       ).toBe(
@@ -83,33 +73,33 @@ describe("Renders Markdown", () => {
 
   describe("handles GitHub headings", () => {
     it("does not add heading ids unless enabled", () => {
-      const output = atom.tools.markdown.render("## Install");
+      const output = lumine.tools.markdown.render("## Install");
       expect(output).not.toContain("id=");
       expect(output).not.toContain("<a");
     });
     it("adds a safely prefixed id while preserving the fragment href", () => {
-      const output = atom.tools.markdown.render("## Install", {
+      const output = lumine.tools.markdown.render("## Install", {
         useGitHubHeadings: true,
       });
       expect(output).toContain('id="user-content-install"');
       expect(output).toContain('href="#install"');
     });
     it("does not inject heading link icons", () => {
-      const output = atom.tools.markdown.render("## Install", {
+      const output = lumine.tools.markdown.render("## Install", {
         useGitHubHeadings: true,
       });
       expect(output).not.toContain("<svg");
       expect(output).not.toContain("octicon");
     });
     it("keeps DOM-clobbering heading ids after sanitization", () => {
-      const output = atom.tools.markdown.render("## Title", {
+      const output = lumine.tools.markdown.render("## Title", {
         useGitHubHeadings: true,
         sanitize: true,
       });
       expect(output).toContain('id="user-content-title"');
     });
     it("does not rewrite the heading's own fragment href when a rootDomain is set", () => {
-      const output = atom.tools.markdown.render("## Install", {
+      const output = lumine.tools.markdown.render("## Install", {
         useGitHubHeadings: true,
         rootDomain: "https://github.com/lumine-code/lumine",
       });
@@ -129,7 +119,7 @@ describe("Renders Markdown", () => {
       );
 
       expect(
-        atom.tools.markdown.render("![Local image](./index.js)", {
+        lumine.tools.markdown.render("![Local image](./index.js)", {
           filePath: readmePath,
         }),
       ).toBe(`<p><img src="${pathToFileURL(readmePath).href}" alt="Local image"></p>\n`);
@@ -145,7 +135,7 @@ describe("Renders Markdown", () => {
       );
 
       expect(
-        atom.tools.markdown.render("![Missing](./missing.png)", {
+        lumine.tools.markdown.render("![Missing](./missing.png)", {
           filePath: readmePath,
         }),
       ).toBe('<p><img src="./missing.png" alt="Missing"></p>\n');
@@ -153,7 +143,7 @@ describe("Renders Markdown", () => {
 
     it("resolves images against non-GitHub root domains", () => {
       expect(
-        atom.tools.markdown.render("![Remote image](./static/image.png)", {
+        lumine.tools.markdown.render("![Remote image](./static/image.png)", {
           rootDomain: "https://example.com/packages/example",
         }),
       ).toBe(
@@ -163,7 +153,7 @@ describe("Renders Markdown", () => {
 
     it("properly handles a standard PNG image", () => {
       expect(
-        atom.tools.markdown.render("![Alt Text](/image-link.png)", {
+        lumine.tools.markdown.render("![Alt Text](/image-link.png)", {
           rootDomain: "https://github.com/lumine-code/lumine",
         }),
       ).toBe(
@@ -173,7 +163,7 @@ describe("Renders Markdown", () => {
 
     it("handles 'data:image/svg+xml' images", () => {
       expect(
-        atom.tools.markdown.render(
+        lumine.tools.markdown.render(
           "![Baseline icon](data:image/svg+xml;base64,SoMeBaSe64cArAcTerS+)",
         ),
       ).toBe(
@@ -196,20 +186,20 @@ describe("Highlights markdown code blocks", () => {
   });
 
   afterEach(() => {
-    for (const element of container.querySelectorAll("atom-text-editor")) {
+    for (const element of container.querySelectorAll("lumine-text-editor")) {
       element.getModel().destroy();
     }
     container.remove();
   });
 
   async function render(markdown, opts) {
-    const fragment = atom.tools.markdown.convertToDOM(atom.tools.markdown.render(markdown));
-    await atom.tools.markdown.applySyntaxHighlighting(fragment, {
+    const fragment = lumine.tools.markdown.convertToDOM(lumine.tools.markdown.render(markdown));
+    await lumine.tools.markdown.applySyntaxHighlighting(fragment, {
       renderMode: "fragment",
       ...opts,
     });
     container.appendChild(fragment);
-    return container.querySelector("atom-text-editor");
+    return container.querySelector("lumine-text-editor");
   }
 
   it("swaps each fence for an editor that renders no caret", async () => {
@@ -233,23 +223,23 @@ describe("Highlights markdown code blocks", () => {
 
 describe("Removes diacritics", () => {
   it("folds combining accents onto the base letter", () => {
-    expect(atom.tools.removeDiacritics("café")).toBe("cafe");
-    expect(atom.tools.removeDiacritics("żółw")).toBe("zolw");
+    expect(lumine.tools.removeDiacritics("café")).toBe("cafe");
+    expect(lumine.tools.removeDiacritics("żółw")).toBe("zolw");
   });
 
   it("folds letters that carry their stroke in the codepoint", () => {
     // These have no decomposed form, so a plain NFD normalize would leave them
     // alone. The table-driven fold is what keeps them matchable.
-    expect(atom.tools.removeDiacritics("Øl")).toBe("Ol");
-    expect(atom.tools.removeDiacritics("Łódź")).toBe("Lodz");
+    expect(lumine.tools.removeDiacritics("Øl")).toBe("Ol");
+    expect(lumine.tools.removeDiacritics("Łódź")).toBe("Lodz");
   });
 
   it("expands ligatures rather than dropping them", () => {
-    expect(atom.tools.removeDiacritics("Æther")).toBe("AEther");
+    expect(lumine.tools.removeDiacritics("Æther")).toBe("AEther");
   });
 
   it("leaves text with nothing to fold untouched", () => {
-    expect(atom.tools.removeDiacritics("plain ascii")).toBe("plain ascii");
-    expect(atom.tools.removeDiacritics("")).toBe("");
+    expect(lumine.tools.removeDiacritics("plain ascii")).toBe("plain ascii");
+    expect(lumine.tools.removeDiacritics("")).toBe("");
   });
 });

@@ -79,11 +79,11 @@ describe("ScopeResolver", () => {
   let editor, buffer, grammar;
 
   beforeEach(async () => {
-    grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
-    editor = await atom.workspace.open("");
+    grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+    editor = await lumine.workspace.open("");
     buffer = editor.getBuffer();
-    atom.grammars.addGrammar(grammar);
-    atom.config.set("language.useTreeSitterParsers", true);
+    lumine.grammars.addGrammar(grammar);
+    lumine.config.set("language.useTreeSitterParsers", true);
   });
 
   afterEach(() => {
@@ -1289,7 +1289,7 @@ describe("ScopeResolver", () => {
     });
 
     it("supports test.config (with no arguments)", async () => {
-      atom.config.set("core.careAboutBooleans", true);
+      lumine.config.set("core.careAboutBooleans", true);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -1299,7 +1299,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: lumine.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1312,14 +1312,14 @@ describe("ScopeResolver", () => {
       let matched = await getAllMatches(grammar, languageMode);
       expect(matched.length).toBe(4);
 
-      atom.config.set("core.careAboutBooleans", false);
+      lumine.config.set("core.careAboutBooleans", false);
 
       matched = await getAllMatches(grammar, languageMode);
       expect(matched.length).toBe(0);
     });
 
     it("supports test.config (with boolean arguments)", async () => {
-      atom.config.set("core.careAboutBooleans", true);
+      lumine.config.set("core.careAboutBooleans", true);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -1329,7 +1329,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: lumine.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1342,14 +1342,14 @@ describe("ScopeResolver", () => {
       let matched = await getAllMatches(grammar, languageMode);
       expect(matched.length).toBe(4);
 
-      atom.config.set("core.careAboutBooleans", false);
+      lumine.config.set("core.careAboutBooleans", false);
 
       matched = await getAllMatches(grammar, languageMode);
       expect(matched.length).toBe(0);
     });
 
     it("supports test.config (with number arguments)", async () => {
-      atom.config.set("core.careAboutBooleans", 0);
+      lumine.config.set("core.careAboutBooleans", 0);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -1359,7 +1359,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: lumine.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1372,14 +1372,14 @@ describe("ScopeResolver", () => {
       let matched = await getAllMatches(grammar, languageMode);
       expect(matched.length).toBe(4);
 
-      atom.config.set("core.careAboutBooleans", 1);
+      lumine.config.set("core.careAboutBooleans", 1);
 
       matched = await getAllMatches(grammar, languageMode);
       expect(matched.length).toBe(0);
     });
 
     it("supports test.config (with string arguments)", async () => {
-      atom.config.set("core.careAboutBooleans", "something");
+      lumine.config.set("core.careAboutBooleans", "something");
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -1389,7 +1389,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: atom.config });
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer, config: lumine.config });
       buffer.setLanguageMode(languageMode);
       buffer.setText(dedent`
         function foo (bar, baz, thud) {
@@ -1404,19 +1404,19 @@ describe("ScopeResolver", () => {
       let matched = await getAllMatchesWithScopeResolver(grammar, languageMode, scopeResolver);
       expect(matched.length).toBe(4);
 
-      atom.config.set("core.careAboutBooleans", "something-else");
+      lumine.config.set("core.careAboutBooleans", "something-else");
 
       matched = await getAllMatchesWithScopeResolver(grammar, languageMode, scopeResolver);
       expect(matched.length).toBe(0);
 
-      atom.config.set("core.careAboutBooleans", "something", { scope: [grammar.scopeName] });
+      lumine.config.set("core.careAboutBooleans", "something", { scope: [grammar.scopeName] });
 
       matched = await getAllMatchesWithScopeResolver(grammar, languageMode, scopeResolver);
       expect(matched.length).toBe(4);
 
-      atom.config.set("core.careAboutBooleans", "something");
+      lumine.config.set("core.careAboutBooleans", "something");
 
-      atom.config.set("core.careAboutBooleans", "something-else", { scope: [grammar.scopeName] });
+      lumine.config.set("core.careAboutBooleans", "something-else", { scope: [grammar.scopeName] });
       matched = await getAllMatchesWithScopeResolver(grammar, languageMode, scopeResolver);
       expect(matched.length).toBe(0);
     });
@@ -1431,7 +1431,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      let regexGrammar = new TreeSitterGrammar(atom.grammars, jsRegexGrammarPath, jsRegexConfig);
+      let regexGrammar = new TreeSitterGrammar(lumine.grammars, jsRegexGrammarPath, jsRegexConfig);
       await regexGrammar.setQueryForTest(
         "highlightsQuery",
         `
@@ -1440,7 +1440,7 @@ describe("ScopeResolver", () => {
       `,
       );
 
-      atom.grammars.addGrammar(regexGrammar);
+      lumine.grammars.addGrammar(regexGrammar);
 
       grammar.addInjectionPoint({
         type: "regex_pattern",
@@ -1452,8 +1452,8 @@ describe("ScopeResolver", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setText(String.raw`
         function foo (bar, baz, thud) {

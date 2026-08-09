@@ -115,7 +115,7 @@ let options = {
     // .ico/.cmd/.js via win.extraResources, and the .nsh files are compiled into
     // the NSIS installer. Nothing reads resources/win/ at runtime, so keep it
     // out of app.asar on every platform. resources/app-icons/ must stay -- that
-    // one IS read from inside the asar, by src/atom-window.js.
+    // one IS read from inside the asar, by src/lumine-window.js.
     "!resources/win/",
     // The raw mark and the square badges are brand art, not app art: the raw
     // mark is the GitHub organisation's avatar and the square badges are
@@ -124,7 +124,7 @@ let options = {
     // beside lumine.svg regardless, because that is where
     // script/generate-branding.js derives them from and where anyone looking
     // for the logo will look. lumine-safe.png/lumine-dev.png are NOT excluded
-    // here -- those are real runtime app art, read by src/atom-window.js.
+    // here -- those are real runtime app art, read by src/lumine-window.js.
     "!resources/app-icons/lumine-raw.*",
     "!resources/app-icons/lumine-square*.*",
     // resources/brand/ is README/marketing art (wallpaper, banner, install

@@ -39,7 +39,7 @@ function scaleMouseDragAutoscrollDelta(delta) {
 }
 
 // The document scheduler used to batch DOM reads and writes across editor
-// updates. In a Lumine window this is the view registry (`atom.views`),
+// updates. In a Lumine window this is the view registry (`lumine.views`),
 // installed at window initialization. Standalone component usage outside a
 // full editor environment falls back to etch's default scheduler — the module
 // is loaded in every window anyway for the dock and several bundled packages.
@@ -2582,7 +2582,7 @@ module.exports = class TextEditorComponent {
       if (
         platform === "linux" &&
         this.isInputEnabled() &&
-        atom.config.get("editor.selectionClipboard")
+        lumine.config.get("editor.selectionClipboard")
       )
         model.insertText(clipboard.readText("selection"));
       return;
@@ -2599,7 +2599,7 @@ module.exports = class TextEditorComponent {
       return;
     }
 
-    const allowMultiCursor = atom.config.get("editor.multiCursorOnClick");
+    const allowMultiCursor = lumine.config.get("editor.multiCursorOnClick");
     const addOrRemoveSelection =
       allowMultiCursor && (metaKey || (ctrlKey && platform !== "darwin"));
 
@@ -3279,7 +3279,7 @@ module.exports = class TextEditorComponent {
       // reached, poisoning horizontalPositionsToMeasure permanently and
       // causing an infinite error loop on every subsequent animation frame.
       if (!screenLine || !this.lineComponentsByScreenLineId.get(screenLine.id)) {
-        if (atom.window.isDevMode()) {
+        if (lumine.window.isDevMode()) {
           console.warn("measureHorizontalPositions: skipped non-rendered row", row);
         }
         return;

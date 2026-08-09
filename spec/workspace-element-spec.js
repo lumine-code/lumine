@@ -8,6 +8,22 @@ const { conditionPromise } = require("./helpers/async-spec-helpers");
 const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
 
 describe("WorkspaceElement", () => {
+  it("registers only Lumine custom element names", () => {
+    for (const name of [
+      "workspace",
+      "text-editor",
+      "pane",
+      "pane-axis",
+      "pane-container",
+      "pane-resize-handle",
+      "panel-container",
+      "styles",
+    ]) {
+      expect(window.customElements.get(`lumine-${name}`)).toBeDefined();
+      expect(window.customElements.get(`atom-${name}`)).toBeUndefined();
+    }
+  });
+
   afterEach(() => {
     try {
       temp.cleanupSync();
@@ -18,9 +34,9 @@ describe("WorkspaceElement", () => {
 
   describe("when the workspace element is focused", () => {
     jasmine.itWithDocumentFocus("transfers focus to the active pane", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       jasmine.attachToDOM(workspaceElement);
-      const activePaneElement = atom.workspace.getActivePane().getElement();
+      const activePaneElement = lumine.workspace.getActivePane().getElement();
       document.body.focus();
       expect(document.activeElement).not.toBe(activePaneElement);
       workspaceElement.focus();
@@ -30,12 +46,12 @@ describe("WorkspaceElement", () => {
 
   describe("when the active pane of an inactive pane container is focused", () => {
     jasmine.itWithDocumentFocus("changes the active pane container", () => {
-      const dock = atom.workspace.getLeftDock();
+      const dock = lumine.workspace.getLeftDock();
       dock.show();
-      jasmine.attachToDOM(atom.workspace.getElement());
-      expect(atom.workspace.getActivePaneContainer()).toBe(atom.workspace.getCenter());
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      expect(lumine.workspace.getActivePaneContainer()).toBe(lumine.workspace.getCenter());
       dock.getActivePane().getElement().focus();
-      expect(atom.workspace.getActivePaneContainer()).toBe(dock);
+      expect(lumine.workspace.getActivePaneContainer()).toBe(dock);
     });
   });
 
@@ -58,9 +74,9 @@ describe("WorkspaceElement", () => {
         workspaceElement;
 
       beforeEach(function () {
-        atom.config.set("core.destroyEmptyPanes", false);
+        lumine.config.set("core.destroyEmptyPanes", false);
 
-        workspace = atom.workspace;
+        workspace = lumine.workspace;
 
         // Set up a workspace center with a grid of 9 panes, in the following
         // arrangement, where the numbers correspond to the variable names below.
@@ -106,7 +122,7 @@ describe("WorkspaceElement", () => {
         rightDockPane = rightDock.getPanes()[0];
         bottomDockPane = bottomDock.getPanes()[0];
 
-        workspaceElement = atom.workspace.getElement();
+        workspaceElement = lumine.workspace.getElement();
         workspaceElement.style.height = "400px";
         workspaceElement.style.width = "400px";
         jasmine.attachToDOM(workspaceElement);
@@ -271,9 +287,9 @@ describe("WorkspaceElement", () => {
       let workspace, workspaceElement, startingPane;
 
       beforeEach(function () {
-        atom.config.set("core.destroyEmptyPanes", false);
+        lumine.config.set("core.destroyEmptyPanes", false);
 
-        workspace = atom.workspace;
+        workspace = lumine.workspace;
         expect(workspace.getLeftDock().isVisible()).toBe(false);
         expect(workspace.getRightDock().isVisible()).toBe(false);
         expect(workspace.getBottomDock().isVisible()).toBe(false);
@@ -282,7 +298,7 @@ describe("WorkspaceElement", () => {
         expect(panes.length).toEqual(1);
         startingPane = panes[0];
 
-        workspaceElement = atom.workspace.getElement();
+        workspaceElement = lumine.workspace.getElement();
         workspaceElement.style.height = "400px";
         workspaceElement.style.width = "400px";
         jasmine.attachToDOM(workspaceElement);
@@ -542,57 +558,57 @@ describe("WorkspaceElement", () => {
   /**
    * TODO: FAILING TEST - This test fails with the following output:
    * ---
-   * Expected '<div class="atom-dock-toggle-button right atom-dock-toggle-button-visible"><div class="atom-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
+   * not to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button right atom-dock-toggle-button-visible"><div class="atom-dock-toggle-button-inner right"><span class="icon icon-chevron-left"></span></div></div>'
-   * not to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-left"></span></div></div>'
+   * not to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button left"><div class="atom-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button right atom-dock-toggle-button-visible"><div class="atom-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
+   * not to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button left"><div class="atom-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button right atom-dock-toggle-button-visible"><div class="atom-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
+   * not to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button left"><div class="atom-dock-toggle-button-inner left"><span class="icon icon-chevron-right"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-right"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button left"><div class="atom-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button right atom-dock-toggle-button-visible"><div class="atom-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
+   * not to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button right atom-dock-toggle-button-visible"><div class="atom-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
+   * not to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button bottom"><div class="atom-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button right atom-dock-toggle-button-visible"><div class="atom-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
+   * not to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button bottom"><div class="atom-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button bottom"><div class="atom-dock-toggle-button-inner bottom"><span class="icon icon-chevron-up"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-up"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    * ---
-   * Expected '<div class="atom-dock-toggle-button bottom"><div class="atom-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
-   * to have class 'atom-dock-toggle-button-visible'.
+   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
+   * to have class 'lumine-dock-toggle-button-visible'.
    */
   xdescribe("mousing over docks", () => {
     let workspaceElement;
     let originalTimeout = jasmine.getEnv().defaultTimeoutInterval;
 
     beforeEach(() => {
-      workspaceElement = atom.workspace.getElement();
+      workspaceElement = lumine.workspace.getElement();
       workspaceElement.style.width = "600px";
       workspaceElement.style.height = "300px";
       jasmine.attachToDOM(workspaceElement);
@@ -620,7 +636,7 @@ describe("WorkspaceElement", () => {
 
     it("shows the toggle button when the dock is open", async () => {
       await Promise.all([
-        atom.workspace.open({
+        lumine.workspace.open({
           element: document.createElement("div"),
           getDefaultLocation() {
             return "left";
@@ -629,7 +645,7 @@ describe("WorkspaceElement", () => {
             return 150;
           },
         }),
-        atom.workspace.open({
+        lumine.workspace.open({
           element: document.createElement("div"),
           getDefaultLocation() {
             return "right";
@@ -638,7 +654,7 @@ describe("WorkspaceElement", () => {
             return 150;
           },
         }),
-        atom.workspace.open({
+        lumine.workspace.open({
           element: document.createElement("div"),
           getDefaultLocation() {
             return "bottom";
@@ -649,9 +665,9 @@ describe("WorkspaceElement", () => {
         }),
       ]);
 
-      const leftDock = atom.workspace.getLeftDock();
-      const rightDock = atom.workspace.getRightDock();
-      const bottomDock = atom.workspace.getBottomDock();
+      const leftDock = lumine.workspace.getLeftDock();
+      const rightDock = lumine.workspace.getRightDock();
+      const bottomDock = lumine.workspace.getBottomDock();
 
       expect(leftDock.isVisible()).toBe(true);
       expect(rightDock.isVisible()).toBe(true);
@@ -800,18 +816,18 @@ describe("WorkspaceElement", () => {
     }
 
     function expectToggleButtonHidden(dock) {
-      expect(dock.refs.toggleButton.element).not.toHaveClass("atom-dock-toggle-button-visible");
+      expect(dock.refs.toggleButton.element).not.toHaveClass("lumine-dock-toggle-button-visible");
     }
 
     function expectToggleButtonVisible(dock, iconClass) {
-      expect(dock.refs.toggleButton.element).toHaveClass("atom-dock-toggle-button-visible");
+      expect(dock.refs.toggleButton.element).toHaveClass("lumine-dock-toggle-button-visible");
       expect(dock.refs.toggleButton.refs.iconElement).toHaveClass(iconClass);
     }
   });
 
   describe("the scrollbar visibility class", () => {
     it("has a class based on the style of the scrollbar", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       jasmine.attachToDOM(workspaceElement);
 
       // The initial value is measured from how this window actually renders
@@ -838,11 +854,11 @@ describe("WorkspaceElement", () => {
     let originalPixelRatio = window.devicePixelRatio;
 
     beforeEach(async () => {
-      await atom.workspace.open("sample.js");
+      await lumine.workspace.open("sample.js");
 
-      workspaceElement = atom.workspace.getElement();
+      workspaceElement = lumine.workspace.getElement();
       jasmine.attachToDOM(workspaceElement);
-      editor = atom.workspace.getActiveTextEditor();
+      editor = lumine.workspace.getActiveTextEditor();
       editorElement = editor.getElement();
     });
 
@@ -853,32 +869,32 @@ describe("WorkspaceElement", () => {
     it("updates the font-size based on the 'editor.fontSize' config value", async () => {
       const initialCharWidth = editor.getDefaultCharWidth();
       expect(getComputedStyle(editorElement).fontSize).toBe(
-        atom.config.get("editor.fontSize") + "px",
+        lumine.config.get("editor.fontSize") + "px",
       );
 
       await new Promise((resolve) => {
         editorElement.component.getNextUpdatePromise().then(() => resolve());
 
-        atom.config.set("editor.fontSize", atom.config.get("editor.fontSize") + 5);
+        lumine.config.set("editor.fontSize", lumine.config.get("editor.fontSize") + 5);
       });
 
       expect(getComputedStyle(editorElement).fontSize).toBe(
-        atom.config.get("editor.fontSize") + "px",
+        lumine.config.get("editor.fontSize") + "px",
       );
       expect(editor.getDefaultCharWidth()).toBeGreaterThan(initialCharWidth);
     });
 
     it("updates the font-family based on the 'editor.fontFamily' config value", async () => {
       const initialCharWidth = editor.getDefaultCharWidth();
-      let fontFamily = atom.config.get("editor.fontFamily");
+      let fontFamily = lumine.config.get("editor.fontFamily");
       expect(getComputedStyle(editorElement).fontFamily).toBe(fontFamily);
 
       await new Promise((resolve) => {
         editorElement.component.getNextUpdatePromise().then(() => resolve());
-        atom.config.set("editor.fontFamily", "sans-serif");
+        lumine.config.set("editor.fontFamily", "sans-serif");
       });
 
-      fontFamily = atom.config.get("editor.fontFamily");
+      fontFamily = lumine.config.get("editor.fontFamily");
       expect(getComputedStyle(editorElement).fontFamily).toBe(fontFamily);
       expect(editor.getDefaultCharWidth()).not.toBe(initialCharWidth);
     });
@@ -890,19 +906,21 @@ describe("WorkspaceElement", () => {
 
       await new Promise((resolve) => {
         editorElement.component.getNextUpdatePromise().then(() => resolve());
-        atom.config.set("editor.lineHeight", "30px");
+        lumine.config.set("editor.lineHeight", "30px");
       });
 
-      expect(getComputedStyle(editorElement).lineHeight).toBe(atom.config.get("editor.lineHeight"));
+      expect(getComputedStyle(editorElement).lineHeight).toBe(
+        lumine.config.get("editor.lineHeight"),
+      );
       expect(editor.getLineHeightInPixels()).not.toBe(initialLineHeight);
     });
 
     it("updates the line-height based on the 'editor.lineHeight' config value (when the value is given as a bare number that needs no rounding)", async () => {
       jasmine.useRealClock();
       const initialLineHeight = editor.getLineHeightInPixels();
-      atom.config.set("editor.fontSize", 16);
-      atom.config.set("editor.lineHeight", 1.875);
-      let expectedValue = `${atom.config.get("editor.fontSize") * atom.config.get("editor.lineHeight")}px`;
+      lumine.config.set("editor.fontSize", 16);
+      lumine.config.set("editor.lineHeight", 1.875);
+      let expectedValue = `${lumine.config.get("editor.fontSize") * lumine.config.get("editor.lineHeight")}px`;
       await conditionPromise(() => {
         return getComputedStyle(editorElement).lineHeight === expectedValue;
       });
@@ -916,8 +934,8 @@ describe("WorkspaceElement", () => {
       // It's weird that browsers expose this as a writable getter, but we'll
       // reset it to its original value when the tests are done.
       window.devicePixelRatio = 2;
-      atom.config.set("editor.fontSize", 16);
-      atom.config.set("editor.lineHeight", "27.2px");
+      lumine.config.set("editor.fontSize", 16);
+      lumine.config.set("editor.lineHeight", "27.2px");
       await conditionPromise(() => {
         return getComputedStyle(editorElement).lineHeight === "27px";
       });
@@ -935,8 +953,8 @@ describe("WorkspaceElement", () => {
       // It's weird that browsers expose this as a writable getter, but we'll
       // reset it to its original value when the tests are done.
       window.devicePixelRatio = 2;
-      atom.config.set("editor.fontSize", 16);
-      atom.config.set("editor.lineHeight", 1.7);
+      lumine.config.set("editor.fontSize", 16);
+      lumine.config.set("editor.lineHeight", 1.7);
       await conditionPromise(() => {
         return getComputedStyle(editorElement).lineHeight === "27px";
       });
@@ -957,8 +975,8 @@ describe("WorkspaceElement", () => {
       // It's weird that browsers expose this as a writable getter, but we'll
       // reset it to its original value when the tests are done.
       window.devicePixelRatio = 2;
-      atom.config.set("editor.fontSize", 16);
-      atom.config.set("editor.lineHeight", "1.7em");
+      lumine.config.set("editor.fontSize", 16);
+      lumine.config.set("editor.lineHeight", "1.7em");
       await conditionPromise(() => {
         return getComputedStyle(editorElement).lineHeight === "27.2px";
       });
@@ -973,46 +991,46 @@ describe("WorkspaceElement", () => {
 
   describe("panel containers", () => {
     it("inserts panel container elements in the correct places in the DOM", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
 
-      const leftContainer = workspaceElement.querySelector("atom-panel-container.left");
-      const rightContainer = workspaceElement.querySelector("atom-panel-container.right");
+      const leftContainer = workspaceElement.querySelector("lumine-panel-container.left");
+      const rightContainer = workspaceElement.querySelector("lumine-panel-container.right");
       expect(leftContainer.nextSibling).toBe(workspaceElement.verticalAxis);
       expect(rightContainer.previousSibling).toBe(workspaceElement.verticalAxis);
 
-      const topContainer = workspaceElement.querySelector("atom-panel-container.top");
-      const bottomContainer = workspaceElement.querySelector("atom-panel-container.bottom");
+      const topContainer = workspaceElement.querySelector("lumine-panel-container.top");
+      const bottomContainer = workspaceElement.querySelector("lumine-panel-container.bottom");
       expect(topContainer.nextSibling).toBe(workspaceElement.paneContainer);
       expect(bottomContainer.previousSibling).toBe(workspaceElement.paneContainer);
 
-      const headerContainer = workspaceElement.querySelector("atom-panel-container.header");
-      const footerContainer = workspaceElement.querySelector("atom-panel-container.footer");
+      const headerContainer = workspaceElement.querySelector("lumine-panel-container.header");
+      const footerContainer = workspaceElement.querySelector("lumine-panel-container.footer");
       expect(headerContainer.nextSibling).toBe(workspaceElement.horizontalAxis);
       expect(footerContainer.previousSibling).toBe(workspaceElement.horizontalAxis);
 
-      const modalContainer = workspaceElement.querySelector("atom-panel-container.modal");
+      const modalContainer = workspaceElement.querySelector("lumine-panel-container.modal");
       expect(modalContainer.parentNode).toBe(workspaceElement);
     });
 
     it("stretches header/footer panels to the workspace width", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       jasmine.attachToDOM(workspaceElement);
       expect(workspaceElement.offsetWidth).toBeGreaterThan(0);
 
       const headerItem = document.createElement("div");
-      atom.workspace.addHeaderPanel({ item: headerItem });
+      lumine.workspace.addHeaderPanel({ item: headerItem });
       expect(headerItem.offsetWidth).toEqual(workspaceElement.offsetWidth);
 
       const footerItem = document.createElement("div");
-      atom.workspace.addFooterPanel({ item: footerItem });
+      lumine.workspace.addFooterPanel({ item: footerItem });
       expect(footerItem.offsetWidth).toEqual(workspaceElement.offsetWidth);
     });
 
     it("shrinks horizontal axis according to header/footer panels height", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       workspaceElement.style.height = "100px";
       const horizontalAxisElement = workspaceElement.querySelector(
-        "atom-workspace-axis.horizontal",
+        "lumine-workspace-axis.horizontal",
       );
       jasmine.attachToDOM(workspaceElement);
 
@@ -1022,12 +1040,12 @@ describe("WorkspaceElement", () => {
 
       const headerItem = document.createElement("div");
       headerItem.style.height = "10px";
-      atom.workspace.addHeaderPanel({ item: headerItem });
+      lumine.workspace.addHeaderPanel({ item: headerItem });
       expect(headerItem.offsetHeight).toBeGreaterThan(0);
 
       const footerItem = document.createElement("div");
       footerItem.style.height = "15px";
-      atom.workspace.addFooterPanel({ item: footerItem });
+      lumine.workspace.addFooterPanel({ item: footerItem });
       expect(footerItem.offsetHeight).toBeGreaterThan(0);
 
       expect(horizontalAxisElement.offsetHeight).toEqual(
@@ -1039,17 +1057,17 @@ describe("WorkspaceElement", () => {
   describe("splitting and copying an editor preserves the scroll position", () => {
     it("keeps the copied editor at the same visual position (diagnostic)", async () => {
       jasmine.useRealClock();
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       workspaceElement.style.height = "400px";
       workspaceElement.style.width = "1000px";
       jasmine.attachToDOM(workspaceElement);
 
-      atom.config.set("language.softWrap", true);
+      lumine.config.set("language.softWrap", true);
       // Re-wrap on width changes immediately. With the default debounce, the
       // measurement nudges in the settle loop below would restart the debounce
       // timer on every poll and the source pane would never re-wrap.
-      atom.config.set("editor.softWrapDebounceInterval", 0);
-      const editor = await atom.workspace.open();
+      lumine.config.set("editor.softWrapDebounceInterval", 0);
+      const editor = await lumine.workspace.open();
       const lines = [];
       for (let i = 0; i < 400; i++) lines.push(`line ${i} ` + "word ".repeat(30));
       editor.setText(lines.join("\n"));
@@ -1068,8 +1086,8 @@ describe("WorkspaceElement", () => {
       const midRow = sourceComponent.rowForPixelPosition(midPixel);
       const midBufferPosition = editor.bufferPositionForScreenPosition([midRow, 0]);
 
-      atom.workspace.getActivePane().splitRight({ copyActiveItem: true });
-      const copyEditor = atom.workspace.getActivePane().getActiveItem();
+      lumine.workspace.getActivePane().splitRight({ copyActiveItem: true });
+      const copyEditor = lumine.workspace.getActivePane().getActiveItem();
       const copyComponent = copyEditor.getElement().component;
 
       // Wait for the new pane to settle to roughly half the width.
@@ -1124,13 +1142,13 @@ describe("WorkspaceElement", () => {
       // spatial index and read the already-released buffer, crashing the
       // renderer process natively.
       jasmine.useRealClock();
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       workspaceElement.style.height = "400px";
       workspaceElement.style.width = "1000px";
       jasmine.attachToDOM(workspaceElement);
 
-      atom.config.set("language.softWrap", true);
-      const editor = await atom.workspace.open();
+      lumine.config.set("language.softWrap", true);
+      const editor = await lumine.workspace.open();
       const lines = [];
       for (let i = 0; i < 400; i++) lines.push(`line ${i} ` + "word ".repeat(30));
       editor.setText(lines.join("\n"));
@@ -1152,40 +1170,40 @@ describe("WorkspaceElement", () => {
 
   describe("the 'window:toggle-invisibles' command", () => {
     it("shows/hides invisibles in all open and future editors", () => {
-      const workspaceElement = atom.workspace.getElement();
-      expect(atom.config.get("language.showInvisibles")).toBe(false);
-      atom.commands.dispatch(workspaceElement, "window:toggle-invisibles");
-      expect(atom.config.get("language.showInvisibles")).toBe(true);
-      atom.commands.dispatch(workspaceElement, "window:toggle-invisibles");
-      expect(atom.config.get("language.showInvisibles")).toBe(false);
+      const workspaceElement = lumine.workspace.getElement();
+      expect(lumine.config.get("language.showInvisibles")).toBe(false);
+      lumine.commands.dispatch(workspaceElement, "window:toggle-invisibles");
+      expect(lumine.config.get("language.showInvisibles")).toBe(true);
+      lumine.commands.dispatch(workspaceElement, "window:toggle-invisibles");
+      expect(lumine.config.get("language.showInvisibles")).toBe(false);
     });
   });
 
   describe("the 'git:colorize-toggle' command", () => {
     it("toggles git-status colorization for this window only", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       expect(document.body.classList.contains("git-colorize-disabled")).toBe(false);
-      atom.commands.dispatch(workspaceElement, "git:colorize-toggle");
+      lumine.commands.dispatch(workspaceElement, "git:colorize-toggle");
       expect(document.body.classList.contains("git-colorize-disabled")).toBe(true);
-      atom.commands.dispatch(workspaceElement, "git:colorize-toggle");
+      lumine.commands.dispatch(workspaceElement, "git:colorize-toggle");
       expect(document.body.classList.contains("git-colorize-disabled")).toBe(false);
     });
   });
 
   describe("the 'window:run-package-specs' command", () => {
     it("runs the package specs for the active item's project path, or the first project path", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       spyOn(ipcRenderer, "send");
 
       // No project paths. Don't try to run specs.
-      atom.commands.dispatch(workspaceElement, "window:run-package-specs");
+      lumine.commands.dispatch(workspaceElement, "window:run-package-specs");
       expect(ipcRenderer.send).not.toHaveBeenCalledWith("run-package-specs");
 
       const projectPaths = [temp.mkdirSync("dir1-"), temp.mkdirSync("dir2-")];
-      atom.project.setPaths(projectPaths);
+      lumine.project.setPaths(projectPaths);
 
       // No active item. Use first project directory.
-      atom.commands.dispatch(workspaceElement, "window:run-package-specs");
+      lumine.commands.dispatch(workspaceElement, "window:run-package-specs");
       expect(ipcRenderer.send).toHaveBeenCalledWith(
         "run-package-specs",
         path.join(projectPaths[0], "spec"),
@@ -1195,8 +1213,8 @@ describe("WorkspaceElement", () => {
 
       // Active item doesn't implement ::getPath(). Use first project directory.
       const item = document.createElement("div");
-      atom.workspace.getActivePane().activateItem(item);
-      atom.commands.dispatch(workspaceElement, "window:run-package-specs");
+      lumine.workspace.getActivePane().activateItem(item);
+      lumine.commands.dispatch(workspaceElement, "window:run-package-specs");
       expect(ipcRenderer.send).toHaveBeenCalledWith(
         "run-package-specs",
         path.join(projectPaths[0], "spec"),
@@ -1206,7 +1224,7 @@ describe("WorkspaceElement", () => {
 
       // Active item has no path. Use first project directory.
       item.getPath = () => null;
-      atom.commands.dispatch(workspaceElement, "window:run-package-specs");
+      lumine.commands.dispatch(workspaceElement, "window:run-package-specs");
       expect(ipcRenderer.send).toHaveBeenCalledWith(
         "run-package-specs",
         path.join(projectPaths[0], "spec"),
@@ -1216,7 +1234,7 @@ describe("WorkspaceElement", () => {
 
       // Active item has path. Use project path for item path.
       item.getPath = () => path.join(projectPaths[1], "a-file.txt");
-      atom.commands.dispatch(workspaceElement, "window:run-package-specs");
+      lumine.commands.dispatch(workspaceElement, "window:run-package-specs");
       expect(ipcRenderer.send).toHaveBeenCalledWith(
         "run-package-specs",
         path.join(projectPaths[1], "spec"),
@@ -1226,11 +1244,11 @@ describe("WorkspaceElement", () => {
     });
 
     it("passes additional options to the spec window", () => {
-      const workspaceElement = atom.workspace.getElement();
+      const workspaceElement = lumine.workspace.getElement();
       spyOn(ipcRenderer, "send");
 
       const projectPath = temp.mkdirSync("dir1-");
-      atom.project.setPaths([projectPath]);
+      lumine.project.setPaths([projectPath]);
       workspaceElement.runPackageSpecs({
         env: { LUMINE_GITHUB_BABEL_ENV: "coverage" },
       });
@@ -1265,14 +1283,14 @@ describe("WorkspaceElement", () => {
       // conditionPromise below polls with real setTimeout ticks, which never
       // fire under the fake clock the harness installs by default.
       jasmine.useRealClock();
-      workspaceElement = atom.workspace.getElement();
+      workspaceElement = lumine.workspace.getElement();
       workspaceElement.style.height = "200px";
       workspaceElement.style.width = "600px";
       jasmine.attachToDOM(workspaceElement);
 
-      editor1 = await atom.workspace.open();
+      editor1 = await lumine.workspace.open();
       editor1.setText("one\n".repeat(100));
-      editor2 = await atom.workspace.open(null, { split: "right" });
+      editor2 = await lumine.workspace.open(null, { split: "right" });
       editor2.setText("two\n".repeat(100));
 
       component1 = editor1.getElement().getComponent();
@@ -1306,7 +1324,7 @@ describe("WorkspaceElement", () => {
     });
 
     it("scrolls only the hovered editor when the setting is disabled", () => {
-      atom.config.set("editor.ctrlWheelScrollsAllPanes", false);
+      lumine.config.set("editor.ctrlWheelScrollsAllPanes", false);
 
       const event = new WheelEvent("wheel", {
         deltaY: 50,

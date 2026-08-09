@@ -107,7 +107,7 @@ describe("bundled Tree-sitter grammars", () => {
   for (let { packageName, fileName, configPath, config, bundled } of grammarConfigs) {
     let label = bundled ? `${packageName}/${fileName}` : `${packageName}/${fileName} (out of tree)`;
     it(`${label} (${config.scopeName}) loads and compiles all queries`, async () => {
-      let grammar = new TreeSitterGrammar(atom.grammars, configPath, config);
+      let grammar = new TreeSitterGrammar(lumine.grammars, configPath, config);
       try {
         let language = await grammar.getLanguage();
 

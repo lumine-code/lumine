@@ -23,7 +23,7 @@ const getAppDirectory = () => {
 };
 
 module.exports = {
-  setAtomHome: (homePath) => {
+  setLumineHome: (homePath) => {
     // When a read-writeable `.lumine` folder exists above the app directory,
     // use that. The portability means that we don't have to use a different
     // name to distinguish the release channel.

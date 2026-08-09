@@ -1,11 +1,11 @@
 module.exports = {
   fromFirstMateScopeId(firstMateScopeId) {
-    let atomScopeId = -firstMateScopeId;
-    if ((atomScopeId & 1) === 0) atomScopeId--;
-    return atomScopeId + 256;
+    let lumineScopeId = -firstMateScopeId;
+    if ((lumineScopeId & 1) === 0) lumineScopeId--;
+    return lumineScopeId + 256;
   },
 
-  toFirstMateScopeId(atomScopeId) {
-    return -(atomScopeId - 256);
+  toFirstMateScopeId(lumineScopeId) {
+    return -(lumineScopeId - 256);
   },
 };

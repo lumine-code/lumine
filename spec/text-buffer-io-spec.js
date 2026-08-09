@@ -36,7 +36,7 @@ describe("TextBuffer IO", () => {
 
   describe(".load", () => {
     it("resolves with a buffer containing the given file's text", async (done) => {
-      const filePath = temp.openSync("atom").path;
+      const filePath = temp.openSync("lumine").path;
       fs.writeFileSync(filePath, "abc");
 
       buffer = await TextBuffer.load(filePath);
@@ -59,7 +59,7 @@ describe("TextBuffer IO", () => {
     });
 
     it("rejects if the given path is a directory", async (done) => {
-      const dirPath = temp.mkdirSync("atom");
+      const dirPath = temp.mkdirSync("lumine");
       try {
         await TextBuffer.load(dirPath);
       } catch (error) {
@@ -80,7 +80,7 @@ describe("TextBuffer IO", () => {
 
     describe("when a custom File object is given in place of the file path", () => {
       it("loads the buffer using the file's createReadStream method", async (done) => {
-        const filePath = temp.openSync("atom").path;
+        const filePath = temp.openSync("lumine").path;
         fs.writeFileSync(filePath, "abc\ndef");
 
         buffer = await TextBuffer.load(new ReverseCaseFile(filePath));
@@ -93,7 +93,7 @@ describe("TextBuffer IO", () => {
 
   describe(".loadSync", () => {
     it("returns a buffer containing the given file's text", () => {
-      const filePath = temp.openSync("atom").path;
+      const filePath = temp.openSync("lumine").path;
       fs.writeFileSync(filePath, "abc");
 
       buffer = TextBuffer.loadSync(filePath);
@@ -107,7 +107,7 @@ describe("TextBuffer IO", () => {
     });
 
     it("throws EISDIR if the path is a directory", () => {
-      const dirPath = temp.mkdirSync("atom");
+      const dirPath = temp.mkdirSync("lumine");
       try {
         TextBuffer.loadSync(dirPath);
         expect("Did not fail with EISDIR").toBeUndefined();
@@ -130,7 +130,7 @@ describe("TextBuffer IO", () => {
     let filePath;
 
     beforeEach(async (done) => {
-      filePath = temp.openSync("atom").path;
+      filePath = temp.openSync("lumine").path;
       fs.writeFileSync(filePath, "abcdefg");
       buffer = await TextBuffer.load(filePath);
       done();
@@ -552,7 +552,7 @@ describe("TextBuffer IO", () => {
     let filePath;
 
     beforeEach(async (done) => {
-      filePath = temp.openSync("atom").path;
+      filePath = temp.openSync("lumine").path;
       fs.writeFileSync(filePath, "a");
       buffer = await TextBuffer.load(filePath);
       done();
@@ -562,7 +562,7 @@ describe("TextBuffer IO", () => {
       const didChangePathHandler = jasmine.createSpy("didChangePathHandler");
       buffer.onDidChangePath(didChangePathHandler);
 
-      const newPath = temp.openSync("atom").path;
+      const newPath = temp.openSync("lumine").path;
       buffer.setText("b");
       await buffer.saveAs(newPath);
       expect(fs.readFileSync(newPath, "utf8")).toEqual("b");
@@ -571,7 +571,7 @@ describe("TextBuffer IO", () => {
     });
 
     it("can save to a file in a non-existent directory", async (done) => {
-      const directory = temp.mkdirSync("atom");
+      const directory = temp.mkdirSync("lumine");
       const newFilePath = path.join(directory, "a", "b", "c", "new-file");
 
       await buffer.saveAs(newFilePath);
@@ -584,7 +584,7 @@ describe("TextBuffer IO", () => {
       const didChangeHandler = jasmine.createSpy("didChangeHandler");
       buffer.onDidChange(didChangeHandler);
 
-      const newPath = temp.openSync("atom").path;
+      const newPath = temp.openSync("lumine").path;
       await buffer.saveAs(newPath);
       await buffer.getFileWatchStartPromise();
       expect(didChangeHandler).not.toHaveBeenCalled();
@@ -606,7 +606,7 @@ describe("TextBuffer IO", () => {
   describe(".isModified", () => {
     let filePath;
     beforeEach(async (done) => {
-      filePath = temp.openSync("atom").path;
+      filePath = temp.openSync("lumine").path;
       fs.writeFileSync(filePath, "");
       buffer = await TextBuffer.load(filePath);
       // Arm the file watcher before each spec so on-disk deletions are observed
@@ -829,7 +829,7 @@ describe("TextBuffer IO", () => {
   describe(".serialize and .deserialize", () => {
     describe("when the disk contents have not changed since serialization", () => {
       it("restores the previous unsaved state of the buffer, along with its markers and history", async (done) => {
-        const filePath = temp.openSync("atom").path;
+        const filePath = temp.openSync("lumine").path;
         fs.writeFileSync(filePath, "abc\ndef\n");
 
         buffer = await TextBuffer.load(filePath);
@@ -853,7 +853,7 @@ describe("TextBuffer IO", () => {
 
     describe("when the disk contents have changed since serialization", () => {
       it("loads the disk contents instead of the previous unsaved state", async (done) => {
-        const filePath = temp.openSync("atom").path;
+        const filePath = temp.openSync("lumine").path;
         fs.writeFileSync(filePath, "abc\ndef\n");
 
         buffer = await TextBuffer.load(filePath);
@@ -972,7 +972,7 @@ describe("TextBuffer IO", () => {
     let filePath;
 
     beforeEach(async (done) => {
-      filePath = temp.openSync("atom").path;
+      filePath = temp.openSync("lumine").path;
       fs.writeFileSync(filePath, "abcde");
       buffer = await TextBuffer.load(filePath);
       // The watcher arms asynchronously; wait for it so external writes below
@@ -1168,7 +1168,7 @@ describe("TextBuffer IO", () => {
       const pendingLoads = [];
       let resolveLoadStarted;
       spyOn(NativeTextBuffer.prototype, "load").and.callFake(function (pathToLoad, ...args) {
-        const pathToLoadCopy = temp.openSync("atom").path;
+        const pathToLoadCopy = temp.openSync("lumine").path;
         fs.writeFileSync(pathToLoadCopy, fs.readFileSync(pathToLoad));
         const loadStarted = resolveLoadStarted;
         resolveLoadStarted = null;

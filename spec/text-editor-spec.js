@@ -1,6 +1,6 @@
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
-const { CompositeDisposable } = require("atom");
+const { CompositeDisposable } = require("lumine");
 const fs = require("fs");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
@@ -24,11 +24,11 @@ describe("TextEditor", () => {
   let buffer, editor, lineLengths, languageMode;
 
   beforeEach(async () => {
-    editor = await atom.workspace.open("sample.js");
+    editor = await lumine.workspace.open("sample.js");
     buffer = editor.buffer;
     editor.update({ autoIndent: false });
     lineLengths = buffer.getLines().map((line) => line.length);
-    await atom.packages.activatePackage("language-javascript");
+    await lumine.packages.activatePackage("language-javascript");
     languageMode = buffer.getLanguageMode();
     if ("useAsyncParsing" in languageMode) {
       languageMode.useAsyncParsing = false;
@@ -74,8 +74,8 @@ describe("TextEditor", () => {
 
       const buffer2 = await TextBuffer.deserialize(editor.buffer.serialize());
       const editor2 = TextEditor.deserialize(editor.serialize(), {
-        assert: atom.assert,
-        textEditors: atom.textEditors,
+        assert: lumine.assert,
+        textEditors: lumine.textEditors,
         project: {
           bufferForIdSync() {
             return buffer2;
@@ -117,8 +117,8 @@ describe("TextEditor", () => {
       // reusing the same buffer instance
       const buffer2 = await TextBuffer.deserialize(editor.buffer.serialize());
       const editor2 = TextEditor.deserialize(editor.serialize(), {
-        assert: atom.assert,
-        textEditors: atom.textEditors,
+        assert: lumine.assert,
+        textEditors: lumine.textEditors,
         project: {
           bufferForIdSync() {
             return buffer2;
@@ -141,8 +141,8 @@ describe("TextEditor", () => {
 
     it("ignores buffers with retired IDs", () => {
       const editor2 = TextEditor.deserialize(editor.serialize(), {
-        assert: atom.assert,
-        textEditors: atom.textEditors,
+        assert: lumine.assert,
+        textEditors: lumine.textEditors,
         project: {
           bufferForIdSync() {
             return null;
@@ -259,8 +259,8 @@ describe("TextEditor", () => {
       });
 
       it("returns '<filename> — <parent-directory>' when opened files have identical file names", async () => {
-        const editor1 = await atom.workspace.open(path.join("sample-theme-1", "readme"));
-        const editor2 = await atom.workspace.open(path.join("sample-theme-2", "readme"));
+        const editor1 = await lumine.workspace.open(path.join("sample-theme-1", "readme"));
+        const editor2 = await lumine.workspace.open(path.join("sample-theme-2", "readme"));
         expect(editor1.getLongTitle()).toBe("readme \u2014 sample-theme-1");
         expect(editor2.getLongTitle()).toBe("readme \u2014 sample-theme-2");
       });
@@ -268,17 +268,17 @@ describe("TextEditor", () => {
       it("returns '<filename> — <parent-directories>' when opened files have identical file names in subdirectories", async () => {
         const path1 = path.join("sample-theme-1", "src", "js");
         const path2 = path.join("sample-theme-2", "src", "js");
-        const editor1 = await atom.workspace.open(path.join(path1, "main.js"));
-        const editor2 = await atom.workspace.open(path.join(path2, "main.js"));
+        const editor1 = await lumine.workspace.open(path.join(path1, "main.js"));
+        const editor2 = await lumine.workspace.open(path.join(path2, "main.js"));
         expect(editor1.getLongTitle()).toBe(`main.js \u2014 ${path1}`);
         expect(editor2.getLongTitle()).toBe(`main.js \u2014 ${path2}`);
       });
 
       it("returns '<filename> — <parent-directories>' when opened files have identical file and same parent dir name", async () => {
-        const editor1 = await atom.workspace.open(
+        const editor1 = await lumine.workspace.open(
           path.join("sample-theme-2", "src", "js", "main.js"),
         );
-        const editor2 = await atom.workspace.open(
+        const editor2 = await lumine.workspace.open(
           path.join("sample-theme-2", "src", "js", "plugin", "main.js"),
         );
         expect(editor1.getLongTitle()).toBe("main.js \u2014 js");
@@ -290,7 +290,7 @@ describe("TextEditor", () => {
           expect(editor.getLongTitle()).toBe("sample.js");
         });
 
-        await atom.workspace.getActivePane().close();
+        await lumine.workspace.getActivePane().close();
         expect(editor.isDestroyed()).toBe(true);
       });
 
@@ -1574,7 +1574,7 @@ describe("TextEditor", () => {
       });
 
       it("will limit paragraph range to comments", () => {
-        atom.grammars.assignLanguageMode(editor.getBuffer(), "source.js");
+        lumine.grammars.assignLanguageMode(editor.getBuffer(), "source.js");
         editor.setText(dedent`
           var quicksort = function () {
             /* Single line comment block */
@@ -3197,7 +3197,7 @@ describe("TextEditor", () => {
         });
 
         it("takes atomic tokens into account", async () => {
-          editor = await atom.workspace.open("sample-with-tabs-and-leading-comment.coffee", {
+          editor = await lumine.workspace.open("sample-with-tabs-and-leading-comment.coffee", {
             autoIndent: false,
           });
           editor.setSelectedBufferRange([
@@ -3432,7 +3432,7 @@ describe("TextEditor", () => {
         });
 
         it("takes atomic tokens into account", async () => {
-          editor = await atom.workspace.open("sample-with-tabs-and-leading-comment.coffee", {
+          editor = await lumine.workspace.open("sample-with-tabs-and-leading-comment.coffee", {
             autoIndent: false,
           });
           editor.setSelectedBufferRange([
@@ -3693,8 +3693,8 @@ describe("TextEditor", () => {
     });
 
     it("does not share selections between different edit sessions for the same buffer", async () => {
-      atom.workspace.getActivePane().splitRight();
-      const editor2 = await atom.workspace.open(editor.getPath());
+      lumine.workspace.getActivePane().splitRight();
+      const editor2 = await lumine.workspace.open(editor.getPath());
 
       expect(editor2.getText()).toBe(editor.getText());
       editor.setSelectedBufferRanges([
@@ -4186,7 +4186,7 @@ describe("TextEditor", () => {
 
         describe("when there are many folds", () => {
           beforeEach(async () => {
-            editor = await atom.workspace.open("sample-with-many-folds.js", {
+            editor = await lumine.workspace.open("sample-with-many-folds.js", {
               autoIndent: false,
             });
           });
@@ -4719,7 +4719,7 @@ describe("TextEditor", () => {
 
           describe("when there are many folds", () => {
             beforeEach(async () => {
-              editor = await atom.workspace.open("sample-with-many-folds.js", {
+              editor = await lumine.workspace.open("sample-with-many-folds.js", {
                 autoIndent: false,
               });
             });
@@ -5472,7 +5472,7 @@ describe("TextEditor", () => {
       describe("when a newline is appended with a trailing closing tag behind the cursor (e.g. by pressing enter in the middel of a line)", () => {
         it("indents the new line to the correct level when language.autoIndent is true and using a curly-bracket language", () => {
           editor.update({ autoIndent: true });
-          atom.grammars.assignLanguageMode(editor, "source.js");
+          lumine.grammars.assignLanguageMode(editor, "source.js");
           editor.setText("var test = () => {\n  return true;};");
           editor.setCursorBufferPosition([1, 14]);
           editor.insertNewline();
@@ -5481,20 +5481,20 @@ describe("TextEditor", () => {
         });
 
         it("indents the new line to the current level when language.autoIndent is true and no increaseIndentPattern is specified", () => {
-          atom.grammars.assignLanguageMode(editor, null);
+          lumine.grammars.assignLanguageMode(editor, null);
           editor.update({ autoIndent: true });
           editor.setText("  if true");
           editor.setCursorBufferPosition([0, 8]);
           editor.insertNewline();
-          expect(editor.getGrammar()).toBe(atom.grammars.nullGrammar);
+          expect(editor.getGrammar()).toBe(lumine.grammars.nullGrammar);
           expect(editor.indentationForBufferRow(0)).toBe(1);
           expect(editor.indentationForBufferRow(1)).toBe(1);
         });
 
         it("indents the new line to the correct level when language.autoIndent is true and using an off-side rule language", async () => {
-          await atom.packages.activatePackage("language-coffee-script");
+          await lumine.packages.activatePackage("language-coffee-script");
           editor.update({ autoIndent: true });
-          atom.grammars.assignLanguageMode(editor, "source.coffee");
+          lumine.grammars.assignLanguageMode(editor, "source.coffee");
           editor.setText("if true\n  return trueelse\n  return false");
           editor.setCursorBufferPosition([1, 13]);
           editor.insertNewline();
@@ -5506,9 +5506,9 @@ describe("TextEditor", () => {
 
       describe("when a newline is appended on a line that matches the decreaseNextIndentPattern", () => {
         it("indents the new line to the correct level when language.autoIndent is true", async () => {
-          await atom.packages.activatePackage("language-go");
+          await lumine.packages.activatePackage("language-go");
           editor.update({ autoIndent: true });
-          atom.grammars.assignLanguageMode(editor, "source.go");
+          lumine.grammars.assignLanguageMode(editor, "source.go");
           editor.setText('fmt.Printf("some%s",\n	"thing")');
           editor.setCursorBufferPosition([1, 10]);
           editor.insertNewline();
@@ -6338,7 +6338,7 @@ describe("TextEditor", () => {
               "      current < pivot ? left.push(current) : right.push(current);",
             );
 
-            expect(atom.clipboard.read()).toEqual(
+            expect(lumine.clipboard.read()).toEqual(
               ["var quicksort = function () {", "", "      current = items.shift();", ""].join(
                 os.EOL,
               ),
@@ -6363,7 +6363,7 @@ describe("TextEditor", () => {
               ],
             ]);
             editor.cutSelectedText();
-            expect(atom.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
+            expect(lumine.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
           });
         });
       });
@@ -6388,7 +6388,7 @@ describe("TextEditor", () => {
               editor.cutToEndOfLine();
               expect(buffer.lineForRow(2)).toBe("    if (items.length");
               expect(buffer.lineForRow(3)).toBe("    var pivot = item");
-              expect(atom.clipboard.read()).toBe(
+              expect(lumine.clipboard.read()).toBe(
                 ` <= 1) return items;${os.EOL}s.shift(), current, left = [], right = [];`,
               );
             }));
@@ -6408,7 +6408,7 @@ describe("TextEditor", () => {
               editor.cutToEndOfLine();
               expect(buffer.lineForRow(2)).toBe("    if (items.lengthurn items;");
               expect(buffer.lineForRow(3)).toBe("    var pivot = item");
-              expect(atom.clipboard.read()).toBe(
+              expect(lumine.clipboard.read()).toBe(
                 ` <= 1) ret${os.EOL}s.shift(), current, left = [], right = [];`,
               );
             }));
@@ -6428,7 +6428,7 @@ describe("TextEditor", () => {
             editor.cutToEndOfBufferLine();
             expect(buffer.lineForRow(2)).toBe("    if (items.length");
             expect(buffer.lineForRow(3)).toBe("    var pivot = item");
-            expect(atom.clipboard.read()).toBe(
+            expect(lumine.clipboard.read()).toBe(
               ` <= 1) return items;${os.EOL}s.shift(), current, left = [], right = [];`,
             );
           });
@@ -6449,7 +6449,7 @@ describe("TextEditor", () => {
             editor.cutToEndOfBufferLine();
             expect(buffer.lineForRow(2)).toBe("    if (items.lengthurn items;");
             expect(buffer.lineForRow(3)).toBe("    var pivot = item");
-            expect(atom.clipboard.read()).toBe(
+            expect(lumine.clipboard.read()).toBe(
               ` <= 1) ret${os.EOL}s.shift(), current, left = [], right = [];`,
             );
           });
@@ -6478,7 +6478,7 @@ describe("TextEditor", () => {
           expect(buffer.lineForRow(1)).toBe("  var sort = function(items) {");
           expect(buffer.lineForRow(2)).toBe("    if (items.length <= 1) return items;");
           expect(clipboard.readText()).toBe(["quicksort", "sort", "items"].join(os.EOL));
-          expect(atom.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
+          expect(lumine.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
         });
 
         describe("when no text is selected", () => {
@@ -6497,7 +6497,7 @@ describe("TextEditor", () => {
 
           it("copies the lines on which there are cursors", () => {
             editor.copySelectedText();
-            expect(atom.clipboard.read()).toEqual(
+            expect(lumine.clipboard.read()).toEqual(
               [
                 `  var sort = function(items) {${os.EOL}`,
                 `      current = items.shift();${os.EOL}`,
@@ -6533,7 +6533,7 @@ describe("TextEditor", () => {
               ],
             ]);
             editor.copySelectedText();
-            expect(atom.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
+            expect(lumine.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
           });
         });
       });
@@ -6561,7 +6561,7 @@ describe("TextEditor", () => {
             expect(buffer.lineForRow(1)).toBe("  var sort = function(items) {");
             expect(buffer.lineForRow(2)).toBe("    if (items.length <= 1) return items;");
             expect(clipboard.readText()).toBe(["quicksort", "sort", "items"].join(os.EOL));
-            expect(atom.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
+            expect(lumine.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
           });
         });
 
@@ -6569,7 +6569,7 @@ describe("TextEditor", () => {
           it("does not copy anything", () => {
             editor.setCursorBufferPosition([1, 5]);
             editor.copyOnlySelectedText();
-            expect(atom.clipboard.read()).toEqual("initial clipboard content");
+            expect(lumine.clipboard.read()).toEqual("initial clipboard content");
           });
         });
       });
@@ -6586,7 +6586,7 @@ describe("TextEditor", () => {
               [1, 10],
             ],
           ]);
-          atom.clipboard.write("first");
+          lumine.clipboard.write("first");
           editor.pasteText();
           expect(editor.lineTextForBufferRow(0)).toBe("var first = function () {");
           expect(editor.lineTextForBufferRow(1)).toBe("  var first = function(items) {");
@@ -6599,7 +6599,7 @@ describe("TextEditor", () => {
             cancel();
           });
 
-          atom.clipboard.write("hello");
+          lumine.clipboard.write("hello");
           editor.pasteText();
 
           expect(insertedStrings).toEqual(["hello"]);
@@ -6609,7 +6609,7 @@ describe("TextEditor", () => {
           const insertedStrings = [];
           editor.onDidInsertText(({ text, range: _range }) => insertedStrings.push(text));
 
-          atom.clipboard.write("hello");
+          lumine.clipboard.write("hello");
           editor.pasteText();
 
           expect(insertedStrings).toEqual(["hello"]);
@@ -6620,7 +6620,7 @@ describe("TextEditor", () => {
 
           describe("when pasting multiple lines before any non-whitespace characters", () => {
             it("auto-indents the lines spanned by the pasted text, based on the first pasted line", () => {
-              atom.clipboard.write("a(x);\n  b(x);\n    c(x);\n", {
+              lumine.clipboard.write("a(x);\n  b(x);\n    c(x);\n", {
                 indentBasis: 0,
               });
               editor.setCursorBufferPosition([5, 0]);
@@ -6639,7 +6639,7 @@ describe("TextEditor", () => {
               editor.setSoftTabs(false);
               expect(editor.indentationForBufferRow(5)).toBe(3);
 
-              atom.clipboard.write("/**\n\t * testing\n\t * indent\n\t **/\n", {
+              lumine.clipboard.write("/**\n\t * testing\n\t * indent\n\t **/\n", {
                 indentBasis: 1,
               });
               editor.setCursorBufferPosition([5, 0]);
@@ -6655,7 +6655,7 @@ describe("TextEditor", () => {
 
           describe("when pasting line(s) above a line that matches the decreaseIndentPattern", () =>
             it("auto-indents based on the pasted line(s) only", async () => {
-              atom.clipboard.write("a(x);\n  b(x);\n    c(x);\n", {
+              lumine.clipboard.write("a(x);\n  b(x);\n    c(x);\n", {
                 indentBasis: 0,
               });
               editor.setCursorBufferPosition([7, 0]);
@@ -6670,7 +6670,7 @@ describe("TextEditor", () => {
 
           describe("when pasting a line of text without line ending", () =>
             it("does not auto-indent the text", () => {
-              atom.clipboard.write("a(x);", { indentBasis: 0 });
+              lumine.clipboard.write("a(x);", { indentBasis: 0 });
               editor.setCursorBufferPosition([5, 0]);
               editor.pasteText();
 
@@ -6689,7 +6689,7 @@ describe("TextEditor", () => {
                 }\
               `);
 
-              atom.clipboard.write(" z();\n h();");
+              lumine.clipboard.write(" z();\n h();");
               editor.setCursorBufferPosition([1, Infinity]);
 
               // The indentation of the non-standard line is unchanged.
@@ -6858,7 +6858,7 @@ describe("TextEditor", () => {
 
         it("respects options that preserve the formatting of the pasted text", () => {
           editor.update({ autoIndentOnPaste: true });
-          atom.clipboard.write("a(x);\n  b(x);\r\nc(x);\n", { indentBasis: 0 });
+          lumine.clipboard.write("a(x);\n  b(x);\r\nc(x);\n", { indentBasis: 0 });
           editor.setCursorBufferPosition([5, 0]);
           editor.insertText("  ");
           editor.pasteText({
@@ -8063,7 +8063,7 @@ describe("TextEditor", () => {
                 [1, 10],
               ],
             ]);
-            atom.clipboard.write("first");
+            lumine.clipboard.write("first");
             editor.pasteText(opts);
           },
         },
@@ -8471,7 +8471,7 @@ describe("TextEditor", () => {
 
   describe("when the buffer's language mode changes", () => {
     beforeEach(() => {
-      atom.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("language.useTreeSitterParsers", false);
     });
 
     it("notifies onDidTokenize observers when retokenization is finished", async () => {
@@ -8483,8 +8483,8 @@ describe("TextEditor", () => {
       const events = [];
       editor.onDidTokenize((event) => events.push(event));
 
-      await atom.packages.activatePackage("language-c");
-      expect(atom.grammars.assignLanguageMode(editor.getBuffer(), "source.c")).toBe(true);
+      await lumine.packages.activatePackage("language-c");
+      expect(lumine.grammars.assignLanguageMode(editor.getBuffer(), "source.c")).toBe(true);
       advanceClock(1);
       expect(events.length).toBe(1);
     });
@@ -8493,8 +8493,8 @@ describe("TextEditor", () => {
       const events = [];
       editor.onDidChangeGrammar((grammar) => events.push(grammar));
 
-      await atom.packages.activatePackage("language-c");
-      expect(atom.grammars.assignLanguageMode(editor.getBuffer(), "source.c")).toBe(true);
+      await lumine.packages.activatePackage("language-c");
+      expect(lumine.grammars.assignLanguageMode(editor.getBuffer(), "source.c")).toBe(true);
       expect(events.length).toBe(1);
       expect(events[0].name).toBe("C");
     });
@@ -9191,19 +9191,19 @@ describe("TextEditor", () => {
 
   describe("when the editor's grammar has an injection selector", () => {
     beforeEach(async () => {
-      atom.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("language.useTreeSitterParsers", false);
 
-      await atom.packages.activatePackage("language-text");
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-text");
+      await lumine.packages.activatePackage("language-javascript");
     });
 
     it("includes the grammar's patterns when the selector matches the current scope in other grammars", async () => {
-      await atom.packages.activatePackage("language-hyperlink");
+      await lumine.packages.activatePackage("language-hyperlink");
 
-      const grammar = atom.grammars.selectGrammar("text.js");
+      const grammar = lumine.grammars.selectGrammar("text.js");
       const { line, tags } = grammar.tokenizeLine("var i; // http://github.com");
 
-      const tokens = atom.grammars.decodeTokens(line, tags);
+      const tokens = lumine.grammars.decodeTokens(line, tags);
       expect(tokens[0].value).toBe("var");
       expect(tokens[0].scopes).toEqual(["source.js", "storage.type.var.js"]);
       expect(tokens[6].value).toBe("http://github.com");
@@ -9216,7 +9216,7 @@ describe("TextEditor", () => {
 
     describe("when the grammar is added", () => {
       it("retokenizes existing buffers that contain tokens that match the injection selector", async () => {
-        editor = await atom.workspace.open("sample.js");
+        editor = await lumine.workspace.open("sample.js");
         editor.setText("// http://github.com");
         let tokens = editor.tokensForScreenRow(0);
         expect(tokens).toEqual([
@@ -9237,7 +9237,7 @@ describe("TextEditor", () => {
           },
         ]);
 
-        await atom.packages.activatePackage("language-hyperlink");
+        await lumine.packages.activatePackage("language-hyperlink");
         tokens = editor.tokensForScreenRow(0);
         expect(tokens).toEqual([
           {
@@ -9268,7 +9268,7 @@ describe("TextEditor", () => {
 
       describe("when the grammar is updated", () => {
         it("retokenizes existing buffers that contain tokens that match the injection selector", async () => {
-          editor = await atom.workspace.open("sample.js");
+          editor = await lumine.workspace.open("sample.js");
           editor.setText("// SELECT * FROM OCTOCATS");
           let tokens = editor.tokensForScreenRow(0);
           expect(tokens).toEqual([
@@ -9289,7 +9289,7 @@ describe("TextEditor", () => {
             },
           ]);
 
-          await atom.packages.activatePackage("package-with-injection-selector");
+          await lumine.packages.activatePackage("package-with-injection-selector");
           tokens = editor.tokensForScreenRow(0);
           expect(tokens).toEqual([
             {
@@ -9309,7 +9309,7 @@ describe("TextEditor", () => {
             },
           ]);
 
-          await atom.packages.activatePackage("language-sql");
+          await lumine.packages.activatePackage("language-sql");
           tokens = editor.tokensForScreenRow(0);
           expect(tokens).toEqual([
             {
@@ -10043,16 +10043,16 @@ describe("TextEditor", () => {
 
   describe(".getCommentDelimitersForBufferPosition", () => {
     it("returns comment delimiters on a TextMate grammar", async () => {
-      atom.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("language.useTreeSitterParsers", false);
 
-      editor = await atom.workspace.open("sample.js", { autoIndent: false });
-      await atom.packages.activatePackage("language-javascript");
+      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+      await lumine.packages.activatePackage("language-javascript");
 
       let buffer = editor.getBuffer();
 
       let languageMode = new TextMateLanguageMode({
         buffer,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
 
       buffer.setLanguageMode(languageMode);
@@ -10071,17 +10071,17 @@ describe("TextEditor", () => {
 
     it("returns comment delimiters on a Tree-sitter grammar", async () => {
       jasmine.useRealClock();
-      atom.config.set("language.useTreeSitterParsers", true);
+      lumine.config.set("language.useTreeSitterParsers", true);
 
-      editor = await atom.workspace.open("sample.js", { autoIndent: false });
-      await atom.packages.activatePackage("language-javascript");
+      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+      await lumine.packages.activatePackage("language-javascript");
 
       let buffer = editor.getBuffer();
 
       let languageMode = new TreeSitterLanguageMode({
         buffer,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
-        grammars: atom.grammars,
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
+        grammars: lumine.grammars,
       });
 
       languageMode.useAsyncParsing = false;
@@ -10100,16 +10100,16 @@ describe("TextEditor", () => {
 
   describe(".syntaxTreeScopeDescriptorForBufferPosition(position)", () => {
     it("returns the result of scopeDescriptorForBufferPosition() when textmate language mode is used", async () => {
-      atom.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("language.useTreeSitterParsers", false);
 
-      editor = await atom.workspace.open("sample.js", { autoIndent: false });
-      await atom.packages.activatePackage("language-javascript");
+      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+      await lumine.packages.activatePackage("language-javascript");
 
       let buffer = editor.getBuffer();
 
       let languageMode = new TextMateLanguageMode({
         buffer,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
       });
 
       buffer.setLanguageMode(languageMode);
@@ -10128,15 +10128,15 @@ describe("TextEditor", () => {
 
     it("returns the result of syntaxTreeScopeDescriptorForBufferPosition() when tree-sitter language mode is used", async () => {
       jasmine.useRealClock();
-      editor = await atom.workspace.open("sample.js", { autoIndent: false });
-      await atom.packages.activatePackage("language-javascript");
+      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+      await lumine.packages.activatePackage("language-javascript");
 
       let buffer = editor.getBuffer();
 
       let languageMode = new TreeSitterLanguageMode({
         buffer,
-        grammar: atom.grammars.grammarForScopeName("source.js"),
-        grammars: atom.grammars,
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
+        grammars: lumine.grammars,
       });
 
       languageMode.useAsyncParsing = false;
@@ -10172,14 +10172,14 @@ describe("TextEditor", () => {
     let promptOnSaveConflictedFileOutcome;
     beforeEach(async () => {
       jasmine.useRealClock();
-      atom.config.set("core.promptOnSaveConflictedFile", true);
+      lumine.config.set("core.promptOnSaveConflictedFile", true);
       let projectPath = temp.mkdirSync("project-with-file-modification");
       destination = path.resolve(projectPath, "sample.js");
       fs.copyFileSync(path.resolve(__dirname, "fixtures", "sample.js"), destination);
       disposables?.dispose();
       disposables = new CompositeDisposable();
-      atom.project.setPaths([projectPath]);
-      editor = await atom.workspace.open(destination);
+      lumine.project.setPaths([projectPath]);
+      editor = await lumine.workspace.open(destination);
       const buffer = editor.buffer;
       editor.update({ autoIndent: false });
 
@@ -10196,7 +10196,7 @@ describe("TextEditor", () => {
         );
       }
 
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
       const languageMode = buffer.getLanguageMode();
       if ("useAsyncParsing" in languageMode) {
         languageMode.useAsyncParsing = false;
@@ -10243,7 +10243,7 @@ describe("TextEditor", () => {
 
       // We've got to save this editor via the `Pane::saveItem` interface to
       // trigger this conflict warning.
-      let activePane = atom.workspace.getActivePane();
+      let activePane = lumine.workspace.getActivePane();
       activePane.saveItem(editor);
 
       // User should be shown the dialog…
@@ -10271,7 +10271,7 @@ describe("TextEditor", () => {
       promptOnSaveConflictedFileOutcome = () => Promise.reject({ path: destination });
       let uncommittedContents = editor.getText();
 
-      let activePane = atom.workspace.getActivePane();
+      let activePane = lumine.workspace.getActivePane();
       activePane.saveItem(editor);
       await conditionPromise(() => {
         return Pane.prototype.promptOnSaveConflictedFile.calls.count() > 0;
@@ -10288,18 +10288,18 @@ describe("TextEditor", () => {
 
     describe("but core.promptOnSaveConflictedFile is false", () => {
       beforeEach(() => {
-        atom.config.set("core.promptOnSaveConflictedFile", false);
+        lumine.config.set("core.promptOnSaveConflictedFile", false);
       });
 
       it("is considered to be in a conflicted state, but will not prompt the user", async () => {
         expect(editor.isInConflict()).toBe(true);
-        expect(atom.config.get("core.promptOnSaveConflictedFile")).toBe(false);
+        expect(lumine.config.get("core.promptOnSaveConflictedFile")).toBe(false);
 
         let uncommittedContents = editor.getText();
 
         // We've got to save this editor via the `Pane::saveItem` interface to
         // trigger this conflict warning.
-        let activePane = atom.workspace.getActivePane();
+        let activePane = lumine.workspace.getActivePane();
         activePane.saveItem(editor);
 
         await conditionPromise(() => !editor.isModified());
@@ -10323,9 +10323,9 @@ describe("TextEditor", () => {
   describe(".shouldPromptToSave()", () => {
     beforeEach(async () => {
       jasmine.useRealClock();
-      editor = await atom.workspace.open("sample.js");
+      editor = await lumine.workspace.open("sample.js");
       jasmine.unspy(editor, "shouldPromptToSave");
-      spyOn(atom.stateStore, "isConnected").and.returnValue(true);
+      spyOn(lumine.stateStore, "isConnected").and.returnValue(true);
     });
 
     it("returns true when buffer has unsaved changes", () => {
@@ -10337,8 +10337,8 @@ describe("TextEditor", () => {
     it("returns false when an editor's buffer is in use by more than one buffer", async () => {
       editor.setText("changed");
 
-      atom.workspace.getActivePane().splitRight();
-      const editor2 = await atom.workspace.open("sample.js", {
+      lumine.workspace.getActivePane().splitRight();
+      const editor2 = await lumine.workspace.open("sample.js", {
         autoIndent: false,
       });
       expect(editor.shouldPromptToSave()).toBeFalsy();
@@ -10352,10 +10352,10 @@ describe("TextEditor", () => {
         spyOn(editor, "isDeleted").and.returnValue(true);
         expect(editor.isModified()).toBeFalsy();
 
-        atom.config.set("core.promptOnCloseDeletedFile", false);
+        lumine.config.set("core.promptOnCloseDeletedFile", false);
         expect(editor.shouldPromptToSave()).toBeFalsy();
 
-        atom.config.set("core.promptOnCloseDeletedFile", true);
+        lumine.config.set("core.promptOnCloseDeletedFile", true);
         expect(editor.shouldPromptToSave()).toBeTruthy();
       });
 
@@ -10363,7 +10363,7 @@ describe("TextEditor", () => {
         spyOn(editor, "isDeleted").and.returnValue(true);
         editor.setText("changed");
 
-        atom.config.set("core.promptOnCloseDeletedFile", false);
+        lumine.config.set("core.promptOnCloseDeletedFile", false);
         expect(editor.shouldPromptToSave()).toBeTruthy();
       });
     });
@@ -10426,8 +10426,8 @@ describe("TextEditor", () => {
 
   describe(".toggleLineCommentsInSelection()", () => {
     beforeEach(async () => {
-      await atom.packages.activatePackage("language-javascript");
-      editor = await atom.workspace.open("sample.js");
+      await lumine.packages.activatePackage("language-javascript");
+      editor = await lumine.workspace.open("sample.js");
     });
 
     it("toggles comments on the selected lines", () => {
@@ -10545,7 +10545,7 @@ describe("TextEditor", () => {
     });
 
     it("does nothing for empty lines and null grammar", () => {
-      atom.grammars.assignLanguageMode(editor, null);
+      lumine.grammars.assignLanguageMode(editor, null);
       editor.setCursorBufferPosition([10, 0]);
       editor.toggleLineCommentsInSelection();
       expect(editor.lineTextForBufferRow(10)).toBe("");
@@ -10590,8 +10590,8 @@ describe("TextEditor", () => {
   describe(".toggleLineCommentsForBufferRows", () => {
     describe("xml", () => {
       beforeEach(async () => {
-        await atom.packages.activatePackage("language-xml");
-        editor = await atom.workspace.open("test.xml");
+        await lumine.packages.activatePackage("language-xml");
+        editor = await lumine.workspace.open("test.xml");
         editor.setText("<!-- test -->");
       });
 
@@ -10675,9 +10675,9 @@ describe("TextEditor", () => {
 
     describe("less", () => {
       beforeEach(async () => {
-        await atom.packages.activatePackage("language-less");
-        await atom.packages.activatePackage("language-css");
-        editor = await atom.workspace.open("sample.less");
+        await lumine.packages.activatePackage("language-less");
+        await lumine.packages.activatePackage("language-css");
+        editor = await lumine.workspace.open("sample.less");
       });
 
       it("only uses the `commentEnd` pattern if it comes from the same grammar as the `commentStart` when commenting lines", () => {
@@ -10688,8 +10688,8 @@ describe("TextEditor", () => {
 
     describe("css", () => {
       beforeEach(async () => {
-        await atom.packages.activatePackage("language-css");
-        editor = await atom.workspace.open("css.css");
+        await lumine.packages.activatePackage("language-css");
+        editor = await lumine.workspace.open("css.css");
       });
 
       it("comments/uncomments lines in the given range", () => {
@@ -10751,8 +10751,8 @@ describe("TextEditor", () => {
 
     describe("coffeescript", () => {
       beforeEach(async () => {
-        await atom.packages.activatePackage("language-coffee-script");
-        editor = await atom.workspace.open("coffee.coffee");
+        await lumine.packages.activatePackage("language-coffee-script");
+        editor = await lumine.workspace.open("coffee.coffee");
       });
 
       it("comments/uncomments lines in the given range", () => {
@@ -10784,8 +10784,8 @@ describe("TextEditor", () => {
 
     describe("javascript", () => {
       beforeEach(async () => {
-        await atom.packages.activatePackage("language-javascript");
-        editor = await atom.workspace.open("sample.js");
+        await lumine.packages.activatePackage("language-javascript");
+        editor = await lumine.workspace.open("sample.js");
       });
 
       it("comments/uncomments lines in the given range", () => {
@@ -10837,11 +10837,11 @@ describe("TextEditor", () => {
 
   describe("folding", () => {
     beforeEach(async () => {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
     });
 
     it("maintains cursor buffer position when a folding/unfolding", async () => {
-      editor = await atom.workspace.open("sample.js", { autoIndent: false });
+      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
       editor.setCursorBufferPosition([5, 5]);
       editor.foldAll();
       expect(editor.getCursorBufferPosition()).toEqual([5, 5]);
@@ -10849,7 +10849,7 @@ describe("TextEditor", () => {
 
     describe(".unfoldAll()", () => {
       it("unfolds every folded line", async () => {
-        editor = await atom.workspace.open("sample.js", { autoIndent: false });
+        editor = await lumine.workspace.open("sample.js", { autoIndent: false });
         await languageModeReady(editor);
 
         const initialScreenLineCount = editor.getScreenLineCount();
@@ -10861,7 +10861,7 @@ describe("TextEditor", () => {
       });
 
       it("unfolds every folded line with comments", async () => {
-        editor = await atom.workspace.open("sample-with-comments.js", {
+        editor = await lumine.workspace.open("sample-with-comments.js", {
           autoIndent: false,
         });
         await languageModeReady(editor);
@@ -10877,7 +10877,7 @@ describe("TextEditor", () => {
 
     describe(".foldAll()", () => {
       it("folds every foldable line", async () => {
-        editor = await atom.workspace.open("sample.js", { autoIndent: false });
+        editor = await lumine.workspace.open("sample.js", { autoIndent: false });
         await languageModeReady(editor);
 
         editor.foldAll();
@@ -10890,7 +10890,7 @@ describe("TextEditor", () => {
 
     describe(".foldBufferRow(bufferRow)", () => {
       beforeEach(async () => {
-        editor = await atom.workspace.open("sample.js");
+        editor = await lumine.workspace.open("sample.js");
         await languageModeReady(editor);
       });
 
@@ -10933,7 +10933,7 @@ describe("TextEditor", () => {
 
     describe(".foldCurrentRow()", () => {
       it("creates a fold at the location of the last cursor", async () => {
-        editor = await atom.workspace.open();
+        editor = await lumine.workspace.open();
         editor.setText("\nif (x) {\n  y()\n}");
         editor.setCursorBufferPosition([1, 0]);
         expect(editor.getScreenLineCount()).toBe(4);
@@ -10942,7 +10942,7 @@ describe("TextEditor", () => {
       });
 
       it("does nothing when the current row cannot be folded", async () => {
-        editor = await atom.workspace.open();
+        editor = await lumine.workspace.open();
         editor.setText("var x;\nx++\nx++");
         editor.setCursorBufferPosition([0, 0]);
         expect(editor.getScreenLineCount()).toBe(3);
@@ -10953,7 +10953,7 @@ describe("TextEditor", () => {
 
     describe(".foldAllAtIndentLevel(indentLevel)", () => {
       it("folds blocks of text at the given indentation level", async () => {
-        editor = await atom.workspace.open("sample.js", { autoIndent: false });
+        editor = await lumine.workspace.open("sample.js", { autoIndent: false });
         await languageModeReady(editor);
 
         editor.foldAllAtIndentLevel(0);
@@ -10977,7 +10977,7 @@ describe("TextEditor", () => {
       });
 
       it("does not fold anything but the indentLevel", async () => {
-        editor = await atom.workspace.open("sample-with-comments.js", {
+        editor = await lumine.workspace.open("sample-with-comments.js", {
           autoIndent: false,
         });
         await languageModeReady(editor);

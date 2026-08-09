@@ -202,10 +202,10 @@ class PaneElement extends HTMLElement {
 }
 
 function createPaneElement() {
-  return document.createElement("atom-pane");
+  return document.createElement("lumine-pane");
 }
 
-window.customElements.define("atom-pane", PaneElement);
+window.customElements.define("lumine-pane", PaneElement);
 
 function getPathForDroppedFile(file) {
   if (typeof webUtils?.getPathForFile === "function") {

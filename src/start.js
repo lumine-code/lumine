@@ -3,7 +3,7 @@ const path = require("path");
 const temp = require("@lumine-code/temp");
 const parseCommandLine = require("./parse-command-line");
 const { getReleaseChannel, getConfigFilePath } = require("./get-app-details.js");
-const atomPaths = require("./atom-paths");
+const luminePaths = require("./lumine-paths");
 const CSON = require("@lumine-code/season");
 const Config = require("./config");
 const StartupTime = require("./startup-time");
@@ -66,8 +66,8 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
 
   const releaseChannel = getReleaseChannel(app.getVersion());
   process.env.LUMINE_CHANNEL ??= releaseChannel;
-  atomPaths.setAtomHome(app.getPath("home"));
-  atomPaths.setUserData(app);
+  luminePaths.setLumineHome(app.getPath("home"));
+  luminePaths.setUserData(app);
 
   // Headless package-management commands (--install, --uninstall, --list,
   // --link, --unlink). Run the command and exit without opening a window.
@@ -81,7 +81,7 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
   // to happen before the compile cache and crash reporter below, since both
   // create `LUMINE_HOME` as a side effect and would otherwise leave a new install
   // unseeded.
-  atomPaths.seedUserConfig(args.resourcePath);
+  luminePaths.seedUserConfig(args.resourcePath);
 
   // Persist V8 bytecode of compiled modules across launches to speed up startup.
   require("module").enableCompileCache?.(
@@ -125,7 +125,7 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
   }
 
   if (args.test && args.mainProcess) {
-    app.setPath("userData", temp.mkdirSync("atom-user-data-dir-for-main-process-tests"));
+    app.setPath("userData", temp.mkdirSync("lumine-user-data-dir-for-main-process-tests"));
     app.on("ready", function () {
       const testRunner = require(
         path.join(args.resourcePath, "spec/main-process/jasmine-test-runner"),
@@ -160,7 +160,7 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
   // _second_ instance, when the request is denied, will trigger the side
   // effect that allows the original instance to foreground itself.
   //
-  // The effects are not seen here, but rather in `atom-application.js`, where
+  // The effects are not seen here, but rather in `lumine-application.js`, where
   // calls to `app.focus` will actually work instead of having no effect.
   if (process.platform === "win32") {
     app.requestSingleInstanceLock();
@@ -186,7 +186,7 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
   if (args.userDataDir != null) {
     app.setPath("userData", args.userDataDir);
   } else if (args.test) {
-    app.setPath("userData", temp.mkdirSync("atom-test-data"));
+    app.setPath("userData", temp.mkdirSync("lumine-test-data"));
   }
 
   StartupTime.addMarker("main-process:electron-onready:start");
@@ -194,8 +194,8 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
     StartupTime.addMarker("main-process:electron-onready:end");
     app.removeListener("open-file", addPathToOpen);
     app.removeListener("open-url", addUrlToOpen);
-    const AtomApplication = require(path.join(args.resourcePath, "src", "atom-application"));
-    AtomApplication.open(args);
+    const LumineApplication = require(path.join(args.resourcePath, "src", "lumine-application"));
+    LumineApplication.open(args);
   });
 };
 

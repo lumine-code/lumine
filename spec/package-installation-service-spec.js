@@ -46,7 +46,7 @@ describe("PackageInstallationService", function () {
         throw new Error("moving refs must not be resolved for a hydrated card");
       },
       fetchUrl: async () => tarballResponse(),
-      atomVersion: "1.132.1",
+      lumineVersion: "1.132.1",
     });
   });
 

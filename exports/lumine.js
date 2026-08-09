@@ -10,7 +10,7 @@ const Notification = require("../src/notification");
 const { watchPath, watchFile } = require("../src/path-watcher");
 const { Icon } = require("../src/icon-descriptor");
 
-const atomExport = {
+const lumineExport = {
   BufferedNodeProcess,
   BufferedProcess,
   GitRepository,
@@ -34,7 +34,7 @@ const atomExport = {
 
 // Absolute path to the bundled ripgrep binary, for packages that spawn their
 // own searches or crawlers. Resolved lazily to stay snapshot-safe.
-Object.defineProperty(atomExport, "ripgrepPath", {
+Object.defineProperty(lumineExport, "ripgrepPath", {
   enumerable: true,
   get() {
     return require("../src/ripgrep").rgPath;
@@ -43,7 +43,7 @@ Object.defineProperty(atomExport, "ripgrepPath", {
 
 // Shell integration is required by both Squirrel and Settings-View
 if (process.platform === "win32") {
-  Object.defineProperty(atomExport, "WinShell", {
+  Object.defineProperty(lumineExport, "WinShell", {
     enumerable: true,
     get() {
       return require("../src/win-shell");
@@ -54,8 +54,8 @@ if (process.platform === "win32") {
 // The following classes can't be used from a Task handler and should therefore
 // only be exported when not running as a child node process
 if (process.type === "renderer") {
-  atomExport.Task = require("../src/task");
-  atomExport.TextEditor = require("../src/text-editor");
+  lumineExport.Task = require("../src/task");
+  lumineExport.TextEditor = require("../src/text-editor");
 }
 
-module.exports = atomExport;
+module.exports = lumineExport;

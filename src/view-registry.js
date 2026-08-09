@@ -20,13 +20,13 @@ const AnyConstructor = Symbol("any-constructor");
 // makes [HTML 5 custom elements](http://www.html5rocks.com/en/tutorials/webcomponents/customelements/)
 // an ideal tool for implementing views in Lumine.
 //
-// You can access the `ViewRegistry` object via `atom.views`.
+// You can access the `ViewRegistry` object via `lumine.views`.
 module.exports = class ViewRegistry {
-  constructor(atomEnvironment) {
+  constructor(lumineEnvironment) {
     this.animationFrameRequest = null;
     this.documentReadInProgress = false;
     this.performDocumentUpdate = this.performDocumentUpdate.bind(this);
-    this.atomEnvironment = atomEnvironment;
+    this.lumineEnvironment = lumineEnvironment;
     this.clear();
   }
 
@@ -42,12 +42,12 @@ module.exports = class ViewRegistry {
   // ## Examples
   //
   // Text editors are divided into a model and a view layer, so when you interact
-  // with methods like `atom.workspace.getActiveTextEditor()` you're only going
+  // with methods like `lumine.workspace.getActiveTextEditor()` you're only going
   // to get the model object. We display text editors on screen by teaching the
   // workspace what view constructor it should use to represent them:
   //
   // ```js
-  // atom.views.addViewProvider(TextEditor, (textEditor) => {
+  // lumine.views.addViewProvider(TextEditor, (textEditor) => {
   //   const textEditorElement = new TextEditorElement()
   //   textEditorElement.initialize(textEditor)
   //   return textEditorElement
@@ -153,7 +153,7 @@ module.exports = class ViewRegistry {
 
     for (let provider of this.providers) {
       if (provider.modelConstructor === AnyConstructor) {
-        element = provider.createView(object, this.atomEnvironment);
+        element = provider.createView(object, this.lumineEnvironment);
         if (element) {
           return element;
         }
@@ -161,7 +161,7 @@ module.exports = class ViewRegistry {
       }
 
       if (object instanceof provider.modelConstructor) {
-        element = provider.createView && provider.createView(object, this.atomEnvironment);
+        element = provider.createView && provider.createView(object, this.lumineEnvironment);
         if (element) {
           return element;
         }

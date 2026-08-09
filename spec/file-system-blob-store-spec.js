@@ -7,7 +7,7 @@ describe("FileSystemBlobStore", function () {
   let [storageDirectory, blobStore] = [];
 
   beforeEach(function () {
-    storageDirectory = temp.path("atom-spec-filesystemblobstore");
+    storageDirectory = temp.path("lumine-spec-filesystemblobstore");
     blobStore = FileSystemBlobStore.load(storageDirectory);
   });
 

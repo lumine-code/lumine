@@ -2,7 +2,7 @@ const IconRegistry = require("../src/icon-registry");
 const { Icon } = require("../src/icon-descriptor");
 // The same object a package reaches for, which is the only way it can express
 // `Icon.none()` — the answer that stops the chain.
-const { Icon: PublicIcon } = require("atom");
+const { Icon: PublicIcon } = require("lumine");
 
 describe("IconRegistry", () => {
   let registry;

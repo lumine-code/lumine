@@ -37,7 +37,7 @@ class PaneResizeHandleElement extends HTMLElement {
     e.stopPropagation();
     if (!this.overlay) {
       this.overlay = document.createElement("div");
-      this.overlay.classList.add("atom-pane-cursor-overlay");
+      this.overlay.classList.add("lumine-pane-cursor-overlay");
       this.overlay.classList.add(this.isHorizontal ? "horizontal" : "vertical");
       this.appendChild(this.overlay);
     }
@@ -99,10 +99,10 @@ class PaneResizeHandleElement extends HTMLElement {
   }
 }
 
-window.customElements.define("atom-pane-resize-handle", PaneResizeHandleElement);
+window.customElements.define("lumine-pane-resize-handle", PaneResizeHandleElement);
 
 function createPaneResizeHandleElement() {
-  return document.createElement("atom-pane-resize-handle");
+  return document.createElement("lumine-pane-resize-handle");
 }
 
 module.exports = {

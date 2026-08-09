@@ -552,7 +552,7 @@ class ParcelWatcher extends WorkerProcessWatcher {
 // subscriptions.
 //
 // ```js
-// const {watchPath} = require('atom')
+// const {watchPath} = require('lumine')
 //
 // const disposable = await watchPath('/var/log', {}, events => {
 //   console.log(`Received batch of ${events.length} events.`)
@@ -614,7 +614,7 @@ class PathWatcher {
     this.native = null;
     this.changeCallbacks = new Map();
 
-    // Whether the entire `AtomEnvironment` is destroying.
+    // Whether the entire `LumineEnvironment` is destroying.
     this.isDestroying = false;
 
     this.attachedPromise = new Promise((resolve) => {
@@ -670,7 +670,7 @@ class PathWatcher {
   // PathWatchers acquired through `watchPath` are already started.
   //
   // ```js
-  // const {watchPath} = require('atom')
+  // const {watchPath} = require('lumine')
   // const ROOT = path.join(__dirname, 'fixtures')
   // const FILE = path.join(ROOT, 'filename.txt')
   //
@@ -791,7 +791,7 @@ class PathWatcher {
     );
 
     this.subs.add(
-      atom.window.onWillDestroy(() => {
+      lumine.window.onWillDestroy(() => {
         this.isDestroying = true;
         // TODO: Be proactive about stopping file watchers? Or just set the
         // flag so that they aren't recreated during teardown?
@@ -1009,7 +1009,7 @@ class PathWatcherManager {
 // managed by a {CompositeDisposable} if desired.
 //
 // ```js
-// const {watchPath} = require('atom')
+// const {watchPath} = require('lumine')
 //
 // const disposable = await watchPath('/var/log', {}, events => {
 //   console.log(`Received batch of ${events.length} events.`)

@@ -13,7 +13,7 @@ function repositoryValue(repository) {
 
 function validatePackageMetadata(
   metadata,
-  { originKey, semanticTag = null, atomVersion = null, allowIncompatible = false } = {},
+  { originKey, semanticTag = null, lumineVersion = null, allowIncompatible = false } = {},
 ) {
   if (!metadata || typeof metadata !== "object" || Array.isArray(metadata)) {
     throw new Error("Package manifest must contain an object.");
@@ -44,11 +44,11 @@ function validatePackageMetadata(
   // rather than rejected. Installs and update checks pass this strictly.
   if (
     !allowIncompatible &&
-    atomVersion &&
-    semver.valid(atomVersion) &&
-    !semver.satisfies(atomVersion, engine)
+    lumineVersion &&
+    semver.valid(lumineVersion) &&
+    !semver.satisfies(lumineVersion, engine)
   ) {
-    throw new Error(`Package requires Lumine ${engine}, but this version is ${atomVersion}.`);
+    throw new Error(`Package requires Lumine ${engine}, but this version is ${lumineVersion}.`);
   }
 
   if (semanticTag) {

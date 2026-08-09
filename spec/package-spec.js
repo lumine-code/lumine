@@ -7,18 +7,18 @@ describe("Package", function () {
   const build = (constructor, packagePath) =>
     new constructor({
       path: packagePath,
-      packageManager: atom.packages,
-      config: atom.config,
-      styleManager: atom.styles,
-      notificationManager: atom.notifications,
-      keymapManager: atom.keymaps,
-      commandRegistry: atom.command,
-      grammarRegistry: atom.grammars,
-      themeManager: atom.themes,
-      menuManager: atom.menu,
-      contextMenuManager: atom.contextMenu,
-      deserializerManager: atom.deserializers,
-      viewRegistry: atom.views,
+      packageManager: lumine.packages,
+      config: lumine.config,
+      styleManager: lumine.styles,
+      notificationManager: lumine.notifications,
+      keymapManager: lumine.keymaps,
+      commandRegistry: lumine.command,
+      grammarRegistry: lumine.grammars,
+      themeManager: lumine.themes,
+      menuManager: lumine.menu,
+      contextMenuManager: lumine.contextMenu,
+      deserializerManager: lumine.deserializers,
+      viewRegistry: lumine.views,
     });
 
   const buildPackage = (packagePath) => build(Package, packagePath);
@@ -27,14 +27,14 @@ describe("Package", function () {
 
   describe("when the package contains incompatible native modules", function () {
     beforeEach(function () {
-      atom.packages.devMode = false;
+      lumine.packages.devMode = false;
       mockLocalStorage();
     });
 
-    afterEach(() => (atom.packages.devMode = true));
+    afterEach(() => (lumine.packages.devMode = true));
 
     it("does not activate it", function () {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-incompatible-native-module");
       const pack = buildPackage(packagePath);
@@ -46,7 +46,7 @@ describe("Package", function () {
     });
 
     it("detects the package as incompatible even if .node file is loaded conditionally", function () {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-incompatible-native-module-loaded-conditionally");
       const pack = buildPackage(packagePath);
@@ -57,15 +57,15 @@ describe("Package", function () {
       );
     });
 
-    it("utilizes _atomModuleCache if present to determine the package's native dependencies", function () {
-      let packagePath = atom.project
+    it("utilizes _lumineModuleCache if present to determine the package's native dependencies", function () {
+      let packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-ignored-incompatible-native-module");
       let pack = buildPackage(packagePath);
       expect(pack.getNativeModuleDependencyPaths().length).toBe(1); // doesn't see the incompatible module
       expect(pack.isCompatible()).toBe(true);
 
-      packagePath = atom.project
+      packagePath = lumine.project
         .getDirectories()?.[0]
         ?.resolve("packages/package-with-cached-incompatible-native-module");
 
@@ -74,16 +74,16 @@ describe("Package", function () {
     });
 
     it("logs an error to the console describing the problem", function () {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-incompatible-native-module");
 
       spyOn(console, "warn");
-      spyOn(atom.notifications, "addFatalError");
+      spyOn(lumine.notifications, "addFatalError");
 
       buildPackage(packagePath).activateNow();
 
-      expect(atom.notifications.addFatalError).not.toHaveBeenCalled();
+      expect(lumine.notifications.addFatalError).not.toHaveBeenCalled();
       expect(console.warn.calls.count()).toBe(1);
       expect(console.warn.calls.mostRecent().args[0]).toContain(
         "it requires one or more incompatible native modules (native-module)",
@@ -96,7 +96,7 @@ describe("Package", function () {
     // activation has run, so it forces the issue by calling `activateNow()`
     // without `activate()` ever having prepared the package's resources.
     it("activates the package's resources when ::activate() has not run", function () {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-provided-services");
       const pack = buildPackage(packagePath);
@@ -110,7 +110,7 @@ describe("Package", function () {
       expect(pack.activationDisposables).not.toBeUndefined();
 
       let service;
-      atom.packages.serviceHub.consume("service-2", "^0.2.0", (value) => (service = value));
+      lumine.packages.serviceHub.consume("service-2", "^0.2.0", (value) => (service = value));
       expect(service).toBe("second-service");
 
       pack.deactivate();
@@ -119,14 +119,14 @@ describe("Package", function () {
 
   describe("::rebuild()", function () {
     beforeEach(function () {
-      atom.packages.devMode = false;
+      lumine.packages.devMode = false;
       mockLocalStorage();
     });
 
-    afterEach(() => (atom.packages.devMode = true));
+    afterEach(() => (lumine.packages.devMode = true));
 
     it("returns a promise resolving to the results of `apm rebuild`", async () => {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()?.[0]
         ?.resolve("packages/package-with-index");
 
@@ -149,7 +149,7 @@ describe("Package", function () {
     });
 
     it("persists build failures in local storage", function () {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()?.[0]
         ?.resolve("packages/package-with-index");
       const pack = buildPackage(packagePath);
@@ -182,16 +182,16 @@ describe("Package", function () {
 
   describe("::getNativeModuleDependencyPaths()", function () {
     const resolveFixture = () =>
-      atom.project
+      lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-native-and-plain-dependencies");
 
     beforeEach(function () {
-      atom.packages.devMode = false;
+      lumine.packages.devMode = false;
       mockLocalStorage();
     });
 
-    afterEach(() => (atom.packages.devMode = true));
+    afterEach(() => (lumine.packages.devMode = true));
 
     it("reports only the dependencies that actually ship native code", function () {
       const packagePath = resolveFixture();
@@ -223,16 +223,16 @@ describe("Package", function () {
 
   describe("::getIncompatibleNativeModules()", function () {
     const resolveFixture = () =>
-      atom.project
+      lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-native-and-plain-dependencies");
 
     beforeEach(function () {
-      atom.packages.devMode = false;
+      lumine.packages.devMode = false;
       mockLocalStorage();
     });
 
-    afterEach(() => (atom.packages.devMode = true));
+    afterEach(() => (lumine.packages.devMode = true));
 
     it("does not walk the dependency tree again for a later package instance", function () {
       const packagePath = resolveFixture();
@@ -303,7 +303,7 @@ describe("Package", function () {
     let editorElement, theme;
 
     beforeEach(function () {
-      editorElement = document.createElement("atom-text-editor");
+      editorElement = document.createElement("lumine-text-editor");
       jasmine.attachToDOM(editorElement);
     });
 
@@ -316,7 +316,7 @@ describe("Package", function () {
     describe("when the theme contains a single style file", function () {
       it("loads and applies css", function () {
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("1234px");
-        const themePath = atom.project
+        const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-index-css");
         theme = buildThemePackage(themePath);
@@ -326,7 +326,7 @@ describe("Package", function () {
 
       it("loads and applies a stylesheet at the theme root", function () {
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("1234px");
-        const themePath = atom.project
+        const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-index-at-root");
         theme = buildThemePackage(themePath);
@@ -341,7 +341,7 @@ describe("Package", function () {
         expect(getComputedStyle(editorElement).paddingRight).not.toBe("102px");
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("103px");
 
-        const themePath = atom.project
+        const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-package-file");
         theme = buildThemePackage(themePath);
@@ -357,7 +357,7 @@ describe("Package", function () {
         expect(getComputedStyle(editorElement).paddingRight).not.toBe("20px");
         expect(getComputedStyle(editorElement).paddingBottom).not.toBe("30px");
 
-        const themePath = atom.project
+        const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-without-package-file");
         theme = buildThemePackage(themePath);
@@ -369,7 +369,7 @@ describe("Package", function () {
 
     describe("reloading a theme", function () {
       beforeEach(function () {
-        const themePath = atom.project
+        const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-package-file");
         theme = buildThemePackage(themePath);
@@ -385,7 +385,7 @@ describe("Package", function () {
 
     describe("events", function () {
       beforeEach(function () {
-        const themePath = atom.project
+        const themePath = lumine.project
           .getDirectories()[0]
           ?.resolve("packages/theme-with-package-file");
         theme = buildThemePackage(themePath);
@@ -405,10 +405,10 @@ describe("Package", function () {
     let [packagePath, metadata] = [];
 
     beforeEach(function () {
-      packagePath = atom.project
+      packagePath = lumine.project
         .getDirectories()[0]
         ?.resolve("packages/package-with-different-directory-name");
-      metadata = atom.packages.loadPackageMetadata(packagePath, true);
+      metadata = lumine.packages.loadPackageMetadata(packagePath, true);
     });
 
     it("uses the package name defined in package.json", () =>
@@ -417,7 +417,7 @@ describe("Package", function () {
 
   describe("the initialize() hook", function () {
     it("gets called when the package is activated", function () {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-deserializers");
       const pack = buildPackage(packagePath);
@@ -431,7 +431,7 @@ describe("Package", function () {
     });
 
     it("gets called when a deserializer is used", function () {
-      const packagePath = atom.project
+      const packagePath = lumine.project
         .getDirectories()[0]
         .resolve("packages/package-with-deserializers");
       const pack = buildPackage(packagePath);
@@ -440,7 +440,7 @@ describe("Package", function () {
       spyOn(mainModule, "initialize");
       pack.load();
       expect(mainModule.initialize).not.toHaveBeenCalled();
-      atom.deserializers.deserialize({ deserializer: "Deserializer1", a: "b" });
+      lumine.deserializers.deserialize({ deserializer: "Deserializer1", a: "b" });
       expect(mainModule.initialize).toHaveBeenCalled();
     });
   });

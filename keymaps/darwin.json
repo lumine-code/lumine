@@ -46,7 +46,7 @@
     "cmd-8": "pane:show-item-8",
     "cmd-9": "pane:show-item-9"
   },
-  "atom-text-editor": {
+  "lumine-text-editor": {
     // Platform Bindings
     "alt-left": "editor:move-to-beginning-of-word",
     "alt-right": "editor:move-to-end-of-word",
@@ -88,7 +88,7 @@
     "ctrl-alt-backspace": "editor:delete-to-beginning-of-subword",
     "ctrl-alt-delete": "editor:delete-to-end-of-subword"
   },
-  "atom-workspace atom-text-editor:not([mini])": {
+  "lumine-workspace lumine-text-editor:not([mini])": {
     // Lumine specific
     "alt-cmd-ctrl-f": "editor:fold-selection",
     // Sublime Parity

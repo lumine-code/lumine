@@ -12,7 +12,7 @@ describe("HistoryManager", () => {
     commandRegistry.add.and.returnValue(commandDisposable);
 
     stateStore = new StateStore("history-manager-test", 1);
-    stateStore.initialize({ configDirPath: atom.getConfigDirPath() });
+    stateStore.initialize({ configDirPath: lumine.getConfigDirPath() });
     await stateStore.save("history-manager", {
       projects: [
         {
@@ -50,7 +50,7 @@ describe("HistoryManager", () => {
       expect(commandRegistry.add).toHaveBeenCalled();
       const cmdCall = commandRegistry.add.calls.first();
       expect(cmdCall.args.length).toBe(3);
-      expect(cmdCall.args[0]).toBe("atom-workspace");
+      expect(cmdCall.args[0]).toBe("lumine-workspace");
       expect(typeof cmdCall.args[1]["application:clear-project-history"]).toBe("function");
     });
 

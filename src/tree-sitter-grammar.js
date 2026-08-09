@@ -95,7 +95,7 @@ module.exports = class TreeSitterGrammar {
 
     this.commentMetadata = params.comments;
 
-    this.shouldObserveQueryFiles = atom.window.isDevMode() && !atom.window.isSpecMode();
+    this.shouldObserveQueryFiles = lumine.window.isDevMode() && !lumine.window.isSpecMode();
     this.getLanguage();
 
     for (const injectionPoint of params.injectionPoints ?? []) {
@@ -142,7 +142,7 @@ module.exports = class TreeSitterGrammar {
   //
   getCommentDelimiters() {
     // Prefer the config system. It's a better place for this data to live.
-    let commentDelimiters = atom.config.get("language.commentDelimiters", {
+    let commentDelimiters = lumine.config.get("language.commentDelimiters", {
       scope: [this.scopeName],
     });
     if (commentDelimiters) return commentDelimiters;
@@ -154,8 +154,8 @@ module.exports = class TreeSitterGrammar {
 
     // If even that doesn't exist, we can fall back onto the older config
     // settings.
-    let start = atom.config.get("language.commentStart", { scope: [this.scope] });
-    let end = atom.config.get("language.commentEnd", { scope: [this.scope] });
+    let start = lumine.config.get("language.commentStart", { scope: [this.scope] });
+    let end = lumine.config.get("language.commentEnd", { scope: [this.scope] });
 
     return normalizeDelimiters({ start, end });
   }
@@ -432,8 +432,8 @@ module.exports = class TreeSitterGrammar {
     let descriptor = error.queryDescriptor ?? this.describeQueryError(error, queryType);
     let formatted = TreeSitterGrammar.formatQueryErrorDescriptor(descriptor);
     console.error(formatted, error);
-    if (atom.window.isDevMode() && !atom.window.isSpecMode()) {
-      atom.notifications.addError(`Tree-sitter query error in ${this.scopeName}`, {
+    if (lumine.window.isDevMode() && !lumine.window.isSpecMode()) {
+      lumine.notifications.addError(`Tree-sitter query error in ${this.scopeName}`, {
         detail: formatted,
         dismissable: true,
       });
@@ -453,7 +453,7 @@ module.exports = class TreeSitterGrammar {
     // `getQuery` from multiple buffers will not cause multiple calls to
     // `language.query`, since it's a major bottleneck. Instead they all
     // receive the same unsettled promise.
-    // let inDevMode = atom.window.isDevMode();
+    // let inDevMode = lumine.window.isDevMode();
     let query = this.queryCache.get(queryType);
     if (query) {
       return Promise.resolve(query);
@@ -545,7 +545,7 @@ module.exports = class TreeSitterGrammar {
           try {
             await this.getQuery(queryType);
           } catch (error) {
-            atom.notifications.beep();
+            lumine.notifications.beep();
             this.reportQueryError(error, queryType);
             this[queryType] = existingQuery;
             this.queryCache.delete(queryType);

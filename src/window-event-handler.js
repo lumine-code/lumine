@@ -4,7 +4,7 @@ const { debounce } = require("@lumine-code/underscore-plus");
 
 // Handles low-level events related to the `window`.
 module.exports = class WindowEventHandler {
-  constructor({ atomEnvironment, applicationDelegate }) {
+  constructor({ lumineEnvironment, applicationDelegate }) {
     this.handleDocumentKeyEvent = this.handleDocumentKeyEvent.bind(this);
     this.handleFocusNext = this.handleFocusNext.bind(this);
     this.handleFocusPrevious = this.handleFocusPrevious.bind(this);
@@ -20,7 +20,7 @@ module.exports = class WindowEventHandler {
     this.handleWindowToggleMenuBar = this.handleWindowToggleMenuBar.bind(this);
     this.handleLinkClick = this.handleLinkClick.bind(this);
     this.handleDocumentContextmenu = this.handleDocumentContextmenu.bind(this);
-    this.atomEnvironment = atomEnvironment;
+    this.lumineEnvironment = lumineEnvironment;
     this.applicationDelegate = applicationDelegate;
     this.reloadRequested = false;
     this.subscriptions = new CompositeDisposable();
@@ -39,7 +39,7 @@ module.exports = class WindowEventHandler {
       this.document.body.classList.toggle("is-blurred", !this.document.hasFocus());
     }
     this.subscriptions.add(
-      this.atomEnvironment.commands.add(this.window, {
+      this.lumineEnvironment.commands.add(this.window, {
         "window:toggle-full-screen": this.handleWindowToggleFullScreen,
         "window:close": this.handleWindowClose,
         "window:reload": this.handleWindowReload,
@@ -49,14 +49,14 @@ module.exports = class WindowEventHandler {
 
     if (["win32", "linux"].includes(process.platform)) {
       this.subscriptions.add(
-        this.atomEnvironment.commands.add(this.window, {
+        this.lumineEnvironment.commands.add(this.window, {
           "window:toggle-menu-bar": this.handleWindowToggleMenuBar,
         }),
       );
     }
 
     this.subscriptions.add(
-      this.atomEnvironment.commands.add(this.document, {
+      this.lumineEnvironment.commands.add(this.document, {
         "core:focus-next": this.handleFocusNext,
         "core:focus-previous": this.handleFocusPrevious,
       }),
@@ -88,7 +88,7 @@ module.exports = class WindowEventHandler {
   handleNativeKeybindings() {
     const bindCommandToAction = (command, action) => {
       this.subscriptions.add(
-        this.atomEnvironment.commands.add(
+        this.lumineEnvironment.commands.add(
           ".native-key-bindings",
           command,
           (_event) => this.applicationDelegate.performWebContentsAction(action),
@@ -128,7 +128,7 @@ module.exports = class WindowEventHandler {
   }
 
   handleDocumentKeyEvent(event) {
-    this.atomEnvironment.keymaps.handleKeyboardEvent(event);
+    this.lumineEnvironment.keymaps.handleKeyboardEvent(event);
     event.stopImmediatePropagation();
   }
 
@@ -219,13 +219,13 @@ module.exports = class WindowEventHandler {
 
   handleWindowBlur() {
     this.document.body.classList.add("is-blurred");
-    void Promise.resolve(this.atomEnvironment.storeWindowDimensions()).catch((error) =>
+    void Promise.resolve(this.lumineEnvironment.storeWindowDimensions()).catch((error) =>
       console.error(error),
     );
   }
 
   handleWindowResize() {
-    void Promise.resolve(this.atomEnvironment.storeWindowDimensions()).catch((error) =>
+    void Promise.resolve(this.lumineEnvironment.storeWindowDimensions()).catch((error) =>
       console.error(error),
     );
   }
@@ -241,48 +241,48 @@ module.exports = class WindowEventHandler {
   handleWindowBeforeunload(_event) {
     if (
       !this.reloadRequested &&
-      !this.atomEnvironment.window.isSpecMode() &&
+      !this.lumineEnvironment.window.isSpecMode() &&
       // `BrowserWindow#isWebViewFocused()` no longer exists in modern Electron;
       // `document.hasFocus()` is the renderer-side equivalent of "is this
       // window's web view focused".
       this.document.hasFocus()
     ) {
-      void this.atomEnvironment.window.hide();
+      void this.lumineEnvironment.window.hide();
     }
     this.reloadRequested = false;
-    void Promise.resolve(this.atomEnvironment.storeWindowDimensions()).catch((error) =>
+    void Promise.resolve(this.lumineEnvironment.storeWindowDimensions()).catch((error) =>
       console.error(error),
     );
-    this.atomEnvironment.unloadEditorWindow();
-    this.atomEnvironment.destroy();
+    this.lumineEnvironment.unloadEditorWindow();
+    this.lumineEnvironment.destroy();
   }
 
   handleWindowToggleFullScreen() {
-    void this.atomEnvironment.window.toggleFullScreen();
+    void this.lumineEnvironment.window.toggleFullScreen();
   }
 
   handleWindowClose() {
-    void this.atomEnvironment.window.close();
+    void this.lumineEnvironment.window.close();
   }
 
   handleWindowReload() {
     this.reloadRequested = true;
-    void this.atomEnvironment.window.reload();
+    void this.lumineEnvironment.window.reload();
   }
 
   handleWindowToggleDevTools() {
-    this.atomEnvironment.window.toggleDevTools();
+    this.lumineEnvironment.window.toggleDevTools();
   }
 
   handleWindowToggleMenuBar() {
-    this.atomEnvironment.config.set(
+    this.lumineEnvironment.config.set(
       "core.autoHideMenuBar",
-      !this.atomEnvironment.config.get("core.autoHideMenuBar"),
+      !this.lumineEnvironment.config.get("core.autoHideMenuBar"),
     );
 
-    if (this.atomEnvironment.config.get("core.autoHideMenuBar")) {
+    if (this.lumineEnvironment.config.get("core.autoHideMenuBar")) {
       const detail = "To toggle, press the Alt key or execute the window:toggle-menu-bar command";
-      this.atomEnvironment.notifications.addInfo("Menu bar hidden", { detail });
+      this.lumineEnvironment.notifications.addInfo("Menu bar hidden", { detail });
     }
   }
 
@@ -293,7 +293,7 @@ module.exports = class WindowEventHandler {
       if (/^https?:\/\//.test(uri)) {
         this.applicationDelegate.openExternal(uri);
       } else if (uri.startsWith("lumine://")) {
-        this.atomEnvironment.uriHandlers.handleURI(uri);
+        this.lumineEnvironment.uriHandlers.handleURI(uri);
       }
     }
   }
@@ -305,6 +305,6 @@ module.exports = class WindowEventHandler {
 
   handleDocumentContextmenu(event) {
     event.preventDefault();
-    this.atomEnvironment.contextMenu.showForEvent(event);
+    this.lumineEnvironment.contextMenu.showForEvent(event);
   }
 };

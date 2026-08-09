@@ -11,7 +11,7 @@ module.exports = function ({
   clipboard,
 }) {
   commandRegistry.add(
-    "atom-workspace",
+    "lumine-workspace",
     {
       "pane:show-next-recently-used-item": function () {
         return this.getModel().getActivePane().activateNextRecentlyUsedItem();
@@ -91,10 +91,11 @@ module.exports = function ({
       "application:open": function () {
         var defaultPath, ref, ref1, ref2;
         defaultPath =
-          (ref = (ref1 = atom.workspace.getActiveTextEditor()) != null ? ref1.getPath() : void 0) !=
+          (ref =
+            (ref1 = lumine.workspace.getActiveTextEditor()) != null ? ref1.getPath() : void 0) !=
           null
             ? ref
-            : (ref2 = atom.project.getPaths()) != null
+            : (ref2 = lumine.project.getPaths()) != null
               ? ref2[0]
               : void 0;
         return ipcRenderer.send("open-chosen-any", defaultPath);
@@ -102,10 +103,11 @@ module.exports = function ({
       "application:open-file": function () {
         var defaultPath, ref, ref1, ref2;
         defaultPath =
-          (ref = (ref1 = atom.workspace.getActiveTextEditor()) != null ? ref1.getPath() : void 0) !=
+          (ref =
+            (ref1 = lumine.workspace.getActiveTextEditor()) != null ? ref1.getPath() : void 0) !=
           null
             ? ref
-            : (ref2 = atom.project.getPaths()) != null
+            : (ref2 = lumine.project.getPaths()) != null
               ? ref2[0]
               : void 0;
         return ipcRenderer.send("open-chosen-file", defaultPath);
@@ -113,10 +115,11 @@ module.exports = function ({
       "application:open-folder": function () {
         var defaultPath, ref, ref1, ref2;
         defaultPath =
-          (ref = (ref1 = atom.workspace.getActiveTextEditor()) != null ? ref1.getPath() : void 0) !=
+          (ref =
+            (ref1 = lumine.workspace.getActiveTextEditor()) != null ? ref1.getPath() : void 0) !=
           null
             ? ref
-            : (ref2 = atom.project.getPaths()) != null
+            : (ref2 = lumine.project.getPaths()) != null
               ? ref2[0]
               : void 0;
         return ipcRenderer.send("open-chosen-folder", defaultPath);
@@ -131,7 +134,7 @@ module.exports = function ({
         return ipcRenderer.send("command", "application:open-safe");
       },
       "application:add-project-folder": function () {
-        return atom.addProjectFolder();
+        return lumine.addProjectFolder();
       },
       "repositories:rescan": function () {
         return repositories.rescan();
@@ -263,7 +266,7 @@ module.exports = function ({
   );
   if (process.platform === "darwin") {
     commandRegistry.add(
-      "atom-workspace",
+      "lumine-workspace",
       {
         "application:hide": function () {
           return ipcRenderer.send("command", "application:hide");
@@ -285,7 +288,7 @@ module.exports = function ({
     );
   }
   commandRegistry.add(
-    "atom-pane",
+    "lumine-pane",
     {
       "pane:save-items": function () {
         return this.getModel().saveItems();
@@ -358,7 +361,7 @@ module.exports = function ({
     false,
   );
   commandRegistry.add(
-    "atom-text-editor",
+    "lumine-text-editor",
     stopEventPropagation({
       "core:move-left": function () {
         return this.moveLeft();
@@ -483,7 +486,7 @@ module.exports = function ({
     false,
   );
   commandRegistry.add(
-    "atom-text-editor:not([readonly])",
+    "lumine-text-editor:not([readonly])",
     stopEventPropagation({
       "core:undo": function () {
         return this.undo();
@@ -495,7 +498,7 @@ module.exports = function ({
     false,
   );
   commandRegistry.add(
-    "atom-text-editor",
+    "lumine-text-editor",
     stopEventPropagationAndGroupUndo(config, {
       "core:copy": function () {
         return this.getElement().copySelectedText();
@@ -507,7 +510,7 @@ module.exports = function ({
     false,
   );
   commandRegistry.add(
-    "atom-text-editor:not([readonly])",
+    "lumine-text-editor:not([readonly])",
     stopEventPropagationAndGroupUndo(config, {
       "core:backspace": function () {
         return this.backspace();
@@ -578,7 +581,7 @@ module.exports = function ({
     false,
   );
   commandRegistry.add(
-    "atom-text-editor:not([mini])",
+    "lumine-text-editor:not([mini])",
     stopEventPropagation({
       "core:move-up": function () {
         return this.moveUp();
@@ -724,7 +727,7 @@ module.exports = function ({
     false,
   );
   return commandRegistry.add(
-    "atom-text-editor:not([mini]):not([readonly])",
+    "lumine-text-editor:not([mini]):not([readonly])",
     stopEventPropagationAndGroupUndo(config, {
       "editor:indent": function () {
         return this.indent();
@@ -751,7 +754,7 @@ module.exports = function ({
         return this.toggleLineCommentsInSelection();
       },
       "editor:checkout-head-revision": function () {
-        return atom.workspace.checkoutHeadRevision(this);
+        return lumine.workspace.checkoutHeadRevision(this);
       },
       "editor:move-line-up": function () {
         return this.moveLineUp();

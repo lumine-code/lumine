@@ -74,12 +74,12 @@ const CONVENTION_EXCEPTIONS = new Set([
 // The one spelling for "anywhere in the window". `.workspace` and `body` match
 // the same element with specificity 10 and 1, so mixing them decides conflicts
 // by accident rather than by intent.
-const GLOBAL_SELECTOR = "atom-workspace";
-const GLOBALISH = new Set(["body", "atom-workspace", ".workspace", "html", ":root"]);
+const GLOBAL_SELECTOR = "lumine-workspace";
+const GLOBALISH = new Set(["body", "lumine-workspace", ".workspace", "html", ":root"]);
 
 // Commands that act on the file rather than on whatever editor has focus. A
 // mini editor — the find field, go-to-line, a commit box — is an
-// `atom-text-editor`, so a bare selector puts these in all of them, and since
+// `lumine-text-editor`, so a bare selector puts these in all of them, and since
 // the handlers fall back to `getActiveTextEditor()` they then act on the file
 // behind the dialog.
 const ACTS_ON_THE_FILE = [
@@ -261,7 +261,7 @@ function checkFile(packageName, file, report) {
 
     // Mini editors.
     if (
-      /(^|\s)atom-text-editor(?![-\w])/.test(selector) &&
+      /(^|\s)lumine-text-editor(?![-\w])/.test(selector) &&
       !/\[mini\]|:not\(\[mini\]\)/.test(selector) &&
       ACTS_ON_THE_FILE.some((pattern) => pattern.test(command))
     ) {

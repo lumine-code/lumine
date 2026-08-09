@@ -1,4 +1,4 @@
-// The icon geometry contract (static/atom-ui/styles/icons.css): every icon is
+// The icon geometry contract (static/lumine-ui/styles/icons.css): every icon is
 // a fixed square of --component-icon-size whose line-height equals its height,
 // pinned with vertical-align: text-bottom. Core owns the box, icon sets own
 // ink, themes own row metrics only. These specs pin the box in the base sheet
@@ -103,16 +103,16 @@ describe("icon geometry contract", () => {
   describe("with a bundled UI theme active", () => {
     beforeEach(async () => {
       jasmine.useRealClock();
-      spyOn(atom.window, "isSpecMode").and.returnValue(false);
-      atom.packages.loadPackage("one-theme");
-      atom.themes.systemThemeQuery = { matches: true, addEventListener() {} };
-      atom.config.set("theme.light", ["one-night-ui", "one-night-syntax"]);
-      atom.config.set("theme.dark", ["one-night-ui", "one-night-syntax"]);
-      await atom.themes.activateThemes();
+      spyOn(lumine.window, "isSpecMode").and.returnValue(false);
+      lumine.packages.loadPackage("one-theme");
+      lumine.themes.systemThemeQuery = { matches: true, addEventListener() {} };
+      lumine.config.set("theme.light", ["one-night-ui", "one-night-syntax"]);
+      lumine.config.set("theme.dark", ["one-night-ui", "one-night-syntax"]);
+      await lumine.themes.activateThemes();
     });
 
     afterEach(async () => {
-      await atom.themes.deactivateThemes();
+      await lumine.themes.deactivateThemes();
     });
 
     it("keeps the contract box in tree-view rows", () => {

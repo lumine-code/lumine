@@ -57,7 +57,7 @@ describe("ReopenProjectMenuManager", () => {
       expect(commandRegistry.add).toHaveBeenCalled();
       const cmdCall = commandRegistry.add.calls.all()[0];
       expect(cmdCall.args.length).toBe(2);
-      expect(cmdCall.args[0]).toBe("atom-workspace");
+      expect(cmdCall.args[0]).toBe("lumine-workspace");
       const listener = cmdCall.args[1]["application:reopen-project"];
       expect(typeof listener.didDispatch).toBe("function");
       expect(listener.hiddenInCommandPalette).toBe(true);

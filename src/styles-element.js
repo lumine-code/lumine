@@ -127,10 +127,10 @@ class StylesElement extends HTMLElement {
   }
 }
 
-window.customElements.define("atom-styles", StylesElement);
+window.customElements.define("lumine-styles", StylesElement);
 
 function createStylesElement() {
-  return document.createElement("atom-styles");
+  return document.createElement("lumine-styles");
 }
 
 module.exports = {

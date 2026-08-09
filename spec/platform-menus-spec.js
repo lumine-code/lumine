@@ -236,8 +236,8 @@ describe("platform menus", function () {
 
   it("names a registered command in every menu item", function () {
     const registered = new Set([
-      ...Object.keys(atom.commands.selectorBasedListenersByCommandName),
-      ...Object.keys(atom.commands.inlineListenersByCommandName),
+      ...Object.keys(lumine.commands.selectorBasedListenersByCommandName),
+      ...Object.keys(lumine.commands.inlineListenersByCommandName),
     ]);
     const source = sourceText();
 

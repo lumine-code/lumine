@@ -5,7 +5,7 @@ const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
 describe("Dock", () => {
   describe("hover-area hit testing", () => {
     it("reports no hover area before the dock has rendered", () => {
-      const dock = atom.workspace.getLeftDock();
+      const dock = lumine.workspace.getLeftDock();
       expect(dock.refs && dock.refs.innerElement).toBeFalsy();
       expect(dock.pointWithinHoverArea({ x: 0, y: 0 })).toBe(false);
       expect(dock.pointWithinHoverArea({ x: 0, y: 0 }, true)).toBe(false);
@@ -14,13 +14,15 @@ describe("Dock", () => {
 
   describe("when a dock is activated", () => {
     it("opens the dock and activates its active pane", () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
-      const dock = atom.workspace.getLeftDock();
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getLeftDock();
       const didChangeVisibleSpy = jasmine.createSpy();
       dock.onDidChangeVisible(didChangeVisibleSpy);
 
       expect(dock.isVisible()).toBe(false);
-      expect(document.activeElement).toBe(atom.workspace.getCenter().getActivePane().getElement());
+      expect(document.activeElement).toBe(
+        lumine.workspace.getCenter().getActivePane().getElement(),
+      );
       dock.activate();
       expect(dock.isVisible()).toBe(true);
       expect(document.activeElement).toBe(dock.getActivePane().getElement());
@@ -30,8 +32,8 @@ describe("Dock", () => {
 
   describe("when a dock is hidden", () => {
     it("transfers focus back to the active center pane if the dock had focus", () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
-      const dock = atom.workspace.getLeftDock();
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getLeftDock();
       const didChangeVisibleSpy = jasmine.createSpy();
       dock.onDidChangeVisible(didChangeVisibleSpy);
 
@@ -40,7 +42,9 @@ describe("Dock", () => {
       expect(didChangeVisibleSpy.calls.mostRecent().args[0]).toBe(true);
 
       dock.hide();
-      expect(document.activeElement).toBe(atom.workspace.getCenter().getActivePane().getElement());
+      expect(document.activeElement).toBe(
+        lumine.workspace.getCenter().getActivePane().getElement(),
+      );
       expect(didChangeVisibleSpy.calls.mostRecent().args[0]).toBe(false);
 
       dock.activate();
@@ -48,13 +52,15 @@ describe("Dock", () => {
       expect(didChangeVisibleSpy.calls.mostRecent().args[0]).toBe(true);
 
       dock.toggle();
-      expect(document.activeElement).toBe(atom.workspace.getCenter().getActivePane().getElement());
+      expect(document.activeElement).toBe(
+        lumine.workspace.getCenter().getActivePane().getElement(),
+      );
       expect(didChangeVisibleSpy.calls.mostRecent().args[0]).toBe(false);
 
       // Don't change focus if the dock was not focused in the first place
       const modalElement = document.createElement("div");
       modalElement.setAttribute("tabindex", -1);
-      atom.workspace.addModalPanel({ item: modalElement });
+      lumine.workspace.addModalPanel({ item: modalElement });
       modalElement.focus();
       expect(document.activeElement).toBe(modalElement);
 
@@ -77,18 +83,18 @@ describe("Dock", () => {
         },
       };
 
-      await atom.workspace.open(item, { activatePane: false });
-      expect(atom.workspace.getLeftDock().isVisible()).toBe(false);
+      await lumine.workspace.open(item, { activatePane: false });
+      expect(lumine.workspace.getLeftDock().isVisible()).toBe(false);
 
-      atom.workspace.getLeftDock().getPanes()[0].activate();
-      expect(atom.workspace.getLeftDock().isVisible()).toBe(true);
+      lumine.workspace.getLeftDock().getPanes()[0].activate();
+      expect(lumine.workspace.getLeftDock().isVisible()).toBe(true);
     });
   });
 
   describe("activating the next pane", () => {
     describe("when the dock has more than one pane", () => {
       it("activates the next pane", () => {
-        const dock = atom.workspace.getLeftDock();
+        const dock = lumine.workspace.getLeftDock();
         const pane1 = dock.getPanes()[0];
         const pane2 = pane1.splitRight();
         const pane3 = pane2.splitRight();
@@ -106,7 +112,7 @@ describe("Dock", () => {
 
     describe("when the dock has only one pane", () => {
       it("leaves the current pane active", () => {
-        const dock = atom.workspace.getLeftDock();
+        const dock = lumine.workspace.getLeftDock();
 
         expect(dock.getPanes().length).toBe(1);
         const pane = dock.getPanes()[0];
@@ -120,7 +126,7 @@ describe("Dock", () => {
   describe("activating the previous pane", () => {
     describe("when the dock has more than one pane", () => {
       it("activates the previous pane", () => {
-        const dock = atom.workspace.getLeftDock();
+        const dock = lumine.workspace.getLeftDock();
         const pane1 = dock.getPanes()[0];
         const pane2 = pane1.splitRight();
         const pane3 = pane2.splitRight();
@@ -138,7 +144,7 @@ describe("Dock", () => {
 
     describe("when the dock has only one pane", () => {
       it("leaves the current pane active", () => {
-        const dock = atom.workspace.getLeftDock();
+        const dock = lumine.workspace.getLeftDock();
 
         expect(dock.getPanes().length).toBe(1);
         const pane = dock.getPanes()[0];
@@ -152,7 +158,7 @@ describe("Dock", () => {
   describe("when the dock resize handle is double-clicked", () => {
     describe("when the dock is open", () => {
       it("resizes a vertically-oriented dock to the current item's preferred width", async () => {
-        jasmine.attachToDOM(atom.workspace.getElement());
+        jasmine.attachToDOM(lumine.workspace.getElement());
 
         const item = {
           element: document.createElement("div"),
@@ -167,15 +173,15 @@ describe("Dock", () => {
           },
         };
 
-        await atom.workspace.open(item);
-        const dock = atom.workspace.getLeftDock();
+        await lumine.workspace.open(item);
+        const dock = lumine.workspace.getLeftDock();
         const dockElement = dock.getElement();
 
         dock.setState({ size: 300 });
         await getNextUpdatePromise();
         expect(dockElement.offsetWidth).toBe(300);
         dockElement
-          .querySelector(".atom-dock-resize-handle")
+          .querySelector(".lumine-dock-resize-handle")
           .dispatchEvent(new MouseEvent("mousedown", { detail: 2 }));
         await getNextUpdatePromise();
 
@@ -183,7 +189,7 @@ describe("Dock", () => {
       });
 
       it("resizes a horizontally-oriented dock to the current item's preferred width", async () => {
-        jasmine.attachToDOM(atom.workspace.getElement());
+        jasmine.attachToDOM(lumine.workspace.getElement());
 
         const item = {
           element: document.createElement("div"),
@@ -198,15 +204,15 @@ describe("Dock", () => {
           },
         };
 
-        await atom.workspace.open(item);
-        const dock = atom.workspace.getBottomDock();
+        await lumine.workspace.open(item);
+        const dock = lumine.workspace.getBottomDock();
         const dockElement = dock.getElement();
 
         dock.setState({ size: 300 });
         await getNextUpdatePromise();
         expect(dockElement.offsetHeight).toBe(300);
         dockElement
-          .querySelector(".atom-dock-resize-handle")
+          .querySelector(".lumine-dock-resize-handle")
           .dispatchEvent(new MouseEvent("mousedown", { detail: 2 }));
         await getNextUpdatePromise();
 
@@ -216,7 +222,7 @@ describe("Dock", () => {
 
     describe("when the dock is closed", () => {
       it("does nothing", async () => {
-        jasmine.attachToDOM(atom.workspace.getElement());
+        jasmine.attachToDOM(lumine.workspace.getElement());
 
         const item = {
           element: document.createElement("div"),
@@ -231,16 +237,16 @@ describe("Dock", () => {
           },
         };
 
-        await atom.workspace.open(item, { activatePane: false });
+        await lumine.workspace.open(item, { activatePane: false });
 
-        const dockElement = atom.workspace.getBottomDock().getElement();
+        const dockElement = lumine.workspace.getBottomDock().getElement();
         dockElement
-          .querySelector(".atom-dock-resize-handle")
+          .querySelector(".lumine-dock-resize-handle")
           .dispatchEvent(new MouseEvent("mousedown", { detail: 2 }));
         expect(dockElement.offsetHeight).toBe(0);
-        expect(dockElement.querySelector(".atom-dock-inner").offsetHeight).toBe(0);
+        expect(dockElement.querySelector(".lumine-dock-inner").offsetHeight).toBe(0);
         // The content should be masked away.
-        expect(dockElement.querySelector(".atom-dock-mask").offsetHeight).toBe(0);
+        expect(dockElement.querySelector(".lumine-dock-mask").offsetHeight).toBe(0);
       });
     });
   });
@@ -248,7 +254,7 @@ describe("Dock", () => {
   describe("when you add an item to an empty dock", () => {
     describe("when the item has a preferred size", () => {
       it("is takes the preferred size of the item", async () => {
-        jasmine.attachToDOM(atom.workspace.getElement());
+        jasmine.attachToDOM(lumine.workspace.getElement());
 
         const createItem = (preferredWidth) => ({
           element: document.createElement("div"),
@@ -260,12 +266,12 @@ describe("Dock", () => {
           },
         });
 
-        const dock = atom.workspace.getLeftDock();
+        const dock = lumine.workspace.getLeftDock();
         const dockElement = dock.getElement();
         expect(dock.getPaneItems()).toHaveLength(0);
 
         const item1 = createItem(111);
-        await atom.workspace.open(item1);
+        await lumine.workspace.open(item1);
 
         // It should update the width every time we go from 0 -> 1 items, not just the first.
         expect(dock.isVisible()).toBe(true);
@@ -274,20 +280,20 @@ describe("Dock", () => {
         expect(dock.getPaneItems()).toHaveLength(0);
         expect(dock.isVisible()).toBe(false);
         const item2 = createItem(222);
-        await atom.workspace.open(item2);
+        await lumine.workspace.open(item2);
         expect(dock.isVisible()).toBe(true);
         expect(dockElement.offsetWidth).toBe(222);
 
         // Adding a second shouldn't change the size.
         const item3 = createItem(333);
-        await atom.workspace.open(item3);
+        await lumine.workspace.open(item3);
         expect(dockElement.offsetWidth).toBe(222);
       });
     });
 
     describe("when the item has no preferred size", () => {
       it("is still has an explicit size", async () => {
-        jasmine.attachToDOM(atom.workspace.getElement());
+        jasmine.attachToDOM(lumine.workspace.getElement());
 
         const item = {
           element: document.createElement("div"),
@@ -295,11 +301,11 @@ describe("Dock", () => {
             return "left";
           },
         };
-        const dock = atom.workspace.getLeftDock();
+        const dock = lumine.workspace.getLeftDock();
         expect(dock.getPaneItems()).toHaveLength(0);
 
         expect(dock.state.size).toBe(null);
-        await atom.workspace.open(item);
+        await lumine.workspace.open(item);
         expect(dock.state.size).not.toBe(null);
       });
     });
@@ -307,7 +313,7 @@ describe("Dock", () => {
 
   describe("a deserialized dock", () => {
     it("restores the serialized size", async () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
+      jasmine.attachToDOM(lumine.workspace.getElement());
 
       const item = {
         element: document.createElement("div"),
@@ -319,26 +325,26 @@ describe("Dock", () => {
         },
         serialize: () => ({ deserializer: "DockTestItem" }),
       };
-      atom.deserializers.add({
+      lumine.deserializers.add({
         name: "DockTestItem",
         deserialize: () => item,
       });
-      const dock = atom.workspace.getLeftDock();
+      const dock = lumine.workspace.getLeftDock();
       const dockElement = dock.getElement();
 
-      await atom.workspace.open(item);
+      await lumine.workspace.open(item);
       dock.setState({ size: 150 });
       expect(dockElement.offsetWidth).toBe(150);
       const serialized = dock.serialize();
       dock.setState({ size: 122 });
       expect(dockElement.offsetWidth).toBe(122);
       dock.destroyActivePane();
-      dock.deserialize(serialized, atom.deserializers);
+      dock.deserialize(serialized, lumine.deserializers);
       expect(dockElement.offsetWidth).toBe(150);
     });
 
     it("isn't visible if it has no items", async () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
+      jasmine.attachToDOM(lumine.workspace.getElement());
 
       const item = {
         element: document.createElement("div"),
@@ -349,12 +355,12 @@ describe("Dock", () => {
           return 122;
         },
       };
-      const dock = atom.workspace.getLeftDock();
+      const dock = lumine.workspace.getLeftDock();
 
-      await atom.workspace.open(item);
+      await lumine.workspace.open(item);
       expect(dock.isVisible()).toBe(true);
       const serialized = dock.serialize();
-      dock.deserialize(serialized, atom.deserializers);
+      dock.deserialize(serialized, lumine.deserializers);
       expect(dock.getPaneItems()).toHaveLength(0);
       expect(dock.isVisible()).toBe(false);
     });
@@ -365,29 +371,29 @@ describe("Dock", () => {
         serialize: () => ({ deserializer: "DockTestItem" }),
       };
       const transientItem = { element: document.createElement("div") };
-      atom.deserializers.add({
+      lumine.deserializers.add({
         name: "DockTestItem",
         deserialize: () => restoredItem,
       });
 
-      const dock = atom.workspace.getLeftDock();
+      const dock = lumine.workspace.getLeftDock();
       const restoredPane = dock.getActivePane();
       restoredPane.addItem(restoredItem);
       restoredPane.splitRight({ items: [transientItem] });
       const serialized = dock.serialize();
 
-      atom.workspace.getCenter().getActivePane().activate();
-      dock.deserialize(serialized, atom.deserializers);
+      lumine.workspace.getCenter().getActivePane().activate();
+      dock.deserialize(serialized, lumine.deserializers);
 
       expect(dock.getPanes()).toHaveLength(1);
       expect(dock.getPaneItems()).toEqual([restoredItem]);
-      expect(atom.workspace.getActivePaneContainer()).toBe(atom.workspace.getCenter());
+      expect(lumine.workspace.getActivePaneContainer()).toBe(lumine.workspace.getCenter());
     });
   });
 
   describe("drag handling", () => {
     it("expands docks to match the preferred size of the dragged item", async () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
+      jasmine.attachToDOM(lumine.workspace.getElement());
 
       const element = document.createElement("div");
       element.setAttribute("is", "tabs-tab");
@@ -404,25 +410,25 @@ describe("Dock", () => {
       const dragEvent = new DragEvent("dragstart");
       Object.defineProperty(dragEvent, "target", { value: element });
 
-      atom.workspace.getElement().handleDragStart(dragEvent);
+      lumine.workspace.getElement().handleDragStart(dragEvent);
       await getNextUpdatePromise();
-      expect(atom.workspace.getLeftDock().refs.wrapperElement.offsetWidth).toBe(144);
+      expect(lumine.workspace.getLeftDock().refs.wrapperElement.offsetWidth).toBe(144);
     });
 
     it("does nothing when text nodes are dragged", () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
+      jasmine.attachToDOM(lumine.workspace.getElement());
 
       const textNode = document.createTextNode("hello");
 
       const dragEvent = new DragEvent("dragstart");
       Object.defineProperty(dragEvent, "target", { value: textNode });
 
-      expect(() => atom.workspace.getElement().handleDragStart(dragEvent)).not.toThrow();
+      expect(() => lumine.workspace.getElement().handleDragStart(dragEvent)).not.toThrow();
     });
 
     it("opens an empty dock as a drop target without making it visible", async () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
-      const dock = atom.workspace.getRightDock();
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getRightDock();
 
       const element = document.createElement("div");
       element.setAttribute("is", "tabs-tab");
@@ -436,13 +442,13 @@ describe("Dock", () => {
       const dragEvent = new DragEvent("dragstart");
       Object.defineProperty(dragEvent, "target", { value: element });
 
-      atom.workspace.getElement().handleDragStart(dragEvent);
+      lumine.workspace.getElement().handleDragStart(dragEvent);
       await getNextUpdatePromise();
 
       // The toggle button is offered even though the dock is empty and hidden.
       expect(dock.getPaneItems()).toHaveLength(0);
-      expect(dock.refs.toggleButton.element).toHaveClass("atom-dock-toggle-button-visible");
-      expect(dock.refs.innerElement).not.toHaveClass("atom-dock-open");
+      expect(dock.refs.toggleButton.element).toHaveClass("lumine-dock-toggle-button-visible");
+      expect(dock.refs.innerElement).not.toHaveClass("lumine-dock-open");
 
       dock.handleToggleButtonDragEnter();
       await getNextUpdatePromise();
@@ -451,8 +457,8 @@ describe("Dock", () => {
       // space and can be hit tested, so the drop lands in it instead of falling through
       // to whatever is underneath. Assert the declared size rather than the measured
       // one — the mask animates open, so measuring here races the transition.
-      const maskOf = () => dock.refs.innerElement.querySelector(".atom-dock-mask");
-      expect(dock.refs.innerElement).toHaveClass("atom-dock-open");
+      const maskOf = () => dock.refs.innerElement.querySelector(".lumine-dock-mask");
+      expect(dock.refs.innerElement).toHaveClass("lumine-dock-open");
       expect(getComputedStyle(dock.refs.innerElement).position).toBe("static");
       expect(maskOf().style.width).toBe("300px");
       // ...but it is still only a peek: nothing has actually been opened yet.
@@ -460,14 +466,14 @@ describe("Dock", () => {
 
       dock.draggedOut();
       await getNextUpdatePromise();
-      expect(dock.refs.innerElement).not.toHaveClass("atom-dock-open");
+      expect(dock.refs.innerElement).not.toHaveClass("lumine-dock-open");
       expect(getComputedStyle(dock.refs.innerElement).position).toBe("absolute");
       expect(maskOf().style.width).toBe("0px");
     });
 
     it("gives an empty dock revealed as a drop target real layout space", async () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
-      const dock = atom.workspace.getRightDock();
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getRightDock();
       expect(dock.getPaneItems()).toHaveLength(0);
       expect(dock.getElement().offsetWidth).toBe(0);
 
@@ -485,9 +491,9 @@ describe("Dock", () => {
     });
 
     it("shows and hides a dock without animating it", async () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
-      const dock = atom.workspace.getRightDock();
-      const mask = () => dock.refs.innerElement.querySelector(".atom-dock-mask");
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getRightDock();
+      const mask = () => dock.refs.innerElement.querySelector(".lumine-dock-mask");
       const wrapper = () => dock.refs.wrapperElement;
 
       // Neither the space the dock occupies nor its contents may transition. The dock
@@ -506,16 +512,16 @@ describe("Dock", () => {
     });
 
     it("offers the toggle button for an empty, hidden dock on hover", async () => {
-      jasmine.attachToDOM(atom.workspace.getElement());
-      const dock = atom.workspace.getRightDock();
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getRightDock();
 
       expect(dock.getPaneItems()).toHaveLength(0);
       expect(dock.isVisible()).toBe(false);
-      expect(dock.refs.toggleButton.element).not.toHaveClass("atom-dock-toggle-button-visible");
+      expect(dock.refs.toggleButton.element).not.toHaveClass("lumine-dock-toggle-button-visible");
 
       dock.setHovered(true);
       await getNextUpdatePromise();
-      expect(dock.refs.toggleButton.element).toHaveClass("atom-dock-toggle-button-visible");
+      expect(dock.refs.toggleButton.element).toHaveClass("lumine-dock-toggle-button-visible");
     });
   });
 });

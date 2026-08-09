@@ -3,7 +3,7 @@ const TextEditor = require("../src/text-editor");
 describe("WorkspaceCenter", () => {
   describe(".observeTextEditors()", () => {
     it("invokes the observer with current and future text editors", () => {
-      const workspaceCenter = atom.workspace.getCenter();
+      const workspaceCenter = lumine.workspace.getCenter();
       const pane = workspaceCenter.getActivePane();
       const observed = [];
 

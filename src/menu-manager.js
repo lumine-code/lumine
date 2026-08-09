@@ -9,13 +9,13 @@ const MenuHelpers = require("./menu-helpers");
 const buildMetadata = require("../package.json");
 var platformMenu;
 if (buildMetadata) {
-  platformMenu = buildMetadata._atomMenu && buildMetadata._atomMenu.menu;
+  platformMenu = buildMetadata._lumineMenu && buildMetadata._lumineMenu.menu;
 }
 
 // Extended: Provides a registry for menu items that you'd like to appear in the
 // application menu.
 //
-// An instance of this class is always available as the `atom.menu` global.
+// An instance of this class is always available as the `lumine.menu` global.
 //
 // ## Menu Object Format
 //
@@ -95,7 +95,7 @@ module.exports = class MenuManager {
   //
   // ## Examples
   // ```javascript
-  //   atom.menu.add([
+  //   lumine.menu.add([
   //     {
   //       label: 'Hello'
   //       submenu : [{label: 'World!', id: 'World!', command: 'hello:world'}]
@@ -154,21 +154,23 @@ module.exports = class MenuManager {
       // Selector isn't valid
       return false;
     }
-    // Simulate an atom-text-editor element attached to an atom-workspace element attached
+    // Simulate an lumine-text-editor element attached to an lumine-workspace element attached
     // to a body element that has the same classes as the current body element.
     if (this.testEditor == null) {
       // Use new document so that custom elements don't actually get created
       const testDocument = document.implementation.createDocument(document.namespaceURI, "html");
       const testBody = testDocument.createElement("body");
       testBody.classList.add(...this.classesForElement(document.body));
-      const testWorkspace = testDocument.createElement("atom-workspace");
-      let workspaceClasses = this.classesForElement(document.body.querySelector("atom-workspace"));
+      const testWorkspace = testDocument.createElement("lumine-workspace");
+      let workspaceClasses = this.classesForElement(
+        document.body.querySelector("lumine-workspace"),
+      );
       if (workspaceClasses.length === 0) {
         workspaceClasses = ["workspace"];
       }
       testWorkspace.classList.add(...workspaceClasses);
       testBody.appendChild(testWorkspace);
-      this.testEditor = testDocument.createElement("atom-text-editor");
+      this.testEditor = testDocument.createElement("lumine-text-editor");
       this.testEditor.classList.add("editor");
       testWorkspace.appendChild(this.testEditor);
     }

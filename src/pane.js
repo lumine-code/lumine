@@ -855,7 +855,7 @@ module.exports = class Pane {
   // error when the save is aborted.
   async promptOnSaveConflictedFile(item) {
     // Don't prompt if the user hasn't opted into it.
-    if (!atom.config.get("core.promptOnSaveConflictedFile")) return true;
+    if (!lumine.config.get("core.promptOnSaveConflictedFile")) return true;
 
     // Ensure the item implements an `isInConflict` method, and that it
     // returns `true`.
@@ -989,7 +989,7 @@ module.exports = class Pane {
         // how to proceed. The user may choose to overwrite (force the save) or
         // cancel.
         let preface = () => promisify(() => item.save());
-        if (conflicted && atom.config.get("core.promptOnSaveConflictedFile")) {
+        if (conflicted && lumine.config.get("core.promptOnSaveConflictedFile")) {
           preface = () => {
             return this.promptOnSaveConflictedFile(item).then(() => item.save());
           };

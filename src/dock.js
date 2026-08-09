@@ -6,10 +6,10 @@ const PaneContainer = require("./pane-container");
 const $ = etch.dom;
 const MINIMUM_SIZE = 100;
 const DEFAULT_INITIAL_SIZE = 300;
-const VISIBLE_CLASS = "atom-dock-open";
-const RESIZE_HANDLE_RESIZABLE_CLASS = "atom-dock-resize-handle-resizable";
-const TOGGLE_BUTTON_VISIBLE_CLASS = "atom-dock-toggle-button-visible";
-const CURSOR_OVERLAY_VISIBLE_CLASS = "atom-dock-cursor-overlay-visible";
+const VISIBLE_CLASS = "lumine-dock-open";
+const RESIZE_HANDLE_RESIZABLE_CLASS = "lumine-dock-resize-handle-resizable";
+const TOGGLE_BUTTON_VISIBLE_CLASS = "lumine-dock-toggle-button-visible";
+const CURSOR_OVERLAY_VISIBLE_CLASS = "lumine-dock-cursor-overlay-visible";
 
 // Extended: A container at the edges of the editor window capable of holding items.
 // You should not create a Dock directly. Instead, access one of the three docks of the workspace
@@ -172,10 +172,10 @@ module.exports = class Dock {
     // than overlaying the workspace, so you can see exactly where the item will land.
     const shouldBeVisible = this.state.visible || this.state.showDropTarget;
 
-    const innerElementClassList = ["atom-dock-inner", this.location];
+    const innerElementClassList = ["lumine-dock-inner", this.location];
     if (shouldBeVisible) innerElementClassList.push(VISIBLE_CLASS);
 
-    const cursorOverlayElementClassList = ["atom-dock-cursor-overlay", this.location];
+    const cursorOverlayElementClassList = ["lumine-dock-cursor-overlay", this.location];
     if (this.state.resizing) cursorOverlayElementClassList.push(CURSOR_OVERLAY_VISIBLE_CLASS);
 
     const size = Math.max(
@@ -193,19 +193,19 @@ module.exports = class Dock {
     const wrapperStyle = { [this.widthOrHeight]: `${size}px` };
 
     return $(
-      "atom-dock",
+      "lumine-dock",
       { className: this.location },
       $.div(
         { ref: "innerElement", className: innerElementClassList.join(" ") },
         $.div(
           {
-            className: "atom-dock-mask",
+            className: "lumine-dock-mask",
             style: maskStyle,
           },
           $.div(
             {
               ref: "wrapperElement",
-              className: `atom-dock-content-wrapper ${this.location}`,
+              className: `lumine-dock-content-wrapper ${this.location}`,
               style: wrapperStyle,
             },
             $(DockResizeHandle, {
@@ -717,7 +717,7 @@ class DockResizeHandle {
   }
 
   render() {
-    const classList = ["atom-dock-resize-handle", this.props.location];
+    const classList = ["lumine-dock-resize-handle", this.props.location];
     if (this.props.dockIsVisible) classList.push(RESIZE_HANDLE_RESIZABLE_CLASS);
 
     return $.div({
@@ -758,7 +758,7 @@ class DockToggleButton {
   }
 
   render() {
-    const classList = ["atom-dock-toggle-button", this.props.location];
+    const classList = ["lumine-dock-toggle-button", this.props.location];
     if (this.props.visible) classList.push(TOGGLE_BUTTON_VISIBLE_CLASS);
 
     return $.div(
@@ -766,7 +766,7 @@ class DockToggleButton {
       $.div(
         {
           ref: "innerElement",
-          className: `atom-dock-toggle-button-inner ${this.props.location}`,
+          className: `lumine-dock-toggle-button-inner ${this.props.location}`,
           on: {
             click: this.handleClick,
             dragenter: this.props.onDragEnter,

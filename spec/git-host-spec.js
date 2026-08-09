@@ -158,7 +158,7 @@ describe("GitHost transport", () => {
     const settled = jasmine.createSpy("settled");
     pending.then(settled, settled);
 
-    atom.unloading = true;
+    lumine.unloading = true;
     try {
       host.terminate();
       await flush();
@@ -170,7 +170,7 @@ describe("GitHost transport", () => {
       expect(settled).not.toHaveBeenCalled();
       expect(children.length).toBe(1);
     } finally {
-      atom.unloading = false;
+      lumine.unloading = false;
     }
   });
 
@@ -182,13 +182,13 @@ describe("GitHost transport", () => {
     const settled = jasmine.createSpy("settled");
     pending.then(settled, settled);
 
-    atom.unloading = true;
+    lumine.unloading = true;
     try {
       current().emit("exit");
       await flush();
       expect(settled).not.toHaveBeenCalled();
     } finally {
-      atom.unloading = false;
+      lumine.unloading = false;
     }
   });
 

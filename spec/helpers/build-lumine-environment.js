@@ -2,14 +2,14 @@ const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp");
 const path = require("path");
 
-const userHome = process.env.LUMINE_HOME || path.join(fs.getHomeDirectory(), ".atom");
-const atomHome = temp.mkdirSync({ prefix: "atom-test-home-" });
+const userHome = process.env.LUMINE_HOME || path.join(fs.getHomeDirectory(), ".lumine");
+const lumineHome = temp.mkdirSync({ prefix: "lumine-test-home-" });
 if (process.env.APM_TEST_PACKAGES) {
   const testPackages = process.env.APM_TEST_PACKAGES.split(/\s+/);
-  fs.makeTreeSync(path.join(atomHome, "packages"));
+  fs.makeTreeSync(path.join(lumineHome, "packages"));
   for (let packName of Array.from(testPackages)) {
     const userPack = path.join(userHome, "packages", packName);
-    const loadablePack = path.join(atomHome, "packages", packName);
+    const loadablePack = path.join(lumineHome, "packages", packName);
 
     try {
       fs.symlinkSync(userPack, loadablePack, "dir");
@@ -24,5 +24,5 @@ const applicationDelegate = new ApplicationDelegate();
 applicationDelegate.setRepresentedFilename = function () {};
 applicationDelegate.setWindowDocumentEdited = function () {};
 
-exports.atomHome = atomHome;
+exports.lumineHome = lumineHome;
 exports.applicationDelegate = applicationDelegate;

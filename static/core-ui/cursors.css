@@ -32,7 +32,7 @@
 
 /* Editors */
 @container style(--cursors-syntax-background-dark-flag: white) {
-  .platform-darwin atom-text-editor:not([mini]) {
+  .platform-darwin lumine-text-editor:not([mini]) {
     /* .cursor-white() */
     cursor:
       -webkit-image-set(
@@ -48,7 +48,7 @@
 
 /* Mini Editors */
 @container style(--cursors-input-background-dark-flag: white) {
-  .platform-darwin atom-text-editor[mini] {
+  .platform-darwin lumine-text-editor[mini] {
     /* .cursor-white() */
     cursor:
       -webkit-image-set(

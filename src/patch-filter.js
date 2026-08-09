@@ -1,7 +1,7 @@
 // Caps a raw multi-file diff at a maximum character budget so an enormous patch
 // can't lock up rendering: once the budget is exceeded, whole file-patches are
 // dropped and their paths returned in `removed` for the caller to surface. Pure
-// string processing, shared by the Git UI packages through the `atom` module.
+// string processing, shared by the Git UI packages through the `lumine` module.
 const MAX_PATCH_CHARS = 1024 * 1024;
 
 function filterPatch(original) {

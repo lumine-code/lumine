@@ -202,7 +202,7 @@ class Application {
 // `Icon.none()` is *not* the same as `null` — it stops the chain with "no icon
 // here".
 //
-// An instance of this class is always available as the `atom.icons` global.
+// An instance of this class is always available as the `lumine.icons` global.
 module.exports = class IconRegistry {
   constructor({ config, themeManager, grammarRegistry, packageManager } = {}) {
     this.config = config;

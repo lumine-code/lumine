@@ -140,8 +140,8 @@ class PanelContainerElement extends HTMLElement {
 
     if (this.priorFocus.isConnected) {
       this.priorFocus.focus();
-    } else if (typeof atom !== "undefined") {
-      const pane = atom.workspace.getActivePane();
+    } else if (typeof lumine !== "undefined") {
+      const pane = lumine.workspace.getActivePane();
       if (pane && !pane.isDestroyed()) pane.activate();
     }
     this.priorFocus = null;
@@ -156,10 +156,10 @@ class PanelContainerElement extends HTMLElement {
   }
 }
 
-window.customElements.define("atom-panel-container", PanelContainerElement);
+window.customElements.define("lumine-panel-container", PanelContainerElement);
 
 function createPanelContainerElement() {
-  return document.createElement("atom-panel-container");
+  return document.createElement("lumine-panel-container");
 }
 
 module.exports = {

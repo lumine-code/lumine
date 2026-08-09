@@ -10,7 +10,7 @@
     "ctrl-shift-o": "application:open-folder",
     "ctrl-shift-a": "application:add-project-folder",
     "f11": "window:toggle-full-screen",
-    // Document ends. `body` rather than `atom-text-editor` so they also work in
+    // Document ends. `body` rather than `lumine-text-editor` so they also work in
     // the tree view and every select list, which is where darwin has them.
     "ctrl-home": "core:move-to-top",
     "ctrl-end": "core:move-to-bottom",
@@ -32,7 +32,7 @@
     "alt-8": "pane:show-item-8",
     "alt-9": "pane:show-item-9"
   },
-  "atom-text-editor": {
+  "lumine-text-editor": {
     // Platform Bindings
     "ctrl-left": "editor:move-to-beginning-of-word",
     "ctrl-right": "editor:move-to-end-of-word",
@@ -47,7 +47,7 @@
     "alt-backspace": "editor:delete-to-beginning-of-subword",
     "alt-delete": "editor:delete-to-end-of-subword"
   },
-  "atom-workspace atom-text-editor:not([mini])": {
+  "lumine-workspace lumine-text-editor:not([mini])": {
     // Lumine specific
     "ctrl-alt-shift-[": "editor:fold-selection",
     // Sublime Parity

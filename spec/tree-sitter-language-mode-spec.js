@@ -49,10 +49,10 @@ describe("TreeSitterLanguageMode", () => {
 
   beforeEach(async () => {
     grammar = null;
-    editor = await atom.workspace.open("");
+    editor = await lumine.workspace.open("");
     buffer = editor.getBuffer();
     editor.displayLayer.reset({ foldCharacter: "…" });
-    atom.config.set("language.useTreeSitterParsers", true);
+    lumine.config.set("language.useTreeSitterParsers", true);
   });
 
   afterEach(() => {
@@ -66,8 +66,10 @@ describe("TreeSitterLanguageMode", () => {
   describe("atTransactionEnd", () => {
     it("describes a transaction even before the mode has tokenized", async () => {
       jasmine.useRealClock();
-      grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
-      buffer.setLanguageMode(new TreeSitterLanguageMode({ grammar, buffer, config: atom.config }));
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      buffer.setLanguageMode(
+        new TreeSitterLanguageMode({ grammar, buffer, config: lumine.config }),
+      );
       const languageMode = buffer.getLanguageMode();
       expect(languageMode.tokenized).toBe(false);
 
@@ -81,7 +83,7 @@ describe("TreeSitterLanguageMode", () => {
   describe("highlighting", () => {
     it("applies the most specific scope mapping to each node in the syntax tree", async () => {
       jasmine.useRealClock();
-      grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -132,7 +134,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("can start or end multiple scopes at the same position", async () => {
       jasmine.useRealClock();
-      grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -185,7 +187,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("can resume highlighting on a line that starts with whitespace", async () => {
       jasmine.useRealClock();
-      grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -217,7 +219,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("correctly skips over tokens with zero size", async () => {
       jasmine.useRealClock();
-      grammar = new TreeSitterGrammar(atom.grammars, cGrammarPath, cConfig);
+      grammar = new TreeSitterGrammar(lumine.grammars, cGrammarPath, cConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -267,7 +269,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("updates lines' highlighting when they are affected by distant changes", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -310,7 +312,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("updates the range of the current node in the tree when highlight.invalidateOnChange is set", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -373,7 +375,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("handles edits after tokens that end between CR and LF characters (regression)", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -421,7 +423,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("handles multi-line nodes with children on different lines (regression)", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -461,7 +463,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("handles folds inside of highlighted tokens", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -505,7 +507,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("applies regex match rules when specified", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -547,7 +549,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("handles nodes that start before their first child and end after their last child", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, rubyGrammarPath, rubyConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, rubyGrammarPath, rubyConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -583,7 +585,7 @@ describe("TreeSitterLanguageMode", () => {
     describe("when a highlighting query changes after load", () => {
       it("updates the highlighting to reflect the new content", async () => {
         jasmine.useRealClock();
-        const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         await grammar.setQueryForTest(
           "highlightsQuery",
@@ -640,7 +642,7 @@ describe("TreeSitterLanguageMode", () => {
     describe("asynchronous parsing (progress-callback time slicing)", () => {
       it("yields to the event loop when the sync budget is exhausted, then resolves to a complete tree", async () => {
         jasmine.useRealClock();
-        grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
         await grammar.setQueryForTest(
           "highlightsQuery",
           scm`
@@ -706,9 +708,9 @@ describe("TreeSitterLanguageMode", () => {
       beforeEach(() => {
         jasmine.useRealClock();
         ScopeResolver._clearPredicateWarnings();
-        spyOn(atom.window, "isDevMode").and.returnValue(true);
+        spyOn(lumine.window, "isDevMode").and.returnValue(true);
         spyOn(console, "warn");
-        grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       });
 
       async function useHighlightsQuery(query) {
@@ -841,7 +843,7 @@ describe("TreeSitterLanguageMode", () => {
     xdescribe("when the buffer changes during a parse", () => {
       it("immediately parses again when the current parse completes", async () => {
         jasmine.useRealClock();
-        const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         await grammar.setQueryForTest(
           "highlightsQuery",
@@ -931,7 +933,7 @@ describe("TreeSitterLanguageMode", () => {
     describe("when changes are small enough to be re-parsed synchronously", () => {
       it("can incorporate multiple consecutive synchronous updates", async () => {
         jasmine.useRealClock();
-        const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         await grammar.setQueryForTest(
           "highlightsQuery",
@@ -1003,7 +1005,7 @@ describe("TreeSitterLanguageMode", () => {
 
       beforeEach(async () => {
         let tempJsConfig = { ...jsConfig };
-        jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, tempJsConfig);
+        jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, tempJsConfig);
 
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
@@ -1022,7 +1024,7 @@ describe("TreeSitterLanguageMode", () => {
         jsGrammar.addInjectionPoint(JSDOC_INJECTION_POINT);
 
         let tempHtmlConfig = { ...htmlConfig };
-        htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, tempHtmlConfig);
+        htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, tempHtmlConfig);
 
         await htmlGrammar.setQueryForTest(
           "highlightsQuery",
@@ -1038,15 +1040,15 @@ describe("TreeSitterLanguageMode", () => {
 
       it("highlights code inside of injection points", async () => {
         jasmine.useRealClock();
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
         buffer.setText('node.x = html `\na ${b}<img src="d">\n`;');
 
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
 
         buffer.setLanguageMode(languageMode);
@@ -1110,15 +1112,15 @@ describe("TreeSitterLanguageMode", () => {
 
       it("highlights the content after injections", async () => {
         jasmine.useRealClock();
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
         buffer.setText("<script>\nhello();\n</script>\n<div>\n</div>");
 
         const languageMode = new TreeSitterLanguageMode({
           grammar: htmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1153,14 +1155,14 @@ describe("TreeSitterLanguageMode", () => {
 
       it("updates a buffer's highlighting when a grammar with injectionRegex is added", async () => {
         jasmine.useRealClock();
-        atom.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
 
         buffer.setText('node.innerHTML = `\na ${b}<img src="d">\n`;');
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1185,7 +1187,7 @@ describe("TreeSitterLanguageMode", () => {
           ],
         ]);
 
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
         await languageMode.nextTransaction;
         // TODO: Still need a `wait(0)` here and I'm not sure why.
         await wait(0);
@@ -1217,7 +1219,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("updates a buffer’s highlighting when a new injection point is added to its grammar", async () => {
         const ejsGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           ejsGrammarPath,
           CSON.readFileSync(ejsGrammarPath),
         );
@@ -1235,15 +1237,15 @@ describe("TreeSitterLanguageMode", () => {
           content: (node) => node.descendantsOfType("content"),
         });
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
 
         buffer.setText("<body>\n<script>\nb(<%= c.d %>)\n</script>\n</body>");
         const languageMode = new TreeSitterLanguageMode({
           grammar: ejsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1261,14 +1263,14 @@ describe("TreeSitterLanguageMode", () => {
 
       it("does not update a specific layer’s injections if a newly added grammar is irrelevant to them", async () => {
         jasmine.useRealClock();
-        atom.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
 
         buffer.setText('node.innerHTML = `\na ${b}<img src="d">\n`;');
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1276,7 +1278,7 @@ describe("TreeSitterLanguageMode", () => {
         spyOn(languageMode.rootLanguageLayer, "_populateInjections").and.callThrough();
 
         const ejsGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           ejsGrammarPath,
           CSON.readFileSync(ejsGrammarPath),
         );
@@ -1288,7 +1290,7 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        atom.grammars.addGrammar(ejsGrammar);
+        lumine.grammars.addGrammar(ejsGrammar);
         await languageMode.nextTransaction;
         // TODO: Still need a `wait(0)` here and I'm not sure why.
         await wait(0);
@@ -1298,7 +1300,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("handles injections that intersect", async () => {
         const ejsGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           ejsGrammarPath,
           CSON.readFileSync(ejsGrammarPath),
         );
@@ -1322,15 +1324,15 @@ describe("TreeSitterLanguageMode", () => {
           content: (node) => node.descendantsOfType("content"),
         });
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
 
         buffer.setText("<body>\n<script>\nb(<%= c.d %>)\n</script>\n</body>");
         const languageMode = new TreeSitterLanguageMode({
           grammar: ejsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1371,15 +1373,15 @@ describe("TreeSitterLanguageMode", () => {
 
       it("handles injections that are empty", async () => {
         jasmine.useRealClock();
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
         buffer.setText("text = html");
 
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1432,16 +1434,16 @@ describe("TreeSitterLanguageMode", () => {
 
       it("handles injections with no highlights query", async () => {
         jasmine.useRealClock();
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
         htmlGrammar.highlightsQuery = false;
         // Pretend this grammar doesn't have a highlights query.
         spyOn(htmlGrammar, "getQuery").and.returnValue(Promise.resolve(null));
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1459,7 +1461,7 @@ describe("TreeSitterLanguageMode", () => {
       it("terminates comment token at the end of an injection, so that the next injection is NOT a continuation of the comment", async () => {
         jasmine.useRealClock();
         const ejsGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           ejsGrammarPath,
           CSON.readFileSync(ejsGrammarPath),
         );
@@ -1484,15 +1486,15 @@ describe("TreeSitterLanguageMode", () => {
           content: (node) => node.descendantsOfType("content"),
         });
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
 
         buffer.setText("<% // js comment %> b\n<% b() %>");
         const languageMode = new TreeSitterLanguageMode({
           grammar: ejsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1518,15 +1520,15 @@ describe("TreeSitterLanguageMode", () => {
 
       it("only covers scope boundaries in parent layers if a nested layer has a boundary at the same position", async () => {
         const jsdocGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           jsdocGrammarPath,
           CSON.readFileSync(jsdocGrammarPath),
         );
 
         jsdocGrammar.setQueryForTest("highlightsQuery", "");
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(jsdocGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(jsdocGrammar);
 
         editor.setGrammar(jsGrammar);
         editor.setText("/**\n*/\n{\n}");
@@ -1534,8 +1536,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1550,9 +1552,9 @@ describe("TreeSitterLanguageMode", () => {
 
       it("reports scopes from shallower layers when they are at the start or end of an injection", async () => {
         jasmine.useRealClock();
-        await atom.packages.activatePackage("language-javascript");
+        await lumine.packages.activatePackage("language-javascript");
 
-        let jsdocGrammar = atom.grammars.grammarForScopeName("source.jsdoc");
+        let jsdocGrammar = lumine.grammars.grammarForScopeName("source.jsdoc");
         await jsdocGrammar.setQueryForTest(
           "highlightsQuery",
           `
@@ -1564,7 +1566,7 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        let jsGrammar = atom.grammars.grammarForScopeName("source.js");
+        let jsGrammar = lumine.grammars.grammarForScopeName("source.js");
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
           `
@@ -1608,13 +1610,13 @@ describe("TreeSitterLanguageMode", () => {
 
       it("respects the `includeChildren` property of injection points", async () => {
         const rustGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           rustGrammarPath,
           CSON.readFileSync(rustGrammarPath),
         );
 
         for (const nodeType of ["macro_invocation", "macro_rule"]) {
-          atom.grammars.addInjectionPoint("source.rust", {
+          lumine.grammars.addInjectionPoint("source.rust", {
             type: nodeType,
             language() {
               return "rust";
@@ -1648,7 +1650,7 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        atom.grammars.addGrammar(rustGrammar);
+        lumine.grammars.addGrammar(rustGrammar);
 
         // Macro call within another macro call.
         buffer.setText("assert_eq!(a.b.c(), vec![d.e()]); f.g();");
@@ -1656,8 +1658,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: rustGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1690,7 +1692,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("omits the injected grammar's base scope when `languageScope` is `null`", async () => {
         let customJsConfig = { ...jsConfig };
-        let customJsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, customJsConfig);
+        let customJsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, customJsConfig);
 
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
@@ -1706,7 +1708,7 @@ describe("TreeSitterLanguageMode", () => {
 
         let customHtmlConfig = { ...htmlConfig };
         let customHtmlGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           htmlGrammarPath,
           customHtmlConfig,
         );
@@ -1726,15 +1728,15 @@ describe("TreeSitterLanguageMode", () => {
         });
 
         jasmine.useRealClock();
-        atom.grammars.addGrammar(customJsGrammar);
-        atom.grammars.addGrammar(customHtmlGrammar);
+        lumine.grammars.addGrammar(customJsGrammar);
+        lumine.grammars.addGrammar(customHtmlGrammar);
         buffer.setText("<script>\nhello();\n</script>\n<div>\n</div>");
 
         const languageMode = new TreeSitterLanguageMode({
           grammar: customHtmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1745,7 +1747,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("uses a custom base scope on the injected layer when `languageScope` is a string", async () => {
         let customJsConfig = { ...jsConfig };
-        let customJsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, customJsConfig);
+        let customJsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, customJsConfig);
 
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
@@ -1761,7 +1763,7 @@ describe("TreeSitterLanguageMode", () => {
 
         let customHtmlConfig = { ...htmlConfig };
         let customHtmlGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           htmlGrammarPath,
           customHtmlConfig,
         );
@@ -1781,15 +1783,15 @@ describe("TreeSitterLanguageMode", () => {
         });
 
         jasmine.useRealClock();
-        atom.grammars.addGrammar(customJsGrammar);
-        atom.grammars.addGrammar(customHtmlGrammar);
+        lumine.grammars.addGrammar(customJsGrammar);
+        lumine.grammars.addGrammar(customHtmlGrammar);
         buffer.setText("<script>\nhello();\n</script>\n<div>\n</div>");
 
         const languageMode = new TreeSitterLanguageMode({
           grammar: customHtmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1801,7 +1803,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("uses a custom base scope on the injected layer when `languageScope` is a function", async () => {
         let customJsConfig = { ...jsConfig };
-        let customJsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, customJsConfig);
+        let customJsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, customJsConfig);
 
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
@@ -1817,7 +1819,7 @@ describe("TreeSitterLanguageMode", () => {
 
         let customHtmlConfig = { ...htmlConfig };
         let customHtmlGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           htmlGrammarPath,
           customHtmlConfig,
         );
@@ -1839,15 +1841,15 @@ describe("TreeSitterLanguageMode", () => {
         });
 
         jasmine.useRealClock();
-        atom.grammars.addGrammar(customJsGrammar);
-        atom.grammars.addGrammar(customHtmlGrammar);
+        lumine.grammars.addGrammar(customJsGrammar);
+        lumine.grammars.addGrammar(customHtmlGrammar);
         buffer.setText("<script>\nhello();\n</script>\n<div>\n</div>");
 
         const languageMode = new TreeSitterLanguageMode({
           grammar: customHtmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1859,7 +1861,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("allows multiple base scopes on the injected layer when `languageScope` is a function", async () => {
         let customJsConfig = { ...jsConfig };
-        let customJsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, customJsConfig);
+        let customJsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, customJsConfig);
 
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
@@ -1875,7 +1877,7 @@ describe("TreeSitterLanguageMode", () => {
 
         let customHtmlConfig = { ...htmlConfig };
         let customHtmlGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           htmlGrammarPath,
           customHtmlConfig,
         );
@@ -1897,8 +1899,8 @@ describe("TreeSitterLanguageMode", () => {
         });
 
         jasmine.useRealClock();
-        atom.grammars.addGrammar(customJsGrammar);
-        atom.grammars.addGrammar(customHtmlGrammar);
+        lumine.grammars.addGrammar(customJsGrammar);
+        lumine.grammars.addGrammar(customHtmlGrammar);
         buffer.setText(
           "<script>\nhello();\n</script>\n<div>\n</div>\n<script>\ngoodbye();</script>",
         );
@@ -1906,8 +1908,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: customHtmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -1946,15 +1948,15 @@ describe("TreeSitterLanguageMode", () => {
           });
         });
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
         buffer.setText("<script>\nhello();\n</script>");
 
         const languageMode = new TreeSitterLanguageMode({
           grammar: htmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await promise;
@@ -1978,8 +1980,8 @@ describe("TreeSitterLanguageMode", () => {
       jasmine.useRealClock();
 
       const text = fs.readFileSync(path.join(__dirname, "fixtures", "sample.js"), "utf8");
-      atom.grammars.loadGrammarSync(jsGrammarPath);
-      atom.grammars.assignLanguageMode(buffer, "source.js");
+      lumine.grammars.loadGrammarSync(jsGrammarPath);
+      lumine.grammars.assignLanguageMode(buffer, "source.js");
       // buffer.getLanguageMode().syncTimeoutMicros = 0;
 
       // Seeded by the clock so each run explores different edits. Set
@@ -2039,7 +2041,7 @@ describe("TreeSitterLanguageMode", () => {
         // Create a fresh buffer and editor with the same text.
         const buffer2 = new TextBuffer(buffer.getText());
         const editor2 = new TextEditor({ buffer: buffer2 });
-        atom.grammars.assignLanguageMode(buffer2, "source.js");
+        lumine.grammars.assignLanguageMode(buffer2, "source.js");
 
         // Verify that the two buffers have the same syntax highlighting.
         let languageModeB = buffer2.getLanguageMode();
@@ -2068,8 +2070,8 @@ describe("TreeSitterLanguageMode", () => {
 
     describe("javascript", () => {
       beforeEach(async () => {
-        editor = await atom.workspace.open("sample.js", { autoIndent: false });
-        await atom.packages.activatePackage("language-javascript");
+        editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+        await lumine.packages.activatePackage("language-javascript");
         await editor.getBuffer().getLanguageMode().ready;
       });
 
@@ -2097,9 +2099,9 @@ describe("TreeSitterLanguageMode", () => {
 
     describe("css", () => {
       beforeEach(async () => {
-        editor = await atom.workspace.open("css.css", { autoIndent: true });
-        await atom.packages.activatePackage("language-source");
-        await atom.packages.activatePackage("language-css");
+        editor = await lumine.workspace.open("css.css", { autoIndent: true });
+        await lumine.packages.activatePackage("language-source");
+        await lumine.packages.activatePackage("language-css");
         await editor.getBuffer().getLanguageMode().ready;
       });
 
@@ -2118,20 +2120,20 @@ describe("TreeSitterLanguageMode", () => {
 
   describe(".suggestedIndentForBufferRows", () => {
     beforeEach(async () => {
-      await atom.packages.activatePackage("language-javascript");
+      await lumine.packages.activatePackage("language-javascript");
     });
 
     it("works correctly when straddling an injection boundary", async () => {
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       // `suggestedIndentForBufferRows` should use the HTML grammar to
       // determine the indent level of `let foo` rather than the JS grammar.
@@ -2151,8 +2153,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
 
       buffer.setLanguageMode(languageMode);
@@ -2164,16 +2166,16 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("works correctly when straddling an injection boundary, even in the presence of whitespace", async () => {
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       // This is just like the test above, except that we're indented a bit.
       // Now the edge of the injection isn't at the beginning of the line; it's
@@ -2194,8 +2196,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
 
       buffer.setLanguageMode(languageMode);
@@ -2209,7 +2211,7 @@ describe("TreeSitterLanguageMode", () => {
 
   describe("folding", () => {
     it("can fold nodes that start and end with specified tokens", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2266,7 +2268,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("folds entire buffer rows when necessary to keep words on separate lines", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2330,7 +2332,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("can fold nodes of specified types", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2392,7 +2394,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("updates its fold cache properly when `fold.invalidateOnChange` is specified", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2461,7 +2463,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("understands custom predicates", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2510,7 +2512,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("can fold entire nodes when no start or end parameters are specified", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2556,7 +2558,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("folds between arbitrary points in the buffer with @fold.start and @fold.end markers", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, cGrammarPath, cConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, cGrammarPath, cConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2657,7 +2659,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("allows fold adjustments to be applied to @fold.end markers", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, cGrammarPath, cConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, cGrammarPath, cConfig);
 
       // In addition to nudging the fold ending position forward one character,
       // it also precludes the automatic “adjust to end of previous line”
@@ -2723,7 +2725,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("does not fold when the start and end parameters match the same child", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2754,7 +2756,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("does not enumerate redundant folds", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2783,7 +2785,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("is not flummoxed by redundant folds when performing foldAllAtIndentLevel", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2856,7 +2858,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("can handle folds that share boundaries with other folds", async () => {
       const grammar = new TreeSitterGrammar(
-        atom.grammars,
+        lumine.grammars,
         pythonGrammarPath,
         CSON.readFileSync(pythonGrammarPath),
       );
@@ -2885,7 +2887,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("can target named vs anonymous nodes as fold boundaries", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, rubyGrammarPath, rubyConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, rubyGrammarPath, rubyConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2951,7 +2953,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("updates fold locations when the buffer changes", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
@@ -2998,7 +3000,7 @@ describe("TreeSitterLanguageMode", () => {
     describe("when folding a node that ends with a line break", () => {
       it("ends the fold at the end of the previous line", async () => {
         const grammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           pythonGrammarPath,
           CSON.readFileSync(pythonGrammarPath),
         );
@@ -3069,7 +3071,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("folds code in injected languages", async () => {
       jasmine.useRealClock();
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       await htmlGrammar.setQueryForTest(
         "foldsQuery",
@@ -3078,7 +3080,7 @@ describe("TreeSitterLanguageMode", () => {
       `,
       );
 
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await jsGrammar.setQueryForTest(
         "foldsQuery",
@@ -3092,7 +3094,7 @@ describe("TreeSitterLanguageMode", () => {
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       buffer.setText(
         `a = html \`
@@ -3109,8 +3111,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: jsGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
 
       buffer.setLanguageMode(languageMode);
@@ -3145,7 +3147,7 @@ describe("TreeSitterLanguageMode", () => {
 
   describe(".scopeDescriptorForPosition", () => {
     it("returns a scope descriptor representing the given position in the syntax tree", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -3187,7 +3189,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("includes nodes in injected syntax trees", async () => {
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await jsGrammar.setQueryForTest(
         "highlightsQuery",
@@ -3199,7 +3201,7 @@ describe("TreeSitterLanguageMode", () => {
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       await htmlGrammar.setQueryForTest(
         "highlightsQuery",
@@ -3209,8 +3211,8 @@ describe("TreeSitterLanguageMode", () => {
       );
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       buffer.setText(`
         <div>
@@ -3225,8 +3227,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -3242,7 +3244,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("reports scopes correctly at boundaries where more than one layer adds a scope", async () => {
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await jsGrammar.setQueryForTest(
         "highlightsQuery",
@@ -3258,7 +3260,7 @@ describe("TreeSitterLanguageMode", () => {
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       await htmlGrammar.setQueryForTest(
         "highlightsQuery",
@@ -3268,8 +3270,8 @@ describe("TreeSitterLanguageMode", () => {
       );
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       buffer.setText(dedent`
         html\`<span>\${person.name}</span>\`
@@ -3278,8 +3280,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: jsGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -3295,7 +3297,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("includes the root scope name even when the given position is in trailing whitespace at EOF", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -3316,7 +3318,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("works when the given position is between tokens", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -3341,7 +3343,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("works when a scope range has been adjusted", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -3376,7 +3378,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("ignores a parent's scopes if an injection layer sets `coverShallowerScopes`", async () => {
       jasmine.useRealClock();
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       let tempJsRegexConfig = {
         ...jsRegexConfig,
@@ -3384,7 +3386,7 @@ describe("TreeSitterLanguageMode", () => {
       };
 
       const regexGrammar = new TreeSitterGrammar(
-        atom.grammars,
+        lumine.grammars,
         jsRegexGrammarPath,
         tempJsRegexConfig,
       );
@@ -3420,8 +3422,8 @@ describe("TreeSitterLanguageMode", () => {
       `,
       );
 
-      atom.grammars.addGrammar(regexGrammar);
-      atom.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(regexGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
 
       buffer.setText(dedent`
         let foo = /patt.lor?em.ern/;
@@ -3430,8 +3432,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: jsGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -3450,7 +3452,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("arranges scopes in the proper order when scopes from several layers were already open at a given point", async () => {
       jasmine.useRealClock();
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       let tempJsRegexConfig = {
         ...jsRegexConfig,
@@ -3458,7 +3460,7 @@ describe("TreeSitterLanguageMode", () => {
       };
 
       const regexGrammar = new TreeSitterGrammar(
-        atom.grammars,
+        lumine.grammars,
         jsRegexGrammarPath,
         tempJsRegexConfig,
       );
@@ -3492,8 +3494,8 @@ describe("TreeSitterLanguageMode", () => {
       `,
       );
 
-      atom.grammars.addGrammar(regexGrammar);
-      atom.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(regexGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
 
       buffer.setText(dedent`
         let foo = /patt.lor?em.ern/;
@@ -3502,8 +3504,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: jsGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -3528,7 +3530,7 @@ describe("TreeSitterLanguageMode", () => {
   describe(".syntaxTreeScopeDescriptorForPosition", () => {
     it("returns a scope descriptor representing the given position in the syntax tree", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       buffer.setText("foo({bar: baz});");
 
@@ -3561,16 +3563,16 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("includes nodes in injected syntax trees", async () => {
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       buffer.setText(`
         <div>
@@ -3585,8 +3587,8 @@ describe("TreeSitterLanguageMode", () => {
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -3614,7 +3616,7 @@ describe("TreeSitterLanguageMode", () => {
   describe(".bufferRangeForScopeAtPosition(selector?, position)", () => {
     describe("when selector = null", () => {
       it("returns the range of the smallest node at position", async () => {
-        const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         buffer.setText("foo({bar: baz});");
 
@@ -3633,7 +3635,7 @@ describe("TreeSitterLanguageMode", () => {
       });
 
       it("includes nodes in injected syntax trees", async () => {
-        const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
@@ -3644,12 +3646,12 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+        const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
         htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
 
         buffer.setText(`
           <div>
@@ -3664,8 +3666,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: htmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -3682,7 +3684,7 @@ describe("TreeSitterLanguageMode", () => {
 
     describe("with a selector", () => {
       it("returns the range of the smallest matching node at position", async () => {
-        const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         await grammar.setQueryForTest(
           "highlightsQuery",
@@ -3709,7 +3711,7 @@ describe("TreeSitterLanguageMode", () => {
       });
 
       it("includes nodes in injected syntax trees", async () => {
-        const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
         jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
@@ -3718,7 +3720,7 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+        const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
         htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
         await htmlGrammar.setQueryForTest(
@@ -3728,8 +3730,8 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
 
         buffer.setText(`
           <div>
@@ -3744,8 +3746,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: htmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -3763,7 +3765,7 @@ describe("TreeSitterLanguageMode", () => {
 
       it("reports results correctly when scope ranges have been adjusted", async () => {
         jasmine.useRealClock();
-        const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
@@ -3777,7 +3779,7 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        atom.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
 
         buffer.setText(dedent`
           let foo = /patt?ern/;
@@ -3787,8 +3789,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -3807,7 +3809,7 @@ describe("TreeSitterLanguageMode", () => {
         // A similar test to the one above, except now we expect not to see the
         // scope because it's being covered by the injection layer.
         jasmine.useRealClock();
-        const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         let tempJsRegexConfig = {
           ...jsRegexConfig,
@@ -3815,7 +3817,7 @@ describe("TreeSitterLanguageMode", () => {
         };
 
         const regexGrammar = new TreeSitterGrammar(
-          atom.grammars,
+          lumine.grammars,
           jsRegexGrammarPath,
           tempJsRegexConfig,
         );
@@ -3848,8 +3850,8 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        atom.grammars.addGrammar(regexGrammar);
-        atom.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(regexGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
 
         buffer.setText(dedent`
           let foo = /patt?ern/;
@@ -3858,8 +3860,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
 
@@ -3872,19 +3874,19 @@ describe("TreeSitterLanguageMode", () => {
       });
 
       it("accepts node-matching functions as selectors", async () => {
-        const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+        const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
         jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
         await jsGrammar.setQueryForTest("highlightsQuery", ";");
 
-        const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+        const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
         htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
         await htmlGrammar.setQueryForTest("highlightsQuery", ";");
 
-        atom.grammars.addGrammar(jsGrammar);
-        atom.grammars.addGrammar(htmlGrammar);
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
 
         buffer.setText(`
           <div>
@@ -3899,8 +3901,8 @@ describe("TreeSitterLanguageMode", () => {
         const languageMode = new TreeSitterLanguageMode({
           grammar: htmlGrammar,
           buffer,
-          config: atom.config,
-          grammars: atom.grammars,
+          config: lumine.config,
+          grammars: lumine.grammars,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
@@ -3922,7 +3924,7 @@ describe("TreeSitterLanguageMode", () => {
 
   describe(".getSyntaxNodeAtPosition(position, where?)", () => {
     it("returns the range of the smallest matching node at position", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       buffer.setText("foo(bar({x: 2}));");
       const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
@@ -3942,28 +3944,28 @@ describe("TreeSitterLanguageMode", () => {
 
   describe(".commentStringsForPosition(position)", () => {
     beforeEach(() => {
-      atom.config.unset("language.commentDelimiters", { scopeSelector: ".source.js" });
-      atom.config.unset("language.commentStart", { scopeSelector: ".source.js" });
-      atom.config.unset("language.commentEnd", { scopeSelector: ".source.js" });
-      atom.config.unset("language.commentDelimiters", { scopeSelector: ".text.html.basic" });
-      atom.config.unset("language.commentStart", { scopeSelector: ".text.html.basic" });
-      atom.config.unset("language.commentEnd", { scopeSelector: ".text.html.basic" });
+      lumine.config.unset("language.commentDelimiters", { scopeSelector: ".source.js" });
+      lumine.config.unset("language.commentStart", { scopeSelector: ".source.js" });
+      lumine.config.unset("language.commentEnd", { scopeSelector: ".source.js" });
+      lumine.config.unset("language.commentDelimiters", { scopeSelector: ".text.html.basic" });
+      lumine.config.unset("language.commentStart", { scopeSelector: ".text.html.basic" });
+      lumine.config.unset("language.commentEnd", { scopeSelector: ".text.html.basic" });
     });
 
     it("returns the correct comment strings for nested languages", async () => {
       jasmine.useRealClock();
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
-      atom.config.set(
+      lumine.config.set(
         "language.commentDelimiters",
         {
           line: "//",
@@ -3972,9 +3974,9 @@ describe("TreeSitterLanguageMode", () => {
         { scopeSelector: ".source.js" },
       );
 
-      atom.config.set("language.commentStart", "//", { scopeSelector: ".source.js" });
+      lumine.config.set("language.commentStart", "//", { scopeSelector: ".source.js" });
 
-      atom.config.set(
+      lumine.config.set(
         "language.commentDelimiters",
         {
           block: ["<!--", "-->"],
@@ -3982,15 +3984,15 @@ describe("TreeSitterLanguageMode", () => {
         { scopeSelector: ".text.html.basic" },
       );
 
-      atom.config.set("language.commentStart", "<!--", { scopeSelector: ".text.html.basic" });
+      lumine.config.set("language.commentStart", "<!--", { scopeSelector: ".text.html.basic" });
 
-      atom.config.set("language.commentEnd", "-->", { scopeSelector: ".text.html.basic" });
+      lumine.config.set("language.commentEnd", "-->", { scopeSelector: ".text.html.basic" });
 
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -4049,22 +4051,22 @@ describe("TreeSitterLanguageMode", () => {
 
     it("uses grammar comment settings when config data is missing", async () => {
       jasmine.useRealClock();
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -4123,11 +4125,11 @@ describe("TreeSitterLanguageMode", () => {
 
     it("constructs the right comment settings when grammar data is missing", async () => {
       jasmine.useRealClock();
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
 
       spyOn(jsGrammar, "getCommentDelimiters").and.returnValue({
         line: undefined,
@@ -4138,7 +4140,7 @@ describe("TreeSitterLanguageMode", () => {
         block: undefined,
       });
 
-      atom.config.set(
+      lumine.config.set(
         "language.commentDelimiters",
         {
           line: "//",
@@ -4147,7 +4149,7 @@ describe("TreeSitterLanguageMode", () => {
         { scopeSelector: ".source.js" },
       );
 
-      atom.config.set(
+      lumine.config.set(
         "language.commentDelimiters",
         {
           block: ["<!--", "-->"],
@@ -4157,14 +4159,14 @@ describe("TreeSitterLanguageMode", () => {
 
       htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
 
-      atom.grammars.addGrammar(jsGrammar);
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(jsGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -4224,7 +4226,7 @@ describe("TreeSitterLanguageMode", () => {
 
   describe("TextEditor.selectLargerSyntaxNode and .selectSmallerSyntaxNode", () => {
     it("expands and contracts the selection based on the syntax tree", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -4272,7 +4274,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("handles injected languages", async () => {
-      const jsGrammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await jsGrammar.setQueryForTest(
         "highlightsQuery",
@@ -4287,7 +4289,7 @@ describe("TreeSitterLanguageMode", () => {
 
       jsGrammar.addInjectionPoint(HTML_TEMPLATE_LITERAL_INJECTION_POINT);
 
-      const htmlGrammar = new TreeSitterGrammar(atom.grammars, htmlGrammarPath, htmlConfig);
+      const htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, htmlConfig);
       await htmlGrammar.setQueryForTest(
         "highlightsQuery",
         `
@@ -4297,14 +4299,14 @@ describe("TreeSitterLanguageMode", () => {
       `,
       );
 
-      atom.grammars.addGrammar(htmlGrammar);
+      lumine.grammars.addGrammar(htmlGrammar);
 
       buffer.setText("a = html ` <b>c${def()}e${f}g</b> `");
       const languageMode = new TreeSitterLanguageMode({
         grammar: jsGrammar,
         buffer,
-        config: atom.config,
-        grammars: atom.grammars,
+        config: lumine.config,
+        grammars: lumine.grammars,
       });
       buffer.setLanguageMode(languageMode);
       await languageMode.ready;
@@ -4334,7 +4336,7 @@ describe("TreeSitterLanguageMode", () => {
 
   describe(".tokenizedLineForRow(row)", () => {
     it("returns a shimmed TokenizedLine with tokens", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -4396,13 +4398,13 @@ describe("TreeSitterLanguageMode", () => {
 
   describe("indentation", () => {
     beforeEach(async () => {
-      await atom.packages.activatePackage("whitespace");
-      atom.config.set("whitespace.removeTrailingWhitespace", false);
+      await lumine.packages.activatePackage("whitespace");
+      lumine.config.set("whitespace.removeTrailingWhitespace", false);
     });
 
     it("interprets @indent and @dedent captures", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "indentsQuery",
@@ -4441,7 +4443,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("allows @dedents to cancel out @indents when appropriate", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "indentsQuery",
@@ -4474,7 +4476,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("allows @dedent.next to decrease the indent of the next line before any typing takes place", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       // Pretend we're in a universe where lines after comments should be
       // dedented.
@@ -4497,7 +4499,7 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("allows @match.next to decrease the indent of the next line before any typing takes place", async () => {
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       // When the comparison row contains the end of a lexical declaration, we
       // want the next line to match the indentation of whichever line _began_
@@ -4533,7 +4535,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("resolves @match captures", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "indentsQuery",
@@ -4568,7 +4570,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("prefers a @match capture even if a @dedent matches first", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "indentsQuery",
@@ -4603,7 +4605,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("adjusts correctly when text is pasted", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       expect(editor.getUndoGroupingInterval()).toBe(300);
 
@@ -4655,7 +4657,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it('skips trying to insert at the correct indentation level when "paste without formatting" is invoked', async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       expect(editor.getUndoGroupingInterval()).toBe(300);
 
@@ -4710,7 +4712,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("preserves relative indentation across pasted text", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       expect(editor.getUndoGroupingInterval()).toBe(300);
 
@@ -4761,7 +4763,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("preserves relative indentation across pasted text (when the pasted text ends in a newline)", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       expect(editor.getUndoGroupingInterval()).toBe(300);
 
@@ -4811,7 +4813,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("auto-indents correctly if any change in a transaction wants auto-indentation", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       editor.updateAutoIndent(true);
 
       // Pretend we're in a universe where a line comment should cause the next
@@ -4886,7 +4888,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("does not auto-indent if no change in a transaction wants auto-indentation", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       // Pretend we're in a universe where a line comment should cause the next
       // line to be indented, but only in a class body.
@@ -4935,7 +4937,7 @@ describe("TreeSitterLanguageMode", () => {
     it("auto-dedents exactly once and not after each new insertion on a line", async () => {
       jasmine.useRealClock();
       editor.updateAutoIndent(true);
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       await grammar.setQueryForTest(
         "indentsQuery",
         scm`
@@ -4975,8 +4977,8 @@ describe("TreeSitterLanguageMode", () => {
     it("maintains indent level through multiple newlines (removeTrailingWhitespace: true)", async () => {
       jasmine.useRealClock();
       editor.updateAutoIndent(true);
-      atom.config.set("whitespace.removeTrailingWhitespace", true);
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      lumine.config.set("whitespace.removeTrailingWhitespace", true);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "indentsQuery",
@@ -5023,7 +5025,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it("does not attempt to adjust indent on pasted text without a newline", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       expect(editor.getUndoGroupingInterval()).toBe(300);
 
@@ -5071,8 +5073,8 @@ describe("TreeSitterLanguageMode", () => {
     it("maintains indent level through multiple newlines (removeTrailingWhitespace: false)", async () => {
       jasmine.useRealClock();
       editor.updateAutoIndent(true);
-      atom.config.set("whitespace.removeTrailingWhitespace", false);
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      lumine.config.set("whitespace.removeTrailingWhitespace", false);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       await grammar.setQueryForTest(
         "indentsQuery",
@@ -5119,7 +5121,7 @@ describe("TreeSitterLanguageMode", () => {
 
     it(`can indent properly in a multi-cursor environment without auto-indenting large ranges of the buffer`, async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(atom.grammars, jsGrammarPath, jsConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
       expect(editor.getUndoGroupingInterval()).toBe(300);
 

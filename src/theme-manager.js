@@ -24,32 +24,32 @@ const BASE_STYLESHEETS = [
   "core-ui/syntax.css",
   "core-ui/text-editor.css",
   "core-ui/workspace-view.css",
-  "atom-ui/styles/private/scaffolding.css",
-  "atom-ui/styles/private/alerts.css",
-  "atom-ui/styles/private/close.css",
-  "atom-ui/styles/private/code.css",
-  "atom-ui/styles/private/forms.css",
-  "atom-ui/styles/private/links.css",
-  "atom-ui/styles/private/navs.css",
-  "atom-ui/styles/private/sections.css",
-  "atom-ui/styles/private/tables.css",
-  "atom-ui/styles/private/utilities.css",
-  "atom-ui/styles/badges.css",
-  "atom-ui/styles/button-groups.css",
-  "atom-ui/styles/buttons.css",
-  "atom-ui/styles/git-status.css",
-  "atom-ui/styles/icons.css",
-  "atom-ui/styles/inputs.css",
-  "atom-ui/styles/layout.css",
-  "atom-ui/styles/lists.css",
-  "atom-ui/styles/loading.css",
-  "atom-ui/styles/messages.css",
-  "atom-ui/styles/modals.css",
-  "atom-ui/styles/panels.css",
-  "atom-ui/styles/select-list.css",
-  "atom-ui/styles/site-colors.css",
-  "atom-ui/styles/text.css",
-  "atom-ui/styles/tooltip.css",
+  "lumine-ui/styles/private/scaffolding.css",
+  "lumine-ui/styles/private/alerts.css",
+  "lumine-ui/styles/private/close.css",
+  "lumine-ui/styles/private/code.css",
+  "lumine-ui/styles/private/forms.css",
+  "lumine-ui/styles/private/links.css",
+  "lumine-ui/styles/private/navs.css",
+  "lumine-ui/styles/private/sections.css",
+  "lumine-ui/styles/private/tables.css",
+  "lumine-ui/styles/private/utilities.css",
+  "lumine-ui/styles/badges.css",
+  "lumine-ui/styles/button-groups.css",
+  "lumine-ui/styles/buttons.css",
+  "lumine-ui/styles/git-status.css",
+  "lumine-ui/styles/icons.css",
+  "lumine-ui/styles/inputs.css",
+  "lumine-ui/styles/layout.css",
+  "lumine-ui/styles/lists.css",
+  "lumine-ui/styles/loading.css",
+  "lumine-ui/styles/messages.css",
+  "lumine-ui/styles/modals.css",
+  "lumine-ui/styles/panels.css",
+  "lumine-ui/styles/select-list.css",
+  "lumine-ui/styles/site-colors.css",
+  "lumine-ui/styles/text.css",
+  "lumine-ui/styles/tooltip.css",
 ];
 
 async function wait(ms) {
@@ -58,7 +58,7 @@ async function wait(ms) {
 
 // Extended: Handles loading and activating available themes.
 //
-// An instance of this class is always available as the `atom.themes` global.
+// An instance of this class is always available as the `lumine.themes` global.
 module.exports = class ThemeManager {
   constructor({ packageManager, config, styleManager, notificationManager, viewRegistry }) {
     this.packageManager = packageManager;
@@ -455,7 +455,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
   }
 
   getBaseStylesheetPath() {
-    return path.join(this.resourcePath, "static", "atom.css");
+    return path.join(this.resourcePath, "static", "lumine.css");
   }
 
   // The absolute paths of the files the base stylesheet is built from
@@ -480,7 +480,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
 
   stylesheetElementForId(id) {
     const escapedId = id.replace(/\\/g, "\\\\");
-    return document.head.querySelector(`atom-styles style[source-path="${escapedId}"]`);
+    return document.head.querySelector(`lumine-styles style[source-path="${escapedId}"]`);
   }
 
   resolveStylesheet(stylesheetPath) {
@@ -650,7 +650,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       !this.initialLoadComplete ||
       document.hidden ||
       typeof document.startViewTransition !== "function" ||
-      (typeof atom !== "undefined" && atom.window.isSpecMode())
+      (typeof lumine !== "undefined" && lumine.window.isSpecMode())
     ) {
       apply();
       return;

@@ -118,13 +118,13 @@ function resolveModulePath(relativePath, parentModule) {
 function registerBuiltins(devMode) {
   if (devMode || !cache.resourcePath.startsWith(`${process.resourcesPath}${path.sep}`)) {
     const fs = require("@lumine-code/fs-plus");
-    const atomJsPath = path.join(cache.resourcePath, "exports", "atom.js");
-    if (fs.isFileSync(atomJsPath)) {
-      cache.builtins.atom = atomJsPath;
+    const lumineJsPath = path.join(cache.resourcePath, "exports", "lumine.js");
+    if (fs.isFileSync(lumineJsPath)) {
+      cache.builtins.lumine = lumineJsPath;
     }
   }
-  if (cache.builtins.atom == null) {
-    cache.builtins.atom = path.join(cache.resourcePath, "exports", "atom.js");
+  if (cache.builtins.lumine == null) {
+    cache.builtins.lumine = path.join(cache.resourcePath, "exports", "lumine.js");
   }
 }
 
@@ -159,7 +159,7 @@ exports.add = function (directoryPath, metadata) {
     }
   }
 
-  const cacheToAdd = metadata && metadata._atomModuleCache;
+  const cacheToAdd = metadata && metadata._lumineModuleCache;
   if (!cacheToAdd) return;
 
   for (const dependency of cacheToAdd.dependencies || []) {

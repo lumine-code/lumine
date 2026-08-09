@@ -66,12 +66,12 @@ const PROJECT_STATE_LOCATIONS = ["center"];
 let nextId = 0;
 
 /**
- * @class AtomEnvironment
+ * @class LumineEnvironment
  * @classdesc Lumine global for dealing with packages, themes, menus, and the window.
  *
- * An instance of this class is always available as the `atom` global.
+ * An instance of this class is always available as the `lumine` global.
  */
-class AtomEnvironment {
+class LumineEnvironment {
   // Wiring the environment owns and nothing outside it may reach. Everything a
   // package is meant to use is a namespace carrying a `@type` annotation below;
   // these four are the machinery behind them, so they are hard-private rather
@@ -144,7 +144,7 @@ class AtomEnvironment {
 
     /** @private Window-state persistence. `TextEditor` consults it before
      * prompting to save, and specs stub it; not a package-facing namespace. */
-    this.stateStore = new StateStore("AtomEnvironments", 1);
+    this.stateStore = new StateStore("LumineEnvironments", 1);
 
     /** @type {KeymapManager} */
     this.keymaps = new KeymapManager({
@@ -236,7 +236,7 @@ class AtomEnvironment {
     );
     // A forge-agnostic, OS-encrypted secret store (VS Code SecretStorage-style)
     // for tokens and other sensitive strings packages must persist. Exposed as
-    // `atom.secrets`.
+    // `lumine.secrets`.
     /** @type {SecretStore} */
     this.secrets = new SecretStore({
       applicationDelegate: this.applicationDelegate,
@@ -299,7 +299,7 @@ class AtomEnvironment {
     this.registerDefaultDeserializers();
 
     this.#windowEventHandler = new WindowEventHandler({
-      atomEnvironment: this,
+      lumineEnvironment: this,
       applicationDelegate: this.applicationDelegate,
     });
 
@@ -336,7 +336,7 @@ class AtomEnvironment {
 
   initialize(params = {}) {
     // This will force TextEditorElement to register the custom element, so that
-    // using `document.createElement('atom-text-editor')` works if it's called
+    // using `document.createElement('lumine-text-editor')` works if it's called
     // before opening a buffer.
     require("./text-editor-element");
 
@@ -700,7 +700,7 @@ class AtomEnvironment {
   }
 
   restoreWindowBackground() {
-    const backgroundColor = window.localStorage.getItem("atom:window-background-color");
+    const backgroundColor = window.localStorage.getItem("lumine:window-background-color");
     if (backgroundColor) {
       this.backgroundStylesheet = document.createElement("style");
       this.backgroundStylesheet.type = "text/css";
@@ -715,7 +715,7 @@ class AtomEnvironment {
     const backgroundColor = this.domWindow.getComputedStyle(this.workspace.getElement())[
       "background-color"
     ];
-    this.domWindow.localStorage.setItem("atom:window-background-color", backgroundColor);
+    this.domWindow.localStorage.setItem("lumine:window-background-color", backgroundColor);
   }
 
   // Call this method when establishing a real application window.
@@ -736,7 +736,7 @@ class AtomEnvironment {
         StartupTime.addMarker("window:environment:start-editor-window:display-window");
         await this.displayWindow();
       }
-      this.#commandInstaller.installAtomCommand(false, (error) => {
+      this.#commandInstaller.installLumineCommand(false, (error) => {
         if (error) console.warn(error.message);
       });
 
@@ -782,7 +782,7 @@ class AtomEnvironment {
       const startTime = Date.now();
       StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
       await this.deserialize(state);
-      this.deserializeTimings.atom = Date.now() - startTime;
+      this.deserializeTimings.lumine = Date.now() - startTime;
 
       if (this.config.get("core.titleBar") === "hidden") {
         this.document.body.classList.add("hidden-title-bar");
@@ -994,7 +994,7 @@ class AtomEnvironment {
 
   installWindowEventHandler() {
     this.#windowEventHandler = new WindowEventHandler({
-      atomEnvironment: this,
+      lumineEnvironment: this,
       applicationDelegate: this.applicationDelegate,
     });
     this.#windowEventHandler.initialize(this.domWindow, this.document);
@@ -1600,6 +1600,6 @@ function firstStackFrame(stack) {
   }
 }
 
-AtomEnvironment.version = 1;
-AtomEnvironment.prototype.saveStateDebounceInterval = 1000;
-module.exports = AtomEnvironment;
+LumineEnvironment.version = 1;
+LumineEnvironment.prototype.saveStateDebounceInterval = 1000;
+module.exports = LumineEnvironment;

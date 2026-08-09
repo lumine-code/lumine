@@ -9,7 +9,7 @@ const jsx = require("./eslint-jsx");
 // dependencies — not resolvable from a bundled package's own manifest, so allow
 // them across eslint-plugin-n's resolution rules.
 const runtimeModules = [
-  "atom",
+  "lumine",
   "electron",
   // Built by its own `prepare` into `lib/`, which the lint job's
   // `--ignore-scripts` install skips, so its `main` is absent there.
@@ -53,7 +53,7 @@ module.exports = [
       globals: {
         ...globals.browser,
         ...globals.node,
-        atom: "writable",
+        lumine: "writable",
       },
     },
     rules: {
@@ -98,7 +98,7 @@ module.exports = [
       "resources/**",
       "spec/main-process/**",
       "src/main.js",
-      "src/atom-application.js",
+      "src/lumine-application.js",
       "src/parse-command-line.js",
       "src/askpass.js",
       "src/start.js",
@@ -123,7 +123,7 @@ module.exports = [
   {
     // Test files — jasmine, both the editor runner and the plain-Node
     // `*.test.js` suites (the main-process specs, the completion updaters), and
-    // Atom's async helpers. Also relax dependency-resolution rules: specs require
+    // Lumine's async helpers. Also relax dependency-resolution rules: specs require
     // devDependencies and load fixture modules by path the resolver can't follow.
     files: ["spec/**", "**/spec/**", "**/*-spec.js", "**/*-spec.jsx", "**/*.test.js"],
     languageOptions: {

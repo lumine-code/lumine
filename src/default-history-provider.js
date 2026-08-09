@@ -10,7 +10,7 @@ class Checkpoint {
     this.snapshot = snapshot;
     this.isBarrier = isBarrier;
     if (this.snapshot == null) {
-      global.atom?.assert(false, "Checkpoint created without snapshot");
+      global.lumine?.assert(false, "Checkpoint created without snapshot");
       this.snapshot = {};
     }
   }

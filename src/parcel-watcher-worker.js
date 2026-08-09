@@ -188,7 +188,7 @@ process.on("uncaughtException", (error) => {
   // just try to gather forensic data while we have the chance.
   //
   // See also:
-  // https://github.com/AtomLinter/linter-eslint-node/blob/main/lib/worker.js#L413-L429
+  // https://github.com/LumineLinter/linter-eslint-node/blob/main/lib/worker.js#L413-L429
   try {
     console.error(error?.message ?? error);
   } finally {

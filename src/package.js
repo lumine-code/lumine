@@ -94,7 +94,7 @@ module.exports = class Package {
   }
 
   getType() {
-    return "atom";
+    return "lumine";
   }
 
   getStyleSheetPriority() {
@@ -267,7 +267,7 @@ module.exports = class Package {
       if (match) {
         context = match[1];
       } else if (this.metadata.theme === "syntax") {
-        context = "atom-text-editor";
+        context = "lumine-text-editor";
       }
 
       this.stylesheetDisposables.add(
@@ -498,11 +498,11 @@ module.exports = class Package {
         const methodName = this.metadata.deserializers[deserializerName];
         this.deserializerManager.add({
           name: deserializerName,
-          deserialize: (state, atomEnvironment) => {
+          deserialize: (state, lumineEnvironment) => {
             this.registerViewProviders();
             this.requireMainModule();
             this.initializeIfNeeded();
-            if (atomEnvironment.packages.hasActivatedInitialPackages()) {
+            if (lumineEnvironment.packages.hasActivatedInitialPackages()) {
               // Only explicitly activate the package if initial packages
               // have finished activating. This is because deserialization
               // generally occurs at Lumine startup, which happens before the
@@ -515,7 +515,7 @@ module.exports = class Package {
               this.activateNow();
             }
             this.deserialized = true;
-            return this.mainModule[methodName](state, atomEnvironment);
+            return this.mainModule[methodName](state, lumineEnvironment);
           },
         });
       });
@@ -960,11 +960,11 @@ module.exports = class Package {
     this.workspaceOpenerSubscriptions = new CompositeDisposable();
     for (let opener of this.getWorkspaceOpeners()) {
       this.workspaceOpenerSubscriptions.add(
-        atom.workspace.addOpener((filePath) => {
+        lumine.workspace.addOpener((filePath) => {
           if (filePath === opener) {
             this.activateNow();
             this.workspaceOpenerSubscriptions.dispose();
-            return atom.workspace.createItemForURI(opener);
+            return lumine.workspace.createItemForURI(opener);
           }
         }),
       );
@@ -1013,16 +1013,16 @@ module.exports = class Package {
   // Get a Map of all the native modules => the `.node` files that this package depends on.
   //
   // First try to get this information from
-  // @metadata._atomModuleCache.extensions. If @metadata._atomModuleCache doesn't
+  // @metadata._lumineModuleCache.extensions. If @metadata._lumineModuleCache doesn't
   // exist, recurse through all dependencies.
   getNativeModuleDependencyPathsMap() {
     const nativeModulePaths = new Map();
 
-    if (this.metadata._atomModuleCache) {
+    if (this.metadata._lumineModuleCache) {
       const nodeFilePaths = [];
       const relativeNativeModuleBindingPaths =
-        (this.metadata._atomModuleCache.extensions &&
-          this.metadata._atomModuleCache.extensions[".node"]) ||
+        (this.metadata._lumineModuleCache.extensions &&
+          this.metadata._lumineModuleCache.extensions[".node"]) ||
         [];
       for (let relativeNativeModuleBindingPath of relativeNativeModuleBindingPaths) {
         const nodeFilePath = path.join(
@@ -1235,7 +1235,7 @@ module.exports = class Package {
   }
 
   handleError(message, error) {
-    if (atom.window.isSpecMode()) throw error;
+    if (lumine.window.isSpecMode()) throw error;
 
     let detail, location, stack;
     if (error.filename && error.location && error instanceof SyntaxError) {

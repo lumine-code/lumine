@@ -24,8 +24,8 @@ const COMPILERS = {
 const cacheStats = {};
 let cacheDirectory = null;
 
-exports.setAtomHomeDirectory = function (atomHome) {
-  let cacheDir = path.join(atomHome, "compile-cache");
+exports.setLumineHomeDirectory = function (lumineHome) {
+  let cacheDir = path.join(lumineHome, "compile-cache");
   if (
     process.env.USER === "root" &&
     process.env.SUDO_USER &&
@@ -44,8 +44,8 @@ exports.getCacheDirectory = function () {
   return cacheDirectory;
 };
 
-exports.addPathToCache = function (filePath, atomHome) {
-  this.setAtomHomeDirectory(atomHome);
+exports.addPathToCache = function (filePath, lumineHome) {
+  this.setLumineHomeDirectory(lumineHome);
   const extension = path.extname(filePath);
 
   const compiler = COMPILERS[extension];
