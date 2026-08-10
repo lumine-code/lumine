@@ -758,11 +758,18 @@ describe("WorkspaceElement", () => {
       expectToggleButtonVisible(bottomDock, "icon-chevron-down");
     });
 
+    // Coordinates below are relative to the workspace element, not to the
+    // viewport. `pointWithinHoverArea` compares against
+    // `getBoundingClientRect()`, so passing raw viewport pixels only works
+    // while the workspace happens to start at the viewport origin — which it
+    // does when this file runs alone and does not when the whole suite has
+    // been leaving elements in the body before it.
     function moveMouse(coordinates) {
+      const bounds = workspaceElement.getBoundingClientRect();
       // Simulate a mouse move event by calling the method that handles that event.
       workspaceElement.updateHoveredDock({
-        x: coordinates.clientX,
-        y: coordinates.clientY,
+        x: bounds.left + coordinates.clientX,
+        y: bounds.top + coordinates.clientY,
       });
       advanceClock(100);
     }
