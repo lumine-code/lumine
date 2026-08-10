@@ -495,12 +495,16 @@ module.exports = class TextEditorComponent {
       }
 
       const measurements = [];
+      let heightsChanged = false;
       this.blockDecorationsToMeasure.forEach((decoration) => {
         const { item } = decoration.getProperties();
         const decorationElement = TextEditor.viewForItem(item);
         const { previousSibling, nextSibling } = decorationElement;
         const height =
           nextSibling.getBoundingClientRect().top - previousSibling.getBoundingClientRect().bottom;
+        if (height !== this.heightsByBlockDecoration.get(decoration)) {
+          heightsChanged = true;
+        }
         measurements.push([decoration, height]);
       });
 
@@ -520,6 +524,16 @@ module.exports = class TextEditorComponent {
         blockDecorationMeasurementArea.firstChild.remove();
       }
       this.blockDecorationsToMeasure.clear();
+
+      // A measured height is decoration state like any other: a consumer
+      // projecting rows to pixels — a scrollbar map, a minimap — reads it, and
+      // an off-screen decoration growing is invisible to every observer that
+      // consumer could arm itself. Announce the change like the mutation
+      // paths do, so those projections redraw without waiting for a scroll to
+      // re-render the range.
+      if (heightsChanged) {
+        this.props.model.decorationManager.didMeasureBlockDecorations();
+      }
     }
   }
 

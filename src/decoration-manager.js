@@ -239,6 +239,15 @@ module.exports = class DecorationManager {
     this.emitter.emit("did-update-decorations");
   }
 
+  // Block decoration heights are measured by the view after layout rather than
+  // declared through decorate parameters, but they are decoration state all
+  // the same. The component reports a completed measurement pass here; unlike
+  // the mutation paths this only announces — the component is mid-update, so
+  // scheduling another one would only spin the scheduler.
+  didMeasureBlockDecorations() {
+    this.emitter.emit("did-update-decorations");
+  }
+
   decorationDidChangeType(decoration) {
     if (decoration.isType("overlay")) {
       this.overlayDecorations.add(decoration);

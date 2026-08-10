@@ -2489,6 +2489,42 @@ describe("TextEditorComponent", () => {
 
       expect(Math.abs(anchorOffset() - initialOffset)).toBeLessThan(0.001);
     });
+
+    it("announces measured block decoration heights as a decoration update", async () => {
+      // A consumer projecting rows to pixels — a scrollbar map — reads block
+      // heights but cannot observe an off-screen element growing; the measure
+      // pass is the only party that knows.
+      const { component, editor } = buildComponent({
+        text: "line\n".repeat(50),
+        rowsPerTile: 3,
+        autoHeight: false,
+        attach: true,
+      });
+      await setEditorHeightInLines(component, 6);
+
+      const marker = editor.markScreenPosition([0, 0], { invalidate: "never" });
+      const item = document.createElement("div");
+      item.style.width = "30px";
+      item.style.height = "40px";
+      editor.decorateMarker(marker, { type: "block", item, position: "after" });
+      await component.getNextUpdatePromise();
+
+      let updates = 0;
+      const subscription = editor.onDidUpdateDecorations(() => updates++);
+
+      // A growth measured by the pass announces itself.
+      item.style.height = "80px";
+      component.invalidateBlockDecorationDimensions(editor.getDecorations({ type: "block" })[0]);
+      await component.getNextUpdatePromise();
+      expect(updates).toBe(1);
+
+      // A pass that measures the same height again stays silent.
+      component.invalidateBlockDecorationDimensions(editor.getDecorations({ type: "block" })[0]);
+      await component.getNextUpdatePromise();
+      expect(updates).toBe(1);
+
+      subscription.dispose();
+    });
   });
 
   describe("line and line number decorations", () => {
