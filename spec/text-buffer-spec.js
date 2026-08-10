@@ -2069,6 +2069,118 @@ three\
       }
     };
 
+    it("discards stale folds and clips other markers when the file changed on disk", async function () {
+      const tempDir = fs.realpathSync(temp.mkdirSync("text-buffer"));
+      const filePath = join(tempDir, "changed-and-shortened.txt");
+      fs.writeFileSync(filePath, "one\ntwo\nthree\nfour\n");
+
+      const bufferA = TextBuffer.loadSync(filePath);
+      const displayLayerA = bufferA.addDisplayLayer();
+      displayLayerA.foldBufferRange([
+        [1, 0],
+        [3, 4],
+      ]);
+      const selectionsLayerA = bufferA.addMarkerLayer({
+        persistent: true,
+        role: "selections",
+      });
+      selectionsLayerA.markRange([
+        [3, 2],
+        [3, 4],
+      ]);
+      const state = JSON.parse(JSON.stringify(bufferA.serialize()));
+      const displayLayerId = displayLayerA.id;
+      const selectionsLayerId = selectionsLayerA.id;
+      bufferA.destroy();
+
+      fs.writeFileSync(filePath, "short\n");
+      buffer = await TextBuffer.deserialize(state);
+
+      const displayLayerB = buffer.getDisplayLayer(displayLayerId);
+      const selectionsLayerB = buffer.getMarkerLayer(selectionsLayerId);
+      expect(buffer.getText()).toBe("short\n");
+      expect(() => displayLayerB.getText()).not.toThrow();
+      expect(displayLayerB.getText()).toBe("short\n");
+      expect(displayLayerB.foldsMarkerLayer.getMarkerCount()).toBe(0);
+      expect(displayLayerB.foldsMarkerLayer.destroyInvalidatedMarkers).toBe(true);
+      expect(selectionsLayerB.getMarkers()[0].getRange()).toEqual([
+        [1, 0],
+        [1, 0],
+      ]);
+    });
+
+    it("discards folds after an on-disk change even when their old ranges still fit", async function () {
+      const tempDir = fs.realpathSync(temp.mkdirSync("text-buffer"));
+      const filePath = join(tempDir, "changed-and-expanded.txt");
+      fs.writeFileSync(filePath, "alpha\nbeta\ngamma\n");
+
+      const bufferA = TextBuffer.loadSync(filePath);
+      const displayLayerA = bufferA.addDisplayLayer();
+      displayLayerA.foldBufferRange([
+        [0, 1],
+        [1, 4],
+      ]);
+      const state = JSON.parse(JSON.stringify(bufferA.serialize()));
+      const displayLayerId = displayLayerA.id;
+      bufferA.destroy();
+
+      fs.writeFileSync(filePath, "alpha changed\nbeta\ngamma\ndelta\n");
+      buffer = await TextBuffer.deserialize(state);
+
+      const displayLayerB = buffer.getDisplayLayer(displayLayerId);
+      expect(displayLayerB.foldsMarkerLayer.getMarkerCount()).toBe(0);
+      expect(displayLayerB.getText()).toBe("alpha changed\nbeta\ngamma\ndelta\n");
+    });
+
+    it("keeps folds when the file digest is unchanged", async function () {
+      const tempDir = fs.realpathSync(temp.mkdirSync("text-buffer"));
+      const filePath = join(tempDir, "unchanged.txt");
+      fs.writeFileSync(filePath, "alpha\nbeta\ngamma\n");
+
+      const bufferA = TextBuffer.loadSync(filePath);
+      const displayLayerA = bufferA.addDisplayLayer();
+      displayLayerA.foldBufferRange([
+        [0, 1],
+        [1, 4],
+      ]);
+      const state = JSON.parse(JSON.stringify(bufferA.serialize()));
+      const displayLayerId = displayLayerA.id;
+      bufferA.destroy();
+
+      buffer = await TextBuffer.deserialize(state);
+
+      const displayLayerB = buffer.getDisplayLayer(displayLayerId);
+      expect(displayLayerB.foldsMarkerLayer.getMarkerCount()).toBe(1);
+      expect(displayLayerB.getText()).not.toBe(buffer.getText());
+    });
+
+    it("round-trips marker invalidation behavior and restores legacy fold invariants", async function () {
+      const bufferA = new TextBuffer({ text: "alpha\nbeta\ngamma" });
+      const customLayerA = bufferA.addMarkerLayer({
+        destroyInvalidatedMarkers: true,
+        persistent: true,
+      });
+      customLayerA.markPosition([0, 1]);
+      const displayLayerA = bufferA.addDisplayLayer();
+      displayLayerA.foldBufferRange([
+        [0, 1],
+        [1, 4],
+      ]);
+      const state = JSON.parse(JSON.stringify(bufferA.serialize()));
+      const customLayerId = customLayerA.id;
+      const displayLayerId = displayLayerA.id;
+      delete state.markerLayers[displayLayerA.foldsMarkerLayer.id].destroyInvalidatedMarkers;
+      bufferA.destroy();
+
+      buffer = await TextBuffer.deserialize(state);
+
+      const displayLayerB = buffer.getDisplayLayer(displayLayerId);
+      expect(buffer.getMarkerLayer(customLayerId).destroyInvalidatedMarkers).toBe(true);
+      expect(displayLayerB.foldsMarkerLayer.persistent).toBe(true);
+      expect(displayLayerB.foldsMarkerLayer.maintainHistory).toBe(true);
+      expect(displayLayerB.foldsMarkerLayer.destroyInvalidatedMarkers).toBe(true);
+    });
+
     it("can serialize / deserialize the buffer along with its history, marker layers, and display layers", function (done) {
       const bufferA = new TextBuffer({ text: "hello\nworld\r\nhow are you doing?" });
       const displayLayer1A = bufferA.addDisplayLayer();

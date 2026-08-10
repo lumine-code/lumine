@@ -65,6 +65,11 @@ class DisplayLayer {
         persistent: true,
         destroyInvalidatedMarkers: true,
       });
+    // These flags describe fold behavior, not workspace state. Reassert them
+    // for marker layers restored from older serialized buffers as well.
+    this.foldsMarkerLayer.persistent = true;
+    this.foldsMarkerLayer.destroyInvalidatedMarkers = true;
+    this.foldsMarkerLayer.enableHistorySnapshots();
     this.foldIdCounter = params.foldIdCounter || 1;
 
     if (params.spatialIndex) {
@@ -95,11 +100,6 @@ class DisplayLayer {
 
   static deserialize(buffer, params) {
     const foldsMarkerLayer = buffer.getMarkerLayer(params.foldsMarkerLayerId);
-    // Workspace state serialized before folds rode the undo history restores
-    // this layer with `maintainHistory: false`, and would silently keep folds
-    // un-undoable for every restored buffer. Whether folds are undoable is
-    // behavior, not state — decide it here, not from the file.
-    if (foldsMarkerLayer) foldsMarkerLayer.enableHistorySnapshots();
     return new DisplayLayer(params.id, buffer, { foldsMarkerLayer });
   }
 

@@ -6,6 +6,7 @@ const StorageFolder = require("./storage-folder");
 const Config = require("./config");
 const ConfigFile = require("./config-file");
 const FileRecoveryService = require("./file-recovery-service");
+const XdgShellInvoker = require("./xdg-shell-invoker");
 const StartupTime = require("./startup-time");
 const ipcHelpers = require("./ipc-helpers");
 const { getConfigFilePath } = require("./get-app-details.js");
@@ -38,6 +39,7 @@ const ConfigSchema = require("./config-schema");
 
 const LocationSuffixRegExp = /(:\d+)(:\d+)?$/;
 const WINDOW_EVENT_CHANNEL = "window-event";
+const shellInvoker = new XdgShellInvoker(shell);
 
 // Increment this when changing the serialization format of `${LUMINE_HOME}/storage/application.json` used by
 // LumineApplication::saveCurrentWindowOptions() and LumineApplication::loadPreviousWindowOptions() in a backward-
@@ -504,7 +506,7 @@ const handleAppAction = async (event, action, ...args) => {
     case "openExternal":
       try {
         assertString(args[0], action === "openExternal" ? "url" : "path");
-        const result = await shell[action](args[0]);
+        const result = await shellInvoker.invoke(action, args[0]);
         return { outcome: "success", result };
       } catch (error) {
         return { outcome: "failure", error: { message: error.message, code: error.code } };
@@ -1002,13 +1004,14 @@ module.exports = class LumineApplication extends EventEmitter {
     this.on("application:open-safe", () => this.promptForPathToOpen("all", { safeMode: true }));
 
     this.on("application:open-documentation", () =>
-      shell.openExternal("https://lumine-code.github.io/"),
+      shellInvoker.invoke("openExternal", "https://lumine-code.github.io/"),
     );
     this.on("application:report-issue", () =>
-      shell.openExternal("https://github.com/lumine-code/lumine/issues/new/choose"),
+      shellInvoker.invoke("openExternal", "https://github.com/lumine-code/lumine/issues/new/choose"),
     );
     this.on("application:search-issues", () =>
-      shell.openExternal(
+      shellInvoker.invoke(
+        "openExternal",
         "https://github.com/lumine-code/lumine/issues?q=is%3Aissue+is%3Aopen+sort%3Aupdated-desc",
       ),
     );

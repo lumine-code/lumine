@@ -1046,6 +1046,31 @@ describe("LumineApplication", function () {
       );
     });
 
+    it("returns the existing IPC result shape for Electron shell operations", async function () {
+      const event = { sender: w1.browserWindow.webContents };
+      const openPath = sinon.stub(electron.shell, "openPath").resolves("");
+      const openError = Object.assign(new Error("could not open"), { code: "OPEN_FAILED" });
+      const openExternal = sinon.stub(electron.shell, "openExternal").rejects(openError);
+
+      assert.deepEqual(await LumineApplication.handleAppAction(event, "openPath", "C:\\a.txt"), {
+        outcome: "success",
+        result: "",
+      });
+      assert.deepEqual(
+        await LumineApplication.handleAppAction(
+          event,
+          "openExternal",
+          "https://example.test",
+        ),
+        {
+          outcome: "failure",
+          error: { message: "could not open", code: "OPEN_FAILED" },
+        },
+      );
+      assert.isTrue(openPath.calledWithExactly("C:\\a.txt"));
+      assert.isTrue(openExternal.calledWithExactly("https://example.test"));
+    });
+
     it("rejects unknown application and safe-storage operations", async function () {
       const event = { sender: w1.browserWindow.webContents };
       await LumineApplication.handleAppAction(event, "not-allowlisted").then(

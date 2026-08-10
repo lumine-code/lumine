@@ -619,6 +619,7 @@ class MarkerLayer {
     return {
       id: this.id,
       maintainHistory: this.maintainHistory,
+      destroyInvalidatedMarkers: this.destroyInvalidatedMarkers,
       role: this.role,
       persistent: this.persistent,
       markersById,
@@ -633,13 +634,14 @@ class MarkerLayer {
     }
     this.id = state.id;
     if (state.maintainHistory) this.enableHistorySnapshots();
+    this.destroyInvalidatedMarkers = Boolean(state.destroyInvalidatedMarkers);
     this.role = state.role;
     if (this.role === "selections") {
       this.delegate.registerSelectionsMarkerLayer(this);
     }
     this.persistent = state.persistent;
     for (let [id, markerState] of Object.entries(state.markersById)) {
-      let range = Range.fromObject(markerState.range);
+      let range = this.delegate.clipRange(Range.fromObject(markerState.range));
       // `markerState` is frozen, so instead of deleting its `range` we'll
       // create a new object and copy all properties _except_ `range`.
       let { range: _range, ...params } = markerState;

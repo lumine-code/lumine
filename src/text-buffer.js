@@ -206,15 +206,17 @@ class TextBuffer {
   static async deserialize(params) {
     if (params.version && params.version !== TextBuffer.version) return;
 
+    params = { ...params };
     delete params.load;
 
     let buffer;
+    let fileContentsChanged = false;
     if (params.filePath) {
       buffer = await TextBuffer.load(params.filePath, params);
       if (buffer.digestWhenLastPersisted === params.digestWhenLastPersisted) {
         buffer.buffer.deserializeChanges(params.outstandingChanges);
       } else {
-        params.history = {};
+        fileContentsChanged = true;
       }
     } else {
       buffer = new TextBuffer(params);
@@ -225,10 +227,21 @@ class TextBuffer {
     buffer.nextMarkerId = params.nextMarkerId;
     buffer.nextMarkerLayerId = params.nextMarkerLayerId;
     buffer.nextDisplayLayerId = params.nextDisplayLayerId;
-    buffer.historyProvider.deserialize(params.history, buffer);
+    buffer.historyProvider.deserialize(fileContentsChanged ? {} : params.history, buffer);
+
+    const foldMarkerLayerIds = new Set(
+      Object.values(params.displayLayers || {}).map(({ foldsMarkerLayerId }) =>
+        String(foldsMarkerLayerId),
+      ),
+    );
 
     for (const layerId in params.markerLayers) {
-      const layerState = params.markerLayers[layerId];
+      let layerState = params.markerLayers[layerId];
+      if (fileContentsChanged && foldMarkerLayerIds.has(String(layerId))) {
+        // A fold is meaningful only for the exact file contents it described.
+        // Clipping it can hide unrelated text after an external rewrite.
+        layerState = { ...layerState, markersById: {} };
+      }
       let layer;
       if (layerId === params.defaultMarkerLayerId) {
         buffer.defaultMarkerLayer.id = layerId;
