@@ -5,7 +5,9 @@ module.exports = class OverlayComponent {
     if (this.props.className != null) this.element.classList.add(this.props.className);
     this.element.appendChild(this.props.element);
     this.element.style.position = "fixed";
-    this.element.style.zIndex = 4;
+    // No z-index here: `lumine-overlay` carries one in core-ui, and an inline
+    // declaration would outrank every stylesheet without `!important` —
+    // including the packages that deliberately raise theirs to clear the docks.
     this.element.style.top = (this.props.pixelTop || 0) + "px";
     this.element.style.left = (this.props.pixelLeft || 0) + "px";
     this.applyAnchor();
