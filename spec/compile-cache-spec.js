@@ -1,10 +1,3 @@
-/*
- * EDITOR NOTE: Manually added arrow return function syntax to match other tests.
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS102: Remove unnecessary code created because of implicit returns
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
 const babelCompiler = require("../src/babel");
@@ -41,12 +34,13 @@ describe("CompileCache", () => {
       });
     });
 
-    /**
-     * TODO: FAILING TEST - This test fails with the following output:
-     * TypeError: The "data" argument must be of type string or an instance of Buffer, TypedArray, or DataView. Received undefined
-     */
-    xdescribe("when the given file uses babel", () => {
-      it("compiles the file with babel and caches it", function () {
+    describe("when the given file uses babel", () => {
+      it("compiles the file with babel and caches it", () => {
+        // The shared `spyOn(babelCompiler, "compile")` returns undefined, and
+        // the cache writes whatever it is handed straight to disk. Every other
+        // group here stubs a return for that reason.
+        babelCompiler.compile.and.returnValue("the-babel-code");
+
         CompileCache.addPathToCache(path.join(fixtures, "babel", "babel-comment.js"), lumineHome);
         expect(CompileCache.getCacheStats()[".js"]).toEqual({ hits: 0, misses: 1 });
         expect(babelCompiler.compile.calls.count()).toBe(1);

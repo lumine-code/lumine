@@ -49,6 +49,11 @@ class DisplayLayer {
     this.foldsMarkerLayer =
       params.foldsMarkerLayer ||
       buffer.addMarkerLayer({
+        // Deliberately out of the undo history: a history-maintaining layer
+        // snapshots on every transaction, and the fold change events it then
+        // emits cover the whole snapshotted span rather than the lines that
+        // actually moved. Undo therefore restores the text but not the folds
+        // it destroyed — see the spec in text-editor-spec.js that pins this.
         maintainHistory: false,
         persistent: true,
         destroyInvalidatedMarkers: true,

@@ -555,55 +555,7 @@ describe("WorkspaceElement", () => {
     },
   );
 
-  /**
-   * TODO: FAILING TEST - This test fails with the following output:
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-left"></span></div></div>'
-   * not to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-right"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button left"><div class="lumine-dock-toggle-button-inner left"><span class="icon icon-chevron-left"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button right lumine-dock-toggle-button-visible"><div class="lumine-dock-toggle-button-inner right"><span class="icon icon-chevron-right"></span></div></div>'
-   * not to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-up"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   * ---
-   * Expected '<div class="lumine-dock-toggle-button bottom"><div class="lumine-dock-toggle-button-inner bottom"><span class="icon icon-chevron-down"></span></div></div>'
-   * to have class 'lumine-dock-toggle-button-visible'.
-   */
-  xdescribe("mousing over docks", () => {
+  describe("mousing over docks", () => {
     let workspaceElement;
     let originalTimeout = jasmine.getEnv().defaultTimeoutInterval;
 

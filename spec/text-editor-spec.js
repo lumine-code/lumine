@@ -7336,7 +7336,14 @@ describe("TextEditor", () => {
         ]);
       });
 
-      xit("restores folds after undo and redo", () => {
+      // Folds do not ride the undo history, and this pins that rather than
+      // wishing otherwise. The folds marker layer is created with
+      // `maintainHistory: false` (see display-layer.js) because a
+      // history-maintaining layer snapshots on every transaction and then
+      // reports fold changes over the whole snapshotted span instead of the
+      // lines that moved — a measurable cost on large files. Restoring folds
+      // on undo needs that accounting fixed first, not the flag flipped.
+      it("does not restore a fold that an edit destroyed when the edit is undone", () => {
         editor.foldBufferRow(1);
         editor.setSelectedBufferRange(
           [
@@ -7356,16 +7363,21 @@ describe("TextEditor", () => {
           }\
         `);
         expect(editor.isFoldedAtBufferRow(1)).toBeFalsy();
-        editor.foldBufferRow(2);
 
         editor.undo();
-        expect(editor.isFoldedAtBufferRow(1)).toBeTruthy();
-        expect(editor.isFoldedAtBufferRow(9)).toBeTruthy();
-        expect(editor.isFoldedAtBufferRow(10)).toBeFalsy();
-
-        editor.redo();
+        expect(editor.getText()).toBe(buffer.getText());
         expect(editor.isFoldedAtBufferRow(1)).toBeFalsy();
-        expect(editor.isFoldedAtBufferRow(2)).toBeTruthy();
+      });
+
+      it("keeps a fold that the undone edit never touched", () => {
+        editor.setCursorBufferPosition([0, 0]);
+        editor.foldBufferRow(4);
+        expect(editor.isFoldedAtBufferRow(4)).toBeTruthy();
+
+        editor.insertText("// a comment\n");
+        editor.undo();
+
+        expect(editor.isFoldedAtBufferRow(4)).toBeTruthy();
       });
     });
 

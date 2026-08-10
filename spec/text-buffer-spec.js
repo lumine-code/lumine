@@ -2503,26 +2503,6 @@ three\
     );
   });
 
-  // This spec is no longer needed because `onWillThrowWatchError` is a no-op.
-  // `pathwatcher` can't fulfill the callback because it chooses not to reload
-  // the entire file every time it changes (for performance reasons), hence it
-  // stopped throwing this error a long time ago.
-  //
-  // (Indeed, this test is tautological, since it manually generates the event.)
-  xdescribe("::onWillThrowWatchError", () =>
-    it("notifies observers when the file has a watch error", function () {
-      const filePath = temp.openSync("lumine").path;
-      fs.writeFileSync(filePath, "");
-
-      buffer = TextBuffer.loadSync(filePath);
-
-      const eventHandler = jasmine.createSpy("eventHandler");
-      buffer.onWillThrowWatchError(eventHandler);
-
-      buffer.file.emitter.emit("will-throw-watch-error", "arg");
-      expect(eventHandler).toHaveBeenCalledWith("arg");
-    }));
-
   describe("::getLines()", () =>
     it("returns an array of lines in the text contents", function () {
       const filePath = require.resolve("./fixtures/sample.js");

@@ -468,7 +468,7 @@ describe("TextMateLanguageMode", () => {
 
     describe("when the buffer contains hard-tabs", () => {
       beforeEach(async () => {
-        lumine.packages.activatePackage("language-coffee-script");
+        await lumine.packages.activatePackage("language-coffee-script");
 
         buffer = lumine.project.bufferForPathSync("sample-with-tabs.coffee");
         languageMode = new TextMateLanguageMode({
@@ -484,7 +484,16 @@ describe("TextMateLanguageMode", () => {
         buffer.release();
       });
 
-      xit("has no active assertions");
+      // A hard tab is one buffer character however wide it is displayed, so a
+      // tokenized line has to keep it inside the leading-whitespace token and
+      // leave the following token starting at the column the buffer says.
+      it("keeps a hard tab as a single character of the line's leading whitespace", () => {
+        advanceClock();
+
+        const { tokens } = languageMode.tokenizedLines[2];
+        expect(tokens[0].value).toBe("\t ");
+        expect(buffer.lineForRow(2).indexOf("buy")).toBe(2);
+      });
     });
 
     describe("when tokenization completes", () => {

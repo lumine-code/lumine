@@ -221,40 +221,32 @@ describe("watchPath", function () {
         expect(watcher0.native).toBe(watcher1.native);
       });
 
-      // TODO: File-watchers cannot respect `core.ignoredNames` by default
-      // without breaking backward-compatibility. Keeping this around for a
-      // future where we might use this new behavior on an opt-in basis.
-      xit("respects `core.ignoredNames`", async () => {
+      // `watchPath` deliberately reports every change under the watched root:
+      // `core.ignoredNames` is a project-tree display filter, and a watcher
+      // that honoured it would stop reporting edits to files the editor still
+      // has open. This pins that, so the absence reads as a decision rather
+      // than as an oversight.
+      it("reports changes under a directory named by `core.ignoredNames`", async () => {
         jasmine.useRealClock();
 
-        let existing = lumine.config.get("core.ignoredNames");
+        const existing = lumine.config.get("core.ignoredNames");
         lumine.config.set("core.ignoredNames", [...existing, "some-other-dir"]);
 
         const rootDir = await tempMkdir("lumine-fsmanager-test-");
-
-        // Create a directory that will be affected by our `core.ignoredNames`
-        // value.
-        let ignoredDir = path.join(rootDir, "some-other-dir");
+        const ignoredDir = path.join(rootDir, "some-other-dir");
         await mkdir(ignoredDir, { recursive: true });
 
-        let spy = jasmine.createSpy();
-
-        let watcher = await watchPath(rootDir, {}, spy);
+        const changes = [];
+        const watcher = await watchPath(rootDir, {}, (events) => changes.push(...events));
         disposables.add(watcher);
 
-        // Writing a file to a path within an ignored directory should not
-        // trigger the callback…
-        await writeFile(path.join(ignoredDir, "foo.txt"), "something");
-        // (file-watchers might have a debounce interval)
-        await wait(process.env.CI ? 3000 : 1000);
-        expect(spy).not.toHaveBeenCalled();
+        const ignoredFile = path.join(ignoredDir, "foo.txt");
+        await writeFile(ignoredFile, "something");
 
-        // …but writing a file to a path outside of an ignored directory should
-        // trigger the callback.
-        await writeFile(path.join(rootDir, "foo.txt"), "something");
-        // (file-watchers might have a debounce interval)
-        await wait(process.env.CI ? 3000 : 1000);
-        expect(spy).toHaveBeenCalled();
+        await conditionPromise(
+          () => changes.some((event) => event.path === ignoredFile),
+          "the watcher to report the file under the ignored directory",
+        );
       });
 
       it("resolves the returned promise when the watcher begins listening", async function () {

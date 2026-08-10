@@ -835,13 +835,12 @@ describe("TreeSitterLanguageMode", () => {
       });
     });
 
-    // These specs edit the buffer *during* an in-flight parse and remain
-    // disabled because that interleaving is timing-coupled and flaky to drive
-    // deterministically. Note that the original premise ("web-tree-sitter
-    // doesn't seem to do async") no longer holds: async time-slicing works via
-    // the parse `progressCallback` — see the "asynchronous parsing" spec above.
-    xdescribe("when the buffer changes during a parse", () => {
-      it("immediately parses again when the current parse completes", async () => {
+    describe("when the buffer changes during a parse", () => {
+      // `syncTimeoutMicros: 10` forces every parse past the synchronous budget,
+      // so the second edit below lands while the parse the first started is
+      // still in flight. What has to hold is that the layer re-parses once that
+      // parse completes rather than settling on the text it was parsing.
+      it("re-parses against the final text when an edit lands mid-parse", async () => {
         jasmine.useRealClock();
         const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
@@ -860,10 +859,7 @@ describe("TreeSitterLanguageMode", () => {
           syncTimeoutMicros: 10,
         });
         buffer.setLanguageMode(languageMode);
-        // await languageMode.ready;
-        await nextHighlightingUpdate(languageMode);
-        await new Promise(process.nextTick);
-        await wait(0);
+        await languageMode.atTransactionEnd();
 
         expectTokensToEqual(editor, [
           [
@@ -872,6 +868,8 @@ describe("TreeSitterLanguageMode", () => {
           ],
         ]);
 
+        // No await between the two edits: the second is the one that has to
+        // survive the in-flight parse.
         buffer.setTextInRange(
           [
             [0, 3],
@@ -879,14 +877,6 @@ describe("TreeSitterLanguageMode", () => {
           ],
           "()",
         );
-
-        expectTokensToEqual(editor, [
-          [
-            { text: "abc()", scopes: ["variable"] },
-            { text: ";", scopes: [] },
-          ],
-        ]);
-
         buffer.setTextInRange(
           [
             [0, 0],
@@ -895,38 +885,16 @@ describe("TreeSitterLanguageMode", () => {
           "new ",
         );
 
-        expectTokensToEqual(editor, [
-          [
-            { text: "new ", scopes: [] },
-            { text: "abc()", scopes: ["variable"] },
-            { text: ";", scopes: [] },
-          ],
-        ]);
-
-        await nextHighlightingUpdate(languageMode);
-        // await wait(0);
-        // await languageMode.atTransactionEnd();
-
-        expectTokensToEqual(editor, [
-          [
-            { text: "new ", scopes: [] },
-            { text: "abc", scopes: ["function"] },
-            { text: "();", scopes: [] },
-          ],
-        ]);
-
-        await nextHighlightingUpdate(languageMode);
-
-        expectTokensToEqual(editor, [
-          [
-            { text: "new ", scopes: [] },
-            { text: "abc", scopes: ["constructor"] },
-            { text: "();", scopes: [] },
-          ],
-        ]);
         await languageMode.atTransactionEnd();
 
-        // await wait(2000);
+        expect(buffer.getText()).toBe("new abc();");
+        expectTokensToEqual(editor, [
+          [
+            { text: "new ", scopes: [] },
+            { text: "abc", scopes: ["variable"] },
+            { text: "();", scopes: [] },
+          ],
+        ]);
       });
     });
 
@@ -5178,19 +5146,6 @@ describe("TreeSitterLanguageMode", () => {
     });
   });
 });
-
-async function nextHighlightingUpdate(languageMode) {
-  return await languageMode.atTransactionEnd();
-}
-
-// function nextHighlightingUpdate(languageMode) {
-//   return new Promise(resolve => {
-//     const subscription = languageMode.onDidChangeHighlighting(() => {
-//       subscription.dispose();
-//       resolve();
-//     });
-//   });
-// }
 
 function getDisplayText(editor) {
   return editor.displayLayer.getText();
