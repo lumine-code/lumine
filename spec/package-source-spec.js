@@ -102,55 +102,49 @@ describe("package source", function () {
     });
   });
 
-  it("falls back to the default branch when a repository has only prerelease tags", function () {
+  it("falls back to the default branch when a repository has only prerelease tags", async () => {
     expect(
       selectLatestTag([{ name: "v2.0.0-beta.1", sha: "2222222222222222222222222222222222222222" }]),
     ).toBeNull();
 
     let call = 0;
-    waitsForPromise(() =>
-      resolvePackageSource("owner/repo", async () => {
-        call++;
-        return call === 1
-          ? "2222222222222222222222222222222222222222\trefs/tags/v2.0.0-beta.1"
-          : "1111111111111111111111111111111111111111\tHEAD";
-      }).then((resolved) => {
-        expect(resolved.selector).toEqual({ type: "default", value: "HEAD" });
-        expect(resolved.updatePolicy).toBe("default-branch");
-      }),
-    );
+    const resolved = await resolvePackageSource("owner/repo", async () => {
+      call++;
+      return call === 1
+        ? "2222222222222222222222222222222222222222\trefs/tags/v2.0.0-beta.1"
+        : "1111111111111111111111111111111111111111\tHEAD";
+    });
+
+    expect(resolved.selector).toEqual({ type: "default", value: "HEAD" });
+    expect(resolved.updatePolicy).toBe("default-branch");
   });
 
-  it("resolves the default selector to the latest stable tag", function () {
-    waitsForPromise(() =>
-      resolvePackageSource("owner/repo", async (_url, options) => {
-        expect(options).toEqual(["--tags"]);
-        return [
-          "1111111111111111111111111111111111111111\trefs/tags/v1.0.0",
-          "2222222222222222222222222222222222222222\trefs/tags/v2.0.0",
-        ].join("\n");
-      }).then((resolved) => {
-        expect(resolved.fetchRef).toBe("refs/tags/v2.0.0");
-        expect(resolved.sha).toBe("2222222222222222222222222222222222222222");
-        expect(resolved.updatePolicy).toBe("latest-tag");
-      }),
-    );
+  it("resolves the default selector to the latest stable tag", async () => {
+    const resolved = await resolvePackageSource("owner/repo", async (_url, options) => {
+      expect(options).toEqual(["--tags"]);
+      return [
+        "1111111111111111111111111111111111111111\trefs/tags/v1.0.0",
+        "2222222222222222222222222222222222222222\trefs/tags/v2.0.0",
+      ].join("\n");
+    });
+
+    expect(resolved.fetchRef).toBe("refs/tags/v2.0.0");
+    expect(resolved.sha).toBe("2222222222222222222222222222222222222222");
+    expect(resolved.updatePolicy).toBe("latest-tag");
   });
 
-  it("resolves an unprefixed semantic version to a v-prefixed tag when necessary", function () {
-    waitsForPromise(() =>
-      resolvePackageSource(
-        "owner/repo@2.1.1",
-        async () => "1111111111111111111111111111111111111111\trefs/tags/v2.1.1",
-      ).then((resolved) => {
-        expect(resolved.selector).toEqual({ type: "tag", value: "v2.1.1" });
-        expect(resolved.fetchRef).toBe("refs/tags/v2.1.1");
-        expect(resolved.updatePolicy).toBe("pinned");
-      }),
+  it("resolves an unprefixed semantic version to a v-prefixed tag when necessary", async () => {
+    const resolved = await resolvePackageSource(
+      "owner/repo@2.1.1",
+      async () => "1111111111111111111111111111111111111111\trefs/tags/v2.1.1",
     );
+
+    expect(resolved.selector).toEqual({ type: "tag", value: "v2.1.1" });
+    expect(resolved.fetchRef).toBe("refs/tags/v2.1.1");
+    expect(resolved.updatePolicy).toBe("pinned");
   });
 
-  it("sorts stable, prerelease, and textual tags and lists branches lazily", function () {
+  it("sorts stable, prerelease, and textual tags and lists branches lazily", async () => {
     expect(
       sortRemoteTags([
         { name: "nightly", sha: SHA },
@@ -159,17 +153,15 @@ describe("package source", function () {
       ]).map(({ name }) => name),
     ).toEqual(["v1.0.0", "v2.0.0-beta.1", "nightly"]);
 
-    waitsForPromise(() =>
-      listPackageRepositoryRefs(
-        "owner/repo",
-        async () =>
-          ["ref: refs/heads/main\tHEAD", `${SHA}\tHEAD`, `${SHA}\trefs/heads/main`].join("\n"),
-        { includeBranches: true },
-      ).then((refs) => {
-        expect(refs.defaultBranch).toBe("main");
-        expect(refs.branches).toEqual([{ name: "main", sha: SHA }]);
-      }),
+    const refs = await listPackageRepositoryRefs(
+      "owner/repo",
+      async () =>
+        ["ref: refs/heads/main\tHEAD", `${SHA}\tHEAD`, `${SHA}\trefs/heads/main`].join("\n"),
+      { includeBranches: true },
     );
+
+    expect(refs.defaultBranch).toBe("main");
+    expect(refs.branches).toEqual([{ name: "main", sha: SHA }]);
   });
 });
 

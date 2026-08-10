@@ -243,7 +243,7 @@ describe("RepositoryRegistry", () => {
     const repository = new FakeRepository(workdir);
     repositories.push(repository);
     registry.setProjectRoots([directoryFor(workdir)]);
-    spyOn(fs.realpathSync, "native").andCallThrough();
+    spyOn(fs.realpathSync, "native").and.callThrough();
 
     for (let index = 0; index < 1000; index++) {
       registry.getForPath(path.join(workdir, "src", `file-${index}.js`));

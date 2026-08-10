@@ -103,7 +103,7 @@ describe("Repository status snapshots", () => {
 
   it("uses the whole repository and only includes ignored files on request", async () => {
     const runner = {
-      run: jasmine.createSpy("run").andReturn(Promise.resolve("status")),
+      run: jasmine.createSpy("run").and.resolveTo("status"),
     };
     const provider = new GitRepositoryStatusProvider({ runner });
 

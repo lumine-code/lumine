@@ -209,7 +209,7 @@ describe("GitRepository", () => {
       workingDirectory = copyRepository();
       output = ["# branch.oid abc123", "# branch.head main", "? new file.txt", ""].join("\0");
       statusSnapshotProvider = {
-        getStatus: jasmine.createSpy("getStatus").andCallFake(() => Promise.resolve(output)),
+        getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(workingDirectory, {
         refreshOnWindowFocus: false,
@@ -272,7 +272,7 @@ describe("GitRepository", () => {
 
     it("coalesces concurrent refreshes into one flight and one trailing run", async () => {
       const resolvers = [];
-      statusSnapshotProvider.getStatus.andCallFake(
+      statusSnapshotProvider.getStatus.and.callFake(
         () => new Promise((resolve) => resolvers.push(resolve)),
       );
 
@@ -301,7 +301,7 @@ describe("GitRepository", () => {
     it("merges trailing options from every coalesced requester", async () => {
       const optionsSeen = [];
       const resolvers = [];
-      statusSnapshotProvider.getStatus.andCallFake((workingDir, statusOptions) => {
+      statusSnapshotProvider.getStatus.and.callFake((workingDir, statusOptions) => {
         optionsSeen.push(statusOptions);
         return new Promise((resolve) => resolvers.push(resolve));
       });
@@ -338,7 +338,7 @@ describe("GitRepository", () => {
     beforeEach(() => {
       output = "# branch.oid abc123\0# branch.head main\0? new.txt\0";
       statusSnapshotProvider = {
-        getStatus: jasmine.createSpy("getStatus").andCallFake(() => Promise.resolve(output)),
+        getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(copyRepository(), {
         refreshOnWindowFocus: false,
@@ -415,7 +415,7 @@ describe("GitRepository", () => {
 
     it("shares one in-flight load between concurrent ensureStatusSnapshot callers", async () => {
       const resolvers = [];
-      statusSnapshotProvider.getStatus.andCallFake(
+      statusSnapshotProvider.getStatus.and.callFake(
         () => new Promise((resolve) => resolvers.push(resolve)),
       );
 
@@ -433,7 +433,7 @@ describe("GitRepository", () => {
     });
 
     it("survives destruction while a refresh is scheduled or in flight", async () => {
-      statusSnapshotProvider.getStatus.andCallFake(() => new Promise(() => {}));
+      statusSnapshotProvider.getStatus.and.callFake(() => new Promise(() => {}));
       repo.onDidChangeStatusSnapshot(() => {});
       repo.destroy();
       await runScheduler();
@@ -468,7 +468,7 @@ describe("GitRepository", () => {
     beforeEach(() => {
       refsOutputs = makeOutputs("main");
       refsSnapshotProvider = {
-        getRefs: jasmine.createSpy("getRefs").andCallFake(() => Promise.resolve(refsOutputs)),
+        getRefs: jasmine.createSpy("getRefs").and.callFake(() => Promise.resolve(refsOutputs)),
       };
       repo = new GitRepository(copyRepository(), {
         refreshOnWindowFocus: false,
@@ -509,7 +509,7 @@ describe("GitRepository", () => {
 
     it("coalesces concurrent refs refreshes into one flight and one trailing run", async () => {
       const resolvers = [];
-      refsSnapshotProvider.getRefs.andCallFake(
+      refsSnapshotProvider.getRefs.and.callFake(
         () => new Promise((resolve) => resolvers.push(resolve)),
       );
 
@@ -546,7 +546,7 @@ describe("GitRepository", () => {
 
     it("shares one in-flight load between concurrent ensureRefsSnapshot callers", async () => {
       const resolvers = [];
-      refsSnapshotProvider.getRefs.andCallFake(
+      refsSnapshotProvider.getRefs.and.callFake(
         () => new Promise((resolve) => resolvers.push(resolve)),
       );
 
@@ -640,7 +640,7 @@ describe("GitRepository", () => {
       workingDirectory = copyRepository();
       output = "# branch.oid abc123\0# branch.head main\0";
       statusSnapshotProvider = {
-        getStatus: jasmine.createSpy("getStatus").andCallFake(() => Promise.resolve(output)),
+        getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(workingDirectory, {
         refreshOnWindowFocus: false,
