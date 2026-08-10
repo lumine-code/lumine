@@ -50,9 +50,10 @@ async function conditionPromise(
 ) {
   const startTime = now();
 
+  // Checked before the first sleep on purpose: a condition that is already
+  // satisfied must not cost a poll interval, and some are only briefly true —
+  // an async round trip landing during that first sleep can undo them.
   while (true) {
-    await timeoutPromise(100);
-
     if (await condition()) {
       return;
     }
@@ -60,6 +61,8 @@ async function conditionPromise(
     if (now() - startTime > timeout) {
       throw new Error(`Timed out waiting on ${description}`);
     }
+
+    await timeoutPromise(100);
   }
 }
 

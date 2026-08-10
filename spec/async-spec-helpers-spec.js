@@ -66,6 +66,14 @@ describe("spec/helpers/async-spec-helpers", () => {
   });
 
   describe("conditionPromise", () => {
+    // The property git-diff depends on: a condition that is true now and false
+    // again a moment later must still be seen.
+    it("checks before it sleeps", async () => {
+      let checks = 0;
+      await conditionPromise(() => ++checks === 1, "a condition true only at first");
+      expect(checks).toBe(1);
+    });
+
     it("resolves once a synchronous condition holds", async () => {
       let satisfied = false;
       realSetTimeout(() => (satisfied = true), 20);
