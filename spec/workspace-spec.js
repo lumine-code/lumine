@@ -21,8 +21,8 @@ describe("Workspace", () => {
 
   beforeEach(async () => {
     jasmine.useRealClock();
-    fsGetSizeSyncSpy ||= spyOn(fs, "getSizeSync").and.callThrough();
-    fsOpenSyncSpy ||= spyOn(fs, "openSync").and.callThrough();
+    fsGetSizeSyncSpy = spyOn(fs, "getSizeSync").and.callThrough();
+    fsOpenSyncSpy = spyOn(fs, "openSync").and.callThrough();
 
     workspace = lumine.workspace;
     workspace.resetFontSize();
@@ -34,9 +34,6 @@ describe("Workspace", () => {
   });
 
   afterEach(() => {
-    fsGetSizeSyncSpy.and.callThrough();
-    fsOpenSyncSpy.and.callThrough();
-
     try {
       temp.cleanupSync();
     } catch {
