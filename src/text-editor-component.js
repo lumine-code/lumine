@@ -4363,7 +4363,12 @@ module.exports = class TextEditorComponent {
   setScrollTop(scrollTop) {
     if (Number.isNaN(scrollTop) || scrollTop == null) return false;
 
-    scrollTop = ceilToPhysicalPixelBoundary(
+    // Nearest physical pixel, like setScrollLeft — never ceil. A position is
+    // snapped for crispness, and either neighbor is equally crisp; ceiling
+    // biased every set upward, and the scroll anchor re-captures from the
+    // stored value, so each anchored block-measurement pass leaked a fraction
+    // of a pixel and a long run-all walked the viewport a quarter screen.
+    scrollTop = roundToPhysicalPixelBoundary(
       Math.max(0, Math.min(this.getMaxScrollTop(), scrollTop)),
     );
     if (scrollTop !== this.scrollTop) {

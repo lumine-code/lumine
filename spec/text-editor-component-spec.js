@@ -2312,7 +2312,10 @@ describe("TextEditorComponent", () => {
       });
       const updateSync = spyOn(component, "updateSync").and.callThrough();
       const boundaryRow = component.mountedTileStartRow + component.getRowsPerTile();
-      const boundaryTop = component.pixelPositionBeforeBlocksForRow(boundaryRow);
+      // Fully past the boundary: a fractional boundary position snaps to the
+      // nearest physical pixel, and half a pixel short of it the outgoing
+      // tile is rightly still mounted.
+      const boundaryTop = Math.ceil(component.pixelPositionBeforeBlocksForRow(boundaryRow));
 
       component.scrollAnimator.scrollTo({ top: boundaryTop, smoothness: 1 });
       component.scrollAnimator.advance(FRAME);
@@ -2427,6 +2430,25 @@ describe("TextEditorComponent", () => {
       await component.getNextUpdatePromise();
       expect(component.getScrollTop()).toBeNear(initialScrollTop);
       expect(component.getScrollLeft()).toBeNear(initialScrollLeft);
+    });
+
+    it("snaps a fractional scroll position to the nearest physical pixel", async () => {
+      // Nearest, never ceiling. The scroll anchor restores an exact fractional
+      // target and re-captures from the stored value, so a one-directional
+      // snap leaks a fraction of a pixel on every anchored block-measurement
+      // pass — a long run over many block decorations walked the viewport a
+      // quarter screen. Either neighboring physical pixel is equally crisp.
+      const { component } = buildComponent({
+        rowsPerTile: 2,
+        autoHeight: false,
+      });
+      await setEditorHeightInLines(component, 3);
+
+      component.setScrollTop(10.4);
+      expect(component.getScrollTop()).toBe(10);
+
+      component.setScrollTop(10.6);
+      expect(component.getScrollTop()).toBe(11);
     });
   });
 
@@ -5000,7 +5022,10 @@ describe("TextEditorComponent", () => {
       });
       element.style.height = 4 * component.getLineHeight() + "px";
       await component.getNextUpdatePromise();
-      await setScrollTop(component, 4 * component.getLineHeight());
+      // Fully past row 4: the fractional row position snaps to the nearest
+      // physical pixel, and half a pixel short of it row 3 is rightly still
+      // rendered.
+      await setScrollTop(component, Math.ceil(4 * component.getLineHeight()));
       expect(component.getRenderedStartRow()).toBeNear(4);
       expect(component.getRenderedEndRow()).toBeNear(9);
 
