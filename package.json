@@ -183,6 +183,7 @@
     "check:branding": "electron --no-sandbox script/generate-branding.js --check",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
+    "test": "npm run test:editor && npm run test:main",
     "test:editor": "npm run test:only -- spec",
     "test:main": "npm run test:only -- --main-process spec/main-process",
     "test:only": "npm start -- --test"

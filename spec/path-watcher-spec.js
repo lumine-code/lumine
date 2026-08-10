@@ -232,7 +232,10 @@ describe("watchPath", function () {
         const existing = lumine.config.get("core.ignoredNames");
         lumine.config.set("core.ignoredNames", [...existing, "some-other-dir"]);
 
-        const rootDir = await tempMkdir("lumine-fsmanager-test-");
+        // Real path throughout: on macOS the temp directory lives under a
+        // symlinked `/var`, and the watcher reports the resolved path, so a
+        // comparison against the unresolved one never matches.
+        const rootDir = await realpath(await tempMkdir("lumine-fsmanager-test-"));
         const ignoredDir = path.join(rootDir, "some-other-dir");
         await mkdir(ignoredDir, { recursive: true });
 
