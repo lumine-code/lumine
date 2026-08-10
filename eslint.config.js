@@ -141,13 +141,6 @@ module.exports = [
         flushMicrotasks: "readonly",
         timeoutPromise: "readonly",
         waitForFrames: "readonly",
-        // Jasmine 1.3 async queue, shimmed by the runner. Being declared here is
-        // what keeps `no-undef` from reporting the specs that still use it; the
-        // declarations come out with the shim once nothing does.
-        waitsForPromise: "readonly",
-        waitsFor: "readonly",
-        waits: "readonly",
-        runs: "readonly",
       },
     },
     rules: {

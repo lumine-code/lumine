@@ -1,12 +1,3 @@
-/*
- * decaffeinate suggestions:
- * DS101: Remove unnecessary use of Array.from
- * DS102: Remove unnecessary code created because of implicit returns
- * DS202: Simplify dynamic range loops
- * DS205: Consider reworking code to avoid use of IIFEs
- * DS207: Consider shorter variations of null checks
- * Full docs: https://github.com/decaffeinate/decaffeinate/blob/main/docs/suggestions.md
- */
 const Grim = require("@lumine-code/grim");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp");
@@ -18,13 +9,6 @@ const focusTestWindow = require("../../src/focus-test-window");
 temp.track();
 
 const specMetadataById = new Map();
-let currentLegacyAsyncQueue = null;
-// The `this` (spec user context) of the currently-running spec/hook. Legacy
-// `runs()`/`waitsFor()` callbacks must be invoked with this context so that
-// specs sharing state via `this.foo` keep working.
-let currentLegacyContext = undefined;
-const realSetTimeout = window.setTimeout.bind(window);
-const realClearTimeout = window.clearTimeout.bind(window);
 
 module.exports = function ({ logFile, headless, testPaths, buildLumineEnvironment }) {
   // Load Jasmine
@@ -93,8 +77,7 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
     window[key] = jasmineEnv[key];
   }
 
-  setupLegacySpyCompatibility();
-  setupLegacyAsyncCompatibility();
+  installRespyTolerance();
 
   ["describe", "fdescribe", "xdescribe"].forEach((key) => {
     window[key] = (name, originalFn) => {
@@ -112,6 +95,32 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
     };
   });
 
+  // A spec body that declares no parameter is awaited; one that declares a
+  // parameter is given Jasmine's `done` and left to call it. That distinction
+  // is the whole wrapper — never mix the two, because an `async (done)` body is
+  // not awaited and a rejection in it hangs the spec instead of failing it.
+  const runSpecBody = (originalFn, context, done) => {
+    try {
+      if (originalFn.length > 0) {
+        originalFn.call(context, done);
+        return;
+      }
+      Promise.resolve()
+        .then(() => originalFn.call(context))
+        .then(
+          () => done(),
+          (error) => (isPendingException(error) ? done() : failDone(done, error)),
+        );
+    } catch (error) {
+      if (isPendingException(error)) {
+        // A spec marked itself as pending. Swallow the exception and proceed.
+        done();
+        return;
+      }
+      failDone(done, error);
+    }
+  };
+
   ["it", "fit", "xit"].forEach((key) => {
     window[key] = (name, originalFn, timeout) => {
       if (typeof originalFn !== "function") {
@@ -121,32 +130,7 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
       jasmineEnv[key](
         name,
         function (done) {
-          installLegacyUserContext(this, jasmineEnv);
-          currentLegacyContext = this;
-          try {
-            if (originalFn.length === 0) {
-              runWithLegacyAsyncQueue(() => originalFn.call(this)).then(
-                () => done(),
-                (error) => {
-                  if (isPendingException(error)) {
-                    done();
-                  } else {
-                    failDone(done, error);
-                  }
-                },
-              );
-            } else {
-              originalFn.call(this, done);
-            }
-          } catch (err) {
-            if (isPendingException(err)) {
-              // A test marked itself as pending. Swallow the exception and
-              // proceed.
-              done();
-              return;
-            }
-            throw err;
-          }
+          runSpecBody(originalFn, this, done);
         },
         timeout,
       );
@@ -156,26 +140,7 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
   ["beforeEach", "afterEach"].forEach((key) => {
     window[key] = (originalFn, timeout) => {
       jasmineEnv[key](function (done) {
-        installLegacyUserContext(this, jasmineEnv);
-        currentLegacyContext = this;
-        try {
-          if (originalFn.length === 0) {
-            runWithLegacyAsyncQueue(() => originalFn.call(this)).then(
-              () => done(),
-              (error) => {
-                if (isPendingException(error)) {
-                  done();
-                } else {
-                  failDone(done, error);
-                }
-              },
-            );
-          } else {
-            originalFn.call(this, done);
-          }
-        } catch (error) {
-          failDone(done, error);
-        }
+        runSpecBody(originalFn, this, done);
       }, timeout);
     };
   });
@@ -198,313 +163,26 @@ const installLegacyTimeoutCompatibility = (jasmineEnv) => {
   });
 };
 
-const installLegacyUserContext = (context, jasmineEnv) => {
-  if (context == null || context.__legacyUserContextCompatibility) {
-    return;
-  }
-
-  Object.defineProperty(context, "__legacyUserContextCompatibility", {
-    value: true,
-  });
-
-  context.addMatchers = (matchers) => {
-    jasmineEnv.addMatchers(convertLegacyMatchers(matchers));
-  };
-};
-
-const convertLegacyMatchers = (matchers) => {
-  const convertedMatchers = {};
-  for (const [name, matcher] of Object.entries(matchers)) {
-    convertedMatchers[name] = () => ({
-      compare(actual, ...expected) {
-        const context = { actual };
-        const pass = matcher.apply(context, expected);
-        return {
-          pass,
-          message: context.message,
-        };
-      },
-    });
-  }
-  return convertedMatchers;
-};
-
-const setupLegacySpyCompatibility = () => {
+// `jasmine-spies.js` and `jasmine-time.js` both spy on globals in a `beforeEach`,
+// so a spec that spies the same method again would otherwise be told it has
+// "already been spied upon". Hand back the existing spy instead.
+const installRespyTolerance = () => {
   const originalSpyOn = window.spyOn;
   window.spyOn = (target, methodName) => {
-    const existingValue = target?.[methodName];
-    if (isSpy(existingValue)) {
-      return decorateSpy(existingValue);
-    }
+    const existing = target?.[methodName];
+    if (isSpy(existing)) return existing;
     try {
-      return decorateSpy(originalSpyOn(target, methodName));
+      return originalSpyOn(target, methodName);
     } catch (error) {
-      if (/already been spied upon/.test(error.message) && isSpy(existingValue)) {
-        return decorateSpy(existingValue);
-      }
+      if (/already been spied upon/.test(error.message) && isSpy(existing)) return existing;
       throw error;
     }
   };
-
-  if (window.jasmine.__legacyJasmineFacade) {
-    return;
-  }
-
-  const originalJasmine = window.jasmine;
-  const jasmineFacade = Object.create(originalJasmine);
-
-  Object.defineProperty(jasmineFacade, "__legacyJasmineFacade", {
-    value: true,
-  });
-
-  Object.defineProperty(jasmineFacade, "createSpy", {
-    configurable: true,
-    value: (...args) => decorateSpy(originalJasmine.createSpy.apply(originalJasmine, args)),
-  });
-
-  Object.defineProperty(jasmineFacade, "createSpyObj", {
-    configurable: true,
-    value: (...args) => {
-      const spyObj = originalJasmine.createSpyObj.apply(originalJasmine, args);
-      for (const value of Object.values(spyObj)) {
-        decorateSpy(value);
-      }
-      return spyObj;
-    },
-  });
-
-  window.jasmine = jasmineFacade;
 };
 
-const setupLegacyAsyncCompatibility = () => {
-  window.runs = (fn) => {
-    const ctx = currentLegacyContext;
-    return enqueueLegacyAsyncStep(() => Promise.resolve(fn.call(ctx)));
-  };
-
-  window.waitsFor = (...args) => {
-    const { label, timeout, condition } = parseWaitsForArgs(args);
-    const ctx = currentLegacyContext;
-    return enqueueLegacyAsyncStep(() => waitForCondition(condition, label, timeout, ctx));
-  };
-
-  window.waits = (timeout = 0) => {
-    return enqueueLegacyAsyncStep(() => new Promise((resolve) => realSetTimeout(resolve, timeout)));
-  };
-
-  window.waitsForPromise = (...args) => {
-    const { label, shouldReject, promiseFactory } = parseWaitsForPromiseArgs(args);
-    return enqueueLegacyAsyncStep(() => {
-      return Promise.resolve()
-        .then(promiseFactory)
-        .then(
-          () => {
-            if (shouldReject) {
-              throw new Error(`Expected ${label} to be rejected, but it was resolved`);
-            }
-          },
-          (error) => {
-            if (!shouldReject) {
-              throw error;
-            }
-          },
-        );
-    });
-  };
-
-  global.runs = window.runs;
-  global.waits = window.waits;
-  global.waitsFor = window.waitsFor;
-  global.waitsForPromise = window.waitsForPromise;
-};
-
-const runWithLegacyAsyncQueue = (fn) => {
-  const previousQueue = currentLegacyAsyncQueue;
-  const queue = [];
-  currentLegacyAsyncQueue = queue;
-
-  return Promise.resolve()
-    .then(fn)
-    .then(() => flushLegacyAsyncQueue(queue))
-    .finally(() => {
-      // When a spec times out, Jasmine starts the next spec while this chain
-      // is still pending. By the time it settles, another spec owns the
-      // queue; restoring the stale reference here would clobber that spec's
-      // queue mid-run and crash its flush.
-      if (currentLegacyAsyncQueue === queue) {
-        currentLegacyAsyncQueue = previousQueue;
-      }
-    });
-};
-
-const enqueueLegacyAsyncStep = (step) => {
-  if (currentLegacyAsyncQueue == null) {
-    return step();
-  }
-  currentLegacyAsyncQueue.push(step);
-};
-
-const flushLegacyAsyncQueue = async (queue) => {
-  // Stop when the spec no longer owns the queue (see runWithLegacyAsyncQueue):
-  // a timed-out spec must not run its remaining steps inside a later spec.
-  while (queue.length > 0 && currentLegacyAsyncQueue === queue) {
-    const step = queue.shift();
-    await step();
-  }
-};
-
-const parseWaitsForArgs = (args) => {
-  let label = "condition";
-  let timeout = 5000;
-  let condition;
-
-  if (typeof args[0] === "string") {
-    label = args[0];
-    if (typeof args[1] === "number") {
-      timeout = args[1];
-      condition = args[2];
-    } else {
-      condition = args[1];
-      if (typeof args[2] === "number") {
-        timeout = args[2];
-      }
-    }
-  } else {
-    condition = args[0];
-    if (typeof args[1] === "string") {
-      label = args[1];
-    }
-    if (typeof args[2] === "number") {
-      timeout = args[2];
-    } else if (typeof args[1] === "number") {
-      timeout = args[1];
-    }
-  }
-
-  return { label, timeout, condition };
-};
-
-const parseWaitsForPromiseArgs = (args) => {
-  let label = "promise to be resolved or rejected";
-  let shouldReject = false;
-  let promiseFactory = args[0];
-
-  if (args.length > 1 && typeof args[0] === "object") {
-    label = args[0].label ?? label;
-    shouldReject = args[0].shouldReject ?? false;
-    promiseFactory = args[1];
-  } else if (args.length > 1 && typeof args[0] === "string") {
-    // Legacy `waitsForPromise(description, factory)` form.
-    label = args[0];
-    promiseFactory = args[1];
-  }
-
-  return {
-    label,
-    shouldReject,
-    promiseFactory: typeof promiseFactory === "function" ? promiseFactory : () => promiseFactory,
-  };
-};
-
-const waitForCondition = (condition, label, timeout, ctx) => {
-  if (typeof condition !== "function") {
-    return Promise.resolve();
-  }
-
-  if (condition.length > 0) {
-    return new Promise((resolve, reject) => {
-      const timeoutId = realSetTimeout(
-        () => reject(new Error(`Timed out waiting for ${label}`)),
-        timeout,
-      );
-      condition.call(ctx, () => {
-        realClearTimeout(timeoutId);
-        resolve();
-      });
-    });
-  }
-
-  const startedAt = Date.now();
-  return new Promise((resolve, reject) => {
-    const check = () => {
-      let result;
-      try {
-        result = condition.call(ctx);
-      } catch (error) {
-        reject(error);
-        return;
-      }
-
-      if (result) {
-        resolve();
-      } else if (Date.now() - startedAt > timeout) {
-        reject(new Error(`Timed out waiting for ${label}`));
-      } else {
-        realSetTimeout(check, 100);
-      }
-    };
-
-    check();
-  });
-};
-
-const decorateSpy = (spy) => {
-  if (typeof spy !== "function" || spy.__legacySpyCompatibility) {
-    return spy;
-  }
-
-  Object.defineProperty(spy, "__legacySpyCompatibility", {
-    value: true,
-  });
-
-  spy.andCallFake = (fn) => spy.and.callFake(fn);
-  spy.andCallThrough = () => spy.and.callThrough();
-  spy.andReturn = (value) => spy.and.returnValue(value);
-  spy.andThrow = (error) => spy.and.throwError(error);
-  spy.reset = () => spy.calls.reset();
-
-  Object.defineProperty(spy, "callCount", {
-    configurable: true,
-    get() {
-      return spy.calls.count();
-    },
-    set(value) {
-      if (value === 0) {
-        spy.calls.reset();
-      }
-    },
-  });
-
-  Object.defineProperty(spy, "mostRecentCall", {
-    configurable: true,
-    get() {
-      return spy.calls.mostRecent();
-    },
-  });
-
-  Object.defineProperty(spy, "argsForCall", {
-    configurable: true,
-    get() {
-      return spy.calls.allArgs();
-    },
-  });
-
-  Object.defineProperty(spy, "wasCalled", {
-    configurable: true,
-    get() {
-      return spy.calls.any();
-    },
-  });
-
-  return spy;
-};
-
-const isSpy = (value) => {
-  return (
-    window.jasmine.isSpy?.(value) ||
-    (typeof value === "function" && value.and != null && value.calls != null)
-  );
-};
+const isSpy = (value) =>
+  window.jasmine.isSpy?.(value) ||
+  (typeof value === "function" && value.and != null && value.calls != null);
 
 const isPendingException = (error) => {
   return error?.toString?.().includes("=> marked Pending") || false;
@@ -514,7 +192,7 @@ const failDone = (done, error) => {
   if (typeof done.fail === "function") {
     done.fail(error);
   } else {
-    throw error;
+    done(error);
   }
 };
 
