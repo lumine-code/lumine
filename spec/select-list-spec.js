@@ -130,9 +130,11 @@ describe("SelectListView", () => {
     it("passes matchIndices aligned with the filter key to elementForItem", async () => {
       view = new SelectListView({
         items: ["abc", "xyz"],
-        elementForItem: (item, { filterKey, matchIndices }) => {
+        elementForItem: (item, { filterKey, matchIndices, highlight }) => {
           const li = document.createElement("li");
-          li.appendChild(highlightMatches(filterKey, matchIndices));
+          // Handed back explicitly rather than defaulted, so the assertion is
+          // about the indices lining up with the filter key.
+          li.appendChild(highlight(filterKey, matchIndices));
           return li;
         },
       });
@@ -200,7 +202,7 @@ describe("SelectListView", () => {
       const getMatchIndicesSpy = spyOn(
         SelectListView.prototype,
         "getMatchIndices",
-      ).andCallThrough();
+      ).and.callThrough();
 
       view = new SelectListView({
         items: ["abc"],
@@ -963,5 +965,4 @@ describe("SelectListView", () => {
       expect(view.itemActionsList).toBeUndefined();
     });
   });
-
 });
