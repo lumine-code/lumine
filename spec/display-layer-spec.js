@@ -1,6 +1,7 @@
 const Random = require("random-seed");
 const dedent = require("dedent");
 const TextBuffer = require("../src/text-buffer");
+const DisplayLayer = require("../src/display-layer");
 const Point = require("../src/point");
 const Range = require("../src/range");
 const { buildRandomLines, getRandomBufferRange } = require("./text-buffer-helpers/random");
@@ -310,6 +311,58 @@ describe("DisplayLayer", () => {
   });
 
   describe("folds", () => {
+    it("keeps folds in the undo history", () => {
+      const buffer = new TextBuffer({ text: "a\nb\nc\nd\ne\nf\n" });
+      const displayLayer = buffer.addDisplayLayer();
+      expect(displayLayer.foldsMarkerLayer.maintainHistory).toBe(true);
+
+      displayLayer.foldBufferRange([
+        [1, 0],
+        [3, 0],
+      ]);
+      const foldedText = displayLayer.getText();
+
+      buffer.transact(() =>
+        buffer.setTextInRange(
+          [
+            [1, 0],
+            [3, 0],
+          ],
+          "X\nY\nZ\n",
+        ),
+      );
+      expect(displayLayer.getText()).toBe("a\nX\nY\nZ\nd\ne\nf\n");
+
+      // The marker coming back is not enough on its own: the spatial index has
+      // to be rebuilt over the restored rows, or the text renders unfolded
+      // while the marker says otherwise.
+      buffer.undo();
+      expect(displayLayer.getText()).toBe(foldedText);
+
+      buffer.redo();
+      expect(displayLayer.getText()).toBe("a\nX\nY\nZ\nd\ne\nf\n");
+    });
+
+    it("re-enables fold history on a layer restored from old serialized state", () => {
+      const buffer = new TextBuffer({ text: "a\nb\nc\n" });
+      // State written before folds rode the undo history serialized the layer
+      // with maintainHistory: false, and MarkerLayer.restoreState carries that
+      // forward verbatim.
+      const legacyFoldsLayer = buffer.addMarkerLayer({
+        maintainHistory: false,
+        persistent: true,
+        destroyInvalidatedMarkers: true,
+      });
+
+      const restored = DisplayLayer.deserialize(buffer, {
+        id: buffer.nextDisplayLayerId++,
+        foldsMarkerLayerId: legacyFoldsLayer.id,
+      });
+
+      expect(restored.foldsMarkerLayer).toBe(legacyFoldsLayer);
+      expect(restored.foldsMarkerLayer.maintainHistory).toBe(true);
+    });
+
     it("allows single folds to be created and destroyed", () => {
       const buffer = new TextBuffer({
         text: SAMPLE_TEXT,

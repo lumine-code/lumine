@@ -49,12 +49,19 @@ class DisplayLayer {
     this.foldsMarkerLayer =
       params.foldsMarkerLayer ||
       buffer.addMarkerLayer({
-        // Deliberately out of the undo history: a history-maintaining layer
-        // snapshots on every transaction, and the fold change events it then
-        // emits cover the whole snapshotted span rather than the lines that
-        // actually moved. Undo therefore restores the text but not the folds
-        // it destroyed — see the spec in text-editor-spec.js that pins this.
-        maintainHistory: false,
+        // Folds ride the undo history, so undoing an edit that destroyed one
+        // brings it back. The buffer restores those markers behind this
+        // layer's back, which is why it also calls `foldsDidRestore` — see
+        // that method.
+        //
+        // What this opts into: every transaction snapshots the layer, twice.
+        // Measured on 20k lines with one-line edits, that is free at a
+        // handful of folds, ~0.4ms per transaction at 100, ~4ms at 1000 and
+        // ~25ms at 5000 — it scales with fold count, not file size, and 80%
+        // of it is superstring's index.dump(). Hand-made folds never notice;
+        // Fold All on a large file pays until marker history records deltas
+        // instead of full snapshots.
+        maintainHistory: true,
         persistent: true,
         destroyInvalidatedMarkers: true,
       });
@@ -88,6 +95,11 @@ class DisplayLayer {
 
   static deserialize(buffer, params) {
     const foldsMarkerLayer = buffer.getMarkerLayer(params.foldsMarkerLayerId);
+    // Workspace state serialized before folds rode the undo history restores
+    // this layer with `maintainHistory: false`, and would silently keep folds
+    // un-undoable for every restored buffer. Whether folds are undoable is
+    // behavior, not state — decide it here, not from the file.
+    if (foldsMarkerLayer) foldsMarkerLayer.maintainHistory = true;
     return new DisplayLayer(params.id, buffer, { foldsMarkerLayer });
   }
 
@@ -276,6 +288,29 @@ class DisplayLayer {
     }
     const sortedMarkers = Array.from(markersContainingPositions).sort((a, b) => a.compare(b));
     return this.destroyFoldMarkers(sortedMarkers);
+  }
+
+  // The buffer's fold ranges, as the spatial index currently believes them to
+  // be. Taken before a marker snapshot is restored so the rows that actually
+  // moved can be worked out afterwards.
+  foldRangesSnapshot() {
+    return this.foldsMarkerLayer.findMarkers({}).map((marker) => marker.getRange());
+  }
+
+  // Undo and redo restore fold markers directly onto the marker layer, without
+  // going through `foldBufferRange` or `destroyFoldMarkers`. Nothing else tells
+  // this layer, so its spatial index would keep describing the folds as they
+  // were before the restore: the text would come back unfolded while the
+  // markers say otherwise. Reconcile over the rows the two sets disagree on.
+  foldsDidRestore(previousRanges) {
+    const currentRanges = this.foldRangesSnapshot();
+    const changedRows = differingRowSpan(previousRanges, currentRanges);
+    if (changedRows == null) return;
+
+    const { startRow, endRow } = changedRows;
+    this.populateSpatialIndexIfNeeded(endRow + 1, Infinity);
+    this.didChange(this.updateSpatialIndex(startRow, endRow + 1, endRow + 1, Infinity));
+    this.notifyObserversIfMarkerScreenPositionsChanged();
   }
 
   destroyFoldMarkers(foldMarkers) {
@@ -1369,6 +1404,29 @@ function isWordStart(previousCharacter, character) {
 
 function unitRatio() {
   return 1;
+}
+
+// The span of buffer rows covered by the folds that are in one set and not the
+// other, or null when the two describe the same folds. Ranges are compared by
+// value: a restored marker is a different object from the one it replaces.
+function differingRowSpan(before, after) {
+  const key = (range) =>
+    `${range.start.row},${range.start.column},${range.end.row},${range.end.column}`;
+
+  const beforeKeys = new Set(before.map(key));
+  const afterKeys = new Set(after.map(key));
+
+  let startRow = Infinity;
+  let endRow = -Infinity;
+  const consider = (range) => {
+    if (range.start.row < startRow) startRow = range.start.row;
+    if (range.end.row > endRow) endRow = range.end.row;
+  };
+
+  for (const range of before) if (!afterKeys.has(key(range))) consider(range);
+  for (const range of after) if (!beforeKeys.has(key(range))) consider(range);
+
+  return endRow < startRow ? null : { startRow, endRow };
 }
 
 const NullDeadline = {

@@ -2623,6 +2623,17 @@ class TextBuffer {
   }
 
   restoreFromMarkerSnapshot(snapshot, selectionsMarkerLayer) {
+    // Fold markers are restored straight onto their layer below, so each
+    // display layer has to be told afterwards which rows moved — see
+    // `DisplayLayer::foldsDidRestore`.
+    const foldRangesByDisplayLayerId = new Map();
+    for (const id in this.displayLayers) {
+      const displayLayer = this.displayLayers[id];
+      if (snapshot[displayLayer.foldsMarkerLayer.id]) {
+        foldRangesByDisplayLayerId.set(id, displayLayer.foldRangesSnapshot());
+      }
+    }
+
     let selectionsSnapshotId;
     if (selectionsMarkerLayer != null) {
       // Do selective selections marker restoration only when snapshot includes single selections snapshot.
@@ -2644,6 +2655,11 @@ class TextBuffer {
       } else if (this.markerLayers[markerLayerId]) {
         this.markerLayers[markerLayerId].restoreFromSnapshot(layerSnapshot);
       }
+    }
+
+    for (const [id, previousRanges] of foldRangesByDisplayLayerId) {
+      const displayLayer = this.displayLayers[id];
+      if (displayLayer) displayLayer.foldsDidRestore(previousRanges);
     }
   }
 

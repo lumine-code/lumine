@@ -7336,14 +7336,13 @@ describe("TextEditor", () => {
         ]);
       });
 
-      // Folds do not ride the undo history, and this pins that rather than
-      // wishing otherwise. The folds marker layer is created with
-      // `maintainHistory: false` (see display-layer.js) because a
-      // history-maintaining layer snapshots on every transaction and then
-      // reports fold changes over the whole snapshotted span instead of the
-      // lines that moved — a measurable cost on large files. Restoring folds
-      // on undo needs that accounting fixed first, not the flag flipped.
-      it("does not restore a fold that an edit destroyed when the edit is undone", () => {
+      // Folds ride the undo history now: the buffer snapshots their markers
+      // with every transaction, and the display layer is told when it puts
+      // them back. Undo and redo therefore restore the folds as they stood at
+      // the transaction boundary — a fold made after the edit is not carried
+      // across the redo, because the recorded post-transaction state does not
+      // contain it.
+      it("restores a fold that an edit destroyed when the edit is undone", () => {
         editor.foldBufferRow(1);
         editor.setSelectedBufferRange(
           [
@@ -7356,17 +7355,37 @@ describe("TextEditor", () => {
         );
         expect(editor.isFoldedAtBufferRow(1)).toBeTruthy();
 
-        editor.insertText(dedent`\
-          // testing
+        editor.insertText(dedent`          // testing
           function foo() {
             return 1 + 2;
-          }\
-        `);
+          }        `);
         expect(editor.isFoldedAtBufferRow(1)).toBeFalsy();
 
         editor.undo();
-        expect(editor.getText()).toBe(buffer.getText());
+        expect(editor.isFoldedAtBufferRow(1)).toBeTruthy();
+
+        editor.redo();
         expect(editor.isFoldedAtBufferRow(1)).toBeFalsy();
+      });
+
+      it("folds the restored text as well as restoring the marker", () => {
+        editor.foldBufferRow(1);
+        const foldedText = editor.getText();
+
+        editor.setSelectedBufferRange([
+          [1, 0],
+          [10, Infinity],
+        ]);
+        editor.insertText("gone\n");
+        expect(editor.isFoldedAtBufferRow(1)).toBeFalsy();
+
+        editor.undo();
+
+        // The marker coming back is not enough on its own: the display layer
+        // has to rebuild its spatial index, or the text renders unfolded while
+        // the marker says otherwise.
+        expect(editor.isFoldedAtBufferRow(1)).toBeTruthy();
+        expect(editor.getText()).toBe(foldedText);
       });
 
       it("keeps a fold that the undone edit never touched", () => {
