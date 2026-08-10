@@ -1,5 +1,5 @@
 const crypto = require("crypto");
-const { clipboard } = require("electron");
+const clipboard = require("./clipboard-bridge");
 
 const VSCODE_COPY_METADATA_FORMAT = "application/vnd.code.copymetadata";
 const LUMINE_TEXT_EDITOR_DATA_FORMAT = "application/lumine-text-editor";
@@ -13,6 +13,11 @@ const LUMINE_EDITOR_DATA_VERSION = 1;
 // intercept a paste before the editor inserts it as text — to handle an image,
 // say — register a provider with {PasteProviderRegistry} through
 // `lumine.pasteProviders`.
+//
+// It is also the only supported route to the native clipboard from a package:
+// Electron deprecated `require('electron').clipboard` in a renderer, so every
+// read and write here goes to the main process instead (see
+// `src/clipboard-bridge.js`).
 //
 // ## Examples
 //
@@ -254,6 +259,42 @@ module.exports = class Clipboard {
   // Returns a {String}.
   readFindText() {
     return clipboard.readFindText();
+  }
+
+  // Public: Read the image on the clipboard.
+  //
+  // The image crosses the process boundary as PNG bytes, so its scale factor
+  // does not survive the trip.
+  //
+  // Returns a {NativeImage}, empty when the clipboard holds no image.
+  readImage() {
+    return clipboard.readImage();
+  }
+
+  // Public: Write an image to the clipboard, replacing whatever it held.
+  //
+  // * `image` A {NativeImage}, or the PNG bytes of one as a {Buffer}.
+  writeImage(image) {
+    clipboard.writeImage(typeof image?.toPNG === "function" ? image.toPNG() : image);
+  }
+
+  // Public: Read the text from the Linux primary selection.
+  //
+  // Returns a {String}, always empty on the platforms that have no primary
+  // selection.
+  readSelectionText() {
+    return clipboard.readSelectionText();
+  }
+
+  // Public: Write the given text to the Linux primary selection.
+  //
+  // Unlike every other method here this one does not wait for the main
+  // process: it runs on each selection change, and a drag cannot afford a
+  // round trip per mouse move.
+  //
+  // * `text` The {String} to store.
+  writeSelectionText(text) {
+    clipboard.writeSelectionText(text);
   }
 
   // Public: Read the text from the clipboard and return both the text and the

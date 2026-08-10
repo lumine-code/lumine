@@ -16,6 +16,7 @@ const {
   clipboard,
   dialog,
   ipcMain,
+  nativeImage,
   safeStorage,
   screen,
   shell,
@@ -1278,6 +1279,22 @@ module.exports = class LumineApplication extends EventEmitter {
       ),
     );
 
+    // Renderers cannot touch the native clipboard any more — Electron
+    // deprecated the module there — so `src/clipboard-bridge.js` asks for each
+    // operation by name and blocks until this answers. Nothing else may set
+    // `returnValue`, and a request that throws must still set it or the
+    // renderer waits forever.
+    this.disposable.add(
+      ipcHelpers.on(ipcMain, "clipboard", (event, method, args) => {
+        try {
+          event.returnValue = this.handleClipboardRequest(method, args || []);
+        } catch (error) {
+          console.error(`Clipboard request '${method}' failed`, error);
+          event.returnValue = null;
+        }
+      }),
+    );
+
     this.disposable.add(
       ipcHelpers.on(ipcMain, "add-recent-document", (event, filename) =>
         app.addRecentDocument(filename),
@@ -1297,6 +1314,35 @@ module.exports = class LumineApplication extends EventEmitter {
     );
 
     this.disposable.add(this.disableZoomOnDisplayChange());
+  }
+
+  // Performs one clipboard operation on behalf of a renderer. The method name
+  // arrives over IPC, so this is an allow list rather than a dispatch table:
+  // anything unrecognised reads as an empty clipboard.
+  //
+  // An image crosses the boundary as PNG bytes, which is the one lossy part —
+  // its scale factor does not survive.
+  handleClipboardRequest(method, args) {
+    switch (method) {
+      case "readText":
+        return args[0] ? clipboard.readText(args[0]) : clipboard.readText();
+      case "writeText":
+        if (args[1]) clipboard.writeText(args[0], args[1]);
+        else clipboard.writeText(args[0]);
+        return null;
+      case "readFindText":
+        return clipboard.readFindText();
+      case "writeFindText":
+        clipboard.writeFindText(args[0]);
+        return null;
+      case "readImage":
+        return clipboard.readImage().toPNG();
+      case "writeImage":
+        clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(args[0])));
+        return null;
+      default:
+        return null;
+    }
   }
 
   setupDockMenu() {

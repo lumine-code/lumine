@@ -3,8 +3,6 @@ const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
 const ScrollAnimator = require("./scroll-animator");
 const { isPairedCharacter, hasRtlText } = require("./text-utils");
-const electron = require("electron");
-const clipboard = electron.clipboard;
 const NodePool = require("./node-pool");
 const DummyScrollbarComponent = require("./dummy-scrollbar-component");
 const GutterContainerComponent = require("./gutter-container-component");
@@ -2595,7 +2593,7 @@ module.exports = class TextEditorComponent {
         this.isInputEnabled() &&
         lumine.config.get("editor.selectionClipboard")
       )
-        model.insertText(clipboard.readText("selection"));
+        model.insertText(model.constructor.clipboard.readSelectionText());
       return;
     }
 
@@ -3883,10 +3881,10 @@ module.exports = class TextEditorComponent {
 
         const selectedText = model.getSelectedText();
         if (selectedText) {
-          // This uses ipcRenderer.send instead of clipboard.writeText because
-          // clipboard.writeText is a sync ipcRenderer call on Linux and that
-          // will slow down selections.
-          electron.ipcRenderer.send("write-text-to-selection-clipboard", selectedText);
+          // Fire and forget: every other clipboard write blocks on the main
+          // process, and a round trip per selection change would slow down
+          // dragging a selection.
+          model.constructor.clipboard.writeSelectionText(selectedText);
         }
       });
     }

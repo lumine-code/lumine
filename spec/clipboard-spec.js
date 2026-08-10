@@ -1,4 +1,5 @@
 const Clipboard = require("../src/clipboard");
+const clipboardBridge = require("../src/clipboard-bridge");
 
 function createClipboardData(initialData = {}) {
   const data = new Map(Object.entries(initialData));
@@ -168,6 +169,46 @@ describe("Clipboard", () => {
           text: "replacement",
         },
       );
+    });
+  });
+
+  describe("images", () => {
+    it("reads the image the main process holds", () => {
+      const image = { isEmpty: () => false };
+      spyOn(clipboardBridge, "readImage").and.returnValue(image);
+
+      expect(lumine.clipboard.readImage()).toBe(image);
+    });
+
+    it("writes a NativeImage as the PNG bytes the main process expects", () => {
+      const png = Buffer.from("png image data");
+      spyOn(clipboardBridge, "writeImage");
+
+      lumine.clipboard.writeImage({ toPNG: () => png });
+      expect(clipboardBridge.writeImage).toHaveBeenCalledWith(png);
+    });
+
+    it("writes PNG bytes as they are", () => {
+      const png = Buffer.from("png image data");
+      spyOn(clipboardBridge, "writeImage");
+
+      lumine.clipboard.writeImage(png);
+      expect(clipboardBridge.writeImage).toHaveBeenCalledWith(png);
+    });
+  });
+
+  describe("the primary selection", () => {
+    it("reads the selection rather than the clipboard", () => {
+      lumine.clipboard.readSelectionText();
+      expect(clipboardBridge.readText).toHaveBeenCalledWith("selection");
+    });
+
+    it("writes without waiting for the main process", () => {
+      spyOn(clipboardBridge, "writeSelectionText");
+
+      lumine.clipboard.writeSelectionText("selected");
+      expect(clipboardBridge.writeSelectionText).toHaveBeenCalledWith("selected");
+      expect(clipboardBridge.writeText).not.toHaveBeenCalled();
     });
   });
 

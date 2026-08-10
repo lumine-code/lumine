@@ -11,7 +11,7 @@ const { Point } = TextBuffer;
 const fs = require("fs");
 const path = require("path");
 const electron = require("electron");
-const clipboard = electron.clipboard;
+const clipboardBridge = require("../src/clipboard-bridge");
 
 function createClipboardData(initialData = {}) {
   const data = new Map(Object.entries(initialData));
@@ -5576,7 +5576,7 @@ describe("TextEditorComponent", () => {
       it("pastes the previously selected text when clicking the middle mouse button on Linux", async () => {
         spyOn(electron.ipcRenderer, "send").and.callFake(function (eventName, selectedText) {
           if (eventName === "write-text-to-selection-clipboard") {
-            clipboard.writeText(selectedText, "selection");
+            clipboardBridge.writeText(selectedText, "selection");
           }
         });
 
@@ -5636,7 +5636,7 @@ describe("TextEditorComponent", () => {
       it("does not paste into a read only editor when clicking the middle mouse button on Linux", async () => {
         spyOn(electron.ipcRenderer, "send").and.callFake(function (eventName, selectedText) {
           if (eventName === "write-text-to-selection-clipboard") {
-            clipboard.writeText(selectedText, "selection");
+            clipboardBridge.writeText(selectedText, "selection");
           }
         });
 

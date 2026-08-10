@@ -1470,6 +1470,53 @@ describe("LumineApplication", function () {
     });
   });
 
+  describe("clipboard requests", function () {
+    // The renderer half of this lives in `src/clipboard-bridge.js`; Electron
+    // deprecated its direct access to the clipboard, so every operation
+    // arrives here by name instead.
+    const handle = (method, ...args) =>
+      LumineApplication.prototype.handleClipboardRequest(method, args);
+
+    it("omits the clipboard type rather than passing undefined", function () {
+      const readText = sinon.stub(electron.clipboard, "readText").returns("text");
+      const writeText = sinon.stub(electron.clipboard, "writeText");
+
+      assert.equal(handle("readText"), "text");
+      assert.deepEqual(readText.lastCall.args, []);
+
+      handle("readText", "selection");
+      assert.deepEqual(readText.lastCall.args, ["selection"]);
+
+      handle("writeText", "one");
+      assert.deepEqual(writeText.lastCall.args, ["one"]);
+
+      handle("writeText", "two", "selection");
+      assert.deepEqual(writeText.lastCall.args, ["two", "selection"]);
+    });
+
+    it("carries images across the process boundary as PNG bytes", function () {
+      const png = Buffer.from("png image data");
+      const image = { toPNG: () => png };
+      sinon.stub(electron.clipboard, "readImage").returns(image);
+      const writeImage = sinon.stub(electron.clipboard, "writeImage");
+      const createFromBuffer = sinon.stub(electron.nativeImage, "createFromBuffer").returns(image);
+
+      assert.strictEqual(handle("readImage"), png);
+
+      // The renderer's Buffer arrives as a Uint8Array — structured clone knows
+      // nothing of Node's subclass — and `createFromBuffer` accepts only a
+      // Buffer.
+      handle("writeImage", new Uint8Array(png));
+      assert.isTrue(Buffer.isBuffer(createFromBuffer.lastCall.args[0]));
+      assert.isTrue(png.equals(createFromBuffer.lastCall.args[0]));
+      assert.deepEqual(writeImage.lastCall.args, [image]);
+    });
+
+    it("answers an unrecognised request with nothing", function () {
+      assert.isNull(handle("readBookmark"));
+    });
+  });
+
   describe("starting a test run", function () {
     // `exit()` does not unwind the stack the way `process.exit()` is assumed
     // to, so a rejected test run has to return on its own. Before it did, the

@@ -5,7 +5,7 @@ const fs = require("fs");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
 const dedent = require("dedent");
-const { clipboard } = require("electron");
+const clipboardBridge = require("../src/clipboard-bridge");
 const os = require("os");
 const Pane = require("../src/pane");
 const TextEditor = require("../src/text-editor");
@@ -6313,7 +6313,7 @@ describe("TextEditor", () => {
           editor.cutSelectedText();
           expect(buffer.lineForRow(0)).toBe("var  = function () {");
           expect(buffer.lineForRow(1)).toBe("  var  = function(items) {");
-          expect(clipboard.readText()).toBe(["quicksort", "sort"].join(os.EOL));
+          expect(clipboardBridge.readText()).toBe(["quicksort", "sort"].join(os.EOL));
         });
 
         describe("when no text is selected", () => {
@@ -6477,7 +6477,7 @@ describe("TextEditor", () => {
           expect(buffer.lineForRow(0)).toBe("var quicksort = function () {");
           expect(buffer.lineForRow(1)).toBe("  var sort = function(items) {");
           expect(buffer.lineForRow(2)).toBe("    if (items.length <= 1) return items;");
-          expect(clipboard.readText()).toBe(["quicksort", "sort", "items"].join(os.EOL));
+          expect(clipboardBridge.readText()).toBe(["quicksort", "sort", "items"].join(os.EOL));
           expect(lumine.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
         });
 
@@ -6560,7 +6560,7 @@ describe("TextEditor", () => {
             expect(buffer.lineForRow(0)).toBe("var quicksort = function () {");
             expect(buffer.lineForRow(1)).toBe("  var sort = function(items) {");
             expect(buffer.lineForRow(2)).toBe("    if (items.length <= 1) return items;");
-            expect(clipboard.readText()).toBe(["quicksort", "sort", "items"].join(os.EOL));
+            expect(clipboardBridge.readText()).toBe(["quicksort", "sort", "items"].join(os.EOL));
             expect(lumine.clipboard.read()).toEqual(["quicksort", "sort", "items"].join(os.EOL));
           });
         });

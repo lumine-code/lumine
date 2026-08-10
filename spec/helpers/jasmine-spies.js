@@ -5,7 +5,7 @@ const TextEditorElement = require("../../src/text-editor-element");
 const TextEditor = require("../../src/text-editor");
 const TextMateLanguageMode = require("../../src/text-mate-language-mode");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
-const { clipboard } = require("electron");
+const clipboardBridge = require("../../src/clipboard-bridge");
 const getWindowLoadSettings = require("../../src/get-window-load-settings");
 
 const { testPaths } = getWindowLoadSettings();
@@ -98,9 +98,12 @@ exports.register = (jasmineEnv) => {
       );
     });
 
+    // Keep a spec run off the real clipboard. The bridge is the seam rather
+    // than {Clipboard} itself, so every spec still exercises the metadata and
+    // line-ending logic that sits above it.
     let clipboardContent = "initial clipboard content";
-    spyOn(clipboard, "writeText").and.callFake((text) => (clipboardContent = text));
-    spyOn(clipboard, "readText").and.callFake(() => clipboardContent);
+    spyOn(clipboardBridge, "writeText").and.callFake((text) => (clipboardContent = text));
+    spyOn(clipboardBridge, "readText").and.callFake(() => clipboardContent);
   });
 };
 
