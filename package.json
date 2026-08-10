@@ -40,7 +40,7 @@
     "@lumine-code/node-pty": "github:lumine-code/node-pty#f0e1dccb8acea9e2afa6df28de9435d05c5e6cb9",
     "@lumine-code/season": "github:lumine-code/season#6a7336d4be7ed778bebde141193317f82bf4c862",
     "@lumine-code/second-mate": "github:lumine-code/second-mate#8c8f23073289fd407f04ebc448225d50db1fd4c9",
-    "@lumine-code/select-list": "github:lumine-code/select-list#b4b2bbdd4b17178a0cc848f36b64165c80d98d5b",
+    "@lumine-code/select-list": "github:lumine-code/select-list#a8e9d10f7552ce84b082897fb3a1d58ec5772022",
     "@lumine-code/selector-store": "github:lumine-code/selector-store#7846bdb9f0cc09487036a40f17870d098d3e8d59",
     "@lumine-code/superstring": "github:lumine-code/superstring#6b88593894e94ed8b267bd8d8145182c6d91f7e8",
     "@lumine-code/temp": "github:lumine-code/node-temp#6c6a5887bd452ab659ab1b5b9923b570cb83ef32",
