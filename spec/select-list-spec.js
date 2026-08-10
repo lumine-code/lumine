@@ -1,4 +1,5 @@
 const { CompositeDisposable } = require("lumine");
+const { humanizeKeystroke } = require("@lumine-code/underscore-plus");
 // The component is an npm package that consumes the Lumine API, so it can only
 // run inside the editor — which is also where its contract lives, since
 // packages reach it through `lumine.workspace.buildSelectList`. Its own repo
@@ -845,14 +846,22 @@ describe("SelectListView", () => {
     it("renders name, description, and keybinding like the command palette", async () => {
       view.show();
       await view.showItemActions();
-      await view.itemActionsList.constructor.getScheduler().getNextUpdatePromise();
 
-      const row = Array.from(view.itemActionsList.element.querySelectorAll("li")).find((li) =>
-        li.textContent.includes("Test Action"),
-      );
+      const findRow = () =>
+        Array.from(view.itemActionsList.element.querySelectorAll("li")).find((li) =>
+          li.textContent.includes("Test Action"),
+        );
+      // Polled rather than awaiting a next update, which resolves only while
+      // one is still pending.
+      await conditionPromise(() => Boolean(findRow()));
+
+      const row = findRow();
       expect(row.querySelector(".secondary-line").textContent).toBe("Does the test thing");
       // Keystrokes render humanized, the way the command palette writes them.
-      expect(row.querySelector(".key-binding").textContent).toBe("Alt+X");
+      // Derived rather than spelled out: humanizeKeystroke writes "Alt+X" on
+      // win32 and linux and "⌥X" on darwin, and the claim here is that the row
+      // agrees with it, not which of the two it produces.
+      expect(row.querySelector(".key-binding").textContent).toBe(humanizeKeystroke("alt-x"));
     });
 
     it("runs a confirmed action against the re-shown master list", async () => {
