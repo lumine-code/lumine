@@ -6,36 +6,6 @@
      and read as nothing. Borrow the theme's own line colour instead. */
   --select-list-separator-color: var(--overlay-border-color);
 
-  .loading {
-    .loading-message {
-      /* (.octicon(hourglass) inlined, default size 16px) */
-      &::before {
-        font-family: "Octicons Regular";
-        font-weight: normal;
-        font-style: normal;
-        display: inline-block;
-        line-height: 1;
-        -webkit-font-smoothing: antialiased;
-        text-decoration: none;
-        font-size: 16px;
-        width: 16px;
-        height: 16px;
-        content: "\f09e"; /* @hourglass */
-      }
-
-      &:before {
-        font-size: 1.1em;
-        width: 1.1em;
-        height: 1.1em;
-        margin-right: 5px;
-      }
-    }
-
-    .badge {
-      margin-left: 10px;
-    }
-  }
-
   ol.list-group {
     position: relative;
     overflow-y: auto;
@@ -164,9 +134,68 @@
   }
 }
 
-/* Input dialog info text */
+/* The message line
 
-.input-dialog .info-message {
+   A select list carries `input-dialog` as well as `select-list`, because it is
+   one — so everything here reaches both, and a rule that means dialogs and not
+   lists is written `.input-dialog:not(.select-list)`. Scoping the base rules to
+   one root or the other is what used to leave the info line unstyled in every
+   list and the loading line iconless in every dialog.
+
+   The component renders at most one of these at a time; they are written as
+   siblings only because any of them can be the one that shows. */
+
+.input-dialog {
+  .message-line {
+    margin-top: var(--component-padding);
+    /* Errors arrive pre-joined with newlines, and a plain div would run them
+       together into one sentence. */
+    white-space: pre-line;
+  }
+
+  /* The resting line — a prompt, a help text, a stat line. It is chrome, so it
+     stays quieter than anything shown over it. */
+  .info-message {
+    color: var(--text-color-subtle);
+  }
+
+  /* A status is coloured by the theme's own text utilities (text-info,
+     text-warning, text-error), applied by the component. Nothing to add here
+     but the shape. */
+
+  .loading {
+    display: flex;
+    align-items: center;
+    gap: var(--component-padding);
+
+    .loading-message {
+      color: var(--text-color-subtle);
+    }
+
+    /* A load that finishes in a frame should not flash a spinner on its way
+       past. The glyph is its own animated image, so only its arrival is timed
+       here: invisible until 150ms have passed, then faded in. */
+    .loading-spinner-tiny {
+      flex: none;
+      opacity: 0;
+      animation: select-list-spinner-appear 120ms linear 150ms forwards;
+    }
+
+    .badge {
+      margin-left: auto;
+    }
+  }
+}
+
+@keyframes select-list-spinner-appear {
+  to {
+    opacity: 1;
+  }
+}
+
+/* The list's own fallback, shown in place of the rows. It stands down while the
+   message line is occupied, so it never restates a failure as an absence. */
+.select-list .empty-message {
   margin-top: var(--component-padding);
   color: var(--text-color-subtle);
 }

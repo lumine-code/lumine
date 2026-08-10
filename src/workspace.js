@@ -1674,6 +1674,16 @@ module.exports = class Workspace extends Model {
   //     indices)` — which wraps the matched characters of `text` in
   //     `span.character-match`, defaulting to this item's own indices.
   //
+  // The list shows one message at a time above the rows, from three props in
+  // precedence order — `loadingMessage` (rendered with a spinner, and with
+  // `loadingBadge` beside it), then `status`, then `infoMessage`. A `status` is
+  // `{type, message, duration, sticky}`: `type` is `'info'`, `'warning'` or
+  // `'error'`, `duration` clears it after that many milliseconds, and it is
+  // cleared on the next query change unless `sticky`. It covers the resting
+  // `infoMessage` rather than replacing it, so clearing it needs nothing put
+  // back. `emptyMessage` stands in for the rows when there are none, and stands
+  // down while a loading or status message is showing.
+  //
   // Returns a {SelectListView}.
   buildSelectList(props) {
     return new SelectListView(props);
@@ -1691,6 +1701,10 @@ module.exports = class Workspace extends Model {
   //
   // * `props` An {Object} describing the dialog, including `didConfirm(query)`,
   //   `didCancel()` and `didChangeQuery(query)`.
+  //
+  // The message line works exactly as in {::buildSelectList}, minus
+  // `emptyMessage`: a validation failure is `status: {type: 'error', message}`,
+  // and the dialog clears it on the next keystroke by itself.
   //
   // Returns an {InputDialogView}.
   buildInputDialog(props) {
