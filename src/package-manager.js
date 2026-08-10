@@ -12,6 +12,25 @@ const ThemePackage = require("./theme-package");
 const { scanBundledPackageNames } = require("./bundled-packages");
 const packageJSON = require("../package.json");
 
+// Resolves true if `promise` settles within `ms`, false if it is still pending
+// then. The timer is always cleared: a pending one keeps the process alive, and
+// the caller here is trying to let the window go.
+function settlesWithin(promise, ms) {
+  let timer;
+  return Promise.race([
+    promise.then(
+      () => true,
+      () => true,
+    ),
+    new Promise((resolve) => {
+      timer = setTimeout(() => resolve(false), ms);
+    }),
+  ]).then((settled) => {
+    clearTimeout(timer);
+    return settled;
+  });
+}
+
 // Extended: Package manager for coordinating the lifecycle of Lumine packages.
 //
 // An instance of this class is always available as the `lumine.packages` global.
@@ -1116,11 +1135,34 @@ module.exports = class PackageManager {
     }
   }
 
-  // Deactivate all packages
-  async deactivatePackages() {
+  // Deactivate all packages.
+  //
+  // * `options` (optional) {Object}
+  //   * `timeout` (optional) {Number} of milliseconds to wait for any one
+  //     package. Omit to wait indefinitely.
+  //
+  // Deactivation runs on the unload path, where the main process is waiting on
+  // the reply before it may reload or close the window. A package that never
+  // settles would hold that open for good, and a package that rejects would
+  // refuse the unload on everyone else's behalf, so on that path each one is
+  // bounded and contained. Whatever a straggler is still doing is left to the
+  // window going away.
+  async deactivatePackages({ timeout } = {}) {
+    const abandoned = [];
     await this.config.transactAsync(() =>
-      Promise.all(this.getLoadedPackages().map((pack) => this.deactivatePackage(pack.name, true))),
+      Promise.all(
+        this.getLoadedPackages().map(async (pack) => {
+          const deactivation = this.deactivatePackage(pack.name, true).catch((error) => {
+            console.error(`Error deactivating package '${pack.name}'`, error);
+          });
+          if (timeout == null) return deactivation;
+          if (!(await settlesWithin(deactivation, timeout))) abandoned.push(pack.name);
+        }),
+      ),
     );
+    if (abandoned.length > 0) {
+      console.warn(`Stopped waiting for ${abandoned.join(", ")} to deactivate after ${timeout}ms`);
+    }
     this.unobserveDisabledPackages();
     this.unobservePackagesWithKeymapsDisabled();
   }

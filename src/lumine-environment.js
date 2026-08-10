@@ -63,6 +63,12 @@ const stat = util.promisify(fs.stat);
 // window, so a terminal or a panel keeps running across a project change.
 const PROJECT_STATE_LOCATIONS = ["center"];
 
+// How long any one package may take to deactivate while the window is going
+// away. Generous, because a package doing real work on the way out — writing a
+// file, asking a language server to leave — should be allowed to finish; the
+// bound exists so that one which never finishes cannot hold the window open.
+const UNLOAD_DEACTIVATION_TIMEOUT_MS = 2000;
+
 let nextId = 0;
 
 /**
@@ -865,7 +871,7 @@ class LumineEnvironment {
     };
   }
 
-  async prepareToUnloadEditorWindow(options = {}) {
+  async prepareToUnloadEditorWindow() {
     try {
       await this.saveState({ isUnloading: true });
     } catch (error) {
@@ -881,9 +887,18 @@ class LumineEnvironment {
 
     if (closing) {
       this.unloading = true;
-      if (options.deactivatePackages !== false) {
-        await this.packages.deactivatePackages();
-      }
+      // Every orderly unload deactivates, reload included. Skipping it there
+      // used to be how a package that would not finish deactivating was kept
+      // from hanging the reload; `timeout` is that guarantee now, and it holds
+      // for every package rather than for the one that misbehaved. The cost is
+      // the slowest single deactivation, since they run concurrently.
+      //
+      // What this buys is a teardown that happens while the environment is
+      // still whole: deactivation finishes, the reply crosses to the main
+      // process, and only then does the window navigate. Anything a package
+      // deferred to a later frame on its way out therefore runs before
+      // `destroy()` takes the workspace away.
+      await this.packages.deactivatePackages({ timeout: UNLOAD_DEACTIVATION_TIMEOUT_MS });
     }
     return closing;
   }

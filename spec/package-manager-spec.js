@@ -1315,6 +1315,65 @@ describe("PackageManager", () => {
       expect(pack1.mainModule.deactivate).toHaveBeenCalled();
       expect(pack2.mainModule.serialize).not.toHaveBeenCalled();
     });
+
+    // The window is going away, and the main process is waiting on the reply
+    // before it may reload or close it. A package that will not finish gets
+    // left behind rather than holding that open for good.
+    it("gives up on a package that never finishes deactivating", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-deactivate");
+      const other = await lumine.packages.activatePackage("package-with-serialization");
+      // Settles far past the bound, so it is the wait that gives up rather than
+      // the package that finishes.
+      spyOn(pack.mainModule, "deactivate").and.returnValue(
+        new Promise((resolve) => setTimeout(resolve, 10000)),
+      );
+      spyOn(console, "warn");
+
+      const deactivation = lumine.packages.deactivatePackages({ timeout: 20 });
+      advanceClock(20);
+      await deactivation;
+
+      expect(console.warn.calls.argsFor(0)[0]).toContain("package-with-deactivate");
+      // Abandoned mid-flight rather than awaited, while everything else went.
+      expect(lumine.packages.isPackageActive("package-with-deactivate")).toBe(true);
+      expect(lumine.packages.isPackageActive(other.name)).toBe(false);
+
+      // Let it finish before the suite moves on: `unloadPackage` refuses a
+      // package that is still active, and `Package#deactivate` early-returns
+      // once it has run, so a straggler left here fails the next spec instead
+      // of this one. Its completion is several microtask turns deep — the main
+      // module's promise, then `Package#deactivate`, then the manager — so it
+      // is flushed rather than awaited once.
+      advanceClock(10000);
+      for (let i = 0; i < 20 && lumine.packages.isPackageActive("package-with-deactivate"); i++) {
+        await Promise.resolve();
+      }
+      expect(lumine.packages.isPackageActive("package-with-deactivate")).toBe(false);
+    });
+
+    // One package refusing to deactivate must not answer for the rest: the
+    // reply this feeds decides whether the window may unload at all. Spied on
+    // the {Package} rather than its main module, because `Package#deactivate`
+    // already absorbs whatever the main module throws — this is the rejection
+    // that gets past it.
+    it("deactivates the rest when one rejects", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-deactivate");
+      const other = await lumine.packages.activatePackage("package-with-serialization");
+      spyOn(pack, "deactivate").and.returnValue(Promise.reject(new Error("nope")));
+      spyOn(console, "error");
+
+      await lumine.packages.deactivatePackages();
+
+      expect(console.error).toHaveBeenCalled();
+      expect(lumine.packages.isPackageActive(other.name)).toBe(false);
+
+      // A rejected deactivation never reaches the line that drops the package
+      // from the active set, so it stays listed as active — which the suite's
+      // later specs would inherit. Put it back the way a clean deactivation
+      // would have left it.
+      pack.deactivate.and.callThrough();
+      await lumine.packages.deactivatePackage(pack.name);
+    });
   });
 
   describe("::deactivatePackage(id)", () => {

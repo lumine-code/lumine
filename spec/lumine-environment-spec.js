@@ -555,7 +555,11 @@ describe("LumineEnvironment", () => {
       lumineEnv.destroy();
     });
 
-    it("does not wait for package deactivation when preparing to reload", async () => {
+    // Every orderly unload deactivates, reload included — that is what lets a
+    // package tear down while the workspace it reaches for is still there. The
+    // wait is bounded so that a package which never finishes cannot hold the
+    // window open, which is what skipping deactivation used to buy.
+    it("bounds package deactivation when preparing to unload", async () => {
       const lumineEnv = new LumineEnvironment({
         applicationDelegate: global.lumine.applicationDelegate,
       });
@@ -569,15 +573,16 @@ describe("LumineEnvironment", () => {
       });
 
       spyOn(lumineEnv, "saveState");
-      spyOn(lumineEnv.packages, "deactivatePackages").and.returnValue(new Promise(() => {}));
+      spyOn(lumineEnv.packages, "deactivatePackages").and.returnValue(Promise.resolve());
 
-      const shouldUnload = await lumineEnv.prepareToUnloadEditorWindow({
-        deactivatePackages: false,
-      });
+      const shouldUnload = await lumineEnv.prepareToUnloadEditorWindow();
 
       expect(shouldUnload).toBe(true);
       expect(lumineEnv.saveState).toHaveBeenCalledWith({ isUnloading: true });
-      expect(lumineEnv.packages.deactivatePackages).not.toHaveBeenCalled();
+      expect(lumineEnv.packages.deactivatePackages).toHaveBeenCalled();
+      const [{ timeout }] = lumineEnv.packages.deactivatePackages.calls.argsFor(0);
+      expect(typeof timeout).toBe("number");
+      expect(timeout).toBeGreaterThan(0);
 
       lumineEnv.destroy();
     });

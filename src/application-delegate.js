@@ -146,10 +146,10 @@ module.exports = class ApplicationDelegate {
     // chance to ask. Always answer. Refusing is the safe answer to a failure
     // here, since the alternative discards whatever the handler did not get to
     // save; the window stays usable and the error says why it would not reload.
-    const outerCallback = async (_event, message) => {
+    const outerCallback = async (_event) => {
       let shouldUnload;
       try {
-        shouldUnload = await callback(message || {});
+        shouldUnload = await callback();
       } catch (error) {
         console.error("Failed to prepare the window to unload", error);
         shouldUnload = false;

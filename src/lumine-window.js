@@ -316,7 +316,7 @@ module.exports = class LumineWindow extends EventEmitter {
     if (this.isSpec) this.browserWindow.on("blur", () => this.browserWindow.focusOnWebView());
   }
 
-  async prepareToUnload(options = {}) {
+  async prepareToUnload() {
     if (this.isSpecWindow()) return true;
 
     this.lastPrepareToUnloadPromise = new Promise((resolve) => {
@@ -335,7 +335,7 @@ module.exports = class LumineWindow extends EventEmitter {
       // handshake for good and leak the listener with it. A renderer that cannot
       // be reached has nothing left to save and no veto to cast, so treat the
       // unload as agreed to rather than waiting on an answer that never comes.
-      if (!this.sendToRenderer("prepare-to-unload", options)) {
+      if (!this.sendToRenderer("prepare-to-unload")) {
         ipcMain.removeListener("did-prepare-to-unload", callback);
         resolve(true);
       }
@@ -540,8 +540,7 @@ module.exports = class LumineWindow extends EventEmitter {
   // rest of `openPathOnEvent` simply stop doing anything while the renderer
   // itself keeps working normally. Commit to the reload first, latch second.
   async reload({ skipPrepareToUnload = false } = {}) {
-    const canUnload =
-      skipPrepareToUnload || (await this.prepareToUnload({ deactivatePackages: false }));
+    const canUnload = skipPrepareToUnload || (await this.prepareToUnload());
     if (!canUnload || this.browserWindow.isDestroyed()) return this.loadedPromise;
 
     this.loadedPromise = new Promise((resolve) => {
