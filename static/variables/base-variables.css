@@ -6,10 +6,9 @@
  * a theme fails to load. Active themes override these on :root at a higher
  * stylesheet priority.
  *
- * The core entries mirror static/variables/ui-variables.less and
- * syntax-variables.less name for name (a spec enforces this). The extended
- * entries are derived from the core contract with relative colors, so a legacy
- * ui/syntax theme that only defines the classic contract still produces a
+ * Every name in the manifest has an entry here, and spec/theme-variables-spec.js
+ * enforces it. The extended entries are derived from the core contract with
+ * relative colors, so a theme that defines only the core names still produces a
  * coherent extended palette.
  */
 
