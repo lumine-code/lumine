@@ -11,7 +11,6 @@ const Grim = require("@lumine-code/grim");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp");
 const path = require("path");
-const { ipcRenderer } = require("electron");
 const { ConsoleReporter } = require("@jasminejs/reporters");
 const ListReporter = require("../helpers/jasmine-list-reporter");
 const focusTestWindow = require("../../src/focus-test-window");
@@ -572,6 +571,12 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
     }
     setSpecType("user");
 
+    // `new Jasmine()` attaches its own console reporter in the constructor, and
+    // it is the one that has been printing every run's dots and summary — the
+    // reporter built below wrote to a channel nothing listened on, so its output
+    // never left the renderer. Drop the default so there is exactly one.
+    jasmineEnv.clearReporters();
+
     // Add the reporter and register the promise resolve as a callback
     jasmineEnv.addReporter(buildMetadataReporter());
     jasmineEnv.addReporter(buildReporter({ logFile, headless }));
@@ -717,7 +722,11 @@ const buildConsoleReporter = (logFile) => {
     if (logStream != null) {
       fs.writeSync(logStream, str);
     } else {
-      ipcRenderer.send("write-to-stderr", str);
+      // `initialize-test-window` replaces `process.stderr` in a headless run
+      // with a stream that forwards to the main process, which is the only
+      // route out of the renderer. Writing to it is what makes this reporter
+      // visible at all.
+      process.stderr.write(str);
     }
   };
 
@@ -733,6 +742,9 @@ const buildConsoleReporter = (logFile) => {
     printDeprecation: (msg) => {
       console.log(msg);
     },
+    // Same rule the console reporter below follows: a CI log is not a terminal,
+    // and escape sequences in it only make a failure harder to read.
+    showColors: Boolean(process.stderr.isTTY),
     timer: new Timer(),
   };
 
