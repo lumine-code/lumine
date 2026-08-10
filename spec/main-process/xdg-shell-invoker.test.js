@@ -43,7 +43,10 @@ describe("XdgShellInvoker", () => {
 
   it("does not alter the desktop outside Linux or without an original value", async () => {
     for (const options of [
-      { env: { XDG_CURRENT_DESKTOP: "Unity", ORIGINAL_XDG_CURRENT_DESKTOP: "GNOME" }, platform: "win32" },
+      {
+        env: { XDG_CURRENT_DESKTOP: "Unity", ORIGINAL_XDG_CURRENT_DESKTOP: "GNOME" },
+        platform: "win32",
+      },
       { env: { XDG_CURRENT_DESKTOP: "Unity" }, platform: "linux" },
     ]) {
       const seenDesktops = [];

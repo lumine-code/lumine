@@ -32,10 +32,7 @@ class XdgShellInvoker {
   }
 
   async invokeWithOriginalDesktop(action, target) {
-    const hadCurrentDesktop = Object.prototype.hasOwnProperty.call(
-      this.env,
-      "XDG_CURRENT_DESKTOP",
-    );
+    const hadCurrentDesktop = Object.prototype.hasOwnProperty.call(this.env, "XDG_CURRENT_DESKTOP");
     const currentDesktop = this.env.XDG_CURRENT_DESKTOP;
     this.env.XDG_CURRENT_DESKTOP = this.env.ORIGINAL_XDG_CURRENT_DESKTOP;
 

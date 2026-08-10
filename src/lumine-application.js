@@ -1007,7 +1007,10 @@ module.exports = class LumineApplication extends EventEmitter {
       shellInvoker.invoke("openExternal", "https://lumine-code.github.io/"),
     );
     this.on("application:report-issue", () =>
-      shellInvoker.invoke("openExternal", "https://github.com/lumine-code/lumine/issues/new/choose"),
+      shellInvoker.invoke(
+        "openExternal",
+        "https://github.com/lumine-code/lumine/issues/new/choose",
+      ),
     );
     this.on("application:search-issues", () =>
       shellInvoker.invoke(

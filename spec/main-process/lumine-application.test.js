@@ -1057,11 +1057,7 @@ describe("LumineApplication", function () {
         result: "",
       });
       assert.deepEqual(
-        await LumineApplication.handleAppAction(
-          event,
-          "openExternal",
-          "https://example.test",
-        ),
+        await LumineApplication.handleAppAction(event, "openExternal", "https://example.test"),
         {
           outcome: "failure",
           error: { message: "could not open", code: "OPEN_FAILED" },
