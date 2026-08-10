@@ -1178,15 +1178,23 @@ module.exports = class PackageManager {
       this.serializePackage(pack);
     }
 
-    this.unregisterThemePacksForPackage(pack.name);
-    const deactivationResult = pack.deactivate();
-    if (deactivationResult && typeof deactivationResult.then === "function") {
-      await deactivationResult;
+    try {
+      this.unregisterThemePacksForPackage(pack.name);
+      const deactivationResult = pack.deactivate();
+      if (deactivationResult && typeof deactivationResult.then === "function") {
+        await deactivationResult;
+      }
+    } finally {
+      // Nothing ever retries a deactivation, so a package that failed half way
+      // through one is not going to become active again — and left listed as
+      // active it is one `unloadPackage` refuses for the rest of the session,
+      // `isPackageActive` lies about, and `activatePackage` hands back without
+      // activating. Record it as deactivated either way; the error still
+      // reaches the caller, which is what decides how loudly to say so.
+      delete this.activePackages[pack.name];
+      delete this.activatingPackages[pack.name];
+      this.emitter.emit("did-deactivate-package", pack);
     }
-
-    delete this.activePackages[pack.name];
-    delete this.activatingPackages[pack.name];
-    this.emitter.emit("did-deactivate-package", pack);
   }
 
   handleMetadataError(error, packagePath) {

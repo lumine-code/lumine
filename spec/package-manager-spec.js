@@ -1366,13 +1366,7 @@ describe("PackageManager", () => {
 
       expect(console.error).toHaveBeenCalled();
       expect(lumine.packages.isPackageActive(other.name)).toBe(false);
-
-      // A rejected deactivation never reaches the line that drops the package
-      // from the active set, so it stays listed as active — which the suite's
-      // later specs would inherit. Put it back the way a clean deactivation
-      // would have left it.
-      pack.deactivate.and.callThrough();
-      await lumine.packages.deactivatePackage(pack.name);
+      expect(lumine.packages.isPackageActive(pack.name)).toBe(false);
     });
   });
 
@@ -1405,6 +1399,25 @@ describe("PackageManager", () => {
       await lumine.packages.activatePackage("package-that-throws-on-deactivate");
       await lumine.packages.deactivatePackage("package-that-throws-on-deactivate");
       expect(console.error).toHaveBeenCalled();
+    });
+
+    // `Package#deactivate` absorbs what the main module throws; this is a
+    // failure that gets past it. Nothing retries one, so a package left listed
+    // as active would stay that way for the session — refused by
+    // `unloadPackage` and handed straight back by `activatePackage`.
+    it("stops treating a package as active when deactivation itself fails", async () => {
+      const pack = await lumine.packages.activatePackage("package-with-deactivate");
+      const deactivated = [];
+      const subscription = lumine.packages.onDidDeactivatePackage((p) => deactivated.push(p.name));
+      spyOn(pack, "deactivate").and.throwError("nope");
+
+      await expectAsync(lumine.packages.deactivatePackage(pack.name)).toBeRejected();
+
+      expect(lumine.packages.isPackageActive(pack.name)).toBe(false);
+      expect(deactivated).toContain(pack.name);
+      subscription.dispose();
+      // No longer refused, which is the state this is really about.
+      lumine.packages.unloadPackage(pack.name);
     });
 
     it("removes the package's grammars", async () => {
