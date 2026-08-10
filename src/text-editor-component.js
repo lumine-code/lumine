@@ -2414,16 +2414,25 @@ module.exports = class TextEditorComponent {
     let scrollTopChanged = false;
     let scrollLeftChanged = false;
     if (!this.scrollTopPending) {
-      scrollTopChanged = this.setScrollTop(this.refs.verticalScrollbar?.element.scrollTop ?? 0);
+      const echoedScrollTop = this.refs.verticalScrollbar?.element.scrollTop ?? 0;
+      // The DOM element stores our fractional position snapped to its own
+      // grid, so its echo can disagree with the exact state by less than a
+      // physical pixel without anyone having scrolled. Adopt the echo only
+      // when it differs from our own position quantized — a real scroll moves
+      // at least a whole physical pixel and always does.
+      if (echoedScrollTop !== roundToPhysicalPixelBoundary(this.getScrollTop())) {
+        scrollTopChanged = this.setScrollTop(echoedScrollTop);
+      }
       if (scrollTopChanged) {
         // The user took over the viewport; stop pinning the inherited anchor.
         this.settlingScrollAnchor = null;
       }
     }
     if (!this.scrollLeftPending) {
-      scrollLeftChanged = this.setScrollLeft(
-        this.refs.horizontalScrollbar?.element.scrollLeft ?? 0,
-      );
+      const echoedScrollLeft = this.refs.horizontalScrollbar?.element.scrollLeft ?? 0;
+      if (echoedScrollLeft !== roundToPhysicalPixelBoundary(this.getScrollLeft())) {
+        scrollLeftChanged = this.setScrollLeft(echoedScrollLeft);
+      }
     }
     if (scrollTopChanged || scrollLeftChanged) this.updateSync();
   }
@@ -4363,14 +4372,15 @@ module.exports = class TextEditorComponent {
   setScrollTop(scrollTop) {
     if (Number.isNaN(scrollTop) || scrollTop == null) return false;
 
-    // Nearest physical pixel, like setScrollLeft — never ceil. A position is
-    // snapped for crispness, and either neighbor is equally crisp; ceiling
-    // biased every set upward, and the scroll anchor re-captures from the
-    // stored value, so each anchored block-measurement pass leaked a fraction
-    // of a pixel and a long run-all walked the viewport a quarter screen.
-    scrollTop = roundToPhysicalPixelBoundary(
-      Math.max(0, Math.min(this.getMaxScrollTop(), scrollTop)),
-    );
+    // The stored position is exact; only outputs quantize (the content
+    // transform and the gutter each snap to the physical grid themselves).
+    // Rounding the state was a feedback loop: the scroll anchor restores an
+    // exact fractional target, the store quantized it, and the next capture
+    // adopted the moved position as its baseline — and since block heights
+    // repeat, the targets hit the same rounding ties every pass, so every
+    // deterministic tie rule leaked in one direction and a long run-all
+    // walked the viewport a quarter screen, half a pixel per measure pass.
+    scrollTop = Math.max(0, Math.min(this.getMaxScrollTop(), scrollTop));
     if (scrollTop !== this.scrollTop) {
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.
@@ -4412,9 +4422,8 @@ module.exports = class TextEditorComponent {
   setScrollLeft(scrollLeft) {
     if (Number.isNaN(scrollLeft) || scrollLeft == null) return false;
 
-    scrollLeft = roundToPhysicalPixelBoundary(
-      Math.max(0, Math.min(this.getMaxScrollLeft(), scrollLeft)),
-    );
+    // Exact for the same reason as setScrollTop; outputs quantize.
+    scrollLeft = Math.max(0, Math.min(this.getMaxScrollLeft(), scrollLeft));
     if (scrollLeft !== this.scrollLeft) {
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.

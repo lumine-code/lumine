@@ -1855,11 +1855,10 @@ describe("TextEditorComponent", () => {
       const expectedScrollTop = Math.round(6 * component.getLineHeight());
       expect(component.getScrollTopRow()).toBeNear(6);
       expect(component.getScrollTop()).toBeNear(expectedScrollTop);
-      // The component rounds fractional line heights to whole pixels
-      // internally, so compare the transform against the actual scrollTop
-      // rather than recomputing (and re-rounding) it here.
+      // The stored position is exact; the rendered transform quantizes it to
+      // the physical grid (one CSS pixel in the spec environment).
       expect(component.refs.content.style.transform).toBe(
-        `translate(0px, -${component.getScrollTop()}px)`,
+        `translate(0px, -${Math.round(component.getScrollTop())}px)`,
       );
 
       // Allows the scrollTopRow to be updated while attached
@@ -2432,23 +2431,63 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollLeft()).toBeNear(initialScrollLeft);
     });
 
-    it("snaps a fractional scroll position to the nearest physical pixel", async () => {
-      // Nearest, never ceiling. The scroll anchor restores an exact fractional
-      // target and re-captures from the stored value, so a one-directional
-      // snap leaks a fraction of a pixel on every anchored block-measurement
-      // pass — a long run over many block decorations walked the viewport a
-      // quarter screen. Either neighboring physical pixel is equally crisp.
+    it("keeps the exact scroll position and quantizes only the rendered transform", async () => {
+      // The stored position never rounds — only outputs snap to the physical
+      // grid. Rounding the state was a feedback loop: the scroll anchor
+      // restores an exact fractional target, the store quantized it, and the
+      // next capture adopted the moved position as its baseline; repeated
+      // block heights hit the same rounding tie every pass, so the viewport
+      // walked in one direction through a long measurement run.
       const { component } = buildComponent({
         rowsPerTile: 2,
         autoHeight: false,
       });
       await setEditorHeightInLines(component, 3);
 
-      component.setScrollTop(10.4);
-      expect(component.getScrollTop()).toBe(10);
+      await setScrollTop(component, 10.4);
+      expect(component.getScrollTop()).toBe(10.4);
+      expect(component.refs.content.style.transform).toBe("translate(0px, -10px)");
 
-      component.setScrollTop(10.6);
-      expect(component.getScrollTop()).toBe(11);
+      await setScrollTop(component, 10.6);
+      expect(component.getScrollTop()).toBe(10.6);
+      expect(component.refs.content.style.transform).toBe("translate(0px, -11px)");
+    });
+
+    it("holds the scroll anchor through repeated half-pixel block growth", async () => {
+      // The reported failure shape: a block decoration above the viewport
+      // grows by a half-pixel-fractional height on every measurement pass —
+      // exact-state restore must compensate each pass to the pixel, where any
+      // rounding of the stored position leaked half a pixel per pass in a
+      // constant direction.
+      const { component, editor } = buildComponent({
+        text: "line\n".repeat(200),
+        rowsPerTile: 3,
+        autoHeight: false,
+        attach: true,
+      });
+      await setEditorHeightInLines(component, 6);
+
+      const marker = editor.markScreenPosition([0, 0], { invalidate: "never" });
+      const item = document.createElement("div");
+      item.style.width = "30px";
+      item.style.height = "90.5px";
+      editor.decorateMarker(marker, { type: "block", item, position: "after" });
+      await component.getNextUpdatePromise();
+
+      await setScrollTop(component, 60 * component.getLineHeight());
+
+      const referenceRow = 100;
+      const anchorOffset = () =>
+        component.pixelPositionBeforeBlocksForRow(referenceRow) - component.getScrollTop();
+      const initialOffset = anchorOffset();
+
+      for (let i = 2; i <= 20; i++) {
+        item.style.height = i * 90.5 + "px";
+        component.invalidateBlockDecorationDimensions(editor.getDecorations({ type: "block" })[0]);
+        await component.getNextUpdatePromise();
+      }
+
+      expect(Math.abs(anchorOffset() - initialOffset)).toBeLessThan(0.001);
     });
   });
 
