@@ -3125,6 +3125,418 @@ describe("TextEditorComponent", () => {
         fakeWindow.getBoundingClientRect().left,
       );
     });
+
+    // The specs above are about the window edges deciding where an overlay
+    // goes. These are about overlays deciding it between themselves, so the
+    // window is pinned out of the way instead: a height the caller chooses, and
+    // a width nothing can reach. The top edge is always the viewport's, so an
+    // overlay that must not fit above is made tall rather than moved.
+    function attachWithWindowHeight(component, getWindowInnerHeight) {
+      jasmine.attachToDOM(component.element);
+      spyOn(component, "getWindowInnerWidth").and.returnValue(100000);
+      spyOn(component, "getWindowInnerHeight").and.callFake(getWindowInnerHeight);
+      return () => component.refs.content.getBoundingClientRect().top;
+    }
+
+    function buildOverlayItem(height = 20) {
+      const item = document.createElement("div");
+      item.style.width = "20px";
+      item.style.height = `${height}px`;
+      item.style.margin = "3px";
+      item.style.backgroundColor = "red";
+      return item;
+    }
+
+    function rectsIntersect(a, b) {
+      return a.top < b.bottom && b.top < a.bottom && a.left < b.right && b.left < a.right;
+    }
+
+    it("places an overlay above the line when the decoration asks for that side", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      const item = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item,
+        side: "above",
+      });
+      await component.getNextUpdatePromise();
+
+      const wrapper = item.parentElement;
+      expect(wrapper.dataset.overlayPosition).toBe("above");
+      expect(wrapper.getBoundingClientRect().bottom).toBeNear(clientTopForLine(component, 4));
+    });
+
+    it("uses the other side when the requested one would overflow the window", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      // Too tall to stand above the first row, whatever the window offers below.
+      const item = buildOverlayItem(2000);
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "overlay",
+        item,
+        side: "above",
+      });
+      await component.getNextUpdatePromise();
+
+      const wrapper = item.parentElement;
+      expect(wrapper.dataset.overlayPosition).toBe("below");
+      expect(wrapper.getBoundingClientRect().top).toBeNear(clientTopForLine(component, 1));
+    });
+
+    it("keeps overlays on the same row off each other, highest priority first", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      const high = buildOverlayItem();
+      const low = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: high,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: low,
+        priority: 0,
+      });
+      await component.getNextUpdatePromise();
+
+      expect(high.parentElement.dataset.overlayPosition).toBe("below");
+      expect(low.parentElement.dataset.overlayPosition).toBe("above");
+      expect(
+        rectsIntersect(
+          high.parentElement.getBoundingClientRect(),
+          low.parentElement.getBoundingClientRect(),
+        ),
+      ).toBe(false);
+    });
+
+    it("gives the contested side to the higher priority overlay regardless of creation order", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      // The low-priority overlay is created first this time; the markers also
+      // arrive in spatial order rather than creation order, so nothing about
+      // the outcome may depend on either.
+      const low = buildOverlayItem();
+      const high = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: low,
+        priority: 0,
+      });
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: high,
+        priority: 1,
+      });
+      await component.getNextUpdatePromise();
+
+      expect(high.parentElement.dataset.overlayPosition).toBe("below");
+      expect(low.parentElement.dataset.overlayPosition).toBe("above");
+    });
+
+    it("orders overlay elements by priority so the higher one paints last", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      const low = buildOverlayItem();
+      const high = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: low,
+        priority: 0,
+      });
+      editor.decorateMarker(editor.markScreenPosition([6, 5]), {
+        type: "overlay",
+        item: high,
+        priority: 1,
+      });
+      await component.getNextUpdatePromise();
+
+      const wrappers = Array.from(component.element.querySelectorAll("lumine-overlay"));
+      expect(wrappers).toEqual([low.parentElement, high.parentElement]);
+    });
+
+    it("pushes an overlay past the one blocking its side when the other side will not fit", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      const high = buildOverlayItem();
+      // On the first row and far too tall to stand above it, so the side it
+      // asked for is taken and the other one is not available.
+      const low = buildOverlayItem(2000);
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "overlay",
+        item: high,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "overlay",
+        item: low,
+        priority: 0,
+      });
+      await component.getNextUpdatePromise();
+
+      const highRect = high.parentElement.getBoundingClientRect();
+      const lowRect = low.parentElement.getBoundingClientRect();
+      expect(high.parentElement.dataset.overlayPosition).toBe("below");
+      expect(low.parentElement.dataset.overlayPosition).toBe("below");
+      expect(lowRect.top).toBeNear(highRect.bottom);
+      expect(rectsIntersect(highRect, lowRect)).toBe(false);
+    });
+
+    it("marks a displaced overlay, and only a displaced one", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      const high = buildOverlayItem();
+      const pushed = buildOverlayItem(2000);
+      // This one is contended with too, but has a free side to go to, so it
+      // yields rather than being pushed.
+      const yielded = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "overlay",
+        item: high,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "overlay",
+        item: pushed,
+        priority: 0,
+      });
+      editor.decorateMarker(editor.markScreenPosition([6, 5]), {
+        type: "overlay",
+        item: yielded,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([6, 5]), {
+        type: "overlay",
+        item: buildOverlayItem(),
+        priority: 0,
+      });
+      await component.getNextUpdatePromise();
+
+      expect(pushed.parentElement.hasAttribute("data-overlay-displaced")).toBe(true);
+      expect(high.parentElement.hasAttribute("data-overlay-displaced")).toBe(false);
+      expect(yielded.parentElement.hasAttribute("data-overlay-displaced")).toBe(false);
+    });
+
+    it("overlaps rather than leaving the window when displacement will not fit either", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      let windowInnerHeight = 100000;
+      const contentTop = attachWithWindowHeight(component, () => windowInnerHeight);
+
+      // Room below for the tall overlay where it belongs, but not for it pushed
+      // past the one already there. Half an overlay can be read; one past the
+      // window edge cannot, so it takes the overlap.
+      windowInnerHeight = contentTop() + 2030;
+
+      const high = buildOverlayItem();
+      // Asks for the side it cannot have — too tall to stand above the first
+      // row — so the side it settles for is the one it did not ask for. That is
+      // what separates taking the overlap from staying where it asked to be:
+      // for an overlay whose own side still fits, the two are the same place.
+      const low = buildOverlayItem(2000);
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "overlay",
+        item: high,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([0, 0]), {
+        type: "overlay",
+        item: low,
+        side: "above",
+        priority: 0,
+      });
+      await component.getNextUpdatePromise();
+
+      const lowWrapper = low.parentElement;
+      expect(lowWrapper.dataset.overlayPosition).toBe("below");
+      expect(lowWrapper.hasAttribute("data-overlay-displaced")).toBe(false);
+      expect(lowWrapper.getBoundingClientRect().top).toBeNear(clientTopForLine(component, 1));
+      expect(
+        rectsIntersect(
+          high.parentElement.getBoundingClientRect(),
+          lowWrapper.getBoundingClientRect(),
+        ),
+      ).toBe(true);
+    });
+
+    it("does not let an overlay that opted out of overflow avoidance claim or block a side", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      const optedOut = buildOverlayItem();
+      const normal = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: optedOut,
+        avoidOverflow: false,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: normal,
+        priority: 0,
+      });
+      await component.getNextUpdatePromise();
+
+      expect(normal.parentElement.dataset.overlayPosition).toBe("below");
+      expect(normal.parentElement.getBoundingClientRect().top).toBeNear(
+        clientTopForLine(component, 5),
+      );
+      expect(optedOut.parentElement.getBoundingClientRect().top).toBeNear(
+        clientTopForLine(component, 5),
+      );
+    });
+
+    it("does not treat an overlay with no size as an obstacle", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      // Nothing drawn, but margins of its own — which must claim nothing.
+      const empty = buildOverlayItem(0);
+      empty.style.width = "0px";
+      const normal = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: empty,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), {
+        type: "overlay",
+        item: normal,
+        priority: 0,
+      });
+      await component.getNextUpdatePromise();
+
+      expect(normal.parentElement.dataset.overlayPosition).toBe("below");
+      expect(normal.parentElement.getBoundingClientRect().top).toBeNear(
+        clientTopForLine(component, 5),
+      );
+    });
+
+    it("re-places every overlay when one of them resizes", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      let windowInnerHeight = 100000;
+      const contentTop = attachWithWindowHeight(component, () => windowInnerHeight);
+
+      // Room below row 10 for a 20px overlay, but not for a 40px one.
+      windowInnerHeight = contentTop() + 200;
+
+      const high = buildOverlayItem();
+      const low = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([10, 0]), {
+        type: "overlay",
+        item: high,
+        priority: 1,
+      });
+      editor.decorateMarker(editor.markScreenPosition([10, 0]), {
+        type: "overlay",
+        item: low,
+        priority: 0,
+      });
+      await component.getNextUpdatePromise();
+
+      expect(high.parentElement.dataset.overlayPosition).toBe("below");
+      expect(low.parentElement.dataset.overlayPosition).toBe("above");
+
+      // The high-priority overlay grows out of the space below the line and
+      // flips over it, which frees that space for the one that had yielded.
+      const highComponent = component.overlayComponentsByElement.get(high);
+      high.style.height = "40px";
+      {
+        const nextOverlayUpdate = highComponent.getNextUpdatePromise();
+        highComponent.props.didResize(highComponent);
+        await nextOverlayUpdate;
+      }
+
+      expect(high.parentElement.dataset.overlayPosition).toBe("above");
+      expect(low.parentElement.dataset.overlayPosition).toBe("below");
+    });
+
+    it("resolves the resized overlay's update promise when its placement is unchanged", async () => {
+      const { component, element, editor } = buildComponent({
+        width: 200,
+        height: 300,
+        attach: false,
+      });
+      element.style.lineHeight = "16px";
+      attachWithWindowHeight(component, () => 100000);
+
+      const item = buildOverlayItem();
+      editor.decorateMarker(editor.markScreenPosition([4, 5]), { type: "overlay", item });
+      await component.getNextUpdatePromise();
+
+      // Nothing about the placement changes here. The overlay that reported the
+      // resize is waiting on this promise all the same, so it is always updated
+      // — skipping it because it did not move would hang rather than fail.
+      const overlayComponent = component.overlayComponentsByElement.get(item);
+      const nextOverlayUpdate = overlayComponent.getNextUpdatePromise();
+      overlayComponent.props.didResize(overlayComponent);
+      await nextOverlayUpdate;
+
+      expect(item.parentElement.dataset.overlayPosition).toBe("below");
+    });
   });
 
   describe("custom gutter decorations", () => {

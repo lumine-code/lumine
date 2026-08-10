@@ -2840,7 +2840,24 @@ module.exports = class TextEditor {
   //   * `avoidOverflow` (optional) Only applicable to decorations of type
   //      `overlay`. Determines whether the decoration adjusts its horizontal or
   //      vertical position to remain fully visible when it would otherwise
-  //      overflow the editor. Defaults to `true`.
+  //      overflow the editor. Defaults to `true`. An overlay that opts out is
+  //      neither moved by nor an obstacle to the placement described below.
+  //   * `side` (optional) Only applicable to decorations of type `overlay`. The
+  //      side of the line the overlay asks for, `'above'` or `'below'` (the
+  //      default). It is a request, not a guarantee: an overlay takes the other
+  //      side when the one it asked for will not fit the window or is already
+  //      taken, and the side it ended up on is reported back on the wrapper as
+  //      `data-overlay-position`.
+  //   * `priority` (optional) Only applicable to decorations of type `overlay`.
+  //      When several overlays want the same side of the same line, the higher
+  //      priority chooses first and the others work around it; it also decides
+  //      which one paints on top. Defaults to `0`. The convention across the
+  //      bundled packages is `autocomplete` 2, `intentions` 1, `hover` 0.
+  //
+  //      An overlay that can have neither side — the one it asked for is taken,
+  //      the other will not fit — is pushed clear of whatever is in its way
+  //      rather than drawn over it, and the wrapper is marked
+  //      `data-overlay-displaced` to say it is no longer touching its line.
   //
   // Returns the created {Decoration} object.
   decorateMarker(marker, decorationParams) {

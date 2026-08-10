@@ -73,9 +73,16 @@ module.exports = class OverlayComponent {
   // flipped over the line to stay in the window, the offset of the position
   // inside the item's own box, and the item's margin — the distance between
   // the item and this wrapper, for a pointer drawn on the wrapper because the
-  // item clips its overflow.
+  // item clips its overflow. `displaced` says the overlay was pushed off its
+  // line to clear another one, and so is not touching the position it
+  // annotates any more: a pointer would aim at whatever sits in between.
   applyAnchor() {
     this.element.dataset.overlayPosition = this.props.flipped ? "above" : "below";
+    if (this.props.displaced) {
+      this.element.dataset.overlayDisplaced = "";
+    } else {
+      delete this.element.dataset.overlayDisplaced;
+    }
     this.element.style.setProperty("--overlay-anchor-offset", `${this.props.anchorOffset || 0}px`);
     this.element.style.setProperty("--overlay-margin-left", `${this.props.marginLeft || 0}px`);
   }

@@ -109,6 +109,7 @@ module.exports = class TextEditorComponent {
 
     this.updatedSynchronously = this.props.updatedSynchronously;
     this.didScrollDummyScrollbar = this.didScrollDummyScrollbar.bind(this);
+    this.didResizeOverlay = this.didResizeOverlay.bind(this);
     this.didMouseDownOnContent = this.didMouseDownOnContent.bind(this);
     this.didMouseWheel = this.didMouseWheel.bind(this);
     this.debouncedResumeCursorBlinking = debounce(
@@ -1244,10 +1245,7 @@ module.exports = class TextEditorComponent {
       const componentProps = Object.assign(
         {
           overlayComponents: this.overlayComponents,
-          didResize: (overlayComponent) => {
-            this.updateOverlayToRender(overlayProps);
-            overlayComponent.update(overlayProps);
-          },
+          didResize: this.didResizeOverlay,
         },
         overlayProps,
       );
@@ -1464,6 +1462,17 @@ module.exports = class TextEditorComponent {
       }
     });
 
+    // Overlays contend for the sides of a line, so the order they are resolved
+    // in has to be decided rather than inherited: the markers arrive in spatial
+    // order, which shifts as they move past one another. Ascending priority,
+    // ties broken on the decoration's monotonic id — a total order, which is
+    // what lets each placement depend only on the ones resolved before it and
+    // settle in a single pass. Ascending is also the order the DOM wants, since
+    // a later sibling paints over an earlier one.
+    if (this.decorationsToRender.overlays.length > 1) {
+      this.decorationsToRender.overlays.sort((a, b) => a.priority - b.priority || a.id - b.id);
+    }
+
     this.populateTextDecorationsToRender();
   }
 
@@ -1618,7 +1627,7 @@ module.exports = class TextEditorComponent {
   }
 
   addOverlayDecorationToRender(decoration, marker) {
-    const { class: className, item, position, avoidOverflow } = decoration;
+    const { class: className, item, position, avoidOverflow, side, priority, id } = decoration;
     const element = TextEditor.viewForItem(item);
     const screenPosition =
       position === "tail" ? marker.getTailScreenPosition() : marker.getHeadScreenPosition();
@@ -1629,6 +1638,9 @@ module.exports = class TextEditorComponent {
       element,
       avoidOverflow,
       screenPosition,
+      side: side === "above" ? "above" : "below",
+      priority: priority || 0,
+      id,
     });
   }
 
@@ -1900,45 +1912,134 @@ module.exports = class TextEditorComponent {
     });
   }
 
+  // Places one overlay, and returns the box it took — or null when it takes
+  // none, which is what an overlay that opted out of overflow avoidance or has
+  // no size does. `claimedBoxes` holds what the overlays resolved before this
+  // one have already taken; since those were resolved without reference to this
+  // one, the pass settles in a single sweep and cannot oscillate between frames.
   updateOverlayToRender(
     decoration,
     contentClientRect = this.refs.content.getBoundingClientRect(),
     windowInnerHeight = this.getWindowInnerHeight(),
     windowInnerWidth = this.getWindowInnerWidth(),
+    claimedBoxes = [],
   ) {
     const { element, screenPosition, avoidOverflow } = decoration;
     const { row, column } = screenPosition;
-    let wrapperTop =
+    const belowWrapperTop =
       contentClientRect.top + this.pixelPositionAfterBlocksForRow(row) + this.getLineHeight();
+    let wrapperTop = belowWrapperTop;
     let wrapperLeft = contentClientRect.left + this.pixelLeftForRowAndColumn(row, column);
     const clientRect = element.getBoundingClientRect();
 
     const anchorLeft = wrapperLeft;
     let flipped = false;
+    let displaced = false;
     let marginLeft = 0;
+    let claim = null;
 
     if (avoidOverflow !== false) {
       const computedStyle = window.getComputedStyle(element);
       marginLeft = parseInt(computedStyle.marginLeft) || 0;
-      const elementTop = wrapperTop + parseInt(computedStyle.marginTop);
-      const elementBottom = elementTop + clientRect.height;
-      const flippedElementTop =
-        wrapperTop -
-        this.getLineHeight() -
-        clientRect.height -
-        parseInt(computedStyle.marginBottom);
+      const marginTop = parseInt(computedStyle.marginTop) || 0;
+      const marginBottom = parseInt(computedStyle.marginBottom) || 0;
+      const height = clientRect.height;
+      // The wrapper is the item's margin box: `lumine-overlay` is both fixed and
+      // layout-contained, so the item's margins cannot collapse through it.
+      const wrapperHeight = marginTop + height + marginBottom;
+
+      // Horizontal first. It is the same on either side of the line, so the
+      // side decision below is made against a box already at its final left.
       const elementLeft = wrapperLeft + marginLeft;
       const elementRight = elementLeft + clientRect.width;
-
-      if (elementBottom > windowInnerHeight && flippedElementTop >= 0) {
-        wrapperTop -= elementTop - flippedElementTop;
-        flipped = true;
-      }
       if (elementLeft < 0) {
         wrapperLeft -= elementLeft;
       } else if (elementRight > windowInnerWidth) {
         wrapperLeft -= elementRight - windowInnerWidth;
       }
+
+      // Below hangs from the line's bottom edge; above is the same box lifted
+      // clear of the line. Each side is only checked against the edge it can
+      // actually run out of — an overlay too tall to fit below has always been
+      // allowed to overhang the top, and the converse.
+      const topForSide = {
+        below: belowWrapperTop,
+        above: belowWrapperTop - this.getLineHeight() - wrapperHeight,
+      };
+      const fits = (side, top) =>
+        side === "below" ? top + marginTop + height <= windowInnerHeight : top + marginTop >= 0;
+
+      // Vertically the wrapper's margin box, because those margins are the
+      // deliberate standoff from the line; horizontally the item's own box,
+      // because an item may carry a negative left margin to aim itself at a
+      // word, which would make the wrapper narrower than what is drawn. Rounded
+      // outward, since the position itself lands on a whole pixel: a claim a
+      // shade too large costs an eager sidestep, one a shade too small shows.
+      const boxAt = (top) => ({
+        top: Math.floor(top),
+        bottom: Math.ceil(top + wrapperHeight),
+        left: Math.floor(wrapperLeft + marginLeft),
+        right: Math.ceil(wrapperLeft + marginLeft + clientRect.width),
+      });
+      const blockerFor = (box) =>
+        claimedBoxes.find(
+          (other) =>
+            box.top < other.bottom &&
+            other.top < box.bottom &&
+            box.left < other.right &&
+            other.left < box.right,
+        );
+      // Pushed clear of everything already placed, in the direction of its own
+      // side: an overlay that cannot have the space beside the line takes the
+      // space beyond whatever holds it. `top` only ever moves one way, so each
+      // obstacle is met at most once and the loop is bounded by their number.
+      const displaceFrom = (side, top) => {
+        for (let i = 0; i < claimedBoxes.length; i++) {
+          const blocker = blockerFor(boxAt(top));
+          if (!blocker) break;
+          top = side === "below" ? blocker.bottom : blocker.top - wrapperHeight;
+        }
+        return top;
+      };
+
+      const requested = decoration.side === "above" ? "above" : "below";
+      const sides = requested === "above" ? ["above", "below"] : ["below", "above"];
+      let chosen = null;
+      // 1. A side that fits the window with nothing already on it.
+      for (const side of sides) {
+        if (fits(side, topForSide[side]) && !blockerFor(boxAt(topForSide[side]))) {
+          chosen = { side, top: topForSide[side], displaced: false };
+          break;
+        }
+      }
+      // 2. Failing that, pushed clear of what is on it, rather than sat on it.
+      if (!chosen) {
+        for (const side of sides) {
+          const top = displaceFrom(side, topForSide[side]);
+          if (fits(side, top)) {
+            chosen = { side, top, displaced: true };
+            break;
+          }
+        }
+      }
+      // 3. Failing that, overlapping but on screen. Half an overlay can still
+      //    be read; one past the window edge cannot.
+      if (!chosen) {
+        for (const side of sides) {
+          if (fits(side, topForSide[side])) {
+            chosen = { side, top: topForSide[side], displaced: false };
+            break;
+          }
+        }
+      }
+      // 4. Nothing fits at all; stay where the decoration asked to be.
+      if (!chosen) chosen = { side: requested, top: topForSide[requested], displaced: false };
+
+      wrapperTop = chosen.top;
+      flipped = chosen.side === "above";
+      displaced = chosen.displaced;
+      // An overlay with no size blocks nothing, whatever its margins claim.
+      if (clientRect.width > 0 && height > 0) claim = boxAt(wrapperTop);
     }
 
     decoration.pixelTop = Math.round(wrapperTop);
@@ -1950,9 +2051,14 @@ module.exports = class TextEditorComponent {
     // margin is reported too: the anchor offset is in the item's coordinates,
     // and a pointer drawn on the wrapper instead — because the item clips its
     // overflow — needs the distance between the two boxes, which the margin is.
+    // `displaced` says the overlay was pushed off its line to clear another,
+    // and so is no longer touching the position it annotates: a pointer drawn
+    // at that position would aim at the overlay in between, not at the word.
     decoration.flipped = flipped;
+    decoration.displaced = displaced;
     decoration.anchorOffset = Math.round(anchorLeft - (wrapperLeft + marginLeft));
     decoration.marginLeft = Math.round(marginLeft);
+    return claim;
   }
 
   updateOverlaysToRender() {
@@ -1965,14 +2071,56 @@ module.exports = class TextEditorComponent {
     const windowInnerHeight = this.getWindowInnerHeight();
     const windowInnerWidth = this.getWindowInnerWidth();
 
-    for (let i = 0; i < overlayCount; i++) {
+    // Backwards, because the array is sorted by ascending priority for the DOM:
+    // the overlay that should choose its side first is the one at the end.
+    const claimedBoxes = [];
+    for (let i = overlayCount - 1; i >= 0; i--) {
       const decoration = this.decorationsToRender.overlays[i];
-      this.updateOverlayToRender(
+      const claim = this.updateOverlayToRender(
         decoration,
         contentClientRect,
         windowInnerHeight,
         windowInnerWidth,
+        claimedBoxes,
       );
+      if (claim) claimedBoxes.push(claim);
+    }
+  }
+
+  // An overlay whose content settled to a new size may no longer fit the side
+  // it was given, and the side it vacates may be what another overlay wanted,
+  // so the whole pass runs again rather than this one overlay being re-placed
+  // against a picture that has moved on. Safe here: `decorationsToRender` is
+  // cleared only at the start of the next frame, so it still describes this
+  // one, and the observer that reported the resize is disconnected until the
+  // next tick.
+  didResizeOverlay(resizedComponent) {
+    if (this.updatingOverlays) return;
+    this.updatingOverlays = true;
+    try {
+      this.updateOverlaysToRender();
+      for (const overlayProps of this.decorationsToRender.overlays) {
+        const component = this.overlayComponentsByElement.get(overlayProps.element);
+        if (!component) continue;
+        // The overlay that reported the resize is always updated, even when it
+        // did not move: it is waiting on the update promise that resolves.
+        // The rest are left alone unless their placement actually changed —
+        // their own observers are still connected, and writing to them for no
+        // reason is how a resize in one becomes a resize in another.
+        if (
+          component === resizedComponent ||
+          component.props.pixelTop !== overlayProps.pixelTop ||
+          component.props.pixelLeft !== overlayProps.pixelLeft ||
+          component.props.flipped !== overlayProps.flipped ||
+          component.props.displaced !== overlayProps.displaced ||
+          component.props.anchorOffset !== overlayProps.anchorOffset ||
+          component.props.marginLeft !== overlayProps.marginLeft
+        ) {
+          component.update(overlayProps);
+        }
+      }
+    } finally {
+      this.updatingOverlays = false;
     }
   }
 
