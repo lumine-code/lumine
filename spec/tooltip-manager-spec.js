@@ -82,11 +82,11 @@ describe("TooltipManager", () => {
         mouseLeave(element1);
         mouseEnter(element2);
 
-        expect(
-          Array.from(document.body.querySelectorAll(".tooltip")).some(
-            (tooltip) => tooltip.textContent === "Title 2",
-          ),
-        ).toBe(true);
+        // The handoff is immediate in both directions: the second tooltip
+        // shows without waiting for the show delay, and the first goes at
+        // once rather than sitting on screen beside it for the hide delay.
+        expect(document.body.querySelectorAll(".tooltip").length).toBe(1);
+        expect(document.body.querySelector(".tooltip")).toHaveText("Title 2");
 
         advanceClock(manager.hoverDefaults.delay.hide);
         expect(document.body.querySelectorAll(".tooltip").length).toBe(1);
@@ -94,6 +94,34 @@ describe("TooltipManager", () => {
 
         mouseLeave(element2);
         advanceClock(manager.hoverDefaults.delay.hide);
+        disposables.dispose();
+      });
+
+      // Sweeping along a row of status bar items is the case this protects:
+      // every handoff falls inside the follow-through window, where the
+      // incoming tooltip shows before the outgoing one's hide delay is up.
+      it("never leaves two tooltips on screen while moving between neighbours", () => {
+        const elements = ["foo", "bar", "baz"].map(createElement);
+        const disposables = new CompositeDisposable(
+          ...elements.map((element, index) =>
+            manager.add(element, { title: `Title ${index + 1}` }),
+          ),
+        );
+
+        mouseEnter(elements[0]);
+        advanceClock(manager.hoverDefaults.delay.show);
+
+        for (let index = 1; index < elements.length; index++) {
+          mouseLeave(elements[index - 1]);
+          mouseEnter(elements[index]);
+          expect(document.body.querySelectorAll(".tooltip").length).toBe(1);
+          expect(document.body.querySelector(".tooltip")).toHaveText(`Title ${index + 1}`);
+        }
+
+        mouseLeave(elements[elements.length - 1]);
+        advanceClock(manager.hoverDefaults.delay.hide);
+        expect(document.body.querySelectorAll(".tooltip").length).toBe(0);
+
         disposables.dispose();
       });
 

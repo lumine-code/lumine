@@ -9,6 +9,13 @@ const listen = require("./delegated-listener");
 
 let followThroughTimer = null;
 
+// The tooltip that has been left but is still on screen, waiting out its hide
+// delay. The follow-through window opens the moment a visible tooltip is left,
+// so the next tooltip entered within it shows immediately — well before this
+// one has finished leaving. Handing the window over means retiring this one at
+// that point rather than leaving the two overlapping for the hide delay.
+let departingTooltip = null;
+
 function startFollowThroughTimer() {
   clearTimeout(followThroughTimer);
   followThroughTimer = setTimeout(function () {
@@ -257,6 +264,7 @@ Tooltip.prototype.leave = function (event) {
   // not wait for the normal show delay.
   if (this.getTooltipElement().classList.contains("in")) {
     startFollowThroughTimer();
+    departingTooltip = this;
   }
 
   if (!this.options.delay || !this.options.delay.hide) return this.hide();
@@ -271,6 +279,13 @@ Tooltip.prototype.leave = function (event) {
 
 Tooltip.prototype.show = function () {
   if (this.hasContent() && this.enabled) {
+    // Whatever was on its way out has been handed over to this one, and two
+    // tooltips must never share the screen: retire it now rather than letting
+    // its hide delay run out on top of this one.
+    if (departingTooltip && departingTooltip !== this) {
+      departingTooltip.hide();
+    }
+
     if (this.hideOnClickOutsideOfTooltip) {
       window.addEventListener("click", this.hideOnClickOutsideOfTooltip, {
         capture: true,
@@ -436,6 +451,9 @@ Tooltip.prototype.setContent = function () {
 Tooltip.prototype.hide = function (callback) {
   this.inState = {};
 
+  if (departingTooltip === this) departingTooltip = null;
+  clearTimeout(this.timeout);
+
   if (this.hideOnClickOutsideOfTooltip) {
     window.removeEventListener("click", this.hideOnClickOutsideOfTooltip, true);
   }
@@ -594,6 +612,7 @@ Tooltip.prototype.toggle = function (event) {
 };
 
 Tooltip.prototype.destroy = function () {
+  if (departingTooltip === this) departingTooltip = null;
   clearTimeout(this.timeout);
   this.tip && this.tip.remove();
   this.disposables.dispose();
