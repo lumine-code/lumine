@@ -81,6 +81,7 @@ class Marker {
     if (!exclusivitySet) {
       this.layer.setMarkerIsExclusive(this.id, this.isExclusive());
     }
+    this.refreshHistoryProps();
   }
 
   /*
@@ -515,11 +516,23 @@ class Marker {
       updated = true;
     }
 
+    if (updated) this.refreshHistoryProps();
     this.emitChangeEvent(range ?? oldRange, textChanged, propertiesChanged);
     if (updated && !suppressMarkerLayerUpdateEvents) {
       this.layer.markerUpdated();
     }
     return updated;
+  }
+
+  // The marker's non-positional state, pre-frozen for history snapshots. A
+  // layer that maintains history snapshots every marker on every transaction;
+  // keeping this object current on the rare mutations makes each snapshot a
+  // reference copy instead of an allocation per marker. Range is deliberately
+  // absent — positions come from the layer's shadow ranges.
+  refreshHistoryProps() {
+    if (this.layer.historyShadow) {
+      this.historyProps = this.getSnapshot(null);
+    }
   }
 
   getSnapshot(range, includeMarker = true) {

@@ -571,7 +571,7 @@ class DefaultHistoryProvider {
 
     const serializedLayerSnapshots = {};
     for (let layerId in snapshot) {
-      const layerSnapshot = snapshot[layerId];
+      const layerSnapshot = MarkerLayer.materializeSnapshot(snapshot[layerId]);
       if (!this.buffer.getMarkerLayer(layerId)?.persistent) {
         continue;
       }

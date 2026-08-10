@@ -171,6 +171,86 @@ describe("MarkerLayer", function () {
 
     beforeEach(() => (layer3 = buffer.addMarkerLayer({ maintainHistory: true })));
 
+    // History snapshots read the layer's shadow ranges instead of paying the
+    // native index dump. The shadow is bookkeeping duplicated from the index,
+    // so pin their agreement across every mutation shape here; the randomized
+    // referee is `LUMINE_VERIFY_MARKER_SNAPSHOTS=1`, which compares the two on
+    // every snapshot the whole suite takes.
+    describe("history snapshot shadow", () => {
+      const MarkerLayer = require("../src/marker-layer");
+
+      const expectShadowAgreesWithIndex = (layer) => {
+        const lazy = MarkerLayer.materializeSnapshot(layer.createSnapshot());
+        const eager = layer.createEagerSnapshot();
+        expect(Object.keys(lazy).sort()).toEqual(Object.keys(eager).sort());
+        for (const id of Object.keys(eager)) {
+          expect(lazy[id].range).toEqual(eager[id].range);
+          expect(lazy[id].valid).toBe(eager[id].valid);
+          expect(lazy[id].marker).toBe(eager[id].marker);
+        }
+      };
+
+      it("stays exact through creates, destroys, explicit moves and splices", () => {
+        buffer.setText("one two\nthree four\nfive six\n");
+        const kept = layer3.markRange([
+          [0, 0],
+          [0, 3],
+        ]);
+        const doomed = layer3.markRange([
+          [1, 0],
+          [1, 5],
+        ]);
+        layer3.markRange(
+          [
+            [2, 0],
+            [2, 4],
+          ],
+          { invalidate: "never" },
+        );
+        expectShadowAgreesWithIndex(layer3);
+
+        // A deletion collapsing one marker, shifting another.
+        buffer.transact(() =>
+          buffer.setTextInRange(
+            [
+              [1, 2],
+              [2, 2],
+            ],
+            "",
+          ),
+        );
+        expectShadowAgreesWithIndex(layer3);
+
+        kept.setRange([
+          [0, 1],
+          [1, 1],
+        ]);
+        doomed.destroy();
+        expectShadowAgreesWithIndex(layer3);
+
+        buffer.undo();
+        expectShadowAgreesWithIndex(layer3);
+        buffer.redo();
+        expectShadowAgreesWithIndex(layer3);
+
+        layer3.clear();
+        expectShadowAgreesWithIndex(layer3);
+      });
+
+      it("is rebuilt when history is enabled on a layer built without it", () => {
+        const layer = buffer.addMarkerLayer();
+        layer.markRange([
+          [0, 2],
+          [0, 9],
+        ]);
+        expect(layer.historyShadow).toBeNull();
+
+        layer.enableHistorySnapshots();
+        expect(layer.maintainHistory).toBe(true);
+        expectShadowAgreesWithIndex(layer);
+      });
+    });
+
     it("restores the state of all markers in the layer on undo and redo", function () {
       buffer.setText("");
       buffer.transact(() => buffer.append("foo"));

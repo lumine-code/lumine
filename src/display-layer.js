@@ -55,12 +55,12 @@ class DisplayLayer {
         // that method.
         //
         // What this opts into: every transaction snapshots the layer, twice.
-        // Measured on 20k lines with one-line edits, that is free at a
-        // handful of folds, ~0.4ms per transaction at 100, ~4ms at 1000 and
-        // ~25ms at 5000 — it scales with fold count, not file size, and 80%
-        // of it is superstring's index.dump(). Hand-made folds never notice;
-        // Fold All on a large file pays until marker history records deltas
-        // instead of full snapshots.
+        // The layer's history shadow keeps that off the native index — measured
+        // on 20k lines with one-line edits, the marginal cost is noise at 100
+        // folds, ~0.3ms per transaction at 1000 and ~2ms at 5000 (down from
+        // ~25ms when each snapshot paid `index.dump()`). It scales with fold
+        // count, not file size; making it O(changes) instead would need marker
+        // history to record deltas rather than snapshots.
         maintainHistory: true,
         persistent: true,
         destroyInvalidatedMarkers: true,
@@ -99,7 +99,7 @@ class DisplayLayer {
     // this layer with `maintainHistory: false`, and would silently keep folds
     // un-undoable for every restored buffer. Whether folds are undoable is
     // behavior, not state — decide it here, not from the file.
-    if (foldsMarkerLayer) foldsMarkerLayer.maintainHistory = true;
+    if (foldsMarkerLayer) foldsMarkerLayer.enableHistorySnapshots();
     return new DisplayLayer(params.id, buffer, { foldsMarkerLayer });
   }
 
