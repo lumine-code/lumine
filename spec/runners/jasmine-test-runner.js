@@ -43,6 +43,7 @@ module.exports = function ({ logFile, headless, testPaths, buildLumineEnvironmen
 
   // Load general helpers
   require("../../src/window");
+  require("../helpers/async-spec-helpers");
   require("../helpers/normalize-comments");
   require("../helpers/document-title");
   require("../helpers/load-jasmine-stylesheet");

@@ -135,6 +135,15 @@ module.exports = [
         runFoldsTests: "readonly",
         normalizeTreeSitterTextData: "readonly",
         advanceClock: "readonly",
+        // Waiting primitives injected onto `window` by spec/helpers/async-spec-helpers.js.
+        conditionPromise: "readonly",
+        emitterEventPromise: "readonly",
+        flushMicrotasks: "readonly",
+        timeoutPromise: "readonly",
+        waitForFrames: "readonly",
+        // Jasmine 1.3 async queue, shimmed by the runner. Being declared here is
+        // what keeps `no-undef` from reporting the specs that still use it; the
+        // declarations come out with the shim once nothing does.
         waitsForPromise: "readonly",
         waitsFor: "readonly",
         waits: "readonly",
