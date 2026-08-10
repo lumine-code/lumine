@@ -5,6 +5,15 @@
 
 .overlay, /* deprecated .overlay */
 lumine-panel.modal {
+  /* A modal is anchored to the top of the window, so its first rows land inside
+     the title bar's `app-region: drag` strip. A drag region is an OS-level
+     caption hit test, not something a `cursor` or a z-index can override: over
+     one, Windows paints the arrow and swallows the press into a window drag, so
+     the select-list's mini editor would take neither a click nor a selection.
+     Painting on top does not carve the region out — only `no-drag` does. */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+
   position: absolute;
   display: block;
   top: 0;
@@ -119,6 +128,11 @@ lumine-panel.modal {
  */
 
 .modal-breadcrumbs {
+  /* Sits flush above the modal card, so it is deeper into the title bar strip
+     than the card is — same `no-drag` reason as the modal itself. */
+  -webkit-app-region: no-drag;
+  app-region: no-drag;
+
   position: fixed;
   transform: translate(-50%, -100%);
   z-index: 10000;
