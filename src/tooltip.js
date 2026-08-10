@@ -279,6 +279,10 @@ Tooltip.prototype.leave = function (event) {
 
 Tooltip.prototype.show = function () {
   if (this.hasContent() && this.enabled) {
+    // Read before retiring anything below, since hiding a tooltip reopens the
+    // window itself.
+    const isFollowThrough = followThroughTimer != null;
+
     // Whatever was on its way out has been handed over to this one, and two
     // tooltips must never share the screen: retire it now rather than letting
     // its hide delay run out on top of this one.
@@ -314,6 +318,14 @@ Tooltip.prototype.show = function () {
     this.element.setAttribute("aria-describedby", tipId);
 
     if (this.options.animation) tip.classList.add("fade");
+
+    // A tooltip that skipped its show delay did so because the pointer is
+    // still mid-sweep: it takes over from one already on screen rather than
+    // appearing out of nothing, so it must not replay a theme's entry
+    // animation. Sweeping a row of status bar items would otherwise flash a
+    // fade-in per item. Toggled rather than added, since the element is
+    // reused across shows.
+    tip.classList.toggle("follow-through", isFollowThrough);
 
     let placement =
       typeof this.options.placement === "function"

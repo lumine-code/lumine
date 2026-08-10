@@ -125,6 +125,50 @@ describe("TooltipManager", () => {
         disposables.dispose();
       });
 
+      // Core animates nothing; it only marks the shows a theme must not
+      // animate, so a swept row of tooltips does not flash a fade per item.
+      it("marks a tooltip that takes over from another as a follow-through", () => {
+        const element1 = createElement("foo");
+        const element2 = createElement("bar");
+        const disposables = new CompositeDisposable(
+          manager.add(element1, { title: "Title 1" }),
+          manager.add(element2, { title: "Title 2" }),
+        );
+
+        // Clear any follow-through state left by an earlier tooltip. Advancing
+        // the clock alone will not do it: the window is module state that
+        // outlives a spec, while the fake clock its timer was scheduled on is
+        // reset, so only a fresh cycle can retire it.
+        mouseEnter(element1);
+        advanceClock(manager.hoverDefaults.delay.show);
+        mouseLeave(element1);
+        advanceClock(manager.hoverDefaults.delay.hide);
+        advanceClock(Tooltip.FOLLOW_THROUGH_DURATION);
+
+        // Nothing has been on screen recently, so this one arrives from nothing.
+        mouseEnter(element1);
+        advanceClock(manager.hoverDefaults.delay.show);
+        expect(document.body.querySelector(".tooltip")).not.toHaveClass("follow-through");
+
+        // Sweeping straight on: a continuation of what is already showing.
+        mouseLeave(element1);
+        mouseEnter(element2);
+        expect(document.body.querySelector(".tooltip")).toHaveClass("follow-through");
+
+        // The same tooltip entered cold again is an appearance once more, so
+        // the mark has to come back off the element it is reused on.
+        mouseLeave(element2);
+        advanceClock(manager.hoverDefaults.delay.hide);
+        advanceClock(Tooltip.FOLLOW_THROUGH_DURATION);
+        mouseEnter(element2);
+        advanceClock(manager.hoverDefaults.delay.show);
+        expect(document.body.querySelector(".tooltip")).not.toHaveClass("follow-through");
+
+        mouseLeave(element2);
+        advanceClock(manager.hoverDefaults.delay.hide);
+        disposables.dispose();
+      });
+
       it("hides the tooltip on keydown events", () => {
         const disposable = manager.add(element, {
           title: "Title",

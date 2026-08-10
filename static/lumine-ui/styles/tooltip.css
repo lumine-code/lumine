@@ -39,6 +39,19 @@
   }
 }
 
+/* A tooltip marked as a follow-through has taken over from one the pointer has
+   just left, so it is a continuation of what is already on screen rather than a
+   new appearance and must arrive at once. Core animates nothing, but a theme
+   that animates the entry would otherwise replay it at every handoff, flashing
+   a fade per item as the pointer sweeps a row of status bar tiles. Both
+   selectors outscore the two shapes a theme writes — on `.tooltip` and on
+   `.tooltip.in` — so a theme inherits this without knowing it exists. */
+.tooltip.follow-through,
+.tooltip.follow-through.in {
+  transition: none;
+  animation: none;
+}
+
 /* Wrapper for the tooltip content */
 .tooltip-inner {
   max-width: 200px; /* @tooltip-max-width */
