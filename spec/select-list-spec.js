@@ -504,14 +504,17 @@ describe("SelectListView", () => {
 
       await view.update({ status: { type: "error", message: "Enter a value." } });
       view.refs.queryEditor.setText("o");
-      await nextUpdate();
-      expect(view.refs.statusMessage).toBeUndefined();
+      // Polled rather than awaiting the next update: the render may already
+      // have flushed by the time we ask, leaving no next update to wait for.
+      await conditionPromise(() => !view.refs.statusMessage);
       // Clearing the overlay uncovers the resting line; nothing had to save it.
       expect(view.refs.infoMessage.textContent).toBe("resting");
 
       await view.update({ status: { type: "error", message: "background", sticky: true } });
       view.refs.queryEditor.setText("on");
-      await nextUpdate();
+      // A sticky status is expected not to move, so there is nothing to poll
+      // for; flush with an update of our own instead.
+      await view.update({});
       expect(view.refs.statusMessage.textContent).toBe("background");
     });
 

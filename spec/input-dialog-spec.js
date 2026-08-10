@@ -64,12 +64,17 @@ describe("InputDialogView", () => {
 
       await view.update({ status: { type: "error", message: "Enter a value." } });
       view.refs.queryEditor.setText("a");
-      await InputDialogView.getScheduler().getNextUpdatePromise();
-      expect(view.refs.statusMessage).toBeUndefined();
+      // The clear renders through the scheduler, so poll for the result
+      // rather than awaiting the next update: the render may already have
+      // flushed by the time we ask, and then there is no next update to wait
+      // for.
+      await conditionPromise(() => !view.refs.statusMessage);
 
       await view.update({ status: { message: "background", sticky: true } });
       view.refs.queryEditor.setText("ab");
-      await InputDialogView.getScheduler().getNextUpdatePromise();
+      // Nothing to poll for here — a sticky status is expected not to move —
+      // so flush with an update of our own and then assert.
+      await view.update({});
       expect(view.refs.statusMessage.textContent).toBe("background");
     });
 
