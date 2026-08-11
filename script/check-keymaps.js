@@ -26,7 +26,7 @@ const CSON = require("@lumine-code/season");
 // a trailing space, because a prefix must never also be a complete binding.
 const ALT_TIER = new Map([
   ["alt-t", "tree-view"],
-  ["alt-l", "linter"],
+  ["alt-l", "linter-panel"],
   ["alt-n", "navigation-panel"],
   ["alt-o", "outline-view"],
   ["alt-e", "fuzzy-explorer"],
