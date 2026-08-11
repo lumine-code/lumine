@@ -202,19 +202,14 @@ async function runInRenderer(manifest) {
   for (const check of manifest.checks) {
     let value;
     if (check.kind === "diagnostics") {
-      const entry = await waitFor(
-        () =>
-          manager
-            .allDiagnostics()
-            .find(
-              (candidate) =>
-                candidate.session === session &&
-                candidate.uri === uri &&
-                candidate.diagnostics.length >= (check.minLength || 0),
-            ),
-        `${check.name} diagnostics`,
-      );
-      value = entry.diagnostics;
+      // The manager canonicalizes equivalent file URI spellings. Marksman and
+      // Pyright percent-encode a Windows drive colon and lower-case its letter,
+      // so comparing the raw URI here loses diagnostics that the editor itself
+      // has already associated with the open document.
+      value = await waitFor(() => {
+        const diagnostics = manager.diagnosticsFor(session, uri);
+        return diagnostics.length >= (check.minLength || 0) ? diagnostics : null;
+      }, `${check.name} diagnostics`);
     } else if (check.kind === "restart") {
       const previous = session;
       await manager.restart(session);

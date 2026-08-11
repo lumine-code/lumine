@@ -91,6 +91,16 @@ describe("drive LSP conformance support", () => {
     expect(expression).toContain('"select":"command"');
   });
 
+  it("reads diagnostics through the manager's canonical URI lookup", () => {
+    const expression = rendererExpression({
+      adapter: "ide-example",
+      timeout: 1000,
+      checks: [{ name: "diagnostics", kind: "diagnostics", minLength: 1 }],
+    });
+    expect(expression).toContain("manager.diagnosticsFor(session, uri)");
+    expect(expression).not.toContain("candidate.uri === uri");
+  });
+
   it("matches every named renderer result against the manifest", () => {
     const manifest = {
       adapter: "ide-example",
