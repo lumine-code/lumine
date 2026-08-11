@@ -715,6 +715,7 @@ class LumineEnvironment {
     this.isDestroying = true;
     this.emitter.emit("will-destroy");
 
+    this.menu.destroy();
     this.disposables.dispose();
     if (this.workspace) this.workspace.destroy();
     this.workspace = null;

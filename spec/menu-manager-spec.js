@@ -13,6 +13,8 @@ describe("MenuManager", function () {
     menu.initialize({ resourcePath: lumine.application.getResourcePath() });
   });
 
+  afterEach(() => menu.destroy());
+
   describe("::add(items)", function () {
     it("can add new menus that can be removed with the returned disposable", function () {
       const disposable = menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
@@ -111,6 +113,13 @@ describe("MenuManager", function () {
       menu.update();
       advanceClock(1);
       expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toEqual(["ctrl-b"]);
+    });
+
+    it("cancels a pending browser-process update when destroyed", function () {
+      menu.update();
+      menu.destroy();
+      advanceClock(1);
+      expect(menu.sendToBrowserProcess).not.toHaveBeenCalled();
     });
 
     it("omits key bindings that are mapped to unset! in any context", function () {

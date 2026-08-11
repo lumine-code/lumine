@@ -230,7 +230,18 @@ const handleWindowBootstrap = (event) => {
 ipcMain.handle("lumine:window-bootstrap", handleWindowBootstrap);
 
 const handleWindowAction = async (event, action, ...args) => {
-  const lumineWindow = currentLumineWindow(event);
+  let lumineWindow;
+  try {
+    lumineWindow = currentLumineWindow(event);
+  } catch (error) {
+    // Menu refreshes are fire-and-forget and may already be crossing IPC when
+    // teardown unregisters their renderer. They cannot be applied without the
+    // registered BrowserWindow, so discard only this stale, non-mutating
+    // action; every other action keeps the strict sender validation.
+    if (action === "updateApplicationMenu") return;
+    error.message = `${error.message} (window action: ${action})`;
+    throw error;
+  }
   const window = lumineWindow.browserWindow;
 
   switch (action) {

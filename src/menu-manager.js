@@ -3,7 +3,7 @@ const _ = require("@lumine-code/underscore-plus");
 const { ipcRenderer } = require("electron");
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
-const { Disposable } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
 
 const buildMetadata = require("../package.json");
@@ -76,24 +76,36 @@ module.exports = class MenuManager {
     this.packageManager = packageManager;
     this.initialized = false;
     this.pendingUpdateOperation = null;
+    this.disposables = new CompositeDisposable();
     this.template = [];
     // Top-level menus the platform file declares. They belong to the menu bar
     // rather than to whichever package fills them, so `unmerge` must not splice
     // one out when it empties. See {@link MenuHelpers.unmerge}.
     this.structuralIds = new Set();
-    this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems());
-    this.packageManager.onDidActivateInitialPackages(() => this.sortPackagesMenu());
+    this.disposables.add(
+      this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems()),
+      this.packageManager.onDidActivateInitialPackages(() => this.sortPackagesMenu()),
+    );
     // A package activated after startup — installed, re-enabled, or deferred
     // behind `activationCommands` — has already contributed its menus by the
     // time this fires, so the Packages menu can be put back in order.
-    this.packageManager.onDidActivatePackage(() => this.sortPackagesMenu());
+    this.disposables.add(this.packageManager.onDidActivatePackage(() => this.sortPackagesMenu()));
   }
 
   initialize({ resourcePath }) {
     this.resourcePath = resourcePath;
-    this.keymapManager.onDidReloadKeymap(() => this.update());
+    this.disposables.add(this.keymapManager.onDidReloadKeymap(() => this.update()));
     this.update();
     this.initialized = true;
+  }
+
+  destroy() {
+    this.initialized = false;
+    if (this.pendingUpdateOperation != null) {
+      clearTimeout(this.pendingUpdateOperation);
+      this.pendingUpdateOperation = null;
+    }
+    this.disposables.dispose();
   }
 
   /**
@@ -204,6 +216,7 @@ module.exports = class MenuManager {
       clearTimeout(this.pendingUpdateOperation);
     }
     this.pendingUpdateOperation = setTimeout(() => {
+      this.pendingUpdateOperation = null;
       const unsetKeystrokes = new Set();
       for (let binding of this.keymapManager.getKeyBindings()) {
         if (binding.command === "unset!") {
@@ -261,9 +274,17 @@ module.exports = class MenuManager {
   }
 
   sendToBrowserProcess(template, keystrokesByCommand) {
+    if (global.lumine?.isDestroying || global.lumine?.unloading) return;
     void ipcRenderer
       .invoke("lumine:window", "updateApplicationMenu", template, keystrokesByCommand)
-      .catch((error) => console.error(error));
+      .catch((error) => {
+        // The main process can unregister the window between this asynchronous
+        // invocation leaving the renderer and its handler running. That race
+        // is expected only during teardown; active-window failures still need
+        // to remain visible.
+        if (global.lumine?.isDestroying || global.lumine?.unloading) return;
+        console.error(error);
+      });
   }
 
   // Get an `Array` of `String` classes for the given element.

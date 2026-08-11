@@ -915,6 +915,17 @@ describe("LumineApplication", function () {
       assert.throws(() => app.lumineWindowForSender(sender), /not a registered Lumine window/);
     });
 
+    it("discards only a stale menu refresh after its window was unregistered", async function () {
+      const staleEvent = { sender: { id: 9002, isDestroyed: () => false } };
+      assert.isUndefined(
+        await LumineApplication.handleWindowAction(staleEvent, "updateApplicationMenu", [], {}),
+      );
+      await LumineApplication.handleWindowAction(staleEvent, "getState").then(
+        () => assert.fail("a stale sender could perform a window action"),
+        (error) => assert.match(error.message, /not a registered Lumine window/),
+      );
+    });
+
     it("bootstraps only serializable settings, cached metadata, and one-shot markers", function () {
       w1.getLoadSettingsForRenderer = sinon.stub().returns({
         isSpec: false,
