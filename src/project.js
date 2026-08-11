@@ -36,6 +36,9 @@ module.exports = class Project extends Model {
     this.notificationManager = notificationManager;
     this.applicationDelegate = applicationDelegate;
     this.grammarRegistry = grammarRegistry;
+    this.config = config;
+    // Built on first request; see {@link #fileIndexOrBuild}.
+    this.fileIndex = null;
     // Supplied by the environment, which is the only thing that can reach the
     // window state store and the workspace. See {@link #setState}.
     this.restoreState = restoreState;
@@ -63,6 +66,7 @@ module.exports = class Project extends Model {
       buffer.destroy();
     }
     this.repositoryRegistry.detachProject(this);
+    this.destroyFileIndex();
     for (let path in this.watcherPromisesByPath) {
       this.watcherPromisesByPath[path].then(
         (watcher) => {
@@ -75,6 +79,12 @@ module.exports = class Project extends Model {
   }
 
   reset(packageManager) {
+    // Dropped rather than re-attached: a window that used the index once and was
+    // then reset is back to paying nothing for it, and there is no long-lived
+    // subscription to go stale against the emitter replaced below — the next
+    // request rebuilds against the new one.
+    this.destroyFileIndex();
+
     this.emitter.dispose();
     this.emitter = new Emitter();
 
@@ -822,8 +832,197 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
+   * Invoke the given callback with the project's file paths, now and whenever
+   * they change.
+   *
+   * Where {@link #crawl} answers "what is there right now" once, the file index
+   * keeps the answer, streams it as it arrives, and maintains it against the
+   * filesystem watcher. Prefer these methods over crawling on a timer or
+   * rebuilding on {@link #onDidChangeFiles} by hand: a package that does either
+   * is reimplementing this one, and the ignore semantics are easy to get subtly
+   * wrong.
+   *
+   * The first call is synchronous and reports everything currently indexed as
+   * `added`, so a consumer has exactly one code path: apply `removed`, then
+   * apply `added`.
+   *
+   * ```js
+   * const disposable = lumine.project.observeFilePaths(({ added, removed, indexing }) => {
+   *   for (const filePath of removed) this.items.delete(filePath);
+   *   for (const filePath of added) this.items.set(filePath, this.build(filePath));
+   *   this.setLoading(indexing);
+   * });
+   * ```
+   *
+   * Changes are coalesced, so one call can carry a whole batch, and during the
+   * first crawl the callback fires repeatedly with partial results — check
+   * `indexing` rather than assuming the first call is complete. A deleted
+   * directory reports every file that was under it, so no consumer needs its own
+   * prefix sweep.
+   *
+   * The whole-index array is deliberately not passed: rebuilding derived state
+   * from it on every call is quadratic over a progressive crawl. Call
+   * {@link #getFilePaths} if you want it — that is memoized, so asking on every
+   * callback costs nothing extra.
+   *
+   * @param {Function} callback - to be called with each batch of changes.
+   * @param callback.added - An `Array` of `String` absolute paths new to the index.
+   * @param callback.removed - An `Array` of `String` absolute paths no longer in it.
+   * @param callback.indexing - A `Boolean`, `true` while a crawl is still running.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  observeFilePaths(callback) {
+    return this.fileIndexOrBuild().observe(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Every file under the project's root directories.
+   *
+   * Files only, and project roots only — for a glob subset, a directory listing,
+   * or anywhere outside the project, use {@link #crawl}. The index applies core
+   * policy only (`core.ignoredNames`, `core.excludeVcsIgnoredPaths`,
+   * `core.followSymlinks`), so it is a superset of what any one consumer wants
+   * and a package's own exclusions stay a cheap filter over it.
+   *
+   * Paths are absolute and spelled from the registered root, matching
+   * {@link #getPaths} and {@link #relativizePath}. They are not sorted: sorting
+   * costs the crawl its parallel walk, and only one consumer has ever observed
+   * the order, so it sorts for itself.
+   *
+   * The array is memoized and shared, rebuilt only when the index changes.
+   * **Do not mutate it** — like {@link #getDirectories}, this hands back the
+   * index's own array rather than copying six figures' worth of strings per call.
+   *
+   * The first call to any file-path method builds the index and starts the
+   * crawl, so this returns an empty array until that settles; see
+   * {@link #isIndexing}. Ask when the feature that needs it is first used rather
+   * than during package activation, or the crawl happens in every window whether
+   * anything wanted it or not.
+   *
+   * @returns {Array} of `String` absolute paths.
+   */
+  getFilePaths() {
+    return this.fileIndexOrBuild().getPaths();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Every indexed file under one project root.
+   *
+   * A file reachable through two nested roots is listed under both, because each
+   * root is crawled independently. Memoized and shared on the same terms as
+   * {@link #getFilePaths}.
+   *
+   * @param {String|Directory} root - a project root path, or its `Directory`.
+   * @returns {Array} of `String` absolute paths, empty for a path that is not a project root.
+   */
+  getFilePathsForRoot(root) {
+    return this.fileIndexOrBuild().getPathsForRoot(root);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Whether a path is in the file index.
+   *
+   * Constant time, where scanning {@link #getFilePaths} is not. The path must be
+   * spelled the way the index spells it: absolute, from the registered root.
+   *
+   * This is a different question from {@link #contains}, which asks only whether
+   * a path lies under a root and answers for a file that is ignored, or that
+   * does not exist at all.
+   *
+   * @param {String} filePath - an absolute path.
+   * @returns {Boolean}
+   */
+  hasFilePath(filePath) {
+    return this.fileIndexOrBuild().has(filePath);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * How many files are indexed.
+   *
+   * Cheaper than `getFilePaths().length`, which materializes the array.
+   *
+   * @returns {Number}
+   */
+  getFilePathCount() {
+    return this.fileIndexOrBuild().getPathCount();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Whether the file index is crawling.
+   *
+   * True for the first crawl and for every later refresh alike, so a spinner
+   * driven by this shows during background reindexing too.
+   *
+   * @returns {Boolean}
+   */
+  isIndexing() {
+    return this.fileIndexOrBuild().isIndexing();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Crawl the project again and update the file index.
+   *
+   * Rarely needed: the index follows {@link #onDidChangeFiles} and re-crawls a
+   * root by itself when the evidence says it must. Reach for this to back a
+   * user-facing "reindex" command, or after changing something on disk that the
+   * watcher cannot see. The index is shared, so this re-crawls for every
+   * consumer, not just the caller.
+   *
+   * Existing contents stay readable and are replaced when the crawl completes,
+   * so a refresh does not empty a list the user is looking at.
+   *
+   * @param {Object} [options]
+   * @param options.rootPaths - An `Array` of `String` roots to re-crawl. Defaults to all of them.
+   * @returns {Promise} that resolves when the crawl settles.
+   */
+  refreshFilePaths(options = {}) {
+    return this.fileIndexOrBuild().refresh(options);
+  }
+
+  /**
    * @category Private
    */
+
+  // The file index, built and started on first request. A window where no
+  // package asks for a file path constructs nothing, subscribes to nothing and
+  // crawls nothing — so every consumer must ask when its feature is first used
+  // rather than during activation, or the laziness is defeated for everyone.
+  fileIndexOrBuild() {
+    if (!this.fileIndex) {
+      // Deferred like the crawler above, to keep it out of the startup snapshot.
+      const FileIndex = require("./file-index");
+      this.fileIndex = new FileIndex({ config: this.config });
+      this.fileIndex.attachProject(this);
+    }
+    return this.fileIndex;
+  }
+
+  destroyFileIndex() {
+    if (!this.fileIndex) return;
+    this.fileIndex.destroy();
+    this.fileIndex = null;
+  }
 
   consumeServices({ serviceHub }) {
     serviceHub.consume("project.directory-provider", "^1.0.0", (provider) => {

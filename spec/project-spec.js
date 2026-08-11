@@ -1221,6 +1221,80 @@ describe("Project", () => {
     });
   });
 
+  describe("the file index", () => {
+    let project;
+
+    beforeEach(() => {
+      project = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        config: lumine.config,
+        grammarRegistry: lumine.grammars,
+      });
+      spyOn(project, "crawl").and.callFake(() => {
+        const promise = Promise.resolve();
+        promise.cancel = () => {};
+        return promise;
+      });
+    });
+
+    afterEach(() => project.destroy());
+
+    // The guarantee the whole design rests on, and the one most likely to
+    // regress silently when someone adds an innocuous-looking call to a
+    // package's `activate()`.
+    it("is not built, and crawls nothing, until something asks", () => {
+      project.setPaths([__dirname]);
+      expect(project.fileIndex).toBe(null);
+      expect(project.crawl).not.toHaveBeenCalled();
+    });
+
+    it("is built by the first request and reused by later ones", () => {
+      project.setPaths([__dirname]);
+
+      expect(project.getFilePaths()).toEqual([]);
+      expect(project.fileIndex).not.toBe(null);
+      expect(project.crawl.calls.count()).toBe(1);
+
+      const built = project.fileIndex;
+      project.getFilePathCount();
+      project.hasFilePath(__filename);
+      project.observeFilePaths(() => {}).dispose();
+      expect(project.fileIndex).toBe(built);
+      expect(project.crawl.calls.count()).toBe(1);
+    });
+
+    it("reports that it is indexing until the first crawl settles", async () => {
+      project.setPaths([__dirname]);
+      expect(project.isIndexing()).toBe(true);
+      await project.refreshFilePaths();
+      expect(project.isIndexing()).toBe(false);
+    });
+
+    it("drops the index on reset, and rebuilds it against the new emitter", () => {
+      project.setPaths([__dirname]);
+      project.getFilePaths();
+      expect(project.fileIndex).not.toBe(null);
+
+      project.reset(lumine.packages);
+      expect(project.fileIndex).toBe(null);
+
+      // `reset` replaces the emitter, so a rebuilt index has to subscribe to the
+      // new one — proved by a root change reaching it.
+      project.getFilePaths();
+      const rebuilt = project.fileIndex;
+      project.setPaths([__dirname]);
+      expect(rebuilt.getRootPaths()).toEqual([__dirname]);
+    });
+
+    it("drops the index when the project is destroyed", () => {
+      project.setPaths([__dirname]);
+      project.getFilePaths();
+      project.destroy();
+      expect(project.fileIndex).toBe(null);
+    });
+  });
+
   describe(".reset()", () => {
     it("re-attaches the repository registry when a destroyed project is reset", () => {
       // Legacy window specs destroy the window's project and rely on the
