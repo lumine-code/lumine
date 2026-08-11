@@ -33,7 +33,7 @@ const ALT_TIER = new Map([
   ["alt-p", "project-list"],
   ["alt-r", "recent-list"],
   ["alt-m", "scrollmap"],
-  ["alt-k", "call-hierarchy"],
+  ["alt-k", "hierarchy-view"],
   ["alt-shift-m", "lumine-mcp"],
   ["alt-shift-p", "project-list"],
   ["alt-`", "terminal-spawn"],
