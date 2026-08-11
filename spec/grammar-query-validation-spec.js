@@ -13,7 +13,7 @@ const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 // here with the offending grammar, query type, file, and line — including for
 // language packages that have no spec suite of their own.
 
-const EXPECTED_GRAMMAR_COUNT = 50;
+const EXPECTED_GRAMMAR_COUNT = 51;
 
 const repoRoot = path.resolve(__dirname, "..");
 // The bundled set is defined by src/bundled-packages.js — every dependency
