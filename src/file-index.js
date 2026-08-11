@@ -90,9 +90,9 @@ module.exports = class FileIndex {
     this.ignoreSource = null;
   }
 
-  /*
-  Section: Lifecycle
-  */
+  /**
+   * @category Lifecycle
+   */
 
   attachProject(project) {
     if (this.destroyed) throw new Error("Cannot attach a destroyed FileIndex");
@@ -139,9 +139,9 @@ module.exports = class FileIndex {
     return this.config ?? global.lumine?.config ?? null;
   }
 
-  /*
-  Section: Reading
-  */
+  /**
+   * @category Reading
+   */
 
   observe(callback) {
     // The whole index as one `added` batch, so a consumer has exactly one code
@@ -183,9 +183,9 @@ module.exports = class FileIndex {
     return false;
   }
 
-  /*
-  Section: Roots
-  */
+  /**
+   * @category Roots
+   */
 
   reconcileRoots() {
     if (this.destroyed || !this.project) return;
@@ -285,9 +285,9 @@ module.exports = class FileIndex {
     }
   }
 
-  /*
-  Section: Crawling
-  */
+  /**
+   * @category Crawling
+   */
 
   startCrawl(entry) {
     if (this.destroyed || !this.project) return;
@@ -397,9 +397,9 @@ module.exports = class FileIndex {
     }, ReconcileDebounceMs);
   }
 
-  /*
-  Section: Filesystem events
-  */
+  /**
+   * @category Filesystem events
+   */
 
   handleFileEvents(events) {
     if (this.destroyed || this.entries.size === 0) return;
@@ -595,9 +595,9 @@ module.exports = class FileIndex {
     return filePath.endsWith(path.join(".git", "info", "exclude"));
   }
 
-  /*
-  Section: The ignore predicate
-  */
+  /**
+   * @category The ignore predicate
+   */
 
   // `core.ignoredNames` are gitignore-style: a pattern with no `/` matches a
   // basename at any depth, and a pattern that matches a directory excludes
@@ -664,9 +664,9 @@ module.exports = class FileIndex {
     return this.ignoreMatchers;
   }
 
-  /*
-  Section: Mutation and emission
-  */
+  /**
+   * @category Mutation and emission
+   */
 
   addToRoot(entry, filePath) {
     if (entry.paths.has(filePath)) return;
