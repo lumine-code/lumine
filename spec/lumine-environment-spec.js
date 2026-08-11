@@ -574,6 +574,8 @@ describe("LumineEnvironment", () => {
 
       spyOn(lumineEnv, "saveState");
       spyOn(lumineEnv.packages, "deactivatePackages").and.returnValue(Promise.resolve());
+      spyOn(lumineEnv.stateStore, "close");
+      spyOn(lumineEnv.workspace, "closeStateStore");
 
       const shouldUnload = await lumineEnv.prepareToUnloadEditorWindow();
 
@@ -583,6 +585,8 @@ describe("LumineEnvironment", () => {
       const [{ timeout }] = lumineEnv.packages.deactivatePackages.calls.argsFor(0);
       expect(typeof timeout).toBe("number");
       expect(timeout).toBeGreaterThan(0);
+      expect(lumineEnv.stateStore.close).toHaveBeenCalled();
+      expect(lumineEnv.workspace.closeStateStore).toHaveBeenCalled();
 
       lumineEnv.destroy();
     });
@@ -1066,10 +1070,14 @@ describe("LumineEnvironment", () => {
         window,
         document,
       });
+      spyOn(lumineEnvironment.stateStore, "close");
+      spyOn(lumineEnvironment.workspace, "closeStateStore");
 
       lumineEnvironment.unloadEditorWindow();
 
       expect(fakeBlobStore.save).toHaveBeenCalled();
+      expect(lumineEnvironment.stateStore.close).toHaveBeenCalled();
+      expect(lumineEnvironment.workspace.closeStateStore).toHaveBeenCalled();
 
       lumineEnvironment.destroy();
     });

@@ -1,10 +1,11 @@
 /* globals assert */
 
 const path = require("path");
+const nodeFs = require("fs");
+const os = require("os");
 const fs = require("@lumine-code/fs-plus");
 const url = require("url");
 const { EventEmitter } = require("events");
-const temp = require("@lumine-code/temp").track();
 const sandbox = require("sinon").createSandbox();
 const dedent = require("dedent");
 const { BrowserWindow, dialog, webContents } = require("electron");
@@ -42,15 +43,7 @@ describe("LumineWindow", function () {
         path.join(resourcePath, "src/initialize-application-window"),
       );
 
-      lumineHome = await new Promise((resolve, reject) => {
-        temp.mkdir("launch-", (err, rootPath) => {
-          if (err) {
-            reject(err);
-          } else {
-            resolve(rootPath);
-          }
-        });
-      });
+      lumineHome = await nodeFs.promises.mkdtemp(path.join(os.tmpdir(), "launch-"));
 
       await new Promise((resolve, reject) => {
         const config = dedent`
@@ -74,11 +67,24 @@ describe("LumineWindow", function () {
 
     afterEach(async function () {
       if (browserWindow && !browserWindow.isDestroyed()) {
-        browserWindow.destroy();
+        await browserWindow.webContents.executeJavaScript("lumine.prepareToUnloadEditorWindow()");
       }
       process.env.LUMINE_HOME = original.LUMINE_HOME;
       process.env.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT =
         original.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT;
+      if (lumineHome) {
+        // The real renderer starts filesystem watchers under LUMINE_HOME.
+        // Keep the real window alive while Windows finishes releasing the
+        // SQLite and watcher handles. Destroying the only BrowserWindow before
+        // this await lets Electron quit the main-process runner mid-suite.
+        await nodeFs.promises.rm(lumineHome, {
+          recursive: true,
+          force: true,
+          maxRetries: 20,
+          retryDelay: 100,
+        });
+      }
+      if (browserWindow && !browserWindow.isDestroyed()) browserWindow.destroy();
     });
 
     it("creates a real, properly configured BrowserWindow", async function () {

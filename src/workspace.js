@@ -529,6 +529,10 @@ module.exports = class Workspace extends Model {
     this.subscribeToDockToggling();
   }
 
+  closeStateStore() {
+    this.itemLocationStore.close();
+  }
+
   consumeServices({ serviceHub }) {
     this.directorySearchers = [];
     serviceHub.consume("workspace.search-provider", "^1.0.0", (provider) =>
@@ -2245,6 +2249,7 @@ module.exports = class Workspace extends Model {
 
   // Called by Model superclass when destroyed
   destroyed() {
+    this.closeStateStore();
     this.paneContainers.center.destroy();
     this.paneContainers.left.destroy();
     this.paneContainers.right.destroy();

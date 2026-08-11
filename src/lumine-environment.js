@@ -1040,6 +1040,14 @@ class LumineEnvironment {
       // deferred to a later frame on its way out therefore runs before
       // `destroy()` takes the workspace away.
       await this.packages.deactivatePackages({ timeout: UNLOAD_DEACTIVATION_TIMEOUT_MS });
+      // Watchers are not package-owned, and stopping them only from the later
+      // DOM unload hook is too late for a caller that must release a project or
+      // configuration directory before the renderer disappears. In
+      // particular, Windows keeps the directory undeletable until the watcher
+      // worker confirms its handles are closed.
+      await stopAllWatchers();
+      this.stateStore.close();
+      this.workspace.closeStateStore();
     }
     return closing;
   }
@@ -1051,6 +1059,8 @@ class LumineEnvironment {
     // work that nothing is left to observe.
     this.unloading = true;
     stopAllWatchers();
+    this.stateStore.close();
+    this.workspace.closeStateStore();
     GitHost.reset();
     if (this.#gitAuthBroker) this.#gitAuthBroker.terminate();
     if (this.secrets) this.secrets.dispose();
