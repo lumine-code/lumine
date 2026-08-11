@@ -8,7 +8,7 @@ const { getReleaseChannel } = require("./get-app-details");
  * @public
  * @api-status Public
  */
-class AppService {
+class ApplicationService {
   constructor(applicationDelegate) {
     this.applicationDelegate = applicationDelegate;
   }
@@ -176,4 +176,4 @@ class AppService {
   }
 }
 
-module.exports = AppService;
+module.exports = ApplicationService;

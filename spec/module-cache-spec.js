@@ -37,7 +37,7 @@ describe("ModuleCache", function () {
   });
 
   it("resolves relative core paths without hitting the filesystem", function () {
-    ModuleCache.add(lumine.app.getResourcePath(), {
+    ModuleCache.add(lumine.application.getResourcePath(), {
       _lumineModuleCache: {
         extensions: {
           ".json": [path.join("spec", "fixtures", "module-cache", "file.json")],
@@ -62,7 +62,7 @@ describe("ModuleCache", function () {
         ],
       },
     });
-    ModuleCache.add(lumine.app.getResourcePath(), {
+    ModuleCache.add(lumine.application.getResourcePath(), {
       _lumineModuleCache: {
         dependencies: [
           {
@@ -108,7 +108,7 @@ exports.load = function() { require('@lumine-code/underscore-plus'); };\
         ],
       },
     });
-    ModuleCache.add(lumine.app.getResourcePath(), {
+    ModuleCache.add(lumine.application.getResourcePath(), {
       _lumineModuleCache: {
         dependencies: [
           {

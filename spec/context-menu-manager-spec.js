@@ -4,7 +4,7 @@ describe("ContextMenuManager", function () {
   let [contextMenu, applicationDelegate, parent, child, grandchild] = [];
 
   beforeEach(function () {
-    const resourcePath = lumine.app.getResourcePath();
+    const resourcePath = lumine.application.getResourcePath();
     applicationDelegate = {
       showContextMenu: jasmine.createSpy("showContextMenu").and.returnValue(Promise.resolve()),
     };

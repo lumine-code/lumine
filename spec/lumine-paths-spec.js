@@ -4,8 +4,8 @@ const path = require("path");
 const temp = require("@lumine-code/temp").track();
 
 const appPathValues = new Map([
-  ["home", lumine.app.getPath("home")],
-  ["userData", lumine.app.getPath("userData")],
+  ["home", lumine.application.getPath("home")],
+  ["userData", lumine.application.getPath("userData")],
 ]);
 const app = {
   getPath(name) {

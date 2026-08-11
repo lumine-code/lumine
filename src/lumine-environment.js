@@ -38,7 +38,7 @@ const GitAuthBroker = require("./git-auth-broker");
 const { promptForGitCredential } = require("./git-credential-dialog");
 const SecretStore = require("./secret-store");
 const WindowService = require("./window-service");
-const AppService = require("./app-service");
+const ApplicationService = require("./application-service");
 const ShellService = require("./shell-service");
 const RuntimeService = require("./runtime-service");
 const Workspace = require("./workspace");
@@ -114,12 +114,12 @@ class LumineEnvironment {
      */
     this.window = new WindowService(this.applicationDelegate, this);
     /**
-     * @type {AppService}
+     * @type {ApplicationService}
      *
      * @public
      * @api-status Public
      */
-    this.app = new AppService(this.applicationDelegate);
+    this.application = new ApplicationService(this.applicationDelegate);
     /**
      * @type {ShellService}
      *
@@ -537,7 +537,7 @@ class LumineEnvironment {
       devMode,
     });
 
-    this.#commandInstaller.initialize(this.app.getVersion());
+    this.#commandInstaller.initialize(this.application.getVersion());
     this.uriHandlers.registerHostHandler("core", CoreURIHandlers.create(this));
 
     this.#protocolHandlerInstaller.initialize(this.config, this.notifications, devMode);
@@ -979,7 +979,7 @@ class LumineEnvironment {
         history: this.history,
         config: this.config,
         open: (paths) =>
-          this.app.openWindow({
+          this.application.openWindow({
             pathsToOpen: paths,
             safeMode: this.window.isSafeMode(),
             devMode: this.window.isDevMode(),
@@ -1268,7 +1268,7 @@ class LumineEnvironment {
       });
 
       if (response === 0) {
-        this.app.openWindow({
+        this.application.openWindow({
           pathsToOpen: projectPaths.concat(filesToOpen),
           newWindow: true,
           devMode: this.window.isDevMode(),

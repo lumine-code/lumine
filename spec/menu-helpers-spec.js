@@ -145,7 +145,7 @@ describe("MenuManager::sortPackagesMenu", function () {
       packageManager: lumine.packages,
     });
     spyOn(menu, "sendToBrowserProcess");
-    menu.initialize({ resourcePath: lumine.app.getResourcePath() });
+    menu.initialize({ resourcePath: lumine.application.getResourcePath() });
     menu.template = [
       {
         label: "Packages",

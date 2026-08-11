@@ -1,7 +1,7 @@
-const AppService = require("../src/app-service");
+const ApplicationService = require("../src/application-service");
 const getWindowLoadSettings = require("../src/get-window-load-settings");
 
-describe("AppService", () => {
+describe("ApplicationService", () => {
   const bootstrapSettings = getWindowLoadSettings();
   let delegate;
   let service;
@@ -12,7 +12,7 @@ describe("AppService", () => {
       appLocale: "pl-PL",
     });
     delegate = { invokeApp: jasmine.createSpy("invokeApp").and.returnValue(Promise.resolve()) };
-    service = new AppService(delegate);
+    service = new ApplicationService(delegate);
   });
 
   afterEach(() => getWindowLoadSettings.set(bootstrapSettings));

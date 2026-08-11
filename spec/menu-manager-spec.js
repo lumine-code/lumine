@@ -10,7 +10,7 @@ describe("MenuManager", function () {
       packageManager: lumine.packages,
     });
     spyOn(menu, "sendToBrowserProcess"); // Do not modify Lumine's actual menus
-    menu.initialize({ resourcePath: lumine.app.getResourcePath() });
+    menu.initialize({ resourcePath: lumine.application.getResourcePath() });
   });
 
   describe("::add(items)", function () {

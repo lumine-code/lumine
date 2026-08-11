@@ -77,9 +77,9 @@ describe("LumineEnvironment", () => {
 
     it("exposes cached application and window metadata through typed services", () => {
       const loadSettings = lumine.applicationDelegate.getWindowLoadSettings();
-      expect(lumine.app.getName()).toBe(loadSettings.appName);
-      expect(lumine.app.getVersion()).toBe(loadSettings.appVersion);
-      expect(lumine.app.getResourcePath()).toBe(loadSettings.resourcePath);
+      expect(lumine.application.getName()).toBe(loadSettings.appName);
+      expect(lumine.application.getVersion()).toBe(loadSettings.appVersion);
+      expect(lumine.application.getResourcePath()).toBe(loadSettings.resourcePath);
       expect(lumine.window.isDevMode()).toBe(Boolean(loadSettings.devMode));
       expect(lumine.window.isSafeMode()).toBe(Boolean(loadSettings.safeMode));
       expect(lumine.window.isSpecMode()).toBe(Boolean(loadSettings.isSpec));
@@ -128,39 +128,39 @@ describe("LumineEnvironment", () => {
   describe(".isReleasedVersion()", () => {
     it("returns false if the version is a SHA and true otherwise", () => {
       let version = "0.1.0";
-      spyOn(lumine.app, "getVersion").and.callFake(() => version);
-      expect(lumine.app.isReleasedVersion()).toBe(true);
+      spyOn(lumine.application, "getVersion").and.callFake(() => version);
+      expect(lumine.application.isReleasedVersion()).toBe(true);
       version = "36b5518";
-      expect(lumine.app.isReleasedVersion()).toBe(false);
+      expect(lumine.application.isReleasedVersion()).toBe(false);
     });
 
     it("counts every channel that went through the release pipeline", () => {
       let version = "1.1.0";
-      spyOn(lumine.app, "getVersion").and.callFake(() => version);
+      spyOn(lumine.application, "getVersion").and.callFake(() => version);
       for (version of ["1.1.0", "1.1.0-beta.1", "1.1.0-rc.1", "1.1.0-nightly1"]) {
-        expect(lumine.app.isReleasedVersion()).toBe(true);
+        expect(lumine.application.isReleasedVersion()).toBe(true);
       }
       version = "1.1.0-dev";
-      expect(lumine.app.isReleasedVersion()).toBe(false);
+      expect(lumine.application.isReleasedVersion()).toBe(false);
     });
   });
 
   describe(".versionSatisfies()", () => {
     it("returns appropriately for provided range", () => {
       let testLumineVersion = "0.1.0";
-      spyOn(lumine.app, "getVersion").and.callFake(() => testLumineVersion);
-      expect(lumine.app.versionSatisfies(">0.2.0")).toBe(false);
-      expect(lumine.app.versionSatisfies(">=0.x.x <=2.x.x")).toBe(true);
-      expect(lumine.app.versionSatisfies("^0.1.x")).toBe(true);
+      spyOn(lumine.application, "getVersion").and.callFake(() => testLumineVersion);
+      expect(lumine.application.versionSatisfies(">0.2.0")).toBe(false);
+      expect(lumine.application.versionSatisfies(">=0.x.x <=2.x.x")).toBe(true);
+      expect(lumine.application.versionSatisfies("^0.1.x")).toBe(true);
     });
 
     // Every package declares an `engines.lumine` range, so a prerelease build
     // rejecting its own version line would report the whole fleet incompatible.
     it("measures a prerelease build against the release it precedes", () => {
-      spyOn(lumine.app, "getVersion").and.returnValue("1.1.0-rc.1");
-      expect(lumine.app.versionSatisfies("^1.0.0")).toBe(true);
-      expect(lumine.app.versionSatisfies("^1.1.0")).toBe(true);
-      expect(lumine.app.versionSatisfies("^1.2.0")).toBe(false);
+      spyOn(lumine.application, "getVersion").and.returnValue("1.1.0-rc.1");
+      expect(lumine.application.versionSatisfies("^1.0.0")).toBe(true);
+      expect(lumine.application.versionSatisfies("^1.1.0")).toBe(true);
+      expect(lumine.application.versionSatisfies("^1.2.0")).toBe(false);
     });
   });
 
@@ -883,13 +883,13 @@ describe("LumineEnvironment", () => {
       it("prompts the user to restore the state in a new window, opening a new window", async () => {
         jasmine.useRealClock();
         spyOn(lumine.window, "confirm").and.returnValue(Promise.resolve(0));
-        spyOn(lumine.app, "openWindow");
+        spyOn(lumine.application, "openWindow");
         const state = Symbol("state");
 
         await lumine.attemptRestoreProjectStateForPaths(state, [__dirname], [__filename]);
         expect(lumine.window.confirm).toHaveBeenCalled();
-        await conditionPromise(() => lumine.app.openWindow.calls.count() === 1);
-        expect(lumine.app.openWindow).toHaveBeenCalledWith({
+        await conditionPromise(() => lumine.application.openWindow.calls.count() === 1);
+        expect(lumine.application.openWindow).toHaveBeenCalledWith({
           pathsToOpen: [__dirname, __filename],
           newWindow: true,
           devMode: lumine.window.isDevMode(),
@@ -1445,18 +1445,18 @@ describe("LumineEnvironment", () => {
     let version;
 
     beforeEach(() => {
-      spyOn(lumine.app, "getVersion").and.callFake(() => version);
+      spyOn(lumine.application, "getVersion").and.callFake(() => version);
     });
 
     it("returns the correct channel based on the version number", () => {
       version = "1.5.6";
-      expect(lumine.app.getReleaseChannel()).toBe("stable");
+      expect(lumine.application.getReleaseChannel()).toBe("stable");
 
       version = "1.5.0-beta10";
-      expect(lumine.app.getReleaseChannel()).toBe("beta");
+      expect(lumine.application.getReleaseChannel()).toBe("beta");
 
       version = "1.7.0-dev-5340c91";
-      expect(lumine.app.getReleaseChannel()).toBe("dev");
+      expect(lumine.application.getReleaseChannel()).toBe("dev");
     });
   });
 
