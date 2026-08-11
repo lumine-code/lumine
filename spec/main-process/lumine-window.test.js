@@ -26,7 +26,7 @@ describe("LumineWindow", function () {
   });
 
   describe("creating a real window", function () {
-    let resourcePath, windowInitializationScript, lumineHome;
+    let resourcePath, windowInitializationScript, lumineHome, browserWindow;
     let original;
 
     beforeEach(async function () {
@@ -73,6 +73,9 @@ describe("LumineWindow", function () {
     });
 
     afterEach(async function () {
+      if (browserWindow && !browserWindow.isDestroyed()) {
+        browserWindow.destroy();
+      }
       process.env.LUMINE_HOME = original.LUMINE_HOME;
       process.env.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT =
         original.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT;
@@ -85,7 +88,7 @@ describe("LumineWindow", function () {
         headless: true,
         extra: "extra-load-setting",
       });
-      const { browserWindow } = w;
+      ({ browserWindow } = w);
 
       assert.isFalse(browserWindow.isVisible());
       assert.isTrue(browserWindow.getTitle().startsWith("Lumine"));
