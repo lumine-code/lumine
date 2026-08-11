@@ -1,41 +1,46 @@
 /**
- * The public editor surface.
- *
  * @public
- * @api-status Essential
+ * @status essential
+ *
+ * The public editor surface.
  */
 class LumineEnvironment {
   constructor() {
     /**
+     * @public
+     * @status public
+     *
      * The fixture service.
      *
      * @type {FixtureService}
-     * @public
-     * @api-status Public
      */
     this.fixture = new FixtureService();
   }
 }
 
 /**
- * Exercises the extractor.
- *
  * @public
- * @api-status Extended
+ * @status extended
+ *
+ * Exercises the extractor.
  */
 class FixtureService {
   /**
+   * @public
+   * @status public
+   *
    * Create a service.
    *
    * @returns {FixtureService} A service instance.
-   * @public
-   * @api-status Public
    */
   static create() {
     return new FixtureService();
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Transform a value.
    *
    * @param {String} value - Input value.
@@ -43,43 +48,44 @@ class FixtureService {
    * @param {String} [options.prefix] - Text to prepend.
    * @returns {Promise<String>} The transformed value.
    * @category Transformation
-   * @public
-   * @api-status Experimental
    */
   async transform(value, options = {}) {
     return (await Promise.resolve(options?.prefix ?? "")) + value;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Collect values. See {@link FixtureService#transform transform} on
    * {@link FixtureService|the fixture service}.
    *
    * @param {...String} values - Values to collect.
    * @returns {Array<String>} The collected values.
-   * @public
-   * @api-status Public
    */
   collect(...values) {
     return values;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Whether the service is ready.
    *
    * @returns {Boolean} The readiness state.
-   * @public
-   * @api-status Public
    */
   get ready() {
     return true;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Change the service label.
    *
    * @param {String} value - The new label.
-   * @public
-   * @api-status Public
    */
   set label(value) {
     this.value = value;
@@ -97,12 +103,13 @@ class FixtureService {
 }
 
 /**
+ * @public
+ * @status public
+ *
  * Normalize a fixture value.
  *
  * @param {String} [input=""] - Input value.
  * @returns {String} The normalized value.
- * @public
- * @api-status Public
  */
 function normalize(input = "") {
   return input.trim();

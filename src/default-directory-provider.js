@@ -25,22 +25,23 @@ function hostForURI(uri) {
 const MAX_REMEMBERED_DIRECTORIES = 5000;
 
 /**
+ * @public
+ * @status public
+ *
  * Turns a project URI into a `Directory`, for local paths.
  *
  * This is the provider {@link Project} falls back to when no package claims a URI. A
  * package supplies its own by providing the `project.directory-provider`
  * service; the methods below are the shape that contract expects.
- *
- * @public
- * @api-status Public
  */
 module.exports = class DefaultDirectoryProvider {
   /**
+   * @public
+   * @status public
+   *
    * Create a Directory that corresponds to the specified URI.
    * @param {String} uri - The path to the directory to add. This is guaranteed not to be contained by a `Directory` in `lumine.project`.
    * @returns {Directory|null} A directory when the URI is compatible, or `null` otherwise.
-   * @public
-   * @api-status Public
    */
   directoryForURISync(uri) {
     const remembered = this.directoriesByURI?.get(uri);
@@ -85,23 +86,25 @@ module.exports = class DefaultDirectoryProvider {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Create a Directory that corresponds to the specified URI.
    * @param {String} uri - The path to the directory to add. This is guaranteed not to be contained by a `Directory` in `lumine.project`.
    * @returns {Promise<Directory|null>} A promise resolving to a directory when the URI is compatible, or `null` otherwise.
-   * @public
-   * @api-status Public
    */
   directoryForURI(uri) {
     return Promise.resolve(this.directoryForURISync(uri));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Normalizes path.
    *
    * @param {String} uri - The path that should be normalized.
    * @returns {String} with normalized path.
-   * @public
-   * @api-status Public
    */
   normalizePath(uri) {
     let matchData, pathWithNormalizedDiskDriveLetter;

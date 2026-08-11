@@ -17,6 +17,9 @@ function parse(selector) {
 const always = (_scope) => true;
 
 /**
+ * @public
+ * @status essential
+ *
  * Build a reusable test for a scope selector.
  *
  * Parsing the selector once and testing many scopes with the result is what
@@ -24,8 +27,6 @@ const always = (_scope) => true;
  *
  * @param selector - A `String` selector such as `"source.js"`, or an `Array` of the parts it is made of. An empty selector matches everything.
  * @returns {Function} taking a scope `String` and returning a `Boolean`, true when the scope matches the selector.
- * @public
- * @api-status Essential
  */
 function matcherForSelector(selector) {
   const parts = parse(selector);
@@ -34,13 +35,14 @@ function matcherForSelector(selector) {
 }
 
 /**
+ * @public
+ * @status essential
+ *
  * Whether any of the given scopes matches a selector.
  *
  * @param selector - A `String` selector. An empty selector matches everything.
  * @param scopes - An `Array` of scope `Strings` to test.
  * @returns {Boolean}
- * @public
- * @api-status Essential
  */
 function selectorMatchesAnyScope(selector, scopes) {
   return !selector || scopes.some(matcherForSelector(selector));

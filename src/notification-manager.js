@@ -2,14 +2,14 @@ const { Emitter } = require("@lumine-code/event-kit");
 const Notification = require("../src/notification");
 
 /**
+ * @public
+ * @status public
+ *
  * A notification manager used to create {@link Notification Notifications} to be shown
  * to the user.
  *
  * An instance of this class is always available as the `lumine.notifications`
  * global.
- *
- * @public
- * @api-status Public
  */
 module.exports = class NotificationManager {
   constructor() {
@@ -22,36 +22,39 @@ module.exports = class NotificationManager {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback after a notification has been added.
    *
    * @param {Function} callback - to be called after the notification is added.
    * @param callback.notification - The {@link Notification} that was added.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidAddNotification(callback) {
     return this.emitter.on("did-add-notification", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback after the notifications have been cleared.
    *
    * @param {Function} callback - to be called after the notifications are cleared.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidClearNotifications(callback) {
     return this.emitter.on("did-clear-notifications", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback whenever {@link #beep} is called.
    *
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidBeep(callback) {
     return this.emitter.on("did-beep", callback);
@@ -62,6 +65,9 @@ module.exports = class NotificationManager {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Add a success notification.
    *
    * @param message - A `String` message
@@ -75,14 +81,15 @@ module.exports = class NotificationManager {
    * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'check'`.
    * @returns {Notification} that was added.
-   * @public
-   * @api-status Public
    */
   addSuccess(message, options) {
     return this.addNotification(new Notification("success", message, options));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add an informational notification.
    *
    * @param message - A `String` message
@@ -96,14 +103,15 @@ module.exports = class NotificationManager {
    * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'info'`.
    * @returns {Notification} that was added.
-   * @public
-   * @api-status Public
    */
   addInfo(message, options) {
     return this.addNotification(new Notification("info", message, options));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add a warning notification.
    *
    * @param message - A `String` message
@@ -117,14 +125,15 @@ module.exports = class NotificationManager {
    * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
    * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'alert'`.
    * @returns {Notification} that was added.
-   * @public
-   * @api-status Public
    */
   addWarning(message, options) {
     return this.addNotification(new Notification("warning", message, options));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add an error notification.
    *
    * @param message - A `String` message
@@ -139,14 +148,15 @@ module.exports = class NotificationManager {
    * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'flame'`.
    * @param [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
    * @returns {Notification} that was added.
-   * @public
-   * @api-status Public
    */
   addError(message, options) {
     return this.addNotification(new Notification("error", message, options));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add a fatal error notification.
    *
    * @param message - A `String` message
@@ -161,8 +171,6 @@ module.exports = class NotificationManager {
    * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'bug'`.
    * @param [options.stack] - A preformatted `String` with stack trace information describing the location of the error. Requires `detail` to be set.
    * @returns {Notification} that was added.
-   * @public
-   * @api-status Public
    */
   addFatalError(message, options) {
     return this.addNotification(new Notification("fatal", message, options));
@@ -179,10 +187,10 @@ module.exports = class NotificationManager {
   }
 
   /**
-   * Request audible or visual attention from notification consumers.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Request audible or visual attention from notification consumers.
    */
   beep() {
     this.emitter.emit("did-beep");
@@ -193,11 +201,12 @@ module.exports = class NotificationManager {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Get all the notifications.
    *
    * @returns {Array} of {@link Notification Notifications}.
-   * @public
-   * @api-status Public
    */
   getNotifications() {
     return this.notifications.slice();
@@ -208,10 +217,10 @@ module.exports = class NotificationManager {
    */
 
   /**
-   * Clear all the notifications.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Clear all the notifications.
    */
   clear() {
     this.notifications = [];

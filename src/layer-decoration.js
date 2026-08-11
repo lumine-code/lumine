@@ -5,11 +5,11 @@ var nextId = function () {
 };
 
 /**
+ * @public
+ * @status essential
+ *
  * Represents a decoration that applies to every marker on a given
  * layer. Created via {@link TextEditor#decorateMarkerLayer}.
- *
- * @public
- * @api-status Essential
  */
 module.exports = class LayerDecoration {
   constructor(markerLayer, decorationManager, properties1) {
@@ -23,10 +23,10 @@ module.exports = class LayerDecoration {
   }
 
   /**
-   * Destroys the decoration.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Destroys the decoration.
    */
   destroy() {
     if (this.destroyed) {
@@ -39,11 +39,12 @@ module.exports = class LayerDecoration {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Determine whether this decoration is destroyed.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   isDestroyed() {
     return this.destroyed;
@@ -58,22 +59,24 @@ module.exports = class LayerDecoration {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get this decoration's properties.
    *
    * @returns {Object}
-   * @public
-   * @api-status Essential
    */
   getProperties() {
     return this.properties;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set this decoration's properties.
    *
    * @param newProperties - See {@link TextEditor#decorateMarker} for more information on the properties. The `type` of `gutter` and `overlay` are not supported on layer decorations.
-   * @public
-   * @api-status Essential
    */
   setProperties(newProperties) {
     if (this.destroyed) {
@@ -84,12 +87,13 @@ module.exports = class LayerDecoration {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Override the decoration properties for a specific marker.
    *
    * @param marker - The {@link DisplayMarker} or `Marker` for which to override properties.
    * @param properties - An `Object` containing properties to apply to this marker. Pass `null` to clear the override.
-   * @public
-   * @api-status Essential
    */
   setPropertiesForMarker(marker, properties) {
     if (this.destroyed) {

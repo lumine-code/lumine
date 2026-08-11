@@ -115,6 +115,9 @@ module.exports = class ServiceHub {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Provide a service by invoking the callback of all current and future
    * consumers matching the given service name and version range.
    *
@@ -122,8 +125,6 @@ module.exports = class ServiceHub {
    * @param version - A `String` containing a [semantic version](http://semver.org/) for the service's API.
    * @param service - An object exposing the service API.
    * @returns {Disposable} on which `.dispose()` can be called to remove the provided service.
-   * @public
-   * @api-status Public
    */
   provide(keyPath, version, service) {
     let servicesByVersion;
@@ -150,6 +151,9 @@ module.exports = class ServiceHub {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Consume a service by invoking the given callback for all current
    * and future provided services matching the given service name and version
    * range.
@@ -158,8 +162,6 @@ module.exports = class ServiceHub {
    * @param versionRange - A `String` containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html) that any provided services for the given service name must satisfy.
    * @param callback - A `Function` to be called with current and future matching service objects.
    * @returns {Disposable} on which `.dispose()` can be called to remove the consumer. Disposing it also disposes whatever the callback returned, so a package that deactivates unregisters itself from the services it took.
-   * @public
-   * @api-status Public
    */
   consume(keyPath, versionRange, callback) {
     const consumer = new Consumer(keyPath, versionRange, callback);
@@ -177,6 +179,9 @@ module.exports = class ServiceHub {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Names consumed by someone and provided by no one.
    *
    * Deliberately not reported on its own: packages activate lazily, so a
@@ -186,8 +191,6 @@ module.exports = class ServiceHub {
    * either, so this is the only place the question is answered at all.
    *
    * @returns {Array} of `{keyPath, versionRange}`.
-   * @public
-   * @api-status Public
    */
   unmatchedConsumers() {
     return this.consumers
@@ -199,11 +202,11 @@ module.exports = class ServiceHub {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Clear out all service consumers and providers, disposing of any
    * disposables returned by previous consumers.
-   *
-   * @public
-   * @api-status Public
    */
   clear() {
     for (const provider of this.providers.slice()) {

@@ -44,6 +44,9 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
 const ROLES = new Set(["document", "fragment", "background"]);
 
 /**
+ * @public
+ * @status public
+ *
  * The global registry of every {@link TextEditor} in the window, available as
  * `lumine.textEditors`.
  *
@@ -90,9 +93,6 @@ const ROLES = new Set(["document", "fragment", "background"]);
  *   on through another view, such as the JSON source behind a notebook. It is
  *   registered so configuration and services apply to it, but cross-editor
  *   features like completion sourcing leave it alone.
- *
- * @public
- * @api-status Public
  */
 module.exports = class TextEditorRegistry {
   constructor({ config, assert, grammarRegistry, packageManager }) {
@@ -125,6 +125,9 @@ module.exports = class TextEditorRegistry {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Register a {@link TextEditor}, so that features written against the
    * registry reach it.
    *
@@ -135,8 +138,6 @@ module.exports = class TextEditorRegistry {
    * @param {"document"|"fragment"|"background"} [options.role="document"] -
    *   The editor role. See {@link TextEditorRegistry} for the behavior of each.
    * @returns {Disposable} on which `.dispose()` can be called to remove the editor again. Call it when the editor is destroyed, or the registry holds the editor alive.
-   * @public
-   * @api-status Essential
    */
   add(editor, { role = "document" } = {}) {
     if (!ROLES.has(role)) {
@@ -166,6 +167,9 @@ module.exports = class TextEditorRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Remove a {@link TextEditor} from the registry.
    *
    * Disposing the `Disposable` that {@link #add} returned does this for you; call it
@@ -173,8 +177,6 @@ module.exports = class TextEditorRegistry {
    *
    * @param editor - The {@link TextEditor} to remove.
    * @returns {Boolean} : `true` if the editor was registered, `false` if it was not.
-   * @public
-   * @api-status Public
    */
   remove(editor) {
     const removed = this.editors.delete(editor);
@@ -186,6 +188,9 @@ module.exports = class TextEditorRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the role a {@link TextEditor} was registered with.
    *
    * Use it to tell a document apart from a notebook cell or a background
@@ -193,8 +198,6 @@ module.exports = class TextEditorRegistry {
    *
    * @param editor - The {@link TextEditor} to look up.
    * @returns {String} role, or `null` if the editor is not registered.
-   * @public
-   * @api-status Public
    */
   roleFor(editor) {
     const meta = this.editors.get(editor);
@@ -206,20 +209,24 @@ module.exports = class TextEditorRegistry {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Get every registered editor.
    *
    * This is a snapshot. Use {@link #observe} to keep up with editors registered
    * later.
    *
    * @returns {Array} of {@link TextEditor TextEditors}.
-   * @public
-   * @api-status Public
    */
   getEditors() {
     return Array.from(this.editors.keys());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the editor the user is typing in, wherever it is.
    *
    * Unlike {@link Workspace#getActiveTextEditor} this sees editors that are not pane
@@ -231,8 +238,6 @@ module.exports = class TextEditorRegistry {
    * innermost registered editor wins when editors are nested.
    *
    * @returns {TextEditor}, or `null` if focus is not in one.
-   * @public
-   * @api-status Essential
    */
   getActiveTextEditor() {
     let element = document.activeElement?.closest?.("lumine-text-editor");
@@ -251,6 +256,9 @@ module.exports = class TextEditorRegistry {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback with every registered editor, now and
    * in the future.
    *
@@ -260,8 +268,6 @@ module.exports = class TextEditorRegistry {
    * @param {Function} callback - to be called with each {@link TextEditor}.
    * @param callback.editor - The {@link TextEditor}.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   observe(callback) {
     for (const editor of this.editors.keys()) {
@@ -271,6 +277,9 @@ module.exports = class TextEditorRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when an editor is removed from the
    * registry.
    *
@@ -280,8 +289,6 @@ module.exports = class TextEditorRegistry {
    * @param {Function} callback - to be called with each removed {@link TextEditor}.
    * @param callback.editor - The {@link TextEditor} that was removed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidRemoveEditor(callback) {
     return this.emitter.on("did-remove-editor", callback);
@@ -292,6 +299,9 @@ module.exports = class TextEditorRegistry {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Keep a {@link TextEditor}'s settings in sync with the user's.
    *
    * Applies the settings that match the editor's language now, and keeps
@@ -307,8 +317,6 @@ module.exports = class TextEditorRegistry {
    *
    * @param editor - The {@link TextEditor} whose configuration will be maintained.
    * @returns {Disposable} that stops updating the editor's configuration.
-   * @public
-   * @api-status Public
    */
   maintainConfig(editor) {
     if (this.editorsWithMaintainedConfig.has(editor)) {

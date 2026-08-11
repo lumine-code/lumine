@@ -6,10 +6,10 @@ const NonWhitespaceRegExp = /\S/;
 let nextId = 0;
 
 /**
- * Represents a selection in the {@link TextEditor}.
- *
  * @public
- * @api-status Extended
+ * @status extended
+ *
+ * Represents a selection in the {@link TextEditor}.
  */
 module.exports = class Selection {
   constructor({ cursor, marker, editor, id }) {
@@ -42,6 +42,9 @@ module.exports = class Selection {
    */
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the selection was moved.
    *
    * @param {Function} callback
@@ -52,20 +55,19 @@ module.exports = class Selection {
    * @param {Range} callback.event.newScreenRange
    * @param {Selection} callback.event.selection - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangeRange(callback) {
     return this.emitter.on("did-change-range", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the selection was destroyed
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
@@ -76,36 +78,42 @@ module.exports = class Selection {
    */
 
   /**
-   * @returns {Range} screen {@link Range} for the selection.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Range} screen {@link Range} for the selection.
    */
   getScreenRange() {
     return this.marker.getScreenRange();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Modifies the screen range for the selection.
    *
    * @param screenRange - The new {@link Range} to use.
    * @param {Object} [options] - options matching those found in {@link #setBufferRange}.
-   * @public
-   * @api-status Public
    */
   setScreenRange(screenRange, options) {
     return this.setBufferRange(this.editor.bufferRangeForScreenRange(screenRange), options);
   }
 
   /**
-   * @returns {Range} buffer {@link Range} for the selection.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Range} buffer {@link Range} for the selection.
    */
   getBufferRange() {
     return this.marker.getBufferRange();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Modifies the buffer {@link Range} for the selection.
    *
    * @param bufferRange - The new {@link Range} to select.
@@ -113,8 +121,6 @@ module.exports = class Selection {
    * @param {Boolean} options.reversed - indicating whether to set the selection in a reversed orientation.
    * @param options.preserveFolds - if `true`, the fold settings are preserved after the selection moves.
    * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new range. Defaults to `true` if this is the most recently added selection, `false` otherwise.
-   * @public
-   * @api-status Public
    */
   setBufferRange(bufferRange, options = {}) {
     bufferRange = Range.fromObject(bufferRange);
@@ -132,9 +138,10 @@ module.exports = class Selection {
   }
 
   /**
-   * @returns {Array<Number>} The starting and ending buffer rows highlighted by the selection.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array<Number>} The starting and ending buffer rows highlighted by the selection.
    */
   getBufferRowRange() {
     const range = this.getBufferRange();
@@ -165,53 +172,56 @@ module.exports = class Selection {
    */
 
   /**
-   * Determines if the selection contains anything.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Determines if the selection contains anything.
    */
   isEmpty() {
     return this.getBufferRange().isEmpty();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Determines if the ending position of a marker is greater than the
    * starting position.
    *
    * This can happen when, for example, you highlight text "up" in a {@link TextBuffer}.
-   *
-   * @public
-   * @api-status Public
    */
   isReversed() {
     return this.marker.isReversed();
   }
 
   /**
-   * @returns {Boolean} whether the selection is a single line or not.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} whether the selection is a single line or not.
    */
   isSingleScreenLine() {
     return this.getScreenRange().isSingleLine();
   }
 
   /**
-   * @returns {String} text in the selection.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} text in the selection.
    */
   getText() {
     return this.editor.buffer.getTextInRange(this.getBufferRange());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Identifies if a selection intersects with a given buffer range.
    *
    * @param bufferRange - A {@link Range} to check against.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   intersectsBufferRange(bufferRange) {
     return this.getBufferRange().intersectsWith(bufferRange);
@@ -226,12 +236,13 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Identifies if a selection intersects with another selection.
    *
    * @param otherSelection - A {@link Selection} to check against.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   intersectsWith(otherSelection, exclusive) {
     return this.getBufferRange().intersectsWith(otherSelection.getBufferRange(), exclusive);
@@ -242,12 +253,13 @@ module.exports = class Selection {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Clears the selection, moving the marker to the head.
    *
    * @param {Object} [options] - with the following keys:
    * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new range. Defaults to `true` if this is the most recently added selection, `false` otherwise.
-   * @public
-   * @api-status Public
    */
   clear(options) {
     this.goalScreenRange = null;
@@ -259,12 +271,13 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects the text from the current cursor position to a given screen
    * position.
    *
    * @param position - An instance of {@link Point}, with a given `row` and `column`.
-   * @public
-   * @api-status Public
    */
   selectToScreenPosition(position, options) {
     position = Point.fromObject(position);
@@ -293,238 +306,244 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects the text from the current cursor position to a given buffer
    * position.
    *
    * @param position - An instance of {@link Point}, with a given `row` and `column`.
-   * @public
-   * @api-status Public
    */
   selectToBufferPosition(position) {
     this.modifySelection(() => this.cursor.setBufferPosition(position));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects the text one position right of the cursor.
    *
    * @param {Number} [columnCount] - number of columns to select (default: 1)
-   * @public
-   * @api-status Public
    */
   selectRight(columnCount) {
     this.modifySelection(() => this.cursor.moveRight(columnCount));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects the text one position left of the cursor.
    *
    * @param {Number} [columnCount] - number of columns to select (default: 1)
-   * @public
-   * @api-status Public
    */
   selectLeft(columnCount) {
     this.modifySelection(() => this.cursor.moveLeft(columnCount));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text one position above the cursor.
    *
    * @param {Number} [rowCount] - number of rows to select (default: 1)
-   * @public
-   * @api-status Public
    */
   selectUp(rowCount) {
     this.modifySelection(() => this.cursor.moveUp(rowCount));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text one position below the cursor.
    *
    * @param {Number} [rowCount] - number of rows to select (default: 1)
-   * @public
-   * @api-status Public
    */
   selectDown(rowCount) {
     this.modifySelection(() => this.cursor.moveDown(rowCount));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the top of
    * the buffer.
-   *
-   * @public
-   * @api-status Public
    */
   selectToTop() {
     this.modifySelection(() => this.cursor.moveToTop());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the bottom
    * of the buffer.
-   *
-   * @public
-   * @api-status Public
    */
   selectToBottom() {
     this.modifySelection(() => this.cursor.moveToBottom());
   }
 
   /**
-   * Selects all the text in the buffer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Selects all the text in the buffer.
    */
   selectAll() {
     this.setBufferRange(this.editor.buffer.getRange(), { autoscroll: false });
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the
    * beginning of the line.
-   *
-   * @public
-   * @api-status Public
    */
   selectToBeginningOfLine() {
     this.modifySelection(() => this.cursor.moveToBeginningOfLine());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the first
    * character of the line.
-   *
-   * @public
-   * @api-status Public
    */
   selectToFirstCharacterOfLine() {
     this.modifySelection(() => this.cursor.moveToFirstCharacterOfLine());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the end of
    * the screen line.
-   *
-   * @public
-   * @api-status Public
    */
   selectToEndOfLine() {
     this.modifySelection(() => this.cursor.moveToEndOfScreenLine());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the end of
    * the buffer line.
-   *
-   * @public
-   * @api-status Public
    */
   selectToEndOfBufferLine() {
     this.modifySelection(() => this.cursor.moveToEndOfLine());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the
    * beginning of the word.
-   *
-   * @public
-   * @api-status Public
    */
   selectToBeginningOfWord() {
     this.modifySelection(() => this.cursor.moveToBeginningOfWord());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the end of
    * the word.
-   *
-   * @public
-   * @api-status Public
    */
   selectToEndOfWord() {
     this.modifySelection(() => this.cursor.moveToEndOfWord());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the
    * beginning of the next word.
-   *
-   * @public
-   * @api-status Public
    */
   selectToBeginningOfNextWord() {
     this.modifySelection(() => this.cursor.moveToBeginningOfNextWord());
   }
 
   /**
-   * Selects text to the previous word boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Selects text to the previous word boundary.
    */
   selectToPreviousWordBoundary() {
     this.modifySelection(() => this.cursor.moveToPreviousWordBoundary());
   }
 
   /**
-   * Selects text to the next word boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Selects text to the next word boundary.
    */
   selectToNextWordBoundary() {
     this.modifySelection(() => this.cursor.moveToNextWordBoundary());
   }
 
   /**
-   * Selects text to the previous subword boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Selects text to the previous subword boundary.
    */
   selectToPreviousSubwordBoundary() {
     this.modifySelection(() => this.cursor.moveToPreviousSubwordBoundary());
   }
 
   /**
-   * Selects text to the next subword boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Selects text to the next subword boundary.
    */
   selectToNextSubwordBoundary() {
     this.modifySelection(() => this.cursor.moveToNextSubwordBoundary());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the
    * beginning of the next paragraph.
-   *
-   * @public
-   * @api-status Public
    */
   selectToBeginningOfNextParagraph() {
     this.modifySelection(() => this.cursor.moveToBeginningOfNextParagraph());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects all the text from the current cursor position to the
    * beginning of the previous paragraph.
-   *
-   * @public
-   * @api-status Public
    */
   selectToBeginningOfPreviousParagraph() {
     this.modifySelection(() => this.cursor.moveToBeginningOfPreviousParagraph());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Modifies the selection to encompass the current subword.
    *
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   selectSubword(options = {}) {
     options.wordRegex = this.cursor.subwordRegExp();
@@ -534,11 +553,12 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Modifies the selection to encompass the current word.
    *
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   selectWord(options = {}) {
     if (this.cursor.isSurroundedByWhitespace()) options.wordRegex = /[\t ]*/;
@@ -552,11 +572,11 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Expands the newest selection to include the entire word on which
    * the cursors rests.
-   *
-   * @public
-   * @api-status Public
    */
   expandOverWord(options) {
     this.setBufferRange(this.getBufferRange().union(this.cursor.getCurrentWordBufferRange()), {
@@ -568,11 +588,12 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Selects an entire line in the buffer.
    *
    * @param row - The line `Number` to select (default: the row of the cursor).
-   * @public
-   * @api-status Public
    */
   selectLine(row, options) {
     if (row != null) {
@@ -596,13 +617,13 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Expands the newest selection to include the entire line on which
    * the cursor currently rests.
    *
    * It also includes the newline character.
-   *
-   * @public
-   * @api-status Public
    */
   expandOverLine(options) {
     const range = this.getBufferRange().union(
@@ -642,6 +663,9 @@ module.exports = class Selection {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Replaces text at the current selection.
    *
    * @param text - A `String` representing the text to add
@@ -654,8 +678,6 @@ module.exports = class Selection {
    * @param {Boolean} [options.normalizeLineEndings] - (default: true)
    * @param options.undo - *Deprecated* If `skip`, skips the undo stack for this operation. This property is deprecated. Call groupLastChanges() on the {@link TextBuffer} afterward instead.
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
@@ -736,13 +758,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the first character before the selection if the selection
    * is empty otherwise it deletes the selection.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   backspace(options = {}) {
     if (!this.ensureWritable("backspace", options)) return;
@@ -751,14 +774,15 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the selection or, if nothing is selected, then all
    * characters from the start of the selection back to the previous word
    * boundary.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToPreviousWordBoundary(options = {}) {
     if (!this.ensureWritable("deleteToPreviousWordBoundary", options)) return;
@@ -767,14 +791,15 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the selection or, if nothing is selected, then all
    * characters from the start of the selection up to the next word
    * boundary.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToNextWordBoundary(options = {}) {
     if (!this.ensureWritable("deleteToNextWordBoundary", options)) return;
@@ -783,13 +808,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes from the start of the selection to the beginning of the
    * current word if the selection is empty otherwise it deletes the selection.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToBeginningOfWord(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfWord", options)) return;
@@ -798,13 +824,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes from the beginning of the line which the selection begins on
    * all the way through to the end of the selection.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToBeginningOfLine(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfLine", options)) return;
@@ -817,13 +844,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the selection or the next character after the start of the
    * selection if the selection is empty.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   delete(options = {}) {
     if (!this.ensureWritable("delete", options)) return;
@@ -832,6 +860,9 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * If the selection is empty, removes all text from the cursor to the
    * end of the line. If the cursor is already at the end of the line, it
    * removes the following newline. If the selection isn't empty, only deletes
@@ -839,8 +870,6 @@ module.exports = class Selection {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToEndOfLine(options = {}) {
     if (!this.ensureWritable("deleteToEndOfLine", options)) return;
@@ -855,13 +884,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the selection or all characters from the start of the
    * selection to the end of the current word if nothing is selected.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToEndOfWord(options = {}) {
     if (!this.ensureWritable("deleteToEndOfWord", options)) return;
@@ -870,13 +900,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the selection or all characters from the start of the
    * selection to the end of the current word if nothing is selected.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToBeginningOfSubword(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfSubword", options)) return;
@@ -885,13 +916,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the selection or all characters from the start of the
    * selection to the end of the current word if nothing is selected.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteToEndOfSubword(options = {}) {
     if (!this.ensureWritable("deleteToEndOfSubword", options)) return;
@@ -900,12 +932,13 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes only the selected text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteSelectedText(options = {}) {
     if (!this.ensureWritable("deleteSelectedText", options)) return;
@@ -915,14 +948,15 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the line at the beginning of the selection if the selection
    * is empty unless the selection spans multiple lines in which case all lines
    * are removed.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   deleteLine(options = {}) {
     if (!this.ensureWritable("deleteLine", options)) return;
@@ -948,6 +982,9 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Joins the current line with the one below it. Lines will
    * be separated by a single space.
    *
@@ -955,8 +992,6 @@ module.exports = class Selection {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   joinLines(options = {}) {
     if (!this.ensureWritable("joinLines", options)) return;
@@ -1014,12 +1049,13 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes one level of indent from the currently selected rows.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   outdentSelectedRows(options = {}) {
     if (!this.ensureWritable("outdentSelectedRows", options)) return;
@@ -1038,13 +1074,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Sets the indentation level of all selected rows to values suggested
    * by the relevant grammars.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   autoIndentSelectedRows(options = {}) {
     if (!this.ensureWritable("autoIndentSelectedRows", options)) return;
@@ -1053,6 +1090,9 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Wraps the selected lines in comments if they aren't currently part
    * of a comment.
    *
@@ -1060,8 +1100,6 @@ module.exports = class Selection {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   toggleLineComments(options = {}) {
     if (!this.ensureWritable("toggleLineComments", options)) return;
@@ -1073,13 +1111,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Cuts the selection until the end of the screen line.
    *
    * @param {Boolean} maintainClipboard
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   cutToEndOfLine(maintainClipboard, options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
@@ -1088,13 +1127,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Cuts the selection until the end of the buffer line.
    *
    * @param {Boolean} maintainClipboard
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   cutToEndOfBufferLine(maintainClipboard, options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
@@ -1103,13 +1143,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Copies the selection to the clipboard and then deletes it.
    *
    * @param {Boolean} maintainClipboard - (default: false) See {@link #copy}
    * @param {Boolean} fullLine - (default: false) See {@link #copy}
    * @param {Boolean} bypassReadOnly - (default: false) Must be `true` to modify text within a read-only editor.
-   * @public
-   * @api-status Public
    */
   cut(
     maintainClipboard = false,
@@ -1123,12 +1164,13 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Copies the current selection to the clipboard.
    *
    * @param {Boolean} maintainClipboard - if `true`, a specific metadata property is created to store each content copied to the clipboard. The clipboard `text` still contains the concatenation of the clipboard with the current selection. (default: false)
    * @param {Boolean} fullLine - if `true`, the copied text will always be pasted at the beginning of the line containing the cursor, regardless of the cursor's horizontal position. (default: false)
-   * @public
-   * @api-status Public
    */
   copy(maintainClipboard = false, fullLine = false, clipboard = this.editor.constructor.clipboard) {
     if (this.isEmpty()) return;
@@ -1164,10 +1206,10 @@ module.exports = class Selection {
   }
 
   /**
-   * Creates a fold containing the current selection.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Creates a fold containing the current selection.
    */
   fold() {
     const range = this.getBufferRange();
@@ -1233,12 +1275,13 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * If the selection spans multiple rows, indent all of them.
    *
    * @param {Object} [options] - with the keys:
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify text within a read-only editor. (default: false)
-   * @public
-   * @api-status Public
    */
   indentSelectedRows(options = {}) {
     if (!this.ensureWritable("indentSelectedRows", options)) return;
@@ -1255,10 +1298,10 @@ module.exports = class Selection {
    */
 
   /**
-   * Moves the selection down one row.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the selection down one row.
    */
   addSelectionBelow() {
     const range = this.getGoalScreenRange().copy();
@@ -1290,10 +1333,10 @@ module.exports = class Selection {
   }
 
   /**
-   * Moves the selection up one row.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the selection up one row.
    */
   addSelectionAbove() {
     const range = this.getGoalScreenRange().copy();
@@ -1325,13 +1368,14 @@ module.exports = class Selection {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Combines the given selection into this selection and then destroys
    * the given selection.
    *
    * @param otherSelection - A {@link Selection} to merge with.
    * @param {Object} [options] - options matching those found in {@link #setBufferRange}.
-   * @public
-   * @api-status Public
    */
   merge(otherSelection, options = {}) {
     const myGoalScreenRange = this.getGoalScreenRange();
@@ -1353,14 +1397,15 @@ module.exports = class Selection {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Compare this selection's buffer range to another selection's buffer
    * range.
    *
    * See {@link Range#compare} for more details.
    *
    * @param otherSelection - A {@link Selection} to compare against
-   * @public
-   * @api-status Public
    */
   compare(otherSelection) {
     return this.marker.compare(otherSelection.marker);

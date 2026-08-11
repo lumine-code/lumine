@@ -114,6 +114,9 @@ class Matcher {
 }
 
 /**
+ * @public
+ * @status essential
+ *
  * The `fuzzyMatcher` API, the same used in the autocomplete,
  *   fuzzy file search, command palette, etc.
  *   An instance of this API is available via the `lumine.tools.fuzzyMatcher` global.
@@ -123,9 +126,6 @@ class Matcher {
  *   by returning a new `Matcher` using `fuzzyMatcher.setCandidates`, then
  *   calling `Matcher#match`. You can _also use_ `fuzzyMatcher.match` to match
  *   a single candidate; it uses the same API and options as `Matcher#match`.
- *
- * @public
- * @api-status Essential
  */
 const fuzzyMatcher = {
   setCandidates: setCandidates,

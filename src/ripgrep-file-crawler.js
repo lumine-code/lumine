@@ -32,6 +32,9 @@ module.exports = class RipgrepFileCrawler {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Lists the files under one or more directories.
    *
    * @param directoryPaths - an `Array` of absolute directory paths to crawl.
@@ -43,8 +46,6 @@ module.exports = class RipgrepFileCrawler {
    * @param {Boolean} options.excludeVcsIgnoredPaths - whether to honor VCS ignore files (default: true). ripgrep only consults `.gitignore` inside a repository, so a directory with no `.git` above it lists everything either way.
    * @param {Boolean} options.sort - whether to return paths in a stable order. Costs ripgrep its parallel walk, so only ask when the order is observable.
    * @returns {Promise} with a `cancel()` method that resolves the crawl early.
-   * @public
-   * @api-status Public
    */
   crawl(directoryPaths, options = {}) {
     const emittedPaths = new Set();

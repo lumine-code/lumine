@@ -3,6 +3,9 @@ const { Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 let Tooltip = null;
 
 /**
+ * @public
+ * @status essential
+ *
  * Associates tooltips with HTML elements.
  *
  * You can get the `TooltipManager` via `lumine.tooltips`.
@@ -63,9 +66,6 @@ let Tooltip = null;
  *   }
  * ])
  * ```
- *
- * @public
- * @api-status Essential
  */
 module.exports = class TooltipManager {
   constructor({ keymapManager, viewRegistry }) {
@@ -87,6 +87,9 @@ module.exports = class TooltipManager {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a tooltip to the given element.
    *
    * @param target - An `HTMLElement`
@@ -106,8 +109,6 @@ module.exports = class TooltipManager {
    * @param options.keyBindingTarget - An `HTMLElement` on which to look up the key binding. If this option is not supplied, the first of all matching key bindings for the given command will be rendered.
    * @param options.keyBindingExtra - A `String` rendered as an additional key binding before the command's resolved binding. Use this for interactions that are not represented in the keymap, such as `LMB` or `RMB`. The value accepts `+` separators and `cmdorctrl`, which is resolved for the current platform (for example, `cmdorctrl+RMB`).
    * @returns {Disposable} on which `.dispose()` can be called to remove the tooltip.
-   * @public
-   * @api-status Essential
    */
   add(target, options) {
     if (target.jquery) {
@@ -122,13 +123,14 @@ module.exports = class TooltipManager {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add several tooltip entries that are displayed together.
    *
    * @param target - An `HTMLElement`
    * @param entries - An `Array` of option objects accepted by {@link #add}. Entries are rendered on separate lines. Display options, such as `placement` and `delay`, are taken from the first entry.
    * @returns {Disposable} on which `.dispose()` can be called to remove the composite tooltip.
-   * @public
-   * @api-status Essential
    */
   addComposite(target, entries) {
     if (target.jquery) {
@@ -241,12 +243,13 @@ module.exports = class TooltipManager {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Find the tooltips that have been applied to the given element.
    *
    * @param target - The `HTMLElement` to find tooltips on.
    * @returns {Array} of `Tooltip` objects that match the `target`.
-   * @public
-   * @api-status Extended
    */
   findTooltips(target) {
     if (this.tooltips.has(target)) {

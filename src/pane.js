@@ -16,6 +16,9 @@ class SaveConflictedError extends Error {
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * A container for presenting content in the center of the workspace.
  * Panes can contain multiple items, one of which is *active* at a given time.
  * The view corresponding to the active item is displayed in the interface. In
@@ -25,9 +28,6 @@ class SaveConflictedError extends Error {
  * to a pane, it will replace the currently pending item, if any, instead of
  * simply being added. In the default configuration, the text in the tab for
  * pending items is shown in italics.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class Pane {
   inspect() {
@@ -201,6 +201,9 @@ module.exports = class Pane {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the pane resizes.
    *
    * The callback will be invoked when pane's `flexScale` property changes.
@@ -209,22 +212,21 @@ module.exports = class Pane {
    * @param {Function} callback - to be called when the pane is resized.
    * @param {Number} callback.flexScale - representing the pane's `flex-grow`; ability for a flex item to grow if necessary.
    * @returns {Disposable} on which '.dispose()' can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeFlexScale(callback) {
     return this.emitter.on("did-change-flex-scale", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback with the current and future values of
    * `getFlexScale`.
    *
    * @param {Function} callback - to be called with the current and future values of the `getFlexScale` property.
    * @param {Number} callback.flexScale - representing the panes `flex-grow`; ability for a flex item to grow if necessary.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   observeFlexScale(callback) {
     callback(this.flexScale);
@@ -232,6 +234,9 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the pane is activated.
    *
    * The given callback will be invoked whenever {@link #activate} is called on the
@@ -239,46 +244,47 @@ module.exports = class Pane {
    *
    * @param {Function} callback - to be called when the pane is activated.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidActivate(callback) {
     return this.emitter.on("did-activate", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback before the pane is destroyed.
    *
    * @param {Function} callback - to be called before the pane is destroyed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onWillDestroy(callback) {
     return this.emitter.on("will-destroy", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the pane is destroyed.
    *
    * @param {Function} callback - to be called when the pane is destroyed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the value of the {@link #isActive}
    * property changes.
    *
    * @param {Function} callback - to be called when the value of the {@link #isActive} property changes.
    * @param {Boolean} callback.active - indicating whether the pane is active.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeActive(callback) {
     return this.container.onDidChangeActivePane((activePane) => {
@@ -288,14 +294,15 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback with the current and future values of the
    * {@link #isActive} property.
    *
    * @param {Function} callback - to be called with the current and future values of the {@link #isActive} property.
    * @param {Boolean} callback.active - indicating whether the pane is active.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   observeActive(callback) {
     callback(this.isActive());
@@ -303,6 +310,9 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when an item is added to the pane.
    *
    * @param {Function} callback - to be called when items are added.
@@ -310,14 +320,15 @@ module.exports = class Pane {
    * @param callback.event.item - The added pane item.
    * @param {Number} callback.event.index - indicating where the item is located.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidAddItem(callback) {
     return this.emitter.on("did-add-item", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when an item is removed from the pane.
    *
    * @param {Function} callback - to be called when items are removed.
@@ -325,28 +336,30 @@ module.exports = class Pane {
    * @param callback.event.item - The removed pane item.
    * @param {Number} callback.event.index - indicating where the item was located.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidRemoveItem(callback) {
     return this.emitter.on("did-remove-item", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback before an item is removed from the pane.
    *
    * @param {Function} callback - to be called before items are removed.
    * @param {Object} callback.event - with the following keys:
    * @param callback.event.item - The pane item to be removed.
    * @param {Number} callback.event.index - indicating where the item is located.
-   * @public
-   * @api-status Public
    */
   onWillRemoveItem(callback) {
     return this.emitter.on("will-remove-item", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when an item is moved within the pane.
    *
    * @param {Function} callback - to be called when items are moved.
@@ -355,21 +368,20 @@ module.exports = class Pane {
    * @param {Number} callback.event.oldIndex - indicating where the item was located.
    * @param {Number} callback.event.newIndex - indicating where the item is now located.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidMoveItem(callback) {
     return this.emitter.on("did-move-item", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback with all current and future items.
    *
    * @param {Function} callback - to be called with current and future items.
    * @param callback.item - An item that is present in {@link #getItems} at the time of subscription or that is added at some later time.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   observeItems(callback) {
     for (let item of this.getItems()) {
@@ -379,28 +391,30 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the value of {@link #getActiveItem}
    * changes.
    *
    * @param {Function} callback - to be called when the active item changes.
    * @param callback.activeItem - The current active item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeActiveItem(callback) {
     return this.emitter.on("did-change-active-item", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback with the current and future values of
    * {@link #getActiveItem}.
    *
    * @param {Function} callback - to be called with the current and future active items.
    * @param callback.activeItem - The current active item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   observeActiveItem(callback) {
     callback(this.getActiveItem());
@@ -408,6 +422,9 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback before items are destroyed.
    *
    * @param {Function} callback - to be called before items are destroyed.
@@ -415,8 +432,6 @@ module.exports = class Pane {
    * @param callback.event.item - The item that will be destroyed.
    * @param callback.event.index - The location of the item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onWillDestroyItem(callback) {
     return this.emitter.on("will-destroy-item", callback);
@@ -454,22 +469,24 @@ module.exports = class Pane {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Get the items in this pane.
    *
    * @returns {Array} of items.
-   * @public
-   * @api-status Public
    */
   getItems() {
     return this.items.slice();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the active pane item in this pane.
    *
    * @returns {*} pane item.
-   * @public
-   * @api-status Public
    */
   getActiveItem() {
     return this.activeItem;
@@ -515,20 +532,21 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Number} index
    * @returns {*} The item at the index, or `null` when no item exists there.
-   * @public
-   * @api-status Public
    */
   itemAtIndex(index) {
     return this.items[index];
   }
 
   /**
-   * Makes the next item in the itemStack active.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Makes the next item in the itemStack active.
    */
   activateNextRecentlyUsedItem() {
     if (this.items.length > 1) {
@@ -541,10 +559,10 @@ module.exports = class Pane {
   }
 
   /**
-   * Makes the previous item in the itemStack active.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Makes the previous item in the itemStack active.
    */
   activatePreviousRecentlyUsedItem() {
     if (this.items.length > 1) {
@@ -558,11 +576,11 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Moves the active item to the end of the item stack once a modifier
    * key (typically <kbd>Ctrl</kbd>) is lifted.
-   *
-   * @public
-   * @api-status Public
    */
   moveActiveItemToTopOfStack() {
     delete this.itemStackIndex;
@@ -570,10 +588,10 @@ module.exports = class Pane {
   }
 
   /**
-   * Makes the next item active.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Makes the next item active.
    */
   activateNextItem() {
     const index = this.getActiveItemIndex();
@@ -585,10 +603,10 @@ module.exports = class Pane {
   }
 
   /**
-   * Makes the previous item active.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Makes the previous item active.
    */
   activatePreviousItem() {
     const index = this.getActiveItemIndex();
@@ -604,10 +622,10 @@ module.exports = class Pane {
   }
 
   /**
-   * Move the active tab to the right.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Move the active tab to the right.
    */
   moveItemRight() {
     const index = this.getActiveItemIndex();
@@ -617,10 +635,10 @@ module.exports = class Pane {
   }
 
   /**
-   * Move the active tab to the left
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Move the active tab to the left
    */
   moveItemLeft() {
     const index = this.getActiveItemIndex();
@@ -629,22 +647,24 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the index of the active item.
    *
    * @returns {Number}
-   * @public
-   * @api-status Public
    */
   getActiveItemIndex() {
     return this.items.indexOf(this.activeItem);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Activate the item at the given index.
    *
    * @param {Number} index
-   * @public
-   * @api-status Public
    */
   activateItemAtIndex(index) {
     const item = this.itemAtIndex(index) || this.getActiveItem();
@@ -652,14 +672,15 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Make the given item *active*, causing it to be displayed by
    * the pane's view.
    *
    * @param item - The item to activate
    * @param {Object} [options]
    * @param {Boolean} [options.pending] - indicating that the item should be added in a pending state if it does not yet exist in the pane. Existing pending items in a pane are replaced with new pending items when they are opened.
-   * @public
-   * @api-status Public
    */
   activateItem(item, options = {}) {
     if (item) {
@@ -673,6 +694,9 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add the given item to the pane.
    *
    * @param item - The item to add. It can be a model with an associated view or a view.
@@ -680,8 +704,6 @@ module.exports = class Pane {
    * @param {Number} [options.index] - indicating the index at which to add the item. If omitted, the item is added after the current active item.
    * @param {Boolean} [options.pending] - indicating that the item should be added in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
    * @returns {*} added item.
-   * @public
-   * @api-status Public
    */
   addItem(item, options = {}) {
     const index = options.index != null ? options.index : this.getActiveItemIndex() + 1;
@@ -757,6 +779,9 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Toggle the pending state of the active item.
    *
    * Clears the pending item if the active item is already pending, otherwise
@@ -765,9 +790,6 @@ module.exports = class Pane {
    * same way natively-previewed items behave. This is required because
    * `terminatePendingState` is one-shot: once an item has terminated it never
    * emits again, so a re-pended item could not otherwise clear itself.
-   *
-   * @public
-   * @api-status Public
    */
   togglePendingItem() {
     const item = this.getActiveItem();
@@ -791,13 +813,14 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add the given items to the pane.
    *
    * @param items - An `Array` of items to add. Items can be views or models with associated views. Any objects that are already present in the pane's current items will not be added again.
    * @param {Number} [index] - index at which to add the items. If omitted, the item is #   added after the current active item.
    * @returns {Array} of added items.
-   * @public
-   * @api-status Public
    */
   addItems(items, index = this.getActiveItemIndex() + 1) {
     items = items.filter((item) => !this.items.includes(item));
@@ -851,12 +874,13 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Move the given item to the given index.
    *
    * @param item - The item to move.
    * @param {Number} newIndex - indicating the index to which to move the item.
-   * @public
-   * @api-status Public
    */
   moveItem(item, newIndex) {
     const oldIndex = this.items.indexOf(item);
@@ -866,13 +890,14 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Move the given item to the given index on another pane.
    *
    * @param item - The item to move.
    * @param {Pane} pane - to which to move the item.
    * @param {Number} index - indicating the index to which to move the item in the given pane.
-   * @public
-   * @api-status Public
    */
   moveItemToPane(item, pane, index) {
     this.removeItem(item, true);
@@ -880,17 +905,21 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Destroy the active item and activate the next item.
    *
    * @returns {Promise} that resolves when the item is destroyed.
-   * @public
-   * @api-status Public
    */
   destroyActiveItem() {
     return this.destroyItem(this.activeItem);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Destroy the given item.
    *
    * If the item is active, the next item will be activated. If the item is the
@@ -903,8 +932,6 @@ module.exports = class Pane {
    * @param item - Item to destroy
    * @param {Boolean} [force] - Destroy the item without prompting to save it, even if the item's `isPermanentDockItem` method returns true.
    * @returns {Promise} that resolves with a `Boolean` indicating whether or not the item was destroyed.
-   * @public
-   * @api-status Public
    */
   async destroyItem(item, force) {
     const index = this.items.indexOf(item);
@@ -949,20 +976,20 @@ module.exports = class Pane {
   }
 
   /**
-   * Destroy all items.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Destroy all items.
    */
   destroyItems() {
     return Promise.all(this.getItems().map((item) => this.destroyItem(item)));
   }
 
   /**
-   * Destroy all items except for the active item.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Destroy all items except for the active item.
    */
   destroyInactiveItems() {
     return Promise.all(
@@ -1069,36 +1096,38 @@ module.exports = class Pane {
   }
 
   /**
-   * Save the active item.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Save the active item.
    */
   saveActiveItem(nextAction) {
     return this.saveItem(this.getActiveItem(), nextAction);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Prompt the user for a location and save the active item with the
    * path they select.
    *
    * @param {Function} [nextAction] - which will be called after the item is successfully saved.
    * @returns {Promise} that resolves when the save is complete
-   * @public
-   * @api-status Public
    */
   saveActiveItemAs(nextAction) {
     return this.saveItemAs(this.getActiveItem(), nextAction);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Save the given item.
    *
    * @param item - The item to save.
    * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The return value will be that of `nextAction` or `undefined` if it was not provided.
    * @returns {Promise} that resolves when the save is complete, or rejects if the save could not be completed.
-   * @public
-   * @api-status Public
    */
   saveItem(item, nextAction) {
     if (!item) return Promise.resolve();
@@ -1157,13 +1186,14 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Prompt the user for a location and save the active item with the
    * path they select.
    *
    * @param item - The item to save.
    * @param {Function} [nextAction] - which will be called with no argument after the item is successfully saved, or with the error if it failed. The return value will be that of `nextAction` or `undefined` if it was not provided.
-   * @public
-   * @api-status Public
    */
   async saveItemAs(item, nextAction) {
     if (!item) return;
@@ -1190,11 +1220,12 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Save all modified items in this pane.
    *
    * @returns {Promise} that resolves when all items have been saved.
-   * @public
-   * @api-status Public
    */
   async saveItems() {
     const promises = [];
@@ -1207,10 +1238,11 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {String} uri - containing a URI.
    * @returns {*|undefined} first item that matches the given URI or undefined if none exists.
-   * @public
-   * @api-status Public
    */
   itemForURI(uri) {
     return this.items.find((item) => {
@@ -1223,12 +1255,13 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Activate the first item that matches the given URI.
    *
    * @param {String} uri - containing a URI.
    * @returns {Boolean} indicating whether an item matching the URI was found.
-   * @public
-   * @api-status Public
    */
   activateItemForURI(uri) {
     const item = this.itemForURI(uri);
@@ -1251,21 +1284,22 @@ module.exports = class Pane {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Determine whether the pane is active.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isActive() {
     return this.container && this.container.getActivePane() === this;
   }
 
   /**
-   * Makes this pane the *active* pane, causing it to gain focus.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Makes this pane the *active* pane, causing it to gain focus.
    */
   activate() {
     if (this.isDestroyed()) throw new Error("Pane has been destroyed");
@@ -1276,13 +1310,13 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Close the pane and destroy all its items.
    *
    * If this is the last pane, all the items will be destroyed but the pane
    * itself will not be destroyed.
-   *
-   * @public
-   * @api-status Public
    */
   destroy() {
     if (this.container && this.container.isAlive() && this.container.getPanes().length === 1) {
@@ -1312,11 +1346,12 @@ module.exports = class Pane {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Determine whether this pane has been destroyed.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isDestroyed() {
     return !this.isAlive();
@@ -1327,6 +1362,9 @@ module.exports = class Pane {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Create a new pane to the left of this pane.
    *
    * @param {Object} [params] - with the following keys:
@@ -1334,14 +1372,15 @@ module.exports = class Pane {
    * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
-   * @public
-   * @api-status Public
    */
   splitLeft(params) {
     return this.split("horizontal", "before", params);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Create a new pane to the right of this pane.
    *
    * @param {Object} [params] - with the following keys:
@@ -1349,14 +1388,15 @@ module.exports = class Pane {
    * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
-   * @public
-   * @api-status Public
    */
   splitRight(params) {
     return this.split("horizontal", "after", params);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Creates a new pane above the receiver.
    *
    * @param {Object} [params] - with the following keys:
@@ -1364,14 +1404,15 @@ module.exports = class Pane {
    * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
-   * @public
-   * @api-status Public
    */
   splitUp(params) {
     return this.split("vertical", "before", params);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Creates a new pane below the receiver.
    *
    * @param {Object} [params] - with the following keys:
@@ -1379,8 +1420,6 @@ module.exports = class Pane {
    * @param {Boolean} [params.copyActiveItem] - true will copy the active item into the new split pane
    * @param {Boolean} [params.activate] - `false` will leave the currently active pane active instead of activating the new pane. Defaults to `true`.
    * @returns {Pane} new {@link Pane}.
-   * @public
-   * @api-status Public
    */
   splitDown(params) {
     return this.split("vertical", "after", params);

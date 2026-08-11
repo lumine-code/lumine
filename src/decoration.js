@@ -18,6 +18,9 @@ const normalizeDecorationProperties = function (decoration, decorationParams) {
 };
 
 /**
+ * @public
+ * @status essential
+ *
  * Represents a decoration that follows a {@link DisplayMarker}. A decoration is
  * basically a visual representation of a marker. It allows you to add CSS
  * classes to line numbers in the gutter, lines, and add selection-line regions
@@ -40,9 +43,6 @@ const normalizeDecorationProperties = function (decoration, decorationParams) {
  *
  * You should only use {@link Decoration#destroy} when you still need or do not own
  * the marker.
- *
- * @public
- * @api-status Essential
  */
 module.exports = class Decoration {
   /**
@@ -89,13 +89,13 @@ module.exports = class Decoration {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Destroy this marker decoration.
    *
    * You can also destroy the marker if you own it, which will destroy this
    * decoration.
-   *
-   * @public
-   * @api-status Essential
    */
   destroy() {
     if (this.destroyed) {
@@ -118,6 +118,9 @@ module.exports = class Decoration {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * When the {@link Decoration} is updated via {@link Decoration#setProperties}.
    *
    * @param {Function} callback
@@ -125,20 +128,19 @@ module.exports = class Decoration {
    * @param {Object} callback.event.oldProperties - the decoration's previous properties
    * @param {Object} callback.event.newProperties - the decoration's new properties
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChangeProperties(callback) {
     return this.emitter.on("did-change-properties", callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback when the {@link Decoration} is destroyed
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
@@ -149,31 +151,33 @@ module.exports = class Decoration {
    */
 
   /**
-   * An id unique across all {@link Decoration} objects
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * An id unique across all {@link Decoration} objects
    */
   getId() {
     return this.id;
   }
 
   /**
-   * @returns {DisplayMarker} marker associated with this {@link Decoration}
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {DisplayMarker} marker associated with this {@link Decoration}
    */
   getMarker() {
     return this.marker;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Check if this decoration is of type `type`
    *
    * @param {String} type - type like `'line-number'`, `'line'`, etc. `type` can also be an `Array` of `Strings`, where it will return true if the decoration's type matches any in the array.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isType(type) {
     return Decoration.isType(this.properties, type);
@@ -184,15 +188,19 @@ module.exports = class Decoration {
    */
 
   /**
-   * @returns {Object} The decoration's properties.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Object} The decoration's properties.
    */
   getProperties() {
     return this.properties;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Update the marker with new Properties. Allows you to change the decoration's class.
    *
    * ## Examples
@@ -202,8 +210,6 @@ module.exports = class Decoration {
    * ```
    *
    * @param {Object} newProperties - eg. `{type: 'line-number', class: 'my-new-class'}`
-   * @public
-   * @api-status Essential
    */
   setProperties(newProperties) {
     if (this.destroyed) {

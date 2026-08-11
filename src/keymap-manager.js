@@ -32,6 +32,9 @@ const Platforms = ["darwin", "freebsd", "linux", "sunos", "win32"];
 const OtherPlatforms = Platforms.filter((platform) => platform !== process.platform);
 
 /**
+ * @public
+ * @status extended
+ *
  * Allows commands to be associated with keystrokes in a
  * context-sensitive way. You can access a global instance of this
  * object via `lumine.keymaps`.
@@ -86,9 +89,6 @@ const OtherPlatforms = Platforms.filter((platform) => platform !== process.platf
  * the previous keystrokes are replayed. If there is ambiguity again during the
  * replay, the next longest bindings are disabled and the keystrokes are replayed
  * again.
- *
- * @public
- * @api-status Extended
  */
 module.exports = KeymapManager = (function () {
   KeymapManager = class KeymapManager {
@@ -112,6 +112,9 @@ module.exports = KeymapManager = (function () {
      */
 
     /**
+     * @public
+     * @status public
+     *
      * Create a keydown DOM event for testing purposes.
      *
      * @param key - The key or keyIdentifier of the event. For example, `'a'`, `'1'`, `'escape'`, `'backspace'`, etc.
@@ -122,8 +125,6 @@ module.exports = KeymapManager = (function () {
      * @param options.cmd - A `Boolean` indicating the cmd modifier key
      * @param options.which - A `Number` indicating `which` value of the event. See the docs for KeyboardEvent for more information.
      * @param options.target - The target element of the event.
-     * @public
-     * @api-status Public
      */
     static buildKeydownEvent(key, options) {
       return keydownEvent(key, options);
@@ -138,12 +139,13 @@ module.exports = KeymapManager = (function () {
      */
 
     /**
+     * @public
+     * @status public
+     *
      * Create a new KeymapManager.
      *
      * @param options - An `Object` containing properties to assign to the keymap.  You can pass custom properties to be used by extension methods. The following properties are also supported:
      * @param options.defaultTarget - This will be used as the target of events whose target is `document.body` to allow for a catch-all element when nothing is focused.
-     * @public
-     * @api-status Public
      */
     constructor(options) {
       if (options == null) {
@@ -159,11 +161,11 @@ module.exports = KeymapManager = (function () {
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Clear all registered key bindings and enqueued keystrokes. For use
      * in tests.
-     *
-     * @public
-     * @api-status Public
      */
     clear() {
       this.emitter = new Emitter();
@@ -174,10 +176,10 @@ module.exports = KeymapManager = (function () {
     }
 
     /**
-     * Unwatch all watched paths.
-     *
      * @public
-     * @api-status Public
+     * @status public
+     *
+     * Unwatch all watched paths.
      */
     destroy() {
       for (var filePath in this.watchSubscriptions) {
@@ -191,6 +193,9 @@ module.exports = KeymapManager = (function () {
      */
 
     /**
+     * @public
+     * @status public
+     *
      * Invoke the given callback when one or more keystrokes completely
      * match a key binding.
      *
@@ -200,14 +205,15 @@ module.exports = KeymapManager = (function () {
      * @param {KeyBinding} callback.event.binding - that the keystrokes matched.
      * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-     * @public
-     * @api-status Public
      */
     onDidMatchBinding(callback) {
       return this.emitter.on("did-match-binding", callback);
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Invoke the given callback when one or more keystrokes partially
      * match a binding.
      *
@@ -217,14 +223,15 @@ module.exports = KeymapManager = (function () {
      * @param {KeyBinding} callback.event.partiallyMatchedBindings - s that the keystrokes partially matched.
      * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-     * @public
-     * @api-status Public
      */
     onDidPartiallyMatchBindings(callback) {
       return this.emitter.on("did-partially-match-binding", callback);
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Invoke the given callback when one or more keystrokes fail to match
      * any bindings.
      *
@@ -233,8 +240,6 @@ module.exports = KeymapManager = (function () {
      * @param {String} callback.event.keystrokes - of keystrokes that matched the binding.
      * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-     * @public
-     * @api-status Public
      */
     onDidFailToMatchBinding(callback) {
       return this.emitter.on("did-fail-to-match-binding", callback);
@@ -263,6 +268,9 @@ module.exports = KeymapManager = (function () {
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Invoke the given callback when a keymap file not able to be loaded.
      *
      * @param {Function} callback - to be called when a keymap file is unloaded.
@@ -270,8 +278,6 @@ module.exports = KeymapManager = (function () {
      * @param {String} callback.error.message - the error message.
      * @param {String} callback.error.stack - the error stack trace.
      * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-     * @public
-     * @api-status Public
      */
     onDidFailToReadFile(callback) {
       return this.emitter.on("did-fail-to-read-file", callback);
@@ -282,6 +288,9 @@ module.exports = KeymapManager = (function () {
      */
 
     /**
+     * @public
+     * @status extended
+     *
      * Construct `KeyBindings` from an object grouping them by CSS selector.
      *
      * @param source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
@@ -291,8 +300,6 @@ module.exports = KeymapManager = (function () {
      * @param {Boolean} [throwOnInvalidSelector=true] - Whether invalid selectors
      *   should throw.
      * @returns {Array<KeyBinding>} The constructed bindings.
-     * @public
-     * @api-status Extended
      */
     build(source, keyBindingsBySelector, priority, throwOnInvalidSelector) {
       if (priority == null) {
@@ -347,6 +354,9 @@ module.exports = KeymapManager = (function () {
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Add sets of key bindings grouped by CSS selector.
      *
      * @param source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
@@ -356,8 +366,6 @@ module.exports = KeymapManager = (function () {
      * @param {Boolean} [throwOnInvalidSelector=true] - Whether invalid selectors
      *   should throw.
      * @returns {Disposable} A disposable that removes the bindings.
-     * @public
-     * @api-status Public
      */
     add(source, keyBindingsBySelector, priority, throwOnInvalidSelector) {
       if (priority == null) {
@@ -393,17 +401,21 @@ module.exports = KeymapManager = (function () {
      */
 
     /**
+     * @public
+     * @status public
+     *
      * Get all current key bindings.
      *
      * @returns {Array} of `KeyBindings`.
-     * @public
-     * @api-status Public
      */
     getKeyBindings() {
       return this.keyBindings.slice();
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Get the key bindings for a given command and optional target.
      *
      * @param params - An `Object` whose keys constrain the binding search:
@@ -411,8 +423,6 @@ module.exports = KeymapManager = (function () {
      * @param params.command - A `String` representing the name of a command, such as 'editor:backspace'
      * @param params.target - An optional DOM element constraining the search. If this parameter is supplied, the call will only return bindings that can be invoked by a KeyboardEvent originating from the target element.
      * @returns {Array} of key bindings.
-     * @public
-     * @api-status Public
      */
     findKeyBindings(params) {
       if (params == null) {
@@ -450,6 +460,9 @@ module.exports = KeymapManager = (function () {
      */
 
     /**
+     * @public
+     * @status public
+     *
      * Load the key bindings from the given path.
      *
      * @param {String} bindingsPath - A keymap file or directory. Directories load
@@ -457,8 +470,6 @@ module.exports = KeymapManager = (function () {
      * @param options - An `Object` containing the following optional keys:
      * @param options.watch - If `true`, the keymap will also reload the file at the given path whenever it changes. This option cannot be used with directory paths.
      * @param options.priority - A `Number` used to sort keybindings which have the same specificity.
-     * @public
-     * @api-status Public
      */
     loadKeymap(bindingsPath, options) {
       const checkIfDirectory =
@@ -488,6 +499,9 @@ module.exports = KeymapManager = (function () {
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Cause the keymap to reload the key bindings file at the given path
      * whenever it changes.
      *
@@ -497,8 +511,6 @@ module.exports = KeymapManager = (function () {
      * @param {String} filePath - The keymap file to watch.
      * @param options - An `Object` containing the following optional keys:
      * @param options.priority - A `Number` used to sort keybindings which have the same specificity.
-     * @public
-     * @api-status Public
      */
     watchKeymap(filePath, options) {
       if (this.watchSubscriptions[filePath] == null || this.watchSubscriptions[filePath].disposed) {
@@ -585,6 +597,9 @@ module.exports = KeymapManager = (function () {
      */
 
     /**
+     * @public
+     * @status public
+     *
      * Dispatch a custom event associated with the matching key binding for
      * the given `KeyboardEvent` if one can be found.
      *
@@ -606,8 +621,6 @@ module.exports = KeymapManager = (function () {
      * target is `.defaultTarget` if that property is assigned on the keymap.
      *
      * @param event - A `KeyboardEvent` of type 'keydown'
-     * @public
-     * @api-status Public
      */
     handleKeyboardEvent(event, param) {
       // Handling keyboard events is complicated and very nuanced. The complexity
@@ -881,18 +894,22 @@ module.exports = KeymapManager = (function () {
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Translate a keydown event to a keystroke string.
      *
      * @param event - A `KeyboardEvent` of type 'keydown'
      * @returns {String} describing the keystroke.
-     * @public
-     * @api-status Public
      */
     keystrokeForKeyboardEvent(event) {
       return keystrokeForKeyboardEvent(event, this.customKeystrokeResolvers);
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Customize translation of raw keyboard events to keystroke strings.
      * This API is useful for working around Chrome bugs or changing how the editor
      * resolves certain key combinations. If multiple resolvers are installed,
@@ -905,8 +922,6 @@ module.exports = KeymapManager = (function () {
      * @param resolver.layoutName - The OS-specific name of the current keyboard layout.
      * @param resolver.keymap - An object mapping DOM 3 `KeyboardEvent.code` values to objects with the typed character for that key in each modifier state, based on the current operating system layout.
      * @returns {Disposable} A disposable that removes the resolver.
-     * @public
-     * @api-status Public
      */
     addKeystrokeResolver(resolver) {
       this.customKeystrokeResolvers.push(resolver);
@@ -919,12 +934,13 @@ module.exports = KeymapManager = (function () {
     }
 
     /**
+     * @public
+     * @status public
+     *
      * Get the number of milliseconds allowed before pending states caused
      * by partial matches of multi-keystroke bindings are terminated.
      *
      * @returns {Number}
-     * @public
-     * @api-status Public
      */
     getPartialMatchTimeout() {
       return this.partialMatchTimeout;

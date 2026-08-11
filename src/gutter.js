@@ -3,12 +3,12 @@ const { Emitter } = require("@lumine-code/event-kit");
 const DefaultPriority = -100;
 
 /**
+ * @public
+ * @status extended
+ *
  * Represents a gutter within a {@link TextEditor}.
  *
  * See {@link TextEditor#addGutter} for information on creating a gutter.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class Gutter {
   constructor(gutterContainer, options) {
@@ -31,10 +31,10 @@ module.exports = class Gutter {
    */
 
   /**
-   * Destroys the gutter.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Destroys the gutter.
    */
   destroy() {
     if (this.name === "line-number") {
@@ -51,25 +51,27 @@ module.exports = class Gutter {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when the gutter's visibility changes.
    *
    * @param {Function} callback
    * @param callback.gutter - The gutter whose visibility changed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChangeVisible(callback) {
     return this.emitter.on("did-change-visible", callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when the gutter is destroyed.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
@@ -80,10 +82,10 @@ module.exports = class Gutter {
    */
 
   /**
-   * Hide the gutter.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Hide the gutter.
    */
   hide() {
     if (this.visible) {
@@ -94,10 +96,10 @@ module.exports = class Gutter {
   }
 
   /**
-   * Show the gutter.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Show the gutter.
    */
   show() {
     if (!this.visible) {
@@ -108,17 +110,21 @@ module.exports = class Gutter {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Determine whether the gutter is visible.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   isVisible() {
     return this.visible;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a decoration that tracks a {@link DisplayMarker}. When the marker moves,
    * is invalidated, or is destroyed, the decoration will be updated to reflect
    * the marker's state.
@@ -129,8 +135,6 @@ module.exports = class Gutter {
    * @param options - An `Object` representing the decoration. It is passed to {@link TextEditor#decorateMarker} as its options argument and so supports all options documented there.
    * @param options.type - __Caveat__: set to `'line-number'` if this is the line-number gutter, `'gutter'` otherwise. This cannot be overridden.
    * @returns {Decoration} object
-   * @public
-   * @api-status Essential
    */
   decorateMarker(marker, options) {
     return this.gutterContainer.addGutterDecoration(this, marker, options);

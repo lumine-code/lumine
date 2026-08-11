@@ -7,6 +7,9 @@ const _ = require("@lumine-code/underscore-plus");
 let SequenceCount = 0;
 
 /**
+ * @public
+ * @status public
+ *
  * Associates listener functions with commands in a
  * context-sensitive way using CSS selectors. You can access a global instance of
  * this class via `lumine.commands`, and commands registered there will be
@@ -47,9 +50,6 @@ let SequenceCount = 0;
  *   }
  * })
  * ```
- *
- * @public
- * @api-status Public
  */
 module.exports = class CommandRegistry {
   constructor() {
@@ -83,6 +83,9 @@ module.exports = class CommandRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add one or more command listeners associated with a selector.
    *
    * ## Registering one command
@@ -118,8 +121,6 @@ module.exports = class CommandRegistry {
    * @param {Boolean} [throwOnInvalidSelector=true] - Throw when `target` is an
    *   invalid selector.
    * @returns {Disposable} on which `.dispose()` can be called to remove the added command handler(s).
-   * @public
-   * @api-status Public
    */
   add(target, commandName, listener, throwOnInvalidSelector = true) {
     if (typeof commandName === "object") {
@@ -201,6 +202,9 @@ module.exports = class CommandRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Find all registered commands matching a query.
    *
    *  * `name` The name of the command. For example, `user:insert-date`.
@@ -217,8 +221,6 @@ module.exports = class CommandRegistry {
    * @param {Object} params - Query parameters.
    * @param {Element} params.target - The hypothetical command target.
    * @returns {Array<Object>} Command descriptors containing the documented keys.
-   * @public
-   * @api-status Public
    */
   findCommands({ target }) {
     const commandNames = new Set();
@@ -257,6 +259,9 @@ module.exports = class CommandRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Simulate the dispatch of a command on a DOM node.
    *
    * This is useful for passing arguments to a command, as keymaps currently do not
@@ -271,8 +276,6 @@ module.exports = class CommandRegistry {
    * @param target - The DOM node at which to start bubbling the command event.
    * @param {String} commandName - indicating the name of the command to dispatch.
    * @param detail - Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
-   * @public
-   * @api-status Public
    */
   dispatch(target, commandName, detail) {
     const event = new CustomEvent(commandName, { bubbles: true, detail });
@@ -281,24 +284,26 @@ module.exports = class CommandRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback before dispatching a command event.
    *
    * @param {Function} callback - to be called before dispatching each command
    * @param callback.event - The Event that will be dispatched
-   * @public
-   * @api-status Public
    */
   onWillDispatch(callback) {
     return this.emitter.on("will-dispatch", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback after dispatching a command event.
    *
    * @param {Function} callback - to be called after dispatching each command
    * @param callback.event - The Event that was dispatched
-   * @public
-   * @api-status Public
    */
   onDidDispatch(callback) {
     return this.emitter.on("did-dispatch", callback);

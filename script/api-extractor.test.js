@@ -38,6 +38,7 @@ test("extracts structured JSDoc metadata from modern JavaScript", (context) => {
   const environment = api.classes[0];
   assert.equal(environment.name, "LumineEnvironment");
   assert.equal(environment.visibility, "Essential");
+  assert.equal(environment.description, "The public editor surface.");
   assert.equal(environment.members[0].propertyType, "FixtureService");
 
   const service = api.classes.find(({ name }) => name === "FixtureService");
@@ -87,10 +88,21 @@ test("normalizes CRLF input", (context) => {
 test("rejects invalid API status values", (context) => {
   const source = fs
     .readFileSync(fixturePath, "utf8")
-    .replace("@api-status Essential", "@api-status Stable");
+    .replace("@status essential", "@status stable");
   const root = editorFixture(source);
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  assert.throws(() => extractApi({ editorRoot: root, parser }), /Invalid @api-status "Stable"/);
+  assert.throws(() => extractApi({ editorRoot: root, parser }), /Invalid @status "stable"/);
+});
+
+test("rejects legacy API status tag spellings", (context) => {
+  for (const legacyTag of ["api-status", "apistatus"]) {
+    const source = fs
+      .readFileSync(fixturePath, "utf8")
+      .replace("@status essential", `@${legacyTag} essential`);
+    const root = editorFixture(source);
+    context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+    assert.throws(() => extractApi({ editorRoot: root, parser }), /must declare @status/);
+  }
 });
 
 test("rejects return tags without a structured type", (context) => {
@@ -167,7 +179,7 @@ test("reports modern JavaScript parse errors", (context) => {
 test("rejects duplicate documented members", (context) => {
   const source = fs
     .readFileSync(fixturePath, "utf8")
-    .replace("@private", "@public\n   * @api-status Public")
+    .replace("@private", "@public\n   * @status public")
     .replace("hidden()", "collect()");
   const root = editorFixture(source);
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));

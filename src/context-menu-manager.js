@@ -18,6 +18,9 @@ if (
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Provides a registry for commands that you'd like to appear in the
  * context menu.
  *
@@ -58,9 +61,6 @@ if (
  *
  * The format for use in {@link #add} is the same minus the `context-menu` key. See
  * {@link #add} for more information.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class ContextMenuManager {
   constructor({ keymapManager, applicationDelegate }) {
@@ -88,6 +88,9 @@ module.exports = class ContextMenuManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add context menu items scoped by CSS selectors.
    *
    * ## Examples
@@ -124,8 +127,6 @@ module.exports = class ContextMenuManager {
    * @param itemsBySelector.created.event - The click event that deployed the context menu.
    * @param [itemsBySelector.shouldDisplay] - A `Function` that is called to determine whether to display this item on a given context menu deployment. Called with the following argument:
    * @param itemsBySelector.shouldDisplay.event - The click event that deployed the context menu.
-   * @public
-   * @api-status Public
    */
 
   //   * `id` (internal) A `String` containing the menu item's id.
@@ -287,13 +288,14 @@ module.exports = class ContextMenuManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Show a native context menu for a DOM target.
    *
    * @param target - The local DOM `Element` that receives selected commands.
    * @param menuTemplate - A serializable Electron menu-template `Array`; functions and native Electron objects are not allowed.
    * @returns {Promise} that resolves after the menu is shown.
-   * @public
-   * @api-status Public
    */
   show(target, menuTemplate) {
     this.activeElement = target;

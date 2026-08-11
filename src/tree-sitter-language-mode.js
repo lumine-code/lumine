@@ -1506,6 +1506,9 @@ class TreeSitterLanguageMode {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the suggested indentation level for an existing line in the
    * buffer.
    *
@@ -1548,8 +1551,6 @@ class TreeSitterLanguageMode {
    * place.
    *
    * @returns {Number}, `null`, or a `Promise` that will resolve with either a `Number` or `undefined`.
-   * @public
-   * @api-status Essential
    */
   suggestedIndentForBufferRow(...args) {
     return this.indentResolver.suggestedIndentForBufferRow(...args);
@@ -1619,6 +1620,9 @@ class TreeSitterLanguageMode {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Re-compiles every query of every grammar in use in this buffer —
    * the root grammar plus any injected grammars — from its current source and
    * reports an error notification for each query that fails to compile.
@@ -1627,8 +1631,6 @@ class TreeSitterLanguageMode {
    * validates edits made to query files after the grammar first loaded.
    *
    * @returns {Array} of failure descriptors (see {@link TreeSitterGrammar#describeQueryError}); the array is empty when every query compiled.
-   * @public
-   * @api-status Extended
    */
   validateGrammarQueries() {
     const queryTypes = [
@@ -5406,6 +5408,9 @@ class IndentResolver {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Register a callback that fires when `IndentResolver` suggests an
    * indentation level.
    *
@@ -5480,9 +5485,6 @@ class IndentResolver {
    *       target row already has an indent level of `3`, `adjustedIndent` will
    *       instead be `2`. If `preserveLeadingWhitespace` is `false`,
    *       `finalIndent` and `adjustedIndent` will always be identical.
-   *
-   * @public
-   * @api-status Extended
    */
   onDidSuggestIndent(callback) {
     return this.emitter.on("did-suggest-indent", callback);

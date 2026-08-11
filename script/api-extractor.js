@@ -4,7 +4,13 @@ const fs = require("fs");
 const path = require("path");
 
 const SCHEMA_VERSION = 1;
-const API_STATUSES = new Set(["Essential", "Extended", "Public", "Experimental"]);
+const API_STATUS_VALUES = new Map([
+  ["essential", "Essential"],
+  ["extended", "Extended"],
+  ["public", "Public"],
+  ["experimental", "Experimental"],
+]);
+const API_STATUSES = new Set(API_STATUS_VALUES.values());
 const IGNORED_AST_KEYS = new Set([
   "loc",
   "start",
@@ -94,11 +100,12 @@ function firstParagraph(markdown) {
 }
 
 function normalizeStatus(value, context) {
-  const status = value || "Public";
-  if (!API_STATUSES.has(status)) {
+  const sourceStatus = value || "public";
+  const status = API_STATUS_VALUES.get(sourceStatus);
+  if (!status) {
     throw new Error(
-      `Invalid @api-status "${status}"${context ? ` on ${context}` : ""}; expected ${[
-        ...API_STATUSES,
+      `Invalid @status "${sourceStatus}"${context ? ` on ${context}` : ""}; expected ${[
+        ...API_STATUS_VALUES.keys(),
       ].join(", ")}.`,
     );
   }
@@ -110,12 +117,36 @@ function tagBlocks(raw) {
   const description = [];
   const tags = [];
   let current = null;
-  for (const line of lines) {
+  let index = 0;
+
+  // Public API comments keep their visibility metadata first so editors show
+  // it immediately. Consume that fixed header before reading the prose; a
+  // generic tag parser would otherwise treat the description as @status's
+  // multiline value.
+  while (index < lines.length && !lines[index].trim()) index++;
+  let foundHeader = false;
+  while (index < lines.length) {
+    const match = lines[index].match(/^\s*@(public|private|status)(?:\s+([\s\S]*))?$/);
+    if (!match) break;
+    tags.push({ name: match[1], value: (match[2] || "").trim() });
+    foundHeader = true;
+    index++;
+  }
+  if (foundHeader) {
+    while (index < lines.length && !lines[index].trim()) index++;
+  } else {
+    index = 0;
+  }
+
+  let readingTags = false;
+  for (; index < lines.length; index++) {
+    const line = lines[index];
     const match = line.match(/^\s*@([\w-]+)(?:\s+([\s\S]*))?$/);
     if (match) {
       current = { name: match[1], value: (match[2] || "").trim() };
       tags.push(current);
-    } else if (current) {
+      readingTags = true;
+    } else if (readingTags && current) {
       current.value = `${current.value}\n${line}`;
     } else {
       description.push(line);
@@ -171,7 +202,7 @@ function parseJsdoc(raw, context, strict) {
   const hasPrivate = tags.some((tag) => tag.name === "private");
   const hasDocumentTag = tags.some((tag) =>
     [
-      "api-status",
+      "status",
       "category",
       "class",
       "classdesc",
@@ -187,8 +218,8 @@ function parseJsdoc(raw, context, strict) {
   if (strict && hasDocumentTag && !hasPublic && !hasPrivate && !categoryOnly) {
     throw new Error(`JSDoc on ${context} must declare @public or @private.`);
   }
-  if (strict && hasPublic && !tags.some((tag) => tag.name === "api-status")) {
-    throw new Error(`Public JSDoc on ${context} must declare @api-status.`);
+  if (strict && hasPublic && !tags.some((tag) => tag.name === "status")) {
+    throw new Error(`Public JSDoc on ${context} must declare @status.`);
   }
   if (hasPrivate || (!hasPublic && !hasDocumentTag)) return null;
 
@@ -207,7 +238,7 @@ function parseJsdoc(raw, context, strict) {
   }
 
   const explicitDescription = tagValue(tags, "classdesc") || tagValue(tags, "desc") || description;
-  const status = normalizeStatus(tagValue(tags, "api-status"), context);
+  const status = normalizeStatus(tagValue(tags, "status"), context);
   const returnTag = tags.find((tag) => tag.name === "returns" || tag.name === "return");
   const typeTag = tags.find((tag) => tag.name === "type");
   const parsedReturn = returnTag ? parseReturnTag(returnTag.value) : null;

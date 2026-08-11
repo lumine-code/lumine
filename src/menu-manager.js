@@ -13,6 +13,9 @@ if (buildMetadata) {
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Provides a registry for menu items that you'd like to appear in the
  * application menu.
  *
@@ -65,9 +68,6 @@ if (buildMetadata) {
  * ```
  *
  * See {@link #add} for more information about adding menus directly.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class MenuManager {
   constructor({ resourcePath, keymapManager, packageManager }) {
@@ -109,6 +109,9 @@ module.exports = class MenuManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Adds the given items to the application menu.
    *
    * ## Examples
@@ -127,8 +130,6 @@ module.exports = class MenuManager {
    * @param items.command - An optional `String` command to trigger when the item is clicked.
    * @param items.id - (internal) A `String` containing the menu item's id.
    * @returns {Disposable} on which `.dispose()` can be called to remove the added menu items.
-   * @public
-   * @api-status Public
    */
   add(items) {
     items = _.deepClone(items);
@@ -203,10 +204,10 @@ module.exports = class MenuManager {
   }
 
   /**
-   * Refreshes the currently visible menu.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Refreshes the currently visible menu.
    */
   update() {
     if (!this.initialized) {

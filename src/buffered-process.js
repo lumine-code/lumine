@@ -4,6 +4,9 @@ const { Emitter } = require("@lumine-code/event-kit");
 const path = require("path");
 
 /**
+ * @public
+ * @status extended
+ *
  * A wrapper which provides standard error/output line buffering for
  * Node's ChildProcess.
  *
@@ -18,9 +21,6 @@ const path = require("path");
  * const exit = (code) => console.log("ps -ef exited with #{code}")
  * const process = new BufferedProcess({command, args, stdout, exit})
  * ```
- *
- * @public
- * @api-status Extended
  */
 module.exports = class BufferedProcess {
   /**
@@ -28,6 +28,9 @@ module.exports = class BufferedProcess {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Runs the given command by spawning a new child process.
    *
    * @param {Object} [options] - Process options.
@@ -44,8 +47,6 @@ module.exports = class BufferedProcess {
    * @param {Function} [options.exit] - Receives the process exit status.
    * @param {Number} options.exit.code - The exit status.
    * @param {Boolean} [options.autoStart=true] - Whether to start immediately.
-   * @public
-   * @api-status Public
    */
   constructor({ command, args, options = {}, stdout, stderr, exit, autoStart = true } = {}) {
     this.emitter = new Emitter();
@@ -107,6 +108,9 @@ module.exports = class BufferedProcess {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the process raises an error.
    * Usually this is due to the command not being available or not on the PATH.
    * You can call `handle()` on the object passed to your callback to indicate
@@ -117,8 +121,6 @@ module.exports = class BufferedProcess {
    * @param {Object} callback.errorObject.error - the error object
    * @param {Function} callback.errorObject.handle - call this to indicate you have handled the error. The error will not be thrown if this function is called.
    * @returns {Disposable}
-   * @public
-   * @api-status Public
    */
   onWillThrowError(callback) {
     return this.emitter.on("will-throw-error", callback);
@@ -231,10 +233,10 @@ module.exports = class BufferedProcess {
   }
 
   /**
-   * Terminate the process.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Terminate the process.
    */
   kill() {
     if (this.killed) return;

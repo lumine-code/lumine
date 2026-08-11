@@ -3,6 +3,9 @@ const { Disposable } = require("@lumine-code/event-kit");
 const AnyConstructor = Symbol("any-constructor");
 
 /**
+ * @public
+ * @status essential
+ *
  * `ViewRegistry` handles the association between model and view
  * types in Lumine. We call this association a View Provider. As in, for a given
  * model, this class can provide a view via {@link #getView}, as long as the
@@ -22,9 +25,6 @@ const AnyConstructor = Symbol("any-constructor");
  * an ideal tool for implementing views in Lumine.
  *
  * You can access the `ViewRegistry` object via `lumine.views`.
- *
- * @public
- * @api-status Essential
  */
 module.exports = class ViewRegistry {
   constructor(lumineEnvironment) {
@@ -42,6 +42,9 @@ module.exports = class ViewRegistry {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a provider that will be used to construct views in the
    * workspace's view layer based on model objects in its model layer.
    *
@@ -60,8 +63,6 @@ module.exports = class ViewRegistry {
    * @param [modelConstructor] - Constructor `Function` for your model. If a constructor is given, the `createView` function will only be used for model objects inheriting from that constructor. Otherwise, it will will be called for any object.
    * @param createView - Factory `Function` that is passed an instance of your model and must return a subclass of `HTMLElement` or `undefined`. If it returns `undefined`, then the registry will continue to search for other view providers.
    * @returns {Disposable} textEditorElement }) ```; on which `.dispose()` can be called to remove the added provider.
-   * @public
-   * @api-status Essential
    */
   addViewProvider(modelConstructor, createView) {
     let provider;
@@ -91,6 +92,9 @@ module.exports = class ViewRegistry {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the view associated with an object in the workspace.
    *
    * If you're just *using* the workspace, you shouldn't need to access the view
@@ -116,8 +120,6 @@ module.exports = class ViewRegistry {
    * If no associated view is returned by the sequence an error is thrown.
    *
    * @returns {HTMLElement} DOM element.
-   * @public
-   * @api-status Essential
    */
   getView(object) {
     if (object == null) {

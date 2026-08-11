@@ -1,4 +1,7 @@
 /**
+ * @public
+ * @status public
+ *
  * Measure how long a function takes to run.
  *
  * description - A `String` description that will be logged to the console when
@@ -6,9 +9,6 @@
  * fn - A `Function` to measure the duration of.
  *
  * Returns the value returned by the given function.
- *
- * @public
- * @api-status Public
  */
 window.measure = function (description, fn) {
   let start = Date.now();
@@ -19,6 +19,9 @@ window.measure = function (description, fn) {
 };
 
 /**
+ * @public
+ * @status public
+ *
  * Create a dev tools profile for a function.
  *
  * description - A `String` description that will be available in the Profiles
@@ -26,9 +29,6 @@ window.measure = function (description, fn) {
  * fn - A `Function` to profile.
  *
  * Returns the value returned by the given function.
- *
- * @public
- * @api-status Public
  */
 window.profile = function (description, fn) {
   window.measure(description, function () {

@@ -25,10 +25,10 @@ const QUERY_ERROR_KIND_LABELS = {
 };
 
 /**
- * This class holds an instance of a Tree-sitter grammar.
- *
  * @public
- * @api-status Extended
+ * @status extended
+ *
+ * This class holds an instance of a Tree-sitter grammar.
  */
 module.exports = class TreeSitterGrammar {
   // Cache each `Language` instance at its own path.
@@ -129,6 +129,9 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Retrieve all known comment delimiters for this grammar.
    *
    * Some grammars may have different delimiters for different parts of a file
@@ -146,8 +149,6 @@ module.exports = class TreeSitterGrammar {
    *   buffer position.)
    *
    * @returns {Object} with the following properties:
-   * @public
-   * @api-status Extended
    */
   getCommentDelimiters() {
     // Prefer the config system. It's a better place for this data to live.
@@ -178,27 +179,28 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Retrieves the Tree-sitter `Language` instance associated with
    * this grammar _if_ it has already been loaded.
    *
    * Language instances cannot be retrieved synchronously, so this will return
    * `undefined` if the instance has not yet been loaded. In that case, going
    * async will be unavoidable, and you’ll need to call {@link #getLanguage}.
-   *
-   * @public
-   * @api-status Extended
    */
   getLanguageSync() {
     return this._language;
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Retrieves the Tree-sitter language instance associated with this
    * grammar.
    *
    * @returns {Promise} that will resolve with a Tree-sitter `Language` instance. Once it resolves, the grammar is ready to perform parsing and to execute query captures.
-   * @public
-   * @api-status Extended
    */
   async getLanguage() {
     await parserInitPromise;
@@ -457,13 +459,14 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Given a kind of query, retrieves a Tree-sitter `Query` object
    * in async fashion.
    *
    * @param queryType - A `String` describing the query type: typically one of `highlightsQuery`, `foldsQuery`, `tagsQuery`, or `indentsQuery`, but could be any other custom type.
    * @returns {Promise} that resolves to a Tree-sitter `Query` object.
-   * @public
-   * @api-status Extended
    */
   getQuery(queryType) {
     // Async, but designed so that multiple near-simultaneous calls to
@@ -508,13 +511,14 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Creates an arbitrary query from this grammar. Package authors
    * and end users can use queries for whatever purposes they like.
    *
    * @param queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
    * @returns {Promise} that will resolve to a Tree-sitter `Query` object.
-   * @public
-   * @api-status Extended
    */
   async createQuery(queryContents) {
     let language = await this.getLanguage();
@@ -522,6 +526,9 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Creates an arbitrary query from this grammar. Package authors
    * and end users can use queries for whatever purposes they like.
    *
@@ -530,8 +537,6 @@ module.exports = class TreeSitterGrammar {
    *
    * @param queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
    * @returns {Object} Tree-sitter `Query` object.
-   * @public
-   * @api-status Extended
    */
   createQuerySync(queryContents) {
     if (!this._language) {
@@ -592,6 +597,9 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls `callback` when any of this grammar's queries change.
    *
    * A grammar's queries typically will not change after initial load. When
@@ -606,26 +614,27 @@ module.exports = class TreeSitterGrammar {
    * @param {Object} callback.data
    * @param {String} callback.data.filePath - The path to the query file on disk.
    * @param {String} callback.data.queryType - The type of query file, as denoted by its configuration key in the grammar file. Usually one of `highlightsQuery`, `indentsQuery`, `foldsQuery`, or `tagsQuery`.
-   * @public
-   * @api-status Extended
    */
   onDidChangeQuery(callback) {
     return this.emitter.on("did-change-query", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls `callback` when any of this grammar's queries change.
    *
    * Alias of {@link #onDidChangeQuery}.
-   *
-   * @public
-   * @api-status Extended
    */
   onDidChangeQueryFile(callback) {
     return this.onDidChangeQuery(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls `callback` when this grammar first loads its query files.
    *
    * Since a grammar may not load immediately on startup, this method makes it
@@ -634,39 +643,36 @@ module.exports = class TreeSitterGrammar {
    *
    * * callback A function with the following argument:
    *   * grammar The {@link TreeSitterGrammar} whose queries have loaded.
-   *
-   * @public
-   * @api-status Extended
    */
   onDidLoadQueryFiles(callback) {
     return this.emitter.on("did-load-query-files", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls `callback` when an injection point is added to this
    * grammar.
    *
    * * callback A function with the following argument:
    *   * injectionPoint The injection point added to the grammar. See
    *     {@link TreeSitterGrammar#addInjectionPoint}.
-   *
-   * @public
-   * @api-status Extended
    */
   onDidAddInjectionPoint(callback) {
     return this.emitter.on("did-add-injection-point", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls `callback` when an injection point is removed from this
    * grammar.
    *
    * * callback A function with the following argument:
    *   * injectionPoint The injection point removed from this grammar. See
    *     {@link TreeSitterGrammar#addInjectionPoint}.
-   *
-   * @public
-   * @api-status Extended
    */
   onDidRemoveInjectionPoint(callback) {
     return this.emitter.on("did-remove-injection-point", callback);
@@ -690,6 +696,9 @@ module.exports = class TreeSitterGrammar {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Define a set of rules for when this grammar should delegate to a
    * different grammar for certain regions of a buffer. Examples:
    *
@@ -720,8 +729,6 @@ module.exports = class TreeSitterGrammar {
    * @param {Boolean} [injectionPoint.newlinesBetween] - controlling whether the injection range should include any newline characters that may exist in between injection ranges. Defaults to `false`. Grammars like ERB and EJS need this so that they do not interpret two different embedded code sections on different lines as occurring on the same line.
    * @param {Boolean} [injectionPoint.coverShallowerScopes] - controlling whether the injection should prevent the parent grammar (and any of its ancestors) from applying scope boundaries within its injection range(s). Defaults to `false`.
    * @param [injectionPoint.languageScope] - A value that determines what scope, if any, is added to the injection as its “base” scope name. Can be a `String`, `null`, or a `Function` that returns either of these values. The base language scope that should be used by this injection. Defaults to the grammar's own `scopeName` property. Set this to a string to override the default scope name, or `null` to omit a base scope name altogether. Set this to a function if the scope name to be applied varies based on the grammar; the function will be called with a grammar instance as its only argument.
-   * @public
-   * @api-status Extended
    */
   addInjectionPoint(injectionPoint) {
     let { type } = injectionPoint;

@@ -4,14 +4,14 @@ const path = require("path");
 const { createStylesElement } = require("./styles-element");
 
 /**
+ * @public
+ * @status extended
+ *
  * A singleton instance of this class available via `lumine.styles`,
  * which you can use to globally query and observe the set of active style
  * sheets. The `StyleManager` doesn't add any style elements to the DOM on its
  * own, but is instead subscribed to by individual `<lumine-styles>` elements,
  * which clone and attach style elements in different contexts.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class StyleManager {
   constructor() {
@@ -29,6 +29,9 @@ module.exports = class StyleManager {
    */
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke `callback` for all current and future style elements.
    *
    * @param {Function} callback - that is called with style elements.
@@ -36,8 +39,6 @@ module.exports = class StyleManager {
    * @param callback.styleElement.sourcePath - A `String` containing the path from which the style element was loaded.
    * @param callback.styleElement.context - A `String` indicating the target context of the style element.
    * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
-   * @public
-   * @api-status Extended
    */
   observeStyleElements(callback) {
     for (let styleElement of this.getStyleElements()) {
@@ -48,6 +49,9 @@ module.exports = class StyleManager {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke `callback` when a style element is added.
    *
    * @param {Function} callback - that is called with style elements.
@@ -55,27 +59,29 @@ module.exports = class StyleManager {
    * @param callback.styleElement.sourcePath - A `String` containing the path from which the style element was loaded.
    * @param callback.styleElement.context - A `String` indicating the target context of the style element.
    * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
-   * @public
-   * @api-status Extended
    */
   onDidAddStyleElement(callback) {
     return this.emitter.on("did-add-style-element", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke `callback` when a style element is removed.
    *
    * @param {Function} callback - that is called with style elements.
    * @param callback.styleElement - An `HTMLStyleElement` instance.
    * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
-   * @public
-   * @api-status Extended
    */
   onDidRemoveStyleElement(callback) {
     return this.emitter.on("did-remove-style-element", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke `callback` when an existing style element is updated.
    *
    * @param {Function} callback - that is called with style elements.
@@ -83,8 +89,6 @@ module.exports = class StyleManager {
    * @param callback.styleElement.sourcePath - A `String` containing the path from which the style element was loaded.
    * @param callback.styleElement.context - A `String` indicating the target context of the style element.
    * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
-   * @public
-   * @api-status Extended
    */
   onDidUpdateStyleElement(callback) {
     return this.emitter.on("did-update-style-element", callback);
@@ -95,10 +99,10 @@ module.exports = class StyleManager {
    */
 
   /**
-   * Get all loaded style elements.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Get all loaded style elements.
    */
   getStyleElements() {
     return this.styleElements.slice();
@@ -203,11 +207,12 @@ module.exports = class StyleManager {
    */
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the path of the user style sheet in `~/.lumine`.
    *
    * @returns {String}
-   * @public
-   * @api-status Extended
    */
   getUserStyleSheetPath() {
     if (this.configDirPath == null) {

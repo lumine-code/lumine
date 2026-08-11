@@ -55,6 +55,9 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get a promise that resolves the next time the element's DOM
    * is updated in any way.
    *
@@ -62,8 +65,6 @@ class TextEditorElement extends HTMLElement {
    * be sure this change has been flushed to the DOM.
    *
    * @returns {Promise}
-   * @public
-   * @api-status Extended
    */
   getNextUpdatePromise() {
     return this.getComponent().getNextUpdatePromise();
@@ -156,11 +157,12 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * get the width of an `x` character displayed in this element.
    *
    * @returns {Number} of pixels.
-   * @public
-   * @api-status Extended
    */
   getBaseCharacterWidth() {
     return this.getComponent().getBaseCharacterWidth();
@@ -223,20 +225,20 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
-   * Scrolls the editor to the top.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Scrolls the editor to the top.
    */
   scrollToTop() {
     this.setScrollTop(0);
   }
 
   /**
-   * Scrolls the editor to the bottom.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Scrolls the editor to the bottom.
    */
   scrollToBottom() {
     this.setScrollTop(Infinity);
@@ -247,6 +249,9 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Converts a buffer position to a pixel position.
    *
    *
@@ -257,8 +262,6 @@ class TextEditorElement extends HTMLElement {
    *
    * @param bufferPosition - A {@link Point}-like object that represents a buffer position.
    * @returns {Object} with two values: `top` and `left`, representing the pixel position.
-   * @public
-   * @api-status Extended
    */
   pixelPositionForBufferPosition(bufferPosition) {
     const screenPosition = this.getModel().screenPositionForBufferPosition(bufferPosition);
@@ -266,6 +269,9 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Converts a screen position to a pixel position.
    *
    *
@@ -275,8 +281,6 @@ class TextEditorElement extends HTMLElement {
    *
    * @param screenPosition - A {@link Point}-like object that represents a buffer position.
    * @returns {Object} with two values: `top` and `left`, representing the pixel position.
-   * @public
-   * @api-status Extended
    */
   pixelPositionForScreenPosition(screenPosition) {
     screenPosition = this.getModel().clipScreenPosition(screenPosition);
@@ -335,14 +339,15 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Invalidate the passed block {@link Decoration}'s dimensions,
    * forcing them to be recalculated and the surrounding content to be adjusted
    * on the next animation frame.
    *
    * @param {Decoration} blockDecoration - The block decoration whose dimensions
    *   should be recalculated.
-   * @public
-   * @api-status Experimental
    */
   invalidateBlockDecorationDimensions(blockDecoration) {
     this.getComponent().invalidateBlockDecorationDimensions(blockDecoration);

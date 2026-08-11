@@ -93,12 +93,13 @@ class Marker {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the marker is destroyed.
    *
    * @param {Function} callback - to be called when the marker is destroyed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidDestroy(callback) {
     this.layer.markersWithDestroyListeners.add(this);
@@ -112,6 +113,9 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the state of the marker changes.
    *
    * @param {Function} callback - to be called when the marker changes.
@@ -128,8 +132,6 @@ class Marker {
    * @param {Object} callback.event.newProperties - containing the marker's custom properties after the change.
    * @param {Boolean} callback.event.textChanged - indicating whether this change was caused by a textual change to the buffer or whether the marker was manipulated directly via its public API.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChange(callback) {
     if (!this.hasChangeObservers) {
@@ -149,23 +151,25 @@ class Marker {
   }
 
   /**
-   * @returns {Range} current {@link Range} of the marker. The range is immutable.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Range} current {@link Range} of the marker. The range is immutable.
    */
   getRange() {
     return this.layer.getMarkerRange(this.id);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Sets the range of the marker.
    *
    * @param range - A {@link Range} or range-compatible `Array`. The range will be clipped before it is assigned.
    * @param [params] - An `Object` with the following keys:
    * @param {Boolean} params.reversed - indicating the marker will to be in a reversed orientation.
    * @param {Boolean} params.exclusive - indicating that changes occurring at either end of the marker will be considered *outside* the marker rather than inside. This defaults to `false` unless the marker's invalidation strategy is `inside` or the marker has no tail, in which case it defaults to `true`.
-   * @public
-   * @api-status Public
    */
   setRange(range, params) {
     if (params == null) {
@@ -180,9 +184,10 @@ class Marker {
   }
 
   /**
-   * @returns {Point} representing the marker's current head position.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Point} representing the marker's current head position.
    */
   getHeadPosition() {
     if (this.reversed) {
@@ -193,11 +198,12 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Sets the head position of the marker.
    *
    * @param position - A {@link Point} or point-compatible `Array`. The position will be clipped before it is assigned.
-   * @public
-   * @api-status Public
    */
   setHeadPosition(position) {
     position = Point.fromObject(position);
@@ -227,9 +233,10 @@ class Marker {
   }
 
   /**
-   * @returns {Point} representing the marker's current tail position. If the marker has no tail, the head position will be returned instead.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Point} representing the marker's current tail position. If the marker has no tail, the head position will be returned instead.
    */
   getTailPosition() {
     if (this.reversed) {
@@ -240,12 +247,13 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Sets the tail position of the marker. If the marker doesn't have a
    * tail, it will after calling this method.
    *
    * @param position - A {@link Point} or point-compatible `Array`. The position will be clipped before it is assigned.
-   * @public
-   * @api-status Public
    */
   setTailPosition(position) {
     position = Point.fromObject(position);
@@ -272,30 +280,32 @@ class Marker {
   }
 
   /**
-   * @returns {Point} representing the start position of the marker, which could be the head or tail position, depending on its orientation.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Point} representing the start position of the marker, which could be the head or tail position, depending on its orientation.
    */
   getStartPosition() {
     return this.layer.getMarkerStartPosition(this.id);
   }
 
   /**
-   * @returns {Point} representing the end position of the marker, which could be the head or tail position, depending on its orientation.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Point} representing the end position of the marker, which could be the head or tail position, depending on its orientation.
    */
   getEndPosition() {
     return this.layer.getMarkerEndPosition(this.id);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Removes the marker's tail. After calling the marker's head position
    * will be reported as its current tail position until the tail is planted
    * again.
-   *
-   * @public
-   * @api-status Public
    */
   clearTail() {
     const headPosition = this.getHeadPosition();
@@ -307,12 +317,12 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Plants the marker's tail at the current head position. After calling
    * the marker's tail position will be its head position at the time of the
    * call, regardless of where the marker's head is moved.
-   *
-   * @public
-   * @api-status Public
    */
   plantTail() {
     if (!this.hasTail()) {
@@ -325,49 +335,54 @@ class Marker {
   }
 
   /**
-   * @returns {Boolean} indicating whether the head precedes the tail.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} indicating whether the head precedes the tail.
    */
   isReversed() {
     return this.tailed && this.reversed;
   }
 
   /**
-   * @returns {Boolean} indicating whether the marker has a tail.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} indicating whether the marker has a tail.
    */
   hasTail() {
     return this.tailed;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the marker valid?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isValid() {
     return !this.isDestroyed() && this.valid;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the marker destroyed?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isDestroyed() {
     return !this.layer.hasMarker(this.id);
   }
 
   /**
-   * @returns {Boolean} indicating whether changes that occur exactly at the marker's head or tail cause it to move.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} indicating whether changes that occur exactly at the marker's head or tail cause it to move.
    */
   isExclusive() {
     if (this.exclusive != null) {
@@ -378,10 +393,11 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Marker} other - other marker
    * @returns {Boolean} indicating whether this marker is equivalent to another marker, meaning they have the same range and options.
-   * @public
-   * @api-status Public
    */
   isEqual(other) {
     return (
@@ -395,34 +411,37 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the invalidation strategy for this marker.
    *
    * Valid values include: `never`, `surround`, `overlap`, `inside`, and `touch`.
    *
    * @returns {String}
-   * @public
-   * @api-status Public
    */
   getInvalidationStrategy() {
     return this.invalidate;
   }
 
   /**
-   * @returns {Object} containing any custom properties associated with the marker.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Object} containing any custom properties associated with the marker.
    */
   getProperties() {
     return this.properties;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Merges an `Object` containing new properties into the marker's
    * existing properties.
    *
    * @param {Object} properties
-   * @public
-   * @api-status Public
    */
   setProperties(properties) {
     return this.update(this.getRange(), {
@@ -431,13 +450,13 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Creates and returns a new `Marker` with the same properties as this
    * marker.
    *
    * * `params` `Object`
-   *
-   * @public
-   * @api-status Public
    */
   copy(options = {}) {
     const snapshot = this.getSnapshot(null, false);
@@ -450,10 +469,10 @@ class Marker {
   }
 
   /**
-   * Destroys the marker, causing it to emit the 'destroyed' event.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Destroys the marker, causing it to emit the 'destroyed' event.
    */
   destroy(suppressMarkerLayerUpdateEvents) {
     if (this.isDestroyed()) {
@@ -470,41 +489,45 @@ class Marker {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Compares this marker to another based on their ranges.
    *
    * @param {Marker} other
-   * @public
-   * @api-status Public
    */
   compare(other) {
     return this.layer.compareMarkers(this.id, other.id);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param point - A {@link Point} or point-compatible `Array`
    * @returns {Boolean} indicating whether the marker's range contains the given point.
-   * @public
-   * @api-status Public
    */
   containsPoint(point) {
     return this.getRange().containsPoint(point);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param range - A {@link Range} or range-compatible `Array`
    * @returns {Boolean} indicating whether the marker's range contains the given range.
-   * @public
-   * @api-status Public
    */
   containsRange(range) {
     return this.getRange().containsRange(range);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param row - A row `Number`
    * @returns {Boolean} indicating whether the marker's range intersects the given row.
-   * @public
-   * @api-status Public
    */
   intersectsRow(row) {
     return this.getRange().intersectsRow(row);

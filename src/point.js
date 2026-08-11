@@ -3,6 +3,9 @@ function isActualNumber(value) {
 }
 
 /**
+ * @public
+ * @status public
+ *
  * Represents a point in a buffer in row/column coordinates.
  *
  * Every public method that takes a point also accepts a *point-compatible*
@@ -13,9 +16,6 @@ function isActualNumber(value) {
  * new Point(1, 2)
  * [1, 2] // Point-compatible Array
  * ```
- *
- * @public
- * @api-status Public
  */
 class Point {
   /**
@@ -26,13 +26,14 @@ class Point {
   static INFINITY = Object.freeze(new Point(Infinity, Infinity));
 
   /**
+   * @public
+   * @status public
+   *
    * Convert any point-compatible object to a {@link Point}.
    *
    * @param object - This can be an object that's already a {@link Point}, in which case it's simply returned; or an array containing two `Numbers` representing the row and column.
    * @param copy - An optional boolean indicating whether to force the copying of objects that are already points.
    * @returns {Point} A point based on the given object.
-   * @public
-   * @api-status Public
    */
   static fromObject(object, copy) {
     if (object instanceof Point) {
@@ -54,11 +55,12 @@ class Point {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Point} point1
    * @param {Point} point2
    * @returns {Point} given {@link Point} that occurs earlier in the buffer.
-   * @public
-   * @api-status Public
    */
   static min(point1, point2) {
     point1 = this.fromObject(point1);
@@ -71,11 +73,12 @@ class Point {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Point} point1
    * @param {Point} point2
    * @returns {Point} given {@link Point} that occurs later in the buffer.
-   * @public
-   * @api-status Public
    */
   static max(point1, point2) {
     point1 = Point.fromObject(point1);
@@ -88,11 +91,11 @@ class Point {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Ensure the given {@link Point} is valid by throwing a `TypeError` if
    * either its `row` or its `column` is not an integer.
-   *
-   * @public
-   * @api-status Public
    */
   static assertValid(point) {
     if (!isActualNumber(point.row) || !isActualNumber(point.column)) {
@@ -105,12 +108,13 @@ class Point {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Construct a {@link Point} object.
    *
    * @param {Number} row - row
    * @param {Number} column - column
-   * @public
-   * @api-status Public
    */
   constructor(row = 0, column = 0) {
     this.row = row;
@@ -118,18 +122,20 @@ class Point {
   }
 
   /**
-   * @returns {Point} new {@link Point} with the same row and column.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Point} new {@link Point} with the same row and column.
    */
   copy() {
     return new Point(this.row, this.column);
   }
 
   /**
-   * @returns {Point} new {@link Point} with the row and column negated.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Point} new {@link Point} with the row and column negated.
    */
   negate() {
     return new Point(-this.row, -this.column);
@@ -140,24 +146,26 @@ class Point {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Make this point immutable and return itself.
    *
    * @returns {Point} immutable version of this {@link Point}.
-   * @public
-   * @api-status Public
    */
   freeze() {
     return Object.freeze(this);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Build and return a new point by adding the rows and columns of
    * the given point.
    *
    * @param other - A {@link Point} whose row and column will be added to this point's row and column to build the returned point.
    * @returns {Point}
-   * @public
-   * @api-status Public
    */
   translate(other) {
     const { row, column } = Point.fromObject(other);
@@ -165,6 +173,9 @@ class Point {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Build and return a new {@link Point} by traversing the rows and columns
    * specified by the given point.
    *
@@ -185,8 +196,6 @@ class Point {
    *
    * @param other - A {@link Point} providing the rows and columns to traverse by.
    * @returns {Point}
-   * @public
-   * @api-status Public
    */
   traverse(other) {
     let column;
@@ -230,10 +239,11 @@ class Point {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Point} or point-compatible `Array`.
    * @returns {Number} `-1` when this point precedes the argument, `0` when they are equal, or `1` when it follows.
-   * @public
-   * @api-status Public
    */
   compare(other) {
     other = Point.fromObject(other);
@@ -253,10 +263,11 @@ class Point {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point has the same row and column as the given {@link Point} or point-compatible `Array`.
-   * @public
-   * @api-status Public
    */
   isEqual(other) {
     if (!other) {
@@ -267,40 +278,44 @@ class Point {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point precedes the given {@link Point} or point-compatible `Array`.
-   * @public
-   * @api-status Public
    */
   isLessThan(other) {
     return this.compare(other) < 0;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point precedes or is equal to the given {@link Point} or point-compatible `Array`.
-   * @public
-   * @api-status Public
    */
   isLessThanOrEqual(other) {
     return this.compare(other) <= 0;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point follows the given {@link Point} or point-compatible `Array`.
-   * @public
-   * @api-status Public
    */
   isGreaterThan(other) {
     return this.compare(other) > 0;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Point} or point-compatible `Array`.
    * @returns {Boolean} indicating whether this point follows or is equal to the given {@link Point} or point-compatible `Array`.
-   * @public
-   * @api-status Public
    */
   isGreaterThanOrEqual(other) {
     return this.compare(other) >= 0;
@@ -335,27 +350,30 @@ class Point {
    */
 
   /**
-   * @returns {Array} array of this point's row and column.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} array of this point's row and column.
    */
   toArray() {
     return [this.row, this.column];
   }
 
   /**
-   * @returns {Array} array of this point's row and column.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} array of this point's row and column.
    */
   serialize() {
     return this.toArray();
   }
 
   /**
-   * @returns {String} string representation of the point.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} string representation of the point.
    */
   toString() {
     return `(${this.row}, ${this.column})`;

@@ -3,10 +3,10 @@ const semver = require("semver");
 const { getReleaseChannel } = require("./get-app-details");
 
 /**
- * Main-process application services exposed as serializable values.
- *
  * @public
- * @api-status Public
+ * @status public
+ *
+ * Main-process application services exposed as serializable values.
  */
 class ApplicationService {
   constructor(applicationDelegate) {
@@ -14,12 +14,13 @@ class ApplicationService {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Return an Electron application path captured during bootstrap.
    *
    * @param {String} name - A supported Electron application-path name.
    * @returns {String} The cached path synchronously.
-   * @public
-   * @api-status Public
    */
   getPath(name) {
     const paths = getWindowLoadSettings().appPaths || {};
@@ -28,57 +29,62 @@ class ApplicationService {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Return the application locale captured during bootstrap.
    *
    * @returns {String} The cached locale synchronously.
-   * @public
-   * @api-status Public
    */
   getLocale() {
     return getWindowLoadSettings().appLocale;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Return the editor resource directory captured during bootstrap.
    *
    * @returns {String} The absolute resource path synchronously.
-   * @public
-   * @api-status Public
    */
   getResourcePath() {
     return getWindowLoadSettings().resourcePath;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Return the full name of this Lumine application.
    *
    * @returns {String} The application name synchronously.
-   * @public
-   * @api-status Public
    */
   getName() {
     return getWindowLoadSettings().appName;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Return the Lumine application version.
    *
    * @returns {String} The version synchronously.
-   * @public
-   * @api-status Public
    */
   getVersion() {
     return getWindowLoadSettings().appVersion;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Determine whether the current application version satisfies a
    * semantic-version range.
    *
    * @param {String} range - A semantic-version range.
    * @returns {Boolean} Whether the current version satisfies the range.
-   * @public
-   * @api-status Public
    */
   versionSatisfies(range) {
     const [version] = this.getVersion().split("-");
@@ -86,90 +92,98 @@ class ApplicationService {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Return the current release channel.
    *
    * @returns {String} The release channel.
-   * @public
-   * @api-status Public
    */
   getReleaseChannel() {
     return getReleaseChannel(this.getVersion());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Determine whether this build came from the release pipeline.
    *
    * @returns {Boolean} Whether this is a released build.
-   * @public
-   * @api-status Public
    */
   isReleasedVersion() {
     return /stable|beta|rc|nightly/.test(this.getReleaseChannel());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Open paths in a new or reusable Lumine window.
    *
    * The call returns immediately after sending the request to the main process.
    *
    * @param {Object} params - Paths and window options to open.
-   * @public
-   * @api-status Public
    */
   openWindow(params) {
     return this.applicationDelegate.open(params);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read an operating-system user default.
    *
    * @returns {Promise} resolving to a serializable preference value.
-   * @public
-   * @api-status Public
    */
   getUserDefault(key, type) {
     return this.applicationDelegate.invokeApp("getUserDefault", key, type);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Determine whether Lumine is the default handler for a protocol.
    *
    * @returns {Promise} resolving to a `Boolean`.
-   * @public
-   * @api-status Public
    */
   isDefaultProtocolClient(protocol, path, args) {
     return this.applicationDelegate.invokeApp("isDefaultProtocolClient", protocol, path, args);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Register Lumine as the default handler for a protocol.
    *
    * @returns {Promise} resolving to a `Boolean`.
-   * @public
-   * @api-status Public
    */
   setAsDefaultProtocolClient(protocol, path, args) {
     return this.applicationDelegate.invokeApp("setAsDefaultProtocolClient", protocol, path, args);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Load an operating-system file icon as a data URL.
    *
    * @returns {Promise} resolving to a data-URL `String`, or `null`.
-   * @public
-   * @api-status Public
    */
   getFileIcon(filePath, options = {}) {
     return this.applicationDelegate.invokeApp("getFileIcon", filePath, options);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Restart Lumine with the current launch options.
    *
    * @returns {Promise} that resolves when restart is scheduled.
-   * @public
-   * @api-status Public
    */
   restart() {
     return this.applicationDelegate.invokeApp("restart");

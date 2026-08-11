@@ -4,6 +4,9 @@ const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const SerializationVersion = 1;
 
 /**
+ * @public
+ * @status extended
+ *
  * Associates listener functions with URIs from outside the application.
  *
  * An instance of this class is always available as the `lumine.uriHandlers`
@@ -68,9 +71,6 @@ const SerializationVersion = 1;
  *   }
  * }
  * ```
- *
- * @public
- * @api-status Extended
  */
 module.exports = class URIHandlerRegistry {
   constructor(maxHistoryLength = 50) {

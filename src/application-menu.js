@@ -19,15 +19,15 @@ module.exports = class ApplicationMenu {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Updates the entire menu with the given keybindings.
    *
    * window - The BrowserWindow this menu template is associated with.
    * template - The Object which describes the menu to display.
    * keystrokesByCommand - An Object where the keys are commands and the values
    *                       are Arrays containing the keystroke.
-   *
-   * @public
-   * @api-status Public
    */
   update(window, template, keystrokesByCommand) {
     this.translateTemplate(template, keystrokesByCommand);
@@ -97,13 +97,13 @@ module.exports = class ApplicationMenu {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Used to make all window related menu items are active.
    *
    * enable - If true enables all window specific items, if false disables all
    *          window specific items.
-   *
-   * @public
-   * @api-status Public
    */
   enableWindowSpecificItems(enable) {
     for (let item of this.flattenMenuItems(this.menu)) {

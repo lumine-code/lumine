@@ -1,4 +1,7 @@
 /**
+ * @public
+ * @status extended
+ *
  * Wraps an `Array` of `String`s. The Array describes a path from the
  * root of the syntax tree to a token including _all_ scope names for the entire
  * path.
@@ -18,9 +21,6 @@
  *
  * See the [scopes and scope descriptor guide](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
  * for more information.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class ScopeDescriptor {
   static fromObject(scopes) {
@@ -36,21 +36,23 @@ module.exports = class ScopeDescriptor {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Create a {@link ScopeDescriptor} object.
    *
    * @param {Object} object - Scope data.
    * @param {Array<String>} object.scopes - The ordered syntax scopes.
-   * @public
-   * @api-status Public
    */
   constructor({ scopes }) {
     this.scopes = scopes;
   }
 
   /**
-   * @returns {Array} of `Strings`
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} of `Strings`
    */
   getScopesArray() {
     return this.scopes;

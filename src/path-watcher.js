@@ -606,6 +606,9 @@ class ParcelWatcher extends WorkerProcessWatcher {
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Manage a subscription to filesystem events that occur beneath a
  * root directory. Construct these by calling `watchPath`. To watch for events
  * within active project directories, use {@link Project#onDidChangeFiles} instead.
@@ -655,9 +658,6 @@ class ParcelWatcher extends WorkerProcessWatcher {
  *     that was acted upon;
  *   * `oldPath` (for `renamed` events only), a `String` containing the
  *     filesystem entry's former absolute path.
- *
- * @public
- * @api-status Extended
  */
 class PathWatcher {
   static DEFAULT_OPTIONS = {
@@ -736,6 +736,9 @@ class PathWatcher {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    *
    * PathWatchers acquired through `watchPath` are already started.
    *
@@ -757,8 +760,6 @@ class PathWatcher {
    * ```
    *
    * @returns {Promise} that will resolve when the underlying native watcher is ready to begin sending events. When testing filesystem watchers, it's important to await this promise before making filesystem changes that you intend to assert about because there will be a delay between the instantiation of the watcher and the activation of the underlying OS resources that feed its events.
-   * @public
-   * @api-status Extended
    */
   getStartPromise() {
     return this.startPromise;
@@ -792,14 +793,15 @@ class PathWatcher {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke a `Function` when any errors related to this watcher are
    * reported.
    *
    * @param {Function} callback - to be called when an error occurs.
    * @param callback.err - An `Error` describing the failure condition.
    * @returns {Disposable}
-   * @public
-   * @api-status Extended
    */
   onDidError(callback) {
     return this.emitter.on("did-error", callback);
@@ -977,12 +979,12 @@ class PathWatcher {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Unsubscribe all subscribers from filesystem events. Native
    * resources will be released asynchronously, but this watcher will stop
    * broadcasting events immediately.
-   *
-   * @public
-   * @api-status Extended
    */
   dispose() {
     this.disposing = true;
@@ -1097,6 +1099,9 @@ class PathWatcherManager {
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Invoke a callback with each filesystem event that occurs beneath a
  * specified path. If you only need to watch events within the project's root
  * paths, use {@link Project#onDidChangeFiles} instead.
@@ -1138,14 +1143,15 @@ class PathWatcherManager {
  * @param {String} eventCallback.events.path - containing the absolute path to the filesystem entry that was acted upon.
  * @param eventCallback.events.oldPath - For rename events, `String` containing the filesystem entry's former absolute path.
  * @returns {Promise<PathWatcher>} A promise resolving to the started watcher. Every watcher is also a `Disposable`.
- * @public
- * @api-status Extended
  */
 function watchPath(rootPath, options, eventCallback) {
   return PathWatcherManager.active().createWatcher(rootPath, eventCallback, options);
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Watch a single file for changes, deletion, and renaming. This is
  * the replacement for the old `File` watching API: it exposes just the change
  * notifications, backed by `watchPath`.
@@ -1166,8 +1172,6 @@ function watchPath(rootPath, options, eventCallback) {
  *
  * @param {String} filePath - absolute path to the file to watch.
  * @returns {Object} with:
- * @public
- * @api-status Extended
  */
 function watchFile(filePath) {
   const emitter = new Emitter();

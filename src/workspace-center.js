@@ -4,10 +4,10 @@ const TextEditor = require("./text-editor");
 const PaneContainer = require("./pane-container");
 
 /**
- * Represents the workspace at the center of the entire window.
- *
  * @public
- * @api-status Essential
+ * @status essential
+ *
+ * Represents the workspace at the center of the entire window.
  */
 module.exports = class WorkspaceCenter {
   constructor(params) {
@@ -53,14 +53,15 @@ module.exports = class WorkspaceCenter {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback with all current and future text
    * editors in the workspace center.
    *
    * @param {Function} callback - to be called with current and future text editors.
    * @param callback.editor - An {@link TextEditor} that is present in {@link #getTextEditors} at the time of subscription or that is added at some later time.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   observeTextEditors(callback) {
     for (let textEditor of this.getTextEditors()) {
@@ -70,20 +71,24 @@ module.exports = class WorkspaceCenter {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback with all current and future panes items
    * in the workspace center.
    *
    * @param {Function} callback - to be called with current and future pane items.
    * @param callback.item - An item that is present in {@link #getPaneItems} at the time of subscription or that is added at some later time.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   observePaneItems(callback) {
     return this.paneContainer.observePaneItems(callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback when the active pane item changes.
    *
    * Because observers are invoked synchronously, it's important not to perform
@@ -94,14 +99,15 @@ module.exports = class WorkspaceCenter {
    * @param {Function} callback - to be called when the active pane item changes.
    * @param callback.item - The active pane item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChangeActivePaneItem(callback) {
     return this.paneContainer.onDidChangeActivePaneItem(callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback when the active pane item stops
    * changing.
    *
@@ -114,28 +120,30 @@ module.exports = class WorkspaceCenter {
    * @param {Function} callback - to be called when the active pane item stops changing.
    * @param callback.item - The active pane item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidStopChangingActivePaneItem(callback) {
     return this.paneContainer.onDidStopChangingActivePaneItem(callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback with the current active pane item and
    * with all future active pane items in the workspace center.
    *
    * @param {Function} callback - to be called when the active pane item changes.
    * @param callback.item - The current active pane item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   observeActivePaneItem(callback) {
     return this.paneContainer.observeActivePaneItem(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a pane is added to the workspace
    * center.
    *
@@ -143,14 +151,15 @@ module.exports = class WorkspaceCenter {
    * @param {Object} callback.event - with the following keys:
    * @param callback.event.pane - The added pane.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidAddPane(callback) {
     return this.paneContainer.onDidAddPane(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback before a pane is destroyed in the
    * workspace center.
    *
@@ -158,14 +167,15 @@ module.exports = class WorkspaceCenter {
    * @param {Object} callback.event - with the following keys:
    * @param callback.event.pane - The pane to be destroyed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onWillDestroyPane(callback) {
     return this.paneContainer.onWillDestroyPane(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a pane is destroyed in the
    * workspace center.
    *
@@ -173,55 +183,59 @@ module.exports = class WorkspaceCenter {
    * @param {Object} callback.event - with the following keys:
    * @param callback.event.pane - The destroyed pane.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidDestroyPane(callback) {
     return this.paneContainer.onDidDestroyPane(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback with all current and future panes in the
    * workspace center.
    *
    * @param {Function} callback - to be called with current and future panes.
    * @param callback.pane - A {@link Pane} that is present in {@link #getPanes} at the time of subscription or that is added at some later time.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   observePanes(callback) {
     return this.paneContainer.observePanes(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when the active pane changes.
    *
    * @param {Function} callback - to be called when the active pane changes.
    * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangeActivePane(callback) {
     return this.paneContainer.onDidChangeActivePane(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback with the current active pane and when
    * the active pane changes.
    *
    * @param {Function} callback - to be called with the current and future active panes.
    * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   observeActivePane(callback) {
     return this.paneContainer.observeActivePane(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a pane item is added to the
    * workspace center.
    *
@@ -231,14 +245,15 @@ module.exports = class WorkspaceCenter {
    * @param {Pane} callback.event.pane - containing the added item.
    * @param {Number} callback.event.index - indicating the index of the added item in its pane.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidAddPaneItem(callback) {
     return this.paneContainer.onDidAddPaneItem(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a pane item is about to be
    * destroyed, before the user is prompted to save it.
    *
@@ -248,14 +263,15 @@ module.exports = class WorkspaceCenter {
    * @param {Pane} callback.event.pane - containing the item to be destroyed.
    * @param {Number} callback.event.index - indicating the index of the item to be destroyed in its pane.
    * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onWillDestroyPaneItem(callback) {
     return this.paneContainer.onWillDestroyPaneItem(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a pane item is destroyed.
    *
    * @param {Function} callback - to be called when pane items are destroyed.
@@ -264,14 +280,15 @@ module.exports = class WorkspaceCenter {
    * @param {Pane} callback.event.pane - containing the destroyed item.
    * @param {Number} callback.event.index - indicating the index of the destroyed item in its pane.
    * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidDestroyPaneItem(callback) {
     return this.paneContainer.onDidDestroyPaneItem(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a text editor is added to the
    * workspace center.
    *
@@ -281,8 +298,6 @@ module.exports = class WorkspaceCenter {
    * @param {Pane} callback.event.pane - containing the added text editor.
    * @param {Number} callback.event.index - indicating the index of the added text editor in its pane.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidAddTextEditor(callback) {
     return this.onDidAddPaneItem(({ item, pane, index }) => {
@@ -297,44 +312,48 @@ module.exports = class WorkspaceCenter {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Get all pane items in the workspace center.
    *
    * @returns {Array} of items.
-   * @public
-   * @api-status Essential
    */
   getPaneItems() {
     return this.paneContainer.getPaneItems();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the active {@link Pane}'s active item.
    *
    * @returns {Object} pane item `Object`.
-   * @public
-   * @api-status Essential
    */
   getActivePaneItem() {
     return this.paneContainer.getActivePaneItem();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get all text editors in the workspace center.
    *
    * @returns {Array} of {@link TextEditor TextEditors}.
-   * @public
-   * @api-status Essential
    */
   getTextEditors() {
     return this.getPaneItems().filter((item) => item instanceof TextEditor);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the active item if it is an {@link TextEditor}.
    *
    * @returns {TextEditor} or `undefined` if the current active item is not an {@link TextEditor}.
-   * @public
-   * @api-status Essential
    */
   getActiveTextEditor() {
     const activeItem = this.getActivePaneItem();
@@ -357,42 +376,44 @@ module.exports = class WorkspaceCenter {
    */
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all panes in the workspace center.
    *
    * @returns {Array} of {@link Pane Panes}.
-   * @public
-   * @api-status Extended
    */
   getPanes() {
     return this.paneContainer.getPanes();
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the active {@link Pane}.
    *
    * @returns {Pane}
-   * @public
-   * @api-status Extended
    */
   getActivePane() {
     return this.paneContainer.getActivePane();
   }
 
   /**
-   * Make the next pane active.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Make the next pane active.
    */
   activateNextPane() {
     return this.paneContainer.activateNextPane();
   }
 
   /**
-   * Make the previous pane active.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Make the previous pane active.
    */
   activatePreviousPane() {
     return this.paneContainer.activatePreviousPane();

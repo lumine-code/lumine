@@ -6,14 +6,14 @@ const Model = require("./model");
 const EmptyLineRegExp = /(\r\n[\t ]*\r\n)|(\n[\t ]*\n)/g;
 
 /**
+ * @public
+ * @status extended
+ *
  * The `Cursor` class represents the little blinking line identifying
  * where text can be inserted.
  *
  * Cursors belong to {@link TextEditor TextEditors} and have some metadata attached in the form
  * of a {@link DisplayMarker}.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class Cursor extends Model {
   // Instantiated by a {@link TextEditor}
@@ -33,6 +33,9 @@ module.exports = class Cursor extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Calls your `callback` when the cursor has been moved.
    *
    * @param {Function} callback
@@ -44,20 +47,19 @@ module.exports = class Cursor extends Model {
    * @param {Boolean} callback.event.textChanged
    * @param {Cursor} callback.event.cursor - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangePosition(callback) {
     return this.emitter.on("did-change-position", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Calls your `callback` when the cursor is destroyed
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
@@ -68,13 +70,14 @@ module.exports = class Cursor extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Moves a cursor to a given screen position.
    *
    * @param {Array} screenPosition - of two numbers: the screen row, and the screen column.
    * @param {Object} [options] - with the following keys:
    * @param options.autoscroll - A Boolean which, if `true`, scrolls the {@link TextEditor} to wherever the cursor moves to.
-   * @public
-   * @api-status Public
    */
   setScreenPosition(screenPosition, options = {}) {
     this.changePosition(options, () => {
@@ -83,22 +86,24 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * @returns {Point} screen position of the cursor as a {@link Point}.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Point} screen position of the cursor as a {@link Point}.
    */
   getScreenPosition() {
     return this.marker.getHeadScreenPosition();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Moves a cursor to a given buffer position.
    *
    * @param {Array} bufferPosition - of two numbers: the buffer row, and the buffer column.
    * @param {Object} [options] - with the following keys:
    * @param {Boolean} options.autoscroll - indicating whether to autoscroll to the new position. Defaults to `true` if this is the most recently added cursor, `false` otherwise.
-   * @public
-   * @api-status Public
    */
   setBufferPosition(bufferPosition, options = {}) {
     this.changePosition(options, () => {
@@ -107,73 +112,80 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * @returns {Array} current buffer position as an Array.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} current buffer position as an Array.
    */
   getBufferPosition() {
     return this.marker.getHeadBufferPosition();
   }
 
   /**
-   * @returns {Number} cursor's current screen row.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Number} cursor's current screen row.
    */
   getScreenRow() {
     return this.getScreenPosition().row;
   }
 
   /**
-   * @returns {Number} cursor's current screen column.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Number} cursor's current screen column.
    */
   getScreenColumn() {
     return this.getScreenPosition().column;
   }
 
   /**
-   * Retrieves the cursor's current buffer row.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Retrieves the cursor's current buffer row.
    */
   getBufferRow() {
     return this.getBufferPosition().row;
   }
 
   /**
-   * @returns {Number} cursor's current buffer column.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Number} cursor's current buffer column.
    */
   getBufferColumn() {
     return this.getBufferPosition().column;
   }
 
   /**
-   * @returns {Number} cursor's current buffer row of text excluding its line ending.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Number} cursor's current buffer row of text excluding its line ending.
    */
   getCurrentBufferLine() {
     return this.editor.lineTextForBufferRow(this.getBufferRow());
   }
 
   /**
-   * @returns {Boolean} whether the cursor is at the start of a line.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} whether the cursor is at the start of a line.
    */
   isAtBeginningOfLine() {
     return this.getBufferPosition().column === 0;
   }
 
   /**
-   * @returns {Boolean} whether the cursor is on the line return character.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} whether the cursor is on the line return character.
    */
   isAtEndOfLine() {
     return this.getBufferPosition().isEqual(this.getCurrentLineBufferRange().end);
@@ -184,23 +196,25 @@ module.exports = class Cursor extends Model {
    */
 
   /**
-   * @returns {DisplayMarker} underlying {@link DisplayMarker} for the cursor. Useful with overlay {@link Decoration Decorations}.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {DisplayMarker} underlying {@link DisplayMarker} for the cursor. Useful with overlay {@link Decoration Decorations}.
    */
   getMarker() {
     return this.marker;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Identifies if the cursor is surrounded by whitespace.
    *
    * "Surrounded" here means that the character directly before and after the
    * cursor are both whitespace.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isSurroundedByWhitespace() {
     const { row, column } = this.getBufferPosition();
@@ -212,13 +226,14 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    *
    * This method returns false if the character before or after the cursor is
    * whitespace.
    *
    * @returns {Boolean} Whether the cursor is between a word and non-word character. Non-word characters come from the `language.nonWordCharacters` setting.
-   * @public
-   * @api-status Public
    */
   isBetweenWordAndNonWord() {
     if (this.isAtBeginningOfLine() || this.isAtEndOfLine()) return false;
@@ -236,11 +251,12 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Object} [options]
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
    * @returns {Boolean} whether this cursor is between a word's start and end.
-   * @public
-   * @api-status Public
    */
   isInsideWord(options) {
     const { row, column } = this.getBufferPosition();
@@ -253,9 +269,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * @returns {Number} indentation level of the current line.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Number} indentation level of the current line.
    */
   getIndentLevel() {
     if (this.editor.getSoftTabs()) {
@@ -266,31 +283,34 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Retrieves the scope descriptor for the cursor's current position.
    *
    * @returns {ScopeDescriptor}
-   * @public
-   * @api-status Public
    */
   getScopeDescriptor() {
     return this.editor.scopeDescriptorForBufferPosition(this.getBufferPosition());
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Retrieves the syntax tree scope descriptor for the cursor's current position.
    *
    * @returns {ScopeDescriptor}
-   * @public
-   * @api-status Public
    */
   getSyntaxTreeScopeDescriptor() {
     return this.editor.syntaxTreeScopeDescriptorForBufferPosition(this.getBufferPosition());
   }
 
   /**
-   * @returns {Boolean} true if this cursor has no non-whitespace characters before its current position.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} true if this cursor has no non-whitespace characters before its current position.
    */
   hasPrecedingCharactersOnLine() {
     const bufferPosition = this.getBufferPosition();
@@ -305,13 +325,14 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Identifies if this cursor is the last in the {@link TextEditor}.
    *
    * "Last" is defined as the most recently added cursor.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isLastCursor() {
     return this === this.editor.getLastCursor();
@@ -322,14 +343,15 @@ module.exports = class Cursor extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Moves the cursor up one screen row.
    *
    * @param {Number} [rowCount] - number of rows to move (default: 1)
    * @param {Object} [options] - Movement options.
    * @param {Boolean} [options.moveToEndOfSelection] - Move to the start of an
    *   existing selection.
-   * @public
-   * @api-status Public
    */
   moveUp(rowCount = 1, { moveToEndOfSelection } = {}) {
     let row, column;
@@ -346,14 +368,15 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Moves the cursor down one screen row.
    *
    * @param {Number} [rowCount] - number of rows to move (default: 1)
    * @param {Object} [options] - Movement options.
    * @param {Boolean} [options.moveToEndOfSelection] - Move to the end of an
    *   existing selection.
-   * @public
-   * @api-status Public
    */
   moveDown(rowCount = 1, { moveToEndOfSelection } = {}) {
     let row, column;
@@ -370,14 +393,15 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Moves the cursor left one screen column.
    *
    * @param {Number} [columnCount] - number of columns to move (default: 1)
    * @param {Object} [options] - Movement options.
    * @param {Boolean} [options.moveToEndOfSelection] - Move to the start of an
    *   existing selection.
-   * @public
-   * @api-status Public
    */
   moveLeft(columnCount = 1, { moveToEndOfSelection } = {}) {
     const range = this.marker.getScreenRange();
@@ -398,14 +422,15 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Moves the cursor right one screen column.
    *
    * @param {Number} [columnCount] - number of columns to move (default: 1)
    * @param {Object} [options] - Movement options.
    * @param {Boolean} [options.moveToEndOfSelection] - Move to the end of an
    *   existing selection.
-   * @public
-   * @api-status Public
    */
   moveRight(columnCount = 1, { moveToEndOfSelection } = {}) {
     const range = this.marker.getScreenRange();
@@ -432,20 +457,20 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the top of the buffer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the top of the buffer.
    */
   moveToTop() {
     this.setBufferPosition([0, 0]);
   }
 
   /**
-   * Moves the cursor to the bottom of the buffer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the bottom of the buffer.
    */
   moveToBottom() {
     const column = this.goalColumn;
@@ -454,31 +479,31 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the beginning of the line.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the beginning of the line.
    */
   moveToBeginningOfScreenLine() {
     this.setScreenPosition([this.getScreenRow(), 0]);
   }
 
   /**
-   * Moves the cursor to the beginning of the buffer line.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the beginning of the buffer line.
    */
   moveToBeginningOfLine() {
     this.setBufferPosition([this.getBufferRow(), 0]);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Moves the cursor to the beginning of the first character in the
    * line.
-   *
-   * @public
-   * @api-status Public
    */
   moveToFirstCharacterOfLine() {
     let targetBufferColumn;
@@ -508,40 +533,40 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the end of the line.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the end of the line.
    */
   moveToEndOfScreenLine() {
     this.setScreenPosition([this.getScreenRow(), Infinity]);
   }
 
   /**
-   * Moves the cursor to the end of the buffer line.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the end of the buffer line.
    */
   moveToEndOfLine() {
     this.setBufferPosition([this.getBufferRow(), Infinity]);
   }
 
   /**
-   * Moves the cursor to the beginning of the word.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the beginning of the word.
    */
   moveToBeginningOfWord() {
     this.setBufferPosition(this.getBeginningOfCurrentWordBufferPosition());
   }
 
   /**
-   * Moves the cursor to the end of the word.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the end of the word.
    */
   moveToEndOfWord() {
     const position = this.getEndOfCurrentWordBufferPosition();
@@ -549,10 +574,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the beginning of the next word.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the beginning of the next word.
    */
   moveToBeginningOfNextWord() {
     const position = this.getBeginningOfNextWordBufferPosition();
@@ -560,10 +585,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the previous word boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the previous word boundary.
    */
   moveToPreviousWordBoundary() {
     const position = this.getPreviousWordBoundaryBufferPosition();
@@ -571,10 +596,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the next word boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the next word boundary.
    */
   moveToNextWordBoundary() {
     const position = this.getNextWordBoundaryBufferPosition();
@@ -582,10 +607,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the previous subword boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the previous subword boundary.
    */
   moveToPreviousSubwordBoundary() {
     const options = { wordRegex: this.subwordRegExp({ backwards: true }) };
@@ -594,10 +619,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the next subword boundary.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the next subword boundary.
    */
   moveToNextSubwordBoundary() {
     const options = { wordRegex: this.subwordRegExp() };
@@ -606,11 +631,11 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Moves the cursor to the beginning of the buffer line, skipping all
    * whitespace.
-   *
-   * @public
-   * @api-status Public
    */
   skipLeadingWhitespace() {
     const position = this.getBufferPosition();
@@ -625,10 +650,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the beginning of the next paragraph
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the beginning of the next paragraph
    */
   moveToBeginningOfNextParagraph() {
     const position = this.getBeginningOfNextParagraphBufferPosition();
@@ -636,10 +661,10 @@ module.exports = class Cursor extends Model {
   }
 
   /**
-   * Moves the cursor to the beginning of the previous paragraph
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Moves the cursor to the beginning of the previous paragraph
    */
   moveToBeginningOfPreviousParagraph() {
     const position = this.getBeginningOfPreviousParagraphBufferPosition();
@@ -651,11 +676,12 @@ module.exports = class Cursor extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Object} [options] - with the following keys:
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
    * @returns {Point} buffer position of previous word boundary. It might be on the current word, or the previous word.
-   * @public
-   * @api-status Public
    */
   getPreviousWordBoundaryBufferPosition(options = {}) {
     const currentBufferPosition = this.getBufferPosition();
@@ -682,11 +708,12 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Object} [options] - with the following keys:
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
    * @returns {Point} buffer position of the next word boundary. It might be on the current word, or the previous word.
-   * @public
-   * @api-status Public
    */
   getNextWordBoundaryBufferPosition(options = {}) {
     const currentBufferPosition = this.getBufferPosition();
@@ -711,6 +738,9 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Retrieves the buffer position of where the current word starts.
    *
    * @param [options] - An `Object` with the following keys:
@@ -718,8 +748,6 @@ module.exports = class Cursor extends Model {
    * @param options.includeNonWordCharacters - A `Boolean` indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
    * @param options.allowPrevious - A `Boolean` indicating whether the beginning of the previous word can be returned.
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   getBeginningOfCurrentWordBufferPosition(options = {}) {
     const allowPrevious = options.allowPrevious !== false;
@@ -745,14 +773,15 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Retrieves the buffer position of where the current word ends.
    *
    * @param {Object} [options] - with the following keys:
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp})
    * @param options.includeNonWordCharacters - A Boolean indicating whether to include non-word characters in the default word regex. Has no effect if wordRegex is set.
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   getEndOfCurrentWordBufferPosition(options = {}) {
     const allowNext = options.allowNext !== false;
@@ -776,13 +805,14 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Retrieves the buffer position of where the next word starts.
    *
    * @param {Object} [options]
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   getBeginningOfNextWordBufferPosition(options = {}) {
     const currentBufferPosition = this.getBufferPosition();
@@ -805,11 +835,12 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Object} [options]
    * @param options.wordRegex - A `RegExp` indicating what constitutes a "word" (default: {@link #wordRegExp}).
    * @returns {Range} buffer Range occupied by the word located under the cursor.
-   * @public
-   * @api-status Public
    */
   getCurrentWordBufferRange(options = {}) {
     const position = this.getBufferPosition();
@@ -824,33 +855,36 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Object} [options]
    * @param options.includeNewline - A `Boolean` which controls whether the Range should include the newline.
    * @returns {Range} buffer Range for the current line.
-   * @public
-   * @api-status Public
    */
   getCurrentLineBufferRange(options) {
     return this.editor.bufferRangeForBufferRow(this.getBufferRow(), options);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Retrieves the range for the current paragraph.
    *
    * A paragraph is defined as a block of text surrounded by empty lines or comments.
    *
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   getCurrentParagraphBufferRange() {
     return this.editor.rowRangeForParagraphAtBufferRow(this.getBufferRow());
   }
 
   /**
-   * @returns {String} characters preceding the cursor in the current word.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} characters preceding the cursor in the current word.
    */
   getCurrentWordPrefix() {
     return this.editor.getTextInBufferRange([
@@ -868,13 +902,14 @@ module.exports = class Cursor extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Compare this cursor's buffer position to another cursor's buffer position.
    *
    * See {@link Point#compare} for more details.
    *
    * @param {Cursor} otherCursor - to compare against
-   * @public
-   * @api-status Public
    */
   compare(otherCursor) {
     return this.getBufferPosition().compare(otherCursor.getBufferPosition());
@@ -885,23 +920,24 @@ module.exports = class Cursor extends Model {
    */
 
   /**
-   * Deselects the current selection.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Deselects the current selection.
    */
   clearSelection(options) {
     if (this.selection) this.selection.clear(options);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the RegExp used by the cursor to determine what a "word" is.
    *
    * @param {Object} [options] - with the following keys:
    * @param options.includeNonWordCharacters - A `Boolean` indicating whether to include non-word characters in the regex. (default: true)
    * @returns {RegExp}
-   * @public
-   * @api-status Public
    */
   wordRegExp(options) {
     const nonWordCharacters = _.escapeRegExp(this.getNonWordCharacters());
@@ -913,13 +949,14 @@ module.exports = class Cursor extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the RegExp used by the cursor to determine what a "subword" is.
    *
    * @param {Object} [options] - with the following keys:
    * @param options.backwards - A `Boolean` indicating whether to look forwards or backwards for the next subword. (default: false)
    * @returns {RegExp}
-   * @public
-   * @api-status Public
    */
   subwordRegExp(options = {}) {
     const nonWordCharacters = this.getNonWordCharacters();

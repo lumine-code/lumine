@@ -46,6 +46,9 @@ function summaryFromStatusEntry(entry) {
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Represents the underlying git operations performed by Lumine.
  *
  * This class shouldn't be instantiated directly but instead by accessing the
@@ -78,9 +81,6 @@ function summaryFromStatusEntry(entry) {
  * ```js
  * const { GitRepository } = require('lumine')
  * ```
- *
- * @public
- * @api-status Extended
  */
 module.exports = class GitRepository {
   static exists(path) {
@@ -105,14 +105,15 @@ module.exports = class GitRepository {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Creates a new GitRepository instance.
    *
    * @param path - The `String` path to the Git repository to open.
    * @param options - An optional `Object` with the following keys:
    * @param options.refreshOnWindowFocus - A `Boolean`, `true` to refresh the index and statuses when the window is focused.
    * @returns {GitRepository} instance or `null` if the repository could not be opened.
-   * @public
-   * @api-status Public
    */
   static open(path, options) {
     if (!path) {
@@ -198,13 +199,13 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Destroy this {@link GitRepository} object.
    *
    * This destroys any tasks and subscriptions and releases the underlying
    * libgit2 repository handle. This method is idempotent.
-   *
-   * @public
-   * @api-status Public
    */
   destroy() {
     this.statusSnapshotRefreshCount++;
@@ -240,27 +241,30 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {Boolean} indicating if this repository has been destroyed.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} indicating if this repository has been destroyed.
    */
   isDestroyed() {
     return this.descriptor == null;
   }
 
   /**
-   * @returns {Boolean} whether this repository's Git directory still exists.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} whether this repository's Git directory still exists.
    */
   isPresent() {
     return !this.isDestroyed() && fs.existsSync(this.path || this.getPath());
   }
 
   /**
-   * @returns {Object} stable write facade assigned by lumine.repositories. Its methods are enabled by repositories.operations-provider services.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Object} stable write facade assigned by lumine.repositories. Its methods are enabled by repositories.operations-provider services.
    */
   getOperations() {
     return this.operations;
@@ -271,13 +275,14 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when this GitRepository's destroy() method
    * is invoked.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
@@ -288,6 +293,9 @@ module.exports = class GitRepository {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when a specific file's status has
    * changed. When a file is updated, reloaded, etc, and the status changes, this
    * will be fired.
@@ -301,28 +309,30 @@ module.exports = class GitRepository {
    * @param {String} callback.event.path - the path whose status changed
    * @param {Number} callback.event.pathStatus - representing the status.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeStatus(callback) {
     return this.emitter.on("did-change-status", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when multiple files' statuses have
    * changed. Prefer {@link #onDidChangeStatusSnapshot}; this legacy event is retained
    * for API compatibility.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeStatuses(callback) {
     return this.emitter.on("did-change-statuses", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the detailed repository status
    * snapshot changes.
    *
@@ -333,8 +343,6 @@ module.exports = class GitRepository {
    *
    * @param {Function} callback - called with an immutable status snapshot.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeStatusSnapshot(callback) {
     this.statusSnapshotSubscriberCount++;
@@ -350,6 +358,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the repository refs snapshot
    * changes. Subscribing declares interest exactly like
    * {@link #onDidChangeStatusSnapshot}: the first subscriber triggers a lazy load
@@ -357,8 +368,6 @@ module.exports = class GitRepository {
    *
    * @param {Function} callback - called with an immutable refs snapshot.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeRefsSnapshot(callback) {
     this.refsSnapshotSubscriberCount++;
@@ -378,21 +387,23 @@ module.exports = class GitRepository {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * A `String` indicating the type of version control system used by
    * this repository.
    *
    * @returns {"git"}.
-   * @public
-   * @api-status Public
    */
   getType() {
     return "git";
   }
 
   /**
-   * @returns {String} path of the repository.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} path of the repository.
    */
   getPath() {
     if (this.path == null) {
@@ -403,18 +414,20 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {String} working directory path of the repository.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} working directory path of the repository.
    */
   getWorkingDirectory() {
     return this.workingDirectoryPath;
   }
 
   /**
-   * @returns {Boolean} true if at the root, false if in a subfolder of the repository.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} true if at the root, false if in a subfolder of the repository.
    */
   isProjectAtRoot() {
     if (this.projectAtRoot == null) {
@@ -425,10 +438,10 @@ module.exports = class GitRepository {
   }
 
   /**
-   * Makes a path relative to the repository's working directory.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Makes a path relative to the repository's working directory.
    */
   relativize(path) {
     return relativizePath(
@@ -440,15 +453,19 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {Boolean} true if the given branch exists.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} true if the given branch exists.
    */
   hasBranch(branch) {
     return this.getReferenceTarget(`refs/heads/${branch}`) != null;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Retrieves a shortened version of the HEAD reference value.
    *
    * This removes the leading segments of `refs/heads`, `refs/tags`, or
@@ -456,8 +473,6 @@ module.exports = class GitRepository {
    * characters.
    *
    * @returns {String} The shortened `HEAD` reference.
-   * @public
-   * @api-status Public
    */
   getShortHead() {
     if (this.isDestroyed()) throw new Error("Repository has been destroyed");
@@ -476,12 +491,13 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the given path a submodule in the repository?
    *
    * @param filePath - The `String` path to check.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isSubmodule(filePath) {
     if (!filePath || this.isDestroyed()) return false;
@@ -489,10 +505,11 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param reference - The `String` branch reference name.
    * @returns {Object} The `ahead` and `behind` commit counts.
-   * @public
-   * @api-status Public
    */
   getAheadBehindCount(reference) {
     if (this.refsSnapshot.initialized) {
@@ -505,6 +522,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the cached ahead/behind commit counts for the current branch's
    * upstream branch.
    *
@@ -512,8 +532,6 @@ module.exports = class GitRepository {
    *   * `behind` The `Number` of commits behind.
    *
    * @returns {Object} with the following keys:
-   * @public
-   * @api-status Public
    */
   getCachedUpstreamAheadBehindCount() {
     if (this.refsSnapshot.initialized) {
@@ -526,14 +544,15 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Asynchronously read a git configuration value via the git-host
    * worker (`git config --get`), the off-thread replacement for the synchronous
    * libgit2 config lookup. Resolves to the value or `null` when unset.
    *
    * @param {String} key - The configuration key to look up.
    * @returns {Promise<String|null>} The configured value.
-   * @public
-   * @api-status Public
    */
   getConfigValueAsync(key) {
     if (!this.configProvider || this.isDestroyed()) return Promise.resolve(null);
@@ -541,9 +560,10 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {String|null} origin url of the repository, read from the refs snapshot's remotes. Returns `null` until the snapshot has loaded or when the repository has no `origin` remote.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String|null} origin url of the repository, read from the refs snapshot's remotes. Returns `null` until the snapshot has loaded or when the repository has no `origin` remote.
    */
   getOriginURL() {
     if (this.refsSnapshot.initialized) {
@@ -554,9 +574,10 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {String|null} The upstream branch, such as `refs/remotes/origin/master`, or `null` when HEAD has no upstream.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String|null} The upstream branch, such as `refs/remotes/origin/master`, or `null` when HEAD has no upstream.
    */
   getUpstreamBranch() {
     if (this.refsSnapshot.initialized) {
@@ -567,6 +588,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Gets all the local and remote references.
    *
    *  * `heads`   An `Array` of head reference names.
@@ -574,8 +598,6 @@ module.exports = class GitRepository {
    *  * `tags`    An `Array` of tag reference names.
    *
    * @returns {Object} with the following keys:
-   * @public
-   * @api-status Public
    */
   getReferences() {
     const snapshot = this.refsSnapshot;
@@ -587,11 +609,12 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param reference - The `String` reference to get the target of.
    * @returns {String|null} The current SHA for the reference, or `null` when it
    *   is unavailable.
-   * @public
-   * @api-status Public
    */
   getReferenceTarget(reference) {
     if (this.refsSnapshot.initialized) {
@@ -635,10 +658,11 @@ module.exports = class GitRepository {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * @param path - The `String` path to check.
    * @returns {Boolean} Whether the path is modified in the detailed status snapshot. Returns `false` until the snapshot loads.
-   * @public
-   * @api-status Public
    */
   isPathModified(path) {
     const summary = this.getPathStatusSummary(path);
@@ -646,10 +670,11 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param path - The `String` path to check.
    * @returns {Boolean} Whether the path is new in the detailed status snapshot. Returns `false` until the snapshot loads.
-   * @public
-   * @api-status Public
    */
   isPathNew(path) {
     const summary = this.getPathStatusSummary(path);
@@ -657,27 +682,29 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the given path ignored? Resolved from the detailed status
    * snapshot's ignored entries; returns false until the snapshot has loaded.
    *
    * @param path - The `String` path to check.
    * @returns {Boolean} that's true if the `path` is ignored.
-   * @public
-   * @api-status Public
    */
   isPathIgnored(path) {
     return this.isPathIgnoredCached(path);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Whether the given path is ignored, resolved synchronously from the
    * Git status snapshot's ignored entries. Returns false until the first
    * snapshot loads.
    *
    * @param filePath - The `String` path to check.
    * @returns {Boolean} that's true if the `filePath` is ignored.
-   * @public
-   * @api-status Public
    */
   isPathIgnoredCached(filePath) {
     if (this.isDestroyed() || !this.statusSnapshot.initialized) return false;
@@ -690,21 +717,23 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {Object} latest immutable detailed status snapshot. It contains `head`, `upstream`, per-file staged/unstaged/conflict state, aggregate `counts`, and a monotonic `generation`. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeStatusSnapshot} or call {@link #ensureStatusSnapshot} to load it.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Object} latest immutable detailed status snapshot. It contains `head`, `upstream`, per-file staged/unstaged/conflict state, aggregate `counts`, and a monotonic `generation`. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeStatusSnapshot} or call {@link #ensureStatusSnapshot} to load it.
    */
   getStatusSnapshot() {
     return this.statusSnapshot;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Resolve with an initialized status snapshot, loading it on first
    * call. Concurrent callers share one in-flight refresh.
    *
    * @returns {Promise} that resolves to the snapshot.
-   * @public
-   * @api-status Public
    */
   async ensureStatusSnapshot(options = {}) {
     if (this.statusSnapshot.initialized) return this.statusSnapshot;
@@ -730,9 +759,10 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {Object|null} detailed cached status for a repository path, or `null`.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Object|null} detailed cached status for a repository path, or `null`.
    */
   getStatusEntry(filePath) {
     if (filePath == null) return null;
@@ -788,12 +818,12 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Refresh the detailed branch and file status snapshot with Git.
    * Concurrent calls coalesce into at most one in-flight and one trailing
    * subprocess; see `coalesceSnapshotRefresh`.
-   *
-   * @public
-   * @api-status Public
    */
   refreshStatusSnapshot(options = {}) {
     return this.coalesceSnapshotRefresh(this.statusRefreshCoalescer, options, (runOptions) =>
@@ -887,13 +917,14 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Classified status for one path, read from the detailed status
    * snapshot.
    *
    * @param filePath - A `String` path, absolute or repository-relative.
    * @returns {Object|null} frozen `{source, conflicted, modified, added, renamed}` object (`source` is always `"snapshot"`), or `null` for clean, ignored, unknown, and pre-snapshot paths.
-   * @public
-   * @api-status Public
    */
   getPathStatusSummary(filePath) {
     if (filePath == null || this.isDestroyed() || !this.statusSnapshot.initialized) return null;
@@ -904,13 +935,13 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Aggregate classified status for a directory, including the
    * repository root. Same sourcing and shape as {@link #getPathStatusSummary}
    * (without `renamed`); returns `null` when nothing below the directory has
    * a reportable status.
-   *
-   * @public
-   * @api-status Public
    */
   getDirectoryStatusSummary(directoryPath) {
     if (directoryPath == null || this.isDestroyed() || !this.statusSnapshot.initialized) {
@@ -930,21 +961,23 @@ module.exports = class GitRepository {
   }
 
   /**
-   * @returns {Object} latest immutable refs snapshot. It contains `head`, local `branches` with upstream tracking, `remoteBranches`, `tags`, `remotes` with fetch and push URLs, `worktrees`, and a monotonic `generation`. Branch and tag entries include `lastCommit` metadata for their target commit. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeRefsSnapshot} or call {@link #ensureRefsSnapshot} to load it.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Object} latest immutable refs snapshot. It contains `head`, local `branches` with upstream tracking, `remoteBranches`, `tags`, `remotes` with fetch and push URLs, `worktrees`, and a monotonic `generation`. Branch and tag entries include `lastCommit` metadata for their target commit. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeRefsSnapshot} or call {@link #ensureRefsSnapshot} to load it.
    */
   getRefsSnapshot() {
     return this.refsSnapshot;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Resolve with an initialized refs snapshot, loading it on first
    * call. Concurrent callers share one in-flight refresh.
    *
    * @returns {Promise} that resolves to the snapshot.
-   * @public
-   * @api-status Public
    */
   async ensureRefsSnapshot(options = {}) {
     if (this.refsSnapshot.initialized) return this.refsSnapshot;
@@ -967,12 +1000,12 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Refresh the refs snapshot with Git. Concurrent calls coalesce into
    * at most one in-flight and one trailing refresh; see
    * `coalesceSnapshotRefresh`.
-   *
-   * @public
-   * @api-status Public
    */
   refreshRefsSnapshot(options = {}) {
     return this.coalesceSnapshotRefresh(this.refsRefreshCoalescer, options, (runOptions) =>
@@ -1014,6 +1047,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Compute a structured diff between two endpoints.
    *
    * @param {Object} [options] - Diff options.
@@ -1029,8 +1065,6 @@ module.exports = class GitRepository {
    *   rejects with `ERR_GIT_DIFF_TOO_LARGE`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to a frozen `{schemaVersion, files, rawPatch}` object; each file carries paths, status, similarity, binary flag, modes, and hunks with classified lines.
-   * @public
-   * @api-status Public
    */
   async getDiff({
     from = { type: "index" },
@@ -1084,6 +1118,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read paginated commit history.
    *
    * @param {Object} [options] - History options.
@@ -1093,8 +1130,6 @@ module.exports = class GitRepository {
    * @param {Object} [options.cursor] - The `nextCursor` from a previous page.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to a frozen `{commits, hasMore, nextCursor}` object. Each commit has `sha`, `parents`, `author`, `committer`, `subject`, and `body`. An unborn repository resolves to an empty page.
-   * @public
-   * @api-status Public
    */
   async getCommits({
     revision = "HEAD",
@@ -1131,12 +1166,13 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read one commit with its changed-file summary.
    *
    * @param sha - The `String` commit id or any revision expression.
    * @returns {Promise} resolving to the commit object extended with `changedFiles`: `[{path, originalPath, status, similarity}]`.
-   * @public
-   * @api-status Public
    */
   async getCommit(sha, { signal } = {}) {
     const provider = this.requireHistoryProvider();
@@ -1155,6 +1191,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read a file's contents at a revision.
    *
    * @param filePath - A `String` path, absolute or repository-relative.
@@ -1164,8 +1203,6 @@ module.exports = class GitRepository {
    *   for a `Buffer`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to the contents, or `null` when the path does not exist at that revision.
-   * @public
-   * @api-status Public
    */
   getFileAtRevision(filePath, revision, { encoding = "utf8", signal } = {}) {
     const provider = this.requireHistoryProvider();
@@ -1178,6 +1215,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read a blob's contents by object id (`git cat-file -p <oid>`).
    *
    * @param oid - A `String` blob object id.
@@ -1186,8 +1226,6 @@ module.exports = class GitRepository {
    *   for a `Buffer`.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to the contents, or `null` when the oid does not name an object.
-   * @public
-   * @api-status Public
    */
   getBlob(oid, { encoding = "utf8", signal } = {}) {
     const provider = this.requireHistoryProvider();
@@ -1198,12 +1236,12 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Describe HEAD as a ref name (`git describe --contains --all
    * --always`). Returns a `Promise` resolving to the `String` description, or
    * `""` when the branch is unborn.
-   *
-   * @public
-   * @api-status Public
    */
   getDescription() {
     const provider = this.refsSnapshotProvider;
@@ -1212,6 +1250,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * The fully-qualified refnames of branches that contain a commit
    * (`git branch --contains`).
    *
@@ -1221,8 +1262,6 @@ module.exports = class GitRepository {
    * @param {Boolean} [options.showRemote=false] - Include remote branches.
    * @param {String} [options.pattern] - Limit branch names by pattern.
    * @returns {Promise} resolving to an `Array` of refname `Strings`.
-   * @public
-   * @api-status Public
    */
   getBranchesContaining(commit, { showLocal = false, showRemote = false, pattern = null } = {}) {
     const provider = this.refsSnapshotProvider;
@@ -1235,12 +1274,13 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * The index mode of a path (`git ls-files --stage`).
    *
    * @param filePath - A `String` path, absolute or repository-relative.
    * @returns {Promise} resolving to the `String` mode (e.g. `"100644"`), or `null` when the path is not tracked.
-   * @public
-   * @api-status Public
    */
   getFileMode(filePath) {
     const provider = this.statusSnapshotProvider;
@@ -1249,12 +1289,13 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * The repository-relative paths of the repository's submodules
    * (`git submodule status`).
    *
    * @returns {Promise} resolving to an `Array` of path `Strings`.
-   * @public
-   * @api-status Public
    */
   getSubmodulePaths() {
     const provider = this.statusSnapshotProvider;
@@ -1263,6 +1304,9 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read line-by-line blame for a file.
    *
    * @param filePath - A `String` path, absolute or repository-relative.
@@ -1270,8 +1314,6 @@ module.exports = class GitRepository {
    * @param {String} [options.revision] - Revision to blame.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to a frozen `{revision, lines}` object where each line has `line`, `originalLine`, `sha`, `author`, `summary`.
-   * @public
-   * @api-status Public
    */
   async getBlame(filePath, { revision = null, signal } = {}) {
     const provider = this.requireHistoryProvider();
@@ -1289,6 +1331,9 @@ module.exports = class GitRepository {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Computes gutter line diffs off the renderer thread via the
    * git-host worker (fetching and caching the HEAD blob, diffing in JS) instead
    * of synchronously via libgit2.
@@ -1296,8 +1341,6 @@ module.exports = class GitRepository {
    * @param filePath - The `String` path relative to the repository.
    * @param text - The `String` to compare against the `HEAD` contents.
    * @returns {Promise} resolving to an `Array` of hunk `Objects`, each with `oldStart`, `newStart`, `oldLines`, and `newLines`.
-   * @public
-   * @api-status Public
    */
   getLineDiffsAsync(filePath, text) {
     if (this.isDestroyed()) return Promise.resolve([]);
@@ -1319,14 +1362,15 @@ module.exports = class GitRepository {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Restore the contents of a path in the working directory and index
    * to the version at `HEAD`, via the repository operation provider
    * (`git checkout HEAD -- <path>`).
    *
    * @param filePath - The `String` path to checkout.
    * @returns {Promise} resolving to a `Boolean` that's true on success.
-   * @public
-   * @api-status Public
    */
   async checkoutHead(filePath) {
     if (this.isDestroyed()) return false;
@@ -1340,14 +1384,15 @@ module.exports = class GitRepository {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Checks out a branch in your repository via the repository operation
    * provider.
    *
    * @param reference - The `String` reference to checkout.
    * @param create - A `Boolean` value which, if true creates the new reference if it doesn't exist.
    * @returns {Promise} resolving to a `Boolean` that's true on success.
-   * @public
-   * @api-status Public
    */
   async checkoutReference(reference, create) {
     if (this.isDestroyed()) return false;

@@ -14,6 +14,9 @@ const ScopeDescriptor = require("./scope-descriptor");
 const schemaEnforcers = {};
 
 /**
+ * @public
+ * @status essential
+ *
  * Used to access all of Lumine's configuration details.
  *
  * An instance of this class is always available as the `lumine.config` global.
@@ -423,9 +426,6 @@ const schemaEnforcers = {};
  * ## Best practices
  *
  * * Don't depend on (or write to) configuration keys outside of your keypath.
- *
- * @public
- * @api-status Essential
  */
 class Config {
   static addSchemaEnforcer(typeName, enforcerFunction) {
@@ -510,6 +510,9 @@ class Config {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a listener for changes to a given key path. This is different
    * than {@link #onDidChange} in that it will immediately call your callback with the
    * current value of the config entry.
@@ -535,8 +538,6 @@ class Config {
    * @param {Function} callback - Called when the value changes.
    * @param {*} callback.value - The new value.
    * @returns {Disposable} A disposable on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   observe(...args) {
     let callback, keyPath, options, scopeDescriptor;
@@ -560,6 +561,9 @@ class Config {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a listener for changes to a given key path. If `keyPath` is
    * not specified, your callback will be called on changes to any key.
    *
@@ -576,8 +580,6 @@ class Config {
    * @param {*} callback.event.newValue - The new value.
    * @param {*} callback.event.oldValue - The previous value.
    * @returns {Disposable} A disposable on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChange(...args) {
     let callback, keyPath, scopeDescriptor;
@@ -603,6 +605,9 @@ class Config {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Retrieves the setting for the given key.
    *
    * ### Examples
@@ -656,8 +661,6 @@ class Config {
    *   for more information.
    * @returns {*} The value from Lumine's defaults or the user's configuration,
    *   in the type specified by the configuration schema.
-   * @public
-   * @api-status Essential
    */
   get(...args) {
     let keyPath, options, scope;
@@ -679,6 +682,9 @@ class Config {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all of the values for the given key-path, along with their
    * associated scope selector.
    *
@@ -687,8 +693,6 @@ class Config {
    * @param options.scopeDescriptor - The {@link ScopeDescriptor} with which the value is associated
    * @param options.value - The value for the key-path
    * @returns {Array} of `Objects` with the following keys:
-   * @public
-   * @api-status Extended
    */
   getAll(keyPath, options) {
     let globalValue, result, scope;
@@ -725,6 +729,9 @@ class Config {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Sets the value for a configuration setting.
    *
    * This value is stored in Lumine's internal configuration file.
@@ -765,8 +772,6 @@ class Config {
    *   the user's configuration file.
    * @returns {Boolean} `true` if the value was set; `false` if it could not be
    *   coerced to the type specified by the setting's schema.
-   * @public
-   * @api-status Essential
    */
   set(...args) {
     let [keyPath, value, options = {}] = args;
@@ -808,14 +813,15 @@ class Config {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Restore the setting at `keyPath` to its default value.
    *
    * @param keyPath - The `String` name of the key.
    * @param {Object} [options]
    * @param {String} [options.scopeSelector] - See {@link #set}
    * @param {String} [options.source] - See {@link #set}
-   * @public
-   * @api-status Essential
    */
   unset(keyPath, options) {
     if (!this.settingsLoaded) {
@@ -865,25 +871,26 @@ class Config {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get an `Array` of all of the `source` `Strings` with which
    * settings have been added via {@link #set}.
-   *
-   * @public
-   * @api-status Extended
    */
   getSources() {
     return _.uniq(_.pluck(this.scopedSettingsStore.propertySets, "source")).sort();
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Retrieve the schema for a specific key path. The schema will tell
    * you what type the keyPath expects, and other metadata about the config
    * option.
    *
    * @param keyPath - The `String` name of the key.
    * @returns {Object|null} A schema such as `{type: 'integer', default: 23, minimum: 1}`, or `null` when the key path has no accessible schema.
-   * @public
-   * @api-status Extended
    */
   getSchema(keyPath) {
     const keys = splitKeyPath(keyPath);
@@ -914,13 +921,14 @@ class Config {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Suppress calls to handler functions registered with {@link #onDidChange}
    * and {@link #observe} for the duration of `callback`. After `callback` executes,
    * handlers will be called once if the value for their key-path has changed.
    *
    * @param {Function} callback - to execute while suppressing calls to handlers.
-   * @public
-   * @api-status Extended
    */
   transact(callback) {
     this.beginTransaction();

@@ -6,6 +6,9 @@ const LUMINE_TEXT_EDITOR_DATA_FORMAT = "application/lumine-text-editor";
 const LUMINE_EDITOR_DATA_VERSION = 1;
 
 /**
+ * @public
+ * @status extended
+ *
  * Represents the clipboard used for copying and pasting in Lumine.
  *
  * An instance of this class is always available as the `lumine.clipboard` global.
@@ -27,9 +30,6 @@ const LUMINE_EDITOR_DATA_VERSION = 1;
  *
  * console.log(lumine.clipboard.read()) // 'hello'
  * ```
- *
- * @public
- * @api-status Extended
  */
 module.exports = class Clipboard {
   constructor() {
@@ -59,6 +59,9 @@ module.exports = class Clipboard {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Write the given text to the clipboard.
    *
    * The metadata associated with the text is available by calling
@@ -66,8 +69,6 @@ module.exports = class Clipboard {
    *
    * @param text - The `String` to store.
    * @param [metadata] - The additional info to associate with the text.
-   * @public
-   * @api-status Public
    */
   write(text, metadata) {
     text = this.normalizeText(text);
@@ -174,6 +175,9 @@ module.exports = class Clipboard {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Write text plus a JSON payload for a custom format to the system
    * clipboard through the async Clipboard API.
    *
@@ -188,8 +192,6 @@ module.exports = class Clipboard {
    * @param format - The MIME-style format `String`, without the `web ` prefix.
    * @param data - The JSON-serializable payload.
    * @returns {Promise} that resolves to `true` when the payload was written, or `false` when only the plain text could be written.
-   * @public
-   * @api-status Public
    */
   async writeNativeData(text, format, data) {
     text = this.normalizeText(text);
@@ -208,13 +210,14 @@ module.exports = class Clipboard {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read a JSON payload written by {@link #writeNativeData} in this or any
    * other window.
    *
    * @param format - The MIME-style format `String`, without the `web ` prefix.
    * @returns {Promise} that resolves to the parsed payload `Object`, or `null` when the clipboard holds no valid payload for the format.
-   * @public
-   * @api-status Public
    */
   async readNativeData(format) {
     try {
@@ -256,74 +259,82 @@ module.exports = class Clipboard {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read the text from the clipboard.
    *
    * @returns {String}
-   * @public
-   * @api-status Public
    */
   read() {
     return clipboard.readText();
   }
 
   /**
-   * Write the given text to the macOS find pasteboard
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Write the given text to the macOS find pasteboard
    */
   writeFindText(text) {
     clipboard.writeFindText(text);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read the text from the macOS find pasteboard.
    *
    * @returns {String}
-   * @public
-   * @api-status Public
    */
   readFindText() {
     return clipboard.readFindText();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read the image on the clipboard.
    *
    * The image crosses the process boundary as PNG bytes, so its scale factor
    * does not survive the trip.
    *
    * @returns {NativeImage}, empty when the clipboard holds no image.
-   * @public
-   * @api-status Public
    */
   readImage() {
     return clipboard.readImage();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Write an image to the clipboard, replacing whatever it held.
    *
    * @param image - A `NativeImage`, or the PNG bytes of one as a `Buffer`.
-   * @public
-   * @api-status Public
    */
   writeImage(image) {
     clipboard.writeImage(typeof image?.toPNG === "function" ? image.toPNG() : image);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read the text from the Linux primary selection.
    *
    * @returns {String}, always empty on the platforms that have no primary selection.
-   * @public
-   * @api-status Public
    */
   readSelectionText() {
     return clipboard.readSelectionText();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Write the given text to the Linux primary selection.
    *
    * Unlike every other method here this one does not wait for the main
@@ -331,14 +342,15 @@ module.exports = class Clipboard {
    * round trip per mouse move.
    *
    * @param text - The `String` to store.
-   * @public
-   * @api-status Public
    */
   writeSelectionText(text) {
     clipboard.writeSelectionText(text);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Read the text from the clipboard and return both the text and the
    * associated metadata.
    *
@@ -351,8 +363,6 @@ module.exports = class Clipboard {
    * * `metadata` The metadata stored by an earlier call to {@link #write}.
    *
    * @returns {Object} with the following keys:
-   * @public
-   * @api-status Public
    */
   readWithMetadata() {
     const text = this.read();

@@ -32,6 +32,9 @@ function settlesWithin(promise, ms) {
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Package manager for coordinating the lifecycle of Lumine packages.
  *
  * An instance of this class is always available as the `lumine.packages` global.
@@ -47,9 +50,6 @@ function settlesWithin(promise, ms) {
  *
  * Packages can be enabled/disabled via the `core.disabledPackages` config
  * settings and also by calling `enablePackage()/disablePackage()`.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class PackageManager {
   constructor(params) {
@@ -136,24 +136,26 @@ module.exports = class PackageManager {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when all packages have been loaded.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidLoadInitialPackages(callback) {
     return this.emitter.on("did-load-initial-packages", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when all packages have been activated.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidActivateInitialPackages(callback) {
     return this.emitter.on("did-activate-initial-packages", callback);
@@ -168,52 +170,56 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when a package is activated.
    *
    * @param callback - A `Function` to be invoked when a package is activated.
    * @param callback.package - The {@link Package} that was activated.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidActivatePackage(callback) {
     return this.emitter.on("did-activate-package", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when a package is deactivated.
    *
    * @param callback - A `Function` to be invoked when a package is deactivated.
    * @param callback.package - The {@link Package} that was deactivated.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidDeactivatePackage(callback) {
     return this.emitter.on("did-deactivate-package", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when a package is loaded.
    *
    * @param callback - A `Function` to be invoked when a package is loaded.
    * @param callback.package - The {@link Package} that was loaded.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidLoadPackage(callback) {
     return this.emitter.on("did-load-package", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when a package is unloaded.
    *
    * @param callback - A `Function` to be invoked when a package is unloaded.
    * @param callback.package - The {@link Package} that was unloaded.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidUnloadPackage(callback) {
     return this.emitter.on("did-unload-package", callback);
@@ -224,11 +230,12 @@ module.exports = class PackageManager {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Get the paths being used to look for packages.
    *
    * @returns {Array} of `String` directory paths.
-   * @public
-   * @api-status Public
    */
   getPackageDirPaths() {
     return _.clone(this.packageDirPaths);
@@ -239,12 +246,13 @@ module.exports = class PackageManager {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Resolve the given package name to a path on disk.
    *
    * @param name - The `String` package name.
    * @returns {String} folder path or undefined if it could not be resolved.
-   * @public
-   * @api-status Public
    */
   resolvePackagePath(name) {
     const availablePackage = this.resolveAvailablePackage(name);
@@ -299,12 +307,13 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the package with the given name bundled with Lumine?
    *
    * @param name - The `String` package name.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isBundledPackage(name) {
     return this.getBundledPackageNames().has(name);
@@ -315,12 +324,13 @@ module.exports = class PackageManager {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Enable the package with the given name.
    *
    * @param name - The `String` package name.
    * @returns {Package} that was enabled or null if it isn't loaded.
-   * @public
-   * @api-status Public
    */
   enablePackage(name) {
     const pack = this.loadPackage(name);
@@ -331,12 +341,13 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Disable the package with the given name.
    *
    * @param name - The `String` package name.
    * @returns {Package} that was disabled or null if it isn't loaded.
-   * @public
-   * @api-status Public
    */
   disablePackage(name) {
     const pack = this.loadPackage(name);
@@ -347,12 +358,13 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the package with the given name disabled?
    *
    * @param name - The `String` package name.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isPackageDisabled(name) {
     return _.include(this.config.get("core.disabledPackages") || [], name);
@@ -363,43 +375,46 @@ module.exports = class PackageManager {
    */
 
   /**
-   * Get an `Array` of all the active {@link Package Packages}.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Get an `Array` of all the active {@link Package Packages}.
    */
   getActivePackages() {
     return _.values(this.activePackages);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the active {@link Package} with the given name.
    *
    * @param name - The `String` package name.
    * @returns {Package} or undefined.
-   * @public
-   * @api-status Public
    */
   getActivePackage(name) {
     return this.activePackages[name];
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the {@link Package} with the given name active?
    *
    * @param name - The `String` package name.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isPackageActive(name) {
     return this.getActivePackage(name) != null;
   }
 
   /**
-   * @returns {Boolean} indicating whether package activation has occurred.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} indicating whether package activation has occurred.
    */
   hasActivatedInitialPackages() {
     return this.initialPackagesActivated;
@@ -410,10 +425,10 @@ module.exports = class PackageManager {
    */
 
   /**
-   * Get an `Array` of all the loaded {@link Package Packages}
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Get an `Array` of all the loaded {@link Package Packages}
    */
   getLoadedPackages() {
     return _.values(this.loadedPackages);
@@ -427,33 +442,36 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the loaded {@link Package} with the given name.
    *
    * @param name - The `String` package name.
    * @returns {Package} or undefined.
-   * @public
-   * @api-status Public
    */
   getLoadedPackage(name) {
     return this.loadedPackages[name];
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Is the package with the given name loaded?
    *
    * @param name - The `String` package name.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isPackageLoaded(name) {
     return this.getLoadedPackage(name) != null;
   }
 
   /**
-   * @returns {Boolean} indicating whether package loading has occurred.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} indicating whether package loading has occurred.
    */
   hasLoadedInitialPackages() {
     return this.initialPackagesLoaded;
@@ -464,27 +482,30 @@ module.exports = class PackageManager {
    */
 
   /**
-   * @returns {Array} of `Strings` of all the available package paths.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} of `Strings` of all the available package paths.
    */
   getAvailablePackagePaths() {
     return this.getAvailablePackages().map((a) => a.path);
   }
 
   /**
-   * @returns {Array} of `Strings` of all the available package names.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} of `Strings` of all the available package names.
    */
   getAvailablePackageNames() {
     return this.getAvailablePackages().map((a) => a.name);
   }
 
   /**
-   * @returns {Array} of `Strings` of all the available package metadata.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} of `Strings` of all the available package metadata.
    */
   getAvailablePackageMetadata() {
     const packages = [];
@@ -498,11 +519,12 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Object} [options]
    * @param options.includeShadowed - When `true`, also returns the copies whose name is owned by another directory. Those never load; they exist so the UI can list every directory on disk.
    * @returns {Array} Available package descriptors that own their names, sorted by name.
-   * @public
-   * @api-status Public
    */
   getAvailablePackages(options) {
     const packages = this.scanAvailablePackages();
@@ -512,11 +534,12 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the available package that owns the given name.
    *
    * @returns {Object|undefined} package descriptor or undefined.
-   * @public
-   * @api-status Public
    */
   getAvailablePackage(name) {
     if (this.availablePackagesByNameDuringLoad != null) {
@@ -526,13 +549,13 @@ module.exports = class PackageManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Forget everything read from package manifests.
    *
    * The directory scan itself always runs fresh, so this only has to be called
    * when a manifest changes on disk — after an install, update, or uninstall.
-   *
-   * @public
-   * @api-status Public
    */
   refreshPackageIndex() {
     this.packageManifestCache.clear();

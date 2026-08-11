@@ -2,10 +2,10 @@ const { Emitter } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
 
 /**
- * A notification to the user containing a message and type.
- *
  * @public
- * @api-status Public
+ * @status public
+ *
+ * A notification to the user containing a message and type.
  */
 module.exports = class Notification {
   constructor(type, message, options = {}) {
@@ -35,24 +35,26 @@ module.exports = class Notification {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the notification is dismissed.
    *
    * @param {Function} callback - to be called when the notification is dismissed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidDismiss(callback) {
     return this.emitter.on("did-dismiss", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the notification is displayed.
    *
    * @param {Function} callback - to be called when the notification is displayed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidDisplay(callback) {
     return this.emitter.on("did-display", callback);
@@ -67,18 +69,20 @@ module.exports = class Notification {
    */
 
   /**
-   * @returns {String} type.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} type.
    */
   getType() {
     return this.type;
   }
 
   /**
-   * @returns {String} message.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} message.
    */
   getMessage() {
     return this.message;
@@ -101,11 +105,11 @@ module.exports = class Notification {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Dismisses the notification, removing it from the UI. Calling this
    * programmatically will call all callbacks added via `onDidDismiss`.
-   *
-   * @public
-   * @api-status Extended
    */
   dismiss() {
     if (!this.isDismissable() || this.isDismissed()) return;

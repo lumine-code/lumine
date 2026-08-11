@@ -1,14 +1,14 @@
 const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
 
 /**
+ * @public
+ * @status extended
+ *
  * History manager for remembering which projects have been opened.
  *
  * An instance of this class is always available as the `lumine.history` global.
  *
  * The project history is used to populate recent project lists.
- *
- * @public
- * @api-status Extended
  */
 class HistoryManager {
   constructor({ project, commands, stateStore }) {
@@ -31,25 +31,27 @@ class HistoryManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Obtain a list of previously opened projects.
    *
    * @returns {Array} of `HistoryProject` objects, most recent first.
-   * @public
-   * @api-status Public
    */
   getProjects() {
     return this.projects.map((p) => new HistoryProject(p.paths, p.lastOpened));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Clear all projects from the history.
    *
    * Note: This is not a privacy function - other traces will still exist,
    * e.g. window state.
    *
    * @returns {Promise} that resolves when the history has been successfully cleared.
-   * @public
-   * @api-status Public
    */
   async clearProjects() {
     this.projects = [];
@@ -58,12 +60,13 @@ class HistoryManager {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the list of projects changes.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangeProjects(callback) {
     return this.emitter.on("did-change-projects", callback);

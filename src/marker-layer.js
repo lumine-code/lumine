@@ -13,12 +13,12 @@ const SerializationVersion = 2;
 const VERIFY_HISTORY_SNAPSHOTS = Boolean(process.env.LUMINE_VERIFY_MARKER_SNAPSHOTS);
 
 /**
+ * @public
+ * @status experimental
+ *
  * A container for a related set of markers.
  *
  * This API is experimental and subject to change on any release.
- *
- * @public
- * @api-status Experimental
  */
 class MarkerLayer {
   static deserialize(delegate, state) {
@@ -79,11 +79,11 @@ class MarkerLayer {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Create a copy of this layer with markers in the same state and
    * locations.
-   *
-   * @public
-   * @api-status Public
    */
   copy() {
     let copy = this.delegate.addMarkerLayer({
@@ -100,10 +100,10 @@ class MarkerLayer {
   }
 
   /**
-   * Destroy this layer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Destroy this layer.
    */
   destroy() {
     if (this.destroyed) {
@@ -123,10 +123,10 @@ class MarkerLayer {
   }
 
   /**
-   * Remove all markers from this layer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Remove all markers from this layer.
    */
   clear() {
     this.markersWithDestroyListeners.forEach(function (marker) {
@@ -144,10 +144,10 @@ class MarkerLayer {
   }
 
   /**
-   * Determine whether this layer has been destroyed.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Determine whether this layer has been destroyed.
    */
   isDestroyed() {
     return this.destroyed;
@@ -161,10 +161,10 @@ class MarkerLayer {
    * @category Querying
    */
   /**
-   * Get an existing marker by its id.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Get an existing marker by its id.
    */
 
   // Returns a `Marker`.
@@ -173,10 +173,10 @@ class MarkerLayer {
   }
 
   /**
-   * Get all existing markers on the marker layer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Get all existing markers on the marker layer.
    */
 
   // Returns an `Array` of `Markers`.
@@ -185,10 +185,10 @@ class MarkerLayer {
   }
 
   /**
-   * Get the number of markers in the marker layer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Get the number of markers in the marker layer.
    */
 
   // Returns a `Number`.
@@ -197,13 +197,12 @@ class MarkerLayer {
   }
 
   /**
-   * Find markers in the layer conforming to the given parameters.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Find markers in the layer conforming to the given parameters.
+   * See {@link TextBuffer#findMarkers} for the supported search parameters.
    */
-
-  // See the documentation for {@link TextBuffer#findMarkers}.
   findMarkers(params) {
     let markerIds = null;
     // Range-based params are consumed by the index queries below; the rest are
@@ -287,10 +286,10 @@ class MarkerLayer {
   }
 
   /**
-   * Get the role of the marker layer e.g. `lumine.selection`.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Get the role of the marker layer e.g. `lumine.selection`.
    */
 
   // Returns a `String`.
@@ -302,6 +301,9 @@ class MarkerLayer {
    * @category Marker creation
    */
   /**
+   * @public
+   * @status public
+   *
    * Create a marker with the given range.
    *
    * @param range - A {@link Range} or range-compatible `Array`
@@ -309,8 +311,6 @@ class MarkerLayer {
    * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
-   * @public
-   * @api-status Public
    */
 
   // Returns a `Marker`.
@@ -319,14 +319,15 @@ class MarkerLayer {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Create a marker at with its head at the given position with no tail.
    *
    * @param {Point} position - or point-compatible `Array`
    * @param [options] - An `Object` with the following keys:
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
-   * @public
-   * @api-status Public
    */
 
   // Returns a `Marker`.
@@ -341,6 +342,9 @@ class MarkerLayer {
    * @category Event subscription
    */
   /**
+   * @public
+   * @status public
+   *
    * Subscribe to be notified whenever markers are created, updated,
    * or destroyed on this layer. *Prefer this method for optimal performance
    * when interacting with layers that could contain large numbers of markers.*
@@ -355,8 +359,6 @@ class MarkerLayer {
    * deliver.
    *
    * @param callback - A `Function` that will be called with no arguments when changes occur on this layer.
-   * @public
-   * @api-status Public
    */
 
   // Returns a `Disposable`.
@@ -365,6 +367,9 @@ class MarkerLayer {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Subscribe to be notified synchronously whenever markers are created
    * on this layer. *Avoid this method for optimal performance when interacting
    * with layers that could contain large numbers of markers.*
@@ -374,8 +379,6 @@ class MarkerLayer {
    * absolutely necessary.
    *
    * @param callback - A `Function` that will be called with a `Marker` whenever a new marker is created.
-   * @public
-   * @api-status Public
    */
 
   // Returns a `Disposable`.
@@ -385,10 +388,10 @@ class MarkerLayer {
   }
 
   /**
-   * Subscribe to be notified synchronously when this layer is destroyed.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Subscribe to be notified synchronously when this layer is destroyed.
    */
 
   // Returns a `Disposable`.

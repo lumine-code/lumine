@@ -1,6 +1,9 @@
 const BufferedProcess = require("./buffered-process");
 
 /**
+ * @public
+ * @status extended
+ *
  * Like {@link BufferedProcess}, but accepts a Node script as the command
  * to run.
  *
@@ -11,12 +14,12 @@ const BufferedProcess = require("./buffered-process");
  * ```js
  *   const {BufferedNodeProcess} = require('lumine')
  * ```
- *
- * @public
- * @api-status Extended
  */
 module.exports = class BufferedNodeProcess extends BufferedProcess {
   /**
+   * @public
+   * @status public
+   *
    * Runs the given Node script by spawning a new child process.
    *
    * @param {Object} options - Process options.
@@ -32,8 +35,6 @@ module.exports = class BufferedNodeProcess extends BufferedProcess {
    * @param {String} options.stderr.data - Standard-error data.
    * @param {Function} [options.exit] - Receives the process exit status.
    * @param {Number} options.exit.code - The exit status.
-   * @public
-   * @api-status Public
    */
   constructor({ command, args, options = {}, stdout, stderr, exit }) {
     options.env = options.env || Object.create(process.env);

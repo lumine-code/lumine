@@ -11,12 +11,12 @@ const Model = require("./model");
 const GitRepositoryProvider = require("./git-repository-provider");
 
 /**
+ * @public
+ * @status extended
+ *
  * Represents a project that's opened in Lumine.
  *
  * An instance of this class is always available as the `lumine.project` global.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class Project extends Model {
   /**
@@ -195,41 +195,44 @@ module.exports = class Project extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when the project paths change.
    *
    * @param {Function} callback - to be called after the project paths change.
    * @param callback.projectPaths - An `Array` of `String` project paths.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChangePaths(callback) {
     return this.emitter.on("did-change-paths", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback when a text buffer is added to the
    * project.
    *
    * @param {Function} callback - to be called when a text buffer is added.
    * @param callback.buffer - A {@link TextBuffer} item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidAddBuffer(callback) {
     return this.emitter.on("did-add-buffer", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the given callback with all current and future text
    * buffers in the project.
    *
    * @param {Function} callback - to be called with current and future text buffers.
    * @param callback.buffer - A {@link TextBuffer} item.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   observeBuffers(callback) {
     for (let buffer of this.getBuffers()) {
@@ -239,6 +242,9 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke a callback when a filesystem change occurs within any open
    * project path.
    *
@@ -272,8 +278,6 @@ module.exports = class Project extends Model {
    * @param {String} callback.events.path - containing the absolute path to the filesystem entry that was acted upon.
    * @param callback.events.oldPath - For rename events, `String` containing the filesystem entry's former absolute path.
    * @returns {Disposable} to manage this event subscription.
-   * @public
-   * @api-status Extended
    */
   onDidChangeFiles(callback) {
     return this.emitter.on("did-change-files", callback);
@@ -284,6 +288,9 @@ module.exports = class Project extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Get the repository for a given directory asynchronously.
    *
    *
@@ -291,14 +298,15 @@ module.exports = class Project extends Model {
    *
    * @param {Directory} directory - for which to get a {@link GitRepository}.
    * @returns {Promise} that resolves with either: * {@link GitRepository} if a repository can be created for the given directory
-   * @public
-   * @api-status Public
    */
   repositoryForDirectory(directory) {
     return this.repositoryRegistry.resolveDirectory(directory);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the repository that contains a given file or directory path
    * asynchronously.
    *
@@ -312,8 +320,6 @@ module.exports = class Project extends Model {
    *
    * @param {String} filePath - path of a file or directory.
    * @returns {Promise} that resolves with either: * {@link GitRepository} if a repository can be created for the given path
-   * @public
-   * @api-status Public
    */
   repositoryForPath(filePath) {
     if (!filePath) return Promise.resolve(null);
@@ -360,11 +366,11 @@ module.exports = class Project extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Get an `Array` of `Strings` containing the paths of the project's
    * directories.
-   *
-   * @public
-   * @api-status Public
    */
   getPaths() {
     try {
@@ -377,14 +383,15 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Set the paths of the project's directories.
    *
    * @param {Array} projectPaths - of `String` paths.
    * @param options - An optional `Object` that may contain the following keys:
    * @param options.mustExist - If `true`, throw an Error if any `projectPaths` do not exist. Any remaining `projectPaths` that do exist will still be added to the project. Default: `false`.
    * @param options.exact - If `true`, only add a `projectPath` if it names an existing directory. If `false` and any `projectPath` is a file or does not exist, its parent directory will be added instead. Default: `false`.
-   * @public
-   * @api-status Public
    */
   setPaths(projectPaths, options = {}) {
     this.rootDirectories = [];
@@ -428,6 +435,9 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Open a different project in this window.
    *
    *
@@ -454,8 +464,6 @@ module.exports = class Project extends Model {
    *
    * @param {Array} projectPaths - of `String` paths to the directories the window should have open.
    * @returns {Promise} that resolves to `true` once the new state is in place, or to `false` if the window was left as it was — because the paths were already open, none was given, or the user cancelled at the save prompt.
-   * @public
-   * @api-status Public
    */
   async setState(projectPaths) {
     // A project built outside an environment has no window state to set.
@@ -464,14 +472,15 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add a path to the project's list of root paths
    *
    * @param {String} projectPath - The path to the directory to add.
    * @param options - An optional `Object` that may contain the following keys:
    * @param options.mustExist - If `true`, throw an Error if the `projectPath` does not exist. If `false`, a `projectPath` that does not exist is ignored. Default: `false`.
    * @param options.exact - If `true`, only add `projectPath` if it names an existing directory. If `false`, if `projectPath` is a a file or does not exist, its parent directory will be added instead.
-   * @public
-   * @api-status Public
    */
   addPath(projectPath, options = {}) {
     const directory = this.getDirectoryForProjectPath(projectPath);
@@ -541,13 +550,14 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Add multiple paths to the project's list of root paths,
    * emitting a single `did-change-paths` event after all paths are added.
    *
    * @param projectPaths - An `Array` of `String` paths to add.
    * @param options - An optional `Object` passed to {@link #addPath} for each path.
-   * @public
-   * @api-status Public
    */
   addPaths(projectPaths, options = {}) {
     const pathsBefore = this.getPaths().length;
@@ -585,6 +595,9 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Access a `Promise` that resolves when the filesystem watcher associated with a project
    * root directory is ready to begin receiving events.
    *
@@ -593,8 +606,6 @@ module.exports = class Project extends Model {
    *
    * @param {String} projectPath - One of the project's root directories.
    * @returns {Promise} that resolves with the {@link PathWatcher} associated with this project root once it has initialized and is ready to start sending events. The Promise will reject with an error instead if `projectPath` is not currently a root directory.
-   * @public
-   * @api-status Extended
    */
   getWatcherPromise(projectPath) {
     return (
@@ -604,11 +615,12 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * remove a path from the project's list of root paths.
    *
    * @param {String} projectPath - The path to remove.
-   * @public
-   * @api-status Public
    */
   removePath(projectPath) {
     // The projectPath may be a URI, in which case it should not be normalized.
@@ -643,10 +655,10 @@ module.exports = class Project extends Model {
   }
 
   /**
-   * Get an `Array` of `Directorys` associated with this project.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Get an `Array` of `Directorys` associated with this project.
    */
   getDirectories() {
     return this.rootDirectories;
@@ -680,6 +692,9 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the path to the project directory that contains the given path,
    * and the relative path from that project directory to the given path.
    *
@@ -691,8 +706,6 @@ module.exports = class Project extends Model {
    *
    * @param {String} fullPath - An absolute path.
    * @returns {Array} with two elements:
-   * @public
-   * @api-status Public
    */
   relativizePath(fullPath) {
     let result = [null, fullPath];
@@ -708,6 +721,9 @@ module.exports = class Project extends Model {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Determines whether the given path (real or symbolic) is inside the
    * project's directory.
    *
@@ -734,8 +750,6 @@ module.exports = class Project extends Model {
    *
    * @param {String} pathToCheck - path
    * @returns {Boolean} whether the path is inside the project's root directory.
-   * @public
-   * @api-status Public
    */
   contains(pathToCheck) {
     return this.rootDirectories.some((dir) => dir.contains(pathToCheck));
@@ -746,6 +760,9 @@ module.exports = class Project extends Model {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Lists the files under the project's directories.
    *
    * The crawl runs in a separate process (the bundled ripgrep binary), honors
@@ -770,8 +787,6 @@ module.exports = class Project extends Model {
    * @param {Boolean} options.excludeVcsIgnoredPaths - whether to honor VCS ignore files. Defaults to `core.excludeVcsIgnoredPaths`. Only takes effect inside a repository — a directory with no `.git` above it lists everything.
    * @param {Boolean} options.sort - whether to return paths in a stable order. Costs ripgrep its parallel walk, so only ask when the order is observable.
    * @returns {Promise} with a `cancel()` method that resolves the crawl early.
-   * @public
-   * @api-status Public
    */
   crawl(options = {}) {
     if (!this.fileCrawler) {

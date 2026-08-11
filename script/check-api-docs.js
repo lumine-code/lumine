@@ -79,6 +79,15 @@ function checkDocumentationSyntax(api) {
       const tagLines = comment.value
         .split(/\r?\n/)
         .map((line) => line.replace(/^\s*\*?\s?/, "").trim());
+      const firstContentIndex = tagLines.findIndex(Boolean);
+      const publicIndex = tagLines.indexOf("@public");
+      const invalidPublicHeader =
+        publicIndex >= 0 &&
+        (publicIndex !== firstContentIndex ||
+          !/^@status (essential|extended|public|experimental)$/.test(
+            tagLines[publicIndex + 1] || "",
+          ) ||
+          tagLines[publicIndex + 2] !== "");
       const legacyMarker = prose.match(
         /(?:^|\n)\s*\*?\s*(Essential|Extended|Public|Private|Experimental|Section):/,
       );
@@ -86,6 +95,9 @@ function checkDocumentationSyntax(api) {
       const legacyLink = prose.match(/\[[^\]]+\]\{[^}\s]+\}/) || prose.match(legacyReference);
       const structuralLink = tagLines.find((line) =>
         /^@(param|returns?|type)\s+\{@link\b/.test(line),
+      );
+      const legacyApiStatus = tagLines.find((line) =>
+        /^@(api-status|apistatus)(?:\s|$)/.test(line),
       );
       const untypedReturn = tagLines.find(
         (line) => /^@returns?(?:\s|$)/.test(line) && !/^@returns?\s+\{[^}]+\}/.test(line),
@@ -96,6 +108,8 @@ function checkDocumentationSyntax(api) {
         !customMarker &&
         !legacyLink &&
         !structuralLink &&
+        !legacyApiStatus &&
+        !invalidPublicHeader &&
         !untypedReturn &&
         !malformedArtifact
       ) {
@@ -106,6 +120,11 @@ function checkDocumentationSyntax(api) {
       else if (customMarker) reason = `legacy # ${customMarker[1]} marker`;
       else if (legacyLink) reason = `legacy link ${legacyLink[0]}`;
       else if (structuralLink) reason = "JSDoc link used as a structured type";
+      else if (legacyApiStatus)
+        reason = `legacy ${legacyApiStatus.split(/\s/, 1)[0]} tag; use @status`;
+      else if (invalidPublicHeader)
+        reason =
+          "public JSDoc must start with @public, then a lowercase @status value, then a blank line";
       else if (untypedReturn) reason = "return tag without a structured type";
       else reason = `malformed documentation artifact ${malformedArtifact[0].trim()}`;
       failures.push(`${path.relative(editorRoot, filePath)}:${comment.loc.start.line}: ${reason}`);

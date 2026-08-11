@@ -30,6 +30,9 @@ let nextId = 0;
 const DEFAULT_NON_WORD_CHARACTERS = "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…";
 
 /**
+ * @public
+ * @status essential
+ *
  * This class represents all essential editing state for a single
  * {@link TextBuffer}, including cursor and selection positions, folds, and soft wraps.
  * If you're manipulating the state of an editor, use this class.
@@ -69,9 +72,6 @@ const DEFAULT_NON_WORD_CHARACTERS = "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…";
  *
  * **When in doubt, just default to buffer coordinates**, then experiment with
  * soft wraps and folds to ensure your code interacts with them correctly.
- *
- * @public
- * @api-status Essential
  */
 module.exports = class TextEditor {
   static setClipboard(clipboard) {
@@ -899,30 +899,35 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when the buffer's title has changed.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChangeTitle(callback) {
     return this.emitter.on("did-change-title", callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when the buffer's path, and therefore title, has changed.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChangePath(callback) {
     return this.emitter.on("did-change-path", callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback synchronously when the content of the
    * buffer changes.
    *
@@ -932,28 +937,30 @@ module.exports = class TextEditor {
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke `callback` when the buffer's contents change. It is
    * emit asynchronously 300ms after the last buffer change. This is a good place
    * to handle changes to the buffer without compromising typing performance.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidStopChanging(callback) {
     return this.getBuffer().onDidStopChanging(callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when a {@link Cursor} is moved. If there are
    * multiple cursors, your callback will be called for each cursor.
    *
@@ -966,14 +973,15 @@ module.exports = class TextEditor {
    * @param {Boolean} callback.event.textChanged
    * @param {Cursor} callback.event.cursor - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChangeCursorPosition(callback) {
     return this.emitter.on("did-change-cursor-position", callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when a selection's screen range changes.
    *
    * @param {Function} callback
@@ -984,52 +992,56 @@ module.exports = class TextEditor {
    * @param {Range} callback.event.newScreenRange
    * @param {Selection} callback.event.selection - that triggered the event
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidChangeSelectionRange(callback) {
     return this.emitter.on("did-change-selection-range", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when soft wrap was enabled or disabled.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangeSoftWrapped(callback) {
     return this.emitter.on("did-change-soft-wrapped", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when overtype (overwrite) mode is enabled or
    * disabled for this editor.
    *
    * @param {Function} callback
    * @param {Boolean} callback.overtypeMode - indicating the new state.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangeOvertypeMode(callback) {
     return this.emitter.on("did-change-overtype-mode", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the buffer's encoding has changed.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangeEncoding(callback) {
     return this.emitter.on("did-change-encoding", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the grammar that interprets and
    * colorizes the text has been changed. Immediately calls your callback with
    * the current grammar.
@@ -1037,8 +1049,6 @@ module.exports = class TextEditor {
    * @param {Function} callback
    * @param {Grammar} callback.grammar
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   observeGrammar(callback) {
     callback(this.getGrammar());
@@ -1046,14 +1056,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the grammar that interprets and
    * colorizes the text has been changed.
    *
    * @param {Function} callback
    * @param {Grammar} callback.grammar
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangeGrammar(callback) {
     return this.buffer.onDidChangeLanguageMode(() => {
@@ -1062,44 +1073,50 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the result of {@link #isModified} changes.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangeModified(callback) {
     return this.getBuffer().onDidChangeModified(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the buffer's underlying file changes on
    * disk at a moment when the result of {@link #isModified} is true.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidConflict(callback) {
     return this.getBuffer().onDidConflict(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the buffer's underlying file is deleted
    * on disk.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidDelete(callback) {
     return this.getBuffer().onDidDelete(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` before text has been inserted.
    *
    * @param {Function} callback
@@ -1107,62 +1124,64 @@ module.exports = class TextEditor {
    * @param {String} callback.event.text - text to be inserted
    * @param {Function} callback.event.cancel - Call to prevent the text from being inserted
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onWillInsertText(callback) {
     return this.emitter.on("will-insert-text", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` after text has been inserted.
    *
    * @param {Function} callback
    * @param callback.event - event `Object`
    * @param {String} callback.event.text - text to be inserted
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidInsertText(callback) {
     return this.emitter.on("did-insert-text", callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback after the buffer is saved to disk.
    *
    * @param {Function} callback - to be called after the buffer is saved.
    * @param {Object} callback.event - with the following keys:
    * @param callback.event.path - The path to which the buffer was saved.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidSave(callback) {
     return this.getBuffer().onDidSave(callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback when the editor is destroyed.
    *
    * @param {Function} callback - to be called when the editor is destroyed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Cursor} is added to the editor.
    * Immediately calls your callback for each existing cursor.
    *
    * @param {Function} callback
    * @param {Cursor} callback.cursor - that was added
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   observeCursors(callback) {
     this.getCursors().forEach(callback);
@@ -1170,40 +1189,43 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Cursor} is added to the editor.
    *
    * @param {Function} callback
    * @param {Cursor} callback.cursor - that was added
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidAddCursor(callback) {
     return this.emitter.on("did-add-cursor", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Cursor} is removed from the editor.
    *
    * @param {Function} callback
    * @param {Cursor} callback.cursor - that was removed
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidRemoveCursor(callback) {
     return this.emitter.on("did-remove-cursor", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Selection} is added to the editor.
    * Immediately calls your callback for each existing selection.
    *
    * @param {Function} callback
    * @param {Selection} callback.selection - that was added
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   observeSelections(callback) {
     this.getSelections().forEach(callback);
@@ -1211,66 +1233,71 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Selection} is added to the editor.
    *
    * @param {Function} callback
    * @param {Selection} callback.selection - that was added
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidAddSelection(callback) {
     return this.emitter.on("did-add-selection", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Selection} is removed from the editor.
    *
    * @param {Function} callback
    * @param {Selection} callback.selection - that was removed
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidRemoveSelection(callback) {
     return this.emitter.on("did-remove-selection", callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` with each {@link Decoration} added to the editor.
    * Calls your `callback` immediately for any existing decorations.
    *
    * @param {Function} callback
    * @param {Decoration} callback.decoration
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   observeDecorations(callback) {
     return this.decorationManager.observeDecorations(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Decoration} is added to the editor.
    *
    * @param {Function} callback
    * @param {Decoration} callback.decoration - that was added
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidAddDecoration(callback) {
     return this.decorationManager.onDidAddDecoration(callback);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when a {@link Decoration} is removed from the editor.
    *
    * @param {Function} callback
    * @param {Decoration} callback.decoration - that was removed
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidRemoveDecoration(callback) {
     return this.decorationManager.onDidRemoveDecoration(callback);
@@ -1284,13 +1311,14 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Calls your `callback` when the placeholder text is changed.
    *
    * @param {Function} callback
    * @param {String} callback.placeholderText - new text
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidChangePlaceholderText(callback) {
     return this.emitter.on("did-change-placeholder-text", callback);
@@ -1402,40 +1430,43 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when a {@link Gutter} is added to the editor.
    * Immediately calls your callback for each existing gutter.
    *
    * @param {Function} callback
    * @param {Gutter} callback.gutter - that currently exists/was added.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   observeGutters(callback) {
     return this.gutterContainer.observeGutters(callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when a {@link Gutter} is added to the editor.
    *
    * @param {Function} callback
    * @param {Gutter} callback.gutter - that was added.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidAddGutter(callback) {
     return this.gutterContainer.onDidAddGutter(callback);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Calls your `callback` when a {@link Gutter} is removed from the editor.
    *
    * @param {Function} callback
    * @param callback.name - The name of the {@link Gutter} that was removed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidRemoveGutter(callback) {
     return this.gutterContainer.onDidRemoveGutter(callback);
@@ -1464,10 +1495,10 @@ module.exports = class TextEditor {
    */
 
   /**
-   * Retrieves the current {@link TextBuffer}.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Retrieves the current {@link TextBuffer}.
    */
   getBuffer() {
     return this.buffer;
@@ -1478,6 +1509,9 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the editor's title for display in other parts of the
    * UI such as the tabs.
    *
@@ -1485,26 +1519,25 @@ module.exports = class TextEditor {
    * unsaved, its title is "untitled".
    *
    * @returns {String}
-   * @public
-   * @api-status Essential
    */
   getTitle() {
     return this.getFileName() || "untitled";
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get unique title for display in other parts of the UI, such as
    * the window title.
    *
    * If the editor's buffer is unsaved, its title is "untitled"
    * If the editor's buffer is saved, its unique title is formatted as one
    * of the following,
-   * * "<filename>" when it is the only editing buffer with this file name.
-   * * "<filename> — <unique-dir-prefix>" when other buffers have this file name.
+   * * `filename` when it is the only editing buffer with this file name.
+   * * `filename — unique-dir-prefix` when other buffers have this file name.
    *
    * @returns {String}
-   * @public
-   * @api-status Essential
    */
   getLongTitle() {
     if (!this.getPath()) return "untitled";
@@ -1597,9 +1630,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * @returns {String} path of this editor's text buffer.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {String} path of this editor's text buffer.
    */
   getPath() {
     return this.buffer.getPath();
@@ -1616,45 +1650,52 @@ module.exports = class TextEditor {
   }
 
   /**
-   * @returns {String} character set encoding of this editor's text buffer.
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * @returns {String} character set encoding of this editor's text buffer.
    */
   getEncoding() {
     return this.buffer.getEncoding();
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Set the character set encoding to use in this editor's text
    * buffer.
    *
    * @param encoding - The `String` character set encoding name such as 'utf8'
-   * @public
-   * @api-status Extended
    */
   setEncoding(encoding) {
     this.buffer.setEncoding(encoding);
   }
 
   /**
-   * @returns {Boolean} `true` if this editor has been modified.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Boolean} `true` if this editor has been modified.
    */
   isModified() {
     return this.buffer.isModified();
   }
 
   /**
-   * @returns {Boolean} `true` if this editor's buffer previously had a file on disk that has since been deleted (and has not been recreated or saved since). The buffer may still be unmodified — see {@link #isModified}.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Boolean} `true` if this editor's buffer previously had a file on disk that has since been deleted (and has not been recreated or saved since). The buffer may still be unmodified — see {@link #isModified}.
    */
   isDeleted() {
     return typeof this.buffer.isDeleted === "function" && this.buffer.isDeleted();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    *
    * This can happen if another process writes to a file after you start to
    * edit it in Lumine, but before you're able to save those changes. It can
@@ -1662,17 +1703,16 @@ module.exports = class TextEditor {
    * buffer has uncommitted changes.
    *
    * @returns {Boolean} `true` if this editor's buffer is in conflict — that is, if the buffer is modified and those changes are based on buffer contents that do not match what is currently written to disk.
-   * @public
-   * @api-status Essential
    */
   isInConflict() {
     return this.buffer.isInConflict();
   }
 
   /**
-   * @returns {Boolean} `true` if this editor has no content.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Boolean} `true` if this editor has no content.
    */
   isEmpty() {
     return this.buffer.isEmpty();
@@ -1683,25 +1723,26 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Saves the editor's text buffer.
    *
    * See {@link TextBuffer#save} for more details.
-   *
-   * @public
-   * @api-status Essential
    */
   save() {
     return this.buffer.save();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Saves the editor's text buffer as the given path.
    *
    * See {@link TextBuffer#saveAs} for more details.
    *
    * @param filePath - A `String` path.
-   * @public
-   * @api-status Essential
    */
   saveAs(filePath) {
     return this.buffer.saveAs(filePath);
@@ -1737,39 +1778,43 @@ module.exports = class TextEditor {
    */
 
   /**
-   * @returns {String} representing the entire contents of the editor.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {String} representing the entire contents of the editor.
    */
   getText() {
     return this.buffer.getText();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the text in the given {@link Range} in buffer coordinates.
    *
    * @param range - A {@link Range} or range-compatible `Array`.
    * @returns {String}
-   * @public
-   * @api-status Essential
    */
   getTextInBufferRange(range) {
     return this.buffer.getTextInRange(range);
   }
 
   /**
-   * @returns {Number} representing the number of lines in the buffer.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Number} representing the number of lines in the buffer.
    */
   getLineCount() {
     return this.buffer.getLineCount();
   }
 
   /**
-   * @returns {Number} representing the number of screen lines in the editor. This accounts for folds.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Number} representing the number of screen lines in the editor. This accounts for folds.
    */
   getScreenLineCount() {
     return this.displayLayer.getScreenLineCount();
@@ -1780,38 +1825,42 @@ module.exports = class TextEditor {
   }
 
   /**
-   * @returns {Number} representing the last zero-indexed buffer row number of the editor.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Number} representing the last zero-indexed buffer row number of the editor.
    */
   getLastBufferRow() {
     return this.buffer.getLastRow();
   }
 
   /**
-   * @returns {Number} representing the last zero-indexed screen row number of the editor.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Number} representing the last zero-indexed screen row number of the editor.
    */
   getLastScreenRow() {
     return this.getScreenLineCount() - 1;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * @param bufferRow - A `Number` representing a zero-indexed buffer row.
    * @returns {String} representing the contents of the line at the given buffer row.
-   * @public
-   * @api-status Essential
    */
   lineTextForBufferRow(bufferRow) {
     return this.buffer.lineForRow(bufferRow);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * @param screenRow - A `Number` representing a zero-indexed screen row.
    * @returns {String} representing the contents of the line at the given screen row.
-   * @public
-   * @api-status Essential
    */
   lineTextForScreenRow(screenRow) {
     const screenLine = this.screenLineForScreenRow(screenRow);
@@ -1926,12 +1975,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the {@link Range} of the paragraph surrounding the most recently added
    * cursor.
    *
    * @returns {Range}
-   * @public
-   * @api-status Essential
    */
   getCurrentParagraphBufferRange() {
     return this.getLastCursor().getCurrentParagraphBufferRange();
@@ -1942,13 +1992,14 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Replaces the entire contents of the buffer with the given `String`.
    *
-   * @param text - A `String` to replace with
+   * @param {String} text - Text to replace the buffer contents with.
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @public
-   * @api-status Essential
    */
   setText(text, options = {}) {
     if (!this.ensureWritable("setText", options)) return;
@@ -1956,6 +2007,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the text in the given {@link Range} in buffer coordinates.
    *
    * @param range - A {@link Range} or range-compatible `Array`.
@@ -1965,8 +2019,6 @@ module.exports = class TextEditor {
    * @param [options.undo] - *Deprecated* `String` 'skip' will skip the undo system. This property is deprecated. Call groupLastChanges() on the {@link TextBuffer} afterward instead.
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
    * @returns {Range} of the newly-inserted text.
-   * @public
-   * @api-status Essential
    */
   setTextInBufferRange(range, text, options = {}) {
     if (!this.ensureWritable("setTextInBufferRange", options)) return;
@@ -1974,13 +2026,14 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, replace the selected text with the given text.
    *
    * @param text - A `String` representing the text to insert.
    * @param [options] - See {@link Selection#insertText}.
    * @returns {Range} when the text has been inserted. Returns a `Boolean` `false` when the text has not been inserted.
-   * @public
-   * @api-status Essential
    */
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
@@ -2011,25 +2064,27 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, replace the selected text with a newline.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Essential
    */
   insertNewline(options = {}) {
     return this.insertText("\n", options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, if the selection is empty, delete the character
    * following the cursor. Otherwise delete the selected text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Essential
    */
   delete(options = {}) {
     if (!this.ensureWritable("delete", options)) return;
@@ -2037,13 +2092,14 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, if the selection is empty, delete the character
    * preceding the cursor. Otherwise delete the selected text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Essential
    */
   backspace(options = {}) {
     if (!this.ensureWritable("backspace", options)) return;
@@ -2051,14 +2107,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Mutate the text of all the selections in a single transaction.
    *
    * All the changes made inside the given `Function` can be reverted with a
    * single call to {@link #undo}.
    *
    * @param fn - A `Function` that will be called once for each {@link Selection}. The first argument will be a {@link Selection} and the second argument will be the `Number` index of that selection.
-   * @public
-   * @api-status Extended
    */
   mutateSelectedText(fn, groupingInterval = 0) {
     return this.mergeIntersectingSelections(() => {
@@ -2415,6 +2472,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, transpose the selected text.
    *
    * If the selection is empty, the characters preceding and following the cursor
@@ -2422,8 +2482,6 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   transpose(options = {}) {
     if (!this.ensureWritable("transpose", options)) return;
@@ -2441,6 +2499,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Convert the selected text to upper case.
    *
    * For each selection, if the selection is empty, converts the containing word
@@ -2448,8 +2509,6 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   upperCase(options = {}) {
     if (!this.ensureWritable("upperCase", options)) return;
@@ -2457,6 +2516,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Convert the selected text to lower case.
    *
    * For each selection, if the selection is empty, converts the containing word
@@ -2464,8 +2526,6 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   lowerCase(options = {}) {
     if (!this.ensureWritable("lowerCase", options)) return;
@@ -2473,14 +2533,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Toggle line comments for rows intersecting selections.
    *
    * If the current grammar doesn't support comments, does nothing.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   toggleLineCommentsInSelection(options = {}) {
     if (!this.ensureWritable("toggleLineCommentsInSelection", options)) return;
@@ -2504,12 +2565,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Reduce every run of blank lines in the buffer to a single blank line.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   collapseBlankLines(options = {}) {
     if (!this.ensureWritable("collapseBlankLines", options)) return;
@@ -2523,6 +2585,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Collapse runs of spaces in line content without changing indentation.
    *
    * The complete leading whitespace prefix is preserved, including mixed tabs and
@@ -2530,8 +2595,6 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   collapseContentSpaces(options = {}) {
     if (!this.ensureWritable("collapseContentSpaces", options)) return;
@@ -2545,12 +2608,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each cursor, insert a newline at beginning the following line.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   insertNewlineBelow(options = {}) {
     if (!this.ensureWritable("insertNewlineBelow", options)) return;
@@ -2561,12 +2625,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each cursor, insert a newline at the end of the preceding line.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   insertNewlineAbove(options = {}) {
     if (!this.ensureWritable("insertNewlineAbove", options)) return;
@@ -2591,14 +2656,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, if the selection is empty, delete all characters
    * of the containing word that precede the cursor. Otherwise delete the
    * selected text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToBeginningOfWord(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfWord", options)) return;
@@ -2606,13 +2672,14 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Similar to {@link #deleteToBeginningOfWord}, but deletes only back to the
    * previous word boundary.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToPreviousWordBoundary(options = {}) {
     if (!this.ensureWritable("deleteToPreviousWordBoundary", options)) return;
@@ -2620,13 +2687,14 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Similar to {@link #deleteToEndOfWord}, but deletes only up to the
    * next word boundary.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToNextWordBoundary(options = {}) {
     if (!this.ensureWritable("deleteToNextWordBoundary", options)) return;
@@ -2634,14 +2702,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, if the selection is empty, delete all characters
    * of the containing subword following the cursor. Otherwise delete the selected
    * text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToBeginningOfSubword(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfSubword", options)) return;
@@ -2649,14 +2718,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, if the selection is empty, delete all characters
    * of the containing subword following the cursor. Otherwise delete the selected
    * text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToEndOfSubword(options = {}) {
     if (!this.ensureWritable("deleteToEndOfSubword", options)) return;
@@ -2664,14 +2734,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, if the selection is empty, delete all characters
    * of the containing line that precede the cursor. Otherwise delete the
    * selected text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToBeginningOfLine(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfLine", options)) return;
@@ -2679,6 +2750,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, if the selection is not empty, deletes the
    * selection; otherwise, deletes all characters of the containing line
    * following the cursor. If the cursor is already at the end of the line,
@@ -2686,8 +2760,6 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToEndOfLine(options = {}) {
     if (!this.ensureWritable("deleteToEndOfLine", options)) return;
@@ -2695,6 +2767,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Delete through the indentation of the line following each selection.
    *
    * Empty selections start at their cursor. Non-empty selections also consume the
@@ -2703,8 +2778,6 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToNextLineContent(options = {}) {
     if (!this.ensureWritable("deleteToNextLineContent", options)) return;
@@ -2756,14 +2829,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, if the selection is empty, delete all characters
    * of the containing word following the cursor. Otherwise delete the selected
    * text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteToEndOfWord(options = {}) {
     if (!this.ensureWritable("deleteToEndOfWord", options)) return;
@@ -2771,12 +2845,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Delete all lines intersecting selections.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Extended
    */
   deleteLine(options = {}) {
     if (!this.ensureWritable("deleteLine", options)) return;
@@ -2812,12 +2887,13 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Undo the last change.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Essential
    */
   undo(options = {}) {
     if (!this.ensureWritable("undo", options)) return;
@@ -2828,12 +2904,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Redo the last change.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
-   * @public
-   * @api-status Essential
    */
   redo(options = {}) {
     if (!this.ensureWritable("redo", options)) return;
@@ -2844,6 +2921,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Batch multiple operations as a single undo/redo step.
    *
    * Any group of operations that are logically grouped from the perspective of
@@ -2853,8 +2933,6 @@ module.exports = class TextEditor {
    *
    * @param [groupingInterval] - The `Number` of milliseconds for which this transaction should be considered 'groupable' after it begins. If a transaction with a positive `groupingInterval` is committed while the previous transaction is still 'groupable', the two transactions are merged with respect to undo and redo.
    * @param fn - A `Function` to call inside the transaction.
-   * @public
-   * @api-status Extended
    */
   transact(groupingInterval, fn) {
     const options = { selectionsMarkerLayer: this.selectionsMarkerLayer };
@@ -2867,23 +2945,24 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Abort an open transaction, undoing any operations performed so far
    * within the transaction.
-   *
-   * @public
-   * @api-status Extended
    */
   abortTransaction() {
     return this.buffer.abortTransaction();
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Create a pointer to the current state of the buffer for use
    * with {@link #revertToCheckpoint} and {@link #groupChangesSinceCheckpoint}.
    *
    * @returns {Number} checkpoint value.
-   * @public
-   * @api-status Extended
    */
   createCheckpoint() {
     return this.buffer.createCheckpoint({
@@ -2892,6 +2971,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Revert the buffer to the state it was in when the given
    * checkpoint was created.
    *
@@ -2901,14 +2983,15 @@ module.exports = class TextEditor {
    *
    * @param checkpoint - The checkpoint to revert to.
    * @returns {Boolean} Whether the operation succeeded.
-   * @public
-   * @api-status Extended
    */
   revertToCheckpoint(checkpoint) {
     return this.buffer.revertToCheckpoint(checkpoint);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Group all changes since the given checkpoint into a single
    * transaction for purposes of undo/redo.
    *
@@ -2917,8 +3000,6 @@ module.exports = class TextEditor {
    *
    * @param checkpoint - The checkpoint from which to group changes.
    * @returns {Boolean} indicating whether the operation succeeded.
-   * @public
-   * @api-status Extended
    */
   groupChangesSinceCheckpoint(checkpoint) {
     return this.buffer.groupChangesSinceCheckpoint(checkpoint, {
@@ -2931,6 +3012,9 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Convert a position in buffer-coordinates to screen-coordinates.
    *
    * The position is clipped via {@link #clipBufferPosition} prior to the conversion.
@@ -2940,14 +3024,15 @@ module.exports = class TextEditor {
    * @param bufferPosition - A {@link Point} or `Array` of [row, column].
    * @param [options] - An options object for {@link #clipScreenPosition}.
    * @returns {Point}
-   * @public
-   * @api-status Essential
    */
   screenPositionForBufferPosition(bufferPosition, options) {
     return this.displayLayer.translateBufferPosition(bufferPosition, options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Convert a position in screen-coordinates to buffer-coordinates.
    *
    * The position is clipped via {@link #clipScreenPosition} prior to the conversion.
@@ -2955,20 +3040,19 @@ module.exports = class TextEditor {
    * @param {Point|Array<Number>} screenPosition - The screen position to convert.
    * @param {Object} [options] - Options for {@link #clipScreenPosition}.
    * @returns {Point}
-   * @public
-   * @api-status Essential
    */
   bufferPositionForScreenPosition(screenPosition, options) {
     return this.displayLayer.translateScreenPosition(screenPosition, options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Convert a range in buffer-coordinates to screen-coordinates.
    *
    * @param {Range} bufferRange - in buffer coordinates to translate into screen coordinates.
    * @returns {Range}
-   * @public
-   * @api-status Essential
    */
   screenRangeForBufferRange(bufferRange, options) {
     bufferRange = Range.fromObject(bufferRange);
@@ -2978,12 +3062,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Convert a range in screen-coordinates to buffer-coordinates.
    *
    * @param {Range} screenRange - in screen coordinates to translate into buffer coordinates.
    * @returns {Range}
-   * @public
-   * @api-status Essential
    */
   bufferRangeForScreenRange(screenRange) {
     screenRange = Range.fromObject(screenRange);
@@ -2993,6 +3078,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Clip the given {@link Point} to a valid position in the buffer.
    *
    * If the given {@link Point} describes a position that is actually reachable by the
@@ -3011,27 +3099,29 @@ module.exports = class TextEditor {
    *
    * @param bufferPosition - The {@link Point} representing the position to clip.
    * @returns {Point}
-   * @public
-   * @api-status Extended
    */
   clipBufferPosition(bufferPosition) {
     return this.buffer.clipPosition(bufferPosition);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Clip the start and end of the given range to valid positions in the
    * buffer. See {@link #clipBufferPosition} for more information.
    *
    * @param range - The {@link Range} to clip.
    * @returns {Range}
-   * @public
-   * @api-status Extended
    */
   clipBufferRange(range) {
     return this.buffer.clipRange(range);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Clip the given {@link Point} to a valid position on screen.
    *
    * If the given {@link Point} describes a position that is actually reachable by the
@@ -3052,22 +3142,21 @@ module.exports = class TextEditor {
    * @param {Object} [options]
    * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
    * @returns {Point} The clipped screen position.
-   * @public
-   * @api-status Extended
    */
   clipScreenPosition(screenPosition, options) {
     return this.displayLayer.clipScreenPosition(screenPosition, options);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Clip the start and end of the given range to valid positions on screen.
    * See {@link #clipScreenPosition} for more information.
    *
    * @param screenRange - The {@link Range} to clip.
    * @param [options] - See {@link #clipScreenPosition} `options`.
    * @returns {Range}
-   * @public
-   * @api-status Extended
    */
   clipScreenRange(screenRange, options) {
     screenRange = Range.fromObject(screenRange);
@@ -3081,6 +3170,9 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a decoration that tracks a {@link DisplayMarker}. When the
    * marker moves, is invalidated, or is destroyed, the decoration will be
    * updated to reflect the marker's state.
@@ -3141,14 +3233,15 @@ module.exports = class TextEditor {
    * @param [decorationParams.side] - Only applicable to decorations of type `overlay`. The side of the line the overlay asks for, `'above'` or `'below'` (the default). It is a request, not a guarantee: an overlay takes the other side when the one it asked for will not fit the window or is already taken, and the side it ended up on is reported back on the wrapper as `data-overlay-position`.
    * @param [decorationParams.priority] - Only applicable to decorations of type `overlay`. When several overlays want the same side of the same line, the higher priority chooses first and the others work around it; it also decides which one paints on top. Defaults to `0`. The convention across the bundled packages is `autocomplete` 2, `intentions` 1, `hover` 0.
    * @returns {Decoration} created {@link Decoration} object.
-   * @public
-   * @api-status Essential
    */
   decorateMarker(marker, decorationParams) {
     return this.decorationManager.decorateMarker(marker, decorationParams);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a decoration to every marker in the given marker layer. Can
    * be used to decorate a large number of markers without having to create and
    * manage many individual decorations.
@@ -3156,8 +3249,6 @@ module.exports = class TextEditor {
    * @param markerLayer - A {@link DisplayMarkerLayer} or {@link MarkerLayer} to decorate.
    * @param decorationParams - The same parameters that are passed to {@link TextEditor#decorateMarker}, except the `type` cannot be `overlay` or `gutter`.
    * @returns {LayerDecoration}
-   * @public
-   * @api-status Essential
    */
   decorateMarkerLayer(markerLayer, decorationParams) {
     return this.decorationManager.decorateMarkerLayer(markerLayer, decorationParams);
@@ -3183,60 +3274,65 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all decorations.
    *
    * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
    * @returns {Array} of {@link Decoration Decorations}.
-   * @public
-   * @api-status Extended
    */
   getDecorations(propertyFilter) {
     return this.decorationManager.getDecorations(propertyFilter);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all decorations of type 'line'.
    *
    * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
    * @returns {Array} of {@link Decoration Decorations}.
-   * @public
-   * @api-status Extended
    */
   getLineDecorations(propertyFilter) {
     return this.decorationManager.getLineDecorations(propertyFilter);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all decorations of type 'line-number'.
    *
    * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
    * @returns {Array} of {@link Decoration Decorations}.
-   * @public
-   * @api-status Extended
    */
   getLineNumberDecorations(propertyFilter) {
     return this.decorationManager.getLineNumberDecorations(propertyFilter);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all decorations of type 'highlight'.
    *
    * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
    * @returns {Array} of {@link Decoration Decorations}.
-   * @public
-   * @api-status Extended
    */
   getHighlightDecorations(propertyFilter) {
     return this.decorationManager.getHighlightDecorations(propertyFilter);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all decorations of type 'overlay'.
    *
    * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
    * @returns {Array} of {@link Decoration Decorations}.
-   * @public
-   * @api-status Extended
    */
   getOverlayDecorations(propertyFilter) {
     return this.decorationManager.getOverlayDecorations(propertyFilter);
@@ -3247,6 +3343,9 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Create a marker on the default marker layer with the given range
    * in buffer coordinates. This marker will maintain its logical location as the
    * buffer is changed, so if you mark a particular word, the marker will remain
@@ -3258,14 +3357,15 @@ module.exports = class TextEditor {
    * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @returns {DisplayMarker}
-   * @public
-   * @api-status Essential
    */
   markBufferRange(bufferRange, options) {
     return this.defaultMarkerLayer.markBufferRange(bufferRange, options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Create a marker on the default marker layer with the given range
    * in screen coordinates. This marker will maintain its logical location as the
    * buffer is changed, so if you mark a particular word, the marker will remain
@@ -3277,14 +3377,15 @@ module.exports = class TextEditor {
    * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @returns {DisplayMarker}
-   * @public
-   * @api-status Essential
    */
   markScreenRange(screenRange, options) {
     return this.defaultMarkerLayer.markScreenRange(screenRange, options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Create a marker on the default marker layer with the given buffer
    * position and no tail. To group multiple markers together in their own
    * private layer, see {@link #addMarkerLayer}.
@@ -3293,14 +3394,15 @@ module.exports = class TextEditor {
    * @param [options] - An `Object` with the following keys:
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @returns {DisplayMarker}
-   * @public
-   * @api-status Essential
    */
   markBufferPosition(bufferPosition, options) {
     return this.defaultMarkerLayer.markBufferPosition(bufferPosition, options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Create a marker on the default marker layer with the given screen
    * position and no tail. To group multiple markers together in their own
    * private layer, see {@link #addMarkerLayer}.
@@ -3310,14 +3412,15 @@ module.exports = class TextEditor {
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
    * @returns {DisplayMarker} The new marker.
-   * @public
-   * @api-status Essential
    */
   markScreenPosition(screenPosition, options) {
     return this.defaultMarkerLayer.markScreenPosition(screenPosition, options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Find all {@link DisplayMarker DisplayMarkers} on the default marker layer that
    * match the given properties.
    *
@@ -3332,42 +3435,42 @@ module.exports = class TextEditor {
    * @param params.containsBufferRange - Only include markers containing this {@link Range} or in range-compatible `Array` in buffer coordinates.
    * @param params.containsBufferPosition - Only include markers containing this {@link Point} or `Array` of `[row, column]` in buffer coordinates.
    * @returns {Array} of {@link DisplayMarker DisplayMarkers}
-   * @public
-   * @api-status Essential
    */
   findMarkers(params) {
     return this.defaultMarkerLayer.findMarkers(params);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the {@link DisplayMarker} on the default layer for the given
    * marker id.
    *
    * @param {Number} id - id of the marker
-   * @public
-   * @api-status Extended
    */
   getMarker(id) {
     return this.defaultMarkerLayer.getMarker(id);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all {@link DisplayMarker DisplayMarkers} on the default marker layer. Consider
    * using {@link #findMarkers}
-   *
-   * @public
-   * @api-status Extended
    */
   getMarkers() {
     return this.defaultMarkerLayer.getMarkers();
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the number of markers in the default marker layer.
    *
    * @returns {Number}
-   * @public
-   * @api-status Extended
    */
   getMarkerCount() {
     return this.defaultMarkerLayer.getMarkerCount();
@@ -3379,40 +3482,43 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Create a marker layer to group related markers.
    *
    * @param options - An `Object` containing the following keys:
    * @param options.maintainHistory - A `Boolean` indicating whether marker state should be restored on undo/redo. Defaults to `false`.
    * @param options.persistent - A `Boolean` indicating whether or not this marker layer should be serialized and deserialized along with the rest of the buffer. Defaults to `false`. If `true`, the marker layer's id will be maintained across the serialization boundary, allowing you to retrieve it via {@link #getMarkerLayer}.
    * @returns {DisplayMarkerLayer}
-   * @public
-   * @api-status Essential
    */
   addMarkerLayer(options) {
     return this.displayLayer.addMarkerLayer(options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get a {@link DisplayMarkerLayer} by id.
    *
    * @param id - The id of the marker layer to retrieve.
    * @returns {DisplayMarkerLayer} or `undefined` if no layer exists with the given id.
-   * @public
-   * @api-status Essential
    */
   getMarkerLayer(id) {
     return this.displayLayer.getMarkerLayer(id);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the default {@link DisplayMarkerLayer}.
    *
    * All marker APIs not tied to an explicit layer interact with this default
    * layer.
    *
    * @returns {DisplayMarkerLayer}
-   * @public
-   * @api-status Essential
    */
   getDefaultMarkerLayer() {
     return this.defaultMarkerLayer;
@@ -3423,29 +3529,34 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the position of the most recently added cursor in buffer
    * coordinates.
    *
    * @returns {Point}
-   * @public
-   * @api-status Essential
    */
   getCursorBufferPosition() {
     return this.getLastCursor().getBufferPosition();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the position of all the cursor positions in buffer coordinates.
    *
    * @returns {Array} of {@link Point Points} in the order they were added
-   * @public
-   * @api-status Essential
    */
   getCursorBufferPositions() {
     return this.getCursors().map((cursor) => cursor.getBufferPosition());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor to the given position in buffer coordinates.
    *
    * If there are multiple cursors, they will be consolidated to a single cursor.
@@ -3453,20 +3564,19 @@ module.exports = class TextEditor {
    * @param position - A {@link Point} or `Array` of `[row, column]`
    * @param [options] - An `Object` containing the following keys:
    * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
-   * @public
-   * @api-status Essential
    */
   setCursorBufferPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setBufferPosition(position, options));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get a {@link Cursor} at given screen coordinates {@link Point}
    *
    * @param position - A {@link Point} or `Array` of `[row, column]`
    * @returns {Cursor|undefined} first matched {@link Cursor} or undefined
-   * @public
-   * @api-status Essential
    */
   getCursorAtScreenPosition(position) {
     const selection = this.getSelectionAtScreenPosition(position);
@@ -3476,29 +3586,34 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the position of the most recently added cursor in screen
    * coordinates.
    *
    * @returns {Point}
-   * @public
-   * @api-status Essential
    */
   getCursorScreenPosition() {
     return this.getLastCursor().getScreenPosition();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the position of all the cursor positions in screen coordinates.
    *
    * @returns {Array} of {@link Point Points} in the order the cursors were added
-   * @public
-   * @api-status Essential
    */
   getCursorScreenPositions() {
     return this.getCursors().map((cursor) => cursor.getScreenPosition());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor to the given position in screen coordinates.
    *
    * If there are multiple cursors, they will be consolidated to a single cursor.
@@ -3506,20 +3621,19 @@ module.exports = class TextEditor {
    * @param position - A {@link Point} or `Array` of `[row, column]`
    * @param [options] - An `Object` combining options for {@link #clipScreenPosition} with:
    * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
-   * @public
-   * @api-status Essential
    */
   setCursorScreenPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setScreenPosition(position, options));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a cursor at the given position in buffer coordinates.
    *
    * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`
    * @returns {Cursor}
-   * @public
-   * @api-status Essential
    */
   addCursorAtBufferPosition(bufferPosition, options) {
     this.selectionsMarkerLayer.markBufferPosition(bufferPosition, {
@@ -3530,12 +3644,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a cursor at the position in screen coordinates.
    *
    * @param screenPosition - A {@link Point} or `Array` of `[row, column]`
    * @returns {Cursor}
-   * @public
-   * @api-status Essential
    */
   addCursorAtScreenPosition(screenPosition, options) {
     this.selectionsMarkerLayer.markScreenPosition(screenPosition, {
@@ -3546,42 +3661,46 @@ module.exports = class TextEditor {
   }
 
   /**
-   * @returns {Boolean} indicating whether or not there are multiple cursors.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Boolean} indicating whether or not there are multiple cursors.
    */
   hasMultipleCursors() {
     return this.getCursors().length > 1;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move every cursor up one row in screen coordinates.
    *
    * @param {Number} [lineCount] - number of lines to move
-   * @public
-   * @api-status Essential
    */
   moveUp(lineCount) {
     return this.moveCursors((cursor) => cursor.moveUp(lineCount, { moveToEndOfSelection: true }));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move every cursor down one row in screen coordinates.
    *
    * @param {Number} [lineCount] - number of lines to move
-   * @public
-   * @api-status Essential
    */
   moveDown(lineCount) {
     return this.moveCursors((cursor) => cursor.moveDown(lineCount, { moveToEndOfSelection: true }));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move every cursor left one column.
    *
    * @param {Number} [columnCount] - number of columns to move (default: 1)
-   * @public
-   * @api-status Essential
    */
   moveLeft(columnCount) {
     return this.moveCursors((cursor) =>
@@ -3590,11 +3709,12 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move every cursor right one column.
    *
    * @param {Number} [columnCount] - number of columns to move (default: 1)
-   * @public
-   * @api-status Essential
    */
   moveRight(columnCount) {
     return this.moveCursors((cursor) =>
@@ -3603,70 +3723,70 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Move every cursor to the beginning of its line in buffer coordinates.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Move every cursor to the beginning of its line in buffer coordinates.
    */
   moveToBeginningOfLine() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfLine());
   }
 
   /**
-   * Move every cursor to the beginning of its line in screen coordinates.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Move every cursor to the beginning of its line in screen coordinates.
    */
   moveToBeginningOfScreenLine() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfScreenLine());
   }
 
   /**
-   * Move every cursor to the first non-whitespace character of its line.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Move every cursor to the first non-whitespace character of its line.
    */
   moveToFirstCharacterOfLine() {
     return this.moveCursors((cursor) => cursor.moveToFirstCharacterOfLine());
   }
 
   /**
-   * Move every cursor to the end of its line in buffer coordinates.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Move every cursor to the end of its line in buffer coordinates.
    */
   moveToEndOfLine() {
     return this.moveCursors((cursor) => cursor.moveToEndOfLine());
   }
 
   /**
-   * Move every cursor to the end of its line in screen coordinates.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Move every cursor to the end of its line in screen coordinates.
    */
   moveToEndOfScreenLine() {
     return this.moveCursors((cursor) => cursor.moveToEndOfScreenLine());
   }
 
   /**
-   * Move every cursor to the beginning of its surrounding word.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Move every cursor to the beginning of its surrounding word.
    */
   moveToBeginningOfWord() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfWord());
   }
 
   /**
-   * Move every cursor to the end of its surrounding word.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Move every cursor to the end of its surrounding word.
    */
   moveToEndOfWord() {
     return this.moveCursors((cursor) => cursor.moveToEndOfWord());
@@ -3675,103 +3795,104 @@ module.exports = class TextEditor {
   // Cursor Extended
 
   /**
+   * @public
+   * @status extended
+   *
    * Move every cursor to the top of the buffer.
    *
    * If there are multiple cursors, they will be merged into a single cursor.
-   *
-   * @public
-   * @api-status Extended
    */
   moveToTop() {
     return this.moveCursors((cursor) => cursor.moveToTop());
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Move every cursor to the bottom of the buffer.
    *
    * If there are multiple cursors, they will be merged into a single cursor.
-   *
-   * @public
-   * @api-status Extended
    */
   moveToBottom() {
     return this.moveCursors((cursor) => cursor.moveToBottom());
   }
 
   /**
-   * Move every cursor to the beginning of the next word.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Move every cursor to the beginning of the next word.
    */
   moveToBeginningOfNextWord() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfNextWord());
   }
 
   /**
-   * Move every cursor to the previous word boundary.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Move every cursor to the previous word boundary.
    */
   moveToPreviousWordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToPreviousWordBoundary());
   }
 
   /**
-   * Move every cursor to the next word boundary.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Move every cursor to the next word boundary.
    */
   moveToNextWordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToNextWordBoundary());
   }
 
   /**
-   * Move every cursor to the previous subword boundary.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Move every cursor to the previous subword boundary.
    */
   moveToPreviousSubwordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToPreviousSubwordBoundary());
   }
 
   /**
-   * Move every cursor to the next subword boundary.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Move every cursor to the next subword boundary.
    */
   moveToNextSubwordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToNextSubwordBoundary());
   }
 
   /**
-   * Move every cursor to the beginning of the next paragraph.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Move every cursor to the beginning of the next paragraph.
    */
   moveToBeginningOfNextParagraph() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfNextParagraph());
   }
 
   /**
-   * Move every cursor to the beginning of the previous paragraph.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Move every cursor to the beginning of the previous paragraph.
    */
   moveToBeginningOfPreviousParagraph() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfPreviousParagraph());
   }
 
   /**
-   * @returns {Cursor} most recently added {@link Cursor}
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * @returns {Cursor} most recently added {@link Cursor}
    */
   getLastCursor() {
     this.createLastSelectionIfNeeded();
@@ -3779,20 +3900,21 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * @param [options] - See {@link Cursor#getBeginningOfCurrentWordBufferPosition}.
    * @returns {String} word surrounding the most recently added cursor.
-   * @public
-   * @api-status Extended
    */
   getWordUnderCursor(options) {
     return this.getTextInBufferRange(this.getLastCursor().getCurrentWordBufferRange(options));
   }
 
   /**
-   * Get an Array of all {@link Cursor Cursors}.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Get an Array of all {@link Cursor Cursors}.
    */
   getCursors() {
     this.createLastSelectionIfNeeded();
@@ -3800,12 +3922,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all {@link Cursor Cursors}, ordered by their position in the buffer
    * instead of the order in which they were added.
    *
    * @returns {Array} of {@link Selection Selections}.
-   * @public
-   * @api-status Extended
    */
   getCursorsOrderedByBufferPosition() {
     return this.getCursors().sort((a, b) => a.compare(b));
@@ -3862,42 +3985,48 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the selected text of the most recently added selection.
    *
    * @returns {String}
-   * @public
-   * @api-status Essential
    */
   getSelectedText() {
     return this.getLastSelection().getText();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the {@link Range} of the most recently added selection in buffer
    * coordinates.
    *
    * @returns {Range}
-   * @public
-   * @api-status Essential
    */
   getSelectedBufferRange() {
     return this.getLastSelection().getBufferRange();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the {@link Range Ranges} of all selections in buffer coordinates.
    *
    * The ranges are sorted by when the selections were added. Most recent at the end.
    *
    * @returns {Array} of {@link Range Ranges}.
-   * @public
-   * @api-status Essential
    */
   getSelectedBufferRanges() {
     return this.getSelections().map((selection) => selection.getBufferRange());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the selected range in buffer coordinates. If there are multiple
    * selections, they are reduced to a single selection with the given range.
    *
@@ -3905,14 +4034,15 @@ module.exports = class TextEditor {
    * @param [options] - An `Object` of options:
    * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
    * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
-   * @public
-   * @api-status Essential
    */
   setSelectedBufferRange(bufferRange, options) {
     return this.setSelectedBufferRanges([bufferRange], options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the selected ranges in buffer coordinates. If there are multiple
    * selections, they are replaced by new selections with the given ranges.
    *
@@ -3920,8 +4050,6 @@ module.exports = class TextEditor {
    * @param [options] - An `Object` of options:
    * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
    * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
-   * @public
-   * @api-status Essential
    */
   setSelectedBufferRanges(bufferRanges, options = {}) {
     if (!bufferRanges.length) throw new Error("Passed an empty array to setSelectedBufferRanges");
@@ -3945,39 +4073,42 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the {@link Range} of the most recently added selection in screen
    * coordinates.
    *
    * @returns {Range}
-   * @public
-   * @api-status Essential
    */
   getSelectedScreenRange() {
     return this.getLastSelection().getScreenRange();
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the {@link Range Ranges} of all selections in screen coordinates.
    *
    * The ranges are sorted by when the selections were added. Most recent at the end.
    *
    * @returns {Array} of {@link Range Ranges}.
-   * @public
-   * @api-status Essential
    */
   getSelectedScreenRanges() {
     return this.getSelections().map((selection) => selection.getScreenRange());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the selected range in screen coordinates. If there are multiple
    * selections, they are reduced to a single selection with the given range.
    *
    * @param screenRange - A {@link Range} or range-compatible `Array`.
    * @param [options] - An `Object` of options:
    * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
-   * @public
-   * @api-status Essential
    */
   setSelectedScreenRange(screenRange, options) {
     return this.setSelectedBufferRange(
@@ -3987,14 +4118,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the selected ranges in screen coordinates. If there are multiple
    * selections, they are replaced by new selections with the given ranges.
    *
    * @param screenRanges - An `Array` of {@link Range Ranges} or range-compatible `Arrays`.
    * @param [options] - An `Object` of options:
    * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
-   * @public
-   * @api-status Essential
    */
   setSelectedScreenRanges(screenRanges, options = {}) {
     if (!screenRanges.length) throw new Error("Passed an empty array to setSelectedScreenRanges");
@@ -4018,6 +4150,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a selection for the given range in buffer coordinates.
    *
    * @param bufferRange - A {@link Range}
@@ -4025,8 +4160,6 @@ module.exports = class TextEditor {
    * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
    * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
    * @returns {Selection} added {@link Selection}.
-   * @public
-   * @api-status Essential
    */
   addSelectionForBufferRange(bufferRange, options = {}) {
     bufferRange = Range.fromObject(bufferRange);
@@ -4045,6 +4178,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a selection for the given range in screen coordinates.
    *
    * @param screenRange - A {@link Range}
@@ -4052,22 +4188,21 @@ module.exports = class TextEditor {
    * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
    * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
    * @returns {Selection} added {@link Selection}.
-   * @public
-   * @api-status Essential
    */
   addSelectionForScreenRange(screenRange, options = {}) {
     return this.addSelectionForBufferRange(this.bufferRangeForScreenRange(screenRange), options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Select from the current cursor position to the given position in
    * buffer coordinates.
    *
    * This method may merge selections that end up intersecting.
    *
    * @param position - An instance of {@link Point}, with a given `row` and `column`.
-   * @public
-   * @api-status Essential
    */
   selectToBufferPosition(position) {
     const lastSelection = this.getLastSelection();
@@ -4078,14 +4213,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Select from the current cursor position to the given position in
    * screen coordinates.
    *
    * This method may merge selections that end up intersecting.
    *
    * @param position - An instance of {@link Point}, with a given `row` and `column`.
-   * @public
-   * @api-status Essential
    */
   selectToScreenPosition(position, options) {
     const lastSelection = this.getLastSelection();
@@ -4098,6 +4234,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor of each selection one character upward while
    * preserving the selection's tail position.
    *
@@ -4105,14 +4244,15 @@ module.exports = class TextEditor {
    * This method may merge selections that end up intersecting.
    *
    * @param {Number} [rowCount] - number of rows to select (default: 1)
-   * @public
-   * @api-status Essential
    */
   selectUp(rowCount) {
     return this.expandSelectionsBackward((selection) => selection.selectUp(rowCount));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor of each selection one character downward while
    * preserving the selection's tail position.
    *
@@ -4120,14 +4260,15 @@ module.exports = class TextEditor {
    * This method may merge selections that end up intersecting.
    *
    * @param {Number} [rowCount] - number of rows to select (default: 1)
-   * @public
-   * @api-status Essential
    */
   selectDown(rowCount) {
     return this.expandSelectionsForward((selection) => selection.selectDown(rowCount));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor of each selection one character leftward while
    * preserving the selection's tail position.
    *
@@ -4135,14 +4276,15 @@ module.exports = class TextEditor {
    * This method may merge selections that end up intersecting.
    *
    * @param {Number} [columnCount] - number of columns to select (default: 1)
-   * @public
-   * @api-status Essential
    */
   selectLeft(columnCount) {
     return this.expandSelectionsBackward((selection) => selection.selectLeft(columnCount));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor of each selection one character rightward while
    * preserving the selection's tail position.
    *
@@ -4150,126 +4292,124 @@ module.exports = class TextEditor {
    * This method may merge selections that end up intersecting.
    *
    * @param {Number} [columnCount] - number of columns to select (default: 1)
-   * @public
-   * @api-status Essential
    */
   selectRight(columnCount) {
     return this.expandSelectionsForward((selection) => selection.selectRight(columnCount));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Select from the top of the buffer to the end of the last selection
    * in the buffer.
    *
    * This method merges multiple selections into a single selection.
-   *
-   * @public
-   * @api-status Essential
    */
   selectToTop() {
     return this.expandSelectionsBackward((selection) => selection.selectToTop());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Selects from the top of the first selection in the buffer to the end
    * of the buffer.
    *
    * This method merges multiple selections into a single selection.
-   *
-   * @public
-   * @api-status Essential
    */
   selectToBottom() {
     return this.expandSelectionsForward((selection) => selection.selectToBottom());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Select all text in the buffer.
    *
    * This method merges multiple selections into a single selection.
-   *
-   * @public
-   * @api-status Essential
    */
   selectAll() {
     return this.expandSelectionsForward((selection) => selection.selectAll());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor of each selection to the beginning of its line
    * while preserving the selection's tail position.
    *
    * This method may merge selections that end up intersecting.
-   *
-   * @public
-   * @api-status Essential
    */
   selectToBeginningOfLine() {
     return this.expandSelectionsBackward((selection) => selection.selectToBeginningOfLine());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor of each selection to the first non-whitespace
    * character of its line while preserving the selection's tail position. If the
    * cursor is already on the first character of the line, move it to the
    * beginning of the line.
    *
    * This method may merge selections that end up intersecting.
-   *
-   * @public
-   * @api-status Essential
    */
   selectToFirstCharacterOfLine() {
     return this.expandSelectionsBackward((selection) => selection.selectToFirstCharacterOfLine());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Move the cursor of each selection to the end of its line while
    * preserving the selection's tail position.
    *
    * This method may merge selections that end up intersecting.
-   *
-   * @public
-   * @api-status Essential
    */
   selectToEndOfLine() {
     return this.expandSelectionsForward((selection) => selection.selectToEndOfLine());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Expand selections to the beginning of their containing word.
    *
    * Operates on all selections. Moves the cursor to the beginning of the
    * containing word while preserving the selection's tail position.
-   *
-   * @public
-   * @api-status Essential
    */
   selectToBeginningOfWord() {
     return this.expandSelectionsBackward((selection) => selection.selectToBeginningOfWord());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Expand selections to the end of their containing word.
    *
    * Operates on all selections. Moves the cursor to the end of the containing
    * word while preserving the selection's tail position.
-   *
-   * @public
-   * @api-status Essential
    */
   selectToEndOfWord() {
     return this.expandSelectionsForward((selection) => selection.selectToEndOfWord());
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, move its cursor to the preceding subword
    * boundary while maintaining the selection's tail position.
    *
    * This method may merge selections that end up intersecting.
-   *
-   * @public
-   * @api-status Extended
    */
   selectToPreviousSubwordBoundary() {
     return this.expandSelectionsBackward((selection) =>
@@ -4278,45 +4418,45 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, move its cursor to the next subword boundary
    * while maintaining the selection's tail position.
    *
    * This method may merge selections that end up intersecting.
-   *
-   * @public
-   * @api-status Extended
    */
   selectToNextSubwordBoundary() {
     return this.expandSelectionsForward((selection) => selection.selectToNextSubwordBoundary());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each cursor, select the containing line.
    *
    * This method merges selections on successive lines.
-   *
-   * @public
-   * @api-status Essential
    */
   selectLinesContainingCursors() {
     return this.expandSelectionsForward((selection) => selection.selectLine());
   }
 
   /**
-   * Select the word surrounding each cursor.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Select the word surrounding each cursor.
    */
   selectWordsContainingCursors() {
     return this.expandSelectionsForward((selection) => selection.selectWord());
   }
 
   /**
-   * Select the subword surrounding each cursor.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Select the subword surrounding each cursor.
    */
   selectSubwordsContainingCursors() {
     return this.expandSelectionsForward((selection) => selection.selectSubword());
@@ -4325,52 +4465,52 @@ module.exports = class TextEditor {
   // Selection Extended
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, move its cursor to the preceding word boundary
    * while maintaining the selection's tail position.
    *
    * This method may merge selections that end up intersecting.
-   *
-   * @public
-   * @api-status Extended
    */
   selectToPreviousWordBoundary() {
     return this.expandSelectionsBackward((selection) => selection.selectToPreviousWordBoundary());
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, move its cursor to the next word boundary while
    * maintaining the selection's tail position.
    *
    * This method may merge selections that end up intersecting.
-   *
-   * @public
-   * @api-status Extended
    */
   selectToNextWordBoundary() {
     return this.expandSelectionsForward((selection) => selection.selectToNextWordBoundary());
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Expand selections to the beginning of the next word.
    *
    * Operates on all selections. Moves the cursor to the beginning of the next
    * word while preserving the selection's tail position.
-   *
-   * @public
-   * @api-status Extended
    */
   selectToBeginningOfNextWord() {
     return this.expandSelectionsForward((selection) => selection.selectToBeginningOfNextWord());
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Expand selections to the beginning of the next paragraph.
    *
    * Operates on all selections. Moves the cursor to the beginning of the next
    * paragraph while preserving the selection's tail position.
-   *
-   * @public
-   * @api-status Extended
    */
   selectToBeginningOfNextParagraph() {
     return this.expandSelectionsForward((selection) =>
@@ -4379,13 +4519,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Expand selections to the beginning of the next paragraph.
    *
    * Operates on all selections. Moves the cursor to the beginning of the next
    * paragraph while preserving the selection's tail position.
-   *
-   * @public
-   * @api-status Extended
    */
   selectToBeginningOfPreviousParagraph() {
     return this.expandSelectionsBackward((selection) =>
@@ -4394,11 +4534,11 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * For each selection, select the syntax node that contains
    * that selection.
-   *
-   * @public
-   * @api-status Extended
    */
   selectLargerSyntaxNode() {
     const languageMode = this.buffer.getLanguageMode();
@@ -4416,10 +4556,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Undo the effect of a preceding call to {@link #selectLargerSyntaxNode}.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Undo the effect of a preceding call to {@link #selectLargerSyntaxNode}.
    */
   selectSmallerSyntaxNode() {
     this.expandSelectionsForward((selection) => {
@@ -4434,12 +4574,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Select the range of the given marker if it is valid.
    *
    * @param marker - A {@link DisplayMarker}
    * @returns {Range|undefined} selected {@link Range} or `undefined` if the marker is invalid.
-   * @public
-   * @api-status Extended
    */
   selectMarker(marker) {
     if (marker.isValid()) {
@@ -4450,11 +4591,12 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the most recently added {@link Selection}.
    *
    * @returns {Selection}
-   * @public
-   * @api-status Extended
    */
   getLastSelection() {
     this.createLastSelectionIfNeeded();
@@ -4469,11 +4611,12 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get current {@link Selection Selections}.
    *
    * @returns {Array<Selection>} The current selections.
-   * @public
-   * @api-status Extended
    */
   getSelections() {
     this.createLastSelectionIfNeeded();
@@ -4481,25 +4624,27 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all {@link Selection Selections}, ordered by their position in the buffer
    * instead of the order in which they were added.
    *
    * @returns {Array} of {@link Selection Selections}.
-   * @public
-   * @api-status Extended
    */
   getSelectionsOrderedByBufferPosition() {
     return this.getSelections().sort((a, b) => a.compare(b));
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Determine if a given range in buffer coordinates intersects a
    * selection.
    *
    * @param bufferRange - A {@link Range} or range-compatible `Array`.
    * @returns {Boolean}
-   * @public
-   * @api-status Extended
    */
   selectionIntersectsBufferRange(bufferRange) {
     return this.getSelections().some((selection) => selection.intersectsBufferRange(bufferRange));
@@ -4684,6 +4829,9 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Scan regular expression matches in the entire buffer, calling the
    * given iterator function on each match.
    *
@@ -4703,8 +4851,6 @@ module.exports = class TextEditor {
    * @param iterator.object.range - The {@link Range} of the match.
    * @param iterator.object.stop - Call this `Function` to terminate the scan.
    * @param iterator.object.replace - Call this `Function` with a `String` to replace the match.
-   * @public
-   * @api-status Essential
    */
   scan(regex, options = {}, iterator) {
     if (_.isFunction(options)) {
@@ -4716,6 +4862,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Scan regular expression matches in a given range, calling the given
    * iterator function on each match.
    *
@@ -4727,14 +4876,15 @@ module.exports = class TextEditor {
    * @param iterator.range - The {@link Range} of the match.
    * @param iterator.stop - Call this `Function` to terminate the scan.
    * @param iterator.replace - Call this `Function` with a `String` to replace the match.
-   * @public
-   * @api-status Essential
    */
   scanInBufferRange(regex, range, iterator) {
     return this.buffer.scanInRange(regex, range, iterator);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Scan regular expression matches in a given range in reverse order,
    * calling the given iterator function on each match.
    *
@@ -4746,8 +4896,6 @@ module.exports = class TextEditor {
    * @param iterator.range - The {@link Range} of the match.
    * @param iterator.stop - Call this `Function` to terminate the scan.
    * @param iterator.replace - Call this `Function` with a `String` to replace the match.
-   * @public
-   * @api-status Essential
    */
   backwardsScanInBufferRange(regex, range, iterator) {
     return this.buffer.backwardsScanInRange(regex, range, iterator);
@@ -4758,20 +4906,22 @@ module.exports = class TextEditor {
    */
 
   /**
-   * @returns {Boolean} indicating whether softTabs are enabled for this editor.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {Boolean} indicating whether softTabs are enabled for this editor.
    */
   getSoftTabs() {
     return this.softTabs;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Enable or disable soft tabs for this editor.
    *
    * @param softTabs - A `Boolean`
-   * @public
-   * @api-status Essential
    */
   setSoftTabs(softTabs) {
     this.softTabs = softTabs;
@@ -4784,33 +4934,35 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Toggle soft tabs for this editor
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Toggle soft tabs for this editor
    */
   toggleSoftTabs() {
     this.setSoftTabs(!this.getSoftTabs());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the on-screen length of tab characters.
    *
    * @returns {Number}
-   * @public
-   * @api-status Essential
    */
   getTabLength() {
     return this.displayLayer.tabLength;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the on-screen length of tab characters. Setting this to a
    * `Number` This will override the `language.tabLength` setting.
    *
    * @param {Number} tabLength - length of a single tab. Setting to `null` will fallback to using the `language.tabLength` config setting
-   * @public
-   * @api-status Essential
    */
   setTabLength(tabLength) {
     this.updateTabLength(tabLength, true);
@@ -4833,11 +4985,12 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Determine if the buffer uses hard or soft tabs.
    *
    * @returns {Boolean|undefined} `true` for leading spaces, `false` for a leading hard tab (`\t`), or `undefined` when no non-comment line has leading whitespace.
-   * @public
-   * @api-status Extended
    */
   usesSoftTabs() {
     const languageMode = this.buffer.getLanguageMode();
@@ -4855,14 +5008,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the text representing a single level of indent.
    *
    * If soft tabs are enabled, the text is composed of N spaces, where N is the
    * tab length. Otherwise the text is a tab character (`\t`).
    *
    * @returns {String}
-   * @public
-   * @api-status Extended
    */
   getTabText() {
     return this.buildIndentString(1);
@@ -4882,23 +5036,25 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Determine whether lines in this editor are soft-wrapped.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   isSoftWrapped() {
     return this.softWrapped;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Enable or disable soft wrapping for this editor.
    *
    * @param softWrapped - A `Boolean`
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   setSoftWrapped(softWrapped) {
     this.updateSoftWrapped(softWrapped, true);
@@ -4910,36 +5066,39 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Toggle soft wrapping for this editor
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   toggleSoftWrapped() {
     return this.setSoftWrapped(!this.isSoftWrapped());
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Determine whether overtype (overwrite) mode is enabled for this
    * editor. In overtype mode, typing replaces the character following the cursor
    * instead of inserting before it.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   isOvertypeMode() {
     return this.overtypeMode;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Enable or disable overtype (overwrite) mode for this editor.
    *
    * @param overtypeMode - A `Boolean`.
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   setOvertypeMode(overtypeMode) {
     overtypeMode = !!overtypeMode;
@@ -4951,17 +5110,21 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Toggle overtype (overwrite) mode for this editor.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   toggleOvertypeMode() {
     return this.setOvertypeMode(!this.overtypeMode);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * When overtype mode is active, expand each empty selection one
    * character to the right (except at the end of a line) so that the text about
    * to be inserted overwrites the following character rather than being inserted
@@ -4969,9 +5132,6 @@ module.exports = class TextEditor {
    *
    * Called by the editor component immediately before inserting genuinely typed
    * text; it has no effect unless {@link #isOvertypeMode} is `true`.
-   *
-   * @public
-   * @api-status Extended
    */
   applyOvertype() {
     if (!this.overtypeMode) return;
@@ -4983,10 +5143,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Gets the column at which column will soft wrap
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Gets the column at which column will soft wrap
    */
   getSoftWrapColumn() {
     if (this.isSoftWrapped() && !this.mini) {
@@ -5005,6 +5165,9 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the indentation level of the given buffer row.
    *
    * Determines how deeply the given row is indented based on the soft tabs and
@@ -5014,14 +5177,15 @@ module.exports = class TextEditor {
    *
    * @param bufferRow - A `Number` indicating the buffer row.
    * @returns {Number}
-   * @public
-   * @api-status Essential
    */
   indentationForBufferRow(bufferRow) {
     return this.indentLevelForLine(this.lineTextForBufferRow(bufferRow));
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the indentation level for the given buffer row.
    *
    * Inserts or removes hard tabs or spaces based on the soft tabs and tab length
@@ -5034,8 +5198,6 @@ module.exports = class TextEditor {
    * @param {Object} [options] - Indentation options.
    * @param {Boolean} [options.preserveLeadingWhitespace=false] - Preserve
    *   whitespace already at the beginning of the line.
-   * @public
-   * @api-status Essential
    */
   setIndentationForBufferRow(bufferRow, newLevel, { preserveLeadingWhitespace } = {}) {
     let endColumn;
@@ -5055,12 +5217,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Indent rows intersecting selections by one level.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @public
-   * @api-status Extended
    */
   indentSelectedRows(options = {}) {
     if (!this.ensureWritable("indentSelectedRows", options)) return;
@@ -5068,12 +5231,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Outdent rows intersecting selections by one level.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @public
-   * @api-status Extended
    */
   outdentSelectedRows(options = {}) {
     if (!this.ensureWritable("outdentSelectedRows", options)) return;
@@ -5081,6 +5245,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the indentation level of the given line of text.
    *
    * Determines how deeply the given line is indented based on the soft tabs and
@@ -5090,8 +5257,6 @@ module.exports = class TextEditor {
    *
    * @param line - A `String` representing a line of text.
    * @returns {Number}
-   * @public
-   * @api-status Extended
    */
   indentLevelForLine(line) {
     const tabLength = this.getTabLength();
@@ -5110,13 +5275,14 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Indent rows intersecting selections based on the grammar's suggested
    * indent level.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @public
-   * @api-status Extended
    */
   autoIndentSelectedRows(options = {}) {
     if (!this.ensureWritable("autoIndentSelectedRows", options)) return;
@@ -5153,10 +5319,10 @@ module.exports = class TextEditor {
    */
 
   /**
-   * Get the current `Grammar` of this editor.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Get the current `Grammar` of this editor.
    */
   getGrammar() {
     const languageMode = this.buffer.getLanguageMode();
@@ -5175,10 +5341,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Get a notification when async tokenization is completed.
-   *
    * @public
-   * @api-status Experimental
+   * @status experimental
+   *
+   * Get a notification when async tokenization is completed.
    */
   onDidTokenize(callback) {
     return this.emitter.on("did-tokenize", callback);
@@ -5189,15 +5355,19 @@ module.exports = class TextEditor {
    */
 
   /**
-   * @returns {ScopeDescriptor} that includes this editor's language. e.g. `['.source.ruby']`, or `['.source.coffee']`. You can use this with {@link Config#get} to get language specific config values.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {ScopeDescriptor} that includes this editor's language. e.g. `['.source.ruby']`, or `['.source.coffee']`. You can use this with {@link Config#get} to get language specific config values.
    */
   getRootScopeDescriptor() {
     return this.buffer.getLanguageMode().rootScopeDescriptor;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the syntactic {@link ScopeDescriptor} for the given position in buffer
    * coordinates. Useful with {@link Config#get}.
    *
@@ -5208,8 +5378,6 @@ module.exports = class TextEditor {
    *
    * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @returns {ScopeDescriptor}
-   * @public
-   * @api-status Essential
    */
   scopeDescriptorForBufferPosition(bufferPosition) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5219,6 +5387,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the syntactic tree {@link ScopeDescriptor} for the given position in buffer
    * coordinates or the syntactic {@link ScopeDescriptor} for TextMate language mode
    *
@@ -5233,8 +5404,6 @@ module.exports = class TextEditor {
    *
    * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @returns {ScopeDescriptor}
-   * @public
-   * @api-status Essential
    */
   syntaxTreeScopeDescriptorForBufferPosition(bufferPosition) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5244,6 +5413,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the range in buffer coordinates of all tokens surrounding the
    * cursor that match the given scope selector.
    *
@@ -5252,14 +5424,15 @@ module.exports = class TextEditor {
    *
    * @param {String} scopeSelector - selector. e.g. `'.source.ruby'`
    * @returns {Range}
-   * @public
-   * @api-status Extended
    */
   bufferRangeForScopeAtCursor(scopeSelector) {
     return this.bufferRangeForScopeAtPosition(scopeSelector, this.getCursorBufferPosition());
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the range in buffer coordinates of all tokens surrounding the
    * given position in buffer coordinates that match the given scope selector.
    *
@@ -5269,8 +5442,6 @@ module.exports = class TextEditor {
    * @param {String} scopeSelector - selector. e.g. `'.source.ruby'`
    * @param bufferPosition - A {@link Point} or `Array` of [row, column]
    * @returns {Range}
-   * @public
-   * @api-status Extended
    */
   bufferRangeForScopeAtPosition(scopeSelector, bufferPosition) {
     return this.buffer
@@ -5279,10 +5450,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Determine if the given row is entirely a comment
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Determine if the given row is entirely a comment
    */
   isBufferRowCommented(bufferRow) {
     const match = this.lineTextForBufferRow(bufferRow).match(/\S/);
@@ -5314,10 +5485,10 @@ module.exports = class TextEditor {
    */
 
   /**
-   * For each selection, copy the selected text.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * For each selection, copy the selected text.
    */
   copySelectedText(clipboard = this.constructor.clipboard) {
     let maintainClipboard = false;
@@ -5350,12 +5521,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, cut the selected text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @public
-   * @api-status Essential
    */
   cutSelectedText(options = {}) {
     if (!this.ensureWritable("cutSelectedText", options)) return;
@@ -5373,6 +5545,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, replace the selected text with the contents of
    * the clipboard.
    *
@@ -5381,8 +5556,6 @@ module.exports = class TextEditor {
    * corresponding clipboard selection text.
    *
    * @param [options] - See {@link Selection#insertText}.
-   * @public
-   * @api-status Essential
    */
   pasteText(options = {}) {
     if (!this.ensureWritable("parseText", options)) return;
@@ -5473,14 +5646,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, if the selection is empty, cut all characters
    * of the containing screen line following the cursor. Otherwise cut the selected
    * text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @public
-   * @api-status Essential
    */
   cutToEndOfLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
@@ -5492,14 +5666,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * For each selection, if the selection is empty, cut all characters
    * of the containing buffer line following the cursor. Otherwise cut the
    * selected text.
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
-   * @public
-   * @api-status Essential
    */
   cutToEndOfBufferLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
@@ -5515,14 +5690,14 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Fold the most recent cursor's row based on its indentation level.
    *
    * The fold will extend from the nearest preceding line with a lower
    * indentation level up to the nearest following row with a lower indentation
    * level.
-   *
-   * @public
-   * @api-status Essential
    */
   foldCurrentRow() {
     const { row } = this.getCursorBufferPosition();
@@ -5534,10 +5709,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Unfold the most recent cursor's row by one level.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Unfold the most recent cursor's row by one level.
    */
   unfoldCurrentRow() {
     const { row } = this.getCursorBufferPosition();
@@ -5545,6 +5720,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Fold the given row in buffer coordinates based on its indentation
    * level.
    *
@@ -5552,8 +5730,6 @@ module.exports = class TextEditor {
    * begin at the first foldable row preceding the given row.
    *
    * @param bufferRow - A `Number`.
-   * @public
-   * @api-status Essential
    */
   foldBufferRow(bufferRow) {
     let position = Point(bufferRow, Infinity);
@@ -5581,11 +5757,12 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Unfold all folds containing the given row in buffer coordinates.
    *
    * @param bufferRow - A `Number`
-   * @public
-   * @api-status Essential
    */
   unfoldBufferRow(bufferRow) {
     const position = Point(bufferRow, Infinity);
@@ -5593,10 +5770,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * For each selection, fold the rows it intersects.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * For each selection, fold the rows it intersects.
    */
   foldSelectedLines() {
     for (let selection of this.selections) {
@@ -5605,10 +5782,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Fold all foldable lines.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Fold all foldable lines.
    */
   foldAll() {
     const languageMode = this.buffer.getLanguageMode();
@@ -5621,10 +5798,10 @@ module.exports = class TextEditor {
   }
 
   /**
-   * Unfold all existing folds.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Unfold all existing folds.
    */
   unfoldAll() {
     const result = this.displayLayer.destroyAllFolds();
@@ -5633,11 +5810,12 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Fold all foldable lines at the given indent level.
    *
    * @param level - A `Number` starting at 0.
-   * @public
-   * @api-status Extended
    */
   foldAllAtIndentLevel(level) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5651,14 +5829,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Determine whether the given row in buffer coordinates is foldable.
    *
    * A *foldable* row is a row that *starts* a row range that can be folded.
    *
    * @param bufferRow - A `Number`
    * @returns {Boolean}
-   * @public
-   * @api-status Extended
    */
   isFoldableAtBufferRow(bufferRow) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5666,25 +5845,26 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Determine whether the given row in screen coordinates is foldable.
    *
    * A *foldable* row is a row that *starts* a row range that can be folded.
    *
    * @param screenRow - A `Number`
    * @returns {Boolean}
-   * @public
-   * @api-status Extended
    */
   isFoldableAtScreenRow(screenRow) {
     return this.isFoldableAtBufferRow(this.bufferRowForScreenRow(screenRow));
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Fold the given buffer row if it isn't currently folded, and unfold
    * it otherwise.
-   *
-   * @public
-   * @api-status Extended
    */
   toggleFoldAtBufferRow(bufferRow) {
     if (this.isFoldedAtBufferRow(bufferRow)) {
@@ -5695,23 +5875,25 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Determine whether the most recently added cursor's row is folded.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Extended
    */
   isFoldedAtCursorRow() {
     return this.isFoldedAtBufferRow(this.getCursorBufferPosition().row);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Determine whether the given row in buffer coordinates is folded.
    *
    * @param bufferRow - A `Number`
    * @returns {Boolean}
-   * @public
-   * @api-status Extended
    */
   isFoldedAtBufferRow(bufferRow) {
     const range = Range(
@@ -5722,12 +5904,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Determine whether the given row in screen coordinates is folded.
    *
    * @param screenRow - A `Number`
    * @returns {Boolean}
-   * @public
-   * @api-status Extended
    */
   isFoldedAtScreenRow(screenRow) {
     return this.isFoldedAtBufferRow(this.bufferRowForScreenRow(screenRow));
@@ -5765,6 +5948,9 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Add a custom {@link Gutter}.
    *
    * @param options - An `Object` with the following fields:
@@ -5789,19 +5975,18 @@ module.exports = class TextEditor {
    * @param {Number} options.onMouseMove.lineData.bufferRow - of the originating line element
    * @param {Number} options.onMouseMove.lineData.screenRow
    * @returns {Gutter} newly-created {@link Gutter}.
-   * @public
-   * @api-status Essential
    */
   addGutter(options) {
     return this.gutterContainer.addGutter(options);
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get this editor's gutters.
    *
    * @returns {Array} of {@link Gutter Gutters}.
-   * @public
-   * @api-status Essential
    */
   getGutters() {
     return this.gutterContainer.getGutters();
@@ -5812,11 +5997,12 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get the gutter with the given name.
    *
    * @returns {Gutter}, or `null` if no gutter exists for the given name.
-   * @public
-   * @api-status Essential
    */
   gutterWithName(name) {
     return this.gutterContainer.gutterWithName(name);
@@ -5827,14 +6013,15 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Scroll the editor to reveal the most recently added cursor if it is
    * off-screen.
    *
    * @param {Object} [options]
    * @param options.center - Center the editor around the cursor if possible. (default: true when an options object is given at all, false otherwise — the bare call is the one the editor's own movement commands make, and they scroll only as far as they must)
    * @param options.zone - Land the cursor inside a band of the viewport, instead of centering it. See {@link #scrollToScreenRange}.
-   * @public
-   * @api-status Essential
    */
   scrollToCursorPosition(options) {
     const zone = options && options.zone;
@@ -5845,14 +6032,15 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Scrolls the editor to the given buffer position.
    *
    * @param bufferPosition - An object that represents a buffer position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
    * @param {Object} [options]
    * @param options.center - Center the editor around the position if possible. (default: false)
    * @param options.zone - Land the position inside a band of the viewport. See {@link #scrollToScreenRange}.
-   * @public
-   * @api-status Essential
    */
   scrollToBufferPosition(bufferPosition, options) {
     return this.scrollToScreenPosition(
@@ -5862,20 +6050,24 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Scrolls the editor to the given screen position.
    *
    * @param screenPosition - An object that represents a screen position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
    * @param {Object} [options]
    * @param options.center - Center the editor around the position if possible. (default: false)
    * @param options.zone - Land the position inside a band of the viewport. See {@link #scrollToScreenRange}.
-   * @public
-   * @api-status Essential
    */
   scrollToScreenPosition(screenPosition, options) {
     this.scrollToScreenRange(new Range(screenPosition, screenPosition), options);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Scrolls the editor to the given screen range.
    *
    * @param screenRange - A {@link Range} or range-compatible `Array`.
@@ -5884,8 +6076,6 @@ module.exports = class TextEditor {
    * @param options.zone - Where in the viewport the range should come to rest, as a percentage of the travel it has between the vertical scroll margins: `0` rests it against the top margin and `100` against the bottom one. A `Number` pins the range to that one spot. An `Array` of two numbers names where it lands after leaving the band through the top and after leaving it through the bottom, and so describes the band itself — nothing scrolls while the range is already inside. Ordered (`[0, 50]`) that is the edge it just crossed, the smallest scroll that brings it back; inverted (`[50, 0]`) it is the opposite edge, throwing the range across the viewport to leave the most room ahead of it. `[0, 100]` is the default behaviour and `50` is `center`.
    * @param options.reversed - Scroll to the start of the range before its end when both are off-screen. (default: true)
    * @param options.clip - Clip the range to the editor's contents first. (default: true)
-   * @public
-   * @api-status Extended
    */
   scrollToScreenRange(screenRange, options = {}) {
     if (options.clip !== false) screenRange = this.clipScreenRange(screenRange);
@@ -5927,33 +6117,36 @@ module.exports = class TextEditor {
    */
 
   /**
+   * @public
+   * @status experimental
+   *
    * Is auto-indentation enabled for this editor?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Experimental
    */
   shouldAutoIndent() {
     return this.autoIndent;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Is auto-indentation on paste enabled for this editor?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Experimental
    */
   shouldAutoIndentOnPaste() {
     return this.autoIndentOnPaste;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Does this editor allow scrolling past the last line?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Experimental
    */
   getScrollPastEnd() {
     if (this.getAutoHeight()) {
@@ -5964,23 +6157,25 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * How fast does the editor scroll in response to mouse wheel
    * movements?
    *
    * @returns {Number} positive `Number`.
-   * @public
-   * @api-status Experimental
    */
   getScrollSensitivity() {
     return this.scrollSensitivity;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Are mouse wheel and scroll command movements animated?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Experimental
    */
   getSmoothScrolling() {
     if (this.smoothScrolling != null) return this.smoothScrolling;
@@ -5988,12 +6183,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * How gradually does the editor glide toward the target
    * position when scrolling with the mouse wheel?
    *
    * @returns {Number} positive `Number`.
-   * @public
-   * @api-status Experimental
    */
   getWheelSmoothness() {
     if (this.wheelSmoothness != null) return this.wheelSmoothness;
@@ -6001,12 +6197,13 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * How gradually does the editor glide when scrolling via the
    * scroll commands?
    *
    * @returns {Number} positive `Number`.
-   * @public
-   * @api-status Experimental
    */
   getCommandSmoothness() {
     if (this.commandSmoothness != null) return this.commandSmoothness;
@@ -6014,72 +6211,78 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Speed multiplier applied to wheel scrolling while holding
    * `alt`.
    *
    * @returns {Number} positive `Number`.
-   * @public
-   * @api-status Experimental
    */
   getAltWheelMultiplier() {
     return this.altWheelMultiplier;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Distance scrolled by the scroll commands, as a fraction of
    * the editor height. Seeded from config; the increase/decrease scroll
    * distance commands adjust it per editor.
    *
    * @returns {Number} positive `Number`.
-   * @public
-   * @api-status Experimental
    */
   getScrollCommandDistance() {
     return this.scrollCommandDistance;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * How long (in milliseconds) to wait for the editor width to
    * settle before re-wrapping soft-wrapped lines. `0` re-wraps immediately.
    *
    * @returns {Number} non-negative `Number`.
-   * @public
-   * @api-status Experimental
    */
   getSoftWrapDebounceInterval() {
     return this.softWrapDebounceInterval;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Are line numbers enabled for this editor?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Experimental
    */
   doesShowLineNumbers() {
     return this.showLineNumbers;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Get the time interval within which text editing operations
    * are grouped together in the editor's undo history.
    *
    * @returns {Number} time interval `Number` in milliseconds.
-   * @public
-   * @api-status Experimental
    */
   getUndoGroupingInterval() {
     return this.undoGroupingInterval;
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Get the characters that are *not* considered part of words,
    * for the purpose of word-based cursor movements.
    *
    * @returns {String} containing the non-word characters.
-   * @public
-   * @api-status Experimental
    */
   getNonWordCharacters(position) {
     const languageMode = this.buffer.getLanguageMode();
@@ -6139,23 +6342,25 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Retrieves the greyed out placeholder of a mini editor.
    *
    * @returns {String}
-   * @public
-   * @api-status Essential
    */
   getPlaceholderText() {
     return this.placeholderText;
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Set the greyed out placeholder of a mini editor. Placeholder text
    * will be displayed when the editor has no content.
    *
    * @param {String} placeholderText - text that is displayed when the editor has no content.
-   * @public
-   * @api-status Essential
    */
   setPlaceholderText(placeholderText) {
     this.updatePlaceholderText(placeholderText, true);
@@ -6597,6 +6802,9 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status public
+   *
    *
    * Lumine allows language bundles to define comment delimiters in several
    * places. For instance, a grammar author can place delimiter metadata in the
@@ -6624,8 +6832,6 @@ module.exports = class TextEditor {
    *   buffer position.)
    *
    * @returns {Object} Information about the appropriate comment delimiters at the buffer position.
-   * @public
-   * @api-status Public
    */
   getCommentDelimitersForBufferPosition(point) {
     point = Point.fromObject(point);

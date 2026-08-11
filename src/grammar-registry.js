@@ -13,12 +13,12 @@ const { Point, Range } = require("./text-buffer");
 const PATH_SPLIT_REGEX = new RegExp("[/.]");
 
 /**
+ * @public
+ * @status extended
+ *
  * This class holds the grammars used for tokenizing.
  *
  * An instance of this class is always available as the `lumine.grammars` global.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class GrammarRegistry {
   constructor({ config } = {}) {
@@ -83,14 +83,15 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * set a {@link TextBuffer}'s language mode based on its path and content,
    * and continue to update its language mode as grammars are added or updated, or
    * the buffer's file path changes.
    *
    * @param buffer - The {@link TextBuffer} whose language mode will be maintained.
    * @returns {Disposable} that can be used to stop updating the buffer's language mode.
-   * @public
-   * @api-status Extended
    */
   maintainLanguageMode(buffer) {
     this.grammarScoresByBuffer.set(buffer, null);
@@ -138,14 +139,15 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Force a {@link TextBuffer} to use a different grammar than the
    * one that would otherwise be selected for it.
    *
    * @param buffer - The {@link TextBuffer} whose grammar will be set.
    * @param languageId - The `String` id of the desired language.
    * @returns {Boolean} that indicates whether the language was successfully found.
-   * @public
-   * @api-status Extended
    */
   assignLanguageMode(buffer, languageId) {
     if (buffer.getBuffer) buffer = buffer.getBuffer();
@@ -170,14 +172,15 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Force a {@link TextBuffer} to use a different grammar than the
    * one that would otherwise be selected for it.
    *
    * @param buffer - The {@link TextBuffer} whose grammar will be set.
    * @param grammar - The desired `Grammar`.
    * @returns {Boolean} that indicates whether the assignment was successful
-   * @public
-   * @api-status Extended
    */
   assignGrammar(buffer, grammar) {
     if (!grammar) return false;
@@ -211,25 +214,27 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get the `languageId` that has been explicitly assigned to
    * the given buffer, if any.
    *
    * @returns {String} id of the language
-   * @public
-   * @api-status Extended
    */
   getAssignedLanguageId(buffer) {
     return this.languageOverridesByBufferId.get(buffer.id);
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Remove any language mode override that has been set for the
    * given {@link TextBuffer}. This will assign to the buffer the best language
    * mode available.
    *
    * @param buffer - The {@link TextBuffer}.
-   * @public
-   * @api-status Extended
    */
   autoAssignLanguageMode(buffer) {
     const result = this.selectGrammarWithScore(
@@ -257,6 +262,9 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Select a grammar for the given file path and file contents.
    *
    * This picks the best match by checking the file path and contents against
@@ -265,8 +273,6 @@ module.exports = class GrammarRegistry {
    * @param filePath - A `String` file path.
    * @param fileContents - A `String` of text for the file path.
    * @returns {Grammar}, never null.
-   * @public
-   * @api-status Extended
    */
   selectGrammar(filePath, fileContents) {
     return this.selectGrammarWithScore(filePath, fileContents).grammar;
@@ -298,6 +304,9 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Evaluates a grammar's fitness for use for a certain file.
    *
    * By analyzing the file's extension and contents — plus other criteria, like
@@ -311,8 +320,6 @@ module.exports = class GrammarRegistry {
    * @param filePath - A `String` path to the file.
    * @param contents - The `String` contents of the file.
    * @returns {Number}
-   * @public
-   * @api-status Extended
    */
   getGrammarScore(grammar, filePath, contents) {
     if (contents == null && fs.isFileSync(filePath)) {
@@ -511,13 +518,14 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a grammar is added to the registry.
    *
    * @param {Function} callback - to call when a grammar is added.
    * @param {Grammar} callback.grammar - that was added.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidAddGrammar(callback) {
     let disposable = new CompositeDisposable();
@@ -529,14 +537,15 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a grammar is updated due to a grammar
    * it depends on being added or removed from the registry.
    *
    * @param {Function} callback - to call when a grammar is updated.
    * @param {Grammar} callback.grammar - that was updated.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidUpdateGrammar(callback) {
     let disposable = new CompositeDisposable();
@@ -548,14 +557,15 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Invoke the given callback when a grammar is removed from the
    * registry, which happens whenever the package that provides it deactivates.
    *
    * @param {Function} callback - to call when a grammar is removed.
    * @param {Grammar} callback.grammar - that was removed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Extended
    */
   onDidRemoveGrammar(callback) {
     let disposable = new CompositeDisposable();
@@ -567,6 +577,9 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Specify a type of syntax node that may embed other languages.
    *
    * @param {String} grammarId - The id of the parent language.
@@ -580,8 +593,6 @@ module.exports = class GrammarRegistry {
    * @param injectionPoint.coverShallowerScopes - A `Boolean` that indicates whether this injection should prevent shallower layers (including the layer that created this injection) from adding scopes within any of this injection's buffer ranges. Useful for injecting languages into themselves — for instance, injecting Rust into Rust macro definitions.
    * @param injectionPoint.includeAdjacentWhitespace - A `Boolean` that indicates whether the injection's buffer range(s) should include whitespace that occurs between two adjacent ranges. Defaults to `false`. When `true`, if two consecutive injection buffer ranges are separated _only_ by whitespace, those ranges will be consolidated into one range along with that whitespace.
    * @returns {Disposable} A disposable that removes the injection point.
-   * @public
-   * @api-status Public
    */
   addInjectionPoint(grammarId, injectionPoint) {
     let grammarsToDispose = [];
@@ -662,14 +673,15 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Read a grammar asynchronously and add it to the registry.
    *
    * @param grammarPath - A `String` absolute file path to a grammar file.
    * @param callback - A `Function` to call when loaded with the following arguments:
    * @param callback.error - An `Error`, may be null.
    * @param callback.grammar - A `Grammar` or null if an error occurred.
-   * @public
-   * @api-status Extended
    */
   loadGrammar(grammarPath, callback) {
     this.readGrammar(grammarPath, (error, grammar) => {
@@ -680,12 +692,13 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Read a grammar synchronously and add it to this registry.
    *
    * @param grammarPath - A `String` absolute file path to a grammar file.
    * @returns {Grammar}
-   * @public
-   * @api-status Extended
    */
   loadGrammarSync(grammarPath) {
     const grammar = this.readGrammarSync(grammarPath);
@@ -694,6 +707,9 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Read a grammar asynchronously but don't add it to the registry.
    *
    * @param grammarPath - A `String` absolute file path to a grammar file.
@@ -701,8 +717,6 @@ module.exports = class GrammarRegistry {
    * @param callback.error - An `Error`, may be null.
    * @param callback.grammar - A `Grammar` or null if an error occurred.
    * @returns {undefined} undefined.
-   * @public
-   * @api-status Extended
    */
   readGrammar(grammarPath, callback) {
     if (!callback) callback = () => {};
@@ -717,12 +731,13 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Read a grammar synchronously but don't add it to the registry.
    *
    * @param grammarPath - A `String` absolute file path to a grammar file.
    * @returns {Grammar}
-   * @public
-   * @api-status Extended
    */
   readGrammarSync(grammarPath) {
     return this.createGrammar(grammarPath, CSON.readFileSync(grammarPath) || {});
@@ -740,13 +755,14 @@ module.exports = class GrammarRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Get all the grammars in this registry.
    *
    * @param {Object} [params]
    * @param {Boolean} [params.includeTreeSitter] - Set to include [Tree-sitter](https://github.blog/2018-10-31-atoms-new-parsing-system/) grammars
    * @returns {Array} non-empty `Array` of `Grammar` instances.
-   * @public
-   * @api-status Extended
    */
   getGrammars(params) {
     let result = this.textmateRegistry.getGrammars();

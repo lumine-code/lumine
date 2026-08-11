@@ -1,20 +1,21 @@
 let ParsedColor = null;
 
 /**
+ * @public
+ * @status essential
+ *
  * A simple color class returned from {@link Config#get} when the value
  * at the key path is of type 'color'.
- *
- * @public
- * @api-status Essential
  */
 module.exports = class Color {
   /**
+   * @public
+   * @status essential
+   *
    * Parse a `String` or `Object` into a {@link Color}.
    *
    * @param value - A `String` such as `'white'`, `#ff00ff`, or `'rgba(255, 15, 60, .75)'` or an `Object` with `red`, `green`, `blue`, and `alpha` properties.
    * @returns {Color} or `null` if it cannot be parsed.
-   * @public
-   * @api-status Essential
    */
   static parse(value) {
     switch (typeof value) {
@@ -88,9 +89,10 @@ module.exports = class Color {
   }
 
   /**
-   * @returns {String} in the form `'#abcdef'`.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {String} in the form `'#abcdef'`.
    */
   toHexString() {
     return `#${numberToHexString(this.red)}${numberToHexString(
@@ -99,9 +101,10 @@ module.exports = class Color {
   }
 
   /**
-   * @returns {String} in the form `'rgba(25, 50, 75, .9)'`.
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * @returns {String} in the form `'rgba(25, 50, 75, .9)'`.
    */
   toRGBAString() {
     return `rgba(${this.red}, ${this.green}, ${this.blue}, ${this.alpha})`;

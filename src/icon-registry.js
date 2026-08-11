@@ -193,6 +193,9 @@ class Application {
 }
 
 /**
+ * @public
+ * @status essential
+ *
  * The single source of every icon the editor renders — file-type
  * icons, the semantic names pane items return from `getIconName()`, and LSP
  * symbol kinds.
@@ -204,9 +207,6 @@ class Application {
  * here".
  *
  * An instance of this class is always available as the `lumine.icons` global.
- *
- * @public
- * @api-status Essential
  */
 module.exports = class IconRegistry {
   constructor({ config, themeManager, grammarRegistry, packageManager } = {}) {
@@ -297,14 +297,14 @@ module.exports = class IconRegistry {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Register an icon provider. Returns a `Disposable`.
    *
    * Providers are consulted highest `priority` first, and equal priorities keep
    * registration order. `iconFor(target)` returns an icon descriptor, a class
    * string or array, or `null` to defer to the next provider.
-   *
-   * @public
-   * @api-status Essential
    */
   addProvider(provider, { priority = 0, id = null, core = false } = {}) {
     if (!provider || typeof provider.iconFor !== "function") {
@@ -356,6 +356,9 @@ module.exports = class IconRegistry {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Resolve `target` to an icon descriptor. Never returns null — a
    * target nothing answers for resolves to `Icon.none()`.
    *
@@ -363,9 +366,6 @@ module.exports = class IconRegistry {
    * item. It may also carry a `context` string naming the caller and a `hints`
    * object describing what the caller already knows about the path — see
    * `src/icon-target.js`.
-   *
-   * @public
-   * @api-status Essential
    */
   iconFor(target, options = {}) {
     return this.descriptorFor(normalizeTarget(target), options);
@@ -422,6 +422,9 @@ module.exports = class IconRegistry {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Render `target`'s icon into `element` and keep it current.
    *
    * @param {Element} element - The element that receives the icon.
@@ -436,8 +439,6 @@ module.exports = class IconRegistry {
    * @param {Boolean} [options.skipFallback=false] - Render nothing unless a
    *   provider above the built-in answers.
    * @returns {Disposable} that removes everything the call added.
-   * @public
-   * @api-status Essential
    */
   applyTo(element, target, options = {}) {
     if (!element) throw new TypeError("applyTo needs an element to render into");
@@ -493,15 +494,15 @@ module.exports = class IconRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Drop cached answers and repaint what they were rendered into.
    *
    * `scope` is undefined or null for everything, or an object narrowing it to
    * `{types}`, `{paths}`, `{names}`, or `{kinds}`. Narrowing matters: a
    * provider that resolves one file extension asynchronously should repaint the
    * rows showing that extension, not every row in the tree.
-   *
-   * @public
-   * @api-status Extended
    */
   invalidate(scope) {
     const affected = new Set();
@@ -574,22 +575,22 @@ module.exports = class IconRegistry {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Override the icon for one or more semantic names. Returns a
    * `Disposable` that restores the previous mapping. A `null` value means the
    * name renders no icon.
-   *
-   * @public
-   * @api-status Extended
    */
   defineNames(entries) {
     return this.define("name", entries);
   }
 
   /**
-   * Override the icon for one or more kinds. Returns a `Disposable`.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Override the icon for one or more kinds. Returns a `Disposable`.
    */
   defineKinds(entries) {
     return this.define("kind", entries);
@@ -616,10 +617,10 @@ module.exports = class IconRegistry {
   }
 
   /**
-   * Invoke `callback` when any icon may have changed.
-   *
    * @public
-   * @api-status Extended
+   * @status extended
+   *
+   * Invoke `callback` when any icon may have changed.
    */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);

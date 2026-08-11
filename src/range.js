@@ -12,6 +12,9 @@ function __range__(left, right, inclusive) {
 }
 
 /**
+ * @public
+ * @status public
+ *
  * Represents a region in a buffer in row/column coordinates.
  *
  * Every public method that takes a range also accepts a *range-compatible*
@@ -25,9 +28,6 @@ function __range__(left, right, inclusive) {
  * new Range([0, 1], [2, 3])
  * [[0, 1], [2, 3]] // Range-compatible array
  * ```
- *
- * @public
- * @api-status Public
  */
 class Range {
   /**
@@ -35,13 +35,14 @@ class Range {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Convert any range-compatible object to a {@link Range}.
    *
    * @param object - This can be an object that's already a {@link Range}, in which case it's simply returned, or an array containing two {@link Point Points} or point-compatible arrays.
    * @param copy - An optional boolean indicating whether to force the copying of objects that are already ranges.
    * @returns {Range} A range based on the given object.
-   * @public
-   * @api-status Public
    */
   static fromObject(object, copy) {
     if (Array.isArray(object)) {
@@ -116,11 +117,12 @@ class Range {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Call this with the result of {@link Range#serialize} to construct a new Range.
    *
    * @param {Array} array - of params to pass to the {@link #constructor}
-   * @public
-   * @api-status Public
    */
   static deserialize(array) {
     if (Array.isArray(array)) {
@@ -135,12 +137,13 @@ class Range {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Construct a {@link Range} object
    *
    * @param {Point} pointA - or Point compatible `Array` (default: [0,0])
    * @param {Point} pointB - or Point compatible `Array` (default: [0,0])
-   * @public
-   * @api-status Public
    */
   constructor(pointA, pointB) {
     if (pointA == null) {
@@ -166,18 +169,20 @@ class Range {
   }
 
   /**
-   * @returns {Range} new range with the same start and end positions.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Range} new range with the same start and end positions.
    */
   copy() {
     return new this.constructor(this.start.copy(), this.end.copy());
   }
 
   /**
-   * @returns {Range} new range with the start and end positions negated.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Range} new range with the start and end positions negated.
    */
   negate() {
     return new this.constructor(this.start.negate(), this.end.negate());
@@ -188,9 +193,10 @@ class Range {
    */
 
   /**
-   * @returns {Object} plain JavaScript object representation of the range.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Object} plain JavaScript object representation of the range.
    */
   serialize() {
     return [this.start.serialize(), this.end.serialize()];
@@ -201,40 +207,44 @@ class Range {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Is the start position of this range equal to the end position?
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   isEmpty() {
     return this.start.isEqual(this.end);
   }
 
   /**
-   * @returns {Boolean} indicating whether this range starts and ends on the same row.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Boolean} indicating whether this range starts and ends on the same row.
    */
   isSingleLine() {
     return this.start.row === this.end.row;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the number of rows in this range.
    *
    * @returns {Number}
-   * @public
-   * @api-status Public
    */
   getRowCount() {
     return this.end.row - this.start.row + 1;
   }
 
   /**
-   * @returns {Array} array of all rows in the range.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {Array} array of all rows in the range.
    */
   getRows() {
     return __range__(this.start.row, this.end.row, true);
@@ -245,12 +255,13 @@ class Range {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Freezes the range and its start and end point so it becomes
    * immutable and returns itself.
    *
    * @returns {Range} immutable version of this {@link Range}
-   * @public
-   * @api-status Public
    */
   freeze() {
     this.start.freeze();
@@ -259,10 +270,11 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param otherRange - A {@link Range} or range-compatible `Array`
    * @returns {Range} new range that contains this range and the given range.
-   * @public
-   * @api-status Public
    */
   union(otherRange) {
     const start = this.start.isLessThan(otherRange.start) ? this.start : otherRange.start;
@@ -271,14 +283,15 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Build and return a new range by translating this range's start and
    * end points by the given delta(s).
    *
    * @param startDelta - A {@link Point} by which to translate the start of this range.
    * @param [endDelta] - A {@link Point} to by which to translate the end of this range. If omitted, the `startDelta` will be used instead.
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   translate(startDelta, endDelta) {
     if (endDelta == null) {
@@ -288,6 +301,9 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Build and return a new range by traversing this range's start and
    * end points by the given delta.
    *
@@ -295,8 +311,6 @@ class Range {
    *
    * @param delta - A {@link Point} containing the rows and columns to traverse to derive the new range.
    * @returns {Range}
-   * @public
-   * @api-status Public
    */
   traverse(delta) {
     return new this.constructor(this.start.traverse(delta), this.end.traverse(delta));
@@ -307,12 +321,13 @@ class Range {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Compare two Ranges
    *
    * @param other - A {@link Range} or range-compatible `Array`.
    * @returns {Number} `-1` when this range starts first, `0` when the ranges are equal, or `1` when the argument starts first.
-   * @public
-   * @api-status Public
    */
   compare(other) {
     let value;
@@ -325,10 +340,11 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Range} or range-compatible `Array`.
    * @returns {Boolean} indicating whether this range has the same start and end points as the given {@link Range} or range-compatible `Array`.
-   * @public
-   * @api-status Public
    */
   isEqual(other) {
     if (other == null) {
@@ -339,23 +355,25 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param other - A {@link Range} or range-compatible `Array`.
    * @returns {Boolean} indicating whether this range starts and ends on the same row as the argument.
-   * @public
-   * @api-status Public
    */
   coversSameRows(other) {
     return this.start.row === other.start.row && this.end.row === other.end.row;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Determines whether this range intersects with the argument.
    *
    * @param otherRange - A {@link Range} or range-compatible `Array`
    * @param {Boolean} [exclusive] - indicating whether to exclude endpoints when testing for intersection. Defaults to `false`.
    * @returns {Boolean}
-   * @public
-   * @api-status Public
    */
   intersectsWith(otherRange, exclusive) {
     if (exclusive) {
@@ -369,11 +387,12 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param otherRange - A {@link Range} or range-compatible `Array`
    * @param {Boolean} [exclusive] - including that the containment should be exclusive of endpoints. Defaults to false.
    * @returns {Boolean} indicating whether this range contains the given range.
-   * @public
-   * @api-status Public
    */
   containsRange(otherRange, exclusive) {
     const { start, end } = this.constructor.fromObject(otherRange);
@@ -381,11 +400,12 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param point - A {@link Point} or point-compatible `Array`
    * @param {Boolean} [exclusive] - including that the containment should be exclusive of endpoints. Defaults to false.
    * @returns {Boolean} indicating whether this range contains the given point.
-   * @public
-   * @api-status Public
    */
   containsPoint(point, exclusive) {
     point = Point.fromObject(point);
@@ -397,21 +417,23 @@ class Range {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param row - Row `Number`
    * @returns {Boolean} indicating whether this range intersects the given row `Number`.
-   * @public
-   * @api-status Public
    */
   intersectsRow(row) {
     return this.start.row <= row && row <= this.end.row;
   }
 
   /**
+   * @public
+   * @status public
+   *
    * @param {Number} startRow - start row
    * @param {Number} endRow - end row
    * @returns {Boolean} indicating whether this range intersects the row range indicated by the given startRow and endRow `Numbers`.
-   * @public
-   * @api-status Public
    */
   intersectsRowRange(startRow, endRow) {
     if (startRow > endRow) {
@@ -440,9 +462,10 @@ class Range {
   }
 
   /**
-   * @returns {String} string representation of the range.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {String} string representation of the range.
    */
   toString() {
     return `[${this.start} - ${this.end}]`;

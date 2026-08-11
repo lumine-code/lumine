@@ -4,6 +4,9 @@ const { Emitter } = require("@lumine-code/event-kit");
 const Grim = require("@lumine-code/grim");
 
 /**
+ * @public
+ * @status extended
+ *
  * Run a node script in a separate process.
  *
  * Used by fuzzy file search and find-and-replace in project.
@@ -39,18 +42,16 @@ const Grim = require("@lumine-code/grim");
  *   return callback();
  * };
  * ```
- *
- * @public
- * @api-status Extended
  */
 module.exports = class Task {
   /**
+   * @public
+   * @status public
+   *
    * A helper method to easily launch and run a task once.
    *
    * @param taskPath - The `String` path to the CoffeeScript/JavaScript file which exports a single `Function` to execute.
    * @param args - The arguments to pass to the exported function.
-   * @public
-   * @api-status Public
    */
 
   // Returns the created {@link Task}.
@@ -70,11 +71,12 @@ module.exports = class Task {
   callback = null;
 
   /**
+   * @public
+   * @status public
+   *
    * Creates a task. You should probably use {.once}
    *
    * @param taskPath - The `String` path to the CoffeeScript/JavaScript file that exports a single `Function` to execute.
-   * @public
-   * @api-status Public
    */
   constructor(taskPath) {
     this.emitter = new Emitter();
@@ -134,6 +136,9 @@ module.exports = class Task {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Starts the task.
    *
    * Throws an error if this task has already been terminated or if sending a
@@ -141,8 +146,6 @@ module.exports = class Task {
    *
    * @param {...*} args - Arguments passed to the function exported by the task script.
    * @param {Function} [callback] - Called when the task completes.
-   * @public
-   * @api-status Public
    */
   start(...args) {
     // Don't spawn any new tasks during shutdown.
@@ -162,14 +165,15 @@ module.exports = class Task {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Send message to the task.
    *
    * Throws an error if this task has already been terminated or if sending a
    * message to the child process fails.
    *
    * @param message - The message to send to the task.
-   * @public
-   * @api-status Public
    */
   send(message) {
     if (this.childProcess != null && !this.isChildRunning()) {
@@ -195,13 +199,14 @@ module.exports = class Task {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Call a function when an event is emitted by the child process
    *
    * @param eventName - The `String` name of the event to handle.
    * @param callback - The `Function` to call when the event is emitted.
    * @returns {Disposable} that can be used to stop listening for the event.
-   * @public
-   * @api-status Public
    */
   on(eventName, callback) {
     return this.emitter.on(eventName, (args) => callback(...(args || [])));
@@ -215,13 +220,14 @@ module.exports = class Task {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Forcefully stop the running task.
    *
    * No more events are emitted once this method is called.
    *
    * @returns {Boolean} indicating whether the task was terminated.
-   * @public
-   * @api-status Public
    */
   terminate() {
     if (this.childProcess == null) {
@@ -236,11 +242,12 @@ module.exports = class Task {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Cancel the running task and emit an event if it was canceled.
    *
    * @returns {Boolean} indicating whether the task was terminated.
-   * @public
-   * @api-status Public
    */
   cancel() {
     const didForcefullyTerminate = this.terminate();

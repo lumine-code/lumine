@@ -1,6 +1,9 @@
 const { Disposable } = require("@lumine-code/event-kit");
 
 /**
+ * @public
+ * @status experimental
+ *
  * Lets a package claim a paste before the editor turns the
  * clipboard into text.
  *
@@ -39,9 +42,6 @@ const { Disposable } = require("@lumine-code/event-kit");
  *   }
  * }, { priority: 100 })
  * ```
- *
- * @public
- * @api-status Experimental
  */
 module.exports = class PasteProviderRegistry {
   constructor() {
@@ -54,6 +54,9 @@ module.exports = class PasteProviderRegistry {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Register a paste provider. Returns a `Disposable` that
    * unregisters it.
    *
@@ -65,8 +68,6 @@ module.exports = class PasteProviderRegistry {
    * @param {Number} [options.priority=0] - The order in which providers are
    *   consulted, highest first. Ties preserve registration order.
    * @returns {Disposable} A disposable that unregisters the provider.
-   * @public
-   * @api-status Experimental
    */
   add(provider, { priority = 0 } = {}) {
     if (!provider || typeof provider.handlePaste !== "function") {
@@ -93,6 +94,9 @@ module.exports = class PasteProviderRegistry {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Offer a paste to each registered provider in turn.
    *
    * The text editor calls this for you. Call it directly when your own package
@@ -105,8 +109,6 @@ module.exports = class PasteProviderRegistry {
    * @param [context.clipboardData] - The event's `DataTransfer`, or `null` when the paste did not arrive as a native paste event. Custom formats and non-text items such as files and images are readable only from here.
    * @param [context.options] - An `Object` of the paste options the editor would otherwise have used, such as `autoIndent` and `normalizeLineEndings`.
    * @returns {Boolean} : `true` when a provider claimed the paste and the caller must not handle it itself, `false` when none did.
-   * @public
-   * @api-status Experimental
    */
   handlePaste(context) {
     for (const { provider } of this.providers) {

@@ -25,11 +25,11 @@ function readdirEntries(directoryPath) {
 }
 
 /**
+ * @public
+ * @status extended
+ *
  * Loads and activates a package's main module and resources such as
  * stylesheets, keymaps, grammar, editor properties, and menus.
- *
- * @public
- * @api-status Extended
  */
 module.exports = class Package {
   /**
@@ -68,12 +68,13 @@ module.exports = class Package {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Invoke the given callback when all packages have been activated.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Essential
    */
   onDidDeactivate(callback) {
     return this.emitter.on("did-deactivate", callback);
@@ -1146,14 +1147,15 @@ module.exports = class Package {
    */
 
   /**
+   * @public
+   * @status extended
+   *
    * Are all native modules depended on by this package correctly
    * compiled against the current version of Lumine?
    *
    * Incompatible packages cannot be activated.
    *
    * @returns {Boolean}, true if compatible, false if incompatible.
-   * @public
-   * @api-status Extended
    */
   isCompatible() {
     if (this.compatible == null) {
@@ -1168,12 +1170,13 @@ module.exports = class Package {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * Rebuild native modules in this package's dependencies for the
    * current version of Lumine.
    *
    * @returns {Promise} that resolves with an object containing `code`, `stdout`, and `stderr` properties based on the results of running `lumine -p rebuild` on the package.
-   * @public
-   * @api-status Extended
    */
   rebuild() {
     return new Promise((resolve) =>
@@ -1191,11 +1194,12 @@ module.exports = class Package {
   }
 
   /**
+   * @public
+   * @status extended
+   *
    * If a previous rebuild failed, get the contents of stderr.
    *
    * @returns {String} or null if no previous build failure occurred.
-   * @public
-   * @api-status Extended
    */
   getBuildFailureOutput() {
     return global.localStorage.getItem(this.getBuildFailureOutputStorageKey());

@@ -3,6 +3,9 @@ const path = require("path");
 const { Emitter } = require("@lumine-code/event-kit");
 
 /**
+ * @public
+ * @status public
+ *
  * Somewhere to keep an access token, available as `lumine.secrets`.
  *
  * For the sensitive strings a package must remember between sessions — a
@@ -28,9 +31,6 @@ const { Emitter } = require("@lumine-code/event-kit");
  * user once. It never writes a secret to disk in the clear. A package should
  * therefore expect {@link #get} to return `null` for something it stored in an
  * earlier session, and ask again rather than fail.
- *
- * @public
- * @api-status Public
  */
 class SecretStore {
   constructor({ safeStorage, applicationDelegate, storagePath, notify } = {}) {
@@ -50,6 +50,9 @@ class SecretStore {
    */
 
   /**
+   * @public
+   * @status extended
+   *
    * Whether the operating system will encrypt what is stored.
    *
    * When it will not, secrets last for this session only. Worth checking before
@@ -57,8 +60,6 @@ class SecretStore {
    * once on its own.
    *
    * @returns {Promise} resolving to a `Boolean`.
-   * @public
-   * @api-status Extended
    */
   async isEncryptionAvailable() {
     if (typeof this.encryptionAvailable === "boolean") return this.encryptionAvailable;
@@ -116,12 +117,13 @@ class SecretStore {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Read a secret.
    *
    * @param key - The `String` key it was stored under.
    * @returns {Promise} that resolves to the `String` value, or to `null` when nothing is stored under the key or it can no longer be decrypted — which happens after the OS credential store is reset, or when this session has no encryption and an earlier one did.
-   * @public
-   * @api-status Essential
    */
   async get(key) {
     if (!(await this.isEncryptionAvailable())) {
@@ -153,13 +155,14 @@ class SecretStore {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Store a secret.
    *
    * @param key - The `String` key to store it under.
    * @param value - The `String` to store. `null` or `undefined` deletes the key, as {@link #delete} would.
    * @returns {Promise} that resolves once the value is written.
-   * @public
-   * @api-status Essential
    */
   async set(key, value) {
     if (value == null) return this.delete(key);
@@ -183,14 +186,15 @@ class SecretStore {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Forget a secret.
    *
    * Deleting a key that was never stored is not an error and emits nothing.
    *
    * @param key - The `String` key to remove.
    * @returns {Promise} that resolves once the key is gone.
-   * @public
-   * @api-status Public
    */
   async delete(key) {
     let changed = this.memory.delete(key);
@@ -206,6 +210,9 @@ class SecretStore {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Invoke the callback when a secret is stored or removed.
    *
    * The event names the key but never carries the value; read it with {@link #get}
@@ -214,8 +221,6 @@ class SecretStore {
    * @param {Function} callback - called with an `Object`.
    * @param callback.key - The `String` key that changed.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   * @public
-   * @api-status Public
    */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);

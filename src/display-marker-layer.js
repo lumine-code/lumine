@@ -4,13 +4,13 @@ const Range = require("./range");
 const Point = require("./point");
 
 /**
+ * @public
+ * @status experimental
+ *
  * A container for a related set of markers at the `DisplayLayer` level. Wraps
  * an underlying {@link MarkerLayer} on the {@link TextBuffer}.
  *
  * This API is experimental and subject to change on any release.
- *
- * @public
- * @api-status Experimental
  */
 class DisplayMarkerLayer {
   constructor(displayLayer, bufferMarkerLayer, ownsBufferMarkerLayer) {
@@ -32,10 +32,10 @@ class DisplayMarkerLayer {
    */
 
   /**
-   * Destroy this layer.
-   *
    * @public
-   * @api-status Essential
+   * @status essential
+   *
+   * Destroy this layer.
    */
   destroy() {
     if (this.destroyed) {
@@ -58,10 +58,10 @@ class DisplayMarkerLayer {
   }
 
   /**
-   * Destroy all markers in this layer.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Destroy all markers in this layer.
    */
   clear() {
     this.bufferMarkerLayer.clear();
@@ -75,11 +75,12 @@ class DisplayMarkerLayer {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Determine whether this layer has been destroyed.
    *
    * @returns {Boolean}
-   * @public
-   * @api-status Essential
    */
   isDestroyed() {
     return this.destroyed;
@@ -90,17 +91,21 @@ class DisplayMarkerLayer {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Subscribe to be notified synchronously when this layer is destroyed.
    *
    * @returns {Disposable}
-   * @public
-   * @api-status Public
    */
   onDidDestroy(callback) {
     return this.emitter.on("did-destroy", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Subscribe to be notified asynchronously whenever markers are
    * created, updated, or destroyed on this layer. *Prefer this method for
    * optimal performance when interacting with layers that could contain large
@@ -115,14 +120,15 @@ class DisplayMarkerLayer {
    *
    * @param callback - A `Function` that will be called with no arguments when changes occur on this layer.
    * @returns {Disposable}
-   * @public
-   * @api-status Public
    */
   onDidUpdate(callback) {
     return this.emitter.on("did-update", callback);
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Subscribe to be notified synchronously whenever markers are created
    * on this layer. *Avoid this method for optimal performance when interacting
    * with layers that could contain large numbers of markers.*
@@ -133,8 +139,6 @@ class DisplayMarkerLayer {
    *
    * @param callback - A `Function` that will be called with a `TextEditorMarker` whenever a new marker is created.
    * @returns {Disposable}
-   * @public
-   * @api-status Public
    */
   onDidCreateMarker(callback) {
     const subscription = this.bufferMarkerLayer.onDidCreateMarker((bufferMarker) => {
@@ -154,6 +158,9 @@ class DisplayMarkerLayer {
    */
 
   /**
+   * @public
+   * @status public
+   *
    * Create a marker with the given screen range.
    *
    * @param screenRange - A {@link Range} or range-compatible `Array`
@@ -163,8 +170,6 @@ class DisplayMarkerLayer {
    * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
    * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'` and applies to both ends of the range.
    * @returns {DisplayMarker} The new marker.
-   * @public
-   * @api-status Public
    */
   markScreenRange(screenRange, options) {
     screenRange = Range.fromObject(screenRange);
@@ -173,6 +178,9 @@ class DisplayMarkerLayer {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Create a marker on this layer with its head at the given screen
    * position and no tail.
    *
@@ -182,8 +190,6 @@ class DisplayMarkerLayer {
    * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
    * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
    * @returns {DisplayMarker} The new marker.
-   * @public
-   * @api-status Public
    */
   markScreenPosition(screenPosition, options) {
     screenPosition = Point.fromObject(screenPosition);
@@ -192,6 +198,9 @@ class DisplayMarkerLayer {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Create a marker with the given buffer range.
    *
    * @param bufferRange - A {@link Range} or range-compatible `Array`
@@ -200,8 +209,6 @@ class DisplayMarkerLayer {
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
    * @returns {DisplayMarker}
-   * @public
-   * @api-status Public
    */
   markBufferRange(bufferRange, options) {
     bufferRange = Range.fromObject(bufferRange);
@@ -209,6 +216,9 @@ class DisplayMarkerLayer {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Create a marker on this layer with its head at the given buffer
    * position and no tail.
    *
@@ -217,8 +227,6 @@ class DisplayMarkerLayer {
    * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
    * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
    * @returns {DisplayMarker}
-   * @public
-   * @api-status Public
    */
   markBufferPosition(bufferPosition, options) {
     return this.getMarker(
@@ -231,11 +239,12 @@ class DisplayMarkerLayer {
    */
 
   /**
+   * @public
+   * @status essential
+   *
    * Get an existing marker by its id.
    *
    * @returns {DisplayMarker}
-   * @public
-   * @api-status Essential
    */
   getMarker(id) {
     id = parseInt(id);
@@ -252,28 +261,33 @@ class DisplayMarkerLayer {
   }
 
   /**
+   * @public
+   * @status essential
+   *
    * Get all markers in the layer.
    *
    * @returns {Array} of {@link DisplayMarker DisplayMarkers}.
-   * @public
-   * @api-status Essential
    */
   getMarkers() {
     return this.bufferMarkerLayer.getMarkers().map(({ id }) => this.getMarker(id));
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Get the number of markers in the marker layer.
    *
    * @returns {Number}
-   * @public
-   * @api-status Public
    */
   getMarkerCount() {
     return this.bufferMarkerLayer.getMarkerCount();
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Find markers in the layer conforming to the given parameters.
    *
    * This method finds markers based on the given properties. Markers can be
@@ -303,8 +317,6 @@ class DisplayMarkerLayer {
    * @param params.intersectsBufferRange - Only include markers intersecting this {@link Range} in buffer coordinates.
    * @param params.intersectsScreenRange - Only include markers intersecting this {@link Range} in screen coordinates.
    * @returns {Array} of {@link DisplayMarker DisplayMarkers}
-   * @public
-   * @api-status Public
    */
   findMarkers(params) {
     params = this.translateToBufferMarkerLayerFindParams(params);

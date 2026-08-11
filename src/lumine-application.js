@@ -609,10 +609,10 @@ ipcMain.handle("lumine:test", async (event, action, value) => {
  */
 module.exports = class LumineApplication extends EventEmitter {
   /**
-   * The entry point into the Lumine application.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * The entry point into the Lumine application.
    */
   static open(options) {
     StartupTime.addMarker("main-process:lumine-application:open");
@@ -865,20 +865,20 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
-   * Create a new `LumineWindow` bound to this application.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Create a new `LumineWindow` bound to this application.
    */
   createWindow(settings) {
     return new LumineWindow(this, this.fileRecoveryService, settings);
   }
 
   /**
-   * Removes the `LumineWindow` from the global window list.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Removes the `LumineWindow` from the global window list.
    */
   removeWindow(window) {
     this.unregisterLumineWindow(window);
@@ -891,10 +891,10 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
-   * Adds the `LumineWindow` to the global window list.
-   *
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * Adds the `LumineWindow` to the global window list.
    */
   addWindow(window) {
     this.registerLumineWindow(window);
@@ -1399,15 +1399,15 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Executes the given command.
    *
    * If it isn't handled globally, delegate to the currently focused window.
    *
    * command - The string representing the command.
    * args - The optional arguments to pass along.
-   *
-   * @public
-   * @api-status Public
    */
   sendCommand(command, ...args) {
     if (!this.emit(command, ...args)) {
@@ -1421,14 +1421,14 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Executes the given command on the given window.
    *
    * command - The string representing the command.
    * lumineWindow - The `LumineWindow` to send the command to.
    * args - The optional arguments to pass along.
-   *
-   * @public
-   * @api-status Public
    */
   sendCommandToWindow(command, lumineWindow, ...args) {
     if (!this.emit(command, ...args)) {
@@ -1471,6 +1471,9 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Open the given path in the focused window when the event is
    * triggered.
    *
@@ -1478,9 +1481,6 @@ module.exports = class LumineApplication extends EventEmitter {
    *
    * eventName - The event to listen for.
    * pathToOpen - The path to open when the event is triggered.
-   *
-   * @public
-   * @api-status Public
    */
   openPathOnEvent(eventName, pathToOpen) {
     this.on(eventName, () => {
@@ -1529,9 +1529,10 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
-   * @returns {LumineWindow|undefined} currently focused `LumineWindow` or undefined if none.
    * @public
-   * @api-status Public
+   * @status public
+   *
+   * @returns {LumineWindow|undefined} currently focused `LumineWindow` or undefined if none.
    */
   focusedWindow() {
     return this.getAllWindows().find((window) => window.isFocused());
@@ -1627,6 +1628,9 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Opens a single path, in an existing window if possible.
    *
    * options -
@@ -1638,9 +1642,6 @@ module.exports = class LumineApplication extends EventEmitter {
    *   :profileStartup - Boolean to control creating a profile of the startup time.
    *   :window - `LumineWindow` to open file paths in.
    *   :addToLastWindow - Boolean of whether this should be opened in last focused window.
-   *
-   * @public
-   * @api-status Public
    */
   openPath({
     pathToOpen,
@@ -1669,6 +1670,9 @@ module.exports = class LumineApplication extends EventEmitter {
   }
 
   /**
+   * @public
+   * @status public
+   *
    * Opens multiple paths, in existing windows if possible.
    *
    * options -
@@ -1681,9 +1685,6 @@ module.exports = class LumineApplication extends EventEmitter {
    *   :windowDimensions - Object with height and width keys.
    *   :window - `LumineWindow` to open file paths in.
    *   :addToLastWindow - Boolean of whether this should be opened in last focused window.
-   *
-   * @public
-   * @api-status Public
    */
   async openPaths({
     pathsToOpen,
