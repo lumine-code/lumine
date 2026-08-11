@@ -46,13 +46,13 @@ type OperationImplementation = {
 
 **At least one of the four operation members must be a function**, or registration throws a `TypeError`. They split by scope:
 
-| Member                                   | Scope                                                                                        |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------- |
-| `createRepositoryOperations(repository)` | Per-repository operations — stage, commit, branch, push. Called lazily, once per repository. |
-| `initializeRepository(path)`             | Workspace-level: create a repository at a path.                                              |
-| `cloneRepository(url, path)`             | Workspace-level: clone into a path.                                                          |
-| `executeGit(args)`                       | Raw transport, for operations no structured method covers.                                   |
-| `getCapabilities()`                      | Extra operation names beyond the standard set, so consumers can discover them.               |
+| Member                                   | Scope                                                                                                  |
+| ---------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| `createRepositoryOperations(repository)` | Per-repository operations — stage, commit, branch, push, worktree. Called lazily, once per repository. |
+| `initializeRepository(path)`             | Workspace-level: create a repository at a path.                                                        |
+| `cloneRepository(url, path)`             | Workspace-level: clone into a path.                                                                    |
+| `executeGit(args)`                       | Raw transport, for operations no structured method covers.                                             |
+| `getCapabilities()`                      | Extra operation names beyond the standard set, so consumers can discover them.                         |
 
 ## Minimal example
 
@@ -81,6 +81,8 @@ Providers are stored **newest first** by default, so a later registration takes 
 `createRepositoryOperations` is called lazily, the first time a repository needs an operation, and the result is cached per repository per provider. Registering a provider fires a change notification so consumers can re-read capabilities.
 
 After a successful per-repository operation the registry refreshes the repository's read snapshots. The implementation right-sizes that refresh by declaring `getOperationRefreshHint(name, args)`: `"none"` skips it (object-database or unrelated-config writes), `"status"` refreshes the status snapshot, `"refs"` the refs snapshot, `"both"` both. The status refresh is awaited — a `"status"`/`"both"` operation resolves with a fresh status snapshot — while the refs refresh always runs detached, so code that needs post-operation refs must subscribe to `onDidChangeRefsSnapshot` rather than read synchronously after the await. A missing, unknown, or throwing hint refreshes both.
+
+The worktree operations (`worktreeAdd`, `worktreeRemove`, `worktreeMove`, `worktreeLock`, `worktreeUnlock`, `worktreePrune`) are the clearest case for `"refs"`: they act on a checkout other than the one the repository represents, so its index and working tree cannot change, while the worktree list the refs snapshot carries always can.
 
 Capability discovery is the intended way to drive a UI: `canPerformOperation(repository, name)` walks the providers and reports whether anyone implements it, and `getOperationCapabilities(repository)` returns the union of the standard operations that resolve plus whatever each implementation's own `getCapabilities()` adds. Grey out what nothing supports rather than failing at the call.
 

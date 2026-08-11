@@ -135,6 +135,33 @@ class RepositoryOperations {
     return this.execute("updateSubmodules", paths, options);
   }
 
+  // Worktree operations act on a checkout other than this repository's own, so
+  // they resolve before the refs snapshot that lists them has refreshed.
+  // Subscribe with onDidChangeRefsSnapshot rather than reading after the await.
+  worktreeAdd(worktreePath, options) {
+    return this.execute("worktreeAdd", worktreePath, options);
+  }
+
+  worktreeRemove(worktreePath, options) {
+    return this.execute("worktreeRemove", worktreePath, options);
+  }
+
+  worktreeMove(worktreePath, destinationPath, options) {
+    return this.execute("worktreeMove", worktreePath, destinationPath, options);
+  }
+
+  worktreeLock(worktreePath, options) {
+    return this.execute("worktreeLock", worktreePath, options);
+  }
+
+  worktreeUnlock(worktreePath, options) {
+    return this.execute("worktreeUnlock", worktreePath, options);
+  }
+
+  worktreePrune(options) {
+    return this.execute("worktreePrune", options);
+  }
+
   setConfig(key, value, options) {
     return this.execute("setConfig", key, value, options);
   }

@@ -91,6 +91,16 @@ const OPERATION_REFRESH_HINTS = {
   reset: "both",
   deleteRef: "both",
   updateSubmodules: "status",
+  // Every worktree operation acts on a *different* checkout, so this
+  // repository's own index and working tree are untouched. What changes is the
+  // worktree list, which `git worktree list` supplies to the refs snapshot —
+  // and, for `add -b`, a new branch, which the same snapshot carries.
+  worktreeAdd: "refs",
+  worktreeRemove: "refs",
+  worktreeMove: "refs",
+  worktreeLock: "refs",
+  worktreeUnlock: "refs",
+  worktreePrune: "refs",
   setConfig: configRefreshHint,
   unsetConfig: configRefreshHint,
   // A brand-new remote has no refs yet, so only `remote -v` output changes.
@@ -378,6 +388,59 @@ class GitRepositoryOperations {
     addBooleanFlag(args, options.remote, "--remote");
     const filePaths = pathsFrom(paths);
     if (filePaths.length > 0) args.push("--", ...filePaths);
+    return this.run(args, options);
+  }
+
+  // `worktree add [flags] <path> [<commit-ish>]`. The path is always the last
+  // flag-free argument and the commit-ish follows it, so every option has to be
+  // emitted before them; `--reason` is only meaningful right after `--lock`.
+  worktreeAdd(worktreePath, options = {}) {
+    const args = ["worktree", "add"];
+    addBooleanFlag(args, options.force, "--force");
+    addBooleanFlag(args, options.detach, "--detach");
+    if (options.checkout === false) args.push("--no-checkout");
+    if (options.lock) {
+      args.push("--lock");
+      if (options.reason) args.push("--reason", String(options.reason));
+    }
+    if (options.branch) args.push(options.forceBranch ? "-B" : "-b", String(options.branch));
+    if (options.track === true) args.push("--track");
+    else if (options.track === false) args.push("--no-track");
+    args.push(worktreePath);
+    if (options.commitish) args.push(String(options.commitish));
+    return this.run(args, options);
+  }
+
+  worktreeRemove(worktreePath, options = {}) {
+    const args = ["worktree", "remove"];
+    addBooleanFlag(args, options.force, "--force");
+    args.push(worktreePath);
+    return this.run(args, options);
+  }
+
+  worktreeMove(worktreePath, destinationPath, options = {}) {
+    const args = ["worktree", "move"];
+    addBooleanFlag(args, options.force, "--force");
+    args.push(worktreePath, destinationPath);
+    return this.run(args, options);
+  }
+
+  worktreeLock(worktreePath, options = {}) {
+    const args = ["worktree", "lock"];
+    if (options.reason) args.push("--reason", String(options.reason));
+    args.push(worktreePath);
+    return this.run(args, options);
+  }
+
+  worktreeUnlock(worktreePath, options = {}) {
+    return this.run(["worktree", "unlock", worktreePath], options);
+  }
+
+  worktreePrune(options = {}) {
+    const args = ["worktree", "prune"];
+    addBooleanFlag(args, options.dryRun, "--dry-run");
+    addBooleanFlag(args, options.verbose, "--verbose");
+    if (options.expire) args.push("--expire", String(options.expire));
     return this.run(args, options);
   }
 

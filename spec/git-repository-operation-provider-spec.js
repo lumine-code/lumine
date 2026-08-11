@@ -256,6 +256,70 @@ describe("GitRepositoryOperationProvider", () => {
     expect(calls[7].args).toEqual(["stash", "drop", "stash@{0}"]);
   });
 
+  it("maps worktree operations to Git commands with the path last", async () => {
+    const calls = [];
+    const provider = new GitRepositoryOperationProvider({
+      exec: async (args, workingDirectory, options) => {
+        calls.push({ args, workingDirectory, options });
+        return { exitCode: 0, stdout: "", stderr: "" };
+      },
+    });
+    const workingDirectory = path.join(temp.mkdirSync("git-worktree-mapping"), "repo");
+    const operations = provider.createRepositoryOperations({ workingDirectory });
+
+    await operations.worktreeAdd("../feature");
+    await operations.worktreeAdd("../feature", { branch: "feature", commitish: "origin/main" });
+    await operations.worktreeAdd("../detached", { detach: true, commitish: "abc123" });
+    await operations.worktreeAdd("../held", {
+      force: true,
+      checkout: false,
+      lock: true,
+      reason: "in use",
+      forceBranch: true,
+      branch: "feature",
+      track: false,
+    });
+    await operations.worktreeRemove("../feature");
+    await operations.worktreeRemove("../feature", { force: true });
+    await operations.worktreeMove("../feature", "../renamed");
+    await operations.worktreeLock("../feature", { reason: "on a slow disk" });
+    await operations.worktreeUnlock("../feature");
+    await operations.worktreePrune({ dryRun: true, expire: "3.days.ago" });
+
+    expect(calls[0].args).toEqual(["worktree", "add", "../feature"]);
+    expect(calls[0].workingDirectory).toBe(workingDirectory);
+    // `-b <name>` precedes the path, and the commit-ish trails it.
+    expect(calls[1].args).toEqual([
+      "worktree",
+      "add",
+      "-b",
+      "feature",
+      "../feature",
+      "origin/main",
+    ]);
+    expect(calls[2].args).toEqual(["worktree", "add", "--detach", "../detached", "abc123"]);
+    // `--reason` is only meaningful directly after `--lock`.
+    expect(calls[3].args).toEqual([
+      "worktree",
+      "add",
+      "--force",
+      "--no-checkout",
+      "--lock",
+      "--reason",
+      "in use",
+      "-B",
+      "feature",
+      "--no-track",
+      "../held",
+    ]);
+    expect(calls[4].args).toEqual(["worktree", "remove", "../feature"]);
+    expect(calls[5].args).toEqual(["worktree", "remove", "--force", "../feature"]);
+    expect(calls[6].args).toEqual(["worktree", "move", "../feature", "../renamed"]);
+    expect(calls[7].args).toEqual(["worktree", "lock", "--reason", "on a slow disk", "../feature"]);
+    expect(calls[8].args).toEqual(["worktree", "unlock", "../feature"]);
+    expect(calls[9].args).toEqual(["worktree", "prune", "--dry-run", "--expire", "3.days.ago"]);
+  });
+
   it("orders `checkout -b <name>` before `--track` so the branch name survives", async () => {
     const calls = [];
     const provider = new GitRepositoryOperationProvider({
@@ -381,6 +445,14 @@ describe("GitRepositoryOperationProvider", () => {
     expect(hint("setRemoteUrl", "origin", "https://example.invalid/repo.git")).toBe("refs");
     expect(hint("removeRemote", "origin")).toBe("both");
     expect(hint("createBlob", { stdin: "contents" })).toBe("none");
+    // Worktree operations act on another checkout, so only the refs snapshot —
+    // which carries the worktree list — can have gone stale.
+    expect(hint("worktreeAdd", "../feature")).toBe("refs");
+    expect(hint("worktreeRemove", "../feature")).toBe("refs");
+    expect(hint("worktreeMove", "../feature", "../renamed")).toBe("refs");
+    expect(hint("worktreeLock", "../feature")).toBe("refs");
+    expect(hint("worktreeUnlock", "../feature")).toBe("refs");
+    expect(hint("worktreePrune")).toBe("refs");
     // An operation this provider does not know about refreshes everything.
     expect(hint("someFutureOperation")).toBe("both");
 
@@ -499,6 +571,49 @@ describe("GitRepositoryOperationProvider", () => {
     expect((await provider.run(["log", "-1", "--format=%s"], workingDirectory)).trim()).toBe(
       "Initial commit",
     );
+  });
+
+  it("adds, lists, removes, and prunes worktrees through the embedded Git distribution", async () => {
+    const provider = new GitRepositoryOperationProvider();
+    const workingDirectory = temp.mkdirSync("git-real-worktrees");
+    const worktreePath = path.join(temp.mkdirSync("git-real-worktrees-linked"), "feature");
+
+    await provider.initializeRepository(workingDirectory, { initialBranch: "main" });
+    const operations = provider.createRepositoryOperations({ workingDirectory });
+    await operations.setConfig("user.name", "Lumine Specs");
+    await operations.setConfig("user.email", "specs@lumine.invalid");
+    fs.writeFileSync(path.join(workingDirectory, "README.md"), "# Test\n");
+    await operations.stageFiles(["README.md"]);
+    await operations.commit("Initial commit");
+
+    await operations.worktreeAdd(worktreePath, { branch: "feature" });
+    expect(fs.existsSync(path.join(worktreePath, "README.md"))).toBe(true);
+    expect((await provider.run(["branch", "--show-current"], worktreePath)).trim()).toBe("feature");
+
+    const listed = await provider.run(["worktree", "list", "--porcelain"], workingDirectory);
+    expect(listed).toContain("branch refs/heads/feature");
+
+    // A branch held by another worktree cannot be checked out here — the very
+    // failure the branch picker has to route around instead of attempting.
+    let checkoutError;
+    try {
+      await operations.checkout("feature");
+    } catch (caughtError) {
+      checkoutError = caughtError;
+    }
+    expect(checkoutError.name).toBe("GitOperationError");
+
+    await operations.worktreeLock(worktreePath, { reason: "spec" });
+    expect(await provider.run(["worktree", "list", "--porcelain"], workingDirectory)).toContain(
+      "locked spec",
+    );
+    await operations.worktreeUnlock(worktreePath);
+
+    await operations.worktreeRemove(worktreePath);
+    await operations.worktreePrune();
+    expect(
+      (await provider.run(["worktree", "list", "--porcelain"], workingDirectory)).trim(),
+    ).not.toContain("refs/heads/feature");
   });
 
   it("clones a local repository through the embedded Git distribution", async () => {
