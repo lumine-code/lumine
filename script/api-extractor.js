@@ -99,6 +99,11 @@ function firstParagraph(markdown) {
     .trim();
 }
 
+function indefiniteArticle(type) {
+  if (/^U(?:RI|RL)/.test(type)) return "A";
+  return /^[AEIO]/i.test(type) ? "An" : "A";
+}
+
 function normalizeStatus(value, context) {
   const sourceStatus = value || "public";
   const status = API_STATUS_VALUES.get(sourceStatus);
@@ -421,7 +426,10 @@ function constructorProperties(classNode, options) {
     const doc = parseDoc(adjacentComments(statement), { ...options, context });
     if (!doc?.documented) continue;
     const description =
-      doc.description || (doc.propertyType ? `A {@link ${doc.propertyType}} instance` : "");
+      doc.description ||
+      (doc.propertyType
+        ? `${indefiniteArticle(doc.propertyType)} {@link ${doc.propertyType}} instance`
+        : "");
     properties.push({
       name: target.property.name,
       kind: "property",
