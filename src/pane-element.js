@@ -15,12 +15,20 @@ class PaneElement extends HTMLElement {
   connectedCallback() {
     this.initializeContent();
     this.attached = true;
+    // Splitting a pane replaces it with an axis containing it, so a pane
+    // element is detached and reattached mid-operation. `activeItemChanged`
+    // hides the outgoing view unconditionally but only shows the incoming one
+    // while attached, so an item that changed during that window has to be
+    // shown here -- otherwise the pane comes back blank.
+    if (this.visibleItemView) {
+      this.showItemView(this.visibleItemView);
+    }
     if (this.model.isFocused()) {
       this.focus();
     }
   }
 
-  detachedCallback() {
+  disconnectedCallback() {
     this.attached = false;
   }
 

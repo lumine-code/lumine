@@ -68,6 +68,28 @@ describe("PaneElement", function () {
       expect(item3.style.display).toBe("");
     });
 
+    it("shows the active item's view when the pane element is reattached", function () {
+      // Splitting a pane replaces it with an axis containing it, so the pane
+      // element is detached and reattached. An item activated during that
+      // window is only hidden, never shown, so reattaching has to show it.
+      const item1 = document.createElement("div");
+      const item2 = document.createElement("div");
+      pane.addItem(item1);
+      pane.addItem(item2);
+      jasmine.attachToDOM(paneElement);
+
+      pane.activateItem(item2);
+      pane.activateItem(item1);
+      expect(item2.style.display).toBe("none");
+
+      paneElement.remove();
+      pane.activateItem(item2);
+      jasmine.attachToDOM(paneElement);
+
+      expect(item1.style.display).toBe("none");
+      expect(item2.style.display).toBe("");
+    });
+
     it("transfers focus to the new item if the previous item was focused", function () {
       const item1 = document.createElement("div");
       item1.tabIndex = -1;
