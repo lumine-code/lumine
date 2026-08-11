@@ -234,11 +234,11 @@ const handleWindowAction = async (event, action, ...args) => {
   try {
     lumineWindow = currentLumineWindow(event);
   } catch (error) {
-    // Menu refreshes are fire-and-forget and may already be crossing IPC when
-    // teardown unregisters their renderer. They cannot be applied without the
-    // registered BrowserWindow, so discard only this stale, non-mutating
-    // action; every other action keeps the strict sender validation.
-    if (action === "updateApplicationMenu") return;
+    // Menu refreshes and the renderer's one-way loaded signal may already be
+    // crossing IPC when teardown unregisters their renderer. Neither can be
+    // applied without the registered BrowserWindow, so discard only these
+    // stale, non-mutating actions; every other action keeps strict validation.
+    if (action === "updateApplicationMenu" || action === "loaded") return;
     error.message = `${error.message} (window action: ${action})`;
     throw error;
   }

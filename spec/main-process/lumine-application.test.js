@@ -915,11 +915,12 @@ describe("LumineApplication", function () {
       assert.throws(() => app.lumineWindowForSender(sender), /not a registered Lumine window/);
     });
 
-    it("discards only a stale menu refresh after its window was unregistered", async function () {
+    it("discards stale one-way renderer signals after their window was unregistered", async function () {
       const staleEvent = { sender: { id: 9002, isDestroyed: () => false } };
       assert.isUndefined(
         await LumineApplication.handleWindowAction(staleEvent, "updateApplicationMenu", [], {}),
       );
+      assert.isUndefined(await LumineApplication.handleWindowAction(staleEvent, "loaded"));
       await LumineApplication.handleWindowAction(staleEvent, "getState").then(
         () => assert.fail("a stale sender could perform a window action"),
         (error) => assert.match(error.message, /not a registered Lumine window/),
