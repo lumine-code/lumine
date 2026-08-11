@@ -10,6 +10,7 @@
 //   node script/drive.js eval "lumine.workspace.getActivePaneItem().getTitle()"
 //   node script/drive.js console --ms 3000
 //   node script/drive.js eval -f repro.js   # a whole scripted repro, instrumented
+//   node script/drive.js lsp -f ../ide-yaml/spec/drive.json
 //   node script/drive.js reload             # after editing package source
 //   node script/drive.js quit
 //
@@ -54,6 +55,7 @@ Commands:
   benchmark [paths...]   Measure isolated cold/warm startup runs and quit each instance
   eval <expression>      Evaluate in the renderer, print the result as JSON
   eval -f <file>         Evaluate a file's contents instead
+  lsp -f <manifest>      Run a real-window language-server conformance matrix
   dispatch <command>     Dispatch a Lumine command (--target <selector>)
   reload                 Reload the window, wait until its packages are back
   console                Stream console output, uncaught errors and rejections
@@ -535,6 +537,22 @@ async function evaluate({ positional, options }) {
   console.log(options.raw && typeof value === "string" ? value : JSON.stringify(value, null, 2));
 }
 
+async function lsp({ positional, options }) {
+  const manifestPath = options.f || positional[0];
+  if (!manifestPath) fail("which LSP conformance manifest?");
+  const { assertResult, loadManifest, rendererExpression } = require("./drive-lsp");
+  const manifest = loadManifest(manifestPath);
+  const client = await clientFor(options);
+  const result = await client
+    .evaluate(rendererExpression(manifest))
+    .catch((error) => fail(error.message));
+  client.close();
+  const passed = assertResult(manifest, result);
+  console.log(`${result.displayName} (${result.grammarScope})`);
+  for (const name of passed) console.log(`  pass  ${name}`);
+  console.log(`${passed.length} LSP conformance checks passed`);
+}
+
 async function dispatch({ positional, options }) {
   const command = positional[0];
   if (!command) fail("which command?");
@@ -838,6 +856,7 @@ const COMMANDS = {
   launch,
   benchmark,
   eval: evaluate,
+  lsp,
   dispatch,
   reload,
   console: tailConsole,
