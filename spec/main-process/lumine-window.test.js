@@ -66,29 +66,29 @@ describe("LumineWindow", function () {
     });
 
     afterEach(async function () {
+      // Unload the editor first — it flushes state to LUMINE_HOME — then take
+      // the renderer down, so the watcher and storage handles it holds under
+      // that directory are released before the rm below has to fight them.
+      // Destroying the runner's last window is safe: the main-process test
+      // bootstrap subscribes `window-all-closed`, so Electron's default
+      // quit-on-last-window cannot take the runner down mid-suite.
       if (browserWindow && !browserWindow.isDestroyed()) {
         await browserWindow.webContents.executeJavaScript("lumine.prepareToUnloadEditorWindow()");
+        browserWindow.destroy();
       }
       process.env.LUMINE_HOME = original.LUMINE_HOME;
       process.env.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT =
         original.LUMINE_DISABLE_SHELLING_OUT_FOR_ENVIRONMENT;
       if (lumineHome) {
-        // The real renderer starts filesystem watchers under LUMINE_HOME.
-        // Keep the real window alive while Windows finishes releasing the
-        // SQLite and watcher handles. Destroying the only BrowserWindow before
-        // this await lets Electron quit the main-process runner mid-suite.
+        // The renderer is gone, but the OS releases a dead process's handles
+        // asynchronously — on Windows especially — so retry rather than wait
+        // a fixed grace.
         await nodeFs.promises.rm(lumineHome, {
           recursive: true,
           force: true,
           maxRetries: 20,
           retryDelay: 100,
         });
-      }
-      // This is the runner's only real BrowserWindow. Keep the hidden, inert
-      // window alive until Jasmine calls process.exit; destroying it here lets
-      // Electron terminate between later stub-only specs on macOS and Windows.
-      if (browserWindow && !browserWindow.isDestroyed()) {
-        await browserWindow.loadURL("about:blank");
       }
     });
 

@@ -128,6 +128,13 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
   }
 
   if (args.test && args.mainProcess) {
+    // Jasmine owns this process's lifetime: it reports, then calls
+    // process.exit. Electron's default when the last window closes is to quit
+    // the app, and the spec that exercises a real BrowserWindow closes it
+    // mid-suite — without a subscriber that default quit races jasmine, and
+    // when it wins the runner dies with Chromium's exit code and no report.
+    // Subscribing makes closing the last window a non-event.
+    app.on("window-all-closed", () => {});
     app.setPath("userData", temp.mkdirSync("lumine-user-data-dir-for-main-process-tests"));
     app.on("ready", function () {
       const testRunner = require(
