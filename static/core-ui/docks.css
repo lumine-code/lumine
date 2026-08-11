@@ -54,6 +54,36 @@ lumine-dock {
        an item can never be dragged into one. */
     position: absolute;
     z-index: 10; /* An arbitrary number. Seems high enough. ¯\_(ツ)_/¯ */
+
+    /* A frameless window puts an OS resize border along its edge, and a hidden
+       dock's mask is zero pixels wide -- so the toggle button sat under that
+       border and could not be clicked at all. Widen the mask into an invisible
+       strip and pull the button back out over it. A hidden dock is out of the
+       flow, so the strip costs the workspace no space, and none of this reaches
+       a dock revealed as a drop target: that one is open, and has to be painted
+       and hit-testable or the item being dragged falls through it.
+
+       `!important` because the component sets the mask's size inline, computed
+       from the dock's own state -- there is no lower-specificity way in. */
+    pointer-events: none;
+
+    &:not(.bottom) > .lumine-dock-mask {
+      width: 8px !important;
+      pointer-events: none;
+      visibility: hidden;
+    }
+
+    > .lumine-dock-toggle-button {
+      pointer-events: all;
+    }
+
+    > .lumine-dock-toggle-button.left {
+      margin-left: -8px;
+    }
+
+    > .lumine-dock-toggle-button.right {
+      margin-right: -8px;
+    }
   }
 }
 

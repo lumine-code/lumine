@@ -72,6 +72,32 @@ describe("Dock", () => {
       expect(document.activeElement).toBe(modalElement);
       expect(didChangeVisibleSpy.calls.mostRecent().args[0]).toBe(false);
     });
+
+    it("does not collapse a dock revealed as a drop target", () => {
+      jasmine.attachToDOM(lumine.workspace.getElement());
+      const dock = lumine.workspace.getRightDock();
+      const inner = () => dock.getElement().querySelector(".lumine-dock-inner");
+      const mask = () => inner().querySelector(".lumine-dock-mask");
+
+      // A frameless window puts an OS resize border along its edge, so a hidden
+      // side dock is widened into an invisible strip and its toggle button
+      // pulled back out over it -- otherwise the button sits under the border
+      // and cannot be clicked.
+      expect(getComputedStyle(mask()).width).toBe("8px");
+      expect(getComputedStyle(mask()).visibility).toBe("hidden");
+      expect(getComputedStyle(inner()).pointerEvents).toBe("none");
+
+      // A dock revealed as a drop target is open, so none of that applies to
+      // it: it has to be painted and hit-testable, or the item being dragged
+      // falls through to whatever sits underneath the dock.
+      dock.handleToggleButtonDragEnter();
+      expect(getComputedStyle(mask()).width).toBe("300px");
+      expect(getComputedStyle(mask()).visibility).toBe("visible");
+      expect(getComputedStyle(inner()).pointerEvents).not.toBe("none");
+
+      // Detaches the drag listeners this dock added to the window.
+      dock.draggedOut();
+    });
   });
 
   describe("when a pane in a dock is activated", () => {
