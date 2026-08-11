@@ -267,11 +267,6 @@ module.exports = class LumineWindow extends EventEmitter {
       // otherwise silent.
       console.log(`Renderer process gone (reason: ${reason}, exitCode: ${exitCode})`);
 
-      if (this.headless) {
-        this.lumineApplication.exit(100);
-        return;
-      }
-
       // Not every departure is a crash. Electron reports a renderer that
       // exited with status zero as `clean-exit` and one taken down by the OS
       // or by us as `killed`, and both arrive here during ordinary teardown —
@@ -283,6 +278,11 @@ module.exports = class LumineWindow extends EventEmitter {
       // reload, and a modal at that point can only get in the way of the
       // quit it is interrupting.
       if (this.unloading || this.lumineApplication.quitting) return;
+
+      if (this.headless) {
+        this.lumineApplication.exit(100);
+        return;
+      }
 
       await this.fileRecoveryService.didCrashWindow(this);
 

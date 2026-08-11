@@ -84,7 +84,12 @@ describe("LumineWindow", function () {
           retryDelay: 100,
         });
       }
-      if (browserWindow && !browserWindow.isDestroyed()) browserWindow.destroy();
+      // This is the runner's only real BrowserWindow. Keep the hidden, inert
+      // window alive until Jasmine calls process.exit; destroying it here lets
+      // Electron terminate between later stub-only specs on macOS and Windows.
+      if (browserWindow && !browserWindow.isDestroyed()) {
+        await browserWindow.loadURL("about:blank");
+      }
     });
 
     it("creates a real, properly configured BrowserWindow", async function () {
@@ -109,6 +114,7 @@ describe("LumineWindow", function () {
       assert.isFalse(settings.clearWindowState);
 
       await emitterEventPromise(browserWindow, "ready-to-show");
+      await w.getLoadedPromise();
 
       assert.strictEqual(
         browserWindow.webContents.getURL(),
@@ -300,6 +306,33 @@ describe("LumineWindow", function () {
       assert.isFalse(service.didCrashWindow.called);
     });
 
+    it("does not fail a headless run for an ordinary renderer departure", async function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        headless: true,
+      });
+
+      await goneWith(w, "clean-exit");
+      await goneWith(w, "killed");
+
+      assert.isFalse(app.exit.called);
+      assert.isFalse(showMessageBox.called);
+      assert.isFalse(service.didCrashWindow.called);
+    });
+
+    it("fails a headless run when its renderer crashes", async function () {
+      const w = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        headless: true,
+      });
+
+      await goneWith(w, "crashed", 133);
+
+      assert.isTrue(app.exit.calledOnceWithExactly(100));
+      assert.isFalse(showMessageBox.called);
+      assert.isFalse(service.didCrashWindow.called);
+    });
+
     it("reports a real crash", async function () {
       const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
@@ -320,11 +353,13 @@ describe("LumineWindow", function () {
     it("does not interrupt a window that is already unloading", async function () {
       const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
+        headless: true,
       });
       w.unloading = true;
 
       await goneWith(w, "crashed", 1);
 
+      assert.isFalse(app.exit.called);
       assert.isFalse(showMessageBox.called);
     });
 
@@ -332,10 +367,12 @@ describe("LumineWindow", function () {
       app.quitting = true;
       const w = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
+        headless: true,
       });
 
       await goneWith(w, "crashed", 1);
 
+      assert.isFalse(app.exit.called);
       assert.isFalse(showMessageBox.called);
     });
   });
@@ -662,6 +699,7 @@ class StubApplication {
 
     this.removeWindow = sinon.spy();
     this.saveCurrentWindowOptions = sinon.spy();
+    this.exit = sinon.spy();
     this.windows = [];
   }
 
