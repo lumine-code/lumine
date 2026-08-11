@@ -11,7 +11,7 @@ const {
 // engines.lumine range. The count is a tripwire, like EXPECTED_GRAMMAR_COUNT
 // in the grammar sweep: adding or dropping a bundled package means updating
 // it deliberately, and a partial node_modules cannot silently shrink the set.
-const EXPECTED_BUNDLED_COUNT = 90;
+const EXPECTED_BUNDLED_COUNT = 95;
 
 describe("bundled-packages", function () {
   const repoRoot = path.resolve(__dirname, "..");
@@ -22,6 +22,15 @@ describe("bundled-packages", function () {
     expect(names).toContain("about");
     expect(names).toContain("settings-view");
     expect(names).toContain("language-c");
+    expect(names).toEqual(
+      jasmine.arrayContaining([
+        "ide-dockerfile",
+        "ide-graphql",
+        "ide-vue",
+        "language-graphql",
+        "language-vue",
+      ]),
+    );
     expect(names).not.toContain("semver");
     expect(names).not.toContain("@lumine-code/fs-plus");
   });
