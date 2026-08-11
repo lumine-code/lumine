@@ -77,6 +77,7 @@ describe("drive LSP conformance support", () => {
               check: "completion",
               path: "$",
               find: { path: "label", equals: "RUN" },
+              select: "command",
             },
           },
         },
@@ -87,6 +88,7 @@ describe("drive LSP conformance support", () => {
     expect(expression).toContain('"adapter":"ide-example"');
     expect(expression).toContain('"ide-example.features.hover":true');
     expect(expression).toContain('"find":{"path":"label","equals":"RUN"}');
+    expect(expression).toContain('"select":"command"');
   });
 
   it("matches every named renderer result against the manifest", () => {

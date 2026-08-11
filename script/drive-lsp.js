@@ -190,6 +190,12 @@ async function runInRenderer(manifest) {
         );
       }
     }
+    if (source.select) {
+      value = readPath(value, source.select);
+      if (value === undefined) {
+        throw new Error(`${checkName} could not select ${source.select} from ${source.check}`);
+      }
+    }
     return value;
   };
 
