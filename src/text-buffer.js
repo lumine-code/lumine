@@ -25,59 +25,66 @@ const {
 const { traverse, traversal } = require("./point-helpers");
 const Grim = require("@lumine-code/grim");
 
-// Extended: A mutable text container with undo/redo support and the ability to
-// annotate logical regions in the text.
-//
-// ## Observing Changes
-//
-// You can observe changes in a {TextBuffer} using methods like {::onDidChange},
-// {::onDidStopChanging}, and {::getChangesSinceCheckpoint}. These methods report
-// aggregated buffer updates as arrays of change objects containing the following
-// fields: `oldRange`, `newRange`, `oldText`, and `newText`. The `oldText`,
-// `newText`, and `newRange` fields are self-explanatory, but the interpretation
-// of `oldRange` is more nuanced:
-//
-// The reported `oldRange` is the range of the replaced text in the original
-// contents of the buffer *irrespective of the spatial impact of any other
-// reported change*. So, for example, if you wanted to apply all the changes made
-// in a transaction to a clone of the observed buffer, the easiest approach would
-// be to apply the changes in reverse:
-//
-// ```js
-// buffer1.onDidChange(({changes}) => {
-//   for (const {oldRange, newText} of changes.reverse()) {
-//     buffer2.setTextInRange(oldRange, newText)
-//   }
-// })
-// ```
-//
-// If you needed to apply the changes in the forwards order, you would need to
-// incorporate the impact of preceding changes into the range passed to
-// {::setTextInRange}, as follows:
-//
-// ```js
-// buffer1.onDidChange(({changes}) => {
-//   for (const {oldRange, newRange, newText} of changes) {
-//     const rangeToReplace = Range(
-//       newRange.start,
-//       newRange.start.traverse(oldRange.getExtent())
-//     )
-//     buffer2.setTextInRange(rangeToReplace, newText)
-//   }
-// })
-// ```
+/**
+ * A mutable text container with undo/redo support and the ability to
+ * annotate logical regions in the text.
+ *
+ * ## Observing Changes
+ *
+ * You can observe changes in a {@link TextBuffer} using methods like {@link #onDidChange},
+ * {@link #onDidStopChanging}, and {@link #getChangesSinceCheckpoint}. These methods report
+ * aggregated buffer updates as arrays of change objects containing the following
+ * fields: `oldRange`, `newRange`, `oldText`, and `newText`. The `oldText`,
+ * `newText`, and `newRange` fields are self-explanatory, but the interpretation
+ * of `oldRange` is more nuanced:
+ *
+ * The reported `oldRange` is the range of the replaced text in the original
+ * contents of the buffer *irrespective of the spatial impact of any other
+ * reported change*. So, for example, if you wanted to apply all the changes made
+ * in a transaction to a clone of the observed buffer, the easiest approach would
+ * be to apply the changes in reverse:
+ *
+ * ```js
+ * buffer1.onDidChange(({changes}) => {
+ *   for (const {oldRange, newText} of changes.reverse()) {
+ *     buffer2.setTextInRange(oldRange, newText)
+ *   }
+ * })
+ * ```
+ *
+ * If you needed to apply the changes in the forwards order, you would need to
+ * incorporate the impact of preceding changes into the range passed to
+ * {@link #setTextInRange}, as follows:
+ *
+ * ```js
+ * buffer1.onDidChange(({changes}) => {
+ *   for (const {oldRange, newRange, newText} of changes) {
+ *     const rangeToReplace = Range(
+ *       newRange.start,
+ *       newRange.start.traverse(oldRange.getExtent())
+ *     )
+ *     buffer2.setTextInRange(rangeToReplace, newText)
+ *   }
+ * })
+ * ```
+ *
+ * @public
+ * @api-status Extended
+ */
 class TextBuffer {
-  /*
-  Section: Construction
-  */
+  /**
+   * @category Construction
+   */
 
-  // Public: Create a new buffer with the given params.
-  //
-  // * `params` {Object} or {String} of text
-  //   * `text` The initial {String} text of the buffer.
-  //   * `shouldDestroyOnFileDelete` A {Function} that returns a {Boolean}
-  //     indicating whether the buffer should be destroyed if its file is
-  //     deleted.
+  /**
+   * Create a new buffer with the given params.
+   *
+   * @param {Object} params - or `String` of text
+   * @param params.text - The initial `String` text of the buffer.
+   * @param params.shouldDestroyOnFileDelete - A `Function` that returns a `Boolean` indicating whether the buffer should be destroyed if its file is deleted.
+   * @public
+   * @api-status Public
+   */
   constructor(params) {
     if (params == null) params = {};
 
@@ -147,17 +154,17 @@ class TextBuffer {
     return `<TextBuffer ${this.id}>`;
   }
 
-  // Public: Create a new buffer backed by the given file path.
-  //
-  // * `source` Either a {String} path to a local file or (experimentally) a file
-  //   {Object} as described by the {::setFile} method.
-  // * `params` An {Object} with the following properties:
-  //   * `encoding` (optional) {String} The file's encoding.
-  //   * `shouldDestroyOnFileDelete` (optional) A {Function} that returns a
-  //     {Boolean} indicating whether the buffer should be destroyed if its file
-  //     is deleted.
-  //
-  // Returns a {Promise} that resolves with a {TextBuffer} instance.
+  /**
+   * Create a new buffer backed by the given file path.
+   *
+   * @param source - Either a `String` path to a local file or (experimentally) a file `Object` as described by the {@link #setFile} method.
+   * @param params - An `Object` with the following properties:
+   * @param {String} [params.encoding] - The file's encoding.
+   * @param [params.shouldDestroyOnFileDelete] - A `Function` that returns a `Boolean` indicating whether the buffer should be destroyed if its file is deleted.
+   * @returns {Promise} that resolves with a {@link TextBuffer} instance.
+   * @public
+   * @api-status Public
+   */
   static load(source, params) {
     const buffer = new TextBuffer(params);
     if (typeof source === "string") {
@@ -174,17 +181,18 @@ class TextBuffer {
       });
   }
 
-  // Public: Create a new buffer backed by the given file path. For better
-  // performance, use {TextBuffer.load} instead.
-  //
-  // * `filePath` The {String} file path.
-  // * `params` An {Object} with the following properties:
-  //   * `encoding` (optional) {String} The file's encoding.
-  //   * `shouldDestroyOnFileDelete` (optional) A {Function} that returns a
-  //     {Boolean} indicating whether the buffer should be destroyed if its file
-  //     is deleted.
-  //
-  // Returns a {TextBuffer} instance.
+  /**
+   * Create a new buffer backed by the given file path. For better
+   * performance, use {@link TextBuffer.load} instead.
+   *
+   * @param filePath - The `String` file path.
+   * @param params - An `Object` with the following properties:
+   * @param {String} [params.encoding] - The file's encoding.
+   * @param [params.shouldDestroyOnFileDelete] - A `Function` that returns a `Boolean` indicating whether the buffer should be destroyed if its file is deleted.
+   * @returns {TextBuffer} instance.
+   * @public
+   * @api-status Public
+   */
   static loadSync(filePath, params) {
     const buffer = new TextBuffer(params);
     buffer.setPath(filePath);
@@ -197,12 +205,15 @@ class TextBuffer {
     return buffer;
   }
 
-  // Public: Restore a {TextBuffer} based on an earlier state created using
-  // the {TextBuffer::serialize} method.
-  //
-  // * `params` An {Object} returned from {TextBuffer::serialize}
-  //
-  // Returns a {Promise} that resolves with a {TextBuffer} instance.
+  /**
+   * Restore a {@link TextBuffer} based on an earlier state created using
+   * the `TextBuffer.serialize` method.
+   *
+   * @param params - An `Object` returned from `TextBuffer.serialize`
+   * @returns {Promise} that resolves with a {@link TextBuffer} instance.
+   * @public
+   * @api-status Public
+   */
   static async deserialize(params) {
     if (params.version && params.version !== TextBuffer.version) return;
 
@@ -261,7 +272,7 @@ class TextBuffer {
     return buffer;
   }
 
-  // Returns a {String} representing a unique identifier for this {TextBuffer}.
+  // Returns a `String` representing a unique identifier for this {@link TextBuffer}.
   getId() {
     return this.id;
   }
@@ -319,244 +330,290 @@ class TextBuffer {
     return result;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Public: Invoke the given callback synchronously _before_ the content of the
-  // buffer changes.
-  //
-  // Because observers are invoked synchronously, it's important not to perform
-  // any expensive operations via this method.
-  //
-  // * `callback` {Function} to be called when the buffer changes.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback synchronously _before_ the content of the
+   * buffer changes.
+   *
+   * Because observers are invoked synchronously, it's important not to perform
+   * any expensive operations via this method.
+   *
+   * @param {Function} callback - to be called when the buffer changes.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onWillChange(callback) {
     return this.emitter.on("will-change", callback);
   }
 
-  // Public: Invoke the given callback synchronously when a transaction
-  // finishes with a list of all the changes in the transaction.
-  //
-  // * `callback` {Function} to be called when a transaction in which textual
-  //   changes occurred is completed.
-  //   * `event` {Object} with the following keys:
-  //     * `oldRange` The smallest combined {Range} containing all of the old
-  //       text.
-  //     * `newRange` The smallest combined {Range} containing all of the new
-  //       text.
-  //     * `changes` {Array} of {Object}s summarizing the aggregated changes
-  //       that occurred during the transaction. See *Working With Aggregated
-  //       Changes* in the description of the {TextBuffer} class for details.
-  //       * `oldRange` The {Range} of the deleted text in the contents of the
-  //         buffer as it existed *before* the batch of changes reported by
-  //         this event.
-  //       * `newRange`: The {Range} of the inserted text in the current
-  //         contents of the buffer.
-  //       * `oldText`: A {String} representing the deleted text.
-  //       * `newText`: A {String} representing the inserted text.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback synchronously when a transaction
+   * finishes with a list of all the changes in the transaction.
+   *
+   * @param {Function} callback - to be called when a transaction in which textual changes occurred is completed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.oldRange - The smallest combined {@link Range} containing all of the old text.
+   * @param callback.event.newRange - The smallest combined {@link Range} containing all of the new text.
+   * @param {Array} callback.event.changes - of `Objects` summarizing the aggregated changes that occurred during the transaction. See *Working With Aggregated Changes* in the description of the {@link TextBuffer} class for details.
+   * @param callback.event.changes.oldRange - The {@link Range} of the deleted text in the contents of the buffer as it existed *before* the batch of changes reported by this event.
+   * @param callback.event.changes.newRange - The {@link Range} of the inserted text in the current contents of the buffer.
+   * @param callback.event.changes.oldText - A `String` representing the deleted text.
+   * @param callback.event.changes.newText - A `String` representing the inserted text.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidChange(callback) {
     return this.emitter.on("did-change-text", callback);
   }
 
-  // Public: This is now identical to {::onDidChange}.
+  /**
+   * This is now identical to {@link #onDidChange}.
+   *
+   * @public
+   * @api-status Public
+   */
   onDidChangeText(callback) {
     return this.onDidChange(callback);
   }
 
-  // Public: Invoke the given callback asynchronously following one or more
-  // changes after {::getStoppedChangingDelay} milliseconds elapse without an
-  // additional change.
-  //
-  // This method can be used to perform potentially expensive operations that
-  // don't need to be performed synchronously. If you need to run your callback
-  // synchronously, use {::onDidChange} instead.
-  //
-  // * `callback` {Function} to be called when the buffer stops changing.
-  //   * `event` {Object} with the following keys:
-  //     * `changes` An {Array} containing {Object}s summarizing the aggregated
-  //       changes. See *Working With Aggregated Changes* in the description of
-  //       the {TextBuffer} class for details.
-  //       * `oldRange` The {Range} of the deleted text in the contents of the
-  //         buffer as it existed *before* the batch of changes reported by
-  //         this event.
-  //       * `newRange`: The {Range} of the inserted text in the current
-  //         contents of the buffer.
-  //       * `oldText`: A {String} representing the deleted text.
-  //       * `newText`: A {String} representing the inserted text.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback asynchronously following one or more
+   * changes after {@link #getStoppedChangingDelay} milliseconds elapse without an
+   * additional change.
+   *
+   * This method can be used to perform potentially expensive operations that
+   * don't need to be performed synchronously. If you need to run your callback
+   * synchronously, use {@link #onDidChange} instead.
+   *
+   * @param {Function} callback - to be called when the buffer stops changing.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.changes - An `Array` containing `Objects` summarizing the aggregated changes. See *Working With Aggregated Changes* in the description of the {@link TextBuffer} class for details.
+   * @param callback.event.changes.oldRange - The {@link Range} of the deleted text in the contents of the buffer as it existed *before* the batch of changes reported by this event.
+   * @param callback.event.changes.newRange - The {@link Range} of the inserted text in the current contents of the buffer.
+   * @param callback.event.changes.oldText - A `String` representing the deleted text.
+   * @param callback.event.changes.newText - A `String` representing the inserted text.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidStopChanging(callback) {
     return this.emitter.on("did-stop-changing", callback);
   }
 
-  // Public: Invoke the given callback when the in-memory contents of the
-  // buffer become in conflict with the contents of the file on disk.
-  //
-  // * `callback` {Function} to be called when the buffer enters conflict.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the in-memory contents of the
+   * buffer become in conflict with the contents of the file on disk.
+   *
+   * @param {Function} callback - to be called when the buffer enters conflict.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidConflict(callback) {
     return this.emitter.on("did-conflict", callback);
   }
 
-  // Public: Invoke the given callback if the value of {::isModified} changes.
-  //
-  // * `callback` {Function} to be called when {::isModified} changes.
-  //   * `modified` {Boolean} indicating whether the buffer is modified.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback if the value of {@link #isModified} changes.
+   *
+   * @param {Function} callback - to be called when {@link #isModified} changes.
+   * @param {Boolean} callback.modified - indicating whether the buffer is modified.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidChangeModified(callback) {
     return this.emitter.on("did-change-modified", callback);
   }
 
-  // Public: Invoke the given callback when all marker `::onDidChange`
-  // observers have been notified following a change to the buffer.
-  //
-  // The order of events following a buffer change is as follows:
-  //
-  // * The text of the buffer is changed
-  // * All markers are updated accordingly, but their `::onDidChange` observers
-  //   are not notified.
-  // * `TextBuffer::onDidChange` observers are notified.
-  // * `Marker::onDidChange` observers are notified.
-  // * `TextBuffer::onDidUpdateMarkers` observers are notified.
-  //
-  // Basically, this method gives you a way to take action after both a buffer
-  // change and all associated marker changes.
-  //
-  // * `callback` {Function} to be called after markers are updated.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when all marker `::onDidChange`
+   * observers have been notified following a change to the buffer.
+   *
+   * The order of events following a buffer change is as follows:
+   *
+   * * The text of the buffer is changed
+   * * All markers are updated accordingly, but their `::onDidChange` observers
+   *   are not notified.
+   * * `TextBuffer::onDidChange` observers are notified.
+   * * `Marker::onDidChange` observers are notified.
+   * * `TextBuffer::onDidUpdateMarkers` observers are notified.
+   *
+   * Basically, this method gives you a way to take action after both a buffer
+   * change and all associated marker changes.
+   *
+   * @param {Function} callback - to be called after markers are updated.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidUpdateMarkers(callback) {
     return this.emitter.on("did-update-markers", callback);
   }
 
-  // Public: Invoke the given callback when a marker is created.
-  //
-  // * `callback` {Function} to be called when a marker is created.
-  //   * `marker` {Marker} that was created.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a marker is created.
+   *
+   * @param {Function} callback - to be called when a marker is created.
+   * @param {Marker} callback.marker - that was created.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidCreateMarker(callback) {
     return this.emitter.on("did-create-marker", callback);
   }
 
-  // Public: Invoke the given callback when the value of {::getPath} changes.
-  //
-  // * `callback` {Function} to be called when the path changes.
-  //   * `path` {String} representing the buffer's current path on disk.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the value of {@link #getPath} changes.
+   *
+   * @param {Function} callback - to be called when the path changes.
+   * @param {String} callback.path - representing the buffer's current path on disk.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidChangePath(callback) {
     return this.emitter.on("did-change-path", callback);
   }
 
-  // Public: Invoke the given callback when the value of {::getEncoding} changes.
-  //
-  // * `callback` {Function} to be called when the encoding changes.
-  //   * `encoding` {String} character set encoding of the buffer.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the value of {@link #getEncoding} changes.
+   *
+   * @param {Function} callback - to be called when the encoding changes.
+   * @param {String} callback.encoding - character set encoding of the buffer.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidChangeEncoding(callback) {
     return this.emitter.on("did-change-encoding", callback);
   }
 
-  // Public: Invoke the given callback before the buffer is saved to disk.
-  //
-  // * `callback` {Function} to be called before the buffer is saved. If this function returns
-  //   a {Promise}, then the buffer will not be saved until the promise resolves.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback before the buffer is saved to disk.
+   *
+   * @param {Function} callback - to be called before the buffer is saved. If this function returns a `Promise`, then the buffer will not be saved until the promise resolves.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onWillSave(callback) {
     return this.emitter.on("will-save", callback);
   }
 
-  // Public: Invoke the given callback after the buffer is saved to disk.
-  //
-  // * `callback` {Function} to be called after the buffer is saved.
-  //   * `event` {Object} with the following keys:
-  //     * `path` The path to which the buffer was saved.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback after the buffer is saved to disk.
+   *
+   * @param {Function} callback - to be called after the buffer is saved.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.path - The path to which the buffer was saved.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidSave(callback) {
     return this.emitter.on("did-save", callback);
   }
 
-  // Public: Invoke the given callback after the file backing the buffer is
-  // deleted.
-  //
-  // * `callback` {Function} to be called after the buffer is deleted.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback after the file backing the buffer is
+   * deleted.
+   *
+   * @param {Function} callback - to be called after the buffer is deleted.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidDelete(callback) {
     return this.emitter.on("did-delete", callback);
   }
 
-  // Public: Invoke the given callback before the buffer is reloaded from the
-  // contents of its file on disk.
-  //
-  // * `callback` {Function} to be called before the buffer is reloaded.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback before the buffer is reloaded from the
+   * contents of its file on disk.
+   *
+   * @param {Function} callback - to be called before the buffer is reloaded.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onWillReload(callback) {
     return this.emitter.on("will-reload", callback);
   }
 
-  // Public: Invoke the given callback after the buffer is reloaded from the
-  // contents of its file on disk.
-  //
-  // * `callback` {Function} to be called after the buffer is reloaded.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback after the buffer is reloaded from the
+   * contents of its file on disk.
+   *
+   * @param {Function} callback - to be called after the buffer is reloaded.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidReload(callback) {
     return this.emitter.on("did-reload", callback);
   }
 
-  // Public: Invoke the given callback when the buffer is destroyed.
-  //
-  // * `callback` {Function} to be called when the buffer is destroyed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the buffer is destroyed.
+   *
+   * @param {Function} callback - to be called when the buffer is destroyed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidDestroy(callback) {
     return this.emitter.on("did-destroy", callback);
   }
 
-  // Public: Invoke the given callback when there is an error in watching the
-  // file.
-  //
-  // * `callback` {Function} callback
-  //   * `errorObject` {Object}
-  //     * `error` {Object} the error object
-  //     * `handle` {Function} call this to indicate you have handled the error.
-  //       The error will not be thrown if this function is called.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when there is an error in watching the
+   * file.
+   *
+   * @param {Function} callback - callback
+   * @param {Object} callback.errorObject
+   * @param {Object} callback.errorObject.error - the error object
+   * @param {Function} callback.errorObject.handle - call this to indicate you have handled the error. The error will not be thrown if this function is called.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onWillThrowWatchError(callback) {
     return this.emitter.on("will-throw-watch-error", callback);
   }
 
-  // Public: Get the number of milliseconds that will elapse without a change
-  // before {::onDidStopChanging} observers are invoked following a change.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the number of milliseconds that will elapse without a change
+   * before {@link #onDidStopChanging} observers are invoked following a change.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   getStoppedChangingDelay() {
     return this.stoppedChangingDelay;
   }
 
-  /*
-  Section: File Details
-  */
+  /**
+   * @category File Details
+   */
 
-  // Public: Determine if the in-memory contents of the buffer differ from its
-  // contents on disk.
-  //
-  // If the buffer is unsaved, always returns `true` unless the buffer is empty.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine if the in-memory contents of the buffer differ from its
+   * contents on disk.
+   *
+   * If the buffer is unsaved, always returns `true` unless the buffer is empty.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   isModified() {
     if (this.isDeleted()) {
       // We typically consider a deleted file to be modified… unless it was
@@ -576,61 +633,74 @@ class TextBuffer {
     }
   }
 
-  // Public: Determine if the buffer is in a deleted state — meaning that it
-  // was previously backed by a file on disk, but is no longer.
+  /**
+   * Determine if the buffer is in a deleted state — meaning that it
+   * was previously backed by a file on disk, but is no longer.
+   *
+   * @public
+   * @api-status Public
+   */
   isDeleted() {
     let hasNoFile = !this.file || !this.file.existsSync();
     return hasNoFile && this.didHaveFileOnDisk;
   }
 
-  // Public: Determine if the in-memory contents of the buffer conflict with
-  // the on-disk contents of its associated file.
-  //
-  // This happens if the contents of a buffer’s backing file change while the
-  // editor has uncommitted changes. Those uncommitted changes build upon a
-  // state that is now stale; if those changes were committed to disk, it could
-  // clobber the changes made by the external program.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine if the in-memory contents of the buffer conflict with
+   * the on-disk contents of its associated file.
+   *
+   * This happens if the contents of a buffer’s backing file change while the
+   * editor has uncommitted changes. Those uncommitted changes build upon a
+   * state that is now stale; if those changes were committed to disk, it could
+   * clobber the changes made by the external program.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   isInConflict() {
     // Deleted files are automatically in conflict if they consider themselves
     // modified.
     return this.isModified() && (this.fileHasChangedSinceLastLoad || this.isDeleted());
   }
 
-  // Public: Get the path of the associated file.
-  //
-  // Returns a {String}.
+  /**
+   * Get the path of the associated file.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   getPath() {
     return this.file ? this.file.getPath() : undefined;
   }
 
-  // Public: Set the path for the buffer's associated file.
-  //
-  // * `filePath` A {String} representing the new file path
+  /**
+   * Set the path for the buffer's associated file.
+   *
+   * @param filePath - A `String` representing the new file path
+   * @public
+   * @api-status Public
+   */
   setPath(filePath) {
     if (filePath === this.getPath()) return;
     return this.setFile(filePath && new File(filePath));
   }
 
-  // Experimental: Set a custom {File} object as the buffer's backing store.
-  //
-  // * `file` An {Object} with the following properties:
-  //   * `getPath` A {Function} that returns the {String} path to the file.
-  //   * `createReadStream` A {Function} that returns a `Readable` stream
-  //     that can be used to load the file's content.
-  //   * `createWriteStream` A {Function} that returns a `Writable` stream
-  //     that can be used to save content to the file.
-  //   * `existsSync` A {Function} that returns a {Boolean}, true if the file exists, false otherwise.
-  //   * `onDidChange` (optional) A {Function} that invokes its callback argument
-  //     when the file changes. The method should return a {Disposable} that
-  //     can be used to prevent further calls to the callback.
-  //   * `onDidDelete` (optional) A {Function} that invokes its callback argument
-  //     when the file is deleted. The method should return a {Disposable} that
-  //     can be used to prevent further calls to the callback.
-  //   * `onDidRename` (optional) A {Function} that invokes its callback argument
-  //     when the file is renamed. The method should return a {Disposable} that
-  //     can be used to prevent further calls to the callback.
+  /**
+   * Set a custom `File` object as the buffer's backing store.
+   *
+   * @param file - An `Object` with the following properties:
+   * @param file.getPath - A `Function` that returns the `String` path to the file.
+   * @param file.createReadStream - A `Function` that returns a `Readable` stream that can be used to load the file's content.
+   * @param file.createWriteStream - A `Function` that returns a `Writable` stream that can be used to save content to the file.
+   * @param file.existsSync - A `Function` that returns a `Boolean`, true if the file exists, false otherwise.
+   * @param [file.onDidChange] - A `Function` that invokes its callback argument when the file changes. The method should return a `Disposable` that can be used to prevent further calls to the callback.
+   * @param [file.onDidDelete] - A `Function` that invokes its callback argument when the file is deleted. The method should return a `Disposable` that can be used to prevent further calls to the callback.
+   * @param [file.onDidRename] - A `Function` that invokes its callback argument when the file is renamed. The method should return a `Disposable` that can be used to prevent further calls to the callback.
+   * @public
+   * @api-status Experimental
+   */
   setFile(file) {
     if (!this.file && !file) return;
     if (file === this.file) return;
@@ -646,9 +716,13 @@ class TextBuffer {
     this.emitter.emit("did-change-path", this.getPath());
   }
 
-  // Public: Sets the character set encoding for this buffer.
-  //
-  // * `encoding` The {String} encoding to use (default: 'utf8').
+  /**
+   * Sets the character set encoding for this buffer.
+   *
+   * @param encoding - The `String` encoding to use (default: 'utf8').
+   * @public
+   * @api-status Public
+   */
   setEncoding(encoding = "utf8") {
     if (encoding === this.getEncoding()) return;
 
@@ -666,7 +740,11 @@ class TextBuffer {
     }
   }
 
-  // Public: Returns the {String} encoding of this buffer.
+  /**
+   * @returns {String} encoding of this buffer.
+   * @public
+   * @api-status Public
+   */
   getEncoding() {
     return this.encoding || (this.file && this.file.getEncoding());
   }
@@ -679,9 +757,13 @@ class TextBuffer {
     return this.preferredLineEnding;
   }
 
-  // Public: Get the path of the associated file.
-  //
-  // Returns a {String}.
+  /**
+   * Get the path of the associated file.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   getUri() {
     return this.getPath();
   }
@@ -691,26 +773,34 @@ class TextBuffer {
   // The basename is the name portion of the file's path, without the containing
   // directories.
   //
-  // Returns a {String}.
+  // Returns a `String`.
   getBaseName() {
     return this.file && this.file.getBaseName();
   }
 
-  /*
-  Section: Reading Text
-  */
+  /**
+   * @category Reading Text
+   */
 
-  // Public: Determine whether the buffer is empty.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether the buffer is empty.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   isEmpty() {
     return this.buffer.getLength() === 0;
   }
 
-  // Public: Get the entire text of the buffer. Avoid using this unless you know that the
-  // buffer's text is reasonably short.
-  //
-  // Returns a {String}.
+  /**
+   * Get the entire text of the buffer. Avoid using this unless you know that the
+   * buffer's text is reasonably short.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   getText() {
     if (this.cachedText == null) this.cachedText = this.buffer.getText();
     return this.cachedText;
@@ -720,75 +810,99 @@ class TextBuffer {
     return this.buffer.getCharacterAtPosition(Point.fromObject(position));
   }
 
-  // Public: Get the text in a range.
-  //
-  // * `range` A {Range}
-  //
-  // Returns a {String}
+  /**
+   * Get the text in a range.
+   *
+   * @param range - A {@link Range}
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   getTextInRange(range) {
     return this.buffer.getTextInRange(Range.fromObject(range));
   }
 
-  // Public: Get the text of all lines in the buffer, without their line endings.
-  //
-  // Returns an {Array} of {String}s.
+  /**
+   * Get the text of all lines in the buffer, without their line endings.
+   *
+   * @returns {Array} of `Strings`.
+   * @public
+   * @api-status Public
+   */
   getLines() {
     return this.buffer.getLines();
   }
 
-  // Public: Get the text of the last line of the buffer, without its line
-  // ending.
-  //
-  // Returns a {String}.
+  /**
+   * Get the text of the last line of the buffer, without its line
+   * ending.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   getLastLine() {
     return this.lineForRow(this.getLastRow());
   }
 
-  // Public: Get the text of the line at the given 0-indexed row, without its
-  // line ending.
-  //
-  // * `row` A {Number} representing the row.
-  //
-  // Returns a {String}.
+  /**
+   * Get the text of the line at the given 0-indexed row, without its
+   * line ending.
+   *
+   * @param row - A `Number` representing the row.
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   lineForRow(row) {
     return this.buffer.lineForRow(row);
   }
 
-  // Public: Get the line ending for the given 0-indexed row.
-  //
-  // * `row` A {Number} indicating the row.
-  //
-  // Returns a {String}. The returned newline is represented as a literal string:
-  // `'\n'`, `'\r\n'`, or `''` for the last line of the buffer, which
-  // doesn't end in a newline.
+  /**
+   * Get the line ending for the given 0-indexed row.
+   *
+   * @param row - A `Number` indicating the row.
+   * @returns {String} The returned newline is represented as a literal string: `'\n'`, `'\r\n'`, or `''` for the last line of the buffer, which doesn't end in a newline.
+   * @public
+   * @api-status Public
+   */
   lineEndingForRow(row) {
     return this.buffer.lineEndingForRow(row);
   }
 
-  // Public: Get the length of the line for the given 0-indexed row, without its
-  // line ending.
-  //
-  // * `row` A {Number} indicating the row.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the length of the line for the given 0-indexed row, without its
+   * line ending.
+   *
+   * @param row - A `Number` indicating the row.
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   lineLengthForRow(row) {
     return this.buffer.lineLengthForRow(row);
   }
 
-  // Public: Determine if the given row contains only whitespace.
-  //
-  // * `row` A {Number} representing a 0-indexed row.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine if the given row contains only whitespace.
+   *
+   * @param row - A `Number` representing a 0-indexed row.
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   isRowBlank(row) {
     return !/\S/.test(this.lineForRow(row));
   }
 
-  // Public: Given a row, find the first preceding row that's not blank.
-  //
-  // * `startRow` A {Number} identifying the row to start checking at.
-  //
-  // Returns a {Number} or `null` if there's no preceding non-blank row.
+  /**
+   * Given a row, find the first preceding row that's not blank.
+   *
+   * @param startRow - A `Number` identifying the row to start checking at.
+   * @returns {Number} or `null` if there's no preceding non-blank row.
+   * @public
+   * @api-status Public
+   */
   previousNonBlankRow(startRow) {
     if (startRow === 0) return null;
     startRow = Math.min(startRow, this.getLastRow());
@@ -798,11 +912,14 @@ class TextBuffer {
     return null;
   }
 
-  // Public: Given a row, find the next row that's not blank.
-  //
-  // * `startRow` A {Number} identifying the row to start checking at.
-  //
-  // Returns a {Number} or `null` if there's no next non-blank row.
+  /**
+   * Given a row, find the next row that's not blank.
+   *
+   * @param startRow - A `Number` identifying the row to start checking at.
+   * @returns {Number} or `null` if there's no next non-blank row.
+   * @public
+   * @api-status Public
+   */
   nextNonBlankRow(startRow) {
     const lastRow = this.getLastRow();
     if (startRow < lastRow) {
@@ -813,10 +930,11 @@ class TextBuffer {
     return null;
   }
 
-  // Extended: Return true if the buffer contains any astral-plane Unicode characters that
-  // are encoded as surrogate pairs.
-  //
-  // Returns a {Boolean}.
+  /**
+   * @returns {Boolean} Whether the buffer contains astral-plane Unicode characters encoded as surrogate pairs.
+   * @public
+   * @api-status Extended
+   */
   hasAstral() {
     if (this.cachedHasAstral !== null) {
       return this.cachedHasAstral;
@@ -826,23 +944,30 @@ class TextBuffer {
     }
   }
 
-  /*
-  Section: Mutating Text
-  */
+  /**
+   * @category Mutating Text
+   */
 
-  // Public: Replace the entire contents of the buffer with the given text.
-  //
-  // * `text` A {String}
-  //
-  // Returns a {Range} spanning the new buffer contents.
+  /**
+   * Replace the entire contents of the buffer with the given text.
+   *
+   * @param text - A `String`
+   * @returns {Range} spanning the new buffer contents.
+   * @public
+   * @api-status Public
+   */
   setText(text) {
     return this.setTextInRange(this.getRange(), text, { normalizeLineEndings: false });
   }
 
-  // Public: Replace the current buffer contents by applying a diff based on the
-  // given text.
-  //
-  // * `text` A {String} containing the new buffer contents.
+  /**
+   * Replace the current buffer contents by applying a diff based on the
+   * given text.
+   *
+   * @param text - A `String` containing the new buffer contents.
+   * @public
+   * @api-status Public
+   */
   setTextViaDiff(text) {
     const changes = this.buffer.diff(text).getChanges();
     if (changes.length === 0) return;
@@ -913,18 +1038,18 @@ class TextBuffer {
     });
   }
 
-  // Public: Set the text in the given range.
-  //
-  // * `range` A {Range}
-  // * `newText` A {String}
-  // * `options` (optional) {Object}
-  //   * `normalizeLineEndings` (optional) {Boolean} (default: true)
-  //   * `undo` (optional) *Deprecated* {String} 'skip' will cause this change
-  //     to be grouped with the preceding change for the purposes of undo and
-  //     redo. This property is deprecated. Call groupLastChanges() on the
-  //     buffer after instead.
-  //
-  // Returns the {Range} of the inserted text.
+  /**
+   * Set the text in the given range.
+   *
+   * @param range - A {@link Range}
+   * @param newText - A `String`
+   * @param {Object} [options]
+   * @param {Boolean} [options.normalizeLineEndings] - (default: true)
+   * @param [options.undo] - *Deprecated* `String` 'skip' will cause this change to be grouped with the preceding change for the purposes of undo and redo. This property is deprecated. Call groupLastChanges() on the buffer after instead.
+   * @returns {Range} of the inserted text.
+   * @public
+   * @api-status Public
+   */
   setTextInRange(range, newText, options) {
     let normalizeLineEndings, undo;
     if (options) ({ normalizeLineEndings, undo } = options);
@@ -969,32 +1094,33 @@ class TextBuffer {
     return newRange;
   }
 
-  // Public: Insert text at the given position.
-  //
-  // * `position` A {Point} representing the insertion location. The position is
-  //   clipped before insertion.
-  // * `text` A {String} representing the text to insert.
-  // * `options` (optional) {Object}
-  //   * `normalizeLineEndings` (optional) {Boolean} (default: true)
-  //   * `undo` (optional) *Deprecated* {String} 'skip' will skip the undo
-  //     system. This property is deprecated. Call groupLastChanges() on the
-  //     {TextBuffer} afterward instead.
-  //
-  // Returns the {Range} of the inserted text.
+  /**
+   * Insert text at the given position.
+   *
+   * @param position - A {@link Point} representing the insertion location. The position is clipped before insertion.
+   * @param text - A `String` representing the text to insert.
+   * @param {Object} [options]
+   * @param {Boolean} [options.normalizeLineEndings] - (default: true)
+   * @param [options.undo] - *Deprecated* `String` 'skip' will skip the undo system. This property is deprecated. Call groupLastChanges() on the {@link TextBuffer} afterward instead.
+   * @returns {Range} of the inserted text.
+   * @public
+   * @api-status Public
+   */
   insert(position, text, options) {
     return this.setTextInRange(new Range(position, position), text, options);
   }
 
-  // Public: Append text to the end of the buffer.
-  //
-  // * `text` A {String} representing the text to append.
-  // * `options` (optional) {Object}
-  //   * `normalizeLineEndings` (optional) {Boolean} (default: true)
-  //   * `undo` (optional) *Deprecated* {String} 'skip' will skip the undo
-  //     system. This property is deprecated. Call groupLastChanges() on the
-  //     {TextBuffer} afterward instead.
-  //
-  // Returns the {Range} of the inserted text
+  /**
+   * Append text to the end of the buffer.
+   *
+   * @param text - A `String` representing the text to append.
+   * @param {Object} [options]
+   * @param {Boolean} [options.normalizeLineEndings] - (default: true)
+   * @param [options.undo] - *Deprecated* `String` 'skip' will skip the undo system. This property is deprecated. Call groupLastChanges() on the {@link TextBuffer} afterward instead.
+   * @returns {Range} of the inserted text
+   * @public
+   * @api-status Public
+   */
   append(text, options) {
     return this.insert(this.getEndPosition(), text, options);
   }
@@ -1079,33 +1205,42 @@ class TextBuffer {
     }
   }
 
-  // Public: Delete the text in the given range.
-  //
-  // * `range` A {Range} in which to delete. The range is clipped before deleting.
-  //
-  // Returns an empty {Range} starting at the start of deleted range.
+  /**
+   * Delete the text in the given range.
+   *
+   * @param range - A {@link Range} in which to delete. The range is clipped before deleting.
+   * @returns {Range} empty {@link Range} starting at the start of deleted range.
+   * @public
+   * @api-status Public
+   */
   delete(range) {
     return this.setTextInRange(range, "");
   }
 
-  // Public: Delete the line associated with a specified 0-indexed row.
-  //
-  // * `row` A {Number} representing the row to delete.
-  //
-  // Returns the {Range} of the deleted text.
+  /**
+   * Delete the line associated with a specified 0-indexed row.
+   *
+   * @param row - A `Number` representing the row to delete.
+   * @returns {Range} of the deleted text.
+   * @public
+   * @api-status Public
+   */
   deleteRow(row) {
     return this.deleteRows(row, row);
   }
 
-  // Public: Delete the lines associated with the specified 0-indexed row range.
-  //
-  // If the row range is out of bounds, it will be clipped. If the `startRow` is
-  // greater than the `endRow`, they will be reordered.
-  //
-  // * `startRow` A {Number} representing the first row to delete.
-  // * `endRow` A {Number} representing the last row to delete, inclusive.
-  //
-  // Returns the {Range} of the deleted text.
+  /**
+   * Delete the lines associated with the specified 0-indexed row range.
+   *
+   * If the row range is out of bounds, it will be clipped. If the `startRow` is
+   * greater than the `endRow`, they will be reordered.
+   *
+   * @param startRow - A `Number` representing the first row to delete.
+   * @param endRow - A `Number` representing the last row to delete, inclusive.
+   * @returns {Range} of the deleted text.
+   * @public
+   * @api-status Public
+   */
   deleteRows(startRow, endRow) {
     let endPoint, startPoint;
     const lastRow = this.getLastRow();
@@ -1140,162 +1275,143 @@ class TextBuffer {
     return this.delete(new Range(startPoint, endPoint));
   }
 
-  /*
-  Section: Markers
-  */
+  /**
+   * @category Markers
+   */
 
-  // Public: Create a layer to contain a set of related markers.
-  //
-  // * `options` (optional) An {Object} containing the following keys:
-  //   * `maintainHistory` (optional) A {Boolean} indicating whether or not the
-  //     state of this layer should be restored on undo/redo operations. Defaults
-  //     to `false`.
-  //   * `persistent` (optional) A {Boolean} indicating whether or not this
-  //     marker layer should be serialized and deserialized along with the rest
-  //     of the buffer. Defaults to `false`. If `true`, the marker layer's id
-  //     will be maintained across the serialization boundary, allowing you to
-  //     retrieve it via {::getMarkerLayer}.
-  //   * `role` (optional) A {String} indicating role of this marker layer
-  //
-  // Returns a {MarkerLayer}.
+  /**
+   * Create a layer to contain a set of related markers.
+   *
+   * @param [options] - An `Object` containing the following keys:
+   * @param [options.maintainHistory] - A `Boolean` indicating whether or not the state of this layer should be restored on undo/redo operations. Defaults to `false`.
+   * @param [options.persistent] - A `Boolean` indicating whether or not this marker layer should be serialized and deserialized along with the rest of the buffer. Defaults to `false`. If `true`, the marker layer's id will be maintained across the serialization boundary, allowing you to retrieve it via {@link #getMarkerLayer}.
+   * @param [options.role] - A `String` indicating role of this marker layer
+   * @returns {MarkerLayer}
+   * @public
+   * @api-status Public
+   */
   addMarkerLayer(options) {
     const layer = new MarkerLayer(this, String(this.nextMarkerLayerId++), options);
     this.markerLayers[layer.id] = layer;
     return layer;
   }
 
-  // Public: Get a {MarkerLayer} by id.
-  //
-  // * `id` The id of the marker layer to retrieve.
-  //
-  // Returns a {MarkerLayer} or `undefined` if no layer exists with the given
-  // id.
+  /**
+   * Get a {@link MarkerLayer} by id.
+   *
+   * @param id - The id of the marker layer to retrieve.
+   * @returns {MarkerLayer} or `undefined` if no layer exists with the given id.
+   * @public
+   * @api-status Public
+   */
   getMarkerLayer(id) {
     return this.markerLayers[id];
   }
 
-  // Public: Get the default {MarkerLayer}.
-  //
-  // All {Marker} APIs not tied to an explicit layer interact with this default
-  // layer.
-  //
-  // Returns a {MarkerLayer}.
+  /**
+   * Get the default {@link MarkerLayer}.
+   *
+   * All `Marker` APIs not tied to an explicit layer interact with this default
+   * layer.
+   *
+   * @returns {MarkerLayer}
+   * @public
+   * @api-status Public
+   */
   getDefaultMarkerLayer() {
     return this.defaultMarkerLayer;
   }
 
-  // Public: Create a {Marker} with the given range in the default {MarkerLayer}.
-  // This marker will maintain its logical location as the buffer is changed,
-  // so if you mark a particular word, the marker will remain over that word
-  // even if the word's location in the buffer changes.
-  //
-  // * `range` A {Range} or range-compatible {Array}
-  // * `properties` (optional) A hash of key-value pairs to associate with the
-  //   marker. There are also reserved property names that have marker-specific
-  //   meaning.
-  //   * `reversed` (optional) {Boolean} Creates the marker in a reversed
-  //     orientation. (default: false)
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //   * `exclusive` (optional) {Boolean} indicating whether insertions at the
-  //     start or end of the marked range should be interpreted as happening
-  //     *outside* the marker. Defaults to `false`, except when using the
-  //     `inside` invalidation strategy or when the marker has no tail, in
-  //     which case it defaults to true. Explicitly assigning this option
-  //     overrides behavior in all circumstances.
-  //
-  // Returns a {Marker}.
+  /**
+   * Create a `Marker` with the given range in the default {@link MarkerLayer}.
+   * This marker will maintain its logical location as the buffer is changed,
+   * so if you mark a particular word, the marker will remain over that word
+   * even if the word's location in the buffer changes.
+   *
+   * @param range - A {@link Range} or range-compatible `Array`
+   * @param [properties] - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
+   * @param {Boolean} [properties.reversed] - Creates the marker in a reversed orientation. (default: false)
+   * @param {String} [properties.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @param {Boolean} [properties.exclusive] - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @returns {Marker}
+   * @public
+   * @api-status Public
+   */
   markRange(range, properties) {
     return this.defaultMarkerLayer.markRange(range, properties);
   }
 
-  // Public: Create a {Marker} at the given position with no tail in the default
-  // marker layer.
-  //
-  // * `position` {Point} or point-compatible {Array}
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //   * `exclusive` (optional) {Boolean} indicating whether insertions at the
-  //     start or end of the marked range should be interpreted as happening
-  //     *outside* the marker. Defaults to `false`, except when using the
-  //     `inside` invalidation strategy or when the marker has no tail, in
-  //     which case it defaults to true. Explicitly assigning this option
-  //     overrides behavior in all circumstances.
-  //
-  // Returns a {Marker}.
+  /**
+   * Create a `Marker` at the given position with no tail in the default
+   * marker layer.
+   *
+   * @param {Point} position - or point-compatible `Array`
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @param {Boolean} [options.exclusive] - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @returns {Marker}
+   * @public
+   * @api-status Public
+   */
   markPosition(position, options) {
     return this.defaultMarkerLayer.markPosition(position, options);
   }
 
-  // Public: Get all existing markers on the default marker layer.
-  //
-  // Returns an {Array} of {Marker}s.
+  /**
+   * Get all existing markers on the default marker layer.
+   *
+   * @returns {Array} of `Markers`.
+   * @public
+   * @api-status Public
+   */
   getMarkers() {
     return this.defaultMarkerLayer.getMarkers();
   }
 
-  // Public: Get an existing marker by its id from the default marker layer.
-  //
-  // * `id` {Number} id of the marker to retrieve
-  //
-  // Returns a {Marker}.
+  /**
+   * Get an existing marker by its id from the default marker layer.
+   *
+   * @param {Number} id - id of the marker to retrieve
+   * @returns {Marker}
+   * @public
+   * @api-status Public
+   */
   getMarker(id) {
     return this.defaultMarkerLayer.getMarker(id);
   }
 
-  // Public: Find markers conforming to the given parameters in the default
-  // marker layer.
-  //
-  // Markers are sorted based on their position in the buffer. If two markers
-  // start at the same position, the larger marker comes first.
-  //
-  // * `params` A hash of key-value pairs constraining the set of returned markers. You
-  //   can query against custom marker properties by listing the desired
-  //   key-value pairs here. In addition, the following keys are reserved and
-  //   have special semantics:
-  //   * `startPosition` Only include markers that start at the given {Point}.
-  //   * `endPosition` Only include markers that end at the given {Point}.
-  //   * `startsInRange` Only include markers that start inside the given {Range}.
-  //   * `endsInRange` Only include markers that end inside the given {Range}.
-  //   * `containsPoint` Only include markers that contain the given {Point}, inclusive.
-  //   * `containsRange` Only include markers that contain the given {Range}, inclusive.
-  //   * `startRow` Only include markers that start at the given row {Number}.
-  //   * `endRow` Only include markers that end at the given row {Number}.
-  //   * `intersectsRow` Only include markers that intersect the given row {Number}.
-  //
-  // Returns an {Array} of {Marker}s.
+  /**
+   * Find markers conforming to the given parameters in the default
+   * marker layer.
+   *
+   * Markers are sorted based on their position in the buffer. If two markers
+   * start at the same position, the larger marker comes first.
+   *
+   * @param params - A hash of key-value pairs constraining the set of returned markers. You can query against custom marker properties by listing the desired key-value pairs here. In addition, the following keys are reserved and have special semantics:
+   * @param params.startPosition - Only include markers that start at the given {@link Point}.
+   * @param params.endPosition - Only include markers that end at the given {@link Point}.
+   * @param params.startsInRange - Only include markers that start inside the given {@link Range}.
+   * @param params.endsInRange - Only include markers that end inside the given {@link Range}.
+   * @param params.containsPoint - Only include markers that contain the given {@link Point}, inclusive.
+   * @param params.containsRange - Only include markers that contain the given {@link Range}, inclusive.
+   * @param params.startRow - Only include markers that start at the given row `Number`.
+   * @param params.endRow - Only include markers that end at the given row `Number`.
+   * @param params.intersectsRow - Only include markers that intersect the given row `Number`.
+   * @returns {Array} of `Markers`.
+   * @public
+   * @api-status Public
+   */
   findMarkers(params) {
     return this.defaultMarkerLayer.findMarkers(params);
   }
 
-  // Public: Get the number of markers in the default marker layer.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the number of markers in the default marker layer.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   getMarkerCount() {
     return this.defaultMarkerLayer.getMarkerCount();
   }
@@ -1305,9 +1421,9 @@ class TextBuffer {
     if (marker) marker.destroy();
   }
 
-  /*
-  Section: History
-  */
+  /**
+   * @category History
+   */
 
   setHistoryProvider(historyProvider) {
     this.historyProvider = historyProvider;
@@ -1346,13 +1462,15 @@ class TextBuffer {
     return this.historyProvider;
   }
 
-  // Public: Undo the last operation. If a transaction is in progress, aborts it.
-  //
-  // * `options` (optional) {Object}
-  //   * `selectionsMarkerLayer` (optional)
-  //     Restore snapshot of selections marker layer to given selectionsMarkerLayer.
-  //
-  // Returns a {Boolean} of whether or not a change was made.
+  /**
+   * Undo the last operation. If a transaction is in progress, aborts it.
+   *
+   * @param {Object} [options]
+   * @param [options.selectionsMarkerLayer] - Restore snapshot of selections marker layer to given selectionsMarkerLayer.
+   * @returns {Boolean} of whether or not a change was made.
+   * @public
+   * @api-status Public
+   */
   undo(options) {
     const pop = this.historyProvider.undo();
     if (!pop) return false;
@@ -1372,13 +1490,15 @@ class TextBuffer {
     return true;
   }
 
-  // Public: Redo the last operation
-  //
-  // * `options` (optional) {Object}
-  //   * `selectionsMarkerLayer` (optional)
-  //     Restore snapshot of selections marker layer to given selectionsMarkerLayer.
-  //
-  // Returns a {Boolean} of whether or not a change was made.
+  /**
+   * Redo the last operation
+   *
+   * @param {Object} [options]
+   * @param [options.selectionsMarkerLayer] - Restore snapshot of selections marker layer to given selectionsMarkerLayer.
+   * @returns {Boolean} of whether or not a change was made.
+   * @public
+   * @api-status Public
+   */
   redo(options) {
     const pop = this.historyProvider.redo();
     if (!pop) return false;
@@ -1398,27 +1518,24 @@ class TextBuffer {
     return true;
   }
 
-  // Public: Batch multiple operations as a single undo/redo step.
-  //
-  // Any group of operations that are logically grouped from the perspective of
-  // undoing and redoing should be performed in a transaction. If you want to
-  // abort the transaction, call {::abortTransaction} to terminate the function's
-  // execution and revert any changes performed up to the abortion.
-  //
-  // * `options` (optional) {Object}
-  //   * `groupingInterval` (optional) The {Number} of milliseconds for which this
-  //     transaction should be considered 'open for grouping' after it begins. If
-  //     a transaction with a positive `groupingInterval` is committed while the
-  //     previous transaction is still open for grouping, the two transactions
-  //     are merged with respect to undo and redo.
-  //   * `selectionsMarkerLayer` (optional)
-  //     When provided, skip taking snapshot for other selections markerLayers except given one.
-  // * `groupingInterval` (optional) The {Number} of milliseconds for which this
-  //   transaction should be considered 'open for grouping' after it begins. If a
-  //   transaction with a positive `groupingInterval` is committed while the previous
-  //   transaction is still open for grouping, the two transactions are merged with
-  //   respect to undo and redo.
-  // * `fn` A {Function} to call inside the transaction.
+  /**
+   * Batch multiple operations as a single undo/redo step.
+   *
+   * Any group of operations that are logically grouped from the perspective of
+   * undoing and redoing should be performed in a transaction. If you want to
+   * abort the transaction, call {@link #abortTransaction} to terminate the function's
+   * execution and revert any changes performed up to the abortion.
+   *
+   * @param {Object} [options]
+   * @param {Number} [options.groupingInterval] - Milliseconds for which this
+   *   transaction remains open for grouping. A subsequent transaction committed
+   *   in that interval is merged with it for undo and redo.
+   * @param {MarkerLayer} [options.selectionsMarkerLayer] - Skip snapshots for
+   *   other selection marker layers.
+   * @param fn - A `Function` to call inside the transaction.
+   * @public
+   * @api-status Public
+   */
   transact(options, fn) {
     let groupingInterval, result, selectionsMarkerLayer;
     if (typeof options === "function") {
@@ -1462,26 +1579,38 @@ class TextBuffer {
     return result;
   }
 
-  // Public: Abort the currently running transaction
-  //
-  // Only intended to be called within the `fn` option to {::transact}
+  /**
+   * Abort the currently running transaction
+   *
+   * Only intended to be called within the `fn` option to {@link #transact}
+   *
+   * @public
+   * @api-status Public
+   */
   abortTransaction() {
     throw new TransactionAbortedError("Transaction aborted.");
   }
 
-  // Public: Clear the undo stack.
+  /**
+   * Clear the undo stack.
+   *
+   * @public
+   * @api-status Public
+   */
   clearUndoStack() {
     return this.historyProvider.clearUndoStack();
   }
 
-  // Public: Create a pointer to the current state of the buffer for use
-  // with {::revertToCheckpoint} and {::groupChangesSinceCheckpoint}.
-  //
-  // * `options` (optional) {Object}
-  //   * `selectionsMarkerLayer` (optional)
-  //     When provided, skip taking snapshot for other selections markerLayers except given one.
-  //
-  // Returns a checkpoint id value.
+  /**
+   * Create a pointer to the current state of the buffer for use
+   * with {@link #revertToCheckpoint} and {@link #groupChangesSinceCheckpoint}.
+   *
+   * @param {Object} [options]
+   * @param [options.selectionsMarkerLayer] - When provided, skip taking snapshot for other selections markerLayers except given one.
+   * @returns {Number} checkpoint id value.
+   * @public
+   * @api-status Public
+   */
   createCheckpoint(options) {
     return this.historyProvider.createCheckpoint({
       markers: this.createMarkerSnapshot(options?.selectionsMarkerLayer ?? undefined),
@@ -1489,20 +1618,21 @@ class TextBuffer {
     });
   }
 
-  // Public: Revert the buffer to the state it was in when the given
-  // checkpoint was created.
-  //
-  // The redo stack will be empty following this operation, so changes since the
-  // checkpoint will be lost. If the given checkpoint is no longer present in the
-  // undo history, no changes will be made to the buffer and this method will
-  // return `false`.
-  //
-  // * `checkpoint` {Number} id of the checkpoint to revert to.
-  // * `options` (optional) {Object}
-  //   * `selectionsMarkerLayer` (optional)
-  //     Restore snapshot of selections marker layer to given selectionsMarkerLayer.
-  //
-  // Returns a {Boolean} indicating whether the operation succeeded.
+  /**
+   * Revert the buffer to the state it was in when the given
+   * checkpoint was created.
+   *
+   * The redo stack will be empty following this operation, so changes since the
+   * checkpoint will be lost. If the given checkpoint is no longer present in the
+   * undo history, no changes will be made to the buffer and this method will
+   *
+   * @param {Number} checkpoint - id of the checkpoint to revert to.
+   * @param {Object} [options]
+   * @param [options.selectionsMarkerLayer] - Restore snapshot of selections marker layer to given selectionsMarkerLayer.
+   * @returns {Boolean} Whether the operation succeeded.
+   * @public
+   * @api-status Public
+   */
   revertToCheckpoint(checkpoint, options) {
     const truncated = this.historyProvider.revertToCheckpoint(checkpoint);
     if (!truncated) return false;
@@ -1522,18 +1652,20 @@ class TextBuffer {
     return true;
   }
 
-  // Public: Group all changes since the given checkpoint into a single
-  // transaction for purposes of undo/redo.
-  //
-  // If the given checkpoint is no longer present in the undo history, no
-  // grouping will be performed and this method will return `false`.
-  //
-  // * `checkpoint` {Number} id of the checkpoint to group changes since.
-  // * `options` (optional) {Object}
-  //   * `selectionsMarkerLayer` (optional)
-  //     When provided, skip taking snapshot for other selections markerLayers except given one.
-  //
-  // Returns a {Boolean} indicating whether the operation succeeded.
+  /**
+   * Group all changes since the given checkpoint into a single
+   * transaction for purposes of undo/redo.
+   *
+   * If the given checkpoint is no longer present in the undo history, no
+   * grouping will be performed and this method will return `false`.
+   *
+   * @param {Number} checkpoint - id of the checkpoint to group changes since.
+   * @param {Object} [options]
+   * @param [options.selectionsMarkerLayer] - When provided, skip taking snapshot for other selections markerLayers except given one.
+   * @returns {Boolean} indicating whether the operation succeeded.
+   * @public
+   * @api-status Public
+   */
   groupChangesSinceCheckpoint(checkpoint, options) {
     return this.historyProvider.groupChangesSinceCheckpoint(checkpoint, {
       markers: this.createMarkerSnapshot(options && options.selectionsMarkerLayer),
@@ -1541,31 +1673,37 @@ class TextBuffer {
     });
   }
 
-  // Public: Group the last two text changes for purposes of undo/redo.
-  //
-  // This operation will only succeed if there are two changes on the undo
-  // stack. It will not group past the beginning of an open transaction.
-  //
-  // Returns a {Boolean} indicating whether the operation succeeded.
+  /**
+   * Group the last two text changes for purposes of undo/redo.
+   *
+   * This operation will only succeed if there are two changes on the undo
+   * stack. It will not group past the beginning of an open transaction.
+   *
+   * @returns {Boolean} indicating whether the operation succeeded.
+   * @public
+   * @api-status Public
+   */
   groupLastChanges() {
     return this.historyProvider.groupLastChanges();
   }
 
-  // Public: Returns a list of changes since the given checkpoint.
-  //
-  // If the given checkpoint is no longer present in the undo history, this
-  // method will return an empty {Array}.
-  //
-  // * `checkpoint` {Number} id of the checkpoint to get changes since.
-  //
-  // Returns an {Array} of {Object}s with the following fields that summarize
-  //  the aggregated changes since the checkpoint. See *Working With Aggregated
-  // Changes* in the description of the {TextBuffer} class for details.
-  // * `oldRange` The {Range} of the deleted text in the text as it existed when
-  //   the checkpoint was created.
-  // * `newRange`: The {Range} of the inserted text in the current text.
-  // * `oldText`: A {String} representing the deleted text.
-  // * `newText`: A {String} representing the inserted text.
+  /**
+   *
+   * If the given checkpoint is no longer present in the undo history, this
+   * method will return an empty `Array`.
+   *
+   *
+   * * `oldRange` The {@link Range} of the deleted text in the text as it existed when
+   *   the checkpoint was created.
+   * * `newRange`: The {@link Range} of the inserted text in the current text.
+   * * `oldText`: A `String` representing the deleted text.
+   * * `newText`: A `String` representing the inserted text.
+   *
+   * @param {Number} checkpoint - id of the checkpoint to get changes since.
+   * @returns {Array<Object>} Changes since the checkpoint. See *Working With Aggregated Changes* in the {@link TextBuffer} class description for the fields.
+   * @public
+   * @api-status Public
+   */
   getChangesSinceCheckpoint(checkpoint) {
     const changes = this.historyProvider.getChangesSinceCheckpoint(checkpoint);
     if (changes) {
@@ -1575,31 +1713,32 @@ class TextBuffer {
     }
   }
 
-  /*
-  Section: Search And Replace
-  */
+  /**
+   * @category Search And Replace
+   */
 
-  // Public: Scan regular expression matches in the entire buffer, calling the
-  // given iterator function on each match.
-  //
-  // If you're programmatically modifying the results, you may want to try
-  // {::backwardsScan} to avoid tripping over your own changes.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `options` (optional) {Object}
-  //   * `leadingContextLineCount` {Number} default `0`; The number of lines before the
-  //      matched line to include in the results object.
-  //   * `trailingContextLineCount` {Number} default `0`; The number of lines after the
-  //      matched line to include in the results object.
-  // * `iterator` A {Function} that's called on each match with an {Object}
-  //   containing the following keys:
-  //   * `match` The current regular expression match.
-  //   * `matchText` A {String} with the text of the match.
-  //   * `range` The {Range} of the match.
-  //   * `stop` Call this {Function} to terminate the scan.
-  //   * `replace` Call this {Function} with a {String} to replace the match.
-  //   * `leadingContextLines` An {Array} with `leadingContextLineCount` lines before the match.
-  //   * `trailingContextLines` An {Array} with `trailingContextLineCount` lines after the match.
+  /**
+   * Scan regular expression matches in the entire buffer, calling the
+   * given iterator function on each match.
+   *
+   * If you're programmatically modifying the results, you may want to try
+   * {@link #backwardsScan} to avoid tripping over your own changes.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param {Object} [options]
+   * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
+   * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
+   * @param iterator - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param iterator.match - The current regular expression match.
+   * @param iterator.matchText - A `String` with the text of the match.
+   * @param iterator.range - The {@link Range} of the match.
+   * @param iterator.stop - Call this `Function` to terminate the scan.
+   * @param iterator.replace - Call this `Function` with a `String` to replace the match.
+   * @param iterator.leadingContextLines - An `Array` with `leadingContextLineCount` lines before the match.
+   * @param iterator.trailingContextLines - An `Array` with `trailingContextLineCount` lines after the match.
+   * @public
+   * @api-status Public
+   */
   scan(regex, options = {}, iterator) {
     if (_.isFunction(options)) {
       iterator = options;
@@ -1609,24 +1748,25 @@ class TextBuffer {
     return this.scanInRange(regex, this.getRange(), options, iterator);
   }
 
-  // Public: Scan regular expression matches in the entire buffer in reverse
-  // order, calling the given iterator function on each match.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `options` (optional) {Object}
-  //   * `leadingContextLineCount` {Number} default `0`; The number of lines before the
-  //      matched line to include in the results object.
-  //   * `trailingContextLineCount` {Number} default `0`; The number of lines after the
-  //      matched line to include in the results object.
-  // * `iterator` A {Function} that's called on each match with an {Object}
-  //   containing the following keys:
-  //   * `match` The current regular expression match.
-  //   * `matchText` A {String} with the text of the match.
-  //   * `range` The {Range} of the match.
-  //   * `stop` Call this {Function} to terminate the scan.
-  //   * `replace` Call this {Function} with a {String} to replace the match.
-  //   * `leadingContextLines` An {Array} with `leadingContextLineCount` lines before the match.
-  //   * `trailingContextLines` An {Array} with `trailingContextLineCount` lines after the match.
+  /**
+   * Scan regular expression matches in the entire buffer in reverse
+   * order, calling the given iterator function on each match.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param {Object} [options]
+   * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
+   * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
+   * @param iterator - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param iterator.match - The current regular expression match.
+   * @param iterator.matchText - A `String` with the text of the match.
+   * @param iterator.range - The {@link Range} of the match.
+   * @param iterator.stop - Call this `Function` to terminate the scan.
+   * @param iterator.replace - Call this `Function` with a `String` to replace the match.
+   * @param iterator.leadingContextLines - An `Array` with `leadingContextLineCount` lines before the match.
+   * @param iterator.trailingContextLines - An `Array` with `trailingContextLineCount` lines after the match.
+   * @public
+   * @api-status Public
+   */
   backwardsScan(regex, options = {}, iterator) {
     if (_.isFunction(options)) {
       iterator = options;
@@ -1636,25 +1776,26 @@ class TextBuffer {
     return this.backwardsScanInRange(regex, this.getRange(), options, iterator);
   }
 
-  // Public: Scan regular expression matches in a given range , calling the given
-  // iterator function on each match.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} in which to search.
-  // * `options` (optional) {Object}
-  //   * `leadingContextLineCount` {Number} default `0`; The number of lines before the
-  //      matched line to include in the results object.
-  //   * `trailingContextLineCount` {Number} default `0`; The number of lines after the
-  //      matched line to include in the results object.
-  // * `callback` A {Function} that's called on each match with an {Object}
-  //   containing the following keys:
-  //   * `match` The current regular expression match.
-  //   * `matchText` A {String} with the text of the match.
-  //   * `range` The {Range} of the match.
-  //   * `stop` Call this {Function} to terminate the scan.
-  //   * `replace` Call this {Function} with a {String} to replace the match.
-  //   * `leadingContextLines` An {Array} with `leadingContextLineCount` lines before the match.
-  //   * `trailingContextLines` An {Array} with `trailingContextLineCount` lines after the match.
+  /**
+   * Scan regular expression matches in a given range , calling the given
+   * iterator function on each match.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} in which to search.
+   * @param {Object} [options]
+   * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
+   * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
+   * @param callback - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param callback.match - The current regular expression match.
+   * @param callback.matchText - A `String` with the text of the match.
+   * @param callback.range - The {@link Range} of the match.
+   * @param callback.stop - Call this `Function` to terminate the scan.
+   * @param callback.replace - Call this `Function` with a `String` to replace the match.
+   * @param callback.leadingContextLines - An `Array` with `leadingContextLineCount` lines before the match.
+   * @param callback.trailingContextLines - An `Array` with `trailingContextLineCount` lines after the match.
+   * @public
+   * @api-status Public
+   */
   scanInRange(regex, range, options = {}, callback, reverse = false) {
     if (_.isFunction(options)) {
       reverse = callback;
@@ -1701,23 +1842,24 @@ class TextBuffer {
     }
   }
 
-  // Public: Scan regular expression matches in a given range in reverse order,
-  // calling the given iterator function on each match.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} in which to search.
-  // * `options` (optional) {Object}
-  //   * `leadingContextLineCount` {Number} default `0`; The number of lines before the
-  //      matched line to include in the results object.
-  //   * `trailingContextLineCount` {Number} default `0`; The number of lines after the
-  //      matched line to include in the results object.
-  // * `iterator` A {Function} that's called on each match with an {Object}
-  //   containing the following keys:
-  //   * `match` The current regular expression match.
-  //   * `matchText` A {String} with the text of the match.
-  //   * `range` The {Range} of the match.
-  //   * `stop` Call this {Function} to terminate the scan.
-  //   * `replace` Call this {Function} with a {String} to replace the match.
+  /**
+   * Scan regular expression matches in a given range in reverse order,
+   * calling the given iterator function on each match.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} in which to search.
+   * @param {Object} [options]
+   * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
+   * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
+   * @param iterator - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param iterator.match - The current regular expression match.
+   * @param iterator.matchText - A `String` with the text of the match.
+   * @param iterator.range - The {@link Range} of the match.
+   * @param iterator.stop - Call this `Function` to terminate the scan.
+   * @param iterator.replace - Call this `Function` with a `String` to replace the match.
+   * @public
+   * @api-status Public
+   */
   backwardsScanInRange(regex, range, options = {}, iterator) {
     if (_.isFunction(options)) {
       iterator = options;
@@ -1727,12 +1869,15 @@ class TextBuffer {
     return this.scanInRange(regex, range, options, iterator, true);
   }
 
-  // Public: Replace all regular expression matches in the entire buffer.
-  //
-  // * `regex` A {RegExp} representing the matches to be replaced.
-  // * `replacementText` A {String} representing the text to replace each match.
-  //
-  // Returns a {Number} representing the number of replacements made.
+  /**
+   * Replace all regular expression matches in the entire buffer.
+   *
+   * @param regex - A `RegExp` representing the matches to be replaced.
+   * @param replacementText - A `String` representing the text to replace each match.
+   * @returns {Number} representing the number of replacements made.
+   * @public
+   * @api-status Public
+   */
   replace(regex, replacementText) {
     const doSave = !this.isModified();
     let replacements = 0;
@@ -1751,96 +1896,117 @@ class TextBuffer {
     return replacements;
   }
 
-  // Experimental: Asynchronously search the buffer for a given regex.
-  //
-  // * `regex` A {RegExp} to search for.
-  //
-  // Returns a {Promise} that resolves with the first {Range} of text that
-  // matches the given regex.
+  /**
+   * Asynchronously search the buffer for a given regex.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @returns {Promise} that resolves with the first {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   find(regex) {
     return this.buffer.find(regex);
   }
 
-  // Experimental: Asynchronously search a given range of the buffer for a given regex.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} to search within.
-  //
-  // Returns a {Promise} that resolves with the first {Range} of text that
-  // matches the given regex.
+  /**
+   * Asynchronously search a given range of the buffer for a given regex.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} to search within.
+   * @returns {Promise} that resolves with the first {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   findInRange(regex, range) {
     return this.buffer.findInRange(regex, range);
   }
 
-  // Experimental: Search the buffer for a given regex.
-  //
-  // * `regex` A {RegExp} to search for.
-  //
-  // Returns the first {Range} of text that matches the given regex.
+  /**
+   * Search the buffer for a given regex.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @returns {Range} first {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   findSync(regex) {
     return this.buffer.findSync(regex);
   }
 
-  // Experimental: Search a given range of the buffer for a given regex.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} to search within.
-  //
-  // Returns the first {Range} of text that matches the given regex.
+  /**
+   * Search a given range of the buffer for a given regex.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} to search within.
+   * @returns {Range} first {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   findInRangeSync(regex, range) {
     return this.buffer.findInRangeSync(regex, range);
   }
 
-  // Experimental: Asynchronously search the buffer for a given regex.
-  //
-  // * `regex` A {RegExp} to search for.
-  //
-  // Returns a {Promise} that resolves with an {Array} containing every
-  // {Range} of text that matches the given regex.
+  /**
+   * Asynchronously search the buffer for a given regex.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @returns {Promise} that resolves with an `Array` containing every {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   findAll(regex) {
     return this.buffer.findAll(regex);
   }
 
-  // Experimental: Asynchronously search a given range of the buffer for a given regex.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} to search within.
-  //
-  // Returns a {Promise} that resolves with an {Array} containing every
-  // {Range} of text that matches the given regex.
+  /**
+   * Asynchronously search a given range of the buffer for a given regex.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} to search within.
+   * @returns {Promise} that resolves with an `Array` containing every {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   findAllInRange(regex, range) {
     return this.buffer.findAllInRange(regex, range);
   }
 
-  // Experimental: Run an regexp search on the buffer
-  //
-  // * `regex` A {RegExp} to search for.
-  //
-  // Returns an {Array} containing every {Range} of text that matches the given
-  // regex.
+  /**
+   * Run an regexp search on the buffer
+   *
+   * @param regex - A `RegExp` to search for.
+   * @returns {Array} containing every {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   findAllSync(regex) {
     return this.buffer.findAllSync(regex);
   }
 
-  // Experimental: Search a given range of the buffer for a given regex.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} to search within.
-  //
-  // Returns an {Array} containing every {Range} of text that matches the given
-  // regex.
+  /**
+   * Search a given range of the buffer for a given regex.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} to search within.
+   * @returns {Array} containing every {@link Range} of text that matches the given regex.
+   * @public
+   * @api-status Experimental
+   */
   findAllInRangeSync(regex, range) {
     return this.buffer.findAllInRangeSync(regex, range);
   }
 
-  // Experimental: Search a given range of the buffer for a given regex. Store
-  // the matching ranges in the given marker layer.
-  //
-  // * `markerLayer` A {MarkerLayer} to populate.
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} to search within.
-  //
-  // Returns an {Array} of {Marker}s representing the matches.
+  /**
+   * Search a given range of the buffer for a given regex. Store
+   * the matching ranges in the given marker layer.
+   *
+   * @param markerLayer - A {@link MarkerLayer} to populate.
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} to search within.
+   * @returns {Array} of `Markers` representing the matches.
+   * @public
+   * @api-status Experimental
+   */
   findAndMarkAllInRangeSync(markerLayer, regex, range, options = {}) {
     const startId = this.nextMarkerId;
     const exclusive = options.invalidate === "inside" || !options.tailed;
@@ -1860,93 +2026,125 @@ class TextBuffer {
     return markers;
   }
 
-  // Experimental: Find fuzzy match suggestions in the buffer
-  //
-  // * `query` A {String} to search for.
-  // * `extraWordCharacters` A {String} of additional word characters to use when
-  //    deciphering word boundaries
-  // * `maxCount` A {Number} that limits the number of matches returned
-  //
-  // Returns an {Array} containing every {SubsequenceMatch} of text that matches the given
-  // query.
+  /**
+   * Find fuzzy match suggestions in the buffer
+   *
+   * @param query - A `String` to search for.
+   * @param extraWordCharacters - A `String` of additional word characters to use when deciphering word boundaries
+   * @param maxCount - A `Number` that limits the number of matches returned
+   * @returns {Array} containing every `SubsequenceMatch` of text that matches the given query.
+   * @public
+   * @api-status Experimental
+   */
   findWordsWithSubsequence(query, extraWordCharacters, maxCount) {
     return this.buffer.findWordsWithSubsequence(query, extraWordCharacters, maxCount);
   }
 
-  // Experimental: Find fuzzy match suggestions in the buffer in a given range
-  //
-  // * `query` A {String} to search for.
-  // * `extraWordCharacters` A {String} of additional word characters to use when
-  //    deciphering word boundaries
-  // * `maxCount` A {Number} that limits the number of matches returned
-  // * `range` A {Range} that specifies the portion of the buffer to search
-  //
-  // Returns an {Array} containing every {SubsequenceMatch} of text that matches the given
-  // query in the given range.
+  /**
+   * Find fuzzy match suggestions in the buffer in a given range
+   *
+   * @param query - A `String` to search for.
+   * @param extraWordCharacters - A `String` of additional word characters to use when deciphering word boundaries
+   * @param maxCount - A `Number` that limits the number of matches returned
+   * @param range - A {@link Range} that specifies the portion of the buffer to search
+   * @returns {Array} containing every `SubsequenceMatch` of text that matches the given query in the given range.
+   * @public
+   * @api-status Experimental
+   */
   findWordsWithSubsequenceInRange(query, extraWordCharacters, maxCount, range) {
     return this.buffer.findWordsWithSubsequenceInRange(query, extraWordCharacters, maxCount, range);
   }
 
-  /*
-  Section: Buffer Range Details
-  */
+  /**
+   * @category Buffer Range Details
+   */
 
-  // Public: Get the range spanning from `[0, 0]` to {::getEndPosition}.
-  //
-  // Returns a {Range}.
+  /**
+   * Get the range spanning from `[0, 0]` to {@link #getEndPosition}.
+   *
+   * @returns {Range}
+   * @public
+   * @api-status Public
+   */
   getRange() {
     return new Range(this.getFirstPosition(), this.getEndPosition());
   }
 
-  // Public: Get the number of lines in the buffer.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the number of lines in the buffer.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   getLineCount() {
     return this.buffer.getLineCount();
   }
 
-  // Public: Get the last 0-indexed row in the buffer.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the last 0-indexed row in the buffer.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   getLastRow() {
     return this.getLineCount() - 1;
   }
 
-  // Public: Get the first position in the buffer, which is always `[0, 0]`.
-  //
-  // Returns a {Point}.
+  /**
+   * Get the first position in the buffer, which is always `[0, 0]`.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Public
+   */
   getFirstPosition() {
     return new Point(0, 0);
   }
 
-  // Public: Get the maximal position in the buffer, where new text would be
-  // appended.
-  //
-  // Returns a {Point}.
+  /**
+   * Get the maximal position in the buffer, where new text would be
+   * appended.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Public
+   */
   getEndPosition() {
     return Point.fromObject(this.buffer.getExtent());
   }
 
-  // Public: Get the length of the buffer's text.
+  /**
+   * Get the length of the buffer's text.
+   *
+   * @public
+   * @api-status Public
+   */
   getLength() {
     return this.buffer.getLength();
   }
 
-  // Public: Get the length of the buffer in characters.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the length of the buffer in characters.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   getMaxCharacterIndex() {
     return this.characterIndexForPosition(Point.INFINITY);
   }
 
-  // Public: Get the range for the given row
-  //
-  // * `row` A {Number} representing a 0-indexed row.
-  // * `includeNewline` A {Boolean} indicating whether or not to include the
-  //   newline, which results in a range that extends to the start
-  //   of the next line. (default: `false`)
-  //
-  // Returns a {Range}.
+  /**
+   * Get the range for the given row
+   *
+   * @param row - A `Number` representing a 0-indexed row.
+   * @param includeNewline - A `Boolean` indicating whether or not to include the newline, which results in a range that extends to the start of the next line. (default: `false`)
+   * @returns {Range}
+   * @public
+   * @api-status Public
+   */
   rangeForRow(row, includeNewline) {
     row = Math.max(row, 0);
     row = Math.min(row, this.getLastRow());
@@ -1957,39 +2155,47 @@ class TextBuffer {
     }
   }
 
-  // Public: Convert a position in the buffer in row/column coordinates to an
-  // absolute character offset, inclusive of line ending characters.
-  //
-  // The position is clipped prior to translating.
-  //
-  // * `position` A {Point} or point-compatible {Array}.
-  //
-  // Returns a {Number}.
+  /**
+   * Convert a position in the buffer in row/column coordinates to an
+   * absolute character offset, inclusive of line ending characters.
+   *
+   * The position is clipped prior to translating.
+   *
+   * @param position - A {@link Point} or point-compatible `Array`.
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   characterIndexForPosition(position) {
     return this.buffer.characterIndexForPosition(Point.fromObject(position));
   }
 
-  // Public: Convert an absolute character offset, inclusive of newlines, to a
-  // position in the buffer in row/column coordinates.
-  //
-  // The offset is clipped prior to translating.
-  //
-  // * `offset` A {Number}.
-  //
-  // Returns a {Point}.
+  /**
+   * Convert an absolute character offset, inclusive of newlines, to a
+   * position in the buffer in row/column coordinates.
+   *
+   * The offset is clipped prior to translating.
+   *
+   * @param offset - A `Number`.
+   * @returns {Point}
+   * @public
+   * @api-status Public
+   */
   positionForCharacterIndex(offset) {
     return Point.fromObject(this.buffer.positionForCharacterIndex(offset));
   }
 
-  // Public: Clip the given range so it starts and ends at valid positions.
-  //
-  // For example, the position `[1, 100]` is out of bounds if the line at row 1 is
-  // only 10 characters long, and it would be clipped to `(1, 10)`.
-  //
-  // * `range` A {Range} or range-compatible {Array} to clip.
-  //
-  // Returns the given {Range} if it is already in bounds, or a new clipped
-  // {Range} if the given range is out-of-bounds.
+  /**
+   * Clip the given range so it starts and ends at valid positions.
+   *
+   * For example, the position `[1, 100]` is out of bounds if the line at row 1 is
+   * only 10 characters long, and it would be clipped to `(1, 10)`.
+   *
+   * @param range - A {@link Range} or range-compatible `Array` to clip.
+   * @returns {Range} given {@link Range} if it is already in bounds, or a new clipped {@link Range} if the given range is out-of-bounds.
+   * @public
+   * @api-status Public
+   */
   clipRange(range) {
     range = Range.fromObject(range);
     const start = this.clipPosition(range.start);
@@ -2001,15 +2207,17 @@ class TextBuffer {
     }
   }
 
-  // Public: Clip the given point so it is at a valid position in the buffer.
-  //
-  // For example, the position (1, 100) is out of bounds if the line at row 1 is
-  // only 10 characters long, and it would be clipped to (1, 10)
-  //
-  // * `position` A {Point} or point-compatible {Array}.
-  //
-  // Returns a new {Point} if the given position is invalid, otherwise returns
-  // the given position.
+  /**
+   * Clip the given point so it is at a valid position in the buffer.
+   *
+   * For example, the position (1, 100) is out of bounds if the line at row 1 is
+   * only 10 characters long, and it would be clipped to (1, 10)
+   *
+   * @param position - A {@link Point} or point-compatible `Array`.
+   * @returns {Point} new {@link Point} if the given position is invalid, otherwise returns the given position.
+   * @public
+   * @api-status Public
+   */
   clipPosition(position, options) {
     position = Point.fromObject(position);
     Point.assertValid(position);
@@ -2037,22 +2245,29 @@ class TextBuffer {
     }
   }
 
-  /*
-  Section: Buffer Operations
-  */
+  /**
+   * @category Buffer Operations
+   */
 
-  // Public: Save the buffer.
-  //
-  // Returns a {Promise} that resolves when the save has completed.
+  /**
+   * Save the buffer.
+   *
+   * @returns {Promise} that resolves when the save has completed.
+   * @public
+   * @api-status Public
+   */
   save() {
     return this.saveTo(this.file);
   }
 
-  // Public: Save the buffer at a specific path.
-  //
-  // * `filePath` The path to save at.
-  //
-  // Returns a {Promise} that resolves when the save has completed.
+  /**
+   * Save the buffer at a specific path.
+   *
+   * @param filePath - The path to save at.
+   * @returns {Promise} that resolves when the save has completed.
+   * @public
+   * @api-status Public
+   */
   saveAs(filePath) {
     if (!filePath) {
       throw new Error("Can't save buffer with no file path");
@@ -2126,16 +2341,20 @@ class TextBuffer {
     return this;
   }
 
-  // Public: Reload the file's content from disk.
-  //
-  // Returns a {Promise} that resolves when the load is complete.
+  /**
+   * Reload the file's content from disk.
+   *
+   * @returns {Promise} that resolves when the load is complete.
+   * @public
+   * @api-status Public
+   */
   reload() {
     return this.load({ discardChanges: true, internal: true });
   }
 
-  /*
-  Section: Display Layers
-  */
+  /**
+   * @category Display Layers
+   */
 
   addDisplayLayer(params) {
     const id = this.nextDisplayLayerId++;
@@ -2157,35 +2376,38 @@ class TextBuffer {
   Language Modes
   */
 
-  // Experimental: Get the language mode associated with this buffer.
-  //
-  // Returns a language mode {Object} (See {TextBuffer::setLanguageMode} for its interface).
+  /**
+   * Get the language mode associated with this buffer.
+   *
+   * @returns {Object} language mode `Object` (See {@link TextBuffer#setLanguageMode} for its interface).
+   * @public
+   * @api-status Experimental
+   */
   getLanguageMode() {
     return this.languageMode;
   }
 
-  // Experimental: Set the language mode for this buffer.
-  //
-  // * `languageMode` - an {Object} with the following methods:
-  //   * `getLanguageId` - A {Function} that returns a {String} identifying the language.
-  //   * `bufferDidChange` - A {Function} that is called whenever the buffer changes.
-  //     * `change` An {Object} with the following fields:
-  //       * `oldText` {String} The deleted text
-  //       * `oldRange` The {Range} of the deleted text before the change took place.
-  //       * `newText` {String} The inserted text
-  //       * `newRange` The {Range} of the inserted text after the change took place.
-  //   * `onDidChangeHighlighting` - A {Function} that takes a callback {Function} and calls it with
-  //     a {Range} argument whenever the syntax of a given part of the buffer is updated.
-  //   * `buildHighlightIterator` - A function that returns an iterator object with the following
-  //     methods:
-  //     * `seek` A {Function} that takes a {Point} and resets the iterator to that position.
-  //     * `moveToSuccessor` A {Function} that advances the iterator to the next token
-  //     * `getPosition` A {Function} that returns a {Point} representing the iterator's current
-  //       position in the buffer.
-  //     * `getCloseTags` A {Function} that returns an {Array} of {Number}s representing tokens
-  //        that end at the current position.
-  //     * `getOpenTags` A {Function} that returns an {Array} of {Number}s representing tokens
-  //        that begin at the current position.
+  /**
+   * Set the language mode for this buffer.
+   *
+   * @param languageMode - an `Object` with the following methods:
+   * @param languageMode.getLanguageId - A `Function` that returns a `String` identifying the language.
+   * @param languageMode.bufferDidChange - A `Function` that is called whenever the buffer changes.
+   * @param languageMode.bufferDidChange.change - An `Object` with the following fields:
+   * @param {String} languageMode.bufferDidChange.change.oldText - The deleted text
+   * @param languageMode.bufferDidChange.change.oldRange - The {@link Range} of the deleted text before the change took place.
+   * @param {String} languageMode.bufferDidChange.change.newText - The inserted text
+   * @param languageMode.bufferDidChange.change.newRange - The {@link Range} of the inserted text after the change took place.
+   * @param languageMode.onDidChangeHighlighting - A `Function` that takes a callback `Function` and calls it with a {@link Range} argument whenever the syntax of a given part of the buffer is updated.
+   * @param languageMode.buildHighlightIterator - A function that returns an iterator object with the following methods:
+   * @param languageMode.buildHighlightIterator.seek - A `Function` that takes a {@link Point} and resets the iterator to that position.
+   * @param languageMode.buildHighlightIterator.moveToSuccessor - A `Function` that advances the iterator to the next token
+   * @param languageMode.buildHighlightIterator.getPosition - A `Function` that returns a {@link Point} representing the iterator's current position in the buffer.
+   * @param languageMode.buildHighlightIterator.getCloseTags - A `Function` that returns an `Array` of `Numbers` representing tokens that end at the current position.
+   * @param languageMode.buildHighlightIterator.getOpenTags - A `Function` that returns an `Array` of `Numbers` representing tokens that begin at the current position.
+   * @public
+   * @api-status Experimental
+   */
   setLanguageMode(languageMode) {
     if (languageMode !== this.languageMode) {
       const oldLanguageMode = this.languageMode;
@@ -2204,24 +2426,25 @@ class TextBuffer {
     }
   }
 
-  // Experimental: Call the given callback whenever the buffer's language mode changes.
-  //
-  // * `callback` - A {Function} to call when the language mode changes.
-  //   * `languageMode` - The buffer's new language mode {Object}. See {TextBuffer::setLanguageMode}
-  //     for its interface.
-  //   * `oldLanguageMode` - The buffer's old language mode {Object}. See {TextBuffer::setLanguageMode}
-  //     for its interface.
-  //
-  // Returns a {Disposable} that can be used to stop the callback from being called.
+  /**
+   * Call the given callback whenever the buffer's language mode changes.
+   *
+   * @param callback - A `Function` to call when the language mode changes.
+   * @param callback.languageMode - The buffer's new language mode `Object`. See {@link TextBuffer#setLanguageMode} for its interface.
+   * @param callback.oldLanguageMode - The buffer's old language mode `Object`. See {@link TextBuffer#setLanguageMode} for its interface.
+   * @returns {Disposable} that can be used to stop the callback from being called.
+   * @public
+   * @api-status Experimental
+   */
   onDidChangeLanguageMode(callback) {
     return this.emitter.on("did-change-language-mode", ({ newMode, oldMode }) =>
       callback(newMode, oldMode),
     );
   }
 
-  /*
-  Section: Private Utility Methods
-  */
+  /**
+   * @category Private Utility Methods
+   */
   registerSelectionsMarkerLayer(markerLayer) {
     return this.selectionsMarkerLayerIds.add(markerLayer.id);
   }
@@ -2610,11 +2833,11 @@ class TextBuffer {
     }
   }
 
-  // Experimental: Return a {Promise} that resolves once this buffer's file
-  // watcher has been armed and is delivering external-change events. Watching is
-  // served asynchronously by the file-watcher worker; this lets callers wait for
-  // it before relying on external-change detection. Resolves immediately when the
-  // buffer has no path or a custom data source that watches synchronously.
+  /**
+   * @returns {Promise} that resolves once this buffer's file watcher has been armed and is delivering external-change events. Watching is served asynchronously by the file-watcher worker; this lets callers wait for it before relying on external-change detection. Resolves immediately when the buffer has no path or a custom data source that watches synchronously.
+   * @public
+   * @api-status Experimental
+   */
   getFileWatchStartPromise() {
     return this.fileWatchStartPromise || Promise.resolve();
   }
@@ -2728,9 +2951,9 @@ class TextBuffer {
 
   // Identifies if the buffer belongs to multiple editors.
   //
-  // For example, if the {EditorView} was split.
+  // For example, if the `EditorView` was split.
   //
-  // Returns a {Boolean}.
+  // Returns a `Boolean`.
   hasMultipleEditors() {
     return this.refcount > 1;
   }
@@ -2761,9 +2984,9 @@ class TextBuffer {
     }
   }
 
-  /*
-  Section: Private History Delegate Methods
-  */
+  /**
+   * @category Private History Delegate Methods
+   */
 
   invertChange(change) {
     return Object.freeze({
@@ -2802,9 +3025,9 @@ class TextBuffer {
     return MarkerLayer.deserializeSnapshot(snapshot);
   }
 
-  /*
-  Section: Private MarkerLayer Delegate Methods
-  */
+  /**
+   * @category Private MarkerLayer Delegate Methods
+   */
 
   markerLayerDestroyed(markerLayer) {
     return delete this.markerLayers[markerLayer.id];

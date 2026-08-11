@@ -1,31 +1,48 @@
 const getWindowLoadSettings = require("./get-window-load-settings");
 const StartupTime = require("./startup-time");
 
-// Public: Operations on the Lumine window hosting the current renderer.
-//
-// BrowserWindow objects never cross the process boundary. State is returned as
-// plain objects and every operation which reaches the main process is async.
+/**
+ * Operations on the Lumine window hosting the current renderer.
+ *
+ * BrowserWindow objects never cross the process boundary. State is returned as
+ * plain objects and every operation which reaches the main process is async.
+ *
+ * @public
+ * @api-status Public
+ */
 class WindowService {
   constructor(applicationDelegate, lumineEnvironment) {
     this.applicationDelegate = applicationDelegate;
     this.lumineEnvironment = lumineEnvironment;
   }
 
-  // Public: Return the stable numeric id of the current Lumine window.
+  /**
+   * @returns {Number} stable numeric id of the current Lumine window.
+   * @public
+   * @api-status Public
+   */
   getId() {
     return getWindowLoadSettings().windowId;
   }
 
-  // Extended: Subscribe before the current editor window is destroyed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Subscribe before the current editor window is destroyed.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onWillDestroy(callback) {
     return this.lumineEnvironment.emitter.on("will-destroy", callback);
   }
 
-  // Extended: Wait until the current editor window has finished loading.
-  //
-  // Returns a {Promise} resolving to the load time in milliseconds.
+  /**
+   * Wait until the current editor window has finished loading.
+   *
+   * @returns {Promise} resolving to the load time in milliseconds.
+   * @public
+   * @api-status Extended
+   */
   whenLoaded() {
     if (this.lumineEnvironment.loadTime != null) {
       return Promise.resolve(this.lumineEnvironment.loadTime);
@@ -33,277 +50,415 @@ class WindowService {
     return new Promise((resolve) => this.lumineEnvironment.emitter.once("window-loaded", resolve));
   }
 
-  // Public: Determine whether the current window is in development mode.
+  /**
+   * Determine whether the current window is in development mode.
+   *
+   * @public
+   * @api-status Public
+   */
   isDevMode() {
     return Boolean(getWindowLoadSettings().devMode);
   }
 
-  // Public: Determine whether the current window is in safe mode.
+  /**
+   * Determine whether the current window is in safe mode.
+   *
+   * @public
+   * @api-status Public
+   */
   isSafeMode() {
     return Boolean(getWindowLoadSettings().safeMode);
   }
 
-  // Public: Determine whether the current window is running specs.
+  /**
+   * Determine whether the current window is running specs.
+   *
+   * @public
+   * @api-status Public
+   */
   isSpecMode() {
     return Boolean(getWindowLoadSettings().isSpec);
   }
 
-  // Extended: Determine whether the current window is running headlessly.
+  /**
+   * Determine whether the current window is running headlessly.
+   *
+   * @public
+   * @api-status Extended
+   */
   isHeadless() {
     return Boolean(getWindowLoadSettings().headless);
   }
 
-  // Extended: Return the paths supplied when the current window was opened.
+  /**
+   * @returns {Array<String>} paths supplied when the current window was opened.
+   * @public
+   * @api-status Extended
+   */
   getInitialPaths() {
     return [...(getWindowLoadSettings().initialPaths || [])];
   }
 
-  // Public: Return the completed load time for the current window.
-  //
-  // Returns a {Number} in milliseconds, or `null` before loading completes.
+  /**
+   * @returns {Number|null} The completed window load time in milliseconds, or `null` before loading completes.
+   * @public
+   * @api-status Public
+   */
   getLoadTime() {
     return this.lumineEnvironment.loadTime;
   }
 
-  // Public: Return startup timing markers for the current window.
+  /**
+   * @returns {Object} startup timing markers for the current window.
+   * @public
+   * @api-status Public
+   */
   getStartupMarkers() {
     return StartupTime.exportData()?.markers || [];
   }
 
-  // Public: Return a snapshot of the current window state.
-  //
-  // Returns a {Promise} resolving to a serializable {Object} with `id`,
-  // `position`, `size`, `maximized`, `fullScreen`, and `visible` fields.
+  /**
+   * @returns {Promise<Object>} A serializable state snapshot with `id`, `position`, `size`, `maximized`, `fullScreen`, and `visible` fields.
+   * @public
+   * @api-status Public
+   */
   getState() {
     return this.applicationDelegate.invokeWindow("getState");
   }
 
-  // Public: Return the current content size.
-  //
-  // Returns a {Promise} resolving to `{width, height}`.
+  /**
+   * @returns {Promise<Object>} The current content size as `{width, height}`.
+   * @public
+   * @api-status Public
+   */
   getSize() {
     return this.applicationDelegate.invokeWindow("getSize");
   }
 
-  // Public: Set the content size.
-  //
-  // * `width` A finite {Number} in pixels.
-  // * `height` A finite {Number} in pixels.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Set the content size.
+   *
+   * @param width - A finite `Number` in pixels.
+   * @param height - A finite `Number` in pixels.
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   setSize(width, height) {
     return this.applicationDelegate.invokeWindow("setSize", width, height);
   }
 
-  // Public: Return the current screen position.
-  //
-  // Returns a {Promise} resolving to `{x, y}`.
+  /**
+   * @returns {Promise<Object>} The current screen position as `{x, y}`.
+   * @public
+   * @api-status Public
+   */
   getPosition() {
     return this.applicationDelegate.invokeWindow("getPosition");
   }
 
-  // Public: Set the current screen position.
-  //
-  // * `x` A finite {Number} in pixels.
-  // * `y` A finite {Number} in pixels.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Set the current screen position.
+   *
+   * @param x - A finite `Number` in pixels.
+   * @param y - A finite `Number` in pixels.
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   setPosition(x, y) {
     return this.applicationDelegate.invokeWindow("setPosition", x, y);
   }
 
-  // Public: Center the current window on its display.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Center the current window on its display.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   center() {
     return this.applicationDelegate.invokeWindow("center");
   }
 
-  // Public: Focus the current window.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Focus the current window.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   focus() {
     return this.applicationDelegate.invokeWindow("focus");
   }
 
-  // Public: Show the current window and restore its focus policy.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Show the current window and restore its focus policy.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   show() {
     return this.applicationDelegate.invokeWindow("show");
   }
 
-  // Public: Hide the current window.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Hide the current window.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   hide() {
     return this.applicationDelegate.invokeWindow("hide");
   }
 
-  // Public: Close the current window.
-  //
-  // Returns a {Promise} that resolves when the close request is accepted.
+  /**
+   * Close the current window.
+   *
+   * @returns {Promise} that resolves when the close request is accepted.
+   * @public
+   * @api-status Public
+   */
   close() {
     return this.applicationDelegate.invokeWindow("close");
   }
 
-  // Public: Reload the current window.
-  //
-  // Returns a {Promise} that resolves after the reloaded renderer reports ready.
+  /**
+   * Reload the current window.
+   *
+   * @returns {Promise} that resolves after the reloaded renderer reports ready.
+   * @public
+   * @api-status Public
+   */
   reload() {
     return this.applicationDelegate.invokeWindow("reload");
   }
 
-  // Public: Minimize the current window.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Minimize the current window.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   minimize() {
     return this.applicationDelegate.invokeWindow("minimize");
   }
 
-  // Public: Maximize the current window.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Maximize the current window.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   maximize() {
     return this.applicationDelegate.invokeWindow("maximize");
   }
 
-  // Public: Restore a maximized window.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Restore a maximized window.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   unmaximize() {
     return this.applicationDelegate.invokeWindow("unmaximize");
   }
 
-  // Public: Determine whether the current window is maximized.
-  //
-  // Returns a {Promise} resolving to a {Boolean}.
+  /**
+   * Determine whether the current window is maximized.
+   *
+   * @returns {Promise} resolving to a `Boolean`.
+   * @public
+   * @api-status Public
+   */
   isMaximized() {
     return this.applicationDelegate.invokeWindow("isMaximized");
   }
 
-  // Public: Determine whether the current window is full screen.
-  //
-  // Returns a {Promise} resolving to a {Boolean}.
+  /**
+   * Determine whether the current window is full screen.
+   *
+   * @returns {Promise} resolving to a `Boolean`.
+   * @public
+   * @api-status Public
+   */
   isFullScreen() {
     return this.applicationDelegate.invokeWindow("isFullScreen");
   }
 
-  // Public: Determine whether the current window is visible.
-  //
-  // Returns a {Promise} resolving to a {Boolean}.
+  /**
+   * Determine whether the current window is visible.
+   *
+   * @returns {Promise} resolving to a `Boolean`.
+   * @public
+   * @api-status Public
+   */
   isVisible() {
     return this.applicationDelegate.invokeWindow("isVisible");
   }
 
-  // Public: Enter or leave full-screen mode.
-  //
-  // * `fullScreen` A {Boolean} indicating the desired state.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Enter or leave full-screen mode.
+   *
+   * @param fullScreen - A `Boolean` indicating the desired state.
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   setFullScreen(fullScreen = false) {
     return this.applicationDelegate.invokeWindow("setFullScreen", fullScreen);
   }
 
-  // Public: Toggle full-screen mode.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Toggle full-screen mode.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   async toggleFullScreen() {
     return this.setFullScreen(!(await this.isFullScreen()));
   }
 
-  // Public: Ask the user to select one or more folders.
-  //
-  // Returns a {Promise} resolving to an {Array} of paths, or `null` on cancellation.
+  /**
+   * Ask the user to select one or more folders.
+   *
+   * @returns {Promise} resolving to an `Array` of paths, or `null` on cancellation.
+   * @public
+   * @api-status Public
+   */
   pickFolder() {
     return this.applicationDelegate.invokeWindow("pickFolder");
   }
 
-  // Public: Show a save dialog owned by the current window.
-  //
-  // * `options` Serializable Electron save-dialog options.
-  //
-  // Returns a {Promise} resolving to Electron's serializable save-dialog result.
+  /**
+   * Show a save dialog owned by the current window.
+   *
+   * @param options - Serializable Electron save-dialog options.
+   * @returns {Promise} resolving to Electron's serializable save-dialog result.
+   * @public
+   * @api-status Public
+   */
   showSaveDialog(options = {}) {
     return this.applicationDelegate.invokeWindow("showSaveDialog", options);
   }
 
-  // Essential: Show a non-blocking confirmation dialog owned by the current
-  // window.
-  //
-  // Returns a {Promise} resolving to the selected button index.
+  /**
+   * Show a non-blocking confirmation dialog owned by the current
+   * window.
+   *
+   * @returns {Promise} resolving to the selected button index.
+   * @public
+   * @api-status Essential
+   */
   confirm(options) {
     return this.applicationDelegate.confirm(options);
   }
 
-  // Public: Start a download in the current window.
-  //
-  // * `url` The {String} URL to download.
-  //
-  // Returns a {Promise} that resolves when the download is started.
+  /**
+   * Start a download in the current window.
+   *
+   * @param url - The `String` URL to download.
+   * @returns {Promise} that resolves when the download is started.
+   * @public
+   * @api-status Public
+   */
   downloadURL(url) {
     return this.applicationDelegate.invokeWindow("downloadURL", url);
   }
 
-  // Public: Return the primary display's available work-area size.
-  //
-  // Returns a {Promise} resolving to `{width, height}`.
+  /**
+   * @returns {Promise<Object>} The primary display's available work-area size as `{width, height}`.
+   * @public
+   * @api-status Public
+   */
   getPrimaryDisplayWorkAreaSize() {
     return this.applicationDelegate.invokeWindow("getPrimaryDisplayWorkAreaSize");
   }
 
-  // Public: Control whether the menu bar hides automatically.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Control whether the menu bar hides automatically.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   setAutoHideMenuBar(autoHide) {
     return this.applicationDelegate.invokeWindow("setAutoHideMenuBar", autoHide);
   }
 
-  // Public: Show or hide the menu bar.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Show or hide the menu bar.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   setMenuBarVisibility(visible) {
     return this.applicationDelegate.invokeWindow("setMenuBarVisibility", visible);
   }
 
-  // Public: Open the current window's developer tools.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Open the current window's developer tools.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   async openDevTools() {
     await new Promise(process.nextTick);
     return this.applicationDelegate.invokeWindow("openDevTools");
   }
 
-  // Public: Close the current window's developer tools.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Close the current window's developer tools.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   async closeDevTools() {
     await new Promise(process.nextTick);
     return this.applicationDelegate.invokeWindow("closeDevTools");
   }
 
-  // Public: Toggle the current window's developer tools.
-  //
-  // Returns a {Promise} that resolves when the request is applied.
+  /**
+   * Toggle the current window's developer tools.
+   *
+   * @returns {Promise} that resolves when the request is applied.
+   * @public
+   * @api-status Public
+   */
   async toggleDevTools() {
     await new Promise(process.nextTick);
     return this.applicationDelegate.invokeWindow("toggleDevTools");
   }
 
-  // Public: Evaluate JavaScript in the current window's developer tools.
-  //
-  // Returns a {Promise} that resolves after evaluation, or immediately when
-  // developer tools are closed.
+  /**
+   * Evaluate JavaScript in the current window's developer tools.
+   *
+   * @returns {Promise} that resolves after evaluation, or immediately when developer tools are closed.
+   * @public
+   * @api-status Public
+   */
   executeJavaScriptInDevTools(code) {
     return this.applicationDelegate.invokeWindow("executeJavaScriptInDevTools", code);
   }
 
-  // Public: Send a serializable event to every other registered Lumine window.
-  //
-  // * `eventName` A non-empty {String} event name.
-  // * `args` Structured-cloneable values delivered to subscribers.
-  //
-  // Returns a {Promise} that resolves after the event is sent.
+  /**
+   * Send a serializable event to every other registered Lumine window.
+   *
+   * @param eventName - A non-empty `String` event name.
+   * @param args - Structured-cloneable values delivered to subscribers.
+   * @returns {Promise} that resolves after the event is sent.
+   * @public
+   * @api-status Public
+   */
   broadcast(eventName, ...args) {
     if (typeof eventName !== "string" || eventName.length === 0) {
       return Promise.reject(new TypeError("Window event name must be a non-empty string"));
@@ -311,9 +466,13 @@ class WindowService {
     return this.applicationDelegate.broadcastToOtherWindows(eventName, ...args);
   }
 
-  // Public: Subscribe to named events broadcast by other Lumine windows.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Subscribe to named events broadcast by other Lumine windows.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidReceive(eventName, callback) {
     if (typeof eventName !== "string" || eventName.length === 0) {
       throw new TypeError("Window event name must be a non-empty string");
@@ -321,44 +480,68 @@ class WindowService {
     return this.applicationDelegate.onDidReceiveWindowEvent(eventName, callback);
   }
 
-  // Public: Invoke `callback` after entering full-screen mode.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` after entering full-screen mode.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidEnterFullScreen(callback) {
     return this.applicationDelegate.onDidEnterFullScreen(callback);
   }
 
-  // Public: Invoke `callback` after leaving full-screen mode.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` after leaving full-screen mode.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidLeaveFullScreen(callback) {
     return this.applicationDelegate.onDidLeaveFullScreen(callback);
   }
 
-  // Public: Invoke `callback` after the window is maximized.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` after the window is maximized.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidMaximize(callback) {
     return this.applicationDelegate.onDidMaximizeWindow(callback);
   }
 
-  // Public: Invoke `callback` after a maximized window is restored.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` after a maximized window is restored.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidUnmaximize(callback) {
     return this.applicationDelegate.onDidUnmaximizeWindow(callback);
   }
 
-  // Public: Invoke `callback` when the window gains focus.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` when the window gains focus.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidFocus(callback) {
     return this.applicationDelegate.onDidFocusWindow(callback);
   }
 
-  // Public: Invoke `callback` when the window loses focus.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` when the window loses focus.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidBlur(callback) {
     return this.applicationDelegate.onDidBlurWindow(callback);
   }

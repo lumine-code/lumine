@@ -11,10 +11,15 @@ const RESIZE_HANDLE_RESIZABLE_CLASS = "lumine-dock-resize-handle-resizable";
 const TOGGLE_BUTTON_VISIBLE_CLASS = "lumine-dock-toggle-button-visible";
 const CURSOR_OVERLAY_VISIBLE_CLASS = "lumine-dock-cursor-overlay-visible";
 
-// Extended: A container at the edges of the editor window capable of holding items.
-// You should not create a Dock directly. Instead, access one of the three docks of the workspace
-// via {Workspace::getLeftDock}, {Workspace::getRightDock}, and {Workspace::getBottomDock}
-// or add an item to a dock via {Workspace::open}.
+/**
+ * A container at the edges of the editor window capable of holding items.
+ * You should not create a Dock directly. Instead, access one of the three docks of the workspace
+ * via {@link Workspace#getLeftDock}, {@link Workspace#getRightDock}, and {@link Workspace#getBottomDock}
+ * or add an item to a dock via {@link Workspace#open}.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class Dock {
   constructor(params) {
     this.handleResizeHandleDragStart = this.handleResizeHandleDragStart.bind(this);
@@ -108,33 +113,57 @@ module.exports = class Dock {
     this.setState({ draggingItem });
   }
 
-  // Extended: Show the dock and focus its active {Pane}.
+  /**
+   * Show the dock and focus its active {@link Pane}.
+   *
+   * @public
+   * @api-status Extended
+   */
   activate() {
     this.getActivePane().activate();
   }
 
-  // Extended: Show the dock without focusing it.
+  /**
+   * Show the dock without focusing it.
+   *
+   * @public
+   * @api-status Extended
+   */
   show() {
     this.setState({ visible: true });
   }
 
-  // Extended: Hide the dock and activate the {WorkspaceCenter} if the dock was
-  // was previously focused.
+  /**
+   * Hide the dock and activate the {@link WorkspaceCenter} if the dock was
+   * was previously focused.
+   *
+   * @public
+   * @api-status Extended
+   */
   hide() {
     this.setState({ visible: false });
   }
 
-  // Extended: Toggle the dock's visibility without changing the {Workspace}'s
-  // active pane container.
+  /**
+   * Toggle the dock's visibility without changing the {@link Workspace}'s
+   * active pane container.
+   *
+   * @public
+   * @api-status Extended
+   */
   toggle() {
     const state = { visible: !this.state.visible };
     if (!state.visible) state.hovered = false;
     this.setState(state);
   }
 
-  // Extended: Check if the dock is visible.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Check if the dock is visible.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Extended
+   */
   isVisible() {
     return this.state.visible;
   }
@@ -437,221 +466,271 @@ module.exports = class Dock {
     });
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Invoke the given callback when the visibility of the dock changes.
-  //
-  // * `callback` {Function} to be called when the visibility changes.
-  //   * `visible` {Boolean} Is the dock now visible?
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the visibility of the dock changes.
+   *
+   * @param {Function} callback - to be called when the visibility changes.
+   * @param {Boolean} callback.visible - Is the dock now visible?
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeVisible(callback) {
     return this.emitter.on("did-change-visible", callback);
   }
 
-  // Essential: Invoke the given callback with the current and all future visibilities of the dock.
-  //
-  // * `callback` {Function} to be called when the visibility changes.
-  //   * `visible` {Boolean} Is the dock now visible?
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with the current and all future visibilities of the dock.
+   *
+   * @param {Function} callback - to be called when the visibility changes.
+   * @param {Boolean} callback.visible - Is the dock now visible?
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeVisible(callback) {
     callback(this.isVisible());
     return this.onDidChangeVisible(callback);
   }
 
-  // Essential: Invoke the given callback with all current and future panes items
-  // in the dock.
-  //
-  // * `callback` {Function} to be called with current and future pane items.
-  //   * `item` An item that is present in {::getPaneItems} at the time of
-  //      subscription or that is added at some later time.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with all current and future panes items
+   * in the dock.
+   *
+   * @param {Function} callback - to be called with current and future pane items.
+   * @param callback.item - An item that is present in {@link #getPaneItems} at the time of subscription or that is added at some later time.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observePaneItems(callback) {
     return this.paneContainer.observePaneItems(callback);
   }
 
-  // Essential: Invoke the given callback when the active pane item changes.
-  //
-  // Because observers are invoked synchronously, it's important not to perform
-  // any expensive operations via this method. Consider
-  // {::onDidStopChangingActivePaneItem} to delay operations until after changes
-  // stop occurring.
-  //
-  // * `callback` {Function} to be called when the active pane item changes.
-  //   * `item` The active pane item.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the active pane item changes.
+   *
+   * Because observers are invoked synchronously, it's important not to perform
+   * any expensive operations via this method. Consider
+   * {@link #onDidStopChangingActivePaneItem} to delay operations until after changes
+   * stop occurring.
+   *
+   * @param {Function} callback - to be called when the active pane item changes.
+   * @param callback.item - The active pane item.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeActivePaneItem(callback) {
     return this.paneContainer.onDidChangeActivePaneItem(callback);
   }
 
-  // Essential: Invoke the given callback when the active pane item stops
-  // changing.
-  //
-  // Observers are called asynchronously 100ms after the last active pane item
-  // change. Handling changes here rather than in the synchronous
-  // {::onDidChangeActivePaneItem} prevents unneeded work if the user is quickly
-  // changing or closing tabs and ensures critical UI feedback, like changing the
-  // highlighted tab, gets priority over work that can be done asynchronously.
-  //
-  // * `callback` {Function} to be called when the active pane item stops
-  //   changing.
-  //   * `item` The active pane item.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the active pane item stops
+   * changing.
+   *
+   * Observers are called asynchronously 100ms after the last active pane item
+   * change. Handling changes here rather than in the synchronous
+   * {@link #onDidChangeActivePaneItem} prevents unneeded work if the user is quickly
+   * changing or closing tabs and ensures critical UI feedback, like changing the
+   * highlighted tab, gets priority over work that can be done asynchronously.
+   *
+   * @param {Function} callback - to be called when the active pane item stops changing.
+   * @param callback.item - The active pane item.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidStopChangingActivePaneItem(callback) {
     return this.paneContainer.onDidStopChangingActivePaneItem(callback);
   }
 
-  // Essential: Invoke the given callback with the current active pane item and
-  // with all future active pane items in the dock.
-  //
-  // * `callback` {Function} to be called when the active pane item changes.
-  //   * `item` The current active pane item.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with the current active pane item and
+   * with all future active pane items in the dock.
+   *
+   * @param {Function} callback - to be called when the active pane item changes.
+   * @param callback.item - The current active pane item.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeActivePaneItem(callback) {
     return this.paneContainer.observeActivePaneItem(callback);
   }
 
-  // Extended: Invoke the given callback when a pane is added to the dock.
-  //
-  // * `callback` {Function} to be called when panes are added.
-  //   * `event` {Object} with the following keys:
-  //     * `pane` The added pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane is added to the dock.
+   *
+   * @param {Function} callback - to be called when panes are added.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.pane - The added pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddPane(callback) {
     return this.paneContainer.onDidAddPane(callback);
   }
 
-  // Extended: Invoke the given callback before a pane is destroyed in the
-  // dock.
-  //
-  // * `callback` {Function} to be called before panes are destroyed.
-  //   * `event` {Object} with the following keys:
-  //     * `pane` The pane to be destroyed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback before a pane is destroyed in the
+   * dock.
+   *
+   * @param {Function} callback - to be called before panes are destroyed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.pane - The pane to be destroyed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onWillDestroyPane(callback) {
     return this.paneContainer.onWillDestroyPane(callback);
   }
 
-  // Extended: Invoke the given callback when a pane is destroyed in the dock.
-  //
-  // * `callback` {Function} to be called when panes are destroyed.
-  //   * `event` {Object} with the following keys:
-  //     * `pane` The destroyed pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane is destroyed in the dock.
+   *
+   * @param {Function} callback - to be called when panes are destroyed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.pane - The destroyed pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidDestroyPane(callback) {
     return this.paneContainer.onDidDestroyPane(callback);
   }
 
-  // Extended: Invoke the given callback with all current and future panes in the
-  // dock.
-  //
-  // * `callback` {Function} to be called with current and future panes.
-  //   * `pane` A {Pane} that is present in {::getPanes} at the time of
-  //      subscription or that is added at some later time.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with all current and future panes in the
+   * dock.
+   *
+   * @param {Function} callback - to be called with current and future panes.
+   * @param callback.pane - A {@link Pane} that is present in {@link #getPanes} at the time of subscription or that is added at some later time.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observePanes(callback) {
     return this.paneContainer.observePanes(callback);
   }
 
-  // Extended: Invoke the given callback when the active pane changes.
-  //
-  // * `callback` {Function} to be called when the active pane changes.
-  //   * `pane` A {Pane} that is the current return value of {::getActivePane}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the active pane changes.
+   *
+   * @param {Function} callback - to be called when the active pane changes.
+   * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeActivePane(callback) {
     return this.paneContainer.onDidChangeActivePane(callback);
   }
 
-  // Extended: Invoke the given callback with the current active pane and when
-  // the active pane changes.
-  //
-  // * `callback` {Function} to be called with the current and future active
-  //   panes.
-  //   * `pane` A {Pane} that is the current return value of {::getActivePane}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with the current active pane and when
+   * the active pane changes.
+   *
+   * @param {Function} callback - to be called with the current and future active panes.
+   * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observeActivePane(callback) {
     return this.paneContainer.observeActivePane(callback);
   }
 
-  // Extended: Invoke the given callback when a pane item is added to the dock.
-  //
-  // * `callback` {Function} to be called when pane items are added.
-  //   * `event` {Object} with the following keys:
-  //     * `item` The added pane item.
-  //     * `pane` {Pane} containing the added item.
-  //     * `index` {Number} indicating the index of the added item in its pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane item is added to the dock.
+   *
+   * @param {Function} callback - to be called when pane items are added.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.item - The added pane item.
+   * @param {Pane} callback.event.pane - containing the added item.
+   * @param {Number} callback.event.index - indicating the index of the added item in its pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddPaneItem(callback) {
     return this.paneContainer.onDidAddPaneItem(callback);
   }
 
-  // Extended: Invoke the given callback when a pane item is about to be
-  // destroyed, before the user is prompted to save it.
-  //
-  // * `callback` {Function} to be called before pane items are destroyed.
-  //   * `event` {Object} with the following keys:
-  //     * `item` The item to be destroyed.
-  //     * `pane` {Pane} containing the item to be destroyed.
-  //     * `index` {Number} indicating the index of the item to be destroyed in
-  //       its pane.
-  //
-  // Returns a {Disposable} on which `.dispose` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane item is about to be
+   * destroyed, before the user is prompted to save it.
+   *
+   * @param {Function} callback - to be called before pane items are destroyed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.item - The item to be destroyed.
+   * @param {Pane} callback.event.pane - containing the item to be destroyed.
+   * @param {Number} callback.event.index - indicating the index of the item to be destroyed in its pane.
+   * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onWillDestroyPaneItem(callback) {
     return this.paneContainer.onWillDestroyPaneItem(callback);
   }
 
-  // Extended: Invoke the given callback when a pane item is destroyed.
-  //
-  // * `callback` {Function} to be called when pane items are destroyed.
-  //   * `event` {Object} with the following keys:
-  //     * `item` The destroyed item.
-  //     * `pane` {Pane} containing the destroyed item.
-  //     * `index` {Number} indicating the index of the destroyed item in its
-  //       pane.
-  //
-  // Returns a {Disposable} on which `.dispose` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane item is destroyed.
+   *
+   * @param {Function} callback - to be called when pane items are destroyed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.item - The destroyed item.
+   * @param {Pane} callback.event.pane - containing the destroyed item.
+   * @param {Number} callback.event.index - indicating the index of the destroyed item in its pane.
+   * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidDestroyPaneItem(callback) {
     return this.paneContainer.onDidDestroyPaneItem(callback);
   }
 
-  // Extended: Invoke the given callback when the hovered state of the dock changes.
-  //
-  // * `callback` {Function} to be called when the hovered state changes.
-  //   * `hovered` {Boolean} Is the dock now hovered?
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the hovered state of the dock changes.
+   *
+   * @param {Function} callback - to be called when the hovered state changes.
+   * @param {Boolean} callback.hovered - Is the dock now hovered?
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeHovered(callback) {
     return this.emitter.on("did-change-hovered", callback);
   }
 
-  /*
-  Section: Pane Items
-  */
+  /**
+   * @category Pane Items
+   */
 
-  // Essential: Get all pane items in the dock.
-  //
-  // Returns an {Array} of items.
+  /**
+   * Get all pane items in the dock.
+   *
+   * @returns {Array} of items.
+   * @public
+   * @api-status Essential
+   */
   getPaneItems() {
     return this.paneContainer.getPaneItems();
   }
 
-  // Essential: Get the active {Pane}'s active item.
-  //
-  // Returns a pane item {Object}.
+  /**
+   * Get the active {@link Pane}'s active item.
+   *
+   * @returns {Object} pane item `Object`.
+   * @public
+   * @api-status Essential
+   */
   getActivePaneItem() {
     return this.paneContainer.getActivePaneItem();
   }
@@ -665,30 +744,48 @@ module.exports = class Dock {
     return this.paneContainer.confirmClose(options);
   }
 
-  /*
-  Section: Panes
-  */
+  /**
+   * @category Panes
+   */
 
-  // Extended: Get all panes in the dock.
-  //
-  // Returns an {Array} of {Pane}s.
+  /**
+   * Get all panes in the dock.
+   *
+   * @returns {Array} of {@link Pane Panes}.
+   * @public
+   * @api-status Extended
+   */
   getPanes() {
     return this.paneContainer.getPanes();
   }
 
-  // Extended: Get the active {Pane}.
-  //
-  // Returns a {Pane}.
+  /**
+   * Get the active {@link Pane}.
+   *
+   * @returns {Pane}
+   * @public
+   * @api-status Extended
+   */
   getActivePane() {
     return this.paneContainer.getActivePane();
   }
 
-  // Extended: Make the next pane active.
+  /**
+   * Make the next pane active.
+   *
+   * @public
+   * @api-status Extended
+   */
   activateNextPane() {
     return this.paneContainer.activateNextPane();
   }
 
-  // Extended: Make the previous pane active.
+  /**
+   * Make the previous pane active.
+   *
+   * @public
+   * @api-status Extended
+   */
   activatePreviousPane() {
     return this.paneContainer.activatePreviousPane();
   }

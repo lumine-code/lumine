@@ -24,7 +24,12 @@ const QUERY_ERROR_KIND_LABELS = {
   5: "pattern structure error",
 };
 
-// Extended: This class holds an instance of a Tree-sitter grammar.
+/**
+ * This class holds an instance of a Tree-sitter grammar.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class TreeSitterGrammar {
   // Cache each `Language` instance at its own path.
   static LANGUAGE_CACHE = new Map();
@@ -123,23 +128,27 @@ module.exports = class TreeSitterGrammar {
     return id;
   }
 
-  // Extended: Retrieve all known comment delimiters for this grammar.
-  //
-  // Some grammars may have different delimiters for different parts of a file
-  // (such as JSX within JavaScript). In these cases, you might want to call
-  // {TextEditor::getCommentDelimitersForBufferPosition} with a `{Point}` in the
-  // buffer.
-  //
-  // Returns an {Object} with the following properties:
-  //
-  // * `line`: If present, a {String} representing a line comment delimiter.
-  //   (If `undefined`, there is no known line comment delimiter for the given
-  //   buffer position.)
-  // * `block`: If present, a two-item {Array} containing {String}s
-  //   representing the starting and ending block comment delimiters. (If
-  //   `undefined`, there are no known block comment delimiters for the given
-  //   buffer position.)
-  //
+  /**
+   * Retrieve all known comment delimiters for this grammar.
+   *
+   * Some grammars may have different delimiters for different parts of a file
+   * (such as JSX within JavaScript). In these cases, you might want to call
+   * {@link TextEditor#getCommentDelimitersForBufferPosition} with a `{Point}` in the
+   * buffer.
+   *
+   *
+   * * `line`: If present, a `String` representing a line comment delimiter.
+   *   (If `undefined`, there is no known line comment delimiter for the given
+   *   buffer position.)
+   * * `block`: If present, a two-item `Array` containing `Strings`
+   *   representing the starting and ending block comment delimiters. (If
+   *   `undefined`, there are no known block comment delimiters for the given
+   *   buffer position.)
+   *
+   * @returns {Object} with the following properties:
+   * @public
+   * @api-status Extended
+   */
   getCommentDelimiters() {
     // Prefer the config system. It's a better place for this data to live.
     let commentDelimiters = lumine.config.get("language.commentDelimiters", {
@@ -168,22 +177,29 @@ module.exports = class TreeSitterGrammar {
     return this.scopeNamesById.get(id);
   }
 
-  // Extended: Retrieves the Tree-sitter `Language` instance associated with
-  // this grammar _if_ it has already been loaded.
-  //
-  // Language instances cannot be retrieved synchronously, so this will return
-  // `undefined` if the instance has not yet been loaded. In that case, going
-  // async will be unavoidable, and you’ll need to call {::getLanguage}.
+  /**
+   * Retrieves the Tree-sitter `Language` instance associated with
+   * this grammar _if_ it has already been loaded.
+   *
+   * Language instances cannot be retrieved synchronously, so this will return
+   * `undefined` if the instance has not yet been loaded. In that case, going
+   * async will be unavoidable, and you’ll need to call {@link #getLanguage}.
+   *
+   * @public
+   * @api-status Extended
+   */
   getLanguageSync() {
     return this._language;
   }
 
-  // Extended: Retrieves the Tree-sitter language instance associated with this
-  // grammar.
-  //
-  // Returns a {Promise} that will resolve with a Tree-sitter `Language`
-  // instance. Once it resolves, the grammar is ready to perform parsing and to
-  // execute query captures.
+  /**
+   * Retrieves the Tree-sitter language instance associated with this
+   * grammar.
+   *
+   * @returns {Promise} that will resolve with a Tree-sitter `Language` instance. Once it resolves, the grammar is ready to perform parsing and to execute query captures.
+   * @public
+   * @api-status Extended
+   */
   async getLanguage() {
     await parserInitPromise;
     if (!this._language) {
@@ -332,7 +348,7 @@ module.exports = class TreeSitterGrammar {
   // file or line on its own. This maps it back through the source map recorded
   // at load time.
   //
-  // Returns an {Object} with `scopeName`, `queryType`, and `message`
+  // Returns an `Object` with `scopeName`, `queryType`, and `message`
   // properties, plus — when the error is a Tree-sitter `QueryError` —
   // `filePath`, `line` (1-based, within that file), `lineText`, `kindLabel`,
   // and `word` (the unknown node type, field name, or capture name, if any).
@@ -395,7 +411,7 @@ module.exports = class TreeSitterGrammar {
     return descriptor;
   }
 
-  // Renders a descriptor from {::describeQueryError} as a human-readable
+  // Renders a descriptor from {@link #describeQueryError} as a human-readable
   // multi-line string.
   static formatQueryErrorDescriptor(descriptor) {
     let parts = [`Error compiling ${descriptor.queryType} for grammar ${descriptor.scopeName}`];
@@ -440,14 +456,15 @@ module.exports = class TreeSitterGrammar {
     }
   }
 
-  // Extended: Given a kind of query, retrieves a Tree-sitter `Query` object
-  // in async fashion.
-  //
-  // * `queryType` A {String} describing the query type: typically one of
-  //     `highlightsQuery`, `foldsQuery`, `tagsQuery`, or `indentsQuery`,
-  //     but could be any other custom type.
-  //
-  // Returns a {Promise} that resolves to a Tree-sitter `Query` object.
+  /**
+   * Given a kind of query, retrieves a Tree-sitter `Query` object
+   * in async fashion.
+   *
+   * @param queryType - A `String` describing the query type: typically one of `highlightsQuery`, `foldsQuery`, `tagsQuery`, or `indentsQuery`, but could be any other custom type.
+   * @returns {Promise} that resolves to a Tree-sitter `Query` object.
+   * @public
+   * @api-status Extended
+   */
   getQuery(queryType) {
     // Async, but designed so that multiple near-simultaneous calls to
     // `getQuery` from multiple buffers will not cause multiple calls to
@@ -490,28 +507,32 @@ module.exports = class TreeSitterGrammar {
     return promise;
   }
 
-  // Extended: Creates an arbitrary query from this grammar. Package authors
-  // and end users can use queries for whatever purposes they like.
-  //
-  // * `queryContents` A {String} representing the entire contents of a query
-  //     file. Can contain any number of queries.
-  //
-  // Returns a {Promise} that will resolve to a Tree-sitter `Query` object.
+  /**
+   * Creates an arbitrary query from this grammar. Package authors
+   * and end users can use queries for whatever purposes they like.
+   *
+   * @param queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
+   * @returns {Promise} that will resolve to a Tree-sitter `Query` object.
+   * @public
+   * @api-status Extended
+   */
   async createQuery(queryContents) {
     let language = await this.getLanguage();
     return new Query(language, queryContents);
   }
 
-  // Extended: Creates an arbitrary query from this grammar. Package authors
-  // and end users can use queries for whatever purposes they like.
-  //
-  // Synchronous; use only when you can be certain that the tree-sitter
-  // language has already loaded.
-  //
-  // * `queryContents` A {String} representing the entire contents of a query
-  //     file. Can contain any number of queries.
-  //
-  // Returns a Tree-sitter `Query` object.
+  /**
+   * Creates an arbitrary query from this grammar. Package authors
+   * and end users can use queries for whatever purposes they like.
+   *
+   * Synchronous; use only when you can be certain that the tree-sitter
+   * language has already loaded.
+   *
+   * @param queryContents - A `String` representing the entire contents of a query file. Can contain any number of queries.
+   * @returns {Object} Tree-sitter `Query` object.
+   * @public
+   * @api-status Extended
+   */
   createQuerySync(queryContents) {
     if (!this._language) {
       throw new Error(`Language not loaded!`);
@@ -570,61 +591,83 @@ module.exports = class TreeSitterGrammar {
     }
   }
 
-  // Extended: Calls `callback` when any of this grammar's queries change.
-  //
-  // A grammar's queries typically will not change after initial load. When
-  // they do, it may mean:
-  //
-  // - The user is editing query files in dev mode; Lumine will automatically
-  //   reload queries in dev mode after changes.
-  // - An installed package is altering a query file via an API like
-  //   {::setQueryForTest}.
-  //
-  // * `callback` {Function}
-  //   * `data` {Object}
-  //     * `filePath` {String} The path to the query file on disk.
-  //     * `queryType` {String} The type of query file, as denoted by its
-  //         configuration key in the grammar file. Usually one of
-  //         `highlightsQuery`, `indentsQuery`, `foldsQuery`, or `tagsQuery`.
+  /**
+   * Calls `callback` when any of this grammar's queries change.
+   *
+   * A grammar's queries typically will not change after initial load. When
+   * they do, it may mean:
+   *
+   * - The user is editing query files in dev mode; Lumine will automatically
+   *   reload queries in dev mode after changes.
+   * - An installed package is altering a query file via an API like
+   *   `setQueryForTest`.
+   *
+   * @param {Function} callback
+   * @param {Object} callback.data
+   * @param {String} callback.data.filePath - The path to the query file on disk.
+   * @param {String} callback.data.queryType - The type of query file, as denoted by its configuration key in the grammar file. Usually one of `highlightsQuery`, `indentsQuery`, `foldsQuery`, or `tagsQuery`.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeQuery(callback) {
     return this.emitter.on("did-change-query", callback);
   }
 
-  // Extended: Calls `callback` when any of this grammar's queries change.
-  //
-  // Alias of {::onDidChangeQuery}.
+  /**
+   * Calls `callback` when any of this grammar's queries change.
+   *
+   * Alias of {@link #onDidChangeQuery}.
+   *
+   * @public
+   * @api-status Extended
+   */
   onDidChangeQueryFile(callback) {
     return this.onDidChangeQuery(callback);
   }
 
-  // Extended: Calls `callback` when this grammar first loads its query files.
-  //
-  // Since a grammar may not load immediately on startup, this method makes it
-  // easier to hook into the query life cycle in order to modify or augment a
-  // grammar's default queries.
-  //
-  // * callback A function with the following argument:
-  //   * grammar The {TreeSitterGrammar} whose queries have loaded.
+  /**
+   * Calls `callback` when this grammar first loads its query files.
+   *
+   * Since a grammar may not load immediately on startup, this method makes it
+   * easier to hook into the query life cycle in order to modify or augment a
+   * grammar's default queries.
+   *
+   * * callback A function with the following argument:
+   *   * grammar The {@link TreeSitterGrammar} whose queries have loaded.
+   *
+   * @public
+   * @api-status Extended
+   */
   onDidLoadQueryFiles(callback) {
     return this.emitter.on("did-load-query-files", callback);
   }
 
-  // Extended: Calls `callback` when an injection point is added to this
-  // grammar.
-  //
-  // * callback A function with the following argument:
-  //   * injectionPoint The injection point added to the grammar. See
-  //     {TreeSitterGrammar::addInjectionPoint}.
+  /**
+   * Calls `callback` when an injection point is added to this
+   * grammar.
+   *
+   * * callback A function with the following argument:
+   *   * injectionPoint The injection point added to the grammar. See
+   *     {@link TreeSitterGrammar#addInjectionPoint}.
+   *
+   * @public
+   * @api-status Extended
+   */
   onDidAddInjectionPoint(callback) {
     return this.emitter.on("did-add-injection-point", callback);
   }
 
-  // Extended: Calls `callback` when an injection point is removed from this
-  // grammar.
-  //
-  // * callback A function with the following argument:
-  //   * injectionPoint The injection point removed from this grammar. See
-  //     {TreeSitterGrammar::addInjectionPoint}.
+  /**
+   * Calls `callback` when an injection point is removed from this
+   * grammar.
+   *
+   * * callback A function with the following argument:
+   *   * injectionPoint The injection point removed from this grammar. See
+   *     {@link TreeSitterGrammar#addInjectionPoint}.
+   *
+   * @public
+   * @api-status Extended
+   */
   onDidRemoveInjectionPoint(callback) {
     return this.emitter.on("did-remove-injection-point", callback);
   }
@@ -646,70 +689,40 @@ module.exports = class TreeSitterGrammar {
     this._language = null;
   }
 
-  // Extended: Define a set of rules for when this grammar should delegate to a
-  // different grammar for certain regions of a buffer. Examples:
-  //
-  // * embedding one language inside another (e.g., JavaScript in HTML)
-  // * tokenizing certain structures with greater detail (e.g., regular
-  //   expressions in most languages)
-  // * highlighting non-standard augmentations to a language (e.g., JSDoc
-  //   comments in JavaScript)
-  //
-  // This differs from TextMate-style injections, which operate at the scope
-  // level and are currently incompatible with Tree-sitter grammars.
-  //
-  // You should typically not call this method directly; instead, call
-  // {GrammarRegistry::addInjectionPoint} and pass a given grammar’s root
-  // language scope as the first argument.
-  //
-  // NOTE: Packages will call {::addInjectionPoint} with a given scope name,
-  // and that call will be delegated to any Tree-sitter grammar matching that
-  // scope name.
-  //
-  // * `injectionPoint` The options for the injection point:
-  //   * `type` A {String} describing the type of node to inject into.
-  //   * `language` A {Function} that should return a string describing the
-  //     language that should be injected into this area. The string should be a
-  //     short, unambiguous description of the language; it will be tested
-  //     against other grammars’ `injectionRegex` properties. Receives one
-  //     parameter:
-  //     * `node` A Tree-sitter node.
-  //   * `content` A {Function} that should return the node (or nodes) that
-  //     will actually be injected into. Usually this will be the same node
-  //     that was given, but could also be a specific child or descendant of
-  //     that node.
-  //   * `includeChildren` (optional) {Boolean} controlling whether the
-  //     injection range should include the ranges of the content node’s
-  //     children. Defaults to `false`, meaning that the range of each of this
-  //     node's children will be "subtracted" from the injection range, and the
-  //     remainder will be parsed as if those ranges of the buffer do not
-  //     exist.
-  //   * `includeAdjacentWhitespace` (optional) {Boolean} controlling whether
-  //     the injection range should include whitespace that occurs between
-  //     content nodes. Defaults to `false`. When `true`, if two injection
-  //     ranges are separated from one another by only whitespace, that
-  //     whitespace will be added to the injection range, and the ranges will
-  //     be consolidated.
-  //   * `newlinesBetween` (optional) {Boolean} controlling whether the
-  //     injection range should include any newline characters that may exist
-  //     in between injection ranges. Defaults to `false`. Grammars like ERB
-  //     and EJS need this so that they do not interpret two different
-  //     embedded code sections on different lines as occurring on the same
-  //     line.
-  //   * `coverShallowerScopes` (optional) {Boolean} controlling whether the
-  //     injection should prevent the parent grammar (and any of its
-  //     ancestors) from applying scope boundaries within its injection
-  //     range(s). Defaults to `false`.
-  //   * `languageScope` (optional) A value that determines what scope, if
-  //     any, is added to the injection as its “base” scope name. Can be a
-  //     {String}, {null}, or a {Function} that returns either of these values.
-  //     The base language scope that should be used by this injection.
-  //     Defaults to the grammar's own `scopeName` property. Set this to a
-  //     string to override the default scope name, or `null` to omit a base
-  //     scope name altogether. Set this to a function if the scope name to be
-  //     applied varies based on the grammar; the function will be called with
-  //     a grammar instance as its only argument.
-  //
+  /**
+   * Define a set of rules for when this grammar should delegate to a
+   * different grammar for certain regions of a buffer. Examples:
+   *
+   * * embedding one language inside another (e.g., JavaScript in HTML)
+   * * tokenizing certain structures with greater detail (e.g., regular
+   *   expressions in most languages)
+   * * highlighting non-standard augmentations to a language (e.g., JSDoc
+   *   comments in JavaScript)
+   *
+   * This differs from TextMate-style injections, which operate at the scope
+   * level and are currently incompatible with Tree-sitter grammars.
+   *
+   * You should typically not call this method directly; instead, call
+   * {@link GrammarRegistry#addInjectionPoint} and pass a given grammar’s root
+   * language scope as the first argument.
+   *
+   * NOTE: Packages will call {@link #addInjectionPoint} with a given scope name,
+   * and that call will be delegated to any Tree-sitter grammar matching that
+   * scope name.
+   *
+   * @param injectionPoint - The options for the injection point:
+   * @param injectionPoint.type - A `String` describing the type of node to inject into.
+   * @param injectionPoint.language - A `Function` that should return a string describing the language that should be injected into this area. The string should be a short, unambiguous description of the language; it will be tested against other grammars’ `injectionRegex` properties. Receives one parameter:
+   * @param injectionPoint.language.node - A Tree-sitter node.
+   * @param injectionPoint.content - A `Function` that should return the node (or nodes) that will actually be injected into. Usually this will be the same node that was given, but could also be a specific child or descendant of that node.
+   * @param {Boolean} [injectionPoint.includeChildren] - controlling whether the injection range should include the ranges of the content node’s children. Defaults to `false`, meaning that the range of each of this node's children will be "subtracted" from the injection range, and the remainder will be parsed as if those ranges of the buffer do not exist.
+   * @param {Boolean} [injectionPoint.includeAdjacentWhitespace] - controlling whether the injection range should include whitespace that occurs between content nodes. Defaults to `false`. When `true`, if two injection ranges are separated from one another by only whitespace, that whitespace will be added to the injection range, and the ranges will be consolidated.
+   * @param {Boolean} [injectionPoint.newlinesBetween] - controlling whether the injection range should include any newline characters that may exist in between injection ranges. Defaults to `false`. Grammars like ERB and EJS need this so that they do not interpret two different embedded code sections on different lines as occurring on the same line.
+   * @param {Boolean} [injectionPoint.coverShallowerScopes] - controlling whether the injection should prevent the parent grammar (and any of its ancestors) from applying scope boundaries within its injection range(s). Defaults to `false`.
+   * @param [injectionPoint.languageScope] - A value that determines what scope, if any, is added to the injection as its “base” scope name. Can be a `String`, `null`, or a `Function` that returns either of these values. The base language scope that should be used by this injection. Defaults to the grammar's own `scopeName` property. Set this to a string to override the default scope name, or `null` to omit a base scope name altogether. Set this to a function if the scope name to be applied varies based on the grammar; the function will be called with a grammar instance as its only argument.
+   * @public
+   * @api-status Extended
+   */
   addInjectionPoint(injectionPoint) {
     let { type } = injectionPoint;
     let injectionPoints = this.injectionPointsByType[type];

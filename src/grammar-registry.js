@@ -12,9 +12,14 @@ const { Point, Range } = require("./text-buffer");
 
 const PATH_SPLIT_REGEX = new RegExp("[/.]");
 
-// Extended: This class holds the grammars used for tokenizing.
-//
-// An instance of this class is always available as the `lumine.grammars` global.
+/**
+ * This class holds the grammars used for tokenizing.
+ *
+ * An instance of this class is always available as the `lumine.grammars` global.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class GrammarRegistry {
   constructor({ config } = {}) {
     this.config = config;
@@ -77,14 +82,16 @@ module.exports = class GrammarRegistry {
     return new Token({ value, scopes });
   }
 
-  // Extended: set a {TextBuffer}'s language mode based on its path and content,
-  // and continue to update its language mode as grammars are added or updated, or
-  // the buffer's file path changes.
-  //
-  // * `buffer` The {TextBuffer} whose language mode will be maintained.
-  //
-  // Returns a {Disposable} that can be used to stop updating the buffer's
-  // language mode.
+  /**
+   * set a {@link TextBuffer}'s language mode based on its path and content,
+   * and continue to update its language mode as grammars are added or updated, or
+   * the buffer's file path changes.
+   *
+   * @param buffer - The {@link TextBuffer} whose language mode will be maintained.
+   * @returns {Disposable} that can be used to stop updating the buffer's language mode.
+   * @public
+   * @api-status Extended
+   */
   maintainLanguageMode(buffer) {
     this.grammarScoresByBuffer.set(buffer, null);
 
@@ -130,14 +137,16 @@ module.exports = class GrammarRegistry {
     });
   }
 
-  // Extended: Force a {TextBuffer} to use a different grammar than the
-  // one that would otherwise be selected for it.
-  //
-  // * `buffer` The {TextBuffer} whose grammar will be set.
-  // * `languageId` The {String} id of the desired language.
-  //
-  // Returns a {Boolean} that indicates whether the language was successfully
-  // found.
+  /**
+   * Force a {@link TextBuffer} to use a different grammar than the
+   * one that would otherwise be selected for it.
+   *
+   * @param buffer - The {@link TextBuffer} whose grammar will be set.
+   * @param languageId - The `String` id of the desired language.
+   * @returns {Boolean} that indicates whether the language was successfully found.
+   * @public
+   * @api-status Extended
+   */
   assignLanguageMode(buffer, languageId) {
     if (buffer.getBuffer) buffer = buffer.getBuffer();
 
@@ -160,13 +169,16 @@ module.exports = class GrammarRegistry {
     return true;
   }
 
-  // Extended: Force a {TextBuffer} to use a different grammar than the
-  // one that would otherwise be selected for it.
-  //
-  // * `buffer` The {TextBuffer} whose grammar will be set.
-  // * `grammar` The desired {Grammar}.
-  //
-  // Returns a {Boolean} that indicates whether the assignment was successful
+  /**
+   * Force a {@link TextBuffer} to use a different grammar than the
+   * one that would otherwise be selected for it.
+   *
+   * @param buffer - The {@link TextBuffer} whose grammar will be set.
+   * @param grammar - The desired `Grammar`.
+   * @returns {Boolean} that indicates whether the assignment was successful
+   * @public
+   * @api-status Extended
+   */
   assignGrammar(buffer, grammar) {
     if (!grammar) return false;
     if (buffer.getBuffer) buffer = buffer.getBuffer();
@@ -198,19 +210,27 @@ module.exports = class GrammarRegistry {
     this.subscriptions.add(subscription);
   }
 
-  // Extended: Get the `languageId` that has been explicitly assigned to
-  // the given buffer, if any.
-  //
-  // Returns a {String} id of the language
+  /**
+   * Get the `languageId` that has been explicitly assigned to
+   * the given buffer, if any.
+   *
+   * @returns {String} id of the language
+   * @public
+   * @api-status Extended
+   */
   getAssignedLanguageId(buffer) {
     return this.languageOverridesByBufferId.get(buffer.id);
   }
 
-  // Extended: Remove any language mode override that has been set for the
-  // given {TextBuffer}. This will assign to the buffer the best language
-  // mode available.
-  //
-  // * `buffer` The {TextBuffer}.
+  /**
+   * Remove any language mode override that has been set for the
+   * given {@link TextBuffer}. This will assign to the buffer the best language
+   * mode available.
+   *
+   * @param buffer - The {@link TextBuffer}.
+   * @public
+   * @api-status Extended
+   */
   autoAssignLanguageMode(buffer) {
     const result = this.selectGrammarWithScore(
       buffer.getPath(),
@@ -236,15 +256,18 @@ module.exports = class GrammarRegistry {
     }
   }
 
-  // Extended: Select a grammar for the given file path and file contents.
-  //
-  // This picks the best match by checking the file path and contents against
-  // each grammar.
-  //
-  // * `filePath` A {String} file path.
-  // * `fileContents` A {String} of text for the file path.
-  //
-  // Returns a {Grammar}, never null.
+  /**
+   * Select a grammar for the given file path and file contents.
+   *
+   * This picks the best match by checking the file path and contents against
+   * each grammar.
+   *
+   * @param filePath - A `String` file path.
+   * @param fileContents - A `String` of text for the file path.
+   * @returns {Grammar}, never null.
+   * @public
+   * @api-status Extended
+   */
   selectGrammar(filePath, fileContents) {
     return this.selectGrammarWithScore(filePath, fileContents).grammar;
   }
@@ -274,20 +297,23 @@ module.exports = class GrammarRegistry {
     return useTreeSitterParsers ? "tree-sitter" : "textmate";
   }
 
-  // Extended: Evaluates a grammar's fitness for use for a certain file.
-  //
-  // By analyzing the file's extension and contents — plus other criteria, like
-  // the user's configuration — Lumine will assign a score to this grammar that
-  // represents how suitable it is for the given file.
-  //
-  // Ultimately, whichever grammar scores highest for this file will be used
-  // to highlight it.
-  //
-  // * `grammar`: A given {Grammar}.
-  // * `filePath`: A {String} path to the file.
-  // * `contents`: The {String} contents of the file.
-  //
-  // Returns a {Number}.
+  /**
+   * Evaluates a grammar's fitness for use for a certain file.
+   *
+   * By analyzing the file's extension and contents — plus other criteria, like
+   * the user's configuration — Lumine will assign a score to this grammar that
+   * represents how suitable it is for the given file.
+   *
+   * Ultimately, whichever grammar scores highest for this file will be used
+   * to highlight it.
+   *
+   * @param grammar - A given `Grammar`.
+   * @param filePath - A `String` path to the file.
+   * @param contents - The `String` contents of the file.
+   * @returns {Number}
+   * @public
+   * @api-status Extended
+   */
   getGrammarScore(grammar, filePath, contents) {
     if (contents == null && fs.isFileSync(filePath)) {
       contents = fs.readFileSync(filePath, "utf8");
@@ -484,12 +510,15 @@ module.exports = class GrammarRegistry {
     });
   }
 
-  // Extended: Invoke the given callback when a grammar is added to the registry.
-  //
-  // * `callback` {Function} to call when a grammar is added.
-  //   * `grammar` {Grammar} that was added.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a grammar is added to the registry.
+   *
+   * @param {Function} callback - to call when a grammar is added.
+   * @param {Grammar} callback.grammar - that was added.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddGrammar(callback) {
     let disposable = new CompositeDisposable();
     disposable.add(
@@ -499,13 +528,16 @@ module.exports = class GrammarRegistry {
     return disposable;
   }
 
-  // Extended: Invoke the given callback when a grammar is updated due to a grammar
-  // it depends on being added or removed from the registry.
-  //
-  // * `callback` {Function} to call when a grammar is updated.
-  //   * `grammar` {Grammar} that was updated.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a grammar is updated due to a grammar
+   * it depends on being added or removed from the registry.
+   *
+   * @param {Function} callback - to call when a grammar is updated.
+   * @param {Grammar} callback.grammar - that was updated.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidUpdateGrammar(callback) {
     let disposable = new CompositeDisposable();
     disposable.add(
@@ -515,13 +547,16 @@ module.exports = class GrammarRegistry {
     return disposable;
   }
 
-  // Extended: Invoke the given callback when a grammar is removed from the
-  // registry, which happens whenever the package that provides it deactivates.
-  //
-  // * `callback` {Function} to call when a grammar is removed.
-  //   * `grammar` {Grammar} that was removed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a grammar is removed from the
+   * registry, which happens whenever the package that provides it deactivates.
+   *
+   * @param {Function} callback - to call when a grammar is removed.
+   * @param {Grammar} callback.grammar - that was removed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidRemoveGrammar(callback) {
     let disposable = new CompositeDisposable();
     disposable.add(
@@ -531,40 +566,23 @@ module.exports = class GrammarRegistry {
     return disposable;
   }
 
-  // Public: Specify a type of syntax node that may embed other languages.
-  //
-  // * `grammarId` The {String} id of the parent language
-  // * `injectionPoint` An {Object} with the following keys:
-  //   * `type` The {String} type of syntax node that may embed other languages
-  //   * `language` A {Function} that is called with syntax nodes of the specified `type` and
-  //     returns a {String} that will be tested against other grammars' `injectionRegex` in
-  //     order to determine what language should be embedded.
-  //   * `content` A {Function} that is called with syntax nodes of the specified `type` and
-  //     returns another syntax node or array of syntax nodes that contain the embedded source
-  //     code. Depending on the settings below, the content node(s) will be converted into a
-  //     series of buffer ranges; when this injection is parsed, anything not inside those
-  //     ranges will be invisible to the parser.
-  //   * `includeChildren` A {Boolean} that indicates whether the children (and, in fact, all
-  //     descendants) of the nodes returned by `content` should be included in the injection's
-  //     buffer range(s). Defaults to `false`.
-  //   * `newlinesBetween` A {Boolean} that indicates whether each node returned from `content`
-  //     should be separated by at least one newline character so that the parser understands
-  //     them to be logically separated. Embedded languages like ERB and EJS need this. Defaults
-  //     to {false}.
-  //   * `languageScope` A {String} or {Function} that returns the desired scope name to apply
-  //     to each of the injection's buffer ranges. Defaults to the injected grammar's own language
-  //     scope — e.g., `source.js` for the JavaScript grammar. Set to `null` if the language scope
-  //     should be omitted. If a {Function}, will be called with the grammar instance as an
-  //     argument, and should return either a {String} or `null`.
-  //   * `coverShallowerScopes` A {Boolean} that indicates whether this injection should prevent
-  //     shallower layers (including the layer that created this injection) from adding scopes
-  //     within any of this injection's buffer ranges. Useful for injecting languages into
-  //     themselves — for instance, injecting Rust into Rust macro definitions.
-  //   * `includeAdjacentWhitespace` A {Boolean} that indicates whether the injection's buffer
-  //     range(s) should include whitespace that occurs between two adjacent ranges. Defaults to
-  //     `false`. When `true`, if two consecutive injection buffer ranges are separated _only_ by
-  //     whitespace, those ranges will be consolidated into one range along with that whitespace.
-  //
+  /**
+   * Specify a type of syntax node that may embed other languages.
+   *
+   * @param {String} grammarId - The id of the parent language.
+   * @param {Object} injectionPoint - Injection behavior.
+   * @param {String} injectionPoint.type - The syntax-node type that may embed other languages.
+   * @param {Function} injectionPoint.language - Called with a matching syntax node and returns the language name tested against other grammars' `injectionRegex` values.
+   * @param {Function} injectionPoint.content - Called with a matching syntax node and returns the node or nodes containing embedded source. The nodes become visible buffer ranges for the injected parser.
+   * @param injectionPoint.includeChildren - A `Boolean` that indicates whether the children (and, in fact, all descendants) of the nodes returned by `content` should be included in the injection's buffer range(s). Defaults to `false`.
+   * @param injectionPoint.newlinesBetween - A `Boolean` that indicates whether each node returned from `content` should be separated by at least one newline character so that the parser understands them to be logically separated. Embedded languages like ERB and EJS need this. Defaults to `false`.
+   * @param injectionPoint.languageScope - A `String` or `Function` that returns the desired scope name to apply to each of the injection's buffer ranges. Defaults to the injected grammar's own language scope — e.g., `source.js` for the JavaScript grammar. Set to `null` if the language scope should be omitted. If a `Function`, will be called with the grammar instance as an argument, and should return either a `String` or `null`.
+   * @param injectionPoint.coverShallowerScopes - A `Boolean` that indicates whether this injection should prevent shallower layers (including the layer that created this injection) from adding scopes within any of this injection's buffer ranges. Useful for injecting languages into themselves — for instance, injecting Rust into Rust macro definitions.
+   * @param injectionPoint.includeAdjacentWhitespace - A `Boolean` that indicates whether the injection's buffer range(s) should include whitespace that occurs between two adjacent ranges. Defaults to `false`. When `true`, if two consecutive injection buffer ranges are separated _only_ by whitespace, those ranges will be consolidated into one range along with that whitespace.
+   * @returns {Disposable} A disposable that removes the injection point.
+   * @public
+   * @api-status Public
+   */
   addInjectionPoint(grammarId, injectionPoint) {
     let grammarsToDispose = [];
     const addOrCreateInjectionPoint = (table, grammarId) => {
@@ -643,12 +661,16 @@ module.exports = class GrammarRegistry {
     return this.textmateRegistry.removeGrammarForScopeName(scopeName);
   }
 
-  // Extended: Read a grammar asynchronously and add it to the registry.
-  //
-  // * `grammarPath` A {String} absolute file path to a grammar file.
-  // * `callback` A {Function} to call when loaded with the following arguments:
-  //   * `error` An {Error}, may be null.
-  //   * `grammar` A {Grammar} or null if an error occurred.
+  /**
+   * Read a grammar asynchronously and add it to the registry.
+   *
+   * @param grammarPath - A `String` absolute file path to a grammar file.
+   * @param callback - A `Function` to call when loaded with the following arguments:
+   * @param callback.error - An `Error`, may be null.
+   * @param callback.grammar - A `Grammar` or null if an error occurred.
+   * @public
+   * @api-status Extended
+   */
   loadGrammar(grammarPath, callback) {
     this.readGrammar(grammarPath, (error, grammar) => {
       if (error) return callback(error);
@@ -657,25 +679,31 @@ module.exports = class GrammarRegistry {
     });
   }
 
-  // Extended: Read a grammar synchronously and add it to this registry.
-  //
-  // * `grammarPath` A {String} absolute file path to a grammar file.
-  //
-  // Returns a {Grammar}.
+  /**
+   * Read a grammar synchronously and add it to this registry.
+   *
+   * @param grammarPath - A `String` absolute file path to a grammar file.
+   * @returns {Grammar}
+   * @public
+   * @api-status Extended
+   */
   loadGrammarSync(grammarPath) {
     const grammar = this.readGrammarSync(grammarPath);
     this.addGrammar(grammar);
     return grammar;
   }
 
-  // Extended: Read a grammar asynchronously but don't add it to the registry.
-  //
-  // * `grammarPath` A {String} absolute file path to a grammar file.
-  // * `callback` A {Function} to call when read with the following arguments:
-  //   * `error` An {Error}, may be null.
-  //   * `grammar` A {Grammar} or null if an error occurred.
-  //
-  // Returns undefined.
+  /**
+   * Read a grammar asynchronously but don't add it to the registry.
+   *
+   * @param grammarPath - A `String` absolute file path to a grammar file.
+   * @param callback - A `Function` to call when read with the following arguments:
+   * @param callback.error - An `Error`, may be null.
+   * @param callback.grammar - A `Grammar` or null if an error occurred.
+   * @returns {undefined} undefined.
+   * @public
+   * @api-status Extended
+   */
   readGrammar(grammarPath, callback) {
     if (!callback) callback = () => {};
     CSON.readFile(grammarPath, (error, params = {}) => {
@@ -688,11 +716,14 @@ module.exports = class GrammarRegistry {
     });
   }
 
-  // Extended: Read a grammar synchronously but don't add it to the registry.
-  //
-  // * `grammarPath` A {String} absolute file path to a grammar file.
-  //
-  // Returns a {Grammar}.
+  /**
+   * Read a grammar synchronously but don't add it to the registry.
+   *
+   * @param grammarPath - A `String` absolute file path to a grammar file.
+   * @returns {Grammar}
+   * @public
+   * @api-status Extended
+   */
   readGrammarSync(grammarPath) {
     return this.createGrammar(grammarPath, CSON.readFileSync(grammarPath) || {});
   }
@@ -708,13 +739,15 @@ module.exports = class GrammarRegistry {
     }
   }
 
-  // Extended: Get all the grammars in this registry.
-  //
-  // * `params` (optional) {Object}
-  //   * `includeTreeSitter` (optional) {Boolean} Set to include
-  //     [Tree-sitter](https://github.blog/2018-10-31-atoms-new-parsing-system/) grammars
-  //
-  // Returns a non-empty {Array} of {Grammar} instances.
+  /**
+   * Get all the grammars in this registry.
+   *
+   * @param {Object} [params]
+   * @param {Boolean} [params.includeTreeSitter] - Set to include [Tree-sitter](https://github.blog/2018-10-31-atoms-new-parsing-system/) grammars
+   * @returns {Array} non-empty `Array` of `Grammar` instances.
+   * @public
+   * @api-status Extended
+   */
   getGrammars(params) {
     let result = this.textmateRegistry.getGrammars();
     if (!(params && params.includeTreeSitter)) return result;

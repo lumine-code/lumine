@@ -24,12 +24,17 @@ function readdirEntries(directoryPath) {
   }
 }
 
-// Extended: Loads and activates a package's main module and resources such as
-// stylesheets, keymaps, grammar, editor properties, and menus.
+/**
+ * Loads and activates a package's main module and resources such as
+ * stylesheets, keymaps, grammar, editor properties, and menus.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class Package {
-  /*
-  Section: Construction
-  */
+  /**
+   * @category Construction
+   */
 
   constructor(params) {
     this.config = params.config;
@@ -58,22 +63,25 @@ module.exports = class Package {
     this.reset();
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Invoke the given callback when all packages have been activated.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when all packages have been activated.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidDeactivate(callback) {
     return this.emitter.on("did-deactivate", callback);
   }
 
-  /*
-  Section: Instance Methods
-  */
+  /**
+   * @category Instance Methods
+   */
 
   enable() {
     return this.config.removeAtKeyPath("core.disabledPackages", this.name);
@@ -214,7 +222,7 @@ module.exports = class Package {
   activateNow() {
     try {
       if (!this.mainModule) this.requireMainModule();
-      // {::activate} normally does this first, but a package can be forced
+      // {@link #activate} normally does this first, but a package can be forced
       // active without it — a deserializer that needs its package up before
       // initial activation runs, say. Everything here is flag-guarded, so the
       // ordinary path pays nothing for the second call.
@@ -1133,16 +1141,20 @@ module.exports = class Package {
     return [...this.getNativeModuleDependencyPathsMap().keys()];
   }
 
-  /*
-  Section: Native Module Compatibility
-  */
+  /**
+   * @category Native Module Compatibility
+   */
 
-  // Extended: Are all native modules depended on by this package correctly
-  // compiled against the current version of Lumine?
-  //
-  // Incompatible packages cannot be activated.
-  //
-  // Returns a {Boolean}, true if compatible, false if incompatible.
+  /**
+   * Are all native modules depended on by this package correctly
+   * compiled against the current version of Lumine?
+   *
+   * Incompatible packages cannot be activated.
+   *
+   * @returns {Boolean}, true if compatible, false if incompatible.
+   * @public
+   * @api-status Extended
+   */
   isCompatible() {
     if (this.compatible == null) {
       if (this.getMainModulePath()) {
@@ -1155,12 +1167,14 @@ module.exports = class Package {
     return this.compatible;
   }
 
-  // Extended: Rebuild native modules in this package's dependencies for the
-  // current version of Lumine.
-  //
-  // Returns a {Promise} that resolves with an object containing `code`,
-  // `stdout`, and `stderr` properties based on the results of running
-  // `lumine -p rebuild` on the package.
+  /**
+   * Rebuild native modules in this package's dependencies for the
+   * current version of Lumine.
+   *
+   * @returns {Promise} that resolves with an object containing `code`, `stdout`, and `stderr` properties based on the results of running `lumine -p rebuild` on the package.
+   * @public
+   * @api-status Extended
+   */
   rebuild() {
     return new Promise((resolve) =>
       this.runRebuildProcess((result) => {
@@ -1176,9 +1190,13 @@ module.exports = class Package {
     );
   }
 
-  // Extended: If a previous rebuild failed, get the contents of stderr.
-  //
-  // Returns a {String} or null if no previous build failure occurred.
+  /**
+   * If a previous rebuild failed, get the contents of stderr.
+   *
+   * @returns {String} or null if no previous build failure occurred.
+   * @public
+   * @api-status Extended
+   */
   getBuildFailureOutput() {
     return global.localStorage.getItem(this.getBuildFailureOutputStorageKey());
   }

@@ -238,9 +238,13 @@ let nextLanguageModeId = 0;
 const COMMENT_MATCHER = matcherForSelector("comment");
 const MAX_RANGE = new Range(Point.ZERO, Point.INFINITY).freeze();
 
-// Private: The language mode a grammar with a tree-sitter parser installs on a
-// buffer. Packages reach what it computes through {TextEditor} rather than
-// holding one directly.
+/**
+ * The language mode a grammar with a tree-sitter parser installs on a
+ * buffer. Packages reach what it computes through {@link TextEditor} rather than
+ * holding one directly.
+ *
+ * @private
+ */
 class TreeSitterLanguageMode {
   constructor({ buffer, grammar, config, grammars, syncTimeoutMicros }) {
     this.id = nextLanguageModeId++;
@@ -613,7 +617,7 @@ class TreeSitterLanguageMode {
     return result;
   }
 
-  // Deprecated alias of {::updateInjectionsForGrammar}, kept for packages
+  // Deprecated alias of {@link #updateInjectionsForGrammar}, kept for packages
   // that still use the legacy Tree-sitter method name.
   updateForInjection(grammar) {
     return this.updateInjectionsForGrammar(grammar);
@@ -1334,8 +1338,8 @@ class TreeSitterLanguageMode {
   // comment delimiters for different contexts.
   //
   // Returns `commentStartString` and (sometimes) `commentEndString`
-  // properties. If only the former is a {String}, then “Toggle Line Comments”
-  // will insert a line comment; if both are {String}s, it'll insert a block
+  // properties. If only the former is a `String`, then “Toggle Line Comments”
+  // will insert a line comment; if both are `Strings`, it'll insert a block
   // comment.
   //
   // NOTE: This method also returns a `commentDelimiters` property with
@@ -1501,49 +1505,52 @@ class TreeSitterLanguageMode {
     return result;
   }
 
-  // Essential: Get the suggested indentation level for an existing line in the
-  // buffer.
-  //
-  // * `bufferRow` A {Number} indicating the buffer row.
-  // * `tabLength` A {Number} signifying the length of a tab, in spaces,
-  //   according to the current settings of the buffer.
-  // * `options` An optional {Object} with the following properties, all of
-  //   which are themselves optional:
-  //   * `options.skipBlankLines`: {Boolean} indicating whether to ignore blank
-  //     lines when determining which row to use as a reference row. Default is
-  //     `true`. Irrelevant if `options.comparisonRow` is specified.
-  //   * `options.skipDedentCheck`: {Boolean} indicating whether to skip the
-  //     second phase of the check and determine only if the current row should
-  //     _start out_ indented from the reference row.
-  //   * `options.preserveLeadingWhitespace`: {Boolean} indicating whether to
-  //     adjust the returned number to account for the indentation level of any
-  //     whitespace that may already be on the row. Defaults to `false`.
-  //   * `options.forceTreeParse`: {Boolean} indicating whether to force this
-  //     method to synchronously parse the buffer into a tree, even if it
-  //     otherwise would not. Defaults to `false`.
-  //   * `options.comparisonRow`: A {Number} specifying the row to use as a
-  //     reference row. Must be a valid row that occurs earlier in the buffer
-  //     than `row`. If omitted, this method will determine the reference row
-  //     on its own.
-  //
-  // Returns a {Number}, {null}, or a {Promise} that will resolve with either
-  // a {Number} or {undefined}.
-  //
-  // This method will return a synchronous result if (a) the tree is clean, (b)
-  // the language mode decides it can afford to do a synchronous re-parse of
-  // the buffer, or (c) `options.forceTreeParse` is `true`. Otherwise, this
-  // method will wait until the end of the current buffer transaction. If this
-  // method synchronously returns {null}, it means that this method cannot make
-  // a suggestion.
-  //
-  // When acting asynchronously, this method may or may not be able to give an
-  // answer. If it can, it will return a {Promise} that resolves with a
-  // {Number} signifying the suggested indentation level. If it can't — because
-  // it thinks the content has been altered too much for it to make a
-  // suggestion — it will return a {Promise} that resolves with {undefined},
-  // signalling that a fallback style of indentation adjustment should take
-  // place.
-  //
+  /**
+   * Get the suggested indentation level for an existing line in the
+   * buffer.
+   *
+   * * `bufferRow` A `Number` indicating the buffer row.
+   * * `tabLength` A `Number` signifying the length of a tab, in spaces,
+   *   according to the current settings of the buffer.
+   * * `options` An optional `Object` with the following properties, all of
+   *   which are themselves optional:
+   *   * `options.skipBlankLines`: `Boolean` indicating whether to ignore blank
+   *     lines when determining which row to use as a reference row. Default is
+   *     `true`. Irrelevant if `options.comparisonRow` is specified.
+   *   * `options.skipDedentCheck`: `Boolean` indicating whether to skip the
+   *     second phase of the check and determine only if the current row should
+   *     _start out_ indented from the reference row.
+   *   * `options.preserveLeadingWhitespace`: `Boolean` indicating whether to
+   *     adjust the returned number to account for the indentation level of any
+   *     whitespace that may already be on the row. Defaults to `false`.
+   *   * `options.forceTreeParse`: `Boolean` indicating whether to force this
+   *     method to synchronously parse the buffer into a tree, even if it
+   *     otherwise would not. Defaults to `false`.
+   *   * `options.comparisonRow`: A `Number` specifying the row to use as a
+   *     reference row. Must be a valid row that occurs earlier in the buffer
+   *     than `row`. If omitted, this method will determine the reference row
+   *     on its own.
+   *
+   *
+   * This method will return a synchronous result if (a) the tree is clean, (b)
+   * the language mode decides it can afford to do a synchronous re-parse of
+   * the buffer, or (c) `options.forceTreeParse` is `true`. Otherwise, this
+   * method will wait until the end of the current buffer transaction. If this
+   * method synchronously returns `null`, it means that this method cannot make
+   * a suggestion.
+   *
+   * When acting asynchronously, this method may or may not be able to give an
+   * answer. If it can, it will return a `Promise` that resolves with a
+   * `Number` signifying the suggested indentation level. If it can't — because
+   * it thinks the content has been altered too much for it to make a
+   * suggestion — it will return a `Promise` that resolves with `undefined`,
+   * signalling that a fallback style of indentation adjustment should take
+   * place.
+   *
+   * @returns {Number}, `null`, or a `Promise` that will resolve with either a `Number` or `undefined`.
+   * @public
+   * @api-status Essential
+   */
   suggestedIndentForBufferRow(...args) {
     return this.indentResolver.suggestedIndentForBufferRow(...args);
   }
@@ -1553,13 +1560,13 @@ class TreeSitterLanguageMode {
   // a tree re-parse after each individual line adjustment when auto-indenting
   // multiple rows at once.
   //
-  // * `startRow` The row {Number} to start at.
-  // * `endRow` The row {Number} to end at.
+  // * `startRow` The row `Number` to start at.
+  // * `endRow` The row `Number` to end at.
   //
-  // Returns either a {Map} or {null}. If a {Map}, its keys will be row numbers
+  // Returns either a `Map` or `null`. If a `Map`, its keys will be row numbers
   // and its values will be desired indentation levels. May not return the
   // entire range of requested rows, in which case the caller should
-  // auto-indent the remaining rows through another means. If {null}, signifies
+  // auto-indent the remaining rows through another means. If `null`, signifies
   // that no auto-indent should be attempted at all for the given range.
   suggestedIndentForBufferRows(...args) {
     return this.indentResolver.suggestedIndentForBufferRows(...args);
@@ -1567,12 +1574,12 @@ class TreeSitterLanguageMode {
 
   // Get the suggested indentation level for a line in the buffer on which the
   // user is currently typing. This may return a different result from
-  // {::suggestedIndentForBufferRow} in order to avoid unexpected changes in
+  // {@link #suggestedIndentForBufferRow} in order to avoid unexpected changes in
   // indentation. It may also return undefined if no change should be made.
   //
-  // * row - The row {Number}
+  // * row - The row `Number`
   //
-  // Returns a {Number}.
+  // Returns a `Number`.
   suggestedIndentForEditedBufferRow(...args) {
     return this.indentResolver.suggestedIndentForEditedBufferRow(...args);
   }
@@ -1580,9 +1587,9 @@ class TreeSitterLanguageMode {
   // Get the suggested indentation level for a given line of text, if it were
   // inserted at the given row in the buffer.
   //
-  // * bufferRow - A {Number} indicating the buffer row
+  // * bufferRow - A `Number` indicating the buffer row
   //
-  // Returns a {Number}.
+  // Returns a `Number`.
   suggestedIndentForLineAtBufferRow(row, _line, tabLength) {
     // We can't answer this question accurately for text that isn't yet in the
     // tree, so instead we'll just note that this request was made and try to
@@ -1611,16 +1618,18 @@ class TreeSitterLanguageMode {
     return results;
   }
 
-  // Extended: Re-compiles every query of every grammar in use in this buffer —
-  // the root grammar plus any injected grammars — from its current source and
-  // reports an error notification for each query that fails to compile.
-  //
-  // Compilation is done freshly rather than through the query cache, so this
-  // validates edits made to query files after the grammar first loaded.
-  //
-  // Returns an {Array} of failure descriptors (see
-  // {TreeSitterGrammar::describeQueryError}); the array is empty when
-  // every query compiled.
+  /**
+   * Re-compiles every query of every grammar in use in this buffer —
+   * the root grammar plus any injected grammars — from its current source and
+   * reports an error notification for each query that fails to compile.
+   *
+   * Compilation is done freshly rather than through the query cache, so this
+   * validates edits made to query files after the grammar first loaded.
+   *
+   * @returns {Array} of failure descriptors (see {@link TreeSitterGrammar#describeQueryError}); the array is empty when every query compiled.
+   * @public
+   * @api-status Extended
+   */
   validateGrammarQueries() {
     const queryTypes = [
       "highlightsQuery",
@@ -1666,17 +1675,17 @@ class TreeSitterLanguageMode {
     return failures;
   }
 
-  // Given a {Point}, returns all injection {LanguageLayer}s that include that
+  // Given a {@link Point}, returns all injection `LanguageLayers` that include that
   // point. Does not include the root language layer.
   //
-  // A {LanguageLayer} can have multiple content ranges. Its “extent” is a
-  // single contiguous {Range} that includes all of its content ranges. To
+  // A `LanguageLayer` can have multiple content ranges. Its “extent” is a
+  // single contiguous {@link Range} that includes all of its content ranges. To
   // return only layers with a content range that spans the given point, pass
   // `{ exact: true }` as the second argument.
   //
-  // * point - A {Point} representing a buffer position.
-  // * options - An {Object} containing these keys:
-  //   * exact - {Boolean} that, when `true`, checks for containment within the
+  // * point - A {@link Point} representing a buffer position.
+  // * options - An `Object` containing these keys:
+  //   * exact - `Boolean` that, when `true`, checks for containment within the
   //     layer's _content ranges_ instead of its _extent_ (see description
   //     above).
   injectionLayersAtPoint(point, { exact = false } = {}) {
@@ -1696,16 +1705,16 @@ class TreeSitterLanguageMode {
     return results;
   }
 
-  // Given a {Point}, returns all {LanguageLayer}s that include that point,
+  // Given a {@link Point}, returns all `LanguageLayers` that include that point,
   // including the root language layer.
   //
-  // A {LanguageLayer} can have multiple content ranges. Its “extent” is a
-  // single contiguous {Range} that includes all of its content ranges. To
+  // A `LanguageLayer` can have multiple content ranges. Its “extent” is a
+  // single contiguous {@link Range} that includes all of its content ranges. To
   // return only layers with a content range that spans the given point, pass
   // `{ exact: true }` as the second argument.
   //
-  // * point - A {Point} representing a buffer position.
-  // * options - An {Object} containing these keys: * exact - {Boolean} that,
+  // * point - A {@link Point} representing a buffer position.
+  // * options - An `Object` containing these keys: * exact - `Boolean` that,
   //   when `true`, checks for containment within the layer's _content ranges_
   //   instead of its _extent_ (see description above).
   languageLayersAtPoint(point, { exact = false } = {}) {
@@ -3146,7 +3155,7 @@ class LanguageLayer {
   // query files, but those edits are only monitored in dev mode.
   //
   // It can also happen if an installed package uses an API on
-  // {TreeSitterGrammar} to modify a query after initial load.
+  // {@link TreeSitterGrammar} to modify a query after initial load.
   observeQueryChanges() {
     this.grammar.onDidChangeQuery(async ({ queryType }) => {
       if (this._pendingQueryFileChange) {
@@ -3935,7 +3944,7 @@ class LanguageLayer {
     return markers.map((m) => m.getRange());
   }
 
-  // Checks whether a given {Point} lies within one of this layer's content
+  // Checks whether a given {@link Point} lies within one of this layer's content
   // ranges — not just its extent. The optional `exclusive` flag will return
   // `false` if the point lies on a boundary of a content range.
   containsPoint(point, exclusive = false) {
@@ -4389,10 +4398,14 @@ class LanguageLayer {
   }
 }
 
-// Private: An injection `LanguageLayer` may need to parse and highlight a
-// strange subset of its stated range — for instance, all the descendants
-// within a parent that are of a particular type. A `NodeRangeSet` is how that
-// strange subset is expressed.
+/**
+ * An injection `LanguageLayer` may need to parse and highlight a
+ * strange subset of its stated range — for instance, all the descendants
+ * within a parent that are of a particular type. A `NodeRangeSet` is how that
+ * strange subset is expressed.
+ *
+ * @private
+ */
 class NodeRangeSet {
   constructor(previous, nodes, injectionPoint) {
     this.previous = previous;
@@ -4593,11 +4606,15 @@ class NodeRangeSet {
   }
 }
 
-// Private: A subclass of `Map` that associates a set of scope names with the
-// editor locations at which they are opened.
-//
-// In some complicated scenarios, we need to know where a scope was opened when
-// deciding how to handle it.
+/**
+ * A subclass of `Map` that associates a set of scope names with the
+ * editor locations at which they are opened.
+ *
+ * In some complicated scenarios, we need to know where a scope was opened when
+ * deciding how to handle it.
+ *
+ * @private
+ */
 class OpenScopeMap extends Map {
   constructor() {
     super();
@@ -4631,8 +4648,12 @@ class OpenScopeMap extends Map {
   }
 }
 
-// Private: A subclass of `Map` that anticipates multiple values at each key.
-// The main way to add a value at a given key is via a new `Index::add` method.
+/**
+ * A subclass of `Map` that anticipates multiple values at each key.
+ * The main way to add a value at a given key is via a new `Index::add` method.
+ *
+ * @private
+ */
 class Index extends Map {
   constructor() {
     super();
@@ -4650,15 +4671,19 @@ class Index extends Map {
   }
 }
 
-// Private: A class designed to aggregate and normalize a set of ranges. Each
-// time a buffer range is added, it's compared to the existing list; if there
-// are intersections with range already in the list, those intersections are
-// combined into one larger range.
-//
-// The ranges can be iterated via `for..of`.
-//
-// Assumes all ranges are instances of `Range` rather than Tree-sitter range
-// specs.
+/**
+ * A class designed to aggregate and normalize a set of ranges. Each
+ * time a buffer range is added, it's compared to the existing list; if there
+ * are intersections with range already in the list, those intersections are
+ * combined into one larger range.
+ *
+ * The ranges can be iterated via `for..of`.
+ *
+ * Assumes all ranges are instances of `Range` rather than Tree-sitter range
+ * specs.
+ *
+ * @private
+ */
 class RangeList {
   constructor() {
     this.ranges = [];
@@ -4710,12 +4735,16 @@ class RangeList {
   }
 }
 
-// Private: A class that manages indentation hinting for a single editor.
-//
-// Each instance of `TreeSitterLanguageMode` has exactly one instance of
-// `IndentResolver`; the purpose of this class is to encapsulate indentation
-// logic instead of having it dominate the language mode for those
-// familiarizing themselves with the code.
+/**
+ * A class that manages indentation hinting for a single editor.
+ *
+ * Each instance of `TreeSitterLanguageMode` has exactly one instance of
+ * `IndentResolver`; the purpose of this class is to encapsulate indentation
+ * logic instead of having it dominate the language mode for those
+ * familiarizing themselves with the code.
+ *
+ * @private
+ */
 class IndentResolver {
   constructor(buffer, languageMode) {
     this.buffer = buffer;
@@ -4726,7 +4755,7 @@ class IndentResolver {
   // Get the suggested indentation level for an existing line in the
   // buffer.
   //
-  // See {TreeSitterLanguageMode::suggestedIndentForBufferRow}.
+  // See {@link TreeSitterLanguageMode#suggestedIndentForBufferRow}.
   suggestedIndentForBufferRow(row, tabLength, rawOptions = {}) {
     if (row === 0) {
       return 0;
@@ -5376,81 +5405,85 @@ class IndentResolver {
     return adjustedIndent;
   }
 
-  // Extended: Register a callback that fires when {IndentResolver} suggests an
-  // indentation level.
-  //
-  // This callback is merely a glimpse into the indentation life-cycle and does
-  // not offer the callback any opportunity to change the value being
-  // suggested. Its goal is to report metadata that may make it easier to
-  // diagnose _why_ a particular indentation level is being suggested without
-  // having to step through the logic in a debugger.
-  //
-  // Nearly all exit paths for {::suggestedIndentForBufferRow} and
-  // {::suggestedIndentForEditedBufferRow} invoke this callback.
-  //
-  // One indentation “level” consists of either (a) one tab character, or (b)
-  // one multiple of `language.tabLength` spaces (if `language.softTabs` is
-  // `true`).
-  //
-  // - `callback` A {Function} that takes one parameter:
-  //   - `meta` An {Object} consisting of _some subset_ of the following
-  //     properties:
-  //     - `captureMode` A {String} describing one of several different modes
-  //       which influence a capture; when this property is absent, it means
-  //       that indentation level was determined in a simpler manner that
-  //       did not use any Tree-sitter features.
-  //       - A value of `normal` means that an indentation level was determined
-  //         through the normal two-phase process.
-  //       - A value of `match` means that an indentation level was determined
-  //         when we encountered a `@match` capture. `@match` captures are
-  //         considered in Phase 2, but use the syntax tree to override earlier
-  //         logic and give a definitive answer on a row’s indentation level.
-  //       - A value of `none` means that a `@none` capture was encountered in
-  //         Phase 2. `@none` is an extremely rare capture that, when used,
-  //         instantly signals a suggested indent level of `0`, overriding all
-  //         other logic.
-  //     - `currentRow` The {Number} of the row whose indentation was suggested.
-  //       (Zero-indexed, so you must add one to match the row number displayed
-  //       in the gutter.)
-  //     - `comparisonRow` The {Number} of the row that was consulted to
-  //       determine the baseline indentation of the target row. This is
-  //       often the row directly above `row`, but can be an earlier row if
-  //       the target row was preceded by whitespace. (Zero-indexed just like
-  //       `currentRow`.)
-  //     - `comparisonRowIndent` {Number} The indentation level of the
-  //       comparison row.
-  //     - `indentDelta` {Number} The amount of indentation (in increments)
-  //       suggested during the first phase of indent analysis. This phase
-  //       determines the baseline indentation of the target row by querying
-  //       the content on the comparison row. (For instance, if the comparison
-  //       row ends with `(`, `indentDelta` will typically be `1`.) Since
-  //       the first phase can only maintain or increase the indentation level,
-  //       this value will be either `0` or `1`.
-  //     - `dedentDelta` {Number} The amount of indentation (in increments)
-  //       suggested during the second phase of indent analysis. This phase
-  //       determines whether any content on the target line suggests that we
-  //       should dedent the line by one level. (For instance, if the target
-  //       line starts with `)`, `dedentDelta` will often be `-1`.) Since the
-  //       second phase can only maintain or decrease the indentation level,
-  //       this value will be either `0` or `-1`.
-  //     - `matchIndentLevel` {Number} A number representing the ideal amount
-  //       of indentation as determined by a `@match` capture. A `@match`
-  //       capture tries to match the indentation level of a previous line in
-  //       the buffer — one that it has a semantic relationship with — instead
-  //       of determining indentation in relative terms. When it's present, it
-  //       overrides the conventional indentation logic.
-  //     - `finalIndent` {Number} A number representing the final value that
-  //       will shortly be returned from a call to
-  //       `suggestedIndentForBufferRow`. This value does not account for the
-  //       `preserveLeadingWhitespace` option; it represents what the actual
-  //       indentation level of the line is going to be.
-  //     - `adjustedIndent` {Number} Like `finalIndent`, but takes existing
-  //       indentation level into account if the `preserveLeadingWhitespace`
-  //       option was enabled. For instance, if `finalIndent` is `5`, but the
-  //       target row already has an indent level of `3`, `adjustedIndent` will
-  //       instead be `2`. If `preserveLeadingWhitespace` is `false`,
-  //       `finalIndent` and `adjustedIndent` will always be identical.
-  //
+  /**
+   * Register a callback that fires when `IndentResolver` suggests an
+   * indentation level.
+   *
+   * This callback is merely a glimpse into the indentation life-cycle and does
+   * not offer the callback any opportunity to change the value being
+   * suggested. Its goal is to report metadata that may make it easier to
+   * diagnose _why_ a particular indentation level is being suggested without
+   * having to step through the logic in a debugger.
+   *
+   * Nearly all exit paths for {@link #suggestedIndentForBufferRow} and
+   * {@link #suggestedIndentForEditedBufferRow} invoke this callback.
+   *
+   * One indentation “level” consists of either (a) one tab character, or (b)
+   * one multiple of `language.tabLength` spaces (if `language.softTabs` is
+   * `true`).
+   *
+   * - `callback` A `Function` that takes one parameter:
+   *   - `meta` An `Object` consisting of _some subset_ of the following
+   *     properties:
+   *     - `captureMode` A `String` describing one of several different modes
+   *       which influence a capture; when this property is absent, it means
+   *       that indentation level was determined in a simpler manner that
+   *       did not use any Tree-sitter features.
+   *       - A value of `normal` means that an indentation level was determined
+   *         through the normal two-phase process.
+   *       - A value of `match` means that an indentation level was determined
+   *         when we encountered a `@match` capture. `@match` captures are
+   *         considered in Phase 2, but use the syntax tree to override earlier
+   *         logic and give a definitive answer on a row’s indentation level.
+   *       - A value of `none` means that a `@none` capture was encountered in
+   *         Phase 2. `@none` is an extremely rare capture that, when used,
+   *         instantly signals a suggested indent level of `0`, overriding all
+   *         other logic.
+   *     - `currentRow` The `Number` of the row whose indentation was suggested.
+   *       (Zero-indexed, so you must add one to match the row number displayed
+   *       in the gutter.)
+   *     - `comparisonRow` The `Number` of the row that was consulted to
+   *       determine the baseline indentation of the target row. This is
+   *       often the row directly above `row`, but can be an earlier row if
+   *       the target row was preceded by whitespace. (Zero-indexed just like
+   *       `currentRow`.)
+   *     - `comparisonRowIndent` `Number` The indentation level of the
+   *       comparison row.
+   *     - `indentDelta` `Number` The amount of indentation (in increments)
+   *       suggested during the first phase of indent analysis. This phase
+   *       determines the baseline indentation of the target row by querying
+   *       the content on the comparison row. (For instance, if the comparison
+   *       row ends with `(`, `indentDelta` will typically be `1`.) Since
+   *       the first phase can only maintain or increase the indentation level,
+   *       this value will be either `0` or `1`.
+   *     - `dedentDelta` `Number` The amount of indentation (in increments)
+   *       suggested during the second phase of indent analysis. This phase
+   *       determines whether any content on the target line suggests that we
+   *       should dedent the line by one level. (For instance, if the target
+   *       line starts with `)`, `dedentDelta` will often be `-1`.) Since the
+   *       second phase can only maintain or decrease the indentation level,
+   *       this value will be either `0` or `-1`.
+   *     - `matchIndentLevel` `Number` A number representing the ideal amount
+   *       of indentation as determined by a `@match` capture. A `@match`
+   *       capture tries to match the indentation level of a previous line in
+   *       the buffer — one that it has a semantic relationship with — instead
+   *       of determining indentation in relative terms. When it's present, it
+   *       overrides the conventional indentation logic.
+   *     - `finalIndent` `Number` A number representing the final value that
+   *       will shortly be returned from a call to
+   *       `suggestedIndentForBufferRow`. This value does not account for the
+   *       `preserveLeadingWhitespace` option; it represents what the actual
+   *       indentation level of the line is going to be.
+   *     - `adjustedIndent` `Number` Like `finalIndent`, but takes existing
+   *       indentation level into account if the `preserveLeadingWhitespace`
+   *       option was enabled. For instance, if `finalIndent` is `5`, but the
+   *       target row already has an indent level of `3`, `adjustedIndent` will
+   *       instead be `2`. If `preserveLeadingWhitespace` is `false`,
+   *       `finalIndent` and `adjustedIndent` will always be identical.
+   *
+   * @public
+   * @api-status Extended
+   */
   onDidSuggestIndent(callback) {
     return this.emitter.on("did-suggest-indent", callback);
   }

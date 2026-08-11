@@ -1,10 +1,15 @@
-// Public: Measure how long a function takes to run.
-//
-// description - A {String} description that will be logged to the console when
-//               the function completes.
-// fn - A {Function} to measure the duration of.
-//
-// Returns the value returned by the given function.
+/**
+ * Measure how long a function takes to run.
+ *
+ * description - A `String` description that will be logged to the console when
+ *               the function completes.
+ * fn - A `Function` to measure the duration of.
+ *
+ * Returns the value returned by the given function.
+ *
+ * @public
+ * @api-status Public
+ */
 window.measure = function (description, fn) {
   let start = Date.now();
   let value = fn();
@@ -13,13 +18,18 @@ window.measure = function (description, fn) {
   return value;
 };
 
-// Public: Create a dev tools profile for a function.
-//
-// description - A {String} description that will be available in the Profiles
-//               tab of the dev tools.
-// fn - A {Function} to profile.
-//
-// Returns the value returned by the given function.
+/**
+ * Create a dev tools profile for a function.
+ *
+ * description - A `String` description that will be available in the Profiles
+ *               tab of the dev tools.
+ * fn - A `Function` to profile.
+ *
+ * Returns the value returned by the given function.
+ *
+ * @public
+ * @api-status Public
+ */
 window.profile = function (description, fn) {
   window.measure(description, function () {
     console.profile(description);

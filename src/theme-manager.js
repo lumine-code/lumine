@@ -56,9 +56,14 @@ async function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-// Extended: Handles loading and activating available themes.
-//
-// An instance of this class is always available as the `lumine.themes` global.
+/**
+ * Handles loading and activating available themes.
+ *
+ * An instance of this class is always available as the `lumine.themes` global.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class ThemeManager {
   constructor({ packageManager, config, styleManager, notificationManager, viewRegistry }) {
     this.packageManager = packageManager;
@@ -84,45 +89,56 @@ module.exports = class ThemeManager {
     this.safeMode = safeMode;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Invoke `callback` when style sheet changes associated with
-  // updating the list of active themes have completed.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` when style sheet changes associated with
+   * updating the list of active themes have completed.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeActiveThemes(callback) {
     return this.emitter.on("did-change-active-themes", callback);
   }
 
-  // Public: Invoke `callback` when a theme pack is registered or removed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` when a theme pack is registered or removed.
+   *
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidChangeThemePacks(callback) {
     return this.emitter.on("did-change-theme-packs", callback);
   }
 
-  /*
-  Section: Accessing Available Themes
-  */
+  /**
+   * @category Accessing Available Themes
+   */
 
   getAvailableNames() {
     // TODO: Maybe should change to list all the available themes out there?
     return this.getLoadedNames();
   }
 
-  // Public: Register a named light/dark theme pack.
-  //
-  // A pack groups the complete theme stacks for both appearance modes:
-  //
-  // * `name` A user-facing {String}.
-  // * `light` An {Array} of theme package names.
-  // * `dark` An {Array} of theme package names.
-  //
-  // Returns a {Disposable} that removes the pack.
+  /**
+   * Register a named light/dark theme pack.
+   *
+   * A pack groups the complete theme stacks for both appearance modes.
+   *
+   * @param {Object} themePack - The theme pack.
+   * @param {String} themePack.name - Its user-facing name.
+   * @param {Array<String>} themePack.light - Theme packages for light mode.
+   * @param {Array<String>} themePack.dark - Theme packages for dark mode.
+   * @returns {Disposable} that removes the pack.
+   * @public
+   * @api-status Public
+   */
   registerThemePack({ name, light, dark } = {}) {
     if (typeof name !== "string" || name.trim().length === 0) {
       throw new TypeError("A theme pack must have a non-empty name.");
@@ -154,12 +170,20 @@ module.exports = class ThemeManager {
     });
   }
 
-  // Public: Returns registered theme packs sorted by their user-facing names.
+  /**
+   * @returns {Array<Object>} registered theme packs sorted by their user-facing names.
+   * @public
+   * @api-status Public
+   */
   getThemePacks() {
     return Array.from(this.themePacks).sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  // Public: Returns whether both configured mode pairs match `themePack`.
+  /**
+   * @returns {Boolean} whether both configured mode pairs match `themePack`.
+   * @public
+   * @api-status Public
+   */
   isThemePackActive(themePack) {
     if (!themePack) return false;
     const pairsMatch = (keyPath, expected) => {
@@ -174,12 +198,21 @@ module.exports = class ThemeManager {
     return pairsMatch("theme.light", themePack.light) && pairsMatch("theme.dark", themePack.dark);
   }
 
-  // Public: Returns the registered pack matching both configured mode pairs.
+  /**
+   * @returns {Object|undefined} registered pack matching both configured mode pairs.
+   * @public
+   * @api-status Public
+   */
   getActiveThemePack() {
     return this.getThemePacks().find((themePack) => this.isThemePackActive(themePack)) ?? null;
   }
 
-  // Public: Configure both appearance modes from `themePack`.
+  /**
+   * Configure both appearance modes from `themePack`.
+   *
+   * @public
+   * @api-status Public
+   */
   setThemePack(themePack) {
     if (!themePack || !Array.isArray(themePack.light) || !Array.isArray(themePack.dark)) {
       throw new TypeError("A theme pack must provide light and dark theme arrays.");
@@ -193,30 +226,46 @@ module.exports = class ThemeManager {
     return true;
   }
 
-  /*
-  Section: Accessing Loaded Themes
-  */
+  /**
+   * @category Accessing Loaded Themes
+   */
 
-  // Public: Returns an {Array} of {String}s of all the loaded theme names.
+  /**
+   * @returns {Array} of `Strings` of all the loaded theme names.
+   * @public
+   * @api-status Public
+   */
   getLoadedThemeNames() {
     return this.getLoadedThemes().map((theme) => theme.name);
   }
 
-  // Public: Returns an {Array} of all the loaded themes.
+  /**
+   * @returns {Array} of all the loaded themes.
+   * @public
+   * @api-status Public
+   */
   getLoadedThemes() {
     return this.packageManager.getLoadedPackages().filter((pack) => pack.isTheme());
   }
 
-  /*
-  Section: Accessing Active Themes
-  */
+  /**
+   * @category Accessing Active Themes
+   */
 
-  // Public: Returns an {Array} of {String}s of all the active theme names.
+  /**
+   * @returns {Array} of `Strings` of all the active theme names.
+   * @public
+   * @api-status Public
+   */
   getActiveThemeNames() {
     return this.getActiveThemes().map((theme) => theme.name);
   }
 
-  // Public: Returns an {Array} of all the active themes.
+  /**
+   * @returns {Array} of all the active themes.
+   * @public
+   * @api-status Public
+   */
   getActiveThemes() {
     return this.packageManager.getActivePackages().filter((pack) => pack.isTheme());
   }
@@ -225,9 +274,9 @@ module.exports = class ThemeManager {
     return this.activateThemes();
   }
 
-  /*
-  Section: Managing Enabled Themes
-  */
+  /**
+   * @category Managing Enabled Themes
+   */
 
   // The config key holding the theme pair for the mode currently in effect.
   getActiveThemesKeyPath() {
@@ -272,9 +321,13 @@ module.exports = class ThemeManager {
     );
   }
 
-  // Public: Get the enabled theme names from the config.
-  //
-  // Returns an array of theme names in the order that they should be activated.
+  /**
+   * Get the enabled theme names from the config.
+   *
+   * @returns {Array} array of theme names in the order that they should be activated.
+   * @public
+   * @api-status Public
+   */
   getEnabledThemeNames() {
     let themeNames = this.config.get(this.getActiveThemesKeyPath()) || [];
     if (!Array.isArray(themeNames)) {
@@ -312,9 +365,9 @@ module.exports = class ThemeManager {
     return metadata?.theme || null;
   }
 
-  /*
-  Section: Private
-  */
+  /**
+   * @category Private
+   */
 
   // The styles directory of the named theme, or null.
   getThemeStylesPath(themeName) {
@@ -348,10 +401,10 @@ module.exports = class ThemeManager {
 
   // Resolve and apply the stylesheet specified by the path.
   //
-  // * `stylesheetPath` A {String} path to the stylesheet that can be an absolute
+  // * `stylesheetPath` A `String` path to the stylesheet that can be an absolute
   //   path or a relative path that will be resolved against the load path.
   //
-  // Returns a {Disposable} on which `.dispose()` can be called to remove the
+  // Returns a `Disposable` on which `.dispose()` can be called to remove the
   // required stylesheet.
   requireStylesheet(stylesheetPath, priority) {
     let fullPath = this.resolveStylesheet(stylesheetPath);
@@ -673,19 +726,22 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     }
   }
 
-  // Public: Apply an appearance change that restyles the window without
-  // changing which themes are active — a theme package toggling a variant
-  // attribute on the document root, say.
-  //
-  // Mutating the document directly would leave anything that caches resolved
-  // colors — every package that paints to a canvas — showing the old palette
-  // until something unrelated made it redraw. This runs the mutation inside
-  // the same cross-fade a theme switch uses and notifies those consumers from
-  // within it, so they repaint as part of the same transition.
-  //
-  // * `mutate` {Function} applying the change to the document.
-  //
-  // Returns a {Promise} that resolves once the change has been applied.
+  /**
+   * Apply an appearance change that restyles the window without
+   * changing which themes are active — a theme package toggling a variant
+   * attribute on the document root, say.
+   *
+   * Mutating the document directly would leave anything that caches resolved
+   * colors — every package that paints to a canvas — showing the old palette
+   * until something unrelated made it redraw. This runs the mutation inside
+   * the same cross-fade a theme switch uses and notifies those consumers from
+   * within it, so they repaint as part of the same transition.
+   *
+   * @param {Function} mutate - applying the change to the document.
+   * @returns {Promise} that resolves once the change has been applied.
+   * @public
+   * @api-status Public
+   */
   updateAppearance(mutate) {
     return this.applyWithCrossFade(() => {
       mutate();

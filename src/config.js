@@ -13,416 +13,420 @@ const ScopeDescriptor = require("./scope-descriptor");
 
 const schemaEnforcers = {};
 
-// Essential: Used to access all of Lumine's configuration details.
-//
-// An instance of this class is always available as the `lumine.config` global.
-//
-// ## Getting and setting config settings.
-//
-// ```js
-// // Note that with no value set, ::get returns the setting's default value.
-// lumine.config.get('my-package.myKey') // -> 'defaultValue'
-//
-// lumine.config.set('my-package.myKey', 'value')
-// lumine.config.get('my-package.myKey') // -> 'value'
-// ```
-//
-// You may want to watch for changes. Use {::observe} to catch changes to the setting.
-//
-// ```js
-// lumine.config.set('my-package.myKey', 'value')
-// lumine.config.observe('my-package.myKey', (newValue) => {
-//   // `observe` calls immediately and every time the value is changed
-//   console.log('My configuration changed:', newValue)
-// })
-// ```
-//
-// If you want a notification only when the value changes, use {::onDidChange}.
-//
-// ```js
-// lumine.config.onDidChange('my-package.myKey', ({ newValue, oldValue }) => {
-//   console.log('My configuration changed:', newValue, oldValue)
-// })
-// ```
-//
-// ### Value Coercion
-//
-// Config settings each have a type specified by way of a
-// [schema](https://json-schema.org). For example we might want an integer setting that only
-// allows integers greater than `0`:
-//
-// ```js
-// // When no value has been set, `::get` returns the setting's default value
-// lumine.config.get('my-package.anInt') // -> 12
-//
-// // The string will be coerced to the integer 123
-// lumine.config.set('my-package.anInt', '123')
-// lumine.config.get('my-package.anInt') // -> 123
-//
-// // The string will be coerced to an integer, but it must be greater than 0, so is set to 1
-// lumine.config.set('my-package.anInt', '-20')
-// lumine.config.get('my-package.anInt') // -> 1
-// ```
-//
-// ## Defining settings for your package
-//
-// Declare a `configSchema` in your package's `package.json`:
-//
-// ```json
-// {
-//   "name": "my-package",
-//   "configSchema": {
-//     "someInt": {
-//       "title": "Some Int",
-//       "description": "How many of the thing to do.",
-//       "type": "integer",
-//       "minimum": 1,
-//       "default": 23
-//     }
-//   }
-// }
-// ```
-//
-// The schema is read before the package activates, so its settings appear in
-// the settings view and its defaults apply whether or not the package has been
-// loaded yet. Export a `config` object from the package's main module only when
-// the schema cannot be written down ahead of time and has to be built at
-// runtime.
-//
-// See the [package tutorial](https://lumine-code.github.io/docs.html#developing-for-lumine/developing-a-package) for
-// more info.
-//
-// ## Config Schemas
-//
-// We use [json schema](https://json-schema.org) which allows you to define your value's
-// default, the type it should be, etc. Every example below is the value of the
-// `configSchema` key. A simple one, providing an `enableThing` and a
-// `thingVolume`:
-//
-// ```json
-// {
-//   "enableThing": {
-//     "type": "boolean",
-//     "default": false
-//   },
-//   "thingVolume": {
-//     "type": "integer",
-//     "minimum": 1,
-//     "maximum": 11,
-//     "default": 5
-//   }
-// }
-// ```
-//
-// The type keyword allows for type coercion and validation. If a `thingVolume` is
-// set to a string `'10'`, it will be coerced into an integer.
-//
-// ```js
-// lumine.config.set('my-package.thingVolume', '10')
-// lumine.config.get('my-package.thingVolume') // -> 10
-//
-// // It respects the min / max
-// lumine.config.set('my-package.thingVolume', '400')
-// lumine.config.get('my-package.thingVolume') // -> 11
-//
-// // If it cannot be coerced, the value will not be set
-// lumine.config.set('my-package.thingVolume', 'cats')
-// lumine.config.get('my-package.thingVolume') // -> 11
-// ```
-//
-// ### Supported Types
-//
-// The `type` keyword can be a string with any one of the following. You can also
-// chain them by specifying multiple in an array. For example
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": ["boolean", "integer"],
-//     "default": 5
-//   }
-// }
-// ```
-//
-// ```js
-// lumine.config.set('my-package.someSetting', 'true')
-// lumine.config.get('my-package.someSetting') // -> true
-//
-// lumine.config.set('my-package.someSetting', '12')
-// lumine.config.get('my-package.someSetting') // -> 12
-// ```
-//
-// #### string
-//
-// Values must be a string.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "string",
-//     "default": "hello"
-//   }
-// }
-// ```
-//
-// #### integer
-//
-// Values will be coerced into integer. Supports the (optional) `minimum` and
-// `maximum` keys.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "integer",
-//     "minimum": 1,
-//     "maximum": 11,
-//     "default": 5
-//   }
-// }
-// ```
-//
-// #### number
-//
-// Values will be coerced into a number, including real numbers. Supports the
-// (optional) `minimum` and `maximum` keys.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "number",
-//     "minimum": 1.5,
-//     "maximum": 11.5,
-//     "default": 5.3
-//   }
-// }
-// ```
-//
-// #### boolean
-//
-// Values will be coerced into a Boolean. `'true'` and `'false'` will be coerced into
-// a boolean. Numbers, arrays, objects, and anything else will not be coerced.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "boolean",
-//     "default": false
-//   }
-// }
-// ```
-//
-// #### array
-//
-// Value must be an Array. The types of the values can be specified by a
-// subschema in the `items` key. An item that does not conform to that subschema
-// is dropped rather than rejecting the whole array. Supports the (optional)
-// `minItems` and `maxItems` keys, which bound the length of the array that
-// survives; a value outside those bounds is rejected and the setting keeps its
-// previous value.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "array",
-//     "items": {
-//       "type": "integer",
-//       "minimum": 1.5,
-//       "maximum": 11.5
-//     },
-//     "minItems": 1,
-//     "maxItems": 3,
-//     "default": [1, 2, 3]
-//   }
-// }
-// ```
-//
-// #### color
-//
-// Values will be coerced into a {Color} with `red`, `green`, `blue`, and `alpha`
-// properties that all have numeric values. `red`, `green`, `blue` will be in
-// the range 0 to 255 and `value` will be in the range 0 to 1. Values can be any
-// valid CSS color format such as `#abc`, `#abcdef`, `white`,
-// `rgb(50, 100, 150)`, and `rgba(25, 75, 125, .75)`.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "color",
-//     "default": "white"
-//   }
-// }
-// ```
-//
-// #### object / Grouping other types
-//
-// A config setting with the type `object` allows grouping a set of config
-// settings. The group will be visually separated and has its own group headline.
-// The sub options must be listed under a `properties` key.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "object",
-//     "properties": {
-//       "myChildIntOption": {
-//         "type": "integer",
-//         "minimum": 1.5,
-//         "maximum": 11.5
-//       }
-//     }
-//   }
-// }
-// ```
-//
-// ### Other Supported Keys
-//
-// #### enum
-//
-// All types support an `enum` key, which lets you specify all the values the
-// setting can take. `enum` may be an array of allowed values (of the specified
-// type), or an array of objects with `value` and `description` properties, where
-// the `value` is an allowed value, and the `description` is a descriptive string
-// used in the settings view.
-//
-// In this example, the setting must be one of the 4 integers:
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "integer",
-//     "enum": [2, 4, 6, 8],
-//     "default": 4
-//   }
-// }
-// ```
-//
-// In this example, the setting must be either 'foo' or 'bar', which are
-// presented using the provided descriptions in the settings pane:
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "string",
-//     "enum": [
-//       { "value": "foo", "description": "Foo mode. You want this." },
-//       { "value": "bar", "description": "Bar mode. Nobody wants that!" }
-//     ],
-//     "default": "foo"
-//   }
-// }
-// ```
-//
-// If you only have a few elements, you can display your enum as a list of
-// radio buttons in the settings view rather than a select list. To do so,
-// specify `radio: true` as a sibling property to the `enum` array.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "string",
-//     "enum": [
-//       { "value": "foo", "description": "Foo mode. You want this." },
-//       { "value": "bar", "description": "Bar mode. Nobody wants that!" }
-//     ],
-//     "radio": true,
-//     "default": "foo"
-//   }
-// }
-// ```
-//
-// Usage:
-//
-// ```js
-// lumine.config.set('my-package.someSetting', '2')
-// lumine.config.get('my-package.someSetting') // -> 2
-//
-// // a value outside the enum is rejected, and the setting keeps what it had
-// lumine.config.set('my-package.someSetting', '3')
-// lumine.config.get('my-package.someSetting') // -> 2
-//
-// // a value inside it is coerced to the declared type and set
-// lumine.config.set('my-package.someSetting', '4')
-// lumine.config.get('my-package.someSetting') // -> 4
-// ```
-//
-// #### title and description
-//
-// The settings view will use the `title` and `description` keys to display your
-// config setting in a readable way. By default the settings view humanizes your
-// config key, so `someSetting` becomes `Some Setting`. In some cases, this is
-// confusing for users, and a more descriptive title is useful.
-//
-// Descriptions will be displayed below the title in the settings view.
-//
-// For a group of config settings the humanized key or the title and the
-// description are used for the group headline.
-//
-// ```json
-// {
-//   "someSetting": {
-//     "title": "Setting Magnitude",
-//     "description": "This will affect the blah and the other blah",
-//     "type": "integer",
-//     "default": 4
-//   }
-// }
-// ```
-//
-// __Note__: You should strive to be so clear in your naming of the setting that
-// you do not need to specify a title or description!
-//
-// Descriptions allow a subset of
-// [Markdown formatting](https://help.github.com/articles/github-flavored-markdown/).
-// Specifically, you may use the following in configuration setting descriptions:
-//
-// * **bold** - `**bold**`
-// * *italics* - `*italics*`
-// * [links](https://lumine-code.github.io) - `[links](https://lumine-code.github.io)`
-// * `code spans` - `` `code spans` ``
-// * line breaks - `line breaks<br/>`
-// * ~~strikethrough~~ - `~~strikethrough~~`
-//
-// #### order
-//
-// The settings view displays your settings in the order the schema declares
-// them, so arranging the schema is all this normally takes.
-//
-// An explicit `order` key still takes precedence where one is present, but
-// prefer not to use it: a setting without `order` sorts after every setting
-// that has one, so adding `order` to part of a schema reorders the rest of it
-// too.
-//
-// ## Manipulating values outside your configuration schema
-//
-// It is possible to manipulate(`get`, `set`, `observe` etc) values that do not
-// appear in your configuration schema. For example, if the config schema of the
-// package 'some-package' is
-//
-// ```json
-// {
-//   "someSetting": {
-//     "type": "boolean",
-//     "default": false
-//   }
-// }
-// ```
-//
-// You can still do the following
-//
-// ```js
-// const otherSetting = lumine.config.get('some-package.otherSetting')
-// lumine.config.set('some-package.stillAnotherSetting', otherSetting * 5)
-// ```
-//
-// In other words, if a function asks for a `key-path`, that path doesn't have to
-// be described in the config schema for the package or any package. However, as
-// highlighted in the best practices section, you are advised against doing the
-// above.
-//
-// ## Best practices
-//
-// * Don't depend on (or write to) configuration keys outside of your keypath.
-//
+/**
+ * Used to access all of Lumine's configuration details.
+ *
+ * An instance of this class is always available as the `lumine.config` global.
+ *
+ * ## Getting and setting config settings.
+ *
+ * ```js
+ * // Note that with no value set, ::get returns the setting's default value.
+ * lumine.config.get('my-package.myKey') // -> 'defaultValue'
+ *
+ * lumine.config.set('my-package.myKey', 'value')
+ * lumine.config.get('my-package.myKey') // -> 'value'
+ * ```
+ *
+ * You may want to watch for changes. Use {@link #observe} to catch changes to the setting.
+ *
+ * ```js
+ * lumine.config.set('my-package.myKey', 'value')
+ * lumine.config.observe('my-package.myKey', (newValue) => {
+ *   // `observe` calls immediately and every time the value is changed
+ *   console.log('My configuration changed:', newValue)
+ * })
+ * ```
+ *
+ * If you want a notification only when the value changes, use {@link #onDidChange}.
+ *
+ * ```js
+ * lumine.config.onDidChange('my-package.myKey', ({ newValue, oldValue }) => {
+ *   console.log('My configuration changed:', newValue, oldValue)
+ * })
+ * ```
+ *
+ * ### Value Coercion
+ *
+ * Config settings each have a type specified by way of a
+ * [schema](https://json-schema.org). For example we might want an integer setting that only
+ * allows integers greater than `0`:
+ *
+ * ```js
+ * // When no value has been set, `::get` returns the setting's default value
+ * lumine.config.get('my-package.anInt') // -> 12
+ *
+ * // The string will be coerced to the integer 123
+ * lumine.config.set('my-package.anInt', '123')
+ * lumine.config.get('my-package.anInt') // -> 123
+ *
+ * // The string will be coerced to an integer, but it must be greater than 0, so is set to 1
+ * lumine.config.set('my-package.anInt', '-20')
+ * lumine.config.get('my-package.anInt') // -> 1
+ * ```
+ *
+ * ## Defining settings for your package
+ *
+ * Declare a `configSchema` in your package's `package.json`:
+ *
+ * ```json
+ * {
+ *   "name": "my-package",
+ *   "configSchema": {
+ *     "someInt": {
+ *       "title": "Some Int",
+ *       "description": "How many of the thing to do.",
+ *       "type": "integer",
+ *       "minimum": 1,
+ *       "default": 23
+ *     }
+ *   }
+ * }
+ * ```
+ *
+ * The schema is read before the package activates, so its settings appear in
+ * the settings view and its defaults apply whether or not the package has been
+ * loaded yet. Export a `config` object from the package's main module only when
+ * the schema cannot be written down ahead of time and has to be built at
+ * runtime.
+ *
+ * See the [package tutorial](https://lumine-code.github.io/docs.html#developing-for-lumine/developing-a-package) for
+ * more info.
+ *
+ * ## Config Schemas
+ *
+ * We use [json schema](https://json-schema.org) which allows you to define your value's
+ * default, the type it should be, etc. Every example below is the value of the
+ * `configSchema` key. A simple one, providing an `enableThing` and a
+ * `thingVolume`:
+ *
+ * ```json
+ * {
+ *   "enableThing": {
+ *     "type": "boolean",
+ *     "default": false
+ *   },
+ *   "thingVolume": {
+ *     "type": "integer",
+ *     "minimum": 1,
+ *     "maximum": 11,
+ *     "default": 5
+ *   }
+ * }
+ * ```
+ *
+ * The type keyword allows for type coercion and validation. If a `thingVolume` is
+ * set to a string `'10'`, it will be coerced into an integer.
+ *
+ * ```js
+ * lumine.config.set('my-package.thingVolume', '10')
+ * lumine.config.get('my-package.thingVolume') // -> 10
+ *
+ * // It respects the min / max
+ * lumine.config.set('my-package.thingVolume', '400')
+ * lumine.config.get('my-package.thingVolume') // -> 11
+ *
+ * // If it cannot be coerced, the value will not be set
+ * lumine.config.set('my-package.thingVolume', 'cats')
+ * lumine.config.get('my-package.thingVolume') // -> 11
+ * ```
+ *
+ * ### Supported Types
+ *
+ * The `type` keyword can be a string with any one of the following. You can also
+ * chain them by specifying multiple in an array. For example
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": ["boolean", "integer"],
+ *     "default": 5
+ *   }
+ * }
+ * ```
+ *
+ * ```js
+ * lumine.config.set('my-package.someSetting', 'true')
+ * lumine.config.get('my-package.someSetting') // -> true
+ *
+ * lumine.config.set('my-package.someSetting', '12')
+ * lumine.config.get('my-package.someSetting') // -> 12
+ * ```
+ *
+ * #### string
+ *
+ * Values must be a string.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "string",
+ *     "default": "hello"
+ *   }
+ * }
+ * ```
+ *
+ * #### integer
+ *
+ * Values will be coerced into integer. Supports the (optional) `minimum` and
+ * `maximum` keys.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "integer",
+ *     "minimum": 1,
+ *     "maximum": 11,
+ *     "default": 5
+ *   }
+ * }
+ * ```
+ *
+ * #### number
+ *
+ * Values will be coerced into a number, including real numbers. Supports the
+ * (optional) `minimum` and `maximum` keys.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "number",
+ *     "minimum": 1.5,
+ *     "maximum": 11.5,
+ *     "default": 5.3
+ *   }
+ * }
+ * ```
+ *
+ * #### boolean
+ *
+ * Values will be coerced into a Boolean. `'true'` and `'false'` will be coerced into
+ * a boolean. Numbers, arrays, objects, and anything else will not be coerced.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "boolean",
+ *     "default": false
+ *   }
+ * }
+ * ```
+ *
+ * #### array
+ *
+ * Value must be an Array. The types of the values can be specified by a
+ * subschema in the `items` key. An item that does not conform to that subschema
+ * is dropped rather than rejecting the whole array. Supports the (optional)
+ * `minItems` and `maxItems` keys, which bound the length of the array that
+ * survives; a value outside those bounds is rejected and the setting keeps its
+ * previous value.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "array",
+ *     "items": {
+ *       "type": "integer",
+ *       "minimum": 1.5,
+ *       "maximum": 11.5
+ *     },
+ *     "minItems": 1,
+ *     "maxItems": 3,
+ *     "default": [1, 2, 3]
+ *   }
+ * }
+ * ```
+ *
+ * #### color
+ *
+ * Values will be coerced into a {@link Color} with `red`, `green`, `blue`, and `alpha`
+ * properties that all have numeric values. `red`, `green`, `blue` will be in
+ * the range 0 to 255 and `value` will be in the range 0 to 1. Values can be any
+ * valid CSS color format such as `#abc`, `#abcdef`, `white`,
+ * `rgb(50, 100, 150)`, and `rgba(25, 75, 125, .75)`.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "color",
+ *     "default": "white"
+ *   }
+ * }
+ * ```
+ *
+ * #### object / Grouping other types
+ *
+ * A config setting with the type `object` allows grouping a set of config
+ * settings. The group will be visually separated and has its own group headline.
+ * The sub options must be listed under a `properties` key.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "object",
+ *     "properties": {
+ *       "myChildIntOption": {
+ *         "type": "integer",
+ *         "minimum": 1.5,
+ *         "maximum": 11.5
+ *       }
+ *     }
+ *   }
+ * }
+ * ```
+ *
+ * ### Other Supported Keys
+ *
+ * #### enum
+ *
+ * All types support an `enum` key, which lets you specify all the values the
+ * setting can take. `enum` may be an array of allowed values (of the specified
+ * type), or an array of objects with `value` and `description` properties, where
+ * the `value` is an allowed value, and the `description` is a descriptive string
+ * used in the settings view.
+ *
+ * In this example, the setting must be one of the 4 integers:
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "integer",
+ *     "enum": [2, 4, 6, 8],
+ *     "default": 4
+ *   }
+ * }
+ * ```
+ *
+ * In this example, the setting must be either 'foo' or 'bar', which are
+ * presented using the provided descriptions in the settings pane:
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "string",
+ *     "enum": [
+ *       { "value": "foo", "description": "Foo mode. You want this." },
+ *       { "value": "bar", "description": "Bar mode. Nobody wants that!" }
+ *     ],
+ *     "default": "foo"
+ *   }
+ * }
+ * ```
+ *
+ * If you only have a few elements, you can display your enum as a list of
+ * radio buttons in the settings view rather than a select list. To do so,
+ * specify `radio: true` as a sibling property to the `enum` array.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "string",
+ *     "enum": [
+ *       { "value": "foo", "description": "Foo mode. You want this." },
+ *       { "value": "bar", "description": "Bar mode. Nobody wants that!" }
+ *     ],
+ *     "radio": true,
+ *     "default": "foo"
+ *   }
+ * }
+ * ```
+ *
+ * Usage:
+ *
+ * ```js
+ * lumine.config.set('my-package.someSetting', '2')
+ * lumine.config.get('my-package.someSetting') // -> 2
+ *
+ * // a value outside the enum is rejected, and the setting keeps what it had
+ * lumine.config.set('my-package.someSetting', '3')
+ * lumine.config.get('my-package.someSetting') // -> 2
+ *
+ * // a value inside it is coerced to the declared type and set
+ * lumine.config.set('my-package.someSetting', '4')
+ * lumine.config.get('my-package.someSetting') // -> 4
+ * ```
+ *
+ * #### title and description
+ *
+ * The settings view will use the `title` and `description` keys to display your
+ * config setting in a readable way. By default the settings view humanizes your
+ * config key, so `someSetting` becomes `Some Setting`. In some cases, this is
+ * confusing for users, and a more descriptive title is useful.
+ *
+ * Descriptions will be displayed below the title in the settings view.
+ *
+ * For a group of config settings the humanized key or the title and the
+ * description are used for the group headline.
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "title": "Setting Magnitude",
+ *     "description": "This will affect the blah and the other blah",
+ *     "type": "integer",
+ *     "default": 4
+ *   }
+ * }
+ * ```
+ *
+ * __Note__: You should strive to be so clear in your naming of the setting that
+ * you do not need to specify a title or description!
+ *
+ * Descriptions allow a subset of
+ * [Markdown formatting](https://help.github.com/articles/github-flavored-markdown/).
+ * Specifically, you may use the following in configuration setting descriptions:
+ *
+ * * **bold** - `**bold**`
+ * * *italics* - `*italics*`
+ * * [links](https://lumine-code.github.io) - `[links](https://lumine-code.github.io)`
+ * * `code spans` - `` `code spans` ``
+ * * line breaks - `line breaks<br/>`
+ * * ~~strikethrough~~ - `~~strikethrough~~`
+ *
+ * #### order
+ *
+ * The settings view displays your settings in the order the schema declares
+ * them, so arranging the schema is all this normally takes.
+ *
+ * An explicit `order` key still takes precedence where one is present, but
+ * prefer not to use it: a setting without `order` sorts after every setting
+ * that has one, so adding `order` to part of a schema reorders the rest of it
+ * too.
+ *
+ * ## Manipulating values outside your configuration schema
+ *
+ * It is possible to manipulate(`get`, `set`, `observe` etc) values that do not
+ * appear in your configuration schema. For example, if the config schema of the
+ * package 'some-package' is
+ *
+ * ```json
+ * {
+ *   "someSetting": {
+ *     "type": "boolean",
+ *     "default": false
+ *   }
+ * }
+ * ```
+ *
+ * You can still do the following
+ *
+ * ```js
+ * const otherSetting = lumine.config.get('some-package.otherSetting')
+ * lumine.config.set('some-package.stillAnotherSetting', otherSetting * 5)
+ * ```
+ *
+ * In other words, if a function asks for a `key-path`, that path doesn't have to
+ * be described in the config schema for the package or any package. However, as
+ * highlighted in the best practices section, you are advised against doing the
+ * above.
+ *
+ * ## Best practices
+ *
+ * * Don't depend on (or write to) configuration keys outside of your keypath.
+ *
+ * @public
+ * @api-status Essential
+ */
 class Config {
   static addSchemaEnforcer(typeName, enforcerFunction) {
     if (schemaEnforcers[typeName] == null) {
@@ -501,37 +505,39 @@ class Config {
     this.requestSave = _.debounce(() => this.save(), 1);
   }
 
-  /*
-  Section: Config Subscription
-  */
+  /**
+   * @category Config Subscription
+   */
 
-  // Essential: Add a listener for changes to a given key path. This is different
-  // than {::onDidChange} in that it will immediately call your callback with the
-  // current value of the config entry.
-  //
-  // ### Examples
-  //
-  // You might want to be notified when the theme mode changes. We'll watch
-  // `theme.mode` for changes
-  //
-  // ```js
-  // lumine.config.observe('theme.mode', (value) => {
-  //   // do stuff with value
-  // })
-  // ```
-  //
-  // * `keyPath` {String} name of the key to observe
-  // * `options` (optional) {Object}
-  //   * `scope` (optional) {ScopeDescriptor} describing a path from
-  //     the root of the syntax tree to a token. Get one by calling
-  //     {editor.getLastCursor().getScopeDescriptor()}. See {::get} for examples.
-  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
-  //     for more information.
-  // * `callback` {Function} to call when the value of the key changes.
-  //   * `value` the new value of the key
-  //
-  // Returns a {Disposable} with the following keys on which you can call
-  // `.dispose()` to unsubscribe.
+  /**
+   * Add a listener for changes to a given key path. This is different
+   * than {@link #onDidChange} in that it will immediately call your callback with the
+   * current value of the config entry.
+   *
+   * ### Examples
+   *
+   * You might want to be notified when the theme mode changes. We'll watch
+   * `theme.mode` for changes
+   *
+   * ```js
+   * lumine.config.observe('theme.mode', (value) => {
+   *   // do stuff with value
+   * })
+   * ```
+   *
+   * @param {String} keyPath - The configuration key to observe.
+   * @param {Object} [options] - Observation options.
+   * @param {ScopeDescriptor} [options.scope] - A path from the root of the
+   *   syntax tree to a token. Get one by calling
+   *   `editor.getLastCursor().getScopeDescriptor()`. See {@link #get} and
+   *   [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
+   *   for examples.
+   * @param {Function} callback - Called when the value changes.
+   * @param {*} callback.value - The new value.
+   * @returns {Disposable} A disposable on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observe(...args) {
     let callback, keyPath, options, scopeDescriptor;
     if (args.length === 2) {
@@ -553,24 +559,26 @@ class Config {
     }
   }
 
-  // Essential: Add a listener for changes to a given key path. If `keyPath` is
-  // not specified, your callback will be called on changes to any key.
-  //
-  // * `keyPath` (optional) {String} name of the key to observe. Must be
-  //   specified if `scopeDescriptor` is specified.
-  // * `options` (optional) {Object}
-  //   * `scope` (optional) {ScopeDescriptor} describing a path from
-  //     the root of the syntax tree to a token. Get one by calling
-  //     {editor.getLastCursor().getScopeDescriptor()}. See {::get} for examples.
-  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
-  //     for more information.
-  // * `callback` {Function} to call when the value of the key changes.
-  //   * `event` {Object}
-  //     * `newValue` the new value of the key
-  //     * `oldValue` the prior value of the key.
-  //
-  // Returns a {Disposable} with the following keys on which you can call
-  // `.dispose()` to unsubscribe.
+  /**
+   * Add a listener for changes to a given key path. If `keyPath` is
+   * not specified, your callback will be called on changes to any key.
+   *
+   * @param {String} [keyPath] - The key to observe. Required when `options.scope`
+   *   is specified.
+   * @param {Object} [options] - Observation options.
+   * @param {ScopeDescriptor} [options.scope] - A path from the root of the
+   *   syntax tree to a token. Get one by calling
+   *   `editor.getLastCursor().getScopeDescriptor()`. See {@link #get} and
+   *   [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
+   *   for examples.
+   * @param {Function} callback - Called when the value changes.
+   * @param {Object} callback.event - The change event.
+   * @param {*} callback.event.newValue - The new value.
+   * @param {*} callback.event.oldValue - The previous value.
+   * @returns {Disposable} A disposable on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChange(...args) {
     let callback, keyPath, scopeDescriptor;
     if (args.length === 1) {
@@ -590,65 +598,67 @@ class Config {
     }
   }
 
-  /*
-  Section: Managing Settings
-  */
+  /**
+   * @category Managing Settings
+   */
 
-  // Essential: Retrieves the setting for the given key.
-  //
-  // ### Examples
-  //
-  // You might want to know what theme mode is enabled, so check `theme.mode`
-  //
-  // ```js
-  // lumine.config.get('theme.mode')
-  // ```
-  //
-  // With scope descriptors you can get settings within a specific editor
-  // scope. For example, you might want to know `language.tabLength` for ruby
-  // files.
-  //
-  // ```js
-  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
-  // ```
-  //
-  // This setting in ruby files might be different than the global tabLength setting
-  //
-  // ```js
-  // lumine.config.get('language.tabLength') // => 4
-  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
-  // ```
-  //
-  // You can get the language scope descriptor via
-  // {TextEditor::getRootScopeDescriptor}. This will get the setting specifically
-  // for the editor's language.
-  //
-  // ```js
-  // lumine.config.get('language.tabLength', { scope: editor.getRootScopeDescriptor() }) // => 2
-  // ```
-  //
-  // Additionally, you can get the setting at the specific cursor position.
-  //
-  // ```js
-  // const scopeDescriptor = editor.getLastCursor().getScopeDescriptor()
-  // lumine.config.get('language.tabLength', { scope: scopeDescriptor }) // => 2
-  // ```
-  //
-  // * `keyPath` The {String} name of the key to retrieve.
-  // * `options` (optional) {Object}
-  //   * `sources` (optional) {Array} of {String} source names. If provided, only
-  //     values that were associated with these sources during {::set} will be used.
-  //   * `excludeSources` (optional) {Array} of {String} source names. If provided,
-  //     values that were associated with these sources during {::set} will not
-  //     be used.
-  //   * `scope` (optional) {ScopeDescriptor} describing a path from
-  //     the root of the syntax tree to a token. Get one by calling
-  //     {editor.getLastCursor().getScopeDescriptor()}
-  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
-  //     for more information.
-  //
-  // Returns the value from Lumine's default settings, the user's configuration
-  // file in the type specified by the configuration schema.
+  /**
+   * Retrieves the setting for the given key.
+   *
+   * ### Examples
+   *
+   * You might want to know what theme mode is enabled, so check `theme.mode`
+   *
+   * ```js
+   * lumine.config.get('theme.mode')
+   * ```
+   *
+   * With scope descriptors you can get settings within a specific editor
+   * scope. For example, you might want to know `language.tabLength` for ruby
+   * files.
+   *
+   * ```js
+   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+   * ```
+   *
+   * This setting in ruby files might be different than the global tabLength setting
+   *
+   * ```js
+   * lumine.config.get('language.tabLength') // => 4
+   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+   * ```
+   *
+   * You can get the language scope descriptor via
+   * {@link TextEditor#getRootScopeDescriptor}. This will get the setting specifically
+   * for the editor's language.
+   *
+   * ```js
+   * lumine.config.get('language.tabLength', { scope: editor.getRootScopeDescriptor() }) // => 2
+   * ```
+   *
+   * Additionally, you can get the setting at the specific cursor position.
+   *
+   * ```js
+   * const scopeDescriptor = editor.getLastCursor().getScopeDescriptor()
+   * lumine.config.get('language.tabLength', { scope: scopeDescriptor }) // => 2
+   * ```
+   *
+   * @param {String} keyPath - The key to retrieve.
+   * @param {Object} [options] - Lookup options.
+   * @param {Array<String>} [options.sources] - If provided, use only values
+   *   associated with these sources during {@link #set}.
+   * @param {Array<String>} [options.excludeSources] - If provided, exclude
+   *   values associated with these sources during {@link #set}.
+   * @param {ScopeDescriptor} [options.scope] - A path from the root of the
+   *   syntax tree to a token. Get one by calling
+   *   `editor.getLastCursor().getScopeDescriptor()`. See
+   *   [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
+   *   for more information.
+   * @returns {*} The value from Lumine's defaults or the user's configuration,
+   *   in the type specified by the configuration schema.
+   * @public
+   * @api-status Essential
+   */
   get(...args) {
     let keyPath, options, scope;
     if (args.length > 1) {
@@ -668,15 +678,18 @@ class Config {
     }
   }
 
-  // Extended: Get all of the values for the given key-path, along with their
-  // associated scope selector.
-  //
-  // * `keyPath` The {String} name of the key to retrieve
-  // * `options` (optional) {Object} see the `options` argument to {::get}
-  //
-  // Returns an {Array} of {Object}s with the following keys:
-  //  * `scopeDescriptor` The {ScopeDescriptor} with which the value is associated
-  //  * `value` The value for the key-path
+  /**
+   * Get all of the values for the given key-path, along with their
+   * associated scope selector.
+   *
+   * @param keyPath - The `String` name of the key to retrieve
+   * @param {Object} [options] - see the `options` argument to {@link #get}
+   * @param options.scopeDescriptor - The {@link ScopeDescriptor} with which the value is associated
+   * @param options.value - The value for the key-path
+   * @returns {Array} of `Objects` with the following keys:
+   * @public
+   * @api-status Extended
+   */
   getAll(keyPath, options) {
     let globalValue, result, scope;
     if (options != null) {
@@ -711,48 +724,50 @@ class Config {
     return result;
   }
 
-  // Essential: Sets the value for a configuration setting.
-  //
-  // This value is stored in Lumine's internal configuration file.
-  //
-  // ### Examples
-  //
-  // You might want to change the themes programmatically:
-  //
-  // ```js
-  // lumine.config.set('theme.dark', ['one-night-ui', 'one-night-syntax'])
-  // ```
-  //
-  // You can also set scoped settings. For example, you might want change the
-  // `language.tabLength` only for ruby files.
-  //
-  // ```js
-  // lumine.config.get('language.tabLength') // => 4
-  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 4
-  // lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
-  //
-  // // Set ruby to 2
-  // lumine.config.set('language.tabLength', 2, { scopeSelector: '.source.ruby' }) // => true
-  //
-  // // Notice it's only set to 2 in the case of ruby
-  // lumine.config.get('language.tabLength') // => 4
-  // lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
-  // lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
-  // ```
-  //
-  // * `keyPath` The {String} name of the key.
-  // * `value` The value of the setting. Passing `undefined` will revert the
-  //   setting to the default value.
-  // * `options` (optional) {Object}
-  //   * `scopeSelector` (optional) {String}. eg. '.source.ruby'
-  //     See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
-  //     for more information.
-  //   * `source` (optional) {String} The name of a file with which the setting
-  //     is associated. Defaults to the user's config file.
-  //
-  // Returns a {Boolean}
-  // * `true` if the value was set.
-  // * `false` if the value was not able to be coerced to the type specified in the setting's schema.
+  /**
+   * Sets the value for a configuration setting.
+   *
+   * This value is stored in Lumine's internal configuration file.
+   *
+   * ### Examples
+   *
+   * You might want to change the themes programmatically:
+   *
+   * ```js
+   * lumine.config.set('theme.dark', ['one-night-ui', 'one-night-syntax'])
+   * ```
+   *
+   * You can also set scoped settings. For example, you might want change the
+   * `language.tabLength` only for ruby files.
+   *
+   * ```js
+   * lumine.config.get('language.tabLength') // => 4
+   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 4
+   * lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
+   *
+   * // Set ruby to 2
+   * lumine.config.set('language.tabLength', 2, { scopeSelector: '.source.ruby' }) // => true
+   *
+   * // Notice it's only set to 2 in the case of ruby
+   * lumine.config.get('language.tabLength') // => 4
+   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+   * lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
+   * ```
+   *
+   * @param {String} keyPath - The configuration key.
+   * @param {*} value - The setting value. Passing `undefined` reverts it to the
+   *   default value.
+   * @param {Object} [options] - Write options.
+   * @param {String} [options.scopeSelector] - A scope such as `.source.ruby`.
+   *   See [the scopes docs](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
+   *   for more information.
+   * @param {String} [options.source] - The associated source file. Defaults to
+   *   the user's configuration file.
+   * @returns {Boolean} `true` if the value was set; `false` if it could not be
+   *   coerced to the type specified by the setting's schema.
+   * @public
+   * @api-status Essential
+   */
   set(...args) {
     let [keyPath, value, options = {}] = args;
 
@@ -792,12 +807,16 @@ class Config {
     return true;
   }
 
-  // Essential: Restore the setting at `keyPath` to its default value.
-  //
-  // * `keyPath` The {String} name of the key.
-  // * `options` (optional) {Object}
-  //   * `scopeSelector` (optional) {String}. See {::set}
-  //   * `source` (optional) {String}. See {::set}
+  /**
+   * Restore the setting at `keyPath` to its default value.
+   *
+   * @param keyPath - The `String` name of the key.
+   * @param {Object} [options]
+   * @param {String} [options.scopeSelector] - See {@link #set}
+   * @param {String} [options.source] - See {@link #set}
+   * @public
+   * @api-status Essential
+   */
   unset(keyPath, options) {
     if (!this.settingsLoaded) {
       this.pendingOperations.push(() => this.unset(keyPath, options));
@@ -845,21 +864,27 @@ class Config {
     }
   }
 
-  // Extended: Get an {Array} of all of the `source` {String}s with which
-  // settings have been added via {::set}.
+  /**
+   * Get an `Array` of all of the `source` `Strings` with which
+   * settings have been added via {@link #set}.
+   *
+   * @public
+   * @api-status Extended
+   */
   getSources() {
     return _.uniq(_.pluck(this.scopedSettingsStore.propertySets, "source")).sort();
   }
 
-  // Extended: Retrieve the schema for a specific key path. The schema will tell
-  // you what type the keyPath expects, and other metadata about the config
-  // option.
-  //
-  // * `keyPath` The {String} name of the key.
-  //
-  // Returns an {Object} eg. `{type: 'integer', default: 23, minimum: 1}`.
-  // Returns `null` when the keyPath has no schema specified, but is accessible
-  // from the root schema.
+  /**
+   * Retrieve the schema for a specific key path. The schema will tell
+   * you what type the keyPath expects, and other metadata about the config
+   * option.
+   *
+   * @param keyPath - The `String` name of the key.
+   * @returns {Object|null} A schema such as `{type: 'integer', default: 23, minimum: 1}`, or `null` when the key path has no accessible schema.
+   * @public
+   * @api-status Extended
+   */
   getSchema(keyPath) {
     const keys = splitKeyPath(keyPath);
     let { schema } = this;
@@ -888,11 +913,15 @@ class Config {
     return this.mainSource;
   }
 
-  // Extended: Suppress calls to handler functions registered with {::onDidChange}
-  // and {::observe} for the duration of `callback`. After `callback` executes,
-  // handlers will be called once if the value for their key-path has changed.
-  //
-  // * `callback` {Function} to execute while suppressing calls to handlers.
+  /**
+   * Suppress calls to handler functions registered with {@link #onDidChange}
+   * and {@link #observe} for the duration of `callback`. After `callback` executes,
+   * handlers will be called once if the value for their key-path has changed.
+   *
+   * @param {Function} callback - to execute while suppressing calls to handlers.
+   * @public
+   * @api-status Extended
+   */
   transact(callback) {
     this.beginTransaction();
     try {
@@ -906,21 +935,20 @@ class Config {
     return null;
   }
 
-  /*
-  Section: Internal methods used by core
-  */
+  /**
+   * @category Internal methods used by core
+   */
 
-  // Private: Suppress calls to handler functions registered with {::onDidChange}
-  // and {::observe} for the duration of the {Promise} returned by `callback`.
-  // After the {Promise} is either resolved or rejected, handlers will be called
-  // once if the value for their key-path has changed.
-  //
-  // * `callback` {Function} that returns a {Promise}, which will be executed
-  //   while suppressing calls to handlers.
-  //
-  // Returns a {Promise} that is either resolved or rejected according to the
-  // `{Promise}` returned by `callback`. If `callback` throws an error, a
-  // rejected {Promise} will be returned instead.
+  /**
+   * Suppress calls to handler functions registered with {@link #onDidChange}
+   * and {@link #observe} for the duration of the `Promise` returned by `callback`.
+   * After the `Promise` is either resolved or rejected, handlers will be called
+   * once if the value for their key-path has changed.
+   *
+   * @param {Function} callback - that returns a `Promise`, which will be executed while suppressing calls to handlers.
+   * @returns {Promise} that is either resolved or rejected according to the `{Promise}` returned by `callback`. If `callback` throws an error, a rejected `Promise` will be returned instead.
+   * @private
+   */
   transactAsync(callback) {
     let endTransaction;
     this.beginTransaction();
@@ -1020,9 +1048,9 @@ class Config {
     }
   }
 
-  /*
-  Section: Private methods managing global settings
-  */
+  /**
+   * @category Private methods managing global settings
+   */
 
   resetUserSettings(newSettings, options = {}) {
     this._resetSettings(newSettings, options);
@@ -1340,9 +1368,9 @@ class Config {
     });
   }
 
-  /*
-  Section: Private Scoped Settings
-  */
+  /**
+   * @category Private Scoped Settings
+   */
 
   priorityForSource(source) {
     switch (source) {

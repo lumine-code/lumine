@@ -1,32 +1,40 @@
 const path = require("path");
 
-// Private: re-join the segments split from an absolute path to form another absolute path.
+/**
+ * re-join the segments split from an absolute path to form another absolute path.
+ *
+ * @private
+ */
 function absolute(...parts) {
   const candidate = path.join(...parts);
   return path.isAbsolute(candidate) ? candidate : path.join(path.sep, candidate);
 }
 
-// Private: Map userland filesystem watcher subscriptions efficiently to
-// deliver filesystem change notifications to each watcher with the most
-// efficient coverage of native watchers.
-//
-// * If two watchers subscribe to the same directory, use a single native
-//   watcher for each.
-// * Re-use a native watcher watching a parent directory for a watcher on a
-//   child directory. If the parent directory watcher is removed, it will be
-//   split into child watchers.
-// * If any child directories already being watched, stop and replace them with
-//   a watcher on the parent directory.
-//
-// Uses a trie whose structure mirrors the directory structure.
+/**
+ * Map userland filesystem watcher subscriptions efficiently to
+ * deliver filesystem change notifications to each watcher with the most
+ * efficient coverage of native watchers.
+ *
+ * * If two watchers subscribe to the same directory, use a single native
+ *   watcher for each.
+ * * Re-use a native watcher watching a parent directory for a watcher on a
+ *   child directory. If the parent directory watcher is removed, it will be
+ *   split into child watchers.
+ * * If any child directories already being watched, stop and replace them with
+ *   a watcher on the parent directory.
+ *
+ * Uses a trie whose structure mirrors the directory structure.
+ *
+ * @private
+ */
 class RegistryTree {
-  // Private: Construct a tree with no native watchers.
-  //
-  // * `basePathSegments` the position of this tree's root relative to the
-  //   filesystem's root as an {Array} of directory names.
-  // * `createNative` {Function} used to construct new native watchers. It
-  //   should accept an absolute path as an argument and return a new
-  //   {NativeWatcher}.
+  /**
+   * Construct a tree with no native watchers.
+   *
+   * @param basePathSegments - the position of this tree's root relative to the filesystem's root as an `Array` of directory names.
+   * @param {Function} createNative - used to construct new native watchers. It should accept an absolute path as an argument and return a new `NativeWatcher`.
+   * @private
+   */
   constructor(basePathSegments, createNative, getChildPaths) {
     this.basePathSegments = basePathSegments;
     this.root = new RegistryNode();
@@ -34,13 +42,14 @@ class RegistryTree {
     this.getChildPaths = getChildPaths;
   }
 
-  // Private: Identify the native watcher that should be used to produce events
-  // at a watched path, creating a new one if necessary.
-  //
-  // * `pathSegments` the path to watch represented as an {Array} of directory
-  //   names relative to this {RegistryTree}'s root.
-  // * `attachToNative` {Function} invoked with the appropriate native watcher
-  //   and the absolute path to its watch root.
+  /**
+   * Identify the native watcher that should be used to produce events
+   * at a watched path, creating a new one if necessary.
+   *
+   * @param pathSegments - the path to watch represented as an `Array` of directory names relative to this `RegistryTree`'s root.
+   * @param {Function} attachToNative - invoked with the appropriate native watcher and the absolute path to its watch root.
+   * @private
+   */
   add(pathSegments, attachToNative) {
     const absolutePathSegments = this.basePathSegments.concat(pathSegments);
     const absolutePath = absolute(...absolutePathSegments);
@@ -96,7 +105,11 @@ class RegistryTree {
     });
   }
 
-  // Private: Access the root node of the tree.
+  /**
+   * Access the root node of the tree.
+   *
+   * @private
+   */
   getRoot() {
     return this.root;
   }
@@ -110,28 +123,39 @@ class RegistryTree {
     });
   }
 
-  // Private: Return a {String} representation of this tree's structure for diagnostics and testing.
+  /**
+   * @returns {String} representation of this tree's structure for diagnostics and testing.
+   * @private
+   */
   print() {
     return this.root.print();
   }
 }
 
-// Private: Non-leaf node in a {RegistryTree} used by the {NativeWatcherRegistry} to cover the allocated {Watcher}
-// instances with the most efficient set of {NativeWatcher} instances possible. Each {RegistryNode} maps to a directory
-// in the filesystem tree.
+/**
+ * Non-leaf node in a `RegistryTree` used by the `NativeWatcherRegistry` to cover the allocated `Watcher`
+ * instances with the most efficient set of `NativeWatcher` instances possible. Each `RegistryNode` maps to a directory
+ * in the filesystem tree.
+ *
+ * @private
+ */
 class RegistryNode {
-  // Private: Construct a new, empty node representing a node with no watchers.
+  /**
+   * Construct a new, empty node representing a node with no watchers.
+   *
+   * @private
+   */
   constructor() {
     this.children = {};
   }
 
-  // Private: Recursively discover any existing watchers corresponding to a path.
-  //
-  // * `pathSegments` filesystem path of a new {Watcher} already split into an Array of directory names.
-  //
-  // Returns: A {ParentResult} if the exact requested directory or a parent directory is being watched, a
-  //   {ChildrenResult} if one or more child paths are being watched, or a {MissingResult} if no relevant watchers
-  //   exist.
+  /**
+   * Recursively discover any existing watchers corresponding to a path.
+   *
+   * @param pathSegments - filesystem path of a new `Watcher` already split into an Array of directory names.
+   * @returns {ParentResult|ChildrenResult|MissingResult} The matching watcher relationship.
+   * @private
+   */
   lookup(pathSegments) {
     if (pathSegments.length === 0) {
       return new ChildrenResult(this.leaves([]));
@@ -145,14 +169,15 @@ class RegistryNode {
     return child.lookup(pathSegments.slice(1));
   }
 
-  // Private: Insert a new {RegistryWatcherNode} into the tree, creating new intermediate {RegistryNode} instances as
-  // needed. Any existing children of the watched directory are removed.
-  //
-  // * `pathSegments` filesystem path of the new {Watcher}, already split into an Array of directory names.
-  // * `leaf` initialized {RegistryWatcherNode} to insert
-  //
-  // Returns: The root of a new tree with the {RegistryWatcherNode} inserted at the correct location. Callers should
-  // replace their node references with the returned value.
+  /**
+   * Insert a new `RegistryWatcherNode` into the tree, creating new intermediate `RegistryNode` instances as
+   * needed. Any existing children of the watched directory are removed.
+   *
+   * @param pathSegments - filesystem path of the new `Watcher`, already split into an Array of directory names.
+   * @param leaf - initialized `RegistryWatcherNode` to insert
+   * @returns {RegistryNode|RegistryWatcherNode} The updated tree root.
+   * @private
+   */
   insert(pathSegments, leaf) {
     if (pathSegments.length === 0) {
       return leaf;
@@ -167,12 +192,13 @@ class RegistryNode {
     return this;
   }
 
-  // Private: Remove a {RegistryWatcherNode} by its exact watched directory.
-  //
-  // * `pathSegments` absolute pre-split filesystem path of the node to remove.
-  //
-  // Returns: The root of a new tree with the {RegistryWatcherNode} removed. Callers should replace their node
-  // references with the returned value.
+  /**
+   * Remove a `RegistryWatcherNode` by its exact watched directory.
+   *
+   * @param pathSegments - absolute pre-split filesystem path of the node to remove.
+   * @returns {RegistryNode|RegistryWatcherNode|null} The updated tree root.
+   * @private
+   */
   remove(pathSegments) {
     if (pathSegments.length === 0) {
       // Attempt to remove a path with child watchers. Do nothing.
@@ -198,13 +224,14 @@ class RegistryNode {
     return Object.keys(this.children).length === 0 ? null : this;
   }
 
-  // Private: Discover all {RegistryWatcherNode} instances beneath this tree node and the child paths
-  //  that they are watching.
-  //
-  // * `prefix` {Array} of intermediate path segments to prepend to the resulting child paths.
-  //
-  // Returns: A possibly empty {Array} of `{node, path}` objects describing {RegistryWatcherNode}
-  //  instances beneath this node.
+  /**
+   * Discover all `RegistryWatcherNode` instances beneath this tree node and the child paths
+   *  that they are watching.
+   *
+   * @param {Array} prefix - of intermediate path segments to prepend to the resulting child paths.
+   * @returns {Array<Object>} The watcher nodes beneath this node and their paths.
+   * @private
+   */
   leaves(prefix) {
     const results = [];
     for (const p of Object.keys(this.children)) {
@@ -213,7 +240,10 @@ class RegistryNode {
     return results;
   }
 
-  // Private: Return a {String} representation of this subtree for diagnostics and testing.
+  /**
+   * @returns {String} representation of this subtree for diagnostics and testing.
+   * @private
+   */
   print(indent = 0) {
     let spaces = "";
     for (let i = 0; i < indent; i++) {
@@ -228,17 +258,21 @@ class RegistryNode {
   }
 }
 
-// Private: Leaf node within a {NativeWatcherRegistry} tree. Represents a directory that is covered by a
-// {NativeWatcher}.
+/**
+ * Leaf node within a `NativeWatcherRegistry` tree. Represents a directory that is covered by a
+ * `NativeWatcher`.
+ *
+ * @private
+ */
 class RegistryWatcherNode {
-  // Private: Allocate a new node to track a {NativeWatcher}.
-  //
-  // * `nativeWatcher` An existing {NativeWatcher} instance.
-  // * `absolutePathSegments` The absolute path to this {NativeWatcher}'s directory as an {Array} of
-  //   path segments.
-  // * `childPaths` {Array} of child directories that are currently the responsibility of this
-  //   {NativeWatcher}, if any. Directories are represented as arrays of the path segments between this
-  //   node's directory and the watched child path.
+  /**
+   * Allocate a new node to track a `NativeWatcher`.
+   *
+   * @param nativeWatcher - An existing `NativeWatcher` instance.
+   * @param absolutePathSegments - The absolute path to this `NativeWatcher`'s directory as an `Array` of path segments.
+   * @param {Array} childPaths - of child directories that are currently the responsibility of this `NativeWatcher`, if any. Directories are represented as arrays of the path segments between this node's directory and the watched child path.
+   * @private
+   */
   constructor(nativeWatcher, absolutePathSegments, childPaths) {
     this.nativeWatcher = nativeWatcher;
     this.absolutePathSegments = absolutePathSegments;
@@ -250,11 +284,13 @@ class RegistryWatcherNode {
     }
   }
 
-  // Private: Record responsibility for a new child path for diagnostics. Active watcher ownership in
-  // {NativeWatcherRegistry.watchedPaths} is authoritative when this native watcher is replaced.
-  //
-  // * `childPathSegments` the {Array} of path segments between this node's directory and the watched
-  //   child directory.
+  /**
+   * Record responsibility for a new child path for diagnostics. Active watcher ownership in
+   * {@link NativeWatcherRegistry.watchedPaths} is authoritative when this native watcher is replaced.
+   *
+   * @param childPathSegments - the `Array` of path segments between this node's directory and the watched child directory.
+   * @private
+   */
   addChildPath(childPathSegments) {
     // An exact-path duplicate watcher (empty `childPathSegments`) shares this
     // node's native watcher without occupying a distinct child directory, so it
@@ -267,10 +303,12 @@ class RegistryWatcherNode {
     this.childPaths.add(path.join(...childPathSegments));
   }
 
-  // Private: Stop recording responsibility for a previously assigned child path.
-  //
-  // * `childPathSegments` the {Array} of path segments between this node's directory and the no longer
-  //   watched child directory.
+  /**
+   * Stop recording responsibility for a previously assigned child path.
+   *
+   * @param childPathSegments - the `Array` of path segments between this node's directory and the no longer watched child directory.
+   * @private
+   */
   removeChildPath(childPathSegments) {
     // Symmetric with `addChildPath`: an exact-path share is not a child path,
     // so there is nothing to forget.
@@ -278,32 +316,42 @@ class RegistryWatcherNode {
     this.childPaths.delete(path.join(...childPathSegments));
   }
 
-  // Private: Accessor for the {NativeWatcher}.
+  /**
+   * Accessor for the `NativeWatcher`.
+   *
+   * @private
+   */
   getNativeWatcher() {
     return this.nativeWatcher;
   }
 
-  // Private: Return the absolute path watched by this {NativeWatcher} as an {Array} of directory names.
+  /**
+   * @returns {Array} absolute path watched by this `NativeWatcher` as an `Array` of directory names.
+   * @private
+   */
   getAbsolutePathSegments() {
     return this.absolutePathSegments;
   }
 
-  // Private: Identify how this watcher relates to a request to watch a directory tree.
-  //
-  // * `pathSegments` filesystem path of a new {Watcher} already split into an Array of directory names.
-  //
-  // Returns: A {ParentResult} referencing this node.
+  /**
+   * Identify how this watcher relates to a request to watch a directory tree.
+   *
+   * @param pathSegments - filesystem path of a new `Watcher` already split into an Array of directory names.
+   * @returns {ParentResult} A result referencing this node.
+   * @private
+   */
   lookup(pathSegments) {
     return new ParentResult(this, pathSegments);
   }
 
-  // Private: Remove this leaf node if the watcher's exact path matches. RegistryTree rebuilds any
-  // still-owned descendants after removing this node from the main tree.
-  //
-  // * `pathSegments` filesystem path of the node to remove.
-  //
-  // Returns: `null` if `pathSegments` match this watcher's path exactly. If they do not, the remove call has no
-  // effect and returns `this` unaltered.
+  /**
+   * Remove this leaf node if the watcher's exact path matches. RegistryTree rebuilds any
+   * still-owned descendants after removing this node from the main tree.
+   *
+   * @param pathSegments - filesystem path of the node to remove.
+   * @returns {RegistryWatcherNode|null} `null` for an exact match, or this unchanged node otherwise.
+   * @private
+   */
   remove(pathSegments) {
     if (pathSegments.length !== 0) {
       return this;
@@ -311,17 +359,21 @@ class RegistryWatcherNode {
     return null;
   }
 
-  // Private: Discover this {RegistryWatcherNode} instance.
-  //
-  // * `prefix` {Array} of intermediate path segments to prepend to the resulting child paths.
-  //
-  // Returns: An {Array} containing a `{node, path}` object describing this node.
+  /**
+   * Discover this `RegistryWatcherNode` instance.
+   *
+   * @param {Array} prefix - of intermediate path segments to prepend to the resulting child paths.
+   * @returns {Array<Object>} This node and its path.
+   * @private
+   */
   leaves(prefix) {
     return [{ node: this, path: prefix }];
   }
 
-  // Private: Return a {String} representation of this watcher for diagnostics and testing. Indicates the number of
-  // child paths that this node's {NativeWatcher} is responsible for.
+  /**
+   * @returns {String} representation of this watcher for diagnostics and testing. Indicates the number of child paths that this node's `NativeWatcher` is responsible for.
+   * @private
+   */
   print(indent = 0) {
     let result = "";
     for (let i = 0; i < indent; i++) {
@@ -337,103 +389,131 @@ class RegistryWatcherNode {
   }
 }
 
-// Private: A {RegistryNode} traversal result that's returned when neither a directory, its children, nor its parents
-// are present in the tree.
+/**
+ * A `RegistryNode` traversal result that's returned when neither a directory, its children, nor its parents
+ * are present in the tree.
+ *
+ * @private
+ */
 class MissingResult {
-  // Private: Instantiate a new {MissingResult}.
-  //
-  // * `lastParent` the final successfully traversed {RegistryNode}.
+  /**
+   * Instantiate a new `MissingResult`.
+   *
+   * @param lastParent - the final successfully traversed `RegistryNode`.
+   * @private
+   */
   constructor(lastParent) {
     this.lastParent = lastParent;
   }
 
-  // Private: Dispatch within a map of callback actions.
-  //
-  // * `actions` {Object} containing a `missing` key that maps to a callback to be invoked when no results were returned
-  //   by {RegistryNode.lookup}. The callback will be called with the last parent node that was encountered during the
-  //   traversal.
-  //
-  // Returns: the result of the `actions` callback.
+  /**
+   * Dispatch within a map of callback actions.
+   *
+   * @param {Object} actions - containing a `missing` key that maps to a callback to be invoked when no results were returned by {@link RegistryNode.lookup}. The callback will be called with the last parent node that was encountered during the traversal.
+   * @returns {*} The result of the `actions.missing` callback.
+   * @private
+   */
   when(actions) {
     return actions.missing(this.lastParent);
   }
 }
 
-// Private: A {RegistryNode.lookup} traversal result that's returned when a parent or an exact match of the requested
-// directory is being watched by an existing {RegistryWatcherNode}.
+/**
+ * A {@link RegistryNode.lookup} traversal result that's returned when a parent or an exact match of the requested
+ * directory is being watched by an existing `RegistryWatcherNode`.
+ *
+ * @private
+ */
 class ParentResult {
-  // Private: Instantiate a new {ParentResult}.
-  //
-  // * `parent` the {RegistryWatcherNode} that was discovered.
-  // * `remainingPathSegments` an {Array} of the directories that lie between the leaf node's watched directory and
-  //   the requested directory. This will be empty for exact matches.
+  /**
+   * Instantiate a new `ParentResult`.
+   *
+   * @param parent - the `RegistryWatcherNode` that was discovered.
+   * @param remainingPathSegments - an `Array` of the directories that lie between the leaf node's watched directory and the requested directory. This will be empty for exact matches.
+   * @private
+   */
   constructor(parent, remainingPathSegments) {
     this.parent = parent;
     this.remainingPathSegments = remainingPathSegments;
   }
 
-  // Private: Dispatch within a map of callback actions.
-  //
-  // * `actions` {Object} containing a `parent` key that maps to a callback to be invoked when a parent of a requested
-  //   requested directory is returned by a {RegistryNode.lookup} call. The callback will be called with the
-  //   {RegistryWatcherNode} instance and an {Array} of the {String} path segments that separate the parent node
-  //   and the requested directory.
-  //
-  // Returns: the result of the `actions` callback.
+  /**
+   * Dispatch within a map of callback actions.
+   *
+   * @param {Object} actions - containing a `parent` key that maps to a callback to be invoked when a parent of a requested requested directory is returned by a {@link RegistryNode.lookup} call. The callback will be called with the `RegistryWatcherNode` instance and an `Array` of the `String` path segments that separate the parent node and the requested directory.
+   * @returns {*} The result of the `actions.parent` callback.
+   * @private
+   */
   when(actions) {
     return actions.parent(this.parent, this.remainingPathSegments);
   }
 }
 
-// Private: A {RegistryNode.lookup} traversal result that's returned when one or more children of the requested
-// directory are already being watched.
+/**
+ * A {@link RegistryNode.lookup} traversal result that's returned when one or more children of the requested
+ * directory are already being watched.
+ *
+ * @private
+ */
 class ChildrenResult {
-  // Private: Instantiate a new {ChildrenResult}.
-  //
-  // * `children` {Array} of the {RegistryWatcherNode} instances that were discovered.
+  /**
+   * Instantiate a new `ChildrenResult`.
+   *
+   * @param {Array} children - of the `RegistryWatcherNode` instances that were discovered.
+   * @private
+   */
   constructor(children) {
     this.children = children;
   }
 
-  // Private: Dispatch within a map of callback actions.
-  //
-  // * `actions` {Object} containing a `children` key that maps to a callback to be invoked when a parent of a requested
-  //   requested directory is returned by a {RegistryNode.lookup} call. The callback will be called with the
-  //   {RegistryWatcherNode} instance.
-  //
-  // Returns: the result of the `actions` callback.
+  /**
+   * Dispatch within a map of callback actions.
+   *
+   * @param {Object} actions - containing a `children` key that maps to a callback to be invoked when a parent of a requested requested directory is returned by a {@link RegistryNode.lookup} call. The callback will be called with the `RegistryWatcherNode` instance.
+   * @returns {*} The result of the `actions.children` callback.
+   * @private
+   */
   when(actions) {
     return actions.children(this.children);
   }
 }
 
-// Private: Track the directories being monitored by native filesystem watchers. Minimize the number of native watchers
-// allocated to receive events for a desired set of directories by:
-//
-// 1. Subscribing to the same underlying {NativeWatcher} when watching the same directory multiple times.
-// 2. Subscribing to an existing {NativeWatcher} on a parent of a desired directory.
-// 3. Replacing multiple {NativeWatcher} instances on child directories with a single new {NativeWatcher} on the
-//    parent.
+/**
+ * Track the directories being monitored by native filesystem watchers. Minimize the number of native watchers
+ * allocated to receive events for a desired set of directories by:
+ *
+ * 1. Subscribing to the same underlying `NativeWatcher` when watching the same directory multiple times.
+ * 2. Subscribing to an existing `NativeWatcher` on a parent of a desired directory.
+ * 3. Replacing multiple `NativeWatcher` instances on child directories with a single new `NativeWatcher` on the
+ *    parent.
+ *
+ * @private
+ */
 class NativeWatcherRegistry {
-  // Private: Instantiate an empty registry.
-  //
-  // * `createNative` {Function} that will be called with a normalized filesystem path to create a new native
-  //   filesystem watcher.
+  /**
+   * Instantiate an empty registry.
+   *
+   * @param {Function} createNative - that will be called with a normalized filesystem path to create a new native filesystem watcher.
+   * @private
+   */
   constructor(createNative) {
     this.watchedPaths = new Map();
     this.tree = new RegistryTree([], createNative, (parentPath) => this.getChildPaths(parentPath));
   }
 
-  // Private: Attach a watcher to a directory, assigning it a {NativeWatcher}. If a suitable {NativeWatcher} already
-  // exists, it will be attached to the new {Watcher} with an appropriate subpath configuration. Otherwise, the
-  // `createWatcher` callback will be invoked to create a new {NativeWatcher}, which will be registered in the tree
-  // and attached to the watcher.
-  //
-  // If any pre-existing child watchers are removed as a result of this operation, {NativeWatcher.onWillReattach} will
-  // be broadcast on each with the new parent watcher as an event payload to give child watchers a chance to attach to
-  // the new watcher.
-  //
-  // * `watcher` an unattached {Watcher}.
+  /**
+   * Attach a watcher to a directory, assigning it a `NativeWatcher`. If a suitable `NativeWatcher` already
+   * exists, it will be attached to the new `Watcher` with an appropriate subpath configuration. Otherwise, the
+   * `createWatcher` callback will be invoked to create a new `NativeWatcher`, which will be registered in the tree
+   * and attached to the watcher.
+   *
+   * If any pre-existing child watchers are removed as a result of this operation, {@link NativeWatcher.onWillReattach} will
+   * be broadcast on each with the new parent watcher as an event payload to give child watchers a chance to attach to
+   * the new watcher.
+   *
+   * @param watcher - an unattached `Watcher`.
+   * @private
+   */
   async attach(watcher) {
     const normalizedDirectory = await watcher.getNormalizedPathPromise();
     const pathSegments = normalizedDirectory
@@ -469,10 +549,13 @@ class NativeWatcherRegistry {
     return Array.from(children.values()).sort((a, b) => a.length - b.length);
   }
 
-  // Private: Generate a visual representation of the currently active watchers managed by this
-  // registry.
-  //
-  // Returns a {String} showing the tree structure.
+  /**
+   * Generate a visual representation of the currently active watchers managed by this
+   * registry.
+   *
+   * @returns {String} showing the tree structure.
+   * @private
+   */
   print() {
     return this.tree.print();
   }

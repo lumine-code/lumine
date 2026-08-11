@@ -13,40 +13,40 @@ const isCombiningCharacter = (charCode) =>
 
 // Are the given character codes a high/low surrogate pair?
 //
-// * `charCodeA` The first character code {Number}.
-// * `charCode2` The second character code {Number}.
+// * `charCodeA` The first character code `Number`.
+// * `charCode2` The second character code `Number`.
 //
-// Return a {Boolean}.
+// Return a `Boolean`.
 const isSurrogatePair = (charCodeA, charCodeB) =>
   isHighSurrogate(charCodeA) && isLowSurrogate(charCodeB);
 
 // Are the given character codes a variation sequence?
 //
-// * `charCodeA` The first character code {Number}.
-// * `charCode2` The second character code {Number}.
+// * `charCodeA` The first character code `Number`.
+// * `charCode2` The second character code `Number`.
 //
-// Return a {Boolean}.
+// Return a `Boolean`.
 const isVariationSequence = (charCodeA, charCodeB) =>
   !isVariationSelector(charCodeA) && isVariationSelector(charCodeB);
 
 // Are the given character codes a combined character pair?
 //
-// * `charCodeA` The first character code {Number}.
-// * `charCode2` The second character code {Number}.
+// * `charCodeA` The first character code `Number`.
+// * `charCode2` The second character code `Number`.
 //
-// Return a {Boolean}.
+// Return a `Boolean`.
 const isCombinedCharacter = (charCodeA, charCodeB) =>
   !isCombiningCharacter(charCodeA) && isCombiningCharacter(charCodeB);
 
 // Is the character at the given index the start of high/low surrogate pair
 // a variation sequence, or a combined character?
 //
-// * `string` The {String} to check for a surrogate pair, variation sequence,
+// * `string` The `String` to check for a surrogate pair, variation sequence,
 //            or combined character.
-// * `index`  The {Number} index to look for a surrogate pair, variation
+// * `index`  The `Number` index to look for a surrogate pair, variation
 //            sequence, or combined character.
 //
-// Return a {Boolean}.
+// Return a `Boolean`.
 const isPairedCharacter = (string, index = 0) => {
   const charCodeA = string.charCodeAt(index);
   const charCodeB = string.charCodeAt(index + 1);
@@ -115,9 +115,9 @@ const isWrapBoundary = (previousCharacter, character) =>
 // Does the given string contain at least surrogate pair, variation sequence,
 // or combined character?
 //
-// * `string` The {String} to check for the presence of paired characters.
+// * `string` The `String` to check for the presence of paired characters.
 //
-// Returns a {Boolean}.
+// Returns a `Boolean`.
 const hasPairedCharacter = (string) => {
   let index = 0;
   while (index < string.length) {

@@ -4,7 +4,7 @@ const path = require("path");
 
 // Handles requests with 'lumine' protocol.
 //
-// It's created by {LumineApplication} upon instantiation and is used to create a
+// It's created by `LumineApplication` upon instantiation and is used to create a
 // custom resource loader for 'lumine://' URLs.
 //
 // A URL names a package and a file inside it: `lumine://<package>/<file>`. The

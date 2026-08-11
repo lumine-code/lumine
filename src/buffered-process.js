@@ -3,50 +3,50 @@ const ChildProcess = require("child_process");
 const { Emitter } = require("@lumine-code/event-kit");
 const path = require("path");
 
-// Extended: A wrapper which provides standard error/output line buffering for
-// Node's ChildProcess.
-//
-// ## Examples
-//
-// ```js
-// {BufferedProcess} = require('lumine')
-//
-// const command = 'ps'
-// const args = ['-ef']
-// const stdout = (output) => console.log(output)
-// const exit = (code) => console.log("ps -ef exited with #{code}")
-// const process = new BufferedProcess({command, args, stdout, exit})
-// ```
+/**
+ * A wrapper which provides standard error/output line buffering for
+ * Node's ChildProcess.
+ *
+ * ## Examples
+ *
+ * ```js
+ * {BufferedProcess} = require('lumine')
+ *
+ * const command = 'ps'
+ * const args = ['-ef']
+ * const stdout = (output) => console.log(output)
+ * const exit = (code) => console.log("ps -ef exited with #{code}")
+ * const process = new BufferedProcess({command, args, stdout, exit})
+ * ```
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class BufferedProcess {
-  /*
-  Section: Construction
-  */
+  /**
+   * @category Construction
+   */
 
-  // Public: Runs the given command by spawning a new child process.
-  //
-  // * `options` An {Object} with the following keys:
-  //   * `command` The {String} command to execute.
-  //   * `args` The {Array} of arguments to pass to the command (optional).
-  //   * `options` {Object} (optional) The options {Object} to pass to Node's
-  //     `ChildProcess.spawn` method.
-  //   * `stdout` {Function} (optional) The callback that receives a single
-  //     argument which contains the standard output from the command. The
-  //     callback is called as data is received but it's buffered to ensure only
-  //     complete lines are passed until the source stream closes. After the
-  //     source stream has closed all remaining data is sent in a final call.
-  //     * `data` {String}
-  //   * `stderr` {Function} (optional) The callback that receives a single
-  //     argument which contains the standard error output from the command. The
-  //     callback is called as data is received but it's buffered to ensure only
-  //     complete lines are passed until the source stream closes. After the
-  //     source stream has closed all remaining data is sent in a final call.
-  //     * `data` {String}
-  //   * `exit` {Function} (optional) The callback which receives a single
-  //     argument containing the exit status.
-  //     * `code` {Number}
-  //   * `autoStart` {Boolean} (optional) Whether the command will automatically start
-  //     when this BufferedProcess is created. Defaults to true.  When set to false you
-  //     must call the `start` method to start the process.
+  /**
+   * Runs the given command by spawning a new child process.
+   *
+   * @param {Object} [options] - Process options.
+   * @param {String} options.command - The command to execute.
+   * @param {Array<String>} [options.args] - Arguments passed to the command.
+   * @param {Object} [options.options] - Options passed to Node's
+   *   `ChildProcess.spawn`.
+   * @param {Function} [options.stdout] - Receives buffered, complete lines of
+   *   standard output and any remaining data when the stream closes.
+   * @param {String} options.stdout.data - Standard-output data.
+   * @param {Function} [options.stderr] - Receives buffered, complete lines of
+   *   standard error and any remaining data when the stream closes.
+   * @param {String} options.stderr.data - Standard-error data.
+   * @param {Function} [options.exit] - Receives the process exit status.
+   * @param {Number} options.exit.code - The exit status.
+   * @param {Boolean} [options.autoStart=true] - Whether to start immediately.
+   * @public
+   * @api-status Public
+   */
   constructor({ command, args, options = {}, stdout, stderr, exit, autoStart = true } = {}) {
     this.emitter = new Emitter();
     this.command = command;
@@ -102,29 +102,31 @@ module.exports = class BufferedProcess {
     this.spawn(this.getCmdPath(), ["/s", "/d", "/c", `"${cmdArgs.join(" ")}"`], cmdOptions);
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Public: Invoke the given callback when the process raises an error.
-  // Usually this is due to the command not being available or not on the PATH.
-  // You can call `handle()` on the object passed to your callback to indicate
-  // that you have handled this error.
-  //
-  // * `callback` {Function} callback
-  //   * `errorObject` {Object}
-  //     * `error` {Object} the error object
-  //     * `handle` {Function} call this to indicate you have handled the error.
-  //       The error will not be thrown if this function is called.
-  //
-  // Returns a {Disposable}
+  /**
+   * Invoke the given callback when the process raises an error.
+   * Usually this is due to the command not being available or not on the PATH.
+   * You can call `handle()` on the object passed to your callback to indicate
+   * that you have handled this error.
+   *
+   * @param {Function} callback - callback
+   * @param {Object} callback.errorObject
+   * @param {Object} callback.errorObject.error - the error object
+   * @param {Function} callback.errorObject.handle - call this to indicate you have handled the error. The error will not be thrown if this function is called.
+   * @returns {Disposable}
+   * @public
+   * @api-status Public
+   */
   onWillThrowError(callback) {
     return this.emitter.on("will-throw-error", callback);
   }
 
-  /*
-  Section: Helper Methods
-  */
+  /**
+   * @category Helper Methods
+   */
 
   // Helper method to pass data line by line.
   //
@@ -228,7 +230,12 @@ module.exports = class BufferedProcess {
     }
   }
 
-  // Public: Terminate the process.
+  /**
+   * Terminate the process.
+   *
+   * @public
+   * @api-status Public
+   */
   kill() {
     if (this.killed) return;
 

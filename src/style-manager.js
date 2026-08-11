@@ -3,11 +3,16 @@ const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { createStylesElement } = require("./styles-element");
 
-// Extended: A singleton instance of this class available via `lumine.styles`,
-// which you can use to globally query and observe the set of active style
-// sheets. The `StyleManager` doesn't add any style elements to the DOM on its
-// own, but is instead subscribed to by individual `<lumine-styles>` elements,
-// which clone and attach style elements in different contexts.
+/**
+ * A singleton instance of this class available via `lumine.styles`,
+ * which you can use to globally query and observe the set of active style
+ * sheets. The `StyleManager` doesn't add any style elements to the DOM on its
+ * own, but is instead subscribed to by individual `<lumine-styles>` elements,
+ * which clone and attach style elements in different contexts.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class StyleManager {
   constructor() {
     this.emitter = new Emitter();
@@ -19,25 +24,21 @@ module.exports = class StyleManager {
     this.configDirPath = configDirPath;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Extended: Invoke `callback` for all current and future style elements.
-  //
-  // * `callback` {Function} that is called with style elements.
-  //   * `styleElement` An `HTMLStyleElement` instance. The `.sheet` property
-  //     will be null because this element isn't attached to the DOM. If you want
-  //     to attach this element to the DOM, be sure to clone it first by calling
-  //     `.cloneNode(true)` on it. The style element will also have the following
-  //     non-standard properties:
-  //     * `sourcePath` A {String} containing the path from which the style
-  //       element was loaded.
-  //     * `context` A {String} indicating the target context of the style
-  //       element.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to cancel the
-  // subscription.
+  /**
+   * Invoke `callback` for all current and future style elements.
+   *
+   * @param {Function} callback - that is called with style elements.
+   * @param callback.styleElement - An `HTMLStyleElement` instance. The `.sheet` property will be null because this element isn't attached to the DOM. If you want to attach this element to the DOM, be sure to clone it first by calling `.cloneNode(true)` on it. The style element will also have the following non-standard properties:
+   * @param callback.styleElement.sourcePath - A `String` containing the path from which the style element was loaded.
+   * @param callback.styleElement.context - A `String` indicating the target context of the style element.
+   * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
+   * @public
+   * @api-status Extended
+   */
   observeStyleElements(callback) {
     for (let styleElement of this.getStyleElements()) {
       callback(styleElement);
@@ -46,58 +47,59 @@ module.exports = class StyleManager {
     return this.onDidAddStyleElement(callback);
   }
 
-  // Extended: Invoke `callback` when a style element is added.
-  //
-  // * `callback` {Function} that is called with style elements.
-  //   * `styleElement` An `HTMLStyleElement` instance. The `.sheet` property
-  //     will be null because this element isn't attached to the DOM. If you want
-  //     to attach this element to the DOM, be sure to clone it first by calling
-  //     `.cloneNode(true)` on it. The style element will also have the following
-  //     non-standard properties:
-  //     * `sourcePath` A {String} containing the path from which the style
-  //       element was loaded.
-  //     * `context` A {String} indicating the target context of the style
-  //       element.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to cancel the
-  // subscription.
+  /**
+   * Invoke `callback` when a style element is added.
+   *
+   * @param {Function} callback - that is called with style elements.
+   * @param callback.styleElement - An `HTMLStyleElement` instance. The `.sheet` property will be null because this element isn't attached to the DOM. If you want to attach this element to the DOM, be sure to clone it first by calling `.cloneNode(true)` on it. The style element will also have the following non-standard properties:
+   * @param callback.styleElement.sourcePath - A `String` containing the path from which the style element was loaded.
+   * @param callback.styleElement.context - A `String` indicating the target context of the style element.
+   * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
+   * @public
+   * @api-status Extended
+   */
   onDidAddStyleElement(callback) {
     return this.emitter.on("did-add-style-element", callback);
   }
 
-  // Extended: Invoke `callback` when a style element is removed.
-  //
-  // * `callback` {Function} that is called with style elements.
-  //   * `styleElement` An `HTMLStyleElement` instance.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to cancel the
-  // subscription.
+  /**
+   * Invoke `callback` when a style element is removed.
+   *
+   * @param {Function} callback - that is called with style elements.
+   * @param callback.styleElement - An `HTMLStyleElement` instance.
+   * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
+   * @public
+   * @api-status Extended
+   */
   onDidRemoveStyleElement(callback) {
     return this.emitter.on("did-remove-style-element", callback);
   }
 
-  // Extended: Invoke `callback` when an existing style element is updated.
-  //
-  // * `callback` {Function} that is called with style elements.
-  //   * `styleElement` An `HTMLStyleElement` instance. The `.sheet` property
-  //      will be null because this element isn't attached to the DOM. The style
-  //      element will also have the following non-standard properties:
-  //     * `sourcePath` A {String} containing the path from which the style
-  //       element was loaded.
-  //     * `context` A {String} indicating the target context of the style
-  //       element.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to cancel the
-  // subscription.
+  /**
+   * Invoke `callback` when an existing style element is updated.
+   *
+   * @param {Function} callback - that is called with style elements.
+   * @param callback.styleElement - An `HTMLStyleElement` instance. The `.sheet` property will be null because this element isn't attached to the DOM. The style element will also have the following non-standard properties:
+   * @param callback.styleElement.sourcePath - A `String` containing the path from which the style element was loaded.
+   * @param callback.styleElement.context - A `String` indicating the target context of the style element.
+   * @returns {Disposable} on which `.dispose()` can be called to cancel the subscription.
+   * @public
+   * @api-status Extended
+   */
   onDidUpdateStyleElement(callback) {
     return this.emitter.on("did-update-style-element", callback);
   }
 
-  /*
-  Section: Reading Style Elements
-  */
+  /**
+   * @category Reading Style Elements
+   */
 
-  // Extended: Get all loaded style elements.
+  /**
+   * Get all loaded style elements.
+   *
+   * @public
+   * @api-status Extended
+   */
   getStyleElements() {
     return this.styleElements.slice();
   }
@@ -196,13 +198,17 @@ module.exports = class StyleManager {
     return stylesElement;
   }
 
-  /*
-  Section: Paths
-  */
+  /**
+   * @category Paths
+   */
 
-  // Extended: Get the path of the user style sheet in `~/.lumine`.
-  //
-  // Returns a {String}.
+  /**
+   * Get the path of the user style sheet in `~/.lumine`.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Extended
+   */
   getUserStyleSheetPath() {
     if (this.configDirPath == null) {
       return "";

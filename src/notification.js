@@ -1,7 +1,12 @@
 const { Emitter } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
 
-// Public: A notification to the user containing a message and type.
+/**
+ * A notification to the user containing a message and type.
+ *
+ * @public
+ * @api-status Public
+ */
 module.exports = class Notification {
   constructor(type, message, options = {}) {
     this.type = type;
@@ -25,24 +30,30 @@ module.exports = class Notification {
     }
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Public: Invoke the given callback when the notification is dismissed.
-  //
-  // * `callback` {Function} to be called when the notification is dismissed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the notification is dismissed.
+   *
+   * @param {Function} callback - to be called when the notification is dismissed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidDismiss(callback) {
     return this.emitter.on("did-dismiss", callback);
   }
 
-  // Public: Invoke the given callback when the notification is displayed.
-  //
-  // * `callback` {Function} to be called when the notification is displayed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the notification is displayed.
+   *
+   * @param {Function} callback - to be called when the notification is displayed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidDisplay(callback) {
     return this.emitter.on("did-display", callback);
   }
@@ -51,16 +62,24 @@ module.exports = class Notification {
     return this.options;
   }
 
-  /*
-  Section: Methods
-  */
+  /**
+   * @category Methods
+   */
 
-  // Public: Returns the {String} type.
+  /**
+   * @returns {String} type.
+   * @public
+   * @api-status Public
+   */
   getType() {
     return this.type;
   }
 
-  // Public: Returns the {String} message.
+  /**
+   * @returns {String} message.
+   * @public
+   * @api-status Public
+   */
   getMessage() {
     return this.message;
   }
@@ -81,8 +100,13 @@ module.exports = class Notification {
     );
   }
 
-  // Extended: Dismisses the notification, removing it from the UI. Calling this
-  // programmatically will call all callbacks added via `onDidDismiss`.
+  /**
+   * Dismisses the notification, removing it from the UI. Calling this
+   * programmatically will call all callbacks added via `onDidDismiss`.
+   *
+   * @public
+   * @api-status Extended
+   */
   dismiss() {
     if (!this.isDismissable() || this.isDismissed()) return;
     this.dismissed = true;

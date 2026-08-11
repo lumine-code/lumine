@@ -3,10 +3,15 @@ const DisplayMarker = require("./display-marker");
 const Range = require("./range");
 const Point = require("./point");
 
-// Public: *Experimental:* A container for a related set of markers at the
-// {DisplayLayer} level. Wraps an underlying {MarkerLayer} on the {TextBuffer}.
-//
-// This API is experimental and subject to change on any release.
+/**
+ * A container for a related set of markers at the `DisplayLayer` level. Wraps
+ * an underlying {@link MarkerLayer} on the {@link TextBuffer}.
+ *
+ * This API is experimental and subject to change on any release.
+ *
+ * @public
+ * @api-status Experimental
+ */
 class DisplayMarkerLayer {
   constructor(displayLayer, bufferMarkerLayer, ownsBufferMarkerLayer) {
     this.displayLayer = displayLayer;
@@ -22,11 +27,16 @@ class DisplayMarkerLayer {
     this.subscriptions.add(this.bufferMarkerLayer.onDidUpdate(this.emitDidUpdate.bind(this)));
   }
 
-  /*
-  Section: Lifecycle
-  */
+  /**
+   * @category Lifecycle
+   */
 
-  // Essential: Destroy this layer.
+  /**
+   * Destroy this layer.
+   *
+   * @public
+   * @api-status Essential
+   */
   destroy() {
     if (this.destroyed) {
       return;
@@ -47,7 +57,12 @@ class DisplayMarkerLayer {
     this.emitter.clear();
   }
 
-  // Public: Destroy all markers in this layer.
+  /**
+   * Destroy all markers in this layer.
+   *
+   * @public
+   * @api-status Public
+   */
   clear() {
     this.bufferMarkerLayer.clear();
   }
@@ -59,54 +74,68 @@ class DisplayMarkerLayer {
     this.markersById = new Map();
   }
 
-  // Essential: Determine whether this layer has been destroyed.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether this layer has been destroyed.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   isDestroyed() {
     return this.destroyed;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Public: Subscribe to be notified synchronously when this layer is destroyed.
-  //
-  // Returns a {Disposable}.
+  /**
+   * Subscribe to be notified synchronously when this layer is destroyed.
+   *
+   * @returns {Disposable}
+   * @public
+   * @api-status Public
+   */
   onDidDestroy(callback) {
     return this.emitter.on("did-destroy", callback);
   }
 
-  // Public: Subscribe to be notified asynchronously whenever markers are
-  // created, updated, or destroyed on this layer. *Prefer this method for
-  // optimal performance when interacting with layers that could contain large
-  // numbers of markers.*
-  //
-  // * `callback` A {Function} that will be called with no arguments when changes
-  //   occur on this layer.
-  //
-  // Subscribers are notified once, asynchronously when any number of changes
-  // occur in a given tick of the event loop. You should re-query the layer
-  // to determine the state of markers in which you're interested in. It may
-  // be counter-intuitive, but this is much more efficient than subscribing to
-  // events on individual markers, which are expensive to deliver.
-  //
-  // Returns a {Disposable}.
+  /**
+   * Subscribe to be notified asynchronously whenever markers are
+   * created, updated, or destroyed on this layer. *Prefer this method for
+   * optimal performance when interacting with layers that could contain large
+   * numbers of markers.*
+   *
+   *
+   * Subscribers are notified once, asynchronously when any number of changes
+   * occur in a given tick of the event loop. You should re-query the layer
+   * to determine the state of markers in which you're interested in. It may
+   * be counter-intuitive, but this is much more efficient than subscribing to
+   * events on individual markers, which are expensive to deliver.
+   *
+   * @param callback - A `Function` that will be called with no arguments when changes occur on this layer.
+   * @returns {Disposable}
+   * @public
+   * @api-status Public
+   */
   onDidUpdate(callback) {
     return this.emitter.on("did-update", callback);
   }
 
-  // Public: Subscribe to be notified synchronously whenever markers are created
-  // on this layer. *Avoid this method for optimal performance when interacting
-  // with layers that could contain large numbers of markers.*
-  //
-  // * `callback` A {Function} that will be called with a {TextEditorMarker}
-  //   whenever a new marker is created.
-  //
-  // You should prefer {::onDidUpdate} when synchronous notifications aren't
-  // absolutely necessary.
-  //
-  // Returns a {Disposable}.
+  /**
+   * Subscribe to be notified synchronously whenever markers are created
+   * on this layer. *Avoid this method for optimal performance when interacting
+   * with layers that could contain large numbers of markers.*
+   *
+   *
+   * You should prefer {@link #onDidUpdate} when synchronous notifications aren't
+   * absolutely necessary.
+   *
+   * @param callback - A `Function` that will be called with a `TextEditorMarker` whenever a new marker is created.
+   * @returns {Disposable}
+   * @public
+   * @api-status Public
+   */
   onDidCreateMarker(callback) {
     const subscription = this.bufferMarkerLayer.onDidCreateMarker((bufferMarker) => {
       return callback(this.getMarker(bufferMarker.id));
@@ -120,162 +149,94 @@ class DisplayMarkerLayer {
     });
   }
 
-  /*
-  Section: Marker creation
-  */
+  /**
+   * @category Marker creation
+   */
 
-  // Public: Create a marker with the given screen range.
-  //
-  // * `screenRange` A {Range} or range-compatible {Array}
-  // * `options` A hash of key-value pairs to associate with the marker. There
-  //   are also reserved property names that have marker-specific meaning.
-  //   * `reversed` (optional) {Boolean} Creates the marker in a reversed
-  //     orientation. (default: false)
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //   * `exclusive` {Boolean} indicating whether insertions at the start or end
-  //     of the marked range should be interpreted as happening *outside* the
-  //     marker. Defaults to `false`, except when using the `inside`
-  //     invalidation strategy or when the marker has no tail, in which
-  //     case it defaults to true. Explicitly assigning this option overrides
-  //     behavior in all circumstances.
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker with the given screen range.
+   *
+   * @param screenRange - A {@link Range} or range-compatible `Array`
+   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
+   * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'` and applies to both ends of the range.
+   * @returns {DisplayMarker} The new marker.
+   * @public
+   * @api-status Public
+   */
   markScreenRange(screenRange, options) {
     screenRange = Range.fromObject(screenRange);
     const bufferRange = this.displayLayer.translateScreenRange(screenRange, options);
     return this.getMarker(this.bufferMarkerLayer.markRange(bufferRange, options).id);
   }
 
-  // Public: Create a marker on this layer with its head at the given screen
-  // position and no tail.
-  //
-  // * `screenPosition` A {Point} or point-compatible {Array}
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //   * `exclusive` {Boolean} indicating whether insertions at the start or end
-  //     of the marked range should be interpreted as happening *outside* the
-  //     marker. Defaults to `false`, except when using the `inside`
-  //     invalidation strategy or when the marker has no tail, in which
-  //     case it defaults to true. Explicitly assigning this option overrides
-  //     behavior in all circumstances.
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker on this layer with its head at the given screen
+   * position and no tail.
+   *
+   * @param screenPosition - A {@link Point} or point-compatible `Array`
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @returns {DisplayMarker} The new marker.
+   * @public
+   * @api-status Public
+   */
   markScreenPosition(screenPosition, options) {
     screenPosition = Point.fromObject(screenPosition);
     const bufferPosition = this.displayLayer.translateScreenPosition(screenPosition, options);
     return this.getMarker(this.bufferMarkerLayer.markPosition(bufferPosition, options).id);
   }
 
-  // Public: Create a marker with the given buffer range.
-  //
-  // * `bufferRange` A {Range} or range-compatible {Array}
-  // * `options` A hash of key-value pairs to associate with the marker. There
-  //   are also reserved property names that have marker-specific meaning.
-  //   * `reversed` (optional) {Boolean} Creates the marker in a reversed
-  //     orientation. (default: false)
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //   * `exclusive` {Boolean} indicating whether insertions at the start or end
-  //     of the marked range should be interpreted as happening *outside* the
-  //     marker. Defaults to `false`, except when using the `inside`
-  //     invalidation strategy or when the marker has no tail, in which
-  //     case it defaults to true. Explicitly assigning this option overrides
-  //     behavior in all circumstances.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker with the given buffer range.
+   *
+   * @param bufferRange - A {@link Range} or range-compatible `Array`
+   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
+   * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @returns {DisplayMarker}
+   * @public
+   * @api-status Public
+   */
   markBufferRange(bufferRange, options) {
     bufferRange = Range.fromObject(bufferRange);
     return this.getMarker(this.bufferMarkerLayer.markRange(bufferRange, options).id);
   }
 
-  // Public: Create a marker on this layer with its head at the given buffer
-  // position and no tail.
-  //
-  // * `bufferPosition` A {Point} or point-compatible {Array}
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //   * `exclusive` {Boolean} indicating whether insertions at the start or end
-  //     of the marked range should be interpreted as happening *outside* the
-  //     marker. Defaults to `false`, except when using the `inside`
-  //     invalidation strategy or when the marker has no tail, in which
-  //     case it defaults to true. Explicitly assigning this option overrides
-  //     behavior in all circumstances.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker on this layer with its head at the given buffer
+   * position and no tail.
+   *
+   * @param bufferPosition - A {@link Point} or point-compatible `Array`
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @param {Boolean} options.exclusive - indicating whether insertions at the start or end of the marked range should be interpreted as happening *outside* the marker. Defaults to `false`, except when using the `inside` invalidation strategy or when the marker has no tail, in which case it defaults to true. Explicitly assigning this option overrides behavior in all circumstances.
+   * @returns {DisplayMarker}
+   * @public
+   * @api-status Public
+   */
   markBufferPosition(bufferPosition, options) {
     return this.getMarker(
       this.bufferMarkerLayer.markPosition(Point.fromObject(bufferPosition), options).id,
     );
   }
 
-  /*
-  Section: Querying
-  */
+  /**
+   * @category Querying
+   */
 
-  // Essential: Get an existing marker by its id.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Get an existing marker by its id.
+   *
+   * @returns {DisplayMarker}
+   * @public
+   * @api-status Essential
+   */
   getMarker(id) {
     id = parseInt(id);
     const displayMarker = this.markersById.get(id);
@@ -290,55 +251,61 @@ class DisplayMarkerLayer {
     }
   }
 
-  // Essential: Get all markers in the layer.
-  //
-  // Returns an {Array} of {DisplayMarker}s.
+  /**
+   * Get all markers in the layer.
+   *
+   * @returns {Array} of {@link DisplayMarker DisplayMarkers}.
+   * @public
+   * @api-status Essential
+   */
   getMarkers() {
     return this.bufferMarkerLayer.getMarkers().map(({ id }) => this.getMarker(id));
   }
 
-  // Public: Get the number of markers in the marker layer.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the number of markers in the marker layer.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Public
+   */
   getMarkerCount() {
     return this.bufferMarkerLayer.getMarkerCount();
   }
 
-  // Public: Find markers in the layer conforming to the given parameters.
-  //
-  // This method finds markers based on the given properties. Markers can be
-  // associated with custom properties that will be compared with basic equality.
-  // In addition, there are several special properties that will be compared
-  // with the range of the markers rather than their properties.
-  //
-  // * `params` An {Object} containing properties that each returned marker
-  //   must satisfy. Markers can be associated with custom properties, which are
-  //   compared with basic equality. In addition, several reserved properties
-  //   can be used to filter markers based on their current range:
-  //   * `startBufferPosition` Only include markers starting at this {Point} in buffer coordinates.
-  //   * `endBufferPosition` Only include markers ending at this {Point} in buffer coordinates.
-  //   * `startScreenPosition` Only include markers starting at this {Point} in screen coordinates.
-  //   * `endScreenPosition` Only include markers ending at this {Point} in screen coordinates.
-  //   * `startsInBufferRange` Only include markers starting inside this {Range} in buffer coordinates.
-  //   * `endsInBufferRange` Only include markers ending inside this {Range} in buffer coordinates.
-  //   * `startsInScreenRange` Only include markers starting inside this {Range} in screen coordinates.
-  //   * `endsInScreenRange` Only include markers ending inside this {Range} in screen coordinates.
-  //   * `startBufferRow` Only include markers starting at this row in buffer coordinates.
-  //   * `endBufferRow` Only include markers ending at this row in buffer coordinates.
-  //   * `startScreenRow` Only include markers starting at this row in screen coordinates.
-  //   * `endScreenRow` Only include markers ending at this row in screen coordinates.
-  //   * `intersectsBufferRowRange` Only include markers intersecting this {Array}
-  //      of `[startRow, endRow]` in buffer coordinates.
-  //   * `intersectsScreenRowRange` Only include markers intersecting this {Array}
-  //      of `[startRow, endRow]` in screen coordinates.
-  //   * `containsBufferRange` Only include markers containing this {Range} in buffer coordinates.
-  //   * `containsBufferPosition` Only include markers containing this {Point} in buffer coordinates.
-  //   * `containedInBufferRange` Only include markers contained in this {Range} in buffer coordinates.
-  //   * `containedInScreenRange` Only include markers contained in this {Range} in screen coordinates.
-  //   * `intersectsBufferRange` Only include markers intersecting this {Range} in buffer coordinates.
-  //   * `intersectsScreenRange` Only include markers intersecting this {Range} in screen coordinates.
-  //
-  // Returns an {Array} of {DisplayMarker}s
+  /**
+   * Find markers in the layer conforming to the given parameters.
+   *
+   * This method finds markers based on the given properties. Markers can be
+   * associated with custom properties that will be compared with basic equality.
+   * In addition, there are several special properties that will be compared
+   * with the range of the markers rather than their properties.
+   *
+   * @param params - An `Object` containing properties that each returned marker must satisfy. Markers can be associated with custom properties, which are compared with basic equality. In addition, several reserved properties can be used to filter markers based on their current range:
+   * @param params.startBufferPosition - Only include markers starting at this {@link Point} in buffer coordinates.
+   * @param params.endBufferPosition - Only include markers ending at this {@link Point} in buffer coordinates.
+   * @param params.startScreenPosition - Only include markers starting at this {@link Point} in screen coordinates.
+   * @param params.endScreenPosition - Only include markers ending at this {@link Point} in screen coordinates.
+   * @param params.startsInBufferRange - Only include markers starting inside this {@link Range} in buffer coordinates.
+   * @param params.endsInBufferRange - Only include markers ending inside this {@link Range} in buffer coordinates.
+   * @param params.startsInScreenRange - Only include markers starting inside this {@link Range} in screen coordinates.
+   * @param params.endsInScreenRange - Only include markers ending inside this {@link Range} in screen coordinates.
+   * @param params.startBufferRow - Only include markers starting at this row in buffer coordinates.
+   * @param params.endBufferRow - Only include markers ending at this row in buffer coordinates.
+   * @param params.startScreenRow - Only include markers starting at this row in screen coordinates.
+   * @param params.endScreenRow - Only include markers ending at this row in screen coordinates.
+   * @param params.intersectsBufferRowRange - Only include markers intersecting this `Array` of `[startRow, endRow]` in buffer coordinates.
+   * @param params.intersectsScreenRowRange - Only include markers intersecting this `Array` of `[startRow, endRow]` in screen coordinates.
+   * @param params.containsBufferRange - Only include markers containing this {@link Range} in buffer coordinates.
+   * @param params.containsBufferPosition - Only include markers containing this {@link Point} in buffer coordinates.
+   * @param params.containedInBufferRange - Only include markers contained in this {@link Range} in buffer coordinates.
+   * @param params.containedInScreenRange - Only include markers contained in this {@link Range} in screen coordinates.
+   * @param params.intersectsBufferRange - Only include markers intersecting this {@link Range} in buffer coordinates.
+   * @param params.intersectsScreenRange - Only include markers intersecting this {@link Range} in screen coordinates.
+   * @returns {Array} of {@link DisplayMarker DisplayMarkers}
+   * @public
+   * @api-status Public
+   */
   findMarkers(params) {
     params = this.translateToBufferMarkerLayerFindParams(params);
     return this.bufferMarkerLayer
@@ -346,9 +313,9 @@ class DisplayMarkerLayer {
       .map((stringMarker) => this.getMarker(stringMarker.id));
   }
 
-  /*
-  Section: Private
-  */
+  /**
+   * @category Private
+   */
 
   translateBufferPosition(bufferPosition, options) {
     return this.displayLayer.translateBufferPosition(bufferPosition, options);

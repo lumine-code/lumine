@@ -6,46 +6,51 @@ const _ = require("@lumine-code/underscore-plus");
 
 let SequenceCount = 0;
 
-// Public: Associates listener functions with commands in a
-// context-sensitive way using CSS selectors. You can access a global instance of
-// this class via `lumine.commands`, and commands registered there will be
-// presented in the command palette.
-//
-// The global command registry facilitates a style of event handling known as
-// *event delegation* that was popularized by jQuery. Lumine commands are expressed
-// as custom DOM events that can be invoked on the currently focused element via
-// a key binding or manually via the command palette. Rather than binding
-// listeners for command events directly to DOM nodes, you instead register
-// command event listeners globally on `lumine.commands` and constrain them to
-// specific kinds of elements with CSS selectors.
-//
-// Command names must follow the `namespace:action` pattern, where `namespace`
-// will typically be the name of your package, and `action` describes the
-// behavior of your command. If either part consists of multiple words, these
-// must be separated by hyphens. E.g. `awesome-package:turn-it-up-to-eleven`.
-// All words should be lowercased.
-//
-// As the event bubbles upward through the DOM, all registered event listeners
-// with matching selectors are invoked in order of specificity. In the event of a
-// specificity tie, the most recently registered listener is invoked first. This
-// mirrors the "cascade" semantics of CSS. Event listeners are invoked in the
-// context of the current DOM node, meaning `this` always points at
-// `event.currentTarget`. As is normally the case with DOM events,
-// `stopPropagation` and `stopImmediatePropagation` can be used to terminate the
-// bubbling process and prevent invocation of additional listeners.
-//
-// ## Example
-//
-// Here is a command that inserts the current date in an editor:
-//
-// ```js
-// lumine.commands.add('lumine-text-editor', {
-//   'user:insert-date'(event) {
-//     const editor = this.getModel()
-//     editor.insertText(new Date().toLocaleString())
-//   }
-// })
-// ```
+/**
+ * Associates listener functions with commands in a
+ * context-sensitive way using CSS selectors. You can access a global instance of
+ * this class via `lumine.commands`, and commands registered there will be
+ * presented in the command palette.
+ *
+ * The global command registry facilitates a style of event handling known as
+ * *event delegation* that was popularized by jQuery. Lumine commands are expressed
+ * as custom DOM events that can be invoked on the currently focused element via
+ * a key binding or manually via the command palette. Rather than binding
+ * listeners for command events directly to DOM nodes, you instead register
+ * command event listeners globally on `lumine.commands` and constrain them to
+ * specific kinds of elements with CSS selectors.
+ *
+ * Command names must follow the `namespace:action` pattern, where `namespace`
+ * will typically be the name of your package, and `action` describes the
+ * behavior of your command. If either part consists of multiple words, these
+ * must be separated by hyphens. E.g. `awesome-package:turn-it-up-to-eleven`.
+ * All words should be lowercased.
+ *
+ * As the event bubbles upward through the DOM, all registered event listeners
+ * with matching selectors are invoked in order of specificity. In the event of a
+ * specificity tie, the most recently registered listener is invoked first. This
+ * mirrors the "cascade" semantics of CSS. Event listeners are invoked in the
+ * context of the current DOM node, meaning `this` always points at
+ * `event.currentTarget`. As is normally the case with DOM events,
+ * `stopPropagation` and `stopImmediatePropagation` can be used to terminate the
+ * bubbling process and prevent invocation of additional listeners.
+ *
+ * ## Example
+ *
+ * Here is a command that inserts the current date in an editor:
+ *
+ * ```js
+ * lumine.commands.add('lumine-text-editor', {
+ *   'user:insert-date'(event) {
+ *     const editor = this.getModel()
+ *     editor.insertText(new Date().toLocaleString())
+ *   }
+ * })
+ * ```
+ *
+ * @public
+ * @api-status Public
+ */
 module.exports = class CommandRegistry {
   constructor() {
     this.handleCommandEvent = this.handleCommandEvent.bind(this);
@@ -77,59 +82,45 @@ module.exports = class CommandRegistry {
     }
   }
 
-  // Public: Add one or more command listeners associated with a selector.
-  //
-  // ## Arguments: Registering One Command
-  //
-  // * `target` A {String} containing a CSS selector or a DOM element. If you
-  //   pass a selector, the command will be globally associated with all matching
-  //   elements. The `,` combinator is not currently supported. If you pass a
-  //   DOM element, the command will be associated with just that element.
-  // * `commandName` A {String} containing the name of a command you want to
-  //   handle such as `user:insert-date`.
-  // * `listener` A listener which handles the event.  Either a {Function} to
-  //   call when the given command is invoked on an element matching the
-  //   selector, or an {Object} with a `didDispatch` property which is such a
-  //   function.
-  //
-  //   The function (`listener` itself if it is a function, or the `didDispatch`
-  //   method if `listener` is an object) will be called with `this` referencing
-  //   the matching DOM node and the following argument:
-  //     * `event`: A standard DOM event instance. Call `stopPropagation` or
-  //       `stopImmediatePropagation` to terminate bubbling early.
-  //
-  //   Additionally, `listener` may have additional properties which are returned
-  //   to those who query using `lumine.commands.findCommands`, as well as several
-  //   meaningful metadata properties:
-  //     * `displayName`: Overrides any generated `displayName` that would
-  //       otherwise be generated from the event name.
-  //     * `description`: Used by consumers to display detailed information about
-  //       the command.
-  //     * `hiddenInCommandPalette`: If `true`, this command will not appear in
-  //       the bundled command palette by default, but can still be shown with.
-  //       the `Command Palette: Show Hidden Commands` command. This is a good
-  //       option when you need to register large numbers of commands that don't
-  //       make sense to be executed from the command palette. Please use this
-  //       option conservatively, as it could reduce the discoverability of your
-  //       package's commands.
-  //     * `modal`: Declares that dispatching this command opens a modal panel.
-  //       Set to `true`, or to a {String} naming the label the modal carries
-  //       on the breadcrumb trail. The registry does not act on it — the
-  //       declaration travels with the command metadata so tooling can tell
-  //       modal-opening commands apart.
-  //
-  // ## Arguments: Registering Multiple Commands
-  //
-  // * `target` A {String} containing a CSS selector or a DOM element. If you
-  //   pass a selector, the commands will be globally associated with all
-  //   matching elements. The `,` combinator is not currently supported.
-  //   If you pass a DOM element, the command will be associated with just that
-  //   element.
-  // * `commands` An {Object} mapping command names like `user:insert-date` to
-  //   listener {Function}s.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to remove the
-  // added command handler(s).
+  /**
+   * Add one or more command listeners associated with a selector.
+   *
+   * ## Registering one command
+   *
+   *   The function (`listener` itself if it is a function, or the `didDispatch`
+   *   method if `listener` is an object) will be called with `this` referencing
+   *   the matching DOM node and the following argument:
+   *
+   *   Additionally, `listener` may have additional properties which are returned
+   *   to those who query using `lumine.commands.findCommands`, as well as several
+   *   meaningful metadata properties:
+   *
+   * ## Registering multiple commands
+   *
+   * Pass an object mapping command names such as `user:insert-date` to listener
+   * functions as `commandName`.
+   *
+   * @param {String|Element} target - A CSS selector or DOM element. Selectors
+   *   associate the command with all matching elements; the `,` combinator is
+   *   not supported.
+   * @param {String|Object} commandName - A command name such as
+   *   `user:insert-date`, or a map of command names to listeners.
+   * @param {Function|Object} [listener] - A function, or an object whose
+   *   `didDispatch` property handles the command.
+   * @param {Event} listener.event - The dispatched DOM event. Call
+   *   `stopPropagation()` or `stopImmediatePropagation()` to stop bubbling.
+   * @param {String} [listener.displayName] - Overrides the generated display name.
+   * @param {String} [listener.description] - Detailed command information.
+   * @param {Boolean} [listener.hiddenInCommandPalette] - Hide the command from
+   *   the bundled command palette by default.
+   * @param {Boolean|String} [listener.modal] - Declares that the command opens a
+   *   modal, optionally naming its breadcrumb label.
+   * @param {Boolean} [throwOnInvalidSelector=true] - Throw when `target` is an
+   *   invalid selector.
+   * @returns {Disposable} on which `.dispose()` can be called to remove the added command handler(s).
+   * @public
+   * @api-status Public
+   */
   add(target, commandName, listener, throwOnInvalidSelector = true) {
     if (typeof commandName === "object") {
       const commands = commandName;
@@ -209,22 +200,26 @@ module.exports = class CommandRegistry {
     });
   }
 
-  // Public: Find all registered commands matching a query.
-  //
-  // * `params` An {Object} containing one or more of the following keys:
-  //   * `target` A DOM node that is the hypothetical target of a given command.
-  //
-  // Returns an {Array} of `CommandDescriptor` {Object}s containing the following keys:
-  //  * `name` The name of the command. For example, `user:insert-date`.
-  //  * `displayName` The display name of the command. For example,
-  //    `User: Insert Date`.
-  // Additional metadata may also be present in the returned descriptor:
-  //  * `description` a {String} describing the function of the command in more
-  //    detail than the title
-  //  * `tags` an {Array} of {String}s that describe keywords related to the
-  //    command
-  //  Any additional nonstandard metadata provided when the command was `add`ed
-  //  may also be present in the returned descriptor.
+  /**
+   * Find all registered commands matching a query.
+   *
+   *  * `name` The name of the command. For example, `user:insert-date`.
+   *  * `displayName` The display name of the command. For example,
+   *    `User: Insert Date`.
+   * Additional metadata may also be present in the returned descriptor:
+   *  * `description` a `String` describing the function of the command in more
+   *    detail than the title
+   *  * `tags` an `Array` of `Strings` that describe keywords related to the
+   *    command
+   *  Any additional nonstandard metadata provided when the command was `add`ed
+   *  may also be present in the returned descriptor.
+   *
+   * @param {Object} params - Query parameters.
+   * @param {Element} params.target - The hypothetical command target.
+   * @returns {Array<Object>} Command descriptors containing the documented keys.
+   * @public
+   * @api-status Public
+   */
   findCommands({ target }) {
     const commandNames = new Set();
     const commands = [];
@@ -261,38 +256,50 @@ module.exports = class CommandRegistry {
     return commands;
   }
 
-  // Public: Simulate the dispatch of a command on a DOM node.
-  //
-  // This is useful for passing arguments to a command, as keymaps currently do not
-  // support arguments; for example, add a new command with no arguments that
-  // dispatches another command with arguments, and map the new command to a key binding.
-  //
-  // This can be useful for testing when you want to simulate the invocation of a
-  // command on a detached DOM node. Otherwise, the DOM node in question needs to
-  // be attached to the document so the event bubbles up to the root node to be
-  // processed.
-  //
-  // * `target` The DOM node at which to start bubbling the command event.
-  // * `commandName` {String} indicating the name of the command to dispatch.
-  // * `detail` Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
+  /**
+   * Simulate the dispatch of a command on a DOM node.
+   *
+   * This is useful for passing arguments to a command, as keymaps currently do not
+   * support arguments; for example, add a new command with no arguments that
+   * dispatches another command with arguments, and map the new command to a key binding.
+   *
+   * This can be useful for testing when you want to simulate the invocation of a
+   * command on a detached DOM node. Otherwise, the DOM node in question needs to
+   * be attached to the document so the event bubbles up to the root node to be
+   * processed.
+   *
+   * @param target - The DOM node at which to start bubbling the command event.
+   * @param {String} commandName - indicating the name of the command to dispatch.
+   * @param detail - Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
+   * @public
+   * @api-status Public
+   */
   dispatch(target, commandName, detail) {
     const event = new CustomEvent(commandName, { bubbles: true, detail });
     Object.defineProperty(event, "target", { value: target });
     return this.handleCommandEvent(event);
   }
 
-  // Public: Invoke the given callback before dispatching a command event.
-  //
-  // * `callback` {Function} to be called before dispatching each command
-  //   * `event` The Event that will be dispatched
+  /**
+   * Invoke the given callback before dispatching a command event.
+   *
+   * @param {Function} callback - to be called before dispatching each command
+   * @param callback.event - The Event that will be dispatched
+   * @public
+   * @api-status Public
+   */
   onWillDispatch(callback) {
     return this.emitter.on("will-dispatch", callback);
   }
 
-  // Public: Invoke the given callback after dispatching a command event.
-  //
-  // * `callback` {Function} to be called after dispatching each command
-  //   * `event` The Event that was dispatched
+  /**
+   * Invoke the given callback after dispatching a command event.
+   *
+   * @param {Function} callback - to be called after dispatching each command
+   * @param callback.event - The Event that was dispatched
+   * @public
+   * @api-status Public
+   */
   onDidDispatch(callback) {
     return this.emitter.on("did-dispatch", callback);
   }

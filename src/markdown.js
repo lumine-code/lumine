@@ -65,6 +65,8 @@ const mdComponents = {
  * @param {string} givenOpts.disableMode - The level of disabling of markdown features.
  * `none` by default. But supports: "none", "strict"
  * @returns {string} Parsed HTML content.
+ * @public
+ * @api-status Public
  */
 function renderMarkdown(content, givenOpts = {}) {
   // First we will setup our markdown renderer instance according to the opts provided
@@ -466,6 +468,8 @@ function renderMarkdown(content, givenOpts = {}) {
  * blocks size themselves to their longest line ("fragment" mode only). A code block
  * otherwise takes the width its container gives it, which is nothing at all when the
  * container is sized by its content — a tooltip, a popover. Pass true there.
+ * @public
+ * @api-status Public
  */
 function applySyntaxHighlighting(content, givenOpts = {}) {
   const defaultOpts = {
@@ -546,6 +550,8 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
  * This should be done if you need access to APIs available on the DOM itself.
  * @param {string} content - The HTML String.
  * @returns {HTMLFragment}
+ * @public
+ * @api-status Public
  */
 function convertToDOM(content) {
   const template = document.createElement("template");

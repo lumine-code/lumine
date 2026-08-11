@@ -5,27 +5,32 @@ const VSCODE_COPY_METADATA_FORMAT = "application/vnd.code.copymetadata";
 const LUMINE_TEXT_EDITOR_DATA_FORMAT = "application/lumine-text-editor";
 const LUMINE_EDITOR_DATA_VERSION = 1;
 
-// Extended: Represents the clipboard used for copying and pasting in Lumine.
-//
-// An instance of this class is always available as the `lumine.clipboard` global.
-//
-// This class owns what the clipboard holds, not what a paste does with it. To
-// intercept a paste before the editor inserts it as text — to handle an image,
-// say — register a provider with {PasteProviderRegistry} through
-// `lumine.pasteProviders`.
-//
-// It is also the only supported route to the native clipboard from a package:
-// Electron deprecated `require('electron').clipboard` in a renderer, so every
-// read and write here goes to the main process instead (see
-// `src/clipboard-bridge.js`).
-//
-// ## Examples
-//
-// ```js
-// lumine.clipboard.write('hello')
-//
-// console.log(lumine.clipboard.read()) // 'hello'
-// ```
+/**
+ * Represents the clipboard used for copying and pasting in Lumine.
+ *
+ * An instance of this class is always available as the `lumine.clipboard` global.
+ *
+ * This class owns what the clipboard holds, not what a paste does with it. To
+ * intercept a paste before the editor inserts it as text — to handle an image,
+ * say — register a provider with {@link PasteProviderRegistry} through
+ * `lumine.pasteProviders`.
+ *
+ * It is also the only supported route to the native clipboard from a package:
+ * Electron deprecated `require('electron').clipboard` in a renderer, so every
+ * read and write here goes to the main process instead (see
+ * `src/clipboard-bridge.js`).
+ *
+ * ## Examples
+ *
+ * ```js
+ * lumine.clipboard.write('hello')
+ *
+ * console.log(lumine.clipboard.read()) // 'hello'
+ * ```
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class Clipboard {
   constructor() {
     this.reset();
@@ -38,9 +43,9 @@ module.exports = class Clipboard {
 
   // Creates an `md5` hash of some text.
   //
-  // * `text` A {String} to hash.
+  // * `text` A `String` to hash.
   //
-  // Returns a hashed {String}.
+  // Returns a hashed `String`.
   md5(text) {
     return crypto.createHash("md5").update(text, "utf8").digest("hex");
   }
@@ -53,13 +58,17 @@ module.exports = class Clipboard {
     return this.md5(text.replace(/\r\n?|\n/g, "\n"));
   }
 
-  // Public: Write the given text to the clipboard.
-  //
-  // The metadata associated with the text is available by calling
-  // {::readWithMetadata}.
-  //
-  // * `text` The {String} to store.
-  // * `metadata` (optional) The additional info to associate with the text.
+  /**
+   * Write the given text to the clipboard.
+   *
+   * The metadata associated with the text is available by calling
+   * {@link #readWithMetadata}.
+   *
+   * @param text - The `String` to store.
+   * @param [metadata] - The additional info to associate with the text.
+   * @public
+   * @api-status Public
+   */
   write(text, metadata) {
     text = this.normalizeText(text);
 
@@ -103,7 +112,7 @@ module.exports = class Clipboard {
       // Chromium strips the custom formats from some paste events — natively,
       // ctrl+shift+v means "paste and match style". Fall back to the metadata
       // of this window's last write while the text still matches it, exactly
-      // like {::readWithMetadata}.
+      // like {@link #readWithMetadata}.
       if (this.metadata != null && this.signatureForMetadata === this.md5(text)) {
         return { text, metadata: this.metadata };
       }
@@ -164,22 +173,24 @@ module.exports = class Clipboard {
     clipboardData.setData(format, JSON.stringify(data));
   }
 
-  // Public: Write text plus a JSON payload for a custom format to the system
-  // clipboard through the async Clipboard API.
-  //
-  // Chromium registers `web `-prefixed custom formats with the operating
-  // system, so any window can read the payload back with {::readNativeData}.
-  // Custom formats written through a DataTransfer during a copy event are only
-  // readable inside paste ClipboardEvents, and renderer-initiated
-  // `execCommand("paste")` never fires one, so this is the only way to
-  // round-trip a custom format without a native paste keystroke.
-  //
-  // * `text` The plain-text {String} to store alongside the payload.
-  // * `format` The MIME-style format {String}, without the `web ` prefix.
-  // * `data` The JSON-serializable payload.
-  //
-  // Returns a {Promise} that resolves to `true` when the payload was written,
-  // or `false` when only the plain text could be written.
+  /**
+   * Write text plus a JSON payload for a custom format to the system
+   * clipboard through the async Clipboard API.
+   *
+   * Chromium registers `web `-prefixed custom formats with the operating
+   * system, so any window can read the payload back with {@link #readNativeData}.
+   * Custom formats written through a DataTransfer during a copy event are only
+   * readable inside paste ClipboardEvents, and renderer-initiated
+   * `execCommand("paste")` never fires one, so this is the only way to
+   * round-trip a custom format without a native paste keystroke.
+   *
+   * @param text - The plain-text `String` to store alongside the payload.
+   * @param format - The MIME-style format `String`, without the `web ` prefix.
+   * @param data - The JSON-serializable payload.
+   * @returns {Promise} that resolves to `true` when the payload was written, or `false` when only the plain text could be written.
+   * @public
+   * @api-status Public
+   */
   async writeNativeData(text, format, data) {
     text = this.normalizeText(text);
     try {
@@ -196,13 +207,15 @@ module.exports = class Clipboard {
     }
   }
 
-  // Public: Read a JSON payload written by {::writeNativeData} in this or any
-  // other window.
-  //
-  // * `format` The MIME-style format {String}, without the `web ` prefix.
-  //
-  // Returns a {Promise} that resolves to the parsed payload {Object}, or
-  // `null` when the clipboard holds no valid payload for the format.
+  /**
+   * Read a JSON payload written by {@link #writeNativeData} in this or any
+   * other window.
+   *
+   * @param format - The MIME-style format `String`, without the `web ` prefix.
+   * @returns {Promise} that resolves to the parsed payload `Object`, or `null` when the clipboard holds no valid payload for the format.
+   * @public
+   * @api-status Public
+   */
   async readNativeData(format) {
     try {
       const type = `web ${format}`;
@@ -242,72 +255,105 @@ module.exports = class Clipboard {
     return data;
   }
 
-  // Public: Read the text from the clipboard.
-  //
-  // Returns a {String}.
+  /**
+   * Read the text from the clipboard.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   read() {
     return clipboard.readText();
   }
 
-  // Public: Write the given text to the macOS find pasteboard
+  /**
+   * Write the given text to the macOS find pasteboard
+   *
+   * @public
+   * @api-status Public
+   */
   writeFindText(text) {
     clipboard.writeFindText(text);
   }
 
-  // Public: Read the text from the macOS find pasteboard.
-  //
-  // Returns a {String}.
+  /**
+   * Read the text from the macOS find pasteboard.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Public
+   */
   readFindText() {
     return clipboard.readFindText();
   }
 
-  // Public: Read the image on the clipboard.
-  //
-  // The image crosses the process boundary as PNG bytes, so its scale factor
-  // does not survive the trip.
-  //
-  // Returns a {NativeImage}, empty when the clipboard holds no image.
+  /**
+   * Read the image on the clipboard.
+   *
+   * The image crosses the process boundary as PNG bytes, so its scale factor
+   * does not survive the trip.
+   *
+   * @returns {NativeImage}, empty when the clipboard holds no image.
+   * @public
+   * @api-status Public
+   */
   readImage() {
     return clipboard.readImage();
   }
 
-  // Public: Write an image to the clipboard, replacing whatever it held.
-  //
-  // * `image` A {NativeImage}, or the PNG bytes of one as a {Buffer}.
+  /**
+   * Write an image to the clipboard, replacing whatever it held.
+   *
+   * @param image - A `NativeImage`, or the PNG bytes of one as a `Buffer`.
+   * @public
+   * @api-status Public
+   */
   writeImage(image) {
     clipboard.writeImage(typeof image?.toPNG === "function" ? image.toPNG() : image);
   }
 
-  // Public: Read the text from the Linux primary selection.
-  //
-  // Returns a {String}, always empty on the platforms that have no primary
-  // selection.
+  /**
+   * Read the text from the Linux primary selection.
+   *
+   * @returns {String}, always empty on the platforms that have no primary selection.
+   * @public
+   * @api-status Public
+   */
   readSelectionText() {
     return clipboard.readSelectionText();
   }
 
-  // Public: Write the given text to the Linux primary selection.
-  //
-  // Unlike every other method here this one does not wait for the main
-  // process: it runs on each selection change, and a drag cannot afford a
-  // round trip per mouse move.
-  //
-  // * `text` The {String} to store.
+  /**
+   * Write the given text to the Linux primary selection.
+   *
+   * Unlike every other method here this one does not wait for the main
+   * process: it runs on each selection change, and a drag cannot afford a
+   * round trip per mouse move.
+   *
+   * @param text - The `String` to store.
+   * @public
+   * @api-status Public
+   */
   writeSelectionText(text) {
     clipboard.writeSelectionText(text);
   }
 
-  // Public: Read the text from the clipboard and return both the text and the
-  // associated metadata.
-  //
-  // Metadata copied in another window only flows through paste
-  // ClipboardEvents (see {::createDataTransferClipboard}): Chromium stores
-  // DataTransfer custom formats in a private bundle that Electron's clipboard
-  // API cannot read back, so there is no native-format fallback here.
-  //
-  // Returns an {Object} with the following keys:
-  // * `text` The {String} clipboard text.
-  // * `metadata` The metadata stored by an earlier call to {::write}.
+  /**
+   * Read the text from the clipboard and return both the text and the
+   * associated metadata.
+   *
+   * Metadata copied in another window only flows through paste
+   * ClipboardEvents (see `createDataTransferClipboard`): Chromium stores
+   * DataTransfer custom formats in a private bundle that Electron's clipboard
+   * API cannot read back, so there is no native-format fallback here.
+   *
+   * * `text` The `String` clipboard text.
+   * * `metadata` The metadata stored by an earlier call to {@link #write}.
+   *
+   * @returns {Object} with the following keys:
+   * @public
+   * @api-status Public
+   */
   readWithMetadata() {
     const text = this.read();
     if (this.signatureForMetadata === this.md5(text)) {

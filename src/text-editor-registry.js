@@ -43,52 +43,57 @@ const EDITOR_PARAMS_BY_SETTING_KEY = [
 //   cross-editor features like completion sourcing.
 const ROLES = new Set(["document", "fragment", "background"]);
 
-// Public: The global registry of every {TextEditor} in the window, available as
-// `lumine.textEditors`.
-//
-// {Workspace} holds the editors that are pane items; this registry holds all of
-// them, including the ones a package builds for its own interface — a search
-// field, a notebook cell, a REPL prompt. Reach for it when a feature should
-// apply to editors wherever they are rather than only to open files.
-//
-// ## Observing every editor
-//
-// {::observe} calls back with every editor that is registered now and every one
-// registered later:
-//
-// ```js
-// lumine.textEditors.observe(editor => {
-//   // every editor in the window, not just the ones in panes
-// })
-// ```
-//
-// ## Registering your own
-//
-// A package that embeds an editor registers it so everyone else's features
-// reach it too. **Dispose of the returned {Disposable} when the editor goes
-// away**, or the registry keeps it alive:
-//
-// ```js
-// const editor = lumine.workspace.buildTextEditor({ mini: true })
-// const registration = lumine.textEditors.add(editor, { role: 'fragment' })
-// // …later
-// registration.dispose()
-// ```
-//
-// ## Roles
-//
-// The `role` an editor is registered with says how it relates to the user's
-// documents, so a cross-editor feature can tell them apart:
-//
-// * `"document"` — a standalone document: a pane item, or an embedded editor
-//   holding complete content of its own. The default.
-// * `"fragment"` — a piece of a larger composite document: a notebook cell, a
-//   watch expression, a REPL input. Fragments share context with the editors
-//   around them.
-// * `"background"` — an infrastructure editor mirroring content the user works
-//   on through another view, such as the JSON source behind a notebook. It is
-//   registered so configuration and services apply to it, but cross-editor
-//   features like completion sourcing leave it alone.
+/**
+ * The global registry of every {@link TextEditor} in the window, available as
+ * `lumine.textEditors`.
+ *
+ * {@link Workspace} holds the editors that are pane items; this registry holds all of
+ * them, including the ones a package builds for its own interface — a search
+ * field, a notebook cell, a REPL prompt. Reach for it when a feature should
+ * apply to editors wherever they are rather than only to open files.
+ *
+ * ## Observing every editor
+ *
+ * {@link #observe} calls back with every editor that is registered now and every one
+ * registered later:
+ *
+ * ```js
+ * lumine.textEditors.observe(editor => {
+ *   // every editor in the window, not just the ones in panes
+ * })
+ * ```
+ *
+ * ## Registering your own
+ *
+ * A package that embeds an editor registers it so everyone else's features
+ * reach it too. **Dispose of the returned `Disposable` when the editor goes
+ * away**, or the registry keeps it alive:
+ *
+ * ```js
+ * const editor = lumine.workspace.buildTextEditor({ mini: true })
+ * const registration = lumine.textEditors.add(editor, { role: 'fragment' })
+ * // …later
+ * registration.dispose()
+ * ```
+ *
+ * ## Roles
+ *
+ * The `role` an editor is registered with says how it relates to the user's
+ * documents, so a cross-editor feature can tell them apart:
+ *
+ * * `"document"` — a standalone document: a pane item, or an embedded editor
+ *   holding complete content of its own. The default.
+ * * `"fragment"` — a piece of a larger composite document: a notebook cell, a
+ *   watch expression, a REPL input. Fragments share context with the editors
+ *   around them.
+ * * `"background"` — an infrastructure editor mirroring content the user works
+ *   on through another view, such as the JSON source behind a notebook. It is
+ *   registered so configuration and services apply to it, but cross-editor
+ *   features like completion sourcing leave it alone.
+ *
+ * @public
+ * @api-status Public
+ */
 module.exports = class TextEditorRegistry {
   constructor({ config, assert, grammarRegistry, packageManager }) {
     this.config = config;
@@ -115,24 +120,24 @@ module.exports = class TextEditorRegistry {
     this.editorsWithMaintainedConfig = null;
   }
 
-  /*
-  Section: Registering Editors
-  */
+  /**
+   * @category Registering Editors
+   */
 
-  // Essential: Register a {TextEditor}, so that features written against the
-  // registry reach it.
-  //
-  // * `editor` The {TextEditor} to register.
-  // * `options` (optional) {Object}
-  //   * `role` (optional) {String} one of `"document"` (the default),
-  //     `"fragment"` or `"background"`. See {TextEditorRegistry} for what each
-  //     one means.
-  //
-  // Throws a {TypeError} if `role` is not one of those three.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to remove the
-  // editor again. Call it when the editor is destroyed, or the registry holds
-  // the editor alive.
+  /**
+   * Register a {@link TextEditor}, so that features written against the
+   * registry reach it.
+   *
+   * Throws a `TypeError` if `role` is not one of those three.
+   *
+   * @param editor - The {@link TextEditor} to register.
+   * @param {Object} [options] - Registration options.
+   * @param {"document"|"fragment"|"background"} [options.role="document"] -
+   *   The editor role. See {@link TextEditorRegistry} for the behavior of each.
+   * @returns {Disposable} on which `.dispose()` can be called to remove the editor again. Call it when the editor is destroyed, or the registry holds the editor alive.
+   * @public
+   * @api-status Essential
+   */
   add(editor, { role = "document" } = {}) {
     if (!ROLES.has(role)) {
       throw new TypeError(`Unknown text editor role: ${role}`);
@@ -160,15 +165,17 @@ module.exports = class TextEditorRegistry {
     return new TextEditor(params);
   }
 
-  // Public: Remove a {TextEditor} from the registry.
-  //
-  // Disposing the {Disposable} that {::add} returned does this for you; call it
-  // directly only when you no longer hold that disposable.
-  //
-  // * `editor` The {TextEditor} to remove.
-  //
-  // Returns a {Boolean}: `true` if the editor was registered, `false` if it was
-  // not.
+  /**
+   * Remove a {@link TextEditor} from the registry.
+   *
+   * Disposing the `Disposable` that {@link #add} returned does this for you; call it
+   * directly only when you no longer hold that disposable.
+   *
+   * @param editor - The {@link TextEditor} to remove.
+   * @returns {Boolean} : `true` if the editor was registered, `false` if it was not.
+   * @public
+   * @api-status Public
+   */
   remove(editor) {
     const removed = this.editors.delete(editor);
     editor.registered = false;
@@ -178,44 +185,55 @@ module.exports = class TextEditorRegistry {
     return removed;
   }
 
-  // Public: Get the role a {TextEditor} was registered with.
-  //
-  // Use it to tell a document apart from a notebook cell or a background
-  // mirror before applying a cross-editor feature to it.
-  //
-  // * `editor` The {TextEditor} to look up.
-  //
-  // Returns a {String} role, or `null` if the editor is not registered.
+  /**
+   * Get the role a {@link TextEditor} was registered with.
+   *
+   * Use it to tell a document apart from a notebook cell or a background
+   * mirror before applying a cross-editor feature to it.
+   *
+   * @param editor - The {@link TextEditor} to look up.
+   * @returns {String} role, or `null` if the editor is not registered.
+   * @public
+   * @api-status Public
+   */
   roleFor(editor) {
     const meta = this.editors.get(editor);
     return meta ? meta.role : null;
   }
 
-  /*
-  Section: Accessing Editors
-  */
+  /**
+   * @category Accessing Editors
+   */
 
-  // Public: Get every registered editor.
-  //
-  // This is a snapshot. Use {::observe} to keep up with editors registered
-  // later.
-  //
-  // Returns an {Array} of {TextEditor}s.
+  /**
+   * Get every registered editor.
+   *
+   * This is a snapshot. Use {@link #observe} to keep up with editors registered
+   * later.
+   *
+   * @returns {Array} of {@link TextEditor TextEditors}.
+   * @public
+   * @api-status Public
+   */
   getEditors() {
     return Array.from(this.editors.keys());
   }
 
-  // Essential: Get the editor the user is typing in, wherever it is.
-  //
-  // Unlike {Workspace::getActiveTextEditor} this sees editors that are not pane
-  // items — a search field, a notebook cell — which is usually what a command
-  // bound to the window should act on.
-  //
-  // The answer is resolved outward from the focused element, so it never
-  // touches (or lazily builds) the views of other registered editors, and the
-  // innermost registered editor wins when editors are nested.
-  //
-  // Returns a {TextEditor}, or `null` if focus is not in one.
+  /**
+   * Get the editor the user is typing in, wherever it is.
+   *
+   * Unlike {@link Workspace#getActiveTextEditor} this sees editors that are not pane
+   * items — a search field, a notebook cell — which is usually what a command
+   * bound to the window should act on.
+   *
+   * The answer is resolved outward from the focused element, so it never
+   * touches (or lazily builds) the views of other registered editors, and the
+   * innermost registered editor wins when editors are nested.
+   *
+   * @returns {TextEditor}, or `null` if focus is not in one.
+   * @public
+   * @api-status Essential
+   */
   getActiveTextEditor() {
     let element = document.activeElement?.closest?.("lumine-text-editor");
     while (element) {
@@ -228,20 +246,23 @@ module.exports = class TextEditorRegistry {
     return null;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Invoke the given callback with every registered editor, now and
-  // in the future.
-  //
-  // The callback runs synchronously for each editor already registered, then
-  // again for each one registered afterwards.
-  //
-  // * `callback` {Function} to be called with each {TextEditor}.
-  //   * `editor` The {TextEditor}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with every registered editor, now and
+   * in the future.
+   *
+   * The callback runs synchronously for each editor already registered, then
+   * again for each one registered afterwards.
+   *
+   * @param {Function} callback - to be called with each {@link TextEditor}.
+   * @param callback.editor - The {@link TextEditor}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observe(callback) {
     for (const editor of this.editors.keys()) {
       callback(editor);
@@ -249,40 +270,46 @@ module.exports = class TextEditorRegistry {
     return this.emitter.on("did-add-editor", callback);
   }
 
-  // Public: Invoke the given callback when an editor is removed from the
-  // registry.
-  //
-  // The counterpart to {::observe}: anything that attached state to an editor
-  // when it arrived can release it here.
-  //
-  // * `callback` {Function} to be called with each removed {TextEditor}.
-  //   * `editor` The {TextEditor} that was removed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when an editor is removed from the
+   * registry.
+   *
+   * The counterpart to {@link #observe}: anything that attached state to an editor
+   * when it arrived can release it here.
+   *
+   * @param {Function} callback - to be called with each removed {@link TextEditor}.
+   * @param callback.editor - The {@link TextEditor} that was removed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidRemoveEditor(callback) {
     return this.emitter.on("did-remove-editor", callback);
   }
 
-  /*
-  Section: Configuration
-  */
+  /**
+   * @category Configuration
+   */
 
-  // Public: Keep a {TextEditor}'s settings in sync with the user's.
-  //
-  // Applies the settings that match the editor's language now, and keeps
-  // applying them as the user changes a setting or the editor's language mode
-  // changes — soft wrap, tab length, invisibles, scroll behaviour and the rest.
-  // An editor built by {Workspace::buildTextEditor} is already maintained; call
-  // this for one you constructed yourself.
-  //
-  // A setting the user has overridden on this editor is left alone when the
-  // language changes, so switching grammar does not undo their choice.
-  //
-  // Calling it twice for the same editor is a no-op.
-  //
-  // * `editor` The {TextEditor} whose configuration will be maintained.
-  //
-  // Returns a {Disposable} that stops updating the editor's configuration.
+  /**
+   * Keep a {@link TextEditor}'s settings in sync with the user's.
+   *
+   * Applies the settings that match the editor's language now, and keeps
+   * applying them as the user changes a setting or the editor's language mode
+   * changes — soft wrap, tab length, invisibles, scroll behaviour and the rest.
+   * An editor built by {@link Workspace#buildTextEditor} is already maintained; call
+   * this for one you constructed yourself.
+   *
+   * A setting the user has overridden on this editor is left alone when the
+   * language changes, so switching grammar does not undo their choice.
+   *
+   * Calling it twice for the same editor is a no-op.
+   *
+   * @param editor - The {@link TextEditor} whose configuration will be maintained.
+   * @returns {Disposable} that stops updating the editor's configuration.
+   * @public
+   * @api-status Public
+   */
   maintainConfig(editor) {
     if (this.editorsWithMaintainedConfig.has(editor)) {
       return new Disposable(noop);
@@ -321,39 +348,39 @@ module.exports = class TextEditorRegistry {
     });
   }
 
-  // Deprecated: set a {TextEditor}'s grammar based on its path and content,
+  // Deprecated: set a {@link TextEditor}'s grammar based on its path and content,
   // and continue to update its grammar as grammars are added or updated, or
   // the editor's file path changes.
   //
   // * `editor` The editor whose grammar will be maintained.
   //
-  // Returns a {Disposable} that can be used to stop updating the editor's
+  // Returns a `Disposable` that can be used to stop updating the editor's
   // grammar.
   maintainGrammar(editor) {
     return this.grammarRegistry.maintainLanguageMode(editor.getBuffer());
   }
 
-  // Deprecated: Force a {TextEditor} to use a different grammar than the
+  // Deprecated: Force a {@link TextEditor} to use a different grammar than the
   // one that would otherwise be selected for it.
   //
   // * `editor` The editor whose grammar will be set.
-  // * `languageId` The {String} language ID for the desired {Grammar}.
+  // * `languageId` The `String` language ID for the desired `Grammar`.
   setGrammarOverride(editor, languageId) {
     this.grammarRegistry.assignLanguageMode(editor.getBuffer(), languageId);
   }
 
   // Deprecated: Retrieve the grammar scope name that has been set as a
-  // grammar override for the given {TextEditor}.
+  // grammar override for the given {@link TextEditor}.
   //
   // * `editor` The editor.
   //
-  // Returns a {String} scope name, or `null` if no override has been set
+  // Returns a `String` scope name, or `null` if no override has been set
   // for the given editor.
   getGrammarOverride(editor) {
     return this.grammarRegistry.getAssignedLanguageId(editor.getBuffer());
   }
 
-  // Deprecated: Remove any grammar override that has been set for the given {TextEditor}.
+  // Deprecated: Remove any grammar override that has been set for the given {@link TextEditor}.
   //
   // * `editor` The editor.
   clearGrammarOverride(editor) {

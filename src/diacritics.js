@@ -6,6 +6,8 @@ const Diacritics = require("diacritic");
  *
  * @param {string} text - The string to fold.
  * @returns {string} The same string with its diacritics removed.
+ * @public
+ * @api-status Public
  */
 function removeDiacritics(text) {
   return Diacritics.clean(text);

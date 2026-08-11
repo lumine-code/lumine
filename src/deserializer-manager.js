@@ -1,48 +1,51 @@
 const { Disposable } = require("@lumine-code/event-kit");
 
-// Extended: Manages the deserializers used for serialized state
-//
-// An instance of this class is always available as the `lumine.deserializers`
-// global.
-//
-// ## Examples
-//
-// ```js
-// class MyPackageView {
-//   static deserialize(state) {
-//     return new MyPackageView(state)
-//   }
-//
-//   constructor(state) {
-//     this.state = state
-//   }
-//
-//   serialize() {
-//     return { deserializer: 'MyPackageView', ...this.state }
-//   }
-// }
-//
-// lumine.deserializers.add(MyPackageView)
-// ```
-//
-// Serialized state has to carry the `deserializer` key: it is the name
-// {::deserialize} looks the class up by, and state without it is dropped with a
-// warning rather than restored.
+/**
+ * Manages the deserializers used for serialized state
+ *
+ * An instance of this class is always available as the `lumine.deserializers`
+ * global.
+ *
+ * ## Examples
+ *
+ * ```js
+ * class MyPackageView {
+ *   static deserialize(state) {
+ *     return new MyPackageView(state)
+ *   }
+ *
+ *   constructor(state) {
+ *     this.state = state
+ *   }
+ *
+ *   serialize() {
+ *     return { deserializer: 'MyPackageView', ...this.state }
+ *   }
+ * }
+ *
+ * lumine.deserializers.add(MyPackageView)
+ * ```
+ *
+ * Serialized state has to carry the `deserializer` key: it is the name
+ * {@link #deserialize} looks the class up by, and state without it is dropped with a
+ * warning rather than restored.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class DeserializerManager {
   constructor(lumineEnvironment) {
     this.lumineEnvironment = lumineEnvironment;
     this.deserializers = {};
   }
 
-  // Public: Register the given class(es) as deserializers.
-  //
-  // * `deserializers` One or more deserializers to register. A deserializer can
-  //   be any object with a `.name` property and a `.deserialize()` method. A
-  //   common approach is to register a *constructor* as the deserializer for its
-  //   instances by adding a `.deserialize()` class method. When your method is
-  //   called, it will be passed serialized state as the first argument and the
-  //   {LumineEnvironment} object as the second argument, which is useful if you
-  //   wish to avoid referencing the `lumine` global.
+  /**
+   * Register the given class(es) as deserializers.
+   *
+   * @param deserializers - One or more deserializers to register. A deserializer can be any object with a `.name` property and a `.deserialize()` method. A common approach is to register a *constructor* as the deserializer for its instances by adding a `.deserialize()` class method. When your method is called, it will be passed serialized state as the first argument and the {@link LumineEnvironment} object as the second argument, which is useful if you wish to avoid referencing the `lumine` global.
+   * @public
+   * @api-status Public
+   */
   add(...deserializers) {
     for (let i = 0; i < deserializers.length; i++) {
       let deserializer = deserializers[i];
@@ -61,9 +64,13 @@ module.exports = class DeserializerManager {
     return Object.keys(this.deserializers).length;
   }
 
-  // Public: Deserialize the state and params.
-  //
-  // * `state` The state {Object} to deserialize.
+  /**
+   * Deserialize the state and params.
+   *
+   * @param state - The state `Object` to deserialize.
+   * @public
+   * @api-status Public
+   */
   deserialize(state) {
     if (state == null) {
       return;
@@ -84,7 +91,7 @@ module.exports = class DeserializerManager {
 
   // Get the deserializer for the state.
   //
-  // * `state` The state {Object} being deserialized.
+  // * `state` The state `Object` being deserialized.
   get(state) {
     if (state == null) {
       return;

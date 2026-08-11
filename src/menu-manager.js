@@ -12,58 +12,63 @@ if (buildMetadata) {
   platformMenu = buildMetadata._lumineMenu && buildMetadata._lumineMenu.menu;
 }
 
-// Extended: Provides a registry for menu items that you'd like to appear in the
-// application menu.
-//
-// An instance of this class is always available as the `lumine.menu` global.
-//
-// ## Menu Object Format
-//
-// Here is an example from Lumine's bundled
-// [tree-view](https://github.com/lumine-code/tree-view/blob/master/menus/tree-view-plus.json):
-//
-// ```json
-// [
-//   {
-//     "label": "View",
-//     "submenu": [
-//       { "label": "Toggle Tree View", "command": "tree-view:toggle" }
-//     ]
-//   },
-//   {
-//     "label": "Packages",
-//     "submenu": [
-//       {
-//         "label": "Tree View",
-//         "submenu": [
-//           { "label": "Focus", "command": "tree-view:toggle-focus" },
-//           { "label": "Toggle", "command": "tree-view:toggle" },
-//           { "label": "Reveal Active File", "command": "tree-view:reveal-active-file" },
-//           { "label": "Toggle Tree Side", "command": "tree-view:toggle-side" }
-//         ]
-//       }
-//     ]
-//   }
-// ]
-// ```
-//
-// A package declares its menu in a file under `menus/`, with the structure
-// above under a `menu` key:
-//
-// ```json
-// {
-//   "menu": [
-//     {
-//       "label": "View",
-//       "submenu": [
-//         { "label": "Toggle Tree View", "command": "tree-view:toggle" }
-//       ]
-//     }
-//   ]
-// }
-// ```
-//
-// See {::add} for more information about adding menus directly.
+/**
+ * Provides a registry for menu items that you'd like to appear in the
+ * application menu.
+ *
+ * An instance of this class is always available as the `lumine.menu` global.
+ *
+ * ## Menu Object Format
+ *
+ * Here is an example from Lumine's bundled
+ * [tree-view](https://github.com/lumine-code/tree-view/blob/master/menus/tree-view-plus.json):
+ *
+ * ```json
+ * [
+ *   {
+ *     "label": "View",
+ *     "submenu": [
+ *       { "label": "Toggle Tree View", "command": "tree-view:toggle" }
+ *     ]
+ *   },
+ *   {
+ *     "label": "Packages",
+ *     "submenu": [
+ *       {
+ *         "label": "Tree View",
+ *         "submenu": [
+ *           { "label": "Focus", "command": "tree-view:toggle-focus" },
+ *           { "label": "Toggle", "command": "tree-view:toggle" },
+ *           { "label": "Reveal Active File", "command": "tree-view:reveal-active-file" },
+ *           { "label": "Toggle Tree Side", "command": "tree-view:toggle-side" }
+ *         ]
+ *       }
+ *     ]
+ *   }
+ * ]
+ * ```
+ *
+ * A package declares its menu in a file under `menus/`, with the structure
+ * above under a `menu` key:
+ *
+ * ```json
+ * {
+ *   "menu": [
+ *     {
+ *       "label": "View",
+ *       "submenu": [
+ *         { "label": "Toggle Tree View", "command": "tree-view:toggle" }
+ *       ]
+ *     }
+ *   ]
+ * }
+ * ```
+ *
+ * See {@link #add} for more information about adding menus directly.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class MenuManager {
   constructor({ resourcePath, keymapManager, packageManager }) {
     this.resourcePath = resourcePath;
@@ -74,7 +79,7 @@ module.exports = class MenuManager {
     this.template = [];
     // Top-level menus the platform file declares. They belong to the menu bar
     // rather than to whichever package fills them, so `unmerge` must not splice
-    // one out when it empties. See {MenuHelpers.unmerge}.
+    // one out when it empties. See {@link MenuHelpers.unmerge}.
     this.structuralIds = new Set();
     this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems());
     this.packageManager.onDidActivateInitialPackages(() => this.sortPackagesMenu());
@@ -91,27 +96,28 @@ module.exports = class MenuManager {
     this.initialized = true;
   }
 
-  // Public: Adds the given items to the application menu.
-  //
-  // ## Examples
-  // ```javascript
-  //   lumine.menu.add([
-  //     {
-  //       label: 'Hello'
-  //       submenu : [{label: 'World!', id: 'World!', command: 'hello:world'}]
-  //     }
-  //   ]);
-  // ```
-  //
-  // * `items` An {Array} of menu item {Object}s containing the keys:
-  //   * `label` The {String} menu label.
-  //   * `submenu` An optional {Array} of sub menu items.
-  //   * `command` An optional {String} command to trigger when the item is
-  //     clicked.
-  //
-  //   * `id` (internal) A {String} containing the menu item's id.
-  // Returns a {Disposable} on which `.dispose()` can be called to remove the
-  // added menu items.
+  /**
+   * Adds the given items to the application menu.
+   *
+   * ## Examples
+   * ```javascript
+   *   lumine.menu.add([
+   *     {
+   *       label: 'Hello'
+   *       submenu : [{label: 'World!', id: 'World!', command: 'hello:world'}]
+   *     }
+   *   ]);
+   * ```
+   *
+   * @param items - An `Array` of menu item `Objects` containing the keys:
+   * @param items.label - The `String` menu label.
+   * @param items.submenu - An optional `Array` of sub menu items.
+   * @param items.command - An optional `String` command to trigger when the item is clicked.
+   * @param items.id - (internal) A `String` containing the menu item's id.
+   * @returns {Disposable} on which `.dispose()` can be called to remove the added menu items.
+   * @public
+   * @api-status Public
+   */
   add(items) {
     items = _.deepClone(items);
     for (let i = 0; i < items.length; i++) {
@@ -142,9 +148,9 @@ module.exports = class MenuManager {
   // Should the binding for the given selector be included in the menu
   // commands.
   //
-  // * `selector` A {String} selector to check.
+  // * `selector` A `String` selector to check.
   //
-  // Returns a {Boolean}, true to include the selector, false otherwise.
+  // Returns a `Boolean`, true to include the selector, false otherwise.
   includeSelector(selector) {
     try {
       if (document.body.webkitMatchesSelector(selector)) {
@@ -184,7 +190,12 @@ module.exports = class MenuManager {
     return false;
   }
 
-  // Public: Refreshes the currently visible menu.
+  /**
+   * Refreshes the currently visible menu.
+   *
+   * @public
+   * @api-status Public
+   */
   update() {
     if (!this.initialized) {
       return;
@@ -255,7 +266,7 @@ module.exports = class MenuManager {
       .catch((error) => console.error(error));
   }
 
-  // Get an {Array} of {String} classes for the given element.
+  // Get an `Array` of `String` classes for the given element.
   classesForElement(element) {
     if (element && element.classList) {
       return Array.prototype.slice.apply(element.classList);

@@ -76,6 +76,8 @@ let nextId = 0;
  * @classdesc Lumine global for dealing with packages, themes, menus, and the window.
  *
  * An instance of this class is always available as the `lumine` global.
+ * @public
+ * @api-status Public
  */
 class LumineEnvironment {
   // Wiring the environment owns and nothing outside it may reach. Everything a
@@ -94,18 +96,43 @@ class LumineEnvironment {
   constructor(params = {}) {
     this.id = params.id != null ? params.id : nextId++;
 
-    /** @type {Clipboard} */
+    /**
+     * @type {Clipboard}
+     *
+     * @public
+     * @api-status Public
+     */
     this.clipboard = params.clipboard;
     this.updateProcessEnv = params.updateProcessEnv || updateProcessEnv;
     this.enablePersistence = params.enablePersistence;
     this.applicationDelegate = params.applicationDelegate;
-    /** @type {WindowService} */
+    /**
+     * @type {WindowService}
+     *
+     * @public
+     * @api-status Public
+     */
     this.window = new WindowService(this.applicationDelegate, this);
-    /** @type {AppService} */
+    /**
+     * @type {AppService}
+     *
+     * @public
+     * @api-status Public
+     */
     this.app = new AppService(this.applicationDelegate);
-    /** @type {ShellService} */
+    /**
+     * @type {ShellService}
+     *
+     * @public
+     * @api-status Public
+     */
     this.shell = new ShellService(this.applicationDelegate);
-    /** @type {RuntimeService} */
+    /**
+     * @type {RuntimeService}
+     *
+     * @public
+     * @api-status Public
+     */
     this.runtime = new RuntimeService(this);
 
     this.nextProxyRequestId = 0;
@@ -118,7 +145,12 @@ class LumineEnvironment {
     this.disposables = new CompositeDisposable();
     this.pathsWithWaitSessions = new Set();
 
-    /** @type {DeserializerManager} */
+    /**
+     * @type {DeserializerManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.deserializers = new DeserializerManager(this);
 
     /**
@@ -126,16 +158,33 @@ class LumineEnvironment {
      * milliseconds, keyed by name (`project`, `workspace`). The `timecop`
      * package reads this to report window load cost, and resets it to `{}`.
      * @type {Object<string, number>}
+     * @public
+     * @api-status Public
      */
     this.deserializeTimings = {};
 
-    /** @type {ViewRegistry} */
+    /**
+     * @type {ViewRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.views = new ViewRegistry(this);
 
-    /** @type {NotificationManager} */
+    /**
+     * @type {NotificationManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.notifications = new NotificationManager();
 
-    /** @type {Config} */
+    /**
+     * @type {Config}
+     *
+     * @public
+     * @api-status Public
+     */
     this.config = new Config({
       saveCallback: (settings) => {
         if (this.enablePersistence) {
@@ -152,30 +201,65 @@ class LumineEnvironment {
      * prompting to save, and specs stub it; not a package-facing namespace. */
     this.stateStore = new StateStore("LumineEnvironments", 1);
 
-    /** @type {KeymapManager} */
+    /**
+     * @type {KeymapManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.keymaps = new KeymapManager({
       notificationManager: this.notifications,
     });
 
-    /** @type {TooltipManager} */
+    /**
+     * @type {TooltipManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.tooltips = new TooltipManager({
       keymapManager: this.keymaps,
       viewRegistry: this.views,
     });
 
-    /** @type {CommandRegistry} */
+    /**
+     * @type {CommandRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.commands = new CommandRegistry();
 
-    /** @type {URIHandlerRegistry} */
+    /**
+     * @type {URIHandlerRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.uriHandlers = new URIHandlerRegistry();
 
-    /** @type {GrammarRegistry} */
+    /**
+     * @type {GrammarRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.grammars = new GrammarRegistry({ config: this.config });
 
-    /** @type {StyleManager} */
+    /**
+     * @type {StyleManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.styles = new StyleManager();
 
-    /** @type {PackageManager} */
+    /**
+     * @type {PackageManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.packages = new PackageManager({
       config: this.config,
       styleManager: this.styles,
@@ -188,7 +272,12 @@ class LumineEnvironment {
       uriHandlerRegistry: this.uriHandlers,
     });
 
-    /** @type {ThemeManager} */
+    /**
+     * @type {ThemeManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.themes = new ThemeManager({
       packageManager: this.packages,
       config: this.config,
@@ -197,13 +286,23 @@ class LumineEnvironment {
       viewRegistry: this.views,
     });
 
-    /** @type {MenuManager} */
+    /**
+     * @type {MenuManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.menu = new MenuManager({
       keymapManager: this.keymaps,
       packageManager: this.packages,
     });
 
-    /** @type {ContextMenuManager} */
+    /**
+     * @type {ContextMenuManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.contextMenu = new ContextMenuManager({
       keymapManager: this.keymaps,
       applicationDelegate: this.applicationDelegate,
@@ -218,7 +317,12 @@ class LumineEnvironment {
     // provider before anything asks for an icon. It deliberately takes no
     // repository dependency — a caller that knows a directory is a repository
     // root says so on the target.
-    /** @type {IconRegistry} */
+    /**
+     * @type {IconRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.icons = new IconRegistry({
       config: this.config,
       themeManager: this.themes,
@@ -226,7 +330,12 @@ class LumineEnvironment {
       packageManager: this.packages,
     });
 
-    /** @type {RepositoryRegistry} */
+    /**
+     * @type {RepositoryRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.repositories = new RepositoryRegistry({
       config: this.config,
       notificationManager: this.notifications,
@@ -243,13 +352,23 @@ class LumineEnvironment {
     // A forge-agnostic, OS-encrypted secret store (VS Code SecretStorage-style)
     // for tokens and other sensitive strings packages must persist. Exposed as
     // `lumine.secrets`.
-    /** @type {SecretStore} */
+    /**
+     * @type {SecretStore}
+     *
+     * @public
+     * @api-status Public
+     */
     this.secrets = new SecretStore({
       applicationDelegate: this.applicationDelegate,
       storagePath: path.join(this.getConfigDirPath(), "secret-store.json"),
       notify: (message) => this.notifications.addWarning(message, { dismissable: true }),
     });
-    /** @type {Project} */
+    /**
+     * @type {Project}
+     *
+     * @public
+     * @api-status Public
+     */
     this.project = new Project({
       notificationManager: this.notifications,
       packageManager: this.packages,
@@ -266,18 +385,33 @@ class LumineEnvironment {
     this.#commandInstaller = new CommandInstaller(this.applicationDelegate);
     this.#protocolHandlerInstaller = new ProtocolHandlerInstaller();
 
-    /** @type {TextEditorRegistry} */
+    /**
+     * @type {TextEditorRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.textEditors = new TextEditorRegistry({
       config: this.config,
       grammarRegistry: this.grammars,
       assert: this.assert.bind(this),
       packageManager: this.packages,
     });
-    /** @type {PasteProviderRegistry} */
+    /**
+     * @type {PasteProviderRegistry}
+     *
+     * @public
+     * @api-status Public
+     */
     this.pasteProviders = new PasteProviderRegistry();
     TextEditor.setPasteProviderRegistry(this.pasteProviders);
 
-    /** @type {Workspace} */
+    /**
+     * @type {Workspace}
+     *
+     * @public
+     * @api-status Public
+     */
     this.workspace = new Workspace({
       config: this.config,
       project: this.project,
@@ -309,7 +443,12 @@ class LumineEnvironment {
       applicationDelegate: this.applicationDelegate,
     });
 
-    /** @type {HistoryManager} */
+    /**
+     * @type {HistoryManager}
+     *
+     * @public
+     * @api-status Public
+     */
     this.history = new HistoryManager({
       project: this.project,
       commands: this.commands,
@@ -329,6 +468,8 @@ class LumineEnvironment {
      * Editor utilities a package can reuse instead of vendoring its own:
      * `markdown`, `fuzzyMatcher`, and `removeDiacritics`.
      * @type {Object}
+     * @public
+     * @api-status Public
      */
     this.tools = Tools;
 
@@ -623,11 +764,11 @@ class LumineEnvironment {
 
   // Get the dimensions of this window.
   //
-  // Returns an {Object} with the following keys:
-  //   * `x`      The window's x-position {Number}.
-  //   * `y`      The window's y-position {Number}.
-  //   * `width`  The window's width {Number}.
-  //   * `height` The window's height {Number}.
+  // Returns an `Object` with the following keys:
+  //   * `x`      The window's x-position `Number`.
+  //   * `y`      The window's y-position `Number`.
+  //   * `width`  The window's width `Number`.
+  //   * `height` The window's height `Number`.
   async getWindowDimensions() {
     const state = await this.window.getState();
     return {
@@ -646,7 +787,7 @@ class LumineEnvironment {
   // in the dimensions parameter. If x or y are omitted the window will be
   // centered. If height or width are omitted only the position will be changed.
   //
-  // * `dimensions` An {Object} with the following keys:
+  // * `dimensions` An `Object` with the following keys:
   //   * `x` The new x coordinate.
   //   * `y` The new y coordinate.
   //   * `width` The new width.
@@ -1038,9 +1179,9 @@ class LumineEnvironment {
     this.packages.triggerActivationHook("core:loaded-shell-environment");
   }
 
-  /*
-  Section: Private
-  */
+  /**
+   * @category Private
+   */
 
   assert(condition, message, callbackOrMetadata) {
     if (condition) return true;
@@ -1149,11 +1290,14 @@ class LumineEnvironment {
     return this.deserialize(state, options);
   }
 
-  // Private: Implements {Project::setState}, which is where this is
-  // documented. It lives here because the project can reach neither the window
-  // state store nor the workspace.
-  //
-  // Returns a {Promise} that resolves to whether the window changed.
+  /**
+   * Implements {@link Project#setState}, which is where this is
+   * documented. It lives here because the project can reach neither the window
+   * state store nor the workspace.
+   *
+   * @returns {Promise} that resolves to whether the window changed.
+   * @private
+   */
   async restoreProjectState(projectPaths) {
     // Resolve the same way ::openLocations does before hashing: the state key
     // is a hash of the path strings, so an unresolved path would miss its own
@@ -1228,7 +1372,7 @@ class LumineEnvironment {
     }
   }
 
-  // * `options` An optional {Object} passed on to {Workspace::deserialize},
+  // * `options` An optional `Object` passed on to {@link Workspace#deserialize},
   //   which reads `locations` from it.
   async deserialize(state, options) {
     if (!state) return Promise.resolve();

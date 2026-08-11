@@ -2,11 +2,15 @@ const { app, Menu } = require("electron");
 const _ = require("@lumine-code/underscore-plus");
 const MenuHelpers = require("./menu-helpers");
 
-// Private: Used to manage the global application menu.
-//
-// It's created by {LumineApplication} upon instantiation and used to add, remove
-// and maintain the state of all menu items. It runs in the main process; a
-// package reaches the menu through {MenuManager} instead.
+/**
+ * Used to manage the global application menu.
+ *
+ * It's created by `LumineApplication` upon instantiation and used to add, remove
+ * and maintain the state of all menu items. It runs in the main process; a
+ * package reaches the menu through {@link MenuManager} instead.
+ *
+ * @private
+ */
 module.exports = class ApplicationMenu {
   constructor(version) {
     this.version = version;
@@ -14,12 +18,17 @@ module.exports = class ApplicationMenu {
     this.setActiveTemplate(this.getDefaultTemplate());
   }
 
-  // Public: Updates the entire menu with the given keybindings.
-  //
-  // window - The BrowserWindow this menu template is associated with.
-  // template - The Object which describes the menu to display.
-  // keystrokesByCommand - An Object where the keys are commands and the values
-  //                       are Arrays containing the keystroke.
+  /**
+   * Updates the entire menu with the given keybindings.
+   *
+   * window - The BrowserWindow this menu template is associated with.
+   * template - The Object which describes the menu to display.
+   * keystrokesByCommand - An Object where the keys are commands and the values
+   *                       are Arrays containing the keystroke.
+   *
+   * @public
+   * @api-status Public
+   */
   update(window, template, keystrokesByCommand) {
     this.translateTemplate(template, keystrokesByCommand);
     this.substituteVersion(template);
@@ -87,10 +96,15 @@ module.exports = class ApplicationMenu {
     return items;
   }
 
-  // Public: Used to make all window related menu items are active.
-  //
-  // enable - If true enables all window specific items, if false disables all
-  //          window specific items.
+  /**
+   * Used to make all window related menu items are active.
+   *
+   * enable - If true enables all window specific items, if false disables all
+   *          window specific items.
+   *
+   * @public
+   * @api-status Public
+   */
   enableWindowSpecificItems(enable) {
     for (let item of this.flattenMenuItems(this.menu)) {
       if (item.metadata && item.metadata.windowSpecific) item.enabled = enable;

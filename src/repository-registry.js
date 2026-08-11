@@ -63,7 +63,7 @@ function gitAliasesFor(repository, cache) {
 //
 // The Git directory's aliases are resolved once per repository, but a watched
 // path is only canonicalized when it carries an unresolved Windows 8.3 alias —
-// the same guard {::getForPath} uses, and for the same reason: one batch can
+// the same guard {@link #getForPath} uses, and for the same reason: one batch can
 // hold thousands of directories and none of them should cost a `realpath`.
 function gitDirectoryRelativePath(gitAliases, directoryPath) {
   if (gitAliases.length === 0) return null;
@@ -78,7 +78,7 @@ function gitDirectoryRelativePath(gitAliases, directoryPath) {
   return null;
 }
 
-// {relativeToAny} across both sides' aliases: `""` when the two name the same
+// `relativeToAny` across both sides' aliases: `""` when the two name the same
 // directory, a "/"-joined relative path when the child is below the parent, and
 // `null` when it is not.
 function relativeBetweenAliases(parentPath, childPath) {
@@ -120,45 +120,50 @@ function refreshHintForChange(gitRelativeDirectory, name) {
   return "status";
 }
 
-// Public: Every Git repository this window knows about, available as
-// `lumine.repositories`.
-//
-// Project roots are where repositories are discovered and what keeps them
-// alive, but a repository's identity is independent of them: one root can hold
-// several repositories, one repository can span several roots, and a file
-// opened from outside every root still resolves to the repository that
-// contains it.
-//
-// ## Finding a repository
-//
-// {::getForPath} answers from what is already known and never touches the
-// filesystem, which is what a renderer wants. {::resolveForPath} may discover
-// and register a repository that was not known yet, at the cost of being
-// asynchronous:
-//
-// ```js
-// const repository = lumine.repositories.getForPath(editor.getPath())
-// if (repository) console.log(repository.getShortHead())
-// ```
-//
-// ## Following the one the user is in
-//
-// {::observeActiveRepository} tracks the repository behind the active pane
-// item, so a status bar or a panel does not have to work it out itself:
-//
-// ```js
-// lumine.repositories.observeActiveRepository(({ repository, workingDirectory }) => {
-//   // repository is null when the active item belongs to none
-// })
-// ```
-//
-// ## Operations
-//
-// The registry performs no Git work of its own. A package provides an
-// implementation through {::addOperationProvider}, and everything under
-// "Operations" and "Running Git" below is routed to whichever provider claims
-// the capability. Ask {::canPerformOperation} before offering an action, since
-// a window with no provider installed can answer nothing.
+/**
+ * Every Git repository this window knows about, available as
+ * `lumine.repositories`.
+ *
+ * Project roots are where repositories are discovered and what keeps them
+ * alive, but a repository's identity is independent of them: one root can hold
+ * several repositories, one repository can span several roots, and a file
+ * opened from outside every root still resolves to the repository that
+ * contains it.
+ *
+ * ## Finding a repository
+ *
+ * {@link #getForPath} answers from what is already known and never touches the
+ * filesystem, which is what a renderer wants. {@link #resolveForPath} may discover
+ * and register a repository that was not known yet, at the cost of being
+ * asynchronous:
+ *
+ * ```js
+ * const repository = lumine.repositories.getForPath(editor.getPath())
+ * if (repository) console.log(repository.getShortHead())
+ * ```
+ *
+ * ## Following the one the user is in
+ *
+ * {@link #observeActiveRepository} tracks the repository behind the active pane
+ * item, so a status bar or a panel does not have to work it out itself:
+ *
+ * ```js
+ * lumine.repositories.observeActiveRepository(({ repository, workingDirectory }) => {
+ *   // repository is null when the active item belongs to none
+ * })
+ * ```
+ *
+ * ## Operations
+ *
+ * The registry performs no Git work of its own. A package provides an
+ * implementation through {@link #addOperationProvider}, and everything under
+ * "Operations" and "Running Git" below is routed to whichever provider claims
+ * the capability. Ask {@link #canPerformOperation} before offering an action, since
+ * a window with no provider installed can answer nothing.
+ *
+ * @public
+ * @api-status Public
+ */
 module.exports = class RepositoryRegistry {
   constructor({ project, config, notificationManager, packageManager }) {
     this.project = null;
@@ -271,32 +276,41 @@ module.exports = class RepositoryRegistry {
     this.workspace = null;
   }
 
-  /*
-  Section: Active Repository
-  */
+  /**
+   * @category Active Repository
+   */
 
-  // Essential: The repository the window is currently working in. It follows
-  // the active pane item unless a consumer pinned a selection with
-  // {::setActiveRepository}. An item whose path lies outside every repository
-  // clears it; only path-less items keep the current selection.
-  //
-  // Returns a {GitRepository}, or `null` when the active item belongs to none.
+  /**
+   * The repository the window is currently working in. It follows
+   * the active pane item unless a consumer pinned a selection with
+   * {@link #setActiveRepository}. An item whose path lies outside every repository
+   * clears it; only path-less items keep the current selection.
+   *
+   * @returns {GitRepository}, or `null` when the active item belongs to none.
+   * @public
+   * @api-status Essential
+   */
   getActiveRepository() {
     return this.activeRepository;
   }
 
-  // Public: The active repository together with the directory it applies to.
-  //
-  // The working directory is always present while a file-backed item is
-  // focused: it is the repository's working directory, or, when the item's path
-  // lies outside every repository, the directory a consumer would initialize or
-  // clone into — its containing project root, or the item's own directory.
-  //
-  // Returns a frozen {Object}.
-  // * `repository` The active {GitRepository}, or `null`.
-  // * `workingDirectory` The {String} directory the context applies to, or
-  //   `null` when no file-backed item is focused.
-  // * `pinned` A {Boolean}, `true` while a manual selection holds.
+  /**
+   * The active repository together with the directory it applies to.
+   *
+   * The working directory is always present while a file-backed item is
+   * focused: it is the repository's working directory, or, when the item's path
+   * lies outside every repository, the directory a consumer would initialize or
+   * clone into — its containing project root, or the item's own directory.
+   *
+   * * `repository` The active {@link GitRepository}, or `null`.
+   * * `workingDirectory` The `String` directory the context applies to, or
+   *   `null` when no file-backed item is focused.
+   * * `pinned` A `Boolean`, `true` while a manual selection holds.
+   *
+   * @returns {Object} frozen `Object`.
+   * @public
+   * @api-status Public
+   */
   getActiveRepositoryContext() {
     return Object.freeze({
       repository: this.activeRepository,
@@ -305,51 +319,61 @@ module.exports = class RepositoryRegistry {
     });
   }
 
-  // Public: Whether the active repository is pinned to a manual selection.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Whether the active repository is pinned to a manual selection.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   isActiveRepositoryPinned() {
     return this.activeRepositoryPinned;
   }
 
-  // Public: Invoke the callback whenever the active repository context changes.
-  //
-  // It fires for moves between out-of-repository directories too, while the
-  // repository itself stays `null`.
-  //
-  // * `callback` {Function} called with the context {::getActiveRepositoryContext}
-  //   returns.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback whenever the active repository context changes.
+   *
+   * It fires for moves between out-of-repository directories too, while the
+   * repository itself stays `null`.
+   *
+   * @param {Function} callback - called with the context {@link #getActiveRepositoryContext}
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidChangeActiveRepository(callback) {
     return this.emitter.on("did-change-active-repository", callback);
   }
 
-  // Essential: Invoke the callback with the current context immediately, and
-  // again on every change.
-  //
-  // This is what a status bar or a panel wants: it is called once on
-  // subscription, so there is no gap to fill in by hand.
-  //
-  // * `callback` {Function} called with the context {::getActiveRepositoryContext}
-  //   returns.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback with the current context immediately, and
+   * again on every change.
+   *
+   * This is what a status bar or a panel wants: it is called once on
+   * subscription, so there is no gap to fill in by hand.
+   *
+   * @param {Function} callback - called with the context {@link #getActiveRepositoryContext}
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeActiveRepository(callback) {
     callback(this.getActiveRepositoryContext());
     return this.onDidChangeActiveRepository(callback);
   }
 
-  // Public: Select the active repository manually.
-  //
-  // * `repository` The {GitRepository} to activate, or `null` to clear any pin
-  //   and recompute the active repository from the workspace.
-  // * `options` (optional) {Object}
-  //   * `pin` (optional) {Boolean} keeps the selection until it is cleared.
-  //     Without it the next pane item change may move the active repository
-  //     again.
-  //
-  // Throws a {TypeError} if the repository is unregistered or destroyed.
+  /**
+   * Select the active repository manually.
+   *
+   * Throws a `TypeError` if the repository is unregistered or destroyed.
+   *
+   * @param repository - The {@link GitRepository} to activate, or `null` to clear any pin and recompute the active repository from the workspace.
+   * @param {Object} [options] - Activation options.
+   * @param {Boolean} [options.pin=false] - Keep the selection until it is
+   *   cleared instead of following the next pane-item change.
+   * @public
+   * @api-status Public
+   */
   setActiveRepository(repository, { pin = false } = {}) {
     if (this.destroyed) throw new Error("Cannot activate a repository on a destroyed registry");
 
@@ -366,18 +390,20 @@ module.exports = class RepositoryRegistry {
     this.applyActiveRepository(entry.repository, { pinned: pin });
   }
 
-  // Public: Resolve the repository for a path and make it the active one.
-  //
-  // Unlike {::setActiveRepository} this discovers a repository that was not
-  // registered yet, so it is asynchronous.
-  //
-  // * `filePath` The {String} path to resolve.
-  // * `options` (optional) {Object}
-  //   * `pin` (optional) {Boolean} keeps the selection, as in
-  //     {::setActiveRepository}.
-  //
-  // Returns a {Promise} that resolves to the {GitRepository}, or to `null` when
-  // the path is not in one.
+  /**
+   * Resolve the repository for a path and make it the active one.
+   *
+   * Unlike {@link #setActiveRepository} this discovers a repository that was not
+   * registered yet, so it is asynchronous.
+   *
+   * @param filePath - The `String` path to resolve.
+   * @param {Object} [options] - Activation options.
+   * @param {Boolean} [options.pin=false] - Keep the selection as in
+   *   {@link #setActiveRepository}.
+   * @returns {Promise} that resolves to the {@link GitRepository}, or to `null` when the path is not in one.
+   * @public
+   * @api-status Public
+   */
   async setActiveRepositoryForPath(filePath, { pin = false } = {}) {
     const repository = await this.resolveForPath(filePath);
     if (!repository || this.destroyed) return null;
@@ -575,19 +601,24 @@ module.exports = class RepositoryRegistry {
     );
   }
 
-  /*
-  Section: Accessing Repositories
-  */
+  /**
+   * @category Accessing Repositories
+   */
 
-  // Extended: The registered repositories together with the version they were
-  // read at.
-  //
-  // The version increments on every change, so a consumer holding derived state
-  // can tell whether its copy is still current without diffing.
-  //
-  // Returns a frozen {Object}.
-  // * `version` A {Number}.
-  // * `repositories` A frozen {Array} of {GitRepository}.
+  /**
+   * The registered repositories together with the version they were
+   * read at.
+   *
+   * The version increments on every change, so a consumer holding derived state
+   * can tell whether its copy is still current without diffing.
+   *
+   * * `version` A `Number`.
+   * * `repositories` A frozen `Array` of {@link GitRepository}.
+   *
+   * @returns {Object} frozen `Object`.
+   * @public
+   * @api-status Extended
+   */
   getSnapshot() {
     return Object.freeze({
       version: this.version,
@@ -595,153 +626,186 @@ module.exports = class RepositoryRegistry {
     });
   }
 
-  // Public: Every registered repository.
-  //
-  // This is a snapshot. Use {::observeRepositories} to keep up with the ones
-  // registered later.
-  //
-  // Returns an {Array} of {GitRepository}.
+  /**
+   * Every registered repository.
+   *
+   * This is a snapshot. Use {@link #observeRepositories} to keep up with the ones
+   * registered later.
+   *
+   * @returns {Array} of {@link GitRepository}.
+   * @public
+   * @api-status Public
+   */
   getRepositories() {
     return Array.from(this.entriesById.values(), (entry) => entry.repository);
   }
 
-  // Extended: Look a repository up by the id the registry gave it.
-  //
-  // * `id` The {String} id.
-  //
-  // Returns a {GitRepository}, or `null` if nothing is registered under it.
+  /**
+   * Look a repository up by the id the registry gave it.
+   *
+   * @param id - The `String` id.
+   * @returns {GitRepository}, or `null` if nothing is registered under it.
+   * @public
+   * @api-status Extended
+   */
   getById(id) {
     return this.entriesById.get(id)?.repository || null;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Invoke the callback with every registered repository, now and in
-  // the future.
-  //
-  // * `callback` {Function} called with each {GitRepository}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback with every registered repository, now and in
+   * the future.
+   *
+   * @param {Function} callback - called with each {@link GitRepository}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeRepositories(callback) {
     for (const repository of this.getRepositories()) callback(repository);
     return this.onDidAddRepository(callback);
   }
 
-  // Public: Invoke the callback when a repository is registered.
-  //
-  // * `callback` {Function} called with the new {GitRepository}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when a repository is registered.
+   *
+   * @param {Function} callback - called with the new {@link GitRepository}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidAddRepository(callback) {
     return this.emitter.on("did-add-repository", callback);
   }
 
-  // Public: Invoke the callback when a repository is removed.
-  //
-  // Release anything keyed on the repository here: it is destroyed once nothing
-  // holds it any more.
-  //
-  // * `callback` {Function} called with the removed {GitRepository}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when a repository is removed.
+   *
+   * Release anything keyed on the repository here: it is destroyed once nothing
+   * holds it any more.
+   *
+   * @param {Function} callback - called with the removed {@link GitRepository}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidRemoveRepository(callback) {
     return this.emitter.on("did-remove-repository", callback);
   }
 
-  // Extended: Invoke the callback once per batch of changes to the registered
-  // set, with everything that changed together.
-  //
-  // Cheaper than the individual events when a consumer rebuilds derived state,
-  // since adding a project root registers many repositories at once.
-  //
-  // * `callback` {Function} called with a frozen {Object}.
-  //   * `version` The {Number} the registry is now at.
-  //   * `added` An {Array} of newly registered {GitRepository}.
-  //   * `removed` An {Array} of {GitRepository} no longer registered.
-  //   * `updated` An {Array} of {GitRepository} whose routing changed.
-  //   * `rootsAdded` An {Array} of {String} project roots added.
-  //   * `rootsRemoved` An {Array} of {String} project roots removed.
-  //   * `routingChangedPrefixes` An {Array} of {String} directories whose
-  //     path-to-repository routing is no longer what it was.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback once per batch of changes to the registered
+   * set, with everything that changed together.
+   *
+   * Cheaper than the individual events when a consumer rebuilds derived state,
+   * since adding a project root registers many repositories at once.
+   *
+   * @param {Function} callback - called with a frozen `Object`.
+   * @param callback.version - The `Number` the registry is now at.
+   * @param callback.added - An `Array` of newly registered {@link GitRepository}.
+   * @param callback.removed - An `Array` of {@link GitRepository} no longer registered.
+   * @param callback.updated - An `Array` of {@link GitRepository} whose routing changed.
+   * @param callback.rootsAdded - An `Array` of `String` project roots added.
+   * @param callback.rootsRemoved - An `Array` of `String` project roots removed.
+   * @param callback.routingChangedPrefixes - An `Array` of `String` directories whose path-to-repository routing is no longer what it was.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);
   }
 
-  // Extended: Invoke the callback when a rescan of the project roots begins.
-  //
-  // * `callback` {Function} called with a frozen {Object}.
-  //   * `id` A {Number} identifying this rescan.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when a rescan of the project roots begins.
+   *
+   * @param {Function} callback - called with a frozen `Object`.
+   * @param callback.id - A `Number` identifying this rescan.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidStartRescan(callback) {
     return this.emitter.on("did-start-rescan", callback);
   }
 
-  // Extended: Invoke the callback when a rescan finishes, whether or not it
-  // succeeded.
-  //
-  // * `callback` {Function} called with a frozen {Object}.
-  //   * `id` The {Number} of the rescan that started.
-  //   * `repositories` A frozen {Array} of the {GitRepository} it found.
-  //   * `error` The {Error} that ended the scan, or `null`.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when a rescan finishes, whether or not it
+   * succeeded.
+   *
+   * @param {Function} callback - called with a frozen `Object`.
+   * @param callback.id - The `Number` of the rescan that started.
+   * @param callback.repositories - A frozen `Array` of the {@link GitRepository} it found.
+   * @param callback.error - The `Error` that ended the scan, or `null`.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidFinishRescan(callback) {
     return this.emitter.on("did-finish-rescan", callback);
   }
 
-  // Extended: Invoke the callback when an operation is queued behind another on
-  // the same repository.
-  //
-  // * `callback` {Function} called with an operation snapshot; see
-  //   {::getPendingOperations}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when an operation is queued behind another on
+   * the same repository.
+   *
+   * @param {Function} callback - called with an operation snapshot; see {@link #getPendingOperations}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidQueueOperation(callback) {
     return this.emitter.on("did-queue-operation", callback);
   }
 
-  // Extended: Invoke the callback when an operation starts running.
-  //
-  // * `callback` {Function} called with an operation snapshot; see
-  //   {::getPendingOperations}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when an operation starts running.
+   *
+   * @param {Function} callback - called with an operation snapshot; see {@link #getPendingOperations}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidStartOperation(callback) {
     return this.emitter.on("did-start-operation", callback);
   }
 
-  // Extended: Invoke the callback when an operation finishes, whether or not it
-  // succeeded.
-  //
-  // * `callback` {Function} called with an operation snapshot; see
-  //   {::getPendingOperations}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when an operation finishes, whether or not it
+   * succeeded.
+   *
+   * @param {Function} callback - called with an operation snapshot; see {@link #getPendingOperations}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidFinishOperation(callback) {
     return this.emitter.on("did-finish-operation", callback);
   }
 
-  /*
-  Section: Resolving Paths
-  */
+  /**
+   * @category Resolving Paths
+   */
 
-  // Essential: The repository a path belongs to, from what is already
-  // registered.
-  //
-  // Synchronous and free of filesystem access, so it is safe on a hot path such
-  // as rendering a gutter. When several repositories contain the path, the one
-  // with the longest matching working directory wins, which is what a submodule
-  // or a nested checkout should do. Use {::resolveForPath} when the path may
-  // belong to a repository nobody has discovered yet.
-  //
-  // * `filePath` The {String} path to look up.
-  //
-  // Returns a {GitRepository}, or `null`.
+  /**
+   * The repository a path belongs to, from what is already
+   * registered.
+   *
+   * Synchronous and free of filesystem access, so it is safe on a hot path such
+   * as rendering a gutter. When several repositories contain the path, the one
+   * with the longest matching working directory wins, which is what a submodule
+   * or a nested checkout should do. Use {@link #resolveForPath} when the path may
+   * belong to a repository nobody has discovered yet.
+   *
+   * @param filePath - The `String` path to look up.
+   * @returns {GitRepository}, or `null`.
+   * @public
+   * @api-status Essential
+   */
   getForPath(filePath) {
     if (!filePath) return null;
 
@@ -782,13 +846,15 @@ module.exports = class RepositoryRegistry {
     return bestEntry?.repository || null;
   }
 
-  // Public: The repository a path belongs to, discovering and registering one
-  // if it is not known yet.
-  //
-  // * `filePath` The {String} path to resolve.
-  //
-  // Returns a {Promise} that resolves to a {GitRepository}, or to `null` when
-  // the path is not in one.
+  /**
+   * The repository a path belongs to, discovering and registering one
+   * if it is not known yet.
+   *
+   * @param filePath - The `String` path to resolve.
+   * @returns {Promise} that resolves to a {@link GitRepository}, or to `null` when the path is not in one.
+   * @public
+   * @api-status Public
+   */
   async resolveForPath(filePath) {
     if (!filePath) return null;
     if (!this.project) return this.getForPath(filePath);
@@ -797,15 +863,18 @@ module.exports = class RepositoryRegistry {
     return this.register(repository)?.repository || this.getForPath(filePath);
   }
 
-  // Extended: {::resolveForPath}, synchronously.
-  //
-  // Discovery reads the filesystem, so this blocks the renderer. Prefer
-  // {::getForPath} when the repository is expected to be known already, and
-  // {::resolveForPath} when it is not.
-  //
-  // * `filePath` The {String} path to resolve.
-  //
-  // Returns a {GitRepository}, or `null`.
+  /**
+   * {@link #resolveForPath}, synchronously.
+   *
+   * Discovery reads the filesystem, so this blocks the renderer. Prefer
+   * {@link #getForPath} when the repository is expected to be known already, and
+   * {@link #resolveForPath} when it is not.
+   *
+   * @param filePath - The `String` path to resolve.
+   * @returns {GitRepository}, or `null`.
+   * @public
+   * @api-status Extended
+   */
   resolveForPathSync(filePath) {
     if (!filePath) return null;
     if (!this.project) return this.getForPath(filePath);
@@ -814,42 +883,51 @@ module.exports = class RepositoryRegistry {
     return this.register(repository)?.repository || this.getForPath(filePath);
   }
 
-  // Extended: The repository for a {Directory}, discovering and registering one
-  // if it is not known yet.
-  //
-  // * `directory` The {Directory} to resolve.
-  //
-  // Returns a {Promise} that resolves to a {GitRepository}, or to `null`.
+  /**
+   * The repository for a `Directory`, discovering and registering one
+   * if it is not known yet.
+   *
+   * @param directory - The `Directory` to resolve.
+   * @returns {Promise} that resolves to a {@link GitRepository}, or to `null`.
+   * @public
+   * @api-status Extended
+   */
   async resolveDirectory(directory) {
     const repository = await this.project.repositoryForDirectoryFromProviders(directory);
     return this.register(repository)?.repository || null;
   }
 
-  // Extended: {::resolveDirectory}, synchronously. Reads the filesystem.
-  //
-  // * `directory` The {Directory} to resolve.
-  //
-  // Returns a {GitRepository}, or `null`.
+  /**
+   * {@link #resolveDirectory}, synchronously. Reads the filesystem.
+   *
+   * @param directory - The `Directory` to resolve.
+   * @returns {GitRepository}, or `null`.
+   * @public
+   * @api-status Extended
+   */
   resolveDirectorySync(directory) {
     const repository = this.project.repositoryForDirectoryFromProvidersSync(directory);
     return this.register(repository)?.repository || null;
   }
 
-  /*
-  Section: Managing Repositories
-  */
+  /**
+   * @category Managing Repositories
+   */
 
-  // Public: Keep a repository alive for as long as you hold the result.
-  //
-  // A repository is destroyed once nothing owns it — no project root contains
-  // it, no open buffer belongs to it. Retain one you intend to keep using
-  // across those changes, and dispose the result when you are done, or it will
-  // outlive its usefulness.
-  //
-  // * `repository` The {GitRepository} to hold.
-  // * `source` (optional) A {String} label for the hold, for debugging.
-  //
-  // Returns a {Disposable} that releases the hold.
+  /**
+   * Keep a repository alive for as long as you hold the result.
+   *
+   * A repository is destroyed once nothing owns it — no project root contains
+   * it, no open buffer belongs to it. Retain one you intend to keep using
+   * across those changes, and dispose the result when you are done, or it will
+   * outlive its usefulness.
+   *
+   * @param repository - The {@link GitRepository} to hold.
+   * @param [source] - A `String` label for the hold, for debugging.
+   * @returns {Disposable} that releases the hold.
+   * @public
+   * @api-status Public
+   */
   retain(repository, source = "pin") {
     const entry = this.entryByRepository.get(repository) || this.register(repository);
     if (!entry) return new Disposable();
@@ -862,17 +940,21 @@ module.exports = class RepositoryRegistry {
     });
   }
 
-  // Extended: Run your own work against a repository, holding it alive for the
-  // duration.
-  //
-  // {::retain} for the length of one asynchronous call, without the bookkeeping.
-  //
-  // * `repository` The {GitRepository} to work with.
-  // * `operation` An async {Function} called with the repository.
-  //
-  // Throws an {Error} if the repository cannot be registered.
-  //
-  // Returns a {Promise} for whatever the operation returned.
+  /**
+   * Run your own work against a repository, holding it alive for the
+   * duration.
+   *
+   * {@link #retain} for the length of one asynchronous call, without the bookkeeping.
+   *
+   *
+   * Throws an `Error` if the repository cannot be registered.
+   *
+   * @param repository - The {@link GitRepository} to work with.
+   * @param operation - An async `Function` called with the repository.
+   * @returns {Promise} for whatever the operation returned.
+   * @public
+   * @api-status Extended
+   */
   async runOperation(repository, operation) {
     const entry = this.entryByRepository.get(repository) || this.register(repository);
     if (!entry) throw new Error("Cannot run an operation without a live repository");
@@ -887,27 +969,29 @@ module.exports = class RepositoryRegistry {
     }
   }
 
-  /*
-  Section: Operations
-  */
+  /**
+   * @category Operations
+   */
 
-  // Public: Supply the Git implementation behind the registry's operations.
-  //
-  // The registry routes work but performs none of it. A provider implements at
-  // least one of `createRepositoryOperations`, `initializeRepository`,
-  // `cloneRepository` or `executeGit`, and the first provider claiming a
-  // capability handles it.
-  //
-  // * `provider` The {Object} implementing the operations.
-  // * `options` (optional) {Object}
-  //   * `fallback` (optional) {Boolean} puts the provider last instead of
-  //     first, so anything registered later takes precedence over it.
-  //
-  // Throws a {TypeError} if the provider implements none of those methods, and
-  // an {Error} if the registry has been destroyed.
-  //
-  // Returns a {Disposable} that removes the provider and everything it
-  // implemented.
+  /**
+   * Supply the Git implementation behind the registry's operations.
+   *
+   * The registry routes work but performs none of it. A provider implements at
+   * least one of `createRepositoryOperations`, `initializeRepository`,
+   * `cloneRepository` or `executeGit`, and the first provider claiming a
+   * capability handles it.
+   *
+   * Throws a `TypeError` if the provider implements none of those methods, and
+   * an `Error` if the registry has been destroyed.
+   *
+   * @param provider - The `Object` implementing the operations.
+   * @param {Object} [options] - Provider options.
+   * @param {Boolean} [options.fallback=false] - Put the provider last so later
+   *   registrations take precedence.
+   * @returns {Disposable} that removes the provider and everything it implemented.
+   * @public
+   * @api-status Public
+   */
   addOperationProvider(provider, { fallback = false } = {}) {
     if (this.destroyed) throw new Error("Cannot add a provider to a destroyed RepositoryRegistry");
     if (
@@ -941,35 +1025,43 @@ module.exports = class RepositoryRegistry {
     });
   }
 
-  // Public: The operations available on a repository.
-  //
-  // * `repository` The {GitRepository}.
-  //
-  // Returns an {Object} of operation functions, or `null` when no provider has
-  // claimed the repository.
+  /**
+   * The operations available on a repository.
+   *
+   * @param repository - The {@link GitRepository}.
+   * @returns {Object} of operation functions, or `null` when no provider has claimed the repository.
+   * @public
+   * @api-status Public
+   */
   getOperations(repository) {
     return this.entryByRepository.get(repository)?.operations || null;
   }
 
-  // Essential: Whether an operation can be performed on a repository right now.
-  //
-  // Ask before offering an action. A window where no package provides Git can
-  // answer nothing, and the honest response is to hide the command rather than
-  // to fail when it is invoked.
-  //
-  // * `repository` The {GitRepository}.
-  // * `operationName` The {String} name of the operation, such as `"commit"`.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Whether an operation can be performed on a repository right now.
+   *
+   * Ask before offering an action. A window where no package provides Git can
+   * answer nothing, and the honest response is to hide the command rather than
+   * to fail when it is invoked.
+   *
+   * @param repository - The {@link GitRepository}.
+   * @param operationName - The `String` name of the operation, such as `"commit"`.
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   canPerformOperation(repository, operationName) {
     return this.findOperationImplementation(repository, operationName) != null;
   }
 
-  // Public: Every operation any provider can perform on a repository.
-  //
-  // * `repository` The {GitRepository}.
-  //
-  // Returns a frozen {Array} of {String} operation names.
+  /**
+   * Every operation any provider can perform on a repository.
+   *
+   * @param repository - The {@link GitRepository}.
+   * @returns {Array} frozen `Array` of `String` operation names.
+   * @public
+   * @api-status Public
+   */
   getOperationCapabilities(repository) {
     const capabilities = new Set();
     for (const provider of this.operationProviders) {
@@ -991,22 +1083,26 @@ module.exports = class RepositoryRegistry {
     return Object.freeze(Array.from(capabilities));
   }
 
-  // Public: The operations queued or running right now.
-  //
-  // Operations on one repository run one at a time, so a long fetch leaves the
-  // next one queued. This is what a progress indicator reads.
-  //
-  // * `repository` (optional) The {GitRepository} to report on. Omit it for
-  //   every repository, plus the workspace operations that belong to none.
-  //
-  // Returns a frozen {Array} of frozen {Object}s.
-  // * `id` A {Number} identifying the operation.
-  // * `repository` The {GitRepository} it runs on, or `null`.
-  // * `name` The {String} operation name.
-  // * `status` A {String}, `"queued"` or `"running"`.
-  // * `workingDirectory` The {String} directory it runs in, or `null`.
-  // * `queuedAt` The {Number} timestamp it was queued at.
-  // * `startedAt` The {Number} timestamp it started at, or `null`.
+  /**
+   * The operations queued or running right now.
+   *
+   * Operations on one repository run one at a time, so a long fetch leaves the
+   * next one queued. This is what a progress indicator reads.
+   *
+   *
+   * * `id` A `Number` identifying the operation.
+   * * `name` The `String` operation name.
+   * * `status` A `String`, `"queued"` or `"running"`.
+   * * `workingDirectory` The `String` directory it runs in, or `null`.
+   * * `queuedAt` The `Number` timestamp it was queued at.
+   * * `startedAt` The `Number` timestamp it started at, or `null`.
+   *
+   * @param [repository] - The {@link GitRepository} to report on. Omit it for every repository, plus the workspace operations that belong to none.
+   * @param repository - The {@link GitRepository} it runs on, or `null`.
+   * @returns {Array} frozen `Array` of frozen `Objects`.
+   * @public
+   * @api-status Public
+   */
   getPendingOperations(repository) {
     const entries = repository
       ? [this.entryByRepository.get(repository)].filter(Boolean)
@@ -1026,16 +1122,20 @@ module.exports = class RepositoryRegistry {
     return Object.freeze(operations);
   }
 
-  /*
-  Section: Creating Repositories
-  */
+  /**
+   * @category Creating Repositories
+   */
 
-  // Public: Which of `initialize` and `clone` a provider can perform.
-  //
-  // These belong to no repository — they are what creates one — so they are
-  // asked for separately from {::getOperationCapabilities}.
-  //
-  // Returns a frozen {Array} of {String} operation names.
+  /**
+   * Which of `initialize` and `clone` a provider can perform.
+   *
+   * These belong to no repository — they are what creates one — so they are
+   * asked for separately from {@link #getOperationCapabilities}.
+   *
+   * @returns {Array} frozen `Array` of `String` operation names.
+   * @public
+   * @api-status Public
+   */
   getWorkspaceOperationCapabilities() {
     const capabilities = [];
     if (this.findWorkspaceOperationProvider("initialize")) capabilities.push("initialize");
@@ -1043,39 +1143,47 @@ module.exports = class RepositoryRegistry {
     return Object.freeze(capabilities);
   }
 
-  // Public: Whether a repository-creating operation can be performed.
-  //
-  // * `operationName` A {String}, `"initialize"` or `"clone"`.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Whether a repository-creating operation can be performed.
+   *
+   * @param operationName - A `String`, `"initialize"` or `"clone"`.
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   canPerformWorkspaceOperation(operationName) {
     return this.findWorkspaceOperationProvider(operationName) != null;
   }
 
-  /*
-  Section: Running Git
-  */
+  /**
+   * @category Running Git
+   */
 
-  // Public: Whether any provider can run raw Git commands.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Whether any provider can run raw Git commands.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   canExecuteGitCommands() {
     return this.findGitCommandProvider() != null;
   }
 
-  // Extended: Run a Git command through whichever provider offers one.
-  //
-  // The escape hatch for what the operation set does not cover. Prefer a named
-  // operation where one exists — it is the part a provider can implement
-  // without shelling out.
-  //
-  // * `args` An {Array} of {String} arguments, without the leading `git`.
-  // * `workingDirectory` The {String} directory to run in.
-  // * `options` (optional) {Object} passed through to the provider.
-  //
-  // Returns a {Promise} for the provider's result. It rejects with a {TypeError}
-  // if `args` is not an array, and with an {Error} whose `code` is
-  // `ERR_GIT_EXECUTION_UNAVAILABLE` when no provider runs Git commands.
+  /**
+   * Run a Git command through whichever provider offers one.
+   *
+   * The escape hatch for what the operation set does not cover. Prefer a named
+   * operation where one exists — it is the part a provider can implement
+   * without shelling out.
+   *
+   * @param args - An `Array` of `String` arguments, without the leading `git`.
+   * @param workingDirectory - The `String` directory to run in.
+   * @param {Object} [options] - passed through to the provider.
+   * @returns {Promise} for the provider's result. It rejects with a `TypeError` if `args` is not an array, and with an `Error` whose `code` is `ERR_GIT_EXECUTION_UNAVAILABLE` when no provider runs Git commands.
+   * @public
+   * @api-status Extended
+   */
   executeGit(args, workingDirectory, options) {
     if (this.destroyed) {
       return Promise.reject(new Error("Cannot execute Git with a destroyed RepositoryRegistry"));
@@ -1093,39 +1201,44 @@ module.exports = class RepositoryRegistry {
     return provider.executeGit(args, workingDirectory, options);
   }
 
-  // Extended: The Git binary the active provider runs.
-  //
-  // Returns a {String} path, or `null` when no provider runs Git commands or it
-  // does not say which binary it uses.
+  /**
+   * The Git binary the active provider runs.
+   *
+   * @returns {String} path, or `null` when no provider runs Git commands or it does not say which binary it uses.
+   * @public
+   * @api-status Extended
+   */
   getGitExecutablePath() {
     return this.findGitCommandProvider()?.getGitExecutablePath?.() || null;
   }
 
-  /*
-  Section: Creating Repositories
-  */
+  /**
+   * @category Creating Repositories
+   */
 
-  // Public: Create a repository in a directory and register it.
-  //
-  // * `directoryPath` The {String} directory to initialize.
-  // * `options` (optional) {Object} passed through to the provider.
-  //
-  // Returns a {Promise} that resolves to the new {GitRepository}. It rejects
-  // when no provider implements `initialize`, and with an {Error} whose `code`
-  // is `ERR_REPOSITORY_DISCOVERY_FAILED` if the command succeeded but nothing
-  // was found at the path afterwards.
+  /**
+   * Create a repository in a directory and register it.
+   *
+   * @param directoryPath - The `String` directory to initialize.
+   * @param {Object} [options] - passed through to the provider.
+   * @returns {Promise} that resolves to the new {@link GitRepository}. It rejects when no provider implements `initialize`, and with an `Error` whose `code` is `ERR_REPOSITORY_DISCOVERY_FAILED` if the command succeeded but nothing was found at the path afterwards.
+   * @public
+   * @api-status Public
+   */
   initialize(directoryPath, options) {
     return this.performWorkspaceOperation("initialize", directoryPath, [directoryPath, options]);
   }
 
-  // Public: Clone a remote into a directory and register the result.
-  //
-  // * `remoteUrl` The {String} URL to clone.
-  // * `destinationPath` The {String} directory to clone into.
-  // * `options` (optional) {Object} passed through to the provider.
-  //
-  // Returns a {Promise} that resolves to the new {GitRepository}, and rejects
-  // the same way {::initialize} does.
+  /**
+   * Clone a remote into a directory and register the result.
+   *
+   * @param remoteUrl - The `String` URL to clone.
+   * @param destinationPath - The `String` directory to clone into.
+   * @param {Object} [options] - passed through to the provider.
+   * @returns {Promise} that resolves to the new {@link GitRepository}, and rejects the same way {@link #initialize} does.
+   * @public
+   * @api-status Public
+   */
   clone(remoteUrl, destinationPath, options) {
     return this.performWorkspaceOperation("clone", destinationPath, [
       remoteUrl,
@@ -1447,25 +1560,28 @@ module.exports = class RepositoryRegistry {
     });
   }
 
-  /*
-  Section: Managing Repositories
-  */
+  /**
+   * @category Managing Repositories
+   */
 
-  // Public: Register the repository containing a path, and keep it.
-  //
-  // For a repository the user chose that no project root covers. It is held
-  // until the returned handle is disposed, and by default remembered across
-  // window reloads.
-  //
-  // * `filePath` The {String} path inside the repository to add.
-  // * `options` (optional) {Object}
-  //   * `persist` (optional) {Boolean}, `true` by default. Pass `false` to hold
-  //     the repository for this session only.
-  //
-  // Returns a {Promise} that resolves to an {Object}, or to `null` when the path
-  // is not in a repository.
-  // * `repository` The {GitRepository}.
-  // * `dispose` A {Function} that releases it.
+  /**
+   * Register the repository containing a path, and keep it.
+   *
+   * For a repository the user chose that no project root covers. It is held
+   * until the returned handle is disposed, and by default remembered across
+   * window reloads.
+   *
+   * * `repository` The {@link GitRepository}.
+   * * `dispose` A `Function` that releases it.
+   *
+   * @param filePath - The `String` path inside the repository to add.
+   * @param {Object} [options] - Registration options.
+   * @param {Boolean} [options.persist=true] - Remember the repository across
+   *   window reloads. Pass `false` to keep it for this session only.
+   * @returns {Promise} that resolves to an `Object`, or to `null` when the path is not in a repository.
+   * @public
+   * @api-status Public
+   */
   async add(filePath, { persist = true } = {}) {
     const repository = await this.resolveForPath(filePath);
     if (!repository) return null;
@@ -1485,14 +1601,17 @@ module.exports = class RepositoryRegistry {
     };
   }
 
-  // Public: Drop every manual hold {::add} placed on a repository.
-  //
-  // The repository stays registered while a project root or an open buffer
-  // still owns it.
-  //
-  // * `repository` The {GitRepository} to forget.
-  //
-  // Returns a {Boolean}: `true` if the repository was registered.
+  /**
+   * Drop every manual hold {@link #add} placed on a repository.
+   *
+   * The repository stays registered while a project root or an open buffer
+   * still owns it.
+   *
+   * @param repository - The {@link GitRepository} to forget.
+   * @returns {Boolean} : `true` if the repository was registered.
+   * @public
+   * @api-status Public
+   */
   forget(repository) {
     const entry = this.entryByRepository.get(repository);
     if (!entry) return false;

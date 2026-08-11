@@ -114,19 +114,17 @@ module.exports = class ServiceHub {
     this.providers = [];
   }
 
-  // Public: Provide a service by invoking the callback of all current and future
-  // consumers matching the given service name and version range.
-  //
-  // * `keyPath` A {String} naming the service. Names are matched exactly. A `.`
-  //   is a grouping convention for related services (`linter.provider`,
-  //   `linter.registry`) and carries no lookup meaning: consuming `linter` does
-  //   not match a provider of `linter.provider`.
-  // * `version` A {String} containing a [semantic version](http://semver.org/)
-  //   for the service's API.
-  // * `service` An object exposing the service API.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to remove the
-  // provided service.
+  /**
+   * Provide a service by invoking the callback of all current and future
+   * consumers matching the given service name and version range.
+   *
+   * @param keyPath - A `String` naming the service. Names are matched exactly. A `.` is a grouping convention for related services (`linter.provider`, `linter.registry`) and carries no lookup meaning: consuming `linter` does not match a provider of `linter.provider`.
+   * @param version - A `String` containing a [semantic version](http://semver.org/) for the service's API.
+   * @param service - An object exposing the service API.
+   * @returns {Disposable} on which `.dispose()` can be called to remove the provided service.
+   * @public
+   * @api-status Public
+   */
   provide(keyPath, version, service) {
     let servicesByVersion;
     if (service != null) {
@@ -151,20 +149,18 @@ module.exports = class ServiceHub {
     });
   }
 
-  // Public: Consume a service by invoking the given callback for all current
-  // and future provided services matching the given service name and version
-  // range.
-  //
-  // * `keyPath` A {String} naming the service. Names are matched exactly; see
-  //   {::provide}.
-  // * `versionRange` A {String} containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html)
-  //   that any provided services for the given service name must satisfy.
-  // * `callback` A {Function} to be called with current and future matching
-  //   service objects.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to remove the
-  // consumer. Disposing it also disposes whatever the callback returned, so a
-  // package that deactivates unregisters itself from the services it took.
+  /**
+   * Consume a service by invoking the given callback for all current
+   * and future provided services matching the given service name and version
+   * range.
+   *
+   * @param keyPath - A `String` naming the service. Names are matched exactly; see {@link #provide}.
+   * @param versionRange - A `String` containing a [semantic version range](https://www.npmjs.org/doc/misc/semver.html) that any provided services for the given service name must satisfy.
+   * @param callback - A `Function` to be called with current and future matching service objects.
+   * @returns {Disposable} on which `.dispose()` can be called to remove the consumer. Disposing it also disposes whatever the callback returned, so a package that deactivates unregisters itself from the services it took.
+   * @public
+   * @api-status Public
+   */
   consume(keyPath, versionRange, callback) {
     const consumer = new Consumer(keyPath, versionRange, callback);
     this.consumers.push(consumer);
@@ -180,15 +176,19 @@ module.exports = class ServiceHub {
     });
   }
 
-  // Public: Names consumed by someone and provided by no one.
-  //
-  // Deliberately not reported on its own: packages activate lazily, so a
-  // consumer with no provider *yet* is ordinary. It is a question to ask at a
-  // moment the caller chooses -- a diagnostic command, `timecop` -- rather than
-  // a warning this class can time correctly. Nothing makes the check statically
-  // either, so this is the only place the question is answered at all.
-  //
-  // Returns an {Array} of `{keyPath, versionRange}`.
+  /**
+   * Names consumed by someone and provided by no one.
+   *
+   * Deliberately not reported on its own: packages activate lazily, so a
+   * consumer with no provider *yet* is ordinary. It is a question to ask at a
+   * moment the caller chooses -- a diagnostic command, `timecop` -- rather than
+   * a warning this class can time correctly. Nothing makes the check statically
+   * either, so this is the only place the question is answered at all.
+   *
+   * @returns {Array} of `{keyPath, versionRange}`.
+   * @public
+   * @api-status Public
+   */
   unmatchedConsumers() {
     return this.consumers
       .filter((consumer) => !consumer.isSatisfied && !consumer.isDestroyed)
@@ -198,8 +198,13 @@ module.exports = class ServiceHub {
       }));
   }
 
-  // Public: Clear out all service consumers and providers, disposing of any
-  // disposables returned by previous consumers.
+  /**
+   * Clear out all service consumers and providers, disposing of any
+   * disposables returned by previous consumers.
+   *
+   * @public
+   * @api-status Public
+   */
   clear() {
     for (const provider of this.providers.slice()) {
       provider.destroy();

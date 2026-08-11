@@ -31,66 +31,71 @@ const PartialKeyupMatcher = require("./partial-keyup-matcher");
 const Platforms = ["darwin", "freebsd", "linux", "sunos", "win32"];
 const OtherPlatforms = Platforms.filter((platform) => platform !== process.platform);
 
-// Extended: Allows commands to be associated with keystrokes in a
-// context-sensitive way. You can access a global instance of this
-// object via `lumine.keymaps`.
-//
-// Key bindings are plain JavaScript objects containing **CSS selectors** as
-// their top level keys, then **keystroke patterns** mapped to commands.
-//
-// ```jsonc
-// {
-//   ".workspace": {
-//     "ctrl-l": "package:do-something",
-//     "ctrl-z": "package:do-something-else"
-//   },
-//   ".mini.editor": {
-//     "enter": "core:confirm"
-//   }
-// }
-// ```
-//
-// When a keystroke sequence matches a binding in a given context, a custom DOM
-// event with a type based on the command is dispatched on the target of the
-// keyboard event.
-//
-// To match a keystroke sequence, the keymap starts at the target element for the
-// keyboard event. It looks for key bindings associated with selectors that match
-// the target element. If multiple match, the most specific is selected. If there
-// is a tie in specificity, the most recently added binding wins. If no bindings
-// are found for the events target, the search is repeated again for the target's
-// parent node and so on recursively until a binding is found or we traverse off
-// the top of the document.
-//
-// When a binding is found, its command event is always dispatched on the
-// original target of the keyboard event, even if the matching element is higher
-// up in the DOM. In addition, `.preventDefault()` is called on the keyboard
-// event to prevent the browser from taking action. `.preventDefault` is only
-// called if a matching binding is found.
-//
-// Command event objects have a non-standard method called `.abortKeyBinding()`.
-// If your command handler is invoked but you programmatically determine that no
-// action can be taken and you want to allow other bindings to be matched, call
-// `.abortKeyBinding()` on the event object. An example of where this is useful
-// is binding snippet expansion to `tab`. If `snippets:expand` is invoked when
-// the cursor does not follow a valid snippet prefix, we abort the binding and
-// allow `tab` to be handled by the default handler, which inserts whitespace.
-//
-// Multi-keystroke bindings are possible. If a sequence of one or more keystrokes
-// *partially* matches a multi-keystroke binding, the keymap enters a pending
-// state. The pending state is terminated on the next keystroke, or after
-// {::getPartialMatchTimeout} milliseconds has elapsed. When the pending state is
-// terminated via a timeout or a keystroke that leads to no matches, the longest
-// ambiguous bindings that caused the pending state are temporarily disabled and
-// the previous keystrokes are replayed. If there is ambiguity again during the
-// replay, the next longest bindings are disabled and the keystrokes are replayed
-// again.
+/**
+ * Allows commands to be associated with keystrokes in a
+ * context-sensitive way. You can access a global instance of this
+ * object via `lumine.keymaps`.
+ *
+ * Key bindings are plain JavaScript objects containing **CSS selectors** as
+ * their top level keys, then **keystroke patterns** mapped to commands.
+ *
+ * ```jsonc
+ * {
+ *   ".workspace": {
+ *     "ctrl-l": "package:do-something",
+ *     "ctrl-z": "package:do-something-else"
+ *   },
+ *   ".mini.editor": {
+ *     "enter": "core:confirm"
+ *   }
+ * }
+ * ```
+ *
+ * When a keystroke sequence matches a binding in a given context, a custom DOM
+ * event with a type based on the command is dispatched on the target of the
+ * keyboard event.
+ *
+ * To match a keystroke sequence, the keymap starts at the target element for the
+ * keyboard event. It looks for key bindings associated with selectors that match
+ * the target element. If multiple match, the most specific is selected. If there
+ * is a tie in specificity, the most recently added binding wins. If no bindings
+ * are found for the events target, the search is repeated again for the target's
+ * parent node and so on recursively until a binding is found or we traverse off
+ * the top of the document.
+ *
+ * When a binding is found, its command event is always dispatched on the
+ * original target of the keyboard event, even if the matching element is higher
+ * up in the DOM. In addition, `.preventDefault()` is called on the keyboard
+ * event to prevent the browser from taking action. `.preventDefault` is only
+ * called if a matching binding is found.
+ *
+ * Command event objects have a non-standard method called `.abortKeyBinding()`.
+ * If your command handler is invoked but you programmatically determine that no
+ * action can be taken and you want to allow other bindings to be matched, call
+ * `.abortKeyBinding()` on the event object. An example of where this is useful
+ * is binding snippet expansion to `tab`. If `snippets:expand` is invoked when
+ * the cursor does not follow a valid snippet prefix, we abort the binding and
+ * allow `tab` to be handled by the default handler, which inserts whitespace.
+ *
+ * Multi-keystroke bindings are possible. If a sequence of one or more keystrokes
+ * *partially* matches a multi-keystroke binding, the keymap enters a pending
+ * state. The pending state is terminated on the next keystroke, or after
+ * {@link #getPartialMatchTimeout} milliseconds has elapsed. When the pending state is
+ * terminated via a timeout or a keystroke that leads to no matches, the longest
+ * ambiguous bindings that caused the pending state are temporarily disabled and
+ * the previous keystrokes are replayed. If there is ambiguity again during the
+ * replay, the next longest bindings are disabled and the keystrokes are replayed
+ * again.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = KeymapManager = (function () {
   KeymapManager = class KeymapManager {
     static initClass() {
-      /*
-      Section: Properties
-      */
+      /**
+       * @category Properties
+       */
 
       this.prototype.partialMatchTimeout = 1000;
 
@@ -102,22 +107,24 @@ module.exports = KeymapManager = (function () {
       // of matching keyups
       this.prototype.pendingKeyupMatcher = new PartialKeyupMatcher();
     }
-    /*
-    Section: Class Methods
-    */
+    /**
+     * @category Class Methods
+     */
 
-    // Public: Create a keydown DOM event for testing purposes.
-    //
-    // * `key` The key or keyIdentifier of the event. For example, `'a'`, `'1'`,
-    //   `'escape'`, `'backspace'`, etc.
-    // * `options` (optional) An {Object} containing any of the following:
-    //   * `ctrl`   A {Boolean} indicating the ctrl modifier key
-    //   * `alt`    A {Boolean} indicating the alt modifier key
-    //   * `shift`  A {Boolean} indicating the shift modifier key
-    //   * `cmd`    A {Boolean} indicating the cmd modifier key
-    //   * `which`  A {Number} indicating `which` value of the event. See
-    //     the docs for KeyboardEvent for more information.
-    //   * `target` The target element of the event.
+    /**
+     * Create a keydown DOM event for testing purposes.
+     *
+     * @param key - The key or keyIdentifier of the event. For example, `'a'`, `'1'`, `'escape'`, `'backspace'`, etc.
+     * @param [options] - An `Object` containing any of the following:
+     * @param options.ctrl - A `Boolean` indicating the ctrl modifier key
+     * @param options.alt - A `Boolean` indicating the alt modifier key
+     * @param options.shift - A `Boolean` indicating the shift modifier key
+     * @param options.cmd - A `Boolean` indicating the cmd modifier key
+     * @param options.which - A `Number` indicating `which` value of the event. See the docs for KeyboardEvent for more information.
+     * @param options.target - The target element of the event.
+     * @public
+     * @api-status Public
+     */
     static buildKeydownEvent(key, options) {
       return keydownEvent(key, options);
     }
@@ -126,17 +133,18 @@ module.exports = KeymapManager = (function () {
       return keyupEvent(key, options);
     }
 
-    /*
-    Section: Construction and Destruction
-    */
+    /**
+     * @category Construction and Destruction
+     */
 
-    // Public: Create a new KeymapManager.
-    //
-    // * `options` An {Object} containing properties to assign to the keymap.  You
-    //   can pass custom properties to be used by extension methods. The
-    //   following properties are also supported:
-    //   * `defaultTarget` This will be used as the target of events whose target
-    //     is `document.body` to allow for a catch-all element when nothing is focused.
+    /**
+     * Create a new KeymapManager.
+     *
+     * @param options - An `Object` containing properties to assign to the keymap.  You can pass custom properties to be used by extension methods. The following properties are also supported:
+     * @param options.defaultTarget - This will be used as the target of events whose target is `document.body` to allow for a catch-all element when nothing is focused.
+     * @public
+     * @api-status Public
+     */
     constructor(options) {
       if (options == null) {
         options = {};
@@ -150,8 +158,13 @@ module.exports = KeymapManager = (function () {
       this.clear();
     }
 
-    // Public: Clear all registered key bindings and enqueued keystrokes. For use
-    // in tests.
+    /**
+     * Clear all registered key bindings and enqueued keystrokes. For use
+     * in tests.
+     *
+     * @public
+     * @api-status Public
+     */
     clear() {
       this.emitter = new Emitter();
       this.keyBindings = [];
@@ -160,7 +173,12 @@ module.exports = KeymapManager = (function () {
       return (this.bindingsToDisable = []);
     }
 
-    // Public: Unwatch all watched paths.
+    /**
+     * Unwatch all watched paths.
+     *
+     * @public
+     * @api-status Public
+     */
     destroy() {
       for (var filePath in this.watchSubscriptions) {
         var subscription = this.watchSubscriptions[filePath];
@@ -168,103 +186,114 @@ module.exports = KeymapManager = (function () {
       }
     }
 
-    /*
-    Section: Event Subscription
-    */
+    /**
+     * @category Event Subscription
+     */
 
-    // Public: Invoke the given callback when one or more keystrokes completely
-    // match a key binding.
-    //
-    // * `callback` {Function} to be called when keystrokes match a binding.
-    //   * `event` {Object} with the following keys:
-    //     * `keystrokes` {String} of keystrokes that matched the binding.
-    //     * `binding` {KeyBinding} that the keystrokes matched.
-    //     * `keyboardEventTarget` DOM element that was the target of the most
-    //        recent keyboard event.
-    //
-    // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+    /**
+     * Invoke the given callback when one or more keystrokes completely
+     * match a key binding.
+     *
+     * @param {Function} callback - to be called when keystrokes match a binding.
+     * @param {Object} callback.event - with the following keys:
+     * @param {String} callback.event.keystrokes - of keystrokes that matched the binding.
+     * @param {KeyBinding} callback.event.binding - that the keystrokes matched.
+     * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
+     * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+     * @public
+     * @api-status Public
+     */
     onDidMatchBinding(callback) {
       return this.emitter.on("did-match-binding", callback);
     }
 
-    // Public: Invoke the given callback when one or more keystrokes partially
-    // match a binding.
-    //
-    // * `callback` {Function} to be called when keystrokes partially match a
-    //   binding.
-    //   * `event` {Object} with the following keys:
-    //     * `keystrokes` {String} of keystrokes that matched the binding.
-    //     * `partiallyMatchedBindings` {KeyBinding}s that the keystrokes partially
-    //       matched.
-    //     * `keyboardEventTarget` DOM element that was the target of the most
-    //       recent keyboard event.
-    //
-    // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+    /**
+     * Invoke the given callback when one or more keystrokes partially
+     * match a binding.
+     *
+     * @param {Function} callback - to be called when keystrokes partially match a binding.
+     * @param {Object} callback.event - with the following keys:
+     * @param {String} callback.event.keystrokes - of keystrokes that matched the binding.
+     * @param {KeyBinding} callback.event.partiallyMatchedBindings - s that the keystrokes partially matched.
+     * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
+     * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+     * @public
+     * @api-status Public
+     */
     onDidPartiallyMatchBindings(callback) {
       return this.emitter.on("did-partially-match-binding", callback);
     }
 
-    // Public: Invoke the given callback when one or more keystrokes fail to match
-    // any bindings.
-    //
-    // * `callback` {Function} to be called when keystrokes fail to match any
-    //   bindings.
-    //   * `event` {Object} with the following keys:
-    //     * `keystrokes` {String} of keystrokes that matched the binding.
-    //     * `keyboardEventTarget` DOM element that was the target of the most
-    //        recent keyboard event.
-    //
-    // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+    /**
+     * Invoke the given callback when one or more keystrokes fail to match
+     * any bindings.
+     *
+     * @param {Function} callback - to be called when keystrokes fail to match any bindings.
+     * @param {Object} callback.event - with the following keys:
+     * @param {String} callback.event.keystrokes - of keystrokes that matched the binding.
+     * @param callback.event.keyboardEventTarget - DOM element that was the target of the most recent keyboard event.
+     * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+     * @public
+     * @api-status Public
+     */
     onDidFailToMatchBinding(callback) {
       return this.emitter.on("did-fail-to-match-binding", callback);
     }
 
     // Invoke the given callback when a keymap file is reloaded.
     //
-    // * `callback` {Function} to be called when a keymap file is reloaded.
-    //   * `event` {Object} with the following keys:
-    //     * `path` {String} representing the path of the reloaded keymap file.
+    // * `callback` `Function` to be called when a keymap file is reloaded.
+    //   * `event` `Object` with the following keys:
+    //     * `path` `String` representing the path of the reloaded keymap file.
     //
-    // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+    // Returns a `Disposable` on which `.dispose()` can be called to unsubscribe.
     onDidReloadKeymap(callback) {
       return this.emitter.on("did-reload-keymap", callback);
     }
 
     // Invoke the given callback when a keymap file is unloaded.
     //
-    // * `callback` {Function} to be called when a keymap file is unloaded.
-    //   * `event` {Object} with the following keys:
-    //     * `path` {String} representing the path of the unloaded keymap file.
+    // * `callback` `Function` to be called when a keymap file is unloaded.
+    //   * `event` `Object` with the following keys:
+    //     * `path` `String` representing the path of the unloaded keymap file.
     //
-    // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+    // Returns a `Disposable` on which `.dispose()` can be called to unsubscribe.
     onDidUnloadKeymap(callback) {
       return this.emitter.on("did-unload-keymap", callback);
     }
 
-    // Public: Invoke the given callback when a keymap file not able to be loaded.
-    //
-    // * `callback` {Function} to be called when a keymap file is unloaded.
-    //   * `error` {Object} with the following keys:
-    //     * `message` {String} the error message.
-    //     * `stack` {String} the error stack trace.
-    //
-    // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+    /**
+     * Invoke the given callback when a keymap file not able to be loaded.
+     *
+     * @param {Function} callback - to be called when a keymap file is unloaded.
+     * @param {Object} callback.error - with the following keys:
+     * @param {String} callback.error.message - the error message.
+     * @param {String} callback.error.stack - the error stack trace.
+     * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+     * @public
+     * @api-status Public
+     */
     onDidFailToReadFile(callback) {
       return this.emitter.on("did-fail-to-read-file", callback);
     }
 
-    /*
-    Section: Adding and Removing Bindings
-    */
+    /**
+     * @category Adding and Removing Bindings
+     */
 
-    // Extended: Construct {KeyBinding}s from an object grouping them by CSS selector.
-    //
-    // * `source` A {String} (usually a path) uniquely identifying the given bindings
-    //   so they can be removed later.
-    // * `bindings` An {Object} whose top-level keys point at sub-objects mapping
-    //   keystroke patterns to commands.
-    // * `priority` A {Number} used to sort keybindings which have the same
-    //   specificity. Defaults to `0`.
+    /**
+     * Construct `KeyBindings` from an object grouping them by CSS selector.
+     *
+     * @param source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
+     * @param {Object} keyBindingsBySelector - Bindings grouped by CSS selector,
+     *   with each value mapping keystroke patterns to commands.
+     * @param priority - A `Number` used to sort keybindings which have the same specificity. Defaults to `0`.
+     * @param {Boolean} [throwOnInvalidSelector=true] - Whether invalid selectors
+     *   should throw.
+     * @returns {Array<KeyBinding>} The constructed bindings.
+     * @public
+     * @api-status Extended
+     */
     build(source, keyBindingsBySelector, priority, throwOnInvalidSelector) {
       if (priority == null) {
         priority = 0;
@@ -317,14 +346,19 @@ module.exports = KeymapManager = (function () {
       return bindings;
     }
 
-    // Public: Add sets of key bindings grouped by CSS selector.
-    //
-    // * `source` A {String} (usually a path) uniquely identifying the given bindings
-    //   so they can be removed later.
-    // * `bindings` An {Object} whose top-level keys point at sub-objects mapping
-    //   keystroke patterns to commands.
-    // * `priority` A {Number} used to sort keybindings which have the same
-    //   specificity. Defaults to `0`.
+    /**
+     * Add sets of key bindings grouped by CSS selector.
+     *
+     * @param source - A `String` (usually a path) uniquely identifying the given bindings so they can be removed later.
+     * @param {Object} keyBindingsBySelector - Bindings grouped by CSS selector,
+     *   with each value mapping keystroke patterns to commands.
+     * @param priority - A `Number` used to sort keybindings which have the same specificity. Defaults to `0`.
+     * @param {Boolean} [throwOnInvalidSelector=true] - Whether invalid selectors
+     *   should throw.
+     * @returns {Disposable} A disposable that removes the bindings.
+     * @public
+     * @api-status Public
+     */
     add(source, keyBindingsBySelector, priority, throwOnInvalidSelector) {
       if (priority == null) {
         priority = 0;
@@ -354,29 +388,32 @@ module.exports = KeymapManager = (function () {
       return undefined;
     }
 
-    /*
-    Section: Accessing Bindings
-    */
+    /**
+     * @category Accessing Bindings
+     */
 
-    // Public: Get all current key bindings.
-    //
-    // Returns an {Array} of {KeyBinding}s.
+    /**
+     * Get all current key bindings.
+     *
+     * @returns {Array} of `KeyBindings`.
+     * @public
+     * @api-status Public
+     */
     getKeyBindings() {
       return this.keyBindings.slice();
     }
 
-    // Public: Get the key bindings for a given command and optional target.
-    //
-    // * `params` An {Object} whose keys constrain the binding search:
-    //   * `keystrokes` A {String} representing one or more keystrokes, such as
-    //     'ctrl-x ctrl-s'
-    //   * `command` A {String} representing the name of a command, such as
-    //     'editor:backspace'
-    //   * `target` An optional DOM element constraining the search. If this
-    //     parameter is supplied, the call will only return bindings that
-    //     can be invoked by a KeyboardEvent originating from the target element.
-    //
-    // Returns an {Array} of key bindings.
+    /**
+     * Get the key bindings for a given command and optional target.
+     *
+     * @param params - An `Object` whose keys constrain the binding search:
+     * @param params.keystrokes - A `String` representing one or more keystrokes, such as 'ctrl-x ctrl-s'
+     * @param params.command - A `String` representing the name of a command, such as 'editor:backspace'
+     * @param params.target - An optional DOM element constraining the search. If this parameter is supplied, the call will only return bindings that can be invoked by a KeyboardEvent originating from the target element.
+     * @returns {Array} of key bindings.
+     * @public
+     * @api-status Public
+     */
     findKeyBindings(params) {
       if (params == null) {
         params = {};
@@ -408,19 +445,21 @@ module.exports = KeymapManager = (function () {
       return bindings;
     }
 
-    /*
-    Section: Managing Keymap Files
-    */
+    /**
+     * @category Managing Keymap Files
+     */
 
-    // Public: Load the key bindings from the given path.
-    //
-    // * `path` A {String} containing a path to a file or a directory. If the path is
-    //   a directory, all files inside it will be loaded.
-    // * `options` An {Object} containing the following optional keys:
-    //   * `watch` If `true`, the keymap will also reload the file at the given
-    //     path whenever it changes. This option cannot be used with directory paths.
-    //   * `priority` A {Number} used to sort keybindings which have the same
-    //     specificity.
+    /**
+     * Load the key bindings from the given path.
+     *
+     * @param {String} bindingsPath - A keymap file or directory. Directories load
+     *   every contained JSON or JSONC keymap.
+     * @param options - An `Object` containing the following optional keys:
+     * @param options.watch - If `true`, the keymap will also reload the file at the given path whenever it changes. This option cannot be used with directory paths.
+     * @param options.priority - A `Number` used to sort keybindings which have the same specificity.
+     * @public
+     * @api-status Public
+     */
     loadKeymap(bindingsPath, options) {
       const checkIfDirectory =
         (options != null ? options.checkIfDirectory : undefined) != null
@@ -448,17 +487,19 @@ module.exports = KeymapManager = (function () {
       return undefined;
     }
 
-    // Public: Cause the keymap to reload the key bindings file at the given path
-    // whenever it changes.
-    //
-    // This method doesn't perform the initial load of the key bindings file. If
-    // that's what you're looking for, call {::loadKeymap} with `watch: true`.
-    //
-    // * `path` A {String} containing a path to a file or a directory. If the path is
-    //   a directory, all files inside it will be loaded.
-    // * `options` An {Object} containing the following optional keys:
-    //   * `priority` A {Number} used to sort keybindings which have the same
-    //     specificity.
+    /**
+     * Cause the keymap to reload the key bindings file at the given path
+     * whenever it changes.
+     *
+     * This method doesn't perform the initial load of the key bindings file. If
+     * that's what you're looking for, call {@link #loadKeymap} with `watch: true`.
+     *
+     * @param {String} filePath - The keymap file to watch.
+     * @param options - An `Object` containing the following optional keys:
+     * @param options.priority - A `Number` used to sort keybindings which have the same specificity.
+     * @public
+     * @api-status Public
+     */
     watchKeymap(filePath, options) {
       if (this.watchSubscriptions[filePath] == null || this.watchSubscriptions[filePath].disposed) {
         // Watch-only: reload on any filesystem event (create/modify/rename/
@@ -539,31 +580,35 @@ module.exports = KeymapManager = (function () {
       return true;
     }
 
-    /*
-    Section: Managing Keyboard Events
-    */
+    /**
+     * @category Managing Keyboard Events
+     */
 
-    // Public: Dispatch a custom event associated with the matching key binding for
-    // the given `KeyboardEvent` if one can be found.
-    //
-    // If a matching binding is found on the event's target or one of its
-    // ancestors, `.preventDefault()` is called on the keyboard event and the
-    // binding's command is emitted as a custom event on the matching element.
-    //
-    // If the matching binding's command is 'native!', the method will terminate
-    // without calling `.preventDefault()` on the keyboard event, allowing the
-    // browser to handle it as normal.
-    //
-    // If the matching binding's command is 'unset!', the search will continue from
-    // the current element's parent.
-    //
-    // If the matching binding's command is 'abort!', the search will terminate
-    // without dispatching a command event.
-    //
-    // If the event's target is `document.body`, it will be treated as if its
-    // target is `.defaultTarget` if that property is assigned on the keymap.
-    //
-    // * `event` A `KeyboardEvent` of type 'keydown'
+    /**
+     * Dispatch a custom event associated with the matching key binding for
+     * the given `KeyboardEvent` if one can be found.
+     *
+     * If a matching binding is found on the event's target or one of its
+     * ancestors, `.preventDefault()` is called on the keyboard event and the
+     * binding's command is emitted as a custom event on the matching element.
+     *
+     * If the matching binding's command is 'native!', the method will terminate
+     * without calling `.preventDefault()` on the keyboard event, allowing the
+     * browser to handle it as normal.
+     *
+     * If the matching binding's command is 'unset!', the search will continue from
+     * the current element's parent.
+     *
+     * If the matching binding's command is 'abort!', the search will terminate
+     * without dispatching a command event.
+     *
+     * If the event's target is `document.body`, it will be treated as if its
+     * target is `.defaultTarget` if that property is assigned on the keymap.
+     *
+     * @param event - A `KeyboardEvent` of type 'keydown'
+     * @public
+     * @api-status Public
+     */
     handleKeyboardEvent(event, param) {
       // Handling keyboard events is complicated and very nuanced. The complexity
       // is all due to supporting multi-stroke bindings. An example binding we'll
@@ -835,33 +880,34 @@ module.exports = KeymapManager = (function () {
       }
     }
 
-    // Public: Translate a keydown event to a keystroke string.
-    //
-    // * `event` A `KeyboardEvent` of type 'keydown'
-    //
-    // Returns a {String} describing the keystroke.
+    /**
+     * Translate a keydown event to a keystroke string.
+     *
+     * @param event - A `KeyboardEvent` of type 'keydown'
+     * @returns {String} describing the keystroke.
+     * @public
+     * @api-status Public
+     */
     keystrokeForKeyboardEvent(event) {
       return keystrokeForKeyboardEvent(event, this.customKeystrokeResolvers);
     }
 
-    // Public: Customize translation of raw keyboard events to keystroke strings.
-    // This API is useful for working around Chrome bugs or changing how the editor
-    // resolves certain key combinations. If multiple resolvers are installed,
-    // the most recently-added resolver returning a string for a given keystroke
-    // takes precedence.
-    //
-    // * `resolver` A {Function} that returns a keystroke {String} and is called
-    //    with an object containing the following keys:
-    //    * `keystroke` The currently resolved keystroke string. If your function
-    //      returns a falsy value, this is how the editor will resolve your keystroke.
-    //    * `event` The raw DOM 3 `KeyboardEvent` being resolved. See the DOM API
-    //      documentation for more details.
-    //    * `layoutName` The OS-specific name of the current keyboard layout.
-    //    * `keymap` An object mapping DOM 3 `KeyboardEvent.code` values to objects
-    //      with the typed character for that key in each modifier state, based on
-    //      the current operating system layout.
-    //
-    // Returns a {Disposable} that removes the added resolver.
+    /**
+     * Customize translation of raw keyboard events to keystroke strings.
+     * This API is useful for working around Chrome bugs or changing how the editor
+     * resolves certain key combinations. If multiple resolvers are installed,
+     * the most recently-added resolver returning a string for a given keystroke
+     * takes precedence.
+     *
+     * @param resolver - A `Function` that returns a keystroke `String` and is called with an object containing the following keys:
+     * @param {String} resolver.keystroke - The currently resolved keystroke string. A falsy resolver result keeps this value.
+     * @param resolver.event - The raw DOM 3 `KeyboardEvent` being resolved. See the DOM API documentation for more details.
+     * @param resolver.layoutName - The OS-specific name of the current keyboard layout.
+     * @param resolver.keymap - An object mapping DOM 3 `KeyboardEvent.code` values to objects with the typed character for that key in each modifier state, based on the current operating system layout.
+     * @returns {Disposable} A disposable that removes the resolver.
+     * @public
+     * @api-status Public
+     */
     addKeystrokeResolver(resolver) {
       this.customKeystrokeResolvers.push(resolver);
       return new Disposable(() => {
@@ -872,17 +918,21 @@ module.exports = KeymapManager = (function () {
       });
     }
 
-    // Public: Get the number of milliseconds allowed before pending states caused
-    // by partial matches of multi-keystroke bindings are terminated.
-    //
-    // Returns a {Number}
+    /**
+     * Get the number of milliseconds allowed before pending states caused
+     * by partial matches of multi-keystroke bindings are terminated.
+     *
+     * @returns {Number}
+     * @public
+     * @api-status Public
+     */
     getPartialMatchTimeout() {
       return this.partialMatchTimeout;
     }
 
-    /*
-    Section: Private
-    */
+    /**
+     * @category Private
+     */
 
     simulateTextInput(keydownEvent) {
       let character;
@@ -923,7 +973,7 @@ module.exports = KeymapManager = (function () {
     }
 
     // Determine which of the given bindings have selectors matching the target or
-    // one of its ancestors. This is used by {::handleKeyboardEvent} to determine
+    // one of its ancestors. This is used by {@link #handleKeyboardEvent} to determine
     // if there are any partial matches for the keyboard event.
     findPartialMatches(partialMatchCandidates, target) {
       const partialMatches = [];
@@ -954,7 +1004,7 @@ module.exports = KeymapManager = (function () {
 
     // Find the matching bindings among the given candidates for the given target,
     // ordered by specificity. Does not traverse up the target's ancestors. This is
-    // used by {::handleKeyboardEvent} to find a matching binding when there are no
+    // used by {@link #handleKeyboardEvent} to find a matching binding when there are no
     // partially-matching bindings.
     findExactMatches(exactMatchCandidates, target) {
       return exactMatchCandidates
@@ -987,7 +1037,7 @@ module.exports = KeymapManager = (function () {
       return (this.pendingPartialMatches = null);
     }
 
-    // This is called by {::handleKeyboardEvent} when no matching bindings are
+    // This is called by {@link #handleKeyboardEvent} when no matching bindings are
     // found for the currently queued keystrokes or by the pending state timeout.
     // It disables the longest of the pending partially matching bindings, then
     // replays the queued keyboard events to allow any bindings with shorter

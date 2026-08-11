@@ -587,14 +587,22 @@ ipcMain.handle("lumine:test", async (event, action, value) => {
   }
 });
 
-// Private: The application's singleton class.
-//
-// It's the entry point into the Lumine application and maintains the global state
-// of the application. It runs in the main process, so it is not part of the API
-// a package can reach.
-//
+/**
+ * The application's singleton class.
+ *
+ * It's the entry point into the Lumine application and maintains the global state
+ * of the application. It runs in the main process, so it is not part of the API
+ * a package can reach.
+ *
+ * @private
+ */
 module.exports = class LumineApplication extends EventEmitter {
-  // Public: The entry point into the Lumine application.
+  /**
+   * The entry point into the Lumine application.
+   *
+   * @public
+   * @api-status Public
+   */
   static open(options) {
     StartupTime.addMarker("main-process:lumine-application:open");
 
@@ -845,12 +853,22 @@ module.exports = class LumineApplication extends EventEmitter {
     }
   }
 
-  // Public: Create a new {LumineWindow} bound to this application.
+  /**
+   * Create a new `LumineWindow` bound to this application.
+   *
+   * @public
+   * @api-status Public
+   */
   createWindow(settings) {
     return new LumineWindow(this, this.fileRecoveryService, settings);
   }
 
-  // Public: Removes the {LumineWindow} from the global window list.
+  /**
+   * Removes the `LumineWindow` from the global window list.
+   *
+   * @public
+   * @api-status Public
+   */
   removeWindow(window) {
     this.unregisterLumineWindow(window);
     this.windowStack.removeWindow(window);
@@ -861,7 +879,12 @@ module.exports = class LumineApplication extends EventEmitter {
     if (!window.isSpec) this.saveCurrentWindowOptions(true);
   }
 
-  // Public: Adds the {LumineWindow} to the global window list.
+  /**
+   * Adds the `LumineWindow` to the global window list.
+   *
+   * @public
+   * @api-status Public
+   */
   addWindow(window) {
     this.registerLumineWindow(window);
     this.windowStack.addWindow(window);
@@ -1364,12 +1387,17 @@ module.exports = class LumineApplication extends EventEmitter {
     }
   }
 
-  // Public: Executes the given command.
-  //
-  // If it isn't handled globally, delegate to the currently focused window.
-  //
-  // command - The string representing the command.
-  // args - The optional arguments to pass along.
+  /**
+   * Executes the given command.
+   *
+   * If it isn't handled globally, delegate to the currently focused window.
+   *
+   * command - The string representing the command.
+   * args - The optional arguments to pass along.
+   *
+   * @public
+   * @api-status Public
+   */
   sendCommand(command, ...args) {
     if (!this.emit(command, ...args)) {
       const focusedWindow = this.focusedWindow();
@@ -1381,11 +1409,16 @@ module.exports = class LumineApplication extends EventEmitter {
     }
   }
 
-  // Public: Executes the given command on the given window.
-  //
-  // command - The string representing the command.
-  // lumineWindow - The {LumineWindow} to send the command to.
-  // args - The optional arguments to pass along.
+  /**
+   * Executes the given command on the given window.
+   *
+   * command - The string representing the command.
+   * lumineWindow - The `LumineWindow` to send the command to.
+   * args - The optional arguments to pass along.
+   *
+   * @public
+   * @api-status Public
+   */
   sendCommandToWindow(command, lumineWindow, ...args) {
     if (!this.emit(command, ...args)) {
       if (lumineWindow) {
@@ -1426,13 +1459,18 @@ module.exports = class LumineApplication extends EventEmitter {
     return true;
   }
 
-  // Public: Open the given path in the focused window when the event is
-  // triggered.
-  //
-  // A new window will be created if there is no currently focused window.
-  //
-  // eventName - The event to listen for.
-  // pathToOpen - The path to open when the event is triggered.
+  /**
+   * Open the given path in the focused window when the event is
+   * triggered.
+   *
+   * A new window will be created if there is no currently focused window.
+   *
+   * eventName - The event to listen for.
+   * pathToOpen - The path to open when the event is triggered.
+   *
+   * @public
+   * @api-status Public
+   */
   openPathOnEvent(eventName, pathToOpen) {
     this.on(eventName, () => {
       const window = this.focusedWindow();
@@ -1444,7 +1482,7 @@ module.exports = class LumineApplication extends EventEmitter {
     });
   }
 
-  // Returns the {LumineWindow} for the given locations.
+  // Returns the `LumineWindow` for the given locations.
   windowForLocations(locationsToOpen, devMode, safeMode) {
     return this.getLastFocusedWindow(
       (window) =>
@@ -1455,7 +1493,7 @@ module.exports = class LumineApplication extends EventEmitter {
     );
   }
 
-  // Returns the {LumineWindow} for the given ipcMain event.
+  // Returns the `LumineWindow` for the given ipcMain event.
   lumineWindowForEvent({ sender }) {
     return this.lumineWindowForSender(sender);
   }
@@ -1479,7 +1517,11 @@ module.exports = class LumineApplication extends EventEmitter {
     );
   }
 
-  // Public: Returns the currently focused {LumineWindow} or undefined if none.
+  /**
+   * @returns {LumineWindow|undefined} currently focused `LumineWindow` or undefined if none.
+   * @public
+   * @api-status Public
+   */
   focusedWindow() {
     return this.getAllWindows().find((window) => window.isFocused());
   }
@@ -1573,17 +1615,22 @@ module.exports = class LumineApplication extends EventEmitter {
     }
   }
 
-  // Public: Opens a single path, in an existing window if possible.
-  //
-  // options -
-  //   :pathToOpen - The file path to open
-  //   :pidToKillWhenClosed - The integer of the pid to kill
-  //   :newWindow - Boolean of whether this should be opened in a new window.
-  //   :devMode - Boolean to control the opened window's dev mode.
-  //   :safeMode - Boolean to control the opened window's safe mode.
-  //   :profileStartup - Boolean to control creating a profile of the startup time.
-  //   :window - {LumineWindow} to open file paths in.
-  //   :addToLastWindow - Boolean of whether this should be opened in last focused window.
+  /**
+   * Opens a single path, in an existing window if possible.
+   *
+   * options -
+   *   :pathToOpen - The file path to open
+   *   :pidToKillWhenClosed - The integer of the pid to kill
+   *   :newWindow - Boolean of whether this should be opened in a new window.
+   *   :devMode - Boolean to control the opened window's dev mode.
+   *   :safeMode - Boolean to control the opened window's safe mode.
+   *   :profileStartup - Boolean to control creating a profile of the startup time.
+   *   :window - `LumineWindow` to open file paths in.
+   *   :addToLastWindow - Boolean of whether this should be opened in last focused window.
+   *
+   * @public
+   * @api-status Public
+   */
   openPath({
     pathToOpen,
     pidToKillWhenClosed,
@@ -1610,18 +1657,23 @@ module.exports = class LumineApplication extends EventEmitter {
     });
   }
 
-  // Public: Opens multiple paths, in existing windows if possible.
-  //
-  // options -
-  //   :pathsToOpen - The array of file paths to open
-  //   :foldersToOpen - An array of additional paths to open that must be existing directories
-  //   :pidToKillWhenClosed - The integer of the pid to kill
-  //   :newWindow - Boolean of whether this should be opened in a new window.
-  //   :devMode - Boolean to control the opened window's dev mode.
-  //   :safeMode - Boolean to control the opened window's safe mode.
-  //   :windowDimensions - Object with height and width keys.
-  //   :window - {LumineWindow} to open file paths in.
-  //   :addToLastWindow - Boolean of whether this should be opened in last focused window.
+  /**
+   * Opens multiple paths, in existing windows if possible.
+   *
+   * options -
+   *   :pathsToOpen - The array of file paths to open
+   *   :foldersToOpen - An array of additional paths to open that must be existing directories
+   *   :pidToKillWhenClosed - The integer of the pid to kill
+   *   :newWindow - Boolean of whether this should be opened in a new window.
+   *   :devMode - Boolean to control the opened window's dev mode.
+   *   :safeMode - Boolean to control the opened window's safe mode.
+   *   :windowDimensions - Object with height and width keys.
+   *   :window - `LumineWindow` to open file paths in.
+   *   :addToLastWindow - Boolean of whether this should be opened in last focused window.
+   *
+   * @public
+   * @api-status Public
+   */
   async openPaths({
     pathsToOpen,
     foldersToOpen,
@@ -2015,7 +2067,7 @@ module.exports = class LumineApplication extends EventEmitter {
     return this.packages;
   }
 
-  // Opens up a new {LumineWindow} to run specs within.
+  // Opens up a new `LumineWindow` to run specs within.
   //
   // options -
   //   :headless - A Boolean that, if true, will close the window upon
@@ -2233,7 +2285,7 @@ module.exports = class LumineApplication extends EventEmitter {
 
   // Opens a native dialog to prompt the user for a path.
   //
-  // Once paths are selected, they're opened in a new or existing {LumineWindow}s.
+  // Once paths are selected, they're opened in a new or existing `LumineWindows`.
   //
   // options -
   //   :type - A String which specifies the type of the dialog, could be 'file',
@@ -2242,7 +2294,7 @@ module.exports = class LumineApplication extends EventEmitter {
   //              should be in dev mode or not.
   //   :safeMode - A Boolean which controls whether any newly opened windows
   //               should be in safe mode or not.
-  //   :window - An {LumineWindow} to use for opening selected file paths as long as
+  //   :window - An `LumineWindow` to use for opening selected file paths as long as
   //             all are files.
   //   :path - An optional String which controls the default path to which the
   //           file dialog opens.

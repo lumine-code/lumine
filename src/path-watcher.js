@@ -6,7 +6,11 @@ const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event
 const { NativeWatcherRegistry } = require("./native-watcher-registry");
 const WatcherTask = require("./watcher-task");
 
-// Private: Possible states of a {NativeWatcher}.
+/**
+ * Possible states of a `NativeWatcher`.
+ *
+ * @private
+ */
 const WATCHER_STATE = {
   STOPPED: Symbol("stopped"),
   STARTING: Symbol("starting"),
@@ -14,7 +18,11 @@ const WATCHER_STATE = {
   STOPPING: Symbol("stopping"),
 };
 
-// Private: Error code marking an unexpected exit of the file-watcher worker.
+/**
+ * Error code marking an unexpected exit of the file-watcher worker.
+ *
+ * @private
+ */
 const WORKER_EXIT_ERROR_CODE = "ERR_WATCHER_WORKER_EXITED";
 
 function workerExitError(cause) {
@@ -26,12 +34,20 @@ function workerExitError(cause) {
   return error;
 }
 
-// Private: Interface with and normalize events from a filesystem watcher
-// implementation.
+/**
+ * Interface with and normalize events from a filesystem watcher
+ * implementation.
+ *
+ * @private
+ */
 class NativeWatcher {
-  // Private: Initialize a native watcher on a path.
-  //
-  // Events will not be produced until {start()} is called.
+  /**
+   * Initialize a native watcher on a path.
+   *
+   * Events will not be produced until `start()` is called.
+   *
+   * @private
+   */
   constructor(normalizedPath) {
     this.normalizedPath = normalizedPath;
     this.emitter = new Emitter();
@@ -43,11 +59,15 @@ class NativeWatcher {
     this.onError = this.onError.bind(this);
   }
 
-  // Private: Begin watching for filesystem events.
-  //
-  // Has no effect if the watcher has already been started. Returns a promise
-  // resolving when the watcher is running; repeated calls return the promise
-  // of the in-flight (or completed) start.
+  /**
+   * Begin watching for filesystem events.
+   *
+   * Has no effect if the watcher has already been started. Returns a promise
+   * resolving when the watcher is running; repeated calls return the promise
+   * of the in-flight (or completed) start.
+   *
+   * @private
+   */
   start() {
     if (this.state !== WATCHER_STATE.STOPPED) {
       return this.startPromise ?? Promise.resolve();
@@ -84,23 +104,32 @@ class NativeWatcher {
     return Promise.reject(new Error("doStart() not overridden"));
   }
 
-  // Private: Return true if the underlying watcher is actively listening for filesystem events.
+  /**
+   * @returns {Boolean} true if the underlying watcher is actively listening for filesystem events.
+   * @private
+   */
   isRunning() {
     return this.state === WATCHER_STATE.RUNNING;
   }
 
-  // Private: Register a callback to be invoked when the filesystem watcher has been initialized.
-  //
-  // Returns: A {Disposable} to revoke the subscription.
+  /**
+   * Register a callback to be invoked when the filesystem watcher has been initialized.
+   *
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @private
+   */
   onDidStart(callback) {
     return this.emitter.on("did-start", callback);
   }
 
-  // Private: Register a callback to be invoked with normalized filesystem events as they arrive. Starts the watcher
-  // automatically if it is not already running. The watcher will be stopped automatically when all subscribers
-  // dispose their subscriptions.
-  //
-  // Returns: A {Disposable} to revoke the subscription.
+  /**
+   * Register a callback to be invoked with normalized filesystem events as they arrive. Starts the watcher
+   * automatically if it is not already running. The watcher will be stopped automatically when all subscribers
+   * dispose their subscriptions.
+   *
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @private
+   */
   onDidChange(callback) {
     // Startup failures are delivered through `did-error`; consume this
     // convenience call's promise so the same failure is not also reported as
@@ -115,52 +144,71 @@ class NativeWatcher {
         // Keep the teardown's completion observable: `stop()` on a watcher
         // that is still arming waits out the start first, so this promise
         // settles only once the backend has acknowledged the release. Exposed
-        // through {PathWatcher::getStopPromise}.
+        // through {@link PathWatcher#getStopPromise}.
         this.stopPromise = this.stop().catch((error) => this.onError(error));
       }
     });
   }
 
-  // Private: Register a callback to be invoked when a {Watcher} should attach to a different {NativeWatcher}.
-  //
-  // Returns: A {Disposable} to revoke the subscription.
+  /**
+   * Register a callback to be invoked when a `Watcher` should attach to a different `NativeWatcher`.
+   *
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @private
+   */
   onShouldDetach(callback) {
     return this.emitter.on("should-detach", callback);
   }
 
-  // Private: Register a callback to be invoked when a {NativeWatcher} is about to be stopped.
-  //
-  // Returns: A {Disposable} to revoke the subscription.
+  /**
+   * Register a callback to be invoked when a `NativeWatcher` is about to be stopped.
+   *
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @private
+   */
   onWillStop(callback) {
     return this.emitter.on("will-stop", callback);
   }
 
-  // Private: Register a callback to be invoked when the filesystem watcher has been stopped.
-  //
-  // Returns: A {Disposable} to revoke the subscription.
+  /**
+   * Register a callback to be invoked when the filesystem watcher has been stopped.
+   *
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @private
+   */
   onDidStop(callback) {
     return this.emitter.on("did-stop", callback);
   }
 
-  // Private: Register a callback to be invoked with any errors reported from the watcher.
-  //
-  // Returns: A {Disposable} to revoke the subscription.
+  /**
+   * Register a callback to be invoked with any errors reported from the watcher.
+   *
+   * @returns {Disposable} A subscription that can be disposed to unsubscribe.
+   * @private
+   */
   onDidError(callback) {
     return this.emitter.on("did-error", callback);
   }
 
-  // Private: Broadcast an `onShouldDetach` event to prompt any {Watcher} instances bound here to attach to a new
-  // {NativeWatcher} instead.
-  //
-  // * `replacement` the new {NativeWatcher} instance that a live {Watcher} instance should reattach to instead.
-  // * `watchedPath` absolute path watched by the new {NativeWatcher}.
+  /**
+   * Broadcast an `onShouldDetach` event to prompt any `Watcher` instances bound here to attach to a new
+   * `NativeWatcher` instead.
+   *
+   * @param replacement - the new `NativeWatcher` instance that a live `Watcher` instance should reattach to instead.
+   * @param watchedPath - absolute path watched by the new `NativeWatcher`.
+   * @private
+   */
   reattachTo(replacement, watchedPath, options) {
     this.emitter.emit("should-detach", { replacement, watchedPath, options });
   }
 
-  // Private: Stop the native watcher and release any operating system resources associated with it.
-  //
-  // Has no effect if the watcher is not running.
+  /**
+   * Stop the native watcher and release any operating system resources associated with it.
+   *
+   * Has no effect if the watcher is not running.
+   *
+   * @private
+   */
   async stop() {
     if (this.state === WATCHER_STATE.STARTING) {
       try {
@@ -187,30 +235,44 @@ class NativeWatcher {
     return Promise.resolve();
   }
 
-  // Private: Detach any event subscribers.
+  /**
+   * Detach any event subscribers.
+   *
+   * @private
+   */
   dispose() {
     this.emitter.dispose();
   }
 
-  // Private: Callback function invoked by the native watcher when a debounced
-  // group of filesystem events arrive. Normalize and re-broadcast them to any
-  // subscribers.
-  //
-  // * `events` An Array of filesystem events.
+  /**
+   * Callback function invoked by the native watcher when a debounced
+   * group of filesystem events arrive. Normalize and re-broadcast them to any
+   * subscribers.
+   *
+   * @param events - An Array of filesystem events.
+   * @private
+   */
   onEvents(events) {
     this.emitter.emit("did-change", events);
   }
 
-  // Private: Callback function invoked by the native watcher when an error
-  // occurs.
-  //
-  // * `err` The native filesystem error.
+  /**
+   * Callback function invoked by the native watcher when an error
+   * occurs.
+   *
+   * @param err - The native filesystem error.
+   * @private
+   */
   onError(err) {
     this.emitter.emit("did-error", err);
   }
 }
 
-// Private: A {NativeWatcher} that delegates file-watching to a worker process.
+/**
+ * A `NativeWatcher` that delegates file-watching to a worker process.
+ *
+ * @private
+ */
 class WorkerProcessWatcher extends NativeWatcher {
   // The path to the worker script.
   static taskPath = undefined;
@@ -529,65 +591,74 @@ class WorkerProcessWatcher extends NativeWatcher {
   }
 }
 
-// Private: A file-watcher implementation that uses `@lumine-code/watcher`.
-//
-// We briefly experimented with importing it directly into the renderer
-// process, but it caused crashes on window reload for reasons that haven't
-// been fully tracked down. That's fine, though; we can run it in its own
-// long-running task, much like VS Code does.
+/**
+ * A file-watcher implementation that uses `@lumine-code/watcher`.
+ *
+ * We briefly experimented with importing it directly into the renderer
+ * process, but it caused crashes on window reload for reasons that haven't
+ * been fully tracked down. That's fine, though; we can run it in its own
+ * long-running task, much like VS Code does.
+ *
+ * @private
+ */
 class ParcelWatcher extends WorkerProcessWatcher {
   static taskPath = require.resolve("./parcel-watcher-worker.js");
 }
 
-// Extended: Manage a subscription to filesystem events that occur beneath a
-// root directory. Construct these by calling `watchPath`. To watch for events
-// within active project directories, use {Project::onDidChangeFiles} instead.
-//
-// Multiple PathWatchers may be backed by a single native watcher to conserve
-// operating-system resources.
-//
-// Call {::dispose} to stop receiving events and, if possible, release
-// underlying resources. A PathWatcher may be added to a {CompositeDisposable}
-// to manage its lifetime along with other {Disposable} resources like event
-// subscriptions.
-//
-// ```js
-// const {watchPath} = require('lumine')
-//
-// const disposable = await watchPath('/var/log', {}, events => {
-//   console.log(`Received batch of ${events.length} events.`)
-//   for (const event of events) {
-//     // "created", "modified", "deleted", "renamed"
-//     console.log(`Event action: ${event.action}`)
-//
-//     // absolute path to the filesystem entry that was touched
-//     console.log(`Event path: ${event.path}`)
-//
-//     if (event.action === 'renamed') {
-//       console.log(`.. renamed from: ${event.oldPath}`)
-//     }
-//   }
-// })
-//
-//  // Immediately stop receiving filesystem events. If this is the last
-//  // watcher, asynchronously release any OS resources required to
-//  // subscribe to these events.
-//  disposable.dispose()
-// ```
-//
-// `watchPath` accepts the following arguments:
-//
-// * `rootPath` {String} specifies the absolute path to the root of the
-//   filesystem content to watch.
-// * `options` Control the watcher's behavior. Currently a placeholder.
-// * `eventCallback` {Function} to be called each time a batch of filesystem
-//   events is observed. Each event object has the keys:
-//   * `action`, a {String} describing the filesystem action that occurred, one
-//     of `"created"`, `"modified"`, `"deleted"`, or `"renamed"`;
-//   * `path`, a {String} containing the absolute path to the filesystem entry
-//     that was acted upon;
-//   * `oldPath` (for `renamed` events only), a {String} containing the
-//     filesystem entry's former absolute path.
+/**
+ * Manage a subscription to filesystem events that occur beneath a
+ * root directory. Construct these by calling `watchPath`. To watch for events
+ * within active project directories, use {@link Project#onDidChangeFiles} instead.
+ *
+ * Multiple PathWatchers may be backed by a single native watcher to conserve
+ * operating-system resources.
+ *
+ * Call {@link #dispose} to stop receiving events and, if possible, release
+ * underlying resources. A PathWatcher may be added to a `CompositeDisposable`
+ * to manage its lifetime along with other `Disposable` resources like event
+ * subscriptions.
+ *
+ * ```js
+ * const {watchPath} = require('lumine')
+ *
+ * const disposable = await watchPath('/var/log', {}, events => {
+ *   console.log(`Received batch of ${events.length} events.`)
+ *   for (const event of events) {
+ *     // "created", "modified", "deleted", "renamed"
+ *     console.log(`Event action: ${event.action}`)
+ *
+ *     // absolute path to the filesystem entry that was touched
+ *     console.log(`Event path: ${event.path}`)
+ *
+ *     if (event.action === 'renamed') {
+ *       console.log(`.. renamed from: ${event.oldPath}`)
+ *     }
+ *   }
+ * })
+ *
+ *  // Immediately stop receiving filesystem events. If this is the last
+ *  // watcher, asynchronously release any OS resources required to
+ *  // subscribe to these events.
+ *  disposable.dispose()
+ * ```
+ *
+ * `watchPath` accepts the following arguments:
+ *
+ * * `rootPath` `String` specifies the absolute path to the root of the
+ *   filesystem content to watch.
+ * * `options` Control the watcher's behavior. Currently a placeholder.
+ * * `eventCallback` `Function` to be called each time a batch of filesystem
+ *   events is observed. Each event object has the keys:
+ *   * `action`, a `String` describing the filesystem action that occurred, one
+ *     of `"created"`, `"modified"`, `"deleted"`, or `"renamed"`;
+ *   * `path`, a `String` containing the absolute path to the filesystem entry
+ *     that was acted upon;
+ *   * `oldPath` (for `renamed` events only), a `String` containing the
+ *     filesystem entry's former absolute path.
+ *
+ * @public
+ * @api-status Extended
+ */
 class PathWatcher {
   static DEFAULT_OPTIONS = {
     // Whether to normalize filesystem paths to take symlinks into account. The
@@ -597,14 +668,14 @@ class PathWatcher {
     realPaths: true,
   };
 
-  // Private: Instantiate a new PathWatcher. Call {watchPath} instead.
-  //
-  // * `nativeWatcherRegistry` {NativeWatcherRegistry} used to find and
-  //   consolidate redundant watchers.
-  // * `watchedPath` {String} containing the absolute path to the root of the
-  //   watched filesystem tree.
-  // * `options` See {watchPath} for options.
-  //
+  /**
+   * Instantiate a new PathWatcher. Call `watchPath` instead.
+   *
+   * @param {NativeWatcherRegistry} nativeWatcherRegistry - used to find and consolidate redundant watchers.
+   * @param {String} watchedPath - containing the absolute path to the root of the watched filesystem tree.
+   * @param options - See `watchPath` for options.
+   * @private
+   */
   constructor(nativeWatcherRegistry, watchedPath, options) {
     this.watchedPath = watchedPath;
     this.nativeWatcherRegistry = nativeWatcherRegistry;
@@ -648,55 +719,60 @@ class PathWatcher {
     this.subs = new CompositeDisposable();
   }
 
-  // Private: Return a {Promise} that will resolve with the normalized root
-  // path.
+  /**
+   * @returns {Promise} that will resolve with the normalized root path.
+   * @private
+   */
   getNormalizedPathPromise() {
     return this.normalizedPathPromise;
   }
 
-  // Private: Return a {Promise} that will resolve the first time that this
-  // watcher is attached to a native watcher.
+  /**
+   * @returns {Promise} that will resolve the first time that this watcher is attached to a native watcher.
+   * @private
+   */
   getAttachedPromise() {
     return this.attachedPromise;
   }
 
-  // Extended: Return a {Promise} that will resolve when the underlying native
-  // watcher is ready to begin sending events. When testing filesystem
-  // watchers, it's important to await this promise before making filesystem
-  // changes that you intend to assert about because there will be a delay
-  // between the instantiation of the watcher and the activation of the
-  // underlying OS resources that feed its events.
-  //
-  // PathWatchers acquired through `watchPath` are already started.
-  //
-  // ```js
-  // const {watchPath} = require('lumine')
-  // const ROOT = path.join(__dirname, 'fixtures')
-  // const FILE = path.join(ROOT, 'filename.txt')
-  //
-  // describe('something', function () {
-  //   it("doesn't miss events", async function () {
-  //     const watcher = watchPath(ROOT, {}, events => {})
-  //     await watcher.getStartPromise()
-  //     fs.writeFile(FILE, 'contents\n', err => {
-  //       // The watcher is listening and the event should be
-  //       // received asynchronously
-  //     }
-  //   })
-  // })
-  // ```
+  /**
+   *
+   * PathWatchers acquired through `watchPath` are already started.
+   *
+   * ```js
+   * const {watchPath} = require('lumine')
+   * const ROOT = path.join(__dirname, 'fixtures')
+   * const FILE = path.join(ROOT, 'filename.txt')
+   *
+   * describe('something', function () {
+   *   it("doesn't miss events", async function () {
+   *     const watcher = watchPath(ROOT, {}, events => {})
+   *     await watcher.getStartPromise()
+   *     fs.writeFile(FILE, 'contents\n', err => {
+   *       // The watcher is listening and the event should be
+   *       // received asynchronously
+   *     }
+   *   })
+   * })
+   * ```
+   *
+   * @returns {Promise} that will resolve when the underlying native watcher is ready to begin sending events. When testing filesystem watchers, it's important to await this promise before making filesystem changes that you intend to assert about because there will be a delay between the instantiation of the watcher and the activation of the underlying OS resources that feed its events.
+   * @public
+   * @api-status Extended
+   */
   getStartPromise() {
     return this.startPromise;
   }
 
-  // Private: Attach another {Function} to be called with each batch of
-  // filesystem events. See {watchPath} for the spec of the callback's
-  // argument.
-  //
-  // * `callback` {Function} to be called with each batch of filesystem events.
-  //
-  // Returns a {Disposable} that will stop the underlying watcher when all
-  // callbacks mapped to it have been disposed.
+  /**
+   * Attach another `Function` to be called with each batch of
+   * filesystem events. See `watchPath` for the spec of the callback's
+   * argument.
+   *
+   * @param {Function} callback - to be called with each batch of filesystem events.
+   * @returns {Disposable} that will stop the underlying watcher when all callbacks mapped to it have been disposed.
+   * @private
+   */
   onDidChange(callback) {
     if (this.native) {
       const sub = this.native.onDidChange((events) => this.onNativeEvents(events, callback));
@@ -715,19 +791,26 @@ class PathWatcher {
     });
   }
 
-  // Extended: Invoke a {Function} when any errors related to this watcher are
-  // reported.
-  //
-  // * `callback` {Function} to be called when an error occurs.
-  //   * `err` An {Error} describing the failure condition.
-  //
-  // Returns a {Disposable}.
+  /**
+   * Invoke a `Function` when any errors related to this watcher are
+   * reported.
+   *
+   * @param {Function} callback - to be called when an error occurs.
+   * @param callback.err - An `Error` describing the failure condition.
+   * @returns {Disposable}
+   * @public
+   * @api-status Extended
+   */
   onDidError(callback) {
     return this.emitter.on("did-error", callback);
   }
 
-  // Private: Wire this watcher to an operating system-level native watcher
-  // implementation.
+  /**
+   * Wire this watcher to an operating system-level native watcher
+   * implementation.
+   *
+   * @private
+   */
   attachToNative(native) {
     this.subs.dispose();
     this.native = native;
@@ -801,11 +884,15 @@ class PathWatcher {
     this.resolveAttachedPromise();
   }
 
-  // Private: Given a "real" filesystem path, adjusts it (if necesssary) to
-  // match the path that the user subscribed to.
-  //
-  // This saves the user from having to make their own calls to `fs.realpath`
-  // on their end just to do path equality checks.
+  /**
+   * Given a "real" filesystem path, adjusts it (if necesssary) to
+   * match the path that the user subscribed to.
+   *
+   * This saves the user from having to make their own calls to `fs.realpath`
+   * on their end just to do path equality checks.
+   *
+   * @private
+   */
   denormalizePath(filePath) {
     if (this.options.realPaths) return filePath;
     if (this.watchedPath === this.normalizedPath) return filePath;
@@ -814,11 +901,15 @@ class PathWatcher {
     return path.join(this.watchedPath, rest);
   }
 
-  // Private: Given an event that happened at a "real" filesystem path, adjusts
-  // it (if necessary) to match the path that the user subscribed to.
-  //
-  // This saves the user from having to make their own calls to `fs.realpath`
-  // on their end just to do path equality checks.
+  /**
+   * Given an event that happened at a "real" filesystem path, adjusts
+   * it (if necessary) to match the path that the user subscribed to.
+   *
+   * This saves the user from having to make their own calls to `fs.realpath`
+   * on their end just to do path equality checks.
+   *
+   * @private
+   */
   denormalizeEvent(event) {
     if (this.options.realPaths) return event;
     if (this.watchedPath === this.normalizedPath) return event;
@@ -830,10 +921,14 @@ class PathWatcher {
     return result;
   }
 
-  // Private: Invoked when the attached native watcher creates a batch of
-  // native filesystem events. The native watcher's events may include events
-  // for paths above this watcher's root path, so filter them to only include
-  // the relevant ones, then re-broadcast them to our subscribers.
+  /**
+   * Invoked when the attached native watcher creates a batch of
+   * native filesystem events. The native watcher's events may include events
+   * for paths above this watcher's root path, so filter them to only include
+   * the relevant ones, then re-broadcast them to our subscribers.
+   *
+   * @private
+   */
   onNativeEvents(events, callback) {
     const isWatchedPath = (eventPath) => eventPath.startsWith(this.normalizedPath);
 
@@ -881,9 +976,14 @@ class PathWatcher {
     }
   }
 
-  // Extended: Unsubscribe all subscribers from filesystem events. Native
-  // resources will be released asynchronously, but this watcher will stop
-  // broadcasting events immediately.
+  /**
+   * Unsubscribe all subscribers from filesystem events. Native
+   * resources will be released asynchronously, but this watcher will stop
+   * broadcasting events immediately.
+   *
+   * @public
+   * @api-status Extended
+   */
   dispose() {
     this.disposing = true;
     // Snapshot the native watcher first: if disposing the last change
@@ -899,24 +999,28 @@ class PathWatcher {
     this.stopPromise = native?.stopPromise ?? Promise.resolve();
   }
 
-  // Private: Return a {Promise} resolving once the native resources this
-  // watcher held have been confirmed released by the backend — immediately
-  // when `dispose()` has not run, or when the native watcher is shared and
-  // stays in use. On macOS, releasing an `fs.watch` handle rebuilds the
-  // process-wide FSEventStream "since now", discarding any event still in its
-  // latency buffer; work that must observe the next filesystem change on
-  // another watch serializes behind this promise (see
-  // `TextBuffer::subscribeToFile`).
+  /**
+   * @returns {Promise} resolving once the native resources this watcher held have been confirmed released by the backend — immediately when `dispose()` has not run, or when the native watcher is shared and stays in use. On macOS, releasing an `fs.watch` handle rebuilds the process-wide FSEventStream "since now", discarding any event still in its latency buffer; work that must observe the next filesystem change on another watch serializes behind this promise (see `TextBuffer::subscribeToFile`).
+   * @private
+   */
   getStopPromise() {
     return this.stopPromise ?? Promise.resolve();
   }
 }
 
-// Private: Globally tracked state used to de-duplicate related
-// [PathWatchers]{PathWatcher} backed by the `@lumine-code/watcher` worker.
+/**
+ * Globally tracked state used to de-duplicate related
+ * {@link PathWatcher PathWatchers} backed by the `@lumine-code/watcher` worker.
+ *
+ * @private
+ */
 class PathWatcherManager {
-  // Private: Access the currently active manager instance, creating one if
-  // necessary.
+  /**
+   * Access the currently active manager instance, creating one if
+   * necessary.
+   *
+   * @private
+   */
   static active() {
     if (!this.activeManager) {
       this.activeManager = new PathWatcherManager();
@@ -924,9 +1028,13 @@ class PathWatcherManager {
     return this.activeManager;
   }
 
-  // Private: Initialize global {PathWatcher} state. All watching is served by
-  // the `@lumine-code/watcher` worker: recursive trees via `@lumine-code/watcher` itself
-  // and single files / non-recursive directories via its Node fallback.
+  /**
+   * Initialize global {@link PathWatcher} state. All watching is served by
+   * the `@lumine-code/watcher` worker: recursive trees via `@lumine-code/watcher` itself
+   * and single files / non-recursive directories via its Node fallback.
+   *
+   * @private
+   */
   constructor() {
     this.live = new Map();
     const createNative = (normalizedPath) => {
@@ -949,8 +1057,12 @@ class PathWatcherManager {
     this.nonRecursiveRegistry = new NativeWatcherRegistry(createNative);
   }
 
-  // Private: Create a {PathWatcher} tied to this global state. See {watchPath}
-  // for detailed arguments.
+  /**
+   * Create a {@link PathWatcher} tied to this global state. See `watchPath`
+   * for detailed arguments.
+   *
+   * @private
+   */
   async createWatcher(rootPath, eventCallback, options) {
     const registry =
       options && options.recursive === false ? this.nonRecursiveRegistry : this.nativeRegistry;
@@ -965,94 +1077,98 @@ class PathWatcherManager {
     }
   }
 
-  // Private: Return a {String} depicting the currently active native watchers.
+  /**
+   * @returns {String} depicting the currently active native watchers.
+   * @private
+   */
   print() {
     return this.nativeRegistry.print();
   }
 
-  // Private: Stop all living watchers.
-  //
-  // Returns a {Promise} that resolves when all native watcher resources are
-  // disposed.
+  /**
+   * Stop all living watchers.
+   *
+   * @returns {Promise} that resolves when all native watcher resources are disposed.
+   * @private
+   */
   stopAllWatchers() {
     return Promise.all(Array.from(this.live, ([, w]) => w.stop()));
   }
 }
 
-// Extended: Invoke a callback with each filesystem event that occurs beneath a
-// specified path. If you only need to watch events within the project's root
-// paths, use {Project::onDidChangeFiles} instead.
-//
-// watchPath handles the efficient re-use of operating system resources across
-// living watchers. Watching the same path more than once, or the child of a
-// watched path, will re-use the existing native watcher.
-//
-// * `rootPath` {String} specifies the absolute path to the root of the
-//   filesystem content to watch.
-// * `options` Control the watcher's behavior:
-//   * `realPaths` {Boolean} Whether to report real paths on disk for
-//     filesystem events. Default is `true`; a value of `false` will instead
-//     return paths on disk that will always descend from the given path, even
-//     if the real path of the file is different due to symlinks.
-// * `eventCallback` {Function} or other callable to be called each time a
-//   batch of filesystem events is observed.
-//    * `events` {Array} of objects that describe the events that have occurred.
-//      * `action` {String} describing the filesystem action that occurred. One
-//        of `"created"`, `"modified"`, `"deleted"`, or `"renamed"`.
-//      * `path` {String} containing the absolute path to the filesystem entry
-//        that was acted upon.
-//      * `oldPath` For rename events, {String} containing the filesystem
-//        entry's former absolute path.
-//
-// Returns a {Promise} that will resolve to a {PathWatcher} once it has
-// started. Note that every {PathWatcher} is a {Disposable}, so they can be
-// managed by a {CompositeDisposable} if desired.
-//
-// ```js
-// const {watchPath} = require('lumine')
-//
-// const disposable = await watchPath('/var/log', {}, events => {
-//   console.log(`Received batch of ${events.length} events.`)
-//   for (const event of events) {
-//     // "created", "modified", "deleted", "renamed"
-//     console.log(`Event action: ${event.action}`)
-//     // absolute path to the filesystem entry that was touched
-//     console.log(`Event path: ${event.path}`)
-//     if (event.action === 'renamed') {
-//       console.log(`.. renamed from: ${event.oldPath}`)
-//     }
-//   }
-// })
-//
-//  // Immediately stop receiving filesystem events. If this is the last
-//  // watcher, asynchronously release any OS resources required to subscribe
-//  // to these events.
-//  disposable.dispose()
-// ```
-//
+/**
+ * Invoke a callback with each filesystem event that occurs beneath a
+ * specified path. If you only need to watch events within the project's root
+ * paths, use {@link Project#onDidChangeFiles} instead.
+ *
+ * watchPath handles the efficient re-use of operating system resources across
+ * living watchers. Watching the same path more than once, or the child of a
+ * watched path, will re-use the existing native watcher.
+ *
+ *
+ *
+ * ```js
+ * const {watchPath} = require('lumine')
+ *
+ * const disposable = await watchPath('/var/log', {}, events => {
+ *   console.log(`Received batch of ${events.length} events.`)
+ *   for (const event of events) {
+ *     // "created", "modified", "deleted", "renamed"
+ *     console.log(`Event action: ${event.action}`)
+ *     // absolute path to the filesystem entry that was touched
+ *     console.log(`Event path: ${event.path}`)
+ *     if (event.action === 'renamed') {
+ *       console.log(`.. renamed from: ${event.oldPath}`)
+ *     }
+ *   }
+ * })
+ *
+ *  // Immediately stop receiving filesystem events. If this is the last
+ *  // watcher, asynchronously release any OS resources required to subscribe
+ *  // to these events.
+ *  disposable.dispose()
+ * ```
+ *
+ * @param {String} rootPath - specifies the absolute path to the root of the filesystem content to watch.
+ * @param options - Control the watcher's behavior:
+ * @param {Boolean} options.realPaths - Whether to report real paths on disk for filesystem events. Default is `true`; `false` reports paths that descend from `rootPath` even when symlinks point elsewhere.
+ * @param {Function} eventCallback - or other callable to be called each time a batch of filesystem events is observed.
+ * @param {Array} eventCallback.events - of objects that describe the events that have occurred.
+ * @param {String} eventCallback.events.action - describing the filesystem action that occurred. One of `"created"`, `"modified"`, `"deleted"`, or `"renamed"`.
+ * @param {String} eventCallback.events.path - containing the absolute path to the filesystem entry that was acted upon.
+ * @param eventCallback.events.oldPath - For rename events, `String` containing the filesystem entry's former absolute path.
+ * @returns {Promise<PathWatcher>} A promise resolving to the started watcher. Every watcher is also a `Disposable`.
+ * @public
+ * @api-status Extended
+ */
 function watchPath(rootPath, options, eventCallback) {
   return PathWatcherManager.active().createWatcher(rootPath, eventCallback, options);
 }
 
-// Extended: Watch a single file for changes, deletion, and renaming. This is
-// the replacement for the old `File` watching API: it exposes just the change
-// notifications, backed by {watchPath}.
-//
-// Subscriptions register synchronously, but the underlying watcher is armed
-// asynchronously by the file-watcher worker. Tests that need to observe the
-// very first change should `await handle.getStartPromise()` before writing.
-//
-// * `filePath` {String} absolute path to the file to watch.
-//
-// Returns an {Object} with:
-// * `onDidChange(callback)` invoke `callback` when the file is created or its
-//   contents change. Returns a {Disposable}.
-// * `onDidDelete(callback)` invoke `callback` when the file is deleted (or
-//   renamed away from this path). Returns a {Disposable}.
-// * `onDidRename(callback)` invoke `callback` with the new path when the file
-//   is renamed onto a sibling path. Returns a {Disposable}.
-// * `getStartPromise()` a {Promise} that resolves once the watcher is armed.
-// * `dispose()` stop watching and release the subscription.
+/**
+ * Watch a single file for changes, deletion, and renaming. This is
+ * the replacement for the old `File` watching API: it exposes just the change
+ * notifications, backed by `watchPath`.
+ *
+ * Subscriptions register synchronously, but the underlying watcher is armed
+ * asynchronously by the file-watcher worker. Tests that need to observe the
+ * very first change should `await handle.getStartPromise()` before writing.
+ *
+ *
+ * * `onDidChange(callback)` invoke `callback` when the file is created or its
+ *   contents change. Returns a `Disposable`.
+ * * `onDidDelete(callback)` invoke `callback` when the file is deleted (or
+ *   renamed away from this path). Returns a `Disposable`.
+ * * `onDidRename(callback)` invoke `callback` with the new path when the file
+ *   is renamed onto a sibling path. Returns a `Disposable`.
+ * * `getStartPromise()` a `Promise` that resolves once the watcher is armed.
+ * * `dispose()` stop watching and release the subscription.
+ *
+ * @param {String} filePath - absolute path to the file to watch.
+ * @returns {Object} with:
+ * @public
+ * @api-status Extended
+ */
 function watchFile(filePath) {
   const emitter = new Emitter();
   // The path currently being watched. Updated when the file is renamed so the
@@ -1118,7 +1234,7 @@ function watchFile(filePath) {
   watcherPromise = attach(currentPath);
 
   return {
-    // The backing {Emitter}. Exposed (like the old `File`'s emitter) so callers
+    // The backing `Emitter`. Exposed (like the old `File`'s emitter) so callers
     // and tests can observe or synthesize `did-change`/`did-delete`/`did-rename`
     // notifications without depending on filesystem timing.
     emitter,
@@ -1153,25 +1269,34 @@ function watchFile(filePath) {
   };
 }
 
-// Private: Return a Promise that resolves when all {NativeWatcher} instances
-// associated with a FileSystemManager have stopped listening. This is useful
-// for `afterEach()` blocks in unit tests.
+/**
+ * @returns {Promise} Promise that resolves when all `NativeWatcher` instances associated with a FileSystemManager have stopped listening. This is useful for `afterEach()` blocks in unit tests.
+ * @private
+ */
 function stopAllWatchers() {
   return PathWatcherManager.active().stopAllWatchers();
 }
 
-// Private: Show the currently active native watchers in a formatted {String}.
+/**
+ * Show the currently active native watchers in a formatted `String`.
+ *
+ * @private
+ */
 watchPath.printWatchers = function printWatchers() {
   return PathWatcherManager.active().print();
 };
 
-// Private: Wait for watchers that are mid-transition to settle. Owners tear
-// watchers down asynchronously (`watcherPromise.then(w => w.dispose())`, e.g.
-// in {Project}), and a watcher that is still arming cannot be disposed until
-// its start completes. Awaiting the in-flight starts lets those queued
-// disposals run — a disposal begins the stop synchronously, which removes the
-// watcher from the registry — so afterwards only genuinely still-running
-// watchers remain visible. Used by the spec harness leak check.
+/**
+ * Wait for watchers that are mid-transition to settle. Owners tear
+ * watchers down asynchronously (`watcherPromise.then(w => w.dispose())`, e.g.
+ * in {@link Project}), and a watcher that is still arming cannot be disposed until
+ * its start completes. Awaiting the in-flight starts lets those queued
+ * disposals run — a disposal begins the stop synchronously, which removes the
+ * watcher from the registry — so afterwards only genuinely still-running
+ * watchers remain visible. Used by the spec harness leak check.
+ *
+ * @private
+ */
 watchPath.settlePendingTeardown = async function settlePendingTeardown() {
   const manager = PathWatcherManager.activeManager;
   if (!manager) return;
@@ -1186,12 +1311,20 @@ watchPath.settlePendingTeardown = async function settlePendingTeardown() {
   }
 };
 
-// Private: Retained for spec compatibility. Backend switching was removed when
-// `@lumine-code/watcher` became the only watcher, so there is nothing to wait for.
+/**
+ * Retained for spec compatibility. Backend switching was removed when
+ * `@lumine-code/watcher` became the only watcher, so there is nothing to wait for.
+ *
+ * @private
+ */
 watchPath.waitForTransition = async function waitForTransition() {};
 
-// Private: Stop all watchers and reset `PathWatcherManager` to its initial
-// state.
+/**
+ * Stop all watchers and reset `PathWatcherManager` to its initial
+ * state.
+ *
+ * @private
+ */
 watchPath.reset = function reset() {
   return PathWatcherManager.active()
     .stopAllWatchers()

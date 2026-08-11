@@ -1,7 +1,7 @@
 const fs = require("fs");
 const path = require("path");
 
-// Minimal file-backed data source for {TextBuffer}. It exposes only the slice
+// Minimal file-backed data source for {@link TextBuffer}. It exposes only the slice
 // of the old pathwatcher `File` surface that the buffer actually uses — path,
 // base name, encoding, existence, and streams — and deliberately does **no**
 // filesystem watching. Watching is owned by the buffer's host through

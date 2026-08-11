@@ -75,9 +75,9 @@ class TextMateLanguageMode {
 
   // Get the suggested indentation level for an existing line in the buffer.
   //
-  // * bufferRow - A {Number} indicating the buffer row
+  // * bufferRow - A `Number` indicating the buffer row
   //
-  // Returns a {Number}.
+  // Returns a `Number`.
   suggestedIndentForBufferRow(bufferRow, tabLength, options) {
     const line = this.buffer.lineForRow(bufferRow);
     const tokenizedLine = this.tokenizedLineForRow(bufferRow);
@@ -98,9 +98,9 @@ class TextMateLanguageMode {
   // Get the suggested indentation level for a given line of text, if it were inserted at the given
   // row in the buffer.
   //
-  // * bufferRow - A {Number} indicating the buffer row
+  // * bufferRow - A `Number` indicating the buffer row
   //
-  // Returns a {Number}.
+  // Returns a `Number`.
   suggestedIndentForLineAtBufferRow(bufferRow, line, tabLength) {
     const tokenizedLine = this.buildTokenizedLineForRowWithText(bufferRow, line);
     const iterator = tokenizedLine.getTokenIterator();
@@ -117,13 +117,13 @@ class TextMateLanguageMode {
   }
 
   // Get the suggested indentation level for a line in the buffer on which the user is currently
-  // typing. This may return a different result from {::suggestedIndentForBufferRow} in order
+  // typing. This may return a different result from {@link #suggestedIndentForBufferRow} in order
   // to avoid unexpected changes in indentation. It may also return undefined if no change should
   // be made.
   //
-  // * bufferRow - The row {Number}
+  // * bufferRow - The row `Number`
   //
-  // Returns a {Number}.
+  // Returns a `Number`.
   suggestedIndentForEditedBufferRow(bufferRow, tabLength) {
     const line = this.buffer.lineForRow(bufferRow);
     const currentIndentLevel = this.indentLevelForLine(line, tabLength);

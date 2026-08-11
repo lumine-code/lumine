@@ -82,9 +82,9 @@ module.exports = class GutterContainer {
     return this.emitter.on("did-remove-gutter", callback);
   }
 
-  /*
-  Section: Private Methods
-  */
+  /**
+   * @category Private Methods
+   */
 
   // Processes the destruction of the gutter. Throws an error if this gutter is
   // not within this gutterContainer.

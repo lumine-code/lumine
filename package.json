@@ -178,6 +178,7 @@
     "check:bundled-deps": "node script/check-bundled-deps.js",
     "check:menus": "node script/check-menus.js",
     "check:keymaps": "node script/check-keymaps.js",
+    "check:api-docs": "node script/check-api-docs.js",
     "drive": "node script/drive.js",
     "generate:branding": "electron --no-sandbox script/generate-branding.js",
     "check:branding": "electron --no-sandbox script/generate-branding.js --check",
@@ -186,9 +187,11 @@
     "test": "npm run test:editor && npm run test:main",
     "test:editor": "npm run test:only -- spec",
     "test:main": "npm run test:only -- --main-process spec/main-process",
-    "test:only": "npm start -- --test"
+    "test:only": "npm start -- --test",
+    "test:api-extractor": "node --test script/api-extractor.test.js"
   },
   "devDependencies": {
+    "@babel/parser": "^8.0.4",
     "@electron/notarize": "^3.1.1",
     "@electron/rebuild": "4.2.0",
     "@eslint/js": "^10.0.1",

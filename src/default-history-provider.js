@@ -43,7 +43,7 @@ class Transaction {
   }
 }
 
-// Manages undo/redo for {TextBuffer}
+// Manages undo/redo for {@link TextBuffer}
 class DefaultHistoryProvider {
   constructor(buffer) {
     this.buffer = buffer;
@@ -483,9 +483,9 @@ class DefaultHistoryProvider {
     }));
   }
 
-  /*
-  Section: Private
-  */
+  /**
+   * @category Private
+   */
 
   getCheckpointIndex(checkpointId) {
     for (let i = this.undoStack.length - 1; i >= 0; i--) {

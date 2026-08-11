@@ -1,22 +1,27 @@
-// Extended: Wraps an {Array} of `String`s. The Array describes a path from the
-// root of the syntax tree to a token including _all_ scope names for the entire
-// path.
-//
-// Methods that take a `ScopeDescriptor` will also accept an {Array} of {String}
-// scope names e.g. `['.source.js']`.
-//
-// You can use `ScopeDescriptor`s to get language-specific config settings via
-// {Config::get}.
-//
-// You should not need to create a `ScopeDescriptor` directly.
-//
-// * {TextEditor::getRootScopeDescriptor} to get the language's descriptor.
-// * {TextEditor::scopeDescriptorForBufferPosition} to get the descriptor at a
-//   specific position in the buffer.
-// * {Cursor::getScopeDescriptor} to get a cursor's descriptor based on position.
-//
-// See the [scopes and scope descriptor guide](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
-// for more information.
+/**
+ * Wraps an `Array` of `String`s. The Array describes a path from the
+ * root of the syntax tree to a token including _all_ scope names for the entire
+ * path.
+ *
+ * Methods that take a `ScopeDescriptor` will also accept an `Array` of `String`
+ * scope names e.g. `['.source.js']`.
+ *
+ * You can use `ScopeDescriptor`s to get language-specific config settings via
+ * {@link Config#get}.
+ *
+ * You should not need to create a `ScopeDescriptor` directly.
+ *
+ * * {@link TextEditor#getRootScopeDescriptor} to get the language's descriptor.
+ * * {@link TextEditor#scopeDescriptorForBufferPosition} to get the descriptor at a
+ *   specific position in the buffer.
+ * * {@link Cursor#getScopeDescriptor} to get a cursor's descriptor based on position.
+ *
+ * See the [scopes and scope descriptor guide](https://lumine-code.github.io/docs.html#customizing-lumine/language-settings)
+ * for more information.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class ScopeDescriptor {
   static fromObject(scopes) {
     if (scopes instanceof ScopeDescriptor) {
@@ -26,19 +31,27 @@ module.exports = class ScopeDescriptor {
     }
   }
 
-  /*
-  Section: Construction and Destruction
-  */
+  /**
+   * @category Construction and Destruction
+   */
 
-  // Public: Create a {ScopeDescriptor} object.
-  //
-  // * `object` {Object}
-  //   * `scopes` {Array} of {String}s
+  /**
+   * Create a {@link ScopeDescriptor} object.
+   *
+   * @param {Object} object - Scope data.
+   * @param {Array<String>} object.scopes - The ordered syntax scopes.
+   * @public
+   * @api-status Public
+   */
   constructor({ scopes }) {
     this.scopes = scopes;
   }
 
-  // Public: Returns an {Array} of {String}s
+  /**
+   * @returns {Array} of `Strings`
+   * @public
+   * @api-status Public
+   */
   getScopesArray() {
     return this.scopes;
   }

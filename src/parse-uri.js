@@ -1,13 +1,17 @@
-// Private: Parses a URI with the WHATWG URL parser into an object shaped like
-// the output of Node's legacy `url.parse(uri, true)`.
-//
-// URI handlers registered by packages receive this object, so its shape is
-// public API and must stay compatible with what `url.parse` produced:
-// `protocol`, `slashes`, `auth`, `host`, `port`, `hostname`, `hash`, `search`,
-// `query` (an object, with repeated keys collected into arrays), `pathname`,
-// `path`, and `href`.
-//
-// Returns the parsed object, or null when the URI cannot be parsed.
+/**
+ * Parses a URI with the WHATWG URL parser into an object shaped like
+ * the output of Node's legacy `url.parse(uri, true)`.
+ *
+ * URI handlers registered by packages receive this object, so its shape is
+ * public API and must stay compatible with what `url.parse` produced:
+ * `protocol`, `slashes`, `auth`, `host`, `port`, `hostname`, `hash`, `search`,
+ * `query` (an object, with repeated keys collected into arrays), `pathname`,
+ * `path`, and `href`.
+ *
+ * Returns the parsed object, or null when the URI cannot be parsed.
+ *
+ * @private
+ */
 module.exports = function parseUri(uri) {
   let parsed;
   try {

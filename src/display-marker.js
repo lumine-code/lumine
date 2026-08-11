@@ -1,48 +1,53 @@
 const { Emitter, Disposable } = require("@lumine-code/event-kit");
 
-// Essential: Represents a buffer annotation that remains logically stationary
-// even as the buffer changes. This is used to represent cursors, folds, snippet
-// targets, misspelled words, and anything else that needs to track a logical
-// location in the buffer over time.
-//
-// ### DisplayMarker Creation
-//
-// Use {DisplayMarkerLayer::markBufferRange} or {DisplayMarkerLayer::markScreenRange}
-// rather than creating Markers directly.
-//
-// ### Head and Tail
-//
-// Markers always have a *head* and sometimes have a *tail*. If you think of a
-// marker as an editor selection, the tail is the part that's stationary and the
-// head is the part that moves when the mouse is moved. A marker without a tail
-// always reports an empty range at the head position. A marker with a head position
-// greater than the tail is in a "normal" orientation. If the head precedes the
-// tail the marker is in a "reversed" orientation.
-//
-// ### Validity
-//
-// Markers are considered *valid* when they are first created. Depending on the
-// invalidation strategy you choose, certain changes to the buffer can cause a
-// marker to become invalid, for example if the text surrounding the marker is
-// deleted. The strategies, in order of descending fragility:
-//
-// * __never__: The marker is never marked as invalid. This is a good choice for
-//   markers representing selections in an editor.
-// * __surround__: The marker is invalidated by changes that completely surround it.
-// * __overlap__: The marker is invalidated by changes that surround the
-//   start or end of the marker. This is the default.
-// * __inside__: The marker is invalidated by changes that extend into the
-//   inside of the marker. Changes that end at the marker's start or
-//   start at the marker's end do not invalidate the marker.
-// * __touch__: The marker is invalidated by a change that touches the marked
-//   region in any way, including changes that end at the marker's
-//   start or start at the marker's end. This is the most fragile strategy.
-//
-// See {TextBuffer::markRange} for usage.
+/**
+ * Represents a buffer annotation that remains logically stationary
+ * even as the buffer changes. This is used to represent cursors, folds, snippet
+ * targets, misspelled words, and anything else that needs to track a logical
+ * location in the buffer over time.
+ *
+ * ### DisplayMarker Creation
+ *
+ * Use {@link DisplayMarkerLayer#markBufferRange} or {@link DisplayMarkerLayer#markScreenRange}
+ * rather than creating Markers directly.
+ *
+ * ### Head and Tail
+ *
+ * Markers always have a *head* and sometimes have a *tail*. If you think of a
+ * marker as an editor selection, the tail is the part that's stationary and the
+ * head is the part that moves when the mouse is moved. A marker without a tail
+ * always reports an empty range at the head position. A marker with a head position
+ * greater than the tail is in a "normal" orientation. If the head precedes the
+ * tail the marker is in a "reversed" orientation.
+ *
+ * ### Validity
+ *
+ * Markers are considered *valid* when they are first created. Depending on the
+ * invalidation strategy you choose, certain changes to the buffer can cause a
+ * marker to become invalid, for example if the text surrounding the marker is
+ * deleted. The strategies, in order of descending fragility:
+ *
+ * * __never__: The marker is never marked as invalid. This is a good choice for
+ *   markers representing selections in an editor.
+ * * __surround__: The marker is invalidated by changes that completely surround it.
+ * * __overlap__: The marker is invalidated by changes that surround the
+ *   start or end of the marker. This is the default.
+ * * __inside__: The marker is invalidated by changes that extend into the
+ *   inside of the marker. Changes that end at the marker's start or
+ *   start at the marker's end do not invalidate the marker.
+ * * __touch__: The marker is invalidated by a change that touches the marked
+ *   region in any way, including changes that end at the marker's
+ *   start or start at the marker's end. This is the most fragile strategy.
+ *
+ * See {@link TextBuffer#markRange} for usage.
+ *
+ * @public
+ * @api-status Essential
+ */
 class DisplayMarker {
-  /*
-  Section: Construction and Destruction
-  */
+  /**
+   * @category Construction and Destruction
+   */
 
   constructor(layer, bufferMarker) {
     this.layer = layer;
@@ -53,8 +58,13 @@ class DisplayMarker {
     this.bufferMarkerSubscription = null;
   }
 
-  // Essential: Destroys the marker, causing it to emit the 'destroyed' event. Once
-  // destroyed, a marker cannot be restored by undo/redo operations.
+  /**
+   * Destroys the marker, causing it to emit the 'destroyed' event. Once
+   * destroyed, a marker cannot be restored by undo/redo operations.
+   *
+   * @public
+   * @api-status Essential
+   */
   destroy() {
     if (!this.isDestroyed()) {
       this.bufferMarker.destroy();
@@ -68,50 +78,53 @@ class DisplayMarker {
     this.bufferMarkerSubscription?.dispose();
   }
 
-  // Essential: Creates and returns a new {DisplayMarker} with the same properties as
-  // this marker.
-  //
-  // {Selection} markers (markers with a custom property `type: "selection"`)
-  // should be copied with a different `type` value, for example with
-  // `marker.copy({type: null})`. Otherwise, the new marker's selection will
-  // be merged with this marker's selection, and a `null` value will be
-  // returned.
-  //
-  // * `params` (optional) {Object} properties to associate with the new
-  // marker. The new marker's properties are computed by extending this marker's
-  // properties with `params`.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Creates and returns a new {@link DisplayMarker} with the same properties as
+   * this marker.
+   *
+   * {@link Selection} markers (markers with a custom property `type: "selection"`)
+   * should be copied with a different `type` value, for example with
+   * `marker.copy({type: null})`. Otherwise, the new marker's selection will
+   * be merged with this marker's selection, and a `null` value will be
+   * returned.
+   *
+   * @param {Object} [params] - properties to associate with the new marker. The new marker's properties are computed by extending this marker's properties with `params`.
+   * @returns {DisplayMarker}
+   * @public
+   * @api-status Essential
+   */
   copy(params) {
     return this.layer.getMarker(this.bufferMarker.copy(params).id);
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Invoke the given callback when the state of the marker changes.
-  //
-  // * `callback` {Function} to be called when the marker changes.
-  //   * `event` {Object} with the following keys:
-  //     * `oldHeadBufferPosition` {Point} representing the former head buffer position
-  //     * `newHeadBufferPosition` {Point} representing the new head buffer position
-  //     * `oldTailBufferPosition` {Point} representing the former tail buffer position
-  //     * `newTailBufferPosition` {Point} representing the new tail buffer position
-  //     * `oldHeadScreenPosition` {Point} representing the former head screen position
-  //     * `newHeadScreenPosition` {Point} representing the new head screen position
-  //     * `oldTailScreenPosition` {Point} representing the former tail screen position
-  //     * `newTailScreenPosition` {Point} representing the new tail screen position
-  //     * `wasValid` {Boolean} indicating whether the marker was valid before the change
-  //     * `isValid` {Boolean} indicating whether the marker is now valid
-  //     * `hadTail` {Boolean} indicating whether the marker had a tail before the change
-  //     * `hasTail` {Boolean} indicating whether the marker now has a tail
-  //     * `oldProperties` {Object} containing the marker's custom properties before the change.
-  //     * `newProperties` {Object} containing the marker's custom properties after the change.
-  //     * `textChanged` {Boolean} indicating whether this change was caused by a textual change
-  //       to the buffer or whether the marker was manipulated directly via its public API.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the state of the marker changes.
+   *
+   * @param {Function} callback - to be called when the marker changes.
+   * @param {Object} callback.event - with the following keys:
+   * @param {Point} callback.event.oldHeadBufferPosition - representing the former head buffer position
+   * @param {Point} callback.event.newHeadBufferPosition - representing the new head buffer position
+   * @param {Point} callback.event.oldTailBufferPosition - representing the former tail buffer position
+   * @param {Point} callback.event.newTailBufferPosition - representing the new tail buffer position
+   * @param {Point} callback.event.oldHeadScreenPosition - representing the former head screen position
+   * @param {Point} callback.event.newHeadScreenPosition - representing the new head screen position
+   * @param {Point} callback.event.oldTailScreenPosition - representing the former tail screen position
+   * @param {Point} callback.event.newTailScreenPosition - representing the new tail screen position
+   * @param {Boolean} callback.event.wasValid - indicating whether the marker was valid before the change
+   * @param {Boolean} callback.event.isValid - indicating whether the marker is now valid
+   * @param {Boolean} callback.event.hadTail - indicating whether the marker had a tail before the change
+   * @param {Boolean} callback.event.hasTail - indicating whether the marker now has a tail
+   * @param {Object} callback.event.oldProperties - containing the marker's custom properties before the change.
+   * @param {Object} callback.event.newProperties - containing the marker's custom properties after the change.
+   * @param {Boolean} callback.event.textChanged - indicating whether this change was caused by a textual change to the buffer or whether the marker was manipulated directly via its public API.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChange(callback) {
     if (!this.hasChangeObservers) {
       this.oldHeadBufferPosition = this.getHeadBufferPosition();
@@ -135,11 +148,14 @@ class DisplayMarker {
     });
   }
 
-  // Essential: Invoke the given callback when the marker is destroyed.
-  //
-  // * `callback` {Function} to be called when the marker is destroyed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the marker is destroyed.
+   *
+   * @param {Function} callback - to be called when the marker is destroyed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidDestroy(callback) {
     this.layer.markersWithDestroyListeners.add(this);
     const subscription = this.emitter.on("did-destroy", callback);
@@ -151,84 +167,112 @@ class DisplayMarker {
     });
   }
 
-  /*
-  Section: TextEditorMarker Details
-  */
+  /**
+   * @category TextEditorMarker Details
+   */
 
-  // Essential: Returns a {Boolean} indicating whether the marker is valid.
-  // Markers can be invalidated when a region surrounding them in the buffer is
-  // changed.
+  /**
+   * @returns {Boolean} indicating whether the marker is valid. Markers can be invalidated when a region surrounding them in the buffer is changed.
+   * @public
+   * @api-status Essential
+   */
   isValid() {
     return this.bufferMarker.isValid();
   }
 
-  // Essential: Returns a {Boolean} indicating whether the marker has been
-  // destroyed. A marker can be invalid without being destroyed, in which case
-  // undoing the invalidating operation would restore the marker. Once a marker
-  // is destroyed by calling {DisplayMarker::destroy}, no undo/redo operation
-  // can ever bring it back.
+  /**
+   * @returns {Boolean} indicating whether the marker has been destroyed. A marker can be invalid without being destroyed, in which case undoing the invalidating operation would restore the marker. Once a marker is destroyed by calling {@link DisplayMarker#destroy}, no undo/redo operation can ever bring it back.
+   * @public
+   * @api-status Essential
+   */
   isDestroyed() {
     return this.layer.isDestroyed() || this.bufferMarker.isDestroyed();
   }
 
-  // Essential: Returns a {Boolean} indicating whether the head precedes the tail.
+  /**
+   * @returns {Boolean} indicating whether the head precedes the tail.
+   * @public
+   * @api-status Essential
+   */
   isReversed() {
     return this.bufferMarker.isReversed();
   }
 
-  // Essential: Returns a {Boolean} indicating whether changes that occur exactly
-  // at the marker's head or tail cause it to move.
+  /**
+   * @returns {Boolean} indicating whether changes that occur exactly at the marker's head or tail cause it to move.
+   * @public
+   * @api-status Essential
+   */
   isExclusive() {
     return this.bufferMarker.isExclusive();
   }
 
-  // Essential: Get the invalidation strategy for this marker.
-  //
-  // Valid values include: `never`, `surround`, `overlap`, `inside`, and `touch`.
-  //
-  // Returns a {String}.
+  /**
+   * Get the invalidation strategy for this marker.
+   *
+   * Valid values include: `never`, `surround`, `overlap`, `inside`, and `touch`.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Essential
+   */
   getInvalidationStrategy() {
     return this.bufferMarker.getInvalidationStrategy();
   }
 
-  // Essential: Returns an {Object} containing any custom properties associated with
-  // the marker.
+  /**
+   * @returns {Object} containing any custom properties associated with the marker.
+   * @public
+   * @api-status Essential
+   */
   getProperties() {
     return this.bufferMarker.getProperties();
   }
 
-  // Essential: Merges an {Object} containing new properties into the marker's
-  // existing properties.
-  //
-  // * `properties` {Object}
+  /**
+   * Merges an `Object` containing new properties into the marker's
+   * existing properties.
+   *
+   * @param {Object} properties
+   * @public
+   * @api-status Essential
+   */
   setProperties(properties) {
     return this.bufferMarker.setProperties(properties);
   }
 
-  // Essential: Returns whether this marker matches the given parameters. The
-  // parameters are the same as {DisplayMarkerLayer::findMarkers}.
+  /**
+   * @returns {Boolean} whether this marker matches the given parameters. The parameters are the same as {@link DisplayMarkerLayer#findMarkers}.
+   * @public
+   * @api-status Essential
+   */
   matchesProperties(attributes) {
     attributes = this.layer.translateToBufferMarkerParams(attributes);
     return this.bufferMarker.matchesParams(attributes);
   }
 
-  /*
-  Section: Comparing to other markers
-  */
+  /**
+   * @category Comparing to other markers
+   */
 
-  // Essential: Compares this marker to another based on their ranges.
-  //
-  // * `other` {DisplayMarker}
-  //
-  // Returns a {Number}
+  /**
+   * Compares this marker to another based on their ranges.
+   *
+   * @param {DisplayMarker} otherMarker - The marker to compare.
+   * @returns {Number} The ordering of this marker relative to `otherMarker`.
+   * @public
+   * @api-status Essential
+   */
   compare(otherMarker) {
     return this.bufferMarker.compare(otherMarker.bufferMarker);
   }
 
-  // Essential: Returns a {Boolean} indicating whether this marker is equivalent to
-  // another marker, meaning they have the same range and options.
-  //
-  // * `other` {DisplayMarker} other marker
+  /**
+   * @param {DisplayMarker} other - other marker
+   * @returns {Boolean} indicating whether this marker is equivalent to another marker, meaning they have the same range and options.
+   * @public
+   * @api-status Essential
+   */
   isEqual(other) {
     if (!(other instanceof this.constructor)) {
       return false;
@@ -236,192 +280,238 @@ class DisplayMarker {
     return this.bufferMarker.isEqual(other.bufferMarker);
   }
 
-  /*
-  Section: Managing the marker's range
-  */
+  /**
+   * @category Managing the marker's range
+   */
 
-  // Essential: Gets the buffer range of this marker.
-  //
-  // Returns a {Range}.
+  /**
+   * Gets the buffer range of this marker.
+   *
+   * @returns {Range}
+   * @public
+   * @api-status Essential
+   */
   getBufferRange() {
     return this.bufferMarker.getRange();
   }
 
-  // Essential: Gets the screen range of this marker.
-  //
-  // Returns a {Range}.
+  /**
+   * Gets the screen range of this marker.
+   *
+   * @returns {Range}
+   * @public
+   * @api-status Essential
+   */
   getScreenRange() {
     return this.layer.translateBufferRange(this.getBufferRange());
   }
 
-  // Essential: Modifies the buffer range of this marker.
-  //
-  // * `bufferRange` The new {Range} to use
-  // * `properties` (optional) {Object} properties to associate with the marker.
-  //   * `reversed` {Boolean} If true, the marker will to be in a reversed orientation.
+  /**
+   * Modifies the buffer range of this marker.
+   *
+   * @param bufferRange - The new {@link Range} to use
+   * @param {Object} [properties] - properties to associate with the marker.
+   * @param {Boolean} properties.reversed - If true, the marker will to be in a reversed orientation.
+   * @public
+   * @api-status Essential
+   */
   setBufferRange(bufferRange, properties) {
     return this.bufferMarker.setRange(bufferRange, properties);
   }
 
-  // Essential: Modifies the screen range of this marker.
-  //
-  // * `screenRange` The new {Range} to use
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `reversed` {Boolean} If true, the marker will to be in a reversed orientation.
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
+  /**
+   * Modifies the screen range of this marker.
+   *
+   * @param screenRange - The new {@link Range} to use
+   * @param [options] - An `Object` with the following keys:
+   * @param {Boolean} options.reversed - If true, the marker will to be in a reversed orientation.
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'` and applies to both ends of the range.
+   * @public
+   * @api-status Essential
+   */
   setScreenRange(screenRange, options) {
     return this.setBufferRange(this.layer.translateScreenRange(screenRange, options), options);
   }
 
-  // Extended: Retrieves the buffer position of the marker's head.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the buffer position of the marker's head.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Extended
+   */
   getHeadBufferPosition() {
     return this.bufferMarker.getHeadPosition();
   }
 
-  // Extended: Sets the buffer position of the marker's head.
-  //
-  // * `bufferPosition` The new {Point} to use
+  /**
+   * Sets the buffer position of the marker's head.
+   *
+   * @param bufferPosition - The new {@link Point} to use
+   * @public
+   * @api-status Extended
+   */
   setHeadBufferPosition(bufferPosition) {
     return this.bufferMarker.setHeadPosition(bufferPosition);
   }
 
-  // Extended: Retrieves the screen position of the marker's head.
-  //
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the screen position of the marker's head.
+   *
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @returns {Point} The marker's head screen position.
+   * @public
+   * @api-status Extended
+   */
   getHeadScreenPosition(options) {
     return this.layer.translateBufferPosition(this.bufferMarker.getHeadPosition(), options);
   }
 
-  // Extended: Sets the screen position of the marker's head.
-  //
-  // * `screenPosition` The new {Point} to use
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
+  /**
+   * Sets the screen position of the marker's head.
+   *
+   * @param screenPosition - The new {@link Point} to use
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @public
+   * @api-status Extended
+   */
   setHeadScreenPosition(screenPosition, options) {
     return this.setHeadBufferPosition(this.layer.translateScreenPosition(screenPosition, options));
   }
 
-  // Extended: Retrieves the buffer position of the marker's tail.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the buffer position of the marker's tail.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Extended
+   */
   getTailBufferPosition() {
     return this.bufferMarker.getTailPosition();
   }
 
-  // Extended: Sets the buffer position of the marker's tail.
-  //
-  // * `bufferPosition` The new {Point} to use
+  /**
+   * Sets the buffer position of the marker's tail.
+   *
+   * @param bufferPosition - The new {@link Point} to use
+   * @public
+   * @api-status Extended
+   */
   setTailBufferPosition(bufferPosition) {
     return this.bufferMarker.setTailPosition(bufferPosition);
   }
 
-  // Extended: Retrieves the screen position of the marker's tail.
-  //
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the screen position of the marker's tail.
+   *
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @returns {Point} The marker's tail screen position.
+   * @public
+   * @api-status Extended
+   */
   getTailScreenPosition(options) {
     return this.layer.translateBufferPosition(this.bufferMarker.getTailPosition(), options);
   }
 
-  // Extended: Sets the screen position of the marker's tail.
-  //
-  // * `screenPosition` The new {Point} to use
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
+  /**
+   * Sets the screen position of the marker's tail.
+   *
+   * @param screenPosition - The new {@link Point} to use
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @public
+   * @api-status Extended
+   */
   setTailScreenPosition(screenPosition, options) {
     return this.bufferMarker.setTailPosition(
       this.layer.translateScreenPosition(screenPosition, options),
     );
   }
 
-  // Extended: Retrieves the buffer position of the marker's start. This will always be
-  // less than or equal to the result of {DisplayMarker::getEndBufferPosition}.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the buffer position of the marker's start. This will always be
+   * less than or equal to the result of {@link DisplayMarker#getEndBufferPosition}.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Extended
+   */
   getStartBufferPosition() {
     return this.bufferMarker.getStartPosition();
   }
 
-  // Essential: Retrieves the screen position of the marker's start. This will always be
-  // less than or equal to the result of {DisplayMarker::getEndScreenPosition}.
-  //
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the screen position of the marker's start. This will always be
+   * less than or equal to the result of {@link DisplayMarker#getEndScreenPosition}.
+   *
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @returns {Point} The marker's start screen position.
+   * @public
+   * @api-status Essential
+   */
   getStartScreenPosition(options) {
     return this.layer.translateBufferPosition(this.getStartBufferPosition(), options);
   }
 
-  // Extended: Retrieves the buffer position of the marker's end. This will always be
-  // greater than or equal to the result of {DisplayMarker::getStartBufferPosition}.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the buffer position of the marker's end. This will always be
+   * greater than or equal to the result of {@link DisplayMarker#getStartBufferPosition}.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Extended
+   */
   getEndBufferPosition() {
     return this.bufferMarker.getEndPosition();
   }
 
-  // Essential: Retrieves the screen position of the marker's end. This will always be
-  // greater than or equal to the result of {DisplayMarker::getStartScreenPosition}.
-  //
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`. Applies to the start and end of the given range.
-  //
-  // Returns a {Point}.
+  /**
+   * Retrieves the screen position of the marker's end. This will always be
+   * greater than or equal to the result of {@link DisplayMarker#getStartScreenPosition}.
+   *
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @returns {Point} The marker's end screen position.
+   * @public
+   * @api-status Essential
+   */
   getEndScreenPosition(options) {
     return this.layer.translateBufferPosition(this.getEndBufferPosition(), options);
   }
 
-  // Extended: Returns a {Boolean} indicating whether the marker has a tail.
+  /**
+   * @returns {Boolean} indicating whether the marker has a tail.
+   * @public
+   * @api-status Extended
+   */
   hasTail() {
     return this.bufferMarker.hasTail();
   }
 
-  // Extended: Plants the marker's tail at the current head position. After calling
-  // the marker's tail position will be its head position at the time of the
-  // call, regardless of where the marker's head is moved.
+  /**
+   * Plants the marker's tail at the current head position. After calling
+   * the marker's tail position will be its head position at the time of the
+   * call, regardless of where the marker's head is moved.
+   *
+   * @public
+   * @api-status Extended
+   */
   plantTail() {
     return this.bufferMarker.plantTail();
   }
 
-  // Extended: Removes the marker's tail. After calling the marker's head position
-  // will be reported as its current tail position until the tail is planted
-  // again.
+  /**
+   * Removes the marker's tail. After calling the marker's head position
+   * will be reported as its current tail position until the tail is planted
+   * again.
+   *
+   * @public
+   * @api-status Extended
+   */
   clearTail() {
     return this.bufferMarker.clearTail();
   }
@@ -430,9 +520,9 @@ class DisplayMarker {
     return `[Marker ${this.id}, bufferRange: ${this.getBufferRange()}, screenRange: ${this.getScreenRange()}}]`;
   }
 
-  /*
-  Section: Private
-  */
+  /**
+   * @category Private
+   */
 
   inspect() {
     return this.toString();

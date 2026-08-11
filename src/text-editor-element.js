@@ -49,13 +49,17 @@ class TextEditorElement extends HTMLElement {
     }
   }
 
-  // Extended: Get a promise that resolves the next time the element's DOM
-  // is updated in any way.
-  //
-  // This can be useful when you've made a change to the model and need to
-  // be sure this change has been flushed to the DOM.
-  //
-  // Returns a {Promise}.
+  /**
+   * Get a promise that resolves the next time the element's DOM
+   * is updated in any way.
+   *
+   * This can be useful when you've made a change to the model and need to
+   * be sure this change has been flushed to the DOM.
+   *
+   * @returns {Promise}
+   * @public
+   * @api-status Extended
+   */
   getNextUpdatePromise() {
     return this.getComponent().getNextUpdatePromise();
   }
@@ -141,14 +145,18 @@ class TextEditorElement extends HTMLElement {
 
   // Deprecated: get the width of an `x` character displayed in this element.
   //
-  // Returns a {Number} of pixels.
+  // Returns a `Number` of pixels.
   getDefaultCharacterWidth() {
     return this.getComponent().getBaseCharacterWidth();
   }
 
-  // Extended: get the width of an `x` character displayed in this element.
-  //
-  // Returns a {Number} of pixels.
+  /**
+   * get the width of an `x` character displayed in this element.
+   *
+   * @returns {Number} of pixels.
+   * @public
+   * @api-status Extended
+   */
   getBaseCharacterWidth() {
     return this.getComponent().getBaseCharacterWidth();
   }
@@ -209,12 +217,22 @@ class TextEditorElement extends HTMLElement {
     return this.getComponent().setScrollRight(scrollRight);
   }
 
-  // Essential: Scrolls the editor to the top.
+  /**
+   * Scrolls the editor to the top.
+   *
+   * @public
+   * @api-status Essential
+   */
   scrollToTop() {
     this.setScrollTop(0);
   }
 
-  // Essential: Scrolls the editor to the bottom.
+  /**
+   * Scrolls the editor to the bottom.
+   *
+   * @public
+   * @api-status Essential
+   */
   scrollToBottom() {
     this.setScrollTop(Infinity);
   }
@@ -223,32 +241,38 @@ class TextEditorElement extends HTMLElement {
     return this.getComponent().focused;
   }
 
-  // Extended: Converts a buffer position to a pixel position.
-  //
-  // * `bufferPosition` A {Point}-like object that represents a buffer position.
-  //
-  // Be aware that calling this method with a column that does not translate
-  // to column 0 on screen could cause a synchronous DOM update in order to
-  // measure the requested horizontal pixel position if it isn't already
-  // cached.
-  //
-  // Returns an {Object} with two values: `top` and `left`, representing the
-  // pixel position.
+  /**
+   * Converts a buffer position to a pixel position.
+   *
+   *
+   * Be aware that calling this method with a column that does not translate
+   * to column 0 on screen could cause a synchronous DOM update in order to
+   * measure the requested horizontal pixel position if it isn't already
+   * cached.
+   *
+   * @param bufferPosition - A {@link Point}-like object that represents a buffer position.
+   * @returns {Object} with two values: `top` and `left`, representing the pixel position.
+   * @public
+   * @api-status Extended
+   */
   pixelPositionForBufferPosition(bufferPosition) {
     const screenPosition = this.getModel().screenPositionForBufferPosition(bufferPosition);
     return this.getComponent().pixelPositionForScreenPosition(screenPosition);
   }
 
-  // Extended: Converts a screen position to a pixel position.
-  //
-  // * `screenPosition` A {Point}-like object that represents a buffer position.
-  //
-  // Be aware that calling this method with a non-zero column value could
-  // cause a synchronous DOM update in order to measure the requested
-  // horizontal pixel position if it isn't already cached.
-  //
-  // Returns an {Object} with two values: `top` and `left`, representing the
-  // pixel position.
+  /**
+   * Converts a screen position to a pixel position.
+   *
+   *
+   * Be aware that calling this method with a non-zero column value could
+   * cause a synchronous DOM update in order to measure the requested
+   * horizontal pixel position if it isn't already cached.
+   *
+   * @param screenPosition - A {@link Point}-like object that represents a buffer position.
+   * @returns {Object} with two values: `top` and `left`, representing the pixel position.
+   * @public
+   * @api-status Extended
+   */
   pixelPositionForScreenPosition(screenPosition) {
     screenPosition = this.getModel().clipScreenPosition(screenPosition);
     return this.getComponent().pixelPositionForScreenPosition(screenPosition);
@@ -305,14 +329,18 @@ class TextEditorElement extends HTMLElement {
     return this.component ? this.component.updatedSynchronously : this.updatedSynchronously;
   }
 
-  // Experimental: Invalidate the passed block {Decoration}'s dimensions,
-  // forcing them to be recalculated and the surrounding content to be adjusted
-  // on the next animation frame.
-  //
-  // * {blockDecoration} A {Decoration} representing the block decoration you
-  // want to update the dimensions of.
-  invalidateBlockDecorationDimensions() {
-    this.getComponent().invalidateBlockDecorationDimensions(...arguments);
+  /**
+   * Invalidate the passed block {@link Decoration}'s dimensions,
+   * forcing them to be recalculated and the surrounding content to be adjusted
+   * on the next animation frame.
+   *
+   * @param {Decoration} blockDecoration - The block decoration whose dimensions
+   *   should be recalculated.
+   * @public
+   * @api-status Experimental
+   */
+  invalidateBlockDecorationDimensions(blockDecoration) {
+    this.getComponent().invalidateBlockDecorationDimensions(blockDecoration);
   }
 
   setFirstVisibleScreenRow(row) {

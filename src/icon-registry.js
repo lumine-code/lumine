@@ -192,17 +192,22 @@ class Application {
   }
 }
 
-// Essential: The single source of every icon the editor renders — file-type
-// icons, the semantic names pane items return from `getIconName()`, and LSP
-// symbol kinds.
-//
-// Providers form a priority chain. Each is asked in turn, and returning `null`
-// means "not mine, ask the next one"; core's octicon mapping is the always
-// present provider at the bottom, so every target resolves. Returning
-// `Icon.none()` is *not* the same as `null` — it stops the chain with "no icon
-// here".
-//
-// An instance of this class is always available as the `lumine.icons` global.
+/**
+ * The single source of every icon the editor renders — file-type
+ * icons, the semantic names pane items return from `getIconName()`, and LSP
+ * symbol kinds.
+ *
+ * Providers form a priority chain. Each is asked in turn, and returning `null`
+ * means "not mine, ask the next one"; core's octicon mapping is the always
+ * present provider at the bottom, so every target resolves. Returning
+ * `Icon.none()` is *not* the same as `null` — it stops the chain with "no icon
+ * here".
+ *
+ * An instance of this class is always available as the `lumine.icons` global.
+ *
+ * @public
+ * @api-status Essential
+ */
 module.exports = class IconRegistry {
   constructor({ config, themeManager, grammarRegistry, packageManager } = {}) {
     this.config = config;
@@ -291,11 +296,16 @@ module.exports = class IconRegistry {
     );
   }
 
-  // Essential: Register an icon provider. Returns a {Disposable}.
-  //
-  // Providers are consulted highest `priority` first, and equal priorities keep
-  // registration order. `iconFor(target)` returns an icon descriptor, a class
-  // string or array, or `null` to defer to the next provider.
+  /**
+   * Register an icon provider. Returns a `Disposable`.
+   *
+   * Providers are consulted highest `priority` first, and equal priorities keep
+   * registration order. `iconFor(target)` returns an icon descriptor, a class
+   * string or array, or `null` to defer to the next provider.
+   *
+   * @public
+   * @api-status Essential
+   */
   addProvider(provider, { priority = 0, id = null, core = false } = {}) {
     if (!provider || typeof provider.iconFor !== "function") {
       throw new TypeError("Icon providers must implement iconFor(target)");
@@ -345,13 +355,18 @@ module.exports = class IconRegistry {
     this.contextSensitive = this.registrations.some((r) => r.provider.usesContext === true);
   }
 
-  // Essential: Resolve `target` to an icon descriptor. Never returns null — a
-  // target nothing answers for resolves to `Icon.none()`.
-  //
-  // `target` is an object: `{path}`, `{name}`, `{kind}`, or `{item}` for a pane
-  // item. It may also carry a `context` string naming the caller and a `hints`
-  // object describing what the caller already knows about the path — see
-  // `src/icon-target.js`.
+  /**
+   * Resolve `target` to an icon descriptor. Never returns null — a
+   * target nothing answers for resolves to `Icon.none()`.
+   *
+   * `target` is an object: `{path}`, `{name}`, `{kind}`, or `{item}` for a pane
+   * item. It may also carry a `context` string naming the caller and a `hints`
+   * object describing what the caller already knows about the path — see
+   * `src/icon-target.js`.
+   *
+   * @public
+   * @api-status Essential
+   */
   iconFor(target, options = {}) {
     return this.descriptorFor(normalizeTarget(target), options);
   }
@@ -406,15 +421,24 @@ module.exports = class IconRegistry {
     return CORE_NONE;
   }
 
-  // Essential: Render `target`'s icon into `element` and keep it current.
-  // Returns a {Disposable} that removes everything the call added.
-  //
-  // * `classes` extra class names to add regardless of the icon, e.g. `["name"]`.
-  // * `name` an explicit `data-name`, when the basename is not what belongs there.
-  // * `setData` set to `false` when the caller owns `data-name`/`data-path` itself.
-  // * `live` set to `false` to skip re-rendering when the icon changes.
-  // * `render` set to `false` to apply classes only, touching no children or styles.
-  // * `skipFallback` render nothing unless a provider above the built-in answered.
+  /**
+   * Render `target`'s icon into `element` and keep it current.
+   *
+   * @param {Element} element - The element that receives the icon.
+   * @param {Object} target - The icon target.
+   * @param {Object} [options] - Rendering options.
+   * @param {Array<String>} [options.classes] - Extra classes to add.
+   * @param {String} [options.name] - An explicit `data-name`.
+   * @param {Boolean} [options.setData=true] - Set `data-name` and `data-path`.
+   * @param {Boolean} [options.live=true] - Re-render when the icon changes.
+   * @param {Boolean} [options.render=true] - Render children and styles in
+   *   addition to applying classes.
+   * @param {Boolean} [options.skipFallback=false] - Render nothing unless a
+   *   provider above the built-in answers.
+   * @returns {Disposable} that removes everything the call added.
+   * @public
+   * @api-status Essential
+   */
   applyTo(element, target, options = {}) {
     if (!element) throw new TypeError("applyTo needs an element to render into");
 
@@ -468,12 +492,17 @@ module.exports = class IconRegistry {
     if (set.size === 0) this.applications.delete(key);
   }
 
-  // Extended: Drop cached answers and repaint what they were rendered into.
-  //
-  // `scope` is undefined or null for everything, or an object narrowing it to
-  // `{types}`, `{paths}`, `{names}`, or `{kinds}`. Narrowing matters: a
-  // provider that resolves one file extension asynchronously should repaint the
-  // rows showing that extension, not every row in the tree.
+  /**
+   * Drop cached answers and repaint what they were rendered into.
+   *
+   * `scope` is undefined or null for everything, or an object narrowing it to
+   * `{types}`, `{paths}`, `{names}`, or `{kinds}`. Narrowing matters: a
+   * provider that resolves one file extension asynchronously should repaint the
+   * rows showing that extension, not every row in the tree.
+   *
+   * @public
+   * @api-status Extended
+   */
   invalidate(scope) {
     const affected = new Set();
 
@@ -544,14 +573,24 @@ module.exports = class IconRegistry {
     }
   }
 
-  // Extended: Override the icon for one or more semantic names. Returns a
-  // {Disposable} that restores the previous mapping. A `null` value means the
-  // name renders no icon.
+  /**
+   * Override the icon for one or more semantic names. Returns a
+   * `Disposable` that restores the previous mapping. A `null` value means the
+   * name renders no icon.
+   *
+   * @public
+   * @api-status Extended
+   */
   defineNames(entries) {
     return this.define("name", entries);
   }
 
-  // Extended: Override the icon for one or more kinds. Returns a {Disposable}.
+  /**
+   * Override the icon for one or more kinds. Returns a `Disposable`.
+   *
+   * @public
+   * @api-status Extended
+   */
   defineKinds(entries) {
     return this.define("kind", entries);
   }
@@ -576,7 +615,12 @@ module.exports = class IconRegistry {
     });
   }
 
-  // Extended: Invoke `callback` when any icon may have changed.
+  /**
+   * Invoke `callback` when any icon may have changed.
+   *
+   * @public
+   * @api-status Extended
+   */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);
   }

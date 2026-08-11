@@ -3,70 +3,75 @@ const { Emitter, Disposable } = require("@lumine-code/event-kit");
 
 const SerializationVersion = 1;
 
-// Extended: Associates listener functions with URIs from outside the application.
-//
-// An instance of this class is always available as the `lumine.uriHandlers`
-// global.
-//
-// The global URI handler registry maps URIs to listener functions. URIs are mapped
-// based on the hostname of the URI; the format is lumine://package/command?args.
-// The "core" package name is reserved for URIs handled by Lumine Core (it is not possible
-// to register a package with the name "core").
-//
-// Because URI handling can be triggered from outside the application (e.g. from
-// the user's browser), package authors should take great care to ensure that malicious
-// activities cannot be performed by an attacker. A good rule to follow is that
-// **URI handlers should not take action on behalf of the user**. For example, clicking
-// a link to open a pane item that prompts the user to install a package is okay;
-// automatically installing the package right away is not.
-//
-// Packages can register their desire to handle URIs via a special key in their
-// `package.json` called "uriHandler". The value of this key should be an object
-// that contains, at minimum, a key named "method". This is the name of the method
-// on your package object that Lumine will call when it receives a URI your package
-// is responsible for handling. It will pass the parsed URI as the first argument (an
-// object with the same shape as the output of Node's legacy `url.parse(uri, true)`,
-// including a `query` object) and the raw URI string as the second argument.
-//
-// By default, Lumine will defer activation of your package until a URI it needs to handle
-// is triggered. If you need your package to activate right away, you can add
-// `"deferActivation": false` to your "uriHandler" configuration object. When activation
-// is deferred, once Lumine receives a request for a URI in your package's namespace, it will
-// activate your package and then call `methodName` on it as before.
-//
-// If your package specifies a deprecated `urlMain` property, you cannot register URI handlers
-// via the `uriHandler` key.
-//
-// ## Example
-//
-// Here is a sample package that will be activated and have its `handleURI` method called
-// when a URI beginning with `lumine://my-package` is triggered:
-//
-// `package.json`:
-//
-// ```javascript
-// {
-//   "name": "my-package",
-//   "main": "./lib/my-package.js",
-//   "uriHandler": {
-//     "method": "handleURI"
-//   }
-// }
-// ```
-//
-// `lib/my-package.js`
-//
-// ```javascript
-// module.exports = {
-//   activate: function() {
-//     // code to activate your package
-//   }
-//
-//   handleURI(parsedUri, rawUri) {
-//     // parse and handle uri
-//   }
-// }
-// ```
+/**
+ * Associates listener functions with URIs from outside the application.
+ *
+ * An instance of this class is always available as the `lumine.uriHandlers`
+ * global.
+ *
+ * The global URI handler registry maps URIs to listener functions. URIs are mapped
+ * based on the hostname of the URI; the format is lumine://package/command?args.
+ * The "core" package name is reserved for URIs handled by Lumine Core (it is not possible
+ * to register a package with the name "core").
+ *
+ * Because URI handling can be triggered from outside the application (e.g. from
+ * the user's browser), package authors should take great care to ensure that malicious
+ * activities cannot be performed by an attacker. A good rule to follow is that
+ * **URI handlers should not take action on behalf of the user**. For example, clicking
+ * a link to open a pane item that prompts the user to install a package is okay;
+ * automatically installing the package right away is not.
+ *
+ * Packages can register their desire to handle URIs via a special key in their
+ * `package.json` called "uriHandler". The value of this key should be an object
+ * that contains, at minimum, a key named "method". This is the name of the method
+ * on your package object that Lumine will call when it receives a URI your package
+ * is responsible for handling. It will pass the parsed URI as the first argument (an
+ * object with the same shape as the output of Node's legacy `url.parse(uri, true)`,
+ * including a `query` object) and the raw URI string as the second argument.
+ *
+ * By default, Lumine will defer activation of your package until a URI it needs to handle
+ * is triggered. If you need your package to activate right away, you can add
+ * `"deferActivation": false` to your "uriHandler" configuration object. When activation
+ * is deferred, once Lumine receives a request for a URI in your package's namespace, it will
+ * activate your package and then call `methodName` on it as before.
+ *
+ * If your package specifies a deprecated `urlMain` property, you cannot register URI handlers
+ * via the `uriHandler` key.
+ *
+ * ## Example
+ *
+ * Here is a sample package that will be activated and have its `handleURI` method called
+ * when a URI beginning with `lumine://my-package` is triggered:
+ *
+ * `package.json`:
+ *
+ * ```javascript
+ * {
+ *   "name": "my-package",
+ *   "main": "./lib/my-package.js",
+ *   "uriHandler": {
+ *     "method": "handleURI"
+ *   }
+ * }
+ * ```
+ *
+ * `lib/my-package.js`
+ *
+ * ```javascript
+ * module.exports = {
+ *   activate: function() {
+ *     // code to activate your package
+ *   }
+ *
+ *   handleURI(parsedUri, rawUri) {
+ *     // parse and handle uri
+ *   }
+ * }
+ * ```
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class URIHandlerRegistry {
   constructor(maxHistoryLength = 50) {
     this.registrations = new Map();

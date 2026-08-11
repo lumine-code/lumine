@@ -10,32 +10,32 @@ const DEFAULT_NUM_THREADS = Math.max(1, Math.min(8, os.availableParallelism() - 
 // loops don't allocate a fresh native Matcher on every call.
 const singleCandidateMatchers = new Map();
 
-/*
-  # Name: setCandidates
-  # Type: ClassMethod
-
-  Sets the candidates for a new matcher, or sets the candidates for an existing
-  matcher. Returns a {Matcher} that can be used to query for candidates.
-
-  * `matcherOrCandidates` - either a {Matcher} returned from a previous call
-    from `setCandidates`, or an array of string candidates to be filtered
-  * `candidates` - an array of string candidates to be filtered
-  * `options` - only used when creating a new {Matcher} (i.e. when
-    `matcherOrCandidates` is an array). Supports `ignoreDiacritics` (Boolean)
-    to enable accent-insensitive matching. Fixed at construction time.
-
-  ## Examples
-  ```js
-  const matcher = lumine.tools.fuzzyMatcher.setCandidates(["hello", "world"])
-  matcher.match('he') // => will return [{value: "hello", score: <number>}]
-  lumine.tools.fuzzyMatcher.setCandidates(matcher, ["hello", "hope"])
-  matcher.match('he') // => will now return "hope" too, but it'll be at
-                     // second position with a lower score
-  ```
-*/
+/**
+ * Sets the candidates for a new matcher, or sets the candidates for an existing
+ * matcher. Returns a `Matcher` that can be used to query for candidates.
+ *
+ * ## Examples
+ * ```js
+ * const matcher = lumine.tools.fuzzyMatcher.setCandidates(["hello", "world"])
+ * matcher.match('he') // => will return [{value: "hello", score: <number>}]
+ * lumine.tools.fuzzyMatcher.setCandidates(matcher, ["hello", "hope"])
+ * matcher.match('he') // => will now return "hope" too, but it'll be at
+ *                    // second position with a lower score
+ * ```
+ *
+ * @param {Matcher|Array<String>} matcherOrCandidates - Either a `Matcher`
+ *   returned from a previous call to `setCandidates`, or an array of string
+ *   candidates to be filtered.
+ * @param {Array<String>|Object} [candidates] - Candidates for an existing
+ *   matcher, or options for a new matcher. The `ignoreDiacritics` option enables
+ *   accent-insensitive matching and is fixed at construction time.
+ * @param {Object} [_options] - Retained for compatibility.
+ * @returns {Matcher} A matcher that can query the candidates.
+ * @private
+ */
 function setCandidates(matcherOrCandidates, candidates, _options) {
   if (Array.isArray(candidates)) {
-    // Reuse an existing {Matcher}. Construction-time options (e.g.
+    // Reuse an existing `Matcher`. Construction-time options (e.g.
     // `ignoreDiacritics`) already live on it and don't need re-passing.
     matcherOrCandidates.fuzzyMatcher.setCandidates(
       [...Array(candidates.length).keys()],
@@ -43,7 +43,7 @@ function setCandidates(matcherOrCandidates, candidates, _options) {
     );
     return matcherOrCandidates;
   } else {
-    // Create a new {Matcher}. Here `candidates` (the second arg) is actually
+    // Create a new `Matcher`. Here `candidates` (the second arg) is actually
     // the options object, if any.
     const opts = candidates || {};
     return new Matcher(
@@ -56,61 +56,44 @@ function setCandidates(matcherOrCandidates, candidates, _options) {
   }
 }
 
-/*
-  # Name: Matcher
-  # Type: Class
-
-  The result from a call to {fuzzyMatcher.setCandidates}.
-*/
+/**
+ * The result from a call to `fuzzyMatcher.setCandidates`.
+ *
+ * @private
+ */
 class Matcher {
   constructor(fuzzyMatcher) {
     this.fuzzyMatcher = fuzzyMatcher;
   }
 
-  /*
-    # Name: match
-    # Type: InstanceMethod
-
-    Matches the current candidates to a query. Query must be a string
-
-    * `query` A string query to filter the pre-defined candidates
-    * `options` Key/map to customize the details of the search. All keys are
-      optional, meaning they all have defaults
-      * `algorithm` Either "fuzzaldrin" or "command-t". Defaults to "fuzzaldrin"
-        (the **opposite** of @lumine-code/fuzzy-native), a native port of the
-        fuzzaldrin-plus scorer: acronym and consecutive-run bonuses,
-        basename-aware path scoring, and " _-:/\" as optional query
-        characters. "command-t" is the path-tuned alternative
-      * `maxResults` The number of results to return. Defaults to `Infinity`,
-        meaning that it'll return _all results_ that did match. Note
-        that this has no effect on filtering speed
-      * `recordMatchIndexes` If `true`, also returns `matchIndexes`, an array
-        of numbers where each number is the index (0-based) of the character
-        that was matched. Defaults to `false`
-      * `numThreads` The number of threads to filter. Defaults to most of the
-        machine's cores, capped at 8
-      * `maxGap` (only "command-t") The number of maximum "character gap" between
-        consecutive letters. A smaller gap means a faster result. Defaults to
-        Infinite
-      * `usePathScoring` (only "fuzzaldrin") Whether to blend basename and
-        full-path scores by directory depth. Defaults to `true`
-      * `useExtensionBonus` (only "fuzzaldrin") Whether to award a bonus for
-        matching the file extension (query "mf.h" prefers "myFile.h" over
-        "myFile.html"). Defaults to `false`
-
-    Returns: an object containing:
-
-    * `id` The index of the candidate
-    * `value` The original (string) value of the filtered candidate
-    * `score` A number in the range 0 to 1. Higher scores are more relevant.
-      0 denotes "no match" and will never be returned.
-    * `matchIndexes` (optional) Will be returned only if `recordMatchIndexes`
-      is set to true. An array of character indexes in `value`, for highlight
-      rendering. With "command-t" there is one index per `query` character;
-      with "fuzzaldrin" the array can be shorter (optional characters may go
-      unmatched) or longer (full-path and basename alignments merge). This
-      can be expensive to calculate.
-  */
+  /**
+   * Matches the current candidates to a string query.
+   *
+   * Each returned object contains the candidate `id`, its original `value`, and
+   * a `score` from 0 to 1. When `recordMatchIndexes` is enabled, it also contains
+   * the character indexes used for highlighting.
+   *
+   * @param {String} query - The query used to filter the candidates.
+   * @param {Object} [options] - Search options.
+   * @param {"fuzzaldrin"|"command-t"} [options.algorithm="fuzzaldrin"] - The
+   *   scoring algorithm. `fuzzaldrin` uses acronym, consecutive-run,
+   *   basename-aware path scoring, and optional query characters. `command-t`
+   *   is the path-tuned alternative.
+   * @param {Number} [options.maxResults=Infinity] - The maximum number of
+   *   results. This does not affect filtering speed.
+   * @param {Boolean} [options.recordMatchIndexes=false] - Include character
+   *   indexes for highlighting.
+   * @param {Number} [options.numThreads] - Worker threads to use. Defaults to
+   *   most available cores, capped at 8.
+   * @param {Number} [options.maxGap=Infinity] - With `command-t`, the maximum
+   *   gap between consecutive letters.
+   * @param {Boolean} [options.usePathScoring=true] - With `fuzzaldrin`, blend
+   *   basename and full-path scores by directory depth.
+   * @param {Boolean} [options.useExtensionBonus=false] - With `fuzzaldrin`,
+   *   prefer matching file extensions.
+   * @returns {Array<Object>} Matching candidates ordered by relevance.
+   * @private
+   */
   match(query, options = {}) {
     let { numThreads, algorithm } = options;
     numThreads ||= DEFAULT_NUM_THREADS;
@@ -118,40 +101,43 @@ class Matcher {
     return this.fuzzyMatcher.match(query, { ...options, numThreads, algorithm });
   }
 
-  /*
-    # Name: setCandidates
-    # Type: InstanceMethod
-
-    Exactly the same as {setCandidates}, passing this {Matcher} as the first parameter
-  */
+  /**
+   * Replaces this matcher's candidates.
+   *
+   * @param {Array<String>} candidates - The new candidates.
+   * @returns {Matcher} This matcher.
+   * @private
+   */
   setCandidates(candidates) {
     return setCandidates(this, candidates);
   }
 }
 
-/*
-  Essential: The {fuzzyMatcher} API, the same used in the autocomplete,
-  fuzzy file search, command palette, etc.
-  An instance of this API is available via the `lumine.tools.fuzzyMatcher` global.
-
-  This API have two parts - the filtering of an array of candidates, and the
-  scoring. Scoring is done via the {fuzzyMatcher.score}, and filtering is
-  done by returning a new {Matcher} using the {fuzzyMatcher.setCandidates}
-  method, then calling {Matcher#match}. You can _also use_ the
-  {fuzzyMatcher.match} to match a single candidate - it uses the same API and
-  options as {Matcher#match}.
-*/
+/**
+ * The `fuzzyMatcher` API, the same used in the autocomplete,
+ *   fuzzy file search, command palette, etc.
+ *   An instance of this API is available via the `lumine.tools.fuzzyMatcher` global.
+ *
+ *   This API have two parts - the filtering of an array of candidates, and the
+ *   scoring. Scoring is done via `fuzzyMatcher.score`, and filtering is done
+ *   by returning a new `Matcher` using `fuzzyMatcher.setCandidates`, then
+ *   calling `Matcher#match`. You can _also use_ `fuzzyMatcher.match` to match
+ *   a single candidate; it uses the same API and options as `Matcher#match`.
+ *
+ * @public
+ * @api-status Essential
+ */
 const fuzzyMatcher = {
   setCandidates: setCandidates,
 
-  // Same as {setCandidates} passing a single candidate, and returning only
+  // Same as `setCandidates` passing a single candidate, and returning only
   // the score. It can return `0` if there's no match. Accepts the same
-  // options as {Matcher#match} plus `ignoreDiacritics`.
+  // options as `Matcher#match` plus `ignoreDiacritics`.
   score(candidate, query, opts = {}) {
     return this.match(candidate, query, opts)?.score || 0;
   },
 
-  // The same as {setCandidates} with a single candidate. Returns just the
+  // The same as `setCandidates` with a single candidate. Returns just the
   // match, if there's one (can return `undefined`).
   //
   // Accepts `ignoreDiacritics` in `opts` to fold accents before matching

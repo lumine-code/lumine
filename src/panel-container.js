@@ -29,9 +29,9 @@ module.exports = class PanelContainer {
     return this.element;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
   onDidAddPanel(callback) {
     return this.emitter.on("did-add-panel", callback);
@@ -45,9 +45,9 @@ module.exports = class PanelContainer {
     return this.emitter.once("did-destroy", callback);
   }
 
-  /*
-  Section: Panels
-  */
+  /**
+   * @category Panels
+   */
 
   getLocation() {
     return this.location;

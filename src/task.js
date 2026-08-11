@@ -3,49 +3,57 @@ const ChildProcess = require("child_process");
 const { Emitter } = require("@lumine-code/event-kit");
 const Grim = require("@lumine-code/grim");
 
-// Extended: Run a node script in a separate process.
-//
-// Used by fuzzy file search and find-and-replace in project.
-//
-// For a real-world example, see the [replace-handler](https://github.com/lumine-code/lumine/blob/master/src/replace-handler.js).
-//
-// ## Examples
-//
-// In your package code:
-//
-// ```javascript
-// const {Task} = require('lumine');
-//
-// let task = Task.once('/path/to/task-file.js', parameter1, parameter2, function() {
-//   console.log('task has finished');
-// });
-//
-// task.on('some-event-from-the-task', (data) => {
-//   console.log(data.someString); // prints 'yep this is it'
-// });
-// ```
-//
-// In `'/path/to/task-file.js'`:
-//
-// ```javascript
-// module.exports = function(parameter1, parameter2) {
-//   // Indicates that this task will be async.
-//   // Call the `callback` to finish the task
-//   const callback = this.async();
-//   emit('some-event-from-the-task', {
-//     someString: 'yep this is it'
-//   });
-//   return callback();
-// };
-// ```
+/**
+ * Run a node script in a separate process.
+ *
+ * Used by fuzzy file search and find-and-replace in project.
+ *
+ * For a real-world example, see the [replace-handler](https://github.com/lumine-code/lumine/blob/master/src/replace-handler.js).
+ *
+ * ## Examples
+ *
+ * In your package code:
+ *
+ * ```javascript
+ * const {Task} = require('lumine');
+ *
+ * let task = Task.once('/path/to/task-file.js', parameter1, parameter2, function() {
+ *   console.log('task has finished');
+ * });
+ *
+ * task.on('some-event-from-the-task', (data) => {
+ *   console.log(data.someString); // prints 'yep this is it'
+ * });
+ * ```
+ *
+ * In `'/path/to/task-file.js'`:
+ *
+ * ```javascript
+ * module.exports = function(parameter1, parameter2) {
+ *   // Indicates that this task will be async.
+ *   // Call the `callback` to finish the task
+ *   const callback = this.async();
+ *   emit('some-event-from-the-task', {
+ *     someString: 'yep this is it'
+ *   });
+ *   return callback();
+ * };
+ * ```
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class Task {
-  // Public: A helper method to easily launch and run a task once.
-  //
-  // * `taskPath` The {String} path to the CoffeeScript/JavaScript file which
-  //   exports a single {Function} to execute.
-  // * `args` The arguments to pass to the exported function.
+  /**
+   * A helper method to easily launch and run a task once.
+   *
+   * @param taskPath - The `String` path to the CoffeeScript/JavaScript file which exports a single `Function` to execute.
+   * @param args - The arguments to pass to the exported function.
+   * @public
+   * @api-status Public
+   */
 
-  // Returns the created {Task}.
+  // Returns the created {@link Task}.
   static once(taskPath, ...args) {
     const task = new Task(taskPath);
     task.once("task:completed", () => task.terminate());
@@ -57,14 +65,17 @@ module.exports = class Task {
   //
   // It receives the same arguments that were passed to the task.
   //
-  // If subclassed, this is intended to be overridden. However if {::start}
+  // If subclassed, this is intended to be overridden. However if {@link #start}
   // receives a completion callback, this is overridden.
   callback = null;
 
-  // Public: Creates a task. You should probably use {.once}
-  //
-  // * `taskPath` The {String} path to the CoffeeScript/JavaScript file that
-  //   exports a single {Function} to execute.
+  /**
+   * Creates a task. You should probably use {.once}
+   *
+   * @param taskPath - The `String` path to the CoffeeScript/JavaScript file that exports a single `Function` to execute.
+   * @public
+   * @api-status Public
+   */
   constructor(taskPath) {
     this.emitter = new Emitter();
     const compileCachePath = require("./compile-cache").getCacheDirectory();
@@ -122,13 +133,17 @@ module.exports = class Task {
     }
   }
 
-  // Public: Starts the task.
-  //
-  // Throws an error if this task has already been terminated or if sending a
-  // message to the child process fails.
-  //
-  // * `args` The arguments to pass to the function exported by this task's script.
-  // * `callback` (optional) A {Function} to call when the task completes.
+  /**
+   * Starts the task.
+   *
+   * Throws an error if this task has already been terminated or if sending a
+   * message to the child process fails.
+   *
+   * @param {...*} args - Arguments passed to the function exported by the task script.
+   * @param {Function} [callback] - Called when the task completes.
+   * @public
+   * @api-status Public
+   */
   start(...args) {
     // Don't spawn any new tasks during shutdown.
     if (lumine.unloading) return;
@@ -146,12 +161,16 @@ module.exports = class Task {
     return undefined;
   }
 
-  // Public: Send message to the task.
-  //
-  // Throws an error if this task has already been terminated or if sending a
-  // message to the child process fails.
-  //
-  // * `message` The message to send to the task.
+  /**
+   * Send message to the task.
+   *
+   * Throws an error if this task has already been terminated or if sending a
+   * message to the child process fails.
+   *
+   * @param message - The message to send to the task.
+   * @public
+   * @api-status Public
+   */
   send(message) {
     if (this.childProcess != null && !this.isChildRunning()) {
       // The child exited or its channel closed without a deliberate
@@ -175,12 +194,15 @@ module.exports = class Task {
     return child.connected !== false && child.exitCode == null && child.signalCode == null;
   }
 
-  // Public: Call a function when an event is emitted by the child process
-  //
-  // * `eventName` The {String} name of the event to handle.
-  // * `callback` The {Function} to call when the event is emitted.
-  //
-  // Returns a {Disposable} that can be used to stop listening for the event.
+  /**
+   * Call a function when an event is emitted by the child process
+   *
+   * @param eventName - The `String` name of the event to handle.
+   * @param callback - The `Function` to call when the event is emitted.
+   * @returns {Disposable} that can be used to stop listening for the event.
+   * @public
+   * @api-status Public
+   */
   on(eventName, callback) {
     return this.emitter.on(eventName, (args) => callback(...(args || [])));
   }
@@ -192,11 +214,15 @@ module.exports = class Task {
     });
   }
 
-  // Public: Forcefully stop the running task.
-  //
-  // No more events are emitted once this method is called.
-  //
-  // Returns a {Boolean} indicating whether the task was terminated.
+  /**
+   * Forcefully stop the running task.
+   *
+   * No more events are emitted once this method is called.
+   *
+   * @returns {Boolean} indicating whether the task was terminated.
+   * @public
+   * @api-status Public
+   */
   terminate() {
     if (this.childProcess == null) {
       return false;
@@ -209,9 +235,13 @@ module.exports = class Task {
     return true;
   }
 
-  // Public: Cancel the running task and emit an event if it was canceled.
-  //
-  // Returns a {Boolean} indicating whether the task was terminated.
+  /**
+   * Cancel the running task and emit an event if it was canceled.
+   *
+   * @returns {Boolean} indicating whether the task was terminated.
+   * @public
+   * @api-status Public
+   */
   cancel() {
     const didForcefullyTerminate = this.terminate();
     if (didForcefullyTerminate) {

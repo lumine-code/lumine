@@ -173,30 +173,30 @@ module.exports = class RipgrepDirectorySearcher {
   // Results are streamed back to the caller by invoking methods on the specified `options`,
   // such as `didMatch` and `didError`.
   //
-  // * `directories` {Array} of {Directory} objects to search, all of which have been accepted by
+  // * `directories` `Array` of `Directory` objects to search, all of which have been accepted by
   // this searcher's `canSearchDirectory()` predicate.
-  // * `regex` {RegExp} to search with.
-  // * `options` {Object} with the following properties:
-  //   * `didMatch` {Function} call with a search result structured as follows:
-  //     * `searchResult` {Object} with the following keys:
-  //       * `filePath` {String} absolute path to the matching file.
-  //       * `matches` {Array} with object elements with the following keys:
-  //         * `lineText` {String} The full text of the matching line (without a line terminator character).
-  //         * `lineTextOffset` {Number} Always 0, present for backwards compatibility
-  //         * `matchText` {String} The text that matched the `regex` used for the search.
-  //         * `range` {Range} Identifies the matching region in the file. (Likely as an array of numeric arrays.)
-  //   * `didError` {Function} call with an Error if there is a problem during the search.
-  //   * `didSearchPaths` {Function} periodically call with the number of paths searched that contain results thus far.
-  //   * `inclusions` {Array} of glob patterns (as strings) to search within. Note that this
+  // * `regex` `RegExp` to search with.
+  // * `options` `Object` with the following properties:
+  //   * `didMatch` `Function` call with a search result structured as follows:
+  //     * `searchResult` `Object` with the following keys:
+  //       * `filePath` `String` absolute path to the matching file.
+  //       * `matches` `Array` with object elements with the following keys:
+  //         * `lineText` `String` The full text of the matching line (without a line terminator character).
+  //         * `lineTextOffset` `Number` Always 0, present for backwards compatibility
+  //         * `matchText` `String` The text that matched the `regex` used for the search.
+  //         * `range` {@link Range} Identifies the matching region in the file. (Likely as an array of numeric arrays.)
+  //   * `didError` `Function` call with an Error if there is a problem during the search.
+  //   * `didSearchPaths` `Function` periodically call with the number of paths searched that contain results thus far.
+  //   * `inclusions` `Array` of glob patterns (as strings) to search within. Note that this
   //   array may be empty, indicating that all files should be searched.
   //
   //   Each item in the array is a file/directory pattern, e.g., `src` to search in the "src"
   //   directory or `*.js` to search all JavaScript files. In practice, this often comes from the
   //   comma-delimited list of patterns in the bottom text input of the ProjectFindView dialog.
-  //   * `includeHidden` {boolean} whether to ignore hidden files.
-  //   * `excludeVcsIgnores` {boolean} whether to exclude VCS ignored paths.
-  //   * `exclusions` {Array} similar to inclusions
-  //   * `follow` {boolean} whether symlinks should be followed.
+  //   * `includeHidden` `boolean` whether to ignore hidden files.
+  //   * `excludeVcsIgnores` `boolean` whether to exclude VCS ignored paths.
+  //   * `exclusions` `Array` similar to inclusions
+  //   * `follow` `boolean` whether symlinks should be followed.
   //
   // Returns a *thenable* `DirectorySearch` that includes a `cancel()` method. If `cancel()` is
   // invoked before the `DirectorySearch` is determined, it will resolve the `DirectorySearch`.

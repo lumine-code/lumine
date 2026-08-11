@@ -29,45 +29,50 @@ let nextId = 0;
 
 const DEFAULT_NON_WORD_CHARACTERS = "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…";
 
-// Essential: This class represents all essential editing state for a single
-// {TextBuffer}, including cursor and selection positions, folds, and soft wraps.
-// If you're manipulating the state of an editor, use this class.
-//
-// A single {TextBuffer} can belong to multiple editors. For example, if the
-// same file is open in two different panes, Lumine creates a separate editor for
-// each pane. If the buffer is manipulated the changes are reflected in both
-// editors, but each maintains its own cursor position, folded lines, etc.
-//
-// ## Accessing TextEditor Instances
-//
-// The easiest way to get hold of `TextEditor` objects is by registering a callback
-// with `::observeTextEditors` on the `lumine.workspace` global. Your callback will
-// then be called with all current editor instances and also when any editor is
-// created in the future.
-//
-// ```js
-// lumine.workspace.observeTextEditors(editor => {
-//   editor.insertText('Hello World')
-// })
-// ```
-//
-// ## Buffer vs. Screen Coordinates
-//
-// Because editors support folds and soft-wrapping, the lines on screen don't
-// always match the lines in the buffer. For example, a long line that soft wraps
-// twice renders as three lines on screen, but only represents one line in the
-// buffer. Similarly, if rows 5-10 are folded, then row 6 on screen corresponds
-// to row 11 in the buffer.
-//
-// Your choice of coordinates systems will depend on what you're trying to
-// achieve. For example, if you're writing a command that jumps the cursor up or
-// down by 10 lines, you'll want to use screen coordinates because the user
-// probably wants to skip lines *on screen*. However, if you're writing a package
-// that jumps between method definitions, you'll want to work in buffer
-// coordinates.
-//
-// **When in doubt, just default to buffer coordinates**, then experiment with
-// soft wraps and folds to ensure your code interacts with them correctly.
+/**
+ * This class represents all essential editing state for a single
+ * {@link TextBuffer}, including cursor and selection positions, folds, and soft wraps.
+ * If you're manipulating the state of an editor, use this class.
+ *
+ * A single {@link TextBuffer} can belong to multiple editors. For example, if the
+ * same file is open in two different panes, Lumine creates a separate editor for
+ * each pane. If the buffer is manipulated the changes are reflected in both
+ * editors, but each maintains its own cursor position, folded lines, etc.
+ *
+ * ## Accessing TextEditor Instances
+ *
+ * The easiest way to get hold of `TextEditor` objects is by registering a callback
+ * with `::observeTextEditors` on the `lumine.workspace` global. Your callback will
+ * then be called with all current editor instances and also when any editor is
+ * created in the future.
+ *
+ * ```js
+ * lumine.workspace.observeTextEditors(editor => {
+ *   editor.insertText('Hello World')
+ * })
+ * ```
+ *
+ * ## Buffer vs. Screen Coordinates
+ *
+ * Because editors support folds and soft-wrapping, the lines on screen don't
+ * always match the lines in the buffer. For example, a long line that soft wraps
+ * twice renders as three lines on screen, but only represents one line in the
+ * buffer. Similarly, if rows 5-10 are folded, then row 6 on screen corresponds
+ * to row 11 in the buffer.
+ *
+ * Your choice of coordinates systems will depend on what you're trying to
+ * achieve. For example, if you're writing a command that jumps the cursor up or
+ * down by 10 lines, you'll want to use screen coordinates because the user
+ * probably wants to skip lines *on screen*. However, if you're writing a package
+ * that jumps between method definitions, you'll want to work in buffer
+ * coordinates.
+ *
+ * **When in doubt, just default to buffer coordinates**, then experiment with
+ * soft wraps and folds to ensure your code interacts with them correctly.
+ *
+ * @public
+ * @api-status Essential
+ */
 module.exports = class TextEditor {
   static setClipboard(clipboard) {
     this.clipboard = clipboard;
@@ -889,303 +894,384 @@ module.exports = class TextEditor {
     return !this.alive;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Calls your `callback` when the buffer's title has changed.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the buffer's title has changed.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeTitle(callback) {
     return this.emitter.on("did-change-title", callback);
   }
 
-  // Essential: Calls your `callback` when the buffer's path, and therefore title, has changed.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the buffer's path, and therefore title, has changed.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangePath(callback) {
     return this.emitter.on("did-change-path", callback);
   }
 
-  // Essential: Invoke the given callback synchronously when the content of the
-  // buffer changes.
-  //
-  // Because observers are invoked synchronously, it's important not to perform
-  // any expensive operations via this method. Consider {::onDidStopChanging} to
-  // delay expensive operations until after changes stop occurring.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback synchronously when the content of the
+   * buffer changes.
+   *
+   * Because observers are invoked synchronously, it's important not to perform
+   * any expensive operations via this method. Consider {@link #onDidStopChanging} to
+   * delay expensive operations until after changes stop occurring.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);
   }
 
-  // Essential: Invoke `callback` when the buffer's contents change. It is
-  // emit asynchronously 300ms after the last buffer change. This is a good place
-  // to handle changes to the buffer without compromising typing performance.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke `callback` when the buffer's contents change. It is
+   * emit asynchronously 300ms after the last buffer change. This is a good place
+   * to handle changes to the buffer without compromising typing performance.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidStopChanging(callback) {
     return this.getBuffer().onDidStopChanging(callback);
   }
 
-  // Essential: Calls your `callback` when a {Cursor} is moved. If there are
-  // multiple cursors, your callback will be called for each cursor.
-  //
-  // * `callback` {Function}
-  //   * `event` {Object}
-  //     * `oldBufferPosition` {Point}
-  //     * `oldScreenPosition` {Point}
-  //     * `newBufferPosition` {Point}
-  //     * `newScreenPosition` {Point}
-  //     * `textChanged` {Boolean}
-  //     * `cursor` {Cursor} that triggered the event
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Cursor} is moved. If there are
+   * multiple cursors, your callback will be called for each cursor.
+   *
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {Point} callback.event.oldBufferPosition
+   * @param {Point} callback.event.oldScreenPosition
+   * @param {Point} callback.event.newBufferPosition
+   * @param {Point} callback.event.newScreenPosition
+   * @param {Boolean} callback.event.textChanged
+   * @param {Cursor} callback.event.cursor - that triggered the event
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeCursorPosition(callback) {
     return this.emitter.on("did-change-cursor-position", callback);
   }
 
-  // Essential: Calls your `callback` when a selection's screen range changes.
-  //
-  // * `callback` {Function}
-  //   * `event` {Object}
-  //     * `oldBufferRange` {Range}
-  //     * `oldScreenRange` {Range}
-  //     * `newBufferRange` {Range}
-  //     * `newScreenRange` {Range}
-  //     * `selection` {Selection} that triggered the event
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a selection's screen range changes.
+   *
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {Range} callback.event.oldBufferRange
+   * @param {Range} callback.event.oldScreenRange
+   * @param {Range} callback.event.newBufferRange
+   * @param {Range} callback.event.newScreenRange
+   * @param {Selection} callback.event.selection - that triggered the event
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeSelectionRange(callback) {
     return this.emitter.on("did-change-selection-range", callback);
   }
 
-  // Extended: Calls your `callback` when soft wrap was enabled or disabled.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when soft wrap was enabled or disabled.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeSoftWrapped(callback) {
     return this.emitter.on("did-change-soft-wrapped", callback);
   }
 
-  // Extended: Calls your `callback` when overtype (overwrite) mode is enabled or
-  // disabled for this editor.
-  //
-  // * `callback` {Function}
-  //   * `overtypeMode` {Boolean} indicating the new state.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when overtype (overwrite) mode is enabled or
+   * disabled for this editor.
+   *
+   * @param {Function} callback
+   * @param {Boolean} callback.overtypeMode - indicating the new state.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeOvertypeMode(callback) {
     return this.emitter.on("did-change-overtype-mode", callback);
   }
 
-  // Extended: Calls your `callback` when the buffer's encoding has changed.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the buffer's encoding has changed.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeEncoding(callback) {
     return this.emitter.on("did-change-encoding", callback);
   }
 
-  // Extended: Calls your `callback` when the grammar that interprets and
-  // colorizes the text has been changed. Immediately calls your callback with
-  // the current grammar.
-  //
-  // * `callback` {Function}
-  //   * `grammar` {Grammar}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the grammar that interprets and
+   * colorizes the text has been changed. Immediately calls your callback with
+   * the current grammar.
+   *
+   * @param {Function} callback
+   * @param {Grammar} callback.grammar
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observeGrammar(callback) {
     callback(this.getGrammar());
     return this.onDidChangeGrammar(callback);
   }
 
-  // Extended: Calls your `callback` when the grammar that interprets and
-  // colorizes the text has been changed.
-  //
-  // * `callback` {Function}
-  //   * `grammar` {Grammar}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the grammar that interprets and
+   * colorizes the text has been changed.
+   *
+   * @param {Function} callback
+   * @param {Grammar} callback.grammar
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeGrammar(callback) {
     return this.buffer.onDidChangeLanguageMode(() => {
       callback(this.buffer.getLanguageMode().grammar);
     });
   }
 
-  // Extended: Calls your `callback` when the result of {::isModified} changes.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the result of {@link #isModified} changes.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeModified(callback) {
     return this.getBuffer().onDidChangeModified(callback);
   }
 
-  // Extended: Calls your `callback` when the buffer's underlying file changes on
-  // disk at a moment when the result of {::isModified} is true.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the buffer's underlying file changes on
+   * disk at a moment when the result of {@link #isModified} is true.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidConflict(callback) {
     return this.getBuffer().onDidConflict(callback);
   }
 
-  // Extended: Calls your `callback` when the buffer's underlying file is deleted
-  // on disk.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the buffer's underlying file is deleted
+   * on disk.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidDelete(callback) {
     return this.getBuffer().onDidDelete(callback);
   }
 
-  // Extended: Calls your `callback` before text has been inserted.
-  //
-  // * `callback` {Function}
-  //   * `event` event {Object}
-  //     * `text` {String} text to be inserted
-  //     * `cancel` {Function} Call to prevent the text from being inserted
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` before text has been inserted.
+   *
+   * @param {Function} callback
+   * @param callback.event - event `Object`
+   * @param {String} callback.event.text - text to be inserted
+   * @param {Function} callback.event.cancel - Call to prevent the text from being inserted
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onWillInsertText(callback) {
     return this.emitter.on("will-insert-text", callback);
   }
 
-  // Extended: Calls your `callback` after text has been inserted.
-  //
-  // * `callback` {Function}
-  //   * `event` event {Object}
-  //     * `text` {String} text to be inserted
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` after text has been inserted.
+   *
+   * @param {Function} callback
+   * @param callback.event - event `Object`
+   * @param {String} callback.event.text - text to be inserted
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidInsertText(callback) {
     return this.emitter.on("did-insert-text", callback);
   }
 
-  // Essential: Invoke the given callback after the buffer is saved to disk.
-  //
-  // * `callback` {Function} to be called after the buffer is saved.
-  //   * `event` {Object} with the following keys:
-  //     * `path` The path to which the buffer was saved.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback after the buffer is saved to disk.
+   *
+   * @param {Function} callback - to be called after the buffer is saved.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.path - The path to which the buffer was saved.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidSave(callback) {
     return this.getBuffer().onDidSave(callback);
   }
 
-  // Essential: Invoke the given callback when the editor is destroyed.
-  //
-  // * `callback` {Function} to be called when the editor is destroyed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the editor is destroyed.
+   *
+   * @param {Function} callback - to be called when the editor is destroyed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
   }
 
-  // Extended: Calls your `callback` when a {Cursor} is added to the editor.
-  // Immediately calls your callback for each existing cursor.
-  //
-  // * `callback` {Function}
-  //   * `cursor` {Cursor} that was added
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Cursor} is added to the editor.
+   * Immediately calls your callback for each existing cursor.
+   *
+   * @param {Function} callback
+   * @param {Cursor} callback.cursor - that was added
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observeCursors(callback) {
     this.getCursors().forEach(callback);
     return this.onDidAddCursor(callback);
   }
 
-  // Extended: Calls your `callback` when a {Cursor} is added to the editor.
-  //
-  // * `callback` {Function}
-  //   * `cursor` {Cursor} that was added
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Cursor} is added to the editor.
+   *
+   * @param {Function} callback
+   * @param {Cursor} callback.cursor - that was added
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddCursor(callback) {
     return this.emitter.on("did-add-cursor", callback);
   }
 
-  // Extended: Calls your `callback` when a {Cursor} is removed from the editor.
-  //
-  // * `callback` {Function}
-  //   * `cursor` {Cursor} that was removed
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Cursor} is removed from the editor.
+   *
+   * @param {Function} callback
+   * @param {Cursor} callback.cursor - that was removed
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidRemoveCursor(callback) {
     return this.emitter.on("did-remove-cursor", callback);
   }
 
-  // Extended: Calls your `callback` when a {Selection} is added to the editor.
-  // Immediately calls your callback for each existing selection.
-  //
-  // * `callback` {Function}
-  //   * `selection` {Selection} that was added
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Selection} is added to the editor.
+   * Immediately calls your callback for each existing selection.
+   *
+   * @param {Function} callback
+   * @param {Selection} callback.selection - that was added
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observeSelections(callback) {
     this.getSelections().forEach(callback);
     return this.onDidAddSelection(callback);
   }
 
-  // Extended: Calls your `callback` when a {Selection} is added to the editor.
-  //
-  // * `callback` {Function}
-  //   * `selection` {Selection} that was added
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Selection} is added to the editor.
+   *
+   * @param {Function} callback
+   * @param {Selection} callback.selection - that was added
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddSelection(callback) {
     return this.emitter.on("did-add-selection", callback);
   }
 
-  // Extended: Calls your `callback` when a {Selection} is removed from the editor.
-  //
-  // * `callback` {Function}
-  //   * `selection` {Selection} that was removed
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Selection} is removed from the editor.
+   *
+   * @param {Function} callback
+   * @param {Selection} callback.selection - that was removed
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidRemoveSelection(callback) {
     return this.emitter.on("did-remove-selection", callback);
   }
 
-  // Extended: Calls your `callback` with each {Decoration} added to the editor.
-  // Calls your `callback` immediately for any existing decorations.
-  //
-  // * `callback` {Function}
-  //   * `decoration` {Decoration}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` with each {@link Decoration} added to the editor.
+   * Calls your `callback` immediately for any existing decorations.
+   *
+   * @param {Function} callback
+   * @param {Decoration} callback.decoration
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observeDecorations(callback) {
     return this.decorationManager.observeDecorations(callback);
   }
 
-  // Extended: Calls your `callback` when a {Decoration} is added to the editor.
-  //
-  // * `callback` {Function}
-  //   * `decoration` {Decoration} that was added
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Decoration} is added to the editor.
+   *
+   * @param {Function} callback
+   * @param {Decoration} callback.decoration - that was added
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddDecoration(callback) {
     return this.decorationManager.onDidAddDecoration(callback);
   }
 
-  // Extended: Calls your `callback` when a {Decoration} is removed from the editor.
-  //
-  // * `callback` {Function}
-  //   * `decoration` {Decoration} that was removed
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Decoration} is removed from the editor.
+   *
+   * @param {Function} callback
+   * @param {Decoration} callback.decoration - that was removed
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidRemoveDecoration(callback) {
     return this.decorationManager.onDidRemoveDecoration(callback);
   }
@@ -1197,12 +1283,15 @@ module.exports = class TextEditor {
     }
   }
 
-  // Extended: Calls your `callback` when the placeholder text is changed.
-  //
-  // * `callback` {Function}
-  //   * `placeholderText` {String} new text
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the placeholder text is changed.
+   *
+   * @param {Function} callback
+   * @param {String} callback.placeholderText - new text
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangePlaceholderText(callback) {
     return this.emitter.on("did-change-placeholder-text", callback);
   }
@@ -1224,7 +1313,7 @@ module.exports = class TextEditor {
     return this.buffer.getUri();
   }
 
-  // Create an {TextEditor} with its initial state based on this object
+  // Create an {@link TextEditor} with its initial state based on this object
   copy() {
     const displayLayer = this.displayLayer.copy();
     const selectionsMarkerLayer = displayLayer.getMarkerLayer(
@@ -1260,7 +1349,7 @@ module.exports = class TextEditor {
     });
   }
 
-  // Controls visibility based on the given {Boolean}.
+  // Controls visibility based on the given `Boolean`.
   setVisible(visible) {
     if (visible) {
       const languageMode = this.buffer.getLanguageMode();
@@ -1312,33 +1401,42 @@ module.exports = class TextEditor {
     return this.emitter.on("did-change-line-number-gutter-visible", callback);
   }
 
-  // Essential: Calls your `callback` when a {Gutter} is added to the editor.
-  // Immediately calls your callback for each existing gutter.
-  //
-  // * `callback` {Function}
-  //   * `gutter` {Gutter} that currently exists/was added.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Gutter} is added to the editor.
+   * Immediately calls your callback for each existing gutter.
+   *
+   * @param {Function} callback
+   * @param {Gutter} callback.gutter - that currently exists/was added.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeGutters(callback) {
     return this.gutterContainer.observeGutters(callback);
   }
 
-  // Essential: Calls your `callback` when a {Gutter} is added to the editor.
-  //
-  // * `callback` {Function}
-  //   * `gutter` {Gutter} that was added.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Gutter} is added to the editor.
+   *
+   * @param {Function} callback
+   * @param {Gutter} callback.gutter - that was added.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidAddGutter(callback) {
     return this.gutterContainer.onDidAddGutter(callback);
   }
 
-  // Essential: Calls your `callback` when a {Gutter} is removed from the editor.
-  //
-  // * `callback` {Function}
-  //   * `name` The name of the {Gutter} that was removed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when a {@link Gutter} is removed from the editor.
+   *
+   * @param {Function} callback
+   * @param callback.name - The name of the {@link Gutter} that was removed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidRemoveGutter(callback) {
     return this.gutterContainer.onDidRemoveGutter(callback);
   }
@@ -1346,8 +1444,8 @@ module.exports = class TextEditor {
   // Set the number of characters that can be displayed horizontally in the
   // editor.
   //
-  // * `editorWidthInChars` A {Number} representing the width of the
-  // {TextEditorElement} in characters.
+  // * `editorWidthInChars` A `Number` representing the width of the
+  // {@link TextEditorElement} in characters.
   setEditorWidthInChars(editorWidthInChars) {
     this.updateEditorWidthInChars(editorWidthInChars, true);
   }
@@ -1361,40 +1459,53 @@ module.exports = class TextEditor {
     }
   }
 
-  /*
-  Section: Buffer
-  */
+  /**
+   * @category Buffer
+   */
 
-  // Essential: Retrieves the current {TextBuffer}.
+  /**
+   * Retrieves the current {@link TextBuffer}.
+   *
+   * @public
+   * @api-status Essential
+   */
   getBuffer() {
     return this.buffer;
   }
 
-  /*
-  Section: File Details
-  */
+  /**
+   * @category File Details
+   */
 
-  // Essential: Get the editor's title for display in other parts of the
-  // UI such as the tabs.
-  //
-  // If the editor's buffer is saved, its title is the file name. If it is
-  // unsaved, its title is "untitled".
-  //
-  // Returns a {String}.
+  /**
+   * Get the editor's title for display in other parts of the
+   * UI such as the tabs.
+   *
+   * If the editor's buffer is saved, its title is the file name. If it is
+   * unsaved, its title is "untitled".
+   *
+   * @returns {String}
+   * @public
+   * @api-status Essential
+   */
   getTitle() {
     return this.getFileName() || "untitled";
   }
 
-  // Essential: Get unique title for display in other parts of the UI, such as
-  // the window title.
-  //
-  // If the editor's buffer is unsaved, its title is "untitled"
-  // If the editor's buffer is saved, its unique title is formatted as one
-  // of the following,
-  // * "<filename>" when it is the only editing buffer with this file name.
-  // * "<filename> — <unique-dir-prefix>" when other buffers have this file name.
-  //
-  // Returns a {String}
+  /**
+   * Get unique title for display in other parts of the UI, such as
+   * the window title.
+   *
+   * If the editor's buffer is unsaved, its title is "untitled"
+   * If the editor's buffer is saved, its unique title is formatted as one
+   * of the following,
+   * * "<filename>" when it is the only editing buffer with this file name.
+   * * "<filename> — <unique-dir-prefix>" when other buffers have this file name.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Essential
+   */
   getLongTitle() {
     if (!this.getPath()) return "untitled";
     // A long title is a property of the whole set of open editors \u2014 it says
@@ -1485,7 +1596,11 @@ module.exports = class TextEditor {
     return this.tildifiedSegments;
   }
 
-  // Essential: Returns the {String} path of this editor's text buffer.
+  /**
+   * @returns {String} path of this editor's text buffer.
+   * @public
+   * @api-status Essential
+   */
   getPath() {
     return this.buffer.getPath();
   }
@@ -1500,65 +1615,94 @@ module.exports = class TextEditor {
     if (fullPath) return path.dirname(fullPath);
   }
 
-  // Extended: Returns the {String} character set encoding of this editor's text
-  // buffer.
+  /**
+   * @returns {String} character set encoding of this editor's text buffer.
+   * @public
+   * @api-status Extended
+   */
   getEncoding() {
     return this.buffer.getEncoding();
   }
 
-  // Extended: Set the character set encoding to use in this editor's text
-  // buffer.
-  //
-  // * `encoding` The {String} character set encoding name such as 'utf8'
+  /**
+   * Set the character set encoding to use in this editor's text
+   * buffer.
+   *
+   * @param encoding - The `String` character set encoding name such as 'utf8'
+   * @public
+   * @api-status Extended
+   */
   setEncoding(encoding) {
     this.buffer.setEncoding(encoding);
   }
 
-  // Essential: Returns {Boolean} `true` if this editor has been modified.
+  /**
+   * @returns {Boolean} `true` if this editor has been modified.
+   * @public
+   * @api-status Essential
+   */
   isModified() {
     return this.buffer.isModified();
   }
 
-  // Essential: Returns {Boolean} `true` if this editor's buffer previously had a
-  // file on disk that has since been deleted (and has not been recreated or
-  // saved since). The buffer may still be unmodified — see {::isModified}.
+  /**
+   * @returns {Boolean} `true` if this editor's buffer previously had a file on disk that has since been deleted (and has not been recreated or saved since). The buffer may still be unmodified — see {@link #isModified}.
+   * @public
+   * @api-status Essential
+   */
   isDeleted() {
     return typeof this.buffer.isDeleted === "function" && this.buffer.isDeleted();
   }
 
-  // Essential: Returns {Boolean} `true` if this editor's buffer is in conflict
-  // — that is, if the buffer is modified and those changes are based on buffer
-  // contents that do not match what is currently written to disk.
-  //
-  // This can happen if another process writes to a file after you start to
-  // edit it in Lumine, but before you're able to save those changes. It can
-  // also happen if you switch branches in version control while a certain
-  // buffer has uncommitted changes.
+  /**
+   *
+   * This can happen if another process writes to a file after you start to
+   * edit it in Lumine, but before you're able to save those changes. It can
+   * also happen if you switch branches in version control while a certain
+   * buffer has uncommitted changes.
+   *
+   * @returns {Boolean} `true` if this editor's buffer is in conflict — that is, if the buffer is modified and those changes are based on buffer contents that do not match what is currently written to disk.
+   * @public
+   * @api-status Essential
+   */
   isInConflict() {
     return this.buffer.isInConflict();
   }
 
-  // Essential: Returns {Boolean} `true` if this editor has no content.
+  /**
+   * @returns {Boolean} `true` if this editor has no content.
+   * @public
+   * @api-status Essential
+   */
   isEmpty() {
     return this.buffer.isEmpty();
   }
 
-  /*
-  Section: File Operations
-  */
+  /**
+   * @category File Operations
+   */
 
-  // Essential: Saves the editor's text buffer.
-  //
-  // See {TextBuffer::save} for more details.
+  /**
+   * Saves the editor's text buffer.
+   *
+   * See {@link TextBuffer#save} for more details.
+   *
+   * @public
+   * @api-status Essential
+   */
   save() {
     return this.buffer.save();
   }
 
-  // Essential: Saves the editor's text buffer as the given path.
-  //
-  // See {TextBuffer::saveAs} for more details.
-  //
-  // * `filePath` A {String} path.
+  /**
+   * Saves the editor's text buffer as the given path.
+   *
+   * See {@link TextBuffer#saveAs} for more details.
+   *
+   * @param filePath - A `String` path.
+   * @public
+   * @api-status Essential
+   */
   saveAs(filePath) {
     return this.buffer.saveAs(filePath);
   }
@@ -1582,37 +1726,51 @@ module.exports = class TextEditor {
     }
   }
 
-  // Returns an {Object} to configure dialog shown when this editor is saved
-  // via {Pane::saveItemAs}.
+  // Returns an `Object` to configure dialog shown when this editor is saved
+  // via {@link Pane#saveItemAs}.
   getSaveDialogOptions() {
     return {};
   }
 
-  /*
-  Section: Reading Text
-  */
+  /**
+   * @category Reading Text
+   */
 
-  // Essential: Returns a {String} representing the entire contents of the editor.
+  /**
+   * @returns {String} representing the entire contents of the editor.
+   * @public
+   * @api-status Essential
+   */
   getText() {
     return this.buffer.getText();
   }
 
-  // Essential: Get the text in the given {Range} in buffer coordinates.
-  //
-  // * `range` A {Range} or range-compatible {Array}.
-  //
-  // Returns a {String}.
+  /**
+   * Get the text in the given {@link Range} in buffer coordinates.
+   *
+   * @param range - A {@link Range} or range-compatible `Array`.
+   * @returns {String}
+   * @public
+   * @api-status Essential
+   */
   getTextInBufferRange(range) {
     return this.buffer.getTextInRange(range);
   }
 
-  // Essential: Returns a {Number} representing the number of lines in the buffer.
+  /**
+   * @returns {Number} representing the number of lines in the buffer.
+   * @public
+   * @api-status Essential
+   */
   getLineCount() {
     return this.buffer.getLineCount();
   }
 
-  // Essential: Returns a {Number} representing the number of screen lines in the
-  // editor. This accounts for folds.
+  /**
+   * @returns {Number} representing the number of screen lines in the editor. This accounts for folds.
+   * @public
+   * @api-status Essential
+   */
   getScreenLineCount() {
     return this.displayLayer.getScreenLineCount();
   }
@@ -1621,30 +1779,40 @@ module.exports = class TextEditor {
     return this.displayLayer.getApproximateScreenLineCount();
   }
 
-  // Essential: Returns a {Number} representing the last zero-indexed buffer row
-  // number of the editor.
+  /**
+   * @returns {Number} representing the last zero-indexed buffer row number of the editor.
+   * @public
+   * @api-status Essential
+   */
   getLastBufferRow() {
     return this.buffer.getLastRow();
   }
 
-  // Essential: Returns a {Number} representing the last zero-indexed screen row
-  // number of the editor.
+  /**
+   * @returns {Number} representing the last zero-indexed screen row number of the editor.
+   * @public
+   * @api-status Essential
+   */
   getLastScreenRow() {
     return this.getScreenLineCount() - 1;
   }
 
-  // Essential: Returns a {String} representing the contents of the line at the
-  // given buffer row.
-  //
-  // * `bufferRow` A {Number} representing a zero-indexed buffer row.
+  /**
+   * @param bufferRow - A `Number` representing a zero-indexed buffer row.
+   * @returns {String} representing the contents of the line at the given buffer row.
+   * @public
+   * @api-status Essential
+   */
   lineTextForBufferRow(bufferRow) {
     return this.buffer.lineForRow(bufferRow);
   }
 
-  // Essential: Returns a {String} representing the contents of the line at the
-  // given screen row.
-  //
-  // * `screenRow` A {Number} representing a zero-indexed screen row.
+  /**
+   * @param screenRow - A `Number` representing a zero-indexed screen row.
+   * @returns {String} representing the contents of the line at the given screen row.
+   * @public
+   * @api-status Essential
+   */
   lineTextForScreenRow(screenRow) {
     const screenLine = this.screenLineForScreenRow(screenRow);
     if (screenLine) return screenLine.lineText;
@@ -1727,17 +1895,17 @@ module.exports = class TextEditor {
 
   // Returns the range for the given buffer row.
   //
-  // * `row` A row {Number}.
+  // * `row` A row `Number`.
   // * `options` (optional) An options object with an `includeNewline` key.
   //
-  // Returns a {Range}.
+  // Returns a {@link Range}.
   bufferRangeForBufferRow(row, options) {
     return this.buffer.rangeForRow(row, options && options.includeNewline);
   }
 
-  // Get the text in the given {Range}.
+  // Get the text in the given {@link Range}.
   //
-  // Returns a {String}.
+  // Returns a `String`.
   getTextInRange(range) {
     return this.buffer.getTextInRange(range);
   }
@@ -1757,50 +1925,63 @@ module.exports = class TextEditor {
     return this.buffer.getEndPosition();
   }
 
-  // Essential: Get the {Range} of the paragraph surrounding the most recently added
-  // cursor.
-  //
-  // Returns a {Range}.
+  /**
+   * Get the {@link Range} of the paragraph surrounding the most recently added
+   * cursor.
+   *
+   * @returns {Range}
+   * @public
+   * @api-status Essential
+   */
   getCurrentParagraphBufferRange() {
     return this.getLastCursor().getCurrentParagraphBufferRange();
   }
 
-  /*
-  Section: Mutating Text
-  */
+  /**
+   * @category Mutating Text
+   */
 
-  // Essential: Replaces the entire contents of the buffer with the given {String}.
-  //
-  // * `text` A {String} to replace with
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  /**
+   * Replaces the entire contents of the buffer with the given `String`.
+   *
+   * @param text - A `String` to replace with
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @public
+   * @api-status Essential
+   */
   setText(text, options = {}) {
     if (!this.ensureWritable("setText", options)) return;
     return this.buffer.setText(text);
   }
 
-  // Essential: Set the text in the given {Range} in buffer coordinates.
-  //
-  // * `range` A {Range} or range-compatible {Array}.
-  // * `text` A {String}
-  // * `options` (optional) {Object}
-  //   * `normalizeLineEndings` (optional) {Boolean} (default: true)
-  //   * `undo` (optional) *Deprecated* {String} 'skip' will skip the undo system. This property is deprecated. Call groupLastChanges() on the {TextBuffer} afterward instead.
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
-  //
-  // Returns the {Range} of the newly-inserted text.
+  /**
+   * Set the text in the given {@link Range} in buffer coordinates.
+   *
+   * @param range - A {@link Range} or range-compatible `Array`.
+   * @param text - A `String`
+   * @param {Object} [options]
+   * @param {Boolean} [options.normalizeLineEndings] - (default: true)
+   * @param [options.undo] - *Deprecated* `String` 'skip' will skip the undo system. This property is deprecated. Call groupLastChanges() on the {@link TextBuffer} afterward instead.
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @returns {Range} of the newly-inserted text.
+   * @public
+   * @api-status Essential
+   */
   setTextInBufferRange(range, text, options = {}) {
     if (!this.ensureWritable("setTextInBufferRange", options)) return;
     return this.getBuffer().setTextInRange(range, text, options);
   }
 
-  // Essential: For each selection, replace the selected text with the given text.
-  //
-  // * `text` A {String} representing the text to insert.
-  // * `options` (optional) See {Selection::insertText}.
-  //
-  // Returns a {Range} when the text has been inserted. Returns a {Boolean} `false` when the text
-  // has not been inserted.
+  /**
+   * For each selection, replace the selected text with the given text.
+   *
+   * @param text - A `String` representing the text to insert.
+   * @param [options] - See {@link Selection#insertText}.
+   * @returns {Range} when the text has been inserted. Returns a `Boolean` `false` when the text has not been inserted.
+   * @public
+   * @api-status Essential
+   */
   insertText(text, options = {}) {
     if (!this.ensureWritable("insertText", options)) return;
     if (!this.emitWillInsertTextEvent(text)) return false;
@@ -1829,42 +2010,56 @@ module.exports = class TextEditor {
     return result;
   }
 
-  // Essential: For each selection, replace the selected text with a newline.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, replace the selected text with a newline.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Essential
+   */
   insertNewline(options = {}) {
     return this.insertText("\n", options);
   }
 
-  // Essential: For each selection, if the selection is empty, delete the character
-  // following the cursor. Otherwise delete the selected text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is empty, delete the character
+   * following the cursor. Otherwise delete the selected text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Essential
+   */
   delete(options = {}) {
     if (!this.ensureWritable("delete", options)) return;
     return this.mutateSelectedText((selection) => selection.delete(options));
   }
 
-  // Essential: For each selection, if the selection is empty, delete the character
-  // preceding the cursor. Otherwise delete the selected text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is empty, delete the character
+   * preceding the cursor. Otherwise delete the selected text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Essential
+   */
   backspace(options = {}) {
     if (!this.ensureWritable("backspace", options)) return;
     return this.mutateSelectedText((selection) => selection.backspace(options));
   }
 
-  // Extended: Mutate the text of all the selections in a single transaction.
-  //
-  // All the changes made inside the given {Function} can be reverted with a
-  // single call to {::undo}.
-  //
-  // * `fn` A {Function} that will be called once for each {Selection}. The first
-  //      argument will be a {Selection} and the second argument will be the
-  //      {Number} index of that selection.
+  /**
+   * Mutate the text of all the selections in a single transaction.
+   *
+   * All the changes made inside the given `Function` can be reverted with a
+   * single call to {@link #undo}.
+   *
+   * @param fn - A `Function` that will be called once for each {@link Selection}. The first argument will be a {@link Selection} and the second argument will be the `Number` index of that selection.
+   * @public
+   * @api-status Extended
+   */
   mutateSelectedText(fn, groupingInterval = 0) {
     return this.mergeIntersectingSelections(() => {
       return this.transact(groupingInterval, () => {
@@ -1878,8 +2073,8 @@ module.exports = class TextEditor {
   // Move lines intersecting the most recent selection or multiple selections
   // up by one row in screen coordinates.
   //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  // * `options` (optional) `Object`
+  //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   moveLineUp(options = {}) {
     if (!this.ensureWritable("moveLineUp", options)) return;
 
@@ -1962,8 +2157,8 @@ module.exports = class TextEditor {
   // Move lines intersecting the most recent selection or multiple selections
   // down by one row in screen coordinates.
   //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  // * `options` (optional) `Object`
+  //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   moveLineDown(options = {}) {
     if (!this.ensureWritable("moveLineDown", options)) return;
 
@@ -2047,8 +2242,8 @@ module.exports = class TextEditor {
 
   // Move any active selections one column to the left.
   //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  // * `options` (optional) `Object`
+  //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   moveSelectionLeft(options = {}) {
     if (!this.ensureWritable("moveSelectionLeft", options)) return;
     const selections = this.getSelectedBufferRanges();
@@ -2078,8 +2273,8 @@ module.exports = class TextEditor {
 
   // Move any active selections one column to the right.
   //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  // * `options` (optional) `Object`
+  //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   moveSelectionRight(options = {}) {
     if (!this.ensureWritable("moveSelectionRight", options)) return;
     const selections = this.getSelectedBufferRanges();
@@ -2111,8 +2306,8 @@ module.exports = class TextEditor {
 
   // Duplicate all lines containing active selections.
   //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  // * `options` (optional) `Object`
+  //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   duplicateLines(options = {}) {
     if (!this.ensureWritable("duplicateLines", options)) return;
     this.transact(() => {
@@ -2219,13 +2414,17 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: For each selection, transpose the selected text.
-  //
-  // If the selection is empty, the characters preceding and following the cursor
-  // are swapped. Otherwise, the selected characters are reversed.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, transpose the selected text.
+   *
+   * If the selection is empty, the characters preceding and following the cursor
+   * are swapped. Otherwise, the selected characters are reversed.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   transpose(options = {}) {
     if (!this.ensureWritable("transpose", options)) return;
     this.mutateSelectedText((selection) => {
@@ -2241,36 +2440,48 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: Convert the selected text to upper case.
-  //
-  // For each selection, if the selection is empty, converts the containing word
-  // to upper case. Otherwise convert the selected text to upper case.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Convert the selected text to upper case.
+   *
+   * For each selection, if the selection is empty, converts the containing word
+   * to upper case. Otherwise convert the selected text to upper case.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   upperCase(options = {}) {
     if (!this.ensureWritable("upperCase", options)) return;
     this.replaceSelectedText({ selectWordIfEmpty: true }, (text) => text.toUpperCase(options));
   }
 
-  // Extended: Convert the selected text to lower case.
-  //
-  // For each selection, if the selection is empty, converts the containing word
-  // to upper case. Otherwise convert the selected text to upper case.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Convert the selected text to lower case.
+   *
+   * For each selection, if the selection is empty, converts the containing word
+   * to upper case. Otherwise convert the selected text to upper case.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   lowerCase(options = {}) {
     if (!this.ensureWritable("lowerCase", options)) return;
     this.replaceSelectedText({ selectWordIfEmpty: true }, (text) => text.toLowerCase(options));
   }
 
-  // Extended: Toggle line comments for rows intersecting selections.
-  //
-  // If the current grammar doesn't support comments, does nothing.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Toggle line comments for rows intersecting selections.
+   *
+   * If the current grammar doesn't support comments, does nothing.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   toggleLineCommentsInSelection(options = {}) {
     if (!this.ensureWritable("toggleLineCommentsInSelection", options)) return;
     this.mutateSelectedText((selection) => selection.toggleLineComments(options));
@@ -2285,17 +2496,21 @@ module.exports = class TextEditor {
   // Joining a line means that multiple lines are converted to a single line with
   // the contents of each of the original non-empty lines separated by a space.
   //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  // * `options` (optional) `Object`
+  //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor. (default: false)
   joinLines(options = {}) {
     if (!this.ensureWritable("joinLines", options)) return;
     this.mutateSelectedText((selection) => selection.joinLines());
   }
 
-  // Extended: Reduce every run of blank lines in the buffer to a single blank line.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Reduce every run of blank lines in the buffer to a single blank line.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   collapseBlankLines(options = {}) {
     if (!this.ensureWritable("collapseBlankLines", options)) return;
     this.transact(() => {
@@ -2307,13 +2522,17 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: Collapse runs of spaces in line content without changing indentation.
-  //
-  // The complete leading whitespace prefix is preserved, including mixed tabs and
-  // spaces. Runs of spaces after that prefix are reduced to one space.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Collapse runs of spaces in line content without changing indentation.
+   *
+   * The complete leading whitespace prefix is preserved, including mixed tabs and
+   * spaces. Runs of spaces after that prefix are reduced to one space.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   collapseContentSpaces(options = {}) {
     if (!this.ensureWritable("collapseContentSpaces", options)) return;
     this.transact(() => {
@@ -2325,10 +2544,14 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: For each cursor, insert a newline at beginning the following line.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each cursor, insert a newline at beginning the following line.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   insertNewlineBelow(options = {}) {
     if (!this.ensureWritable("insertNewlineBelow", options)) return;
     this.transact(() => {
@@ -2337,10 +2560,14 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: For each cursor, insert a newline at the end of the preceding line.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each cursor, insert a newline at the end of the preceding line.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   insertNewlineAbove(options = {}) {
     if (!this.ensureWritable("insertNewlineAbove", options)) return;
     this.transact(() => {
@@ -2363,90 +2590,122 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: For each selection, if the selection is empty, delete all characters
-  // of the containing word that precede the cursor. Otherwise delete the
-  // selected text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is empty, delete all characters
+   * of the containing word that precede the cursor. Otherwise delete the
+   * selected text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToBeginningOfWord(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfWord", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToBeginningOfWord(options));
   }
 
-  // Extended: Similar to {::deleteToBeginningOfWord}, but deletes only back to the
-  // previous word boundary.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Similar to {@link #deleteToBeginningOfWord}, but deletes only back to the
+   * previous word boundary.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToPreviousWordBoundary(options = {}) {
     if (!this.ensureWritable("deleteToPreviousWordBoundary", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToPreviousWordBoundary(options));
   }
 
-  // Extended: Similar to {::deleteToEndOfWord}, but deletes only up to the
-  // next word boundary.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Similar to {@link #deleteToEndOfWord}, but deletes only up to the
+   * next word boundary.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToNextWordBoundary(options = {}) {
     if (!this.ensureWritable("deleteToNextWordBoundary", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToNextWordBoundary(options));
   }
 
-  // Extended: For each selection, if the selection is empty, delete all characters
-  // of the containing subword following the cursor. Otherwise delete the selected
-  // text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is empty, delete all characters
+   * of the containing subword following the cursor. Otherwise delete the selected
+   * text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToBeginningOfSubword(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfSubword", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToBeginningOfSubword(options));
   }
 
-  // Extended: For each selection, if the selection is empty, delete all characters
-  // of the containing subword following the cursor. Otherwise delete the selected
-  // text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is empty, delete all characters
+   * of the containing subword following the cursor. Otherwise delete the selected
+   * text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToEndOfSubword(options = {}) {
     if (!this.ensureWritable("deleteToEndOfSubword", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToEndOfSubword(options));
   }
 
-  // Extended: For each selection, if the selection is empty, delete all characters
-  // of the containing line that precede the cursor. Otherwise delete the
-  // selected text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is empty, delete all characters
+   * of the containing line that precede the cursor. Otherwise delete the
+   * selected text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToBeginningOfLine(options = {}) {
     if (!this.ensureWritable("deleteToBeginningOfLine", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToBeginningOfLine(options));
   }
 
-  // Extended: For each selection, if the selection is not empty, deletes the
-  // selection; otherwise, deletes all characters of the containing line
-  // following the cursor. If the cursor is already at the end of the line,
-  // deletes the following newline.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is not empty, deletes the
+   * selection; otherwise, deletes all characters of the containing line
+   * following the cursor. If the cursor is already at the end of the line,
+   * deletes the following newline.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToEndOfLine(options = {}) {
     if (!this.ensureWritable("deleteToEndOfLine", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToEndOfLine(options));
   }
 
-  // Extended: Delete through the indentation of the line following each selection.
-  //
-  // Empty selections start at their cursor. Non-empty selections also consume the
-  // rest of their final selected line. Selection direction does not affect the
-  // result.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Delete through the indentation of the line following each selection.
+   *
+   * Empty selections start at their cursor. Non-empty selections also consume the
+   * rest of their final selected line. Selection direction does not affect the
+   * result.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToNextLineContent(options = {}) {
     if (!this.ensureWritable("deleteToNextLineContent", options)) return;
 
@@ -2496,29 +2755,41 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: For each selection, if the selection is empty, delete all characters
-  // of the containing word following the cursor. Otherwise delete the selected
-  // text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * For each selection, if the selection is empty, delete all characters
+   * of the containing word following the cursor. Otherwise delete the selected
+   * text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteToEndOfWord(options = {}) {
     if (!this.ensureWritable("deleteToEndOfWord", options)) return;
     this.mutateSelectedText((selection) => selection.deleteToEndOfWord(options));
   }
 
-  // Extended: Delete all lines intersecting selections.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Delete all lines intersecting selections.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Extended
+   */
   deleteLine(options = {}) {
     if (!this.ensureWritable("deleteLine", options)) return;
     this.mergeSelectionsOnSameRows();
     this.mutateSelectedText((selection) => selection.deleteLine(options));
   }
 
-  // Private: Ensure that this editor is not marked read-only before allowing a buffer modification to occur. If
-  // the editor is read-only, require an explicit opt-in option to proceed (`bypassReadOnly`) or throw an Error.
+  /**
+   * Ensure that this editor is not marked read-only before allowing a buffer modification to occur. If
+   * the editor is read-only, require an explicit opt-in option to proceed (`bypassReadOnly`) or throw an Error.
+   *
+   * @private
+   */
   ensureWritable(methodName, opts) {
     if (!opts.bypassReadOnly && this.isReadOnly()) {
       if (lumine.window.isDevMode() || lumine.window.isSpecMode()) {
@@ -2536,14 +2807,18 @@ module.exports = class TextEditor {
     return true;
   }
 
-  /*
-  Section: History
-  */
+  /**
+   * @category History
+   */
 
-  // Essential: Undo the last change.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Undo the last change.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Essential
+   */
   undo(options = {}) {
     if (!this.ensureWritable("undo", options)) return;
     this.avoidMergingSelections(() =>
@@ -2552,10 +2827,14 @@ module.exports = class TextEditor {
     this.getLastSelection().autoscroll();
   }
 
-  // Essential: Redo the last change.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor. (default: false)
+  /**
+   * Redo the last change.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor. (default: false)
+   * @public
+   * @api-status Essential
+   */
   redo(options = {}) {
     if (!this.ensureWritable("redo", options)) return;
     this.avoidMergingSelections(() =>
@@ -2564,18 +2843,19 @@ module.exports = class TextEditor {
     this.getLastSelection().autoscroll();
   }
 
-  // Extended: Batch multiple operations as a single undo/redo step.
-  //
-  // Any group of operations that are logically grouped from the perspective of
-  // undoing and redoing should be performed in a transaction. If you want to
-  // abort the transaction, call {::abortTransaction} to terminate the function's
-  // execution and revert any changes performed up to the abortion.
-  //
-  // * `groupingInterval` (optional) The {Number} of milliseconds for which this
-  //   transaction should be considered 'groupable' after it begins. If a transaction
-  //   with a positive `groupingInterval` is committed while the previous transaction is
-  //   still 'groupable', the two transactions are merged with respect to undo and redo.
-  // * `fn` A {Function} to call inside the transaction.
+  /**
+   * Batch multiple operations as a single undo/redo step.
+   *
+   * Any group of operations that are logically grouped from the perspective of
+   * undoing and redoing should be performed in a transaction. If you want to
+   * abort the transaction, call {@link #abortTransaction} to terminate the function's
+   * execution and revert any changes performed up to the abortion.
+   *
+   * @param [groupingInterval] - The `Number` of milliseconds for which this transaction should be considered 'groupable' after it begins. If a transaction with a positive `groupingInterval` is committed while the previous transaction is still 'groupable', the two transactions are merged with respect to undo and redo.
+   * @param fn - A `Function` to call inside the transaction.
+   * @public
+   * @api-status Extended
+   */
   transact(groupingInterval, fn) {
     const options = { selectionsMarkerLayer: this.selectionsMarkerLayer };
     if (typeof groupingInterval === "function") {
@@ -2586,87 +2866,110 @@ module.exports = class TextEditor {
     return this.buffer.transact(options, fn);
   }
 
-  // Extended: Abort an open transaction, undoing any operations performed so far
-  // within the transaction.
+  /**
+   * Abort an open transaction, undoing any operations performed so far
+   * within the transaction.
+   *
+   * @public
+   * @api-status Extended
+   */
   abortTransaction() {
     return this.buffer.abortTransaction();
   }
 
-  // Extended: Create a pointer to the current state of the buffer for use
-  // with {::revertToCheckpoint} and {::groupChangesSinceCheckpoint}.
-  //
-  // Returns a checkpoint value.
+  /**
+   * Create a pointer to the current state of the buffer for use
+   * with {@link #revertToCheckpoint} and {@link #groupChangesSinceCheckpoint}.
+   *
+   * @returns {Number} checkpoint value.
+   * @public
+   * @api-status Extended
+   */
   createCheckpoint() {
     return this.buffer.createCheckpoint({
       selectionsMarkerLayer: this.selectionsMarkerLayer,
     });
   }
 
-  // Extended: Revert the buffer to the state it was in when the given
-  // checkpoint was created.
-  //
-  // The redo stack will be empty following this operation, so changes since the
-  // checkpoint will be lost. If the given checkpoint is no longer present in the
-  // undo history, no changes will be made to the buffer and this method will
-  // return `false`.
-  //
-  // * `checkpoint` The checkpoint to revert to.
-  //
-  // Returns a {Boolean} indicating whether the operation succeeded.
+  /**
+   * Revert the buffer to the state it was in when the given
+   * checkpoint was created.
+   *
+   * The redo stack will be empty following this operation, so changes since the
+   * checkpoint will be lost. If the given checkpoint is no longer present in the
+   * undo history, no changes will be made to the buffer and this method will
+   *
+   * @param checkpoint - The checkpoint to revert to.
+   * @returns {Boolean} Whether the operation succeeded.
+   * @public
+   * @api-status Extended
+   */
   revertToCheckpoint(checkpoint) {
     return this.buffer.revertToCheckpoint(checkpoint);
   }
 
-  // Extended: Group all changes since the given checkpoint into a single
-  // transaction for purposes of undo/redo.
-  //
-  // If the given checkpoint is no longer present in the undo history, no
-  // grouping will be performed and this method will return `false`.
-  //
-  // * `checkpoint` The checkpoint from which to group changes.
-  //
-  // Returns a {Boolean} indicating whether the operation succeeded.
+  /**
+   * Group all changes since the given checkpoint into a single
+   * transaction for purposes of undo/redo.
+   *
+   * If the given checkpoint is no longer present in the undo history, no
+   * grouping will be performed and this method will return `false`.
+   *
+   * @param checkpoint - The checkpoint from which to group changes.
+   * @returns {Boolean} indicating whether the operation succeeded.
+   * @public
+   * @api-status Extended
+   */
   groupChangesSinceCheckpoint(checkpoint) {
     return this.buffer.groupChangesSinceCheckpoint(checkpoint, {
       selectionsMarkerLayer: this.selectionsMarkerLayer,
     });
   }
 
-  /*
-  Section: TextEditor Coordinates
-  */
+  /**
+   * @category TextEditor Coordinates
+   */
 
-  // Essential: Convert a position in buffer-coordinates to screen-coordinates.
-  //
-  // The position is clipped via {::clipBufferPosition} prior to the conversion.
-  // The position is also clipped via {::clipScreenPosition} following the
-  // conversion, which only makes a difference when `options` are supplied.
-  //
-  // * `bufferPosition` A {Point} or {Array} of [row, column].
-  // * `options` (optional) An options object for {::clipScreenPosition}.
-  //
-  // Returns a {Point}.
+  /**
+   * Convert a position in buffer-coordinates to screen-coordinates.
+   *
+   * The position is clipped via {@link #clipBufferPosition} prior to the conversion.
+   * The position is also clipped via {@link #clipScreenPosition} following the
+   * conversion, which only makes a difference when `options` are supplied.
+   *
+   * @param bufferPosition - A {@link Point} or `Array` of [row, column].
+   * @param [options] - An options object for {@link #clipScreenPosition}.
+   * @returns {Point}
+   * @public
+   * @api-status Essential
+   */
   screenPositionForBufferPosition(bufferPosition, options) {
     return this.displayLayer.translateBufferPosition(bufferPosition, options);
   }
 
-  // Essential: Convert a position in screen-coordinates to buffer-coordinates.
-  //
-  // The position is clipped via {::clipScreenPosition} prior to the conversion.
-  //
-  // * `bufferPosition` A {Point} or {Array} of [row, column].
-  // * `options` (optional) An options object for {::clipScreenPosition}.
-  //
-  // Returns a {Point}.
+  /**
+   * Convert a position in screen-coordinates to buffer-coordinates.
+   *
+   * The position is clipped via {@link #clipScreenPosition} prior to the conversion.
+   *
+   * @param {Point|Array<Number>} screenPosition - The screen position to convert.
+   * @param {Object} [options] - Options for {@link #clipScreenPosition}.
+   * @returns {Point}
+   * @public
+   * @api-status Essential
+   */
   bufferPositionForScreenPosition(screenPosition, options) {
     return this.displayLayer.translateScreenPosition(screenPosition, options);
   }
 
-  // Essential: Convert a range in buffer-coordinates to screen-coordinates.
-  //
-  // * `bufferRange` {Range} in buffer coordinates to translate into screen coordinates.
-  //
-  // Returns a {Range}.
+  /**
+   * Convert a range in buffer-coordinates to screen-coordinates.
+   *
+   * @param {Range} bufferRange - in buffer coordinates to translate into screen coordinates.
+   * @returns {Range}
+   * @public
+   * @api-status Essential
+   */
   screenRangeForBufferRange(bufferRange, options) {
     bufferRange = Range.fromObject(bufferRange);
     const start = this.screenPositionForBufferPosition(bufferRange.start, options);
@@ -2674,11 +2977,14 @@ module.exports = class TextEditor {
     return new Range(start, end);
   }
 
-  // Essential: Convert a range in screen-coordinates to buffer-coordinates.
-  //
-  // * `screenRange` {Range} in screen coordinates to translate into buffer coordinates.
-  //
-  // Returns a {Range}.
+  /**
+   * Convert a range in screen-coordinates to buffer-coordinates.
+   *
+   * @param {Range} screenRange - in screen coordinates to translate into buffer coordinates.
+   * @returns {Range}
+   * @public
+   * @api-status Essential
+   */
   bufferRangeForScreenRange(screenRange) {
     screenRange = Range.fromObject(screenRange);
     const start = this.bufferPositionForScreenPosition(screenRange.start);
@@ -2686,75 +2992,83 @@ module.exports = class TextEditor {
     return new Range(start, end);
   }
 
-  // Extended: Clip the given {Point} to a valid position in the buffer.
-  //
-  // If the given {Point} describes a position that is actually reachable by the
-  // cursor based on the current contents of the buffer, it is returned
-  // unchanged. If the {Point} does not describe a valid position, the closest
-  // valid position is returned instead.
-  //
-  // ## Examples
-  //
-  // ```js
-  // editor.clipBufferPosition([-1, -1]) // -> `[0, 0]`
-  //
-  // // When the line at buffer row 2 is 10 characters long
-  // editor.clipBufferPosition([2, Infinity]) // -> `[2, 10]`
-  // ```
-  //
-  // * `bufferPosition` The {Point} representing the position to clip.
-  //
-  // Returns a {Point}.
+  /**
+   * Clip the given {@link Point} to a valid position in the buffer.
+   *
+   * If the given {@link Point} describes a position that is actually reachable by the
+   * cursor based on the current contents of the buffer, it is returned
+   * unchanged. If the {@link Point} does not describe a valid position, the closest
+   * valid position is returned instead.
+   *
+   * ## Examples
+   *
+   * ```js
+   * editor.clipBufferPosition([-1, -1]) // -> `[0, 0]`
+   *
+   * // When the line at buffer row 2 is 10 characters long
+   * editor.clipBufferPosition([2, Infinity]) // -> `[2, 10]`
+   * ```
+   *
+   * @param bufferPosition - The {@link Point} representing the position to clip.
+   * @returns {Point}
+   * @public
+   * @api-status Extended
+   */
   clipBufferPosition(bufferPosition) {
     return this.buffer.clipPosition(bufferPosition);
   }
 
-  // Extended: Clip the start and end of the given range to valid positions in the
-  // buffer. See {::clipBufferPosition} for more information.
-  //
-  // * `range` The {Range} to clip.
-  //
-  // Returns a {Range}.
+  /**
+   * Clip the start and end of the given range to valid positions in the
+   * buffer. See {@link #clipBufferPosition} for more information.
+   *
+   * @param range - The {@link Range} to clip.
+   * @returns {Range}
+   * @public
+   * @api-status Extended
+   */
   clipBufferRange(range) {
     return this.buffer.clipRange(range);
   }
 
-  // Extended: Clip the given {Point} to a valid position on screen.
-  //
-  // If the given {Point} describes a position that is actually reachable by the
-  // cursor based on the current contents of the screen, it is returned
-  // unchanged. If the {Point} does not describe a valid position, the closest
-  // valid position is returned instead.
-  //
-  // ## Examples
-  //
-  // ```js
-  // editor.clipScreenPosition([-1, -1]) // -> `[0, 0]`
-  //
-  // // When the line at screen row 2 is 10 characters long
-  // editor.clipScreenPosition([2, Infinity]) // -> `[2, 10]`
-  // ```
-  //
-  // * `screenPosition` The {Point} representing the position to clip.
-  // * `options` (optional) {Object}
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`.
-  //
-  // Returns a {Point}.
+  /**
+   * Clip the given {@link Point} to a valid position on screen.
+   *
+   * If the given {@link Point} describes a position that is actually reachable by the
+   * cursor based on the current contents of the screen, it is returned
+   * unchanged. If the {@link Point} does not describe a valid position, the closest
+   * valid position is returned instead.
+   *
+   * ## Examples
+   *
+   * ```js
+   * editor.clipScreenPosition([-1, -1]) // -> `[0, 0]`
+   *
+   * // When the line at screen row 2 is 10 characters long
+   * editor.clipScreenPosition([2, Infinity]) // -> `[2, 10]`
+   * ```
+   *
+   * @param screenPosition - The {@link Point} representing the position to clip.
+   * @param {Object} [options]
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @returns {Point} The clipped screen position.
+   * @public
+   * @api-status Extended
+   */
   clipScreenPosition(screenPosition, options) {
     return this.displayLayer.clipScreenPosition(screenPosition, options);
   }
 
-  // Extended: Clip the start and end of the given range to valid positions on screen.
-  // See {::clipScreenPosition} for more information.
-  //
-  // * `screenRange` The {Range} to clip.
-  // * `options` (optional) See {::clipScreenPosition} `options`.
-  //
-  // Returns a {Range}.
+  /**
+   * Clip the start and end of the given range to valid positions on screen.
+   * See {@link #clipScreenPosition} for more information.
+   *
+   * @param screenRange - The {@link Range} to clip.
+   * @param [options] - See {@link #clipScreenPosition} `options`.
+   * @returns {Range}
+   * @public
+   * @api-status Extended
+   */
   clipScreenRange(screenRange, options) {
     screenRange = Range.fromObject(screenRange);
     const start = this.displayLayer.clipScreenPosition(screenRange.start, options);
@@ -2762,117 +3076,89 @@ module.exports = class TextEditor {
     return Range(start, end);
   }
 
-  /*
-  Section: Decorations
-  */
+  /**
+   * @category Decorations
+   */
 
-  // Essential: Add a decoration that tracks a {DisplayMarker}. When the
-  // marker moves, is invalidated, or is destroyed, the decoration will be
-  // updated to reflect the marker's state.
-  //
-  // The following are the supported decorations types:
-  //
-  // * __line__: Adds the given CSS `class` to the lines overlapping the rows
-  //     spanned by the marker.
-  // * __line-number__: Adds the given CSS `class` to the line numbers overlapping
-  //     the rows spanned by the marker
-  // * __text__: Injects spans into all text overlapping the marked range, then adds
-  //     the given `class` or `style` to these spans. Use this to manipulate the foreground
-  //     color or styling of text in a range.
-  // * __highlight__: Creates an absolutely-positioned `.highlight` div to the editor
-  //     containing nested divs that cover the marked region. For example, when the user
-  //     selects text, the selection is implemented with a highlight decoration. The structure
-  //     of this highlight will be:
-  //     ```html
-  //     <div class="highlight <your-class>">
-  //       <!-- Will be one region for each row in the range. Spans 2 lines? There will be 2 regions. -->
-  //       <div class="region"></div>
-  //     </div>
-  //     ```
-  // * __overlay__: Positions the view associated with the given item at the head
-  //     or tail of the given `DisplayMarker`, depending on the `position` property.
-  // * __gutter__: Tracks a {DisplayMarker} in a {Gutter}. Gutter decorations are created
-  //     by calling {Gutter::decorateMarker} on the desired `Gutter` instance.
-  // * __block__: Positions the view associated with the given item before or
-  //     after the row of the given {DisplayMarker}, depending on the `position` property.
-  //     Block decorations at the same screen row are ordered by their `order` property.
-  // * __cursor__: Render a cursor at the head of the {DisplayMarker}. If multiple cursor decorations
-  //     are created for the same marker, their class strings and style objects are combined
-  //     into a single cursor. This decoration type may be used to style existing cursors
-  //     by passing in their markers or to render artificial cursors that don't actually
-  //     exist in the model by passing a marker that isn't associated with a real cursor.
-  //
-  // ## Arguments
-  //
-  // * `marker` A {DisplayMarker} you want this decoration to follow.
-  // * `decorationParams` An {Object} representing the decoration e.g.
-  //   `{type: 'line-number', class: 'linter-error'}`
-  //   * `type` Determines the behavior and appearance of this {Decoration}. Supported decoration types
-  //     and their uses are listed above.
-  //   * `class` This CSS class will be applied to the decorated line number,
-  //     line, text spans, highlight regions, cursors, or overlay.
-  //   * `style` An {Object} containing CSS style properties to apply to the
-  //     relevant DOM node. Currently this only works with a `type` of `cursor`
-  //     or `text`.
-  //   * `item` (optional) An {HTMLElement} or a model {Object} with a
-  //     corresponding view registered. Only applicable to the `gutter`,
-  //     `overlay` and `block` decoration types.
-  //   * `onlyHead` (optional) If `true`, the decoration will only be applied to
-  //     the head of the `DisplayMarker`. Only applicable to the `line` and
-  //     `line-number` decoration types.
-  //   * `onlyEmpty` (optional) If `true`, the decoration will only be applied if
-  //     the associated `DisplayMarker` is empty. Only applicable to the `gutter`,
-  //     `line`, and `line-number` decoration types.
-  //   * `onlyNonEmpty` (optional) If `true`, the decoration will only be applied
-  //     if the associated `DisplayMarker` is non-empty. Only applicable to the
-  //     `gutter`, `line`, and `line-number` decoration types.
-  //   * `omitEmptyLastRow` (optional) If `false`, the decoration will be applied
-  //     to the last row of a non-empty range, even if it ends at column 0.
-  //     Defaults to `true`. Only applicable to the `gutter`, `line`, and
-  //     `line-number` decoration types.
-  //   * `position` (optional) Only applicable to decorations of type `overlay` and `block`.
-  //     Controls where the view is positioned relative to the `TextEditorMarker`.
-  //     Values can be `'head'` (the default) or `'tail'` for overlay decorations, and
-  //     `'before'` (the default) or `'after'` for block decorations.
-  //   * `order` (optional) Only applicable to decorations of type `block`. Controls
-  //      where the view is positioned relative to other block decorations at the
-  //      same screen row. If unspecified, block decorations render oldest to newest.
-  //   * `avoidOverflow` (optional) Only applicable to decorations of type
-  //      `overlay`. Determines whether the decoration adjusts its horizontal or
-  //      vertical position to remain fully visible when it would otherwise
-  //      overflow the editor. Defaults to `true`. An overlay that opts out is
-  //      neither moved by nor an obstacle to the placement described below.
-  //   * `side` (optional) Only applicable to decorations of type `overlay`. The
-  //      side of the line the overlay asks for, `'above'` or `'below'` (the
-  //      default). It is a request, not a guarantee: an overlay takes the other
-  //      side when the one it asked for will not fit the window or is already
-  //      taken, and the side it ended up on is reported back on the wrapper as
-  //      `data-overlay-position`.
-  //   * `priority` (optional) Only applicable to decorations of type `overlay`.
-  //      When several overlays want the same side of the same line, the higher
-  //      priority chooses first and the others work around it; it also decides
-  //      which one paints on top. Defaults to `0`. The convention across the
-  //      bundled packages is `autocomplete` 2, `intentions` 1, `hover` 0.
-  //
-  //      An overlay that can have neither side — the one it asked for is taken,
-  //      the other will not fit — is pushed clear of whatever is in its way
-  //      rather than drawn over it, and the wrapper is marked
-  //      `data-overlay-displaced` to say it is no longer touching its line.
-  //
-  // Returns the created {Decoration} object.
+  /**
+   * Add a decoration that tracks a {@link DisplayMarker}. When the
+   * marker moves, is invalidated, or is destroyed, the decoration will be
+   * updated to reflect the marker's state.
+   *
+   * The following are the supported decorations types:
+   *
+   * * __line__: Adds the given CSS `class` to the lines overlapping the rows
+   *     spanned by the marker.
+   * * __line-number__: Adds the given CSS `class` to the line numbers overlapping
+   *     the rows spanned by the marker
+   * * __text__: Injects spans into all text overlapping the marked range, then adds
+   *     the given `class` or `style` to these spans. Use this to manipulate the foreground
+   *     color or styling of text in a range.
+   * * __highlight__: Creates an absolutely-positioned `.highlight` div to the editor
+   *     containing nested divs that cover the marked region. For example, when the user
+   *     selects text, the selection is implemented with a highlight decoration. The structure
+   *     of this highlight will be:
+   *     ```html
+   *     <div class="highlight <your-class>">
+   *       <!-- Will be one region for each row in the range. Spans 2 lines? There will be 2 regions. -->
+   *       <div class="region"></div>
+   *     </div>
+   *     ```
+   * * __overlay__: Positions the view associated with the given item at the head
+   *     or tail of the given `DisplayMarker`, depending on the `position` property.
+   * * __gutter__: Tracks a {@link DisplayMarker} in a {@link Gutter}. Gutter decorations are created
+   *     by calling {@link Gutter#decorateMarker} on the desired `Gutter` instance.
+   * * __block__: Positions the view associated with the given item before or
+   *     after the row of the given {@link DisplayMarker}, depending on the `position` property.
+   *     Block decorations at the same screen row are ordered by their `order` property.
+   * * __cursor__: Render a cursor at the head of the {@link DisplayMarker}. If multiple cursor decorations
+   *     are created for the same marker, their class strings and style objects are combined
+   *     into a single cursor. This decoration type may be used to style existing cursors
+   *     by passing in their markers or to render artificial cursors that don't actually
+   *     exist in the model by passing a marker that isn't associated with a real cursor.
+   *
+   * ## Arguments
+   *
+   *
+   *      An overlay that can have neither side — the one it asked for is taken,
+   *      the other will not fit — is pushed clear of whatever is in its way
+   *      rather than drawn over it, and the wrapper is marked
+   *      `data-overlay-displaced` to say it is no longer touching its line.
+   *
+   * @param marker - A {@link DisplayMarker} you want this decoration to follow.
+   * @param decorationParams - An `Object` representing the decoration e.g. `{type: 'line-number', class: 'linter-error'}`
+   * @param decorationParams.type - Determines the behavior and appearance of this {@link Decoration}. Supported decoration types and their uses are listed above.
+   * @param decorationParams.class - This CSS class will be applied to the decorated line number, line, text spans, highlight regions, cursors, or overlay.
+   * @param decorationParams.style - An `Object` containing CSS style properties to apply to the relevant DOM node. Currently this only works with a `type` of `cursor` or `text`.
+   * @param [decorationParams.item] - An `HTMLElement` or a model `Object` with a corresponding view registered. Only applicable to the `gutter`, `overlay` and `block` decoration types.
+   * @param [decorationParams.onlyHead] - If `true`, the decoration will only be applied to the head of the `DisplayMarker`. Only applicable to the `line` and `line-number` decoration types.
+   * @param [decorationParams.onlyEmpty] - If `true`, the decoration will only be applied if the associated `DisplayMarker` is empty. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
+   * @param [decorationParams.onlyNonEmpty] - If `true`, the decoration will only be applied if the associated `DisplayMarker` is non-empty. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
+   * @param [decorationParams.omitEmptyLastRow] - If `false`, the decoration will be applied to the last row of a non-empty range, even if it ends at column 0. Defaults to `true`. Only applicable to the `gutter`, `line`, and `line-number` decoration types.
+   * @param [decorationParams.position] - Only applicable to decorations of type `overlay` and `block`. Controls where the view is positioned relative to the `TextEditorMarker`. Values can be `'head'` (the default) or `'tail'` for overlay decorations, and `'before'` (the default) or `'after'` for block decorations.
+   * @param [decorationParams.order] - Only applicable to decorations of type `block`. Controls where the view is positioned relative to other block decorations at the same screen row. If unspecified, block decorations render oldest to newest.
+   * @param [decorationParams.avoidOverflow] - Only applicable to decorations of type `overlay`. Determines whether the decoration adjusts its horizontal or vertical position to remain fully visible when it would otherwise overflow the editor. Defaults to `true`. An overlay that opts out is neither moved by nor an obstacle to the placement described below.
+   * @param [decorationParams.side] - Only applicable to decorations of type `overlay`. The side of the line the overlay asks for, `'above'` or `'below'` (the default). It is a request, not a guarantee: an overlay takes the other side when the one it asked for will not fit the window or is already taken, and the side it ended up on is reported back on the wrapper as `data-overlay-position`.
+   * @param [decorationParams.priority] - Only applicable to decorations of type `overlay`. When several overlays want the same side of the same line, the higher priority chooses first and the others work around it; it also decides which one paints on top. Defaults to `0`. The convention across the bundled packages is `autocomplete` 2, `intentions` 1, `hover` 0.
+   * @returns {Decoration} created {@link Decoration} object.
+   * @public
+   * @api-status Essential
+   */
   decorateMarker(marker, decorationParams) {
     return this.decorationManager.decorateMarker(marker, decorationParams);
   }
 
-  // Essential: Add a decoration to every marker in the given marker layer. Can
-  // be used to decorate a large number of markers without having to create and
-  // manage many individual decorations.
-  //
-  // * `markerLayer` A {DisplayMarkerLayer} or {MarkerLayer} to decorate.
-  // * `decorationParams` The same parameters that are passed to
-  //   {TextEditor::decorateMarker}, except the `type` cannot be `overlay` or `gutter`.
-  //
-  // Returns a {LayerDecoration}.
+  /**
+   * Add a decoration to every marker in the given marker layer. Can
+   * be used to decorate a large number of markers without having to create and
+   * manage many individual decorations.
+   *
+   * @param markerLayer - A {@link DisplayMarkerLayer} or {@link MarkerLayer} to decorate.
+   * @param decorationParams - The same parameters that are passed to {@link TextEditor#decorateMarker}, except the `type` cannot be `overlay` or `gutter`.
+   * @returns {LayerDecoration}
+   * @public
+   * @api-status Essential
+   */
   decorateMarkerLayer(markerLayer, decorationParams) {
     return this.decorationManager.decorateMarkerLayer(markerLayer, decorationParams);
   }
@@ -2880,12 +3166,12 @@ module.exports = class TextEditor {
   // Deprecated: Get all the decorations within a screen row range on the default
   // layer.
   //
-  // * `startScreenRow` the {Number} beginning screen row
-  // * `endScreenRow` the {Number} end screen row (inclusive)
+  // * `startScreenRow` the `Number` beginning screen row
+  // * `endScreenRow` the `Number` end screen row (inclusive)
   //
-  // Returns an {Object} of decorations in the form
+  // Returns an `Object` of decorations in the form
   //  `{1: [{id: 10, type: 'line-number', class: 'someclass'}], 2: ...}`
-  //   where the keys are {DisplayMarker} IDs, and the values are an array of decoration
+  //   where the keys are {@link DisplayMarker} IDs, and the values are an array of decoration
   //   params objects attached to the marker.
   // Returns an empty object when no decorations are found
   decorationsForScreenRowRange(startScreenRow, endScreenRow) {
@@ -2896,228 +3182,193 @@ module.exports = class TextEditor {
     return this.decorationManager.decorationsStateForScreenRowRange(startScreenRow, endScreenRow);
   }
 
-  // Extended: Get all decorations.
-  //
-  // * `propertyFilter` (optional) An {Object} containing key value pairs that
-  //   the returned decorations' properties must match.
-  //
-  // Returns an {Array} of {Decoration}s.
+  /**
+   * Get all decorations.
+   *
+   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array} of {@link Decoration Decorations}.
+   * @public
+   * @api-status Extended
+   */
   getDecorations(propertyFilter) {
     return this.decorationManager.getDecorations(propertyFilter);
   }
 
-  // Extended: Get all decorations of type 'line'.
-  //
-  // * `propertyFilter` (optional) An {Object} containing key value pairs that
-  //   the returned decorations' properties must match.
-  //
-  // Returns an {Array} of {Decoration}s.
+  /**
+   * Get all decorations of type 'line'.
+   *
+   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array} of {@link Decoration Decorations}.
+   * @public
+   * @api-status Extended
+   */
   getLineDecorations(propertyFilter) {
     return this.decorationManager.getLineDecorations(propertyFilter);
   }
 
-  // Extended: Get all decorations of type 'line-number'.
-  //
-  // * `propertyFilter` (optional) An {Object} containing key value pairs that
-  //   the returned decorations' properties must match.
-  //
-  // Returns an {Array} of {Decoration}s.
+  /**
+   * Get all decorations of type 'line-number'.
+   *
+   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array} of {@link Decoration Decorations}.
+   * @public
+   * @api-status Extended
+   */
   getLineNumberDecorations(propertyFilter) {
     return this.decorationManager.getLineNumberDecorations(propertyFilter);
   }
 
-  // Extended: Get all decorations of type 'highlight'.
-  //
-  // * `propertyFilter` (optional) An {Object} containing key value pairs that
-  //   the returned decorations' properties must match.
-  //
-  // Returns an {Array} of {Decoration}s.
+  /**
+   * Get all decorations of type 'highlight'.
+   *
+   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array} of {@link Decoration Decorations}.
+   * @public
+   * @api-status Extended
+   */
   getHighlightDecorations(propertyFilter) {
     return this.decorationManager.getHighlightDecorations(propertyFilter);
   }
 
-  // Extended: Get all decorations of type 'overlay'.
-  //
-  // * `propertyFilter` (optional) An {Object} containing key value pairs that
-  //   the returned decorations' properties must match.
-  //
-  // Returns an {Array} of {Decoration}s.
+  /**
+   * Get all decorations of type 'overlay'.
+   *
+   * @param [propertyFilter] - An `Object` containing key value pairs that the returned decorations' properties must match.
+   * @returns {Array} of {@link Decoration Decorations}.
+   * @public
+   * @api-status Extended
+   */
   getOverlayDecorations(propertyFilter) {
     return this.decorationManager.getOverlayDecorations(propertyFilter);
   }
 
-  /*
-  Section: Markers
-  */
+  /**
+   * @category Markers
+   */
 
-  // Essential: Create a marker on the default marker layer with the given range
-  // in buffer coordinates. This marker will maintain its logical location as the
-  // buffer is changed, so if you mark a particular word, the marker will remain
-  // over that word even if the word's location in the buffer changes.
-  //
-  // * `bufferRange` A {Range} or range-compatible {Array}
-  // * `options` A hash of key-value pairs to associate with the marker. There
-  //   are also reserved property names that have marker-specific meaning.
-  //   * `maintainHistory` (optional) {Boolean} Whether to store this marker's
-  //     range before and after each change in the undo history. This allows the
-  //     marker's position to be restored more accurately for certain undo/redo
-  //     operations, but uses more time and memory. (default: false)
-  //   * `reversed` (optional) {Boolean} Creates the marker in a reversed
-  //     orientation. (default: false)
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker on the default marker layer with the given range
+   * in buffer coordinates. This marker will maintain its logical location as the
+   * buffer is changed, so if you mark a particular word, the marker will remain
+   * over that word even if the word's location in the buffer changes.
+   *
+   * @param bufferRange - A {@link Range} or range-compatible `Array`
+   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
+   * @param {Boolean} [options.maintainHistory] - Whether to store this marker's range before and after each change in the undo history. This allows the marker's position to be restored more accurately for certain undo/redo operations, but uses more time and memory. (default: false)
+   * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @returns {DisplayMarker}
+   * @public
+   * @api-status Essential
+   */
   markBufferRange(bufferRange, options) {
     return this.defaultMarkerLayer.markBufferRange(bufferRange, options);
   }
 
-  // Essential: Create a marker on the default marker layer with the given range
-  // in screen coordinates. This marker will maintain its logical location as the
-  // buffer is changed, so if you mark a particular word, the marker will remain
-  // over that word even if the word's location in the buffer changes.
-  //
-  // * `screenRange` A {Range} or range-compatible {Array}
-  // * `options` A hash of key-value pairs to associate with the marker. There
-  //   are also reserved property names that have marker-specific meaning.
-  //   * `maintainHistory` (optional) {Boolean} Whether to store this marker's
-  //     range before and after each change in the undo history. This allows the
-  //     marker's position to be restored more accurately for certain undo/redo
-  //     operations, but uses more time and memory. (default: false)
-  //   * `reversed` (optional) {Boolean} Creates the marker in a reversed
-  //     orientation. (default: false)
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker on the default marker layer with the given range
+   * in screen coordinates. This marker will maintain its logical location as the
+   * buffer is changed, so if you mark a particular word, the marker will remain
+   * over that word even if the word's location in the buffer changes.
+   *
+   * @param screenRange - A {@link Range} or range-compatible `Array`
+   * @param options - A hash of key-value pairs to associate with the marker. There are also reserved property names that have marker-specific meaning.
+   * @param {Boolean} [options.maintainHistory] - Whether to store this marker's range before and after each change in the undo history. This allows the marker's position to be restored more accurately for certain undo/redo operations, but uses more time and memory. (default: false)
+   * @param {Boolean} [options.reversed] - Creates the marker in a reversed orientation. (default: false)
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @returns {DisplayMarker}
+   * @public
+   * @api-status Essential
+   */
   markScreenRange(screenRange, options) {
     return this.defaultMarkerLayer.markScreenRange(screenRange, options);
   }
 
-  // Essential: Create a marker on the default marker layer with the given buffer
-  // position and no tail. To group multiple markers together in their own
-  // private layer, see {::addMarkerLayer}.
-  //
-  // * `bufferPosition` A {Point} or point-compatible {Array}
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker on the default marker layer with the given buffer
+   * position and no tail. To group multiple markers together in their own
+   * private layer, see {@link #addMarkerLayer}.
+   *
+   * @param bufferPosition - A {@link Point} or point-compatible `Array`
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @returns {DisplayMarker}
+   * @public
+   * @api-status Essential
+   */
   markBufferPosition(bufferPosition, options) {
     return this.defaultMarkerLayer.markBufferPosition(bufferPosition, options);
   }
 
-  // Essential: Create a marker on the default marker layer with the given screen
-  // position and no tail. To group multiple markers together in their own
-  // private layer, see {::addMarkerLayer}.
-  //
-  // * `screenPosition` A {Point} or point-compatible {Array}
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `invalidate` (optional) {String} Determines the rules by which changes
-  //     to the buffer *invalidate* the marker. (default: 'overlap') It can be
-  //     any of the following strategies, in order of fragility:
-  //     * __never__: The marker is never marked as invalid. This is a good choice for
-  //       markers representing selections in an editor.
-  //     * __surround__: The marker is invalidated by changes that completely surround it.
-  //     * __overlap__: The marker is invalidated by changes that surround the
-  //       start or end of the marker. This is the default.
-  //     * __inside__: The marker is invalidated by changes that extend into the
-  //       inside of the marker. Changes that end at the marker's start or
-  //       start at the marker's end do not invalidate the marker.
-  //     * __touch__: The marker is invalidated by a change that touches the marked
-  //       region in any way, including changes that end at the marker's
-  //       start or start at the marker's end. This is the most fragile strategy.
-  //   * `clipDirection` {String} If `'backward'`, returns the first valid
-  //     position preceding an invalid position. If `'forward'`, returns the
-  //     first valid position following an invalid position. If `'closest'`,
-  //     returns the first valid position closest to an invalid position.
-  //     Defaults to `'closest'`.
-  //
-  // Returns a {DisplayMarker}.
+  /**
+   * Create a marker on the default marker layer with the given screen
+   * position and no tail. To group multiple markers together in their own
+   * private layer, see {@link #addMarkerLayer}.
+   *
+   * @param screenPosition - A {@link Point} or point-compatible `Array`
+   * @param [options] - An `Object` with the following keys:
+   * @param {String} [options.invalidate] - Determines the rules by which changes to the buffer *invalidate* the marker. (default: 'overlap') It can be any of the following strategies, in order of fragility: * __never__: The marker is never marked as invalid. This is a good choice for markers representing selections in an editor. * __surround__: The marker is invalidated by changes that completely surround it. * __overlap__: The marker is invalidated by changes that surround the start or end of the marker. This is the default. * __inside__: The marker is invalidated by changes that extend into the inside of the marker. Changes that end at the marker's start or start at the marker's end do not invalidate the marker. * __touch__: The marker is invalidated by a change that touches the marked region in any way, including changes that end at the marker's start or start at the marker's end. This is the most fragile strategy.
+   * @param {String} options.clipDirection - If `'backward'`, clips before an invalid position; if `'forward'`, clips after it; if `'closest'`, uses the nearest valid position. Defaults to `'closest'`.
+   * @returns {DisplayMarker} The new marker.
+   * @public
+   * @api-status Essential
+   */
   markScreenPosition(screenPosition, options) {
     return this.defaultMarkerLayer.markScreenPosition(screenPosition, options);
   }
 
-  // Essential: Find all {DisplayMarker}s on the default marker layer that
-  // match the given properties.
-  //
-  // This method finds markers based on the given properties. Markers can be
-  // associated with custom properties that will be compared with basic equality.
-  // In addition, there are several special properties that will be compared
-  // with the range of the markers rather than their properties.
-  //
-  // * `params` An {Object} containing properties that each returned marker
-  //   must satisfy. Markers can be associated with custom properties, which are
-  //   compared with basic equality. In addition, several reserved properties
-  //   can be used to filter markers based on their current range:
-  //   * `startBufferRow` Only include markers starting at this row in buffer
-  //       coordinates.
-  //   * `endBufferRow` Only include markers ending at this row in buffer
-  //       coordinates.
-  //   * `containsBufferRange` Only include markers containing this {Range} or
-  //       in range-compatible {Array} in buffer coordinates.
-  //   * `containsBufferPosition` Only include markers containing this {Point}
-  //       or {Array} of `[row, column]` in buffer coordinates.
-  //
-  // Returns an {Array} of {DisplayMarker}s
+  /**
+   * Find all {@link DisplayMarker DisplayMarkers} on the default marker layer that
+   * match the given properties.
+   *
+   * This method finds markers based on the given properties. Markers can be
+   * associated with custom properties that will be compared with basic equality.
+   * In addition, there are several special properties that will be compared
+   * with the range of the markers rather than their properties.
+   *
+   * @param params - An `Object` containing properties that each returned marker must satisfy. Markers can be associated with custom properties, which are compared with basic equality. In addition, several reserved properties can be used to filter markers based on their current range:
+   * @param params.startBufferRow - Only include markers starting at this row in buffer coordinates.
+   * @param params.endBufferRow - Only include markers ending at this row in buffer coordinates.
+   * @param params.containsBufferRange - Only include markers containing this {@link Range} or in range-compatible `Array` in buffer coordinates.
+   * @param params.containsBufferPosition - Only include markers containing this {@link Point} or `Array` of `[row, column]` in buffer coordinates.
+   * @returns {Array} of {@link DisplayMarker DisplayMarkers}
+   * @public
+   * @api-status Essential
+   */
   findMarkers(params) {
     return this.defaultMarkerLayer.findMarkers(params);
   }
 
-  // Extended: Get the {DisplayMarker} on the default layer for the given
-  // marker id.
-  //
-  // * `id` {Number} id of the marker
+  /**
+   * Get the {@link DisplayMarker} on the default layer for the given
+   * marker id.
+   *
+   * @param {Number} id - id of the marker
+   * @public
+   * @api-status Extended
+   */
   getMarker(id) {
     return this.defaultMarkerLayer.getMarker(id);
   }
 
-  // Extended: Get all {DisplayMarker}s on the default marker layer. Consider
-  // using {::findMarkers}
+  /**
+   * Get all {@link DisplayMarker DisplayMarkers} on the default marker layer. Consider
+   * using {@link #findMarkers}
+   *
+   * @public
+   * @api-status Extended
+   */
   getMarkers() {
     return this.defaultMarkerLayer.getMarkers();
   }
 
-  // Extended: Get the number of markers in the default marker layer.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the number of markers in the default marker layer.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Extended
+   */
   getMarkerCount() {
     return this.defaultMarkerLayer.getMarkerCount();
   }
@@ -3127,78 +3378,96 @@ module.exports = class TextEditor {
     if (marker) marker.destroy();
   }
 
-  // Essential: Create a marker layer to group related markers.
-  //
-  // * `options` An {Object} containing the following keys:
-  //   * `maintainHistory` A {Boolean} indicating whether marker state should be
-  //     restored on undo/redo. Defaults to `false`.
-  //   * `persistent` A {Boolean} indicating whether or not this marker layer
-  //     should be serialized and deserialized along with the rest of the
-  //     buffer. Defaults to `false`. If `true`, the marker layer's id will be
-  //     maintained across the serialization boundary, allowing you to retrieve
-  //     it via {::getMarkerLayer}.
-  //
-  // Returns a {DisplayMarkerLayer}.
+  /**
+   * Create a marker layer to group related markers.
+   *
+   * @param options - An `Object` containing the following keys:
+   * @param options.maintainHistory - A `Boolean` indicating whether marker state should be restored on undo/redo. Defaults to `false`.
+   * @param options.persistent - A `Boolean` indicating whether or not this marker layer should be serialized and deserialized along with the rest of the buffer. Defaults to `false`. If `true`, the marker layer's id will be maintained across the serialization boundary, allowing you to retrieve it via {@link #getMarkerLayer}.
+   * @returns {DisplayMarkerLayer}
+   * @public
+   * @api-status Essential
+   */
   addMarkerLayer(options) {
     return this.displayLayer.addMarkerLayer(options);
   }
 
-  // Essential: Get a {DisplayMarkerLayer} by id.
-  //
-  // * `id` The id of the marker layer to retrieve.
-  //
-  // Returns a {DisplayMarkerLayer} or `undefined` if no layer exists with the
-  // given id.
+  /**
+   * Get a {@link DisplayMarkerLayer} by id.
+   *
+   * @param id - The id of the marker layer to retrieve.
+   * @returns {DisplayMarkerLayer} or `undefined` if no layer exists with the given id.
+   * @public
+   * @api-status Essential
+   */
   getMarkerLayer(id) {
     return this.displayLayer.getMarkerLayer(id);
   }
 
-  // Essential: Get the default {DisplayMarkerLayer}.
-  //
-  // All marker APIs not tied to an explicit layer interact with this default
-  // layer.
-  //
-  // Returns a {DisplayMarkerLayer}.
+  /**
+   * Get the default {@link DisplayMarkerLayer}.
+   *
+   * All marker APIs not tied to an explicit layer interact with this default
+   * layer.
+   *
+   * @returns {DisplayMarkerLayer}
+   * @public
+   * @api-status Essential
+   */
   getDefaultMarkerLayer() {
     return this.defaultMarkerLayer;
   }
 
-  /*
-  Section: Cursors
-  */
+  /**
+   * @category Cursors
+   */
 
-  // Essential: Get the position of the most recently added cursor in buffer
-  // coordinates.
-  //
-  // Returns a {Point}
+  /**
+   * Get the position of the most recently added cursor in buffer
+   * coordinates.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Essential
+   */
   getCursorBufferPosition() {
     return this.getLastCursor().getBufferPosition();
   }
 
-  // Essential: Get the position of all the cursor positions in buffer coordinates.
-  //
-  // Returns {Array} of {Point}s in the order they were added
+  /**
+   * Get the position of all the cursor positions in buffer coordinates.
+   *
+   * @returns {Array} of {@link Point Points} in the order they were added
+   * @public
+   * @api-status Essential
+   */
   getCursorBufferPositions() {
     return this.getCursors().map((cursor) => cursor.getBufferPosition());
   }
 
-  // Essential: Move the cursor to the given position in buffer coordinates.
-  //
-  // If there are multiple cursors, they will be consolidated to a single cursor.
-  //
-  // * `position` A {Point} or {Array} of `[row, column]`
-  // * `options` (optional) An {Object} containing the following keys:
-  //   * `autoscroll` Determines whether the editor scrolls to the new cursor's
-  //     position. Defaults to true.
+  /**
+   * Move the cursor to the given position in buffer coordinates.
+   *
+   * If there are multiple cursors, they will be consolidated to a single cursor.
+   *
+   * @param position - A {@link Point} or `Array` of `[row, column]`
+   * @param [options] - An `Object` containing the following keys:
+   * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
+   * @public
+   * @api-status Essential
+   */
   setCursorBufferPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setBufferPosition(position, options));
   }
 
-  // Essential: Get a {Cursor} at given screen coordinates {Point}
-  //
-  // * `position` A {Point} or {Array} of `[row, column]`
-  //
-  // Returns the first matched {Cursor} or undefined
+  /**
+   * Get a {@link Cursor} at given screen coordinates {@link Point}
+   *
+   * @param position - A {@link Point} or `Array` of `[row, column]`
+   * @returns {Cursor|undefined} first matched {@link Cursor} or undefined
+   * @public
+   * @api-status Essential
+   */
   getCursorAtScreenPosition(position) {
     const selection = this.getSelectionAtScreenPosition(position);
     if (selection && selection.getHeadScreenPosition().isEqual(position)) {
@@ -3206,38 +3475,52 @@ module.exports = class TextEditor {
     }
   }
 
-  // Essential: Get the position of the most recently added cursor in screen
-  // coordinates.
-  //
-  // Returns a {Point}.
+  /**
+   * Get the position of the most recently added cursor in screen
+   * coordinates.
+   *
+   * @returns {Point}
+   * @public
+   * @api-status Essential
+   */
   getCursorScreenPosition() {
     return this.getLastCursor().getScreenPosition();
   }
 
-  // Essential: Get the position of all the cursor positions in screen coordinates.
-  //
-  // Returns {Array} of {Point}s in the order the cursors were added
+  /**
+   * Get the position of all the cursor positions in screen coordinates.
+   *
+   * @returns {Array} of {@link Point Points} in the order the cursors were added
+   * @public
+   * @api-status Essential
+   */
   getCursorScreenPositions() {
     return this.getCursors().map((cursor) => cursor.getScreenPosition());
   }
 
-  // Essential: Move the cursor to the given position in screen coordinates.
-  //
-  // If there are multiple cursors, they will be consolidated to a single cursor.
-  //
-  // * `position` A {Point} or {Array} of `[row, column]`
-  // * `options` (optional) An {Object} combining options for {::clipScreenPosition} with:
-  //   * `autoscroll` Determines whether the editor scrolls to the new cursor's
-  //     position. Defaults to true.
+  /**
+   * Move the cursor to the given position in screen coordinates.
+   *
+   * If there are multiple cursors, they will be consolidated to a single cursor.
+   *
+   * @param position - A {@link Point} or `Array` of `[row, column]`
+   * @param [options] - An `Object` combining options for {@link #clipScreenPosition} with:
+   * @param options.autoscroll - Determines whether the editor scrolls to the new cursor's position. Defaults to true.
+   * @public
+   * @api-status Essential
+   */
   setCursorScreenPosition(position, options) {
     return this.moveCursors((cursor) => cursor.setScreenPosition(position, options));
   }
 
-  // Essential: Add a cursor at the given position in buffer coordinates.
-  //
-  // * `bufferPosition` A {Point} or {Array} of `[row, column]`
-  //
-  // Returns a {Cursor}.
+  /**
+   * Add a cursor at the given position in buffer coordinates.
+   *
+   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`
+   * @returns {Cursor}
+   * @public
+   * @api-status Essential
+   */
   addCursorAtBufferPosition(bufferPosition, options) {
     this.selectionsMarkerLayer.markBufferPosition(bufferPosition, {
       invalidate: "never",
@@ -3246,11 +3529,14 @@ module.exports = class TextEditor {
     return this.getLastSelection().cursor;
   }
 
-  // Essential: Add a cursor at the position in screen coordinates.
-  //
-  // * `screenPosition` A {Point} or {Array} of `[row, column]`
-  //
-  // Returns a {Cursor}.
+  /**
+   * Add a cursor at the position in screen coordinates.
+   *
+   * @param screenPosition - A {@link Point} or `Array` of `[row, column]`
+   * @returns {Cursor}
+   * @public
+   * @api-status Essential
+   */
   addCursorAtScreenPosition(screenPosition, options) {
     this.selectionsMarkerLayer.markScreenPosition(screenPosition, {
       invalidate: "never",
@@ -3259,152 +3545,268 @@ module.exports = class TextEditor {
     return this.getLastSelection().cursor;
   }
 
-  // Essential: Returns {Boolean} indicating whether or not there are multiple cursors.
+  /**
+   * @returns {Boolean} indicating whether or not there are multiple cursors.
+   * @public
+   * @api-status Essential
+   */
   hasMultipleCursors() {
     return this.getCursors().length > 1;
   }
 
-  // Essential: Move every cursor up one row in screen coordinates.
-  //
-  // * `lineCount` (optional) {Number} number of lines to move
+  /**
+   * Move every cursor up one row in screen coordinates.
+   *
+   * @param {Number} [lineCount] - number of lines to move
+   * @public
+   * @api-status Essential
+   */
   moveUp(lineCount) {
     return this.moveCursors((cursor) => cursor.moveUp(lineCount, { moveToEndOfSelection: true }));
   }
 
-  // Essential: Move every cursor down one row in screen coordinates.
-  //
-  // * `lineCount` (optional) {Number} number of lines to move
+  /**
+   * Move every cursor down one row in screen coordinates.
+   *
+   * @param {Number} [lineCount] - number of lines to move
+   * @public
+   * @api-status Essential
+   */
   moveDown(lineCount) {
     return this.moveCursors((cursor) => cursor.moveDown(lineCount, { moveToEndOfSelection: true }));
   }
 
-  // Essential: Move every cursor left one column.
-  //
-  // * `columnCount` (optional) {Number} number of columns to move (default: 1)
+  /**
+   * Move every cursor left one column.
+   *
+   * @param {Number} [columnCount] - number of columns to move (default: 1)
+   * @public
+   * @api-status Essential
+   */
   moveLeft(columnCount) {
     return this.moveCursors((cursor) =>
       cursor.moveLeft(columnCount, { moveToEndOfSelection: true }),
     );
   }
 
-  // Essential: Move every cursor right one column.
-  //
-  // * `columnCount` (optional) {Number} number of columns to move (default: 1)
+  /**
+   * Move every cursor right one column.
+   *
+   * @param {Number} [columnCount] - number of columns to move (default: 1)
+   * @public
+   * @api-status Essential
+   */
   moveRight(columnCount) {
     return this.moveCursors((cursor) =>
       cursor.moveRight(columnCount, { moveToEndOfSelection: true }),
     );
   }
 
-  // Essential: Move every cursor to the beginning of its line in buffer coordinates.
+  /**
+   * Move every cursor to the beginning of its line in buffer coordinates.
+   *
+   * @public
+   * @api-status Essential
+   */
   moveToBeginningOfLine() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfLine());
   }
 
-  // Essential: Move every cursor to the beginning of its line in screen coordinates.
+  /**
+   * Move every cursor to the beginning of its line in screen coordinates.
+   *
+   * @public
+   * @api-status Essential
+   */
   moveToBeginningOfScreenLine() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfScreenLine());
   }
 
-  // Essential: Move every cursor to the first non-whitespace character of its line.
+  /**
+   * Move every cursor to the first non-whitespace character of its line.
+   *
+   * @public
+   * @api-status Essential
+   */
   moveToFirstCharacterOfLine() {
     return this.moveCursors((cursor) => cursor.moveToFirstCharacterOfLine());
   }
 
-  // Essential: Move every cursor to the end of its line in buffer coordinates.
+  /**
+   * Move every cursor to the end of its line in buffer coordinates.
+   *
+   * @public
+   * @api-status Essential
+   */
   moveToEndOfLine() {
     return this.moveCursors((cursor) => cursor.moveToEndOfLine());
   }
 
-  // Essential: Move every cursor to the end of its line in screen coordinates.
+  /**
+   * Move every cursor to the end of its line in screen coordinates.
+   *
+   * @public
+   * @api-status Essential
+   */
   moveToEndOfScreenLine() {
     return this.moveCursors((cursor) => cursor.moveToEndOfScreenLine());
   }
 
-  // Essential: Move every cursor to the beginning of its surrounding word.
+  /**
+   * Move every cursor to the beginning of its surrounding word.
+   *
+   * @public
+   * @api-status Essential
+   */
   moveToBeginningOfWord() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfWord());
   }
 
-  // Essential: Move every cursor to the end of its surrounding word.
+  /**
+   * Move every cursor to the end of its surrounding word.
+   *
+   * @public
+   * @api-status Essential
+   */
   moveToEndOfWord() {
     return this.moveCursors((cursor) => cursor.moveToEndOfWord());
   }
 
   // Cursor Extended
 
-  // Extended: Move every cursor to the top of the buffer.
-  //
-  // If there are multiple cursors, they will be merged into a single cursor.
+  /**
+   * Move every cursor to the top of the buffer.
+   *
+   * If there are multiple cursors, they will be merged into a single cursor.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToTop() {
     return this.moveCursors((cursor) => cursor.moveToTop());
   }
 
-  // Extended: Move every cursor to the bottom of the buffer.
-  //
-  // If there are multiple cursors, they will be merged into a single cursor.
+  /**
+   * Move every cursor to the bottom of the buffer.
+   *
+   * If there are multiple cursors, they will be merged into a single cursor.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToBottom() {
     return this.moveCursors((cursor) => cursor.moveToBottom());
   }
 
-  // Extended: Move every cursor to the beginning of the next word.
+  /**
+   * Move every cursor to the beginning of the next word.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToBeginningOfNextWord() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfNextWord());
   }
 
-  // Extended: Move every cursor to the previous word boundary.
+  /**
+   * Move every cursor to the previous word boundary.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToPreviousWordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToPreviousWordBoundary());
   }
 
-  // Extended: Move every cursor to the next word boundary.
+  /**
+   * Move every cursor to the next word boundary.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToNextWordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToNextWordBoundary());
   }
 
-  // Extended: Move every cursor to the previous subword boundary.
+  /**
+   * Move every cursor to the previous subword boundary.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToPreviousSubwordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToPreviousSubwordBoundary());
   }
 
-  // Extended: Move every cursor to the next subword boundary.
+  /**
+   * Move every cursor to the next subword boundary.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToNextSubwordBoundary() {
     return this.moveCursors((cursor) => cursor.moveToNextSubwordBoundary());
   }
 
-  // Extended: Move every cursor to the beginning of the next paragraph.
+  /**
+   * Move every cursor to the beginning of the next paragraph.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToBeginningOfNextParagraph() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfNextParagraph());
   }
 
-  // Extended: Move every cursor to the beginning of the previous paragraph.
+  /**
+   * Move every cursor to the beginning of the previous paragraph.
+   *
+   * @public
+   * @api-status Extended
+   */
   moveToBeginningOfPreviousParagraph() {
     return this.moveCursors((cursor) => cursor.moveToBeginningOfPreviousParagraph());
   }
 
-  // Extended: Returns the most recently added {Cursor}
+  /**
+   * @returns {Cursor} most recently added {@link Cursor}
+   * @public
+   * @api-status Extended
+   */
   getLastCursor() {
     this.createLastSelectionIfNeeded();
     return _.last(this.cursors);
   }
 
-  // Extended: Returns the word surrounding the most recently added cursor.
-  //
-  // * `options` (optional) See {Cursor::getBeginningOfCurrentWordBufferPosition}.
+  /**
+   * @param [options] - See {@link Cursor#getBeginningOfCurrentWordBufferPosition}.
+   * @returns {String} word surrounding the most recently added cursor.
+   * @public
+   * @api-status Extended
+   */
   getWordUnderCursor(options) {
     return this.getTextInBufferRange(this.getLastCursor().getCurrentWordBufferRange(options));
   }
 
-  // Extended: Get an Array of all {Cursor}s.
+  /**
+   * Get an Array of all {@link Cursor Cursors}.
+   *
+   * @public
+   * @api-status Extended
+   */
   getCursors() {
     this.createLastSelectionIfNeeded();
     return this.cursors.slice();
   }
 
-  // Extended: Get all {Cursor}s, ordered by their position in the buffer
-  // instead of the order in which they were added.
-  //
-  // Returns an {Array} of {Selection}s.
+  /**
+   * Get all {@link Cursor Cursors}, ordered by their position in the buffer
+   * instead of the order in which they were added.
+   *
+   * @returns {Array} of {@link Selection Selections}.
+   * @public
+   * @api-status Extended
+   */
   getCursorsOrderedByBufferPosition() {
     return this.getCursors().sort((a, b) => a.compare(b));
   }
@@ -3420,7 +3822,7 @@ module.exports = class TextEditor {
     return cursors;
   }
 
-  // Add a cursor based on the given {DisplayMarker}.
+  // Add a cursor based on the given {@link DisplayMarker}.
   addCursor(marker) {
     const cursor = new Cursor({
       editor: this,
@@ -3455,56 +3857,72 @@ module.exports = class TextEditor {
     }
   }
 
-  /*
-  Section: Selections
-  */
+  /**
+   * @category Selections
+   */
 
-  // Essential: Get the selected text of the most recently added selection.
-  //
-  // Returns a {String}.
+  /**
+   * Get the selected text of the most recently added selection.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Essential
+   */
   getSelectedText() {
     return this.getLastSelection().getText();
   }
 
-  // Essential: Get the {Range} of the most recently added selection in buffer
-  // coordinates.
-  //
-  // Returns a {Range}.
+  /**
+   * Get the {@link Range} of the most recently added selection in buffer
+   * coordinates.
+   *
+   * @returns {Range}
+   * @public
+   * @api-status Essential
+   */
   getSelectedBufferRange() {
     return this.getLastSelection().getBufferRange();
   }
 
-  // Essential: Get the {Range}s of all selections in buffer coordinates.
-  //
-  // The ranges are sorted by when the selections were added. Most recent at the end.
-  //
-  // Returns an {Array} of {Range}s.
+  /**
+   * Get the {@link Range Ranges} of all selections in buffer coordinates.
+   *
+   * The ranges are sorted by when the selections were added. Most recent at the end.
+   *
+   * @returns {Array} of {@link Range Ranges}.
+   * @public
+   * @api-status Essential
+   */
   getSelectedBufferRanges() {
     return this.getSelections().map((selection) => selection.getBufferRange());
   }
 
-  // Essential: Set the selected range in buffer coordinates. If there are multiple
-  // selections, they are reduced to a single selection with the given range.
-  //
-  // * `bufferRange` A {Range} or range-compatible {Array}.
-  // * `options` (optional) An {Object} of options:
-  //   * `reversed` A {Boolean} indicating whether to create the selection in a
-  //     reversed orientation.
-  //   * `preserveFolds` A {Boolean}, which if `true` preserves the fold settings after the
-  //     selection is set.
+  /**
+   * Set the selected range in buffer coordinates. If there are multiple
+   * selections, they are reduced to a single selection with the given range.
+   *
+   * @param bufferRange - A {@link Range} or range-compatible `Array`.
+   * @param [options] - An `Object` of options:
+   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @public
+   * @api-status Essential
+   */
   setSelectedBufferRange(bufferRange, options) {
     return this.setSelectedBufferRanges([bufferRange], options);
   }
 
-  // Essential: Set the selected ranges in buffer coordinates. If there are multiple
-  // selections, they are replaced by new selections with the given ranges.
-  //
-  // * `bufferRanges` An {Array} of {Range}s or range-compatible {Array}s.
-  // * `options` (optional) An {Object} of options:
-  //   * `reversed` A {Boolean} indicating whether to create the selection in a
-  //     reversed orientation.
-  //   * `preserveFolds` A {Boolean}, which if `true` preserves the fold settings after the
-  //     selection is set.
+  /**
+   * Set the selected ranges in buffer coordinates. If there are multiple
+   * selections, they are replaced by new selections with the given ranges.
+   *
+   * @param bufferRanges - An `Array` of {@link Range Ranges} or range-compatible `Arrays`.
+   * @param [options] - An `Object` of options:
+   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @public
+   * @api-status Essential
+   */
   setSelectedBufferRanges(bufferRanges, options = {}) {
     if (!bufferRanges.length) throw new Error("Passed an empty array to setSelectedBufferRanges");
 
@@ -3526,30 +3944,41 @@ module.exports = class TextEditor {
     });
   }
 
-  // Essential: Get the {Range} of the most recently added selection in screen
-  // coordinates.
-  //
-  // Returns a {Range}.
+  /**
+   * Get the {@link Range} of the most recently added selection in screen
+   * coordinates.
+   *
+   * @returns {Range}
+   * @public
+   * @api-status Essential
+   */
   getSelectedScreenRange() {
     return this.getLastSelection().getScreenRange();
   }
 
-  // Essential: Get the {Range}s of all selections in screen coordinates.
-  //
-  // The ranges are sorted by when the selections were added. Most recent at the end.
-  //
-  // Returns an {Array} of {Range}s.
+  /**
+   * Get the {@link Range Ranges} of all selections in screen coordinates.
+   *
+   * The ranges are sorted by when the selections were added. Most recent at the end.
+   *
+   * @returns {Array} of {@link Range Ranges}.
+   * @public
+   * @api-status Essential
+   */
   getSelectedScreenRanges() {
     return this.getSelections().map((selection) => selection.getScreenRange());
   }
 
-  // Essential: Set the selected range in screen coordinates. If there are multiple
-  // selections, they are reduced to a single selection with the given range.
-  //
-  // * `screenRange` A {Range} or range-compatible {Array}.
-  // * `options` (optional) An {Object} of options:
-  //   * `reversed` A {Boolean} indicating whether to create the selection in a
-  //     reversed orientation.
+  /**
+   * Set the selected range in screen coordinates. If there are multiple
+   * selections, they are reduced to a single selection with the given range.
+   *
+   * @param screenRange - A {@link Range} or range-compatible `Array`.
+   * @param [options] - An `Object` of options:
+   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @public
+   * @api-status Essential
+   */
   setSelectedScreenRange(screenRange, options) {
     return this.setSelectedBufferRange(
       this.bufferRangeForScreenRange(screenRange, options),
@@ -3557,13 +3986,16 @@ module.exports = class TextEditor {
     );
   }
 
-  // Essential: Set the selected ranges in screen coordinates. If there are multiple
-  // selections, they are replaced by new selections with the given ranges.
-  //
-  // * `screenRanges` An {Array} of {Range}s or range-compatible {Array}s.
-  // * `options` (optional) An {Object} of options:
-  //   * `reversed` A {Boolean} indicating whether to create the selection in a
-  //     reversed orientation.
+  /**
+   * Set the selected ranges in screen coordinates. If there are multiple
+   * selections, they are replaced by new selections with the given ranges.
+   *
+   * @param screenRanges - An `Array` of {@link Range Ranges} or range-compatible `Arrays`.
+   * @param [options] - An `Object` of options:
+   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @public
+   * @api-status Essential
+   */
   setSelectedScreenRanges(screenRanges, options = {}) {
     if (!screenRanges.length) throw new Error("Passed an empty array to setSelectedScreenRanges");
 
@@ -3585,16 +4017,17 @@ module.exports = class TextEditor {
     });
   }
 
-  // Essential: Add a selection for the given range in buffer coordinates.
-  //
-  // * `bufferRange` A {Range}
-  // * `options` (optional) An {Object} of options:
-  //   * `reversed` A {Boolean} indicating whether to create the selection in a
-  //     reversed orientation.
-  //   * `preserveFolds` A {Boolean}, which if `true` preserves the fold settings after the
-  //     selection is set.
-  //
-  // Returns the added {Selection}.
+  /**
+   * Add a selection for the given range in buffer coordinates.
+   *
+   * @param bufferRange - A {@link Range}
+   * @param [options] - An `Object` of options:
+   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @returns {Selection} added {@link Selection}.
+   * @public
+   * @api-status Essential
+   */
   addSelectionForBufferRange(bufferRange, options = {}) {
     bufferRange = Range.fromObject(bufferRange);
     if (!options.preserveFolds) {
@@ -3611,25 +4044,31 @@ module.exports = class TextEditor {
     return this.getLastSelection();
   }
 
-  // Essential: Add a selection for the given range in screen coordinates.
-  //
-  // * `screenRange` A {Range}
-  // * `options` (optional) An {Object} of options:
-  //   * `reversed` A {Boolean} indicating whether to create the selection in a
-  //     reversed orientation.
-  //   * `preserveFolds` A {Boolean}, which if `true` preserves the fold settings after the
-  //     selection is set.
-  // Returns the added {Selection}.
+  /**
+   * Add a selection for the given range in screen coordinates.
+   *
+   * @param screenRange - A {@link Range}
+   * @param [options] - An `Object` of options:
+   * @param options.reversed - A `Boolean` indicating whether to create the selection in a reversed orientation.
+   * @param options.preserveFolds - A `Boolean`, which if `true` preserves the fold settings after the selection is set.
+   * @returns {Selection} added {@link Selection}.
+   * @public
+   * @api-status Essential
+   */
   addSelectionForScreenRange(screenRange, options = {}) {
     return this.addSelectionForBufferRange(this.bufferRangeForScreenRange(screenRange), options);
   }
 
-  // Essential: Select from the current cursor position to the given position in
-  // buffer coordinates.
-  //
-  // This method may merge selections that end up intersecting.
-  //
-  // * `position` An instance of {Point}, with a given `row` and `column`.
+  /**
+   * Select from the current cursor position to the given position in
+   * buffer coordinates.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @param position - An instance of {@link Point}, with a given `row` and `column`.
+   * @public
+   * @api-status Essential
+   */
   selectToBufferPosition(position) {
     const lastSelection = this.getLastSelection();
     lastSelection.selectToBufferPosition(position);
@@ -3638,12 +4077,16 @@ module.exports = class TextEditor {
     });
   }
 
-  // Essential: Select from the current cursor position to the given position in
-  // screen coordinates.
-  //
-  // This method may merge selections that end up intersecting.
-  //
-  // * `position` An instance of {Point}, with a given `row` and `column`.
+  /**
+   * Select from the current cursor position to the given position in
+   * screen coordinates.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @param position - An instance of {@link Point}, with a given `row` and `column`.
+   * @public
+   * @api-status Essential
+   */
   selectToScreenPosition(position, options) {
     const lastSelection = this.getLastSelection();
     lastSelection.selectToScreenPosition(position, options);
@@ -3654,194 +4097,309 @@ module.exports = class TextEditor {
     }
   }
 
-  // Essential: Move the cursor of each selection one character upward while
-  // preserving the selection's tail position.
-  //
-  // * `rowCount` (optional) {Number} number of rows to select (default: 1)
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * Move the cursor of each selection one character upward while
+   * preserving the selection's tail position.
+   *
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @param {Number} [rowCount] - number of rows to select (default: 1)
+   * @public
+   * @api-status Essential
+   */
   selectUp(rowCount) {
     return this.expandSelectionsBackward((selection) => selection.selectUp(rowCount));
   }
 
-  // Essential: Move the cursor of each selection one character downward while
-  // preserving the selection's tail position.
-  //
-  // * `rowCount` (optional) {Number} number of rows to select (default: 1)
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * Move the cursor of each selection one character downward while
+   * preserving the selection's tail position.
+   *
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @param {Number} [rowCount] - number of rows to select (default: 1)
+   * @public
+   * @api-status Essential
+   */
   selectDown(rowCount) {
     return this.expandSelectionsForward((selection) => selection.selectDown(rowCount));
   }
 
-  // Essential: Move the cursor of each selection one character leftward while
-  // preserving the selection's tail position.
-  //
-  // * `columnCount` (optional) {Number} number of columns to select (default: 1)
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * Move the cursor of each selection one character leftward while
+   * preserving the selection's tail position.
+   *
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @param {Number} [columnCount] - number of columns to select (default: 1)
+   * @public
+   * @api-status Essential
+   */
   selectLeft(columnCount) {
     return this.expandSelectionsBackward((selection) => selection.selectLeft(columnCount));
   }
 
-  // Essential: Move the cursor of each selection one character rightward while
-  // preserving the selection's tail position.
-  //
-  // * `columnCount` (optional) {Number} number of columns to select (default: 1)
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * Move the cursor of each selection one character rightward while
+   * preserving the selection's tail position.
+   *
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @param {Number} [columnCount] - number of columns to select (default: 1)
+   * @public
+   * @api-status Essential
+   */
   selectRight(columnCount) {
     return this.expandSelectionsForward((selection) => selection.selectRight(columnCount));
   }
 
-  // Essential: Select from the top of the buffer to the end of the last selection
-  // in the buffer.
-  //
-  // This method merges multiple selections into a single selection.
+  /**
+   * Select from the top of the buffer to the end of the last selection
+   * in the buffer.
+   *
+   * This method merges multiple selections into a single selection.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectToTop() {
     return this.expandSelectionsBackward((selection) => selection.selectToTop());
   }
 
-  // Essential: Selects from the top of the first selection in the buffer to the end
-  // of the buffer.
-  //
-  // This method merges multiple selections into a single selection.
+  /**
+   * Selects from the top of the first selection in the buffer to the end
+   * of the buffer.
+   *
+   * This method merges multiple selections into a single selection.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectToBottom() {
     return this.expandSelectionsForward((selection) => selection.selectToBottom());
   }
 
-  // Essential: Select all text in the buffer.
-  //
-  // This method merges multiple selections into a single selection.
+  /**
+   * Select all text in the buffer.
+   *
+   * This method merges multiple selections into a single selection.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectAll() {
     return this.expandSelectionsForward((selection) => selection.selectAll());
   }
 
-  // Essential: Move the cursor of each selection to the beginning of its line
-  // while preserving the selection's tail position.
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * Move the cursor of each selection to the beginning of its line
+   * while preserving the selection's tail position.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectToBeginningOfLine() {
     return this.expandSelectionsBackward((selection) => selection.selectToBeginningOfLine());
   }
 
-  // Essential: Move the cursor of each selection to the first non-whitespace
-  // character of its line while preserving the selection's tail position. If the
-  // cursor is already on the first character of the line, move it to the
-  // beginning of the line.
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * Move the cursor of each selection to the first non-whitespace
+   * character of its line while preserving the selection's tail position. If the
+   * cursor is already on the first character of the line, move it to the
+   * beginning of the line.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectToFirstCharacterOfLine() {
     return this.expandSelectionsBackward((selection) => selection.selectToFirstCharacterOfLine());
   }
 
-  // Essential: Move the cursor of each selection to the end of its line while
-  // preserving the selection's tail position.
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * Move the cursor of each selection to the end of its line while
+   * preserving the selection's tail position.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectToEndOfLine() {
     return this.expandSelectionsForward((selection) => selection.selectToEndOfLine());
   }
 
-  // Essential: Expand selections to the beginning of their containing word.
-  //
-  // Operates on all selections. Moves the cursor to the beginning of the
-  // containing word while preserving the selection's tail position.
+  /**
+   * Expand selections to the beginning of their containing word.
+   *
+   * Operates on all selections. Moves the cursor to the beginning of the
+   * containing word while preserving the selection's tail position.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectToBeginningOfWord() {
     return this.expandSelectionsBackward((selection) => selection.selectToBeginningOfWord());
   }
 
-  // Essential: Expand selections to the end of their containing word.
-  //
-  // Operates on all selections. Moves the cursor to the end of the containing
-  // word while preserving the selection's tail position.
+  /**
+   * Expand selections to the end of their containing word.
+   *
+   * Operates on all selections. Moves the cursor to the end of the containing
+   * word while preserving the selection's tail position.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectToEndOfWord() {
     return this.expandSelectionsForward((selection) => selection.selectToEndOfWord());
   }
 
-  // Extended: For each selection, move its cursor to the preceding subword
-  // boundary while maintaining the selection's tail position.
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * For each selection, move its cursor to the preceding subword
+   * boundary while maintaining the selection's tail position.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectToPreviousSubwordBoundary() {
     return this.expandSelectionsBackward((selection) =>
       selection.selectToPreviousSubwordBoundary(),
     );
   }
 
-  // Extended: For each selection, move its cursor to the next subword boundary
-  // while maintaining the selection's tail position.
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * For each selection, move its cursor to the next subword boundary
+   * while maintaining the selection's tail position.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectToNextSubwordBoundary() {
     return this.expandSelectionsForward((selection) => selection.selectToNextSubwordBoundary());
   }
 
-  // Essential: For each cursor, select the containing line.
-  //
-  // This method merges selections on successive lines.
+  /**
+   * For each cursor, select the containing line.
+   *
+   * This method merges selections on successive lines.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectLinesContainingCursors() {
     return this.expandSelectionsForward((selection) => selection.selectLine());
   }
 
-  // Essential: Select the word surrounding each cursor.
+  /**
+   * Select the word surrounding each cursor.
+   *
+   * @public
+   * @api-status Essential
+   */
   selectWordsContainingCursors() {
     return this.expandSelectionsForward((selection) => selection.selectWord());
   }
 
-  // Extended: Select the subword surrounding each cursor.
+  /**
+   * Select the subword surrounding each cursor.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectSubwordsContainingCursors() {
     return this.expandSelectionsForward((selection) => selection.selectSubword());
   }
 
   // Selection Extended
 
-  // Extended: For each selection, move its cursor to the preceding word boundary
-  // while maintaining the selection's tail position.
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * For each selection, move its cursor to the preceding word boundary
+   * while maintaining the selection's tail position.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectToPreviousWordBoundary() {
     return this.expandSelectionsBackward((selection) => selection.selectToPreviousWordBoundary());
   }
 
-  // Extended: For each selection, move its cursor to the next word boundary while
-  // maintaining the selection's tail position.
-  //
-  // This method may merge selections that end up intersecting.
+  /**
+   * For each selection, move its cursor to the next word boundary while
+   * maintaining the selection's tail position.
+   *
+   * This method may merge selections that end up intersecting.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectToNextWordBoundary() {
     return this.expandSelectionsForward((selection) => selection.selectToNextWordBoundary());
   }
 
-  // Extended: Expand selections to the beginning of the next word.
-  //
-  // Operates on all selections. Moves the cursor to the beginning of the next
-  // word while preserving the selection's tail position.
+  /**
+   * Expand selections to the beginning of the next word.
+   *
+   * Operates on all selections. Moves the cursor to the beginning of the next
+   * word while preserving the selection's tail position.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectToBeginningOfNextWord() {
     return this.expandSelectionsForward((selection) => selection.selectToBeginningOfNextWord());
   }
 
-  // Extended: Expand selections to the beginning of the next paragraph.
-  //
-  // Operates on all selections. Moves the cursor to the beginning of the next
-  // paragraph while preserving the selection's tail position.
+  /**
+   * Expand selections to the beginning of the next paragraph.
+   *
+   * Operates on all selections. Moves the cursor to the beginning of the next
+   * paragraph while preserving the selection's tail position.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectToBeginningOfNextParagraph() {
     return this.expandSelectionsForward((selection) =>
       selection.selectToBeginningOfNextParagraph(),
     );
   }
 
-  // Extended: Expand selections to the beginning of the next paragraph.
-  //
-  // Operates on all selections. Moves the cursor to the beginning of the next
-  // paragraph while preserving the selection's tail position.
+  /**
+   * Expand selections to the beginning of the next paragraph.
+   *
+   * Operates on all selections. Moves the cursor to the beginning of the next
+   * paragraph while preserving the selection's tail position.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectToBeginningOfPreviousParagraph() {
     return this.expandSelectionsBackward((selection) =>
       selection.selectToBeginningOfPreviousParagraph(),
     );
   }
 
-  // Extended: For each selection, select the syntax node that contains
-  // that selection.
+  /**
+   * For each selection, select the syntax node that contains
+   * that selection.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectLargerSyntaxNode() {
     const languageMode = this.buffer.getLanguageMode();
     if (!languageMode.getRangeForSyntaxNodeContainingRange) return;
@@ -3857,7 +4415,12 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: Undo the effect of a preceding call to {::selectLargerSyntaxNode}.
+  /**
+   * Undo the effect of a preceding call to {@link #selectLargerSyntaxNode}.
+   *
+   * @public
+   * @api-status Extended
+   */
   selectSmallerSyntaxNode() {
     this.expandSelectionsForward((selection) => {
       if (selection._rangeStack) {
@@ -3870,11 +4433,14 @@ module.exports = class TextEditor {
     });
   }
 
-  // Extended: Select the range of the given marker if it is valid.
-  //
-  // * `marker` A {DisplayMarker}
-  //
-  // Returns the selected {Range} or `undefined` if the marker is invalid.
+  /**
+   * Select the range of the given marker if it is valid.
+   *
+   * @param marker - A {@link DisplayMarker}
+   * @returns {Range|undefined} selected {@link Range} or `undefined` if the marker is invalid.
+   * @public
+   * @api-status Extended
+   */
   selectMarker(marker) {
     if (marker.isValid()) {
       const range = marker.getBufferRange();
@@ -3883,9 +4449,13 @@ module.exports = class TextEditor {
     }
   }
 
-  // Extended: Get the most recently added {Selection}.
-  //
-  // Returns a {Selection}.
+  /**
+   * Get the most recently added {@link Selection}.
+   *
+   * @returns {Selection}
+   * @public
+   * @api-status Extended
+   */
   getLastSelection() {
     this.createLastSelectionIfNeeded();
     return _.last(this.selections);
@@ -3898,28 +4468,39 @@ module.exports = class TextEditor {
     if (markers.length > 0) return this.cursorsByMarkerId.get(markers[0].id).selection;
   }
 
-  // Extended: Get current {Selection}s.
-  //
-  // Returns: An {Array} of {Selection}s.
+  /**
+   * Get current {@link Selection Selections}.
+   *
+   * @returns {Array<Selection>} The current selections.
+   * @public
+   * @api-status Extended
+   */
   getSelections() {
     this.createLastSelectionIfNeeded();
     return this.selections.slice();
   }
 
-  // Extended: Get all {Selection}s, ordered by their position in the buffer
-  // instead of the order in which they were added.
-  //
-  // Returns an {Array} of {Selection}s.
+  /**
+   * Get all {@link Selection Selections}, ordered by their position in the buffer
+   * instead of the order in which they were added.
+   *
+   * @returns {Array} of {@link Selection Selections}.
+   * @public
+   * @api-status Extended
+   */
   getSelectionsOrderedByBufferPosition() {
     return this.getSelections().sort((a, b) => a.compare(b));
   }
 
-  // Extended: Determine if a given range in buffer coordinates intersects a
-  // selection.
-  //
-  // * `bufferRange` A {Range} or range-compatible {Array}.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine if a given range in buffer coordinates intersects a
+   * selection.
+   *
+   * @param bufferRange - A {@link Range} or range-compatible `Array`.
+   * @returns {Boolean}
+   * @public
+   * @api-status Extended
+   */
   selectionIntersectsBufferRange(bufferRange) {
     return this.getSelections().some((selection) => selection.intersectsBufferRange(bufferRange));
   }
@@ -4022,12 +4603,12 @@ module.exports = class TextEditor {
     return result;
   }
 
-  // Add a {Selection} based on the given {DisplayMarker}.
+  // Add a {@link Selection} based on the given {@link DisplayMarker}.
   //
-  // * `marker` The {DisplayMarker} to highlight
-  // * `options` (optional) An {Object} that pertains to the {Selection} constructor.
+  // * `marker` The {@link DisplayMarker} to highlight
+  // * `options` (optional) An `Object` that pertains to the {@link Selection} constructor.
   //
-  // Returns the new {Selection}.
+  // Returns the new {@link Selection}.
   addSelection(marker, options = {}) {
     const cursor = this.addCursor(marker);
     let selection = new Selection(Object.assign({ editor: this, marker, cursor }, options));
@@ -4098,31 +4679,33 @@ module.exports = class TextEditor {
     }
   }
 
-  /*
-  Section: Searching and Replacing
-  */
+  /**
+   * @category Searching and Replacing
+   */
 
-  // Essential: Scan regular expression matches in the entire buffer, calling the
-  // given iterator function on each match.
-  //
-  // `::scan` functions as the replace method as well via the `replace`
-  //
-  // If you're programmatically modifying the results, you may want to try
-  // {::backwardsScanInBufferRange} to avoid tripping over your own changes.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `options` (optional) {Object}
-  //   * `leadingContextLineCount` {Number} default `0`; The number of lines
-  //      before the matched line to include in the results object.
-  //   * `trailingContextLineCount` {Number} default `0`; The number of lines
-  //      after the matched line to include in the results object.
-  // * `iterator` A {Function} that's called on each match
-  //   * `object` {Object}
-  //     * `match` The current regular expression match.
-  //     * `matchText` A {String} with the text of the match.
-  //     * `range` The {Range} of the match.
-  //     * `stop` Call this {Function} to terminate the scan.
-  //     * `replace` Call this {Function} with a {String} to replace the match.
+  /**
+   * Scan regular expression matches in the entire buffer, calling the
+   * given iterator function on each match.
+   *
+   * `::scan` functions as the replace method as well via the `replace`
+   *
+   * If you're programmatically modifying the results, you may want to try
+   * {@link #backwardsScanInBufferRange} to avoid tripping over your own changes.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param {Object} [options]
+   * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
+   * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
+   * @param iterator - A `Function` that's called on each match
+   * @param {Object} iterator.object
+   * @param iterator.object.match - The current regular expression match.
+   * @param iterator.object.matchText - A `String` with the text of the match.
+   * @param iterator.object.range - The {@link Range} of the match.
+   * @param iterator.object.stop - Call this `Function` to terminate the scan.
+   * @param iterator.object.replace - Call this `Function` with a `String` to replace the match.
+   * @public
+   * @api-status Essential
+   */
   scan(regex, options = {}, iterator) {
     if (_.isFunction(options)) {
       iterator = options;
@@ -4132,85 +4715,110 @@ module.exports = class TextEditor {
     return this.buffer.scan(regex, options, iterator);
   }
 
-  // Essential: Scan regular expression matches in a given range, calling the given
-  // iterator function on each match.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} in which to search.
-  // * `iterator` A {Function} that's called on each match with an {Object}
-  //   containing the following keys:
-  //   * `match` The current regular expression match.
-  //   * `matchText` A {String} with the text of the match.
-  //   * `range` The {Range} of the match.
-  //   * `stop` Call this {Function} to terminate the scan.
-  //   * `replace` Call this {Function} with a {String} to replace the match.
+  /**
+   * Scan regular expression matches in a given range, calling the given
+   * iterator function on each match.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} in which to search.
+   * @param iterator - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param iterator.match - The current regular expression match.
+   * @param iterator.matchText - A `String` with the text of the match.
+   * @param iterator.range - The {@link Range} of the match.
+   * @param iterator.stop - Call this `Function` to terminate the scan.
+   * @param iterator.replace - Call this `Function` with a `String` to replace the match.
+   * @public
+   * @api-status Essential
+   */
   scanInBufferRange(regex, range, iterator) {
     return this.buffer.scanInRange(regex, range, iterator);
   }
 
-  // Essential: Scan regular expression matches in a given range in reverse order,
-  // calling the given iterator function on each match.
-  //
-  // * `regex` A {RegExp} to search for.
-  // * `range` A {Range} in which to search.
-  // * `iterator` A {Function} that's called on each match with an {Object}
-  //   containing the following keys:
-  //   * `match` The current regular expression match.
-  //   * `matchText` A {String} with the text of the match.
-  //   * `range` The {Range} of the match.
-  //   * `stop` Call this {Function} to terminate the scan.
-  //   * `replace` Call this {Function} with a {String} to replace the match.
+  /**
+   * Scan regular expression matches in a given range in reverse order,
+   * calling the given iterator function on each match.
+   *
+   * @param regex - A `RegExp` to search for.
+   * @param range - A {@link Range} in which to search.
+   * @param iterator - A `Function` that's called on each match with an `Object` containing the following keys:
+   * @param iterator.match - The current regular expression match.
+   * @param iterator.matchText - A `String` with the text of the match.
+   * @param iterator.range - The {@link Range} of the match.
+   * @param iterator.stop - Call this `Function` to terminate the scan.
+   * @param iterator.replace - Call this `Function` with a `String` to replace the match.
+   * @public
+   * @api-status Essential
+   */
   backwardsScanInBufferRange(regex, range, iterator) {
     return this.buffer.backwardsScanInRange(regex, range, iterator);
   }
 
-  /*
-  Section: Tab Behavior
-  */
+  /**
+   * @category Tab Behavior
+   */
 
-  // Essential: Returns a {Boolean} indicating whether softTabs are enabled for this
-  // editor.
+  /**
+   * @returns {Boolean} indicating whether softTabs are enabled for this editor.
+   * @public
+   * @api-status Essential
+   */
   getSoftTabs() {
     return this.softTabs;
   }
 
-  // Essential: Enable or disable soft tabs for this editor.
-  //
-  // * `softTabs` A {Boolean}
+  /**
+   * Enable or disable soft tabs for this editor.
+   *
+   * @param softTabs - A `Boolean`
+   * @public
+   * @api-status Essential
+   */
   setSoftTabs(softTabs) {
     this.softTabs = softTabs;
     this.updateSoftTabs(this.softTabs, true);
   }
 
-  // Returns a {Boolean} indicating whether atomic soft tabs are enabled for this editor.
+  // Returns a `Boolean` indicating whether atomic soft tabs are enabled for this editor.
   hasAtomicSoftTabs() {
     return this.displayLayer.atomicSoftTabs;
   }
 
-  // Essential: Toggle soft tabs for this editor
+  /**
+   * Toggle soft tabs for this editor
+   *
+   * @public
+   * @api-status Essential
+   */
   toggleSoftTabs() {
     this.setSoftTabs(!this.getSoftTabs());
   }
 
-  // Essential: Get the on-screen length of tab characters.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the on-screen length of tab characters.
+   *
+   * @returns {Number}
+   * @public
+   * @api-status Essential
+   */
   getTabLength() {
     return this.displayLayer.tabLength;
   }
 
-  // Essential: Set the on-screen length of tab characters. Setting this to a
-  // {Number} This will override the `language.tabLength` setting.
-  //
-  // * `tabLength` {Number} length of a single tab. Setting to `null` will
-  //   fallback to using the `language.tabLength` config setting
+  /**
+   * Set the on-screen length of tab characters. Setting this to a
+   * `Number` This will override the `language.tabLength` setting.
+   *
+   * @param {Number} tabLength - length of a single tab. Setting to `null` will fallback to using the `language.tabLength` config setting
+   * @public
+   * @api-status Essential
+   */
   setTabLength(tabLength) {
     this.updateTabLength(tabLength, true);
   }
 
-  // Returns an {Object} representing the current invisible character
+  // Returns an `Object` representing the current invisible character
   // substitutions for this editor, whose keys are names of invisible characters
-  // and whose values are 1-character {Strings}s that are displayed in place of
+  // and whose values are 1-character `Stringss` that are displayed in place of
   // those invisible characters
   getInvisibles() {
     if (!this.mini && this.showInvisibles && this.invisibles != null) {
@@ -4224,13 +4832,13 @@ module.exports = class TextEditor {
     return this.displayLayer.softWrapHangingIndent;
   }
 
-  // Extended: Determine if the buffer uses hard or soft tabs.
-  //
-  // Returns `true` if the first non-comment line with leading whitespace starts
-  // with a space character. Returns `false` if it starts with a hard tab (`\t`).
-  //
-  // Returns a {Boolean} or undefined if no non-comment lines had leading
-  // whitespace.
+  /**
+   * Determine if the buffer uses hard or soft tabs.
+   *
+   * @returns {Boolean|undefined} `true` for leading spaces, `false` for a leading hard tab (`\t`), or `undefined` when no non-comment line has leading whitespace.
+   * @public
+   * @api-status Extended
+   */
   usesSoftTabs() {
     const languageMode = this.buffer.getLanguageMode();
     const hasIsRowCommented = languageMode.isRowCommented;
@@ -4246,18 +4854,22 @@ module.exports = class TextEditor {
     }
   }
 
-  // Extended: Get the text representing a single level of indent.
-  //
-  // If soft tabs are enabled, the text is composed of N spaces, where N is the
-  // tab length. Otherwise the text is a tab character (`\t`).
-  //
-  // Returns a {String}.
+  /**
+   * Get the text representing a single level of indent.
+   *
+   * If soft tabs are enabled, the text is composed of N spaces, where N is the
+   * tab length. Otherwise the text is a tab character (`\t`).
+   *
+   * @returns {String}
+   * @public
+   * @api-status Extended
+   */
   getTabText() {
     return this.buildIndentString(1);
   }
 
   // If soft tabs are enabled, convert all hard tabs to soft tabs in the given
-  // {Range}.
+  // {@link Range}.
   normalizeTabsInBufferRange(bufferRange) {
     if (!this.getSoftTabs()) {
       return;
@@ -4265,22 +4877,29 @@ module.exports = class TextEditor {
     return this.scanInBufferRange(/\t/g, bufferRange, ({ replace }) => replace(this.getTabText()));
   }
 
-  /*
-  Section: Soft Wrap Behavior
-  */
+  /**
+   * @category Soft Wrap Behavior
+   */
 
-  // Essential: Determine whether lines in this editor are soft-wrapped.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether lines in this editor are soft-wrapped.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   isSoftWrapped() {
     return this.softWrapped;
   }
 
-  // Essential: Enable or disable soft wrapping for this editor.
-  //
-  // * `softWrapped` A {Boolean}
-  //
-  // Returns a {Boolean}.
+  /**
+   * Enable or disable soft wrapping for this editor.
+   *
+   * @param softWrapped - A `Boolean`
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   setSoftWrapped(softWrapped) {
     this.updateSoftWrapped(softWrapped, true);
     return this.isSoftWrapped();
@@ -4290,27 +4909,38 @@ module.exports = class TextEditor {
     return this.preferredLineLength;
   }
 
-  // Essential: Toggle soft wrapping for this editor
-  //
-  // Returns a {Boolean}.
+  /**
+   * Toggle soft wrapping for this editor
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   toggleSoftWrapped() {
     return this.setSoftWrapped(!this.isSoftWrapped());
   }
 
-  // Essential: Determine whether overtype (overwrite) mode is enabled for this
-  // editor. In overtype mode, typing replaces the character following the cursor
-  // instead of inserting before it.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether overtype (overwrite) mode is enabled for this
+   * editor. In overtype mode, typing replaces the character following the cursor
+   * instead of inserting before it.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   isOvertypeMode() {
     return this.overtypeMode;
   }
 
-  // Essential: Enable or disable overtype (overwrite) mode for this editor.
-  //
-  // * `overtypeMode` A {Boolean}.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Enable or disable overtype (overwrite) mode for this editor.
+   *
+   * @param overtypeMode - A `Boolean`.
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   setOvertypeMode(overtypeMode) {
     overtypeMode = !!overtypeMode;
     if (overtypeMode !== this.overtypeMode) {
@@ -4320,20 +4950,29 @@ module.exports = class TextEditor {
     return this.overtypeMode;
   }
 
-  // Essential: Toggle overtype (overwrite) mode for this editor.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Toggle overtype (overwrite) mode for this editor.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   toggleOvertypeMode() {
     return this.setOvertypeMode(!this.overtypeMode);
   }
 
-  // Extended: When overtype mode is active, expand each empty selection one
-  // character to the right (except at the end of a line) so that the text about
-  // to be inserted overwrites the following character rather than being inserted
-  // before it. Non-empty selections are left untouched and replaced as usual.
-  //
-  // Called by the editor component immediately before inserting genuinely typed
-  // text; it has no effect unless {::isOvertypeMode} is `true`.
+  /**
+   * When overtype mode is active, expand each empty selection one
+   * character to the right (except at the end of a line) so that the text about
+   * to be inserted overwrites the following character rather than being inserted
+   * before it. Non-empty selections are left untouched and replaced as usual.
+   *
+   * Called by the editor component immediately before inserting genuinely typed
+   * text; it has no effect unless {@link #isOvertypeMode} is `true`.
+   *
+   * @public
+   * @api-status Extended
+   */
   applyOvertype() {
     if (!this.overtypeMode) return;
     for (const selection of this.getSelections()) {
@@ -4343,7 +4982,12 @@ module.exports = class TextEditor {
     }
   }
 
-  // Essential: Gets the column at which column will soft wrap
+  /**
+   * Gets the column at which column will soft wrap
+   *
+   * @public
+   * @api-status Essential
+   */
   getSoftWrapColumn() {
     if (this.isSoftWrapped() && !this.mini) {
       if (this.softWrapAtPreferredLineLength) {
@@ -4356,36 +5000,43 @@ module.exports = class TextEditor {
     }
   }
 
-  /*
-  Section: Indentation
-  */
+  /**
+   * @category Indentation
+   */
 
-  // Essential: Get the indentation level of the given buffer row.
-  //
-  // Determines how deeply the given row is indented based on the soft tabs and
-  // tab length settings of this editor. Note that if soft tabs are enabled and
-  // the tab length is 2, a row with 4 leading spaces would have an indentation
-  // level of 2.
-  //
-  // * `bufferRow` A {Number} indicating the buffer row.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the indentation level of the given buffer row.
+   *
+   * Determines how deeply the given row is indented based on the soft tabs and
+   * tab length settings of this editor. Note that if soft tabs are enabled and
+   * the tab length is 2, a row with 4 leading spaces would have an indentation
+   * level of 2.
+   *
+   * @param bufferRow - A `Number` indicating the buffer row.
+   * @returns {Number}
+   * @public
+   * @api-status Essential
+   */
   indentationForBufferRow(bufferRow) {
     return this.indentLevelForLine(this.lineTextForBufferRow(bufferRow));
   }
 
-  // Essential: Set the indentation level for the given buffer row.
-  //
-  // Inserts or removes hard tabs or spaces based on the soft tabs and tab length
-  // settings of this editor in order to bring it to the given indentation level.
-  // Note that if soft tabs are enabled and the tab length is 2, a row with 4
-  // leading spaces would have an indentation level of 2.
-  //
-  // * `bufferRow` A {Number} indicating the buffer row.
-  // * `newLevel` A {Number} indicating the new indentation level.
-  // * `options` (optional) An {Object} with the following keys:
-  //   * `preserveLeadingWhitespace` `true` to preserve any whitespace already at
-  //      the beginning of the line (default: false).
+  /**
+   * Set the indentation level for the given buffer row.
+   *
+   * Inserts or removes hard tabs or spaces based on the soft tabs and tab length
+   * settings of this editor in order to bring it to the given indentation level.
+   * Note that if soft tabs are enabled and the tab length is 2, a row with 4
+   * leading spaces would have an indentation level of 2.
+   *
+   * @param bufferRow - A `Number` indicating the buffer row.
+   * @param newLevel - A `Number` indicating the new indentation level.
+   * @param {Object} [options] - Indentation options.
+   * @param {Boolean} [options.preserveLeadingWhitespace=false] - Preserve
+   *   whitespace already at the beginning of the line.
+   * @public
+   * @api-status Essential
+   */
   setIndentationForBufferRow(bufferRow, newLevel, { preserveLeadingWhitespace } = {}) {
     let endColumn;
     if (preserveLeadingWhitespace) {
@@ -4403,34 +5054,45 @@ module.exports = class TextEditor {
     );
   }
 
-  // Extended: Indent rows intersecting selections by one level.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  /**
+   * Indent rows intersecting selections by one level.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @public
+   * @api-status Extended
+   */
   indentSelectedRows(options = {}) {
     if (!this.ensureWritable("indentSelectedRows", options)) return;
     return this.mutateSelectedText((selection) => selection.indentSelectedRows(options));
   }
 
-  // Extended: Outdent rows intersecting selections by one level.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  /**
+   * Outdent rows intersecting selections by one level.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @public
+   * @api-status Extended
+   */
   outdentSelectedRows(options = {}) {
     if (!this.ensureWritable("outdentSelectedRows", options)) return;
     return this.mutateSelectedText((selection) => selection.outdentSelectedRows(options));
   }
 
-  // Extended: Get the indentation level of the given line of text.
-  //
-  // Determines how deeply the given line is indented based on the soft tabs and
-  // tab length settings of this editor. Note that if soft tabs are enabled and
-  // the tab length is 2, a row with 4 leading spaces would have an indentation
-  // level of 2.
-  //
-  // * `line` A {String} representing a line of text.
-  //
-  // Returns a {Number}.
+  /**
+   * Get the indentation level of the given line of text.
+   *
+   * Determines how deeply the given line is indented based on the soft tabs and
+   * tab length settings of this editor. Note that if soft tabs are enabled and
+   * the tab length is 2, a row with 4 leading spaces would have an indentation
+   * level of 2.
+   *
+   * @param line - A `String` representing a line of text.
+   * @returns {Number}
+   * @public
+   * @api-status Extended
+   */
   indentLevelForLine(line) {
     const tabLength = this.getTabLength();
     let indentLength = 0;
@@ -4447,21 +5109,25 @@ module.exports = class TextEditor {
     return indentLength / tabLength;
   }
 
-  // Extended: Indent rows intersecting selections based on the grammar's suggested
-  // indent level.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  /**
+   * Indent rows intersecting selections based on the grammar's suggested
+   * indent level.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @public
+   * @api-status Extended
+   */
   autoIndentSelectedRows(options = {}) {
     if (!this.ensureWritable("autoIndentSelectedRows", options)) return;
     return this.mutateSelectedText((selection) => selection.autoIndentSelectedRows(options));
   }
 
-  // Indent all lines intersecting selections. See {Selection::indent} for more
+  // Indent all lines intersecting selections. See {@link Selection#indent} for more
   // information.
   //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  // * `options` (optional) `Object`
+  //   * `bypassReadOnly` (optional) `Boolean` Must be `true` to modify a read-only editor.
   indent(options = {}) {
     if (!this.ensureWritable("indent", options)) return;
     if (options.autoIndent == null) options.autoIndent = this.shouldAutoIndent();
@@ -4482,54 +5148,69 @@ module.exports = class TextEditor {
     }
   }
 
-  /*
-  Section: Grammars
-  */
+  /**
+   * @category Grammars
+   */
 
-  // Essential: Get the current {Grammar} of this editor.
+  /**
+   * Get the current `Grammar` of this editor.
+   *
+   * @public
+   * @api-status Essential
+   */
   getGrammar() {
     const languageMode = this.buffer.getLanguageMode();
     return (languageMode.getGrammar && languageMode.getGrammar()) || NullGrammar;
   }
 
-  // Deprecated: Set the current {Grammar} of this editor.
+  // Deprecated: Set the current `Grammar` of this editor.
   //
   // Assigning a grammar will cause the editor to re-tokenize based on the new
   // grammar.
   //
-  // * `grammar` {Grammar}
+  // * `grammar` `Grammar`
   setGrammar(grammar) {
     const buffer = this.getBuffer();
     buffer.setLanguageMode(lumine.grammars.languageModeForGrammarAndBuffer(grammar, buffer));
   }
 
-  // Experimental: Get a notification when async tokenization is completed.
+  /**
+   * Get a notification when async tokenization is completed.
+   *
+   * @public
+   * @api-status Experimental
+   */
   onDidTokenize(callback) {
     return this.emitter.on("did-tokenize", callback);
   }
 
-  /*
-  Section: Managing Syntax Scopes
-  */
+  /**
+   * @category Managing Syntax Scopes
+   */
 
-  // Essential: Returns a {ScopeDescriptor} that includes this editor's language.
-  // e.g. `['.source.ruby']`, or `['.source.coffee']`. You can use this with
-  // {Config::get} to get language specific config values.
+  /**
+   * @returns {ScopeDescriptor} that includes this editor's language. e.g. `['.source.ruby']`, or `['.source.coffee']`. You can use this with {@link Config#get} to get language specific config values.
+   * @public
+   * @api-status Essential
+   */
   getRootScopeDescriptor() {
     return this.buffer.getLanguageMode().rootScopeDescriptor;
   }
 
-  // Essential: Get the syntactic {ScopeDescriptor} for the given position in buffer
-  // coordinates. Useful with {Config::get}.
-  //
-  // For example, if called with a position inside the parameter list of an
-  // anonymous CoffeeScript function, this method returns a {ScopeDescriptor} with
-  // the following scopes array:
-  // `["source.coffee", "meta.function.inline.coffee", "meta.parameters.coffee", "variable.parameter.function.coffee"]`
-  //
-  // * `bufferPosition` A {Point} or {Array} of `[row, column]`.
-  //
-  // Returns a {ScopeDescriptor}.
+  /**
+   * Get the syntactic {@link ScopeDescriptor} for the given position in buffer
+   * coordinates. Useful with {@link Config#get}.
+   *
+   * For example, if called with a position inside the parameter list of an
+   * anonymous CoffeeScript function, this method returns a {@link ScopeDescriptor} with
+   * the following scopes array:
+   * `["source.coffee", "meta.function.inline.coffee", "meta.parameters.coffee", "variable.parameter.function.coffee"]`
+   *
+   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
+   * @returns {ScopeDescriptor}
+   * @public
+   * @api-status Essential
+   */
   scopeDescriptorForBufferPosition(bufferPosition) {
     const languageMode = this.buffer.getLanguageMode();
     return languageMode.scopeDescriptorForPosition
@@ -4537,21 +5218,24 @@ module.exports = class TextEditor {
       : new ScopeDescriptor({ scopes: ["text"] });
   }
 
-  // Essential: Get the syntactic tree {ScopeDescriptor} for the given position in buffer
-  // coordinates or the syntactic {ScopeDescriptor} for TextMate language mode
-  //
-  // For example, if called with a position inside the parameter list of a
-  // JavaScript class function, this method returns a {ScopeDescriptor} with
-  // the following syntax nodes array:
-  // `["source.js", "program", "expression_statement", "assignment_expression", "class", "class_body", "method_definition", "formal_parameters", "identifier"]`
-  // if tree-sitter is used
-  // and the following scopes array:
-  // `["source.js"]`
-  // if textmate is used
-  //
-  // * `bufferPosition` A {Point} or {Array} of `[row, column]`.
-  //
-  // Returns a {ScopeDescriptor}.
+  /**
+   * Get the syntactic tree {@link ScopeDescriptor} for the given position in buffer
+   * coordinates or the syntactic {@link ScopeDescriptor} for TextMate language mode
+   *
+   * For example, if called with a position inside the parameter list of a
+   * JavaScript class function, this method returns a {@link ScopeDescriptor} with
+   * the following syntax nodes array:
+   * `["source.js", "program", "expression_statement", "assignment_expression", "class", "class_body", "method_definition", "formal_parameters", "identifier"]`
+   * if tree-sitter is used
+   * and the following scopes array:
+   * `["source.js"]`
+   * if textmate is used
+   *
+   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
+   * @returns {ScopeDescriptor}
+   * @public
+   * @api-status Essential
+   */
   syntaxTreeScopeDescriptorForBufferPosition(bufferPosition) {
     const languageMode = this.buffer.getLanguageMode();
     return languageMode.syntaxTreeScopeDescriptorForPosition
@@ -4559,36 +5243,47 @@ module.exports = class TextEditor {
       : this.scopeDescriptorForBufferPosition(bufferPosition);
   }
 
-  // Extended: Get the range in buffer coordinates of all tokens surrounding the
-  // cursor that match the given scope selector.
-  //
-  // For example, if you wanted to find the string surrounding the cursor, you
-  // could call `editor.bufferRangeForScopeAtCursor(".string.quoted")`.
-  //
-  // * `scopeSelector` {String} selector. e.g. `'.source.ruby'`
-  //
-  // Returns a {Range}.
+  /**
+   * Get the range in buffer coordinates of all tokens surrounding the
+   * cursor that match the given scope selector.
+   *
+   * For example, if you wanted to find the string surrounding the cursor, you
+   * could call `editor.bufferRangeForScopeAtCursor(".string.quoted")`.
+   *
+   * @param {String} scopeSelector - selector. e.g. `'.source.ruby'`
+   * @returns {Range}
+   * @public
+   * @api-status Extended
+   */
   bufferRangeForScopeAtCursor(scopeSelector) {
     return this.bufferRangeForScopeAtPosition(scopeSelector, this.getCursorBufferPosition());
   }
 
-  // Extended: Get the range in buffer coordinates of all tokens surrounding the
-  // given position in buffer coordinates that match the given scope selector.
-  //
-  // For example, if you wanted to find the string surrounding the cursor, you
-  // could call `editor.bufferRangeForScopeAtPosition(".string.quoted", this.getCursorBufferPosition())`.
-  //
-  // * `scopeSelector` {String} selector. e.g. `'.source.ruby'`
-  // * `bufferPosition` A {Point} or {Array} of [row, column]
-  //
-  // Returns a {Range}.
+  /**
+   * Get the range in buffer coordinates of all tokens surrounding the
+   * given position in buffer coordinates that match the given scope selector.
+   *
+   * For example, if you wanted to find the string surrounding the cursor, you
+   * could call `editor.bufferRangeForScopeAtPosition(".string.quoted", this.getCursorBufferPosition())`.
+   *
+   * @param {String} scopeSelector - selector. e.g. `'.source.ruby'`
+   * @param bufferPosition - A {@link Point} or `Array` of [row, column]
+   * @returns {Range}
+   * @public
+   * @api-status Extended
+   */
   bufferRangeForScopeAtPosition(scopeSelector, bufferPosition) {
     return this.buffer
       .getLanguageMode()
       .bufferRangeForScopeAtPosition(scopeSelector, bufferPosition);
   }
 
-  // Extended: Determine if the given row is entirely a comment
+  /**
+   * Determine if the given row is entirely a comment
+   *
+   * @public
+   * @api-status Extended
+   */
   isBufferRowCommented(bufferRow) {
     const match = this.lineTextForBufferRow(bufferRow).match(/\S/);
     if (match) {
@@ -4614,11 +5309,16 @@ module.exports = class TextEditor {
     return this.buffer.getLanguageMode().tokenForPosition(bufferPosition);
   }
 
-  /*
-  Section: Clipboard Operations
-  */
+  /**
+   * @category Clipboard Operations
+   */
 
-  // Essential: For each selection, copy the selected text.
+  /**
+   * For each selection, copy the selected text.
+   *
+   * @public
+   * @api-status Essential
+   */
   copySelectedText(clipboard = this.constructor.clipboard) {
     let maintainClipboard = false;
     for (let selection of this.getSelectionsOrderedByBufferPosition()) {
@@ -4634,7 +5334,11 @@ module.exports = class TextEditor {
     }
   }
 
-  // Private: For each selection, only copy highlighted text.
+  /**
+   * For each selection, only copy highlighted text.
+   *
+   * @private
+   */
   copyOnlySelectedText(clipboard = this.constructor.clipboard) {
     let maintainClipboard = false;
     for (let selection of this.getSelectionsOrderedByBufferPosition()) {
@@ -4645,10 +5349,14 @@ module.exports = class TextEditor {
     }
   }
 
-  // Essential: For each selection, cut the selected text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  /**
+   * For each selection, cut the selected text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @public
+   * @api-status Essential
+   */
   cutSelectedText(options = {}) {
     if (!this.ensureWritable("cutSelectedText", options)) return;
     const clipboard = options.clipboard || this.constructor.clipboard;
@@ -4664,14 +5372,18 @@ module.exports = class TextEditor {
     });
   }
 
-  // Essential: For each selection, replace the selected text with the contents of
-  // the clipboard.
-  //
-  // If the clipboard contains the same number of selections as the current
-  // editor, each selection will be replaced with the content of the
-  // corresponding clipboard selection text.
-  //
-  // * `options` (optional) See {Selection::insertText}.
+  /**
+   * For each selection, replace the selected text with the contents of
+   * the clipboard.
+   *
+   * If the clipboard contains the same number of selections as the current
+   * editor, each selection will be replaced with the content of the
+   * corresponding clipboard selection text.
+   *
+   * @param [options] - See {@link Selection#insertText}.
+   * @public
+   * @api-status Essential
+   */
   pasteText(options = {}) {
     if (!this.ensureWritable("parseText", options)) return;
     const clipboard = options.clipboard || this.constructor.clipboard;
@@ -4760,12 +5472,16 @@ module.exports = class TextEditor {
     });
   }
 
-  // Essential: For each selection, if the selection is empty, cut all characters
-  // of the containing screen line following the cursor. Otherwise cut the selected
-  // text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  /**
+   * For each selection, if the selection is empty, cut all characters
+   * of the containing screen line following the cursor. Otherwise cut the selected
+   * text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @public
+   * @api-status Essential
+   */
   cutToEndOfLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
     let maintainClipboard = false;
@@ -4775,12 +5491,16 @@ module.exports = class TextEditor {
     });
   }
 
-  // Essential: For each selection, if the selection is empty, cut all characters
-  // of the containing buffer line following the cursor. Otherwise cut the
-  // selected text.
-  //
-  // * `options` (optional) {Object}
-  //   * `bypassReadOnly` (optional) {Boolean} Must be `true` to modify a read-only editor.
+  /**
+   * For each selection, if the selection is empty, cut all characters
+   * of the containing buffer line following the cursor. Otherwise cut the
+   * selected text.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @public
+   * @api-status Essential
+   */
   cutToEndOfBufferLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
     let maintainClipboard = false;
@@ -4790,15 +5510,20 @@ module.exports = class TextEditor {
     });
   }
 
-  /*
-  Section: Folds
-  */
+  /**
+   * @category Folds
+   */
 
-  // Essential: Fold the most recent cursor's row based on its indentation level.
-  //
-  // The fold will extend from the nearest preceding line with a lower
-  // indentation level up to the nearest following row with a lower indentation
-  // level.
+  /**
+   * Fold the most recent cursor's row based on its indentation level.
+   *
+   * The fold will extend from the nearest preceding line with a lower
+   * indentation level up to the nearest following row with a lower indentation
+   * level.
+   *
+   * @public
+   * @api-status Essential
+   */
   foldCurrentRow() {
     const { row } = this.getCursorBufferPosition();
     const languageMode = this.buffer.getLanguageMode();
@@ -4808,19 +5533,28 @@ module.exports = class TextEditor {
     if (range) return this.displayLayer.foldBufferRange(range);
   }
 
-  // Essential: Unfold the most recent cursor's row by one level.
+  /**
+   * Unfold the most recent cursor's row by one level.
+   *
+   * @public
+   * @api-status Essential
+   */
   unfoldCurrentRow() {
     const { row } = this.getCursorBufferPosition();
     return this.displayLayer.destroyFoldsContainingBufferPositions([Point(row, Infinity)], false);
   }
 
-  // Essential: Fold the given row in buffer coordinates based on its indentation
-  // level.
-  //
-  // If the given row is foldable, the fold will begin there. Otherwise, it will
-  // begin at the first foldable row preceding the given row.
-  //
-  // * `bufferRow` A {Number}.
+  /**
+   * Fold the given row in buffer coordinates based on its indentation
+   * level.
+   *
+   * If the given row is foldable, the fold will begin there. Otherwise, it will
+   * begin at the first foldable row preceding the given row.
+   *
+   * @param bufferRow - A `Number`.
+   * @public
+   * @api-status Essential
+   */
   foldBufferRow(bufferRow) {
     let position = Point(bufferRow, Infinity);
     const languageMode = this.buffer.getLanguageMode();
@@ -4846,22 +5580,36 @@ module.exports = class TextEditor {
     }
   }
 
-  // Essential: Unfold all folds containing the given row in buffer coordinates.
-  //
-  // * `bufferRow` A {Number}
+  /**
+   * Unfold all folds containing the given row in buffer coordinates.
+   *
+   * @param bufferRow - A `Number`
+   * @public
+   * @api-status Essential
+   */
   unfoldBufferRow(bufferRow) {
     const position = Point(bufferRow, Infinity);
     return this.displayLayer.destroyFoldsContainingBufferPositions([position]);
   }
 
-  // Extended: For each selection, fold the rows it intersects.
+  /**
+   * For each selection, fold the rows it intersects.
+   *
+   * @public
+   * @api-status Extended
+   */
   foldSelectedLines() {
     for (let selection of this.selections) {
       selection.fold();
     }
   }
 
-  // Extended: Fold all foldable lines.
+  /**
+   * Fold all foldable lines.
+   *
+   * @public
+   * @api-status Extended
+   */
   foldAll() {
     const languageMode = this.buffer.getLanguageMode();
     const foldableRanges =
@@ -4872,16 +5620,25 @@ module.exports = class TextEditor {
     }
   }
 
-  // Extended: Unfold all existing folds.
+  /**
+   * Unfold all existing folds.
+   *
+   * @public
+   * @api-status Extended
+   */
   unfoldAll() {
     const result = this.displayLayer.destroyAllFolds();
     if (result.length > 0) this.scrollToCursorPosition();
     return result;
   }
 
-  // Extended: Fold all foldable lines at the given indent level.
-  //
-  // * `level` A {Number} starting at 0.
+  /**
+   * Fold all foldable lines at the given indent level.
+   *
+   * @param level - A `Number` starting at 0.
+   * @public
+   * @api-status Extended
+   */
   foldAllAtIndentLevel(level) {
     const languageMode = this.buffer.getLanguageMode();
     const foldableRanges =
@@ -4893,31 +5650,42 @@ module.exports = class TextEditor {
     }
   }
 
-  // Extended: Determine whether the given row in buffer coordinates is foldable.
-  //
-  // A *foldable* row is a row that *starts* a row range that can be folded.
-  //
-  // * `bufferRow` A {Number}
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether the given row in buffer coordinates is foldable.
+   *
+   * A *foldable* row is a row that *starts* a row range that can be folded.
+   *
+   * @param bufferRow - A `Number`
+   * @returns {Boolean}
+   * @public
+   * @api-status Extended
+   */
   isFoldableAtBufferRow(bufferRow) {
     const languageMode = this.buffer.getLanguageMode();
     return languageMode.isFoldableAtRow && languageMode.isFoldableAtRow(bufferRow);
   }
 
-  // Extended: Determine whether the given row in screen coordinates is foldable.
-  //
-  // A *foldable* row is a row that *starts* a row range that can be folded.
-  //
-  // * `screenRow` A {Number}
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether the given row in screen coordinates is foldable.
+   *
+   * A *foldable* row is a row that *starts* a row range that can be folded.
+   *
+   * @param screenRow - A `Number`
+   * @returns {Boolean}
+   * @public
+   * @api-status Extended
+   */
   isFoldableAtScreenRow(screenRow) {
     return this.isFoldableAtBufferRow(this.bufferRowForScreenRow(screenRow));
   }
 
-  // Extended: Fold the given buffer row if it isn't currently folded, and unfold
-  // it otherwise.
+  /**
+   * Fold the given buffer row if it isn't currently folded, and unfold
+   * it otherwise.
+   *
+   * @public
+   * @api-status Extended
+   */
   toggleFoldAtBufferRow(bufferRow) {
     if (this.isFoldedAtBufferRow(bufferRow)) {
       return this.unfoldBufferRow(bufferRow);
@@ -4926,18 +5694,25 @@ module.exports = class TextEditor {
     }
   }
 
-  // Extended: Determine whether the most recently added cursor's row is folded.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether the most recently added cursor's row is folded.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Extended
+   */
   isFoldedAtCursorRow() {
     return this.isFoldedAtBufferRow(this.getCursorBufferPosition().row);
   }
 
-  // Extended: Determine whether the given row in buffer coordinates is folded.
-  //
-  // * `bufferRow` A {Number}
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether the given row in buffer coordinates is folded.
+   *
+   * @param bufferRow - A `Number`
+   * @returns {Boolean}
+   * @public
+   * @api-status Extended
+   */
   isFoldedAtBufferRow(bufferRow) {
     const range = Range(
       Point(bufferRow, 0),
@@ -4946,21 +5721,24 @@ module.exports = class TextEditor {
     return this.displayLayer.foldsIntersectingBufferRange(range).length > 0;
   }
 
-  // Extended: Determine whether the given row in screen coordinates is folded.
-  //
-  // * `screenRow` A {Number}
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether the given row in screen coordinates is folded.
+   *
+   * @param screenRow - A `Number`
+   * @returns {Boolean}
+   * @public
+   * @api-status Extended
+   */
   isFoldedAtScreenRow(screenRow) {
     return this.isFoldedAtBufferRow(this.bufferRowForScreenRow(screenRow));
   }
 
   // Creates a new fold between two row numbers.
   //
-  // startRow - The row {Number} to start folding at
-  // endRow - The row {Number} to end the fold
+  // startRow - The row `Number` to start folding at
+  // endRow - The row `Number` to end the fold
   //
-  // Returns the new {Fold}.
+  // Returns the new `Fold`.
   foldBufferRowRange(startRow, endRow) {
     return this.foldBufferRange(Range(Point(startRow, Infinity), Point(endRow, Infinity)));
   }
@@ -4969,12 +5747,12 @@ module.exports = class TextEditor {
     return this.displayLayer.foldBufferRange(range);
   }
 
-  // Remove any {Fold}s found that intersect the given buffer range.
+  // Remove any `Folds` found that intersect the given buffer range.
   destroyFoldsIntersectingBufferRange(bufferRange) {
     return this.displayLayer.destroyFoldsIntersectingBufferRange(bufferRange);
   }
 
-  // Remove any {Fold}s found that contain the given array of buffer positions.
+  // Remove any `Folds` found that contain the given array of buffer positions.
   destroyFoldsContainingBufferPositions(bufferPositions, excludeEndpoints) {
     return this.displayLayer.destroyFoldsContainingBufferPositions(
       bufferPositions,
@@ -4982,51 +5760,49 @@ module.exports = class TextEditor {
     );
   }
 
-  /*
-  Section: Gutters
-  */
+  /**
+   * @category Gutters
+   */
 
-  // Essential: Add a custom {Gutter}.
-  //
-  // * `options` An {Object} with the following fields:
-  //   * `name` (required) A unique {String} to identify this gutter.
-  //   * `priority` (optional) A {Number} that determines stacking order between
-  //       gutters. Lower priority items are forced closer to the edges of the
-  //       window. (default: -100)
-  //   * `visible` (optional) {Boolean} specifying whether the gutter is visible
-  //       initially after being created. (default: true)
-  //   * `type` (optional) {String} specifying the type of gutter to create. `'decorated'`
-  //       gutters are useful as a destination for decorations created with {Gutter::decorateMarker}.
-  //       `'line-number'` gutters.
-  //   * `class` (optional) {String} added to the CSS classnames of the gutter's root DOM element.
-  //   * `labelFn` (optional) {Function} called by a `'line-number'` gutter to generate the label for each line number
-  //       element. Should return a {String} that will be used to label the corresponding line.
-  //     * `lineData` an {Object} containing information about each line to label.
-  //       * `bufferRow` {Number} indicating the zero-indexed buffer index of this line.
-  //       * `screenRow` {Number} indicating the zero-indexed screen index.
-  //       * `foldable` {Boolean} that is `true` if a fold may be created here.
-  //       * `softWrapped` {Boolean} if this screen row is the soft-wrapped continuation of the same buffer row.
-  //       * `maxDigits` {Number} the maximum number of digits necessary to represent any known screen row.
-  //   * `onMouseDown` (optional) {Function} to be called when a mousedown event is received by a line-number
-  //        element within this `type: 'line-number'` {Gutter}. If unspecified, the default behavior is to select the
-  //        clicked buffer row.
-  //     * `lineData` an {Object} containing information about the line that's being clicked.
-  //       * `bufferRow` {Number} of the originating line element
-  //       * `screenRow` {Number}
-  //   * `onMouseMove` (optional) {Function} to be called when a mousemove event occurs on a line-number element within
-  //        within this `type: 'line-number'` {Gutter}.
-  //     * `lineData` an {Object} containing information about the line that's being clicked.
-  //       * `bufferRow` {Number} of the originating line element
-  //       * `screenRow` {Number}
-  //
-  // Returns the newly-created {Gutter}.
+  /**
+   * Add a custom {@link Gutter}.
+   *
+   * @param options - An `Object` with the following fields:
+   * @param options.name - (required) A unique `String` to identify this gutter.
+   * @param [options.priority] - A `Number` that determines stacking order between gutters. Lower priority items are forced closer to the edges of the window. (default: -100)
+   * @param {Boolean} [options.visible] - specifying whether the gutter is visible initially after being created. (default: true)
+   * @param {String} [options.type] - specifying the type of gutter to create. `'decorated'` gutters are useful as a destination for decorations created with {@link Gutter#decorateMarker}. `'line-number'` gutters.
+   * @param {String} [options.class] - added to the CSS classnames of the gutter's root DOM element.
+   * @param {Function} [options.labelFn] - called by a `'line-number'` gutter to generate the label for each line number element. Should return a `String` that will be used to label the corresponding line.
+   * @param options.labelFn.lineData - an `Object` containing information about each line to label.
+   * @param {Number} options.labelFn.lineData.bufferRow - indicating the zero-indexed buffer index of this line.
+   * @param {Number} options.labelFn.lineData.screenRow - indicating the zero-indexed screen index.
+   * @param {Boolean} options.labelFn.lineData.foldable - that is `true` if a fold may be created here.
+   * @param {Boolean} options.labelFn.lineData.softWrapped - if this screen row is the soft-wrapped continuation of the same buffer row.
+   * @param {Number} options.labelFn.lineData.maxDigits - the maximum number of digits necessary to represent any known screen row.
+   * @param {Function} [options.onMouseDown] - to be called when a mousedown event is received by a line-number element within this `type: 'line-number'` {@link Gutter}. If unspecified, the default behavior is to select the clicked buffer row.
+   * @param options.onMouseDown.lineData - an `Object` containing information about the line that's being clicked.
+   * @param {Number} options.onMouseDown.lineData.bufferRow - of the originating line element
+   * @param {Number} options.onMouseDown.lineData.screenRow
+   * @param {Function} [options.onMouseMove] - to be called when a mousemove event occurs on a line-number element within within this `type: 'line-number'` {@link Gutter}.
+   * @param options.onMouseMove.lineData - an `Object` containing information about the line that's being clicked.
+   * @param {Number} options.onMouseMove.lineData.bufferRow - of the originating line element
+   * @param {Number} options.onMouseMove.lineData.screenRow
+   * @returns {Gutter} newly-created {@link Gutter}.
+   * @public
+   * @api-status Essential
+   */
   addGutter(options) {
     return this.gutterContainer.addGutter(options);
   }
 
-  // Essential: Get this editor's gutters.
-  //
-  // Returns an {Array} of {Gutter}s.
+  /**
+   * Get this editor's gutters.
+   *
+   * @returns {Array} of {@link Gutter Gutters}.
+   * @public
+   * @api-status Essential
+   */
   getGutters() {
     return this.gutterContainer.getGutters();
   }
@@ -5035,27 +5811,31 @@ module.exports = class TextEditor {
     return this.lineNumberGutter;
   }
 
-  // Essential: Get the gutter with the given name.
-  //
-  // Returns a {Gutter}, or `null` if no gutter exists for the given name.
+  /**
+   * Get the gutter with the given name.
+   *
+   * @returns {Gutter}, or `null` if no gutter exists for the given name.
+   * @public
+   * @api-status Essential
+   */
   gutterWithName(name) {
     return this.gutterContainer.gutterWithName(name);
   }
 
-  /*
-  Section: Scrolling the TextEditor
-  */
+  /**
+   * @category Scrolling the TextEditor
+   */
 
-  // Essential: Scroll the editor to reveal the most recently added cursor if it is
-  // off-screen.
-  //
-  // * `options` (optional) {Object}
-  //   * `center` Center the editor around the cursor if possible. (default: true
-  //     when an options object is given at all, false otherwise — the bare call
-  //     is the one the editor's own movement commands make, and they scroll only
-  //     as far as they must)
-  //   * `zone` Land the cursor inside a band of the viewport, instead of
-  //     centering it. See {::scrollToScreenRange}.
+  /**
+   * Scroll the editor to reveal the most recently added cursor if it is
+   * off-screen.
+   *
+   * @param {Object} [options]
+   * @param options.center - Center the editor around the cursor if possible. (default: true when an options object is given at all, false otherwise — the bare call is the one the editor's own movement commands make, and they scroll only as far as they must)
+   * @param options.zone - Land the cursor inside a band of the viewport, instead of centering it. See {@link #scrollToScreenRange}.
+   * @public
+   * @api-status Essential
+   */
   scrollToCursorPosition(options) {
     const zone = options && options.zone;
     this.getLastCursor().autoscroll({
@@ -5064,14 +5844,16 @@ module.exports = class TextEditor {
     });
   }
 
-  // Essential: Scrolls the editor to the given buffer position.
-  //
-  // * `bufferPosition` An object that represents a buffer position. It can be either
-  //   an {Object} (`{row, column}`), {Array} (`[row, column]`), or {Point}
-  // * `options` (optional) {Object}
-  //   * `center` Center the editor around the position if possible. (default: false)
-  //   * `zone` Land the position inside a band of the viewport. See
-  //     {::scrollToScreenRange}.
+  /**
+   * Scrolls the editor to the given buffer position.
+   *
+   * @param bufferPosition - An object that represents a buffer position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
+   * @param {Object} [options]
+   * @param options.center - Center the editor around the position if possible. (default: false)
+   * @param options.zone - Land the position inside a band of the viewport. See {@link #scrollToScreenRange}.
+   * @public
+   * @api-status Essential
+   */
   scrollToBufferPosition(bufferPosition, options) {
     return this.scrollToScreenPosition(
       this.screenPositionForBufferPosition(bufferPosition),
@@ -5079,37 +5861,32 @@ module.exports = class TextEditor {
     );
   }
 
-  // Essential: Scrolls the editor to the given screen position.
-  //
-  // * `screenPosition` An object that represents a screen position. It can be either
-  //    an {Object} (`{row, column}`), {Array} (`[row, column]`), or {Point}
-  // * `options` (optional) {Object}
-  //   * `center` Center the editor around the position if possible. (default: false)
-  //   * `zone` Land the position inside a band of the viewport. See
-  //     {::scrollToScreenRange}.
+  /**
+   * Scrolls the editor to the given screen position.
+   *
+   * @param screenPosition - An object that represents a screen position. It can be either an `Object` (`{row, column}`), `Array` (`[row, column]`), or {@link Point}
+   * @param {Object} [options]
+   * @param options.center - Center the editor around the position if possible. (default: false)
+   * @param options.zone - Land the position inside a band of the viewport. See {@link #scrollToScreenRange}.
+   * @public
+   * @api-status Essential
+   */
   scrollToScreenPosition(screenPosition, options) {
     this.scrollToScreenRange(new Range(screenPosition, screenPosition), options);
   }
 
-  // Extended: Scrolls the editor to the given screen range.
-  //
-  // * `screenRange` A {Range} or range-compatible {Array}.
-  // * `options` (optional) {Object}
-  //   * `center` Center the editor around the range if possible. (default: false)
-  //   * `zone` Where in the viewport the range should come to rest, as a
-  //     percentage of the travel it has between the vertical scroll margins: `0`
-  //     rests it against the top margin and `100` against the bottom one. A
-  //     {Number} pins the range to that one spot. An {Array} of two numbers
-  //     names where it lands after leaving the band through the top and after
-  //     leaving it through the bottom, and so describes the band itself —
-  //     nothing scrolls while the range is already inside. Ordered
-  //     (`[0, 50]`) that is the edge it just crossed, the smallest scroll that
-  //     brings it back; inverted (`[50, 0]`) it is the opposite edge, throwing
-  //     the range across the viewport to leave the most room ahead of it.
-  //     `[0, 100]` is the default behaviour and `50` is `center`.
-  //   * `reversed` Scroll to the start of the range before its end when both
-  //     are off-screen. (default: true)
-  //   * `clip` Clip the range to the editor's contents first. (default: true)
+  /**
+   * Scrolls the editor to the given screen range.
+   *
+   * @param screenRange - A {@link Range} or range-compatible `Array`.
+   * @param {Object} [options]
+   * @param options.center - Center the editor around the range if possible. (default: false)
+   * @param options.zone - Where in the viewport the range should come to rest, as a percentage of the travel it has between the vertical scroll margins: `0` rests it against the top margin and `100` against the bottom one. A `Number` pins the range to that one spot. An `Array` of two numbers names where it lands after leaving the band through the top and after leaving it through the bottom, and so describes the band itself — nothing scrolls while the range is already inside. Ordered (`[0, 50]`) that is the edge it just crossed, the smallest scroll that brings it back; inverted (`[50, 0]`) it is the opposite edge, throwing the range across the viewport to leave the most room ahead of it. `[0, 100]` is the default behaviour and `50` is `center`.
+   * @param options.reversed - Scroll to the start of the range before its end when both are off-screen. (default: true)
+   * @param options.clip - Clip the range to the editor's contents first. (default: true)
+   * @public
+   * @api-status Extended
+   */
   scrollToScreenRange(screenRange, options = {}) {
     if (options.clip !== false) screenRange = this.clipScreenRange(screenRange);
     if (options.zone != null) options = { ...options, zone: normalizeScrollZone(options.zone) };
@@ -5145,27 +5922,39 @@ module.exports = class TextEditor {
     }
   }
 
-  /*
-  Section: Config
-  */
+  /**
+   * @category Config
+   */
 
-  // Experimental: Is auto-indentation enabled for this editor?
-  //
-  // Returns a {Boolean}.
+  /**
+   * Is auto-indentation enabled for this editor?
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Experimental
+   */
   shouldAutoIndent() {
     return this.autoIndent;
   }
 
-  // Experimental: Is auto-indentation on paste enabled for this editor?
-  //
-  // Returns a {Boolean}.
+  /**
+   * Is auto-indentation on paste enabled for this editor?
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Experimental
+   */
   shouldAutoIndentOnPaste() {
     return this.autoIndentOnPaste;
   }
 
-  // Experimental: Does this editor allow scrolling past the last line?
-  //
-  // Returns a {Boolean}.
+  /**
+   * Does this editor allow scrolling past the last line?
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Experimental
+   */
   getScrollPastEnd() {
     if (this.getAutoHeight()) {
       return false;
@@ -5174,84 +5963,124 @@ module.exports = class TextEditor {
     }
   }
 
-  // Experimental: How fast does the editor scroll in response to mouse wheel
-  // movements?
-  //
-  // Returns a positive {Number}.
+  /**
+   * How fast does the editor scroll in response to mouse wheel
+   * movements?
+   *
+   * @returns {Number} positive `Number`.
+   * @public
+   * @api-status Experimental
+   */
   getScrollSensitivity() {
     return this.scrollSensitivity;
   }
 
-  // Experimental: Are mouse wheel and scroll command movements animated?
-  //
-  // Returns a {Boolean}.
+  /**
+   * Are mouse wheel and scroll command movements animated?
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Experimental
+   */
   getSmoothScrolling() {
     if (this.smoothScrolling != null) return this.smoothScrolling;
     return lumine.config.get("editor.smoothScrolling");
   }
 
-  // Experimental: How gradually does the editor glide toward the target
-  // position when scrolling with the mouse wheel?
-  //
-  // Returns a positive {Number}.
+  /**
+   * How gradually does the editor glide toward the target
+   * position when scrolling with the mouse wheel?
+   *
+   * @returns {Number} positive `Number`.
+   * @public
+   * @api-status Experimental
+   */
   getWheelSmoothness() {
     if (this.wheelSmoothness != null) return this.wheelSmoothness;
     return lumine.config.get("editor.wheelSmoothness");
   }
 
-  // Experimental: How gradually does the editor glide when scrolling via the
-  // scroll commands?
-  //
-  // Returns a positive {Number}.
+  /**
+   * How gradually does the editor glide when scrolling via the
+   * scroll commands?
+   *
+   * @returns {Number} positive `Number`.
+   * @public
+   * @api-status Experimental
+   */
   getCommandSmoothness() {
     if (this.commandSmoothness != null) return this.commandSmoothness;
     return lumine.config.get("editor.commandSmoothness");
   }
 
-  // Experimental: Speed multiplier applied to wheel scrolling while holding
-  // `alt`.
-  //
-  // Returns a positive {Number}.
+  /**
+   * Speed multiplier applied to wheel scrolling while holding
+   * `alt`.
+   *
+   * @returns {Number} positive `Number`.
+   * @public
+   * @api-status Experimental
+   */
   getAltWheelMultiplier() {
     return this.altWheelMultiplier;
   }
 
-  // Experimental: Distance scrolled by the scroll commands, as a fraction of
-  // the editor height. Seeded from config; the increase/decrease scroll
-  // distance commands adjust it per editor.
-  //
-  // Returns a positive {Number}.
+  /**
+   * Distance scrolled by the scroll commands, as a fraction of
+   * the editor height. Seeded from config; the increase/decrease scroll
+   * distance commands adjust it per editor.
+   *
+   * @returns {Number} positive `Number`.
+   * @public
+   * @api-status Experimental
+   */
   getScrollCommandDistance() {
     return this.scrollCommandDistance;
   }
 
-  // Experimental: How long (in milliseconds) to wait for the editor width to
-  // settle before re-wrapping soft-wrapped lines. `0` re-wraps immediately.
-  //
-  // Returns a non-negative {Number}.
+  /**
+   * How long (in milliseconds) to wait for the editor width to
+   * settle before re-wrapping soft-wrapped lines. `0` re-wraps immediately.
+   *
+   * @returns {Number} non-negative `Number`.
+   * @public
+   * @api-status Experimental
+   */
   getSoftWrapDebounceInterval() {
     return this.softWrapDebounceInterval;
   }
 
-  // Experimental: Are line numbers enabled for this editor?
-  //
-  // Returns a {Boolean}
+  /**
+   * Are line numbers enabled for this editor?
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Experimental
+   */
   doesShowLineNumbers() {
     return this.showLineNumbers;
   }
 
-  // Experimental: Get the time interval within which text editing operations
-  // are grouped together in the editor's undo history.
-  //
-  // Returns the time interval {Number} in milliseconds.
+  /**
+   * Get the time interval within which text editing operations
+   * are grouped together in the editor's undo history.
+   *
+   * @returns {Number} time interval `Number` in milliseconds.
+   * @public
+   * @api-status Experimental
+   */
   getUndoGroupingInterval() {
     return this.undoGroupingInterval;
   }
 
-  // Experimental: Get the characters that are *not* considered part of words,
-  // for the purpose of word-based cursor movements.
-  //
-  // Returns a {String} containing the non-word characters.
+  /**
+   * Get the characters that are *not* considered part of words,
+   * for the purpose of word-based cursor movements.
+   *
+   * @returns {String} containing the non-word characters.
+   * @public
+   * @api-status Experimental
+   */
   getNonWordCharacters(position) {
     const languageMode = this.buffer.getLanguageMode();
     return (
@@ -5261,9 +6090,9 @@ module.exports = class TextEditor {
     );
   }
 
-  /*
-  Section: Event Handlers
-  */
+  /**
+   * @category Event Handlers
+   */
 
   handleLanguageModeChange() {
     this.unfoldAll();
@@ -5285,9 +6114,9 @@ module.exports = class TextEditor {
     this.emitter.emit("did-change-grammar", languageMode.grammar);
   }
 
-  /*
-  Section: TextEditor Rendering
-  */
+  /**
+   * @category TextEditor Rendering
+   */
 
   // Get the Element for the editor.
   getElement() {
@@ -5309,17 +6138,25 @@ module.exports = class TextEditor {
     return ["center"];
   }
 
-  // Essential: Retrieves the greyed out placeholder of a mini editor.
-  //
-  // Returns a {String}.
+  /**
+   * Retrieves the greyed out placeholder of a mini editor.
+   *
+   * @returns {String}
+   * @public
+   * @api-status Essential
+   */
   getPlaceholderText() {
     return this.placeholderText;
   }
 
-  // Essential: Set the greyed out placeholder of a mini editor. Placeholder text
-  // will be displayed when the editor has no content.
-  //
-  // * `placeholderText` {String} text that is displayed when the editor has no content.
+  /**
+   * Set the greyed out placeholder of a mini editor. Placeholder text
+   * will be displayed when the editor has no content.
+   *
+   * @param {String} placeholderText - text that is displayed when the editor has no content.
+   * @public
+   * @api-status Essential
+   */
   setPlaceholderText(placeholderText) {
     this.updatePlaceholderText(placeholderText, true);
   }
@@ -5457,9 +6294,9 @@ module.exports = class TextEditor {
     this.getElement().component.setScrollLeftColumn(scrollLeftColumn);
   }
 
-  /*
-  Section: Utility
-  */
+  /**
+   * @category Utility
+   */
 
   inspect() {
     return `<TextEditor ${this.id}>`;
@@ -5474,9 +6311,9 @@ module.exports = class TextEditor {
     return result;
   }
 
-  /*
-  Section: Language Mode Delegated Methods
-  */
+  /**
+   * @category Language Mode Delegated Methods
+   */
 
   suggestedIndentForBufferRow(bufferRow, options) {
     const languageMode = this.buffer.getLanguageMode();
@@ -5488,8 +6325,8 @@ module.exports = class TextEditor {
 
   // Given a buffer row, indent it.
   //
-  // * bufferRow - The row {Number}.
-  // * options - An {Object} of options to pass through to {TextEditor::setIndentationForBufferRow}.
+  // * bufferRow - The row `Number`.
+  // * options - An `Object` of options to pass through to {@link TextEditor#setIndentationForBufferRow}.
   autoIndentBufferRow(bufferRow, options) {
     const indentLevel = this.suggestedIndentForBufferRow(bufferRow, options);
     if (indentLevel?.then) {
@@ -5514,8 +6351,8 @@ module.exports = class TextEditor {
 
   // Indents all the rows between two buffer row numbers.
   //
-  // * startRow - The row {Number} to start at
-  // * endRow - The row {Number} to end at
+  // * startRow - The row `Number` to start at
+  // * endRow - The row `Number` to end at
   autoIndentBufferRows(startRow, endRow, options = {}) {
     const languageMode = this.buffer.getLanguageMode();
     let lastRowIndented = startRow - 1;
@@ -5759,35 +6596,37 @@ module.exports = class TextEditor {
     }
   }
 
-  // Public: Return information about the appropriate comment delimiters to use
-  // at a given point in the buffer.
-  //
-  // Lumine allows language bundles to define comment delimiters in several
-  // places. For instance, a grammar author can place delimiter metadata in the
-  // grammar definition file, or as scope-specific settings in the ordinary
-  // config system — or a combination of the two.
-  //
-  // In some languages, comment delimiters vary based on position in the
-  // buffer. (For instance, line comments can't always be used in JavaScript
-  // JSX blocks, so block comments are much safer.) This method will look for
-  // any such overrides and return what it thinks are the best delimiters to
-  // use at a given point.
-  //
-  // Some languages don't specify all their delimiters in their configuration,
-  // but this method will return all the information that it can discern.
-  //
-  // * point - A {Point} or point-compatible {Array}.
-  //
-  // Returns an {Object} with the following properties:
-  //
-  // * `line`: If present, a {String} representing a line comment delimiter.
-  //   (If `undefined`, there is no known line comment delimiter for the given
-  //   buffer position.)
-  // * `block`: If present, a two-item {Array} containing {String}s
-  //   representing the starting and ending block comment delimiters. (If
-  //   `undefined`, there are no known block comment delimiters for the given
-  //   buffer position.)
-  //
+  /**
+   *
+   * Lumine allows language bundles to define comment delimiters in several
+   * places. For instance, a grammar author can place delimiter metadata in the
+   * grammar definition file, or as scope-specific settings in the ordinary
+   * config system — or a combination of the two.
+   *
+   * In some languages, comment delimiters vary based on position in the
+   * buffer. (For instance, line comments can't always be used in JavaScript
+   * JSX blocks, so block comments are much safer.) This method will look for
+   * any such overrides and return what it thinks are the best delimiters to
+   * use at a given point.
+   *
+   * Some languages don't specify all their delimiters in their configuration,
+   * but this method will return all the information that it can discern.
+   *
+   * * point - A {@link Point} or point-compatible `Array`.
+   *
+   *
+   * * `line`: If present, a `String` representing a line comment delimiter.
+   *   (If `undefined`, there is no known line comment delimiter for the given
+   *   buffer position.)
+   * * `block`: If present, a two-item `Array` containing `Strings`
+   *   representing the starting and ending block comment delimiters. (If
+   *   `undefined`, there are no known block comment delimiters for the given
+   *   buffer position.)
+   *
+   * @returns {Object} Information about the appropriate comment delimiters at the buffer position.
+   * @public
+   * @api-status Public
+   */
   getCommentDelimitersForBufferPosition(point) {
     point = Point.fromObject(point);
     const languageMode = this.buffer.getLanguageMode();

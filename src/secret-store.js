@@ -2,31 +2,36 @@ const fs = require("fs");
 const path = require("path");
 const { Emitter } = require("@lumine-code/event-kit");
 
-// Public: Somewhere to keep an access token, available as `lumine.secrets`.
-//
-// For the sensitive strings a package must remember between sessions — a
-// forge token, an API key, a password. Never `lumine.config`: everything in
-// there is written to disk in plain text and shown in the settings view.
-//
-// Keys are opaque strings and values are strings. Namespace your own keys, by
-// convention with the package name:
-//
-// ```js
-// await lumine.secrets.set('github.token', token)
-// const token = await lumine.secrets.get('github.token')
-// ```
-//
-// ## Storage
-//
-// Values are encrypted with the operating system's own facility — DPAPI on
-// Windows, the Keychain on macOS, libsecret or kwallet on Linux — and kept as
-// base64 in one file under the config directory.
-//
-// Where the OS offers no encryption, typically a headless Linux box with no
-// keyring, the store keeps values in memory for the session only and warns the
-// user once. It never writes a secret to disk in the clear. A package should
-// therefore expect {::get} to return `null` for something it stored in an
-// earlier session, and ask again rather than fail.
+/**
+ * Somewhere to keep an access token, available as `lumine.secrets`.
+ *
+ * For the sensitive strings a package must remember between sessions — a
+ * forge token, an API key, a password. Never `lumine.config`: everything in
+ * there is written to disk in plain text and shown in the settings view.
+ *
+ * Keys are opaque strings and values are strings. Namespace your own keys, by
+ * convention with the package name:
+ *
+ * ```js
+ * await lumine.secrets.set('github.token', token)
+ * const token = await lumine.secrets.get('github.token')
+ * ```
+ *
+ * ## Storage
+ *
+ * Values are encrypted with the operating system's own facility — DPAPI on
+ * Windows, the Keychain on macOS, libsecret or kwallet on Linux — and kept as
+ * base64 in one file under the config directory.
+ *
+ * Where the OS offers no encryption, typically a headless Linux box with no
+ * keyring, the store keeps values in memory for the session only and warns the
+ * user once. It never writes a secret to disk in the clear. A package should
+ * therefore expect {@link #get} to return `null` for something it stored in an
+ * earlier session, and ask again rather than fail.
+ *
+ * @public
+ * @api-status Public
+ */
 class SecretStore {
   constructor({ safeStorage, applicationDelegate, storagePath, notify } = {}) {
     this._safeStorage = safeStorage;
@@ -40,17 +45,21 @@ class SecretStore {
     this.warned = false;
   }
 
-  /*
-  Section: Storing Secrets
-  */
+  /**
+   * @category Storing Secrets
+   */
 
-  // Extended: Whether the operating system will encrypt what is stored.
-  //
-  // When it will not, secrets last for this session only. Worth checking before
-  // telling the user that a token has been saved — the first call warns them
-  // once on its own.
-  //
-  // Returns a {Promise} resolving to a {Boolean}.
+  /**
+   * Whether the operating system will encrypt what is stored.
+   *
+   * When it will not, secrets last for this session only. Worth checking before
+   * telling the user that a token has been saved — the first call warns them
+   * once on its own.
+   *
+   * @returns {Promise} resolving to a `Boolean`.
+   * @public
+   * @api-status Extended
+   */
   async isEncryptionAvailable() {
     if (typeof this.encryptionAvailable === "boolean") return this.encryptionAvailable;
     if (this.encryptionAvailable) return this.encryptionAvailable;
@@ -106,14 +115,14 @@ class SecretStore {
     fs.writeFileSync(this.storagePath, JSON.stringify(object), { mode: 0o600 });
   }
 
-  // Essential: Read a secret.
-  //
-  // * `key` The {String} key it was stored under.
-  //
-  // Returns a {Promise} that resolves to the {String} value, or to `null` when
-  // nothing is stored under the key or it can no longer be decrypted — which
-  // happens after the OS credential store is reset, or when this session has no
-  // encryption and an earlier one did.
+  /**
+   * Read a secret.
+   *
+   * @param key - The `String` key it was stored under.
+   * @returns {Promise} that resolves to the `String` value, or to `null` when nothing is stored under the key or it can no longer be decrypted — which happens after the OS credential store is reset, or when this session has no encryption and an earlier one did.
+   * @public
+   * @api-status Essential
+   */
   async get(key) {
     if (!(await this.isEncryptionAvailable())) {
       return this.memory.has(key) ? this.memory.get(key) : null;
@@ -143,13 +152,15 @@ class SecretStore {
     }
   }
 
-  // Essential: Store a secret.
-  //
-  // * `key` The {String} key to store it under.
-  // * `value` The {String} to store. `null` or `undefined` deletes the key, as
-  //   {::delete} would.
-  //
-  // Returns a {Promise} that resolves once the value is written.
+  /**
+   * Store a secret.
+   *
+   * @param key - The `String` key to store it under.
+   * @param value - The `String` to store. `null` or `undefined` deletes the key, as {@link #delete} would.
+   * @returns {Promise} that resolves once the value is written.
+   * @public
+   * @api-status Essential
+   */
   async set(key, value) {
     if (value == null) return this.delete(key);
     if (!(await this.isEncryptionAvailable())) {
@@ -171,13 +182,16 @@ class SecretStore {
     this.emitter.emit("did-change", { key });
   }
 
-  // Public: Forget a secret.
-  //
-  // Deleting a key that was never stored is not an error and emits nothing.
-  //
-  // * `key` The {String} key to remove.
-  //
-  // Returns a {Promise} that resolves once the key is gone.
+  /**
+   * Forget a secret.
+   *
+   * Deleting a key that was never stored is not an error and emits nothing.
+   *
+   * @param key - The `String` key to remove.
+   * @returns {Promise} that resolves once the key is gone.
+   * @public
+   * @api-status Public
+   */
   async delete(key) {
     let changed = this.memory.delete(key);
     if (this.loadEntries().delete(key)) {
@@ -187,19 +201,22 @@ class SecretStore {
     if (changed) this.emitter.emit("did-change", { key });
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Public: Invoke the callback when a secret is stored or removed.
-  //
-  // The event names the key but never carries the value; read it with {::get}
-  // if you need it.
-  //
-  // * `callback` {Function} called with an {Object}.
-  //   * `key` The {String} key that changed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the callback when a secret is stored or removed.
+   *
+   * The event names the key but never carries the value; read it with {@link #get}
+   * if you need it.
+   *
+   * @param {Function} callback - called with an `Object`.
+   * @param callback.key - The `String` key that changed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Public
+   */
   onDidChange(callback) {
     return this.emitter.on("did-change", callback);
   }

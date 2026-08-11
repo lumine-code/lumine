@@ -51,6 +51,10 @@ jobs:
         run: npm run lint
       - name: Check formatting
         run: npm run format:check
+      - name: Check API documentation
+        run: npm run check:api-docs
+      - name: Test API extractor
+        run: npm run test:api-extractor
       # Themes must not re-declare icon box geometry — the icon contract in
       # static/lumine-ui/styles/icons.css is its single owner.
       - name: Check icon contract

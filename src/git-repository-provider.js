@@ -7,7 +7,7 @@ const GIT_FILE_REGEX = RegExp("^gitdir: (.+)");
 // Returns the .gitdir path in the agnostic Git symlink .git file given, or
 // null if the path is not a valid gitfile.
 //
-// * `gitFile` {String} path of gitfile to parse
+// * `gitFile` `String` path of gitfile to parse
 function pathFromGitFileSync(gitFile) {
   try {
     const gitFileBuff = fs.readFileSync(gitFile, "utf8");
@@ -17,10 +17,10 @@ function pathFromGitFileSync(gitFile) {
   }
 }
 
-// Returns a {Promise} that resolves to the .gitdir path in the agnostic
+// Returns a `Promise` that resolves to the .gitdir path in the agnostic
 // Git symlink .git file given, or null if the path is not a valid gitfile.
 //
-// * `gitFile` {String} path of gitfile to parse
+// * `gitFile` `String` path of gitfile to parse
 function pathFromGitFile(gitFile) {
   return new Promise((resolve) => {
     fs.readFile(gitFile, "utf8", (err, gitFileBuff) => {
@@ -49,10 +49,10 @@ function isRootPath(directoryPath) {
 }
 
 // Checks whether a valid `.git` directory is contained within the given
-// directory or one of its ancestors. If so, the absolute {String} path of the
+// directory or one of its ancestors. If so, the absolute `String` path of the
 // `.git` folder is returned. Otherwise, returns `null`.
 //
-// * `directoryPath` {String} to explore whether it is part of a Git repository.
+// * `directoryPath` `String` to explore whether it is part of a Git repository.
 function findGitDirectorySync(directoryPath) {
   let gitDir = path.join(directoryPath, ".git");
   const gitDirPath = pathFromGitFileSync(gitDir);
@@ -68,11 +68,11 @@ function findGitDirectorySync(directoryPath) {
   }
 }
 
-// Returns a {Promise} that resolves to the absolute {String} path of the `.git`
+// Returns a `Promise` that resolves to the absolute `String` path of the `.git`
 // folder contained within the given directory or one of its ancestors, or
 // `null` if none is found.
 //
-// * `directoryPath` {String} to explore whether it is part of a Git repository.
+// * `directoryPath` `String` to explore whether it is part of a Git repository.
 async function findGitDirectory(directoryPath) {
   let gitDir = path.join(directoryPath, ".git");
   const gitDirPath = await pathFromGitFile(gitDir);
@@ -99,7 +99,7 @@ function pathExists(target) {
 // a Git repository. Uses the heuristic adopted by libgit2's
 // `valid_repository_path()`.
 //
-// * `gitDirPath` {String} path whose base name is `.git`.
+// * `gitDirPath` `String` path whose base name is `.git`.
 function isValidGitDirectorySync(gitDirPath) {
   const commonDirFile = path.join(gitDirPath, "commondir");
   let commonDir;
@@ -119,10 +119,10 @@ function isValidGitDirectorySync(gitDirPath) {
   );
 }
 
-// Returns a {Promise} that resolves to a {Boolean} indicating whether the
+// Returns a `Promise` that resolves to a `Boolean` indicating whether the
 // specified `.git` directory represents a Git repository.
 //
-// * `gitDirPath` {String} path whose base name is `.git`.
+// * `gitDirPath` `String` path whose base name is `.git`.
 async function isValidGitDirectory(gitDirPath) {
   const commonDirFile = path.join(gitDirPath, "commondir");
   let commonDir;
@@ -143,7 +143,7 @@ async function isValidGitDirectory(gitDirPath) {
 }
 
 // Extract an absolute directory path from either a directory value object (with
-// `getPath`) or a plain {String}.
+// `getPath`) or a plain `String`.
 function toDirectoryPath(directory) {
   return typeof directory === "string" ? directory : directory.getPath();
 }
@@ -158,8 +158,8 @@ class GitRepositoryProvider {
     this.pathToRepository = {};
   }
 
-  // Returns a {Promise} that resolves with either:
-  // * {GitRepository} if the given directory has a Git repository.
+  // Returns a `Promise` that resolves with either:
+  // * {@link GitRepository} if the given directory has a Git repository.
   // * `null` if the given directory does not have a Git repository.
   async repositoryForDirectory(directory) {
     // Only one GitRepository should be created for each .git folder. Therefore,
@@ -170,7 +170,7 @@ class GitRepositoryProvider {
   }
 
   // Returns either:
-  // * {GitRepository} if the given directory has a Git repository.
+  // * {@link GitRepository} if the given directory has a Git repository.
   // * `null` if the given directory does not have a Git repository.
   repositoryForDirectorySync(directory) {
     // Only one GitRepository should be created for each .git folder. Therefore,
@@ -181,7 +181,7 @@ class GitRepositoryProvider {
   }
 
   // Returns either:
-  // * {GitRepository} if the given Git directory has a Git repository.
+  // * {@link GitRepository} if the given Git directory has a Git repository.
   // * `null` if the given directory does not have a Git repository.
   repositoryForGitDirectory(gitDirPath) {
     if (!gitDirPath) {

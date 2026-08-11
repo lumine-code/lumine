@@ -163,166 +163,171 @@ function matcherForPattern(rawPattern) {
 const STOPPED_CHANGING_ACTIVE_PANE_ITEM_DELAY = 100;
 const ALL_LOCATIONS = ["center", "left", "right", "bottom"];
 
-// Essential: Represents the state of the user interface for the entire window.
-// An instance of this class is available via the `lumine.workspace` global.
-//
-// Interact with this object to open files, be notified of current and future
-// editors, and manipulate panes. To add panels, use {Workspace::addTopPanel}
-// and friends.
-//
-// ## Workspace Items
-//
-// The term "item" refers to anything that can be displayed
-// in a pane within the workspace, either in the {WorkspaceCenter} or in one
-// of the three {Dock}s. The workspace expects items to conform to the
-// following interface:
-//
-// ### Required Methods
-//
-// #### `getTitle()`
-//
-// Returns a {String} containing the title of the item to display on its
-// associated tab.
-//
-// ### Optional Methods
-//
-// #### `getElement()`
-//
-// If your item already *is* a DOM element, you do not need to implement this
-// method. Otherwise it should return the element you want to display to
-// represent this item.
-//
-// #### `destroy()`
-//
-// Destroys the item. This will be called when the item is removed from its
-// parent pane.
-//
-// #### `onDidDestroy(callback)`
-//
-// Called by the workspace so it can be notified when the item is destroyed.
-// Must return a {Disposable}.
-//
-// #### `serialize()`
-//
-// Serialize the state of the item. Must return an object that can be passed to
-// `JSON.stringify`. The state should include a field called `deserializer`,
-// which names a deserializer declared in your `package.json`. This method is
-// invoked on items when serializing the workspace so they can be restored to
-// the same location later.
-//
-// #### `getURI()`
-//
-// Returns the URI associated with the item.
-//
-// #### `getLongTitle()`
-//
-// Returns a {String} containing a longer version of the title to display in
-// places like the window title or on tabs their short titles are ambiguous.
-//
-// #### `onDidChangeTitle(callback)`
-//
-// Called by the workspace so it can be notified when the item's title changes.
-// Must return a {Disposable}.
-//
-// #### `getIconName()`
-//
-// Return a {String} with the name of an icon. If this method is defined and
-// returns a string, the item's tab element will be rendered with the `icon` and
-// `icon-${iconName}` CSS classes.
-//
-// ### `onDidChangeIcon(callback)`
-//
-// Called by the workspace so it can be notified when the item's icon changes.
-// Must return a {Disposable}.
-//
-// #### `getDefaultLocation()`
-//
-// Tells the workspace where your item should be opened in absence of a user
-// override. Items can appear in the center or in a dock on the left, right, or
-// bottom of the workspace.
-//
-// Returns a {String} with one of the following values: `'center'`, `'left'`,
-// `'right'`, `'bottom'`. If this method is not defined, `'center'` is the
-// default.
-//
-// #### `getAllowedLocations()`
-//
-// Tells the workspace where this item can be moved. Returns an {Array} of one
-// or more of the following values: `'center'`, `'left'`, `'right'`, or
-// `'bottom'`.
-//
-// #### `isPersistentDockItem()`
-//
-// Tells the workspace that this item should survive restoring a saved
-// workspace layout into the current window. Persistent items are carried over
-// to the restored layout instead of being destroyed along with the previous
-// one. Unlike permanent dock items, the user can still close them at any time.
-//
-// #### `isPermanentDockItem()`
-//
-// Tells the workspace whether or not this item can be closed by the user by
-// clicking an `x` on its tab. Use of this feature is discouraged unless there's
-// a very good reason not to allow users to close your item. Items can be made
-// permanent *only* when they are contained in docks. Center pane items can
-// always be removed. Note that it is currently still possible to close dock
-// items via the `Close Pane` option in the context menu and via Lumine APIs, so
-// you should still be prepared to handle your dock items being destroyed by the
-// user even if you implement this method.
-//
-// #### `save()`
-//
-// Saves the item.
-//
-// #### `saveAs(path)`
-//
-// Saves the item to the specified path.
-//
-// #### `getPath()`
-//
-// Returns the local path associated with this item. This is only used to set
-// the initial location of the "save as" dialog.
-//
-// #### `isModified()`
-//
-// Returns whether or not the item is modified to reflect modification in the
-// UI.
-//
-// #### `onDidChangeModified()`
-//
-// Called by the workspace so it can be notified when item's modified status
-// changes. Must return a {Disposable}.
-//
-// #### `copy()`
-//
-// Create a copy of the item. If defined, the workspace will call this method to
-// duplicate the item when splitting panes via certain split commands.
-//
-// #### `getPreferredHeight()`
-//
-// If this item is displayed in the bottom {Dock}, called by the workspace when
-// initially displaying the dock to set its height. Once the dock has been
-// resized by the user, their height will override this value.
-//
-// Returns a {Number}.
-//
-// #### `getPreferredWidth()`
-//
-// If this item is displayed in the left or right {Dock}, called by the
-// workspace when initially displaying the dock to set its width. Once the dock
-// has been resized by the user, their width will override this value.
-//
-// Returns a {Number}.
-//
-// #### `onDidTerminatePendingState(callback)`
-//
-// If the workspace is configured to use *pending pane items*, the workspace
-// will subscribe to this method to terminate the pending state of the item.
-// Must return a {Disposable}.
-//
-// #### `shouldPromptToSave()`
-//
-// This method indicates whether Lumine should prompt the user to save this item
-// when the user closes or reloads the window. Returns a boolean.
+/**
+ * Represents the state of the user interface for the entire window.
+ * An instance of this class is available via the `lumine.workspace` global.
+ *
+ * Interact with this object to open files, be notified of current and future
+ * editors, and manipulate panes. To add panels, use {@link Workspace#addTopPanel}
+ * and friends.
+ *
+ * ## Workspace Items
+ *
+ * The term "item" refers to anything that can be displayed
+ * in a pane within the workspace, either in the {@link WorkspaceCenter} or in one
+ * of the three {@link Dock Docks}. The workspace expects items to conform to the
+ * following interface:
+ *
+ * ### Required Methods
+ *
+ * #### `getTitle()`
+ *
+ * Returns a `String` containing the title of the item to display on its
+ * associated tab.
+ *
+ * ### Optional Methods
+ *
+ * #### `getElement()`
+ *
+ * If your item already *is* a DOM element, you do not need to implement this
+ * method. Otherwise it should return the element you want to display to
+ * represent this item.
+ *
+ * #### `destroy()`
+ *
+ * Destroys the item. This will be called when the item is removed from its
+ * parent pane.
+ *
+ * #### `onDidDestroy(callback)`
+ *
+ * Called by the workspace so it can be notified when the item is destroyed.
+ * Must return a `Disposable`.
+ *
+ * #### `serialize()`
+ *
+ * Serialize the state of the item. Must return an object that can be passed to
+ * `JSON.stringify`. The state should include a field called `deserializer`,
+ * which names a deserializer declared in your `package.json`. This method is
+ * invoked on items when serializing the workspace so they can be restored to
+ * the same location later.
+ *
+ * #### `getURI()`
+ *
+ * Returns the URI associated with the item.
+ *
+ * #### `getLongTitle()`
+ *
+ * Returns a `String` containing a longer version of the title to display in
+ * places like the window title or on tabs their short titles are ambiguous.
+ *
+ * #### `onDidChangeTitle(callback)`
+ *
+ * Called by the workspace so it can be notified when the item's title changes.
+ * Must return a `Disposable`.
+ *
+ * #### `getIconName()`
+ *
+ * Return a `String` with the name of an icon. If this method is defined and
+ * returns a string, the item's tab element will be rendered with the `icon` and
+ * `icon-${iconName}` CSS classes.
+ *
+ * ### `onDidChangeIcon(callback)`
+ *
+ * Called by the workspace so it can be notified when the item's icon changes.
+ * Must return a `Disposable`.
+ *
+ * #### `getDefaultLocation()`
+ *
+ * Tells the workspace where your item should be opened in absence of a user
+ * override. Items can appear in the center or in a dock on the left, right, or
+ * bottom of the workspace.
+ *
+ * Returns a `String` with one of the following values: `'center'`, `'left'`,
+ * `'right'`, `'bottom'`. If this method is not defined, `'center'` is the
+ * default.
+ *
+ * #### `getAllowedLocations()`
+ *
+ * Tells the workspace where this item can be moved. Returns an `Array` of one
+ * or more of the following values: `'center'`, `'left'`, `'right'`, or
+ * `'bottom'`.
+ *
+ * #### `isPersistentDockItem()`
+ *
+ * Tells the workspace that this item should survive restoring a saved
+ * workspace layout into the current window. Persistent items are carried over
+ * to the restored layout instead of being destroyed along with the previous
+ * one. Unlike permanent dock items, the user can still close them at any time.
+ *
+ * #### `isPermanentDockItem()`
+ *
+ * Tells the workspace whether or not this item can be closed by the user by
+ * clicking an `x` on its tab. Use of this feature is discouraged unless there's
+ * a very good reason not to allow users to close your item. Items can be made
+ * permanent *only* when they are contained in docks. Center pane items can
+ * always be removed. Note that it is currently still possible to close dock
+ * items via the `Close Pane` option in the context menu and via Lumine APIs, so
+ * you should still be prepared to handle your dock items being destroyed by the
+ * user even if you implement this method.
+ *
+ * #### `save()`
+ *
+ * Saves the item.
+ *
+ * #### `saveAs(path)`
+ *
+ * Saves the item to the specified path.
+ *
+ * #### `getPath()`
+ *
+ * Returns the local path associated with this item. This is only used to set
+ * the initial location of the "save as" dialog.
+ *
+ * #### `isModified()`
+ *
+ * Returns whether or not the item is modified to reflect modification in the
+ * UI.
+ *
+ * #### `onDidChangeModified()`
+ *
+ * Called by the workspace so it can be notified when item's modified status
+ * changes. Must return a `Disposable`.
+ *
+ * #### `copy()`
+ *
+ * Create a copy of the item. If defined, the workspace will call this method to
+ * duplicate the item when splitting panes via certain split commands.
+ *
+ * #### `getPreferredHeight()`
+ *
+ * If this item is displayed in the bottom {@link Dock}, called by the workspace when
+ * initially displaying the dock to set its height. Once the dock has been
+ * resized by the user, their height will override this value.
+ *
+ * Returns a `Number`.
+ *
+ * #### `getPreferredWidth()`
+ *
+ * If this item is displayed in the left or right {@link Dock}, called by the
+ * workspace when initially displaying the dock to set its width. Once the dock
+ * has been resized by the user, their width will override this value.
+ *
+ * Returns a `Number`.
+ *
+ * #### `onDidTerminatePendingState(callback)`
+ *
+ * If the workspace is configured to use *pending pane items*, the workspace
+ * will subscribe to this method to terminate the pending state of the item.
+ * Must return a `Disposable`.
+ *
+ * #### `shouldPromptToSave()`
+ *
+ * This method indicates whether Lumine should prompt the user to save this item
+ * when the user closes or reloads the window. Returns a boolean.
+ *
+ * @public
+ * @api-status Essential
+ */
 module.exports = class Workspace extends Model {
   constructor(params) {
     super(...arguments);
@@ -546,9 +551,9 @@ module.exports = class Workspace extends Model {
     };
   }
 
-  // * `options` An optional {Object} that may contain the following key:
-  //   * `locations` An {Array} of the pane container locations to restore.
-  //     Defaults to all four. {Project::setState} passes `['center']`, because
+  // * `options` An optional `Object` that may contain the following key:
+  //   * `locations` An `Array` of the pane container locations to restore.
+  //     Defaults to all four. {@link Project#setState} passes `['center']`, because
   //     the docks belong to the window rather than to the project it has open.
   deserialize(state, deserializerManager, options = {}) {
     const locations = options.locations || ALL_LOCATIONS;
@@ -588,17 +593,19 @@ module.exports = class Workspace extends Model {
     this.hasActiveTextEditor = this.getActiveTextEditor() != null;
   }
 
-  // Extended: Destroy every item in the given pane container locations,
-  // leaving each of them with a single empty pane.
-  //
-  // Nothing is prompted for — the caller decides whether the items may go,
-  // which is why this is not {Pane::destroyItems} on every pane.
-  //
-  // * `options` An optional {Object} that may contain the following key:
-  //   * `locations` An {Array} of the pane container locations to empty.
-  //     Defaults to all four.
-  //
-  // Returns a {Promise} that resolves once they are empty.
+  /**
+   * Destroy every item in the given pane container locations,
+   * leaving each of them with a single empty pane.
+   *
+   * Nothing is prompted for — the caller decides whether the items may go,
+   * which is why this is not {@link Pane#destroyItems} on every pane.
+   *
+   * @param options - An optional `Object` that may contain the following key:
+   * @param options.locations - An `Array` of the pane container locations to empty. Defaults to all four.
+   * @returns {Promise} that resolves once they are empty.
+   * @public
+   * @api-status Extended
+   */
   async clear(options = {}) {
     const locations = options.locations || ALL_LOCATIONS;
     const persistentItems = this.detachPersistentDockItems(locations);
@@ -611,14 +618,22 @@ module.exports = class Workspace extends Model {
     this.hasActiveTextEditor = this.getActiveTextEditor() != null;
   }
 
-  // Private: Every pane across the given pane container locations.
+  /**
+   * Every pane across the given pane container locations.
+   *
+   * @private
+   */
   getPanesIn(locations) {
     return locations.flatMap((location) => this.paneContainers[location].getPanes());
   }
 
-  // Private: Removes every persistent dock item from its pane without
-  // destroying it, recording where it came from so
-  // {::attachPersistentDockItems} can put it back.
+  /**
+   * Removes every persistent dock item from its pane without
+   * destroying it, recording where it came from so
+   * {@link #attachPersistentDockItems} can put it back.
+   *
+   * @private
+   */
   detachPersistentDockItems(locations) {
     const persistentItems = [];
     for (const pane of this.getPanesIn(locations)) {
@@ -638,8 +653,12 @@ module.exports = class Workspace extends Model {
     return persistentItems;
   }
 
-  // Private: Puts the items {::detachPersistentDockItems} took out back into
-  // whatever layout now exists.
+  /**
+   * Puts the items {@link #detachPersistentDockItems} took out back into
+   * whatever layout now exists.
+   *
+   * @private
+   */
   attachPersistentDockItems(persistentItems) {
     for (const { item, location, visible } of persistentItems) {
       let uri;
@@ -664,9 +683,13 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  // Private: Destroys every pane in the given locations. A container's last
-  // pane empties itself rather than disappearing, so each one is left with a
-  // single empty pane.
+  /**
+   * Destroys every pane in the given locations. A container's last
+   * pane empties itself rather than disappearing, so each one is left with a
+   * single empty pane.
+   *
+   * @private
+   */
   destroyPanes(locations) {
     for (const pane of this.getPanesIn(locations)) {
       pane.destroy();
@@ -867,22 +890,24 @@ module.exports = class Workspace extends Model {
     this.applicationDelegate.setWindowDocumentEdited(modified);
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
   onDidChangeActivePaneContainer(callback) {
     return this.emitter.on("did-change-active-pane-container", callback);
   }
 
-  // Essential: Invoke the given callback with all current and future text
-  // editors in the workspace.
-  //
-  // * `callback` {Function} to be called with current and future text editors.
-  //   * `editor` A {TextEditor} that is present in {::getTextEditors} at the time
-  //     of subscription or that is added at some later time.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with all current and future text
+   * editors in the workspace.
+   *
+   * @param {Function} callback - to be called with current and future text editors.
+   * @param callback.editor - A {@link TextEditor} that is present in {@link #getTextEditors} at the time of subscription or that is added at some later time.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeTextEditors(callback) {
     for (let textEditor of this.getTextEditors()) {
       callback(textEditor);
@@ -890,290 +915,316 @@ module.exports = class Workspace extends Model {
     return this.onDidAddTextEditor(({ textEditor }) => callback(textEditor));
   }
 
-  // Essential: Invoke the given callback with all current and future panes items
-  // in the workspace.
-  //
-  // * `callback` {Function} to be called with current and future pane items.
-  //   * `item` An item that is present in {::getPaneItems} at the time of
-  //      subscription or that is added at some later time.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with all current and future panes items
+   * in the workspace.
+   *
+   * @param {Function} callback - to be called with current and future pane items.
+   * @param callback.item - An item that is present in {@link #getPaneItems} at the time of subscription or that is added at some later time.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observePaneItems(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.observePaneItems(callback)),
     );
   }
 
-  // Essential: Invoke the given callback when the active pane item changes.
-  //
-  // Because observers are invoked synchronously, it's important not to perform
-  // any expensive operations via this method. Consider
-  // {::onDidStopChangingActivePaneItem} to delay operations until after changes
-  // stop occurring.
-  //
-  // * `callback` {Function} to be called when the active pane item changes.
-  //   * `item` The active pane item.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the active pane item changes.
+   *
+   * Because observers are invoked synchronously, it's important not to perform
+   * any expensive operations via this method. Consider
+   * {@link #onDidStopChangingActivePaneItem} to delay operations until after changes
+   * stop occurring.
+   *
+   * @param {Function} callback - to be called when the active pane item changes.
+   * @param callback.item - The active pane item.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeActivePaneItem(callback) {
     return this.emitter.on("did-change-active-pane-item", callback);
   }
 
-  // Essential: Invoke the given callback when the active pane item stops
-  // changing.
-  //
-  // Observers are called asynchronously 100ms after the last active pane item
-  // change. Handling changes here rather than in the synchronous
-  // {::onDidChangeActivePaneItem} prevents unneeded work if the user is quickly
-  // changing or closing tabs and ensures critical UI feedback, like changing the
-  // highlighted tab, gets priority over work that can be done asynchronously.
-  //
-  // * `callback` {Function} to be called when the active pane item stops
-  //   changing.
-  //   * `item` The active pane item.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the active pane item stops
+   * changing.
+   *
+   * Observers are called asynchronously 100ms after the last active pane item
+   * change. Handling changes here rather than in the synchronous
+   * {@link #onDidChangeActivePaneItem} prevents unneeded work if the user is quickly
+   * changing or closing tabs and ensures critical UI feedback, like changing the
+   * highlighted tab, gets priority over work that can be done asynchronously.
+   *
+   * @param {Function} callback - to be called when the active pane item stops changing.
+   * @param callback.item - The active pane item.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidStopChangingActivePaneItem(callback) {
     return this.emitter.on("did-stop-changing-active-pane-item", callback);
   }
 
-  // Essential: Invoke the given callback when a text editor becomes the active
-  // text editor and when there is no longer an active text editor.
-  //
-  // * `callback` {Function} to be called when the active text editor changes.
-  //   * `editor` The active {TextEditor} or undefined if there is no longer an
-  //      active text editor.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a text editor becomes the active
+   * text editor and when there is no longer an active text editor.
+   *
+   * @param {Function} callback - to be called when the active text editor changes.
+   * @param callback.editor - The active {@link TextEditor} or undefined if there is no longer an active text editor.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeActiveTextEditor(callback) {
     return this.emitter.on("did-change-active-text-editor", callback);
   }
 
-  // Essential: Invoke the given callback with the current active pane item and
-  // with all future active pane items in the workspace.
-  //
-  // * `callback` {Function} to be called when the active pane item changes.
-  //   * `item` The current active pane item.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with the current active pane item and
+   * with all future active pane items in the workspace.
+   *
+   * @param {Function} callback - to be called when the active pane item changes.
+   * @param callback.item - The current active pane item.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeActivePaneItem(callback) {
     callback(this.getActivePaneItem());
     return this.onDidChangeActivePaneItem(callback);
   }
 
-  // Essential: Invoke the given callback with the current active text editor
-  // (if any), with all future active text editors, and when there is no longer
-  // an active text editor.
-  //
-  // * `callback` {Function} to be called when the active text editor changes.
-  //   * `editor` The active {TextEditor} or undefined if there is not an
-  //      active text editor.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with the current active text editor
+   * (if any), with all future active text editors, and when there is no longer
+   * an active text editor.
+   *
+   * @param {Function} callback - to be called when the active text editor changes.
+   * @param callback.editor - The active {@link TextEditor} or undefined if there is not an active text editor.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   observeActiveTextEditor(callback) {
     callback(this.getActiveTextEditor());
 
     return this.onDidChangeActiveTextEditor(callback);
   }
 
-  // Essential: Invoke the given callback whenever an item is opened. Unlike
-  // {::onDidAddPaneItem}, observers will be notified for items that are already
-  // present in the workspace when they are reopened.
-  //
-  // * `callback` {Function} to be called whenever an item is opened.
-  //   * `event` {Object} with the following keys:
-  //     * `uri` {String} representing the opened URI. Could be `undefined`.
-  //     * `item` The opened item.
-  //     * `pane` The pane in which the item was opened.
-  //     * `index` The index of the opened item on its pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback whenever an item is opened. Unlike
+   * {@link #onDidAddPaneItem}, observers will be notified for items that are already
+   * present in the workspace when they are reopened.
+   *
+   * @param {Function} callback - to be called whenever an item is opened.
+   * @param {Object} callback.event - with the following keys:
+   * @param {String} callback.event.uri - representing the opened URI. Could be `undefined`.
+   * @param callback.event.item - The opened item.
+   * @param callback.event.pane - The pane in which the item was opened.
+   * @param callback.event.index - The index of the opened item on its pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidOpen(callback) {
     return this.emitter.on("did-open", callback);
   }
 
-  // Extended: Invoke the given callback when a pane is added to the workspace.
-  //
-  // * `callback` {Function} to be called when panes are added.
-  //   * `event` {Object} with the following keys:
-  //     * `pane` The added pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane is added to the workspace.
+   *
+   * @param {Function} callback - to be called when panes are added.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.pane - The added pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddPane(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.onDidAddPane(callback)),
     );
   }
 
-  // Extended: Invoke the given callback before a pane is destroyed in the
-  // workspace.
-  //
-  // * `callback` {Function} to be called before panes are destroyed.
-  //   * `event` {Object} with the following keys:
-  //     * `pane` The pane to be destroyed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback before a pane is destroyed in the
+   * workspace.
+   *
+   * @param {Function} callback - to be called before panes are destroyed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.pane - The pane to be destroyed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onWillDestroyPane(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.onWillDestroyPane(callback)),
     );
   }
 
-  // Extended: Invoke the given callback when a pane is destroyed in the
-  // workspace.
-  //
-  // * `callback` {Function} to be called when panes are destroyed.
-  //   * `event` {Object} with the following keys:
-  //     * `pane` The destroyed pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane is destroyed in the
+   * workspace.
+   *
+   * @param {Function} callback - to be called when panes are destroyed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.pane - The destroyed pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidDestroyPane(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.onDidDestroyPane(callback)),
     );
   }
 
-  // Extended: Invoke the given callback with all current and future panes in the
-  // workspace.
-  //
-  // * `callback` {Function} to be called with current and future panes.
-  //   * `pane` A {Pane} that is present in {::getPanes} at the time of
-  //      subscription or that is added at some later time.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with all current and future panes in the
+   * workspace.
+   *
+   * @param {Function} callback - to be called with current and future panes.
+   * @param callback.pane - A {@link Pane} that is present in {@link #getPanes} at the time of subscription or that is added at some later time.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observePanes(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.observePanes(callback)),
     );
   }
 
-  // Extended: Invoke the given callback when the active pane changes.
-  //
-  // * `callback` {Function} to be called when the active pane changes.
-  //   * `pane` A {Pane} that is the current return value of {::getActivePane}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the active pane changes.
+   *
+   * @param {Function} callback - to be called when the active pane changes.
+   * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeActivePane(callback) {
     return this.emitter.on("did-change-active-pane", callback);
   }
 
-  // Extended: Invoke the given callback with the current active pane and when
-  // the active pane changes.
-  //
-  // * `callback` {Function} to be called with the current and future active
-  //   panes.
-  //   * `pane` A {Pane} that is the current return value of {::getActivePane}.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback with the current active pane and when
+   * the active pane changes.
+   *
+   * @param {Function} callback - to be called with the current and future active panes.
+   * @param callback.pane - A {@link Pane} that is the current return value of {@link #getActivePane}.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   observeActivePane(callback) {
     callback(this.getActivePane());
     return this.onDidChangeActivePane(callback);
   }
 
-  // Extended: Invoke the given callback when a pane item is added to the
-  // workspace.
-  //
-  // * `callback` {Function} to be called when pane items are added.
-  //   * `event` {Object} with the following keys:
-  //     * `item` The added pane item.
-  //     * `pane` {Pane} containing the added item.
-  //     * `index` {Number} indicating the index of the added item in its pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane item is added to the
+   * workspace.
+   *
+   * @param {Function} callback - to be called when pane items are added.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.item - The added pane item.
+   * @param {Pane} callback.event.pane - containing the added item.
+   * @param {Number} callback.event.index - indicating the index of the added item in its pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddPaneItem(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.onDidAddPaneItem(callback)),
     );
   }
 
-  // Extended: Invoke the given callback when a pane item is about to be
-  // destroyed, before the user is prompted to save it.
-  //
-  // * `callback` {Function} to be called before pane items are destroyed. If this function returns
-  //   a {Promise}, then the item will not be destroyed until the promise resolves.
-  //   * `event` {Object} with the following keys:
-  //     * `item` The item to be destroyed.
-  //     * `pane` {Pane} containing the item to be destroyed.
-  //     * `index` {Number} indicating the index of the item to be destroyed in
-  //       its pane.
-  //
-  // Returns a {Disposable} on which `.dispose` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane item is about to be
+   * destroyed, before the user is prompted to save it.
+   *
+   * @param {Function} callback - to be called before pane items are destroyed. If this function returns a `Promise`, then the item will not be destroyed until the promise resolves.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.item - The item to be destroyed.
+   * @param {Pane} callback.event.pane - containing the item to be destroyed.
+   * @param {Number} callback.event.index - indicating the index of the item to be destroyed in its pane.
+   * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onWillDestroyPaneItem(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.onWillDestroyPaneItem(callback)),
     );
   }
 
-  // Extended: Invoke the given callback when a pane item is destroyed.
-  //
-  // * `callback` {Function} to be called when pane items are destroyed.
-  //   * `event` {Object} with the following keys:
-  //     * `item` The destroyed item.
-  //     * `pane` {Pane} containing the destroyed item.
-  //     * `index` {Number} indicating the index of the destroyed item in its
-  //       pane.
-  //
-  // Returns a {Disposable} on which `.dispose` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a pane item is destroyed.
+   *
+   * @param {Function} callback - to be called when pane items are destroyed.
+   * @param {Object} callback.event - with the following keys:
+   * @param callback.event.item - The destroyed item.
+   * @param {Pane} callback.event.pane - containing the destroyed item.
+   * @param {Number} callback.event.index - indicating the index of the destroyed item in its pane.
+   * @returns {Disposable} on which `.dispose` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidDestroyPaneItem(callback) {
     return new CompositeDisposable(
       ...this.getPaneContainers().map((container) => container.onDidDestroyPaneItem(callback)),
     );
   }
 
-  // Extended: Invoke the given callback when a text editor is added to the
-  // workspace.
-  //
-  // * `callback` {Function} to be called when text editors are added.
-  //   * `event` {Object} with the following keys:
-  //     * `textEditor` {TextEditor} that was added.
-  //     * `pane` {Pane} containing the added text editor.
-  //     * `index` {Number} indicating the index of the added text editor in its
-  //        pane.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when a text editor is added to the
+   * workspace.
+   *
+   * @param {Function} callback - to be called when text editors are added.
+   * @param {Object} callback.event - with the following keys:
+   * @param {TextEditor} callback.event.textEditor - that was added.
+   * @param {Pane} callback.event.pane - containing the added text editor.
+   * @param {Number} callback.event.index - indicating the index of the added text editor in its pane.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidAddTextEditor(callback) {
     return this.emitter.on("did-add-text-editor", callback);
   }
 
-  /*
-  Section: Opening
-  */
+  /**
+   * @category Opening
+   */
 
-  // Essential: Opens the given URI in Lumine asynchronously.
-  // If the URI is already open, the existing item for that URI will be
-  // activated. If no URI is given, or no registered opener can open
-  // the URI, a new empty {TextEditor} will be created.
-  //
-  // * `itemOrURI` (optional) An item to open or a {String} containing a URI.
-  // * `options` (optional) {Object}
-  //   * `initialLine` A {Number} indicating which row to move the cursor to
-  //     initially. Defaults to `0`.
-  //   * `initialColumn` A {Number} indicating which column to move the cursor to
-  //     initially. Defaults to `0`.
-  //   * `split` Either 'left', 'right', 'up' or 'down'.
-  //     If 'left', the item will be opened in leftmost pane of the current active pane's row.
-  //     If 'right', the item will be opened in the rightmost pane of the current active pane's row. If only one pane exists in the row, a new pane will be created.
-  //     If 'up', the item will be opened in topmost pane of the current active pane's column.
-  //     If 'down', the item will be opened in the bottommost pane of the current active pane's column. If only one pane exists in the column, a new pane will be created.
-  //   * `activatePane` A {Boolean} indicating whether to call {Pane::activate} on
-  //     containing pane. Defaults to `true`.
-  //   * `activateItem` A {Boolean} indicating whether to call {Pane::activateItem}
-  //     on containing pane. Defaults to `true`.
-  //   * `pending` A {Boolean} indicating whether or not the item should be opened
-  //     in a pending state. Existing pending items in a pane are replaced with
-  //     new pending items when they are opened.
-  //   * `searchAllPanes` A {Boolean}. If `true`, the workspace will attempt to
-  //     activate an existing item for the given URI on any pane.
-  //     If `false`, only the active pane will be searched for
-  //     an existing item for the same URI. Defaults to `false`.
-  //   * `location` (optional) A {String} containing the name of the location
-  //     in which this item should be opened (one of "left", "right", "bottom",
-  //     or "center"). If omitted, Lumine will fall back to the last location in
-  //     which a user has placed an item with the same URI or, if this is a new
-  //     URI, the default location specified by the item. NOTE: This option
-  //     should almost always be omitted to honor user preference.
-  //
-  // Returns a {Promise} that resolves to the {TextEditor} for the file URI.
+  /**
+   * Opens the given URI in Lumine asynchronously.
+   * If the URI is already open, the existing item for that URI will be
+   * activated. If no URI is given, or no registered opener can open
+   * the URI, a new empty {@link TextEditor} will be created.
+   *
+   * @param [itemOrURI] - An item to open or a `String` containing a URI.
+   * @param {Object} [options]
+   * @param options.initialLine - A `Number` indicating which row to move the cursor to initially. Defaults to `0`.
+   * @param options.initialColumn - A `Number` indicating which column to move the cursor to initially. Defaults to `0`.
+   * @param options.split - Either 'left', 'right', 'up' or 'down'. If 'left', the item will be opened in leftmost pane of the current active pane's row. If 'right', the item will be opened in the rightmost pane of the current active pane's row. If only one pane exists in the row, a new pane will be created. If 'up', the item will be opened in topmost pane of the current active pane's column. If 'down', the item will be opened in the bottommost pane of the current active pane's column. If only one pane exists in the column, a new pane will be created.
+   * @param options.activatePane - A `Boolean` indicating whether to call {@link Pane#activate} on containing pane. Defaults to `true`.
+   * @param options.activateItem - A `Boolean` indicating whether to call {@link Pane#activateItem} on containing pane. Defaults to `true`.
+   * @param options.pending - A `Boolean` indicating whether or not the item should be opened in a pending state. Existing pending items in a pane are replaced with new pending items when they are opened.
+   * @param options.searchAllPanes - A `Boolean`. If `true`, the workspace will attempt to activate an existing item for the given URI on any pane. If `false`, only the active pane will be searched for an existing item for the same URI. Defaults to `false`.
+   * @param [options.location] - A `String` containing the name of the location in which this item should be opened (one of "left", "right", "bottom", or "center"). If omitted, Lumine will fall back to the last location in which a user has placed an item with the same URI or, if this is a new URI, the default location specified by the item. NOTE: This option should almost always be omitted to honor user preference.
+   * @returns {Promise} that resolves to the {@link TextEditor} for the file URI.
+   * @public
+   * @api-status Essential
+   */
   async open(itemOrURI, options = {}) {
     let uri, item;
     if (typeof itemOrURI === "string") {
@@ -1394,12 +1445,14 @@ module.exports = class Workspace extends Model {
     return item;
   }
 
-  // Essential: Search the workspace for items matching the given URI and hide them.
-  //
-  // * `itemOrURI` The item to hide or a {String} containing the URI
-  //   of the item to hide.
-  //
-  // Returns a {Boolean} indicating whether any items were found (and hidden).
+  /**
+   * Search the workspace for items matching the given URI and hide them.
+   *
+   * @param itemOrURI - The item to hide or a `String` containing the URI of the item to hide.
+   * @returns {Boolean} indicating whether any items were found (and hidden).
+   * @public
+   * @api-status Essential
+   */
   hide(itemOrURI) {
     let foundItems = false;
 
@@ -1429,13 +1482,15 @@ module.exports = class Workspace extends Model {
     return foundItems;
   }
 
-  // Essential: Search the workspace for items matching the given URI. If any are found, hide them.
-  // Otherwise, open the URL.
-  //
-  // * `itemOrURI` (optional) The item to toggle or a {String} containing the URI
-  //   of the item to toggle.
-  //
-  // Returns a Promise that resolves when the item is shown or hidden.
+  /**
+   * Search the workspace for items matching the given URI. If any are found, hide them.
+   * Otherwise, open the URL.
+   *
+   * @param [itemOrURI] - The item to toggle or a `String` containing the URI of the item to toggle.
+   * @returns {Promise} Promise that resolves when the item is shown or hidden.
+   * @public
+   * @api-status Essential
+   */
   toggle(itemOrURI) {
     if (this.hide(itemOrURI)) {
       return Promise.resolve();
@@ -1458,15 +1513,15 @@ module.exports = class Workspace extends Model {
   // in specs. Calling this in production code will block the UI thread and
   // everyone will be mad at you.**
   //
-  // * `uri` A {String} containing a URI.
-  // * `options` An optional options {Object}
-  //   * `initialLine` A {Number} indicating which row to move the cursor to
+  // * `uri` A `String` containing a URI.
+  // * `options` An optional options `Object`
+  //   * `initialLine` A `Number` indicating which row to move the cursor to
   //     initially. Defaults to `0`.
-  //   * `initialColumn` A {Number} indicating which column to move the cursor to
+  //   * `initialColumn` A `Number` indicating which column to move the cursor to
   //     initially. Defaults to `0`.
-  //   * `activatePane` A {Boolean} indicating whether to call {Pane::activate} on
+  //   * `activatePane` A `Boolean` indicating whether to call {@link Pane#activate} on
   //     the containing pane. Defaults to `true`.
-  //   * `activateItem` A {Boolean} indicating whether to call {Pane::activateItem}
+  //   * `activateItem` A `Boolean` indicating whether to call {@link Pane#activateItem}
   //     on containing pane. Defaults to `true`.
   openSync(uri_ = "", options = {}) {
     const { initialLine, initialColumn } = options;
@@ -1546,14 +1601,17 @@ module.exports = class Workspace extends Model {
     return this.textEditorLimitNotification;
   }
 
-  // Public: Creates a new item that corresponds to the provided URI.
-  //
-  // If no URI is given, or no registered opener can open the URI, a new empty
-  // {TextEditor} will be created.
-  //
-  // * `uri` A {String} containing a URI.
-  //
-  // Returns a {Promise} that resolves to the {TextEditor} (or other item) for the given URI.
+  /**
+   * Creates a new item that corresponds to the provided URI.
+   *
+   * If no URI is given, or no registered opener can open the URI, a new empty
+   * {@link TextEditor} will be created.
+   *
+   * @param uri - A `String` containing a URI.
+   * @returns {Promise} that resolves to the {@link TextEditor} (or other item) for the given URI.
+   * @public
+   * @api-status Public
+   */
   async createItemForURI(uri, options) {
     if (uri != null) {
       for (const opener of this.getOpeners()) {
@@ -1636,16 +1694,23 @@ module.exports = class Workspace extends Model {
     this.packageManager.triggerActivationHook(`${grammar.packageName}:grammar-used`);
   }
 
-  // Public: Returns a {Boolean} that is `true` if `object` is a `TextEditor`.
-  //
-  // * `object` An {Object} you want to perform the check against.
+  /**
+   * @param object - An `Object` you want to perform the check against.
+   * @returns {Boolean} that is `true` if `object` is a `TextEditor`.
+   * @public
+   * @api-status Public
+   */
   isTextEditor(object) {
     return object instanceof TextEditor;
   }
 
-  // Extended: Create a new text editor.
-  //
-  // Returns a {TextEditor}.
+  /**
+   * Create a new text editor.
+   *
+   * @returns {TextEditor}
+   * @public
+   * @api-status Extended
+   */
   buildTextEditor(params) {
     const editor = this.textEditorRegistry.build(params);
     const subscription = this.textEditorRegistry.maintainConfig(editor);
@@ -1653,70 +1718,71 @@ module.exports = class Workspace extends Model {
     return editor;
   }
 
-  // Essential: Create a fuzzy-searchable list shown in a modal panel.
-  //
-  // The editor ships the implementation, so a package neither depends on it nor
-  // pins it, and a window holds exactly one copy of it. This is a factory, not a
-  // shared instance: every call returns a list that owns its own panel, so a
-  // renderer that throws takes down one package's list rather than all of them.
-  //
-  // The list owns its panel. Do not call {::addModalPanel} for it — `show()`,
-  // `hide()` and `toggle()` manage a hidden-until-shown modal panel created on
-  // first use, and `getPanel()` returns it.
-  //
-  // * `props` An {Object} describing the list. The two that matter most:
-  //   * `items` An {Array} of the objects to show.
-  //   * `elementForItem` A {Function} called as `(item, options)` to render a
-  //     row. Return an {HTMLElement}, or an {Object} with `primary` and an
-  //     optional `secondary`, `icon`, `className` and `trailing` to have a row
-  //     built for you. `options` carries `selected`, `index`, `filterKey`,
-  //     `visible`, a lazily computed `matchIndices`, and `highlight(text,
-  //     indices)` — which wraps the matched characters of `text` in
-  //     `span.character-match`, defaulting to this item's own indices.
-  //
-  // The list shows one message at a time above the rows, from three props in
-  // precedence order — `loadingMessage` (rendered with a spinner, and with
-  // `loadingBadge` beside it), then `status`, then `infoMessage`. A `status` is
-  // `{type, message, duration, sticky}`: `type` is `'info'`, `'warning'` or
-  // `'error'`, `duration` clears it after that many milliseconds, and it is
-  // cleared on the next query change unless `sticky`. It covers the resting
-  // `infoMessage` rather than replacing it, so clearing it needs nothing put
-  // back. `emptyMessage` stands in for the rows when there are none, and stands
-  // down while a loading or status message is showing.
-  //
-  // Returns a {SelectListView}.
+  /**
+   * Create a fuzzy-searchable list shown in a modal panel.
+   *
+   * The editor ships the implementation, so a package neither depends on it nor
+   * pins it, and a window holds exactly one copy of it. This is a factory, not a
+   * shared instance: every call returns a list that owns its own panel, so a
+   * renderer that throws takes down one package's list rather than all of them.
+   *
+   * The list owns its panel. Do not call {@link #addModalPanel} for it — `show()`,
+   * `hide()` and `toggle()` manage a hidden-until-shown modal panel created on
+   * first use, and `getPanel()` returns it.
+   *
+   *
+   * The list shows one message at a time above the rows, from three props in
+   * precedence order — `loadingMessage` (rendered with a spinner, and with
+   * `loadingBadge` beside it), then `status`, then `infoMessage`. A `status` is
+   * `{type, message, duration, sticky}`: `type` is `'info'`, `'warning'` or
+   * `'error'`, `duration` clears it after that many milliseconds, and it is
+   * cleared on the next query change unless `sticky`. It covers the resting
+   * `infoMessage` rather than replacing it, so clearing it needs nothing put
+   * back. `emptyMessage` stands in for the rows when there are none, and stands
+   * down while a loading or status message is showing.
+   *
+   * @param props - An `Object` describing the list. The two that matter most:
+   * @param props.items - An `Array` of the objects to show.
+   * @param props.elementForItem - A `Function` called as `(item, options)` to render a row. Return an `HTMLElement`, or an `Object` with `primary` and an optional `secondary`, `icon`, `className` and `trailing` to have a row built for you. `options` carries `selected`, `index`, `filterKey`, `visible`, a lazily computed `matchIndices`, and `highlight(text, indices)` — which wraps the matched characters of `text` in `span.character-match`, defaulting to this item's own indices.
+   * @returns {SelectListView}
+   * @public
+   * @api-status Essential
+   */
   buildSelectList(props) {
     return new SelectListView(props);
   }
 
-  // Essential: Create a modal dialog whose query editor is the value.
-  //
-  // The base of {::buildSelectList} without the list: a modal panel with a mini
-  // editor, for prompts and save dialogs where the typed text is the answer.
-  // Extra DOM goes above the editor via `headerElement`, below it via
-  // `contentElement`, and a `checkboxes` row can bind straight to `lumine.config`.
-  //
-  // Panel ownership is the same as {::buildSelectList} — the dialog creates and
-  // owns its own modal panel.
-  //
-  // * `props` An {Object} describing the dialog, including `didConfirm(query)`,
-  //   `didCancel()` and `didChangeQuery(query)`.
-  //
-  // The message line works exactly as in {::buildSelectList}, minus
-  // `emptyMessage`: a validation failure is `status: {type: 'error', message}`,
-  // and the dialog clears it on the next keystroke by itself.
-  //
-  // Returns an {InputDialogView}.
+  /**
+   * Create a modal dialog whose query editor is the value.
+   *
+   * The base of {@link #buildSelectList} without the list: a modal panel with a mini
+   * editor, for prompts and save dialogs where the typed text is the answer.
+   * Extra DOM goes above the editor via `headerElement`, below it via
+   * `contentElement`, and a `checkboxes` row can bind straight to `lumine.config`.
+   *
+   * Panel ownership is the same as {@link #buildSelectList} — the dialog creates and
+   * owns its own modal panel.
+   *
+   *
+   * The message line works exactly as in {@link #buildSelectList}, minus
+   * `emptyMessage`: a validation failure is `status: {type: 'error', message}`,
+   * and the dialog clears it on the next keystroke by itself.
+   *
+   * @param props - An `Object` describing the dialog, including `didConfirm(query)`, `didCancel()` and `didChangeQuery(query)`.
+   * @returns {InputDialogView}
+   * @public
+   * @api-status Essential
+   */
   buildInputDialog(props) {
     return new InputDialogView(props);
   }
 
-  /*
-  Section: Modal flow
-  */
+  /**
+   * @category Modal flow
+   */
 
   // The keeper of the window's modal breadcrumb trail. Internal — packages
-  // reach the flow through {Panel::show}'s `crumb` option and the delegates
+  // reach the flow through {@link Panel#show}'s `crumb` option and the delegates
   // below.
   getModalFlow() {
     if (this.modalFlowKeeper == null) {
@@ -1725,52 +1791,67 @@ module.exports = class Workspace extends Model {
     return this.modalFlowKeeper;
   }
 
-  // Essential: Go back one step in the modal breadcrumb trail.
-  //
-  // A trail exists while a modal shown with {Panel::show}'s `crumb` option is
-  // on screen. Going back hides the current step — without cancelling it —
-  // and re-shows the previous panel with its state intact. Bound to
-  // Shift-Escape as `modal:go-back`; Escape still cancels the visible modal,
-  // which ends the whole trail.
-  //
-  // Returns a {Boolean} — `false` when there is no step to go back to.
+  /**
+   * Go back one step in the modal breadcrumb trail.
+   *
+   * A trail exists while a modal shown with {@link Panel#show}'s `crumb` option is
+   * on screen. Going back hides the current step — without cancelling it —
+   * and re-shows the previous panel with its state intact. Bound to
+   * Shift-Escape as `modal:go-back`; Escape still cancels the visible modal,
+   * which ends the whole trail.
+   *
+   * @returns {Boolean} — `false` when there is no step to go back to.
+   * @public
+   * @api-status Essential
+   */
   popModal() {
     return this.modalFlowKeeper ? this.modalFlowKeeper.pop() : false;
   }
 
-  // Essential: Jump back to an earlier step of the modal breadcrumb trail.
-  //
-  // * `index` The zero-based trail position to return to, as reported by
-  //   {::getModalTrail}. The breadcrumb strip wires its crumbs to this.
-  //
-  // Returns a {Boolean} — `false` when the index is not an earlier step.
+  /**
+   * Jump back to an earlier step of the modal breadcrumb trail.
+   *
+   * @param index - The zero-based trail position to return to, as reported by {@link #getModalTrail}. The breadcrumb strip wires its crumbs to this.
+   * @returns {Boolean} — `false` when the index is not an earlier step.
+   * @public
+   * @api-status Essential
+   */
   popModalTo(index) {
     return this.modalFlowKeeper ? this.modalFlowKeeper.popTo(index) : false;
   }
 
-  // Essential: The current modal breadcrumb trail.
-  //
-  // Returns an {Array} of {String} labels, root first; empty when no flow is
-  // active.
+  /**
+   * The current modal breadcrumb trail.
+   *
+   * @returns {Array} of `String` labels, root first; empty when no flow is active.
+   * @public
+   * @api-status Essential
+   */
   getModalTrail() {
     return this.modalFlowKeeper ? this.modalFlowKeeper.getTrail() : [];
   }
 
-  // Extended: Invoke the given callback whenever the modal breadcrumb trail
-  // changes — a step is entered, the flow goes back, or the trail ends.
-  //
-  // * `callback` {Function} receiving the trail as {::getModalTrail} reports
-  //   it.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback whenever the modal breadcrumb trail
+   * changes — a step is entered, the flow goes back, or the trail ends.
+   *
+   * @param {Function} callback - receiving the trail as {@link #getModalTrail} reports it.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Extended
+   */
   onDidChangeModalTrail(callback) {
     return this.getModalFlow().onDidChangeTrail(callback);
   }
 
-  // Public: Asynchronously reopens the last-closed item's URI if it hasn't already been
-  // reopened.
-  //
-  // Returns a {Promise} that is resolved when the item is opened
+  /**
+   * Asynchronously reopens the last-closed item's URI if it hasn't already been
+   * reopened.
+   *
+   * @returns {Promise} that is resolved when the item is opened
+   * @public
+   * @api-status Public
+   */
   reopenItem() {
     const uri = this.destroyedItemURIs.pop();
     if (uri) {
@@ -1780,39 +1861,43 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  // Public: Register an opener for a uri.
-  //
-  // When a URI is opened via {Workspace::open}, Lumine loops through its registered
-  // opener functions until one returns a value for the given uri.
-  // Openers are expected to return an object that inherits from HTMLElement or
-  // a model which has an associated view in the {ViewRegistry}.
-  // A {TextEditor} will be used if no opener returns a value.
-  //
-  // ## Examples
-  //
-  // ```js
-  // lumine.workspace.addOpener((uri) => {
-  //   if (path.extname(uri) === '.toml') return new TomlEditor(uri)
-  // })
-  // ```
-  //
-  // * `opener` A {Function} to be called when a path is being opened.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to remove the
-  // opener.
-  //
-  // Note that the opener will be called if and only if the URI is not already open
-  // in the current pane. The searchAllPanes flag expands the search from the
-  // current pane to all panes. If you wish to open a view of a different type for
-  // a file that is already open, consider changing the protocol of the URI. For
-  // example, perhaps you wish to preview a rendered version of the file `/foo/bar/baz.quux`
-  // that is already open in a text editor view. You could signal this by calling
-  // {Workspace::open} on the URI `quux-preview://foo/bar/baz.quux`. Then your opener
-  // can check the protocol for quux-preview and only handle those URIs that match.
-  //
-  // To defer your package's activation until a specific URL is opened, add a
-  // `workspaceOpeners` field to your `package.json` containing an array of URL
-  // strings.
+  /**
+   * Register an opener for a uri.
+   *
+   * When a URI is opened via {@link Workspace#open}, Lumine loops through its registered
+   * opener functions until one returns a value for the given uri.
+   * Openers are expected to return an object that inherits from HTMLElement or
+   * a model which has an associated view in the {@link ViewRegistry}.
+   * A {@link TextEditor} will be used if no opener returns a value.
+   *
+   * ## Examples
+   *
+   * ```js
+   * lumine.workspace.addOpener((uri) => {
+   *   if (path.extname(uri) === '.toml') return new TomlEditor(uri)
+   * })
+   * ```
+   *
+   *
+   *
+   * Note that the opener will be called if and only if the URI is not already open
+   * in the current pane. The searchAllPanes flag expands the search from the
+   * current pane to all panes. If you wish to open a view of a different type for
+   * a file that is already open, consider changing the protocol of the URI. For
+   * example, perhaps you wish to preview a rendered version of the file `/foo/bar/baz.quux`
+   * that is already open in a text editor view. You could signal this by calling
+   * {@link Workspace#open} on the URI `quux-preview://foo/bar/baz.quux`. Then your opener
+   * can check the protocol for quux-preview and only handle those URIs that match.
+   *
+   * To defer your package's activation until a specific URL is opened, add a
+   * `workspaceOpeners` field to your `package.json` containing an array of URL
+   * strings.
+   *
+   * @param opener - A `Function` to be called when a path is being opened.
+   * @returns {Disposable} on which `.dispose()` can be called to remove the opener.
+   * @public
+   * @api-status Public
+   */
   addOpener(opener) {
     this.openers.push(opener);
     return new Disposable(() => {
@@ -1824,27 +1909,39 @@ module.exports = class Workspace extends Model {
     return this.openers;
   }
 
-  /*
-  Section: Pane Items
-  */
+  /**
+   * @category Pane Items
+   */
 
-  // Essential: Get all pane items in the workspace.
-  //
-  // Returns an {Array} of items.
+  /**
+   * Get all pane items in the workspace.
+   *
+   * @returns {Array} of items.
+   * @public
+   * @api-status Essential
+   */
   getPaneItems() {
     return _.flatten(this.getPaneContainers().map((container) => container.getPaneItems()));
   }
 
-  // Essential: Get the active {Pane}'s active item.
-  //
-  // Returns a pane item {Object}.
+  /**
+   * Get the active {@link Pane}'s active item.
+   *
+   * @returns {Object} pane item `Object`.
+   * @public
+   * @api-status Essential
+   */
   getActivePaneItem() {
     return this.getActivePaneContainer().getActivePaneItem();
   }
 
-  // Essential: Get all text editors in the workspace, if they are pane items.
-  //
-  // Returns an {Array} of {TextEditor}s.
+  /**
+   * Get all text editors in the workspace, if they are pane items.
+   *
+   * @returns {Array} of {@link TextEditor TextEditors}.
+   * @public
+   * @api-status Essential
+   */
   getTextEditors() {
     return this.getPaneItems().filter((item) => item instanceof TextEditor);
   }
@@ -1866,10 +1963,13 @@ module.exports = class Workspace extends Model {
     this.longTitles = null;
   }
 
-  // Essential: Get the workspace center's active item if it is a {TextEditor}.
-  //
-  // Returns a {TextEditor} or `undefined` if the workspace center's current
-  // active item is not a {TextEditor}.
+  /**
+   * Get the workspace center's active item if it is a {@link TextEditor}.
+   *
+   * @returns {TextEditor} or `undefined` if the workspace center's current active item is not a {@link TextEditor}.
+   * @public
+   * @api-status Essential
+   */
   getActiveTextEditor() {
     const activeItem = this.getCenter().getActivePaneItem();
     if (activeItem instanceof TextEditor) {
@@ -1888,65 +1988,88 @@ module.exports = class Workspace extends Model {
     ).then((results) => !results.includes(false));
   }
 
-  // Extended: Save the workspace center's active pane item.
-  //
-  // If the item has a URI according to its `.getURI` method, calls `.save` on
-  // it; otherwise {::saveActivePaneItemAs} is called instead. Does nothing when
-  // the item implements no `.save` method.
-  //
-  // Targets the center rather than the focused pane container, for the reason
-  // given on {::destroyActivePaneItem}.
+  /**
+   * Save the workspace center's active pane item.
+   *
+   * If the item has a URI according to its `.getURI` method, calls `.save` on
+   * it; otherwise {@link #saveActivePaneItemAs} is called instead. Does nothing when
+   * the item implements no `.save` method.
+   *
+   * Targets the center rather than the focused pane container, for the reason
+   * given on {@link #destroyActivePaneItem}.
+   *
+   * @public
+   * @api-status Extended
+   */
   saveActivePaneItem() {
     return this.getCenter().getActivePane().saveActiveItem();
   }
 
-  // Extended: Prompt for a path and save the workspace center's active pane
-  // item to it.
-  //
-  // Opens a native dialog where the user selects a path on disk, then calls
-  // `.saveAs` on the item with the selected path. Does nothing when the item
-  // implements no `.saveAs` method.
-  //
-  // Targets the center rather than the focused pane container, for the reason
-  // given on {::destroyActivePaneItem}.
+  /**
+   * Prompt for a path and save the workspace center's active pane
+   * item to it.
+   *
+   * Opens a native dialog where the user selects a path on disk, then calls
+   * `.saveAs` on the item with the selected path. Does nothing when the item
+   * implements no `.saveAs` method.
+   *
+   * Targets the center rather than the focused pane container, for the reason
+   * given on {@link #destroyActivePaneItem}.
+   *
+   * @public
+   * @api-status Extended
+   */
   saveActivePaneItemAs() {
     this.getCenter().getActivePane().saveActiveItemAs();
   }
 
-  // Extended: Destroy (close) the active pane item.
-  //
-  // Removes the active pane item and calls its `.destroy` method if it has one.
-  //
-  // This one resolves through the *active pane container*, so it closes the
-  // focused dock's item while a dock has focus. That pairs it with
-  // {::getActivePaneItem} and {::getActivePane}, which resolve the same way, and
-  // is what a package wants when it has already inspected the active item and
-  // decided to close it.
-  //
-  // Its neighbours here deliberately differ: {::saveActivePaneItem},
-  // {::saveActivePaneItemAs} and {::closeActivePaneItemOrEmptyPaneOrWindow} are
-  // pinned to the workspace center. They back `core:save`, `core:save-as` and
-  // `core:close`, whose keystrokes fire from anywhere in the window, so
-  // following focus would make Ctrl-S in a search field or a dock try to save
-  // that instead of the document being edited.
+  /**
+   * Destroy (close) the active pane item.
+   *
+   * Removes the active pane item and calls its `.destroy` method if it has one.
+   *
+   * This one resolves through the *active pane container*, so it closes the
+   * focused dock's item while a dock has focus. That pairs it with
+   * {@link #getActivePaneItem} and {@link #getActivePane}, which resolve the same way, and
+   * is what a package wants when it has already inspected the active item and
+   * decided to close it.
+   *
+   * Its neighbours here deliberately differ: {@link #saveActivePaneItem},
+   * {@link #saveActivePaneItemAs} and {@link #closeActivePaneItemOrEmptyPaneOrWindow} are
+   * pinned to the workspace center. They back `core:save`, `core:save-as` and
+   * `core:close`, whose keystrokes fire from anywhere in the window, so
+   * following focus would make Ctrl-S in a search field or a dock try to save
+   * that instead of the document being edited.
+   *
+   * @public
+   * @api-status Extended
+   */
   destroyActivePaneItem() {
     return this.getActivePane().destroyActiveItem();
   }
 
-  /*
-  Section: Panes
-  */
+  /**
+   * @category Panes
+   */
 
-  // Extended: Get the most recently focused pane container.
-  //
-  // Returns a {Dock} or the {WorkspaceCenter}.
+  /**
+   * Get the most recently focused pane container.
+   *
+   * @returns {Dock} or the {@link WorkspaceCenter}.
+   * @public
+   * @api-status Extended
+   */
   getActivePaneContainer() {
     return this.activePaneContainer;
   }
 
-  // Extended: Get all panes in the workspace.
-  //
-  // Returns an {Array} of {Pane}s.
+  /**
+   * Get all panes in the workspace.
+   *
+   * @returns {Array} of {@link Pane Panes}.
+   * @public
+   * @api-status Extended
+   */
   getPanes() {
     return _.flatten(this.getPaneContainers().map((container) => container.getPanes()));
   }
@@ -1955,49 +2078,70 @@ module.exports = class Workspace extends Model {
     return _.flatten(this.getVisiblePaneContainers().map((container) => container.getPanes()));
   }
 
-  // Extended: Get the active {Pane}.
-  //
-  // Returns a {Pane}.
+  /**
+   * Get the active {@link Pane}.
+   *
+   * @returns {Pane}
+   * @public
+   * @api-status Extended
+   */
   getActivePane() {
     return this.getActivePaneContainer().getActivePane();
   }
 
-  // Extended: Make the next pane active.
+  /**
+   * Make the next pane active.
+   *
+   * @public
+   * @api-status Extended
+   */
   activateNextPane() {
     return this.getActivePaneContainer().activateNextPane();
   }
 
-  // Extended: Make the previous pane active.
+  /**
+   * Make the previous pane active.
+   *
+   * @public
+   * @api-status Extended
+   */
   activatePreviousPane() {
     return this.getActivePaneContainer().activatePreviousPane();
   }
 
-  // Extended: Get the first pane container that contains an item with the given
-  // URI.
-  //
-  // * `uri` {String} uri
-  //
-  // Returns a {Dock}, the {WorkspaceCenter}, or `undefined` if no item exists
-  // with the given URI.
+  /**
+   * Get the first pane container that contains an item with the given
+   * URI.
+   *
+   * @param {String} uri - uri
+   * @returns {Dock}, the {@link WorkspaceCenter}, or `undefined` if no item exists with the given URI.
+   * @public
+   * @api-status Extended
+   */
   paneContainerForURI(uri) {
     return this.getPaneContainers().find((container) => container.paneForURI(uri));
   }
 
-  // Extended: Get the first pane container that contains the given item.
-  //
-  // * `item` the Item that the returned pane container must contain.
-  //
-  // Returns a {Dock}, the {WorkspaceCenter}, or `undefined` if no pane container
-  // contains the given item.
+  /**
+   * Get the first pane container that contains the given item.
+   *
+   * @param item - the Item that the returned pane container must contain.
+   * @returns {Dock}, the {@link WorkspaceCenter}, or `undefined` if no pane container contains the given item.
+   * @public
+   * @api-status Extended
+   */
   paneContainerForItem(item) {
     return this.getPaneContainers().find((container) => container.paneForItem(item));
   }
 
-  // Extended: Get the first {Pane} that contains an item with the given URI.
-  //
-  // * `uri` {String} uri
-  //
-  // Returns a {Pane} or `undefined` if no item exists with the given URI.
+  /**
+   * Get the first {@link Pane} that contains an item with the given URI.
+   *
+   * @param {String} uri - uri
+   * @returns {Pane} or `undefined` if no item exists with the given URI.
+   * @public
+   * @api-status Extended
+   */
   paneForURI(uri) {
     for (let location of this.getPaneContainers()) {
       const pane = location.paneForURI(uri);
@@ -2007,11 +2151,14 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  // Extended: Get the {Pane} containing the given item.
-  //
-  // * `item` the Item that the returned pane must contain.
-  //
-  // Returns a {Pane} or `undefined` if no pane exists for the given item.
+  /**
+   * Get the {@link Pane} containing the given item.
+   *
+   * @param item - the Item that the returned pane must contain.
+   * @returns {Pane} or `undefined` if no pane exists for the given item.
+   * @public
+   * @api-status Extended
+   */
   paneForItem(item) {
     for (let location of this.getPaneContainers()) {
       const pane = location.paneForItem(item);
@@ -2029,11 +2176,16 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  // Extended: Close the workspace center's active pane item, or its active pane
-  // if that pane is empty, or the window if only the empty root pane is left.
-  //
-  // Targets the center rather than the focused pane container, for the reason
-  // given on {::destroyActivePaneItem}.
+  /**
+   * Close the workspace center's active pane item, or its active pane
+   * if that pane is empty, or the window if only the empty root pane is left.
+   *
+   * Targets the center rather than the focused pane container, for the reason
+   * given on {@link #destroyActivePaneItem}.
+   *
+   * @public
+   * @api-status Extended
+   */
   closeActivePaneItemOrEmptyPaneOrWindow() {
     if (this.getCenter().getActivePaneItem() != null) {
       this.getCenter().getActivePane().destroyActiveItem();
@@ -2104,26 +2256,46 @@ module.exports = class Workspace extends Model {
     if (this.element) this.element.destroy();
   }
 
-  /*
-  Section: Pane Locations
-  */
+  /**
+   * @category Pane Locations
+   */
 
-  // Essential: Get the {WorkspaceCenter} at the center of the editor window.
+  /**
+   * Get the {@link WorkspaceCenter} at the center of the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getCenter() {
     return this.paneContainers.center;
   }
 
-  // Essential: Get the {Dock} to the left of the editor window.
+  /**
+   * Get the {@link Dock} to the left of the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getLeftDock() {
     return this.paneContainers.left;
   }
 
-  // Essential: Get the {Dock} to the right of the editor window.
+  /**
+   * Get the {@link Dock} to the right of the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getRightDock() {
     return this.paneContainers.right;
   }
 
-  // Essential: Get the {Dock} below the editor window.
+  /**
+   * Get the {@link Dock} below the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getBottomDock() {
     return this.paneContainers.bottom;
   }
@@ -2144,185 +2316,194 @@ module.exports = class Workspace extends Model {
       .filter((container) => container === center || container.isVisible());
   }
 
-  /*
-  Section: Panels
+  /**
+   * @category Panels
+   */
 
-  Panels are used to display UI related to an editor window. They are placed at one of the four
-  edges of the window: left, right, top or bottom. If there are multiple panels on the same window
-  edge they are stacked in order of priority: higher priority is closer to the center, lower
-  priority towards the edge.
-
-  *Note:* If your panel changes its size throughout its lifetime, consider giving it a higher
-  priority, allowing fixed size panels to be closer to the edge. This allows control targets to
-  remain more static for easier targeting by users that employ mice or trackpads. (See
-  [atom/atom#4834](https://github.com/atom/atom/issues/4834) for discussion.)
-  */
-
-  // Essential: Get an {Array} of all the panel items at the bottom of the editor window.
+  /**
+   * Get an `Array` of all the panel items at the bottom of the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getBottomPanels() {
     return this.getPanels("bottom");
   }
 
-  // Essential: Adds a panel item to the bottom of the editor window.
-  //
-  // * `options` {Object}
-  //   * `item` Your panel content. It can be DOM element, a jQuery element, or
-  //     a model with a view registered via {ViewRegistry::addViewProvider}. We recommend the
-  //     latter. See {ViewRegistry::addViewProvider} for more information.
-  //   * `visible` (optional) {Boolean} false if you want the panel to initially be hidden
-  //     (default: true)
-  //   * `priority` (optional) {Number} Determines stacking order. Lower priority items are
-  //     forced closer to the edges of the window. (default: 100)
-  //
-  // Returns a {Panel}
+  /**
+   * Adds a panel item to the bottom of the editor window.
+   *
+   * @param {Object} options
+   * @param options.item - Your panel content. It can be DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the latter. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
+   * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
+   * @returns {Panel}
+   * @public
+   * @api-status Essential
+   */
   addBottomPanel(options) {
     return this.addPanel("bottom", options);
   }
 
-  // Essential: Get an {Array} of all the panel items to the left of the editor window.
+  /**
+   * Get an `Array` of all the panel items to the left of the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getLeftPanels() {
     return this.getPanels("left");
   }
 
-  // Essential: Adds a panel item to the left of the editor window.
-  //
-  // * `options` {Object}
-  //   * `item` Your panel content. It can be DOM element, a jQuery element, or
-  //     a model with a view registered via {ViewRegistry::addViewProvider}. We recommend the
-  //     latter. See {ViewRegistry::addViewProvider} for more information.
-  //   * `visible` (optional) {Boolean} false if you want the panel to initially be hidden
-  //     (default: true)
-  //   * `priority` (optional) {Number} Determines stacking order. Lower priority items are
-  //     forced closer to the edges of the window. (default: 100)
-  //
-  // Returns a {Panel}
+  /**
+   * Adds a panel item to the left of the editor window.
+   *
+   * @param {Object} options
+   * @param options.item - Your panel content. It can be DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the latter. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
+   * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
+   * @returns {Panel}
+   * @public
+   * @api-status Essential
+   */
   addLeftPanel(options) {
     return this.addPanel("left", options);
   }
 
-  // Essential: Get an {Array} of all the panel items to the right of the editor window.
+  /**
+   * Get an `Array` of all the panel items to the right of the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getRightPanels() {
     return this.getPanels("right");
   }
 
-  // Essential: Adds a panel item to the right of the editor window.
-  //
-  // * `options` {Object}
-  //   * `item` Your panel content. It can be DOM element, a jQuery element, or
-  //     a model with a view registered via {ViewRegistry::addViewProvider}. We recommend the
-  //     latter. See {ViewRegistry::addViewProvider} for more information.
-  //   * `visible` (optional) {Boolean} false if you want the panel to initially be hidden
-  //     (default: true)
-  //   * `priority` (optional) {Number} Determines stacking order. Lower priority items are
-  //     forced closer to the edges of the window. (default: 100)
-  //
-  // Returns a {Panel}
+  /**
+   * Adds a panel item to the right of the editor window.
+   *
+   * @param {Object} options
+   * @param options.item - Your panel content. It can be DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the latter. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
+   * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
+   * @returns {Panel}
+   * @public
+   * @api-status Essential
+   */
   addRightPanel(options) {
     return this.addPanel("right", options);
   }
 
-  // Essential: Get an {Array} of all the panel items at the top of the editor window.
+  /**
+   * Get an `Array` of all the panel items at the top of the editor window.
+   *
+   * @public
+   * @api-status Essential
+   */
   getTopPanels() {
     return this.getPanels("top");
   }
 
-  // Essential: Adds a panel item to the top of the editor window above the tabs.
-  //
-  // * `options` {Object}
-  //   * `item` Your panel content. It can be DOM element, a jQuery element, or
-  //     a model with a view registered via {ViewRegistry::addViewProvider}. We recommend the
-  //     latter. See {ViewRegistry::addViewProvider} for more information.
-  //   * `visible` (optional) {Boolean} false if you want the panel to initially be hidden
-  //     (default: true)
-  //   * `priority` (optional) {Number} Determines stacking order. Lower priority items are
-  //     forced closer to the edges of the window. (default: 100)
-  //
-  // Returns a {Panel}
+  /**
+   * Adds a panel item to the top of the editor window above the tabs.
+   *
+   * @param {Object} options
+   * @param options.item - Your panel content. It can be DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the latter. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
+   * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
+   * @returns {Panel}
+   * @public
+   * @api-status Essential
+   */
   addTopPanel(options) {
     return this.addPanel("top", options);
   }
 
-  // Essential: Get an {Array} of all the panel items in the header.
+  /**
+   * Get an `Array` of all the panel items in the header.
+   *
+   * @public
+   * @api-status Essential
+   */
   getHeaderPanels() {
     return this.getPanels("header");
   }
 
-  // Essential: Adds a panel item to the header.
-  //
-  // * `options` {Object}
-  //   * `item` Your panel content. It can be DOM element, a jQuery element, or
-  //     a model with a view registered via {ViewRegistry::addViewProvider}. We recommend the
-  //     latter. See {ViewRegistry::addViewProvider} for more information.
-  //   * `visible` (optional) {Boolean} false if you want the panel to initially be hidden
-  //     (default: true)
-  //   * `priority` (optional) {Number} Determines stacking order. Lower priority items are
-  //     forced closer to the edges of the window. (default: 100)
-  //
-  // Returns a {Panel}
+  /**
+   * Adds a panel item to the header.
+   *
+   * @param {Object} options
+   * @param options.item - Your panel content. It can be DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the latter. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
+   * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
+   * @returns {Panel}
+   * @public
+   * @api-status Essential
+   */
   addHeaderPanel(options) {
     return this.addPanel("header", options);
   }
 
-  // Essential: Get an {Array} of all the panel items in the footer.
+  /**
+   * Get an `Array` of all the panel items in the footer.
+   *
+   * @public
+   * @api-status Essential
+   */
   getFooterPanels() {
     return this.getPanels("footer");
   }
 
-  // Essential: Adds a panel item to the footer.
-  //
-  // * `options` {Object}
-  //   * `item` Your panel content. It can be DOM element, a jQuery element, or
-  //     a model with a view registered via {ViewRegistry::addViewProvider}. We recommend the
-  //     latter. See {ViewRegistry::addViewProvider} for more information.
-  //   * `visible` (optional) {Boolean} false if you want the panel to initially be hidden
-  //     (default: true)
-  //   * `priority` (optional) {Number} Determines stacking order. Lower priority items are
-  //     forced closer to the edges of the window. (default: 100)
-  //
-  // Returns a {Panel}
+  /**
+   * Adds a panel item to the footer.
+   *
+   * @param {Object} options
+   * @param options.item - Your panel content. It can be DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the latter. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
+   * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
+   * @returns {Panel}
+   * @public
+   * @api-status Essential
+   */
   addFooterPanel(options) {
     return this.addPanel("footer", options);
   }
 
-  // Essential: Get an {Array} of all the modal panel items
+  /**
+   * Get an `Array` of all the modal panel items
+   *
+   * @public
+   * @api-status Essential
+   */
   getModalPanels() {
     return this.getPanels("modal");
   }
 
-  // Essential: Adds a panel item as a modal dialog.
-  //
-  // * `options` {Object}
-  //   * `item` Your panel content. It can be a DOM element, a jQuery element, or
-  //     a model with a view registered via {ViewRegistry::addViewProvider}. We recommend the
-  //     model option. See {ViewRegistry::addViewProvider} for more information.
-  //   * `visible` (optional) {Boolean} false if you want the panel to initially be hidden
-  //     (default: true)
-  //   * `priority` (optional) {Number} Determines stacking order. Lower priority items are
-  //     forced closer to the edges of the window. (default: 100)
-  //   * `autoFocus` (optional) {Boolean|Element} true if you want modal focus managed for you by Lumine.
-  //     Lumine will automatically focus on this element or your modal panel's first tabbable element when the modal
-  //     opens and will restore the previously selected element when the modal closes. Lumine will
-  //     also automatically restrict user tab focus within your modal while it is open.
-  //     (default: false)
-  //   * `restoreFocus` (optional) {Boolean} false if you want to manage focus restoration
-  //     yourself. By default, when a modal panel is hidden, focus returns to the element
-  //     that was focused before the modal opened — or, for chained modals, before the
-  //     first modal in the chain opened. (default: true)
-  //   * `crumb` (optional) {String} the label this panel carries on the modal
-  //     breadcrumb trail. Used when the panel is shown as a flow step without
-  //     an explicit label — `panel.show({crumb: true})` — and when a step
-  //     shown on top of this panel adopts it as the trail root. See
-  //     {Panel::show}.
-  //
-  // Returns a {Panel}
+  /**
+   * Adds a panel item as a modal dialog.
+   *
+   * @param {Object} options
+   * @param options.item - Your panel content. It can be a DOM element, a jQuery element, or a model with a view registered via {@link ViewRegistry#addViewProvider}. We recommend the model option. See {@link ViewRegistry#addViewProvider} for more information.
+   * @param {Boolean} [options.visible] - false if you want the panel to initially be hidden (default: true)
+   * @param {Number} [options.priority] - Determines stacking order. Lower priority items are forced closer to the edges of the window. (default: 100)
+   * @param {Boolean|Element} [options.autoFocus] - true if you want modal focus managed for you by Lumine. Lumine will automatically focus on this element or your modal panel's first tabbable element when the modal opens and will restore the previously selected element when the modal closes. Lumine will also automatically restrict user tab focus within your modal while it is open. (default: false)
+   * @param {Boolean} [options.restoreFocus] - false if you want to manage focus restoration yourself. By default, when a modal panel is hidden, focus returns to the element that was focused before the modal opened — or, for chained modals, before the first modal in the chain opened. (default: true)
+   * @param {String} [options.crumb] - the label this panel carries on the modal breadcrumb trail. Used when the panel is shown as a flow step without an explicit label — `panel.show({crumb: true})` — and when a step shown on top of this panel adopts it as the trail root. See {@link Panel#show}.
+   * @returns {Panel}
+   * @public
+   * @api-status Essential
+   */
   addModalPanel(options = {}) {
     return this.addPanel("modal", options);
   }
 
-  // Essential: Returns the {Panel} associated with the given item. Returns
-  // `null` when the item has no panel.
-  //
-  // * `item` Item the panel contains
+  /**
+   * @param item - Item the panel contains
+   * @returns {Panel} associated with the given item. Returns `null` when the item has no panel.
+   * @public
+   * @api-status Essential
+   */
   panelForItem(item) {
     for (let location in this.panelContainers) {
       const container = this.panelContainers[location];
@@ -2351,38 +2532,38 @@ module.exports = class Workspace extends Model {
     return this.panelContainers[location].addPanel(panel);
   }
 
-  /*
-  Section: Searching and Replacing
-  */
+  /**
+   * @category Searching and Replacing
+   */
 
-  // Public: Performs a search across all files in the workspace.
-  //
-  // * `regex` {RegExp} to search with.
-  // * `options` (optional) {Object}
-  //   * `paths` An {Array} of glob patterns to search within. (See note below for multi-root projects.)
-  //   * `includeVcsIgnoredPaths` {Boolean} default `false`; Whether to include
-  //     paths excluded by VCS ignore files, regardless of the core preference.
-  //   * `onPathsSearched` (optional) {Function} to be periodically called
-  //     with number of paths searched.
-  //   * `leadingContextLineCount` {Number} default `0`; The number of lines
-  //      before the matched line to include in the results object.
-  //   * `trailingContextLineCount` {Number} default `0`; The number of lines
-  //      after the matched line to include in the results object.
-  // * `iterator` {Function} callback on each file found.
-  //
-  // Returns a {Promise} with a `cancel()` method that will cancel all
-  // of the underlying searches that were started as part of this scan.
-  //
-  // #### Caveats
-  //
-  // When a project has multiple roots, the patterns in `options.paths` may opt
-  // into or out of specific roots.
-  //
-  // For instance: when only one root is present, `'foo/bar.js'` is construed
-  // as a glob meant to match `<root>/foo/bar.js`; when multiple roots are
-  // present and at least one project root has a base directory name of `foo`,
-  // then `foo/bar.js` is construed as a glob meant only for root `foo` and
-  // meant to match `bar.js`.
+  /**
+   * Performs a search across all files in the workspace.
+   *
+   *
+   *
+   * #### Caveats
+   *
+   * When a project has multiple roots, the patterns in `options.paths` may opt
+   * into or out of specific roots.
+   *
+   * For instance: when only one root is present, `'foo/bar.js'` is construed
+   * as a glob meant to match `<root>/foo/bar.js`; when multiple roots are
+   * present and at least one project root has a base directory name of `foo`,
+   * then `foo/bar.js` is construed as a glob meant only for root `foo` and
+   * meant to match `bar.js`.
+   *
+   * @param {RegExp} regex - to search with.
+   * @param {Object} [options]
+   * @param options.paths - An `Array` of glob patterns to search within. (See note below for multi-root projects.)
+   * @param {Boolean} options.includeVcsIgnoredPaths - default `false`; Whether to include paths excluded by VCS ignore files, regardless of the core preference.
+   * @param {Function} [options.onPathsSearched] - to be periodically called with number of paths searched.
+   * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
+   * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
+   * @param {Function} iterator - callback on each file found.
+   * @returns {Promise} with a `cancel()` method that will cancel all of the underlying searches that were started as part of this scan.
+   * @public
+   * @api-status Public
+   */
   scan(regex, options = {}, iterator) {
     if (_.isFunction(options)) {
       iterator = options;
@@ -2691,15 +2872,18 @@ module.exports = class Workspace extends Model {
     return cancellablePromise;
   }
 
-  // Public: Performs a replace across all the specified files in the project.
-  //
-  // * `regex` A {RegExp} to search with.
-  // * `replacementText` {String} to replace all matches of regex with.
-  // * `filePaths` An {Array} of file path strings to run the replace on.
-  // * `iterator` A {Function} callback on each file with replacements:
-  //   * `options` {Object} with keys `filePath` and `replacements`.
-  //
-  // Returns a {Promise}.
+  /**
+   * Performs a replace across all the specified files in the project.
+   *
+   * @param regex - A `RegExp` to search with.
+   * @param {String} replacementText - to replace all matches of regex with.
+   * @param filePaths - An `Array` of file path strings to run the replace on.
+   * @param iterator - A `Function` callback on each file with replacements:
+   * @param {Object} iterator.options - with keys `filePath` and `replacements`.
+   * @returns {Promise}
+   * @public
+   * @api-status Public
+   */
   replace(regex, replacementText, filePaths, iterator) {
     return new Promise((resolve, _reject) => {
       let buffer;
@@ -2756,28 +2940,27 @@ module.exports = class Workspace extends Model {
     });
   }
 
-  // Experimental: Tests the path of a file in the project against a set of
-  // globs (using the same semantics as {::scan}) and reports whether the file
-  // satisfies the patterns.
-  //
-  // Internally, this method is used to decide if a search result should be
-  // added to a list of project-wide search results.
-  //
-  // * `filePath` {String} representing the absolute path to a file in the
-  //   project. (Any external path will automatically return `false`.)
-  // * `rawPatterns` {Array} of strings that describe glob patterns. Identical to
-  //   (and uses the same glob semantics as) the `options.paths` argument of
-  //   {::scan}.
-  //
-  // Returns a boolean indicating whether the given file path would be included
-  // in a project-wide search if the given path patterns were specified.
+  /**
+   * Tests the path of a file in the project against a set of
+   * globs (using the same semantics as {@link #scan}) and reports whether the file
+   * satisfies the patterns.
+   *
+   * Internally, this method is used to decide if a search result should be
+   * added to a list of project-wide search results.
+   *
+   * @param {String} filePath - representing the absolute path to a file in the project. (Any external path will automatically return `false`.)
+   * @param {Array} rawPatterns - of strings that describe glob patterns. Identical to (and uses the same glob semantics as) the `options.paths` argument of {@link #scan}.
+   * @returns {Boolean} boolean indicating whether the given file path would be included in a project-wide search if the given path patterns were specified.
+   * @public
+   * @api-status Experimental
+   */
   filePathMatchesPatterns(filePath, rawPatterns) {
     let patterns = rawPatterns;
     let rootBasenames = getBasenamesFromProjectRoots();
     if (rootBasenames.length > 0) {
       // When there is more than one project root, some of these raw patterns
       // may reference specific project roots. We will apply the same
-      // interpretation to these patterns that we apply in {::scan}:
+      // interpretation to these patterns that we apply in {@link #scan}:
       //
       // * filter out any patterns that refer to roots other than the one that
       //   `filePath` belongs to;

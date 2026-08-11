@@ -10,13 +10,13 @@ const { ipcRenderer, nativeImage } = require("electron");
 // so what survives of the recipe is its substance: the main process owns the
 // clipboard, and the renderer asks it over IPC.
 //
-// The requests are synchronous because {Clipboard} is. A paste reads the
+// The requests are synchronous because {@link Clipboard} is. A paste reads the
 // clipboard in the middle of an edit and `lumine.clipboard.read()` is
-// documented to return a {String}, so there is no seam to make asynchronous
+// documented to return a `String`, so there is no seam to make asynchronous
 // without changing every caller. On Linux Electron's renderer-side `clipboard`
 // was already a synchronous IPC call, so this is not new cost there.
 //
-// {::writeSelectionText} is the one exception. Linux mirrors every selection
+// {@link #writeSelectionText} is the one exception. Linux mirrors every selection
 // change into the primary selection, and blocking a drag on a round trip is
 // exactly what its dedicated asynchronous channel has always avoided. Both
 // travel the same pipe in order, so a selection write is still visible to the
@@ -33,7 +33,7 @@ function request(method, ...args) {
   return ipcRenderer.sendSync(CHANNEL, method, args);
 }
 
-// Electron's structured clone hands a {Buffer} back as a {Uint8Array}, and
+// Electron's structured clone hands a `Buffer` back as a `Uint8Array`, and
 // `nativeImage.createFromBuffer` accepts only the former.
 function toBuffer(value) {
   if (Buffer.isBuffer(value)) return value;
@@ -61,7 +61,7 @@ module.exports = {
     request("writeFindText", text);
   },
 
-  // Returns a {NativeImage}, empty when the clipboard holds no image. The image
+  // Returns a `NativeImage`, empty when the clipboard holds no image. The image
   // crosses the process boundary as PNG bytes, so its scale factor does not
   // survive the trip.
   readImage() {
@@ -69,7 +69,7 @@ module.exports = {
     return png.length > 0 ? nativeImage.createFromBuffer(png) : nativeImage.createEmpty();
   },
 
-  // * `png` PNG bytes, as a {Buffer} or any typed array over them.
+  // * `png` PNG bytes, as a `Buffer` or any typed array over them.
   writeImage(png) {
     const buffer = toBuffer(png);
     if (buffer.length > 0) request("writeImage", buffer);

@@ -2,9 +2,14 @@ const { Emitter } = require("@lumine-code/event-kit");
 
 const DefaultPriority = -100;
 
-// Extended: Represents a gutter within a {TextEditor}.
-//
-// See {TextEditor::addGutter} for information on creating a gutter.
+/**
+ * Represents a gutter within a {@link TextEditor}.
+ *
+ * See {@link TextEditor#addGutter} for information on creating a gutter.
+ *
+ * @public
+ * @api-status Extended
+ */
 module.exports = class Gutter {
   constructor(gutterContainer, options) {
     this.gutterContainer = gutterContainer;
@@ -21,11 +26,16 @@ module.exports = class Gutter {
     this.emitter = new Emitter();
   }
 
-  /*
-  Section: Gutter Destruction
-  */
+  /**
+   * @category Gutter Destruction
+   */
 
-  // Essential: Destroys the gutter.
+  /**
+   * Destroys the gutter.
+   *
+   * @public
+   * @api-status Essential
+   */
   destroy() {
     if (this.name === "line-number") {
       throw new Error("The line-number gutter cannot be destroyed.");
@@ -36,34 +46,45 @@ module.exports = class Gutter {
     }
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: Calls your `callback` when the gutter's visibility changes.
-  //
-  // * `callback` {Function}
-  //  * `gutter` The gutter whose visibility changed.
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the gutter's visibility changes.
+   *
+   * @param {Function} callback
+   * @param callback.gutter - The gutter whose visibility changed.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeVisible(callback) {
     return this.emitter.on("did-change-visible", callback);
   }
 
-  // Essential: Calls your `callback` when the gutter is destroyed.
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Calls your `callback` when the gutter is destroyed.
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
   }
 
-  /*
-  Section: Visibility
-  */
+  /**
+   * @category Visibility
+   */
 
-  // Essential: Hide the gutter.
+  /**
+   * Hide the gutter.
+   *
+   * @public
+   * @api-status Essential
+   */
   hide() {
     if (this.visible) {
       this.visible = false;
@@ -72,7 +93,12 @@ module.exports = class Gutter {
     }
   }
 
-  // Essential: Show the gutter.
+  /**
+   * Show the gutter.
+   *
+   * @public
+   * @api-status Essential
+   */
   show() {
     if (!this.visible) {
       this.visible = true;
@@ -81,27 +107,31 @@ module.exports = class Gutter {
     }
   }
 
-  // Essential: Determine whether the gutter is visible.
-  //
-  // Returns a {Boolean}.
+  /**
+   * Determine whether the gutter is visible.
+   *
+   * @returns {Boolean}
+   * @public
+   * @api-status Essential
+   */
   isVisible() {
     return this.visible;
   }
 
-  // Essential: Add a decoration that tracks a {DisplayMarker}. When the marker moves,
-  // is invalidated, or is destroyed, the decoration will be updated to reflect
-  // the marker's state.
-  //
-  // ## Arguments
-  //
-  // * `marker` A {DisplayMarker} you want this decoration to follow.
-  // * `options` An {Object} representing the decoration. It is passed
-  //   to {TextEditor::decorateMarker} as its options argument and so supports
-  //   all options documented there.
-  //   * `type` __Caveat__: set to `'line-number'` if this is the line-number
-  //     gutter, `'gutter'` otherwise. This cannot be overridden.
-  //
-  // Returns a {Decoration} object
+  /**
+   * Add a decoration that tracks a {@link DisplayMarker}. When the marker moves,
+   * is invalidated, or is destroyed, the decoration will be updated to reflect
+   * the marker's state.
+   *
+   * ## Arguments
+   *
+   * @param marker - A {@link DisplayMarker} you want this decoration to follow.
+   * @param options - An `Object` representing the decoration. It is passed to {@link TextEditor#decorateMarker} as its options argument and so supports all options documented there.
+   * @param options.type - __Caveat__: set to `'line-number'` if this is the line-number gutter, `'gutter'` otherwise. This cannot be overridden.
+   * @returns {Decoration} object
+   * @public
+   * @api-status Essential
+   */
   decorateMarker(marker, options) {
     return this.gutterContainer.addGutterDecoration(this, marker, options);
   }

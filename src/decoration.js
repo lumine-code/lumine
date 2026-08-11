@@ -17,39 +17,42 @@ const normalizeDecorationProperties = function (decoration, decorationParams) {
   return decorationParams;
 };
 
-// Essential: Represents a decoration that follows a {DisplayMarker}. A decoration is
-// basically a visual representation of a marker. It allows you to add CSS
-// classes to line numbers in the gutter, lines, and add selection-line regions
-// around marked ranges of text.
-//
-// {Decoration} objects are not meant to be created directly, but created with
-// {TextEditor::decorateMarker}. eg.
-//
-// ```js
-// const range = editor.getSelectedBufferRange() // any range you like
-// const marker = editor.markBufferRange(range)
-// const decoration = editor.decorateMarker(marker, { type: 'line', class: 'my-line-class' })
-// ```
-//
-// Best practice for destroying the decoration is by destroying the {DisplayMarker}.
-//
-// ```js
-// marker.destroy()
-// ```
-//
-// You should only use {Decoration::destroy} when you still need or do not own
-// the marker.
+/**
+ * Represents a decoration that follows a {@link DisplayMarker}. A decoration is
+ * basically a visual representation of a marker. It allows you to add CSS
+ * classes to line numbers in the gutter, lines, and add selection-line regions
+ * around marked ranges of text.
+ *
+ * {@link Decoration} objects are not meant to be created directly, but created with
+ * {@link TextEditor#decorateMarker}. eg.
+ *
+ * ```js
+ * const range = editor.getSelectedBufferRange() // any range you like
+ * const marker = editor.markBufferRange(range)
+ * const decoration = editor.decorateMarker(marker, { type: 'line', class: 'my-line-class' })
+ * ```
+ *
+ * Best practice for destroying the decoration is by destroying the {@link DisplayMarker}.
+ *
+ * ```js
+ * marker.destroy()
+ * ```
+ *
+ * You should only use {@link Decoration#destroy} when you still need or do not own
+ * the marker.
+ *
+ * @public
+ * @api-status Essential
+ */
 module.exports = class Decoration {
-  // Private: Check if the `decorationProperties.type` matches `type`
-  //
-  // * `decorationProperties` {Object} eg. `{type: 'line-number', class: 'my-new-class'}`
-  // * `type` {String} type like `'line-number'`, `'line'`, etc. `type` can also
-  //   be an {Array} of {String}s, where it will return true if the decoration's
-  //   type matches any in the array.
-  //
-  // Returns {Boolean}
-  // Note: 'line-number' is a special subtype of the 'gutter' type. I.e., a
-  // 'line-number' is a 'gutter', but a 'gutter' is not a 'line-number'.
+  /**
+   * Check if the `decorationProperties.type` matches `type`
+   *
+   * @param {Object} decorationProperties - eg. `{type: 'line-number', class: 'my-new-class'}`
+   * @param {String} type - type like `'line-number'`, `'line'`, etc. `type` can also be an `Array` of `Strings`, where it will return true if the decoration's type matches any in the array.
+   * @returns {Boolean} Note: 'line-number' is a special subtype of the 'gutter' type. I.e., a 'line-number' is a 'gutter', but a 'gutter' is not a 'line-number'.
+   * @private
+   */
   static isType(decorationProperties, type) {
     // 'line-number' is a special case of 'gutter'.
     if (Array.isArray(decorationProperties.type)) {
@@ -71,9 +74,9 @@ module.exports = class Decoration {
     }
   }
 
-  /*
-  Section: Construction and Destruction
-  */
+  /**
+   * @category Construction and Destruction
+   */
 
   constructor(marker, decorationManager, properties) {
     this.marker = marker;
@@ -85,10 +88,15 @@ module.exports = class Decoration {
     this.markerDestroyDisposable = this.marker.onDidDestroy(() => this.destroy());
   }
 
-  // Essential: Destroy this marker decoration.
-  //
-  // You can also destroy the marker if you own it, which will destroy this
-  // decoration.
+  /**
+   * Destroy this marker decoration.
+   *
+   * You can also destroy the marker if you own it, which will destroy this
+   * decoration.
+   *
+   * @public
+   * @api-status Essential
+   */
   destroy() {
     if (this.destroyed) {
       return;
@@ -105,74 +113,98 @@ module.exports = class Decoration {
     return this.destroyed;
   }
 
-  /*
-  Section: Event Subscription
-  */
+  /**
+   * @category Event Subscription
+   */
 
-  // Essential: When the {Decoration} is updated via {Decoration::setProperties}.
-  //
-  // * `callback` {Function}
-  //   * `event` {Object}
-  //     * `oldProperties` {Object} the decoration's previous properties
-  //     * `newProperties` {Object} the decoration's new properties
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * When the {@link Decoration} is updated via {@link Decoration#setProperties}.
+   *
+   * @param {Function} callback
+   * @param {Object} callback.event
+   * @param {Object} callback.event.oldProperties - the decoration's previous properties
+   * @param {Object} callback.event.newProperties - the decoration's new properties
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidChangeProperties(callback) {
     return this.emitter.on("did-change-properties", callback);
   }
 
-  // Essential: Invoke the given callback when the {Decoration} is destroyed
-  //
-  // * `callback` {Function}
-  //
-  // Returns a {Disposable} on which `.dispose()` can be called to unsubscribe.
+  /**
+   * Invoke the given callback when the {@link Decoration} is destroyed
+   *
+   * @param {Function} callback
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   * @public
+   * @api-status Essential
+   */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
   }
 
-  /*
-  Section: Decoration Details
-  */
+  /**
+   * @category Decoration Details
+   */
 
-  // Essential: An id unique across all {Decoration} objects
+  /**
+   * An id unique across all {@link Decoration} objects
+   *
+   * @public
+   * @api-status Essential
+   */
   getId() {
     return this.id;
   }
 
-  // Essential: Returns the marker associated with this {Decoration}
+  /**
+   * @returns {DisplayMarker} marker associated with this {@link Decoration}
+   * @public
+   * @api-status Essential
+   */
   getMarker() {
     return this.marker;
   }
 
-  // Public: Check if this decoration is of type `type`
-  //
-  // * `type` {String} type like `'line-number'`, `'line'`, etc. `type` can also
-  //   be an {Array} of {String}s, where it will return true if the decoration's
-  //   type matches any in the array.
-  //
-  // Returns {Boolean}
+  /**
+   * Check if this decoration is of type `type`
+   *
+   * @param {String} type - type like `'line-number'`, `'line'`, etc. `type` can also be an `Array` of `Strings`, where it will return true if the decoration's type matches any in the array.
+   * @returns {Boolean}
+   * @public
+   * @api-status Public
+   */
   isType(type) {
     return Decoration.isType(this.properties, type);
   }
 
-  /*
-  Section: Properties
-  */
+  /**
+   * @category Properties
+   */
 
-  // Essential: Returns the {Decoration}'s properties.
+  /**
+   * @returns {Object} The decoration's properties.
+   * @public
+   * @api-status Essential
+   */
   getProperties() {
     return this.properties;
   }
 
-  // Essential: Update the marker with new Properties. Allows you to change the decoration's class.
-  //
-  // ## Examples
-  //
-  // ```js
-  // decoration.setProperties({ type: 'line-number', class: 'my-new-class' })
-  // ```
-  //
-  // * `newProperties` {Object} eg. `{type: 'line-number', class: 'my-new-class'}`
+  /**
+   * Update the marker with new Properties. Allows you to change the decoration's class.
+   *
+   * ## Examples
+   *
+   * ```js
+   * decoration.setProperties({ type: 'line-number', class: 'my-new-class' })
+   * ```
+   *
+   * @param {Object} newProperties - eg. `{type: 'line-number', class: 'my-new-class'}`
+   * @public
+   * @api-status Essential
+   */
   setProperties(newProperties) {
     if (this.destroyed) {
       return;
@@ -189,17 +221,17 @@ module.exports = class Decoration {
     });
   }
 
-  /*
-  Section: Utility
-  */
+  /**
+   * @category Utility
+   */
 
   inspect() {
     return `<Decoration ${this.id}>`;
   }
 
-  /*
-  Section: Private methods
-  */
+  /**
+   * @category Private methods
+   */
 
   matchesPattern(decorationPattern) {
     if (decorationPattern == null) {
