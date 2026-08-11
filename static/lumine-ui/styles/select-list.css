@@ -148,6 +148,7 @@
 .input-dialog {
   .message-line {
     margin-top: var(--component-padding);
+    text-align: center;
     /* Errors arrive pre-joined with newlines, and a plain div would run them
        together into one sentence. */
     white-space: pre-line;
