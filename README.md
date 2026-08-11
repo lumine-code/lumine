@@ -31,6 +31,10 @@ Website: https://lumine-code.github.io
 
 See [Installing Lumine](https://lumine-code.github.io/docs.html#getting-started/installing-lumine).
 
+## Development
+
+Language-server package authors should follow the [real-window LSP testing guide](docs/language-server-testing.md) in addition to the package's automated specs.
+
 ## Contributing
 
 Got ideas to make this package better, found a bug, or want to help add new features? Just drop your thoughts on GitHub. Any feedback is welcome!
