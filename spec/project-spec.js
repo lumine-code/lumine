@@ -971,7 +971,12 @@ describe("Project", () => {
     const CHANGE_NOTIFICATION_DEADLINE = 30000;
 
     const waitForEvents = (paths) => {
-      const remaining = new Set(paths.map((p) => fs.realpathSync(p)));
+      // No `realpathSync` here: project watchers are armed with
+      // `realPaths: false`, so an event names the file the way its root was
+      // registered. On macOS the temp directory is a symlink (`/var` ->
+      // `/private/var`), which is exactly the case that used to force a
+      // conversion on this side.
+      const remaining = new Set(paths);
       return new Promise((resolve, reject) => {
         let expireTimeoutId;
         checkCallback = () => {
@@ -1016,12 +1021,11 @@ describe("Project", () => {
         // delivering before the real writes: touch a probe file (with fresh
         // content each attempt) until its event arrives.
         const probeFile = path.join(dirOne, "probe.txt");
-        const probeRealPath = () => fs.realpathSync(probeFile);
         await new Promise((resolve) => {
           let probeCount = 0;
           let probeTimer;
           checkCallback = () => {
-            if (events.some((event) => event.path === probeRealPath())) {
+            if (events.some((event) => event.path === probeFile)) {
               clearInterval(probeTimer);
               resolve();
             }
@@ -1044,6 +1048,53 @@ describe("Project", () => {
       },
       CHANGE_NOTIFICATION_DEADLINE,
     );
+
+    // POSIX only: creating a symlink on Windows needs elevation or Developer
+    // Mode, so the fixture cannot be built there reliably.
+    if (process.platform !== "win32") {
+      it(
+        "reports paths spelled the way the root was registered, not resolved",
+        async () => {
+          jasmine.useRealClock();
+          const realDir = fs.realpathSync(temp.mkdirSync("lumine-spec-project-real"));
+          const linkDir = path.join(temp.mkdirSync("lumine-spec-project-link"), "link");
+          fs.symlinkSync(realDir, linkDir);
+
+          await stopAllWatchers();
+
+          lumine.project.setPaths([linkDir]);
+          await lumine.project.getWatcherPromise(linkDir);
+
+          const probeFile = path.join(linkDir, "probe.txt");
+          await new Promise((resolve) => {
+            let probeCount = 0;
+            let probeTimer;
+            checkCallback = () => {
+              if (events.some((event) => event.path === probeFile)) {
+                clearInterval(probeTimer);
+                resolve();
+              }
+            };
+            const probe = () => {
+              probeCount++;
+              fs.writeFileSync(probeFile, `probe ${probeCount}`);
+            };
+            probeTimer = setInterval(probe, 500);
+            probe();
+          });
+          events = [];
+
+          const linkedFile = path.join(linkDir, "under-link.txt");
+          fs.writeFileSync(linkedFile, "hello\n");
+          await waitForEvents([linkedFile]);
+          // The whole point: a consumer can compare an event path against a path
+          // it stored. Reporting the resolved spelling here is what silently
+          // broke icon invalidation and every package-side path cache.
+          expect(events.every((event) => !event.path.startsWith(realDir))).toBe(true);
+        },
+        CHANGE_NOTIFICATION_DEADLINE,
+      );
+    }
   });
 
   describe(".onDidAddBuffer()", () => {

@@ -627,7 +627,7 @@ class ParcelWatcher extends WorkerProcessWatcher {
  * const disposable = await watchPath('/var/log', {}, events => {
  *   console.log(`Received batch of ${events.length} events.`)
  *   for (const event of events) {
- *     // "created", "modified", "deleted", "renamed"
+ *     // "created", "updated", "deleted", "renamed"
  *     console.log(`Event action: ${event.action}`)
  *
  *     // absolute path to the filesystem entry that was touched
@@ -649,11 +649,14 @@ class ParcelWatcher extends WorkerProcessWatcher {
  *
  * * `rootPath` `String` specifies the absolute path to the root of the
  *   filesystem content to watch.
- * * `options` Control the watcher's behavior. Currently a placeholder.
+ * * `options` Control the watcher's behavior:
+ *   * `realPaths` `Boolean` whether to report the real path on disk for each
+ *     event. Default `true`; `false` reports paths that descend from
+ *     `rootPath` even where symlinks point elsewhere.
  * * `eventCallback` `Function` to be called each time a batch of filesystem
  *   events is observed. Each event object has the keys:
  *   * `action`, a `String` describing the filesystem action that occurred, one
- *     of `"created"`, `"modified"`, `"deleted"`, or `"renamed"`;
+ *     of `"created"`, `"updated"`, `"deleted"`, or `"renamed"`;
  *   * `path`, a `String` containing the absolute path to the filesystem entry
  *     that was acted upon;
  *   * `oldPath` (for `renamed` events only), a `String` containing the
@@ -948,7 +951,12 @@ class PathWatcher {
           // deletion, so single-file watchers can track the moved file.
           filtered.push(this.denormalizeEvent(event));
         } else if (srcWatched && destWatched) {
-          filtered.push(event);
+          // Both ends are inside the watch root, so the event survives whole —
+          // but it still carries real paths, and every other branch here
+          // denormalizes. Skipping it leaked resolved spellings out of an
+          // in-tree rename while a rename into or out of the tree reported the
+          // subscribed one.
+          filtered.push(this.denormalizeEvent(event));
         } else if (srcWatched && !destWatched) {
           filtered.push(
             this.denormalizeEvent({
@@ -1118,7 +1126,7 @@ class PathWatcherManager {
  * const disposable = await watchPath('/var/log', {}, events => {
  *   console.log(`Received batch of ${events.length} events.`)
  *   for (const event of events) {
- *     // "created", "modified", "deleted", "renamed"
+ *     // "created", "updated", "deleted", "renamed"
  *     console.log(`Event action: ${event.action}`)
  *     // absolute path to the filesystem entry that was touched
  *     console.log(`Event path: ${event.path}`)
@@ -1139,7 +1147,7 @@ class PathWatcherManager {
  * @param {Boolean} options.realPaths - Whether to report real paths on disk for filesystem events. Default is `true`; `false` reports paths that descend from `rootPath` even when symlinks point elsewhere.
  * @param {Function} eventCallback - or other callable to be called each time a batch of filesystem events is observed.
  * @param {Array} eventCallback.events - of objects that describe the events that have occurred.
- * @param {String} eventCallback.events.action - describing the filesystem action that occurred. One of `"created"`, `"modified"`, `"deleted"`, or `"renamed"`.
+ * @param {String} eventCallback.events.action - describing the filesystem action that occurred. One of `"created"`, `"updated"`, `"deleted"`, or `"renamed"`. A recursive watch never reports `"renamed"`: it reports a move as a `"deleted"` and a `"created"`.
  * @param {String} eventCallback.events.path - containing the absolute path to the filesystem entry that was acted upon.
  * @param eventCallback.events.oldPath - For rename events, `String` containing the filesystem entry's former absolute path.
  * @returns {Promise<PathWatcher>} A promise resolving to the started watcher. Every watcher is also a `Disposable`.
@@ -1198,7 +1206,7 @@ function watchFile(filePath) {
             emitter.emit("did-rename", event.path);
           }
         } else {
-          // "created" or "modified"
+          // "created" or "updated"
           emitter.emit("did-change");
         }
       }

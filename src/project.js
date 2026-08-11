@@ -251,20 +251,26 @@ module.exports = class Project extends Model {
    * ```js
    * const disposable = lumine.project.onDidChangeFiles(events => {
    *   for (const event of events) {
-   *     // "created", "modified", "deleted", or "renamed"
+   *     // "created", "updated", or "deleted"
    *     console.log(`Event action: ${event.action}`)
    *
    *     // absolute path to the filesystem entry that was touched
    *     console.log(`Event path: ${event.path}`)
-   *
-   *     if (event.action === 'renamed') {
-   *       console.log(`.. renamed from: ${event.oldPath}`)
-   *     }
    *   }
    * })
    *
    * disposable.dispose()
    * ```
+   *
+   * Project roots are watched recursively, and the recursive backend reports a
+   * move as a `"deleted"` followed by a `"created"` — it never emits
+   * `"renamed"` and never sets `oldPath`. Handle the move as the two events it
+   * arrives as; a `"renamed"` branch written against this method is dead code.
+   * Only the non-recursive watchers behind {@link PathWatcher} report renames.
+   *
+   * Paths are absolute and spelled the way the root was registered, matching
+   * {@link #getPaths} and {@link #relativizePath}, so an event path can be
+   * compared against a stored one directly.
    *
    * To watch paths outside of open projects, use the `watchPaths` function instead; see {@link PathWatcher}.
    *
@@ -274,9 +280,8 @@ module.exports = class Project extends Model {
    *
    * @param {Function} callback - to be called with batches of filesystem events reported by the operating system.
    * @param callback.events - An `Array` of objects that describe a batch of filesystem events.
-   * @param {String} callback.events.action - describing the filesystem action that occurred. One of `"created"`, `"modified"`, `"deleted"`, or `"renamed"`.
+   * @param {String} callback.events.action - describing the filesystem action that occurred. One of `"created"`, `"updated"`, or `"deleted"`.
    * @param {String} callback.events.path - containing the absolute path to the filesystem entry that was acted upon.
-   * @param callback.events.oldPath - For rename events, `String` containing the filesystem entry's former absolute path.
    * @returns {Disposable} to manage this event subscription.
    */
   onDidChangeFiles(callback) {
@@ -519,10 +524,18 @@ module.exports = class Project extends Model {
     // We'll use the directory's custom onDidChangeFiles callback, if available.
     // CustomDirectory::onDidChangeFiles should match the signature of
     // Project::onDidChangeFiles below (although it may resolve asynchronously)
+    //
+    // `realPaths: false` so events come back spelled the way the root was
+    // registered. A watcher resolves its root with `fs.realpath` and would
+    // otherwise report a symlinked root's files under the link's target, and on
+    // Windows an 8.3 alias under its long name — while `getPaths()`,
+    // `getDirectories()` and `relativizePath()` all speak the registered
+    // spelling. Nothing else reconciles the two, so every consumer comparing an
+    // event path against a path it stored got this subtly wrong.
     const watcherPromise =
       directory.onDidChangeFiles != null
         ? Promise.resolve(directory.onDidChangeFiles(didChangeCallback))
-        : watchPath(directory.getPath(), {}, didChangeCallback);
+        : watchPath(directory.getPath(), { realPaths: false }, didChangeCallback);
     // A watch that fails to arm (root deleted mid-arm, watcher-worker restart)
     // must not surface as an unhandled rejection attributed to unrelated work;
     // consumers still observe the failure through getWatcherPromise.
