@@ -80,7 +80,7 @@
     "grammar-selector": "github:lumine-code/grammar-selector#b0fb17f93b99d87231a53a285ee8f52ea703d3dc",
     "gray-matter": "^4.0.3",
     "hyperclick": "github:lumine-code/hyperclick#afe645b671c2ea39023e557f8712f472364cfb4d",
-    "ide-client": "github:lumine-code/ide-client#7cc953196e4945de42c663e575605788163ba6ec",
+    "ide-client": "github:lumine-code/ide-client#744f4b86f7b0cc42edc5d589c23d452d30d643f8",
     "ide-dockerfile": "github:lumine-code/ide-dockerfile#68b1c8a8829fa1735632e447058bb66984ba6ba0",
     "ide-graphql": "github:lumine-code/ide-graphql#bf023513ed55c7d326fb52ac3e8ac5cb7e7d5ef9",
     "ide-vue": "github:lumine-code/ide-vue#65f1c87052eed2756f05d033215509f108b87a2e",
