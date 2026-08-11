@@ -100,7 +100,7 @@ module.exports = class PasteProviderRegistry {
    * directory row reaches the same providers an editor paste would.
    *
    * @param context - An `Object` describing the paste, with the following keys:
-   * @param context.target - An `Object` naming where the paste lands. Today that is `{type: 'text-editor', editor}` or `{type: 'directory', path}`. Always branch on `type` and return `false` for one you do not recognize — the set grows as more of the workspace offers its pastes here.
+   * @param context.target - An `Object` naming where the paste lands. Today that is `{type: 'text-editor', editor}`, `{type: 'directory', path}`, or `{type: 'terminal', model, path}` — where `path` is the directory the terminal was launched in. Always branch on `type` and return `false` for one you do not recognize — the set grows as more of the workspace offers its pastes here.
    * @param [context.clipboard] - The {@link Clipboard} to read the paste from. Inside a native paste event this is a DataTransfer-backed clipboard, so `readWithMetadata()` sees the metadata of the window that did the copy; outside one it is `lumine.clipboard`. Absent when the caller is not a text editor.
    * @param [context.clipboardData] - The event's `DataTransfer`, or `null` when the paste did not arrive as a native paste event. Custom formats and non-text items such as files and images are readable only from here.
    * @param [context.options] - An `Object` of the paste options the editor would otherwise have used, such as `autoIndent` and `normalizeLineEndings`.
