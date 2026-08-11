@@ -44,40 +44,6 @@ function pathDepth(relativePath) {
   return relativePath.split(/[\\/]+/).filter(Boolean).length;
 }
 
-function gitAliasesFor(repository, cache) {
-  if (!cache.has(repository)) {
-    let gitDirectory = null;
-    try {
-      gitDirectory = repository.getPath?.();
-    } catch {
-      // Destroyed mid-batch. Its schedulers no-op, so no aliases are needed.
-    }
-    cache.set(repository, gitDirectory ? pathAliases(gitDirectory) : []);
-  }
-  return cache.get(repository);
-}
-
-// Where a directory sits inside a repository's Git directory: a "/"-joined
-// relative path, `""` for the Git directory itself, or `null` for anything in
-// the working tree.
-//
-// The Git directory's aliases are resolved once per repository, but a watched
-// path is only canonicalized when it carries an unresolved Windows 8.3 alias —
-// the same guard {@link #getForPath} uses, and for the same reason: one batch can
-// hold thousands of directories and none of them should cost a `realpath`.
-function gitDirectoryRelativePath(gitAliases, directoryPath) {
-  if (gitAliases.length === 0) return null;
-
-  const normalizedDirectory = normalizePath(directoryPath);
-  const relativePath = relativeToAny(gitAliases, normalizedDirectory);
-  if (relativePath != null) return relativePath;
-
-  if (process.platform === "win32" && /~\d/.test(normalizedDirectory)) {
-    return relativeToAny(gitAliases, canonicalPath(directoryPath));
-  }
-  return null;
-}
-
 // `relativeToAny` across both sides' aliases: `""` when the two name the same
 // directory, a "/"-joined relative path when the child is below the parent, and
 // `null` when it is not.
@@ -103,8 +69,8 @@ function relativeToAny(parentPaths, childPath) {
   return null;
 }
 
-// Which snapshots one changed path can have invalidated: `"status"`, `"both"`,
-// or `"none"`.
+// Which snapshots one changed path can have invalidated: `"status"`, `"refs"`,
+// `"both"`, or `"none"`.
 //
 // Anything in the working tree is a status change. Inside the Git directory
 // most write traffic is noise — the loose objects a fetch unpacks, the lock
@@ -117,7 +83,19 @@ function refreshHintForChange(gitRelativeDirectory, name) {
   if (section === "objects") return "none";
   if (section === "refs" || section === "logs") return "both";
   if (section === "" && (name === "HEAD" || name === "packed-refs")) return "both";
+  // A linked worktree appearing or disappearing changes this repository's
+  // worktree list and nothing else about it. Its own Git directory routes to
+  // its own entry once it is registered; this covers the worktrees nobody has
+  // opened, and the moment one is created or pruned.
+  if (section === "worktrees") return "refs";
   return "status";
+}
+
+// Combine the hints two changes leave on one repository. Nothing outranks
+// "both", and any two different hints together are "both".
+function mergeRefreshHints(current, next) {
+  if (current == null || current === next) return next;
+  return "both";
 }
 
 /**
@@ -1864,26 +1842,13 @@ module.exports = class RepositoryRegistry {
     // the paths in one arrive in runs from the same directory. Everything the
     // classification needs is a property of the directory, so each one is
     // resolved — aliases and all — exactly once per batch.
-    const gitAliasesByRepository = new Map();
-    const contextByDirectory = new Map();
-    const contextFor = (changedPath) => {
+    const contextsByDirectory = new Map();
+    const contextsFor = (changedPath) => {
       const directoryPath = path.dirname(changedPath);
-      if (!contextByDirectory.has(directoryPath)) {
-        const repository = this.getForPath(changedPath);
-        contextByDirectory.set(
-          directoryPath,
-          repository
-            ? {
-                repository,
-                gitRelativeDirectory: gitDirectoryRelativePath(
-                  gitAliasesFor(repository, gitAliasesByRepository),
-                  directoryPath,
-                ),
-              }
-            : null,
-        );
+      if (!contextsByDirectory.has(directoryPath)) {
+        contextsByDirectory.set(directoryPath, this.changeContextsFor(changedPath, directoryPath));
       }
-      return contextByDirectory.get(directoryPath);
+      return contextsByDirectory.get(directoryPath);
     };
 
     const pending = new Map();
@@ -1891,23 +1856,85 @@ module.exports = class RepositoryRegistry {
       for (const changedPath of [event.path, event.oldPath]) {
         if (!changedPath) continue;
 
-        const context = contextFor(changedPath);
-        if (!context || pending.get(context.repository) === "both") continue;
+        const name = path.basename(changedPath);
+        for (const context of contextsFor(changedPath)) {
+          if (pending.get(context.repository) === "both") continue;
 
-        const hint = refreshHintForChange(context.gitRelativeDirectory, path.basename(changedPath));
-        if (hint === "none") continue;
-        if (hint === "both" || !pending.has(context.repository)) {
-          pending.set(context.repository, hint);
+          const hint = refreshHintForChange(context.gitRelativeDirectory, name);
+          if (hint === "none") continue;
+          pending.set(context.repository, mergeRefreshHints(pending.get(context.repository), hint));
         }
       }
     }
 
     for (const [repository, hint] of pending) {
-      repository.scheduleStatusSnapshotRefresh();
+      if (hint !== "refs") repository.scheduleStatusSnapshotRefresh();
       // Re-reading the refs costs several Git processes, so it is reserved for
-      // the entries that can actually have moved a ref.
-      if (hint === "both") repository.scheduleRefsSnapshotRefresh();
+      // the entries that can actually have moved a ref or a worktree.
+      if (hint !== "status") repository.scheduleRefsSnapshotRefresh();
     }
+  }
+
+  // Which repositories one changed path belongs to, and where it sits inside
+  // each one's Git directory.
+  //
+  // A path inside a Git directory routes by that directory rather than by a
+  // working tree, because the two disagree for a linked worktree: its Git
+  // directory lives under its main repository's, so a working-tree match hands
+  // every one of its HEAD moves to the main repository and never tells the
+  // worktree's own entry at all. The deepest Git directory containing the path
+  // owns the change, exactly as the deepest working directory does for an
+  // ordinary file.
+  //
+  // Every enclosing repository is told as well, classified by where the change
+  // sits inside *its* Git directory — which says the right thing on its own: a
+  // linked worktree's HEAD is `worktrees/<name>/HEAD` to the main repository,
+  // and only its worktree list carries that, while a submodule's is
+  // `modules/<name>/HEAD`, which does move the gitlink its status reports.
+  changeContextsFor(changedPath, directoryPath) {
+    const gitMatches = this.matchGitDirectories(directoryPath);
+    if (gitMatches.length > 0) {
+      return gitMatches.map(({ entry, relativePath }) => ({
+        repository: entry.repository,
+        gitRelativeDirectory: relativePath,
+      }));
+    }
+
+    const repository = this.getForPath(changedPath);
+    return repository ? [{ repository, gitRelativeDirectory: null }] : [];
+  }
+
+  // The registered entries whose Git directory contains a directory, deepest
+  // first, each with that directory's "/"-joined path inside it (`""` for the
+  // Git directory itself).
+  //
+  // Git-directory aliases are resolved once, when a repository is registered.
+  // A watched path is only canonicalized when it carries an unresolved Windows
+  // 8.3 alias — the same guard {@link #getForPath} uses, and for the same reason:
+  // one batch can hold thousands of directories and none should cost a
+  // `realpath`.
+  matchGitDirectories(directoryPath) {
+    const normalizedDirectory = normalizePath(directoryPath);
+    const matches = this.collectGitDirectoryMatches(normalizedDirectory);
+    if (matches.length > 0) return matches;
+
+    if (process.platform === "win32" && /~\d/.test(normalizedDirectory)) {
+      return this.collectGitDirectoryMatches(canonicalPath(directoryPath));
+    }
+    return matches;
+  }
+
+  collectGitDirectoryMatches(normalizedDirectory) {
+    const matches = [];
+    for (const entry of this.entriesById.values()) {
+      if (entry.missing || entry.repository.isDestroyed?.()) continue;
+      const relativePath = relativeToAny(entry.gitDirectoryAliases, normalizedDirectory);
+      if (relativePath != null) matches.push({ entry, relativePath });
+    }
+    // A shorter relative path means a closer Git directory, so this puts the
+    // owning repository first and its enclosing ones behind it.
+    matches.sort((a, b) => a.relativePath.length - b.relativePath.length);
+    return matches;
   }
 
   discoverRepositoriesForFileChanges(events) {
@@ -2045,6 +2072,7 @@ module.exports = class RepositoryRegistry {
 
     const workingDirectory = repository.getWorkingDirectory();
     const openedWorkingDirectory = repository.openedWorkingDirectoryPath;
+    const gitDirectory = repository.getPath?.() || null;
     const id = this.repositoryId(repository, workingDirectory);
     const existing = this.entriesById.get(id);
     if (existing) return existing;
@@ -2059,6 +2087,11 @@ module.exports = class RepositoryRegistry {
       routingDirectories: Array.from(
         new Set([workingDirectory, openedWorkingDirectory].filter(Boolean).flatMap(pathAliases)),
       ),
+      // Deliberately not in routingDirectories: that array decides which paths
+      // *belong* to the repository, and a Git directory belongs to no working
+      // tree. Adding it there would let a `.git`-only path claim root
+      // ownership in repositoryRelatesToRoot.
+      gitDirectoryAliases: gitDirectory ? pathAliases(gitDirectory) : [],
       rootOwners: new Set(),
       bufferOwners: new Set(),
       manualOwners: new Set(),

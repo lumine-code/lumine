@@ -8,9 +8,11 @@ const RepositoryRegistry = require("../src/repository-registry");
 const ServiceHub = require("../src/service-hub");
 
 class FakeRepository {
-  constructor(workingDirectory) {
+  // A linked worktree's Git directory is not `<workdir>/.git` but a directory
+  // under the main repository's, so it is passed in for those.
+  constructor(workingDirectory, gitDirectory = path.join(workingDirectory, ".git")) {
     this.workingDirectory = workingDirectory;
-    this.gitDirectory = path.join(workingDirectory, ".git");
+    this.gitDirectory = gitDirectory;
     fs.mkdirSync(this.gitDirectory, { recursive: true });
     this.emitter = new Emitter();
     this.destroyed = false;
@@ -1333,6 +1335,74 @@ describe("RepositoryRegistry", () => {
 
       expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    });
+
+    // A linked worktree's Git directory lives under its main repository's, so
+    // routing by working tree hands every one of its HEAD moves to the main
+    // repository and never tells the worktree's own entry at all.
+    describe("with a linked worktree", () => {
+      let worktree, worktreePath, worktreeGitDirectory;
+
+      beforeEach(() => {
+        worktreePath = temp.mkdirSync("watched-worktree");
+        worktreeGitDirectory = path.join(repository.getPath(), "worktrees", "feature");
+        worktree = new FakeRepository(worktreePath, worktreeGitDirectory);
+        repositories.push(worktree);
+        registry.setProjectRoots([directoryFor(workingDirectory), directoryFor(worktreePath)]);
+        for (const each of [repository, worktree]) {
+          each.scheduledStatusSnapshotRefreshCount = 0;
+          each.scheduledRefsSnapshotRefreshCount = 0;
+        }
+      });
+
+      it("routes a worktree HEAD move to the worktree, and its list to the main repository", () => {
+        project.emitFileChanges([
+          { action: "modified", path: path.join(worktreeGitDirectory, "HEAD") },
+        ]);
+
+        expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
+        expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(1);
+        // The main repository's own working tree and index cannot have moved;
+        // only the worktree list it reports carries that worktree's HEAD.
+        expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+        expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+      });
+
+      it("refreshes the main repository's refs when a worktree is created", () => {
+        project.emitFileChanges([
+          {
+            action: "created",
+            path: path.join(repository.getPath(), "worktrees", "unopened"),
+          },
+        ]);
+
+        expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+        expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+        expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
+      });
+
+      it("still routes each working tree to its own repository", () => {
+        project.emitFileChanges([
+          { action: "modified", path: path.join(worktreePath, "one.txt") },
+          { action: "modified", path: path.join(workingDirectory, "two.txt") },
+        ]);
+
+        expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
+        expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
+        expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+        expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+      });
+
+      // The lock file every Git write pairs with is still noise, wherever it is.
+      it("ignores lock files inside a worktree Git directory", () => {
+        project.emitFileChanges([
+          { action: "created", path: path.join(worktreeGitDirectory, "HEAD.lock") },
+        ]);
+
+        expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(0);
+        expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
+        expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+      });
     });
 
     // Discovery is opt-in and expensive; keeping a window's colours honest is
