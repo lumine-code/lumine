@@ -56,6 +56,31 @@ describe("ContextMenuManager", function () {
       expect(contextMenu.templateForElement(grandchild)).toEqual([]);
     });
 
+    it("stops inheriting above an element that declares a context-menu boundary", function () {
+      // An embedded surface — a result bubble, a rendered widget — owns its
+      // context menu: its host's items would not apply inside it. The
+      // boundary element's own level still contributes.
+      contextMenu.add({
+        ".parent": [{ label: "A", command: "a" }],
+        ".child": [{ label: "B", command: "b" }],
+        ".grandchild": [{ label: "C", command: "c" }],
+      });
+
+      child.setAttribute("data-context-menu-boundary", "");
+      expect(contextMenu.templateForElement(grandchild)).toEqual([
+        { label: "C", id: "C", command: "c" },
+        { label: "B", id: "B", command: "b" },
+      ]);
+
+      // Clicking outside the boundary still sees the ancestor's items.
+      child.removeAttribute("data-context-menu-boundary");
+      expect(contextMenu.templateForElement(grandchild)).toEqual([
+        { label: "C", id: "C", command: "c" },
+        { label: "B", id: "B", command: "b" },
+        { label: "A", id: "A", command: "a" },
+      ]);
+    });
+
     it("can add submenu items to existing menus that can be removed with the returned disposable", function () {
       const disposable1 = contextMenu.add({
         ".grandchild": [{ label: "A", submenu: [{ label: "B", command: "b" }] }],

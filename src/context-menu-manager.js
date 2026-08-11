@@ -176,6 +176,15 @@ module.exports = class ContextMenuManager {
       for (let item of currentTargetItems) {
         MenuHelpers.merge(template, item, false);
       }
+      // An element carrying `data-context-menu-boundary` owns its context
+      // menu outright: an embedded surface — a result bubble, a rendered
+      // widget — whose host's items would not apply inside it. Its own level
+      // still contributes; nothing above it does. Selectors can otherwise
+      // only add, so without this every embedded surface inherits its host's
+      // entire menu.
+      if (currentTarget.hasAttribute?.("data-context-menu-boundary")) {
+        break;
+      }
       currentTarget = currentTarget.parentElement;
     }
     this.pruneRedundantSeparators(template);
