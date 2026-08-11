@@ -41,7 +41,10 @@ const ALT_TIER = new Map([
 
 // Chord prefixes, and the packages allowed to bind under them.
 const ALT_FAMILIES = new Map([
-  ["alt-g", ["git-panel", "github-panel", "open-repository", "git-diff", "git-command"]],
+  [
+    "alt-g",
+    ["git-panel", "github-panel", "open-repository", "git-diff", "git-command", "git-center"],
+  ],
   [
     "alt-j",
     [
