@@ -11,7 +11,12 @@ class TextEditorElement extends HTMLElement {
     super();
     this.emitter = new Emitter();
     this.initialText = this.textContent;
-    if (this.tabIndex == null) this.tabIndex = -1;
+    // Deliberately no `tabIndex` here: a custom element constructor may not add
+    // attributes, and assigning one fails silently rather than loudly. Chromium
+    // reports an uncaught NotSupportedError and `createElement` hands back a bare
+    // HTMLUnknownElement with none of this class on it, so every editor would
+    // break somewhere downstream instead of at the call site. The component reads
+    // any author-set value in its constructor, then sets its own in `buildShell`.
     this.addEventListener("focus", (event) => this.getComponent().didFocus(event));
     this.addEventListener("blur", (event) => this.getComponent().didBlur(event));
   }
