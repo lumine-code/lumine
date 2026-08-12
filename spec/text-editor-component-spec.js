@@ -2490,6 +2490,67 @@ describe("TextEditorComponent", () => {
       expect(Math.abs(anchorOffset() - initialOffset)).toBeLessThan(0.001);
     });
 
+    it("pins the scroll anchor to a block decoration while its size is dragged", async () => {
+      // Growing a block decoration displaces everything after it, and the
+      // measure pass answers by holding the cursor's row still — which slides
+      // the decoration itself by whatever the growth added. Right for content
+      // that resized itself; wrong for a hand on a resize handle, where the
+      // decoration is the one thing on screen that must not move.
+      const { component, editor, element } = buildComponent({
+        text: "line\n".repeat(200),
+        rowsPerTile: 3,
+        autoHeight: false,
+        attach: true,
+      });
+      await setEditorHeightInLines(component, 20);
+
+      const marker = editor.markScreenPosition([100, 0], { invalidate: "never" });
+      const item = document.createElement("div");
+      item.style.width = "30px";
+      item.style.height = "40px";
+      const decoration = editor.decorateMarker(marker, {
+        type: "block",
+        item,
+        position: "after",
+      });
+      await component.getNextUpdatePromise();
+
+      await setScrollTop(component, 98 * component.getLineHeight());
+      // On screen and below the decoration, so it is what the measure pass
+      // would otherwise hold still.
+      editor.setCursorScreenPosition([102, 0]);
+      await component.getNextUpdatePromise();
+
+      const decorationTop = () =>
+        item.getBoundingClientRect().top - element.getBoundingClientRect().top;
+      const grow = async (height) => {
+        item.style.height = `${height}px`;
+        component.invalidateBlockDecorationDimensions(decoration);
+        await component.getNextUpdatePromise();
+      };
+
+      // Unpinned: the cursor row holds its place, so the decoration climbs out
+      // from under the pointer by everything the drag just added.
+      const beforeGrowth = decorationTop();
+      await grow(140);
+      expect(decorationTop()).toBeCloseTo(beforeGrowth - 100, 0);
+
+      // Pinned: the decoration's own top is what holds, however many passes the
+      // gesture takes.
+      const pin = component.pinScrollAnchorToBlockDecoration(decoration);
+      const pinnedTop = decorationTop();
+      await grow(240);
+      expect(decorationTop()).toBeCloseTo(pinnedTop, 0);
+      await grow(340);
+      expect(decorationTop()).toBeCloseTo(pinnedTop, 0);
+
+      // Released, and the cursor is in charge again.
+      pin.dispose();
+      const afterRelease = decorationTop();
+      await grow(440);
+      expect(decorationTop()).toBeCloseTo(afterRelease - 100, 0);
+    });
+
     it("announces measured block decoration heights as a decoration update", async () => {
       // A consumer projecting rows to pixels — a scrollbar map — reads block
       // heights but cannot observe an off-screen element growing; the measure

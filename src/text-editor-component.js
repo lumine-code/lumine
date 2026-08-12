@@ -1,3 +1,4 @@
+const { Disposable } = require("@lumine-code/event-kit");
 const { Point, Range } = require("./text-buffer");
 const LineTopIndex = require("./line-top-index");
 const TextEditor = require("./text-editor");
@@ -178,6 +179,10 @@ module.exports = class TextEditorComponent {
     // source position, so reflows re-apply this anchor instead until the user
     // scrolls, moves the cursor, or edits.
     this.settlingScrollAnchor = null;
+    // A block decoration the user is dragging the size of, which outranks both
+    // of captureScrollAnchor's usual choices for as long as the gesture lasts.
+    // See pinScrollAnchorToBlockDecoration.
+    this.scrollAnchorBlockDecoration = null;
     // Coalesces width-driven soft-wrap reflows when softWrapDebounceInterval > 0.
     this.softWrapDebounceTimer = null;
     this.flushingSoftWrapColumn = false;
@@ -3942,12 +3947,47 @@ module.exports = class TextEditorComponent {
     this.scheduleUpdate();
   }
 
+  /**
+   * Pins the viewport to a block decoration for the duration of a gesture that
+   * resizes it, and returns a Disposable that ends the pin.
+   *
+   * A block decoration whose height changes displaces everything after it, and
+   * the measure pass answers that by holding the anchor captured below still —
+   * the cursor's row, or the viewport midpoint. Both are the right answer for
+   * content that resized itself: a plot finishing its layout should not shove
+   * the line you are reading around. Neither is the right answer for a hand on
+   * a resize handle. The decoration is then the one thing on screen that must
+   * not move, and anchoring anywhere else moves it: pinning a row below it
+   * slides the whole decoration by whatever the drag just added, so the handle
+   * climbs out from under the pointer at exactly twice the speed it is dragged.
+   *
+   * The row the decoration is attached to is what gets anchored, and its offset
+   * is measured before that row's blocks — which is the decoration's own top
+   * edge for a `before` decoration, and above the line it follows for an `after`
+   * one. Either way the top edge holds still and the decoration grows downward,
+   * which is what a hand on the bottom-right corner is asking for.
+   *
+   * @param {Decoration} decoration a block decoration being interactively sized
+   * @returns {Disposable}
+   */
+  pinScrollAnchorToBlockDecoration(decoration) {
+    this.scrollAnchorBlockDecoration = decoration;
+    return new Disposable(() => {
+      // Only if it is still ours: a second gesture that started before this one
+      // was disposed owns the pin, and must not have it taken away.
+      if (this.scrollAnchorBlockDecoration === decoration) {
+        this.scrollAnchorBlockDecoration = null;
+      }
+    });
+  }
+
   // Records a viewport anchor in buffer coordinates that survives a soft-wrap
-  // reflow. The last cursor is anchored whenever it is on-screen, regardless
-  // of how the viewport last moved; otherwise the row at the vertical midpoint
-  // of the viewport is anchored. `offset` is the pixel distance from the
-  // viewport top to the top of the anchored row, so the row can be placed back
-  // at the same visual position after re-wrapping.
+  // reflow. A block decoration pinned by a resize gesture wins outright; failing
+  // that the last cursor is anchored whenever it is on-screen, regardless of how
+  // the viewport last moved; otherwise the row at the vertical midpoint of the
+  // viewport is anchored. `offset` is the pixel distance from the viewport top
+  // to the top of the anchored row, so the row can be placed back at the same
+  // visual position after re-wrapping.
   captureScrollAnchor() {
     if (!this.hasInitialMeasurements) return null;
 
@@ -3956,9 +3996,23 @@ module.exports = class TextEditorComponent {
 
     let screenRow = null;
     let bufferPosition = null;
+
+    const pinned = this.scrollAnchorBlockDecoration;
+    if (pinned && !pinned.isDestroyed()) {
+      const marker = pinned.getMarker();
+      if (marker.isValid()) {
+        bufferPosition = marker.getStartBufferPosition();
+        screenRow = model.screenPositionForBufferPosition(bufferPosition).row;
+      }
+    }
+
     const cursorScreenPosition = model.getCursorScreenPosition();
     const cursorRow = cursorScreenPosition.row;
-    if (cursorRow >= this.getFirstVisibleRow() && cursorRow <= this.getLastVisibleRow()) {
+    if (
+      screenRow === null &&
+      cursorRow >= this.getFirstVisibleRow() &&
+      cursorRow <= this.getLastVisibleRow()
+    ) {
       screenRow = cursorRow;
       // Anchor the cursor's actual buffer position, not column 0 of its
       // current wrapped screen row. After the width changes, that wrapped

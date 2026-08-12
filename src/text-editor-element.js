@@ -353,6 +353,24 @@ class TextEditorElement extends HTMLElement {
     this.getComponent().invalidateBlockDecorationDimensions(blockDecoration);
   }
 
+  /**
+   * Holds the viewport against a block decoration while the user drags its size,
+   * instead of against the cursor's row or the viewport midpoint.
+   *
+   * The measure pass holds one of those two still whenever a block decoration's
+   * height changes, which is right for content that resized itself and wrong for
+   * a hand on a resize handle: anchoring anywhere but the decoration slides the
+   * decoration itself, and the handle leaves the pointer behind. An item owner
+   * that lets the user drag a block decoration's size opens this for the length
+   * of the gesture and disposes it on release.
+   *
+   * @param {Decoration} blockDecoration the decoration being interactively sized
+   * @returns {Disposable} ends the pin
+   */
+  pinScrollAnchorToBlockDecoration(blockDecoration) {
+    return this.getComponent().pinScrollAnchorToBlockDecoration(blockDecoration);
+  }
+
   setFirstVisibleScreenRow(row) {
     this.getModel().setFirstVisibleScreenRow(row);
   }
