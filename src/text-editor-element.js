@@ -354,6 +354,9 @@ class TextEditorElement extends HTMLElement {
   }
 
   /**
+   * @public
+   * @status experimental
+   *
    * Holds the viewport against a block decoration while the user drags its size,
    * instead of against the cursor's row or the viewport midpoint.
    *

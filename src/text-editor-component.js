@@ -3967,6 +3967,8 @@ module.exports = class TextEditorComponent {
    * one. Either way the top edge holds still and the decoration grows downward,
    * which is what a hand on the bottom-right corner is asking for.
    *
+   * @private
+   *
    * @param {Decoration} decoration a block decoration being interactively sized
    * @returns {Disposable}
    */
