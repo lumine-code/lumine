@@ -2,6 +2,7 @@ const LumineWindow = require("./lumine-window");
 const ApplicationMenu = require("./application-menu");
 const LumineProtocolHandler = require("./lumine-protocol-handler");
 const { onDidChangeScrollbarStyle } = require("./scrollbar-style");
+const { getAccentColor, onDidChangeAccentColor } = require("./accent-color");
 const StorageFolder = require("./storage-folder");
 const Config = require("./config");
 const ConfigFile = require("./config-file");
@@ -486,6 +487,10 @@ const handleAppAction = async (event, action, ...args) => {
         throw new TypeError("Unsupported user-default type");
       }
       return systemPreferences.getUserDefault(args[0], args[1]);
+    case "getAccentColor":
+      // `null` where the platform has no accent to give — a normal answer, not
+      // an error, so the renderer simply keeps the theme's own accent.
+      return getAccentColor();
     case "isDefaultProtocolClient":
       assertString(args[0], "protocol");
       assertOptionalString(args[1], "path");
@@ -907,6 +912,9 @@ module.exports = class LumineApplication extends EventEmitter {
       const scrollbarStyleChangeDisposable = onDidChangeScrollbarStyle((newValue) => {
         window.sendToRenderer("did-change-scrollbar-style", newValue);
       });
+      const accentColorChangeDisposable = onDidChangeAccentColor((newValue) => {
+        window.sendToRenderer("did-change-accent-color", newValue);
+      });
       window.browserWindow.on("focus", focusHandler);
       window.browserWindow.on("blur", blurHandler);
       window.browserWindow.once("closed", () => {
@@ -914,6 +922,7 @@ module.exports = class LumineApplication extends EventEmitter {
         window.browserWindow.removeListener("focus", focusHandler);
         window.browserWindow.removeListener("blur", blurHandler);
         scrollbarStyleChangeDisposable.dispose();
+        accentColorChangeDisposable.dispose();
       });
       window.browserWindow.webContents.once("did-finish-load", blurHandler);
       this.saveCurrentWindowOptions(false);

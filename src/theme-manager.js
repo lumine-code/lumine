@@ -52,6 +52,31 @@ const BASE_STYLESHEETS = [
   "lumine-ui/styles/tooltip.css",
 ];
 
+// The accent override is a stylesheet rather than an inline style on `:root`
+// so it stays inside the cascade the rest of theming uses: priority 1 sits
+// above every theme stylesheet (0) and still below the user stylesheet (2), so
+// a user's own `--accent-color` keeps winning. An inline style would have beaten
+// both.
+const ACCENT_STYLESHEET_PATH = "lumine://accent-color";
+const ACCENT_STYLESHEET_PRIORITY = 1;
+const ACCENT_COLOR_PATTERN = /^#[0-9a-f]{6}$/;
+
+// Only the fills and the text that sits on them. `--accent-only-text-color` is
+// accent-as-text-on-the-theme's-background, where the theme has already tuned
+// contrast and an arbitrary system color can fail it, so it stays theme-owned.
+// The two text colors reuse the contrast formula from base-variables.css rather
+// than assuming white — a system accent can be any lightness at all.
+function buildAccentStylesheet(accentColor) {
+  return `\
+:root {
+  --accent-color: ${accentColor};
+  --accent-bg-color: ${accentColor};
+  --accent-text-color: lch(from var(--accent-color) calc((49.44 - l) * infinity) 0 0);
+  --accent-bg-text-color: lch(from var(--accent-bg-color) calc((49.44 - l) * infinity) 0 0);
+}
+`;
+}
+
 async function wait(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
@@ -65,12 +90,20 @@ async function wait(ms) {
  * An instance of this class is always available as the `lumine.themes` global.
  */
 module.exports = class ThemeManager {
-  constructor({ packageManager, config, styleManager, notificationManager, viewRegistry }) {
+  constructor({
+    packageManager,
+    config,
+    styleManager,
+    notificationManager,
+    viewRegistry,
+    applicationDelegate,
+  }) {
     this.packageManager = packageManager;
     this.config = config;
     this.styleManager = styleManager;
     this.notificationManager = notificationManager;
     this.viewRegistry = viewRegistry;
+    this.applicationDelegate = applicationDelegate;
     this.emitter = new Emitter();
     this.styleSheetDisposablesBySourcePath = {};
     this.initialLoadComplete = false;
@@ -574,6 +607,51 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
     return this.styleSheetDisposablesBySourcePath[path];
   }
 
+  // Track the operating system's accent color so `theme.accentSource: system`
+  // can hand it to the theme variables. The main process pushes changes; the
+  // starting value has to be asked for, and only when it is actually wanted —
+  // under the default `theme` source nothing here ever crosses IPC.
+  observeSystemAccentColor() {
+    this.config.onDidChange("theme.accentSource", () => this.refreshSystemAccentColor());
+    this.applicationDelegate?.onDidChangeAccentColor?.((accentColor) => {
+      this.systemAccentColor = accentColor;
+      this.applyAccentColor();
+    });
+    return this.refreshSystemAccentColor();
+  }
+
+  async refreshSystemAccentColor() {
+    if (this.config.get("theme.accentSource") === "system") {
+      try {
+        this.systemAccentColor = await this.applicationDelegate?.invokeApp?.("getAccentColor");
+      } catch (error) {
+        // A platform that cannot answer is not a failure worth a notification:
+        // the theme's own accent is a perfectly good result.
+        console.warn(`Could not read the system accent color: ${error?.message ?? error}`);
+        this.systemAccentColor = null;
+      }
+    }
+    this.applyAccentColor();
+  }
+
+  applyAccentColor() {
+    const accentColor =
+      this.config.get("theme.accentSource") === "system" ? this.systemAccentColor : null;
+
+    // The value is normalized in the main process, so a string that does not
+    // match here did not come from there — never interpolate it into CSS.
+    if (typeof accentColor !== "string" || !ACCENT_COLOR_PATTERN.test(accentColor)) {
+      this.removeStylesheet(ACCENT_STYLESHEET_PATH);
+      return;
+    }
+
+    this.applyStylesheet(
+      ACCENT_STYLESHEET_PATH,
+      buildAccentStylesheet(accentColor),
+      ACCENT_STYLESHEET_PRIORITY,
+    );
+  }
+
   activateThemes() {
     return new Promise((resolve) => {
       // Created lazily so specs can install a fake before activation.
@@ -610,6 +688,10 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       this.systemThemeQuery.addEventListener("change", () => {
         if (this.config.get("theme.mode") === "system") queueSwitch();
       });
+
+      // Independent of the theme pair: the accent override rides above whichever
+      // themes are active, so it neither waits for nor blocks a switch.
+      this.observeSystemAccentColor();
     });
   }
 

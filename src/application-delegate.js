@@ -174,6 +174,15 @@ module.exports = class ApplicationDelegate {
     return ipcRenderer.send("did-change-history-manager");
   }
 
+  onDidChangeAccentColor(callback) {
+    const outerCallback = (_event, accentColor) => callback(accentColor);
+
+    ipcRenderer.on("did-change-accent-color", outerCallback);
+    return new Disposable(() =>
+      ipcRenderer.removeListener("did-change-accent-color", outerCallback),
+    );
+  }
+
   broadcastToOtherWindows(eventName, ...args) {
     if (typeof eventName !== "string") {
       throw new TypeError("Window event name must be a string");

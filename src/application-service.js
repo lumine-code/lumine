@@ -145,6 +145,19 @@ class ApplicationService {
    * @public
    * @status public
    *
+   * Read the operating system's accent color.
+   *
+   * @returns {Promise} resolving to a `#rrggbb` string, or `null` where the
+   *   platform has no accent color to report.
+   */
+  getAccentColor() {
+    return this.applicationDelegate.invokeApp("getAccentColor");
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Determine whether Lumine is the default handler for a protocol.
    *
    * @returns {Promise} resolving to a `Boolean`.

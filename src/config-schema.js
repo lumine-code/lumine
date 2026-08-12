@@ -216,6 +216,17 @@ const configSchema = {
         },
         default: ["one-night-ui", "one-night-syntax"],
       },
+      accentSource: {
+        title: "Accent Source",
+        description:
+          "Where the accent color comes from — the one used for focus rings, checkboxes, progress bars and tooltips. <code>system</code> follows the operating system's accent color, and falls back to the theme's own on a platform that reports none.",
+        type: "string",
+        enum: [
+          { value: "theme", description: "The active theme's accent color" },
+          { value: "system", description: "The operating system's accent color" },
+        ],
+        default: "theme",
+      },
     },
   },
   editor: {

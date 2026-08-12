@@ -286,6 +286,7 @@ class LumineEnvironment {
       styleManager: this.styles,
       notificationManager: this.notifications,
       viewRegistry: this.views,
+      applicationDelegate: this.applicationDelegate,
     });
 
     /**
