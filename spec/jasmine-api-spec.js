@@ -72,4 +72,34 @@ describe("the Jasmine API available to specs", () => {
       expect(spyOn(target, "method")).toBe(first);
     });
   });
+
+  // `pending()` reports itself by throwing. The runner used to catch that and
+  // complete the spec, which reported one that never ran as passing — and from
+  // a `beforeEach`, let the body it was meant to skip run anyway against the
+  // state that beforeEach never got as far as setting up. Specs run in
+  // declaration order (`random: false`), so the last one here sees the rest.
+  describe("a spec that marks itself pending", () => {
+    let bodyRan = false;
+    let bodyRanAfterPendingSetup = false;
+
+    it("stops at the pending() call", () => {
+      pending("pins that the line below never runs");
+      bodyRan = true;
+    });
+
+    describe("from a beforeEach", () => {
+      beforeEach(() => {
+        pending("pins that the spec below never runs");
+      });
+
+      it("never reaches the spec body", () => {
+        bodyRanAfterPendingSetup = true;
+      });
+    });
+
+    it("ran neither body", () => {
+      expect(bodyRan).toBe(false);
+      expect(bodyRanAfterPendingSetup).toBe(false);
+    });
+  });
 });

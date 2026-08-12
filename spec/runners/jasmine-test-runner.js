@@ -95,31 +95,26 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
     };
   });
 
-  // A spec body that declares no parameter is awaited; one that declares a
-  // parameter is given Jasmine's `done` and left to call it. That distinction
-  // is the whole wrapper — never mix the two, because an `async (done)` body is
-  // not awaited and a rejection in it hangs the spec instead of failing it.
-  const runSpecBody = (originalFn, context, done) => {
-    try {
-      if (originalFn.length > 0) {
-        originalFn.call(context, done);
-        return;
-      }
-      Promise.resolve()
-        .then(() => originalFn.call(context))
-        .then(
-          () => done(),
-          (error) => (isPendingException(error) ? done() : failDone(done, error)),
-        );
-    } catch (error) {
-      if (isPendingException(error)) {
-        // A spec marked itself as pending. Swallow the exception and proceed.
-        done();
-        return;
-      }
-      failDone(done, error);
-    }
-  };
+  // A spec body that declares no parameter is handed to Jasmine as a
+  // promise-returning function and awaited; one that declares a parameter is
+  // given Jasmine's `done` and left to call it, its return value deliberately
+  // dropped. That distinction is the whole wrapper — never mix the two, because
+  // an `async (done)` body is not awaited and a rejection in it hangs the spec
+  // instead of failing it.
+  //
+  // Neither half interprets what the body threw. Jasmine already fails on an
+  // exception and pends on the one `pending()` throws to mark itself, and a
+  // wrapper that caught the second and called `done()` reported a spec that
+  // never ran as a passing one — and, from a `beforeEach`, let the body it was
+  // meant to skip run anyway against the state it never set up.
+  const specBody = (originalFn) =>
+    originalFn.length > 0
+      ? function (done) {
+          originalFn.call(this, done);
+        }
+      : function () {
+          return originalFn.call(this);
+        };
 
   ["it", "fit", "xit"].forEach((key) => {
     window[key] = (name, originalFn, timeout) => {
@@ -127,21 +122,13 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
         return jasmineEnv[key](name, originalFn, timeout);
       }
 
-      jasmineEnv[key](
-        name,
-        function (done) {
-          runSpecBody(originalFn, this, done);
-        },
-        timeout,
-      );
+      jasmineEnv[key](name, specBody(originalFn), timeout);
     };
   });
 
   ["beforeEach", "afterEach"].forEach((key) => {
     window[key] = (originalFn, timeout) => {
-      jasmineEnv[key](function (done) {
-        runSpecBody(originalFn, this, done);
-      }, timeout);
+      jasmineEnv[key](specBody(originalFn), timeout);
     };
   });
 };
@@ -183,18 +170,6 @@ const installRespyTolerance = () => {
 const isSpy = (value) =>
   window.jasmine.isSpy?.(value) ||
   (typeof value === "function" && value.and != null && value.calls != null);
-
-const isPendingException = (error) => {
-  return error?.toString?.().includes("=> marked Pending") || false;
-};
-
-const failDone = (done, error) => {
-  if (typeof done.fail === "function") {
-    done.fail(error);
-  } else {
-    done(error);
-  }
-};
 
 const configureJasmineEnv = (config) => {
   const jasmineEnv = jasmine.getEnv();
