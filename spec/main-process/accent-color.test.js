@@ -56,30 +56,32 @@ describe("accent-color", () => {
     });
   });
 
-  describe("onDidChangeAccentColor", () => {
-    // Windows and Linux report the change through this event; macOS goes
-    // through a distributed notification, which cannot be faked this cheaply.
-    const itOnEventPlatforms = process.platform === "darwin" ? it.skip : it;
+  // Windows and Linux report the change through `accent-color-changed`; macOS
+  // goes through a distributed notification, which cannot be faked this
+  // cheaply. Registered conditionally rather than skipped — this runner has no
+  // `it.skip`.
+  if (process.platform !== "darwin") {
+    describe("onDidChangeAccentColor", () => {
+      it("normalizes what the change event carries", () => {
+        const seen = [];
+        const subscription = onDidChangeAccentColor((accentColor) => seen.push(accentColor));
 
-    itOnEventPlatforms("normalizes what the change event carries", () => {
-      const seen = [];
-      const subscription = onDidChangeAccentColor((accentColor) => seen.push(accentColor));
+        try {
+          systemPreferences.emit("accent-color-changed", {}, "0078D4FF");
+          systemPreferences.emit("accent-color-changed", {}, "");
+          assert.deepStrictEqual(seen, ["#0078d4", null]);
+        } finally {
+          subscription.dispose();
+        }
+      });
 
-      try {
+      it("stops delivering once the subscription is disposed", () => {
+        const seen = [];
+        onDidChangeAccentColor((accentColor) => seen.push(accentColor)).dispose();
+
         systemPreferences.emit("accent-color-changed", {}, "0078D4FF");
-        systemPreferences.emit("accent-color-changed", {}, "");
-        assert.deepStrictEqual(seen, ["#0078d4", null]);
-      } finally {
-        subscription.dispose();
-      }
+        assert.lengthOf(seen, 0);
+      });
     });
-
-    itOnEventPlatforms("stops delivering once the subscription is disposed", () => {
-      const seen = [];
-      onDidChangeAccentColor((accentColor) => seen.push(accentColor)).dispose();
-
-      systemPreferences.emit("accent-color-changed", {}, "0078D4FF");
-      assert.lengthOf(seen, 0);
-    });
-  });
+  }
 });
