@@ -84,8 +84,14 @@ module.exports = class GitRepositoryHistoryProvider {
     throw new GitOperationError("cat-file", result);
   }
 
-  getBlame(workingDirectory, relativePosixPath, { revision = null } = {}, options = {}) {
+  getBlame(
+    workingDirectory,
+    relativePosixPath,
+    { revision = null, ignoreWhitespace = false } = {},
+    options = {},
+  ) {
     const args = ["blame", "--porcelain"];
+    if (ignoreWhitespace) args.push("-w");
     if (revision) args.push(revision);
     args.push("--", relativePosixPath);
     return this.runner.run(args, workingDirectory, options);

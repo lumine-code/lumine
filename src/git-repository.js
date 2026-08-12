@@ -1312,15 +1312,16 @@ module.exports = class GitRepository {
    * @param filePath - A `String` path, absolute or repository-relative.
    * @param {Object} [options] - Blame options.
    * @param {String} [options.revision] - Revision to blame.
+   * @param {Boolean} [options.ignoreWhitespace] - Ignore whitespace-only changes when attributing a line, so a reindent does not reassign every line it touched.
    * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to a frozen `{revision, lines}` object where each line has `line`, `originalLine`, `sha`, `author`, `summary`.
    */
-  async getBlame(filePath, { revision = null, signal } = {}) {
+  async getBlame(filePath, { revision = null, ignoreWhitespace = false, signal } = {}) {
     const provider = this.requireHistoryProvider();
     const output = await provider.getBlame(
       this.getWorkingDirectory(),
       this.posixRelativePath(filePath),
-      { revision },
+      { revision, ignoreWhitespace },
       { signal },
     );
     return Object.freeze({ revision, lines: parseBlamePorcelain(output) });

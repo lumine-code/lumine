@@ -288,6 +288,23 @@ describe("repository history", () => {
       expect(blame.lines[0].sha).not.toBe(blame.lines[1].sha);
     });
 
+    it("looks past a whitespace-only change when asked to", async () => {
+      await operations.setConfig("user.name", "Author Three");
+      await operations.setConfig("user.email", "three@example.com");
+      // Reindent the first line and nothing else.
+      fs.writeFileSync(path.join(workingDirectory, "moved.txt"), "    alpha\nBETA\n");
+      await operations.stageFiles(["moved.txt"]);
+      await operations.commit("reindent");
+
+      const filePath = path.join(workingDirectory, "moved.txt");
+      const attributed = await repo.getBlame(filePath);
+      expect(attributed.lines[0].author.name).toBe("Author Three");
+
+      const ignoring = await repo.getBlame(filePath, { ignoreWhitespace: true });
+      expect(ignoring.lines[0].author.name).toBe("Author One");
+      expect(ignoring.lines[1].author.name).toBe("Author Two");
+    });
+
     it("resolves an empty page for an unborn repository", async () => {
       const unbornDirectory = temp.mkdirSync("repository-history-unborn");
       await operationProvider.initializeRepository(unbornDirectory, { initialBranch: "main" });
