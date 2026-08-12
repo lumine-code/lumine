@@ -744,8 +744,14 @@ module.exports = class Pane {
     if (pending) this.setPendingItem(item);
 
     this.emitter.emit("did-add-item", { item, index, moved });
-    if (!moved) {
-      if (this.container) this.container.didAddPaneItem(item, this, index);
+    if (this.container) {
+      // A moved item is not *added* as far as the workspace is concerned, but
+      // it does now live in this container, so the registry follows it.
+      if (moved) {
+        this.container.registerItem(item);
+      } else {
+        this.container.didAddPaneItem(item, this, index);
+      }
     }
 
     if (replacingPendingItem) this.destroyItem(lastPendingItem);
@@ -860,7 +866,15 @@ module.exports = class Pane {
       destroyed: !moved,
       moved,
     });
-    if (!moved && this.container) this.container.didDestroyPaneItem({ item, index, pane: this });
+    if (this.container) {
+      // As in `addItem`: a move destroys nothing, but the item has left this
+      // container and the registry has to say so.
+      if (moved) {
+        this.container.unregisterItem(item);
+      } else {
+        this.container.didDestroyPaneItem({ item, index, pane: this });
+      }
+    }
     if (this.items.length === 0 && this.config.get("core.destroyEmptyPanes")) this.destroy();
   }
 

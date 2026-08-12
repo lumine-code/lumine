@@ -208,6 +208,30 @@ describe("Pane", () => {
       expect(() => pane2.addItem(item)).toThrow();
     });
 
+    // The container's registry is what raises that exception, and a move takes
+    // the item out of the container without emitting a destroy event. Leaving
+    // it registered made the container refuse an item it no longer held, which
+    // is what any package moving its own dock item ran into.
+    it("takes an item that was moved out of the container, however it comes back", () => {
+      const item = new Item("A");
+      const container = new PaneContainer({
+        config: lumine.config,
+        applicationDelegate: lumine.applicationDelegate,
+      });
+      const pane1 = container.getActivePane();
+      pane1.addItem(item);
+      const pane2 = pane1.splitRight();
+
+      pane1.removeItem(item, true);
+      expect(() => pane2.addItem(item)).not.toThrow();
+      expect(pane2.getItems()).toEqual([item]);
+
+      // And it is registered again where it landed.
+      pane2.removeItem(item, false);
+      pane2.addItem(item);
+      expect(() => pane1.addItem(item)).toThrow();
+    });
+
     it("throws an exception if the item isn't an object", () => {
       const pane = new Pane(paneParams({ items: [] }));
       expect(() => pane.addItem(null)).toThrow();

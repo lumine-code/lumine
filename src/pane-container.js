@@ -319,8 +319,21 @@ module.exports = class PaneContainer {
     return this.activePane;
   }
 
-  didAddPaneItem(item, pane, index) {
+  // The registry is this container's ledger of which items it holds, and the
+  // only thing stopping one item from living in two panes at once. A move
+  // emits neither the add nor the destroy event, but it still changes where
+  // the item lives, so the ledger is kept up to date either way: a moved-out
+  // item left registered makes its own container refuse it ever after.
+  registerItem(item) {
     this.itemRegistry.addItem(item);
+  }
+
+  unregisterItem(item) {
+    this.itemRegistry.removeItem(item);
+  }
+
+  didAddPaneItem(item, pane, index) {
+    this.registerItem(item);
     this.emitter.emit("did-add-pane-item", { item, pane, index });
   }
 
@@ -329,7 +342,7 @@ module.exports = class PaneContainer {
   }
 
   didDestroyPaneItem(event) {
-    this.itemRegistry.removeItem(event.item);
+    this.unregisterItem(event.item);
     this.emitter.emit("did-destroy-pane-item", event);
   }
 
