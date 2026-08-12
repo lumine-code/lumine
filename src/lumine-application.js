@@ -473,6 +473,48 @@ const handleContextMenu = (event, template) => {
 };
 ipcMain.handle("lumine:context-menu", handleContextMenu);
 
+// Render a complete HTML document to a PDF file.
+//
+// A package cannot do this itself: `BrowserWindow` is main-process only, and
+// printing the window the document is displayed in would capture the tree view,
+// the tabs and the status bar along with it. So the document is loaded into a
+// window of its own, offscreen, with scripting off and no node — it is a user's
+// own file rendered by a package, which is not a reason to run whatever script
+// it happens to contain.
+//
+// It goes through a temporary file rather than a `data:` URL because a document
+// with inlined images is easily larger than a URL is meant to be.
+const printHtmlToPDF = async (html, outputPath, options) => {
+  const sourcePath = path.join(app.getPath("temp"), `lumine-print-${crypto.randomUUID()}.html`);
+  const printWindow = new BrowserWindow({
+    show: false,
+    webPreferences: {
+      javascript: false,
+      sandbox: true,
+      contextIsolation: true,
+      nodeIntegration: false,
+      webviewTag: false,
+    },
+  });
+
+  try {
+    fs.writeFileSync(sourcePath, html);
+    await printWindow.loadFile(sourcePath);
+    // Backgrounds default on: a document whose code blocks and callouts lose
+    // their fill prints as something the user did not see on screen.
+    const pdf = await printWindow.webContents.printToPDF({ printBackground: true, ...options });
+    fs.writeFileSync(outputPath, pdf);
+  } finally {
+    printWindow.destroy();
+    try {
+      fs.unlinkSync(sourcePath);
+    } catch {
+      // Best effort: the PDF is already written, and the temp directory is the
+      // operating system's problem after that.
+    }
+  }
+};
+
 const handleAppAction = async (event, action, ...args) => {
   currentLumineWindow(event);
   const application = currentApplication();
@@ -512,6 +554,20 @@ const handleAppAction = async (event, action, ...args) => {
       }
       const icon = await app.getFileIcon(args[0], options);
       return icon && !icon.isEmpty() ? icon.toDataURL() : null;
+    }
+    case "printToPDF": {
+      assertString(args[0], "html");
+      assertString(args[1], "outputPath");
+      const printOptions = args[2] ?? {};
+      if (typeof printOptions !== "object" || Array.isArray(printOptions)) {
+        throw new TypeError("PDF options must be an object");
+      }
+      try {
+        await printHtmlToPDF(args[0], args[1], printOptions);
+        return { outcome: "success", result: args[1] };
+      } catch (error) {
+        return { outcome: "failure", error: { message: error.message, code: error.code } };
+      }
     }
     case "restart":
       application.restart();

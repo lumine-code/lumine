@@ -28,6 +28,9 @@ describe("ApplicationService", () => {
     await service.isDefaultProtocolClient("lumine", "lumine.exe", ["--open"]);
     await service.setAsDefaultProtocolClient("lumine", "lumine.exe", ["--open"]);
     await service.getFileIcon("C:\\file.txt", { size: "normal" });
+    await service.getAccentColor();
+    await service.printToPDF("<html></html>", "C:\\out.pdf", { landscape: true });
+    await service.printToPDF("<html></html>", "C:\\out.pdf");
     await service.restart();
 
     expect(delegate.invokeApp.calls.allArgs()).toEqual([
@@ -35,6 +38,11 @@ describe("ApplicationService", () => {
       ["isDefaultProtocolClient", "lumine", "lumine.exe", ["--open"]],
       ["setAsDefaultProtocolClient", "lumine", "lumine.exe", ["--open"]],
       ["getFileIcon", "C:\\file.txt", { size: "normal" }],
+      ["getAccentColor"],
+      ["printToPDF", "<html></html>", "C:\\out.pdf", { landscape: true }],
+      // Options are optional, and the main process is never handed `undefined`
+      // where it validates an object.
+      ["printToPDF", "<html></html>", "C:\\out.pdf", {}],
       ["restart"],
     ]);
   });

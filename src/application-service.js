@@ -158,6 +158,28 @@ class ApplicationService {
    * @public
    * @status public
    *
+   * Render a complete HTML document to a PDF file.
+   *
+   * The document is loaded into an offscreen window of its own, so the result
+   * holds only what was passed here — never the surrounding editor chrome — and
+   * its scripts are not run.
+   *
+   * @param {String} html - A complete HTML document. Reference assets by data
+   *   URI: nothing relative to the calling document resolves.
+   * @param {String} outputPath - Where to write the PDF.
+   * @param {Object} [options] - Electron `printToPDF` options. `printBackground`
+   *   defaults to `true`.
+   * @returns {Promise} resolving to `{outcome: 'success', result: outputPath}`,
+   *   or `{outcome: 'failure', error}` when the document could not be printed.
+   */
+  printToPDF(html, outputPath, options = {}) {
+    return this.applicationDelegate.invokeApp("printToPDF", html, outputPath, options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Determine whether Lumine is the default handler for a protocol.
    *
    * @returns {Promise} resolving to a `Boolean`.
