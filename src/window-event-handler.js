@@ -282,7 +282,7 @@ module.exports = class WindowEventHandler {
 
     if (this.lumineEnvironment.config.get("core.autoHideMenuBar")) {
       const detail = "To toggle, press the Alt key or execute the window:toggle-menu-bar command";
-      this.lumineEnvironment.notifications.addInfo("Menu bar hidden", { detail });
+      this.lumineEnvironment.notifications.addHint("Menu bar hidden", { detail });
     }
   }
 
