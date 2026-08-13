@@ -277,7 +277,17 @@ async function launch({ positional, options }) {
   prepareIsolatedHome(home);
   const linked = [].concat(options.link || []).map((source) => linkPackage(home, source));
 
-  const argv = ["--no-sandbox", "--enable-logging", `--remote-debugging-port=${port}`, ROOT];
+  const argv = [
+    "--no-sandbox",
+    "--enable-logging",
+    // A driven window spends its life occluded behind terminals, and Chromium
+    // suspends an occluded window's rAF queue and clamps its timers to 1 Hz —
+    // which stalls evals mid-await and invalidates any timing they measure.
+    "--disable-renderer-backgrounding",
+    "--disable-backgrounding-occluded-windows",
+    `--remote-debugging-port=${port}`,
+    ROOT,
+  ];
   if (!options["no-dev"]) argv.push("--dev");
   if (options.fresh) argv.push("--clear-window-state");
   argv.push(...positional.map((item) => path.resolve(item)));
