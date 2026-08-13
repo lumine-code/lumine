@@ -77,7 +77,7 @@
     "git-center": "github:lumine-code/git-center#ef3f194036e96e10c6912059733126099c9304b0",
     "git-diff": "github:lumine-code/git-diff#0665fdb7b04df0875331a0d7c7aefab0c4cb5357",
     "go-to-line": "github:lumine-code/go-to-line#297b38c642dce8b3ab372a2285b2c6fe1117a9da",
-    "grammar-selector": "github:lumine-code/grammar-selector#b0fb17f93b99d87231a53a285ee8f52ea703d3dc",
+    "grammar-selector": "github:lumine-code/grammar-selector#b3b788c18dc6d26eeae0a44b97c832885908f8ed",
     "gray-matter": "^4.0.3",
     "hyperclick": "github:lumine-code/hyperclick#9eb68aec3b20fe2a1fb1202d037fb3a2c6733e88",
     "ide-client": "github:lumine-code/ide-client#5924d0dde5a61c0192057691731f16f18493c746",
