@@ -339,25 +339,16 @@ module.exports = class TextEditor {
     return this.getRowsPerPage();
   }
 
+  // The gutter is deliberately not colored by the cursor or the selection. Both
+  // are already on screen in the text itself, and every way of marking them on
+  // the line number competed with the theme's own gutter colors instead of
+  // adding to them.
   decorateCursorLine() {
     this.cursorLineDecorations = [
       this.decorateMarkerLayer(this.selectionsMarkerLayer, {
         type: "line",
         class: "cursor-line",
         onlyEmpty: true,
-      }),
-      this.decorateMarkerLayer(this.selectionsMarkerLayer, {
-        type: "line-number",
-        class: "cursor-line",
-        onlyHead: true,
-      }),
-      // The rows a selection covers, which is a different question from where
-      // the head is: a selection ending at column 0 selects nothing on its last
-      // row, so `selected-line` stops one row short of the `cursor-line` there.
-      this.decorateMarkerLayer(this.selectionsMarkerLayer, {
-        type: "line-number",
-        class: "selected-line",
-        onlyNonEmpty: true,
       }),
     ];
   }

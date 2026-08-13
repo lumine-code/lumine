@@ -91,27 +91,6 @@ lumine-text-editor {
     opacity: 0.6;
     position: relative;
 
-    /*
-     * The gutter reads at two weights: `selected-line` on every row a selection
-     * covers, and `cursor-line` on the row each caret sits on. The two are
-     * deliberately allowed to disagree — a selection ending at column 0 selects
-     * nothing on its last row, so it is dimmer there while the caret's own row
-     * stays bright.
-     *
-     * Core supplies the emphasis by modulating the number's own opacity rather
-     * than by naming a color, so a theme that styles no gutter colors at all
-     * still gets both weights. `:where()` holds it at zero specificity, so any
-     * theme rule outranks it. `cursor-line` comes second to win the head row,
-     * which carries both classes whenever the head is inside its own selection.
-     */
-    &:where(.selected-line) {
-      opacity: 0.8;
-    }
-
-    &:where(.cursor-line) {
-      opacity: 1;
-    }
-
     .icon-right {
       contain: paint style; /* contain_except_layout_size */
 
