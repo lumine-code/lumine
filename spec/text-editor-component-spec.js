@@ -2731,6 +2731,57 @@ describe("TextEditorComponent", () => {
       expect(lineNumberNodeForScreenRow(component, 3).classList.contains("a")).toBe(true);
     });
 
+    it("decorates the head row of onlyHead decorations whose range ends at column 0", async () => {
+      const { component, editor } = buildComponent();
+      const marker = editor.markScreenRange([
+        [1, 4],
+        [3, 0],
+      ]);
+      editor.decorateMarker(marker, {
+        type: ["line", "line-number"],
+        class: "a",
+        onlyHead: true,
+      });
+      const reversedMarker = editor.markScreenRange(
+        [
+          [5, 0],
+          [7, 2],
+        ],
+        { reversed: true },
+      );
+      editor.decorateMarker(reversedMarker, {
+        type: ["line", "line-number"],
+        class: "b",
+        onlyHead: true,
+      });
+      await component.getNextUpdatePromise();
+
+      // The head sits at the start of row 3; it is still on row 3.
+      expect(lineNodeForScreenRow(component, 2).classList.contains("a")).toBe(false);
+      expect(lineNodeForScreenRow(component, 3).classList.contains("a")).toBe(true);
+      expect(lineNumberNodeForScreenRow(component, 2).classList.contains("a")).toBe(false);
+      expect(lineNumberNodeForScreenRow(component, 3).classList.contains("a")).toBe(true);
+
+      expect(lineNodeForScreenRow(component, 5).classList.contains("b")).toBe(true);
+      expect(lineNodeForScreenRow(component, 7).classList.contains("b")).toBe(false);
+      expect(lineNumberNodeForScreenRow(component, 5).classList.contains("b")).toBe(true);
+      expect(lineNumberNodeForScreenRow(component, 7).classList.contains("b")).toBe(false);
+    });
+
+    it("decorates the cursor line number when a selection ends at column 0", async () => {
+      const { component, editor } = buildComponent();
+      editor.setSelectedScreenRange([
+        [1, 4],
+        [3, 0],
+      ]);
+      await component.getNextUpdatePromise();
+
+      expect(lineNumberNodeForScreenRow(component, 2).classList.contains("cursor-line")).toBe(
+        false,
+      );
+      expect(lineNumberNodeForScreenRow(component, 3).classList.contains("cursor-line")).toBe(true);
+    });
+
     it("only decorates the last row of non-empty ranges that end at column 0 if omitEmptyLastRow is false", async () => {
       const { component, editor } = buildComponent();
       const marker = editor.markScreenRange([

@@ -1561,6 +1561,9 @@ module.exports = class TextEditorComponent {
       } else {
         rangeStartRow = rangeEndRow;
       }
+      // The head is a position, not a span: a forward selection ending at column 0
+      // still has its head on that row, so the empty-last-row rule does not apply.
+      omitLastRow = false;
     }
 
     rangeStartRow = Math.max(rangeStartRow, this.getRenderedStartRow());
