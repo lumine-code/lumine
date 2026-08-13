@@ -372,6 +372,8 @@ module.exports = class Workspace extends Model {
     };
     this.activePaneContainer = this.paneContainers.center;
     this.hasActiveTextEditor = false;
+    this.previousActiveFileTextEditor = undefined;
+    this.previousActiveEmbeddedTextEditor = undefined;
 
     this.panelContainers = {
       top: new PanelContainer({
@@ -456,6 +458,11 @@ module.exports = class Workspace extends Model {
     this.emitter.dispose();
     this.emitter = new Emitter();
 
+    if (this.activeItemTextEditorsSubscription) {
+      this.activeItemTextEditorsSubscription.dispose();
+      this.activeItemTextEditorsSubscription = null;
+    }
+
     this.paneContainers.center.destroy();
     this.paneContainers.left.destroy();
     this.paneContainers.right.destroy();
@@ -473,6 +480,8 @@ module.exports = class Workspace extends Model {
     };
     this.activePaneContainer = this.paneContainers.center;
     this.hasActiveTextEditor = false;
+    this.previousActiveFileTextEditor = undefined;
+    this.previousActiveEmbeddedTextEditor = undefined;
 
     this.panelContainers = {
       top: new PanelContainer({
@@ -595,6 +604,7 @@ module.exports = class Workspace extends Model {
     this.attachPersistentDockItems(persistentItems);
 
     this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+    this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
   }
 
   /**
@@ -621,6 +631,7 @@ module.exports = class Workspace extends Model {
     this.attachPersistentDockItems(persistentItems);
     this.destroyedItemURIs = [];
     this.hasActiveTextEditor = this.getActiveTextEditor() != null;
+    this.didChangeCenterTextEditorResolutions(this.getCenter().getActivePaneItem());
   }
 
   /**
@@ -767,6 +778,48 @@ module.exports = class Workspace extends Model {
         const itemValue = this.hasActiveTextEditor ? item : undefined;
         this.emitter.emit("did-change-active-text-editor", itemValue);
       }
+
+      this.didChangeCenterTextEditorResolutions(item);
+    }
+  }
+
+  // The center's active item decides the derived file and embedded text
+  // editors; an item that embeds its editors also reports when they change,
+  // through the same protocol the getters read (see
+  // {@link #getActiveFileTextEditor} and {@link #getActiveEmbeddedTextEditor}).
+  didChangeCenterTextEditorResolutions(item) {
+    if (this.activeItemTextEditorsSubscription) {
+      this.activeItemTextEditorsSubscription.dispose();
+      this.activeItemTextEditorsSubscription = null;
+    }
+
+    if (
+      item != null &&
+      !(item instanceof TextEditor) &&
+      typeof item.onDidChangeActiveTextEditors === "function"
+    ) {
+      this.activeItemTextEditorsSubscription = item.onDidChangeActiveTextEditors(() => {
+        this.emitTextEditorResolutionChanges();
+      });
+    }
+
+    this.emitTextEditorResolutionChanges();
+  }
+
+  // Emit-if-changed for both derived editors. Items fire their change signal
+  // freely — a view refresh, an editor rebuild — so the dedup lives here, and
+  // switching between two views of one document stays silent.
+  emitTextEditorResolutionChanges() {
+    const fileTextEditor = this.getActiveFileTextEditor();
+    if (fileTextEditor !== this.previousActiveFileTextEditor) {
+      this.previousActiveFileTextEditor = fileTextEditor;
+      this.emitter.emit("did-change-active-file-text-editor", fileTextEditor);
+    }
+
+    const embeddedTextEditor = this.getActiveEmbeddedTextEditor();
+    if (embeddedTextEditor !== this.previousActiveEmbeddedTextEditor) {
+      this.previousActiveEmbeddedTextEditor = embeddedTextEditor;
+      this.emitter.emit("did-change-active-embedded-text-editor", embeddedTextEditor);
     }
   }
 
@@ -1025,6 +1078,70 @@ module.exports = class Workspace extends Model {
     callback(this.getActiveTextEditor());
 
     return this.onDidChangeActiveTextEditor(callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Invoke the given callback when the editor holding the active item's file
+   * content changes. See {@link #getActiveFileTextEditor}.
+   *
+   * @param {Function} callback - to be called when the resolved editor changes.
+   * @param callback.editor - The resolved {@link TextEditor} or `undefined`.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidChangeActiveFileTextEditor(callback) {
+    return this.emitter.on("did-change-active-file-text-editor", callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Invoke the given callback with the current and all future editors holding
+   * the active item's file content. See {@link #getActiveFileTextEditor}.
+   *
+   * @param {Function} callback - to be called when the resolved editor changes.
+   * @param callback.editor - The resolved {@link TextEditor} or `undefined`.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  observeActiveFileTextEditor(callback) {
+    callback(this.getActiveFileTextEditor());
+
+    return this.onDidChangeActiveFileTextEditor(callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Invoke the given callback when the editor being edited inside the active
+   * item changes. See {@link #getActiveEmbeddedTextEditor}.
+   *
+   * @param {Function} callback - to be called when the resolved editor changes.
+   * @param callback.editor - The resolved {@link TextEditor} or `undefined`.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidChangeActiveEmbeddedTextEditor(callback) {
+    return this.emitter.on("did-change-active-embedded-text-editor", callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Invoke the given callback with the current and all future editors being
+   * edited inside the active item. See {@link #getActiveEmbeddedTextEditor}.
+   *
+   * @param {Function} callback - to be called when the resolved editor changes.
+   * @param callback.editor - The resolved {@link TextEditor} or `undefined`.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  observeActiveEmbeddedTextEditor(callback) {
+    callback(this.getActiveEmbeddedTextEditor());
+
+    return this.onDidChangeActiveEmbeddedTextEditor(callback);
   }
 
   /**
@@ -2015,6 +2132,63 @@ module.exports = class Workspace extends Model {
     const activeItem = this.getCenter().getActivePaneItem();
     if (activeItem instanceof TextEditor) {
       return activeItem;
+    }
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the {@link TextEditor} holding the active item's file content.
+   *
+   * The workspace center's active item itself when it is a text editor;
+   * otherwise the editor the item names through its `getFileTextEditor()`
+   * method — a notebook names its backing source editor. File-identity status
+   * tiles (encoding, line ending) describe this editor, so they stay truthful
+   * while a richer view of the file is open.
+   *
+   * @returns {TextEditor} or `undefined` when the active item holds no file content.
+   */
+  getActiveFileTextEditor() {
+    const activeItem = this.getCenter().getActivePaneItem();
+    if (activeItem instanceof TextEditor) {
+      return activeItem;
+    }
+    const editor =
+      typeof activeItem?.getFileTextEditor === "function" ? activeItem.getFileTextEditor() : null;
+    if (editor instanceof TextEditor) {
+      return editor;
+    }
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the {@link TextEditor} being edited inside the active item.
+   *
+   * The workspace center's active item itself when it is a text editor;
+   * otherwise the editor the item names through its
+   * `getActiveEmbeddedTextEditor()` method — a notebook names its active
+   * cell's editor. Editing-state status tiles (the grammar tile) describe
+   * this editor. An item reporting embedded editors emits its
+   * `onDidChangeActiveTextEditors` signal whenever either resolution may have
+   * changed; the workspace dedupes and re-emits through
+   * {@link #onDidChangeActiveEmbeddedTextEditor}.
+   *
+   * @returns {TextEditor} or `undefined` when nothing editable is active.
+   */
+  getActiveEmbeddedTextEditor() {
+    const activeItem = this.getCenter().getActivePaneItem();
+    if (activeItem instanceof TextEditor) {
+      return activeItem;
+    }
+    const editor =
+      typeof activeItem?.getActiveEmbeddedTextEditor === "function"
+        ? activeItem.getActiveEmbeddedTextEditor()
+        : null;
+    if (editor instanceof TextEditor) {
+      return editor;
     }
   }
 

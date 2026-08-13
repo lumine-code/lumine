@@ -1720,6 +1720,110 @@ describe("Workspace", () => {
     });
   });
 
+  describe("file and embedded text editor resolution", () => {
+    let pane, fileEditor, cellEditorA, cellEditorB, activeEmbedded, changeCallbacks, item;
+
+    beforeEach(() => {
+      pane = workspace.getCenter().getActivePane();
+      fileEditor = new TextEditor();
+      cellEditorA = new TextEditor();
+      cellEditorB = new TextEditor();
+      activeEmbedded = cellEditorA;
+      changeCallbacks = [];
+      // The protocol shape a notebook-like item implements: a backing editor
+      // holding the file, an embedded editor being edited, one change signal.
+      item = {
+        getTitle: () => "Fake Notebook",
+        getFileTextEditor: () => fileEditor,
+        getActiveEmbeddedTextEditor: () => activeEmbedded,
+        onDidChangeActiveTextEditors(callback) {
+          changeCallbacks.push(callback);
+          return {
+            dispose: () => {
+              changeCallbacks = changeCallbacks.filter((cb) => cb !== callback);
+            },
+          };
+        },
+      };
+    });
+
+    afterEach(() => {
+      fileEditor.destroy();
+      cellEditorA.destroy();
+      cellEditorB.destroy();
+    });
+
+    it("resolves both editors through the active item's protocol methods", () => {
+      const files = [];
+      const embedded = [];
+      workspace.onDidChangeActiveFileTextEditor((editor) => files.push(editor));
+      workspace.onDidChangeActiveEmbeddedTextEditor((editor) => embedded.push(editor));
+
+      pane.activateItem(item);
+
+      expect(workspace.getActiveTextEditor()).toBeUndefined();
+      expect(workspace.getActiveFileTextEditor()).toBe(fileEditor);
+      expect(workspace.getActiveEmbeddedTextEditor()).toBe(cellEditorA);
+      expect(files).toEqual([fileEditor]);
+      expect(embedded).toEqual([cellEditorA]);
+    });
+
+    it("follows the item's change signal and dedupes each resolution", () => {
+      pane.activateItem(item);
+
+      const files = [];
+      const embedded = [];
+      workspace.onDidChangeActiveFileTextEditor((editor) => files.push(editor));
+      workspace.onDidChangeActiveEmbeddedTextEditor((editor) => embedded.push(editor));
+
+      activeEmbedded = cellEditorB;
+      changeCallbacks.forEach((callback) => callback());
+
+      // The file editor did not change, so only the embedded event fired.
+      expect(files).toEqual([]);
+      expect(embedded).toEqual([cellEditorB]);
+
+      changeCallbacks.forEach((callback) => callback());
+      expect(embedded).toEqual([cellEditorB]);
+    });
+
+    it("resolves a plain text editor to itself on both axes", () => {
+      const editor = new TextEditor();
+      const files = [];
+      const embedded = [];
+      workspace.onDidChangeActiveFileTextEditor((e) => files.push(e));
+      workspace.onDidChangeActiveEmbeddedTextEditor((e) => embedded.push(e));
+
+      pane.activateItem(editor);
+
+      expect(workspace.getActiveFileTextEditor()).toBe(editor);
+      expect(workspace.getActiveEmbeddedTextEditor()).toBe(editor);
+      expect(files).toEqual([editor]);
+      expect(embedded).toEqual([editor]);
+
+      editor.destroy();
+    });
+
+    it("resolves to undefined for an item without the protocol and unsubscribes the previous item", () => {
+      pane.activateItem(item);
+      expect(changeCallbacks.length).toBe(1);
+
+      const files = [];
+      const embedded = [];
+      workspace.onDidChangeActiveFileTextEditor((e) => files.push(e));
+      workspace.onDidChangeActiveEmbeddedTextEditor((e) => embedded.push(e));
+
+      pane.activateItem(document.createElement("div"));
+
+      expect(workspace.getActiveFileTextEditor()).toBeUndefined();
+      expect(workspace.getActiveEmbeddedTextEditor()).toBeUndefined();
+      expect(files).toEqual([undefined]);
+      expect(embedded).toEqual([undefined]);
+      // The old item's signal is let go when it stops being active.
+      expect(changeCallbacks.length).toBe(0);
+    });
+  });
+
   describe("when an editor is destroyed", () => {
     it("removes the editor", async () => {
       const editor = await workspace.open("a");
