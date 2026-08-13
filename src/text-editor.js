@@ -351,6 +351,14 @@ module.exports = class TextEditor {
         class: "cursor-line",
         onlyHead: true,
       }),
+      // The rows a selection covers, which is a different question from where
+      // the head is: a selection ending at column 0 selects nothing on its last
+      // row, so `selected-line` stops one row short of the `cursor-line` there.
+      this.decorateMarkerLayer(this.selectionsMarkerLayer, {
+        type: "line-number",
+        class: "selected-line",
+        onlyNonEmpty: true,
+      }),
     ];
   }
 
