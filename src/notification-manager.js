@@ -90,6 +90,36 @@ module.exports = class NotificationManager {
    * @public
    * @status public
    *
+   * Add a hint notification.
+   *
+   * A hint is the quietest thing this API can say: something the user may want
+   * to know, that does not report a failure and asks nothing of them. It is
+   * rendered without a severity color, so it reads as an aside rather than as a
+   * smaller warning. Hints are expected to be transient — leave `dismissable`
+   * unset unless the hint carries a button worth waiting for.
+   *
+   * Prefer a warning when something the user asked for did not happen.
+   *
+   * @param message - A `String` message
+   * @param [options] - An `Object` with the following keys:
+   * @param [options.buttons] - An `Array` of `Object` where each `Object` has the following options:
+   * @param {String} [options.buttons.className] - a class name to add to the button's default class name (`btn`).
+   * @param {Function} [options.buttons.onDidClick] - callback to call when the button has been clicked. The context will be set to the `NotificationElement` instance.
+   * @param {String} options.buttons.text - inner text for the button
+   * @param [options.description] - A Markdown `String` containing a longer description about the notification. By default, this **will not** preserve newlines and whitespace when it is rendered.
+   * @param [options.detail] - A plain-text `String` containing additional details about the notification. By default, this **will** preserve newlines and whitespace when it is rendered.
+   * @param [options.dismissable] - A `Boolean` indicating whether this notification can be dismissed by the user. Defaults to `false`.
+   * @param [options.icon] - A `String` name of an icon from Octicons to display in the notification header. Defaults to `'light-bulb'`.
+   * @returns {Notification} that was added.
+   */
+  addHint(message, options) {
+    return this.addNotification(new Notification("hint", message, options));
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Add an informational notification.
    *
    * @param message - A `String` message

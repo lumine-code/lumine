@@ -34,6 +34,21 @@ describe("Notification", () => {
       });
       expect(notification.getIcon()).toBe("my-icon");
     });
+
+    it("returns a default for every type it knows", () => {
+      const icons = {};
+      for (const type of ["fatal", "error", "warning", "info", "success", "hint"]) {
+        icons[type] = new Notification(type, "message!").getIcon();
+      }
+      expect(icons).toEqual({
+        fatal: "bug",
+        error: "flame",
+        warning: "alert",
+        info: "info",
+        success: "check",
+        hint: "light-bulb",
+      });
+    });
   });
 
   describe("dismissing notifications", () => {

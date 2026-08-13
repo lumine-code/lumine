@@ -64,6 +64,15 @@ describe("NotificationManager", () => {
       const notification = addSpy.calls.mostRecent().args[0];
       expect(notification.getType()).toBe("success");
     });
+
+    it("emits a hint notification when ::addHint has been called", () => {
+      manager.addHint("Something!");
+      expect(addSpy).toHaveBeenCalled();
+      const notification = addSpy.calls.mostRecent().args[0];
+      expect(notification.getType()).toBe("hint");
+      expect(notification.getIcon()).toBe("light-bulb");
+      expect(notification.isDismissable()).toBe(false);
+    });
   });
 
   describe("clearing notifications", () => {

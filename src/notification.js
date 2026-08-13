@@ -147,6 +147,8 @@ module.exports = class Notification {
         return "info";
       case "success":
         return "check";
+      case "hint":
+        return "light-bulb";
     }
   }
 };
