@@ -134,49 +134,28 @@ class GitRepositoryOperations {
     return hint || "both";
   }
 
-  // A snapshot that already proves HEAD exists lets `reset HEAD` run without
-  // the `rev-parse` probe, saving a worker round trip per unstage. Only a
-  // positive answer is trusted: acting on a stale "unborn" claim would route
-  // to `rm --cached` and silently stage a deletion, so anything less falls
-  // back to the probe.
-  headExistsInSnapshot() {
-    for (const snapshot of [
-      this.repository?.getStatusSnapshot?.(),
-      this.repository?.getRefsSnapshot?.(),
-    ]) {
-      if (snapshot?.initialized && snapshot.head?.oid) return true;
-    }
-    return false;
-  }
-
   stageFiles(paths, options = {}) {
     const filePaths = pathsFrom(paths);
     if (filePaths.length === 0) return Promise.resolve("");
     return this.run(["add", "--", ...filePaths], options);
   }
 
-  async unstageFiles(paths, options = {}) {
+  unstageFiles(paths, options = {}) {
     const filePaths = pathsFrom(paths);
-    if (filePaths.length === 0) return "";
+    if (filePaths.length === 0) return Promise.resolve("");
     if (options.reference) {
       return this.run(["reset", options.reference, "--", ...filePaths], options);
     }
-    if (this.headExistsInSnapshot()) {
-      return this.run(["reset", "HEAD", "--", ...filePaths], options);
-    }
-
-    const head = await this.provider.runResult(
-      ["rev-parse", "--verify", "HEAD"],
-      this.workingDirectory,
-      { ...options, allowedExitCodes: [0, 128] },
-    );
-    if (head.exitCode === 0) {
-      return this.run(["reset", "HEAD", "--", ...filePaths], options);
-    }
-
-    // An unborn repository has no HEAD to reset against. Removing entries
-    // from the index leaves their working-tree files untouched.
-    return this.run(["rm", "--cached", "--ignore-unmatch", "--", ...filePaths], options);
+    // Naming no reference resets against HEAD, or against the empty tree in an
+    // unborn repository, so one command covers both without a probe for which
+    // case this is. A path with no index entry is a no-op either way.
+    //
+    // `rm --cached` used to stand in for the unborn case and was wrong for it:
+    // it refuses a path whose staged content matches neither the working-tree
+    // file nor HEAD, which is every file edited after it was staged. In a
+    // repository with no commits there is no HEAD for it to match, so staging
+    // a file and then touching it made unstaging fail outright.
+    return this.run(["reset", "--", ...filePaths], options);
   }
 
   async stageFileModeChange(filePath, mode, options = {}) {

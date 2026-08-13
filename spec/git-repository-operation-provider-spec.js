@@ -349,7 +349,7 @@ describe("GitRepositoryOperationProvider", () => {
     ]);
   });
 
-  it("skips the HEAD probe in unstageFiles when a snapshot proves HEAD exists", async () => {
+  it("unstages with one reset whether or not HEAD exists", async () => {
     const calls = [];
     const provider = new GitRepositoryOperationProvider({
       exec: async (args) => {
@@ -357,62 +357,41 @@ describe("GitRepositoryOperationProvider", () => {
         return { exitCode: 0, stdout: "", stderr: "" };
       },
     });
-    const workingDirectory = path.join(temp.mkdirSync("git-unstage-fast-path"), "repo");
-    const oid = "0123456789abcdef0123456789abcdef01234567";
+    const workingDirectory = path.join(temp.mkdirSync("git-unstage-shape"), "repo");
+    const operations = provider.createRepositoryOperations({ workingDirectory });
 
-    const fromStatus = provider.createRepositoryOperations({
-      workingDirectory,
-      repository: {
-        getStatusSnapshot: () => ({ initialized: true, head: { oid } }),
-        getRefsSnapshot: () => ({ initialized: false, head: null }),
-      },
-    });
-    await fromStatus.unstageFiles(["one.txt"]);
+    await operations.unstageFiles(["one.txt"]);
+    await operations.unstageFiles(["two.txt"], { reference: "HEAD~" });
 
-    // The refs snapshot serves as proof when the status snapshot has not
-    // initialized yet.
-    const fromRefs = provider.createRepositoryOperations({
-      workingDirectory,
-      repository: {
-        getStatusSnapshot: () => ({ initialized: false, head: null }),
-        getRefsSnapshot: () => ({ initialized: true, head: { oid } }),
-      },
-    });
-    await fromRefs.unstageFiles(["two.txt"]);
-
+    // Naming no reference already resets against HEAD, or against the empty
+    // tree when there is none, so neither a snapshot lookup nor a `rev-parse`
+    // probe is needed to tell the two apart.
     expect(calls).toEqual([
-      ["reset", "HEAD", "--", "one.txt"],
-      ["reset", "HEAD", "--", "two.txt"],
+      ["reset", "--", "one.txt"],
+      ["reset", "HEAD~", "--", "two.txt"],
     ]);
   });
 
-  it("keeps the HEAD probe in unstageFiles when snapshots cannot prove HEAD", async () => {
-    const calls = [];
-    const provider = new GitRepositoryOperationProvider({
-      exec: async (args) => {
-        calls.push(args);
-        if (args[0] === "rev-parse") return { exitCode: 128, stdout: "", stderr: "" };
-        return { exitCode: 0, stdout: "", stderr: "" };
-      },
-    });
-    const workingDirectory = path.join(temp.mkdirSync("git-unstage-probe"), "repo");
+  it("unstages a file rewritten after staging in a repository with no commits", async () => {
+    const provider = new GitRepositoryOperationProvider();
+    const workingDirectory = temp.mkdirSync("git-unstage-unborn");
+    await provider.initializeRepository(workingDirectory, { initialBranch: "main" });
+    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const filePath = path.join(workingDirectory, "report.log");
 
-    // An initialized snapshot claiming "unborn" is not trusted: were it stale,
-    // acting on it would stage a deletion via `rm --cached` instead of
-    // unstaging. The probe stays authoritative for everything but a proven oid.
-    const operations = provider.createRepositoryOperations({
-      workingDirectory,
-      repository: {
-        getStatusSnapshot: () => ({ initialized: true, head: { oid: null, unborn: true } }),
-        getRefsSnapshot: () => ({ initialized: true, head: { oid: null, unborn: true } }),
-      },
-    });
-    await operations.unstageFiles(["one.txt"]);
+    fs.writeFileSync(filePath, "staged\n");
+    await operations.stageFiles(["report.log"]);
+    // Whatever generated the file writes it again, so the staged blob now
+    // matches neither the working tree nor HEAD — and an unborn repository has
+    // no HEAD for it to match. `rm --cached` refused exactly this.
+    fs.writeFileSync(filePath, "rebuilt\n");
 
-    expect(calls).toEqual([
-      ["rev-parse", "--verify", "HEAD"],
-      ["rm", "--cached", "--ignore-unmatch", "--", "one.txt"],
-    ]);
+    await operations.unstageFiles(["report.log"]);
+
+    expect((await provider.run(["diff", "--cached", "--name-only"], workingDirectory)).trim()).toBe(
+      "",
+    );
+    expect(fs.readFileSync(filePath, "utf8")).toBe("rebuilt\n");
   });
 
   it("classifies operations by the snapshots they can invalidate", () => {
