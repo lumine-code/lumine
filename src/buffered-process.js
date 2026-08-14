@@ -163,45 +163,38 @@ module.exports = class BufferedProcess {
   // Kill all child processes of the spawned cmd.exe process on Windows.
   //
   // This is required since killing the cmd.exe does not terminate child
-  // processes.
+  // processes. `/T` takes the whole tree beneath the process, not just its
+  // immediate children, and its root is the process this wrapper spawned, so
+  // nothing outside it is in scope.
+  //
+  // The obvious way to enumerate a process tree on Windows is `wmic`, and this
+  // used to. Microsoft removed it in Windows 11 24H2, and its absence is not
+  // detectable here — the spawn fails asynchronously, into an error handler
+  // that has nothing to say — so on a current Windows the children were simply
+  // left running.
   killOnWindows() {
     if (!this.process) return;
 
     const parentPid = this.process.pid;
-    const cmd = "wmic";
-    const args = ["process", "where", `(ParentProcessId=${parentPid})`, "get", "processid"];
 
-    let wmicProcess;
-
+    let sweep;
     try {
-      wmicProcess = ChildProcess.spawn(cmd, args);
+      sweep = ChildProcess.spawn("taskkill", ["/PID", String(parentPid), "/T", "/F"], {
+        windowsHide: true,
+        stdio: "ignore",
+      });
     } catch {
       this.killProcess();
       return;
     }
 
-    wmicProcess.on("error", () => {}); // ignore errors
-
-    let output = "";
-    wmicProcess.stdout.on("data", (data) => {
-      output += data;
-    });
-    wmicProcess.stdout.on("close", () => {
-      for (let pid of output.split(/\s+/)) {
-        if (!/^\d{1,10}$/.test(pid)) continue;
-        pid = parseInt(pid, 10);
-
-        if (!pid || pid === parentPid) continue;
-
-        try {
-          process.kill(pid);
-        } catch {
-          /* ignore */
-        }
-      }
-
-      this.killProcess();
-    });
+    // Kill the process itself only once the sweep is done: `taskkill` reads the
+    // tree as it runs, and a parent killed first leaves its children reparented
+    // and out of reach. A tree that has already gone exits non-zero, which is
+    // the outcome we wanted anyway.
+    const finish = () => this.killProcess();
+    sweep.once("close", finish);
+    sweep.once("error", finish);
   }
 
   killProcess() {

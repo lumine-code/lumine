@@ -145,5 +145,45 @@ describe("BufferedProcess", function () {
       expect(ChildProcess.spawn.calls.argsFor(0)[1][2]).toBe("/c");
       expect(ChildProcess.spawn.calls.argsFor(0)[1][3]).toBe('"dir"');
     });
+
+    // Killing the cmd.exe wrapper leaves its children running, so the kill has
+    // to reach the tree itself.
+    describe("when the process is killed", function () {
+      let bufferedProcess, killed;
+
+      beforeEach(function () {
+        bufferedProcess = new BufferedProcess({ command: "dir", autoStart: false });
+        killed = jasmine.createSpy("kill");
+        bufferedProcess.process = { pid: 1234, kill: killed };
+      });
+
+      it("sweeps the whole tree beneath it", function () {
+        const sweep = jasmine.createSpyObj("taskkill", ["once"]);
+        ChildProcess.spawn.and.returnValue(sweep);
+
+        bufferedProcess.kill();
+
+        const [command, args] = ChildProcess.spawn.calls.mostRecent().args;
+        expect(command).toBe("taskkill");
+        expect(args).toContain("/T");
+        expect(args).toContain("1234");
+
+        // `taskkill` reads the tree as it runs, so the process itself outlives
+        // the sweep — killing it first would reparent its children out of
+        // reach.
+        expect(killed).not.toHaveBeenCalled();
+        const [, onClose] = sweep.once.calls.all().find(({ args }) => args[0] === "close").args;
+        onClose();
+        expect(killed).toHaveBeenCalled();
+      });
+
+      it("kills the process anyway when the sweep cannot be spawned", function () {
+        ChildProcess.spawn.and.throwError("ENOENT");
+
+        bufferedProcess.kill();
+
+        expect(killed).toHaveBeenCalled();
+      });
+    });
   });
 });
