@@ -155,6 +155,11 @@
   },
   ".select-list lumine-text-editor[mini]": {
     "enter": "core:confirm",
+    // A dialog opens on an empty query; this puts back the one it was last
+    // closed with, selected, so the next keystroke still replaces it. It
+    // shadows win32/linux `f11` (window:toggle-full-screen) while a modal is
+    // open, which is the one moment nobody is reaching for full screen.
+    "f11": "select-list:restore-query",
     // Opens the item-actions list: the dialog's own commands with their
     // descriptions and keybindings, command-palette style. Package keymaps
     // add actions in their own namespace and leave the chrome keys alone.
@@ -162,6 +167,7 @@
     "f12": "select-list:actions"
   },
   ".input-dialog lumine-text-editor[mini]": {
+    "f11": "select-list:restore-query",
     "f12": "select-list:actions"
   },
   ".tool-panel.panel-left, .tool-panel.panel-right": {

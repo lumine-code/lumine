@@ -797,6 +797,165 @@ describe("SelectListView", () => {
     });
   });
 
+  describe("the query", () => {
+    it("clears the query on every show, and remembers what it cleared", () => {
+      view = textItemView();
+      view.show();
+      view.refs.queryEditor.setText("tw");
+      view.hide();
+
+      view.show();
+      expect(view.getQuery()).toBe("");
+
+      expect(view.restoreQuery()).toBe(true);
+      expect(view.getQuery()).toBe("tw");
+      // Selected, so the next keystroke replaces it rather than appending.
+      expect(view.refs.queryEditor.getSelectedText()).toBe("tw");
+    });
+
+    it("has nothing to restore before the first close", () => {
+      view = textItemView();
+      view.show();
+      view.refs.queryEditor.setText("tw");
+
+      expect(view.restoreQuery()).toBe(false);
+      expect(view.getQuery()).toBe("tw");
+    });
+
+    it("keeps the query when preserveQuery is set", () => {
+      view = textItemView({ preserveQuery: true });
+      view.show();
+      view.refs.queryEditor.setText("tw");
+      view.hide();
+
+      view.show();
+      expect(view.getQuery()).toBe("tw");
+      expect(view.refs.queryEditor.getSelectedText()).toBe("tw");
+    });
+
+    it("clears before willShow runs, so a reload sees the empty query", () => {
+      const queries = [];
+      view = textItemView({ willShow: () => queries.push(view.getQuery()) });
+      view.show();
+      view.refs.queryEditor.setText("tw");
+      view.hide();
+      view.show();
+
+      expect(queries).toEqual(["", ""]);
+    });
+
+    it("keeps the query across a flow round trip rather than treating it as an open", async () => {
+      view = textItemView({ className: "spec-query", crumb: "Files" });
+      const disposable = lumine.commands.add(view.element, {
+        "spec:some-action": () => {},
+      });
+      view.show();
+      view.refs.queryEditor.setText("tw");
+
+      await view.showItemActions();
+      expect(view.isVisible()).toBe(false);
+      lumine.workspace.popModal();
+
+      // Returning from the actions list is a resume: the query the action was
+      // chosen under is still there.
+      expect(view.isVisible()).toBe(true);
+      expect(view.getQuery()).toBe("tw");
+      disposable.dispose();
+    });
+
+    it("does not carry an abandoned suspension into the next open", async () => {
+      view = textItemView({ className: "spec-query", crumb: "Files" });
+      const disposable = lumine.commands.add(view.element, {
+        "spec:some-action": () => {},
+      });
+      view.show();
+      view.refs.queryEditor.setText("tw");
+
+      // F12, then dismiss the actions list instead of coming back: the master
+      // is left suspended with nothing on screen, and the next open is an
+      // open, not a resume.
+      await view.showItemActions();
+      view.itemActionsList.hide();
+      view.show();
+
+      expect(view.getQuery()).toBe("");
+      disposable.dispose();
+    });
+  });
+
+  describe("recent items", () => {
+    function recentView(props = {}) {
+      return new SelectListView({
+        items: ["one", "two", "three", "four"],
+        elementForItem: (item) => {
+          const li = document.createElement("li");
+          li.textContent = item;
+          return li;
+        },
+        ...props,
+      });
+    }
+
+    it("hoists the recent items in order and rules them off", () => {
+      view = recentView({ recentIds: ["three", "one"] });
+
+      expect(view.items).toEqual(["three", "one", "two", "four"]);
+      const separator = view.element.querySelector(".select-list-separator");
+      expect(separator.previousElementSibling.textContent).toBe("one");
+      expect(separator.nextElementSibling.textContent).toBe("two");
+    });
+
+    it("ignores recent ids that no longer match an item", () => {
+      view = recentView({ recentIds: ["gone", "four"] });
+
+      expect(view.items).toEqual(["four", "one", "two", "three"]);
+      expect(view.element.querySelectorAll(".select-list-separator").length).toBe(1);
+    });
+
+    it("stands down under a query, where the ranking is the answer", async () => {
+      view = recentView({ recentIds: ["three", "one"] });
+
+      view.refs.queryEditor.setText("o");
+      await nextUpdate();
+      expect(view.element.querySelector(".select-list-separator")).toBeNull();
+
+      view.refs.queryEditor.setText("");
+      await nextUpdate();
+      expect(view.items[0]).toBe("three");
+      expect(view.element.querySelector(".select-list-separator")).not.toBeNull();
+    });
+
+    it("draws no rule when every item is recent, or none is", async () => {
+      view = recentView({ recentIds: ["one", "two", "three", "four"] });
+      expect(view.element.querySelector(".select-list-separator")).toBeNull();
+
+      await view.update({ recentIds: [] });
+      expect(view.element.querySelector(".select-list-separator")).toBeNull();
+      expect(view.items).toEqual(["one", "two", "three", "four"]);
+    });
+
+    it("resolves recent ids through idForItem", () => {
+      view = new SelectListView({
+        items: [{ name: "alpha" }, { name: "beta" }],
+        recentIds: ["BETA"],
+        idForItem: (item) => item.name.toUpperCase(),
+        filterKeyForItem: (item) => item.name,
+        elementForItem: (item) => ({ primary: item.name }),
+      });
+
+      expect(view.items.map((item) => item.name)).toEqual(["beta", "alpha"]);
+    });
+
+    it("applies the caller's order among the items that are not recent", () => {
+      view = recentView({
+        recentIds: ["four"],
+        order: (a, b) => a.localeCompare(b),
+      });
+
+      expect(view.items).toEqual(["four", "one", "three", "two"]);
+    });
+  });
+
   describe("item actions", () => {
     let dispatched, disposables;
 
@@ -841,6 +1000,72 @@ describe("SelectListView", () => {
       expect(actions.some((action) => action.command === "select-list:actions")).toBe(false);
       expect(lumine.workspace.getModalTrail()).toEqual(["Files", "Actions"]);
       expect(view.itemActionsList.props.infoMessage).toBe("one");
+    });
+
+    it("groups the row actions ahead of the list actions and rules between them", async () => {
+      disposables.add(
+        lumine.commands.add(view.element, {
+          "spec:list-action": {
+            description: "Does the test thing to the whole list",
+            actionScope: "list",
+            didDispatch: () => dispatched.push("spec:list-action"),
+          },
+        }),
+      );
+
+      view.show();
+      await view.showItemActions();
+
+      const actions = view.itemActionsList.props.items;
+      expect(actions.at(-1).command).toBe("spec:list-action");
+      expect(actions.at(-1).scope).toBe("list");
+      // Anything that did not say otherwise is about the selected row.
+      expect(actions.slice(0, -1).every((action) => action.scope === "item")).toBe(true);
+      expect(view.itemActionsList.props.separatorIds).toEqual(["spec:list-action"]);
+
+      await conditionPromise(() =>
+        Boolean(view.itemActionsList.element.querySelector(".select-list-separator")),
+      );
+      const separator = view.itemActionsList.element.querySelector(".select-list-separator");
+      expect(separator.nextElementSibling.textContent).toContain("List Action");
+    });
+
+    it("draws no group rule when the query has reordered the rows", async () => {
+      disposables.add(
+        lumine.commands.add(view.element, {
+          "spec:list-action": {
+            description: "Does the test thing to the whole list",
+            actionScope: "list",
+            didDispatch: () => {},
+          },
+        }),
+      );
+
+      view.show();
+      await view.showItemActions();
+      view.itemActionsList.refs.queryEditor.setText("action");
+      await nextUpdate();
+
+      expect(view.itemActionsList.element.querySelector(".select-list-separator")).toBeNull();
+    });
+
+    it("rules nothing off when every action is about the list", async () => {
+      view.props.actionsFilter = (descriptor) => descriptor.name === "spec:only-list-action";
+      disposables.add(
+        lumine.commands.add(view.element, {
+          "spec:only-list-action": {
+            description: "Does the test thing to the whole list",
+            actionScope: "list",
+            didDispatch: () => {},
+          },
+        }),
+      );
+
+      view.show();
+      await view.showItemActions();
+
+      expect(view.itemActionsList.props.items.length).toBe(1);
+      expect(view.itemActionsList.props.separatorIds).toEqual([]);
     });
 
     it("renders name, description, and keybinding like the command palette", async () => {

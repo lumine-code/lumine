@@ -206,13 +206,23 @@ describe("InputDialogView", () => {
     it("runs the show side effects when the panel is shown from outside", () => {
       let willShowCalls = 0;
       view = new InputDialogView({ willShow: () => willShowCalls++ });
-      view.refs.queryEditor.setText("kept");
+      view.refs.queryEditor.setText("stale");
 
       view.getPanel().show();
 
       expect(willShowCalls).toBe(1);
       expect(view.isVisible()).toBe(true);
       expect(view.element.contains(document.activeElement)).toBe(true);
+      // Showing is showing, whoever did it: the dialog opens on an empty query.
+      expect(view.getQuery()).toBe("");
+    });
+
+    it("selects a preserved query on show, so a keystroke still replaces it", () => {
+      view = new InputDialogView({ preserveQuery: true });
+      view.refs.queryEditor.setText("kept");
+
+      view.getPanel().show();
+
       expect(view.refs.queryEditor.getSelectedText()).toBe("kept");
     });
 
