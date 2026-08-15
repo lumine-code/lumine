@@ -73,6 +73,10 @@ const ALLOWED_KEYSTROKE_DIVERGENCES = {
   "ctrl-shift-a": "add-project-folder is on cmd-shift-a on macOS",
   // Shift-Delete as cut is a CUA convention with no macOS equivalent.
   "shift-delete": "CUA cut vs macOS forward delete",
+  // restore-query is bound on every platform, scoped to an open select list or
+  // input dialog; win32 and linux also give f11 to full screen at window scope.
+  // The two never contend — nobody reaches for full screen while a modal is up.
+  f11: "select-list restore-query shadows win32/linux full screen while a modal is open",
 };
 
 function commandsByPlatform() {
