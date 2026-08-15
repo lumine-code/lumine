@@ -73,6 +73,34 @@ function waitForArm(watchRoot) {
   barrier.close();
 }
 
+// Re-read every other live watcher after the process-wide event stream has been
+// rebuilt.
+//
+// `waitForArm` makes the handle *being* armed safe. It does nothing for the
+// handles that were already watching: the rebuild it forces destroys the old
+// stream, and with it everything that stream had accepted but not yet delivered.
+// Releasing a handle rebuilds the stream the same way. So on macOS any watcher
+// can lose an event because an unrelated part of the editor happened to start or
+// stop watching something in the same moment — a project opening, a buffer
+// closing — and FSEvents never replays it, so a single lost event is permanent
+// rather than late. Linux and Windows have no shared stream and no rebuild.
+//
+// A rebuild is a known, bounded window, so close it by reconciling across it:
+// compare each target against the signature it had before and report what moved.
+function reconcileAfterRebuild(except) {
+  if (process.platform !== "darwin") return;
+  for (const watcher of Array.from(ACTIVE)) {
+    if (watcher === except) continue;
+    watcher.reconcile();
+  }
+}
+
+function sameSignature(left, right) {
+  if (left.exists !== right.exists) return false;
+  if (!left.exists) return true;
+  return left.mtimeMs === right.mtimeMs && left.size === right.size && left.ino === right.ino;
+}
+
 function isCaseInsensitive() {
   return process.platform === "win32" || process.platform === "darwin";
 }
@@ -147,6 +175,9 @@ class NodejsWatcher {
     this.closed = false;
     this.handle = null;
     this.verifyTimer = null;
+    // What the target looked like when we last spoke about it, so a rebuild of
+    // the macOS event stream can be reconciled across. See `reconcileAfterRebuild`.
+    this.signature = this.readSignature();
 
     ACTIVE.add(this);
   }
@@ -165,6 +196,9 @@ class NodejsWatcher {
       });
       this.handle.on("error", (err) => this.handleError(err));
       waitForArm(this.watchRoot);
+      // Arming rebuilt the shared stream, so everything else watching just lost
+      // whatever was still in flight.
+      reconcileAfterRebuild(this);
     } catch (err) {
       this.handleError(err);
     }
@@ -254,6 +288,46 @@ class NodejsWatcher {
     });
   }
 
+  // A cheap fingerprint of the watched entry. For a directory `mtimeMs` moves
+  // when a direct child is added, removed or renamed — which is what a
+  // non-recursive directory watch reports as `rename`; a child's contents
+  // changing under it is not visible here and is not recovered.
+  readSignature() {
+    try {
+      const stat = fs.statSync(this.realPath);
+      return { exists: true, mtimeMs: stat.mtimeMs, size: stat.size, ino: stat.ino };
+    } catch {
+      return { exists: false };
+    }
+  }
+
+  // Report anything that moved while the event stream was being rebuilt.
+  reconcile() {
+    if (this.closed || !this.handle || !this.callback) return;
+
+    const previous = this.signature;
+    const current = this.readSignature();
+    if (sameSignature(previous, current)) return;
+
+    if (this.mode === "dir") {
+      // Consumers of a directory watch filter by basename, and we cannot say
+      // which child moved — report the root so they re-scan.
+      this.emit("change", this.path);
+      return;
+    }
+
+    if (!current.exists) {
+      // Let the usual rename-versus-delete arbitration run rather than calling
+      // it a deletion here: an atomic save is momentarily indistinguishable.
+      if (previous.exists) this.scheduleVerify();
+      return;
+    }
+
+    const wasAbsent = !previous.exists;
+    this.captureIdentity();
+    this.emit(wasAbsent ? "create" : "change", this.path);
+  }
+
   captureIdentity() {
     try {
       const stat = fs.statSync(this.realPath);
@@ -327,6 +401,9 @@ class NodejsWatcher {
 
   emit(eventType, eventPath, oldPath) {
     if (this.closed || !this.callback) return;
+    // Anything reported now is accounted for, so a later rebuild must not
+    // reconcile it a second time.
+    if (process.platform === "darwin") this.signature = this.readSignature();
     this.callback(eventType, eventPath, oldPath);
   }
 
@@ -345,6 +422,8 @@ class NodejsWatcher {
       this.handle.removeAllListeners();
       this.handle.close();
       this.handle = null;
+      // Releasing rebuilds the shared stream just as arming does.
+      reconcileAfterRebuild(this);
     }
   }
 
