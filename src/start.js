@@ -61,10 +61,19 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
   // frames for seconds and timing out whichever spec happens to be running.
   // (The former `CalculateNativeWinOcclusion` feature flag no longer exists in
   // this Chromium; these switches are its maintained replacements.)
+  //
+  // A headless CI machine has no GPU, and Chromium blocklists WebGL against the
+  // software renderer it falls back to. A package that draws through WebGL then
+  // gets a null context rather than a slow one, and every spec that renders
+  // fails for a reason that has nothing to do with the package. Both switches
+  // only lift that gate — neither forces software rendering, so a run on a
+  // machine with a working GPU still uses it.
   if (args.test) {
     app.commandLine.appendSwitch("disable-backgrounding-occluded-windows");
     app.commandLine.appendSwitch("disable-renderer-backgrounding");
     app.commandLine.appendSwitch("disable-background-timer-throttling");
+    app.commandLine.appendSwitch("ignore-gpu-blocklist");
+    app.commandLine.appendSwitch("enable-unsafe-swiftshader");
   }
 
   const releaseChannel = getReleaseChannel(app.getVersion());
