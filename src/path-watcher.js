@@ -46,10 +46,13 @@ class NativeWatcher {
    *
    * Events will not be produced until `start()` is called.
    *
+   * @param {String} normalizedPath - absolute, symlink-resolved path to watch.
+   * @param {Boolean} recursive - whether the subscriber asked for a tree watch. Sent to the worker so it does not have to infer intent from the path alone; see `watcher:watch` there.
    * @private
    */
-  constructor(normalizedPath) {
+  constructor(normalizedPath, recursive = true) {
     this.normalizedPath = normalizedPath;
+    this.recursive = recursive;
     this.emitter = new Emitter();
     this.subs = new CompositeDisposable();
 
@@ -441,6 +444,7 @@ class WorkerProcessWatcher extends NativeWatcher {
             normalizedPath: instance.normalizedPath,
             instance: instance.id,
             ignored: instance.ignoredNames,
+            recursive: instance.recursive,
           }),
         ),
       );
@@ -537,6 +541,7 @@ class WorkerProcessWatcher extends NativeWatcher {
         normalizedPath: this.normalizedPath,
         instance: this.id,
         ignored: this.ignoredNames,
+        recursive: this.recursive,
       }).catch(() => {});
     }
   }
@@ -559,6 +564,7 @@ class WorkerProcessWatcher extends NativeWatcher {
         normalizedPath: this.normalizedPath,
         instance: this.id,
         ignored: this.ignoredNames,
+        recursive: this.recursive,
       });
     };
 
@@ -1047,8 +1053,13 @@ class PathWatcherManager {
    */
   constructor() {
     this.live = new Map();
-    const createNative = (normalizedPath) => {
-      const nativeWatcher = new ParcelWatcher(normalizedPath);
+    // Which registry a watcher came from is the only record of what its
+    // subscriber asked for, so it is what the worker is told. Left to guess, the
+    // worker infers "directory" from a `stat` of the path — and a tree watch
+    // whose root has just been deleted then reads as a file watch and silently
+    // escalates to watching the root's *parent*.
+    const createNative = (recursive) => (normalizedPath) => {
+      const nativeWatcher = new ParcelWatcher(normalizedPath, recursive);
       this.live.set(normalizedPath, nativeWatcher);
       const sub = nativeWatcher.onWillStop(() => {
         this.live.delete(normalizedPath);
@@ -1063,8 +1074,8 @@ class PathWatcherManager {
     // by `@lumine-code/watcher`, which reports a move as delete+create and so cannot
     // follow renames or coalesce atomic saves the way the per-file Node watcher
     // does. Keeping them separate guarantees each file gets its own Node watcher.
-    this.nativeRegistry = new NativeWatcherRegistry(createNative);
-    this.nonRecursiveRegistry = new NativeWatcherRegistry(createNative);
+    this.nativeRegistry = new NativeWatcherRegistry(createNative(true));
+    this.nonRecursiveRegistry = new NativeWatcherRegistry(createNative(false));
   }
 
   /**

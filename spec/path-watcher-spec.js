@@ -212,6 +212,32 @@ describe("watchPath", function () {
         expect(watcher.constructor.name).toBe("PathWatcher");
       });
 
+      // A tree watch on a root that has just been deleted — a project folder
+      // removed while the window is open, and every package suite's `afterEach`
+      // racing the arm — used to fall through to the single-file path, which
+      // watches the *parent* so it can report the file being created. For a
+      // project root that parent is whatever contains it, `os.tmpdir()` for a
+      // temp project; on macOS `fs.watch` is subtree-wide, so it became a
+      // recursive watch over every temp directory on the machine and drowned the
+      // watches that shared the process.
+      it("fails rather than falling back to the parent when a tree root is missing", async function () {
+        const rootDir = await tempMkdir("lumine-fsmanager-test-");
+        const missing = path.join(rootDir, "gone");
+
+        let failure = null;
+        try {
+          await watchPath(missing, {}, () => {});
+        } catch (error) {
+          failure = error;
+        }
+
+        expect(failure).not.toBeNull();
+        expect(failure.message).toContain(missing);
+        // And it leaves nothing registered: a watcher that cannot arm is
+        // disposed, so neither the missing root nor its parent is watched.
+        expect(watchPath.printWatchers()).not.toContain(path.basename(rootDir));
+      });
+
       it("reuses an existing native watcher and resolves getStartPromise immediately if attached to a running watcher", async function () {
         const rootDir = await tempMkdir("lumine-fsmanager-test-");
 

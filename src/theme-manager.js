@@ -492,9 +492,13 @@ module.exports = class ThemeManager {
       // so our subscription and the reported paths line up.
       let realStylesheetPath = fs.realpathSync(userStylesheetPath);
 
-      this.userStylesheetSubscription = await watcher.watchPath(realStylesheetPath, {}, () => {
-        this.reloadStylesheet();
-      });
+      this.userStylesheetSubscription = await watcher.watchPath(
+        realStylesheetPath,
+        { recursive: false },
+        () => {
+          this.reloadStylesheet();
+        },
+      );
     } catch {
       let message = `
 Unable to watch path: \`${path.basename(userStylesheetPath)}\`. Make sure

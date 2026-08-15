@@ -116,13 +116,28 @@ async function handleMessage(message) {
       let wrappedNodejsHandler = (eventType, eventPath, oldPath) =>
         nodejsHandler(instance, eventType, eventPath, oldPath);
       try {
-        let isDirectory = false;
+        let stat = null;
         try {
-          isDirectory = fs.statSync(normalizedPath).isDirectory();
+          stat = fs.statSync(normalizedPath);
         } catch {
           // The path may not exist yet (e.g. a config file); the non-recursive
           // watcher handles that by watching the parent directory.
         }
+        // That parent-directory fallback belongs to single-file watching alone.
+        // A tree watch whose root is missing must fail here instead: taking the
+        // fallback would quietly watch the root's parent, and for a project in a
+        // temp directory that parent is the whole of `os.tmpdir()`. On macOS
+        // `fs.watch` is subtree-wide whatever `recursive` says, so one deleted
+        // project root turns into a recursive watch over every temp directory on
+        // the machine — enough traffic for FSEvents to start dropping batches,
+        // which libuv discards silently, and every such arm and release rebuilds
+        // the process-wide event stream "since now" under whatever else is
+        // watching. Callers already treat a failed arm as a real outcome (see
+        // `Project::setRootDirectories`).
+        if (recursive && stat === null) {
+          throw new Error(`Cannot watch a directory that does not exist: ${normalizedPath}`);
+        }
+        const isDirectory = stat ? stat.isDirectory() : false;
         let handle;
         if (isDirectory && recursive) {
           // Recursive tree watch → `@lumine-code/watcher`.
