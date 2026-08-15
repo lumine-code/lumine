@@ -236,6 +236,145 @@ describe("ServiceHub", () => {
     });
   });
 
+  // A consumer callback is package activation code, so it can throw. Left
+  // alone that leaves half a delivery standing: some consumers hold a service
+  // nobody can take back, and the caller has no disposable to undo it with.
+  describe("registration failure", () => {
+    it("rolls back a new provider without disturbing existing consumers", () => {
+      spyOn(console, "warn");
+      const existingDispose = jasmine.createSpy("existingDispose");
+      const failedKeepDispose = jasmine.createSpy("failedKeepDispose");
+      const failedPartialDispose = jasmine.createSpy("failedPartialDispose");
+      const replacementKeepDispose = jasmine.createSpy("replacementKeepDispose");
+      const replacementPartialDispose = jasmine.createSpy("replacementPartialDispose");
+      const failure = new Error("consumer activation failed");
+
+      const existingProvider = hub.provide("terminal", "1.0.0", {
+        id: "existing",
+      });
+      const keepConsumer = hub.consume("terminal", "*", (service) => ({
+        dispose:
+          service.id === "existing"
+            ? existingDispose
+            : service.id === "failed"
+              ? failedKeepDispose
+              : replacementKeepDispose,
+      }));
+      const partialConsumer = hub.consume("terminal", "^2.0.0", (service) => ({
+        dispose: service.id === "failed" ? failedPartialDispose : replacementPartialDispose,
+      }));
+      const failingConsumer = hub.consume("terminal", "^2.0.0", (service) => {
+        if (service.id === "failed") {
+          throw failure;
+        }
+      });
+
+      let thrownError;
+      try {
+        hub.provide("terminal", "2.0.0", { id: "failed" });
+      } catch (error) {
+        thrownError = error;
+      }
+
+      expect(thrownError).toBe(failure);
+      expect(failedKeepDispose).toHaveBeenCalledTimes(1);
+      expect(failedPartialDispose).toHaveBeenCalledTimes(1);
+      expect(existingDispose).not.toHaveBeenCalled();
+      expect(hub.unmatchedConsumers()).toEqual([
+        { keyPath: "terminal", versionRange: "^2.0.0" },
+        { keyPath: "terminal", versionRange: "^2.0.0" },
+      ]);
+
+      const lateConsumer = jasmine.createSpy("lateConsumer");
+      const lateConsumerDisposable = hub.consume("terminal", "^2.0.0", lateConsumer);
+      expect(lateConsumer).not.toHaveBeenCalled();
+
+      const replacementProvider = hub.provide("terminal", "2.0.0", {
+        id: "replacement",
+      });
+      expect(lateConsumer).toHaveBeenCalledOnceWith({ id: "replacement" });
+
+      replacementProvider.dispose();
+      existingProvider.dispose();
+      keepConsumer.dispose();
+      partialConsumer.dispose();
+      failingConsumer.dispose();
+      lateConsumerDisposable.dispose();
+
+      expect(replacementKeepDispose).toHaveBeenCalledTimes(1);
+      expect(replacementPartialDispose).toHaveBeenCalledTimes(1);
+      expect(existingDispose).toHaveBeenCalledTimes(1);
+      expect(failedKeepDispose).toHaveBeenCalledTimes(1);
+      expect(failedPartialDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("rolls back a new consumer without disturbing existing providers", () => {
+      const firstProvider = hub.provide("outline", "1.0.0", { id: "first" });
+      const secondProvider = hub.provide("outline", "1.0.0", { id: "second" });
+      const partialDispose = jasmine.createSpy("partialDispose");
+      const failure = new Error("consumer activation failed");
+      const failingConsumer = jasmine.createSpy("failingConsumer").and.callFake((service) => {
+        if (service.id === "first") {
+          return { dispose: partialDispose };
+        }
+        throw failure;
+      });
+
+      let thrownError;
+      try {
+        hub.consume("outline", "^1.0.0", failingConsumer);
+      } catch (error) {
+        thrownError = error;
+      }
+
+      expect(thrownError).toBe(failure);
+      expect(failingConsumer).toHaveBeenCalledTimes(2);
+      expect(partialDispose).toHaveBeenCalledTimes(1);
+
+      const thirdProvider = hub.provide("outline", "1.0.0", { id: "third" });
+      expect(failingConsumer).toHaveBeenCalledTimes(2);
+
+      const healthyConsumer = jasmine.createSpy("healthyConsumer");
+      const healthyConsumerDisposable = hub.consume("outline", "^1.0.0", healthyConsumer);
+      expect(healthyConsumer.calls.allArgs()).toEqual([
+        [{ id: "first" }],
+        [{ id: "second" }],
+        [{ id: "third" }],
+      ]);
+
+      firstProvider.dispose();
+      secondProvider.dispose();
+      thirdProvider.dispose();
+      healthyConsumerDisposable.dispose();
+      expect(partialDispose).toHaveBeenCalledTimes(1);
+    });
+
+    it("disposes every partial registration when rollback cleanup fails", () => {
+      const firstDispose = jasmine.createSpy("firstDispose").and.throwError("first cleanup failed");
+      const secondDispose = jasmine.createSpy("secondDispose");
+      const callbackFailure = new Error("consumer activation failed");
+
+      hub.consume("tree-view", "^1.0.0", () => ({ dispose: firstDispose }));
+      hub.consume("tree-view", "^1.0.0", () => ({ dispose: secondDispose }));
+      hub.consume("tree-view", "^1.0.0", () => {
+        throw callbackFailure;
+      });
+
+      let thrownError;
+      try {
+        hub.provide("tree-view", "1.0.0", {});
+      } catch (error) {
+        thrownError = error;
+      }
+
+      expect(thrownError).toEqual(jasmine.any(AggregateError));
+      expect(thrownError.errors[0]).toBe(callbackFailure);
+      expect(thrownError.errors[1].message).toBe("first cleanup failed");
+      expect(firstDispose).toHaveBeenCalledTimes(1);
+      expect(secondDispose).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe("unmatchedConsumers", () => {
     it("reports a consumer no provider has satisfied", () => {
       hub.consume("outline", "^1.0.0", () => {});

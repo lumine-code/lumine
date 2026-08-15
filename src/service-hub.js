@@ -26,6 +26,47 @@ class Registration {
   }
 }
 
+// Dispose every registration even when one of them throws.
+//
+// A teardown loop that lets the first failure escape leaves the registrations
+// behind it connected to a package that is already gone. The failures are
+// collected instead and reported together once every registration has had its
+// turn.
+function disposeRegistrations(registrations) {
+  const errors = [];
+  for (const registration of [...registrations]) {
+    try {
+      registration.dispose();
+    } catch (error) {
+      errors.push(error);
+    }
+  }
+
+  if (errors.length === 1) {
+    throw errors[0];
+  }
+  if (errors.length > 1) {
+    throw new AggregateError(errors, "Multiple service registrations failed to dispose");
+  }
+}
+
+// Report a failed registration whose rollback also failed.
+//
+// The original error is what the caller asked about, so it stays first and
+// becomes the `cause`; the rollback failure rides along rather than replacing
+// it.
+function rethrowAfterRollback(error, rollbackError) {
+  if (rollbackError == null) {
+    throw error;
+  }
+
+  throw new AggregateError(
+    [error, rollbackError],
+    "Service registration failed and its rollback also failed",
+    { cause: error },
+  );
+}
+
 class Consumer {
   constructor(keyPath, versionRange, callback) {
     this.keyPath = keyPath;
@@ -40,9 +81,7 @@ class Consumer {
 
   destroy() {
     this.isDestroyed = true;
-    for (const registration of [...this.registrations]) {
-      registration.dispose();
-    }
+    disposeRegistrations(this.registrations);
   }
 }
 
@@ -73,13 +112,16 @@ class Provider {
       if (service == null) {
         continue;
       }
-      consumer.isSatisfied = true;
+      // Marked satisfied only once the callback has returned. A callback that
+      // throws did not take the service, and claiming otherwise would hide the
+      // consumer from `unmatchedConsumers` for the rest of the session.
       const disposable = consumer.callback.call(null, service);
       if (typeof disposable?.dispose === "function") {
         const registration = new Registration(this, consumer, disposable);
         this.registrations.add(registration);
         consumer.registrations.add(registration);
       }
+      consumer.isSatisfied = true;
       return;
     }
     // The name matched and the delivery still did not happen, which is never
@@ -102,9 +144,7 @@ class Provider {
   }
 
   destroy() {
-    for (const registration of [...this.registrations]) {
-      registration.dispose();
-    }
+    disposeRegistrations(this.registrations);
   }
 }
 
@@ -135,12 +175,39 @@ module.exports = class ServiceHub {
       servicesByVersion = version;
     }
     const provider = new Provider(keyPath, servicesByVersion);
+    // A consumer callback that throws leaves this provider half-delivered: some
+    // consumers hold the service, the rest never saw it, and the caller holds no
+    // disposable to undo either. Roll the whole registration back so a failed
+    // `provide` is a no-op, and a later provider of the same name still reaches
+    // every consumer.
+    const priorConsumerSatisfaction = new Map();
     this.providers.push(provider);
-    for (const consumer of this.consumers.slice()) {
-      if (!consumer.isDestroyed) {
+    try {
+      for (const consumer of this.consumers.slice()) {
+        if (consumer.isDestroyed) {
+          continue;
+        }
+        priorConsumerSatisfaction.set(consumer, consumer.isSatisfied);
         provider.provide(consumer);
       }
+    } catch (error) {
+      let rollbackError = null;
+      try {
+        provider.destroy();
+      } catch (caughtError) {
+        rollbackError = caughtError;
+      }
+
+      const index = this.providers.indexOf(provider);
+      if (index >= 0) {
+        this.providers.splice(index, 1);
+      }
+      for (const [consumer, wasSatisfied] of priorConsumerSatisfaction) {
+        consumer.isSatisfied = wasSatisfied;
+      }
+      rethrowAfterRollback(error, rollbackError);
     }
+
     return new Disposable(() => {
       provider.destroy();
       const index = this.providers.indexOf(provider);
@@ -166,9 +233,29 @@ module.exports = class ServiceHub {
   consume(keyPath, versionRange, callback) {
     const consumer = new Consumer(keyPath, versionRange, callback);
     this.consumers.push(consumer);
-    for (const provider of this.providers.slice()) {
-      provider.provide(consumer);
+    // The mirror of `provide`: a callback that throws on the third of five
+    // existing providers has already taken two services it can no longer be
+    // trusted to release, so the consumer is torn down and unregistered before
+    // the error reaches the caller.
+    try {
+      for (const provider of this.providers.slice()) {
+        provider.provide(consumer);
+      }
+    } catch (error) {
+      let rollbackError = null;
+      try {
+        consumer.destroy();
+      } catch (caughtError) {
+        rollbackError = caughtError;
+      }
+
+      const index = this.consumers.indexOf(consumer);
+      if (index >= 0) {
+        this.consumers.splice(index, 1);
+      }
+      rethrowAfterRollback(error, rollbackError);
     }
+
     return new Disposable(() => {
       consumer.destroy();
       const index = this.consumers.indexOf(consumer);
