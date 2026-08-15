@@ -162,7 +162,7 @@
     "timecop": "github:lumine-code/timecop#ab712ff0e250305061d5de989a43541d06b765f8",
     "tinyglobby": "^0.2.17",
     "title-bar": "github:lumine-code/title-bar#f7540e69428ee3e102cac17270e07497c89d3cb2",
-    "tree-view": "github:lumine-code/tree-view#2e40a57a006dc0c35dfcbb9a1bda059e2a1fdedb",
+    "tree-view": "github:lumine-code/tree-view#cb7e603a09e555c55196b7573b6bed197bb35e68",
     "vscode-theme": "github:lumine-code/vscode-theme#26912e8c11775c168211a4f798186fcde516ad26",
     "web-tree-sitter": "0.26.11",
     "whitespace": "github:lumine-code/whitespace#db2bce89531f25a6318eb3f11de0e897eaa2d661",
