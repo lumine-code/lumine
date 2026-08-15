@@ -106,6 +106,63 @@ describe("watchFile", function () {
     await conditionPromise(() => second.changes.length > 0, "a change on the re-armed watch");
   });
 
+  // The config directory is where every long-lived single-file watch actually
+  // lives — `keymap.json`, `styles.css`, and any package's own file — and it is
+  // the one directory a suite never creates fresh.
+  it("reports a write to a file in the config directory", async function () {
+    const file = seed(path.join(lumine.getConfigDirPath(), "watch-file-spec.json"));
+    const { handle, changes } = watching(file);
+    await handle.getStartPromise();
+
+    fs.writeFileSync(file, '{"external":true}');
+
+    await conditionPromise(() => changes.length > 0, "a change in the config directory");
+    fs.rmSync(file, { force: true });
+  });
+
+  // The worker serves both kinds of watch, and a package suite nearly always
+  // has a project open — so `@lumine-code/watcher` is subscribed alongside the
+  // Node watches, and on macOS both backends drive FSEvents from one process.
+  it("reports a write while a recursive watch is active in the same worker", async function () {
+    const projectDir = fs.realpathSync.native(temp.mkdirSync("watch-file-spec-project-"));
+    const recursive = await watchPath(projectDir, {}, () => {});
+
+    const file = seed(path.join(root, "target.json"));
+    const { handle, changes } = watching(file);
+    await handle.getStartPromise();
+
+    fs.writeFileSync(file, '{"external":true}');
+
+    await conditionPromise(() => changes.length > 0, "a change beside a recursive watch");
+    recursive.dispose();
+  });
+
+  // On macOS every `fs.watch` handle in a process shares one FSEventStream, and
+  // libuv rebuilds it — "since now" — whenever a handle is added or removed. A
+  // rebuild discards whatever the old stream had accepted but not yet delivered,
+  // and nothing replays it, so an unrelated watch arming or being released can
+  // swallow another watcher's only event. `PathWatcher::getStopPromise` names
+  // this hazard for the repoint path; nothing pinned it for watchers that merely
+  // live side by side, which is every package suite's steady state.
+  it("reports a write while other watches arm and are released around it", async function () {
+    const file = seed(path.join(root, "target.json"));
+    const { handle, changes } = watching(file);
+    await handle.getStartPromise();
+
+    const churn = [];
+    for (let i = 0; i < 4; i++) {
+      const other = fs.realpathSync.native(temp.mkdirSync(`watch-file-spec-churn-${i}-`));
+      churn.push(watchFile(seed(path.join(other, "other.json"))));
+    }
+
+    fs.writeFileSync(file, '{"external":true}');
+    // Deliberately not awaited: the arms and releases have to land while the
+    // write is still in flight, which is what a `beforeEach` does in practice.
+    for (const other of churn) other.dispose();
+
+    await conditionPromise(() => changes.length > 0, "a change that survives concurrent churn");
+  });
+
   it("keeps reporting writes after the first one", async function () {
     const file = seed(path.join(root, "target.json"));
     const { handle, changes } = watching(file);
