@@ -115,6 +115,11 @@ async function handleMessage(message) {
       let wrappedHandler = (err, events) => handler(instance, err, events);
       let wrappedNodejsHandler = (eventType, eventPath, oldPath) =>
         nodejsHandler(instance, eventType, eventPath, oldPath);
+      // A non-recursive watch that fails after it is armed reports through the
+      // same channel the recursive one uses, so it reaches
+      // `PathWatcher::onDidError` instead of ending the watch in silence.
+      let wrappedNodejsError = (err) =>
+        emit("watcher:error", { id: instance, error: err?.message ?? String(err) });
       try {
         let stat = null;
         try {
@@ -154,7 +159,7 @@ async function handleMessage(message) {
           // Single file, or a non-recursive directory watch → reliable
           // parent-directory technique (see nodejs-watcher.js).
           console.log("Watching non-recursively:", normalizedPath);
-          handle = nodejsWatcher.watch(normalizedPath, wrappedNodejsHandler);
+          handle = nodejsWatcher.watch(normalizedPath, wrappedNodejsHandler, wrappedNodejsError);
         }
         WATCHERS_BY_PATH.set(instance, handle);
         if (existing) {

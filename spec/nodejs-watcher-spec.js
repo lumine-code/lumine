@@ -151,6 +151,41 @@ describe("NodejsWatcher", () => {
     }
   });
 
+  // Both of these used to end in silence: the failure was swallowed, the caller
+  // was handed a watcher object, and a watch that could not exist looked exactly
+  // like a file nobody was touching.
+  describe("when the watch fails", () => {
+    it("throws rather than returning a watcher that can never emit", () => {
+      const missingParent = path.join(dir, "no-such-directory", "target.txt");
+
+      expect(() => watchFor(missingParent, [])).toThrow();
+      // And it registers nothing, so the leak check still describes reality.
+      expect(getWatchedPaths()).not.toContain(path.join(dir, "no-such-directory"));
+    });
+
+    it("reports a runtime error instead of going quiet", () => {
+      const file = path.join(dir, "target.txt");
+      fs.writeFileSync(file, "one\n");
+      const errors = [];
+      const w = watch(
+        file,
+        () => {},
+        (error) => errors.push(error),
+      );
+      watchers.push(w);
+
+      // Whatever the OS reports on a live handle — EMFILE, a permissions change,
+      // the root going away — arrives as an `error` event and ends the watch.
+      w.handle.emit("error", Object.assign(new Error("boom"), { code: "EPERM" }));
+
+      expect(errors.length).toBe(1);
+      expect(errors[0].message).toBe("boom");
+      // Ended, and admitting it: no handle, and gone from the live set.
+      expect(w.handle).toBeNull();
+      expect(getWatchedPaths()).not.toContain(dir);
+    });
+  });
+
   it("tracks and releases live watchers", () => {
     const file = path.join(dir, "a.txt");
     fs.writeFileSync(file, "");

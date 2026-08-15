@@ -163,6 +163,24 @@ describe("watchFile", function () {
     await conditionPromise(() => changes.length > 0, "a change that survives concurrent churn");
   });
 
+  // End to end, through the worker: a watch the OS refuses must reach the
+  // subscriber as a rejection. It used to answer `watcher:watch` with success,
+  // so `getStartPromise()` resolved on a watcher that would never emit.
+  it("rejects the start promise when the watch cannot be armed", async function () {
+    const file = path.join(root, "no-such-directory", "target.json");
+    const handle = watchFile(file);
+    handles.push(handle);
+
+    let failure = null;
+    try {
+      await handle.getStartPromise();
+    } catch (error) {
+      failure = error;
+    }
+
+    expect(failure).not.toBeNull();
+  });
+
   it("keeps reporting writes after the first one", async function () {
     const file = seed(path.join(root, "target.json"));
     const { handle, changes } = watching(file);

@@ -172,6 +172,7 @@ class NodejsWatcher {
     }
 
     this.callback = null;
+    this.errorCallback = null;
     this.closed = false;
     this.handle = null;
     this.verifyTimer = null;
@@ -182,26 +183,26 @@ class NodejsWatcher {
     ACTIVE.add(this);
   }
 
-  onDidChange(callback) {
+  onDidChange(callback, errorCallback = null) {
     this.callback = callback;
+    this.errorCallback = errorCallback;
     this.startWatching();
     return this;
   }
 
+  // Throws if the OS refuses the watch. The caller decides what that means:
+  // `watch()` lets it out so the worker can answer the watch request with an
+  // error, while a re-arm treats it as the end of the watch.
   startWatching() {
     if (this.closed || this.handle) return;
-    try {
-      this.handle = fs.watch(this.watchRoot, { persistent: true }, (eventType, fileName) => {
-        this.handleRawEvent(eventType, fileName);
-      });
-      this.handle.on("error", (err) => this.handleError(err));
-      waitForArm(this.watchRoot);
-      // Arming rebuilt the shared stream, so everything else watching just lost
-      // whatever was still in flight.
-      reconcileAfterRebuild(this);
-    } catch (err) {
-      this.handleError(err);
-    }
+    this.handle = fs.watch(this.watchRoot, { persistent: true }, (eventType, fileName) => {
+      this.handleRawEvent(eventType, fileName);
+    });
+    this.handle.on("error", (err) => this.handleError(err));
+    waitForArm(this.watchRoot);
+    // Arming rebuilt the shared stream, so everything else watching just lost
+    // whatever was still in flight.
+    reconcileAfterRebuild(this);
   }
 
   handleRawEvent(eventType, rawName) {
@@ -364,7 +365,14 @@ class NodejsWatcher {
           this.captureIdentity();
           if (this.watchDirectly) {
             this.stopHandle();
-            this.startWatching();
+            try {
+              this.startWatching();
+            } catch (error) {
+              // Nothing left to watch through, so end the watch loudly rather
+              // than leaving a handle-less watcher that reports nothing.
+              this.handleError(error);
+              return;
+            }
           }
           this.emit(wasAbsent ? "create" : "change", this.path);
         }
@@ -407,6 +415,8 @@ class NodejsWatcher {
     this.callback(eventType, eventPath, oldPath);
   }
 
+  // A runtime failure on a live handle. The watch is over either way — the
+  // question this answers is whether anyone finds out.
   handleError(err) {
     // ENOENT means the watched root vanished. For a file watcher, the
     // containing directory is gone, so the file is gone too.
@@ -414,7 +424,17 @@ class NodejsWatcher {
       this.exists = false;
       this.emit("delete", this.path);
     }
-    this.stopHandle();
+
+    // Deliberately no re-arm. Everything that reaches here — the root gone, out
+    // of descriptors, access denied — recurs immediately, so retrying would spin
+    // instead of recovering, and a retry loop is worse than a watch that admits
+    // it has stopped. Report instead, and let the owner decide whether to
+    // re-establish it.
+    const errorCallback = this.errorCallback;
+    // Closing first keeps `ACTIVE` (and so the spec harness's leak check) honest
+    // about what is really being watched.
+    this.close();
+    if (errorCallback) errorCallback(err);
   }
 
   stopHandle() {
@@ -437,6 +457,7 @@ class NodejsWatcher {
     }
     this.stopHandle();
     this.callback = null;
+    this.errorCallback = null;
     ACTIVE.delete(this);
   }
 
@@ -448,14 +469,26 @@ class NodejsWatcher {
 }
 
 // Watch a single file or a directory (non-recursively). The `callback` receives
-// `(eventType, eventPath, oldPath)`. Returns the watcher, which exposes
-// `close()` and `unsubscribe()`.
+// `(eventType, eventPath, oldPath)`; `errorCallback` receives an `Error` if the
+// watch later fails, after which it delivers nothing more. Returns the watcher,
+// which exposes `close()` and `unsubscribe()`.
 //
 // The OS watch is live by the time this returns (see `waitForArm`), so a change
 // made immediately afterwards is reported; callers need no settling delay.
-function watch(pathToWatch, callback) {
+//
+// **Throws if the watch cannot be armed.** It used to swallow that failure, so
+// the worker answered the watch request with success and the subscriber was
+// handed a watcher that would never emit — an EMFILE or a missing parent
+// directory was indistinguishable from a file nobody was touching.
+function watch(pathToWatch, callback, errorCallback = null) {
   const watcher = new NodejsWatcher(pathToWatch);
-  watcher.onDidChange(callback);
+  try {
+    watcher.onDidChange(callback, errorCallback);
+  } catch (error) {
+    // Nothing was armed, so leave no half-registered watcher behind.
+    watcher.close();
+    throw error;
+  }
   return watcher;
 }
 
