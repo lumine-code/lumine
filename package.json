@@ -153,7 +153,7 @@
     "source-map-support": "^0.5.21",
     "status-bar": "github:lumine-code/status-bar#b3860e3a5532d5e146b1139e679784fa24e1eaca",
     "styleguide": "github:lumine-code/styleguide#7948250f5151eb9dcabef21d194d97838c9c76ac",
-    "symbol": "github:lumine-code/symbol#de9365e42df5c630f0c505fcb2f16efa4cf10b79",
+    "symbol": "github:lumine-code/symbol#febeb35611604a997444eeeed74b2ff39b3ff9be",
     "symbol-ctags": "github:lumine-code/symbol-ctags#0ab553ee62f691be1ceb954c23ba5dfb31e74536",
     "symbol-tree-sitter": "github:lumine-code/symbol-tree-sitter#3eeb194bc9b2582773e89d31695e2e2a176668c6",
     "tabs": "github:lumine-code/tabs#32c57822c21aafec0947fbf440a003701cfdeeca",
