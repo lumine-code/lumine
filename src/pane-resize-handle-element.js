@@ -1,3 +1,5 @@
+const { beginLayoutDrag } = require("./layout-drag");
+
 class PaneResizeHandleElement extends HTMLElement {
   constructor() {
     super();
@@ -43,11 +45,13 @@ class PaneResizeHandleElement extends HTMLElement {
     }
     document.addEventListener("mousemove", this.resizePane);
     document.addEventListener("mouseup", this.resizeStopped);
+    this.layoutDrag = beginLayoutDrag();
   }
 
   resizeStopped() {
     document.removeEventListener("mousemove", this.resizePane);
     document.removeEventListener("mouseup", this.resizeStopped);
+    if (this.layoutDrag) this.layoutDrag.dispose();
     if (this.overlay) {
       this.removeChild(this.overlay);
       this.overlay = undefined;

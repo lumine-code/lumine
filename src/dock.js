@@ -2,6 +2,7 @@ const etch = require("@lumine-code/etch");
 const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const PaneContainer = require("./pane-container");
+const { beginLayoutDrag } = require("./layout-drag");
 
 const $ = etch.dom;
 const MINIMUM_SIZE = 100;
@@ -39,6 +40,7 @@ module.exports = class Dock {
     this.notificationManager = params.notificationManager;
     this.viewRegistry = params.viewRegistry;
     this.didActivate = params.didActivate;
+    this.layoutDrag = null;
 
     this.emitter = new Emitter();
 
@@ -97,6 +99,7 @@ module.exports = class Dock {
   destroy() {
     this.subscriptions.dispose();
     this.paneContainer.destroy();
+    if (this.layoutDrag) this.layoutDrag.dispose();
     window.removeEventListener("mousemove", this.handleMouseMove);
     window.removeEventListener("mouseup", this.handleMouseUp);
     window.removeEventListener("drag", this.handleDrag);
@@ -289,6 +292,7 @@ module.exports = class Dock {
   handleResizeHandleDragStart() {
     window.addEventListener("mousemove", this.handleMouseMove);
     window.addEventListener("mouseup", this.handleMouseUp);
+    this.layoutDrag = beginLayoutDrag();
     this.setState({ resizing: true });
   }
 
@@ -325,6 +329,7 @@ module.exports = class Dock {
   handleMouseUp(_event) {
     window.removeEventListener("mousemove", this.handleMouseMove);
     window.removeEventListener("mouseup", this.handleMouseUp);
+    if (this.layoutDrag) this.layoutDrag.dispose();
     this.setState({ resizing: false });
   }
 

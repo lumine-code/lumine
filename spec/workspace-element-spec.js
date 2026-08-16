@@ -1022,10 +1022,6 @@ describe("WorkspaceElement", () => {
       jasmine.attachToDOM(workspaceElement);
 
       lumine.config.set("language.softWrap", true);
-      // Re-wrap on width changes immediately. With the default debounce, the
-      // measurement nudges in the settle loop below would restart the debounce
-      // timer on every poll and the source pane would never re-wrap.
-      lumine.config.set("editor.softWrapDebounceInterval", 0);
       const editor = await lumine.workspace.open();
       const lines = [];
       for (let i = 0; i < 400; i++) lines.push(`line ${i} ` + "word ".repeat(30));

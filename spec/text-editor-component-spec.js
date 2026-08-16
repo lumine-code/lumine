@@ -12,6 +12,7 @@ const fs = require("fs");
 const path = require("path");
 const electron = require("electron");
 const clipboardBridge = require("../src/clipboard-bridge");
+const { beginLayoutDrag } = require("../src/layout-drag");
 
 function createClipboardData(initialData = {}) {
   const data = new Map(Object.entries(initialData));
@@ -7347,7 +7348,27 @@ describe("TextEditorComponent", () => {
       expect(Math.abs(offsetAfter - offsetBefore)).toBeLessThan(component.getLineHeight());
     });
 
-    it("debounces the soft-wrap reflow while the width keeps changing when softWrapDebounceInterval is set", async () => {
+    it("re-wraps immediately when the width changes outside a drag, even when softWrapDebounceInterval is set", async () => {
+      jasmine.useRealClock();
+      const { component, editor } = buildComponent({
+        softWrapped: true,
+        autoHeight: false,
+      });
+      await setEditorHeightInLines(component, 10);
+      await setEditorWidthInCharacters(component, 40);
+
+      editor.update({ softWrapDebounceInterval: 250 });
+      const widthBefore = editor.getEditorWidthInChars();
+
+      // A one-shot layout change — a dock toggle, a pane split, a package
+      // resizing the client container — is already the final width, so the
+      // interval never applies to it.
+      await setEditorWidthInCharacters(component, 30);
+      expect(editor.getEditorWidthInChars()).toBeLessThan(widthBefore);
+      expect(component.softWrapDebounceTimer).toBeNull();
+    });
+
+    it("defers the soft-wrap reflow for the duration of a pane or dock resize drag", async () => {
       jasmine.useRealClock();
       const { component, editor } = buildComponent({
         softWrapped: true,
@@ -7361,20 +7382,50 @@ describe("TextEditorComponent", () => {
       editor.update({ softWrapDebounceInterval: 250 });
       const widthBefore = editor.getEditorWidthInChars();
 
-      // The first change of a resize re-wraps immediately, so a one-shot
-      // layout change like a pane split or a dock toggle doesn't lag.
-      await setEditorWidthInCharacters(component, 30);
-      const widthAfterFirstChange = editor.getEditorWidthInChars();
-      expect(widthAfterFirstChange).toBeLessThan(widthBefore);
+      // Stands for the resize handle running the gesture.
+      const divider = beginLayoutDrag();
+      try {
+        // Every change while the button is held is abandoned by the next frame,
+        // so none of them re-wraps.
+        await setEditorWidthInCharacters(component, 30);
+        expect(editor.getEditorWidthInChars()).toBe(widthBefore);
+        await setEditorWidthInCharacters(component, 20);
+        expect(editor.getEditorWidthInChars()).toBe(widthBefore);
+        expect(component.softWrapDebounceTimer).not.toBeNull();
+      } finally {
+        divider.dispose();
+      }
 
-      // A second change while the previous one is still within the interval
-      // is deferred: the width hasn't been stable yet.
-      await setEditorWidthInCharacters(component, 20);
-      expect(editor.getEditorWidthInChars()).toBe(widthAfterFirstChange);
+      // Releasing the divider flushes synchronously rather than waiting out the
+      // rest of the interval.
+      expect(component.softWrapDebounceTimer).toBeNull();
+      expect(editor.getEditorWidthInChars()).toBeLessThan(widthBefore);
+    });
 
-      // Once the width settles for the debounce interval, the reflow happens.
-      await conditionPromise(() => editor.getEditorWidthInChars() !== widthAfterFirstChange);
-      expect(editor.getEditorWidthInChars()).toBeLessThan(widthAfterFirstChange);
+    it("re-wraps mid-drag once the width has held still for the debounce interval", async () => {
+      jasmine.useRealClock();
+      const { component, editor } = buildComponent({
+        softWrapped: true,
+        autoHeight: false,
+      });
+      await setEditorHeightInLines(component, 10);
+      await setEditorWidthInCharacters(component, 40);
+
+      editor.update({ softWrapDebounceInterval: 50 });
+      const widthBefore = editor.getEditorWidthInChars();
+
+      const divider = beginLayoutDrag();
+      try {
+        await setEditorWidthInCharacters(component, 20);
+        expect(editor.getEditorWidthInChars()).toBe(widthBefore);
+
+        // Pausing the drag without releasing it still settles: the width has
+        // stopped moving, so there is nothing left to coalesce.
+        await conditionPromise(() => editor.getEditorWidthInChars() !== widthBefore);
+        expect(editor.getEditorWidthInChars()).toBeLessThan(widthBefore);
+      } finally {
+        divider.dispose();
+      }
     });
 
     it("wraps a copied editor at its new pane's width immediately when softWrapDebounceInterval is set", async () => {

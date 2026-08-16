@@ -15,6 +15,7 @@ const ModalFlow = require("./modal-flow");
 const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
+const layoutDrag = require("./layout-drag");
 // Provided to packages through ::buildSelectList and ::buildInputDialog, so
 // that a package needs neither a manifest entry nor a pin for the list toolkit
 // and a window holds a single copy of it.
@@ -2537,6 +2538,29 @@ module.exports = class Workspace extends Model {
     return lumine.workspace
       .getPaneContainers()
       .filter((container) => container === center || container.isVisible());
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Declare that a drag which resizes editors has begun — a pane divider, a
+   * dock handle, a panel's own resize grip, a gutter's width handle.
+   *
+   * Such a drag moves editor widths once per animation frame for as long as the
+   * button is held, and work derived from those widths is worth deferring until
+   * it stops. Soft wrap is the one that ships: it re-wraps on every width
+   * change except while a drag is live, when it waits for the width to settle
+   * rather than reflowing a frame the next one abandons. Anything that resizes
+   * an editor from a `mousemove` should declare it; a one-shot layout change
+   * should not, since it is already the final width.
+   *
+   * @returns {Disposable} on which `.dispose()` ends the drag. It is safe to
+   *   call more than once, which these gestures usually need: a mouseup, a
+   *   mousemove that finds no button held any more, a teardown mid-drag.
+   */
+  beginLayoutDrag() {
+    return layoutDrag.beginLayoutDrag();
   }
 
   /**
