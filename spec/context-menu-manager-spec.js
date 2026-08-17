@@ -589,7 +589,6 @@ describe("ContextMenuManager", function () {
           label: "My Command",
           id: "My Command",
           command: "test:my-command",
-          after: ["test:my-other-command"],
         },
       ]);
     });
@@ -628,10 +627,44 @@ describe("ContextMenuManager", function () {
               label: "My Command",
               id: "My Command",
               command: "test:my-command",
-              after: ["test:my-other-command"],
             },
           ],
         },
+      ]);
+    });
+
+    it("takes the positioning keys back out once it has read them", function () {
+      // They are Lumine's, keyed on `command`. The template goes on to
+      // `Menu.buildFromTemplate`, which reads the same four keys against `id` —
+      // so leaving them in gives the menu a second, differently keyed pass over
+      // items that are already in order.
+      contextMenu.add({
+        ".parent": [
+          // `before` and `afterGroupContaining` name commands that are not
+          // here, so they contribute no edge — they are present to be stripped.
+          { label: "C", command: "test:c", after: ["test:b"], before: ["test:absent"] },
+          { label: "B", command: "test:b" },
+          { type: "separator" },
+          {
+            label: "A",
+            command: "test:a",
+            beforeGroupContaining: ["test:b"],
+            afterGroupContaining: ["test:absent"],
+          },
+        ],
+      });
+
+      const template = contextMenu.templateForEvent({ target: child });
+      const keys = template.flatMap((item) => Object.keys(item));
+      for (const key of ["before", "after", "beforeGroupContaining", "afterGroupContaining"]) {
+        expect(keys).not.toContain(key);
+      }
+      // Still sorted by them: A's group moved ahead, and C after B within theirs.
+      expect(template.map((item) => item.command)).toEqual([
+        "test:a",
+        undefined,
+        "test:b",
+        "test:c",
       ]);
     });
   });

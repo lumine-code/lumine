@@ -6,6 +6,32 @@ const MenuManager = require("../src/menu-manager");
 // Electron. Every menu convention in the workspace CLAUDE.md follows from that,
 // so pin the behaviour here rather than rediscovering it from a broken menu.
 describe("MenuHelpers", function () {
+  describe("::stripPositioningKeys", function () {
+    it("removes all four keys at every depth and leaves everything else", function () {
+      const items = [
+        {
+          label: "A",
+          id: "A",
+          before: ["x"],
+          submenu: [
+            { type: "separator" },
+            { label: "B", id: "B", command: "b", after: ["y"], afterGroupContaining: ["z"] },
+          ],
+        },
+        { label: "C", id: "C", command: "c", beforeGroupContaining: ["w"] },
+      ];
+
+      expect(MenuHelpers.stripPositioningKeys(items)).toEqual([
+        {
+          label: "A",
+          id: "A",
+          submenu: [{ type: "separator" }, { label: "B", id: "B", command: "b" }],
+        },
+        { label: "C", id: "C", command: "c" },
+      ]);
+    });
+  });
+
   describe("::merge", function () {
     it("appends rather than inserting", function () {
       const menu = [
@@ -79,6 +105,12 @@ describe("MenuHelpers", function () {
         MenuHelpers.merge(menu, { label: "A", command: "ignored" }, false);
         expect(menu).toEqual([{ label: "A", id: "A", command: "kept" }]);
       });
+    });
+
+    it("keeps the positioning keys, which the context menu's sort still has to read", function () {
+      const menu = [];
+      MenuHelpers.merge(menu, { label: "A", command: "a", after: ["b"] });
+      expect(menu[0].after).toEqual(["b"]);
     });
 
     it("refuses a separator only when the menu already ends in one", function () {

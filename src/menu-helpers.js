@@ -118,6 +118,27 @@ function cloneMenuItem(item) {
   return item;
 }
 
+// Lumine's own positioning keys. `sortMenuItems` reads them keyed on `command`,
+// and they are its alone: Electron's `Menu.buildFromTemplate` runs the same
+// algorithm keyed on `id`, which `cloneMenuItem` fills in from the label. A key
+// that outlives Lumine's pass therefore gives the menu a second, differently
+// keyed pass — and an item written as `after: ["Copy"]` would be ignored by
+// Lumine and moved by Electron.
+const POSITIONING_KEYS = ["before", "after", "beforeGroupContaining", "afterGroupContaining"];
+
+// Remove them once they have done their work, or could never do any.
+function stripPositioningKeys(items) {
+  for (const item of items) {
+    for (const key of POSITIONING_KEYS) {
+      delete item[key];
+    }
+    if (Array.isArray(item.submenu)) {
+      stripPositioningKeys(item.submenu);
+    }
+  }
+  return items;
+}
+
 // Determine the Electron accelerator for a given editor keystroke.
 //
 // keystroke - The keystroke.
@@ -187,5 +208,6 @@ module.exports = {
   unmerge,
   normalizeLabel,
   cloneMenuItem,
+  stripPositioningKeys,
   acceleratorForKeystroke,
 };

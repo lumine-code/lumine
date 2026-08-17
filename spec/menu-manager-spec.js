@@ -16,6 +16,27 @@ describe("MenuManager", function () {
   afterEach(() => menu.destroy());
 
   describe("::add(items)", function () {
+    it("drops the positioning keys, which the application menu never reads", function () {
+      // sortMenuItems is the context menu's; nothing applies these here. Left
+      // in place they would reach Menu.buildFromTemplate, which reads the same
+      // four keys against `id` rather than `command`.
+      const items = [
+        {
+          label: "A",
+          submenu: [{ label: "B", command: "b", after: ["c"], beforeGroupContaining: ["d"] }],
+        },
+      ];
+      const disposable = menu.add(items);
+
+      expect(menu.template).toEqual([
+        { label: "A", id: "A", submenu: [{ label: "B", id: "B", command: "b" }] },
+      ]);
+      // The caller's own object is untouched — `add` clones before stripping.
+      expect(items[0].submenu[0].after).toEqual(["c"]);
+      disposable.dispose();
+      expect(menu.template).toEqual([]);
+    });
+
     it("can add new menus that can be removed with the returned disposable", function () {
       const disposable = menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
       expect(menu.template).toEqual([

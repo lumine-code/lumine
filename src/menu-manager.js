@@ -133,6 +133,12 @@ module.exports = class MenuManager {
    */
   add(items) {
     items = _.deepClone(items);
+    // The application menu has no positioning pass of its own — `sortMenuItems`
+    // is the context menu's. Left in place these would reach Electron's
+    // `Menu.buildFromTemplate`, which reads the same keys against `id` rather
+    // than `command`, so an item could be moved by a rule Lumine never applied.
+    // Stripped after the clone, so a package's own menu object is untouched.
+    MenuHelpers.stripPositioningKeys(items);
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.label == null) {

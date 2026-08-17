@@ -188,7 +188,11 @@ module.exports = class ContextMenuManager {
     // `sortTemplate` normalizes the separators on its way through: it splits
     // each menu on them, drops the empty groups and rejoins with exactly one
     // between the survivors, recursively. Nothing has to prune first.
-    return this.sortTemplate(template);
+    //
+    // The positioning keys are spent once it has read them, and this template
+    // goes on to `Menu.buildFromTemplate`, which would apply its own id-keyed
+    // reading of the same keys over items already in order.
+    return MenuHelpers.stripPositioningKeys(this.sortTemplate(template));
   }
 
   // Adds an `accelerator` property to items that have key bindings. Electron
