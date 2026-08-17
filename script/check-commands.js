@@ -44,6 +44,14 @@
 // which is why a table-driven registration keys by the full command name and
 // puts the description next to it.
 //
+// One name shape defeats the pattern rather than merely hiding from it: a
+// command with a quote character *in* its name, as super-select's
+// `string-'-'` family has. The quote ends the literal the scan is reading, so
+// the command is reported under a truncated name and never credited with the
+// description written beside it. Spelling a delimiter into a command name is
+// rare enough to leave alone; the alternative is a pattern that cannot tell a
+// command name from the code around it.
+//
 // Scope defaults to the bundled fleet, as it does for check-menus and
 // check-keymaps. That reads the *pinned* copies out of node_modules, so a
 // description written in a working tree is invisible until a repin lands, and
