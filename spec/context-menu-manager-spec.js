@@ -249,7 +249,11 @@ describe("ContextMenuManager", function () {
         ],
       });
 
-      expect(contextMenu.templateForEvent({ target: grandchild }).length).toBe(3);
+      expect(contextMenu.templateForEvent({ target: grandchild })).toEqual([
+        { label: "A", id: "A", command: "a" },
+        { type: "separator" },
+        { label: "B", id: "B", command: "b" },
+      ]);
     });
 
     it("prunes a leading separator", function () {
@@ -262,7 +266,11 @@ describe("ContextMenuManager", function () {
         ],
       });
 
-      expect(contextMenu.templateForEvent({ target: grandchild }).length).toBe(3);
+      expect(contextMenu.templateForEvent({ target: grandchild })).toEqual([
+        { label: "A", id: "A", command: "a" },
+        { type: "separator" },
+        { label: "B", id: "B", command: "b" },
+      ]);
     });
 
     it("prunes duplicate separators", function () {
@@ -275,7 +283,11 @@ describe("ContextMenuManager", function () {
         ],
       });
 
-      expect(contextMenu.templateForEvent({ target: grandchild }).length).toBe(3);
+      expect(contextMenu.templateForEvent({ target: grandchild })).toEqual([
+        { label: "A", id: "A", command: "a" },
+        { type: "separator" },
+        { label: "B", id: "B", command: "b" },
+      ]);
     });
 
     it("prunes all redundant separators", function () {
@@ -293,7 +305,44 @@ describe("ContextMenuManager", function () {
         ],
       });
 
-      expect(contextMenu.templateForEvent({ target: grandchild }).length).toBe(4);
+      expect(contextMenu.templateForEvent({ target: grandchild })).toEqual([
+        { label: "A", id: "A", command: "a" },
+        { type: "separator" },
+        { label: "B", id: "B", command: "b" },
+        { label: "C", id: "C", command: "c" },
+      ]);
+    });
+
+    it("normalizes separators inside a submenu too", function () {
+      // `sortMenuItems` recurses through `sortTemplate`; the separate top-level
+      // prune pass that used to run before it never did.
+      contextMenu.add({
+        ".grandchild": [
+          {
+            label: "Sub",
+            submenu: [
+              { type: "separator" },
+              { label: "A", command: "a" },
+              { type: "separator" },
+              { type: "separator" },
+              { label: "B", command: "b" },
+              { type: "separator" },
+            ],
+          },
+        ],
+      });
+
+      expect(contextMenu.templateForEvent({ target: grandchild })).toEqual([
+        {
+          label: "Sub",
+          id: "Sub",
+          submenu: [
+            { label: "A", id: "A", command: "a" },
+            { type: "separator" },
+            { label: "B", id: "B", command: "b" },
+          ],
+        },
+      ]);
     });
 
     it("throws an error when the selector is invalid", function () {

@@ -184,8 +184,10 @@ module.exports = class ContextMenuManager {
       }
       currentTarget = currentTarget.parentElement;
     }
-    this.pruneRedundantSeparators(template);
     this.addAccelerators(template, event.target);
+    // `sortTemplate` normalizes the separators on its way through: it splits
+    // each menu on them, drops the empty groups and rejoins with exactly one
+    // between the survivors, recursively. Nothing has to prune first.
     return this.sortTemplate(template);
   }
 
@@ -225,23 +227,6 @@ module.exports = class ContextMenuManager {
       }
       if (Array.isArray(item.submenu)) {
         this.addAccelerators(item.submenu, target);
-      }
-    }
-  }
-
-  pruneRedundantSeparators(menu) {
-    let keepNextItemIfSeparator = false;
-    let index = 0;
-    while (index < menu.length) {
-      if (menu[index].type === "separator") {
-        if (!keepNextItemIfSeparator || index === menu.length - 1) {
-          menu.splice(index, 1);
-        } else {
-          index++;
-        }
-      } else {
-        keepNextItemIfSeparator = true;
-        index++;
       }
     }
   }
