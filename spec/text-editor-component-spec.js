@@ -2492,20 +2492,24 @@ describe("TextEditorComponent", () => {
     });
 
     it("pins the scroll anchor to a block decoration while its size is dragged", async () => {
-      // Growing a block decoration displaces everything after it, and the
-      // measure pass answers by holding the cursor's row still — which slides
-      // the decoration itself by whatever the growth added. Right for content
-      // that resized itself; wrong for a hand on a resize handle, where the
-      // decoration is the one thing on screen that must not move.
+      // Growing a block decoration whose top sits above the viewport displaces
+      // everything below it, and the measure pass answers by holding the first
+      // visible row still — which slides the decoration itself by exactly what
+      // the growth added. Right for content that resized itself; wrong for a
+      // hand on a resize handle, where the decoration is the one thing that
+      // must not move. The pin makes the decoration the anchor instead, for
+      // the length of the gesture.
       const { component, editor, element } = buildComponent({
         text: "line\n".repeat(200),
-        rowsPerTile: 3,
+        rowsPerTile: 30,
         autoHeight: false,
         attach: true,
       });
       await setEditorHeightInLines(component, 20);
 
-      const marker = editor.markScreenPosition([100, 0], { invalidate: "never" });
+      // Above the viewport top (rows ~85+ are on screen below) but inside the
+      // first rendered tile, so the item stays in the DOM and measurable.
+      const marker = editor.markScreenPosition([60, 0], { invalidate: "never" });
       const item = document.createElement("div");
       item.style.width = "30px";
       item.style.height = "40px";
@@ -2516,11 +2520,10 @@ describe("TextEditorComponent", () => {
       });
       await component.getNextUpdatePromise();
 
-      await setScrollTop(component, 98 * component.getLineHeight());
-      // On screen and below the decoration, so it is what the measure pass
-      // would otherwise hold still.
-      editor.setCursorScreenPosition([102, 0]);
-      await component.getNextUpdatePromise();
+      await setScrollTop(
+        component,
+        component.pixelPositionBeforeBlocksForRow(85) + component.getLineHeight() / 4,
+      );
 
       const decorationTop = () =>
         item.getBoundingClientRect().top - element.getBoundingClientRect().top;
@@ -2530,8 +2533,8 @@ describe("TextEditorComponent", () => {
         await component.getNextUpdatePromise();
       };
 
-      // Unpinned: the cursor row holds its place, so the decoration climbs out
-      // from under the pointer by everything the drag just added.
+      // Unpinned: the first visible row holds its place, so the decoration
+      // climbs out from under the pointer by everything the drag just added.
       const beforeGrowth = decorationTop();
       await grow(140);
       expect(decorationTop()).toBeCloseTo(beforeGrowth - 100, 0);
@@ -2545,11 +2548,53 @@ describe("TextEditorComponent", () => {
       await grow(340);
       expect(decorationTop()).toBeCloseTo(pinnedTop, 0);
 
-      // Released, and the cursor is in charge again.
+      // Released, and the viewport top is in charge again.
       pin.dispose();
       const afterRelease = decorationTop();
       await grow(440);
       expect(decorationTop()).toBeCloseTo(afterRelease - 100, 0);
+    });
+
+    it("does not scroll while a block containing the viewport top edge grows", async () => {
+      // A tall block whose top is scrolled off while its bottom edge — the
+      // resize handle — is still on screen. The top edge of the viewport is
+      // inside the block, so growth extends the block entirely below that
+      // edge: nothing above it moved, nothing scrolls, and the handle follows
+      // the pointer without needing the pin.
+      const { component, editor, element } = buildComponent({
+        text: "line\n".repeat(200),
+        rowsPerTile: 30,
+        autoHeight: false,
+        attach: true,
+      });
+      await setEditorHeightInLines(component, 20);
+
+      const marker = editor.markScreenPosition([60, 0], { invalidate: "never" });
+      const item = document.createElement("div");
+      item.style.width = "30px";
+      item.style.height = "400px";
+      const decoration = editor.decorateMarker(marker, {
+        type: "block",
+        item,
+        position: "after",
+      });
+      await component.getNextUpdatePromise();
+
+      // The block spans [61 lines, 61 lines + 400px); land the scroll position
+      // inside it.
+      await setScrollTop(component, 61 * component.getLineHeight() + 200);
+
+      const scrollTopBefore = component.getScrollTop();
+      const itemBottom = () =>
+        item.getBoundingClientRect().bottom - element.getBoundingClientRect().top;
+      const bottomBefore = itemBottom();
+
+      item.style.height = "500px";
+      component.invalidateBlockDecorationDimensions(decoration);
+      await component.getNextUpdatePromise();
+
+      expect(component.getScrollTop()).toBe(scrollTopBefore);
+      expect(itemBottom()).toBeCloseTo(bottomBefore + 100, 0);
     });
 
     it("announces measured block decoration heights as a decoration update", async () => {
@@ -4407,49 +4452,59 @@ describe("TextEditorComponent", () => {
       ]);
     });
 
-    it("keeps a visible cursor stable while a block above it is added, resized, moved, and removed", async () => {
+    it("keeps the viewport top stable while a block below it is added, resized, moved, and removed", async () => {
       const { editor, component } = buildComponent({ autoHeight: false });
       await setEditorHeightInLines(component, 8);
+      // The cursor is deliberately visible, below the block: block geometry
+      // anchors the top of the viewport, never the cursor, so the block pushes
+      // the cursor's row around while the top edge holds still.
       editor.setCursorScreenPosition([12, 0], { autoscroll: false });
       await setScrollTop(
         component,
         component.pixelPositionBeforeBlocksForRow(12) - 3 * component.getLineHeight(),
       );
 
+      const topRow = component.getFirstVisibleRow();
+      const topOffset = () =>
+        component.pixelPositionBeforeBlocksForRow(topRow) - component.getScrollTop();
       const cursorOffset = () =>
         component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
         component.getScrollTop();
-      const expectedOffset = cursorOffset();
+      const expectedOffset = topOffset();
+      const cursorOffsetBefore = cursorOffset();
 
       const { item, decoration, marker } = createBlockDecorationAtScreenRow(editor, 10, {
         height: 30,
         position: "before",
       });
       await component.getNextUpdatePromise();
-      expect(cursorOffset()).toBeNear(expectedOffset);
+      expect(topOffset()).toBeNear(expectedOffset);
+      // The block sits between the viewport top and the cursor, so the cursor
+      // is what moves — by exactly the block's height.
+      expect(cursorOffset()).toBeNear(cursorOffsetBefore + 30);
 
       item.style.height = "70px";
       component.didResizeBlockDecorations([{ target: item, contentRect: { height: 70 } }]);
       await component.getNextUpdatePromise();
-      expect(cursorOffset()).toBeNear(expectedOffset);
+      expect(topOffset()).toBeNear(expectedOffset);
 
       item.style.height = "15px";
       component.didResizeBlockDecorations([{ target: item, contentRect: { height: 15 } }]);
       await component.getNextUpdatePromise();
-      expect(cursorOffset()).toBeNear(expectedOffset);
+      expect(topOffset()).toBeNear(expectedOffset);
 
       marker.setHeadScreenPosition([14, 0]);
       await component.getNextUpdatePromise();
-      expect(cursorOffset()).toBeNear(expectedOffset);
+      expect(topOffset()).toBeNear(expectedOffset);
 
       marker.setHeadScreenPosition([10, 0]);
       await component.getNextUpdatePromise();
-      expect(cursorOffset()).toBeNear(expectedOffset);
+      expect(topOffset()).toBeNear(expectedOffset);
 
       decoration.destroy();
       marker.destroy();
       await component.getNextUpdatePromise();
-      expect(cursorOffset()).toBeNear(expectedOffset);
+      expect(topOffset()).toBeNear(expectedOffset);
 
       // The original regression accumulated one displacement per run/clear
       // cycle, so exercise the lifecycle repeatedly rather than only once.
@@ -4459,15 +4514,15 @@ describe("TextEditorComponent", () => {
           position: "before",
         });
         await component.getNextUpdatePromise();
-        expect(cursorOffset()).toBeNear(expectedOffset);
+        expect(topOffset()).toBeNear(expectedOffset);
         result.decoration.destroy();
         result.marker.destroy();
         await component.getNextUpdatePromise();
-        expect(cursorOffset()).toBeNear(expectedOffset);
+        expect(topOffset()).toBeNear(expectedOffset);
       }
     });
 
-    it("anchors one batch of block measurements without scrolling for blocks below the cursor", async () => {
+    it("anchors one batch of block measurements without scrolling for blocks below the viewport top", async () => {
       const { editor, component } = buildComponent({ autoHeight: false });
       await setEditorHeightInLines(component, 8);
       editor.setCursorScreenPosition([12, 0], { autoscroll: false });
@@ -4476,16 +4531,15 @@ describe("TextEditorComponent", () => {
         component.pixelPositionBeforeBlocksForRow(12) - 3 * component.getLineHeight(),
       );
 
-      const cursorOffsetBefore =
-        component.pixelPositionBeforeBlocksForRow(12) - component.getScrollTop();
+      // A `before` block on the top row itself inserts below that row's anchor
+      // pixel, so even it needs no compensation: everything lands below the
+      // viewport's top edge, and nothing scrolls.
+      const scrollTopBefore = component.getScrollTop();
       createBlockDecorationAtScreenRow(editor, 9, { height: 12, position: "before" });
       createBlockDecorationAtScreenRow(editor, 10, { height: 18, position: "before" });
       await component.getNextUpdatePromise();
-      expect(component.pixelPositionBeforeBlocksForRow(12) - component.getScrollTop()).toBeNear(
-        cursorOffsetBefore,
-      );
+      expect(component.getScrollTop()).toBe(scrollTopBefore);
 
-      const scrollTopBefore = component.getScrollTop();
       const { item } = createBlockDecorationAtScreenRow(editor, 14, {
         height: 25,
         position: "before",
@@ -4499,9 +4553,11 @@ describe("TextEditorComponent", () => {
       expect(component.getScrollTop()).toBe(scrollTopBefore);
     });
 
-    it("keeps a visible cursor stable when a block marker is invalidated", async () => {
+    it("keeps the viewport top stable when a block marker is invalidated", async () => {
       const { editor, component } = buildComponent({ autoHeight: false });
       await setEditorHeightInLines(component, 8);
+      // Visible cursor below the block on purpose: the top edge, not the
+      // cursor, is what the removal must hold still.
       editor.setCursorScreenPosition([12, 0], { autoscroll: false });
       await setScrollTop(
         component,
@@ -4514,16 +4570,15 @@ describe("TextEditorComponent", () => {
       });
       await component.getNextUpdatePromise();
 
+      const topRow = component.getFirstVisibleRow();
       const offsetBefore =
-        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
-        component.getScrollTop();
+        component.pixelPositionBeforeBlocksForRow(topRow) - component.getScrollTop();
       const range = marker.bufferMarker.getRange();
       marker.bufferMarker.update(range, { valid: false });
       await component.getNextUpdatePromise();
-      expect(
-        component.pixelPositionBeforeBlocksForRow(editor.getCursorScreenPosition().row) -
-          component.getScrollTop(),
-      ).toBeNear(offsetBefore);
+      expect(component.pixelPositionBeforeBlocksForRow(topRow) - component.getScrollTop()).toBeNear(
+        offsetBefore,
+      );
     });
 
     it("preserves the bottom anchor when block geometry changes while scrolled past the end", async () => {

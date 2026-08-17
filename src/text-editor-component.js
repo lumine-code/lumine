@@ -180,8 +180,8 @@ module.exports = class TextEditorComponent {
     // source position, so reflows re-apply this anchor instead until the user
     // scrolls, moves the cursor, or edits.
     this.settlingScrollAnchor = null;
-    // A block decoration the user is dragging the size of, which outranks both
-    // of captureScrollAnchor's usual choices for as long as the gesture lasts.
+    // A block decoration the user is dragging the size of, which outranks
+    // captureScrollAnchor's usual choices for as long as the gesture lasts.
     // See pinScrollAnchorToBlockDecoration.
     this.scrollAnchorBlockDecoration = null;
     // Coalesces width-driven soft-wrap reflows for the duration of a pane or
@@ -4008,10 +4008,14 @@ module.exports = class TextEditorComponent {
   // reflow. A block decoration pinned by a resize gesture wins outright; failing
   // that the last cursor is anchored whenever it is on-screen, regardless of how
   // the viewport last moved; otherwise the row at the vertical midpoint of the
-  // viewport is anchored. `offset` is the pixel distance from the viewport top
-  // to the top of the anchored row, so the row can be placed back at the same
-  // visual position after re-wrapping.
-  captureScrollAnchor() {
+  // viewport is anchored. With `anchorTop` — the block-geometry path — the
+  // cursor never decides and the first (partially) visible row is anchored
+  // instead of the midpoint: a block resizing itself must not move the top
+  // edge, the one viewport reference the user can actually watch. `offset` is
+  // the pixel distance from the viewport top to the top of the anchored row,
+  // so the row can be placed back at the same visual position after
+  // re-wrapping.
+  captureScrollAnchor({ anchorTop = false } = {}) {
     if (!this.hasInitialMeasurements) return null;
 
     const { model } = this.props;
@@ -4029,19 +4033,16 @@ module.exports = class TextEditorComponent {
       }
     }
 
-    const cursorScreenPosition = model.getCursorScreenPosition();
-    const cursorRow = cursorScreenPosition.row;
-    if (
-      screenRow === null &&
-      cursorRow >= this.getFirstVisibleRow() &&
-      cursorRow <= this.getLastVisibleRow()
-    ) {
-      screenRow = cursorRow;
-      // Anchor the cursor's actual buffer position, not column 0 of its
-      // current wrapped screen row. After the width changes, that wrapped
-      // segment may start at a different buffer column; anchoring its old
-      // start would therefore preserve the wrong visual row.
-      bufferPosition = model.getCursorBufferPosition();
+    if (screenRow === null && !anchorTop) {
+      const cursorRow = model.getCursorScreenPosition().row;
+      if (cursorRow >= this.getFirstVisibleRow() && cursorRow <= this.getLastVisibleRow()) {
+        screenRow = cursorRow;
+        // Anchor the cursor's actual buffer position, not column 0 of its
+        // current wrapped screen row. After the width changes, that wrapped
+        // segment may start at a different buffer column; anchoring its old
+        // start would therefore preserve the wrong visual row.
+        bufferPosition = model.getCursorBufferPosition();
+      }
     }
     if (screenRow === null) {
       const midpointPixel = scrollTop + this.getScrollContainerClientHeight() / 2;
@@ -4058,8 +4059,11 @@ module.exports = class TextEditorComponent {
           bottomOffset: Math.max(0, this.getMaxScrollTop() - scrollTop),
         };
       }
-      // Otherwise anchor the row at the vertical midpoint of the viewport.
-      screenRow = this.rowForPixelPosition(midpointPixel);
+      // Otherwise anchor the first visible row (block path) or the row at the
+      // vertical midpoint of the viewport (reflow and copy). The top row is
+      // usually clipped, so its `offset` below is negative — sub-line precision
+      // that stops the top edge from snapping to a row boundary on restore.
+      screenRow = anchorTop ? this.getFirstVisibleRow() : this.rowForPixelPosition(midpointPixel);
     }
 
     if (bufferPosition === null) {
@@ -4106,7 +4110,11 @@ module.exports = class TextEditorComponent {
   withScrollAnchor(callback) {
     if (this.props.model.isDestroyed()) return callback();
 
-    const anchor = this.captureScrollAnchor();
+    // Block geometry changed in place — content resized itself underneath the
+    // user, no gesture of theirs caused it — so the top edge of the viewport
+    // is what holds still, never the cursor: which row a stale caret happens
+    // to sit on must not decide where the viewport lands.
+    const anchor = this.captureScrollAnchor({ anchorTop: true });
     try {
       return callback();
     } finally {
