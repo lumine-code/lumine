@@ -1,7 +1,10 @@
-// Verifies the command display-name conventions across every bundled package.
-// See "Command display names" in the workspace CLAUDE.md for the rule.
+// Verifies a command's two pieces of prose — its label and its description.
+// See "Command display names" and "Command descriptions" in the workspace
+// CLAUDE.md for the rules.
 //
-//   node script/check-commands.js
+//   node script/check-commands.js                     the bundled fleet
+//   node script/check-commands.js --root ..           every repository here
+//   node script/check-commands.js --root .. --uncovered
 //
 // A command's label is derived: `extractDescriptor` (src/command-registry.js)
 // falls back to `_.humanizeEventName`, which spells the words with a casing of
@@ -22,14 +25,31 @@
 // and SOFiPLUS are spelled where those commands live, because the shared
 // vocabulary is what every consumer carries and no one else needs those words.
 //
+// A description is checked the same way and reported six ways: one that only
+// restates the label, one that does not end with a period, one that does not
+// start with a capital, one written in the third person, one past 76
+// characters, and one carrying markdown the palette renders as text. A command
+// registered twice with two different descriptions is reported as well, since
+// which of them shows depends on where focus is.
+//
+// Coverage is *reported and never fails*. A description belongs only where the
+// derived label leaves something open, so a bare command is a judgement rather
+// than a defect, and a check that demanded one everywhere would buy a fleet of
+// lines restating their own titles.
+//
 // The inventory is static: command names come from menus/, keymaps/ and
 // activationCommands, plus the `"<pkg>:<name>":` keys registered in lib/ and
-// src/. A name built at runtime from a variable is invisible here, which is
-// the price of not booting an editor to run a check.
+// src/. A name built at runtime from a variable is invisible here, and so is a
+// description a helper forwards rather than one written beside its command —
+// which is why a table-driven registration keys by the full command name and
+// puts the description next to it.
 //
-// Scope is the bundled fleet, as it is for check-menus and check-keymaps: CI
-// resolves packages from node_modules, so a community-tier package is not
-// present to scan. The rule applies to those too — nothing here enforces it.
+// Scope defaults to the bundled fleet, as it does for check-menus and
+// check-keymaps. That reads the *pinned* copies out of node_modules, so a
+// description written in a working tree is invisible until a repin lands, and
+// the community-tier repositories are never installed for it to see at all.
+// `--root <dir>` scans a flat workspace instead, every repository from its own
+// working tree, which is what the rule actually covers.
 
 const fs = require("fs");
 const path = require("path");
@@ -49,7 +69,45 @@ const commandPattern = (packageName) =>
 // credited to the wrong command.
 const DISPLAY_NAME = /displayName\s*:\s*["'`]([^"'`]*)["'`]/;
 
+// `description: "…"` as the *first* key of the descriptor a command name opens.
+// The window is one literal rather than the span to the next command, because
+// `description` is also the options key for a notification and for a
+// configSchema entry, and both appear in the same files in quantity. Anchoring
+// on the convention — description first, didDispatch last — is what makes the
+// key findable without parsing, and enforces the ordering as a side effect.
+const descriptionPattern = (command) =>
+  new RegExp(
+    `["'\`]${_.escapeRegExp(command)}["'\`]\\s*:\\s*\\{` +
+      `(?:\\s*//[^\\n]*)*` +
+      `\\s*description\\s*:\\s*(["'\`])((?:\\\\.|(?!\\1).)*)\\1`,
+  );
+
 const comparable = (label) => label.replace(/\s+/g, "").toLowerCase();
+
+// A description is one imperative sentence. Third person is the tell that it was
+// written as documentation about the command rather than as the command itself.
+const THIRD_PERSON =
+  /^(Shows|Opens|Toggles|Displays|Runs|Adds|Removes|Closes|Copies|Moves|Sets|Creates|Deletes|Inserts|Selects|Switches|Turns|Makes|Returns|Prints|Reloads|Restarts|Saves|Sends|Starts|Stops|Updates|Clears|Focuses|Jumps|Marks|Reveals|Scrolls|Splits|Wraps|Cuts|Pastes|Folds|Indents|Hides|Lists|Loads|Picks|Applies|Enables|Disables)\b/;
+
+const MARKDOWN = /`|\*\*|\[[^\]]*\]\([^)]*\)/;
+
+const MAX_LENGTH = 76;
+
+// The editor's own commands are not namespaced by its package name, so the
+// derivation that works for every package needs the list spelled out here.
+const EDITOR_NAMESPACES = [
+  "core",
+  "editor",
+  "pane",
+  "window",
+  "application",
+  "modal",
+  "repositories",
+  "git",
+];
+
+const namespacesFor = (packageName) =>
+  packageName === "lumine" ? EDITOR_NAMESPACES : [packageName];
 
 function bundledPackages() {
   const { scanBundledPackageNames, resolveBundledPackageDir } = require("../src/bundled-packages");
@@ -93,41 +151,98 @@ function declaredFiles(dir) {
 function inventory(name, dir) {
   const commands = new Map();
   const note = (command) => {
-    if (!commands.has(command)) commands.set(command, null);
+    if (!commands.has(command)) commands.set(command, { displayName: null, description: null });
+    return commands.get(command);
   };
+  const namespaces = namespacesFor(name);
+  const patterns = namespaces.map((namespace) => commandPattern(namespace));
 
   for (const file of declaredFiles(dir)) {
     const text = fs.readFileSync(file, "utf8");
-    for (const match of text.matchAll(commandPattern(name))) note(match[0].slice(1, -1));
+    for (const pattern of patterns) {
+      for (const match of text.matchAll(pattern)) note(match[0].slice(1, -1));
+    }
   }
 
   const manifest = path.join(dir, "package.json");
   if (fs.existsSync(manifest)) {
     const activation = CSON.readFileSync(manifest).activationCommands ?? {};
     for (const list of Object.values(activation)) {
-      for (const command of list) if (command.startsWith(`${name}:`)) note(command);
+      for (const command of list) {
+        if (namespaces.some((namespace) => command.startsWith(`${namespace}:`))) note(command);
+      }
     }
   }
 
   for (const file of sourceFiles(dir)) {
     const text = fs.readFileSync(file, "utf8");
-    const matches = [...text.matchAll(commandPattern(name))];
+    const matches = patterns
+      .flatMap((pattern) => [...text.matchAll(pattern)])
+      .sort((a, b) => a.index - b.index);
     matches.forEach((match, index) => {
       const command = match[0].slice(1, -1);
-      note(command);
+      const entry = note(command);
       const until = matches[index + 1]?.index ?? text.length;
       const label = text.slice(match.index, until).match(DISPLAY_NAME);
-      if (label) commands.set(command, label[1]);
+      if (label) entry.displayName = label[1];
+
+      // Anchored on the command itself rather than on the slice, so a
+      // descriptor split across the window boundary is still credited.
+      const described = text.slice(match.index).match(descriptionPattern(command));
+      if (described && described.index === 0) {
+        if (entry.description != null && entry.description !== described[2]) {
+          entry.conflict = described[2];
+        }
+        entry.description = described[2];
+      }
     });
   }
 
   return commands;
 }
 
+// A description earns its row by saying something the label does not. These are
+// the ways one fails to, each of them cheap to see and expensive to leave in:
+// the palette joins the description to the fuzzy candidate, so a wasted line
+// also costs the command score for a query aimed at its own name.
+function checkDescription(command, description, report) {
+  const label = _.humanizeEventName(command).replace(/^[^:]+:\s*/, "");
+
+  if (comparable(description.replace(/[.!?]+$/, "")) === comparable(label)) {
+    report(`${command}: description "${description}" only restates the label "${label}"`);
+    return;
+  }
+  if (!/[.]$/.test(description)) {
+    report(`${command}: description "${description}" does not end with a period`);
+  }
+  if (/^[a-z]/.test(description)) {
+    report(`${command}: description "${description}" does not start with a capital`);
+  }
+  if (THIRD_PERSON.test(description)) {
+    report(`${command}: description "${description}" is third person — write the imperative`);
+  }
+  if (description.length > MAX_LENGTH) {
+    report(`${command}: description is ${description.length} characters, over ${MAX_LENGTH}`);
+  }
+  if (MARKDOWN.test(description)) {
+    report(`${command}: description "${description}" carries markdown, which is rendered as text`);
+  }
+}
+
 function checkPackage(name, dir, report) {
   const commands = inventory(name, dir);
 
-  for (const [command, displayName] of commands) {
+  for (const [command, entry] of commands) {
+    const { displayName, description } = entry;
+
+    if (description != null) checkDescription(command, description, report);
+    if (entry.conflict != null) {
+      report(
+        `${command}: registered with two descriptions — "${description}" and ` +
+          `"${entry.conflict}". Which one shows depends on where focus is`,
+      );
+    }
+
     if (displayName == null) continue;
     const derived = _.humanizeEventName(command);
 
@@ -169,23 +284,85 @@ function checkPackage(name, dir, report) {
     }
   }
 
-  return commands.size;
+  const described = [...commands.values()].filter((entry) => entry.description != null).length;
+  return {
+    total: commands.size,
+    described,
+    undescribed: [...commands]
+      .filter(([, entry]) => entry.description == null)
+      .map(([command]) => command),
+  };
+}
+
+// Every repository in a flat workspace that declares itself a package, plus the
+// editor. `--root` exists because the default scan reads the *pinned* copies out
+// of node_modules, so a description written in a working tree is invisible to it
+// until a repin lands, and the community-tier repositories are never installed
+// for it to see at all.
+function packagesUnderRoot(root) {
+  return fs
+    .readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .map((entry) => ({ name: entry.name, dir: path.join(root, entry.name) }))
+    .map(({ name, dir }) => {
+      const manifest = path.join(dir, "package.json");
+      if (!fs.existsSync(manifest)) return null;
+      let parsed;
+      try {
+        parsed = CSON.readFileSync(manifest);
+      } catch {
+        return null;
+      }
+      const isPackage = parsed?.engines?.lumine != null;
+      const isEditor = fs.existsSync(path.join(dir, "src", "register-default-commands.js"));
+      if (!isPackage && !isEditor) return null;
+      return { name: parsed?.name ?? name, dir };
+    })
+    .filter(Boolean)
+    .sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function main() {
+  const rootFlag = process.argv.indexOf("--root");
+  const root = rootFlag === -1 ? null : path.resolve(process.argv[rootFlag + 1] ?? ".");
+  const verbose = process.argv.includes("--uncovered");
+
   const errors = [];
-  const packages = bundledPackages();
+  const packages = root ? packagesUnderRoot(root) : bundledPackages();
   let total = 0;
+  let described = 0;
+  const uncovered = [];
 
   for (const { name, dir } of packages) {
-    total += checkPackage(name, dir, (message) => errors.push(`${name}: ${message}`));
+    const result = checkPackage(name, dir, (message) => errors.push(`${name}: ${message}`));
+    total += result.total;
+    described += result.described;
+    if (result.undescribed.length > 0) {
+      uncovered.push({ name, count: result.undescribed.length, commands: result.undescribed });
+    }
   }
 
   for (const error of errors) console.error(`error: ${error}`);
+
+  const scope = root
+    ? `${packages.length} packages under ${root}`
+    : `${packages.length} bundled packages`;
+  console.log(`command metadata: ${scope}, ${total} commands scanned, ${errors.length} error(s)`);
+
+  // Coverage reports and never fails: a description belongs only where the
+  // derived label leaves something open, so a gap is a judgement, not a defect.
+  const percent = total === 0 ? 100 : Math.round((described / total) * 100);
   console.log(
-    `command display names: ${packages.length} bundled packages, ${total} commands scanned, ` +
-      `${errors.length} error(s)`,
+    `coverage: ${described}/${total} described (${percent}%) — ` +
+      `${uncovered.length} package(s) with a gap`,
   );
+  uncovered.sort((a, b) => b.count - a.count);
+  for (const entry of uncovered.slice(0, verbose ? uncovered.length : 10)) {
+    console.log(
+      `  ${entry.name}: ${entry.count}${verbose ? ` — ${entry.commands.join(", ")}` : ""}`,
+    );
+  }
+
   process.exitCode = errors.length > 0 ? 1 : 0;
 }
 
