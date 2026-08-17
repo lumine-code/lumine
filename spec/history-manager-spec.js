@@ -46,12 +46,14 @@ describe("HistoryManager", () => {
   });
 
   describe("constructor", () => {
-    it("registers the 'clear-project-history' command function", () => {
+    it("registers the 'clear-project-history' command with its description", () => {
       expect(commandRegistry.add).toHaveBeenCalled();
       const cmdCall = commandRegistry.add.calls.first();
       expect(cmdCall.args.length).toBe(3);
       expect(cmdCall.args[0]).toBe("lumine-workspace");
-      expect(typeof cmdCall.args[1]["application:clear-project-history"]).toBe("function");
+      const listener = cmdCall.args[1]["application:clear-project-history"];
+      expect(typeof listener.didDispatch).toBe("function");
+      expect(listener.description).toBe("Forget the projects offered by the Reopen Project menu.");
     });
 
     describe("getProjects", () => {
