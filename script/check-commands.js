@@ -52,8 +52,8 @@
 // rare enough to leave alone; the alternative is a pattern that cannot tell a
 // command name from the code around it.
 //
-// Scope defaults to the bundled fleet, as it does for check-menus and
-// check-keymaps. That reads the *pinned* copies out of node_modules, so a
+// Scope defaults to the bundled fleet. That reads the *pinned* copies out of
+// node_modules, so a
 // description written in a working tree is invisible until a repin lands, and
 // the community-tier repositories are never installed for it to see at all.
 // `--root <dir>` scans a flat workspace instead, every repository from its own

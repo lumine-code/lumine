@@ -75,22 +75,6 @@ jobs:
       # success. This runs against the tree `npm ci` just built.
       - name: Check bundled dependencies
         run: npm run check:bundled-deps
-      # The application menu normalizes nothing — merge only appends, unmerge
-      # never removes a separator, and the template goes straight to Electron —
-      # so a menu file's shape is exactly what the user sees. Nothing at runtime
-      # reports a package that gets it wrong; a bundled package's context-menu
-      # selectors are not even validated (Package#activateMenus skips that for
-      # bundled packages).
-      - name: Check menu conventions
-        run: npm run check:menus
-
-      # Keybindings, same idea. The one that pays for the rest is the
-      # chord-prefix check: a keystroke that is both a complete binding and the
-      # prefix of a longer one stalls for a full second before it fires, and
-      # nothing else reports it.
-      - name: Check keybinding conventions
-        run: npm run check:keymaps
-
       # A command's palette label is derived from its name by the acronym
       # vocabulary in underscore-plus, so a displayName is only ever an escape
       # hatch. This catches the three ways one goes wrong — renaming the

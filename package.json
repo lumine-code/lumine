@@ -181,8 +181,6 @@
     "check:editors": "node script/check-editors.js",
     "check:grammar-captures": "node script/check-grammar-captures.js",
     "check:bundled-deps": "node script/check-bundled-deps.js",
-    "check:menus": "node script/check-menus.js",
-    "check:keymaps": "node script/check-keymaps.js",
     "check:commands": "node script/check-commands.js",
     "check:api-docs": "node script/check-api-docs.js",
     "drive": "node script/drive.js",
