@@ -210,6 +210,58 @@ describe("MenuManager", function () {
       expect(keystrokesByCommand["hasOwnProperty"]).toEqual(["ctrl-c"]);
       expect(Object.getPrototypeOf(keystrokesByCommand)).toBeNull();
     });
+
+    it("measures every binding against the body classes the pass started with", function () {
+      // The simulated tree used to be built once and kept for the life of the
+      // manager, so a selector qualified by a body class answered for whatever
+      // classes were on the body when the first menu was built.
+      menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
+      lumine.keymaps.add("test", { ".theme-under-test lumine-text-editor": { "ctrl-b": "b" } });
+
+      menu.update();
+      advanceClock(1);
+      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toBeUndefined();
+
+      document.body.classList.add("theme-under-test");
+      try {
+        menu.update();
+        advanceClock(1);
+        expect(menu.sendToBrowserProcess.calls.argsFor(1)[1]["b"]).toEqual(["ctrl-b"]);
+      } finally {
+        document.body.classList.remove("theme-under-test");
+      }
+    });
+
+    it("builds one simulated tree per pass and keeps none of it", function () {
+      spyOn(menu, "buildTestEditor").and.callThrough();
+      menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
+      lumine.keymaps.add("test", { "lumine-workspace": { "ctrl-b": "b" } });
+
+      menu.update();
+      advanceClock(1);
+
+      expect(menu.buildTestEditor.calls.count()).toBe(1);
+      expect(menu.testEditor).toBeNull();
+    });
+  });
+
+  describe("::includeSelector(selector)", function () {
+    it("answers against the body's classes as they are now", function () {
+      expect(menu.includeSelector(".theme-under-test lumine-text-editor")).toBe(false);
+
+      document.body.classList.add("theme-under-test");
+      try {
+        expect(menu.includeSelector(".theme-under-test lumine-text-editor")).toBe(true);
+      } finally {
+        document.body.classList.remove("theme-under-test");
+      }
+
+      expect(menu.includeSelector(".theme-under-test lumine-text-editor")).toBe(false);
+    });
+
+    it("refuses a selector it cannot parse", function () {
+      expect(menu.includeSelector("<not a selector>")).toBe(false);
+    });
   });
 
   it("updates the application menu when a keymap is reloaded", function () {

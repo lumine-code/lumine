@@ -173,27 +173,13 @@ module.exports = class MenuManager {
       // Selector isn't valid
       return false;
     }
-    // Simulate an lumine-text-editor element attached to an lumine-workspace element attached
-    // to a body element that has the same classes as the current body element.
-    if (this.testEditor == null) {
-      // Use new document so that custom elements don't actually get created
-      const testDocument = document.implementation.createDocument(document.namespaceURI, "html");
-      const testBody = testDocument.createElement("body");
-      testBody.classList.add(...this.classesForElement(document.body));
-      const testWorkspace = testDocument.createElement("lumine-workspace");
-      let workspaceClasses = this.classesForElement(
-        document.body.querySelector("lumine-workspace"),
-      );
-      if (workspaceClasses.length === 0) {
-        workspaceClasses = ["workspace"];
-      }
-      testWorkspace.classList.add(...workspaceClasses);
-      testBody.appendChild(testWorkspace);
-      this.testEditor = testDocument.createElement("lumine-text-editor");
-      this.testEditor.classList.add("editor");
-      testWorkspace.appendChild(this.testEditor);
-    }
-    let element = this.testEditor;
+    // The simulated tree mirrors the real body's classes, and those change
+    // under the editor's feet — a theme swap, `is-blurred`, a package adding
+    // one. `update` builds one tree for the length of its pass and clears it
+    // again; a call from anywhere else builds and discards its own. Caching it
+    // across passes is what made a menu accelerator answer for the theme that
+    // was active when the first menu was built.
+    let element = this.testEditor ?? this.buildTestEditor();
     while (element) {
       if (element.webkitMatchesSelector(selector)) {
         return true;
@@ -201,6 +187,27 @@ module.exports = class MenuManager {
       element = element.parentElement;
     }
     return false;
+  }
+
+  // Simulate an lumine-text-editor element attached to an lumine-workspace
+  // element attached to a body element that has the same classes as the current
+  // body element.
+  buildTestEditor() {
+    // Use new document so that custom elements don't actually get created
+    const testDocument = document.implementation.createDocument(document.namespaceURI, "html");
+    const testBody = testDocument.createElement("body");
+    testBody.classList.add(...this.classesForElement(document.body));
+    const testWorkspace = testDocument.createElement("lumine-workspace");
+    let workspaceClasses = this.classesForElement(document.body.querySelector("lumine-workspace"));
+    if (workspaceClasses.length === 0) {
+      workspaceClasses = ["workspace"];
+    }
+    testWorkspace.classList.add(...workspaceClasses);
+    testBody.appendChild(testWorkspace);
+    const testEditor = testDocument.createElement("lumine-text-editor");
+    testEditor.classList.add("editor");
+    testWorkspace.appendChild(testEditor);
+    return testEditor;
   }
 
   /**
@@ -231,23 +238,30 @@ module.exports = class MenuManager {
       // The main process needs its own guard as well — the prototype does not
       // survive the structured clone in `sendToBrowserProcess`, only the keys.
       const keystrokesByCommand = Object.create(null);
-      for (let binding of this.keymapManager.getKeyBindings()) {
-        if (!this.includeSelector(binding.selector)) {
-          continue;
+      // One simulated tree for the whole pass — every binding is measured
+      // against the same body classes — and none of it kept afterwards.
+      this.testEditor = this.buildTestEditor();
+      try {
+        for (let binding of this.keymapManager.getKeyBindings()) {
+          if (!this.includeSelector(binding.selector)) {
+            continue;
+          }
+          if (unsetKeystrokes.has(binding.keystrokes)) {
+            continue;
+          }
+          if (process.platform === "darwin" && /^alt-(shift-)?.$/.test(binding.keystrokes)) {
+            continue;
+          }
+          if (process.platform === "win32" && /^ctrl-alt-(shift-)?.$/.test(binding.keystrokes)) {
+            continue;
+          }
+          if (keystrokesByCommand[binding.command] == null) {
+            keystrokesByCommand[binding.command] = [];
+          }
+          keystrokesByCommand[binding.command].unshift(binding.keystrokes);
         }
-        if (unsetKeystrokes.has(binding.keystrokes)) {
-          continue;
-        }
-        if (process.platform === "darwin" && /^alt-(shift-)?.$/.test(binding.keystrokes)) {
-          continue;
-        }
-        if (process.platform === "win32" && /^ctrl-alt-(shift-)?.$/.test(binding.keystrokes)) {
-          continue;
-        }
-        if (keystrokesByCommand[binding.command] == null) {
-          keystrokesByCommand[binding.command] = [];
-        }
-        keystrokesByCommand[binding.command].unshift(binding.keystrokes);
+      } finally {
+        this.testEditor = null;
       }
       this.sendToBrowserProcess(this.template, keystrokesByCommand);
     }, 1);
