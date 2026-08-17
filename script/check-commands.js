@@ -18,8 +18,9 @@
 //   4. a displayName that only re-cases an ordinary word — palette labels keep
 //      the humanizer's word case; lowercase prepositions are a menu-label rule
 //
-// A surviving displayName should therefore be rare, and each one is an
-// argument that its word belongs in `ACRONYMS`, where every surface gets it.
+// What survives is a package spelling its own domain's jargon: SOFiSTiK's WPS
+// and SOFiPLUS are spelled where those commands live, because the shared
+// vocabulary is what every consumer carries and no one else needs those words.
 //
 // The inventory is static: command names come from menus/, keymaps/ and
 // activationCommands, plus the `"<pkg>:<name>":` keys registered in lib/ and
@@ -153,21 +154,17 @@ function checkPackage(name, dir, report) {
       continue;
     }
 
-    // Same words, different case. Legitimate only where the word has a casing
-    // of its own that `ACRONYMS` does not carry yet; anything else is a word-
-    // case preference the palette does not honour.
+    // Same words, different case. A word carrying a capital past its first
+    // letter — HTML, WinGRAF, SOFiPLUS, DBInfo — is a deliberate spelling, and
+    // spelling one is the whole job of a displayName. Anything else is a
+    // word-case preference the palette does not honour.
     const ordinary = written.filter(
-      (word, index) => word !== words[index] && word.toUpperCase() !== word,
+      (word, index) => word !== words[index] && !/[A-Z]/.test(word.slice(1)),
     );
     if (ordinary.length > 0) {
       report(
         `${command}: displayName "${displayName}" re-cases ${ordinary.join(", ")} — palette ` +
           `labels keep the humanizer's word case`,
-      );
-    } else {
-      report(
-        `${command}: displayName "${displayName}" spells a word the vocabulary is missing — ` +
-          `add it to ACRONYMS in underscore-plus so every surface gets it`,
       );
     }
   }
