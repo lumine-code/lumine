@@ -503,8 +503,11 @@ module.exports = function ({
       "core:copy": function () {
         return this.getElement().copySelectedText();
       },
-      "editor:copy-selection": function () {
-        return this.getElement().copyOnlySelectedText();
+      "editor:copy-selection": {
+        description: "Copy the selection alone, never the whole line when nothing is selected.",
+        didDispatch: function () {
+          return this.getElement().copyOnlySelectedText();
+        },
       },
     }),
     false,
@@ -619,8 +622,11 @@ module.exports = function ({
       "editor:add-selection-above": function () {
         return this.addSelectionAbove();
       },
-      "editor:split-selections-into-lines": function () {
-        return this.splitSelectionsIntoLines();
+      "editor:split-selections-into-lines": {
+        description: "Break each multi-line selection into one selection per line.",
+        didDispatch: function () {
+          return this.splitSelectionsIntoLines();
+        },
       },
       "editor:toggle-soft-tabs": function () {
         return this.toggleSoftTabs();
@@ -788,14 +794,31 @@ module.exports = function ({
   );
 };
 
+// Puts a listener back together around a handler of the wrapper's own making,
+// keeping whatever else it carried. A listener is either a bare handler or a
+// descriptor whose `didDispatch` is the handler and whose remaining keys —
+// `description` above all — are the metadata `extractDescriptor` keeps and the
+// palette shows. Both wrappers below substitute the handler, so each has to
+// carry those keys across itself: returning a bare function would drop every
+// one of them, and writing a descriptor into a map that reached an unwrapped
+// wrapper would leave it calling `.call` on an object.
+const rewrapCommandListener = function (listener, wrap) {
+  const didDispatch = typeof listener === "function" ? listener : listener.didDispatch;
+  const wrapped = wrap(didDispatch);
+  return typeof listener === "function" ? wrapped : { ...listener, didDispatch: wrapped };
+};
+
 var stopEventPropagation = function (commandListeners) {
   const newCommandListeners = {};
   for (let commandName in commandListeners) {
-    let commandListener = commandListeners[commandName];
-    newCommandListeners[commandName] = function (event) {
-      event.stopPropagation();
-      return commandListener.call(this.getModel(), event);
-    };
+    newCommandListeners[commandName] = rewrapCommandListener(
+      commandListeners[commandName],
+      (didDispatch) =>
+        function (event) {
+          event.stopPropagation();
+          return didDispatch.call(this.getModel(), event);
+        },
+    );
   }
   return newCommandListeners;
 };
@@ -803,12 +826,15 @@ var stopEventPropagation = function (commandListeners) {
 var stopEventPropagationAndGroupUndo = function (config, commandListeners) {
   const newCommandListeners = {};
   for (let commandName in commandListeners) {
-    let commandListener = commandListeners[commandName];
-    newCommandListeners[commandName] = function (event) {
-      event.stopPropagation();
-      const model = this.getModel();
-      model.transact(model.getUndoGroupingInterval(), () => commandListener.call(model, event));
-    };
+    newCommandListeners[commandName] = rewrapCommandListener(
+      commandListeners[commandName],
+      (didDispatch) =>
+        function (event) {
+          event.stopPropagation();
+          const model = this.getModel();
+          model.transact(model.getUndoGroupingInterval(), () => didDispatch.call(model, event));
+        },
+    );
   }
   return newCommandListeners;
 };
