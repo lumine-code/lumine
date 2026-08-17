@@ -26,7 +26,13 @@ function merge(menu, item, itemSpecificity = Infinity) {
     for (let submenuItem of item.submenu) {
       merge(matchingItem.submenu, submenuItem, itemSpecificity);
     }
-  } else if (itemSpecificity && itemSpecificity >= ItemSpecificities.get(matchingItem)) {
+  } else if (itemSpecificity !== false && itemSpecificity >= ItemSpecificities.get(matchingItem)) {
+    // `false` is the caller's "never override" sentinel — see
+    // ContextMenuManager::templateForEvent, where an item arriving from a
+    // shallower element must not replace one a deeper element contributed. A
+    // specificity of 0 is not that: `calculateSpecificity` returns it for `*`,
+    // for a selector whose first comma-branch is empty, and for a bare
+    // combinator, and such an item should still beat another scoring 0.
     menu[matchingItemIndex] = item;
   }
 }

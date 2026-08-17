@@ -44,6 +44,43 @@ describe("MenuHelpers", function () {
       ]);
     });
 
+    describe("specificity", function () {
+      // `merge`'s third argument is a specificity, except for one value: `false`
+      // means "never override", which ContextMenuManager passes when folding a
+      // shallower element's items into a template a deeper one already filled.
+      it("lets an equal specificity replace, so the later contributor wins", function () {
+        const menu = [];
+        MenuHelpers.merge(menu, { label: "A", command: "first" }, 10);
+        MenuHelpers.merge(menu, { label: "A", command: "second" }, 10);
+        expect(menu).toEqual([{ label: "A", id: "A", command: "second" }]);
+      });
+
+      it("keeps the more specific item when a less specific one follows", function () {
+        const menu = [];
+        MenuHelpers.merge(menu, { label: "A", command: "specific" }, 20);
+        MenuHelpers.merge(menu, { label: "A", command: "vague" }, 10);
+        expect(menu).toEqual([{ label: "A", id: "A", command: "specific" }]);
+      });
+
+      it("treats a specificity of zero as a specificity, not as the sentinel", function () {
+        // `calculateSpecificity` legitimately answers 0 — for `*`, for a
+        // selector whose first comma-branch is empty, for a bare combinator.
+        // A truthiness check made such an item unable to override anything,
+        // including another item scoring 0.
+        const menu = [];
+        MenuHelpers.merge(menu, { label: "A", command: "first" }, 0);
+        MenuHelpers.merge(menu, { label: "A", command: "second" }, 0);
+        expect(menu).toEqual([{ label: "A", id: "A", command: "second" }]);
+      });
+
+      it("never lets the false sentinel replace, even against a stored zero", function () {
+        const menu = [];
+        MenuHelpers.merge(menu, { label: "A", command: "kept" }, 0);
+        MenuHelpers.merge(menu, { label: "A", command: "ignored" }, false);
+        expect(menu).toEqual([{ label: "A", id: "A", command: "kept" }]);
+      });
+    });
+
     it("refuses a separator only when the menu already ends in one", function () {
       const menu = [{ label: "A", id: "A" }, { type: "separator" }];
       MenuHelpers.merge(menu, { type: "separator" });
