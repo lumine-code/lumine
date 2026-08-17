@@ -75,9 +75,12 @@ const DISPLAY_NAME = /displayName\s*:\s*["'`]([^"'`]*)["'`]/;
 // configSchema entry, and both appear in the same files in quantity. Anchoring
 // on the convention — description first, didDispatch last — is what makes the
 // key findable without parsing, and enforces the ordering as a side effect.
+// The separator is `:` in a command map and `,` in the three-argument form
+// `add(target, name, listener)`, which core and several packages use; both open
+// the same descriptor, so both are credited.
 const descriptionPattern = (command) =>
   new RegExp(
-    `["'\`]${_.escapeRegExp(command)}["'\`]\\s*:\\s*\\{` +
+    `["'\`]${_.escapeRegExp(command)}["'\`]\\s*[:,]\\s*\\{` +
       `(?:\\s*//[^\\n]*)*` +
       `\\s*description\\s*:\\s*(["'\`])((?:\\\\.|(?!\\1).)*)\\1`,
   );
