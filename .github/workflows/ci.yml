@@ -91,6 +91,14 @@ jobs:
       - name: Check keybinding conventions
         run: npm run check:keymaps
 
+      # A command's palette label is derived from its name by the acronym
+      # vocabulary in underscore-plus, so a displayName is only ever an escape
+      # hatch. This catches the three ways one goes wrong — renaming the
+      # command in the label, repeating what the humanizer already says, or
+      # re-casing a word the palette does not honour.
+      - name: Check command display names
+        run: npm run check:commands
+
   test:
     name: Test on ${{ matrix.os }}
     # The fast lane (lint) runs everywhere; the full matrix is reserved for

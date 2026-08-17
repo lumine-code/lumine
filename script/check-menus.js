@@ -16,6 +16,7 @@ const path = require("path");
 
 const ROOT = path.join(__dirname, "..");
 const CSON = require("@lumine-code/season");
+const _ = require("@lumine-code/underscore-plus");
 
 // The nine menus the platform files declare. A package adds items to one; it
 // never restructures one, and in particular never writes a separator into one,
@@ -30,27 +31,6 @@ const CORE_MENUS = new Set([
   "Help",
   "Window",
   "Lumine",
-]);
-
-// A `Packages > <Name>` label is the package name with hyphens as spaces and
-// each word capitalised, so it is derivable and a family stays adjacent in a
-// menu sorted by label. These are the words with a real casing of their own.
-const ACRONYMS = new Map([
-  ["repl", "REPL"],
-  ["pdf", "PDF"],
-  ["latex", "LaTeX"],
-  ["sofistik", "SOFiSTiK"],
-  ["eslint", "ESLint"],
-  ["github", "GitHub"],
-  ["mcp", "MCP"],
-  ["ide", "IDE"],
-  ["ui", "UI"],
-  ["css", "CSS"],
-  ["html", "HTML"],
-  ["json", "JSON"],
-  ["csv", "CSV"],
-  ["xml", "XML"],
-  ["sql", "SQL"],
 ]);
 
 // Articles, conjunctions and prepositions stay lowercase inside a title —
@@ -84,12 +64,12 @@ const MAX_FLAT_ITEMS = 6;
 const MAX_GROUP_ITEMS = 8;
 const MAX_GROUPS = 5;
 
-function expectedLabel(packageName) {
-  return packageName
-    .split("-")
-    .map((word) => ACRONYMS.get(word) ?? word.charAt(0).toUpperCase() + word.slice(1))
-    .join(" ");
-}
+// A `Packages > <Name>` label is the package name with hyphens as spaces and
+// each word capitalised, so it is derivable and a family stays adjacent in a
+// menu sorted by label. `titleize` carries the words with a real casing of
+// their own — the same vocabulary the command palette derives its labels from,
+// so a menu and a palette can never disagree about how a package is spelled.
+const expectedLabel = (packageName) => _.titleize(packageName);
 
 function bundledPackages() {
   const { scanBundledPackageNames, resolveBundledPackageDir } = require("../src/bundled-packages");

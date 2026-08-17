@@ -183,6 +183,7 @@
     "check:bundled-deps": "node script/check-bundled-deps.js",
     "check:menus": "node script/check-menus.js",
     "check:keymaps": "node script/check-keymaps.js",
+    "check:commands": "node script/check-commands.js",
     "check:api-docs": "node script/check-api-docs.js",
     "drive": "node script/drive.js",
     "generate:branding": "electron --no-sandbox script/generate-branding.js",
