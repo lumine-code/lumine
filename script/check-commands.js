@@ -85,6 +85,15 @@ const descriptionPattern = (command) =>
       `\\s*description\\s*:\\s*(["'\`])((?:\\\\.|(?!\\1).)*)\\1`,
   );
 
+// The same convention in JSX, where a component registers the command for its
+// subtree: `<Command command="pkg:cmd" description="…" callback={…} />`. The
+// description still comes first, directly after the name it belongs to.
+const jsxDescriptionPattern = (command) =>
+  new RegExp(
+    `command=(["'\`])${_.escapeRegExp(command)}\\1` +
+      `\\s*description=(["'\`])((?:\\\\.|(?!\\2).)*)\\2`,
+  );
+
 const comparable = (label) => label.replace(/\s+/g, "").toLowerCase();
 
 // A description is one imperative sentence. Third person is the tell that it was
@@ -190,13 +199,18 @@ function inventory(name, dir) {
       if (label) entry.displayName = label[1];
 
       // Anchored on the command itself rather than on the slice, so a
-      // descriptor split across the window boundary is still credited.
-      const described = text.slice(match.index).match(descriptionPattern(command));
-      if (described && described.index === 0) {
-        if (entry.description != null && entry.description !== described[2]) {
-          entry.conflict = described[2];
+      // descriptor split across the window boundary is still credited. The JSX
+      // form anchors on the `command=` attribute instead, which sits one token
+      // before the name rather than on it.
+      const rest = text.slice(match.index);
+      const described = rest.match(descriptionPattern(command));
+      const jsx = text.slice(Math.max(0, match.index - 16)).match(jsxDescriptionPattern(command));
+      const found = described && described.index === 0 ? described[2] : jsx ? jsx[3] : null;
+      if (found != null) {
+        if (entry.description != null && entry.description !== found) {
+          entry.conflict = found;
         }
-        entry.description = described[2];
+        entry.description = found;
       }
     });
   }
