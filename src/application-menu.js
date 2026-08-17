@@ -180,7 +180,15 @@ module.exports = class ApplicationMenu {
     template.forEach((item) => {
       if (item.metadata == null) item.metadata = {};
       if (item.command) {
-        const keystrokes = keystrokesByCommand[item.command];
+        // The renderer builds this map with a null prototype, but the
+        // structured clone that carries it across IPC does not preserve one:
+        // what arrives here is an ordinary object again. Own keys survive, so
+        // a real binding still resolves — but an *unbound* command named
+        // `constructor` would otherwise resolve to `Object`, whose `length` of
+        // 1 passes the guard below and whose `[0]` is undefined.
+        const keystrokes = Object.hasOwn(keystrokesByCommand, item.command)
+          ? keystrokesByCommand[item.command]
+          : null;
         if (keystrokes && keystrokes.length > 0) {
           const keystroke = keystrokes[0];
           // Electron does not support multi-keystroke accelerators. Therefore,

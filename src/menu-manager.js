@@ -224,7 +224,13 @@ module.exports = class MenuManager {
           unsetKeystrokes.add(binding.keystrokes);
         }
       }
-      const keystrokesByCommand = {};
+      // A command is an arbitrary string out of a keymap file, so a plain
+      // object would answer `constructor` and friends from `Object.prototype`:
+      // the `== null` check below would not fire and `unshift` would run on
+      // `Object`, throwing inside this timeout and killing every later update.
+      // The main process needs its own guard as well — the prototype does not
+      // survive the structured clone in `sendToBrowserProcess`, only the keys.
+      const keystrokesByCommand = Object.create(null);
       for (let binding of this.keymapManager.getKeyBindings()) {
         if (!this.includeSelector(binding.selector)) {
           continue;

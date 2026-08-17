@@ -185,6 +185,31 @@ describe("MenuManager", function () {
       expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["c"]).toBeUndefined();
       expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["d"]).toEqual(["ctrl-alt-cmd-d"]);
     });
+
+    it("collects a command that names something on Object.prototype", function () {
+      // A command is whatever a keymap file says. Against a plain object the
+      // `== null` guard in `update` reads `Object.prototype.constructor`, finds
+      // it non-null, and unshifts onto `Object` — a TypeError inside the
+      // timeout, which takes every later menu update with it.
+      menu.add([
+        {
+          label: "A",
+          submenu: [
+            { label: "B", command: "constructor" },
+            { label: "C", command: "hasOwnProperty" },
+          ],
+        },
+      ]);
+      lumine.keymaps.add("test", {
+        "lumine-workspace": { "ctrl-b": "constructor", "ctrl-c": "hasOwnProperty" },
+      });
+
+      advanceClock(1);
+      const keystrokesByCommand = menu.sendToBrowserProcess.calls.argsFor(0)[1];
+      expect(keystrokesByCommand["constructor"]).toEqual(["ctrl-b"]);
+      expect(keystrokesByCommand["hasOwnProperty"]).toEqual(["ctrl-c"]);
+      expect(Object.getPrototypeOf(keystrokesByCommand)).toBeNull();
+    });
   });
 
   it("updates the application menu when a keymap is reloaded", function () {

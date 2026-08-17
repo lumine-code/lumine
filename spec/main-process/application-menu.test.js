@@ -103,6 +103,32 @@ describe("ApplicationMenu", () => {
       assert.isUndefined(template[0].accelerator);
     });
 
+    it("leaves an unbound command that names something on Object.prototype alone", () => {
+      // The renderer builds the map with a null prototype, but the structured
+      // clone that carries it here does not preserve one. Without an own-key
+      // check this reads `Object`, whose `length` of 1 passes the guard and
+      // whose `[0]` is undefined, so `keystroke.includes` throws.
+      for (const command of ["constructor", "hasOwnProperty", "isPrototypeOf"]) {
+        const template = [{ label: "Break", command }];
+        applicationMenu.translateTemplate(template, {});
+
+        assert.strictEqual(template[0].label, "Break");
+        assert.isUndefined(template[0].accelerator);
+      }
+    });
+
+    it("still resolves a real binding for such a command once the map has crossed IPC", () => {
+      const template = [{ label: "Break", command: "constructor" }];
+      const clone = structuredClone(
+        Object.assign(Object.create(null), { constructor: ["ctrl-b"] }),
+      );
+      // The own key is what survives; the prototype is not.
+      assert.isNotNull(Object.getPrototypeOf(clone));
+
+      applicationMenu.translateTemplate(template, clone);
+      assert.strictEqual(template[0].accelerator, "Ctrl+B");
+    });
+
     it("gives every item a metadata object, and marks the window-specific ones", () => {
       const template = [
         { label: "Save", command: "core:save" },
