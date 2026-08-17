@@ -185,19 +185,31 @@ module.exports = class ContextMenuManager {
       currentTarget = currentTarget.parentElement;
     }
     this.pruneRedundantSeparators(template);
-    this.addAccelerators(template);
+    this.addAccelerators(template, event.target);
     return this.sortTemplate(template);
   }
 
   // Adds an `accelerator` property to items that have key bindings. Electron
   // uses this property to surface the relevant keymaps in the context menu.
-  addAccelerators(template) {
-    for (let id in template) {
-      const item = template[id];
+  //
+  // Bindings resolve at `target` — the element that was right-clicked —
+  // because that is the element the item's command is dispatched against:
+  // `show` records it as `activeElement` and
+  // `LumineEnvironment::dispatchContextMenuCommand` dispatches there.
+  // Resolving at `document.activeElement` instead advertised whichever
+  // binding belonged to the element that happened to hold focus, which is not
+  // the element the item acts on — right-clicking a tab or a tree-view entry
+  // while an editor holds focus showed the editor's keystroke.
+  //
+  // The walk deliberately passes any `data-context-menu-boundary`: that
+  // attribute limits which items a surface inherits, not where a command
+  // dispatches, and the keystroke really would fire.
+  addAccelerators(template, target) {
+    for (const item of template) {
       if (item.command) {
         const keymaps = this.keymapManager.findKeyBindings({
           command: item.command,
-          target: document.activeElement,
+          target,
         });
         const keystrokes = keymaps && keymaps[0] ? keymaps[0].keystrokes : undefined;
         if (keystrokes) {
@@ -212,7 +224,7 @@ module.exports = class ContextMenuManager {
         }
       }
       if (Array.isArray(item.submenu)) {
-        this.addAccelerators(item.submenu);
+        this.addAccelerators(item.submenu, target);
       }
     }
   }

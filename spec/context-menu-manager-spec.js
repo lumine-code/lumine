@@ -364,7 +364,6 @@ describe("ContextMenuManager", function () {
     afterEach(() => keymaps.dispose());
 
     it("adds Electron-style accelerators to items that have keybindings", function () {
-      child.focus();
       const dispatchedEvent = { target: child };
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([
         {
@@ -384,8 +383,7 @@ describe("ContextMenuManager", function () {
       ]);
     });
 
-    it("adds accelerators when a parent node has key bindings for a given command", function () {
-      grandchild.focus();
+    it("adds accelerators declared on an ancestor of the right-clicked element", function () {
       const dispatchedEvent = { target: grandchild };
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([
         {
@@ -405,8 +403,7 @@ describe("ContextMenuManager", function () {
       ]);
     });
 
-    it("does not add accelerators when a child node has key bindings for a given command", function () {
-      parent.focus();
+    it("does not add accelerators when only a descendant of the right-clicked element is bound", function () {
       const dispatchedEvent = { target: parent };
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([
         {
@@ -424,10 +421,54 @@ describe("ContextMenuManager", function () {
       ]);
     });
 
-    it("adds accelerators based on focus, not context menu target", function () {
-      grandchild.focus();
-      const dispatchedEvent = { target: parent };
-      expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([
+    // Declared with the focus wrapper because half of it is only meaningful if
+    // `.focus()` actually moved `activeElement`, which needs the spec window to
+    // own the OS focus. Without the wrapper the first assertion would pass
+    // vacuously wherever it does not.
+    jasmine.itWithDocumentFocus(
+      "resolves accelerators at the right-clicked element, not the focused one",
+      function () {
+        // The command dispatches at the element that was right-clicked —
+        // `show` records it and `dispatchContextMenuCommand` dispatches there —
+        // so the keystroke advertised beside it has to be resolved there too.
+        grandchild.focus();
+        expect(contextMenu.templateForEvent({ target: parent })).toEqual([
+          {
+            label: "My Command",
+            id: "My Command",
+            command: "test:my-command",
+            submenu: [
+              {
+                label: "My Other Command",
+                id: "My Other Command",
+                command: "test:my-other-command",
+              },
+            ],
+          },
+        ]);
+
+        parent.focus();
+        expect(contextMenu.templateForEvent({ target: child })).toEqual([
+          {
+            label: "My Command",
+            id: "My Command",
+            command: "test:my-command",
+            accelerator: "Ctrl+A",
+            submenu: [
+              {
+                label: "My Other Command",
+                id: "My Other Command",
+                command: "test:my-other-command",
+                accelerator: "Shift+B",
+              },
+            ],
+          },
+        ]);
+      },
+    );
+
+    it("resolves the same accelerators through templateForElement", function () {
+      expect(contextMenu.templateForElement(child)).toEqual([
         {
           label: "My Command",
           id: "My Command",
@@ -460,8 +501,6 @@ describe("ContextMenuManager", function () {
           },
         ],
       });
-
-      child.focus();
 
       const keystrokeLabel = process.platform === "darwin" ? "⌃A ⌃B" : "Ctrl+A Ctrl+B";
       expect(contextMenu.templateForEvent({ target: child })).toEqual([
