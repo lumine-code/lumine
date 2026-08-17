@@ -61,8 +61,15 @@ const _ = require("@lumine-code/underscore-plus");
 // A command name literal used as an object key or a string argument. The
 // namespace is anchored to the package's own name, so `core:save` written by a
 // package is not mistaken for one of its own.
+//
+// The half after the colon is matched case-insensitively because a few commands
+// spell an acronym in the name itself — `bacadra-tools:open-CALC`. Lowercasing
+// the class here hid those from the description scan entirely: they were counted
+// from `activationCommands`, which does not go through this pattern, and then
+// never visited in the source, so a description written beside one read as
+// missing.
 const commandPattern = (packageName) =>
-  new RegExp(`["'\`]${_.escapeRegExp(packageName)}:([a-z0-9-]+)["'\`]`, "g");
+  new RegExp(`["'\`]${_.escapeRegExp(packageName)}:([A-Za-z0-9-]+)["'\`]`, "g");
 
 // `displayName: "…"` sitting inside the object literal that follows a command
 // key. Matched within the span up to the next command key so a label cannot be
