@@ -17,7 +17,7 @@ Website: https://lumine-code.github.io
 ## Features
 
 - **Tree-sitter grammars**: real, incremental syntax parsing for dozens of bundled languages, from JavaScript and Python to Rust and Go.
-- **Language intelligence**: code lens, semantic highlighting, inlay hints, and autocomplete through a built-in Language Server Protocol client.
+- **Language intelligence**: semantic highlighting, inlay hints, and autocomplete through a built-in Language Server Protocol client.
 - **Git integration**: branch and working-tree status in the status bar, with added, edited, and deleted markers in the gutter.
 - **Symbol navigation**: jump to a function, method, or symbol in the current file or across the whole project.
 - **Project navigation**: a tree view, fuzzy file finder, and project-wide search and replace.
