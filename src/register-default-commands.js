@@ -13,14 +13,23 @@ module.exports = function ({
   commandRegistry.add(
     "lumine-workspace",
     {
-      "pane:show-next-recently-used-item": function () {
-        return this.getModel().getActivePane().activateNextRecentlyUsedItem();
+      "pane:show-next-recently-used-item": {
+        description: "Step through the pane's tabs in the order they were last used.",
+        didDispatch: function () {
+          return this.getModel().getActivePane().activateNextRecentlyUsedItem();
+        },
       },
-      "pane:show-previous-recently-used-item": function () {
-        return this.getModel().getActivePane().activatePreviousRecentlyUsedItem();
+      "pane:show-previous-recently-used-item": {
+        description: "Step back through the pane's tabs in the order they were last used.",
+        didDispatch: function () {
+          return this.getModel().getActivePane().activatePreviousRecentlyUsedItem();
+        },
       },
-      "pane:move-active-item-to-top-of-stack": function () {
-        return this.getModel().getActivePane().moveActiveItemToTopOfStack();
+      "pane:move-active-item-to-top-of-stack": {
+        description: "Mark the active tab as the most recently used one.",
+        didDispatch: function () {
+          return this.getModel().getActivePane().moveActiveItemToTopOfStack();
+        },
       },
       "pane:show-next-item": function () {
         return this.getModel().getActivePane().activateNextItem();
@@ -52,17 +61,29 @@ module.exports = function ({
       "pane:show-item-8": function () {
         return this.getModel().getActivePane().activateItemAtIndex(7);
       },
-      "pane:show-item-9": function () {
-        return this.getModel().getActivePane().activateLastItem();
+      "pane:show-item-9": {
+        description: "Show the last tab in the pane, however many there are.",
+        didDispatch: function () {
+          return this.getModel().getActivePane().activateLastItem();
+        },
       },
-      "pane:move-item-right": function () {
-        return this.getModel().getActivePane().moveItemRight();
+      "pane:move-item-right": {
+        description: "Move the active tab one place along, within its own pane.",
+        didDispatch: function () {
+          return this.getModel().getActivePane().moveItemRight();
+        },
       },
-      "pane:move-item-left": function () {
-        return this.getModel().getActivePane().moveItemLeft();
+      "pane:move-item-left": {
+        description: "Move the active tab one place back, within its own pane.",
+        didDispatch: function () {
+          return this.getModel().getActivePane().moveItemLeft();
+        },
       },
-      "pane:toggle-pending-item": function () {
-        return this.getModel().getActivePane().togglePendingItem();
+      "pane:toggle-pending-item": {
+        description: "Keep a previewed tab open, or hand it back to preview.",
+        didDispatch: function () {
+          return this.getModel().getActivePane().togglePendingItem();
+        },
       },
       "window:increase-font-size": function () {
         return this.getModel().increaseFontSize();
@@ -124,26 +145,38 @@ module.exports = function ({
               : void 0;
         return ipcRenderer.send("open-chosen-folder", defaultPath);
       },
-      "application:open-dev": function () {
-        return ipcRenderer.send("command", "application:open-dev");
+      "application:open-dev": {
+        description: "Choose a file or folder and open it in a dev-mode window.",
+        didDispatch: function () {
+          return ipcRenderer.send("command", "application:open-dev");
+        },
       },
       "application:reopen-window-in-dev-mode": function () {
         return ipcRenderer.send("command", "application:reopen-window-in-dev-mode");
       },
-      "application:open-safe": function () {
-        return ipcRenderer.send("command", "application:open-safe");
+      "application:open-safe": {
+        description: "Choose a file or folder and open it without your packages.",
+        didDispatch: function () {
+          return ipcRenderer.send("command", "application:open-safe");
+        },
       },
       "application:add-project-folder": function () {
         return lumine.addProjectFolder();
       },
-      "repositories:rescan": function () {
-        return repositories.rescan();
+      "repositories:rescan": {
+        description: "Look for Git repositories again after adding or removing one.",
+        didDispatch: function () {
+          return repositories.rescan();
+        },
       },
       "application:minimize": function () {
         return ipcRenderer.send("command", "application:minimize");
       },
-      "application:zoom": function () {
-        return ipcRenderer.send("command", "application:zoom");
+      "application:zoom": {
+        description: "Switch the window between its zoomed and its restored size.",
+        didDispatch: function () {
+          return ipcRenderer.send("command", "application:zoom");
+        },
       },
       "application:open-your-config": function () {
         return ipcRenderer.send("command", "application:open-your-config");
@@ -166,8 +199,11 @@ module.exports = function ({
       "application:open-documentation": function () {
         return ipcRenderer.send("command", "application:open-documentation");
       },
-      "window:run-package-specs": function () {
-        return this.runPackageSpecs();
+      "window:run-package-specs": {
+        description: "Run the spec suite of the package this window has open.",
+        didDispatch: function () {
+          return this.runPackageSpecs();
+        },
       },
       "window:toggle-left-dock": function () {
         return this.getModel().getLeftDock().toggle();
@@ -231,23 +267,41 @@ module.exports = function ({
       "window:save-all": function () {
         return this.getModel().saveAll();
       },
-      "window:toggle-invisibles": function () {
-        return config.set("language.showInvisibles", !config.get("language.showInvisibles"));
+      "window:toggle-invisibles": {
+        description: "Show or hide the marks standing for spaces, tabs and line ends.",
+        didDispatch: function () {
+          return config.set("language.showInvisibles", !config.get("language.showInvisibles"));
+        },
       },
-      "git:colorize-toggle": function () {
-        document.body.classList.toggle("git-colorize-disabled");
+      "git:colorize-toggle": {
+        description: "Turn the Git status colouring off across this window.",
+        didDispatch: function () {
+          document.body.classList.toggle("git-colorize-disabled");
+        },
       },
-      "window:log-deprecation-warnings": function () {
-        return Grim.logDeprecations();
+      "window:log-deprecation-warnings": {
+        description: "Print the deprecated API calls made so far to the console.",
+        didDispatch: function () {
+          return Grim.logDeprecations();
+        },
       },
-      "window:toggle-auto-indent": function () {
-        return config.set("language.autoIndent", !config.get("language.autoIndent"));
+      "window:toggle-auto-indent": {
+        description: "Turn automatic indentation of newly typed lines on or off.",
+        didDispatch: function () {
+          return config.set("language.autoIndent", !config.get("language.autoIndent"));
+        },
       },
-      "pane:reopen-closed-item": function () {
-        return this.getModel().reopenItem();
+      "pane:reopen-closed-item": {
+        description: "Open the tab that was closed most recently.",
+        didDispatch: function () {
+          return this.getModel().reopenItem();
+        },
       },
-      "core:close": function () {
-        return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow();
+      "core:close": {
+        description: "Close the active tab, or the empty pane, or the window.",
+        didDispatch: function () {
+          return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow();
+        },
       },
       "core:save": function () {
         return this.getModel().saveActivePaneItem();
@@ -280,8 +334,11 @@ module.exports = function ({
         "application:bring-all-windows-to-front": function () {
           return ipcRenderer.send("command", "application:bring-all-windows-to-front");
         },
-        "window:install-shell-commands": function () {
-          return commandInstaller.installShellCommandsInteractively();
+        "window:install-shell-commands": {
+          description: "Put the lumine and lumine-code commands on your shell path.",
+          didDispatch: function () {
+            return commandInstaller.installShellCommandsInteractively();
+          },
         },
       },
       false,
@@ -290,20 +347,35 @@ module.exports = function ({
   commandRegistry.add(
     "lumine-pane",
     {
-      "pane:save-items": function () {
-        return this.getModel().saveItems();
+      "pane:save-items": {
+        description: "Save every unsaved tab in this pane.",
+        didDispatch: function () {
+          return this.getModel().saveItems();
+        },
       },
-      "pane:split-left": function () {
-        return this.getModel().splitLeft();
+      "pane:split-left": {
+        description: "Open an empty pane to the left of this one.",
+        didDispatch: function () {
+          return this.getModel().splitLeft();
+        },
       },
-      "pane:split-right": function () {
-        return this.getModel().splitRight();
+      "pane:split-right": {
+        description: "Open an empty pane to the right of this one.",
+        didDispatch: function () {
+          return this.getModel().splitRight();
+        },
       },
-      "pane:split-up": function () {
-        return this.getModel().splitUp();
+      "pane:split-up": {
+        description: "Open an empty pane above this one.",
+        didDispatch: function () {
+          return this.getModel().splitUp();
+        },
       },
-      "pane:split-down": function () {
-        return this.getModel().splitDown();
+      "pane:split-down": {
+        description: "Open an empty pane below this one.",
+        didDispatch: function () {
+          return this.getModel().splitDown();
+        },
       },
       "pane:split-left-and-copy-active-item": function () {
         return this.getModel().splitLeft({
@@ -345,17 +417,29 @@ module.exports = function ({
           moveActiveItem: true,
         });
       },
-      "pane:close": function () {
-        return this.getModel().close();
+      "pane:close": {
+        description: "Close every tab in this pane, and the pane with them.",
+        didDispatch: function () {
+          return this.getModel().close();
+        },
       },
-      "pane:close-other-items": function () {
-        return this.getModel().destroyInactiveItems();
+      "pane:close-other-items": {
+        description: "Close every tab in this pane except the active one.",
+        didDispatch: function () {
+          return this.getModel().destroyInactiveItems();
+        },
       },
-      "pane:increase-size": function () {
-        return this.getModel().increaseSize();
+      "pane:increase-size": {
+        description: "Grow this pane, taking the space from the panes beside it.",
+        didDispatch: function () {
+          return this.getModel().increaseSize();
+        },
       },
-      "pane:decrease-size": function () {
-        return this.getModel().decreaseSize();
+      "pane:decrease-size": {
+        description: "Shrink this pane, giving the space to the panes beside it.",
+        didDispatch: function () {
+          return this.getModel().decreaseSize();
+        },
       },
     },
     false,
@@ -387,13 +471,19 @@ module.exports = function ({
       "editor:select-word": function () {
         return this.selectWordsContainingCursors();
       },
-      "editor:select-subword": function () {
-        return this.selectSubwordsContainingCursors();
+      "editor:select-subword": {
+        description: "Select the camelCase or snake_case part under each cursor.",
+        didDispatch: function () {
+          return this.selectSubwordsContainingCursors();
+        },
       },
-      "editor:consolidate-selections": function (event) {
-        if (!this.consolidateSelections()) {
-          return event.abortKeyBinding();
-        }
+      "editor:consolidate-selections": {
+        description: "Drop every selection but the one added most recently.",
+        didDispatch: function (event) {
+          if (!this.consolidateSelections()) {
+            return event.abortKeyBinding();
+          }
+        },
       },
       "editor:move-to-beginning-of-next-paragraph": function () {
         return this.moveToBeginningOfNextParagraph();
@@ -401,20 +491,29 @@ module.exports = function ({
       "editor:move-to-beginning-of-previous-paragraph": function () {
         return this.moveToBeginningOfPreviousParagraph();
       },
-      "editor:move-to-beginning-of-screen-line": function () {
-        return this.moveToBeginningOfScreenLine();
+      "editor:move-to-beginning-of-screen-line": {
+        description: "Move to the start of the wrapped row, not of the whole line.",
+        didDispatch: function () {
+          return this.moveToBeginningOfScreenLine();
+        },
       },
       "editor:move-to-beginning-of-line": function () {
         return this.moveToBeginningOfLine();
       },
-      "editor:move-to-end-of-screen-line": function () {
-        return this.moveToEndOfScreenLine();
+      "editor:move-to-end-of-screen-line": {
+        description: "Move to the end of the wrapped row, not of the whole line.",
+        didDispatch: function () {
+          return this.moveToEndOfScreenLine();
+        },
       },
       "editor:move-to-end-of-line": function () {
         return this.moveToEndOfLine();
       },
-      "editor:move-to-first-character-of-line": function () {
-        return this.moveToFirstCharacterOfLine();
+      "editor:move-to-first-character-of-line": {
+        description: "Move to the first character of the line past its indentation.",
+        didDispatch: function () {
+          return this.moveToFirstCharacterOfLine();
+        },
       },
       "editor:move-to-beginning-of-word": function () {
         return this.moveToBeginningOfWord();
@@ -476,11 +575,17 @@ module.exports = function ({
       "editor:select-line": function () {
         return this.selectLinesContainingCursors();
       },
-      "editor:select-larger-syntax-node": function () {
-        return this.selectLargerSyntaxNode();
+      "editor:select-larger-syntax-node": {
+        description: "Grow the selection to the enclosing node of the syntax tree.",
+        didDispatch: function () {
+          return this.selectLargerSyntaxNode();
+        },
       },
-      "editor:select-smaller-syntax-node": function () {
-        return this.selectSmallerSyntaxNode();
+      "editor:select-smaller-syntax-node": {
+        description: "Shrink the selection back towards the node it grew from.",
+        didDispatch: function () {
+          return this.selectSmallerSyntaxNode();
+        },
       },
     }),
     false,
@@ -500,8 +605,11 @@ module.exports = function ({
   commandRegistry.add(
     "lumine-text-editor",
     stopEventPropagationAndGroupUndo(config, {
-      "core:copy": function () {
-        return this.getElement().copySelectedText();
+      "core:copy": {
+        description: "Copy the selection, or the whole line when nothing is selected.",
+        didDispatch: function () {
+          return this.getElement().copySelectedText();
+        },
       },
       "editor:copy-selection": {
         description: "Copy the selection alone, never the whole line when nothing is selected.",
@@ -521,22 +629,28 @@ module.exports = function ({
       "core:delete": function () {
         return this.delete();
       },
-      "core:cut": function () {
-        return this.getElement().cutSelectedText();
+      "core:cut": {
+        description: "Cut the selection, or the whole line when nothing is selected.",
+        didDispatch: function () {
+          return this.getElement().cutSelectedText();
+        },
       },
       "core:paste": function (event) {
         return this.getElement().pasteText(undefined, event);
       },
-      "editor:paste-without-reformatting": function (event) {
-        return this.getElement().pasteText(
-          {
-            normalizeLineEndings: false,
-            autoIndent: false,
-            preserveTrailingLineIndentation: true,
-            skipPasteProviders: true,
-          },
-          event,
-        );
+      "editor:paste-without-reformatting": {
+        description: "Paste as it is, with no re-indenting and no line-ending fix.",
+        didDispatch: function (event) {
+          return this.getElement().pasteText(
+            {
+              normalizeLineEndings: false,
+              autoIndent: false,
+              preserveTrailingLineIndentation: true,
+              skipPasteProviders: true,
+            },
+            event,
+          );
+        },
       },
       "editor:delete-to-previous-word-boundary": function () {
         return this.deleteToPreviousWordBoundary();
@@ -565,14 +679,23 @@ module.exports = function ({
       "editor:delete-line": function () {
         return this.deleteLine();
       },
-      "editor:cut-to-end-of-line": function () {
-        return this.cutToEndOfLine();
+      "editor:cut-to-end-of-line": {
+        description: "Cut to the end of the wrapped row, not of the whole line.",
+        didDispatch: function () {
+          return this.cutToEndOfLine();
+        },
       },
-      "editor:cut-to-end-of-buffer-line": function () {
-        return this.cutToEndOfBufferLine();
+      "editor:cut-to-end-of-buffer-line": {
+        description: "Cut to the end of the whole line, however it is wrapped.",
+        didDispatch: function () {
+          return this.cutToEndOfBufferLine();
+        },
       },
-      "editor:transpose": function () {
-        return this.transpose();
+      "editor:transpose": {
+        description: "Swap the two characters around each cursor.",
+        didDispatch: function () {
+          return this.transpose();
+        },
       },
       "editor:upper-case": function () {
         return this.upperCase();
@@ -628,8 +751,11 @@ module.exports = function ({
           return this.splitSelectionsIntoLines();
         },
       },
-      "editor:toggle-soft-tabs": function () {
-        return this.toggleSoftTabs();
+      "editor:toggle-soft-tabs": {
+        description: "Switch between indenting with spaces and with tab characters.",
+        didDispatch: function () {
+          return this.toggleSoftTabs();
+        },
       },
       "editor:toggle-soft-wrap": function () {
         return this.toggleSoftWrapped();
@@ -687,25 +813,40 @@ module.exports = function ({
         this.foldAllAtIndentLevel(8);
         return this.scrollToCursorPosition();
       },
-      "editor:log-cursor-scope": function () {
-        return showCursorScope(this.getCursorScope(), notificationManager);
+      "editor:log-cursor-scope": {
+        description: "Show the grammar scopes that apply at the cursor.",
+        didDispatch: function () {
+          return showCursorScope(this.getCursorScope(), notificationManager);
+        },
       },
-      "editor:validate-grammar-queries": function () {
-        let languageMode = this.getBuffer().getLanguageMode();
-        if (typeof languageMode.validateGrammarQueries !== "function") {
-          notificationManager.addInfo("This buffer does not use a Tree-sitter grammar.");
-          return;
-        }
-        return languageMode.validateGrammarQueries();
+      "editor:validate-grammar-queries": {
+        description: "Report the errors in this Tree-sitter grammar's own queries.",
+        didDispatch: function () {
+          let languageMode = this.getBuffer().getLanguageMode();
+          if (typeof languageMode.validateGrammarQueries !== "function") {
+            notificationManager.addInfo("This buffer does not use a Tree-sitter grammar.");
+            return;
+          }
+          return languageMode.validateGrammarQueries();
+        },
       },
-      "editor:log-cursor-syntax-tree-scope": function () {
-        return showSyntaxTree(this.getCursorSyntaxTreeScope(), notificationManager);
+      "editor:log-cursor-syntax-tree-scope": {
+        description: "Show the syntax tree nodes that contain the cursor.",
+        didDispatch: function () {
+          return showSyntaxTree(this.getCursorSyntaxTreeScope(), notificationManager);
+        },
       },
-      "editor:copy-path": function () {
-        return copyPathToClipboard(this, project, clipboard, false);
+      "editor:copy-path": {
+        description: "Copy this file's full path from the filesystem root.",
+        didDispatch: function () {
+          return copyPathToClipboard(this, project, clipboard, false);
+        },
       },
-      "editor:copy-project-path": function () {
-        return copyPathToClipboard(this, project, clipboard, true);
+      "editor:copy-project-path": {
+        description: "Copy this file's path relative to the project root.",
+        didDispatch: function () {
+          return copyPathToClipboard(this, project, clipboard, true);
+        },
       },
       "editor:toggle-line-numbers": function () {
         return config.set("editor.showLineNumbers", !config.get("editor.showLineNumbers"));
@@ -713,21 +854,33 @@ module.exports = function ({
       "editor:scroll-to-cursor": function () {
         return this.scrollToCursorPosition();
       },
-      "editor:scroll-up": function () {
-        return scrollEditorByPage(this, -1);
+      "editor:scroll-up": {
+        description: "Scroll the view up, leaving the cursor where it is.",
+        didDispatch: function () {
+          return scrollEditorByPage(this, -1);
+        },
       },
-      "editor:scroll-down": function () {
-        return scrollEditorByPage(this, 1);
+      "editor:scroll-down": {
+        description: "Scroll the view down, leaving the cursor where it is.",
+        didDispatch: function () {
+          return scrollEditorByPage(this, 1);
+        },
       },
-      "editor:increase-scroll-distance": function () {
-        return this.update({
-          scrollCommandDistance: Math.min(64, this.getScrollCommandDistance() * 2),
-        });
+      "editor:increase-scroll-distance": {
+        description: "Double how far the scroll commands move, up to 64 screens.",
+        didDispatch: function () {
+          return this.update({
+            scrollCommandDistance: Math.min(64, this.getScrollCommandDistance() * 2),
+          });
+        },
       },
-      "editor:decrease-scroll-distance": function () {
-        return this.update({
-          scrollCommandDistance: Math.max(0.015625, this.getScrollCommandDistance() / 2),
-        });
+      "editor:decrease-scroll-distance": {
+        description: "Halve how far the scroll commands move, down to a 64th.",
+        didDispatch: function () {
+          return this.update({
+            scrollCommandDistance: Math.max(0.015625, this.getScrollCommandDistance() / 2),
+          });
+        },
       },
     }),
     false,
@@ -735,14 +888,23 @@ module.exports = function ({
   return commandRegistry.add(
     "lumine-text-editor:not([mini]):not([readonly])",
     stopEventPropagationAndGroupUndo(config, {
-      "editor:indent": function () {
-        return this.indent();
+      "editor:indent": {
+        description: "Indent at the cursor, as pressing Tab does.",
+        didDispatch: function () {
+          return this.indent();
+        },
       },
-      "editor:auto-indent": function () {
-        return this.autoIndentSelectedRows();
+      "editor:auto-indent": {
+        description: "Re-indent the selected rows to the grammar's own rules.",
+        didDispatch: function () {
+          return this.autoIndentSelectedRows();
+        },
       },
-      "editor:indent-selected-rows": function () {
-        return this.indentSelectedRows();
+      "editor:indent-selected-rows": {
+        description: "Indent every selected row by one level.",
+        didDispatch: function () {
+          return this.indentSelectedRows();
+        },
       },
       "editor:outdent-selected-rows": function () {
         return this.outdentSelectedRows();
@@ -759,8 +921,11 @@ module.exports = function ({
       "editor:toggle-line-comments": function () {
         return this.toggleLineCommentsInSelection();
       },
-      "editor:checkout-head-revision": function () {
-        return lumine.workspace.checkoutHeadRevision(this);
+      "editor:checkout-head-revision": {
+        description: "Discard this file's changes and restore it from Git HEAD.",
+        didDispatch: function () {
+          return lumine.workspace.checkoutHeadRevision(this);
+        },
       },
       "editor:move-line-up": function () {
         return this.moveLineUp();
@@ -768,11 +933,17 @@ module.exports = function ({
       "editor:move-line-down": function () {
         return this.moveLineDown();
       },
-      "editor:move-selection-left": function () {
-        return this.moveSelectionLeft();
+      "editor:move-selection-left": {
+        description: "Shift the selected text one column left, taking the selection.",
+        didDispatch: function () {
+          return this.moveSelectionLeft();
+        },
       },
-      "editor:move-selection-right": function () {
-        return this.moveSelectionRight();
+      "editor:move-selection-right": {
+        description: "Shift the selected text one column right, taking the selection.",
+        didDispatch: function () {
+          return this.moveSelectionRight();
+        },
       },
       "editor:duplicate-lines": function () {
         return this.duplicateLines();
@@ -780,14 +951,23 @@ module.exports = function ({
       "editor:join-lines": function () {
         return this.joinLines();
       },
-      "editor:delete-to-next-line-content": function () {
-        return this.deleteToNextLineContent();
+      "editor:delete-to-next-line-content": {
+        description: "Delete forward to the first character of the next line.",
+        didDispatch: function () {
+          return this.deleteToNextLineContent();
+        },
       },
-      "editor:collapse-blank-lines": function () {
-        return this.collapseBlankLines();
+      "editor:collapse-blank-lines": {
+        description: "Reduce every run of blank lines in the file to a single one.",
+        didDispatch: function () {
+          return this.collapseBlankLines();
+        },
       },
-      "editor:collapse-content-spaces": function () {
-        return this.collapseContentSpaces();
+      "editor:collapse-content-spaces": {
+        description: "Reduce runs of spaces to one, leaving the indentation alone.",
+        didDispatch: function () {
+          return this.collapseContentSpaces();
+        },
       },
     }),
     false,

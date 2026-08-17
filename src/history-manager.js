@@ -19,7 +19,12 @@ class HistoryManager {
     this.disposables.add(
       commands.add(
         "lumine-workspace",
-        { "application:clear-project-history": this.clearProjects.bind(this) },
+        {
+          "application:clear-project-history": {
+            description: "Forget the projects offered by the Reopen Project menu.",
+            didDispatch: this.clearProjects.bind(this),
+          },
+        },
         false,
       ),
     );

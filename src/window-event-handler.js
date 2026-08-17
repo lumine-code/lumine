@@ -57,8 +57,14 @@ module.exports = class WindowEventHandler {
 
     this.subscriptions.add(
       this.lumineEnvironment.commands.add(this.document, {
-        "core:focus-next": this.handleFocusNext,
-        "core:focus-previous": this.handleFocusPrevious,
+        "core:focus-next": {
+          description: "Move focus to the next element that accepts it, not the next pane.",
+          didDispatch: this.handleFocusNext,
+        },
+        "core:focus-previous": {
+          description: "Move focus back to the previous element that accepts it.",
+          didDispatch: this.handleFocusPrevious,
+        },
       }),
     );
 
