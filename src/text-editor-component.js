@@ -3765,7 +3765,7 @@ module.exports = class TextEditorComponent {
             // represent everything until the first match.
             fragments.push([0, index]);
           }
-          let [_, lastFragmentEnd] = fragments[fragments.length - 1];
+          let lastFragmentEnd = fragments.length > 0 ? fragments[fragments.length - 1][1] : 0;
           if (lastFragmentEnd < index) {
             // A gap exists between the last fragment we added and this match,
             // so add another fragment to represent the gap.
@@ -3791,6 +3791,15 @@ module.exports = class TextEditorComponent {
           }
         }
 
+        if (!containingTextNodeBounds) {
+          // The browser's bidi runs don't have to line up with the RTL ranges
+          // the pattern above can detect (bidi controls, misdecoded binary
+          // bytes), so the point can fall in none of the fragments. Fall back
+          // to the whole node and let the word split below narrow it down.
+          containingText = textContent;
+          containingTextNodeBounds = [0, textContent.length - 1];
+        }
+
         let clientRects = clientRectsForTextNode(
           containingTextNode,
           containingTextNodeBounds[0],
@@ -3801,15 +3810,14 @@ module.exports = class TextEditorComponent {
           // thing into individual words. This is a more aggressive way to
           // ensure unidirectionality within a text.
           let words = containingText.split(/\b/);
-          let index = containingTextNodeBounds[0];
+          let textNodeStart = containingTextNodeBounds[0];
+          let wordStart = 0;
           let found = false;
           let targetClientRects;
           for (let word of words) {
-            let boundaries = [index, index + word.length];
-            let clientRects = clientRectsForTextNode(
-              containingTextNode,
-              boundaries[0],
-              boundaries[1],
+            let boundaries = [textNodeStart + wordStart, textNodeStart + wordStart + word.length];
+            let clientRects = Array.from(
+              clientRectsForTextNode(containingTextNode, boundaries[0], boundaries[1]),
             );
             if (
               clientRects.some((r) => targetClientLeft >= r.left && targetClientLeft <= r.right)
@@ -3817,13 +3825,16 @@ module.exports = class TextEditorComponent {
               found = true;
               targetClientRects = clientRects;
               containingTextNodeBounds = boundaries;
-              containingText = containingText.substring(...boundaries);
+              // `boundaries` indexes the text node; `containingText` is the
+              // fragment, which starts at `textNodeStart`.
+              containingText = containingText.substring(wordStart, wordStart + word.length);
               break;
             }
+            wordStart += word.length;
           }
           // At this point, if we can't find one — or if we can't isolate it to
           // a single contiguous `DOMRect` — then we should give up.
-          if (!found | (targetClientRects.length > 1)) {
+          if (!found || targetClientRects.length > 1) {
             console.error(
               `Error: could not find a valid cursor position for coordinates: (${left}, ${top}) within the editor.`,
             );
