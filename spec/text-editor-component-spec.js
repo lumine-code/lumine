@@ -8592,18 +8592,24 @@ function getEditorWidthInBaseCharacters(component) {
   return Math.round(component.getScrollContainerWidth() / component.getBaseCharacterWidth());
 }
 
-async function setEditorHeightInLines(component, heightInLines) {
+// Drive the resize directly instead of waiting on ResizeObserver delivery:
+// an occluded CI host window can stop rendering, so the observer never fires
+// and the awaited update never lands - and a size the caller happens to set
+// to its current value never fires it at all. didResize measures the new
+// size and performs the update synchronously; when the size is unchanged it
+// is a no-op, which needs no update either way.
+function setEditorHeightInLines(component, heightInLines) {
   component.element.style.height = component.getLineHeight() * heightInLines + "px";
-  await component.getNextUpdatePromise();
+  component.didResize();
 }
 
-async function setEditorWidthInCharacters(component, widthInCharacters) {
+function setEditorWidthInCharacters(component, widthInCharacters) {
   component.element.style.width =
     component.getGutterContainerWidth() +
     widthInCharacters * component.measurements.baseCharacterWidth +
     verticalScrollbarWidth +
     "px";
-  await component.getNextUpdatePromise();
+  component.didResize();
 }
 
 function verifyCursorPosition(component, cursorNode, row, column) {
