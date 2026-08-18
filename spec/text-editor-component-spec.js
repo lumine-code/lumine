@@ -8060,14 +8060,14 @@ describe("TextEditorComponent", () => {
       }
     });
 
-    it('returns a position rather than throwing when bidi layout defies the RTL fragment pattern', async () => {
+    it("returns a position rather than throwing when bidi layout defies the RTL fragment pattern", async () => {
       // Both probed rows are scrolled out of view, forcing the second-strategy
       // drill-down, and both render a single text node as more than one
       // DOMRect. Row 0 starts with an RTL run at index 0. Row 1 reorders plain
       // ASCII with a bidi override the RTL character pattern cannot see at
       // all, which is the shape a binary file misdecoded as text takes.
       const text =
-        '\u05e9\u05dc\u05d5\u05dd abcdef\n\u202eabcdef\u202c ghijk\n' + 'filler\n'.repeat(8);
+        "\u05e9\u05dc\u05d5\u05dd abcdef\n\u202eabcdef\u202c ghijk\n" + "filler\n".repeat(8);
       const { component } = buildComponent({ text, rowsPerTile: 2, autoHeight: false });
       await setEditorHeightInLines(component, 3);
       await setScrollTop(component, 5 * component.getLineHeight());
