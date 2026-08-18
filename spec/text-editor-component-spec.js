@@ -838,34 +838,27 @@ describe("TextEditorComponent", () => {
       element.style.padding = editorPadding + "px";
       const initialWidth = element.offsetWidth;
       const initialHeight = element.offsetHeight;
+      // An auto-width editor can never scroll horizontally and an auto-height
+      // one can never scroll vertically, so no scrollbar space is reserved:
+      // the element hugs its content exactly.
       expect(initialWidth).toBe(
-        component.getGutterContainerWidth() +
-          component.getContentWidth() +
-          verticalScrollbarWidth +
-          2 * editorPadding,
+        component.getGutterContainerWidth() + component.getContentWidth() + 2 * editorPadding,
       );
-      expect(initialHeight).toBeNear(
-        component.getContentHeight() + horizontalScrollbarHeight + 2 * editorPadding,
-      );
+      expect(initialHeight).toBeNear(component.getContentHeight() + 2 * editorPadding);
 
       // When autoWidth is enabled, width adjusts to content
       editor.setCursorScreenPosition([6, Infinity]);
       editor.insertText("x".repeat(50));
       await component.getNextUpdatePromise();
       expect(element.offsetWidth).toBe(
-        component.getGutterContainerWidth() +
-          component.getContentWidth() +
-          verticalScrollbarWidth +
-          2 * editorPadding,
+        component.getGutterContainerWidth() + component.getContentWidth() + 2 * editorPadding,
       );
       expect(element.offsetWidth).toBeGreaterThan(initialWidth);
 
       // When autoHeight is enabled, height adjusts to content
       editor.insertText("\n".repeat(5));
       await component.getNextUpdatePromise();
-      expect(element.offsetHeight).toBeNear(
-        component.getContentHeight() + horizontalScrollbarHeight + 2 * editorPadding,
-      );
+      expect(element.offsetHeight).toBeNear(component.getContentHeight() + 2 * editorPadding);
       expect(element.offsetHeight).toBeGreaterThan(initialHeight);
     });
 

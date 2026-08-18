@@ -842,16 +842,21 @@ module.exports = class TextEditorComponent {
     let clientContainerHeight = "100%";
     let clientContainerWidth = "100%";
     if (this.hasInitialMeasurements) {
+      // Scrollbar space is added only when the scrollbar can actually appear.
+      // An auto-width editor can never scroll horizontally and an auto-height
+      // one can never scroll vertically, so reserving the space
+      // unconditionally left a permanent scrollbar-sized blank strip on
+      // auto-sized editors — the code blocks in hover tooltips, for one.
       if (model.getAutoHeight()) {
-        clientContainerHeight =
-          this.getContentHeight() + this.getHorizontalScrollbarHeight() + "px";
+        const scrollbarHeight = this.canScrollHorizontally()
+          ? this.getHorizontalScrollbarHeight()
+          : 0;
+        clientContainerHeight = this.getContentHeight() + scrollbarHeight + "px";
       }
       if (model.getAutoWidth()) {
+        const scrollbarWidth = this.canScrollVertically() ? this.getVerticalScrollbarWidth() : 0;
         clientContainerWidth =
-          this.getGutterContainerWidth() +
-          this.getContentWidth() +
-          this.getVerticalScrollbarWidth() +
-          "px";
+          this.getGutterContainerWidth() + this.getContentWidth() + scrollbarWidth + "px";
       }
     }
 
@@ -4316,7 +4321,10 @@ module.exports = class TextEditorComponent {
 
   getScrollContainerWidth() {
     if (this.props.model.getAutoWidth()) {
-      return this.getScrollWidth();
+      // Mirrors updateClientContainerElement: the container grows by the
+      // scrollbar's width only when a vertical scrollbar can appear.
+      const scrollbarWidth = this.canScrollVertically() ? this.getVerticalScrollbarWidth() : 0;
+      return this.getScrollWidth() + scrollbarWidth;
     } else {
       return this.getClientContainerWidth() - this.getGutterContainerWidth();
     }
@@ -4324,17 +4332,33 @@ module.exports = class TextEditorComponent {
 
   getScrollContainerHeight() {
     if (this.props.model.getAutoHeight()) {
-      return this.getScrollHeight() + this.getHorizontalScrollbarHeight();
+      // Mirrors updateClientContainerElement: the container grows by the
+      // scrollbar's height only when a horizontal scrollbar can appear.
+      const scrollbarHeight = this.canScrollHorizontally()
+        ? this.getHorizontalScrollbarHeight()
+        : 0;
+      return this.getScrollHeight() + scrollbarHeight;
     } else {
       return this.getClientContainerHeight();
     }
   }
 
   getScrollContainerClientWidth() {
+    if (this.props.model.getAutoWidth()) {
+      // The container is sized to the content, plus the vertical scrollbar
+      // only when one shows — either way the content's share is the scroll
+      // width itself.
+      return this.getScrollWidth();
+    }
     return this.getScrollContainerWidth() - this.getVerticalScrollbarWidth();
   }
 
   getScrollContainerClientHeight() {
+    if (this.props.model.getAutoHeight()) {
+      // Same shape as getScrollContainerClientWidth: content height, whether
+      // or not a horizontal scrollbar happens to be shown below it.
+      return this.getScrollHeight();
+    }
     return this.getScrollContainerHeight() - this.getHorizontalScrollbarHeight();
   }
 
