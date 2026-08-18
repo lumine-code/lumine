@@ -112,12 +112,10 @@ describe("the theme variable contract", () => {
       path.join(__dirname, "..", "static", "lumine-ui", "styles", "modals.css"),
       "utf8",
     );
-    const packageStylePaths = [
-      "fuzzy-files/styles/main.css",
-      "command-palette/styles/main.css",
-      "symbol/styles/main.css",
-      "autocomplete/styles/main.css",
-    ];
+    // Only packages that actually ship a stylesheet. fuzzy-files and
+    // command-palette were listed here and ship none, so they were checking
+    // nothing.
+    const packageStylePaths = ["symbol/styles/main.css", "autocomplete/styles/main.css"];
     const themeNames = ["one-theme", "aura-theme", "nova-theme", "vscode-theme"];
     const redundantThemeFragments = [
       ".select-list .character-match",
