@@ -1214,6 +1214,23 @@ describe("TextEditorComponent", () => {
       expect(component.observingClientContainer).toBe(false);
     });
 
+    it("bails out of an in-flight scheduled update when the editor is destroyed before the flush (regression)", async () => {
+      const { component, editor } = buildComponent();
+
+      // updateSync hands its measure and after-measure phases to the document
+      // scheduler, which flushes on a later frame - an editor destroyed in
+      // that gap must not be measured or rendered (see scheduleUpdate: a
+      // destroyed editor must never render).
+      component.updateSync(true);
+      spyOn(component, "measureContentDuringUpdateSync").and.callThrough();
+      spyOn(component, "renderSync").and.callThrough();
+      editor.destroy();
+      TextEditorComponent.getScheduler().performDocumentUpdate();
+
+      expect(component.measureContentDuringUpdateSync).not.toHaveBeenCalled();
+      expect(component.renderSync).not.toHaveBeenCalled();
+    });
+
     describe("randomized tests", () => {
       let originalTimeout;
 
