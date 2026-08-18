@@ -113,10 +113,10 @@ describe("the theme variable contract", () => {
       "utf8",
     );
     const packageStylePaths = [
-      "fuzzy-files/styles/fuzzy-files.css",
-      "command-palette/styles/command-palette.css",
-      "symbol/styles/symbol.css",
-      "autocomplete/styles/autocomplete.css",
+      "fuzzy-files/styles/main.css",
+      "command-palette/styles/main.css",
+      "symbol/styles/main.css",
+      "autocomplete/styles/main.css",
     ];
     const themeNames = ["one-theme", "aura-theme", "nova-theme", "vscode-theme"];
     const redundantThemeFragments = [
@@ -146,11 +146,12 @@ describe("the theme variable contract", () => {
     for (const relativePath of packageStylePaths) {
       const [packageName, ...rest] = relativePath.split("/");
       const packageRoot = packageDir(packageName);
-      const packageStylePath = packageRoot ? path.join(packageRoot, ...rest) : null;
-      const packageSource =
-        packageStylePath && fs.existsSync(packageStylePath)
-          ? fs.readFileSync(packageStylePath, "utf8")
-          : "";
+      if (!packageRoot) continue;
+      const packageStylePath = path.join(packageRoot, ...rest);
+      // A path that has gone stale must fail here. Reading it as an empty
+      // string would let this pass having checked nothing.
+      expect(fs.existsSync(packageStylePath)).toBe(true);
+      const packageSource = fs.readFileSync(packageStylePath, "utf8");
       expect(packageSource).not.toContain(".character-match");
     }
 
