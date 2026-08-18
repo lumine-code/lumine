@@ -4581,12 +4581,19 @@ describe("TextEditorComponent", () => {
       );
     });
 
-    it("preserves the bottom anchor when block geometry changes while scrolled past the end", async () => {
+    it("keeps the viewport top stable when block geometry changes while scrolled past the end", async () => {
+      // Scrolled more than half a screen past the end, a growing block at the
+      // end of the file must extend into the empty past-end gap below it, not
+      // scroll the text up to keep the gap's size. The reflow paths preserve
+      // the gap deliberately; the block path anchors the first visible row
+      // like everywhere else.
       const { editor, component } = buildComponent({ autoHeight: false });
       editor.update({ scrollPastEnd: true });
       await setEditorHeightInLines(component, 8);
       await setScrollTop(component, component.getMaxScrollTop());
 
+      const scrollTopBefore = component.getScrollTop();
+      const maxScrollTopBefore = component.getMaxScrollTop();
       const { item, decoration } = createBlockDecorationAtScreenRow(
         editor,
         editor.getLastScreenRow(),
@@ -4596,15 +4603,18 @@ describe("TextEditorComponent", () => {
         },
       );
       await component.getNextUpdatePromise();
-      expect(component.getScrollTop()).toBe(component.getMaxScrollTop());
+      expect(component.getScrollTop()).toBe(scrollTopBefore);
+      // The growth went into the scroll extent — the gap absorbed it.
+      expect(component.getMaxScrollTop()).toBe(maxScrollTopBefore + 30);
 
       item.style.height = "60px";
       component.didResizeBlockDecorations([{ target: item, contentRect: { height: 60 } }]);
       await component.getNextUpdatePromise();
-      expect(component.getScrollTop()).toBe(component.getMaxScrollTop());
+      expect(component.getScrollTop()).toBe(scrollTopBefore);
 
       decoration.destroy();
       await component.getNextUpdatePromise();
+      expect(component.getScrollTop()).toBe(scrollTopBefore);
       expect(component.getScrollTop()).toBe(component.getMaxScrollTop());
     });
 

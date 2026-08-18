@@ -4058,7 +4058,11 @@ module.exports = class TextEditorComponent {
     if (screenRow === null) {
       const midpointPixel = scrollTop + this.getScrollContainerClientHeight() / 2;
       const contentBottom = this.getContentHeight();
-      if (midpointPixel > contentBottom) {
+      // The block path never takes the bottom anchor: scrollPastEnd caps the
+      // scroll three lines above the content bottom, so a first visible row
+      // always exists, and anchoring it lets a block at the end grow into the
+      // past-end gap instead of scrolling the text up to preserve the gap.
+      if (!anchorTop && midpointPixel > contentBottom) {
         // Scrolled more than half a screen past the end (scrollPastEnd): anchor
         // the distance from the maximum scroll so the empty past-end gap below
         // the content keeps its size. This is relative to the scroll extent
