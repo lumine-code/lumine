@@ -24,7 +24,9 @@ class PaneElement extends HTMLElement {
       this.showItemView(this.visibleItemView);
     }
     if (this.model.isFocused()) {
-      this.focus();
+      // Collapsing an axis reparents the pane it leaves behind, so this runs
+      // for the surviving pane every time a split is closed.
+      this.focusActiveView();
     }
   }
 
@@ -103,11 +105,27 @@ class PaneElement extends HTMLElement {
     return this.model;
   }
 
+  // Focus the active item's view, falling back to this element for a pane with
+  // nothing to show. Focusing this element instead only reaches the item
+  // through `handleFocus`, and a `focus()` call fires no event at all while the
+  // window is not the focused one -- which is exactly the state a native menu
+  // leaves the renderer in. So `Close Pane` from a menu used to park focus on
+  // the bare pane element: the surviving pane was active, drew no cursor and
+  // took no keystrokes.
+  focusActiveView() {
+    const view = this.getActiveView();
+    if (view) {
+      view.focus();
+    } else {
+      this.focus();
+    }
+  }
+
   activated() {
     this.isActivating = true;
     if (!this.hasFocus()) {
       // Don't steal focus from children.
-      this.focus();
+      this.focusActiveView();
     }
     this.isActivating = false;
   }

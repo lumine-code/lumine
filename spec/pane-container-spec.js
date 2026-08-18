@@ -619,4 +619,82 @@ describe("PaneContainer", () => {
         expect(pane1.getActiveItem().id).toBe(item1.id);
       }));
   });
+
+  describe("when the active pane is closed", () => {
+    let container;
+
+    const focusableItem = () => {
+      const element = document.createElement("div");
+      element.tabIndex = -1;
+      return element;
+    };
+
+    // A pane element only hands focus on to its item from its own capture
+    // listener, and a `focus()` call fires no event at all while the window is
+    // not the focused one -- the state a native menu leaves the renderer in.
+    // Swallowing the event stands in for that, so these cover `Close Pane` as
+    // it is actually reached: from a menu, with nothing delivering the event.
+    const withoutFocusEvents = async (fn) => {
+      const swallow = (event) => event.stopPropagation();
+      document.addEventListener("focus", swallow, { capture: true });
+      try {
+        await fn();
+      } finally {
+        document.removeEventListener("focus", swallow, { capture: true });
+      }
+    };
+
+    beforeEach(() => {
+      container = new PaneContainer(params);
+      jasmine.attachToDOM(container.getElement());
+    });
+
+    it("focuses the surviving pane's active item, not the bare pane", async () => {
+      const pane1 = container.getActivePane();
+      const item1 = focusableItem();
+      pane1.addItem(item1);
+      const pane2 = pane1.splitRight({ items: [focusableItem()] });
+      pane2.getElement().focus();
+
+      await withoutFocusEvents(() => pane2.close());
+
+      expect(container.getActivePane()).toBe(pane1);
+      expect(document.activeElement).toBe(item1);
+    });
+
+    it("focuses the surviving pane's active item when that pane is reparented", async () => {
+      // a | (b over c): closing b collapses the inner axis, so the pane that
+      // was just activated is also the one whose element is re-attached.
+      const paneA = container.getActivePane();
+      paneA.addItem(focusableItem());
+      const paneB = paneA.splitRight({ items: [focusableItem()] });
+      const itemC = focusableItem();
+      const paneC = paneB.splitDown({ items: [itemC] });
+      paneC.activate();
+      paneB.activate();
+      paneB.getElement().focus();
+
+      await withoutFocusEvents(() => paneB.close());
+
+      expect(container.getActivePane()).toBe(paneC);
+      expect(document.activeElement).toBe(itemC);
+    });
+
+    it("leaves the reparented pane's focus claim behind when another pane wins", async () => {
+      // a | (b over c): closing c reparents b, but a is the pane that was
+      // activated, so b must not take the focus back on its way up.
+      const paneA = container.getActivePane();
+      const itemA = focusableItem();
+      paneA.addItem(itemA);
+      const paneB = paneA.splitRight({ items: [focusableItem()] });
+      const paneC = paneB.splitDown({ items: [focusableItem()] });
+      paneC.getElement().focus();
+
+      await withoutFocusEvents(() => paneC.close());
+
+      expect(container.getActivePane()).toBe(paneA);
+      expect(paneB.isFocused()).toBe(false);
+      expect(document.activeElement).toBe(itemA);
+    });
+  });
 });

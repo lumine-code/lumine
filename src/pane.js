@@ -1317,6 +1317,15 @@ module.exports = class Pane {
    */
   activate() {
     if (this.isDestroyed()) throw new Error("Pane has been destroyed");
+    // `focused` is otherwise cleared only by a DOM blur, and no blur fires
+    // while the window is not the focused one -- so a pane activated in the
+    // background keeps claiming focus for good, and `PaneElement`'s
+    // `connectedCallback` hands focus back to it the next time its element is
+    // reparented. Closing a pane reparents whatever the collapsing axis left
+    // behind, so a stale claim there lands focus in a pane that is not the
+    // active one. At most one pane in a container holds focus.
+    const previous = this.container && this.container.getActivePane();
+    if (previous && previous !== this) previous.blur();
     this.focused = true;
 
     if (this.container) this.container.didActivatePane(this);

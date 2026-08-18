@@ -270,6 +270,29 @@ describe("PaneElement", function () {
       expect(document.activeElement).toBe(item);
     });
 
+    it("reaches the active view even when no focus event is delivered", function () {
+      const item = document.createElement("div");
+      item.tabIndex = -1;
+      pane.activateItem(item);
+      jasmine.attachToDOM(paneElement);
+      document.body.focus();
+
+      // The pane element only hands focus on to its item from its own capture
+      // listener, and a `focus()` call fires no event at all while the window
+      // is not the focused one -- the state a native menu leaves the renderer
+      // in. Swallowing the event here stands in for that, and what is left has
+      // to be enough on its own.
+      const swallow = (event) => event.stopPropagation();
+      document.addEventListener("focus", swallow, { capture: true });
+      try {
+        pane.activate();
+      } finally {
+        document.removeEventListener("focus", swallow, { capture: true });
+      }
+
+      expect(document.activeElement).toBe(item);
+    });
+
     it("makes the pane active", function () {
       pane.splitRight();
       expect(pane.isActive()).toBe(false);

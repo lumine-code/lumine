@@ -159,6 +159,21 @@ describe("Pane", () => {
       pane2.activate();
       expect(eventCount).toBe(2);
     });
+
+    it("leaves only the activated pane claiming focus", () => {
+      // These panes have no attached element, so nothing here ever sees a DOM
+      // blur -- the same state the real ones are in whenever the window is not
+      // the focused one. `focused` has to be cleared by the activation itself,
+      // or every pane the container has ever activated keeps claiming focus
+      // and steals it back the next time its element is reparented.
+      pane1.activate();
+      expect(pane1.isFocused()).toBe(true);
+      expect(pane2.isFocused()).toBe(false);
+
+      pane2.activate();
+      expect(pane1.isFocused()).toBe(false);
+      expect(pane2.isFocused()).toBe(true);
+    });
   });
 
   describe("::addItem(item, index)", () => {
