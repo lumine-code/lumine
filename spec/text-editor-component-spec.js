@@ -4891,6 +4891,26 @@ describe("TextEditorComponent", () => {
       expect(item2.parentElement).toBeNull();
     });
 
+    it("computes sane derived dimensions when revealed with a block decoration added while detached (regression)", () => {
+      const { editor, component, element } = buildComponent({
+        autoHeight: false,
+        attach: false,
+      });
+      const marker = editor.markScreenPosition([0, 0]);
+      const item = document.createElement("div");
+      item.textContent = "block decoration";
+      editor.decorateMarker(marker, { type: "block", item });
+
+      // The constructor's initial renderSync runs before any measurements and
+      // caches a NaN firstVisibleRow. Revealing the editor with this block
+      // decoration pending measures it under a scroll anchor before that
+      // cache is reset, so the anchor used to build Point(NaN, 0) and throw -
+      // swallowed by the custom-element callback boundary, visible only as an
+      // uncaught error on the console.
+      jasmine.attachToDOM(element);
+      expect(component.getFirstVisibleRow()).toBe(0);
+    });
+
     it("measures block decorations correctly when they are added before the component width has been updated", async () => {
       {
         const { editor, component, element } = buildComponent({

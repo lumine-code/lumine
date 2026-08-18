@@ -3358,6 +3358,14 @@ module.exports = class TextEditorComponent {
     this.measureClientContainerHeight();
     this.measureClientContainerWidth();
     this.measureScrollbarDimensions();
+    // Derived dimensions computed before these measurements existed are
+    // garbage: the constructor's initial renderSync caches a NaN
+    // firstVisibleRow (scroll top 0 divided by the line-top index's default
+    // line height of 0), and NaN passes the `== null` cache check forever.
+    // The first reveal reads that cache before updateSyncBeforeMeasuringContent
+    // resets it - measureBlockDecorations anchors the viewport through
+    // captureScrollAnchor - so the anchor built Point(NaN, 0) and threw.
+    this.derivedDimensionsCache = {};
     this.hasInitialMeasurements = true;
   }
 
