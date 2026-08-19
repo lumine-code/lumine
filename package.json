@@ -37,7 +37,6 @@
     "@lumine-code/fuzzy-native": "github:lumine-code/fuzzy-native#3bfec14ec911cd85c720cef9bf10e7453f28f2e0",
     "@lumine-code/grim": "github:lumine-code/grim#127807ace77f3bdbec6ad44e38da7223ed10b2cf",
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#9b72619c96aee027a2ddbf59d4d72ae2b171836c",
-    "@lumine-code/node-pty": "github:lumine-code/node-pty#a4e4742d1dea623dca4655f075e72baffb1228a5",
     "@lumine-code/season": "github:lumine-code/season#4eaaac38bdb8c01a876b72a52233eb5686728903",
     "@lumine-code/second-mate": "github:lumine-code/second-mate#1a8ba5805b2c31610df4d907a1eff889ec7b103b",
     "@lumine-code/select-list": "github:lumine-code/select-list#392855244a09a516cae8579eda38df666f39c635",
@@ -212,7 +211,6 @@
     "yargs": "18.1.0"
   },
   "allowScripts": {
-    "github:lumine-code/node-pty#a4e4742d1dea623dca4655f075e72baffb1228a5": true,
     "github:lumine-code/fuzzy-native#3bfec14ec911cd85c720cef9bf10e7453f28f2e0": true,
     "github:lumine-code/keyboard-layout#9b72619c96aee027a2ddbf59d4d72ae2b171836c": true,
     "github:lumine-code/superstring#29e5c54502069afb2906256f4ebb4920483b86d9": true,

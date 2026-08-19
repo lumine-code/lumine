@@ -8,13 +8,7 @@ const jsx = require("./eslint-jsx");
 // Modules provided by the Lumine/Electron runtime or the editor's root
 // dependencies — not resolvable from a bundled package's own manifest, so allow
 // them across eslint-plugin-n's resolution rules.
-const runtimeModules = [
-  "lumine",
-  "electron",
-  // Built by its own `prepare` into `lib/`, which the lint job's
-  // `--ignore-scripts` install skips, so its `main` is absent there.
-  "@lumine-code/node-pty",
-];
+const runtimeModules = ["lumine", "electron"];
 
 module.exports = [
   {
