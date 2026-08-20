@@ -1049,6 +1049,30 @@ describe("SelectListView", () => {
       expect(view.itemActionsList.element.querySelector(".select-list-separator")).toBeNull();
     });
 
+    it("narrows the rows with actionsFilter without letting the chrome back in", async () => {
+      // The predicate runs with the selection already made, which is how an
+      // action that applies to only some rows is listed only for those.
+      view.props.actionsFilter = (descriptor) =>
+        descriptor.name !== "spec:other-action" || view.getSelectedItem() === "two";
+
+      view.show();
+      await view.showItemActions();
+
+      let actions = view.itemActionsList.props.items.map((action) => action.command);
+      expect(actions).toContain("spec:test-action");
+      expect(actions).not.toContain("spec:other-action");
+      // The filter said nothing about the chrome, and it is still excluded.
+      expect(actions).not.toContain("core:confirm");
+      expect(actions).not.toContain("select-list:actions");
+
+      lumine.workspace.popModal();
+      await view.selectItem("two");
+      await view.showItemActions();
+
+      actions = view.itemActionsList.props.items.map((action) => action.command);
+      expect(actions).toContain("spec:other-action");
+    });
+
     it("rules nothing off when every action is about the list", async () => {
       view.props.actionsFilter = (descriptor) => descriptor.name === "spec:only-list-action";
       disposables.add(
