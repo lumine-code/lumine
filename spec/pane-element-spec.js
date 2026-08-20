@@ -105,6 +105,24 @@ describe("PaneElement", function () {
       expect(document.activeElement).toBe(item2);
     });
 
+    it("keeps focus in the pane when the focused last item is destroyed", async function () {
+      // Removing the focused element drops focus on `body` without firing any
+      // blur event. With no next item to hand focus to, the pane element
+      // itself has to take it, or the workspace ends up with nothing focused.
+      const item = document.createElement("div");
+      item.tabIndex = -1;
+      pane.addItem(item);
+      jasmine.attachToDOM(paneElement);
+      item.focus();
+      expect(document.activeElement).toBe(item);
+
+      await pane.destroyItem(item);
+
+      expect(pane.isAlive()).toBe(true);
+      expect(pane.getItems().length).toBe(0);
+      expect(document.activeElement).toBe(paneElement);
+    });
+
     describe("if the active item is a model object", () =>
       it("retrieves the associated view from lumine.views and appends it to the itemViews div", function () {
         class TestModel {}
@@ -319,6 +337,34 @@ describe("PaneElement", function () {
 
       itemChild.focus();
       expect(activationCount).toBe(0);
+    });
+  });
+
+  describe("when focus leaves the pane", function () {
+    // Chromium fires a blur with a null relatedTarget while it unfocuses a
+    // subtree that is about to be detached -- what collapsing an axis does to
+    // the surviving pane. `connectedCallback` restores focus from the model's
+    // claim after that reparent, so only a blur that names a successor may
+    // clear the claim.
+    it("keeps the model's focus claim when the blur names no successor", function () {
+      jasmine.attachToDOM(paneElement);
+      paneElement.focus();
+      expect(pane.isFocused()).toBe(true);
+
+      paneElement.dispatchEvent(new FocusEvent("blur", { relatedTarget: null }));
+      expect(pane.isFocused()).toBe(true);
+    });
+
+    it("clears the model's focus claim when the blur names an element outside the pane", function () {
+      jasmine.attachToDOM(paneElement);
+      paneElement.focus();
+      expect(pane.isFocused()).toBe(true);
+
+      const outside = document.createElement("div");
+      outside.tabIndex = -1;
+      jasmine.attachToDOM(outside);
+      paneElement.dispatchEvent(new FocusEvent("blur", { relatedTarget: outside }));
+      expect(pane.isFocused()).toBe(false);
     });
   });
 

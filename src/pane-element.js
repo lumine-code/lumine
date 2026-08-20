@@ -57,7 +57,15 @@ class PaneElement extends HTMLElement {
       }
     };
     const handleBlur = (event) => {
-      if (!this.contains(event.relatedTarget)) {
+      // A blur with no successor (relatedTarget null, focus fell to `body`)
+      // is not the user leaving this pane. Chromium fires one while it
+      // unfocuses a subtree that is about to be detached -- the blur arrives
+      // before the detach, so the tree still looks connected -- and that is
+      // exactly what collapsing an axis does to the surviving pane.
+      // `connectedCallback` restores focus from the model's `focused` claim
+      // after that reparent, so only a blur that says which element took focus
+      // may clear the claim it restores from.
+      if (event.relatedTarget && !this.contains(event.relatedTarget)) {
         this.model.blur();
       }
     };
@@ -112,13 +120,20 @@ class PaneElement extends HTMLElement {
   // leaves the renderer in. So `Close Pane` from a menu used to park focus on
   // the bare pane element: the surviving pane was active, drew no cursor and
   // took no keystrokes.
+  //
+  // The fallback also has to catch a view that merely ignores `focus()` -- an
+  // item whose root is a plain unfocusable element. Closing a split reparents
+  // this pane, which silently drops focus on `body`, and a no-op `view.focus()`
+  // would leave it there: no element in the workspace focused, no keymap
+  // context beyond `body`. The pane element itself (tabindex -1) is what keeps
+  // keystrokes in this pane, so take it whenever the view did not take focus.
   focusActiveView() {
     const view = this.getActiveView();
     if (view) {
       view.focus();
-    } else {
-      this.focus();
+      if (this.hasFocus()) return;
     }
+    this.focus();
   }
 
   activated() {
@@ -202,8 +217,18 @@ class PaneElement extends HTMLElement {
   itemRemoved({ item, index: _index, destroyed: _destroyed }) {
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
+      const hadFocus = viewToRemove.contains(document.activeElement);
       if (this.visibleItemView === viewToRemove) this.visibleItemView = null;
       viewToRemove.remove();
+      // Removing the focused element drops focus on `body` without firing any
+      // blur event, so nothing downstream can notice. This is how destroying
+      // the last item used to unfocus the workspace: `activeItemChanged(null)`
+      // has no view to hand focus to, and nothing else ran. Hand it back to
+      // this pane -- the next active view when one exists, the pane element
+      // itself for a pane that is now empty. A caller that moves focus after
+      // the removal (moving an item activates the destination pane) still wins:
+      // it runs after this does.
+      if (hadFocus && !this.model.isDestroyed()) this.focusActiveView();
     }
   }
 

@@ -63,6 +63,51 @@ describe("PaneContainerElement", function () {
       expect(containerElement).toHaveClass("panes");
       expect(document.activeElement).toBe(leftPaneElement);
     });
+
+    it("transfers focus to the surviving pane's active view when the focused pane is closed", function () {
+      const container = new PaneContainer(params);
+      const containerElement = container.getElement();
+      const leftPane = container.getActivePane();
+      const leftItem = document.createElement("div");
+      leftItem.tabIndex = -1;
+      leftPane.addItem(leftItem);
+      const rightPane = leftPane.splitRight();
+      const rightItem = document.createElement("div");
+      rightItem.tabIndex = -1;
+      rightPane.addItem(rightItem);
+
+      jasmine.attachToDOM(containerElement);
+      rightItem.focus();
+      expect(document.activeElement).toBe(rightItem);
+
+      rightPane.destroy();
+      expect(document.activeElement).toBe(leftItem);
+      expect(leftPane.isFocused()).toBe(true);
+    });
+
+    it("keeps focus in the surviving pane when its view cannot take focus", function () {
+      // A view whose root is a plain unfocusable element -- `focus()` on it is
+      // a silent no-op. The pane element itself (tabindex -1) has to take
+      // focus instead, or the reparent that collapses the axis leaves nothing
+      // in the workspace focused at all.
+      const container = new PaneContainer(params);
+      const containerElement = container.getElement();
+      const leftPane = container.getActivePane();
+      const unfocusableItem = document.createElement("div");
+      leftPane.addItem(unfocusableItem);
+      const rightPane = leftPane.splitRight();
+      const rightItem = document.createElement("div");
+      rightItem.tabIndex = -1;
+      rightPane.addItem(rightItem);
+
+      jasmine.attachToDOM(containerElement);
+      rightItem.focus();
+      expect(document.activeElement).toBe(rightItem);
+
+      rightPane.destroy();
+      expect(document.activeElement).toBe(leftPane.getElement());
+      expect(leftPane.isFocused()).toBe(true);
+    });
   });
 
   describe("when a pane is split", () =>
