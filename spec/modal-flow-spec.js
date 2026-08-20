@@ -276,13 +276,16 @@ describe("modal flow", () => {
     let style;
 
     beforeEach(() => {
-      // Stand-in for a theme's modal-appear animation and a content spinner.
-      // Long durations keep them observably "running" unless settled.
+      // Stand-ins for a theme's modal-appear animation, a content spinner, and
+      // the focus-ring transition on a query editor. Long durations keep them
+      // observably "running" unless settled.
       style = document.createElement("style");
       style.textContent = `
         @keyframes flow-spec-appear { from { opacity: 0.99; } to { opacity: 1; } }
         lumine-panel.modal { animation: flow-spec-appear 60s linear; }
         .flow-spec-spinner { animation: flow-spec-appear 60s linear infinite; }
+        .flow-spec-input { opacity: 0.99; transition: opacity 60s linear; }
+        .flow-spec-input.flow-spec-focused { opacity: 1; }
       `;
       document.head.appendChild(style);
     });
@@ -313,7 +316,7 @@ describe("modal flow", () => {
       expect(runningPanelAnimations(root).length).toBe(0);
     });
 
-    it("leaves animations inside the content running across a switch", () => {
+    it("leaves animations inside the content running across a switch", async () => {
       const root = addModal({ crumb: "Root" });
       const item = document.createElement("div");
       const spinner = document.createElement("div");
@@ -326,8 +329,69 @@ describe("modal flow", () => {
       step.show({ crumb: "Step" });
 
       expect(runningPanelAnimations(step).length).toBe(0);
-      const spinning = spinner.getAnimations().filter((a) => a.playState === "running");
-      expect(spinning.length).toBe(1);
+      const running = () => spinner.getAnimations().filter((a) => a.playState === "running");
+      expect(running().length).toBe(1);
+
+      // The post-switch sweep finishes transitions only; the spinner must
+      // still be spinning after the sweep's frames have passed.
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      expect(running().length).toBe(1);
+    });
+
+    it("settles a transition that starts as focus lands after a switch", async () => {
+      const root = addModal({ crumb: "Root" });
+      const item = document.createElement("div");
+      const input = document.createElement("div");
+      input.classList.add("flow-spec-input");
+      item.appendChild(input);
+      const step = lumine.workspace.addModalPanel({ item, visible: false });
+      panels.push(step);
+
+      root.show();
+      step.show({ crumb: "Step" });
+
+      const running = () => input.getAnimations().filter((a) => a.playState === "running");
+
+      // Give the input a before-change style, then mimic the editor component
+      // applying `.is-focused` on its next frame — the timing the synchronous
+      // settle pass cannot reach.
+      getComputedStyle(input).opacity;
+      await new Promise(requestAnimationFrame);
+      input.classList.add("flow-spec-focused");
+      expect(running().length).toBe(1);
+
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      expect(running().length).toBe(0);
+    });
+
+    it("keeps a late transition on a panel that has since left the flow", async () => {
+      const root = addModal({ crumb: "Root" });
+      const item = document.createElement("div");
+      const input = document.createElement("div");
+      input.classList.add("flow-spec-input");
+      item.appendChild(input);
+      const step = lumine.workspace.addModalPanel({ item, visible: false });
+      panels.push(step);
+
+      root.show();
+      step.show({ crumb: "Step" });
+      // Dismiss immediately: the sweep scheduled by the switch must not reach
+      // a panel that is no longer the trail's visible top.
+      step.hide();
+      step.show();
+
+      const running = () => input.getAnimations().filter((a) => a.playState === "running");
+      getComputedStyle(input).opacity;
+      await new Promise(requestAnimationFrame);
+      input.classList.add("flow-spec-focused");
+      expect(running().length).toBe(1);
+
+      await new Promise(requestAnimationFrame);
+      await new Promise(requestAnimationFrame);
+      expect(running().length).toBe(1);
     });
   });
 

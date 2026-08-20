@@ -161,11 +161,33 @@ module.exports = class ModalFlow {
   // content (loading spinners) keep running. Plain show()/hide() outside the
   // flow never comes through here, so opening and closing keep the theme's
   // animation.
+  //
+  // The synchronous pass cannot reach everything: the focus trap focuses the
+  // query editor during show(), but the editor component applies `.is-focused`
+  // on its next frame, and the theme's focus-ring transition only starts on
+  // the style recalc after that — after this method has already returned. So
+  // a short sweep follows over the next few frames, finishing CSS transitions
+  // anywhere in the subtree. A transition is a state ease (the focus ring),
+  // while content that should visibly keep moving (spinners) is a keyframe
+  // animation, so the split the synchronous pass makes by target this sweep
+  // makes by kind. The sweep is guarded so a stale frame never reaches a
+  // panel that has since left the flow — a fresh reopen keeps its easing.
   settleAnimations(panel) {
     const element = panel.getElement();
     if (typeof element.getAnimations !== "function") return;
+    this.finishAnimations(element, (animation) => animation.effect?.target === element);
+    const sweep = (framesLeft) => {
+      const top = this.stack[this.stack.length - 1];
+      if (!top || top.panel !== panel || !panel.isVisible()) return;
+      this.finishAnimations(element, (animation) => animation instanceof CSSTransition);
+      if (framesLeft > 0) requestAnimationFrame(() => sweep(framesLeft - 1));
+    };
+    requestAnimationFrame(() => sweep(2));
+  }
+
+  finishAnimations(element, shouldFinish) {
     for (const animation of element.getAnimations({ subtree: true })) {
-      if (animation.effect?.target !== element) continue;
+      if (!shouldFinish(animation)) continue;
       try {
         animation.finish();
       } catch {
