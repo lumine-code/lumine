@@ -427,13 +427,19 @@ module.exports = class IconRegistry {
    *
    * Render `target`'s icon into `element` and keep it current.
    *
+   * Current with respect to providers, not to the target: `live` re-renders as
+   * icon providers come and go, but the target — its hints included — is read
+   * once. A caller whose hints can change (a repository registered after
+   * startup, say) calls `applyTo` again with fresh hints; the new application
+   * replaces the old one on the element wholesale.
+   *
    * @param {Element} element - The element that receives the icon.
    * @param {Object} target - The icon target.
    * @param {Object} [options] - Rendering options.
    * @param {Array<String>} [options.classes] - Extra classes to add.
    * @param {String} [options.name] - An explicit `data-name`.
    * @param {Boolean} [options.setData=true] - Set `data-name` and `data-path`.
-   * @param {Boolean} [options.live=true] - Re-render when the icon changes.
+   * @param {Boolean} [options.live=true] - Re-render when a provider change alters the icon.
    * @param {Boolean} [options.render=true] - Render children and styles in
    *   addition to applying classes.
    * @param {Boolean} [options.skipFallback=false] - Render nothing unless a
