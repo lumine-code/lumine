@@ -263,6 +263,37 @@ describe("LumineEnvironment", () => {
         expect(willThrowSpy.calls.mostRecent().args[0].originalError).toBe(thrown);
       });
 
+      // A ResizeObserver that still had observations to deliver at the end of a
+      // delivery cycle. The browser breaks the cycle itself and delivers the
+      // rest next frame, so nothing was lost and there is nothing to act on —
+      // and it arrives with no error, no position and no console output, so
+      // reporting it opened the dev tools on an empty console. Any editor
+      // holding block decorations raised it on every resize.
+      it("ignores a ResizeObserver delivery notification", () => {
+        subscription = lumine.runtime.onWillThrowError(willThrowSpy);
+
+        window.onerror(
+          "ResizeObserver loop completed with undelivered notifications.",
+          "abc",
+          2,
+          3,
+          null,
+        );
+        window.onerror("ResizeObserver loop limit exceeded", "abc", 2, 3, null);
+
+        expect(willThrowSpy).not.toHaveBeenCalled();
+        expect(lumine.window.openDevTools).not.toHaveBeenCalled();
+      });
+
+      it("still reports an error that merely mentions a ResizeObserver", () => {
+        subscription = lumine.runtime.onWillThrowError(willThrowSpy);
+        const error = new Error("Cannot read properties of undefined (reading 'ResizeObserver')");
+
+        window.onerror(error.toString(), "abc", 2, 3, error);
+
+        expect(willThrowSpy).toHaveBeenCalled();
+      });
+
       it("will not show the devtools when preventDefault() is called", () => {
         willThrowSpy.and.callFake((errorObject) => errorObject.preventDefault());
         subscription = lumine.runtime.onWillThrowError(willThrowSpy);

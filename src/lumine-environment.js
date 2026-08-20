@@ -1092,6 +1092,8 @@ class LumineEnvironment {
   installUncaughtErrorHandler() {
     this.previousWindowErrorHandler = this.domWindow.onerror;
     this.domWindow.onerror = (message, url, line, column, originalError) => {
+      if (isBenignResizeObserverNotification(message)) return;
+
       const mapping = mapSourcePosition({ source: url, line, column });
       line = mapping.line;
       column = mapping.column;
@@ -1753,6 +1755,26 @@ class LumineEnvironment {
 function asError(reason) {
   if (reason instanceof Error) return reason;
   return untraceableError(`Promise rejected with ${util.inspect(reason)}`);
+}
+
+// The two notifications a browser raises when a ResizeObserver still had
+// observations to deliver at the end of a delivery cycle.
+const RESIZE_OBSERVER_NOTIFICATIONS = [
+  "ResizeObserver loop completed with undelivered notifications.",
+  "ResizeObserver loop limit exceeded",
+];
+
+// Whether a window error is the browser saying a ResizeObserver ran out of
+// delivery passes this frame. It is informational, not a fault: the browser
+// breaks the cycle itself and delivers what is left on the next frame, and
+// nothing was lost. It carries no error object, no source position and no
+// console output, so reporting it opens the dev tools on an empty console with
+// nothing to act on — which is what any editor holding block decorations did
+// on every resize, since the component observes each decoration's element.
+function isBenignResizeObserverNotification(message) {
+  return RESIZE_OBSERVER_NOTIFICATIONS.some((notification) =>
+    String(message ?? "").includes(notification),
+  );
 }
 
 // An Error standing in for one there is nothing more to say about. It carries
