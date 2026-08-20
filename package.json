@@ -161,7 +161,7 @@
     "timecop": "github:lumine-code/timecop#74b39acc2f3ccbe1de4bd542e97f964112544587",
     "tinyglobby": "^0.2.17",
     "title-bar": "github:lumine-code/title-bar#1a7a8be86ccce3bb5526b7cf6ef396da9225f518",
-    "tree-view": "github:lumine-code/tree-view#0a8a742ce862ceccb6af1184638d3515c8319a62",
+    "tree-view": "github:lumine-code/tree-view#f3438426746e379902a4a0ce77e9a4f3c048f792",
     "vscode-theme": "github:lumine-code/vscode-theme#26912e8c11775c168211a4f798186fcde516ad26",
     "web-tree-sitter": "0.26.11",
     "whitespace": "github:lumine-code/whitespace#180360daea8752355d1855e9b0113bedfcbabeaa",
