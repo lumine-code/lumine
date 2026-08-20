@@ -1175,7 +1175,18 @@ module.exports = class TextEditorComponent {
     for (let i = orderedElements.length - 1; i >= 0; i--) {
       const element = orderedElements[i];
       if (element.parentNode !== lineTilesElement || element.nextSibling !== nextElement) {
-        lineTilesElement.insertBefore(element, nextElement);
+        // insertBefore detaches a connected element before re-inserting it,
+        // and detaching the subtree that holds the focused hidden input
+        // silently drops focus on `body`. That is not hypothetical: a package
+        // that appends its own overlay into `.lines` (colors does) leaves
+        // `cursorsAndInput` with a trailing sibling, so this walk repositions
+        // it on the next render -- while it holds focus. moveBefore
+        // repositions a connected node atomically, keeping focus intact.
+        if (element.isConnected && lineTilesElement.isConnected) {
+          lineTilesElement.moveBefore(element, nextElement);
+        } else {
+          lineTilesElement.insertBefore(element, nextElement);
+        }
       }
       nextElement = element;
     }

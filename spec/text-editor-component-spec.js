@@ -1469,6 +1469,26 @@ describe("TextEditorComponent", () => {
       document.body.focus();
       expect(blurEventCount).toBe(1);
     });
+
+    it("keeps focus when a render repositions the cursors container around a foreign element", () => {
+      // A package may append its own overlay into `.lines` (colors does),
+      // which leaves the cursors container with a trailing sibling, so the
+      // next render repositions it to keep it last. Re-inserting the subtree
+      // that holds the focused hidden input silently dropped focus on `body`;
+      // the reposition has to move it atomically instead.
+      const { component, element, editor } = buildComponent();
+      const { hiddenInput } = component.refs.cursorsAndInput.refs;
+      element.focus();
+      expect(document.activeElement).toBe(hiddenInput);
+
+      const foreign = document.createElement("div");
+      component.refs.lineTiles.appendChild(foreign);
+      editor.setText("changed");
+      component.updateSync();
+
+      expect(component.refs.cursorsAndInput.element.nextSibling).toBeNull();
+      expect(document.activeElement).toBe(hiddenInput);
+    });
   });
 
   describe("autoscroll", () => {
