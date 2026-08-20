@@ -180,6 +180,16 @@ module.exports = class RepositoryRegistry {
 
     this.consumeServices(packageManager);
 
+    // One focus listener for the whole registry, not one per repository: see
+    // handleWindowFocus for what focus can actually have made stale.
+    if (typeof window !== "undefined") {
+      const onWindowFocus = () => this.handleWindowFocus();
+      window.addEventListener("focus", onWindowFocus);
+      this.subscriptions.add(
+        new Disposable(() => window.removeEventListener("focus", onWindowFocus)),
+      );
+    }
+
     if (project) this.attachProject(project);
   }
 
@@ -1864,17 +1874,56 @@ module.exports = class RepositoryRegistry {
     this.discoverRepositoriesForFileChanges(events);
   }
 
+  // Refresh what window focus can actually have made stale.
+  //
+  // The project watcher reports changes whether or not the window is focused,
+  // so a repository it fully covers — working directory and Git directory both
+  // inside a project root — learned about a terminal commit or checkout the
+  // moment it happened, and regaining focus tells it nothing new. Focus
+  // matters for the repositories the watcher cannot see (one followed through
+  // an out-of-root buffer, one whose roots sit below its working tree), and
+  // for the active repository, which gets a refresh as a safety net against
+  // missed watcher events because its staleness is the one on screen.
+  // Everything scheduled here stays subscriber-gated and debounced.
+  handleWindowFocus() {
+    if (this.destroyed || this.entriesById.size === 0) return;
+
+    const rootAliases = this.rootPaths.flatMap((rootPath) => pathAliases(rootPath));
+    for (const entry of this.entriesById.values()) {
+      if (entry.missing || entry.repository.isDestroyed?.()) continue;
+      if (entry.repository !== this.activeRepository && this.watcherCovers(entry, rootAliases)) {
+        continue;
+      }
+      entry.repository.scheduleStatusSnapshotRefresh?.();
+      entry.repository.scheduleRefsSnapshotRefresh?.();
+    }
+  }
+
+  // Whether the project watcher sees everything that can change this
+  // repository's snapshots: its working directory and its Git directory both
+  // inside a project root. Checked separately because they can part ways — a
+  // linked worktree's Git directory lives under its main repository's, which
+  // may be outside every root even when the worktree itself is inside one.
+  watcherCovers(entry, rootAliases) {
+    const covered = (aliases) =>
+      aliases.length > 0 &&
+      aliases.some((alias) =>
+        rootAliases.some((rootAlias) => pathContainsNormalized(rootAlias, alias)),
+      );
+    return covered(entry.routingDirectories) && covered(entry.gitDirectoryAliases);
+  }
+
   // Keep the snapshots current with what actually happens on disk.
   //
-  // A repository refreshes on window focus, on a buffer save, and after its own
-  // operations — which covers nothing that happens inside the window without
-  // going through a buffer. A build run from the terminal, a `git commit` from a
-  // panel, a file a package rewrites: every colour derived from Git stays as it
-  // was until something else asks for a refresh, and the usual something else is
-  // opening a file, whose diff view subscribes and forces one. The project
-  // already watches every root, so route its events to the repository that owns
-  // them. Both schedulers debounce, coalesce, and no-op without a subscriber, so
-  // even a noisy batch costs one Git process per repository at most.
+  // A repository refreshes when one of its own buffers is saved and after its
+  // own operations — which covers nothing that reaches the disk any other way.
+  // A build run from the terminal, a `git commit` from a panel, a file a
+  // package rewrites: every colour derived from Git would stay as it was until
+  // something else asked for a refresh. The project already watches every
+  // root, so route its events to the repository that owns them; this is what
+  // lets handleWindowFocus leave watcher-covered repositories alone. Both
+  // schedulers debounce, coalesce, and no-op without a subscriber, so even a
+  // noisy batch costs one Git process per repository at most.
   refreshRepositoriesForFileChanges(events) {
     if (this.destroyed || this.entriesById.size === 0) return;
 

@@ -112,7 +112,8 @@ module.exports = class GitRepository {
    *
    * @param path - The `String` path to the Git repository to open.
    * @param options - An optional `Object` with the following keys:
-   * @param options.refreshOnWindowFocus - A `Boolean`, `true` to refresh the index and statuses when the window is focused.
+   * @param options.project - A {@link Project} whose buffer saves keep this repository's status snapshot fresh.
+   * @param options.config - The config consulted for Git settings.
    * @returns {GitRepository} instance or `null` if the repository could not be opened.
    */
   static open(path, options) {
@@ -176,19 +177,11 @@ module.exports = class GitRepository {
     this.config = options.config;
     this.operations = null;
 
-    if (options.refreshOnWindowFocus || options.refreshOnWindowFocus == null) {
-      const onWindowFocus = () => {
-        // Refresh the Git snapshots (subscriber-gated) rather than the
-        // legacy libgit2 status cache when the window regains focus.
-        this.scheduleStatusSnapshotRefresh();
-        this.scheduleRefsSnapshotRefresh();
-      };
-
-      window.addEventListener("focus", onWindowFocus);
-      this.subscriptions.add(
-        new Disposable(() => window.removeEventListener("focus", onWindowFocus)),
-      );
-    }
+    // Window-focus freshness is the registry's job (RepositoryRegistry
+    // handleWindowFocus): it knows which repositories the project watcher
+    // already keeps fresh and which one is on screen. A listener here would
+    // put every registered repository on every focus event — one hundred
+    // `git status` runs per alt-tab in a many-repository workspace.
 
     if (this.project != null) {
       this.project.getBuffers().forEach((buffer) => this.subscribeToBuffer(buffer));
@@ -1412,9 +1405,18 @@ module.exports = class GitRepository {
 
   // Subscribes to buffer events.
   subscribeToBuffer(buffer) {
+    // Every repository hears about every buffer in the window, but only a save
+    // inside this repository's own working tree can change its status.
+    // relativize mirrors git-utils and hands a path outside the working tree
+    // back unchanged — still absolute — so "no longer absolute" is the
+    // containment test.
     const refreshStatusForBuffer = () => {
+      if (this.isDestroyed()) return;
       const bufferPath = buffer.getPath();
-      if (bufferPath && !this.isDestroyed()) this.scheduleStatusSnapshotRefresh();
+      if (!bufferPath) return;
+      const relativePath = this.relativize(bufferPath);
+      if (relativePath == null || path.isAbsolute(relativePath)) return;
+      this.scheduleStatusSnapshotRefresh();
     };
 
     const bufferSubscriptions = new CompositeDisposable();

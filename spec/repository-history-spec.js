@@ -164,7 +164,7 @@ describe("repository history", () => {
       await operations.stageFiles(["bin.dat"]);
       await operations.commit("rename");
 
-      repo = new GitRepository(workingDirectory, { refreshOnWindowFocus: false });
+      repo = new GitRepository(workingDirectory);
     });
 
     afterEach(() => {
@@ -308,7 +308,7 @@ describe("repository history", () => {
     it("resolves an empty page for an unborn repository", async () => {
       const unbornDirectory = temp.mkdirSync("repository-history-unborn");
       await operationProvider.initializeRepository(unbornDirectory, { initialBranch: "main" });
-      const unbornRepo = new GitRepository(unbornDirectory, { refreshOnWindowFocus: false });
+      const unbornRepo = new GitRepository(unbornDirectory);
 
       try {
         expect(await unbornRepo.getCommits()).toEqual({

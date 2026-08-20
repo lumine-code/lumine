@@ -1418,6 +1418,80 @@ describe("RepositoryRegistry", () => {
     });
   });
 
+  // The project watcher reports changes whether or not the window is focused,
+  // so focus refreshes only what the watcher cannot have kept fresh — plus the
+  // active repository, whose staleness is the one on screen. Without this
+  // targeting, every focus event ran a `git status` on every registered
+  // repository: one hundred processes per alt-tab in a many-repository
+  // workspace.
+  describe("refreshing on window focus", () => {
+    const resetCounts = (...repos) => {
+      for (const repo of repos) {
+        repo.scheduledStatusSnapshotRefreshCount = 0;
+        repo.scheduledRefsSnapshotRefreshCount = 0;
+      }
+    };
+
+    it("refreshes the active repository and leaves watcher-covered ones alone", () => {
+      const rootPath = temp.mkdirSync("focus-root");
+      const active = new FakeRepository(path.join(rootPath, "active"));
+      const idle = new FakeRepository(path.join(rootPath, "idle"));
+      repositories.push(active, idle);
+      registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+      registry.resolveForPathSync(path.join(active.getWorkingDirectory(), "file.js"));
+      registry.resolveForPathSync(path.join(idle.getWorkingDirectory(), "file.js"));
+      registry.setActiveRepository(active);
+      resetCounts(active, idle);
+
+      registry.handleWindowFocus();
+
+      expect(active.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(active.scheduledRefsSnapshotRefreshCount).toBe(1);
+      expect(idle.scheduledStatusSnapshotRefreshCount).toBe(0);
+      expect(idle.scheduledRefsSnapshotRefreshCount).toBe(0);
+    });
+
+    it("refreshes a repository outside every project root even when not active", () => {
+      const rootPath = temp.mkdirSync("focus-root");
+      const covered = new FakeRepository(path.join(rootPath, "covered"));
+      const outside = new FakeRepository(temp.mkdirSync("focus-outside"));
+      repositories.push(covered, outside);
+      registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+      registry.resolveForPathSync(path.join(covered.getWorkingDirectory(), "file.js"));
+      registry.resolveForPathSync(path.join(outside.getWorkingDirectory(), "file.js"));
+      registry.setActiveRepository(covered);
+      resetCounts(covered, outside);
+
+      registry.handleWindowFocus();
+
+      expect(outside.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(outside.scheduledRefsSnapshotRefreshCount).toBe(1);
+    });
+
+    // A linked worktree inside the roots can still commit through a Git
+    // directory outside them, which the watcher never sees.
+    it("refreshes a worktree whose Git directory lies outside every root", () => {
+      const rootPath = temp.mkdirSync("focus-root");
+      const covered = new FakeRepository(path.join(rootPath, "covered"));
+      const mainPath = temp.mkdirSync("focus-worktree-main");
+      const worktree = new FakeRepository(
+        path.join(rootPath, "feature"),
+        path.join(mainPath, ".git", "worktrees", "feature"),
+      );
+      repositories.push(covered, worktree);
+      registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+      registry.resolveForPathSync(path.join(covered.getWorkingDirectory(), "file.js"));
+      registry.resolveForPathSync(path.join(worktree.getWorkingDirectory(), "file.js"));
+      registry.setActiveRepository(covered);
+      resetCounts(covered, worktree);
+
+      registry.handleWindowFocus();
+
+      expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
+      expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(1);
+    });
+  });
+
   // Resetting the window runs PackageManager#reset, which clears every consumer
   // off the service hub. A registry that subscribed only in its constructor
   // keeps that subscription in name alone afterwards, and no provider ever

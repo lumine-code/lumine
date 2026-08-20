@@ -299,7 +299,7 @@ describe("repository diff", () => {
       fs.appendFileSync(path.join(workingDirectory, "file.txt"), "three\n");
       fs.writeFileSync(path.join(workingDirectory, "untracked.txt"), "hey\n");
 
-      repo = new GitRepository(workingDirectory, { refreshOnWindowFocus: false });
+      repo = new GitRepository(workingDirectory);
     });
 
     afterEach(() => {

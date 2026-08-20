@@ -62,7 +62,7 @@ describe("GitRepository", () => {
       const workingDirectory = copyRepository();
       fs.writeFileSync(path.join(workingDirectory, ".gitignore"), "ignored.txt\n");
       fs.writeFileSync(path.join(workingDirectory, "ignored.txt"), "secret");
-      repo = new GitRepository(workingDirectory, { refreshOnWindowFocus: false });
+      repo = new GitRepository(workingDirectory);
       await repo.refreshStatusSnapshot();
 
       expect(repo.isPathIgnored(path.join(workingDirectory, "ignored.txt"))).toBe(true);
@@ -70,7 +70,7 @@ describe("GitRepository", () => {
     });
 
     it("returns false before the status snapshot has loaded", () => {
-      repo = new GitRepository(copyRepository(), { refreshOnWindowFocus: false });
+      repo = new GitRepository(copyRepository());
       expect(repo.isPathIgnored("a.txt")).toBe(false);
     });
   });
@@ -80,7 +80,7 @@ describe("GitRepository", () => {
 
     beforeEach(() => {
       workingDirPath = copyRepository();
-      repo = new GitRepository(workingDirPath, { refreshOnWindowFocus: false });
+      repo = new GitRepository(workingDirPath);
       filePath = path.join(workingDirPath, "a.txt");
       newPath = path.join(workingDirPath, "new-path.txt");
     });
@@ -110,7 +110,7 @@ describe("GitRepository", () => {
 
     beforeEach(() => {
       workingDirPath = copyRepository();
-      repo = new GitRepository(workingDirPath, { refreshOnWindowFocus: false });
+      repo = new GitRepository(workingDirPath);
       filePath = path.join(workingDirPath, "a.txt");
       newPath = path.join(workingDirPath, "new-path.txt");
       fs.writeFileSync(newPath, "i'm new here");
@@ -186,7 +186,7 @@ describe("GitRepository", () => {
 
     beforeEach(() => {
       workingDirectory = copyRepository();
-      repo = new GitRepository(workingDirectory, { refreshOnWindowFocus: false });
+      repo = new GitRepository(workingDirectory);
       directoryPath = path.join(workingDirectory, "fresh-dir");
       filePath = path.join(directoryPath, "new.txt");
     });
@@ -212,7 +212,6 @@ describe("GitRepository", () => {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(workingDirectory, {
-        refreshOnWindowFocus: false,
         statusSnapshotProvider,
       });
     });
@@ -341,7 +340,6 @@ describe("GitRepository", () => {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(copyRepository(), {
-        refreshOnWindowFocus: false,
         statusSnapshotDebounceMs: 0,
         statusSnapshotProvider,
       });
@@ -439,7 +437,6 @@ describe("GitRepository", () => {
       await runScheduler();
 
       const scheduled = new GitRepository(copyRepository(), {
-        refreshOnWindowFocus: false,
         statusSnapshotDebounceMs: 1000,
         statusSnapshotProvider,
       });
@@ -471,7 +468,6 @@ describe("GitRepository", () => {
         getRefs: jasmine.createSpy("getRefs").and.callFake(() => Promise.resolve(refsOutputs)),
       };
       repo = new GitRepository(copyRepository(), {
-        refreshOnWindowFocus: false,
         refsSnapshotDebounceMs: 0,
         refsSnapshotProvider,
       });
@@ -563,7 +559,6 @@ describe("GitRepository", () => {
 
     it("clears the pending refresh timer on destroy", () => {
       const scheduled = new GitRepository(copyRepository(), {
-        refreshOnWindowFocus: false,
         refsSnapshotDebounceMs: 1000,
         refsSnapshotProvider,
       });
@@ -596,7 +591,6 @@ describe("GitRepository", () => {
           }),
       };
       repoWithRefs = new GitRepository(copyRepository(), {
-        refreshOnWindowFocus: false,
         refsSnapshotProvider,
       });
       await repoWithRefs.refreshRefsSnapshot();
@@ -643,7 +637,6 @@ describe("GitRepository", () => {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(workingDirectory, {
-        refreshOnWindowFocus: false,
         statusSnapshotProvider,
       });
     });
@@ -764,6 +757,19 @@ describe("GitRepository", () => {
       const refresh = spyOn(repository, "scheduleStatusSnapshotRefresh");
       editor.getBuffer().emitter.emit("did-change-path");
       expect(refresh).toHaveBeenCalled();
+    });
+
+    // A repository hears about every buffer in the window; without this guard
+    // one save fans out to a `git status` on every registered repository.
+    it("does not schedule a refresh when a saved buffer is outside the repository", async () => {
+      const outsidePath = path.join(temp.mkdirSync("outside-any-repo"), "stray.txt");
+      fs.writeFileSync(outsidePath, "elsewhere");
+      const outsideEditor = await lumine.workspace.open(outsidePath);
+
+      outsideEditor.insertNewline();
+      const refresh = spyOn(repository, "scheduleStatusSnapshotRefresh");
+      await outsideEditor.save();
+      expect(refresh).not.toHaveBeenCalled();
     });
 
     it("stops listening to the buffer when the repository is destroyed (regression)", () => {
