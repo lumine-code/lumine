@@ -93,23 +93,24 @@ module.exports = class ProtocolHandlerInstaller {
         "lumine:// URIs?",
       buttons: [
         {
+          // The recommended answer is the accent button; naming a variant here
+          // replaces the one this notification's severity would supply. The
+          // other three take no class at all, since `btn` comes from the
+          // notification's own button template and `btn-info` from its type.
           text: "Yes",
-          className: "btn btn-info btn-primary",
+          className: "btn-primary",
           onDidClick: accept,
         },
         {
           text: "Yes, Always",
-          className: "btn btn-info",
           onDidClick: withSetting(ALWAYS, accept),
         },
         {
           text: "No",
-          className: "btn btn-info",
           onDidClick: decline,
         },
         {
           text: "No, Never",
-          className: "btn btn-info",
           onDidClick: withSetting(NEVER, decline),
         },
       ],
