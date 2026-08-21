@@ -199,6 +199,9 @@ module.exports = function ({
       "application:open-documentation": function () {
         return ipcRenderer.send("command", "application:open-documentation");
       },
+      "application:open-api-reference": function () {
+        return ipcRenderer.send("command", "application:open-api-reference");
+      },
       "window:run-package-specs": {
         description: "Run the spec suite of the package this window has open.",
         didDispatch: function () {

@@ -1105,6 +1105,9 @@ module.exports = class LumineApplication extends EventEmitter {
     this.on("application:open-documentation", () =>
       shellInvoker.invoke("openExternal", "https://lumine-code.github.io/"),
     );
+    this.on("application:open-api-reference", () =>
+      shellInvoker.invoke("openExternal", "https://lumine-code.github.io/api/"),
+    );
     this.on("application:report-issue", () =>
       shellInvoker.invoke(
         "openExternal",

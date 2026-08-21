@@ -604,6 +604,10 @@
           "command": "application:open-documentation"
         },
         {
+          "label": "&API Reference",
+          "command": "application:open-api-reference"
+        },
+        {
           "type": "separator"
         },
         {
