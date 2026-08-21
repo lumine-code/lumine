@@ -65,7 +65,7 @@
     "grammar-selector": "github:lumine-code/grammar-selector#12e1ecfc0428e760cecd537c1b8e1193835bea1f",
     "gray-matter": "^4.0.3",
     "incompatible-packages": "github:lumine-code/incompatible-packages#84e7e8fbbc5b625c885642c59a87d32b19c35b09",
-    "item-status": "github:lumine-code/item-status#01041de0f23f1ac97ca84eec968abc0d2f16e1a2",
+    "item-status": "github:lumine-code/item-status#915ab5b624f35e368b17a5cf57b2609778b99e44",
     "jasmine": "6.3.0",
     "keybinding-resolver": "github:lumine-code/keybinding-resolver#d63db42266edbdfd973a4be4a9f2f3aa56cbeb15",
     "language-c": "github:lumine-code/language-c#483e8da4c8b3a6597cfb9212018506f1ecfb04d6",
