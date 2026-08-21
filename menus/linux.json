@@ -50,23 +50,23 @@
           "type": "separator"
         },
         {
-          "label": "Config",
+          "label": "Config…",
           "command": "application:open-your-config"
         },
         {
-          "label": "Init Script",
+          "label": "Init Script…",
           "command": "application:open-your-init-script"
         },
         {
-          "label": "Keymap",
+          "label": "Keymap…",
           "command": "application:open-your-keymap"
         },
         {
-          "label": "Snippets",
+          "label": "Snippets…",
           "command": "application:open-your-snippets"
         },
         {
-          "label": "Stylesheet",
+          "label": "Stylesheet…",
           "command": "application:open-your-stylesheet"
         },
         {

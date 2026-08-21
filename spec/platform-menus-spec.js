@@ -19,11 +19,11 @@ const ALLOWED_DIVERGENCES = [
   "/Help/VERSION",
   "/Help/About Lumine",
   "/File/Settings",
-  "/File/Config",
-  "/File/Init Script",
-  "/File/Keymap",
-  "/File/Snippets",
-  "/File/Stylesheet",
+  "/File/Config…",
+  "/File/Init Script…",
+  "/File/Keymap…",
+  "/File/Snippets…",
+  "/File/Stylesheet…",
   // macOS ships a Window menu with the standard role.
   "/Window",
   // The macOS open panel selects a file or a folder in one dialog.
