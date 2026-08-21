@@ -4,6 +4,7 @@ CHANGELOG.* merge=union
 # fixtures will vary depending on platform
 spec/fixtures/**/*.js text eol=lf
 spec/fixtures/**/*.coffee text eol=lf
+spec/fixtures/**/*.py text eol=lf
 spec/fixtures/**/*.less text eol=lf
 spec/fixtures/**/*.css text eol=lf
 spec/fixtures/**/*.txt text eol=lf
