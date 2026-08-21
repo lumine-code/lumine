@@ -468,13 +468,13 @@ describe("TextMateLanguageMode", () => {
 
     describe("when the buffer contains hard-tabs", () => {
       beforeEach(async () => {
-        await lumine.packages.activatePackage("language-coffee-script");
+        await lumine.packages.activatePackage("language-python");
 
-        buffer = lumine.project.bufferForPathSync("sample-with-tabs.coffee");
+        buffer = lumine.project.bufferForPathSync("sample-with-tabs.py");
         languageMode = new TextMateLanguageMode({
           buffer,
           config,
-          grammar: lumine.grammars.grammarForScopeName("source.coffee"),
+          grammar: lumine.grammars.grammarForScopeName("source.python"),
         });
         languageMode.startTokenizing();
       });
@@ -522,14 +522,14 @@ describe("TextMateLanguageMode", () => {
       it("re-emits the `tokenized` event", async () => {
         let tokenizationCount = 0;
 
-        const editor = await lumine.workspace.open("coffee.coffee");
+        const editor = await lumine.workspace.open("python.py");
         editor.onDidTokenize(() => {
           tokenizationCount++;
         });
         fullyTokenize(editor.getBuffer().getLanguageMode());
         tokenizationCount = 0;
 
-        await lumine.packages.activatePackage("language-coffee-script");
+        await lumine.packages.activatePackage("language-python");
         fullyTokenize(editor.getBuffer().getLanguageMode());
         expect(tokenizationCount).toBe(1);
       });
@@ -843,13 +843,13 @@ describe("TextMateLanguageMode", () => {
     }); // ensure we don't infinitely loop (regression test)
 
     it("does not report columns beyond the length of the line", async () => {
-      await lumine.packages.activatePackage("language-coffee-script");
+      await lumine.packages.activatePackage("language-python");
 
       buffer = new TextBuffer({ text: "# hello\n# world" });
       languageMode = new TextMateLanguageMode({
         buffer,
         config,
-        grammar: lumine.grammars.grammarForScopeName("source.coffee"),
+        grammar: lumine.grammars.grammarForScopeName("source.python"),
       });
       fullyTokenize(languageMode);
 
@@ -1359,9 +1359,9 @@ describe("TextMateLanguageMode", () => {
       `);
     });
 
-    it("works for coffee-script", async () => {
-      const editor = await lumine.workspace.open("coffee.coffee");
-      await lumine.packages.activatePackage("language-coffee-script");
+    it("works for python", async () => {
+      const editor = await lumine.workspace.open("python.py");
+      await lumine.packages.activatePackage("language-python");
       buffer = editor.buffer;
       languageMode = editor.languageMode;
 

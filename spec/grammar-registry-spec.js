@@ -430,9 +430,9 @@ describe("GrammarRegistry", () => {
     });
 
     it("selects a grammar based on the file path case insensitively", async () => {
-      await lumine.packages.activatePackage("language-coffee-script");
-      expect(lumine.grammars.selectGrammar("/tmp/source.coffee").scopeName).toBe("source.coffee");
-      expect(lumine.grammars.selectGrammar("/tmp/source.COFFEE").scopeName).toBe("source.coffee");
+      await lumine.packages.activatePackage("language-python");
+      expect(lumine.grammars.selectGrammar("/tmp/source.py").scopeName).toBe("source.python");
+      expect(lumine.grammars.selectGrammar("/tmp/source.PY").scopeName).toBe("source.python");
     });
 
     describe("on Windows", () => {
@@ -458,13 +458,13 @@ describe("GrammarRegistry", () => {
     it("can use the filePath to load the correct grammar based on the grammar's filetype", async () => {
       await lumine.packages.activatePackage("language-git");
       await lumine.packages.activatePackage("language-javascript");
-      await lumine.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-python");
 
       expect(lumine.grammars.selectGrammar("file.js").name).toBe("JavaScript"); // based on extension (.js)
       expect(lumine.grammars.selectGrammar(path.join(temp.dir, ".git", "config")).name).toBe(
         "Git Config",
       ); // based on end of the path (.git/config)
-      expect(lumine.grammars.selectGrammar("Rakefile").name).toBe("Ruby"); // based on the file's basename (Rakefile)
+      expect(lumine.grammars.selectGrammar("Snakefile").name).toBe("Python"); // based on the file's basename (Snakefile)
       expect(lumine.grammars.selectGrammar("curb").name).toBe("Null Grammar");
       expect(lumine.grammars.selectGrammar("/hu.git/config").name).toBe("Null Grammar");
     });
@@ -479,10 +479,10 @@ describe("GrammarRegistry", () => {
 
     it("uses the filePath's shebang line if the grammar cannot be determined by the extension or basename", async () => {
       await lumine.packages.activatePackage("language-javascript");
-      await lumine.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-python");
 
       const filePath = require.resolve("./fixtures/shebang");
-      expect(lumine.grammars.selectGrammar(filePath).name).toBe("Ruby");
+      expect(lumine.grammars.selectGrammar(filePath).name).toBe("Python");
     });
 
     it("uses the number of newlines in the first line regex to determine the number of lines to test against", () => {
@@ -540,12 +540,12 @@ describe("GrammarRegistry", () => {
     });
 
     it("doesn't read the file when the file contents are specified", async () => {
-      await lumine.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-python");
 
       const filePath = require.resolve("./fixtures/shebang");
       const filePathContents = fs.readFileSync(filePath, "utf8");
       spyOn(fs, "read").and.callThrough();
-      expect(lumine.grammars.selectGrammar(filePath, filePathContents).name).toBe("Ruby");
+      expect(lumine.grammars.selectGrammar(filePath, filePathContents).name).toBe("Python");
       expect(fs.read).not.toHaveBeenCalled();
     });
 
@@ -580,21 +580,21 @@ describe("GrammarRegistry", () => {
     });
 
     it("favors non-bundled packages when breaking scoring ties", async () => {
-      await lumine.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-python");
       await lumine.packages.activatePackage(
-        path.join(__dirname, "fixtures", "packages", "package-with-rb-filetype"),
+        path.join(__dirname, "fixtures", "packages", "package-with-py-filetype"),
       );
 
-      lumine.grammars.grammarForScopeName("source.ruby").bundledPackage = true;
-      lumine.grammars.grammarForScopeName("test.rb").bundledPackage = false;
+      lumine.grammars.grammarForScopeName("source.python").bundledPackage = true;
+      lumine.grammars.grammarForScopeName("test.py").bundledPackage = false;
 
-      expect(lumine.grammars.selectGrammar("test.rb", "#!/usr/bin/env ruby").scopeName).toBe(
-        "source.ruby",
+      expect(lumine.grammars.selectGrammar("test.py", "#!/usr/bin/env python").scopeName).toBe(
+        "source.python",
       );
-      expect(lumine.grammars.selectGrammar("test.rb", "#!/usr/bin/env testruby").scopeName).toBe(
-        "test.rb",
+      expect(lumine.grammars.selectGrammar("test.py", "#!/usr/bin/env testpython").scopeName).toBe(
+        "test.py",
       );
-      expect(lumine.grammars.selectGrammar("test.rb").scopeName).toBe("test.rb");
+      expect(lumine.grammars.selectGrammar("test.py").scopeName).toBe("test.py");
     });
 
     describe("when there is no file path", () => {
@@ -607,45 +607,45 @@ describe("GrammarRegistry", () => {
 
     describe("when the user has custom grammar file types", () => {
       it("considers the custom file types as well as those defined in the grammar", async () => {
-        await lumine.packages.activatePackage("language-ruby");
+        await lumine.packages.activatePackage("language-python");
         lumine.config.set("core.customFileTypes", {
-          "source.ruby": ["Cheffile"],
+          "source.python": ["Cheffile"],
         });
         expect(
           lumine.grammars.selectGrammar("build/Cheffile", 'cookbook "postgres"').scopeName,
-        ).toBe("source.ruby");
+        ).toBe("source.python");
       });
 
       it("favors user-defined file types over built-in ones of equal length", async () => {
-        await lumine.packages.activatePackage("language-ruby");
-        await lumine.packages.activatePackage("language-coffee-script");
+        await lumine.packages.activatePackage("language-python");
+        await lumine.packages.activatePackage("language-shellscript");
 
         lumine.config.set("core.customFileTypes", {
-          "source.coffee": ["Rakefile"],
-          "source.ruby": ["Cakefile"],
+          "source.shell": ["Snakefile"],
+          "source.python": ["zsh-theme"],
         });
-        expect(lumine.grammars.selectGrammar("Rakefile", "").scopeName).toBe("source.coffee");
-        expect(lumine.grammars.selectGrammar("Cakefile", "").scopeName).toBe("source.ruby");
+        expect(lumine.grammars.selectGrammar("Snakefile", "").scopeName).toBe("source.shell");
+        expect(lumine.grammars.selectGrammar("zsh-theme", "").scopeName).toBe("source.python");
       });
 
       it("favors user-defined file types over grammars with matching first-line-regexps", async () => {
-        await lumine.packages.activatePackage("language-ruby");
+        await lumine.packages.activatePackage("language-python");
         await lumine.packages.activatePackage("language-javascript");
 
         lumine.config.set("core.customFileTypes", {
-          "source.ruby": ["bootstrap"],
+          "source.python": ["bootstrap"],
         });
         expect(lumine.grammars.selectGrammar("bootstrap", "#!/usr/bin/env node").scopeName).toBe(
-          "source.ruby",
+          "source.python",
         );
       });
     });
 
     it("favors a grammar with a matching file type over one with m matching first line pattern", async () => {
-      await lumine.packages.activatePackage("language-ruby");
+      await lumine.packages.activatePackage("language-python");
       await lumine.packages.activatePackage("language-javascript");
-      expect(lumine.grammars.selectGrammar("foo.rb", "#!/usr/bin/env node").scopeName).toBe(
-        "source.ruby",
+      expect(lumine.grammars.selectGrammar("foo.py", "#!/usr/bin/env node").scopeName).toBe(
+        "source.python",
       );
     });
 
@@ -700,7 +700,7 @@ describe("GrammarRegistry", () => {
           require.resolve("language-c/grammars/tree-sitter-cpp.json"),
         );
         grammarRegistry.loadGrammarSync(
-          require.resolve("language-coffee-script/grammars/coffeescript.json"),
+          require.resolve("language-python/grammars/tree-sitter-python.json"),
         );
 
         let grammar = grammarRegistry.selectGrammar(
@@ -730,14 +730,14 @@ describe("GrammarRegistry", () => {
 
         // The word `class` only indicates C++ in `.h` files, not in all files.
         grammar = grammarRegistry.selectGrammar(
-          "test.coffee",
+          "test.py",
           dedent`
-          module.exports =
-          class Noun
-            verb: -> true
+          class Noun:
+            def verb(self):
+              return True
         `,
         );
-        expect(grammar.name).toBe("CoffeeScript");
+        expect(grammar.name).toBe("Python");
       });
 
       it("recognizes C++ files that do not match the content regex (regression)", () => {

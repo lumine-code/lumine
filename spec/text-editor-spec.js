@@ -5492,10 +5492,10 @@ describe("TextEditor", () => {
         });
 
         it("indents the new line to the correct level when language.autoIndent is true and using an off-side rule language", async () => {
-          await lumine.packages.activatePackage("language-coffee-script");
+          await lumine.packages.activatePackage("language-python");
           editor.update({ autoIndent: true });
-          lumine.grammars.assignLanguageMode(editor, "source.coffee");
-          editor.setText("if true\n  return trueelse\n  return false");
+          lumine.grammars.assignLanguageMode(editor, "source.python");
+          editor.setText("if True:\n  return Trueelse:\n  return False");
           editor.setCursorBufferPosition([1, 13]);
           editor.insertNewline();
           expect(editor.indentationForBufferRow(1)).toBe(1);
@@ -5506,10 +5506,15 @@ describe("TextEditor", () => {
 
       describe("when a newline is appended on a line that matches the decreaseNextIndentPattern", () => {
         it("indents the new line to the correct level when language.autoIndent is true", async () => {
-          await lumine.packages.activatePackage("language-go");
+          await lumine.packages.activatePackage("language-python");
+          lumine.config.set(
+            "language.decreaseNextIndentPattern",
+            "^\\s*[^\\s()}]+(?<m>[^()]*\\((?:\\g<m>[^()]*|[^()]*)\\))*[^()]*\\)[,]?$",
+            { scopeSelector: ".source.python" },
+          );
           editor.update({ autoIndent: true });
-          lumine.grammars.assignLanguageMode(editor, "source.go");
-          editor.setText('fmt.Printf("some%s",\n	"thing")');
+          lumine.grammars.assignLanguageMode(editor, "source.python");
+          editor.setText('print("some%s",\n  "thing")');
           editor.setCursorBufferPosition([1, 10]);
           editor.insertNewline();
           expect(editor.indentationForBufferRow(1)).toBe(1);
@@ -10704,16 +10709,16 @@ describe("TextEditor", () => {
       });
     });
 
-    describe("less", () => {
+    describe("a commentStart inherited from a less specific scope", () => {
       beforeEach(async () => {
-        await lumine.packages.activatePackage("language-less");
-        await lumine.packages.activatePackage("language-css");
-        editor = await lumine.workspace.open("sample.less");
+        await lumine.packages.activatePackage("language-source");
+        await lumine.packages.activatePackage("language-javascript");
+        editor = await lumine.workspace.open("sample.js");
       });
 
       it("only uses the `commentEnd` pattern if it comes from the same grammar as the `commentStart` when commenting lines", () => {
         editor.toggleLineCommentsForBufferRows(0, 0);
-        expect(editor.lineTextForBufferRow(0)).toBe("// @color: #4D926F;");
+        expect(editor.lineTextForBufferRow(0)).toBe("// var quicksort = function () {");
       });
     });
 
@@ -10780,33 +10785,33 @@ describe("TextEditor", () => {
       });
     });
 
-    describe("coffeescript", () => {
+    describe("python", () => {
       beforeEach(async () => {
-        await lumine.packages.activatePackage("language-coffee-script");
-        editor = await lumine.workspace.open("coffee.coffee");
+        await lumine.packages.activatePackage("language-python");
+        editor = await lumine.workspace.open("python.py");
       });
 
       it("comments/uncomments lines in the given range", () => {
         editor.toggleLineCommentsForBufferRows(4, 6);
-        expect(editor.lineTextForBufferRow(4)).toBe("    # pivot = items.shift()");
+        expect(editor.lineTextForBufferRow(4)).toBe("    # pivot = items.pop(0)");
         expect(editor.lineTextForBufferRow(5)).toBe("    # left = []");
         expect(editor.lineTextForBufferRow(6)).toBe("    # right = []");
 
         editor.toggleLineCommentsForBufferRows(4, 5);
-        expect(editor.lineTextForBufferRow(4)).toBe("    pivot = items.shift()");
+        expect(editor.lineTextForBufferRow(4)).toBe("    pivot = items.pop(0)");
         expect(editor.lineTextForBufferRow(5)).toBe("    left = []");
         expect(editor.lineTextForBufferRow(6)).toBe("    # right = []");
       });
 
       it("comments/uncomments empty lines", () => {
         editor.toggleLineCommentsForBufferRows(4, 7);
-        expect(editor.lineTextForBufferRow(4)).toBe("    # pivot = items.shift()");
+        expect(editor.lineTextForBufferRow(4)).toBe("    # pivot = items.pop(0)");
         expect(editor.lineTextForBufferRow(5)).toBe("    # left = []");
         expect(editor.lineTextForBufferRow(6)).toBe("    # right = []");
         expect(editor.lineTextForBufferRow(7)).toBe("    # ");
 
         editor.toggleLineCommentsForBufferRows(4, 5);
-        expect(editor.lineTextForBufferRow(4)).toBe("    pivot = items.shift()");
+        expect(editor.lineTextForBufferRow(4)).toBe("    pivot = items.pop(0)");
         expect(editor.lineTextForBufferRow(5)).toBe("    left = []");
         expect(editor.lineTextForBufferRow(6)).toBe("    # right = []");
         expect(editor.lineTextForBufferRow(7)).toBe("    # ");

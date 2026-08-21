@@ -31,13 +31,11 @@ const jsRegexGrammarPath = resolve("language-javascript/grammars/tree-sitter-reg
 const jsdocGrammarPath = resolve("language-javascript/grammars/tree-sitter-jsdoc.json");
 const htmlGrammarPath = resolve("language-html/grammars/tree-sitter-html.json");
 const ejsGrammarPath = resolve("language-html/grammars/tree-sitter-ejs.json");
-const rubyGrammarPath = resolve("language-ruby/grammars/tree-sitter-ruby.json");
-const rustGrammarPath = resolve("language-rust/grammars/tree-sitter-rust.json");
 
 let jsConfig = CSON.readFileSync(jsGrammarPath);
 let jsRegexConfig = CSON.readFileSync(jsRegexGrammarPath);
 let cConfig = CSON.readFileSync(cGrammarPath);
-let rubyConfig = CSON.readFileSync(rubyGrammarPath);
+let pythonConfig = CSON.readFileSync(pythonGrammarPath);
 let htmlConfig = CSON.readFileSync(htmlGrammarPath);
 
 function wait(ms) {
@@ -549,20 +547,20 @@ describe("TreeSitterLanguageMode", () => {
 
     it("handles nodes that start before their first child and end after their last child", async () => {
       jasmine.useRealClock();
-      const grammar = new TreeSitterGrammar(lumine.grammars, rubyGrammarPath, rubyConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, pythonGrammarPath, pythonConfig);
 
       await grammar.setQueryForTest(
         "highlightsQuery",
         `
-        (bare_string) @string
+        (string) @string
         (interpolation) @embedded
-        ["#{" "}"] @punctuation
+        ["{" "}"] @punctuation
       `,
       );
 
-      // The bare string node `bc#{d}ef` has one child: the interpolation, and that child
-      // starts later and ends earlier than the bare string.
-      buffer.setText("a = %W( bc#{d}ef )");
+      // The interpolation node `{d}` has one named child, the identifier `d`,
+      // and that child starts later and ends earlier than the interpolation.
+      buffer.setText('a = f"bc{d}ef"');
 
       const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
       buffer.setLanguageMode(languageMode);
@@ -571,13 +569,12 @@ describe("TreeSitterLanguageMode", () => {
 
       expectTokensToEqual(editor, [
         [
-          { text: "a = %W( ", scopes: [] },
-          { text: "bc", scopes: ["string"] },
-          { text: "#{", scopes: ["string", "embedded", "punctuation"] },
+          { text: "a = ", scopes: [] },
+          { text: 'f"bc', scopes: ["string"] },
+          { text: "{", scopes: ["string", "embedded", "punctuation"] },
           { text: "d", scopes: ["string", "embedded"] },
           { text: "}", scopes: ["string", "embedded", "punctuation"] },
-          { text: "ef", scopes: ["string"] },
-          { text: " )", scopes: [] },
+          { text: 'ef"', scopes: ["string"] },
         ],
       ]);
     });
@@ -1577,40 +1574,36 @@ describe("TreeSitterLanguageMode", () => {
       });
 
       it("respects the `includeChildren` property of injection points", async () => {
-        const rustGrammar = new TreeSitterGrammar(
-          lumine.grammars,
-          rustGrammarPath,
-          CSON.readFileSync(rustGrammarPath),
-        );
+        const selfInjectingJsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, {
+          ...jsConfig,
+        });
 
-        for (const nodeType of ["macro_invocation", "macro_rule"]) {
-          lumine.grammars.addInjectionPoint("source.rust", {
-            type: nodeType,
-            language() {
-              return "rust";
-            },
-            content(node) {
-              return node.lastChild;
-            },
-            includeChildren: true,
-            languageScope: null,
-            coverShallowerScopes: true,
-          });
-        }
+        lumine.grammars.addInjectionPoint("source.js", {
+          type: "call_expression",
+          language() {
+            return "javascript";
+          },
+          content(node) {
+            return node.lastChild;
+          },
+          includeChildren: true,
+          languageScope: null,
+          coverShallowerScopes: true,
+        });
 
-        await rustGrammar.setQueryForTest(
+        await selfInjectingJsGrammar.setQueryForTest(
           "highlightsQuery",
           `
-          (macro_invocation
-            macro: (identifier) @macro
+          (call_expression
+            function: (identifier) @macro
             (#set! capture.final true))
 
           (call_expression
-            (field_expression
-              (field_identifier) @function)
+            function: (member_expression
+              property: (property_identifier) @function)
               (#set! capture.final true))
 
-          ((field_identifier) @property
+          ((property_identifier) @property
             (#set! capture.final true))
 
           ((identifier) @variable
@@ -1618,13 +1611,13 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        lumine.grammars.addGrammar(rustGrammar);
+        lumine.grammars.addGrammar(selfInjectingJsGrammar);
 
-        // Macro call within another macro call.
-        buffer.setText("assert_eq!(a.b.c(), vec![d.e()]); f.g();");
+        // Call within another call.
+        buffer.setText("assertEq(a.b.c(), vec(d.e())); f.g();");
 
         const languageMode = new TreeSitterLanguageMode({
-          grammar: rustGrammar,
+          grammar: selfInjectingJsGrammar,
           buffer,
           config: lumine.config,
           grammars: lumine.grammars,
@@ -1633,11 +1626,11 @@ describe("TreeSitterLanguageMode", () => {
         await languageMode.ready;
 
         // There should not be duplicate scopes due to the root layer
-        // and for the injected rust layer.
+        // and for the injected javascript layer.
         expectTokensToEqual(editor, [
           [
-            { text: "assert_eq", scopes: ["macro"] },
-            { text: "!(", scopes: [] },
+            { text: "assertEq", scopes: ["macro"] },
+            { text: "(", scopes: [] },
             { text: "a", scopes: ["variable"] },
             { text: ".", scopes: [] },
             { text: "b", scopes: ["property"] },
@@ -1645,11 +1638,11 @@ describe("TreeSitterLanguageMode", () => {
             { text: "c", scopes: ["function"] },
             { text: "(), ", scopes: [] },
             { text: "vec", scopes: ["macro"] },
-            { text: "![", scopes: [] },
+            { text: "(", scopes: [] },
             { text: "d", scopes: ["variable"] },
             { text: ".", scopes: [] },
             { text: "e", scopes: ["function"] },
-            { text: "()]); ", scopes: [] },
+            { text: "())); ", scopes: [] },
             { text: "f", scopes: ["variable"] },
             { text: ".", scopes: [] },
             { text: "g", scopes: ["function"] },
@@ -2855,36 +2848,34 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     it("can target named vs anonymous nodes as fold boundaries", async () => {
-      const grammar = new TreeSitterGrammar(lumine.grammars, rubyGrammarPath, rubyConfig);
+      const grammar = new TreeSitterGrammar(lumine.grammars, pythonGrammarPath, pythonConfig);
 
       await grammar.setQueryForTest(
         "foldsQuery",
         `
-        ((if
-          alternative: [(elsif) (else)]) @fold
+        ((if_statement
+          alternative: [(elif_clause) (else_clause)]) @fold
           (#set! fold.endAt firstNamedChild.nextNamedSibling.nextNamedSibling.startPosition)
           (#set! fold.offsetEnd -1))
 
-        ((elsif
-          consequence: [(then) (elsif)]) @fold
-          (#set! fold.endAt firstNamedChild.nextNamedSibling.nextNamedSibling.startPosition)
-          (#set! fold.offsetEnd -1))
-
-        ((else) @fold
+        ((elif_clause
+          consequence: (block)) @fold
           (#set! fold.endAt endPosition))
 
-        (if) @fold
+        ((else_clause) @fold
+          (#set! fold.endAt endPosition))
+
+        (if_statement) @fold
       `,
       );
 
       buffer.setText(dedent`
-        if a
+        if a:
           b
-        elsif c
+        elif c:
           d
-        else
+        else:
           e
-        end
       `);
 
       const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
@@ -2892,31 +2883,29 @@ describe("TreeSitterLanguageMode", () => {
       await languageMode.ready;
 
       expect(languageMode.tree.rootNode.toString()).toBe(
-        "(program (if condition: (identifier) consequence: (then " +
+        "(module (if_statement condition: (identifier) consequence: (block " +
           "(identifier)) " +
-          "alternative: (elsif condition: (identifier) consequence: (then " +
-          "(identifier)) " +
-          "alternative: (else " +
+          "alternative: (elif_clause condition: (identifier) consequence: (block " +
+          "(identifier))) " +
+          "alternative: (else_clause body: (block " +
           "(identifier)))))",
       );
 
       editor.foldBufferRow(2);
       expect(getDisplayText(editor)).toBe(dedent`
-        if a
+        if a:
           b
-        elsif c…
-        else
+        elif c:…
+        else:
           e
-        end
       `);
 
       editor.foldBufferRow(4);
       expect(getDisplayText(editor)).toBe(dedent`
-        if a
+        if a:
           b
-        elsif c…
-        else…
-        end
+        elif c:…
+        else:…
       `);
     });
 

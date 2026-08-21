@@ -2,7 +2,7 @@ const path = require("path");
 const fs = require("fs");
 
 const { UI_VARIABLES, UI_VARIABLES_EXTENDED, SYNTAX_VARIABLES } = require("../src/theme-variables");
-const { resolveBundledPackageDir } = require("../src/bundled-packages");
+const { resolveBundledPackageDir, scanBundledPackageNames } = require("../src/bundled-packages");
 
 // The theme variable contract exists in two places that must stay in sync:
 // the manifest in src/theme-variables.js and the CSS custom-property fallbacks
@@ -13,6 +13,26 @@ describe("the theme variable contract", () => {
   // Bundled packages live wherever their pin delivers them, so resolve each
   // one instead of assuming a packages/ checkout.
   const packageDir = (name) => resolveBundledPackageDir(repoRoot, name);
+
+  // Derive both lists from the bundled scan rather than naming packages here.
+  // Which themes and which stylesheets ship is decided by the pins in
+  // package.json, so a hardcoded list silently stops checking anything the
+  // moment a package is unbundled.
+  const bundledPackageNames = scanBundledPackageNames(repoRoot);
+  const isThemePackage = (name) => {
+    const dir = packageDir(name);
+    if (!dir) return false;
+    const manifestPath = path.join(dir, "package.json");
+    if (!fs.existsSync(manifestPath)) return false;
+    return Array.isArray(JSON.parse(fs.readFileSync(manifestPath, "utf8")).themes);
+  };
+  const themeNames = bundledPackageNames.filter(isThemePackage);
+  // Every bundled package that actually ships a stylesheet. Listing names by
+  // hand meant checking nothing when the named package shipped none.
+  const packageStylePaths = bundledPackageNames
+    .map((name) => [name, packageDir(name)])
+    .filter(([, dir]) => dir && fs.existsSync(path.join(dir, "styles", "main.css")))
+    .map(([name]) => `${name}/styles/main.css`);
 
   function cssCustomPropertyNames(fileName) {
     const source = fs.readFileSync(path.join(variablesDir, fileName), "utf8");
@@ -56,7 +76,6 @@ describe("the theme variable contract", () => {
   });
 
   it("keeps package selectors out of bundled themes", () => {
-    const themeNames = ["one-theme", "aura-theme", "nova-theme", "vscode-theme"];
     const removedOverrideFiles = [
       "styles/ui/09-messages.css",
       "styles/ui/23-settings.css",
@@ -112,11 +131,6 @@ describe("the theme variable contract", () => {
       path.join(__dirname, "..", "static", "lumine-ui", "styles", "modals.css"),
       "utf8",
     );
-    // Only packages that actually ship a stylesheet. fuzzy-files and
-    // command-palette were listed here and ship none, so they were checking
-    // nothing.
-    const packageStylePaths = ["symbol/styles/main.css", "autocomplete/styles/main.css"];
-    const themeNames = ["one-theme", "aura-theme", "nova-theme", "vscode-theme"];
     const redundantThemeFragments = [
       ".select-list .character-match",
       "--popover-list-padding",

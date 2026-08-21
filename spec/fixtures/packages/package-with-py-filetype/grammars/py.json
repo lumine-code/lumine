@@ -1,11 +1,11 @@
 {
-  "name": "Test Ruby",
+  "name": "Test Python",
   "type": "tree-sitter",
-  "scopeName": "test.rb",
-  "parser": "tree-sitter-ruby",
-  "firstLineRegex": "^\\#!.*(?:\\s|\\/)(?:testruby)(?:$|\\s)",
+  "scopeName": "test.py",
+  "parser": "tree-sitter-python",
+  "firstLineRegex": "^\\#!.*(?:\\s|\\/)(?:testpython)(?:$|\\s)",
   "fileTypes": [
-    "rb"
+    "py"
   ],
   "treeSitter": {
     "highlightsQuery": "./tree-sitter-empty.scm",
