@@ -78,36 +78,40 @@
    --------------------------------------------------
    (.button-variant() inlined for each modifier below) */
 
+/* Primary is the accent button — the one action a surface wants clicked. It is
+   painted from `--accent-bg-color` rather than the info colour so that a theme
+   setting an accent moves this button with it; the base value of that variable
+   is the info colour, so a theme that sets neither is unchanged. */
 .btn-primary {
-  color: #fff; /* @btn-primary-color */
-  background-color: var(--background-color-info); /* @btn-primary-bg */
+  color: var(--accent-bg-text-color);
+  background-color: var(--accent-bg-color);
 
   &:focus,
   &.focus {
-    color: #fff;
-    background-color: hsl(from var(--background-color-info) h s calc(l - 10));
+    color: var(--accent-bg-text-color);
+    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
   }
   &:hover {
-    color: #fff;
-    background-color: hsl(from var(--background-color-info) h s calc(l - 10));
+    color: var(--accent-bg-text-color);
+    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
   }
   &:active,
   &.active {
-    color: #fff;
-    background-color: hsl(from var(--background-color-info) h s calc(l - 10));
+    color: var(--accent-bg-text-color);
+    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
 
     &:hover,
     &:focus,
     &.focus {
-      color: #fff;
-      background-color: hsl(from var(--background-color-info) h s calc(l - 17));
+      color: var(--accent-bg-text-color);
+      background-color: hsl(from var(--accent-bg-color) h s calc(l - 17));
     }
   }
   &.selected,
   &.selected:hover {
     /* we want the selected button to behave like the :hover button; it's on top of the other buttons. */
     z-index: 1;
-    background-color: hsl(from var(--background-color-info) h s calc(l - 10));
+    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
   }
 
   &.disabled,
@@ -116,13 +120,13 @@
     &:hover,
     &:focus,
     &.focus {
-      background-color: var(--background-color-info);
+      background-color: var(--accent-bg-color);
     }
   }
 
   .badge {
-    color: var(--background-color-info);
-    background-color: #fff;
+    color: var(--accent-bg-color);
+    background-color: var(--accent-bg-text-color);
   }
 }
 
