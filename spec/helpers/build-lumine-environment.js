@@ -4,8 +4,8 @@ const path = require("path");
 
 const userHome = process.env.LUMINE_HOME || path.join(fs.getHomeDirectory(), ".lumine");
 const lumineHome = temp.mkdirSync({ prefix: "lumine-test-home-" });
-if (process.env.APM_TEST_PACKAGES) {
-  const testPackages = process.env.APM_TEST_PACKAGES.split(/\s+/);
+if (process.env.LUMINE_TEST_PACKAGES) {
+  const testPackages = process.env.LUMINE_TEST_PACKAGES.split(/\s+/);
   fs.makeTreeSync(path.join(lumineHome, "packages"));
   for (let packName of Array.from(testPackages)) {
     const userPack = path.join(userHome, "packages", packName);
