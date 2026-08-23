@@ -4055,9 +4055,7 @@ module.exports = class TextEditor {
     if (!bufferRanges.length) throw new Error("Passed an empty array to setSelectedBufferRanges");
 
     const selections = this.getSelections();
-    for (let selection of selections.slice(bufferRanges.length)) {
-      selection.destroy();
-    }
+    this.destroySelections(selections.slice(bufferRanges.length));
 
     this.mergeIntersectingSelections(options, () => {
       for (let i = 0; i < bufferRanges.length; i++) {
@@ -4132,9 +4130,7 @@ module.exports = class TextEditor {
     if (!screenRanges.length) throw new Error("Passed an empty array to setSelectedScreenRanges");
 
     const selections = this.getSelections();
-    for (let selection of selections.slice(screenRanges.length)) {
-      selection.destroy();
-    }
+    this.destroySelections(selections.slice(screenRanges.length));
 
     this.mergeIntersectingSelections(options, () => {
       for (let i = 0; i < screenRanges.length; i++) {
@@ -4857,9 +4853,7 @@ module.exports = class TextEditor {
     const selections = this.getSelections();
     if (selections.length > 1) {
       const lastSelection = selections.pop();
-      for (let selection of selections) {
-        selection.destroy();
-      }
+      this.destroySelections(selections);
       lastSelection.autoscroll({ center: false });
       return true;
     } else {

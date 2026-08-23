@@ -2754,6 +2754,39 @@ describe("TextEditor", () => {
     });
 
     describe(".setSelectedBufferRanges(ranges)", () => {
+      it("accounts for every selection it discards", () => {
+        editor.setSelectedBufferRanges([
+          [
+            [2, 2],
+            [2, 4],
+          ],
+          [
+            [3, 2],
+            [3, 4],
+          ],
+          [
+            [4, 2],
+            [4, 4],
+          ],
+          [
+            [5, 2],
+            [5, 4],
+          ],
+        ]);
+        const discarded = editor.getSelections().slice(1);
+        const { removedSelections, removedCursors } = recordBulkRemovals();
+
+        editor.setSelectedBufferRanges([
+          [
+            [1, 1],
+            [1, 3],
+          ],
+        ]);
+
+        expect(removedSelections).toEqual(discarded);
+        expect(removedCursors).toEqual(discarded.map((each) => each.cursor));
+      });
+
       it("clears existing selections and creates selections for each of the given ranges", () => {
         editor.setSelectedBufferRanges([
           [
@@ -2917,6 +2950,35 @@ describe("TextEditor", () => {
     });
 
     describe(".setSelectedScreenRanges(ranges)", () => {
+      it("accounts for every selection it discards", () => {
+        editor.setSelectedScreenRanges([
+          [
+            [2, 2],
+            [2, 4],
+          ],
+          [
+            [3, 2],
+            [3, 4],
+          ],
+          [
+            [4, 2],
+            [4, 4],
+          ],
+        ]);
+        const discarded = editor.getSelections().slice(1);
+        const { removedSelections, removedCursors } = recordBulkRemovals();
+
+        editor.setSelectedScreenRanges([
+          [
+            [1, 1],
+            [1, 3],
+          ],
+        ]);
+
+        expect(removedSelections).toEqual(discarded);
+        expect(removedCursors).toEqual(discarded.map((each) => each.cursor));
+      });
+
       beforeEach(() => editor.foldBufferRow(4));
 
       it("clears existing selections and creates selections for each of the given ranges", () => {
@@ -3619,6 +3681,16 @@ describe("TextEditor", () => {
       });
     });
 
+    // Shared by the specs that pin the three bulk discards: each drops a run of
+    // selections at once, and each must still account for every one.
+    const recordBulkRemovals = () => {
+      const removedSelections = [];
+      const removedCursors = [];
+      editor.onDidRemoveSelection((each) => removedSelections.push(each));
+      editor.onDidRemoveCursor((each) => removedCursors.push(each));
+      return { removedSelections, removedCursors };
+    };
+
     describe(".destroySelections(selections)", () => {
       // None of these attaches a component, so the harness's synchronous-update
       // setting does not reach them. Anything added here that counts renders
@@ -3765,6 +3837,30 @@ describe("TextEditor", () => {
     });
 
     describe("::consolidateSelections()", () => {
+      it("accounts for every selection it discards", () => {
+        editor.setSelectedBufferRanges([
+          [
+            [2, 2],
+            [2, 4],
+          ],
+          [
+            [3, 2],
+            [3, 4],
+          ],
+          [
+            [4, 2],
+            [4, 4],
+          ],
+        ]);
+        const discarded = editor.getSelections().slice(0, -1);
+        const { removedSelections, removedCursors } = recordBulkRemovals();
+
+        expect(editor.consolidateSelections()).toBe(true);
+
+        expect(removedSelections).toEqual(discarded);
+        expect(removedCursors).toEqual(discarded.map((each) => each.cursor));
+      });
+
       const makeMultipleSelections = () => {
         selection.setBufferRange([
           [3, 16],
