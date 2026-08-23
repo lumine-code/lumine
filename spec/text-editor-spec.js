@@ -3691,6 +3691,37 @@ describe("TextEditor", () => {
       return { removedSelections, removedCursors };
     };
 
+    describe("::mergeIntersectingSelections(fn)", () => {
+      it("restores merging when the suppressed callback throws", () => {
+        expect(() => {
+          editor.mergeIntersectingSelections(() => {
+            throw new Error("from the callback");
+          });
+        }).toThrow();
+
+        expect(editor.suppressSelectionMerging).toBe(false);
+
+        // And merging still works afterwards rather than being dead for the
+        // rest of this editor's life.
+        editor.setSelectedBufferRanges([
+          [
+            [1, 2],
+            [1, 6],
+          ],
+          [
+            [1, 4],
+            [1, 8],
+          ],
+        ]);
+        expect(editor.getSelectedBufferRanges()).toEqual([
+          [
+            [1, 2],
+            [1, 8],
+          ],
+        ]);
+      });
+    });
+
     describe(".destroySelections(selections)", () => {
       // None of these attaches a component, so the harness's synchronous-update
       // setting does not reach them. Anything added here that counts renders

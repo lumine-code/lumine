@@ -4788,9 +4788,16 @@ module.exports = class TextEditor {
 
     if (this.suppressSelectionMerging) return fn();
 
+    // Restored on the way out however the callback leaves: a throw used to
+    // strand the flag set, which silently disables merging for the rest of this
+    // editor's life rather than failing where the fault is.
     this.suppressSelectionMerging = true;
-    const result = fn();
-    this.suppressSelectionMerging = false;
+    let result;
+    try {
+      result = fn();
+    } finally {
+      this.suppressSelectionMerging = false;
+    }
 
     const selections = this.getSelectionsOrderedByBufferPosition();
     let lastSelection = selections.shift();
