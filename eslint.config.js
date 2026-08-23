@@ -1,6 +1,5 @@
 const js = require("@eslint/js");
 const n = require("eslint-plugin-n");
-const jsdoc = require("eslint-plugin-jsdoc");
 const globals = require("globals");
 const prettier = require("eslint-config-prettier");
 const jsx = require("./eslint-jsx");
@@ -33,7 +32,7 @@ module.exports = [
     // Flat config only lints .js/.mjs/.cjs by default; .jsx must be named
     // explicitly or renamed files silently drop out of `eslint .`.
     files: ["**/*.js", "**/*.mjs", "**/*.cjs", "**/*.jsx"],
-    plugins: { jsdoc, jsx },
+    plugins: { jsx },
     settings: {
       // This is an Electron app bundling its own Node 24 runtime, so lint
       // syntax/builtins support against that — not each package's stale engines.

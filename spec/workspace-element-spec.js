@@ -557,7 +557,7 @@ describe("WorkspaceElement", () => {
 
   describe("mousing over docks", () => {
     let workspaceElement;
-    let originalTimeout = jasmine.getEnv().defaultTimeoutInterval;
+    let originalTimeout = jasmine.DEFAULT_TIMEOUT_INTERVAL;
 
     beforeEach(() => {
       workspaceElement = lumine.workspace.getElement();
@@ -573,11 +573,11 @@ describe("WorkspaceElement", () => {
         workspaceElement.handleCenterLeave,
       );
 
-      jasmine.getEnv().defaultTimeoutInterval = 10000;
+      jasmine.DEFAULT_TIMEOUT_INTERVAL = 10000;
     });
 
     afterEach(() => {
-      jasmine.getEnv().defaultTimeoutInterval = originalTimeout;
+      jasmine.DEFAULT_TIMEOUT_INTERVAL = originalTimeout;
 
       window.addEventListener("mousemove", workspaceElement.handleEdgesMouseMove);
       workspaceElement.htmlElement.addEventListener(

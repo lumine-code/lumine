@@ -71,8 +71,6 @@ module.exports = function ({ logFile, headless, testPaths, buildLumineEnvironmen
 };
 
 const defineJasmineHelpersOnWindow = (jasmineEnv) => {
-  installLegacyTimeoutCompatibility(jasmineEnv);
-
   for (let key in jasmineEnv) {
     window[key] = jasmineEnv[key];
   }
@@ -133,23 +131,6 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
   });
 };
 
-const installLegacyTimeoutCompatibility = (jasmineEnv) => {
-  const descriptor = Object.getOwnPropertyDescriptor(jasmineEnv, "defaultTimeoutInterval");
-  if (descriptor?.get != null && descriptor?.set != null) {
-    return;
-  }
-
-  Object.defineProperty(jasmineEnv, "defaultTimeoutInterval", {
-    configurable: true,
-    get() {
-      return jasmine.DEFAULT_TIMEOUT_INTERVAL;
-    },
-    set(value) {
-      jasmine.DEFAULT_TIMEOUT_INTERVAL = value;
-    },
-  });
-};
-
 // `jasmine-spies.js` and `jasmine-time.js` both spy on globals in a `beforeEach`,
 // so a spec that spies the same method again would otherwise be told it has
 // "already been spied upon". Hand back the existing spy instead.
@@ -172,12 +153,7 @@ const isSpy = (value) =>
   (typeof value === "function" && value.and != null && value.calls != null);
 
 const configureJasmineEnv = (config) => {
-  const jasmineEnv = jasmine.getEnv();
-  if (typeof jasmineEnv.configure === "function") {
-    jasmineEnv.configure(config);
-  } else {
-    Object.assign(jasmineEnv, config);
-  }
+  jasmine.getEnv().configure(config);
 };
 
 // Jasmine reports the skipped groups as pending, but only as a count buried in

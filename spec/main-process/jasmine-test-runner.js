@@ -11,7 +11,7 @@ const DEFAULT_TIMEOUT = 30 * 1000;
 //
 // The renderer has its own runner under `spec/runners/`; this one is far
 // simpler because there is no editor environment to build, only Node.
-module.exports = function (testPaths) {
+module.exports = async function (testPaths) {
   global.assert = assert;
 
   const specFiles = [];
@@ -31,7 +31,9 @@ module.exports = function (testPaths) {
   // Resolve the exit code here rather than letting jasmine call `process.exit`,
   // so the reporter's output is flushed first.
   runner.exitOnCompletion = false;
-  runner.loadConfig({
+  // `loadConfig` is async from jasmine 7, and `execute` must not start before
+  // it has settled or the run uses the defaults instead of this config.
+  await runner.loadConfig({
     // Jasmine matches `spec_files` as globs, and a Windows path full of
     // backslashes matches nothing.
     spec_files: specFiles.map((specFile) => specFile.split(path.sep).join("/")),
@@ -42,13 +44,11 @@ module.exports = function (testPaths) {
   });
   runner.jasmine.DEFAULT_TIMEOUT_INTERVAL = DEFAULT_TIMEOUT;
 
-  runner
-    .execute()
-    .then((result) => {
-      process.exit(result.overallStatus === "passed" ? 0 : 1);
-    })
-    .catch((error) => {
-      console.error(error);
-      process.exit(1);
-    });
+  try {
+    const result = await runner.execute();
+    process.exit(result.overallStatus === "passed" ? 0 : 1);
+  } catch (error) {
+    console.error(error);
+    process.exit(1);
+  }
 };

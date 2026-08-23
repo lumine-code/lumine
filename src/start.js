@@ -149,7 +149,13 @@ module.exports = function start(resourcePath, devResourcePath, startTime) {
       const testRunner = require(
         path.join(args.resourcePath, "spec/main-process/jasmine-test-runner"),
       );
-      testRunner(args.pathsToOpen);
+      // The runner is async now that jasmine's loadConfig is, and it exits the
+      // process itself once the suite reports. Anything that throws before it
+      // gets that far would otherwise be an unhandled rejection with no output.
+      testRunner(args.pathsToOpen).catch((error) => {
+        console.error(error);
+        process.exit(1);
+      });
     });
     return;
   }
