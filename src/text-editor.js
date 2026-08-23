@@ -3970,14 +3970,18 @@ module.exports = class TextEditor {
   // Merge cursors that have the same screen position
   mergeCursors() {
     const positions = {};
+    const doomed = [];
     for (let cursor of this.getCursors()) {
       const position = cursor.getBufferPosition().toString();
       if (Object.hasOwn(positions, position)) {
-        cursor.destroy();
+        // A cursor and its selection share one marker, so destroying either
+        // destroys both; the selection is the handle the batch takes.
+        doomed.push(cursor.selection);
       } else {
         positions[position] = true;
       }
     }
+    this.destroySelections(doomed);
   }
 
   /**
