@@ -1,5 +1,6 @@
 const { conditionPromise } = require("./helpers/async-spec-helpers");
 
+const _ = require("@lumine-code/underscore-plus");
 const { CompositeDisposable } = require("lumine");
 const fs = require("fs");
 const path = require("path");
@@ -3615,6 +3616,151 @@ describe("TextEditor", () => {
             [0, 3],
           ],
         ]);
+      });
+    });
+
+    describe(".destroySelections(selections)", () => {
+      // None of these attaches a component, so the harness's synchronous-update
+      // setting does not reach them. Anything added here that counts renders
+      // would be measuring the harness rather than the editor.
+      const addSelections = (count) => {
+        const selections = [editor.getLastSelection()];
+        selections[0].setBufferRange([
+          [0, 0],
+          [0, 1],
+        ]);
+        for (let row = 1; row < count; row++) {
+          selections.push(
+            editor.addSelectionForBufferRange([
+              [row, 0],
+              [row, 1],
+            ]),
+          );
+        }
+        expect(editor.getSelections()).toEqual(selections);
+        return selections;
+      };
+
+      const recordRemovals = () => {
+        const events = [];
+        editor.onDidRemoveCursor((cursor) => events.push(["cursor", cursor.selection]));
+        editor.onDidRemoveSelection((selection) => events.push(["selection", selection]));
+        return events;
+      };
+
+      it("emits one cursor and one selection event per removal, in order", () => {
+        const selections = addSelections(4);
+        const events = recordRemovals();
+
+        editor.destroySelections([selections[1], selections[2]]);
+
+        expect(events).toEqual([
+          ["cursor", selections[1]],
+          ["selection", selections[1]],
+          ["cursor", selections[2]],
+          ["selection", selections[2]],
+        ]);
+        expect(editor.getSelections()).toEqual([selections[0], selections[3]]);
+      });
+
+      it("compacts the lists in place rather than replacing them", () => {
+        const selections = addSelections(4);
+        // Packages cache these arrays and go on indexing them.
+        const selectionList = editor.selections;
+        const cursorList = editor.cursors;
+
+        editor.destroySelections([selections[1], selections[2]]);
+
+        expect(editor.selections).toBe(selectionList);
+        expect(editor.cursors).toBe(cursorList);
+        expect(selectionList).toEqual([selections[0], selections[3]]);
+        expect(cursorList).toEqual([selections[0].cursor, selections[3].cursor]);
+      });
+
+      it("shows only live survivors to a removal subscriber", () => {
+        const selections = addSelections(5);
+        const survivors = [selections[0], selections[4]];
+        const seen = [];
+        const capture = () => {
+          seen.push({
+            selections: editor.selections.slice(),
+            cursors: editor.cursors.slice(),
+            fromGetter: editor.getSelections(),
+          });
+        };
+        editor.onDidRemoveCursor(capture);
+        editor.onDidRemoveSelection(capture);
+
+        editor.destroySelections([selections[1], selections[2], selections[3]]);
+
+        expect(seen.length).toBe(6);
+        for (const snapshot of seen) {
+          expect(snapshot.selections).toEqual(survivors);
+          expect(snapshot.cursors).toEqual(survivors.map((each) => each.cursor));
+          expect(snapshot.fromGetter).toEqual(survivors);
+          for (const selection of snapshot.selections) {
+            expect(selection.destroyed).toBeFalsy();
+            expect(selection.marker.isDestroyed()).toBe(false);
+          }
+        }
+      });
+
+      it("leaves a lone removal to the ordinary path", () => {
+        const selections = addSelections(3);
+        const events = recordRemovals();
+
+        editor.destroySelections([selections[1]]);
+
+        expect(events).toEqual([
+          ["cursor", selections[1]],
+          ["selection", selections[1]],
+        ]);
+        expect(editor.getSelections()).toEqual([selections[0], selections[2]]);
+      });
+
+      it("still removes a selection destroyed from inside a removal event", () => {
+        const selections = addSelections(5);
+        let once = false;
+        editor.onDidRemoveSelection(() => {
+          if (once) return;
+          once = true;
+          selections[0].destroy();
+        });
+
+        editor.destroySelections([selections[1], selections[2], selections[3]]);
+
+        expect(editor.getSelections()).toEqual([selections[4]]);
+        expect(editor.selections).toEqual([selections[4]]);
+      });
+
+      it("ignores selections that are already destroyed", () => {
+        const selections = addSelections(4);
+        selections[1].destroy();
+        const events = recordRemovals();
+
+        editor.destroySelections([selections[1], selections[2], selections[3]]);
+
+        expect(events).toEqual([
+          ["cursor", selections[2]],
+          ["selection", selections[2]],
+          ["cursor", selections[3]],
+          ["selection", selections[3]],
+        ]);
+        expect(editor.getSelections()).toEqual([selections[0]]);
+      });
+
+      it("rescans the lists once for the batch and once per lone removal", () => {
+        // The discriminator between the linear and the quadratic shape, with no
+        // clock in it: `_.remove` is the indexOf-and-splice pair, and a batch
+        // must not reach it at all.
+        const selections = addSelections(4);
+        const removes = spyOn(_, "remove").and.callThrough();
+
+        editor.destroySelections([selections[1], selections[2]]);
+        expect(removes.calls.count()).toBe(0);
+
+        selections[3].destroy();
+        expect(removes.calls.count()).toBe(2);
       });
     });
 

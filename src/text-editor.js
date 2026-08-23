@@ -227,6 +227,7 @@ module.exports = class TextEditor {
     this.cursors = [];
     this.cursorsByMarkerId = new Map();
     this.selections = [];
+    this.batchedSelectionRemovals = null;
     this.hasTerminatedPendingState = false;
 
     if (params.buffer) {
@@ -4649,6 +4650,63 @@ module.exports = class TextEditor {
     return this.getSelections().some((selection) => selection.intersectsBufferRange(bufferRange));
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Destroy the given {@link Selection Selections} as one batch.
+   *
+   * Emits `did-remove-cursor` and `did-remove-selection` once per selection, in
+   * the order given, exactly as destroying each one in turn would. What changes
+   * is the bookkeeping: the selection and cursor lists are compacted once for
+   * the whole batch rather than rescanned and spliced once per selection, which
+   * is what makes discarding thousands of selections linear rather than
+   * quadratic.
+   *
+   * Selections that are already destroyed are ignored.
+   *
+   * @param selections - An `Array` of {@link Selection Selections}.
+   */
+  destroySelections(selections) {
+    // One selection is the overwhelmingly common case and the prologue would be
+    // pure overhead. A destroyed editor never reaches `removeSelection` at all,
+    // so its lists must not be compacted behind its back, and a nested call is
+    // already covered by the batch that is running.
+    if (selections.length < 2 || this.isDestroyed() || this.batchedSelectionRemovals) {
+      for (const selection of selections) selection.destroy();
+      return;
+    }
+
+    const doomed = [];
+    const doomedSelections = new Set();
+    const doomedCursors = new Set();
+    for (const selection of selections) {
+      if (selection.destroyed || doomedSelections.has(selection)) continue;
+      doomed.push(selection);
+      doomedSelections.add(selection);
+      doomedCursors.add(selection.cursor);
+      this.cursorsByMarkerId.delete(selection.cursor.marker.id);
+    }
+    if (doomed.length === 0) return;
+
+    // Compacted before the first marker is destroyed, so that every callback
+    // the destruction fires sees the lists it would have seen after the last
+    // individual removal: survivors only, and every one of them still alive.
+    // Packages do read these lists from inside a removal handler and go on to
+    // decorate what they find there, and a destroyed marker cannot be
+    // decorated. `doomed` is a separate array because compacting empties the
+    // caller's when it passed the live list itself.
+    compactInPlace(this.cursors, doomedCursors);
+    compactInPlace(this.selections, doomedSelections);
+
+    this.batchedSelectionRemovals = doomedSelections;
+    try {
+      for (const selection of doomed) selection.destroy();
+    } finally {
+      this.batchedSelectionRemovals = null;
+    }
+  }
+
   // Selections Private
 
   // Add a similarly-shaped selection to the next eligible line below
@@ -4773,9 +4831,16 @@ module.exports = class TextEditor {
 
   // Remove the given selection.
   removeSelection(selection) {
-    _.remove(this.cursors, selection.cursor);
-    _.remove(this.selections, selection);
-    this.cursorsByMarkerId.delete(selection.cursor.marker.id);
+    // Inside a `destroySelections` batch this selection and its cursor were
+    // taken out of both lists up front along with the rest of the batch, and
+    // only the events are still owed. The membership test rather than a bare
+    // flag is what lets a selection destroyed re-entrantly from one of those
+    // events still remove itself the ordinary way.
+    if (!this.batchedSelectionRemovals || !this.batchedSelectionRemovals.delete(selection)) {
+      _.remove(this.cursors, selection.cursor);
+      _.remove(this.selections, selection);
+      this.cursorsByMarkerId.delete(selection.cursor.marker.id);
+    }
     this.emitter.emit("did-remove-cursor", selection.cursor);
     return this.emitter.emit("did-remove-selection", selection);
   }
@@ -6881,6 +6946,19 @@ module.exports = class TextEditor {
     );
   }
 };
+
+// Drops the `doomed` members from `array` in place, keeping the survivors in
+// order. In place is the requirement rather than the optimization: packages
+// read `selections` and `cursors` directly and keep the array they were handed,
+// so these two may be emptied and refilled but never replaced.
+function compactInPlace(array, doomed) {
+  let write = 0;
+  for (let read = 0; read < array.length; read++) {
+    const element = array[read];
+    if (!doomed.has(element)) array[write++] = element;
+  }
+  array.length = write;
+}
 
 function columnForIndentLevel(line, indentLevel, tabLength) {
   let column = 0;
