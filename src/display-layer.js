@@ -775,6 +775,86 @@ class DisplayLayer {
     return bufferRows;
   }
 
+  // Translates the same pair of screen columns across every row from startRow
+  // through endRow (inclusive), exactly as translateScreenPosition would with
+  // default options, but with one spatial-index query for the whole span
+  // instead of two per row. Returns one entry per row: {bufferRange,
+  // screenColumn}, where screenColumn is the screen column an empty range's
+  // position round-trips to -- what tells a row whose text ends before the
+  // block apart from a row the block genuinely intersects -- and null for
+  // non-empty ranges.
+  //
+  // Rows a hunk touches (folds, soft wraps), rows containing hard tabs, rows
+  // outside the screen line range, and the block's own first row take the
+  // exact per-position methods, so their results cannot drift from
+  // translateScreenPosition and translateBufferPosition. The first row is on
+  // that list because the span query excludes a hunk ending exactly at its
+  // start -- a soft wrap continuing with zero indent -- which still offsets
+  // that one row's columns. Every other row is an identity mapping apart from
+  // a row offset, the clip to the screen line length, and the column clipping
+  // getClipColumnDelta applies on the slow path. A column that clips to the
+  // end of its line needs no clip delta at all: the character there is a line
+  // terminator or the buffer's end, which is never the second element of an
+  // atomic pair and never a space, so both of its branches return zero.
+  translateScreenColumnBlock(startRow, endRow, startColumn, endColumn) {
+    this.populateSpatialIndexIfNeeded(this.buffer.getLineCount(), endRow + 1);
+    const maxRow = this.screenLineLengths.length - 1;
+    const hunks = this.spatialIndex.getChangesInNewRange(Point(startRow, 0), Point(endRow + 1, 0));
+
+    const results = [];
+    let hunkIndex = 0;
+    // The buffer row of the block's first screen row, correct even when that
+    // row continues a wrapped line; clean rows advance from here in lockstep
+    // until a hunk moves the base.
+    let baseScreenRow = startRow;
+    let baseBufferRow =
+      startRow >= 0 && startRow <= maxRow
+        ? this.translateScreenPositionWithSpatialIndex(Point(startRow, 0)).row
+        : 0;
+
+    for (let row = startRow; row <= endRow; row++) {
+      while (hunkIndex < hunks.length && hunks[hunkIndex].newEnd.row < row) {
+        const passed = hunks[hunkIndex++];
+        baseScreenRow = passed.newEnd.row;
+        baseBufferRow = passed.oldEnd.row;
+      }
+      const hunk = hunkIndex < hunks.length ? hunks[hunkIndex] : null;
+      const rowTouchesHunk = hunk !== null && hunk.newStart.row <= row;
+
+      if (
+        row === startRow ||
+        row < 0 ||
+        row > maxRow ||
+        rowTouchesHunk ||
+        this.tabCounts[row] > 0
+      ) {
+        const bufferRange = Range(
+          this.translateScreenPosition(Point(row, startColumn)),
+          this.translateScreenPosition(Point(row, endColumn)),
+        );
+        const screenColumn = bufferRange.isEmpty()
+          ? this.translateBufferPosition(bufferRange.start).column
+          : null;
+        results.push({ bufferRange, screenColumn });
+        continue;
+      }
+
+      const bufferRow = baseBufferRow + (row - baseScreenRow);
+      const lineLength = this.screenLineLengths[row];
+      let column1 = startColumn < 0 ? 0 : Math.min(startColumn, lineLength);
+      let column2 = endColumn < 0 ? 0 : Math.min(endColumn, lineLength);
+      if (column1 < lineLength) {
+        column1 += this.getClipColumnDelta(Point(bufferRow, column1), "closest");
+      }
+      if (column2 < lineLength) {
+        column2 += this.getClipColumnDelta(Point(bufferRow, column2), "closest");
+      }
+      const bufferRange = Range(Point(bufferRow, column1), Point(bufferRow, column2));
+      results.push({ bufferRange, screenColumn: column1 === column2 ? column1 : null });
+    }
+    return results;
+  }
+
   findTrailingWhitespaceStartColumn(bufferRow) {
     let position;
     for (

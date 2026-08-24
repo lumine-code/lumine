@@ -2721,6 +2721,131 @@ describe("DisplayLayer", () => {
     });
   });
 
+  describe(".translateScreenColumnBlock(startRow, endRow, startColumn, endColumn)", () => {
+    // The contract: per row, exactly what the per-position methods say. Every
+    // spec here compares against this reference, so the fast path can never
+    // drift from translateScreenPosition and translateBufferPosition.
+    function referenceBlock(displayLayer, startRow, endRow, startColumn, endColumn) {
+      const entries = [];
+      for (let row = startRow; row <= endRow; row++) {
+        const bufferRange = Range(
+          displayLayer.translateScreenPosition(Point(row, startColumn)),
+          displayLayer.translateScreenPosition(Point(row, endColumn)),
+        );
+        entries.push({
+          bufferRange,
+          screenColumn: bufferRange.isEmpty()
+            ? displayLayer.translateBufferPosition(bufferRange.start).column
+            : null,
+        });
+      }
+      return entries;
+    }
+
+    function expectBlockMatchesReference(displayLayer, startRow, endRow, startColumn, endColumn) {
+      expect(
+        displayLayer.translateScreenColumnBlock(startRow, endRow, startColumn, endColumn),
+      ).toEqual(
+        referenceBlock(displayLayer, startRow, endRow, startColumn, endColumn),
+        `block [${startRow}..${endRow}] x [${startColumn}, ${endColumn}]`,
+      );
+    }
+
+    it("reports a range per row, and the clip column for the empty ones", () => {
+      const buffer = new TextBuffer({ text: "0123456789\n01\n\n0123456789\n" });
+      const displayLayer = buffer.addDisplayLayer({});
+
+      expect(displayLayer.translateScreenColumnBlock(0, 4, 2, 6)).toEqual([
+        { bufferRange: Range(Point(0, 2), Point(0, 6)), screenColumn: null },
+        { bufferRange: Range(Point(1, 2), Point(1, 2)), screenColumn: 2 },
+        { bufferRange: Range(Point(2, 0), Point(2, 0)), screenColumn: 0 },
+        { bufferRange: Range(Point(3, 2), Point(3, 6)), screenColumn: null },
+        { bufferRange: Range(Point(4, 0), Point(4, 0)), screenColumn: 0 },
+      ]);
+    });
+
+    it("translates the columns in the order given", () => {
+      const buffer = new TextBuffer({ text: "0123456789\n01\n0123456789\n" });
+      const displayLayer = buffer.addDisplayLayer({});
+      expectBlockMatchesReference(displayLayer, 0, 3, 6, 2);
+    });
+
+    it("matches the per-position path on rows with hard tabs", () => {
+      const buffer = new TextBuffer({ text: "0123456789\n\tab\tcd\n01\n\t\t\n0123456789" });
+      const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });
+      for (const [c1, c2] of [
+        [2, 6],
+        [0, 9],
+        [3, 12],
+        [5, 1],
+      ]) {
+        expectBlockMatchesReference(displayLayer, 0, 4, c1, c2);
+      }
+    });
+
+    it("matches the per-position path across folds", () => {
+      const buffer = new TextBuffer({ text: "abcde\nfghij\nklmno\npqrst\nuvwxyz" });
+      const displayLayer = buffer.addDisplayLayer({});
+      displayLayer.foldBufferRange(Range(Point(0, 1), Point(1, 1)));
+      displayLayer.foldBufferRange(Range(Point(2, 2), Point(3, 2)));
+
+      for (const [c1, c2] of [
+        [0, 4],
+        [2, 8],
+        [7, 3],
+      ]) {
+        expectBlockMatchesReference(displayLayer, 0, displayLayer.getScreenLineCount() - 1, c1, c2);
+      }
+    });
+
+    it("matches the per-position path across soft wraps", () => {
+      const buffer = new TextBuffer({
+        text: "abcdefghijklmnop\n  qrstuvwxyzabcdef\nghij\nklmnopqrstuvwxyz",
+      });
+      const displayLayer = buffer.addDisplayLayer({ softWrapColumn: 8 });
+
+      for (const [c1, c2] of [
+        [2, 6],
+        [0, 10],
+        [7, 1],
+      ]) {
+        expectBlockMatchesReference(displayLayer, 0, displayLayer.getScreenLineCount() - 1, c1, c2);
+      }
+    });
+
+    it("stays exact when the block starts on a zero-indent wrap continuation", () => {
+      // The wrap hunk ends exactly at [1, 0], which the span query excludes:
+      // the one row whose columns it still offsets is the block's first, and
+      // that row deliberately takes the per-position path.
+      const buffer = new TextBuffer({ text: "abcdefghijklmnop\nqrstu" });
+      const displayLayer = buffer.addDisplayLayer({ softWrapColumn: 8 });
+      expect(displayLayer.getScreenLineCount()).toBeGreaterThan(2);
+
+      expectBlockMatchesReference(displayLayer, 1, 2, 2, 6);
+    });
+
+    it("matches the per-position path on paired characters and atomic soft tabs", () => {
+      const buffer = new TextBuffer({ text: "ab\uD83D\uDE00cd\n        x\n012345" });
+      for (const atomicSoftTabs of [true, false]) {
+        const displayLayer = buffer.addDisplayLayer({ tabLength: 4, atomicSoftTabs });
+        for (const [c1, c2] of [
+          [3, 5],
+          [1, 3],
+          [2, 6],
+          [6, 2],
+        ]) {
+          expectBlockMatchesReference(displayLayer, 0, 2, c1, c2);
+        }
+      }
+    });
+
+    it("clips rows past the end of the buffer", () => {
+      const buffer = new TextBuffer({ text: "0123456789\n01" });
+      const displayLayer = buffer.addDisplayLayer({});
+      expectBlockMatchesReference(displayLayer, 0, 5, 2, 6);
+    });
+  });
+
   describe(".getScreenLines(startRow, endRow)", () => {
     it("returns an empty array when the given start row is greater than the screen line count", () => {
       const buffer = new TextBuffer({
@@ -2819,6 +2944,7 @@ describe("DisplayLayer", () => {
           verifyRightmostScreenPosition(freshDisplayLayer);
           verifyScreenLineIds(displayLayer, screenLinesById);
           verifyPositionTranslations(random, displayLayer);
+          verifyScreenColumnBlockTranslations(random, displayLayer);
         }
       } catch (error) {
         console.log(`Failing Seed: ${seed}`);
@@ -3022,6 +3148,41 @@ function verifyPositionTranslations(random, displayLayer) {
       true,
       `translateBufferPosition(${nextBufferPosition}) > translateBufferPosition(${bufferPosition})`,
     );
+  }
+}
+
+function verifyScreenColumnBlockTranslations(random, displayLayer) {
+  const screenLineCount = getComputedScreenLineCount(displayLayer);
+  for (let i = 0; i < 5; i++) {
+    const startRow = random(screenLineCount);
+    const endRow = startRow + random(screenLineCount - startRow);
+    const startColumn = random(20);
+    const endColumn = random(20);
+    const entries = displayLayer.translateScreenColumnBlock(
+      startRow,
+      endRow,
+      startColumn,
+      endColumn,
+    );
+
+    expect(entries.length).toBe(endRow - startRow + 1);
+    for (let row = startRow; row <= endRow; row++) {
+      const entry = entries[row - startRow];
+      const expectedRange = Range(
+        displayLayer.translateScreenPosition(Point(row, startColumn)),
+        displayLayer.translateScreenPosition(Point(row, endColumn)),
+      );
+      const where = `row ${row} of block [${startRow}..${endRow}] x [${startColumn}, ${endColumn}]`;
+      expect(entry.bufferRange).toEqual(expectedRange, where);
+      if (expectedRange.isEmpty()) {
+        expect(entry.screenColumn).toBe(
+          displayLayer.translateBufferPosition(expectedRange.start).column,
+          where,
+        );
+      } else {
+        expect(entry.screenColumn).toBeNull(where);
+      }
+    }
   }
 }
 
