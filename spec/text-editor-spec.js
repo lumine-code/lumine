@@ -3722,6 +3722,33 @@ describe("TextEditor", () => {
       });
     });
 
+    describe(".bufferRangesForScreenColumnBlock(startRow, endRow, startColumn, endColumn)", () => {
+      it("matches per-row bufferRangeForScreenRange with the empty rows' round trip", () => {
+        editor.setSoftWrapped(true);
+        editor.setEditorWidthInChars(20);
+        editor.foldBufferRowRange(4, 6);
+
+        const startRow = 0;
+        const endRow = editor.getScreenLineCount() - 1;
+        const entries = editor.bufferRangesForScreenColumnBlock(startRow, endRow, 2, 9);
+
+        expect(entries.length).toBe(endRow - startRow + 1);
+        for (let row = startRow; row <= endRow; row++) {
+          const bufferRange = editor.bufferRangeForScreenRange([
+            [row, 2],
+            [row, 9],
+          ]);
+          expect(entries[row - startRow].bufferRange).toEqual(bufferRange, `row ${row}`);
+          expect(entries[row - startRow].screenColumn).toBe(
+            bufferRange.isEmpty()
+              ? editor.screenPositionForBufferPosition(bufferRange.start).column
+              : null,
+            `row ${row}`,
+          );
+        }
+      });
+    });
+
     describe(".destroySelections(selections)", () => {
       // None of these attaches a component, so the harness's synchronous-update
       // setting does not reach them. Anything added here that counts renders

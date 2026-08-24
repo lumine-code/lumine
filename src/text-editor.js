@@ -3081,6 +3081,41 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
+   * Convert a rectangular block of screen positions -- the same two columns
+   * across a span of screen rows -- to buffer coordinates in bulk.
+   *
+   * For each screen row from `startRow` through `endRow`, the returned entry
+   * carries the buffer range delimited by `[row, startColumn]` and
+   * `[row, endColumn]`, translated exactly as
+   * {@link #bufferRangeForScreenRange} translates them, with default clipping.
+   * Columns beyond the end of a row's screen line clip to the end of that
+   * line.
+   *
+   * When both columns clip to the same buffer position the entry's range is
+   * empty, and `screenColumn` reports the screen column that position
+   * occupies -- what {@link #screenPositionForBufferPosition} would return
+   * for it. That is the datum which tells a row whose text ends before the
+   * block apart from a row the block genuinely intersects. For non-empty
+   * ranges `screenColumn` is `null`.
+   *
+   * This is equivalent to calling {@link #bufferRangeForScreenRange} once per
+   * row, but the display layer walks its spatial index over the whole span a
+   * single time, which is substantially faster for large blocks.
+   *
+   * @param {Number} startRow - The first screen row of the block.
+   * @param {Number} endRow - The last screen row of the block, inclusive. Must be at least `startRow`.
+   * @param {Number} startColumn - The screen column of the block's first edge.
+   * @param {Number} endColumn - The screen column of the block's second edge. May be less than `startColumn`; the two are translated in the order given.
+   * @returns {Array} of `{bufferRange, screenColumn}` objects, one per screen row, where `bufferRange` is a {@link Range} and `screenColumn` is a `Number` or `null`.
+   */
+  bufferRangesForScreenColumnBlock(startRow, endRow, startColumn, endColumn) {
+    return this.displayLayer.translateScreenColumnBlock(startRow, endRow, startColumn, endColumn);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Clip the given {@link Point} to a valid position in the buffer.
    *
    * If the given {@link Point} describes a position that is actually reachable by the
