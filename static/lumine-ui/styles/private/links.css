@@ -11,7 +11,7 @@ a {
   }
   &:focus {
     /* .tab-focus() */
-    outline: 2px auto var(--text-color-info);
+    outline: 2px auto var(--accent-color);
     outline-offset: -2px;
   }
 }

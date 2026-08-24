@@ -91,7 +91,7 @@ input[type="file"]:focus,
 input[type="radio"]:focus,
 input[type="checkbox"]:focus {
   /* .tab-focus() */
-  outline: 2px auto var(--text-color-info);
+  outline: 2px auto var(--accent-color);
   outline-offset: -2px;
 }
 

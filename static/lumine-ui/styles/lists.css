@@ -105,11 +105,11 @@ button.list-group-item {
   &.active:hover,
   &.active:focus {
     z-index: 2; /* Place active items above their siblings for proper border styling */
-    color: #fff; /* @list-group-active-color */
+    color: var(--accent-bg-text-color); /* @list-group-active-color */
     background-color: var(
-      --text-color-info
+      --accent-bg-color
     ); /* @list-group-active-bg: @component-active-bg: @brand-primary */
-    border-color: var(--text-color-info); /* @list-group-active-border */
+    border-color: var(--accent-bg-color); /* @list-group-active-border */
 
     /* Force color to inherit for custom content */
     .list-group-item-heading,
@@ -119,7 +119,7 @@ button.list-group-item {
     }
     .list-group-item-text {
       color: hsl(
-        from var(--text-color-info) h s calc(l + 40)
+        from var(--accent-bg-color) h s calc(l + 40)
       ); /* lighten(@list-group-active-bg, 40%) */
     }
   }

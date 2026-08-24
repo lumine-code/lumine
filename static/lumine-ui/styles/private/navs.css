@@ -62,7 +62,7 @@
     &:hover,
     &:focus {
       background-color: #eee; /* @nav-link-hover-bg: @gray-lighter */
-      border-color: var(--text-color-info); /* @link-color */
+      border-color: var(--accent-color); /* @link-color */
     }
   }
 

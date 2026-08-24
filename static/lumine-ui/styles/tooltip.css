@@ -1,7 +1,7 @@
 /*
  * Tooltips
  * --------------------------------------------------
- * @tooltip-bg / @tooltip-arrow-color: @background-color-info
+ * @tooltip-bg / @tooltip-arrow-color: --tooltip-background-color
  * @tooltip-arrow-width: 5px
  */
 
@@ -56,9 +56,9 @@
 .tooltip-inner {
   max-width: 200px; /* @tooltip-max-width */
   padding: 3px 8px;
-  color: #fff; /* @tooltip-color */
+  color: var(--tooltip-text-color); /* @tooltip-color */
   text-align: center;
-  background-color: var(--background-color-info); /* @tooltip-bg */
+  background-color: var(--tooltip-background-color); /* @tooltip-bg */
   border-radius: var(--component-border-radius);
 }
 
@@ -110,55 +110,55 @@
     left: 50%;
     margin-left: -5px;
     border-width: 5px 5px 0;
-    border-top-color: var(--background-color-info);
+    border-top-color: var(--tooltip-background-color);
   }
   &.top-left .tooltip-arrow {
     bottom: 0;
     right: 5px;
     margin-bottom: -5px;
     border-width: 5px 5px 0;
-    border-top-color: var(--background-color-info);
+    border-top-color: var(--tooltip-background-color);
   }
   &.top-right .tooltip-arrow {
     bottom: 0;
     left: 5px;
     margin-bottom: -5px;
     border-width: 5px 5px 0;
-    border-top-color: var(--background-color-info);
+    border-top-color: var(--tooltip-background-color);
   }
   &.right .tooltip-arrow {
     top: 50%;
     left: 0;
     margin-top: -5px;
     border-width: 5px 5px 5px 0;
-    border-right-color: var(--background-color-info);
+    border-right-color: var(--tooltip-background-color);
   }
   &.left .tooltip-arrow {
     top: 50%;
     right: 0;
     margin-top: -5px;
     border-width: 5px 0 5px 5px;
-    border-left-color: var(--background-color-info);
+    border-left-color: var(--tooltip-background-color);
   }
   &.bottom .tooltip-arrow {
     top: 0;
     left: 50%;
     margin-left: -5px;
     border-width: 0 5px 5px;
-    border-bottom-color: var(--background-color-info);
+    border-bottom-color: var(--tooltip-background-color);
   }
   &.bottom-left .tooltip-arrow {
     top: 0;
     right: 5px;
     margin-top: -5px;
     border-width: 0 5px 5px;
-    border-bottom-color: var(--background-color-info);
+    border-bottom-color: var(--tooltip-background-color);
   }
   &.bottom-right .tooltip-arrow {
     top: 0;
     left: 5px;
     margin-top: -5px;
     border-width: 0 5px 5px;
-    border-bottom-color: var(--background-color-info);
+    border-bottom-color: var(--tooltip-background-color);
   }
 }

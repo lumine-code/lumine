@@ -55,7 +55,7 @@ input.input-toggle {
       outline: 0; /* TODO: Add it back */
     }
     &:active {
-      background-color: var(--background-color-info);
+      background-color: var(--accent-color);
     }
 
     &:before,
@@ -66,7 +66,7 @@ input.input-toggle {
       left: calc(var(--component-icon-size) * 0.4);
       height: 2px;
       border-radius: 1px;
-      background-color: var(--base-background-color);
+      background-color: var(--accent-text-color);
       transform-origin: 0 0;
       opacity: 0;
       transition:
@@ -89,7 +89,7 @@ input.input-toggle {
     }
 
     &:checked {
-      background-color: var(--background-color-info);
+      background-color: var(--accent-color);
       &:active {
         background-color: var(--component-background-color);
       }
@@ -106,7 +106,7 @@ input.input-toggle {
     }
 
     &:indeterminate {
-      background-color: var(--background-color-info);
+      background-color: var(--accent-color);
       &:active {
         background-color: var(--component-background-color);
       }
@@ -244,7 +244,7 @@ input.input-toggle {
       border-radius: inherit;
       border: calc(var(--component-icon-size) / 3) solid transparent;
       background-clip: content-box;
-      background-color: var(--base-background-color);
+      background-color: var(--accent-text-color);
       transform: scale(0);
       transition: transform 0.1s cubic-bezier(0.5, 0.15, 0.2, 1);
     }
@@ -252,10 +252,10 @@ input.input-toggle {
       outline: none;
     }
     &:active {
-      background-color: var(--background-color-info);
+      background-color: var(--accent-color);
     }
     &:checked {
-      background-color: var(--background-color-info);
+      background-color: var(--accent-color);
       &:before {
         transform: scale(1);
       }
@@ -280,7 +280,7 @@ input.input-toggle {
       width: var(--component-icon-size); /* @component-size */
       height: var(--component-icon-size);
       border-radius: 50%;
-      background-color: var(--background-color-info);
+      background-color: var(--accent-color);
       transition: transform 0.16s;
       &:active {
         transition-duration: 0s;
@@ -412,7 +412,7 @@ input.input-toggle {
       outline: 0;
     }
     &:checked {
-      background-color: var(--background-color-info);
+      background-color: var(--accent-color);
     }
 
     /* Thumb */
@@ -424,7 +424,7 @@ input.input-toggle {
       border-radius: inherit;
       border: calc(var(--component-icon-size) / 4) solid transparent;
       background-clip: content-box;
-      background-color: var(--base-background-color);
+      background-color: var(--accent-text-color);
       transition: transform 0.2s cubic-bezier(0.5, 0.15, 0.2, 1);
     }
     &:active:before {

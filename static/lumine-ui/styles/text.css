@@ -161,10 +161,34 @@ mark,
   color: var(--accent-only-text-color, var(--text-color-highlight));
 }
 
+/* Primary is the theme-owned accent-as-text colour. Keep it separate from the
+   informational severity even when a theme gives both the same base hue. */
+.text-primary {
+  color: var(--accent-only-text-color);
+  a&:hover,
+  a&:focus {
+    color: hsl(from var(--accent-only-text-color) h s calc(l - 10));
+  }
+
+  code {
+    color: var(--accent-only-text-color);
+    background: rgb(from var(--accent-color) r g b / calc(alpha - 0.8));
+  }
+
+  a,
+  a code {
+    text-decoration: underline;
+    color: hsl(from var(--accent-only-text-color) h s calc(l - 10));
+
+    &:hover {
+      color: hsl(from var(--accent-only-text-color) h s calc(l - 15));
+    }
+  }
+}
+
 /* Contextual colors
    (.text-variant() inlined for each modifier) */
-.text-info,
-.text-primary {
+.text-info {
   color: var(--text-color-info);
   a&:hover,
   a&:focus {
@@ -263,11 +287,11 @@ mark,
 .bg-primary {
   /* Given the contrast here, this is the only class to have its color inverted
      automatically. */
-  color: #fff;
-  background-color: var(--text-color-info); /* @brand-primary */
+  color: var(--accent-bg-text-color);
+  background-color: var(--accent-bg-color); /* @brand-primary */
   a&:hover,
   a&:focus {
-    background-color: hsl(from var(--text-color-info) h s calc(l - 10));
+    background-color: hsl(from var(--accent-bg-color) h s calc(l - 10));
   }
 }
 .bg-success {
