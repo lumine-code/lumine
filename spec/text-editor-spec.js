@@ -3691,6 +3691,99 @@ describe("TextEditor", () => {
       return { removedSelections, removedCursors };
     };
 
+    describe("::avoidMergingSelections(fn)", () => {
+      it("suppresses merging for the callback and never sorts the selections", () => {
+        const sorts = spyOn(editor, "getSelectionsOrderedByBufferPosition").and.callThrough();
+        let suppressedInside = null;
+
+        editor.avoidMergingSelections(() => {
+          suppressedInside = editor.suppressSelectionMerging;
+          editor.setSelectedBufferRanges([
+            [
+              [1, 2],
+              [1, 6],
+            ],
+            [
+              [1, 4],
+              [1, 8],
+            ],
+          ]);
+        });
+
+        expect(suppressedInside).toBe(true);
+        expect(editor.suppressSelectionMerging).toBe(false);
+        expect(sorts.calls.count()).toBe(0);
+        // The overlap survives: nothing merged during, nothing merged after.
+        expect(editor.getSelectedBufferRanges()).toEqual([
+          [
+            [1, 2],
+            [1, 6],
+          ],
+          [
+            [1, 4],
+            [1, 8],
+          ],
+        ]);
+      });
+
+      it("still leaves one selection when the callback destroys them all", () => {
+        editor.setSelectedBufferRanges([
+          [
+            [1, 2],
+            [1, 6],
+          ],
+          [
+            [2, 2],
+            [2, 6],
+          ],
+        ]);
+
+        editor.avoidMergingSelections(() => {
+          for (const selection of editor.getSelections()) selection.destroy();
+        });
+
+        // The raw list, not getSelections(): the getter resurrects on read,
+        // which is exactly what this spec must not lean on.
+        expect(editor.selections.length).toBe(1);
+      });
+
+      it("short-circuits when merging is already suppressed", () => {
+        let innerRan = false;
+        editor.avoidMergingSelections(() => {
+          editor.avoidMergingSelections(() => {
+            innerRan = true;
+          });
+          // The inner call must not have cleared the outer suppression.
+          expect(editor.suppressSelectionMerging).toBe(true);
+        });
+        expect(innerRan).toBe(true);
+        expect(editor.suppressSelectionMerging).toBe(false);
+      });
+
+      it("restores merging when the callback throws, without resurrecting", () => {
+        editor.setSelectedBufferRanges([
+          [
+            [1, 2],
+            [1, 6],
+          ],
+          [
+            [2, 2],
+            [2, 6],
+          ],
+        ]);
+
+        expect(() => {
+          editor.avoidMergingSelections(() => {
+            for (const selection of editor.getSelections()) selection.destroy();
+            throw new Error("from the callback");
+          });
+        }).toThrow();
+
+        expect(editor.suppressSelectionMerging).toBe(false);
+        expect(editor.selections.length).toBe(0);
+      });
+    });
+
     describe("::mergeIntersectingSelections(fn)", () => {
       it("restores merging when the suppressed callback throws", () => {
         expect(() => {

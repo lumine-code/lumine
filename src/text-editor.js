@@ -4808,8 +4808,33 @@ module.exports = class TextEditor {
     });
   }
 
+  // Runs the function with selection merging suppressed, and merges nothing
+  // afterwards. This used to delegate to mergeSelections with a predicate that
+  // always answered false -- which still sorted every selection by buffer
+  // position on the way out, only to feed each neighbouring pair to a
+  // predicate that cannot say yes. For a caller holding thousands of
+  // selections, undo and redo among them, that sort was the whole cost of the
+  // call.
+  //
+  // Two behaviors of the old sweep are deliberately kept. Reading the
+  // selection list resurrected one when the function had destroyed them all,
+  // so an editor never comes back from this with no selection; and a throwing
+  // function skipped the sweep, so it skips the resurrection too.
   avoidMergingSelections(...args) {
-    return this.mergeSelections(...args, () => false);
+    let fn = args.pop();
+    if (typeof fn !== "function") fn = () => {};
+
+    if (this.suppressSelectionMerging) return fn();
+
+    this.suppressSelectionMerging = true;
+    let result;
+    try {
+      result = fn();
+    } finally {
+      this.suppressSelectionMerging = false;
+    }
+    this.createLastSelectionIfNeeded();
+    return result;
   }
 
   mergeSelections(...args) {
