@@ -19,7 +19,7 @@ module.exports = function parseCommandLine(processArgs) {
   if (args["package"]) {
     process.stderr.write(
       "The `--package`/`-p` option has been replaced. Use `lumine --install owner/repo`, " +
-        "`--uninstall <name>`, `--list`, `--link <path>` or `--unlink <path>`.\n",
+        "`--uninstall <name>`, `--list`, `--link [path]` or `--unlink <path>`.\n",
     );
     process.exit(1);
     return;
@@ -113,7 +113,7 @@ module.exports = function parseCommandLine(processArgs) {
   } else if (args["list"]) {
     packageCommand = { name: "list", arg: null, dev: linkToDev };
   } else if (Object.hasOwn(args, "link")) {
-    packageCommand = { name: "link", arg: args["link"], dev: linkToDev };
+    packageCommand = { name: "link", arg: args["link"] ?? ".", dev: linkToDev };
   } else if (Object.hasOwn(args, "unlink")) {
     packageCommand = { name: "unlink", arg: args["unlink"], dev: linkToDev };
   }
@@ -172,7 +172,7 @@ Package management:
       --install <repository>  Install a package.
       --uninstall <name>      Uninstall a package.
       --list                  List installed packages.
-      --link <path>           Link a local package; add --dev for packages-dev.
+      --link [path]           Link a local package (default: .); add --dev for packages-dev.
       --unlink <path|name>    Remove a package link.
 
 Environment variables:

@@ -236,9 +236,7 @@ function list() {
 }
 
 function link(target, { dev } = {}) {
-  if (!target) {
-    throw new Error("Specify a package directory to link, e.g. `lumine --link .`.");
-  }
+  target ??= ".";
 
   const packagePath = path.resolve(target);
   if (!fs.existsSync(packagePath)) {
