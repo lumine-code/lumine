@@ -307,6 +307,24 @@ describe("SelectListView", () => {
       expect(selections[selections.length - 1]).toBe("two");
     });
 
+    it("selects an item with the middle mouse button without confirming it", async () => {
+      const confirmed = [];
+      view = textItemView({ didConfirmSelection: (item) => confirmed.push(item) });
+      const secondItem = view.element.querySelectorAll("li")[1];
+      const event = new MouseEvent("mousedown", {
+        bubbles: true,
+        button: 1,
+        cancelable: true,
+      });
+
+      secondItem.dispatchEvent(event);
+      await nextUpdate();
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(view.getSelectedItem()).toBe("two");
+      expect(confirmed).toEqual([]);
+    });
+
     it("confirms the selected item and empty selections", async () => {
       const confirmed = [];
       let confirmedEmpty = false;
@@ -1000,6 +1018,24 @@ describe("SelectListView", () => {
       expect(actions.some((action) => action.command === "select-list:actions")).toBe(false);
       expect(lumine.workspace.getModalTrail()).toEqual(["Files", "Actions"]);
       expect(view.itemActionsList.props.infoMessage).toBe("one");
+    });
+
+    it("opens the actions for the right-clicked item", async () => {
+      view.show();
+      const secondItem = view.element.querySelectorAll("li")[1];
+      const event = new MouseEvent("contextmenu", {
+        bubbles: true,
+        button: 2,
+        cancelable: true,
+      });
+
+      secondItem.dispatchEvent(event);
+      await conditionPromise(() => view.itemActionsList?.isVisible());
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(view.getSelectedItem()).toBe("two");
+      expect(lumine.workspace.getModalTrail()).toEqual(["Files", "Actions"]);
+      expect(view.itemActionsList.props.infoMessage).toBe("two");
     });
 
     it("groups the row actions ahead of the list actions and rules between them", async () => {
