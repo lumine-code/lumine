@@ -457,11 +457,13 @@ lumine-text-editor:is([mini], [input]) {
 }
 
 /* A field is not a document, so it does not mark which line the caret is on.
-   Written as `.line.cursor-line` to match the syntax theme's own selector:
-   that rule is (0,2,1) at theme priority, and only the `[input]` qualifier on
-   the same shape out-specifies it. */
-lumine-text-editor:is([mini], [input]) .line.cursor-line {
+   Clear both ways syntax themes draw that mark: older themes use a background,
+   while the bundled themes use a translucent inset shadow so decoration
+   backgrounds remain visible. The repeated class also outranks themes that
+   gate the cursor line on a focused editor. */
+lumine-text-editor:is([mini], [input]) .line.cursor-line.cursor-line {
   background: transparent;
+  box-shadow: none;
 }
 
 lumine-text-editor[mini] {
