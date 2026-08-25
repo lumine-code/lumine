@@ -17,18 +17,28 @@ function createClipboardData(initialData = {}) {
 }
 
 describe("Clipboard", () => {
+  let clipboardContent;
+
+  beforeEach(() => {
+    clipboardContent = "initial clipboard content";
+    clipboardBridge.writeText.and.callFake(async (text) => {
+      clipboardContent = text;
+    });
+    clipboardBridge.readText.and.callFake(async () => clipboardContent);
+  });
+
   describe("write(text, metadata) and read()", () => {
-    it("writes and reads text to/from the native clipboard", () => {
-      expect(lumine.clipboard.read()).toBe("initial clipboard content");
-      lumine.clipboard.write("next");
-      expect(lumine.clipboard.read()).toBe("next");
+    it("writes and reads text to/from the native clipboard", async () => {
+      expect(await lumine.clipboard.read()).toBe("initial clipboard content");
+      await lumine.clipboard.write("next");
+      expect(await lumine.clipboard.read()).toBe("next");
     });
 
-    it("returns metadata if the item on the native clipboard matches the last written item", () => {
-      lumine.clipboard.write("next", { meta: "data" });
-      expect(lumine.clipboard.read()).toBe("next");
-      expect(lumine.clipboard.readWithMetadata().text).toBe("next");
-      expect(lumine.clipboard.readWithMetadata().metadata).toEqual({
+    it("returns metadata if the item on the native clipboard matches the last written item", async () => {
+      await lumine.clipboard.write("next", { meta: "data" });
+      expect(await lumine.clipboard.read()).toBe("next");
+      expect((await lumine.clipboard.readWithMetadata()).text).toBe("next");
+      expect((await lumine.clipboard.readWithMetadata()).metadata).toEqual({
         meta: "data",
       });
     });
@@ -43,11 +53,11 @@ describe("Clipboard", () => {
       ["linux", "\n"],
     ]);
     for (let [platform, eol] of eols) {
-      it(`converts line endings to the OS's native line endings on ${platform}`, () => {
+      it(`converts line endings to the OS's native line endings on ${platform}`, async () => {
         Object.defineProperty(process, "platform", { value: platform });
 
-        lumine.clipboard.write("next\ndone\r\n\n", { meta: "data" });
-        expect(lumine.clipboard.readWithMetadata()).toEqual({
+        await lumine.clipboard.write("next\ndone\r\n\n", { meta: "data" });
+        expect(await lumine.clipboard.readWithMetadata()).toEqual({
           text: `next${eol}done${eol}${eol}`,
           metadata: { meta: "data" },
         });
@@ -173,40 +183,40 @@ describe("Clipboard", () => {
   });
 
   describe("images", () => {
-    it("reads the image the main process holds", () => {
+    it("reads the image the main process holds", async () => {
       const image = { isEmpty: () => false };
-      spyOn(clipboardBridge, "readImage").and.returnValue(image);
+      spyOn(clipboardBridge, "readImage").and.returnValue(Promise.resolve(image));
 
-      expect(lumine.clipboard.readImage()).toBe(image);
+      expect(await lumine.clipboard.readImage()).toBe(image);
     });
 
-    it("writes a NativeImage as the PNG bytes the main process expects", () => {
+    it("writes a NativeImage as the PNG bytes the main process expects", async () => {
       const png = Buffer.from("png image data");
-      spyOn(clipboardBridge, "writeImage");
+      spyOn(clipboardBridge, "writeImage").and.returnValue(Promise.resolve());
 
-      lumine.clipboard.writeImage({ toPNG: () => png });
+      await lumine.clipboard.writeImage({ toPNG: () => png });
       expect(clipboardBridge.writeImage).toHaveBeenCalledWith(png);
     });
 
-    it("writes PNG bytes as they are", () => {
+    it("writes PNG bytes as they are", async () => {
       const png = Buffer.from("png image data");
-      spyOn(clipboardBridge, "writeImage");
+      spyOn(clipboardBridge, "writeImage").and.returnValue(Promise.resolve());
 
-      lumine.clipboard.writeImage(png);
+      await lumine.clipboard.writeImage(png);
       expect(clipboardBridge.writeImage).toHaveBeenCalledWith(png);
     });
   });
 
   describe("the primary selection", () => {
-    it("reads the selection rather than the clipboard", () => {
-      lumine.clipboard.readSelectionText();
+    it("reads the selection rather than the clipboard", async () => {
+      await lumine.clipboard.readSelectionText();
       expect(clipboardBridge.readText).toHaveBeenCalledWith("selection");
     });
 
-    it("writes without waiting for the main process", () => {
-      spyOn(clipboardBridge, "writeSelectionText");
+    it("writes through the asynchronous selection clipboard", async () => {
+      spyOn(clipboardBridge, "writeSelectionText").and.returnValue(Promise.resolve());
 
-      lumine.clipboard.writeSelectionText("selected");
+      await lumine.clipboard.writeSelectionText("selected");
       expect(clipboardBridge.writeSelectionText).toHaveBeenCalledWith("selected");
       expect(clipboardBridge.writeText).not.toHaveBeenCalled();
     });
@@ -249,7 +259,7 @@ describe("Clipboard", () => {
       );
 
       expect(written).toBe(false);
-      expect(lumine.clipboard.read()).toBe("fallback text");
+      expect(await lumine.clipboard.read()).toBe("fallback text");
     });
 
     it("reads back the payload for the requested format", async () => {

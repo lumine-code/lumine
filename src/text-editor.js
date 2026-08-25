@@ -23,6 +23,10 @@ const {
 } = require("./text-utils");
 
 const SERIALIZATION_VERSION = 1;
+
+function isPromise(value) {
+  return value != null && typeof value.then === "function";
+}
 const NON_WHITESPACE_REGEXP = /\S/;
 const ZERO_WIDTH_NBSP = "\ufeff";
 let nextId = 0;
@@ -5618,8 +5622,11 @@ module.exports = class TextEditor {
    * @status essential
    *
    * For each selection, copy the selected text.
+   *
+   * @returns {Promise} that resolves after the system clipboard has been updated.
    */
   copySelectedText(clipboard = this.constructor.clipboard) {
+    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
     let maintainClipboard = false;
     for (let selection of this.getSelectionsOrderedByBufferPosition()) {
       if (selection.isEmpty()) {
@@ -5632,6 +5639,7 @@ module.exports = class TextEditor {
       }
       maintainClipboard = true;
     }
+    return clipboard.flush?.();
   }
 
   /**
@@ -5640,6 +5648,7 @@ module.exports = class TextEditor {
    * @private
    */
   copyOnlySelectedText(clipboard = this.constructor.clipboard) {
+    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
     let maintainClipboard = false;
     for (let selection of this.getSelectionsOrderedByBufferPosition()) {
       if (!selection.isEmpty()) {
@@ -5647,6 +5656,7 @@ module.exports = class TextEditor {
         maintainClipboard = true;
       }
     }
+    return clipboard.flush?.();
   }
 
   /**
@@ -5657,10 +5667,12 @@ module.exports = class TextEditor {
    *
    * @param {Object} [options]
    * @param {Boolean} [options.bypassReadOnly] - Must be `true` to modify a read-only editor.
+   * @returns {Promise} that resolves after the system clipboard has been updated.
    */
   cutSelectedText(options = {}) {
     if (!this.ensureWritable("cutSelectedText", options)) return;
-    const clipboard = options.clipboard || this.constructor.clipboard;
+    let clipboard = options.clipboard || this.constructor.clipboard;
+    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
     let maintainClipboard = false;
     this.mutateSelectedText((selection) => {
       if (selection.isEmpty()) {
@@ -5671,6 +5683,7 @@ module.exports = class TextEditor {
       }
       maintainClipboard = true;
     });
+    return clipboard.flush?.();
   }
 
   /**
@@ -5685,93 +5698,101 @@ module.exports = class TextEditor {
    * corresponding clipboard selection text.
    *
    * @param [options] - See {@link Selection#insertText}.
+   * @returns {Promise} that resolves after the clipboard text has been inserted.
    */
   pasteText(options = {}) {
     if (!this.ensureWritable("parseText", options)) return;
     const clipboard = options.clipboard || this.constructor.clipboard;
     options = Object.assign({}, options);
     delete options.clipboard;
-    let { text: clipboardText, metadata } = clipboard.readWithMetadata();
-    if (!this.emitWillInsertTextEvent(clipboardText)) return false;
-    let languageMode = this.buffer.getLanguageMode();
+    const paste = ({ text: clipboardText, metadata }) => {
+      if (!this.emitWillInsertTextEvent(clipboardText)) return false;
+      let languageMode = this.buffer.getLanguageMode();
 
-    if (!metadata) metadata = {};
-    if (options.autoIndent == null) options.autoIndent = this.shouldAutoIndentOnPaste();
+      if (!metadata) metadata = {};
+      if (options.autoIndent == null) options.autoIndent = this.shouldAutoIndentOnPaste();
 
-    this.mutateSelectedText((selection, index) => {
-      let fullLine, indentBasis, text;
-      if (metadata.selections && metadata.selections.length === this.getSelections().length) {
-        ({ text, indentBasis, fullLine } = metadata.selections[index]);
-      } else {
-        ({ indentBasis, fullLine } = metadata);
-        text = clipboardText;
-      }
+      this.mutateSelectedText((selection, index) => {
+        let fullLine, indentBasis, text;
+        if (metadata.selections && metadata.selections.length === this.getSelections().length) {
+          ({ text, indentBasis, fullLine } = metadata.selections[index]);
+        } else {
+          ({ indentBasis, fullLine } = metadata);
+          text = clipboardText;
+        }
 
-      if (
-        indentBasis != null &&
-        (text.includes("\n") || !selection.cursor.hasPrecedingCharactersOnLine())
-      ) {
-        options.indentBasis = indentBasis;
-      } else {
-        options.indentBasis = null;
-      }
+        if (
+          indentBasis != null &&
+          (text.includes("\n") || !selection.cursor.hasPrecedingCharactersOnLine())
+        ) {
+          options.indentBasis = indentBasis;
+        } else {
+          options.indentBasis = null;
+        }
 
-      let range;
-      if (fullLine && selection.isEmpty()) {
-        const oldPosition = selection.getBufferRange().start;
-        selection.setBufferRange([
-          [oldPosition.row, 0],
-          [oldPosition.row, 0],
-        ]);
-        range = selection.insertText(text, options);
-        const newPosition = oldPosition.translate([1, 0]);
-        selection.setBufferRange([newPosition, newPosition]);
-      } else {
-        range = selection.insertText(text, options);
-      }
+        let range;
+        if (fullLine && selection.isEmpty()) {
+          const oldPosition = selection.getBufferRange().start;
+          selection.setBufferRange([
+            [oldPosition.row, 0],
+            [oldPosition.row, 0],
+          ]);
+          range = selection.insertText(text, options);
+          const newPosition = oldPosition.translate([1, 0]);
+          selection.setBufferRange([newPosition, newPosition]);
+        } else {
+          range = selection.insertText(text, options);
+        }
 
-      if (languageMode.atTransactionEnd && options.autoIndent && text.includes("\n")) {
-        // The `autoIndent` option as passed to `Selection#insertText` has no
-        // effect in `TreeSitterLanguageMode` because it asks what the
-        // right indent level would be for the given text _before_ inserting
-        // it, and that question can't be answered because the text isn't part
-        // of the buffer yet and can't be parsed.
-        //
-        // The good news is that we can wait until the transaction's done;
-        // we'll know the extent of the buffer involved in the paste, so we can
-        // auto-indent those rows once they're in the buffer and reflected in
-        // the parse tree. This also lets us defer the `did-insert-text` event
-        // until the auto-indent happens, so that the event metadata is more
-        // accurate.
-        //
-        // We can also use this technique to format text as required by the
-        // `editor:paste-without-reformatting` command. Instead of
-        // getting the suggested indent level for each row of the pasted text,
-        // we get the suggested indent level of the first row, then alter each
-        // succeeding row's level by the same amount.
-        //
-        languageMode.atTransactionEnd().then(({ range }) => {
-          let marker = this.markBufferRange(range);
-          let endRow = range.end.row;
-          // A range that ends on column 0 of a given row doesn't actually
-          // touch that row.
-          if (range.end.column === 0) endRow--;
-          let checkpoint = this.buffer.createCheckpoint();
-          this.autoIndentBufferRows(range.start.row, endRow, { ...options, isPastedText: true });
-          // Detect whether the buffer actually changed. If it did, fold that
-          // change into the previous history entry.
-          if (this.buffer.getChangesSinceCheckpoint(checkpoint).length > 0) {
-            this.buffer.groupLastChanges();
-          }
+        if (languageMode.atTransactionEnd && options.autoIndent && text.includes("\n")) {
+          // The `autoIndent` option as passed to `Selection#insertText` has no
+          // effect in `TreeSitterLanguageMode` because it asks what the
+          // right indent level would be for the given text _before_ inserting
+          // it, and that question can't be answered because the text isn't part
+          // of the buffer yet and can't be parsed.
+          //
+          // The good news is that we can wait until the transaction's done;
+          // we'll know the extent of the buffer involved in the paste, so we can
+          // auto-indent those rows once they're in the buffer and reflected in
+          // the parse tree. This also lets us defer the `did-insert-text` event
+          // until the auto-indent happens, so that the event metadata is more
+          // accurate.
+          //
+          // We can also use this technique to format text as required by the
+          // `editor:paste-without-reformatting` command. Instead of
+          // getting the suggested indent level for each row of the pasted text,
+          // we get the suggested indent level of the first row, then alter each
+          // succeeding row's level by the same amount.
+          //
+          languageMode.atTransactionEnd().then(({ range }) => {
+            let marker = this.markBufferRange(range);
+            let endRow = range.end.row;
+            // A range that ends on column 0 of a given row doesn't actually
+            // touch that row.
+            if (range.end.column === 0) endRow--;
+            let checkpoint = this.buffer.createCheckpoint();
+            this.autoIndentBufferRows(range.start.row, endRow, {
+              ...options,
+              isPastedText: true,
+            });
+            // Detect whether the buffer actually changed. If it did, fold that
+            // change into the previous history entry.
+            if (this.buffer.getChangesSinceCheckpoint(checkpoint).length > 0) {
+              this.buffer.groupLastChanges();
+            }
 
-          range = marker.getBufferRange();
-          text = this.buffer.getTextInRange(range);
+            range = marker.getBufferRange();
+            text = this.buffer.getTextInRange(range);
+            this.emitter.emit("did-insert-text", { text, range });
+          });
+        } else {
           this.emitter.emit("did-insert-text", { text, range });
-        });
-      } else {
-        this.emitter.emit("did-insert-text", { text, range });
-      }
-    });
+        }
+      });
+    };
+
+    const clipboardData = clipboard.readWithMetadata();
+    return isPromise(clipboardData) ? clipboardData.then(paste) : paste(clipboardData);
   }
 
   /**
@@ -5787,11 +5808,15 @@ module.exports = class TextEditor {
    */
   cutToEndOfLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
+    let clipboard = options.clipboard || this.constructor.clipboard;
+    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
+    options = { ...options, clipboard };
     let maintainClipboard = false;
     this.mutateSelectedText((selection) => {
       selection.cutToEndOfLine(maintainClipboard, options);
       maintainClipboard = true;
     });
+    return clipboard.flush?.();
   }
 
   /**
@@ -5807,11 +5832,15 @@ module.exports = class TextEditor {
    */
   cutToEndOfBufferLine(options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
+    let clipboard = options.clipboard || this.constructor.clipboard;
+    if (clipboard === this.constructor.clipboard) clipboard = clipboard.createMemoryClipboard();
+    options = { ...options, clipboard };
     let maintainClipboard = false;
     this.mutateSelectedText((selection) => {
       selection.cutToEndOfBufferLine(maintainClipboard, options);
       maintainClipboard = true;
     });
+    return clipboard.flush?.();
   }
 
   /**

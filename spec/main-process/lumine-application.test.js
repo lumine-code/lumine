@@ -1510,43 +1510,41 @@ describe("LumineApplication", function () {
     const handle = (method, ...args) =>
       LumineApplication.prototype.handleClipboardRequest(method, args);
 
-    it("omits the clipboard type rather than passing undefined", function () {
-      const readText = sinon.stub(electron.clipboard, "readText").returns("text");
-      const writeText = sinon.stub(electron.clipboard, "writeText");
+    it("routes text operations through the Promise-based clipboard", async function () {
+      const readText = sinon.stub(electron.clipboard, "readText").resolves("text");
+      const writeText = sinon.stub(electron.clipboard, "writeText").resolves();
 
-      assert.equal(handle("readText"), "text");
+      assert.equal(await handle("readText"), "text");
       assert.deepEqual(readText.lastCall.args, []);
 
-      handle("readText", "selection");
-      assert.deepEqual(readText.lastCall.args, ["selection"]);
-
-      handle("writeText", "one");
-      assert.deepEqual(writeText.lastCall.args, ["one"]);
-
-      handle("writeText", "two", "selection");
-      assert.deepEqual(writeText.lastCall.args, ["two", "selection"]);
+      await handle("writeText", "selection");
+      assert.deepEqual(writeText.lastCall.args, ["selection"]);
     });
 
-    it("carries images across the process boundary as PNG bytes", function () {
+    it("carries images across the process boundary as PNG bytes", async function () {
       const png = Buffer.from("png image data");
-      const image = { toPNG: () => png };
-      sinon.stub(electron.clipboard, "readImage").returns(image);
-      const writeImage = sinon.stub(electron.clipboard, "writeImage");
-      const createFromBuffer = sinon.stub(electron.nativeImage, "createFromBuffer").returns(image);
+      const read = sinon.stub(electron.clipboard, "read").resolves([
+        {
+          types: ["image/png"],
+          getType: sinon.stub().resolves(new Blob([png], { type: "image/png" })),
+        },
+      ]);
+      const write = sinon.stub(electron.clipboard, "write").resolves();
 
-      assert.strictEqual(handle("readImage"), png);
+      assert.deepEqual(await handle("readImage"), png);
+      assert.isTrue(read.calledOnce);
 
       // The renderer's Buffer arrives as a Uint8Array — structured clone knows
-      // nothing of Node's subclass — and `createFromBuffer` accepts only a
-      // Buffer.
-      handle("writeImage", new Uint8Array(png));
-      assert.isTrue(Buffer.isBuffer(createFromBuffer.lastCall.args[0]));
-      assert.isTrue(png.equals(createFromBuffer.lastCall.args[0]));
-      assert.deepEqual(writeImage.lastCall.args, [image]);
+      // nothing of Node's subclass. Electron 44 accepts it as a Blob payload.
+      await handle("writeImage", new Uint8Array(png));
+      const [items] = write.lastCall.args;
+      assert.equal(items.length, 1);
+      const blob = await items[0].getType("image/png");
+      assert.deepEqual(Buffer.from(await blob.arrayBuffer()), png);
     });
 
-    it("answers an unrecognised request with nothing", function () {
-      assert.isNull(handle("readBookmark"));
+    it("answers an unrecognised request with nothing", async function () {
+      assert.isNull(await handle("readBookmark"));
     });
   });
 

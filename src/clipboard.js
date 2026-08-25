@@ -5,6 +5,10 @@ const VSCODE_COPY_METADATA_FORMAT = "application/vnd.code.copymetadata";
 const LUMINE_TEXT_EDITOR_DATA_FORMAT = "application/lumine-text-editor";
 const LUMINE_EDITOR_DATA_VERSION = 1;
 
+function isPromise(value) {
+  return value != null && typeof value.then === "function";
+}
+
 /**
  * @public
  * @status extended
@@ -19,16 +23,17 @@ const LUMINE_EDITOR_DATA_VERSION = 1;
  * `lumine.pasteProviders`.
  *
  * It is also the only supported route to the native clipboard from a package:
- * Electron deprecated `require('electron').clipboard` in a renderer, so every
- * read and write here goes to the main process instead (see
- * `src/clipboard-bridge.js`).
+ * Electron exposes its Promise-based clipboard only in the main process, so
+ * every programmatic read and write here crosses the process boundary (see
+ * `src/clipboard-bridge.js`). Native ClipboardEvents use a synchronous
+ * DataTransfer-backed adapter for the duration of the event.
  *
  * ## Examples
  *
  * ```js
- * lumine.clipboard.write('hello')
+ * await lumine.clipboard.write('hello')
  *
- * console.log(lumine.clipboard.read()) // 'hello'
+ * console.log(await lumine.clipboard.read()) // 'hello'
  * ```
  */
 module.exports = class Clipboard {
@@ -69,13 +74,35 @@ module.exports = class Clipboard {
    *
    * @param text - The `String` to store.
    * @param [metadata] - The additional info to associate with the text.
+   * @returns {Promise} that resolves after the system clipboard has been updated.
    */
   write(text, metadata) {
     text = this.normalizeText(text);
 
-    this.signatureForMetadata = this.md5(text);
-    this.metadata = metadata;
-    clipboard.writeText(text);
+    const didWrite = clipboard.writeText(text);
+    const updateMetadata = () => {
+      this.signatureForMetadata = this.md5(text);
+      this.metadata = metadata;
+    };
+    if (isPromise(didWrite)) return didWrite.then(updateMetadata);
+    updateMetadata();
+    return didWrite;
+  }
+
+  // Batch editor copy/cut operations through a synchronous in-memory clipboard
+  // and commit their final text plus metadata with one asynchronous native write.
+  createMemoryClipboard() {
+    let state = { text: "" };
+    let didWrite = false;
+    return {
+      write: (text, metadata) => {
+        state = { text, metadata };
+        didWrite = true;
+      },
+      readWithMetadata: () => state,
+      didWrite: () => didWrite,
+      flush: () => (didWrite ? this.write(state.text, state.metadata) : Promise.resolve()),
+    };
   }
 
   createDataTransferClipboard(clipboardData) {
@@ -204,7 +231,7 @@ module.exports = class Clipboard {
       await navigator.clipboard.write([item]);
       return true;
     } catch {
-      clipboard.writeText(text);
+      await clipboard.writeText(text);
       return false;
     }
   }
@@ -264,7 +291,7 @@ module.exports = class Clipboard {
    *
    * Read the text from the clipboard.
    *
-   * @returns {String}
+   * @returns {Promise} that resolves to the clipboard text as a `String`.
    */
   read() {
     return clipboard.readText();
@@ -274,10 +301,12 @@ module.exports = class Clipboard {
    * @public
    * @status public
    *
-   * Write the given text to the macOS find pasteboard
+   * Write the given text to the macOS find pasteboard.
+   *
+   * @returns {Promise} that resolves after the find pasteboard has been updated.
    */
   writeFindText(text) {
-    clipboard.writeFindText(text);
+    return clipboard.writeFindText(text);
   }
 
   /**
@@ -286,7 +315,7 @@ module.exports = class Clipboard {
    *
    * Read the text from the macOS find pasteboard.
    *
-   * @returns {String}
+   * @returns {Promise} that resolves to the find pasteboard text as a `String`.
    */
   readFindText() {
     return clipboard.readFindText();
@@ -301,7 +330,7 @@ module.exports = class Clipboard {
    * The image crosses the process boundary as PNG bytes, so its scale factor
    * does not survive the trip.
    *
-   * @returns {NativeImage}, empty when the clipboard holds no image.
+   * @returns {Promise} that resolves to a `NativeImage`, empty when the clipboard holds no image.
    */
   readImage() {
     return clipboard.readImage();
@@ -314,9 +343,10 @@ module.exports = class Clipboard {
    * Write an image to the clipboard, replacing whatever it held.
    *
    * @param image - A `NativeImage`, or the PNG bytes of one as a `Buffer`.
+   * @returns {Promise} that resolves after the image has been written.
    */
   writeImage(image) {
-    clipboard.writeImage(typeof image?.toPNG === "function" ? image.toPNG() : image);
+    return clipboard.writeImage(typeof image?.toPNG === "function" ? image.toPNG() : image);
   }
 
   /**
@@ -325,7 +355,7 @@ module.exports = class Clipboard {
    *
    * Read the text from the Linux primary selection.
    *
-   * @returns {String}, always empty on the platforms that have no primary selection.
+   * @returns {Promise} that resolves to a `String`, always empty on platforms without a primary selection.
    */
   readSelectionText() {
     return clipboard.readSelectionText();
@@ -337,14 +367,11 @@ module.exports = class Clipboard {
    *
    * Write the given text to the Linux primary selection.
    *
-   * Unlike every other method here this one does not wait for the main
-   * process: it runs on each selection change, and a drag cannot afford a
-   * round trip per mouse move.
-   *
    * @param text - The `String` to store.
+   * @returns {Promise} that resolves after the primary selection has been updated.
    */
   writeSelectionText(text) {
-    clipboard.writeSelectionText(text);
+    return clipboard.writeSelectionText(text);
   }
 
   /**
@@ -362,15 +389,13 @@ module.exports = class Clipboard {
    * * `text` The `String` clipboard text.
    * * `metadata` The metadata stored by an earlier call to {@link #write}.
    *
-   * @returns {Object} with the following keys:
+   * @returns {Promise} that resolves to an `Object` with the following keys:
    */
   readWithMetadata() {
-    const text = this.read();
-    if (this.signatureForMetadata === this.md5(text)) {
-      return { text, metadata: this.metadata };
-    } else {
-      return { text };
-    }
+    const didRead = this.read();
+    const withMetadata = (text) =>
+      this.signatureForMetadata === this.md5(text) ? { text, metadata: this.metadata } : { text };
+    return isPromise(didRead) ? didRead.then(withMetadata) : withMetadata(didRead);
   }
 
   metadataFromSerializedCopyMetadata(serialized) {

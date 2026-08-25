@@ -13,12 +13,12 @@ const ipcHelpers = require("./ipc-helpers");
 const { getConfigFilePath } = require("./get-app-details.js");
 const {
   BrowserWindow,
+  ClipboardItem,
   Menu,
   app,
   clipboard,
   dialog,
   ipcMain,
-  nativeImage,
   safeStorage,
   screen,
   shell,
@@ -41,6 +41,7 @@ const ConfigSchema = require("./config-schema");
 const LocationSuffixRegExp = /(:\d+)(:\d+)?$/;
 const WINDOW_EVENT_CHANNEL = "window-event";
 const shellInvoker = new XdgShellInvoker(shell);
+const FIND_TEXT_MIME_TYPE = "electron application/findtext";
 
 // Increment this when changing the serialization format of `${LUMINE_HOME}/storage/application.json` used by
 // LumineApplication::saveCurrentWindowOptions() and LumineApplication::loadPreviousWindowOptions() in a backward-
@@ -1381,24 +1382,17 @@ module.exports = class LumineApplication extends EventEmitter {
       }),
     );
 
+    // Electron 44 exposes its Promise-based clipboard only in the main process.
+    // `src/clipboard-bridge.js` reaches this allow list through asynchronous IPC.
+    // Return an envelope so a rejected clipboard operation cannot strand the
+    // renderer waiting for a response.
     this.disposable.add(
-      ipcHelpers.on(ipcMain, "write-text-to-selection-clipboard", (event, text) =>
-        clipboard.writeText(text, "selection"),
-      ),
-    );
-
-    // Renderers cannot touch the native clipboard any more — Electron
-    // deprecated the module there — so `src/clipboard-bridge.js` asks for each
-    // operation by name and blocks until this answers. Nothing else may set
-    // `returnValue`, and a request that throws must still set it or the
-    // renderer waits forever.
-    this.disposable.add(
-      ipcHelpers.on(ipcMain, "clipboard", (event, method, args) => {
+      ipcHelpers.respondTo("clipboard", async (window, method, args) => {
         try {
-          event.returnValue = this.handleClipboardRequest(method, args || []);
+          return { ok: true, value: await this.handleClipboardRequest(method, args || []) };
         } catch (error) {
           console.error(`Clipboard request '${method}' failed`, error);
-          event.returnValue = null;
+          return { ok: false, error: error?.message || String(error) };
         }
       }),
     );
@@ -1424,29 +1418,45 @@ module.exports = class LumineApplication extends EventEmitter {
     this.disposable.add(this.disableZoomOnDisplayChange());
   }
 
-  // Performs one clipboard operation on behalf of a renderer. The method name
-  // arrives over IPC, so this is an allow list rather than a dispatch table:
-  // anything unrecognised reads as an empty clipboard.
-  //
-  // An image crosses the boundary as PNG bytes, which is the one lossy part —
-  // its scale factor does not survive.
-  handleClipboardRequest(method, args) {
+  // Performs one Promise-based Electron 44 clipboard operation on behalf of a
+  // renderer. The method name arrives over IPC, so this is an allow list rather
+  // than a dispatch table: anything unrecognised reads as an empty clipboard.
+  async handleClipboardRequest(method, args) {
+    const type = method === "readText" ? args[0] : method === "writeText" ? args[1] : null;
+    const target = type === "selection" ? clipboard.selection : clipboard;
+    if (!target) return null;
+
     switch (method) {
       case "readText":
-        return args[0] ? clipboard.readText(args[0]) : clipboard.readText();
+        return target.readText();
       case "writeText":
-        if (args[1]) clipboard.writeText(args[0], args[1]);
-        else clipboard.writeText(args[0]);
+        await target.writeText(args[0]);
         return null;
-      case "readFindText":
-        return clipboard.readFindText();
+      case "readFindText": {
+        const item = (await clipboard.read()).find((entry) =>
+          entry.types.includes(FIND_TEXT_MIME_TYPE),
+        );
+        if (!item) return "";
+        return (await item.getType(FIND_TEXT_MIME_TYPE)).text();
+      }
       case "writeFindText":
-        clipboard.writeFindText(args[0]);
+        await clipboard.write([new ClipboardItem({ [FIND_TEXT_MIME_TYPE]: args[0] })]);
         return null;
-      case "readImage":
-        return clipboard.readImage().toPNG();
+      case "readImage": {
+        for (const item of await clipboard.read()) {
+          const type = item.types.includes("image/png")
+            ? "image/png"
+            : item.types.find((entry) => entry.startsWith("image/"));
+          if (type) return Buffer.from(await (await item.getType(type)).arrayBuffer());
+        }
+        return null;
+      }
       case "writeImage":
-        clipboard.writeImage(nativeImage.createFromBuffer(Buffer.from(args[0])));
+        await clipboard.write([
+          new ClipboardItem({
+            "image/png": new Blob([Buffer.from(args[0])], { type: "image/png" }),
+          }),
+        ]);
         return null;
       default:
         return null;

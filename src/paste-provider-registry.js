@@ -17,15 +17,15 @@ const { Disposable } = require("@lumine-code/event-kit");
  * workspace vocabulary the clipboard has no business knowing.
  *
  * Providers are offered the paste highest `priority` first, and equal
- * priorities keep registration order. The first one to return `true` claims it
- * and no later provider is consulted; when none does, the caller falls back to
- * its own behavior — inserting text, in the editor's case. A paste that sets
+ * priorities keep registration order. The first one to resolve to `true`
+ * claims it and no later provider is consulted; when none does, the caller
+ * falls back to its own behavior — inserting text, in the editor's case. A paste that sets
  * `skipPasteProviders` in its options skips the registry outright, which is how
  * `editor:paste-without-reformatting` guarantees it pastes raw text.
  *
- * A provider must decide synchronously. The editor may be inside a native
- * `paste` ClipboardEvent, whose `clipboardData` is readable only for the
- * duration of that event, so claim the paste first and then do the slow part.
+ * A provider may return a `Promise`, but it must copy everything it needs from
+ * a native `paste` ClipboardEvent before its first asynchronous step because
+ * `clipboardData` is readable only for the duration of that event.
  *
  * ## Examples
  *
@@ -63,7 +63,7 @@ module.exports = class PasteProviderRegistry {
    * Throws a `TypeError` when the provider has no `handlePaste` method, or when
    * `priority` is not a finite number.
    *
-   * @param provider - An `Object` with a `handlePaste(context)` method. It receives exactly what {@link #handlePaste} was given, and returns `true` to claim the paste or `false` to pass it on.
+   * @param provider - An `Object` with a `handlePaste(context)` method. It receives exactly what {@link #handlePaste} was given, and returns or resolves to `true` to claim the paste or `false` to pass it on.
    * @param {Object} [options] - Registration options.
    * @param {Number} [options.priority=0] - The order in which providers are
    *   consulted, highest first. Ties preserve registration order.
@@ -108,12 +108,20 @@ module.exports = class PasteProviderRegistry {
    * @param [context.clipboard] - The {@link Clipboard} to read the paste from. Inside a native paste event this is a DataTransfer-backed clipboard, so `readWithMetadata()` sees the metadata of the window that did the copy; outside one it is `lumine.clipboard`. Absent when the caller is not a text editor.
    * @param [context.clipboardData] - The event's `DataTransfer`, or `null` when the paste did not arrive as a native paste event. Custom formats and non-text items such as files and images are readable only from here.
    * @param [context.options] - An `Object` of the paste options the editor would otherwise have used, such as `autoIndent` and `normalizeLineEndings`.
-   * @returns {Boolean} : `true` when a provider claimed the paste and the caller must not handle it itself, `false` when none did.
+   * @returns {Boolean|Promise} `true` when a provider claimed the paste and the caller must not handle it itself, `false` when none did, or a `Promise` resolving to either value when a provider decides asynchronously.
    */
   handlePaste(context) {
-    for (const { provider } of this.providers) {
-      if (provider.handlePaste(context) === true) return true;
-    }
-    return false;
+    let index = 0;
+    const offerNext = () => {
+      while (index < this.providers.length) {
+        const result = this.providers[index++].provider.handlePaste(context);
+        if (result != null && typeof result.then === "function") {
+          return result.then((handled) => (handled === true ? true : offerNext()));
+        }
+        if (result === true) return true;
+      }
+      return false;
+    };
+    return offerNext();
   }
 };

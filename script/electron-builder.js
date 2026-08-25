@@ -279,9 +279,8 @@ let options = {
   mac: {
     icon: ICONS.icns,
     category: "public.app-category.developer-tools",
-    // NOTE: Electron 33 dropped support for macOS 10.15, so the minimum
-    // supported version is macOS 11. Lumine currently ships on Electron 43.
-    minimumSystemVersion: "11.0",
+    // Electron 44 follows Chromium in requiring macOS 13 or later.
+    minimumSystemVersion: "13.0",
     hardenedRuntime: true,
     // Now that we're on a recent Electron, we no longer have to hide the
     // `allow-jit` entitlement from Intel Macs in order to work around a

@@ -5,6 +5,10 @@ const { Emitter } = require("@lumine-code/event-kit");
 const NonWhitespaceRegExp = /\S/;
 let nextId = 0;
 
+function isPromise(value) {
+  return value != null && typeof value.then === "function";
+}
+
 /**
  * @public
  * @status extended
@@ -1123,7 +1127,12 @@ module.exports = class Selection {
   cutToEndOfLine(maintainClipboard, options = {}) {
     if (!this.ensureWritable("cutToEndOfLine", options)) return;
     if (this.isEmpty()) this.selectToEndOfLine();
-    return this.cut(maintainClipboard, false, options.bypassReadOnly);
+    return this.cut(
+      maintainClipboard,
+      false,
+      options.bypassReadOnly,
+      options.clipboard || this.editor.constructor.clipboard,
+    );
   }
 
   /**
@@ -1139,7 +1148,12 @@ module.exports = class Selection {
   cutToEndOfBufferLine(maintainClipboard, options = {}) {
     if (!this.ensureWritable("cutToEndOfBufferLine", options)) return;
     if (this.isEmpty()) this.selectToEndOfBufferLine();
-    this.cut(maintainClipboard, false, options.bypassReadOnly);
+    return this.cut(
+      maintainClipboard,
+      false,
+      options.bypassReadOnly,
+      options.clipboard || this.editor.constructor.clipboard,
+    );
   }
 
   /**
@@ -1159,8 +1173,9 @@ module.exports = class Selection {
     clipboard = this.editor.constructor.clipboard,
   ) {
     if (!this.ensureWritable("cut", { bypassReadOnly })) return;
-    this.copy(maintainClipboard, fullLine, clipboard);
-    this.delete({ bypassReadOnly });
+    const didCopy = this.copy(maintainClipboard, fullLine, clipboard);
+    const removeSelection = () => this.delete({ bypassReadOnly });
+    return isPromise(didCopy) ? didCopy.then(removeSelection) : removeSelection();
   }
 
   /**
@@ -1179,8 +1194,7 @@ module.exports = class Selection {
     const precedingText = this.editor.getTextInRange([[start.row, 0], start]);
     const startLevel = this.editor.indentLevelForLine(precedingText);
 
-    if (maintainClipboard) {
-      let { text: clipboardText, metadata } = clipboard.readWithMetadata();
+    const appendSelection = ({ text: clipboardText, metadata }) => {
       if (!metadata) metadata = {};
       if (!metadata.selections) {
         metadata.selections = [
@@ -1196,9 +1210,16 @@ module.exports = class Selection {
         indentBasis: startLevel,
         fullLine,
       });
-      clipboard.write([clipboardText, selectionText].join("\n"), metadata);
+      return clipboard.write([clipboardText, selectionText].join("\n"), metadata);
+    };
+
+    if (maintainClipboard) {
+      const clipboardData = clipboard.readWithMetadata();
+      return isPromise(clipboardData)
+        ? clipboardData.then(appendSelection)
+        : appendSelection(clipboardData);
     } else {
-      clipboard.write(selectionText, {
+      return clipboard.write(selectionText, {
         indentBasis: startLevel,
         fullLine,
       });

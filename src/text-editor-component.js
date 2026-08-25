@@ -23,6 +23,10 @@ let TextEditorElement;
 
 const DEFAULT_ROWS_PER_TILE = 6;
 const NORMAL_WIDTH_CHARACTER = "x";
+
+function isPromise(value) {
+  return value != null && typeof value.then === "function";
+}
 const DOUBLE_WIDTH_CHARACTER = "我";
 const HALF_WIDTH_CHARACTER = "ﾊ";
 const KOREAN_CHARACTER = "세";
@@ -2525,15 +2529,15 @@ module.exports = class TextEditorComponent {
   }
 
   copySelectedText() {
-    this.performClipboardOperation("copy", false);
+    return this.performClipboardOperation("copy", false);
   }
 
   copyOnlySelectedText() {
-    this.performClipboardOperation("copy", true);
+    return this.performClipboardOperation("copy", true);
   }
 
   cutSelectedText() {
-    this.performClipboardOperation("cut", false);
+    return this.performClipboardOperation("cut", false);
   }
 
   pasteText(options = {}, commandEvent = null) {
@@ -2563,7 +2567,10 @@ module.exports = class TextEditorComponent {
         clipboard: this.props.model.constructor.clipboard,
         options: editorOptions,
       });
-    if (!handledByProvider) this.props.model.pasteText(editorOptions);
+    const pasteDefault = (handled) => (handled ? true : this.props.model.pasteText(editorOptions));
+    return isPromise(handledByProvider)
+      ? handledByProvider.then(pasteDefault)
+      : pasteDefault(handledByProvider);
   }
 
   handlePasteProviders({ clipboard, clipboardData = null, options = {} }) {
@@ -2595,11 +2602,11 @@ module.exports = class TextEditorComponent {
 
     if (!operation.handled) {
       if (type === "cut") {
-        this.props.model.cutSelectedText();
+        return this.props.model.cutSelectedText();
       } else if (onlySelectedText) {
-        this.props.model.copyOnlySelectedText();
+        return this.props.model.copyOnlySelectedText();
       } else {
-        this.props.model.copySelectedText();
+        return this.props.model.copySelectedText();
       }
     }
   }
@@ -2651,10 +2658,12 @@ module.exports = class TextEditorComponent {
           clipboardData: event.clipboardData,
           options: editorOptions,
         });
-      if (!handledByProvider) {
-        this.props.model.pasteText({ ...editorOptions, clipboard });
-      }
       event.preventDefault();
+      const pasteDefault = (handled) => {
+        if (!handled) this.props.model.pasteText({ ...editorOptions, clipboard });
+      };
+      if (isPromise(handledByProvider)) handledByProvider.then(pasteDefault);
+      else pasteDefault(handledByProvider);
     } else if (this.getPlatform() === "linux") {
       // Chromium translates a middle-button mouse click into a mousedown and a
       // paste event on Linux. Preserve Lumine's existing suppression unless the
@@ -2816,15 +2825,18 @@ module.exports = class TextEditorComponent {
     if (button === 1) {
       model.setCursorScreenPosition(screenPosition, { autoscroll: false });
 
-      // On Linux, pasting happens on middle click. A textInput event with the
-      // contents of the selection clipboard will be dispatched by the browser
-      // automatically on mouseup if editor.selectionClipboard is set to true.
+      // On Linux, pasting happens on middle click. Electron 44 exposes the
+      // primary selection asynchronously, so insert it when the main-process
+      // read finishes.
       if (
         platform === "linux" &&
         this.isInputEnabled() &&
         lumine.config.get("editor.selectionClipboard")
-      )
-        model.insertText(model.constructor.clipboard.readSelectionText());
+      ) {
+        const didRead = model.constructor.clipboard.readSelectionText();
+        if (isPromise(didRead)) didRead.then((text) => model.insertText(text)).catch(() => {});
+        else model.insertText(didRead);
+      }
       return;
     }
 
@@ -4190,10 +4202,10 @@ module.exports = class TextEditorComponent {
 
         const selectedText = model.getSelectedText();
         if (selectedText) {
-          // Fire and forget: every other clipboard write blocks on the main
-          // process, and a round trip per selection change would slow down
-          // dragging a selection.
-          model.constructor.clipboard.writeSelectionText(selectedText);
+          // Fire and forget: a selection change must not wait for a
+          // main-process round trip while the user is dragging.
+          const didWrite = model.constructor.clipboard.writeSelectionText(selectedText);
+          if (isPromise(didWrite)) didWrite.catch(() => {});
         }
       });
     }

@@ -1,4 +1,5 @@
-const { ipcRenderer, nativeImage } = require("electron");
+const { nativeImage } = require("electron");
+const ipcHelpers = require("./ipc-helpers");
 
 // The renderer half of the native clipboard.
 //
@@ -10,27 +11,22 @@ const { ipcRenderer, nativeImage } = require("electron");
 // so what survives of the recipe is its substance: the main process owns the
 // clipboard, and the renderer asks it over IPC.
 //
-// The requests are synchronous because {@link Clipboard} is. A paste reads the
-// clipboard in the middle of an edit and `lumine.clipboard.read()` is
-// documented to return a `String`, so there is no seam to make asynchronous
-// without changing every caller. On Linux Electron's renderer-side `clipboard`
-// was already a synchronous IPC call, so this is not new cost there.
-//
-// {@link #writeSelectionText} is the one exception. Linux mirrors every selection
-// change into the primary selection, and blocking a drag on a round trip is
-// exactly what its dedicated asynchronous channel has always avoided. Both
-// travel the same pipe in order, so a selection write is still visible to the
-// read that follows it.
+// Electron 44 also made the main-process clipboard asynchronous, so every
+// request uses the existing request/response IPC helper and returns a Promise.
+// Native copy and paste events remain synchronous through Clipboard's
+// DataTransfer-backed adapter; programmatic clipboard access follows Electron's
+// Promise-based contract.
 //
 // This module is the seam specs replace — see `spec/helpers/jasmine-spies.js`,
 // which fakes the two text methods so a spec run never touches the real
 // clipboard.
 
 const CHANNEL = "clipboard";
-const SELECTION_CHANNEL = "write-text-to-selection-clipboard";
 
-function request(method, ...args) {
-  return ipcRenderer.sendSync(CHANNEL, method, args);
+async function request(method, ...args) {
+  const response = await ipcHelpers.call(CHANNEL, method, args);
+  if (!response?.ok) throw new Error(response?.error || `Clipboard request '${method}' failed`);
+  return response.value;
 }
 
 // Electron's structured clone hands a `Buffer` back as a `Uint8Array`, and
@@ -45,34 +41,34 @@ function toBuffer(value) {
 }
 
 module.exports = {
-  readText(type) {
-    return request("readText", type) || "";
+  async readText(type) {
+    return (await request("readText", type)) || "";
   },
 
   writeText(text, type) {
-    request("writeText", text, type);
+    return request("writeText", text, type);
   },
 
-  readFindText() {
-    return request("readFindText") || "";
+  async readFindText() {
+    return (await request("readFindText")) || "";
   },
 
   writeFindText(text) {
-    request("writeFindText", text);
+    return request("writeFindText", text);
   },
 
   // Returns a `NativeImage`, empty when the clipboard holds no image. The image
   // crosses the process boundary as PNG bytes, so its scale factor does not
   // survive the trip.
-  readImage() {
-    const png = toBuffer(request("readImage"));
+  async readImage() {
+    const png = toBuffer(await request("readImage"));
     return png.length > 0 ? nativeImage.createFromBuffer(png) : nativeImage.createEmpty();
   },
 
   // * `png` PNG bytes, as a `Buffer` or any typed array over them.
   writeImage(png) {
     const buffer = toBuffer(png);
-    if (buffer.length > 0) request("writeImage", buffer);
+    return buffer.length > 0 ? request("writeImage", buffer) : Promise.resolve();
   },
 
   readSelectionText() {
@@ -80,6 +76,6 @@ module.exports = {
   },
 
   writeSelectionText(text) {
-    ipcRenderer.send(SELECTION_CHANNEL, text);
+    return this.writeText(text, "selection");
   },
 };

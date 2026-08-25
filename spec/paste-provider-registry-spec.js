@@ -22,6 +22,16 @@ describe("PasteProviderRegistry", () => {
     expect(registry.handlePaste({ target: { type: "directory" } })).toBe(false);
   });
 
+  it("awaits an asynchronous provider before offering the paste to the next one", async () => {
+    const calls = [];
+    registry.add({ handlePaste: async () => calls.push("first") && false });
+    registry.add({ handlePaste: async () => calls.push("second") && true });
+    registry.add({ handlePaste: () => calls.push("unused") && true });
+
+    expect(await registry.handlePaste({ target: { type: "terminal" } })).toBe(true);
+    expect(calls).toEqual(["first", "second"]);
+  });
+
   it("returns a disposable that unregisters the provider", () => {
     const provider = { handlePaste: jasmine.createSpy("handlePaste").and.returnValue(true) };
     const registration = registry.add(provider);
