@@ -160,6 +160,263 @@ describe("DisplayMarkerLayer", function () {
     });
   });
 
+  it("caches observed positions and invalidates the cache during buffer edits", function () {
+    const buffer = new TextBuffer({ text: "abc\ndef\nghi" });
+    const displayLayer = buffer.addDisplayLayer();
+    const markerLayer = displayLayer.addMarkerLayer();
+    const marker = markerLayer.markBufferRange([
+      [1, 1],
+      [2, 2],
+    ]);
+    marker.onDidChange(() => {});
+
+    const rangeReads = spyOn(marker.bufferMarker, "getRange").and.callThrough();
+    const translations = spyOn(displayLayer, "translateBufferPosition").and.callThrough();
+
+    expect(marker.getBufferRange()).toEqual([
+      [1, 1],
+      [2, 2],
+    ]);
+    expect(marker.getScreenRange()).toEqual([
+      [1, 1],
+      [2, 2],
+    ]);
+    expect(rangeReads).not.toHaveBeenCalled();
+    expect(translations).not.toHaveBeenCalled();
+
+    buffer.transact(() => {
+      buffer.insert([0, 0], "new\n");
+      rangeReads.calls.reset();
+      expect(marker.getBufferRange()).toEqual([
+        [2, 1],
+        [3, 2],
+      ]);
+      expect(rangeReads).toHaveBeenCalled();
+    });
+
+    rangeReads.calls.reset();
+    translations.calls.reset();
+    expect(marker.getBufferRange()).toEqual([
+      [2, 1],
+      [3, 2],
+    ]);
+    expect(marker.getScreenRange()).toEqual([
+      [2, 1],
+      [3, 2],
+    ]);
+    expect(rangeReads).not.toHaveBeenCalled();
+    expect(translations).not.toHaveBeenCalled();
+
+    const cachedHead = marker.getHeadBufferPosition();
+    cachedHead.column = 99;
+    expect(marker.getHeadBufferPosition()).toEqual([3, 2]);
+  });
+
+  it("only translates endpoints that move in a direct marker change", function () {
+    const buffer = new TextBuffer({ text: "abcdef" });
+    const displayLayer = buffer.addDisplayLayer();
+    const marker = displayLayer.addMarkerLayer().markBufferRange([
+      [0, 1],
+      [0, 3],
+    ]);
+    marker.onDidChange(() => {});
+    const translations = spyOn(displayLayer, "translateBufferPosition").and.callThrough();
+
+    marker.setHeadBufferPosition([0, 4]);
+
+    expect(translations.calls.count()).toBe(1);
+    expect(marker.getScreenRange()).toEqual([
+      [0, 1],
+      [0, 4],
+    ]);
+  });
+
+  it("keeps every display marker current after a reentrant buffer-marker change", function () {
+    const buffer = new TextBuffer({ text: "abcdef" });
+    const bufferMarkerLayer = buffer.addMarkerLayer();
+    const bufferMarker = bufferMarkerLayer.markPosition([0, 0]);
+    const displayMarker1 = buffer
+      .addDisplayLayer()
+      .getMarkerLayer(bufferMarkerLayer.id)
+      .getMarker(bufferMarker.id);
+    const displayMarker2 = buffer
+      .addDisplayLayer()
+      .getMarkerLayer(bufferMarkerLayer.id)
+      .getMarker(bufferMarker.id);
+    let movedReentrantly = false;
+    const secondMarkerPositionsDuringFirstCallbacks = [];
+    displayMarker1.onDidChange(() => {
+      secondMarkerPositionsDuringFirstCallbacks.push(displayMarker2.getHeadBufferPosition());
+      if (!movedReentrantly) {
+        movedReentrantly = true;
+        bufferMarker.setHeadPosition([0, 2]);
+      }
+    });
+    displayMarker2.onDidChange(() => {});
+
+    bufferMarker.setHeadPosition([0, 1]);
+
+    expect(bufferMarker.getHeadPosition()).toEqual([0, 2]);
+    expect(secondMarkerPositionsDuringFirstCallbacks).toEqual([
+      [0, 1],
+      [0, 2],
+    ]);
+    expect(displayMarker1.getHeadBufferPosition()).toEqual([0, 2]);
+    expect(displayMarker2.getHeadBufferPosition()).toEqual([0, 2]);
+  });
+
+  it("invalidates cached screen positions before reset observers run", function () {
+    const buffer = new TextBuffer({ text: "a\tb" });
+    const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });
+    const marker = displayLayer.addMarkerLayer().markBufferPosition([0, 2]);
+    marker.onDidChange(() => {});
+    expect(marker.getHeadScreenPosition()).toEqual([0, 4]);
+    let positionDuringReset = null;
+    displayLayer.onDidReset(() => {
+      positionDuringReset = marker.getHeadScreenPosition();
+    });
+
+    displayLayer.reset({ tabLength: 2 });
+
+    expect(positionDuringReset).toEqual([0, 2]);
+    expect(marker.getHeadScreenPosition()).toEqual([0, 2]);
+  });
+
+  it("lazily refreshes screen positions when an edit changes only the display mapping", function () {
+    const buffer = new TextBuffer({ text: "ab" });
+    const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });
+    const marker = displayLayer.addMarkerLayer().markBufferPosition([0, 2]);
+    marker.onDidChange(() => {});
+    expect(marker.getHeadScreenPosition()).toEqual([0, 2]);
+
+    buffer.setTextInRange(
+      [
+        [0, 0],
+        [0, 1],
+      ],
+      "\t",
+    );
+
+    expect(marker.getHeadBufferPosition()).toEqual([0, 2]);
+    expect(marker.getHeadScreenPosition()).toEqual([0, 5]);
+  });
+
+  it("does not reuse an endpoint cached before a display-only text change", function () {
+    const buffer = new TextBuffer({ text: "abcd" });
+    const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });
+    const marker = displayLayer.addMarkerLayer().markBufferRange([
+      [0, 1],
+      [0, 2],
+    ]);
+    marker.onDidChange(() => {});
+    expect(marker.getScreenRange()).toEqual([
+      [0, 1],
+      [0, 2],
+    ]);
+
+    buffer.setTextInRange(
+      [
+        [0, 0],
+        [0, 1],
+      ],
+      "\t",
+    );
+    marker.setHeadBufferPosition([0, 3]);
+
+    expect(marker.getScreenRange()).toEqual([
+      [0, 4],
+      [0, 6],
+    ]);
+  });
+
+  it("invalidates generations again for a reentrant text change", function () {
+    const buffer = new TextBuffer({ text: "xabc" });
+    const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });
+    const marker = displayLayer.addMarkerLayer().markBufferPosition([0, 4]);
+    let changedReentrantly = false;
+    marker.onDidChange(() => {
+      if (!changedReentrantly) {
+        changedReentrantly = true;
+        buffer.setTextInRange(
+          [
+            [0, 1],
+            [0, 2],
+          ],
+          "\t",
+        );
+      }
+    });
+
+    buffer.insert([0, 0], "y");
+
+    expect(buffer.getText()).toBe("y\tabc");
+    expect(marker.getHeadBufferPosition()).toEqual([0, 5]);
+    expect(marker.getHeadScreenPosition()).toEqual([0, 7]);
+  });
+
+  it("invalidates cached screen positions before fold-change observers run", function () {
+    const buffer = new TextBuffer({ text: "abc\ndef\nghi" });
+    const displayLayer = buffer.addDisplayLayer();
+    const marker = displayLayer.addMarkerLayer().markBufferPosition([2, 1]);
+    marker.onDidChange(() => {});
+    expect(marker.getHeadScreenPosition()).toEqual([2, 1]);
+    let positionDuringChange = null;
+    displayLayer.onDidChange(() => {
+      positionDuringChange = marker.getHeadScreenPosition();
+    });
+
+    displayLayer.foldBufferRange([
+      [0, 1],
+      [1, 1],
+    ]);
+
+    expect(positionDuringChange).toEqual([1, 1]);
+    expect(marker.getHeadScreenPosition()).toEqual([1, 1]);
+  });
+
+  it("keeps buffer-position caches dirty when a change observer throws", function () {
+    const buffer = new TextBuffer({ text: "abcdef" });
+    const displayLayer = buffer.addDisplayLayer();
+    const markerLayer = displayLayer.addMarkerLayer();
+    const marker1 = markerLayer.markBufferPosition([0, 1]);
+    const marker2 = markerLayer.markBufferPosition([0, 3]);
+    marker1.onDidChange(() => {
+      throw new Error("marker observer");
+    });
+    marker2.onDidChange(() => {});
+
+    expect(() => buffer.insert([0, 0], "x")).toThrowError("marker observer");
+
+    expect(markerLayer.bufferMarkerPositionsDirty).toBe(true);
+    expect(marker2.getHeadBufferPosition()).toEqual(marker2.bufferMarker.getHeadPosition());
+    expect(marker2.getHeadBufferPosition()).toEqual([0, 4]);
+  });
+
+  it("keeps screen-position caches dirty when a fold observer throws", function () {
+    const buffer = new TextBuffer({ text: "abc\ndef\nghi\njkl" });
+    const displayLayer = buffer.addDisplayLayer();
+    const markerLayer = displayLayer.addMarkerLayer();
+    const marker1 = markerLayer.markBufferPosition([2, 0]);
+    const marker2 = markerLayer.markBufferPosition([3, 1]);
+    marker1.onDidChange(() => {
+      throw new Error("fold observer");
+    });
+    marker2.onDidChange(() => {});
+
+    expect(() =>
+      displayLayer.foldBufferRange([
+        [0, 1],
+        [1, 1],
+      ]),
+    ).toThrowError("fold observer");
+
+    expect(markerLayer.screenPositionsDirty).toBe(true);
+    expect(marker2.getHeadScreenPosition()).toEqual(
+      displayLayer.translateBufferPosition(marker2.bufferMarker.getHeadPosition()),
+    );
+    expect(marker2.getHeadScreenPosition()).toEqual([2, 1]);
+  });
+
   it("does not create duplicate DisplayMarkers when it has onDidCreateMarker observers (regression)", function () {
     const buffer = new TextBuffer({ text: "abc\ndef\nghi\nj\tk\tl\nmno" });
     const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });

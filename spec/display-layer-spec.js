@@ -274,6 +274,17 @@ describe("DisplayLayer", () => {
       expect(displayLayer.translateBufferPosition([0, 2])).toEqual([0, 2]);
       expect(displayLayer.translateBufferPosition([1, 6])).toEqual([1, 6]);
     });
+
+    it("checks long leading whitespace without reading every character through the buffer", () => {
+      const buffer = new TextBuffer({ text: `${" ".repeat(80)}x` });
+      const displayLayer = buffer.addDisplayLayer({ tabLength: 4 });
+      const characterReads = spyOn(buffer, "getCharacterAtPosition").and.callThrough();
+
+      expect(displayLayer.translateBufferPosition([0, 79], { clipDirection: "closest" })).toEqual([
+        0, 80,
+      ]);
+      expect(characterReads.calls.count()).toBe(2);
+    });
   });
 
   describe("paired characters", () => {

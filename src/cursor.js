@@ -355,9 +355,13 @@ module.exports = class Cursor extends Model {
    */
   moveUp(rowCount = 1, { moveToEndOfSelection } = {}) {
     let row, column;
-    const range = this.marker.getScreenRange();
-    if (moveToEndOfSelection && !range.isEmpty()) {
-      ({ row, column } = range.start);
+    if (moveToEndOfSelection) {
+      const range = this.marker.getScreenRange();
+      if (!range.isEmpty()) {
+        ({ row, column } = range.start);
+      } else {
+        ({ row, column } = this.getScreenPosition());
+      }
     } else {
       ({ row, column } = this.getScreenPosition());
     }
@@ -380,9 +384,13 @@ module.exports = class Cursor extends Model {
    */
   moveDown(rowCount = 1, { moveToEndOfSelection } = {}) {
     let row, column;
-    const range = this.marker.getScreenRange();
-    if (moveToEndOfSelection && !range.isEmpty()) {
-      ({ row, column } = range.end);
+    if (moveToEndOfSelection) {
+      const range = this.marker.getScreenRange();
+      if (!range.isEmpty()) {
+        ({ row, column } = range.end);
+      } else {
+        ({ row, column } = this.getScreenPosition());
+      }
     } else {
       ({ row, column } = this.getScreenPosition());
     }
@@ -404,21 +412,24 @@ module.exports = class Cursor extends Model {
    *   existing selection.
    */
   moveLeft(columnCount = 1, { moveToEndOfSelection } = {}) {
-    const range = this.marker.getScreenRange();
-    if (moveToEndOfSelection && !range.isEmpty()) {
-      this.setScreenPosition(range.start);
-    } else {
-      let { row, column } = this.getScreenPosition();
-
-      while (columnCount > column && row > 0) {
-        columnCount -= column;
-        column = this.editor.lineLengthForScreenRow(--row);
-        columnCount--; // subtract 1 for the row move
+    if (moveToEndOfSelection) {
+      const range = this.marker.getScreenRange();
+      if (!range.isEmpty()) {
+        this.setScreenPosition(range.start);
+        return;
       }
-
-      column = column - columnCount;
-      this.setScreenPosition({ row, column }, { clipDirection: "backward" });
     }
+
+    let { row, column } = this.getScreenPosition();
+
+    while (columnCount > column && row > 0) {
+      columnCount -= column;
+      column = this.editor.lineLengthForScreenRow(--row);
+      columnCount--; // subtract 1 for the row move
+    }
+
+    column = column - columnCount;
+    this.setScreenPosition({ row, column }, { clipDirection: "backward" });
   }
 
   /**
@@ -433,27 +444,33 @@ module.exports = class Cursor extends Model {
    *   existing selection.
    */
   moveRight(columnCount = 1, { moveToEndOfSelection } = {}) {
-    const range = this.marker.getScreenRange();
-    if (moveToEndOfSelection && !range.isEmpty()) {
-      this.setScreenPosition(range.end);
-    } else {
-      let { row, column } = this.getScreenPosition();
-      const maxLines = this.editor.getScreenLineCount();
-      let rowLength = this.editor.lineLengthForScreenRow(row);
-      let columnsRemainingInLine = rowLength - column;
-
-      while (columnCount > columnsRemainingInLine && row < maxLines - 1) {
-        columnCount -= columnsRemainingInLine;
-        columnCount--; // subtract 1 for the row move
-
-        column = 0;
-        rowLength = this.editor.lineLengthForScreenRow(++row);
-        columnsRemainingInLine = rowLength;
+    if (moveToEndOfSelection) {
+      const range = this.marker.getScreenRange();
+      if (!range.isEmpty()) {
+        this.setScreenPosition(range.end);
+        return;
       }
-
-      column = column + columnCount;
-      this.setScreenPosition({ row, column }, { clipDirection: "forward" });
     }
+
+    let { row, column } = this.getScreenPosition();
+    let rowLength = this.editor.lineLengthForScreenRow(row);
+    let columnsRemainingInLine = rowLength - column;
+
+    while (columnCount > columnsRemainingInLine) {
+      const nextRowLength = this.editor.lineLengthForScreenRow(row + 1);
+      if (nextRowLength == null) break;
+
+      columnCount -= columnsRemainingInLine;
+      columnCount--; // subtract 1 for the row move
+
+      column = 0;
+      row++;
+      rowLength = nextRowLength;
+      columnsRemainingInLine = rowLength;
+    }
+
+    column = column + columnCount;
+    this.setScreenPosition({ row, column }, { clipDirection: "forward" });
   }
 
   /**

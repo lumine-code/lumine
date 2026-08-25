@@ -1466,6 +1466,9 @@ module.exports = class Selection {
     const rangeChangedEvent = {
       oldBufferRange: new Range(oldHeadBufferPosition, oldTailBufferPosition),
       oldScreenRange: new Range(oldHeadScreenPosition, oldTailScreenPosition),
+      // Cursor observers above can move this selection again reentrantly. The
+      // DisplayMarker cache makes these live reads cheap, and unlike the outer
+      // payload they describe the final range after nested changes.
       newBufferRange: this.getBufferRange(),
       newScreenRange: this.getScreenRange(),
       selection: this,

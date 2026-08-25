@@ -1,4 +1,5 @@
 const { Emitter, Disposable } = require("@lumine-code/event-kit");
+const Range = require("./range");
 
 /**
  * @public
@@ -129,13 +130,14 @@ class DisplayMarker {
    */
   onDidChange(callback) {
     if (!this.hasChangeObservers) {
-      this.oldHeadBufferPosition = this.getHeadBufferPosition();
-      this.oldHeadScreenPosition = this.getHeadScreenPosition();
-      this.oldTailBufferPosition = this.getTailBufferPosition();
-      this.oldTailScreenPosition = this.getTailScreenPosition();
+      this.oldHeadBufferPosition = this.getHeadBufferPosition().freeze();
+      this.oldHeadScreenPosition = this.getHeadScreenPosition().freeze();
+      this.oldTailBufferPosition = this.getTailBufferPosition().freeze();
+      this.oldTailScreenPosition = this.getTailScreenPosition().freeze();
       this.wasValid = this.isValid();
+      this.stampPositionCacheGenerations();
       this.bufferMarkerSubscription = this.bufferMarker.onDidChange((event) =>
-        this.notifyObservers(event.textChanged),
+        this.notifyObservers(event),
       );
       this.hasChangeObservers = true;
     }
@@ -306,6 +308,10 @@ class DisplayMarker {
    * @returns {Range}
    */
   getBufferRange() {
+    this.refreshBufferPositionCacheIfNeeded();
+    if (this.hasCurrentBufferPositionCache()) {
+      return new Range(this.oldHeadBufferPosition.copy(), this.oldTailBufferPosition.copy());
+    }
     return this.bufferMarker.getRange();
   }
 
@@ -318,6 +324,10 @@ class DisplayMarker {
    * @returns {Range}
    */
   getScreenRange() {
+    this.refreshScreenPositionCacheIfNeeded();
+    if (this.hasCurrentScreenPositionCache()) {
+      return new Range(this.oldHeadScreenPosition.copy(), this.oldTailScreenPosition.copy());
+    }
     return this.layer.translateBufferRange(this.getBufferRange());
   }
 
@@ -359,6 +369,8 @@ class DisplayMarker {
    * @returns {Point}
    */
   getHeadBufferPosition() {
+    this.refreshBufferPositionCacheIfNeeded();
+    if (this.hasCurrentBufferPositionCache()) return this.oldHeadBufferPosition.copy();
     return this.bufferMarker.getHeadPosition();
   }
 
@@ -385,6 +397,10 @@ class DisplayMarker {
    * @returns {Point} The marker's head screen position.
    */
   getHeadScreenPosition(options) {
+    if (options == null) this.refreshScreenPositionCacheIfNeeded();
+    if (this.hasCurrentScreenPositionCache() && options == null) {
+      return this.oldHeadScreenPosition.copy();
+    }
     return this.layer.translateBufferPosition(this.bufferMarker.getHeadPosition(), options);
   }
 
@@ -411,6 +427,8 @@ class DisplayMarker {
    * @returns {Point}
    */
   getTailBufferPosition() {
+    this.refreshBufferPositionCacheIfNeeded();
+    if (this.hasCurrentBufferPositionCache()) return this.oldTailBufferPosition.copy();
     return this.bufferMarker.getTailPosition();
   }
 
@@ -437,6 +455,10 @@ class DisplayMarker {
    * @returns {Point} The marker's tail screen position.
    */
   getTailScreenPosition(options) {
+    if (options == null) this.refreshScreenPositionCacheIfNeeded();
+    if (this.hasCurrentScreenPositionCache() && options == null) {
+      return this.oldTailScreenPosition.copy();
+    }
     return this.layer.translateBufferPosition(this.bufferMarker.getTailPosition(), options);
   }
 
@@ -466,6 +488,8 @@ class DisplayMarker {
    * @returns {Point}
    */
   getStartBufferPosition() {
+    this.refreshBufferPositionCacheIfNeeded();
+    if (this.hasCurrentBufferPositionCache()) return this.getBufferRange().start;
     return this.bufferMarker.getStartPosition();
   }
 
@@ -494,6 +518,8 @@ class DisplayMarker {
    * @returns {Point}
    */
   getEndBufferPosition() {
+    this.refreshBufferPositionCacheIfNeeded();
+    if (this.hasCurrentBufferPositionCache()) return this.getBufferRange().end;
     return this.bufferMarker.getEndPosition();
   }
 
@@ -558,18 +584,96 @@ class DisplayMarker {
     return this.toString();
   }
 
-  notifyObservers(textChanged) {
+  hasCurrentBufferPositionCache() {
+    return (
+      this.hasChangeObservers &&
+      !this.layer.bufferMarkerPositionsDirty &&
+      this.cachedBufferMarkerPositionGeneration === this.bufferMarker.positionGeneration &&
+      this.cachedBufferLayerPositionGeneration === this.layer.bufferMarkerPositionGeneration
+    );
+  }
+
+  hasCurrentScreenPositionCache() {
+    return (
+      this.hasCurrentBufferPositionCache() &&
+      !this.layer.screenPositionsDirty &&
+      this.cachedScreenPositionGeneration === this.layer.screenPositionGeneration
+    );
+  }
+
+  refreshBufferPositionCacheIfNeeded() {
+    if (
+      !this.hasChangeObservers ||
+      this.hasCurrentBufferPositionCache() ||
+      this.layer.bufferMarkerPositionsDirty ||
+      this.bufferMarker.changeEventDepth > 0
+    ) {
+      return;
+    }
+
+    this.oldHeadBufferPosition = this.bufferMarker.getHeadPosition().freeze();
+    this.oldTailBufferPosition = this.bufferMarker.getTailPosition().freeze();
+    this.cachedBufferMarkerPositionGeneration = this.bufferMarker.positionGeneration;
+    this.cachedBufferLayerPositionGeneration = this.layer.bufferMarkerPositionGeneration;
+  }
+
+  refreshScreenPositionCacheIfNeeded() {
+    if (!this.hasChangeObservers || this.hasCurrentScreenPositionCache()) return;
+    this.refreshBufferPositionCacheIfNeeded();
+    if (
+      !this.hasCurrentBufferPositionCache() ||
+      this.layer.screenPositionsDirty ||
+      this.bufferMarker.changeEventDepth > 0
+    ) {
+      return;
+    }
+
+    this.oldHeadScreenPosition = this.layer
+      .translateBufferPosition(this.oldHeadBufferPosition)
+      .freeze();
+    this.oldTailScreenPosition = this.layer
+      .translateBufferPosition(this.oldTailBufferPosition)
+      .freeze();
+    this.cachedScreenPositionGeneration = this.layer.screenPositionGeneration;
+  }
+
+  stampPositionCacheGenerations() {
+    this.cachedBufferMarkerPositionGeneration = this.bufferMarker.positionGeneration;
+    this.cachedBufferLayerPositionGeneration = this.layer.bufferMarkerPositionGeneration;
+    this.cachedScreenPositionGeneration = this.layer.screenPositionGeneration;
+  }
+
+  notifyObservers(change) {
     if (!this.hasChangeObservers) {
       return;
     }
-    if (textChanged == null) {
-      textChanged = false;
-    }
 
-    const newHeadBufferPosition = this.getHeadBufferPosition();
-    const newHeadScreenPosition = this.getHeadScreenPosition();
-    const newTailBufferPosition = this.getTailBufferPosition();
-    const newTailScreenPosition = this.getTailScreenPosition();
+    // A direct BufferMarker change cannot have changed the display mapping, so
+    // an endpoint whose buffer position stayed put keeps its cached screen
+    // position. The boolean form comes from DisplayMarkerLayer after folds or
+    // wrapping changed; that path deliberately re-translates everything.
+    const markerChange = change != null && typeof change === "object" ? change : null;
+    const textChanged = markerChange ? markerChange.textChanged : Boolean(change);
+    const directMarkerChange = markerChange && !textChanged;
+    // Always re-read. Text-change events can carry another edit session's
+    // selection snapshot, and an earlier listener can move the BufferMarker
+    // reentrantly before this listener receives a direct event.
+    const newHeadBufferPosition = this.bufferMarker.getHeadPosition();
+    const newTailBufferPosition = this.bufferMarker.getTailPosition();
+    const canReuseScreenPosition =
+      directMarkerChange &&
+      !this.layer.bufferMarkerPositionsDirty &&
+      !this.layer.screenPositionsDirty &&
+      this.cachedBufferLayerPositionGeneration === this.layer.bufferMarkerPositionGeneration &&
+      this.cachedScreenPositionGeneration === this.layer.screenPositionGeneration;
+    const newHeadScreenPosition =
+      canReuseScreenPosition && newHeadBufferPosition.isEqual(this.oldHeadBufferPosition)
+        ? this.oldHeadScreenPosition
+        : this.layer.translateBufferPosition(newHeadBufferPosition);
+    const newTailScreenPosition =
+      canReuseScreenPosition && newTailBufferPosition.isEqual(this.oldTailBufferPosition)
+        ? this.oldTailScreenPosition
+        : this.layer.translateBufferPosition(newTailBufferPosition);
     const isValid = this.isValid();
 
     if (
@@ -579,6 +683,7 @@ class DisplayMarker {
       newTailBufferPosition.isEqual(this.oldTailBufferPosition) &&
       newTailScreenPosition.isEqual(this.oldTailScreenPosition)
     ) {
+      this.stampPositionCacheGenerations();
       return;
     }
 
@@ -596,11 +701,15 @@ class DisplayMarker {
       isValid,
     };
 
-    this.oldHeadBufferPosition = newHeadBufferPosition;
-    this.oldHeadScreenPosition = newHeadScreenPosition;
-    this.oldTailBufferPosition = newTailBufferPosition;
-    this.oldTailScreenPosition = newTailScreenPosition;
+    // Cached positions are also returned by the public getters. Keep them
+    // immutable so mutating a returned Point cannot corrupt future reads or
+    // change-event comparisons.
+    this.oldHeadBufferPosition = newHeadBufferPosition.freeze();
+    this.oldHeadScreenPosition = newHeadScreenPosition.freeze();
+    this.oldTailBufferPosition = newTailBufferPosition.freeze();
+    this.oldTailScreenPosition = newTailScreenPosition.freeze();
     this.wasValid = isValid;
+    this.stampPositionCacheGenerations();
 
     return this.emitter.emit("did-change", changeEvent);
   }

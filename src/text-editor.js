@@ -4842,38 +4842,40 @@ module.exports = class TextEditor {
   }
 
   mergeSelections(...args) {
-    const mergePredicate = args.pop();
-    let fn = args.pop();
-    let options = args.pop();
-    if (typeof fn !== "function") {
-      options = fn;
-      fn = () => {};
-    }
-
-    if (this.suppressSelectionMerging) return fn();
-
-    // Restored on the way out however the callback leaves: a throw used to
-    // strand the flag set, which silently disables merging for the rest of this
-    // editor's life rather than failing where the fault is.
-    this.suppressSelectionMerging = true;
-    let result;
-    try {
-      result = fn();
-    } finally {
-      this.suppressSelectionMerging = false;
-    }
-
-    const selections = this.getSelectionsOrderedByBufferPosition();
-    let lastSelection = selections.shift();
-    for (const selection of selections) {
-      if (mergePredicate(lastSelection, selection)) {
-        lastSelection.merge(selection, options);
-      } else {
-        lastSelection = selection;
+    return this.buffer.batchMarkerLayerUpdates(() => {
+      const mergePredicate = args.pop();
+      let fn = args.pop();
+      let options = args.pop();
+      if (typeof fn !== "function") {
+        options = fn;
+        fn = () => {};
       }
-    }
 
-    return result;
+      if (this.suppressSelectionMerging) return fn();
+
+      // Restored on the way out however the callback leaves: a throw used to
+      // strand the flag set, which silently disables merging for the rest of this
+      // editor's life rather than failing where the fault is.
+      this.suppressSelectionMerging = true;
+      let result;
+      try {
+        result = fn();
+      } finally {
+        this.suppressSelectionMerging = false;
+      }
+
+      const selections = this.getSelectionsOrderedByBufferPosition();
+      let lastSelection = selections.shift();
+      for (const selection of selections) {
+        if (mergePredicate(lastSelection, selection)) {
+          lastSelection.merge(selection, options);
+        } else {
+          lastSelection = selection;
+        }
+      }
+
+      return result;
+    });
   }
 
   // Add a {@link Selection} based on the given {@link DisplayMarker}.

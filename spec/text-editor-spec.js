@@ -1960,6 +1960,42 @@ describe("TextEditor", () => {
         expect(selection1.isReversed()).toBeFalsy();
       });
 
+      it("selects right without indexing the rest of the buffer", () => {
+        editor.setCursorScreenPosition([0, 1]);
+        const screenLineCount = spyOn(editor, "getScreenLineCount").and.callThrough();
+
+        editor.selectRight();
+
+        expect(editor.getSelectedScreenRange()).toEqual([
+          [0, 1],
+          [0, 2],
+        ]);
+        expect(screenLineCount).not.toHaveBeenCalled();
+      });
+
+      it("emits one marker-layer update when every selection moves", () => {
+        editor.setSelectedBufferRanges([
+          [
+            [0, 1],
+            [0, 1],
+          ],
+          [
+            [1, 1],
+            [1, 1],
+          ],
+          [
+            [2, 1],
+            [2, 1],
+          ],
+        ]);
+        const didUpdate = jasmine.createSpy("didUpdate");
+        editor.selectionsMarkerLayer.onDidUpdate(didUpdate);
+
+        editor.selectRight();
+
+        expect(didUpdate.calls.count()).toBe(1);
+      });
+
       describe("when counts are passed into the selection functions", () => {
         it("expands each selection to its cursor's new location", () => {
           editor.setSelectedBufferRanges([

@@ -142,6 +142,7 @@ class TextBuffer {
     this.loaded = false;
     this.destroyed = false;
     this.transactCallDepth = 0;
+    this.markerUpdateBatchDepth = 0;
     this.digestWhenLastPersisted = false;
 
     this.shouldDestroyOnFileDelete = params.shouldDestroyOnFileDelete || (() => false);
@@ -1640,6 +1641,19 @@ class TextBuffer {
     return result;
   }
 
+  // Coalesce layer-level marker notifications without opening an undo
+  // transaction or delaying individual Marker change events. TextEditor uses
+  // this when one command moves a whole selection set.
+  batchMarkerLayerUpdates(fn) {
+    this.markerUpdateBatchDepth++;
+    try {
+      return fn();
+    } finally {
+      this.markerUpdateBatchDepth--;
+      this.emitPendingMarkerLayerUpdateEvents();
+    }
+  }
+
   /**
    * @public
    * @status public
@@ -3000,22 +3014,26 @@ class TextBuffer {
   }
 
   emitMarkerChangeEvents(snapshot) {
-    if (this.transactCallDepth === 0) {
-      while (this.markerLayersWithPendingUpdateEvents.size > 0) {
-        const updatedMarkerLayers = Array.from(this.markerLayersWithPendingUpdateEvents);
-        this.markerLayersWithPendingUpdateEvents.clear();
-        for (const markerLayer of updatedMarkerLayers) {
-          markerLayer.emitUpdateEvent();
-          if (markerLayer === this.defaultMarkerLayer) {
-            this.emitter.emit("did-update-markers");
-          }
-        }
-      }
-    }
+    this.emitPendingMarkerLayerUpdateEvents();
 
     for (const markerLayerId in this.markerLayers) {
       const markerLayer = this.markerLayers[markerLayerId];
       markerLayer.emitChangeEvents(snapshot && snapshot[markerLayerId]);
+    }
+  }
+
+  emitPendingMarkerLayerUpdateEvents() {
+    if (this.transactCallDepth !== 0 || this.markerUpdateBatchDepth !== 0) return;
+
+    while (this.markerLayersWithPendingUpdateEvents.size > 0) {
+      const updatedMarkerLayers = Array.from(this.markerLayersWithPendingUpdateEvents);
+      this.markerLayersWithPendingUpdateEvents.clear();
+      for (const markerLayer of updatedMarkerLayers) {
+        markerLayer.emitUpdateEvent();
+        if (markerLayer === this.defaultMarkerLayer) {
+          this.emitter.emit("did-update-markers");
+        }
+      }
     }
   }
 
@@ -3140,7 +3158,7 @@ class TextBuffer {
   }
 
   markersUpdated(layer) {
-    if (this.transactCallDepth === 0) {
+    if (this.transactCallDepth === 0 && this.markerUpdateBatchDepth === 0) {
       layer.emitUpdateEvent();
       if (layer === this.defaultMarkerLayer) {
         return this.emitter.emit("did-update-markers");

@@ -21,6 +21,10 @@ class DisplayMarkerLayer {
     this.bufferMarkerLayer.displayMarkerLayers.add(this);
     this.markersById = new Map();
     this.destroyed = false;
+    this.bufferMarkerPositionsDirty = false;
+    this.screenPositionsDirty = false;
+    this.bufferMarkerPositionGeneration = 0;
+    this.screenPositionGeneration = 0;
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
     this.markersWithDestroyListeners = new Set();
@@ -350,9 +354,34 @@ class DisplayMarkerLayer {
   }
 
   notifyObserversIfMarkerScreenPositionsChanged() {
-    for (let marker of this.getMarkers()) {
-      marker.notifyObservers(false);
+    if (!this.screenPositionsDirty) this.markScreenPositionsDirty();
+    let completed = false;
+    try {
+      for (let marker of this.getMarkers()) {
+        marker.notifyObservers(false);
+      }
+      completed = true;
+    } finally {
+      // If an observer throws, later markers still hold positions from the old
+      // display mapping. Leave the layer dirty so their getters take the live
+      // path until a later successful pass refreshes every cache.
+      if (completed) this.screenPositionsDirty = false;
     }
+  }
+
+  bufferMarkerRangesDidChange() {
+    this.bufferMarkerPositionGeneration++;
+    this.bufferMarkerPositionsDirty = true;
+  }
+
+  markScreenPositionsDirty() {
+    this.screenPositionGeneration++;
+    this.screenPositionsDirty = true;
+  }
+
+  didEmitBufferMarkerChangeEvents() {
+    this.bufferMarkerPositionsDirty = false;
+    this.screenPositionsDirty = false;
   }
 
   destroyMarker(id) {

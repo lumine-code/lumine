@@ -121,6 +121,33 @@ describe("Selection", () => {
       expect(changeScreenRangeHandler).toHaveBeenCalled();
       expect(changeScreenRangeHandler.calls.mostRecent().args[0]).not.toBeUndefined();
     });
+
+    it("reports the final range after a cursor observer moves it reentrantly", () => {
+      selection.setBufferRange([
+        [0, 0],
+        [0, 0],
+      ]);
+      const rangeEvents = [];
+      selection.onDidChangeRange((event) => rangeEvents.push(event));
+      let movedReentrantly = false;
+      editor.onDidChangeCursorPosition(({ cursor }) => {
+        if (!movedReentrantly) {
+          movedReentrantly = true;
+          cursor.setBufferPosition([0, 2]);
+        }
+      });
+
+      selection.selectRight();
+
+      expect(selection.getBufferRange()).toEqual([
+        [0, 0],
+        [0, 2],
+      ]);
+      expect(rangeEvents[rangeEvents.length - 1].newBufferRange).toEqual([
+        [0, 0],
+        [0, 2],
+      ]);
+    });
   });
 
   describe("when only the selection's tail is moved (regression)", () => {

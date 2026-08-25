@@ -65,6 +65,8 @@ class Marker {
       properties: this.properties,
     } = params);
     this.emitter = new Emitter();
+    this.positionGeneration = 0;
+    this.changeEventDepth = 0;
     if (this.tailed == null) {
       this.tailed = true;
     }
@@ -591,6 +593,7 @@ class Marker {
 
     const wasExclusive = this.isExclusive();
     let updated = false;
+    let positionsChanged = false;
     let propertiesChanged = false;
 
     if (range != null && !range.isEqual(oldRange)) {
@@ -599,16 +602,19 @@ class Marker {
       // events report the marker's actual positions.
       range = this.getRange();
       updated = true;
+      positionsChanged = true;
     }
 
     if (reversed != null && reversed !== this.reversed) {
       this.reversed = reversed;
       updated = true;
+      positionsChanged = true;
     }
 
     if (tailed != null && tailed !== this.tailed) {
       this.tailed = tailed;
       updated = true;
+      positionsChanged = true;
     }
 
     if (valid != null && valid !== this.valid) {
@@ -632,6 +638,7 @@ class Marker {
       updated = true;
     }
 
+    if (positionsChanged) this.positionGeneration++;
     if (updated) this.refreshHistoryProps();
     this.emitChangeEvent(range ?? oldRange, textChanged, propertiesChanged);
     if (updated && !suppressMarkerLayerUpdateEvents) {
@@ -718,19 +725,24 @@ class Marker {
       newTailPosition = newState.range.start;
     }
 
-    this.emitter.emit("did-change", {
-      wasValid: oldState.valid,
-      isValid: newState.valid,
-      hadTail: oldState.tailed,
-      hasTail: newState.tailed,
-      oldProperties: oldState.properties,
-      newProperties: newState.properties,
-      oldHeadPosition,
-      newHeadPosition,
-      oldTailPosition,
-      newTailPosition,
-      textChanged,
-    });
+    this.changeEventDepth++;
+    try {
+      this.emitter.emit("did-change", {
+        wasValid: oldState.valid,
+        isValid: newState.valid,
+        hadTail: oldState.tailed,
+        hasTail: newState.tailed,
+        oldProperties: oldState.properties,
+        newProperties: newState.properties,
+        oldHeadPosition,
+        newHeadPosition,
+        oldTailPosition,
+        newTailPosition,
+        textChanged,
+      });
+    } finally {
+      this.changeEventDepth--;
+    }
     return true;
   }
 }

@@ -113,6 +113,7 @@ class DisplayLayer {
 
   reset(params) {
     if (!this.isDestroyed() && this.setParams(params)) {
+      this.markMarkerScreenPositionsDirty();
       this.clearSpatialIndex();
       this.emitter.emit("did-reset");
       this.notifyObserversIfMarkerScreenPositionsChanged();
@@ -248,6 +249,7 @@ class DisplayLayer {
     if (containingFoldMarkers.length === 0) {
       const foldStartRow = bufferRange.start.row;
       const foldEndRow = bufferRange.end.row + 1;
+      this.markMarkerScreenPositionsDirty();
       this.didChange(this.updateSpatialIndex(foldStartRow, foldEndRow, foldEndRow, Infinity));
       this.notifyObserversIfMarkerScreenPositionsChanged();
     }
@@ -309,6 +311,7 @@ class DisplayLayer {
 
     const { startRow, endRow } = changedRows;
     this.populateSpatialIndexIfNeeded(endRow + 1, Infinity);
+    this.markMarkerScreenPositionsDirty();
     this.didChange(this.updateSpatialIndex(startRow, endRow + 1, endRow + 1, Infinity));
     this.notifyObserversIfMarkerScreenPositionsChanged();
   }
@@ -331,6 +334,7 @@ class DisplayLayer {
       foldMarker.destroy();
     }
 
+    this.markMarkerScreenPositionsDirty();
     this.didChange(
       this.updateSpatialIndex(
         combinedRangeStart.row,
@@ -375,6 +379,12 @@ class DisplayLayer {
   }
 
   translateBufferPositionWithSpatialIndex(bufferPosition, clipDirection) {
+    // Most buffers have no folds or soft wraps, and hard tabs do not add
+    // row/column mappings to this patch. Avoid a native tree lookup when the
+    // mapping is the identity; cursor movement calls this thousands of times
+    // in a large multi-selection.
+    if (this.spatialIndex.getChangeCount() === 0) return bufferPosition;
+
     let hunk = this.spatialIndex.changeForOldPosition(bufferPosition);
     if (hunk) {
       if (compare(bufferPosition, hunk.oldEnd) < 0) {
@@ -446,6 +456,8 @@ class DisplayLayer {
   }
 
   translateScreenPositionWithSpatialIndex(screenPosition, clipDirection, skipSoftWrapIndentation) {
+    if (this.spatialIndex.getChangeCount() === 0) return screenPosition;
+
     let hunk = this.spatialIndex.changeForNewPosition(screenPosition);
     if (hunk) {
       if (compare(screenPosition, hunk.newEnd) < 0) {
@@ -648,11 +660,11 @@ class DisplayLayer {
   }
 
   getClipColumnDelta(bufferPosition, clipDirection) {
-    var { row, column } = bufferPosition;
+    const { row, column } = bufferPosition;
 
     // Treat paired unicode characters as atomic...
-    var character = this.buffer.getCharacterAtPosition(bufferPosition);
-    var previousCharacter = this.buffer.getCharacterAtPosition([row, column - 1]);
+    const character = this.buffer.getCharacterAtPosition(bufferPosition);
+    const previousCharacter = this.buffer.getCharacterAtPosition([row, column - 1]);
     if (previousCharacter && character && isCharacterPair(previousCharacter, character)) {
       if (clipDirection === "closest" || clipDirection === "backward") {
         return -1;
@@ -669,21 +681,30 @@ class DisplayLayer {
       return 0;
     }
 
-    for (let position = { row, column }; position.column >= 0; position.column--) {
-      if (this.buffer.getCharacterAtPosition(position) !== " ") return 0;
-    }
+    // The common case is a position in text, not inside leading spaces. We
+    // already fetched its character for the paired-character check above, so
+    // do not cross the native buffer boundary a second time just to reject it.
+    if (character !== " ") return 0;
 
-    var previousTabStop = column - (column % this.tabLength);
+    const previousTabStop = column - (column % this.tabLength);
     if (column === previousTabStop) return 0;
-    var nextTabStop = previousTabStop + this.tabLength;
+    const nextTabStop = previousTabStop + this.tabLength;
+
+    // A cursor inside a long indentation used to make one native call per
+    // preceding space, per cursor, per movement. Materialize the line once and
+    // scan its JavaScript string instead.
+    const line = this.buffer.lineForRow(row);
+    for (let index = column - 1; index >= 0; index--) {
+      if (line[index] !== " ") return 0;
+    }
 
     // If there is a non-whitespace character before the next tab stop,
     // don't this whitespace as a soft tab
-    for (let position = { row, column }; position.column < nextTabStop; position.column++) {
-      if (this.buffer.getCharacterAtPosition(position) !== " ") return 0;
+    for (let index = column + 1; index < nextTabStop; index++) {
+      if (line[index] !== " ") return 0;
     }
 
-    var clippedColumn;
+    let clippedColumn;
     if (clipDirection === "closest") {
       if (column - previousTabStop > this.tabLength / 2) {
         clippedColumn = nextTabStop;
@@ -942,6 +963,7 @@ class DisplayLayer {
     const newEndRow = newRange.end.row;
 
     this.indexedBufferRowCount += newEndRow - oldEndRow;
+    this.markMarkerScreenPositionsDirty();
     this.didChange(this.updateSpatialIndex(startRow, oldEndRow + 1, newEndRow + 1, Infinity));
   }
 
@@ -969,6 +991,10 @@ class DisplayLayer {
     this.displayMarkerLayersById.forEach((layer) => {
       layer.notifyObserversIfMarkerScreenPositionsChanged();
     });
+  }
+
+  markMarkerScreenPositionsDirty() {
+    this.displayMarkerLayersById.forEach((layer) => layer.markScreenPositionsDirty());
   }
 
   updateSpatialIndex(

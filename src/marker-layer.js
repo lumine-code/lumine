@@ -413,6 +413,7 @@ class MarkerLayer {
       touched = this.index.findIntersecting(start, traverse(start, oldExtent));
     }
 
+    this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
     let invalidated = this.index.splice(start, oldExtent, newExtent);
     for (let id of invalidated.touch) {
       let marker = this.markersById.get(id);
@@ -478,6 +479,7 @@ class MarkerLayer {
   restoreFromSnapshot(snapshots, alwaysCreate) {
     if (snapshots == null) return;
     snapshots = MarkerLayer.materializeSnapshot(snapshots);
+    this.displayMarkerLayers.forEach((layer) => layer.bufferMarkerRangesDidChange());
 
     let snapshotIds = Object.keys(snapshots);
     let existingMarkerIds = [...this.markersById.keys()];
@@ -638,12 +640,23 @@ class MarkerLayer {
       }
       return snapshot[id]?.range;
     };
-    this.markersWithChangeListeners.forEach(function (marker) {
-      if (!marker.isDestroyed()) {
-        // event handlers could destroy markers
-        return marker.emitChangeEvent(rangeFor(marker.id), true, false);
+    let completed = false;
+    try {
+      this.markersWithChangeListeners.forEach(function (marker) {
+        if (!marker.isDestroyed()) {
+          // event handlers could destroy markers
+          return marker.emitChangeEvent(rangeFor(marker.id), true, false);
+        }
+      });
+      completed = true;
+    } finally {
+      // A throwing listener aborts the iteration, leaving later DisplayMarker
+      // caches stale. Keep those layers dirty so getters re-read the index;
+      // the next complete change-event pass will make them cacheable again.
+      if (completed) {
+        this.displayMarkerLayers.forEach((layer) => layer.didEmitBufferMarkerChangeEvents());
       }
-    });
+    }
   }
 
   serialize() {
