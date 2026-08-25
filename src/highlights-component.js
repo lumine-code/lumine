@@ -208,12 +208,11 @@ class HighlightComponent {
       }
 
       if (endRects) {
-        // TODO: Might not need this logic.
         // Leftmost highlight extends all the way to the start of the line.
         let leftmostRect;
-        for (let startRect of startRects) {
-          if (!leftmostRect || startRect.left < leftmostRect.left) {
-            leftmostRect = startRect;
+        for (const endRect of endRects) {
+          if (!leftmostRect || endRect.left < leftmostRect.left) {
+            leftmostRect = endRect;
           }
         }
         for (const r of endRects) {

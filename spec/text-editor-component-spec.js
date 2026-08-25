@@ -8514,6 +8514,30 @@ describe("TextEditorComponent", () => {
       }
     });
 
+    it("extends a multi-line highlight to the left edge of a mixed-direction ending row", async () => {
+      const { component, element, editor } = buildComponent({
+        text: "start\nاین یک متن فارسی است English",
+      });
+      await component.getNextUpdatePromise();
+
+      const marker = editor.markScreenRange([
+        [0, 1],
+        [1, 5],
+      ]);
+      editor.decorateMarker(marker, { type: "highlight", class: "a" });
+      await component.getNextUpdatePromise();
+
+      const regions = Array.from(element.querySelectorAll(".highlight.a .region.a"));
+      expect(regions.length).toBe(2);
+      expect(regions[0].style.right).toBe("0px");
+      expect(regions[1].getBoundingClientRect().left).toBe(
+        lineNodeForScreenRow(component, 1).getBoundingClientRect().left,
+      );
+      expect(regions[1].getBoundingClientRect().right).toBeNear(
+        clientRectAroundRange(component, 1, 0, 5).right,
+      );
+    });
+
     it("measures each column of a bidirectional-text line at a different X-axis position", async () => {
       const { component, editor } = buildComponent({ text: SAMPLE_WITH_RTL_TEXT });
       editor.setSoftWrapped(true);
