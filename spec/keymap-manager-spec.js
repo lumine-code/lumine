@@ -1322,7 +1322,7 @@ describe("KeymapManager", function () {
     });
   });
   describe("::build(source, bindings)", function () {
-    it("normalizes keystrokes containing capitalized alphabetic characters", function () {
+    it("normalizes alphabetic keys case-insensitively without inferring shift", function () {
       var commandA, commandB, commandC;
       commandA = keymapManager.build("test", {
         "*": {
@@ -1339,9 +1339,9 @@ describe("KeymapManager", function () {
           "ctrl-L": "c",
         },
       });
-      assert.equal(commandA[0].keystrokes, "ctrl-shift-L");
-      assert.equal(commandB[0].keystrokes, "ctrl-shift-L");
-      return assert.equal(commandC[0].keystrokes, "ctrl-shift-L");
+      assert.equal(commandA[0].keystrokes, "ctrl-shift-l");
+      assert.equal(commandB[0].keystrokes, "ctrl-shift-l");
+      return assert.equal(commandC[0].keystrokes, "ctrl-l");
     });
     it("normalizes the order of modifier keys based on the Apple interface guidelines", function () {
       var commandA, commandB, commandC, commandD;
@@ -1365,8 +1365,8 @@ describe("KeymapManager", function () {
           "ctrl-alt--": "d",
         },
       });
-      assert.equal(commandA[0].keystrokes, "ctrl-alt-shift-cmd-L");
-      assert.equal(commandB[0].keystrokes, "ctrl-shift-L");
+      assert.equal(commandA[0].keystrokes, "ctrl-alt-shift-cmd-l");
+      assert.equal(commandB[0].keystrokes, "ctrl-shift-l");
       assert.equal(commandC[0].keystrokes, "ctrl-alt-l");
       return assert.equal(commandD[0].keystrokes, "ctrl-alt--");
     });
@@ -1534,7 +1534,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "shift-A",
+          "shift-a",
         );
         assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
@@ -1666,7 +1666,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "shift-A",
+          "shift-a",
         );
         assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
@@ -1676,7 +1676,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "ctrl-shift-A",
+          "ctrl-shift-a",
         );
         return assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
@@ -1713,7 +1713,7 @@ describe("KeymapManager", function () {
       });
     });
     describe("when the KeyboardEvent.key is a lower-case letter due to caps lock + shift", function () {
-      it("converts the letter to upper case and honors the shift key", function () {
+      it("keeps the letter lower case and honors the shift key", function () {
         assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
             buildKeydownEvent({
@@ -1721,7 +1721,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "shift-A",
+          "shift-a",
         );
         assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
@@ -1731,7 +1731,7 @@ describe("KeymapManager", function () {
               altKey: true,
             }),
           ),
-          "alt-shift-A",
+          "alt-shift-a",
         );
         return assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
@@ -1741,7 +1741,7 @@ describe("KeymapManager", function () {
               ctrlKey: true,
             }),
           ),
-          "ctrl-shift-A",
+          "ctrl-shift-a",
         );
       });
       return it("doesn't drop the ctrl-alt modifiers when there is no AltGraph variant", function () {
@@ -1754,7 +1754,7 @@ describe("KeymapManager", function () {
               ctrlKey: true,
             }),
           ),
-          "ctrl-alt-shift-P",
+          "ctrl-alt-shift-p",
         );
       });
     });
@@ -2142,7 +2142,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "shift-cmd-P",
+          "shift-cmd-p",
         );
       });
     });
@@ -2195,7 +2195,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "shift-cmd-P",
+          "shift-cmd-p",
         );
       });
     });
@@ -2277,7 +2277,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "alt-shift-G",
+          "alt-shift-g",
         );
         // Does not use alt variant character if ctrl modifier is used
         return assert.equal(
@@ -2328,7 +2328,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "ctrl-alt-shift-C",
+          "ctrl-alt-shift-c",
         );
       });
       it("allows arbitrary characters to be typed via an altgraph modifier on Linux", function () {
@@ -2365,7 +2365,7 @@ describe("KeymapManager", function () {
               },
             }),
           ),
-          "shift-Ë",
+          "shift-ë",
         );
         assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
@@ -2396,7 +2396,7 @@ describe("KeymapManager", function () {
               altGraphKey: false,
             }),
           ),
-          "alt-shift-E",
+          "alt-shift-e",
         );
       });
       it("falls back to the non-alt key if other modifiers are combined with ALtGraph on Linux", function () {
@@ -2474,7 +2474,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "shift-D",
+          "shift-d",
         );
         assert.equal(
           keymapManager.keystrokeForKeyboardEvent(
@@ -2505,7 +2505,7 @@ describe("KeymapManager", function () {
               shiftKey: true,
             }),
           ),
-          "shift-cmd-D",
+          "shift-cmd-d",
         );
         // If *any* key on the keyboard is non-Latin, even characters that *are* Latin remap to the U.S. equivalent character for the physical key
         currentKeymap = require("./keymap-spec-helpers/keymaps/mac-russian-pc");
@@ -2672,7 +2672,7 @@ describe("KeymapManager", function () {
           // Ensure that we normalize the returned custom keystroke resolved
           return "alt-ctrl-X";
         });
-        expectedKeystroke = "ctrl-alt-shift-X";
+        expectedKeystroke = "ctrl-alt-x";
         keymapManager.addKeystrokeResolver(function ({ keystroke }) {
           assert.equal(keystroke, expectedKeystroke);
           return null;

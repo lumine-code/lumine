@@ -169,7 +169,7 @@ describe("MenuManager", function () {
       lumine.keymaps.add("test", {
         "lumine-workspace": {
           "alt-b": "b",
-          "alt-shift-C": "c",
+          "alt-shift-c": "c",
           "alt-cmd-d": "d",
         },
       });
@@ -196,7 +196,7 @@ describe("MenuManager", function () {
       lumine.keymaps.add("test", {
         "lumine-workspace": {
           "ctrl-alt-b": "b",
-          "ctrl-alt-shift-C": "c",
+          "ctrl-alt-shift-c": "c",
           "ctrl-alt-cmd-d": "d",
         },
       });

@@ -8,7 +8,9 @@ describe(".normalizeKeystrokes(keystrokes)", function () {
     assert.equal(normalizeKeystrokes("ctrl--"), "ctrl--");
     assert.equal(normalizeKeystrokes("ctrl-x"), "ctrl-x");
     assert.equal(normalizeKeystrokes("a"), "a");
-    assert.equal(normalizeKeystrokes("shift-a"), "shift-A");
+    assert.equal(normalizeKeystrokes("shift-a"), "shift-a");
+    assert.equal(normalizeKeystrokes("ctrl-N"), "ctrl-n");
+    assert.equal(normalizeKeystrokes("CTRL-SHIFT-N"), "ctrl-shift-n");
     assert.equal(normalizeKeystrokes("shift-9"), "shift-9");
     assert.equal(normalizeKeystrokes("-"), "-");
     assert.equal(normalizeKeystrokes("- -"), "- -");
@@ -16,11 +18,11 @@ describe(".normalizeKeystrokes(keystrokes)", function () {
     assert.equal(normalizeKeystrokes("cmd-k cmd-v"), "cmd-k cmd-v");
     assert.equal(normalizeKeystrokes("cmd-cmd"), "cmd");
     assert.equal(normalizeKeystrokes("cmd-shift"), "shift-cmd");
-    assert.equal(normalizeKeystrokes("cmd-shift-a"), "shift-cmd-A");
+    assert.equal(normalizeKeystrokes("cmd-shift-a"), "shift-cmd-a");
     assert.equal(normalizeKeystrokes("cmd-ctrl-alt--"), "ctrl-alt-cmd--");
     assert.equal(normalizeKeystrokes("ctrl-y   ^y"), "ctrl-y ^y");
     assert.equal(normalizeKeystrokes("ctrl-y ^ctrl-y"), "ctrl-y ^y");
-    assert.equal(normalizeKeystrokes("cmd-shift-y ^cmd-shift-y"), "shift-cmd-Y ^y");
+    assert.equal(normalizeKeystrokes("cmd-shift-y ^cmd-shift-y"), "shift-cmd-y ^y");
     assert.equal(normalizeKeystrokes("ctrl-y ^ctrl-y ^ctrl"), "ctrl-y ^y ^ctrl");
     assert.equal(
       normalizeKeystrokes("ctrl-y ^ctrl-shift-alt-cmd-y ^ctrl ^shift ^alt ^cmd"),
@@ -45,7 +47,7 @@ describe("cmdorctrl modifier in .normalizeKeystrokes(keystrokes)", function () {
     var expectedWithShift;
     assert.equal(normalizeKeystrokes("cmdorctrl-f"), `${cmdorctrl}-f`);
     // canonical order is ctrl < alt < shift < cmd, so ctrl precedes shift but shift precedes cmd
-    expectedWithShift = process.platform === "darwin" ? "shift-cmd-F" : "ctrl-shift-F";
+    expectedWithShift = process.platform === "darwin" ? "shift-cmd-f" : "ctrl-shift-f";
     assert.equal(normalizeKeystrokes("cmdorctrl-shift-f"), expectedWithShift);
     return assert.equal(
       normalizeKeystrokes("cmdorctrl-k cmdorctrl-d"),

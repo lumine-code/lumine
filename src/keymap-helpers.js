@@ -126,7 +126,7 @@ var normalizeKeystroke = function (keystroke) {
   const modifiers = new Set();
 
   for (let i = 0; i < keys.length; i++) {
-    var key = keys[i];
+    var key = keys[i].toLowerCase();
     if (key === "cmdorctrl") {
       key = process.platform === "darwin" ? "cmd" : "ctrl";
     }
@@ -139,19 +139,6 @@ var normalizeKeystroke = function (keystroke) {
       } else {
         return false;
       }
-    }
-  }
-
-  if (keyup) {
-    if (primaryKey != null) {
-      primaryKey = primaryKey.toLowerCase();
-    }
-  } else {
-    if (isUpperCaseCharacter(primaryKey)) {
-      modifiers.add("shift");
-    }
-    if (modifiers.has("shift") && isLowerCaseCharacter(primaryKey)) {
-      primaryKey = primaryKey.toUpperCase();
     }
   }
 
@@ -257,9 +244,9 @@ exports.keystrokeForKeyboardEvent = function (event, customKeystrokeResolvers) {
       key = "alt";
     }
   } else {
-    // Deal with caps-lock issues. Key bindings should always adjust the
-    // capitalization of the key based on the shiftKey state and never the state
-    // of the caps-lock key
+    // Deal with caps-lock issues. Whether a binding includes `shift` must follow
+    // the shiftKey state and never the state of the caps-lock key. The primary
+    // key itself is lowercased before the keystroke is returned.
     if (shiftKey) {
       key = key.toUpperCase();
     } else {
@@ -359,6 +346,10 @@ exports.keystrokeForKeyboardEvent = function (event, customKeystrokeResolvers) {
     }
   }
 
+  const isShiftModifiedLetter =
+    isLatinCharacter(key) && (isUpperCaseCharacter(key) || isLowerCaseCharacter(key));
+  key = key.toLowerCase();
+
   let keystroke = "";
   if (key === "ctrl" || (ctrlKey && event.type !== "keyup")) {
     keystroke += "ctrl";
@@ -373,9 +364,7 @@ exports.keystrokeForKeyboardEvent = function (event, customKeystrokeResolvers) {
 
   if (
     key === "shift" ||
-    (shiftKey &&
-      event.type !== "keyup" &&
-      (isNonCharacterKey || (isLatinCharacter(key) && isUpperCaseCharacter(key))))
+    (shiftKey && event.type !== "keyup" && (isNonCharacterKey || isShiftModifiedLetter))
   ) {
     if (keystroke) {
       keystroke += "-";
