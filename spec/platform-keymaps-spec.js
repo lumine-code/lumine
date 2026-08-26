@@ -153,17 +153,14 @@ describe("the core platform keymaps", () => {
     }
   });
 
-  it("spells shift explicitly rather than using an uppercase primary key", () => {
+  it("writes every keystroke in lowercase and spells shift explicitly", () => {
     for (const name of ["base", ...PLATFORMS]) {
       for (const { keystrokes, command } of bindings(name)) {
-        for (const stroke of keystrokes.split(" ")) {
-          const primary = stroke.split("-").pop();
-          expect(`${name}.json ${keystrokes} -> ${command}`).toBe(
-            primary.length === 1 && primary !== primary.toLowerCase()
-              ? `${name}.json use shift- instead of an uppercase key`
-              : `${name}.json ${keystrokes} -> ${command}`,
-          );
-        }
+        expect(`${name}.json ${keystrokes} -> ${command}`).toBe(
+          keystrokes === keystrokes.toLowerCase()
+            ? `${name}.json ${keystrokes} -> ${command}`
+            : `${name}.json write every key in lowercase and spell shift explicitly`,
+        );
       }
     }
   });
