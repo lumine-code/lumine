@@ -735,6 +735,18 @@
       {
         "type": "separator"
       }
+    ],
+    "lumine-dock lumine-pane > .item-views:empty": [
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Close Panel",
+        "command": "pane:close"
+      },
+      {
+        "type": "separator"
+      }
     ]
   }
 }

@@ -3,6 +3,30 @@ const etch = require("@lumine-code/etch");
 const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
 
 describe("Dock", () => {
+  describe("an empty split pane's context menu", () => {
+    it("offers Close Panel in every dock", () => {
+      jasmine.attachToDOM(lumine.workspace.getElement());
+
+      const docks = [
+        lumine.workspace.getLeftDock(),
+        lumine.workspace.getRightDock(),
+        lumine.workspace.getBottomDock(),
+      ];
+
+      for (const dock of docks) {
+        const pane = dock.getActivePane();
+        pane.addItem(document.createElement("div"));
+        const emptyPane = pane.splitRight();
+        const itemViews = emptyPane.getElement().querySelector(":scope > .item-views");
+        const items = lumine.contextMenu
+          .templateForElement(itemViews)
+          .map(({ label, command }) => ({ label, command }));
+
+        expect(items).toEqual([{ label: "Close Panel", command: "pane:close" }]);
+      }
+    });
+  });
+
   describe("hover-area hit testing", () => {
     it("reports no hover area before the dock has rendered", () => {
       const dock = lumine.workspace.getLeftDock();
