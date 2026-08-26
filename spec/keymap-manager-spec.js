@@ -1772,6 +1772,50 @@ describe("KeymapManager", function () {
         );
       });
     });
+    describe("when the KeyboardEvent.code is 'Backquote'", function () {
+      it("identifies the physical key independently of the character produced by the layout", function () {
+        assert.equal(
+          keymapManager.keystrokeForKeyboardEvent(
+            buildKeydownEvent({
+              key: "`",
+              code: "Backquote",
+            }),
+          ),
+          "backquote",
+        );
+        assert.equal(
+          keymapManager.keystrokeForKeyboardEvent(
+            buildKeydownEvent({
+              key: "§",
+              code: "Backquote",
+              ctrlKey: true,
+            }),
+          ),
+          "ctrl-backquote",
+        );
+        assert.equal(
+          keymapManager.keystrokeForKeyboardEvent(
+            buildKeydownEvent({
+              key: "~",
+              code: "Backquote",
+              ctrlKey: true,
+              shiftKey: true,
+            }),
+          ),
+          "ctrl-shift-backquote",
+        );
+        assert.equal(
+          keymapManager.keystrokeForKeyboardEvent(
+            buildKeydownEvent({
+              key: "Dead",
+              code: "Backquote",
+              ctrlKey: true,
+            }),
+          ),
+          "ctrl-backquote",
+        );
+      });
+    });
     describe("when the KeyboardEvent.key is '' but the KeyboardEvent.code is 'NumpadDecimal' and getModifierState('NumLock') returns false", function () {
       return it("translates as delete to work around a Chrome bug on Linux", function () {
         mockProcessPlatform("linux");

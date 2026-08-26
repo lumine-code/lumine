@@ -17,6 +17,7 @@ const WHITESPACE_REGEX = /\s+/;
 const KEY_NAMES_BY_KEYBOARD_EVENT_CODE = {
   Space: "space",
   Backspace: "backspace",
+  Backquote: "backquote",
 };
 const NON_CHARACTER_KEY_NAMES_BY_KEYBOARD_EVENT_KEY = {
   Control: "ctrl",
