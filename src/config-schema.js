@@ -96,7 +96,8 @@ const configSchema = {
       },
       closeDeletedFileTabs: {
         title: "Close Deleted File Tabs",
-        description: "Close corresponding editors when a file is deleted outside Lumine.",
+        description:
+          "Close corresponding editors when a file is deleted.",
         type: "boolean",
         default: false,
       },
