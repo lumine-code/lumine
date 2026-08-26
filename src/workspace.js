@@ -2,7 +2,6 @@ const _ = require("@lumine-code/underscore-plus");
 const path = require("path");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
-const picomatch = require("picomatch");
 const ProjectDirectory = require("./project-directory");
 const RipgrepDirectorySearcher = require("./ripgrep-directory-searcher");
 const Dock = require("./dock");
@@ -20,62 +19,6 @@ const layoutDrag = require("./layout-drag");
 // that a package needs neither a manifest entry nor a pin for the list toolkit
 // and a window holds a single copy of it.
 const { SelectListView, InputDialogView } = require("@lumine-code/select-list");
-
-// Given a single glob pattern matcher, test it against a relativized path
-// within the project. Even if this path itself doesn't match the glob, it's
-// suitable for inclusion in a search if one of its ancestor folders matches
-// the glob.
-//
-// We could monkey with the glob syntax in order to pull that off, but we'd
-// probably screw it up in some cases. It's easier to just traverse upward
-// until we hit the top of the project.
-function filePathMatchesGlob(filePath, matcher) {
-  // Globs use `/` as the separator, but on Windows the relativized path
-  // arrives with `\`, so normalize before matching.
-  filePath = filePath.split(path.sep).join("/");
-  // When we call `path.dirname` on a path like `foo`, it'll return `.`. That's
-  // when we should stop because there's no more upward traversal to be done.
-  while (filePath && filePath !== ".") {
-    if (matcher.isMatch(filePath)) {
-      // The matcher was compiled from the pattern with its `!` stripped, so a
-      // hit on a negated pattern means this path is excluded.
-      return !matcher.negated;
-    }
-    filePath = path.dirname(filePath);
-  }
-  return matcher.negated;
-}
-
-// Transform a pattern prior to handing it off to the glob matcher.
-function normalizePattern(rawPath) {
-  // Strip any trailing path separator.
-  // The path separator is `\` on Windows, but we also allow usage of `/`;
-  // hence we check for both here.
-  if (rawPath.endsWith(path.sep) || rawPath.endsWith("/")) {
-    rawPath = rawPath.substring(0, rawPath.length - 1);
-  }
-
-  // Keep any path negation separate from the rest, since it needs to stay at
-  // the beginning no matter what.
-  let negation = "";
-  if (rawPath.startsWith("!")) {
-    rawPath = rawPath.slice(1);
-    negation = "!";
-  }
-
-  rawPath = rawPath.replace(/\\/g, "/");
-
-  // If a user searches for (e.g.) `*.js`, we want to search all `.js` files
-  // anywhere in the project, not just in the root. That means we should treat
-  // patterns as implicitly prepending `**/` if they contain no path separators.
-  //
-  // NOTE: This is stricter than VS Code's approach, which is to prepend `**/`
-  // to _all_ patterns unless the user specifically opts out by starting a
-  // path with `/`. This would make plenty of sense for us, but would be a
-  // change in behavior, so for now we're going with this as a compromise.
-  let prefix = rawPath.includes("/") ? "" : "**/";
-  return `${negation}${prefix}${rawPath}`;
-}
 
 function protocolForURI(uri) {
   try {
@@ -141,24 +84,6 @@ function extractProjectRootsFromPathPattern(pathPattern, rootBasenames) {
 function getBasenamesFromProjectRoots() {
   let roots = lumine.project.getPaths();
   return roots.map((r) => path.basename(r));
-}
-
-const CACHED_MATCHERS_BY_PATTERN = new Map();
-
-// Compiles a search glob into a matcher for `filePathMatchesGlob`.
-//
-// A negated pattern is compiled without its `!` and the negation reported
-// separately, because that walk has to test the *positive* pattern against each
-// ancestor directory and only invert once, at the end. Compiling `!foo/**`
-// directly would invert per ancestor instead, which is the wrong answer.
-function matcherForPattern(rawPattern) {
-  let pattern = normalizePattern(rawPattern);
-  if (!CACHED_MATCHERS_BY_PATTERN.has(pattern)) {
-    let negated = picomatch.scan(pattern).negated;
-    let isMatch = picomatch(negated ? pattern.replace(/^!+/, "") : pattern);
-    CACHED_MATCHERS_BY_PATTERN.set(pattern, { isMatch, negated });
-  }
-  return CACHED_MATCHERS_BY_PATTERN.get(pattern);
 }
 
 const STOPPED_CHANGING_ACTIVE_PANE_ITEM_DELAY = 100;
@@ -2795,7 +2720,8 @@ module.exports = class Workspace extends Model {
    * @public
    * @status public
    *
-   * Performs a search across all files in the workspace.
+   * Performs a search across all files in the workspace as they exist on disk.
+   * Open text buffers are not searched.
    *
    *
    *
@@ -2848,7 +2774,6 @@ module.exports = class Workspace extends Model {
     // only one project root, it can never be skipped altogether.
     let hasOnlyExclusions = true;
 
-    let skippedProjectRoots = new Set();
     for (const directory of this.project.getDirectories()) {
       let isExplicitlyExcluded = false;
       let filteredPaths = options.paths;
@@ -2891,18 +2816,6 @@ module.exports = class Workspace extends Model {
         // with the ability to search only one root and not the other via path
         // exclusions.
         //
-        // TODO: It would be good if more of this code were shared with
-        // `::filePathMatchesPatterns`. That method is needed because any
-        // active project-wide search term is incrementally tested against
-        // modified buffers on every edit, just in case they suddenly match and
-        // need to get added to the result set.
-        //
-        // As things currently are, if we rewrote the code below to use
-        // `::filePathMatchesPatterns` instead, we would reduce code
-        // duplication at the cost of far more redundant work being done. So we
-        // can live with the duplication until it can be removed in a way that
-        // offers no downside. Until then, we should be careful to ensure that
-        // the path interpretation logic behaves identically in both places.
         let basename = path.basename(directory.getPath());
         filteredPaths = [];
         for (let [intendedRoot, singlePath] of pathsWithProjectRoots) {
@@ -2960,7 +2873,6 @@ module.exports = class Workspace extends Model {
       if (isExplicitlyExcluded || ((filteredPaths ?? []).length === 0 && !hasOnlyExclusions)) {
         // This directory is either explicitly or implicitly excluded in its
         // entirety based on the normalized value of `paths`.
-        skippedProjectRoots.add(directory.getPath());
         continue;
       }
 
@@ -3016,11 +2928,7 @@ module.exports = class Workspace extends Model {
         leadingContextLineCount: options.leadingContextLineCount || 0,
         trailingContextLineCount: options.trailingContextLineCount || 0,
         PCRE2: options.PCRE2,
-        didMatch: (result) => {
-          if (!this.project.isPathModified(result.filePath)) {
-            return iterator(result);
-          }
-        },
+        didMatch: iterator,
         didError(error) {
           return iterator(null, error);
         },
@@ -3046,53 +2954,6 @@ module.exports = class Workspace extends Model {
     });
 
     const searchPromise = Promise.all(allSearches);
-
-    let defaultMatchers = null;
-    if (options.paths) {
-      defaultMatchers = options.paths
-        // Filter out "empty string" ("") path segments that somehow make it here
-        .filter((p) => !!p)
-        .map((inclusion) => matcherForPattern(inclusion));
-    }
-
-    const customMatchers = new Map();
-    for (let [dir, inclusions] of customInclusionsForDirectory) {
-      let matchers = inclusions?.map((i) => matcherForPattern(i)) ?? null;
-      customMatchers.set(dir.getPath(), matchers);
-    }
-
-    // Let's consider the open buffers.
-    for (let buffer of this.project.getBuffers()) {
-      // We only want to search the open buffers that are modified — because
-      // the searchers will only see the files as they exist on disk, and we
-      // want to ensure that even uncommitted changes are reflected in the
-      // search results.
-      if (!buffer.isModified()) continue;
-      const filePath = buffer.getPath();
-      // Filter out paths that aren't part of this project.
-      if (!this.project.contains(filePath)) continue;
-      let [rootPath, relativizedFilePath] = lumine.project.relativizePath(filePath);
-      let matchers = customMatchers.get(rootPath) ?? defaultMatchers;
-      // If the user specified search globs, we want to ensure that we consider
-      // only those modified buffers that would be matched by such globs.
-      if (skippedProjectRoots.has(rootPath)) {
-        // We skipped this root altogether in the main search path, so we
-        // should exclude this buffer for that reason alone.
-        continue;
-      }
-      if (
-        matchers &&
-        matchers.length > 0 &&
-        !matchers.some((matcher) => filePathMatchesGlob(relativizedFilePath, matcher))
-      ) {
-        continue;
-      }
-      let matches = [];
-      buffer.scan(regex, (match) => matches.push(match));
-      if (matches.length > 0) {
-        iterator({ filePath, matches });
-      }
-    }
 
     // Make sure the Promise that is returned to the client is cancelable. To
     // be consistent with the existing behavior, instead of cancel() rejecting
@@ -3132,7 +2993,8 @@ module.exports = class Workspace extends Model {
    * @public
    * @status public
    *
-   * Performs a replace across all the specified files in the project.
+   * Performs a replace across all the specified files in the project on disk.
+   * Open text buffers observe the writes as external file changes.
    *
    * @param regex - A `RegExp` to search with.
    * @param {String} replacementText - to replace all matches of regex with.
@@ -3142,143 +3004,32 @@ module.exports = class Workspace extends Model {
    * @returns {Promise}
    */
   replace(regex, replacementText, filePaths, iterator) {
-    return new Promise((resolve, _reject) => {
-      let buffer;
-      const openPaths = this.project.getBuffers().map((buffer) => buffer.getPath());
-      const outOfProcessPaths = _.difference(filePaths, openPaths);
+    const requestedPaths = [...new Set(filePaths)];
+    if (requestedPaths.length === 0) return Promise.resolve();
 
-      let inProcessFinished = !openPaths.length;
-      let outOfProcessFinished = !outOfProcessPaths.length;
-      const checkFinished = () => {
-        if (outOfProcessFinished && inProcessFinished) {
-          resolve();
-        }
-      };
+    const requestedPathSet = new Set(requestedPaths);
+    const fileWatchersReady = this.project
+      .getBuffers()
+      .filter((buffer) => requestedPathSet.has(buffer.getPath()))
+      .map((buffer) => buffer.getFileWatchStartPromise());
 
-      if (!outOfProcessFinished.length) {
-        let flags = "g";
-        if (regex.multiline) {
-          flags += "m";
-        }
-        if (regex.ignoreCase) {
-          flags += "i";
-        }
+    return Promise.all(fileWatchersReady).then(
+      () =>
+        new Promise((resolve) => {
+          const flags = regex.global ? regex.flags : `${regex.flags}g`;
+          const task = Task.once(
+            require.resolve("./replace-handler"),
+            requestedPaths,
+            regex.source,
+            flags,
+            replacementText,
+            () => resolve(),
+          );
 
-        const task = Task.once(
-          require.resolve("./replace-handler"),
-          outOfProcessPaths,
-          regex.source,
-          flags,
-          replacementText,
-          () => {
-            outOfProcessFinished = true;
-            checkFinished();
-          },
-        );
-
-        task.on("replace:path-replaced", iterator);
-        task.on("replace:file-error", (error) => {
-          iterator(null, error);
-        });
-      }
-
-      for (buffer of this.project.getBuffers()) {
-        if (!filePaths.includes(buffer.getPath())) {
-          continue;
-        }
-        const replacements = buffer.replace(regex, replacementText, iterator);
-        if (replacements) {
-          iterator({ filePath: buffer.getPath(), replacements });
-        }
-      }
-
-      inProcessFinished = true;
-      checkFinished();
-    });
-  }
-
-  /**
-   * @public
-   * @status experimental
-   *
-   * Tests the path of a file in the project against a set of
-   * globs (using the same semantics as {@link #scan}) and reports whether the file
-   * satisfies the patterns.
-   *
-   * Internally, this method is used to decide if a search result should be
-   * added to a list of project-wide search results.
-   *
-   * @param {String} filePath - representing the absolute path to a file in the project. (Any external path will automatically return `false`.)
-   * @param {Array} rawPatterns - of strings that describe glob patterns. Identical to (and uses the same glob semantics as) the `options.paths` argument of {@link #scan}.
-   * @returns {Boolean} boolean indicating whether the given file path would be included in a project-wide search if the given path patterns were specified.
-   */
-  filePathMatchesPatterns(filePath, rawPatterns) {
-    let patterns = rawPatterns;
-    let rootBasenames = getBasenamesFromProjectRoots();
-    if (rootBasenames.length > 0) {
-      // When there is more than one project root, some of these raw patterns
-      // may reference specific project roots. We will apply the same
-      // interpretation to these patterns that we apply in {@link #scan}:
-      //
-      // * filter out any patterns that refer to roots other than the one that
-      //   `filePath` belongs to;
-      // * normalize any patterns that explicitly refer to our own root;
-      // * return `false` if any pattern explicitly excludes our own root
-      //   altogether;
-      // * return `false` if, after considering all patterns, we decide that
-      //   this root was implicitly excluded. (A root is implicitly excluded if
-      //   (a) no path patterns match it, and (b) the user did explicitly
-      //   include a path in a different root.)
-      //
-      let [rootPath] = lumine.project.relativizePath(filePath);
-      let basename = path.basename(rootPath);
-      let basenameAndPatternPairs = patterns.map((pattern) => {
-        return extractProjectRootsFromPathPattern(pattern, rootBasenames);
-      });
-      let filteredPatterns = [];
-      let hasOnlyExclusions = true;
-      for (let [intendedRoot, pattern] of basenameAndPatternPairs) {
-        let isExclusion = pattern.startsWith("!");
-        if (!isExclusion) hasOnlyExclusions = false;
-        if (intendedRoot === null) {
-          filteredPatterns.push(pattern);
-        } else if (intendedRoot === basename) {
-          if (pattern === "!") {
-            // This root has explicitly been excluded in its entirety! We must
-            // return `false` no matter what other patterns are present.
-            return false;
-          }
-          filteredPatterns.push(pattern);
-        } else {
-          // This path pattern is referring to another root; it does not apply
-          // to us. Do nothing.
-        }
-      }
-      if (filteredPatterns.length === 0 && !hasOnlyExclusions) {
-        // These patterns implicitly exclude our root altogether.
-        return false;
-      }
-      patterns = filteredPatterns;
-    }
-
-    // If there is no set of patterns to filter against, then the path
-    // automatically matches. (Not always true in multi-root projects, but we
-    // handled that case above.)
-    if (!patterns || patterns.length === 0) return true;
-
-    // This catches an array of falsy values, like empty strings.
-    if (patterns.every((p) => !p)) return true;
-
-    // Any file path that isn't part of the current project automatically does
-    // not match.
-    if (!this.project.contains(filePath)) return false;
-
-    let matchers = patterns.map((inclusion) => matcherForPattern(inclusion));
-
-    let relativizedFilePath = lumine.project.relativize(filePath);
-    return matchers.some((matcher) => {
-      return filePathMatchesGlob(relativizedFilePath, matcher);
-    });
+          task.on("replace:path-replaced", iterator);
+          task.on("replace:file-error", (error) => iterator(null, error));
+        }),
+    );
   }
 
   async checkoutHeadRevision(editor) {

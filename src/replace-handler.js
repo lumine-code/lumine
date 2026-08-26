@@ -22,12 +22,11 @@ module.exports = function (filePaths, regexSource, regexFlags, replacementText) 
     }
 
     // A fresh regex per file keeps `lastIndex` from leaking between files.
-    const regex = new RegExp(regexSource, flags);
-    const matches = contents.match(regex);
+    const matches = contents.match(new RegExp(regexSource, flags));
     const replacements = matches ? matches.length : 0;
     if (replacements === 0) return;
 
-    const updated = contents.replace(regex, replacementText);
+    const updated = contents.replace(new RegExp(regexSource, flags), replacementText);
     try {
       await fs.promises.writeFile(filePath, updated);
     } catch (error) {

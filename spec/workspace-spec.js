@@ -4,6 +4,7 @@ const dedent = require("dedent");
 const TextBuffer = require("../src/text-buffer");
 const TextEditor = require("../src/text-editor");
 const Workspace = require("../src/workspace");
+const Task = require("../src/task");
 const Project = require("../src/project");
 const RepositoryRegistry = require("../src/repository-registry");
 const platform = require("./helpers/platform");
@@ -2261,37 +2262,6 @@ describe("Workspace", () => {
     });
   });
 
-  describe("::filePathMatchesPatterns", () => {
-    it("correctly applies scan path glob semantics against individual paths", () => {
-      const projectPath = path.join(__dirname, "fixtures", "workspace-scan");
-      lumine.project.setPaths([projectPath]);
-
-      let pathA1 = path.join(projectPath, "a-dir", "sample1.js");
-      let pathB1 = path.join(projectPath, "b-dir", "sample1.js");
-
-      const positiveGlobs = ["b-dir", "b-dir/*.js", "b-dir/**/*.js"];
-      const negativeGlobs = ["!b-dir", "!b-dir/*.js", "!b-dir/**/*.js"];
-
-      expect(lumine.workspace.filePathMatchesPatterns(pathA1, [])).toBe(true);
-      expect(lumine.workspace.filePathMatchesPatterns(pathA1, [""])).toBe(true);
-      expect(lumine.workspace.filePathMatchesPatterns(pathA1, ["", ""])).toBe(true);
-
-      expect(lumine.workspace.filePathMatchesPatterns(pathB1, ["b-dir/*.js"])).toBe(true);
-      expect(lumine.workspace.filePathMatchesPatterns(pathB1, ["!b-dir/*.js"])).toBe(false);
-
-      expect(lumine.workspace.filePathMatchesPatterns(pathA1, ["*.js"])).toBe(true);
-      expect(lumine.workspace.filePathMatchesPatterns(pathB1, ["*.js"])).toBe(true);
-
-      expect(lumine.workspace.filePathMatchesPatterns(pathA1, ["!*.js"])).toBe(false);
-      expect(lumine.workspace.filePathMatchesPatterns(pathB1, ["!*.js"])).toBe(false);
-
-      expect(lumine.workspace.filePathMatchesPatterns(pathA1, positiveGlobs)).toBe(false);
-      expect(lumine.workspace.filePathMatchesPatterns(pathB1, positiveGlobs)).toBe(true);
-      expect(lumine.workspace.filePathMatchesPatterns(pathA1, negativeGlobs)).toBe(true);
-      expect(lumine.workspace.filePathMatchesPatterns(pathB1, negativeGlobs)).toBe(false);
-    });
-  });
-
   // ripgrep is the only built-in searcher; the loop is retained so the
   // ripgrep-specific branch below stays scoped to `ripgrep === true`.
   for (const ripgrep of [true]) {
@@ -2738,32 +2708,41 @@ describe("Workspace", () => {
           it("excludes ignored files when core.excludeVcsIgnoredPaths is true", async () => {
             lumine.project.setPaths([projectPath]);
             lumine.config.set("core.excludeVcsIgnoredPaths", true);
+            const editor = await lumine.workspace.open(ignoredPath);
+            editor.setText("modified match remains ignored");
             const resultHandler = jasmine.createSpy("result found");
 
             await scan(/match/, {}, ({ filePath }) => resultHandler(filePath));
 
+            expect(editor.isModified()).toBe(true);
             expect(resultHandler).not.toHaveBeenCalled();
           });
 
           it("does not exclude ignored files when core.excludeVcsIgnoredPaths is false", async () => {
             lumine.project.setPaths([projectPath]);
             lumine.config.set("core.excludeVcsIgnoredPaths", false);
+            const editor = await lumine.workspace.open(ignoredPath);
+            editor.setText("modified buffer without the search term");
             const resultHandler = jasmine.createSpy("result found");
 
             await scan(/match/, {}, ({ filePath }) => resultHandler(filePath));
 
+            expect(editor.isModified()).toBe(true);
             expect(resultHandler).toHaveBeenCalledWith(path.join(projectPath, "ignored.txt"));
           });
 
           it("includes ignored files when includeVcsIgnoredPaths is true", async () => {
             lumine.project.setPaths([projectPath]);
             lumine.config.set("core.excludeVcsIgnoredPaths", true);
+            const editor = await lumine.workspace.open(ignoredPath);
+            editor.setText("modified buffer without the search term");
             const resultHandler = jasmine.createSpy("result found");
 
             await scan(/match/, { includeVcsIgnoredPaths: true }, ({ filePath }) =>
               resultHandler(filePath),
             );
 
+            expect(editor.isModified()).toBe(true);
             expect(resultHandler).toHaveBeenCalledWith(path.join(projectPath, "ignored.txt"));
           });
 
@@ -2874,72 +2853,38 @@ describe("Workspace", () => {
           expect(matches.length).toBe(1);
         });
 
-        it("filters open modified buffers from the results against the specified glob pattern", async () => {
+        it("applies path globs only to files on disk when matching buffers are modified", async () => {
           const projectPath = path.join(__dirname, "fixtures", "workspace-scan");
           lumine.project.setPaths([projectPath]);
 
-          // Add the word "smapdi" to each of these buffers, but do not save
-          // either one.
-          let aSample1Editor = await lumine.workspace.open(
+          const aSample1Editor = await lumine.workspace.open(
             path.join(projectPath, "a-dir", "sample1.js"),
           );
-          let aSample1Text = aSample1Editor.getText();
-          aSample1Editor.setText(`${aSample1Text} smapdi`);
-          let bSample1Editor = await lumine.workspace.open(
+          aSample1Editor.setText(`${aSample1Editor.getText()} smapdi`);
+          const bSample1Editor = await lumine.workspace.open(
             path.join(projectPath, "b-dir", "sample1.js"),
           );
-          let bSample1Text = bSample1Editor.getText();
-          bSample1Editor.setText(`${bSample1Text} smapdi`);
+          bSample1Editor.setText(`${bSample1Editor.getText()} smapdi`);
 
           const positiveGlobs = ["b-dir", "b-dir/*.js", "b-dir/**/*.js"];
           const negativeGlobs = ["!b-dir", "!b-dir/*.js", "!b-dir/**/*.js"];
 
           for (let glob of positiveGlobs) {
-            let paths = [];
+            const paths = [];
             await scan(/\bsmapdi\b/, { paths: [glob] }, (result) => {
-              // Normalize separators so the forward-slash glob assertions
-              // below also hold on Windows.
               paths.push(lumine.project.relativize(result.filePath).replace(/\\/g, "/"));
             });
 
-            // We should get two results:
-            //
-            // * b-dir/sample2.js ("smapdi" exists on disk)
-            // * b-dir/sample1.js ("smapdi" does not exist on disk, but exists
-            //   in the modified buffer)
-            //
-            // We should _not_ get:
-            //
-            // * a-dir/sample1.js ("smapdi" exists in the modified buffer, but
-            //   this path doesn't match our glob!)
-            expect(paths.length).toBe(2, glob);
-            expect(paths.includes("b-dir/sample1.js")).toBe(true, glob);
-            expect(paths.includes("b-dir/sample2.js")).toBe(true, glob);
-            expect(paths.includes("a-dir/sample1.js")).toBe(false, glob);
+            expect(paths).toEqual(["b-dir/sample2.js"], glob);
           }
 
           for (let glob of negativeGlobs) {
-            let paths = [];
+            const paths = [];
             await scan(/\bsmapdi\b/, { paths: [glob] }, (result) => {
-              // Normalize separators so the forward-slash glob assertions
-              // below also hold on Windows.
               paths.push(lumine.project.relativize(result.filePath).replace(/\\/g, "/"));
             });
 
-            // We should get one result:
-            //
-            // * a-dir/sample1.js ("smapdi" exists in the modified buffer)
-            //
-            // We should _not_ get:
-            //
-            // * b-dir/sample1.js ("smapdi" exists in the modified buffer, but
-            //   should fail our negated glob!)
-            // * b-dir/sample2.js ("smapdi" exists on disk, but should fail our
-            //   negated glob!)
-            expect(paths.length).toBe(1, glob);
-            expect(paths.includes("b-dir/sample1.js")).toBe(false, glob);
-            expect(paths.includes("b-dir/sample2.js")).toBe(false, glob);
-            expect(paths.includes("a-dir/sample1.js")).toBe(true, glob);
+            expect(paths).toEqual([], glob);
           }
         });
 
@@ -2965,25 +2910,28 @@ describe("Workspace", () => {
           const ignoredNames = lumine.config.get("core.ignoredNames");
           ignoredNames.push("a");
           lumine.config.set("core.ignoredNames", ignoredNames);
+          const editor = await lumine.workspace.open("a");
+          editor.setText("dollar in a modified ignored buffer");
 
           const resultHandler = jasmine.createSpy("result found");
           await scan(/dollar/, {}, () => resultHandler());
 
+          expect(editor.isModified()).toBe(true);
           expect(resultHandler).not.toHaveBeenCalled();
         });
 
-        it("scans buffer contents if the buffer is modified", async () => {
+        it("searches the file on disk instead of its modified buffer", async () => {
           const results = [];
           const editor = await lumine.workspace.open("a");
 
           editor.setText("Elephant");
 
-          await scan(/a|Elephant/, {}, (result) => results.push(result));
+          await scan(/dollar|Elephant/, {}, (result) => results.push(result));
 
-          expect(results.length).toBeGreaterThan(0);
           const resultForA = _.find(results, ({ filePath }) => path.basename(filePath) === "a");
           expect(resultForA.matches).toHaveLength(1);
-          expect(resultForA.matches[0].matchText).toBe("Elephant");
+          expect(resultForA.matches[0].matchText).toBe("dollar");
+          expect(editor.getText()).toBe("Elephant");
         });
 
         it("ignores buffers outside the project", async () => {
@@ -3370,6 +3318,14 @@ describe("Workspace", () => {
       lumine.project.setPaths([projectDir]);
     });
 
+    it("does not start a worker when no paths are requested", async () => {
+      spyOn(Task, "once").and.callThrough();
+
+      await lumine.workspace.replace(/items/g, "replacement", [], () => {});
+
+      expect(Task.once).not.toHaveBeenCalled();
+    });
+
     describe("when a file doesn't exist", () => {
       it("calls back with an error", async () => {
         const errors = [];
@@ -3413,29 +3369,77 @@ describe("Workspace", () => {
         expect(results[0].filePath).toBe(filePath);
         expect(results[0].replacements).toBe(8);
       });
+
+      it("preserves the unicode flag", async () => {
+        const filePath = path.join(projectDir, "unicode.txt");
+        fs.writeFileSync(filePath, "😀 😀");
+        const results = [];
+
+        await lumine.workspace.replace(/[😀]/gu, "X", [filePath], (result) => {
+          results.push(result);
+        });
+
+        expect(results).toEqual([{ filePath, replacements: 2 }]);
+        expect(fs.readFileSync(filePath, "utf8")).toBe("X X");
+      });
     });
 
     describe("when a buffer is already open", () => {
-      it("replaces properly and saves when not modified", async () => {
+      it("replaces the file on disk and reloads an unmodified buffer", async () => {
         const filePath = path.join(projectDir, "sample.js");
         fs.copyFileSync(path.join(fixturesDir, "sample.js"), path.join(projectDir, "sample.js"));
-
-        let editor;
         const results = [];
-
-        editor = await lumine.workspace.open("sample.js");
+        const editor = await lumine.workspace.open("sample.js");
+        await editor.buffer.getFileWatchStartPromise();
+        const didReload = new Promise((resolve) => editor.buffer.onDidReload(resolve));
+        spyOn(editor.buffer, "save").and.callThrough();
 
         expect(editor.isModified()).toBeFalsy();
 
-        await lumine.workspace.replace(/items/gi, "items", [filePath], (result) => {
+        await lumine.workspace.replace(/items/gi, "okthen", [filePath], (result) => {
           results.push(result);
         });
+        await didReload;
 
         expect(results).toHaveLength(1);
         expect(results[0].filePath).toBe(filePath);
         expect(results[0].replacements).toBe(6);
-
+        expect(editor.buffer.save).not.toHaveBeenCalled();
         expect(editor.isModified()).toBeFalsy();
+        expect(editor.getText()).toContain("okthen");
+        expect(fs.readFileSync(filePath, "utf8")).toContain("okthen");
+      });
+
+      it("produces the same capture replacements for open and unopened files", async () => {
+        const openPath = path.join(projectDir, "open.txt");
+        const closedPath = path.join(projectDir, "closed.txt");
+        fs.writeFileSync(openPath, "alpha beta");
+        fs.writeFileSync(closedPath, "alpha beta");
+        const editor = await lumine.workspace.open(openPath);
+        await editor.buffer.getFileWatchStartPromise();
+        const didReload = new Promise((resolve) => editor.buffer.onDidReload(resolve));
+        const results = [];
+
+        await lumine.workspace.replace(
+          /(alpha|beta)/g,
+          "<$1>",
+          [openPath, closedPath],
+          (result) => {
+            results.push(result);
+          },
+        );
+        await didReload;
+
+        results.sort((a, b) => a.filePath.localeCompare(b.filePath));
+        expect(results).toEqual(
+          [
+            { filePath: openPath, replacements: 2 },
+            { filePath: closedPath, replacements: 2 },
+          ].sort((a, b) => a.filePath.localeCompare(b.filePath)),
+        );
+        expect(editor.getText()).toBe("<alpha> <beta>");
+        expect(fs.readFileSync(openPath, "utf8")).toBe("<alpha> <beta>");
+        expect(fs.readFileSync(closedPath, "utf8")).toBe("<alpha> <beta>");
       });
 
       it("does not replace when the path is not specified", async () => {
@@ -3458,14 +3462,12 @@ describe("Workspace", () => {
         expect(results[0].filePath).toBe(commentFilePath);
       });
 
-      it("does NOT save when modified", async () => {
+      it("replaces the file on disk and marks a modified buffer as conflicted", async () => {
         const filePath = path.join(projectDir, "sample.js");
         fs.copyFileSync(path.join(fixturesDir, "sample.js"), filePath);
-
-        let editor;
         const results = [];
-
-        editor = await lumine.workspace.open("sample.js");
+        const editor = await lumine.workspace.open("sample.js");
+        await editor.buffer.getFileWatchStartPromise();
 
         editor.buffer.setTextInRange(
           [
@@ -3474,17 +3476,21 @@ describe("Workspace", () => {
           ],
           "omg",
         );
+        const didConflict = new Promise((resolve) => editor.buffer.onDidConflict(resolve));
         expect(editor.isModified()).toBeTruthy();
 
         await lumine.workspace.replace(/items/gi, "okthen", [filePath], (result) => {
           results.push(result);
         });
+        await didConflict;
 
         expect(results).toHaveLength(1);
         expect(results[0].filePath).toBe(filePath);
         expect(results[0].replacements).toBe(6);
-
         expect(editor.isModified()).toBeTruthy();
+        expect(editor.isInConflict()).toBe(true);
+        expect(editor.getText()).not.toContain("okthen");
+        expect(fs.readFileSync(filePath, "utf8")).toContain("okthen");
       });
     });
   });
