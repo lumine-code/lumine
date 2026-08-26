@@ -8,6 +8,7 @@ class FileState {
   /**
    * @public
    * @status public
+   *
    * @returns {String} The document matches its saved base.
    */
   static get UNMODIFIED() {
@@ -17,6 +18,7 @@ class FileState {
   /**
    * @public
    * @status public
+   *
    * @returns {String} The document has local changes.
    */
   static get MODIFIED() {
@@ -26,6 +28,7 @@ class FileState {
   /**
    * @public
    * @status public
+   *
    * @returns {String} The document and its backing file diverged.
    */
   static get CONFLICTED() {
@@ -35,6 +38,7 @@ class FileState {
   /**
    * @public
    * @status public
+   *
    * @returns {String} The document's backing file no longer exists.
    */
   static get REMOVED() {
