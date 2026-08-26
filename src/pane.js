@@ -2,6 +2,7 @@ const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const PaneAxis = require("./pane-axis");
 const TextEditor = require("./text-editor");
 const { createPaneElement } = require("./pane-element");
+const FileState = require("./file-state");
 
 let nextInstanceId = 1;
 
@@ -981,7 +982,7 @@ module.exports = class Pane {
       if (preventClosing) return false;
     }
 
-    if (!force && typeof item.shouldPromptToSave === "function" && item.shouldPromptToSave()) {
+    if (!force && this.shouldPromptToSaveItem(item)) {
       if (!(await this.promptToSaveItem(item))) return false;
     }
     this.removeItem(item, false);
@@ -1023,9 +1024,7 @@ module.exports = class Pane {
     // Don't prompt if the user hasn't opted into it.
     if (!lumine.config.get("core.promptOnSaveConflictedFile")) return true;
 
-    // Ensure the item implements an `isInConflict` method, and that it
-    // returns `true`.
-    if (!item.isInConflict?.()) {
+    if (item.getFileState?.() !== FileState.CONFLICTED) {
       return true;
     }
     // Figure out how to describe the buffer in the dialog.
@@ -1048,7 +1047,7 @@ module.exports = class Pane {
 
   promptToSaveItem(item, options = {}) {
     return new Promise((resolve, reject) => {
-      if (typeof item.shouldPromptToSave !== "function" || !item.shouldPromptToSave(options)) {
+      if (!this.shouldPromptToSaveItem(item, options)) {
         return resolve(true);
       }
 
@@ -1097,16 +1096,29 @@ module.exports = class Pane {
           .catch(reject);
       };
 
-      // A buffer whose file was deleted on disk (while it still had unsaved
-      // changes) gets a clearer, more accurate message than the generic
-      // "has changes" prompt.
-      const deleted = typeof item.isDeleted === "function" && item.isDeleted();
-      const message = deleted
+      // A pane item whose backing file was removed gets a clearer, more
+      // accurate message than the generic "has changes" prompt.
+      const removed = item.getFileState?.() === FileState.REMOVED;
+      const message = removed
         ? `'${title}' was deleted on disk. Do you still want to save this file?`
         : `'${title}' has changes, do you want to save them?`;
 
       saveDialog("Save", this.saveItem, message);
     });
+  }
+
+  shouldPromptToSaveItem(item, options = {}) {
+    if (typeof item.shouldPromptToSave === "function") {
+      return item.shouldPromptToSave(options);
+    }
+
+    const saveable = typeof item.save === "function" || typeof item.saveAs === "function";
+    if (!saveable || typeof item.getFileState !== "function") return false;
+
+    return (
+      lumine.config.get("core.promptOnCloseDirtyBuffer") &&
+      item.getFileState() !== FileState.UNMODIFIED
+    );
   }
 
   /**
@@ -1155,9 +1167,7 @@ module.exports = class Pane {
 
     if (itemURI != null) {
       if (typeof item.save === "function") {
-        // If `isInConflict` is implemented, we call it first to figure out if
-        // it's safe to attempt to save.
-        let conflicted = item.isInConflict?.();
+        const conflicted = item.getFileState?.() === FileState.CONFLICTED;
 
         // If the item is conflicted, we'll show a dialog in order to decide
         // how to proceed. The user may choose to overwrite (force the save) or
@@ -1237,14 +1247,18 @@ module.exports = class Pane {
    * @public
    * @status public
    *
-   * Save all modified items in this pane.
+   * Save all saveable items whose file state is not unmodified.
    *
    * @returns {Promise} that resolves when all items have been saved.
    */
   async saveItems() {
     const promises = [];
     for (let item of this.getItems()) {
-      if (typeof item.isModified === "function" && item.isModified()) {
+      if (
+        typeof item.getFileState === "function" &&
+        item.getFileState() !== FileState.UNMODIFIED &&
+        (typeof item.save === "function" || typeof item.saveAs === "function")
+      ) {
         promises.push(this.saveItem(item));
       }
     }

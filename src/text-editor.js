@@ -10,6 +10,7 @@ const Selection = require("./selection");
 const NullGrammar = require("./null-grammar");
 const TextMateLanguageMode = require("./text-mate-language-mode");
 const ScopeDescriptor = require("./scope-descriptor");
+const FileState = require("./file-state");
 
 const TextMateScopeSelector = require("@lumine-code/second-mate").ScopeSelector;
 const GutterContainer = require("./gutter-container");
@@ -237,11 +238,7 @@ module.exports = class TextEditor {
     if (params.buffer) {
       this.buffer = params.buffer;
     } else {
-      this.buffer = new TextBuffer({
-        shouldDestroyOnFileDelete() {
-          return lumine.config.get("core.closeDeletedFileTabs");
-        },
-      });
+      this.buffer = new TextBuffer();
       this.buffer.setLanguageMode(
         new TextMateLanguageMode({ buffer: this.buffer, config: lumine.config }),
       );
@@ -829,8 +826,8 @@ module.exports = class TextEditor {
     );
     this.disposables.add(this.buffer.onDidDestroy(() => this.destroy()));
     this.disposables.add(
-      this.buffer.onDidChangeModified(() => {
-        if (!this.hasTerminatedPendingState && this.buffer.isModified())
+      this.buffer.onDidChangeFileState((fileState) => {
+        if (!this.hasTerminatedPendingState && fileState !== FileState.UNMODIFIED)
           this.terminatePendingState();
       }),
     );
@@ -1080,41 +1077,13 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
-   * Calls your `callback` when the result of {@link #isModified} changes.
+   * Calls your `callback` when the value of {@link #getFileState} changes.
    *
    * @param {Function} callback
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
-  onDidChangeModified(callback) {
-    return this.getBuffer().onDidChangeModified(callback);
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Calls your `callback` when the buffer's underlying file changes on
-   * disk at a moment when the result of {@link #isModified} is true.
-   *
-   * @param {Function} callback
-   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   */
-  onDidConflict(callback) {
-    return this.getBuffer().onDidConflict(callback);
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Calls your `callback` when the buffer's underlying file is deleted
-   * on disk.
-   *
-   * @param {Function} callback
-   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   */
-  onDidDelete(callback) {
-    return this.getBuffer().onDidDelete(callback);
+  onDidChangeFileState(callback) {
+    return this.getBuffer().onDidChangeFileState(callback);
   }
 
   /**
@@ -1680,36 +1649,10 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * @returns {Boolean} `true` if this editor has been modified.
+   * @returns {String} one of the values in `FileState`.
    */
-  isModified() {
-    return this.buffer.isModified();
-  }
-
-  /**
-   * @public
-   * @status essential
-   *
-   * @returns {Boolean} `true` if this editor's buffer previously had a file on disk that has since been deleted (and has not been recreated or saved since). The buffer may still be unmodified — see {@link #isModified}.
-   */
-  isDeleted() {
-    return typeof this.buffer.isDeleted === "function" && this.buffer.isDeleted();
-  }
-
-  /**
-   * @public
-   * @status essential
-   *
-   *
-   * This can happen if another process writes to a file after you start to
-   * edit it in Lumine, but before you're able to save those changes. It can
-   * also happen if you switch branches in version control while a certain
-   * buffer has uncommitted changes.
-   *
-   * @returns {Boolean} `true` if this editor's buffer is in conflict — that is, if the buffer is modified and those changes are based on buffer contents that do not match what is currently written to disk.
-   */
-  isInConflict() {
-    return this.buffer.isInConflict();
+  getFileState() {
+    return this.buffer.getFileState();
   }
 
   /**
@@ -1755,19 +1698,20 @@ module.exports = class TextEditor {
   // Determine whether the user should be prompted to save before closing
   // this editor.
   shouldPromptToSave({ windowCloseRequested, projectHasPaths } = {}) {
+    if (
+      !lumine.config.get("core.promptOnCloseDirtyBuffer", {
+        scope: this.getRootScopeDescriptor(),
+      })
+    ) {
+      return false;
+    }
+
     if (windowCloseRequested && projectHasPaths && lumine.stateStore.isConnected()) {
-      return this.buffer.isInConflict();
+      return (
+        this.getFileState() === FileState.CONFLICTED || this.getFileState() === FileState.REMOVED
+      );
     } else {
-      // Normally we only prompt when the buffer has unsaved changes. When
-      // `core.promptOnCloseDeletedFile` is enabled, also prompt when the file
-      // has been deleted on disk (even if the buffer was unmodified at deletion
-      // time), so the user can save it back rather than lose it silently.
-      const promptForDeleted =
-        this.isDeleted() &&
-        lumine.config.get("core.promptOnCloseDeletedFile", {
-          scope: this.getRootScopeDescriptor(),
-        });
-      return (this.isModified() || promptForDeleted) && !this.buffer.hasMultipleEditors();
+      return this.getFileState() !== FileState.UNMODIFIED && !this.buffer.hasMultipleEditors();
     }
   }
 

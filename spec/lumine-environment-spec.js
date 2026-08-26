@@ -4,11 +4,13 @@ const path = require("path");
 const temp = require("@lumine-code/temp").track();
 const LumineEnvironment = require("../src/lumine-environment");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
+const FileState = require("../src/file-state");
 
 describe("LumineEnvironment", () => {
   it("is exposed only through the Lumine renderer global", () => {
     expect(global.lumine).toBe(lumine);
     expect(global.atom).toBeUndefined();
+    expect(lumine.FileState).toBe(FileState);
   });
 
   describe("namespaced process APIs", () => {
@@ -1010,7 +1012,7 @@ describe("LumineEnvironment", () => {
 
       expect(openPaths(env)).toEqual([fileA]);
       expect(env.workspace.getActiveTextEditor().getText()).toBe("edited but never saved");
-      expect(env.workspace.getActiveTextEditor().isModified()).toBe(true);
+      expect(env.workspace.getActiveTextEditor().getFileState()).toBe(FileState.MODIFIED);
     });
 
     it("starts clean when the incoming project has no saved state", async () => {

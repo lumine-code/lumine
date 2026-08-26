@@ -1,5 +1,6 @@
 const PaneContainer = require("../src/pane-container");
 const { Emitter } = require("@lumine-code/event-kit");
+const FileState = require("../src/file-state");
 
 describe("PaneContainer", () => {
   let confirm, params;
@@ -482,7 +483,7 @@ describe("PaneContainer", () => {
   });
 
   describe("::saveAll()", () => {
-    it("saves all modified pane items", async () => {
+    it("saves all pane items whose file state is dirty", async () => {
       const container = new PaneContainer(params);
       const pane1 = container.getRoot();
       pane1.splitRight();
@@ -492,8 +493,8 @@ describe("PaneContainer", () => {
         getURI() {
           return "";
         },
-        isModified() {
-          return true;
+        getFileState() {
+          return FileState.MODIFIED;
         },
         save() {
           this.saved = true;
@@ -504,8 +505,8 @@ describe("PaneContainer", () => {
         getURI() {
           return "";
         },
-        isModified() {
-          return false;
+        getFileState() {
+          return FileState.UNMODIFIED;
         },
         save() {
           this.saved = true;
@@ -516,8 +517,8 @@ describe("PaneContainer", () => {
         getURI() {
           return "";
         },
-        isModified() {
-          return true;
+        getFileState() {
+          return FileState.REMOVED;
         },
         save() {
           this.saved = true;
@@ -547,8 +548,8 @@ describe("PaneContainer", () => {
         getURI() {
           return "";
         },
-        isModified() {
-          return true;
+        getFileState() {
+          return FileState.MODIFIED;
         },
         save() {
           this.saved = true;
@@ -559,8 +560,8 @@ describe("PaneContainer", () => {
         getURI() {
           return "";
         },
-        isModified() {
-          return true;
+        getFileState() {
+          return FileState.CONFLICTED;
         },
         save() {
           return new Promise((resolve) => {

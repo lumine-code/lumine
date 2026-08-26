@@ -19,6 +19,7 @@ const layoutDrag = require("./layout-drag");
 // that a package needs neither a manifest entry nor a pin for the list toolkit
 // and a window holds a single copy of it.
 const { SelectListView, InputDialogView } = require("@lumine-code/select-list");
+const FileState = require("./file-state");
 
 function protocolForURI(uri) {
   try {
@@ -212,15 +213,14 @@ const ALL_LOCATIONS = ["center", "left", "right", "bottom"];
  * Returns the local path associated with this item. This is only used to set
  * the initial location of the "save as" dialog.
  *
- * #### `isModified()`
+ * #### `getFileState()`
  *
- * Returns whether or not the item is modified to reflect modification in the
- * UI.
+ * Returns one of the mutually exclusive values in `FileState`.
  *
- * #### `onDidChangeModified()`
+ * #### `onDidChangeFileState(callback)`
  *
- * Called by the workspace so it can be notified when item's modified status
- * changes. Must return a `Disposable`.
+ * Called by the workspace so it can be notified when the item's file state
+ * changes. The callback receives the new state. Must return a `Disposable`.
  *
  * #### `copy()`
  *
@@ -754,21 +754,14 @@ module.exports = class Workspace extends Model {
     if (this.activeItemSubscriptions) this.activeItemSubscriptions.dispose();
     this.activeItemSubscriptions = new CompositeDisposable();
 
-    let modifiedSubscription;
+    let fileStateSubscription;
 
-    if (item != null && typeof item.onDidChangeModified === "function") {
-      modifiedSubscription = item.onDidChangeModified(this.updateDocumentEdited);
-    } else if (item != null && typeof item.on === "function") {
-      modifiedSubscription = item.on("modified-status-changed", this.updateDocumentEdited);
-      if (modifiedSubscription == null || typeof modifiedSubscription.dispose !== "function") {
-        modifiedSubscription = new Disposable(() => {
-          item.off("modified-status-changed", this.updateDocumentEdited);
-        });
-      }
+    if (item != null && typeof item.onDidChangeFileState === "function") {
+      fileStateSubscription = item.onDidChangeFileState(this.updateDocumentEdited);
     }
 
-    if (modifiedSubscription != null) {
-      this.activeItemSubscriptions.add(modifiedSubscription);
+    if (fileStateSubscription != null) {
+      this.activeItemSubscriptions.add(fileStateSubscription);
     }
 
     this.cancelStoppedChangingActivePaneItemTimeout();
@@ -792,6 +785,29 @@ module.exports = class Workspace extends Model {
 
   subscribeToAddedItems() {
     this.onDidAddPaneItem(({ item, pane, index }) => {
+      if (
+        typeof item.getFileState === "function" &&
+        typeof item.onDidChangeFileState === "function"
+      ) {
+        let previousFileState = item.getFileState();
+        const fileStateSubscriptions = new CompositeDisposable();
+        fileStateSubscriptions.add(
+          item.onDidChangeFileState((fileState) => {
+            const shouldClose =
+              previousFileState === FileState.UNMODIFIED &&
+              fileState === FileState.REMOVED &&
+              this.config.get("core.closeDeletedFileTabs");
+            previousFileState = fileState;
+            if (shouldClose) void pane.destroyItem(item, true);
+          }),
+        );
+        fileStateSubscriptions.add(
+          pane.onDidRemoveItem(({ item: removedItem }) => {
+            if (removedItem === item) fileStateSubscriptions.dispose();
+          }),
+        );
+      }
+
       if (item instanceof TextEditor) {
         const subscriptions = new CompositeDisposable(
           this.textEditorRegistry.add(item),
@@ -863,15 +879,17 @@ module.exports = class Workspace extends Model {
     }
   }
 
-  // On macOS, fades the application window's proxy icon when the current file
-  // has been modified.
+  // On macOS, fades the application window's proxy icon when the current item
+  // has a dirty file state.
   updateDocumentEdited() {
     const activePaneItem = this.getActivePaneItem();
-    const modified =
-      activePaneItem != null && typeof activePaneItem.isModified === "function"
-        ? activePaneItem.isModified() || false
+    const dirty =
+      activePaneItem != null &&
+      typeof activePaneItem.getFileState === "function" &&
+      (typeof activePaneItem.save === "function" || typeof activePaneItem.saveAs === "function")
+        ? activePaneItem.getFileState() !== FileState.UNMODIFIED
         : false;
-    this.applicationDelegate.setWindowDocumentEdited(modified);
+    this.applicationDelegate.setWindowDocumentEdited(dirty);
   }
 
   /**

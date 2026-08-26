@@ -96,17 +96,16 @@ const configSchema = {
       },
       closeDeletedFileTabs: {
         title: "Close Deleted File Tabs",
-        description:
-          "Close corresponding editors when a file is deleted.",
+        description: "Close corresponding file-backed pane items when a file is deleted.",
         type: "boolean",
         default: false,
       },
-      promptOnCloseDeletedFile: {
-        title: "Prompt on Close Deleted File",
+      promptOnCloseDirtyBuffer: {
+        title: "Prompt on Close Dirty Buffer",
         description:
-          "Prompt before closing an editor whose file has been deleted on disk, even when the buffer had no unsaved changes at the time it was deleted. An editor that still had unsaved changes when its file was deleted always prompts. Automatically closing tabs for deleted files is controlled separately by `Close Deleted File Tabs`.",
+          "Prompt before closing a saveable item whose file state is modified, conflicted, or removed.",
         type: "boolean",
-        default: false,
+        default: true,
       },
       openEmptyEditorOnStart: {
         title: "Open Empty Editor On Start",

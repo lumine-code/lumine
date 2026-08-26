@@ -24,6 +24,7 @@ const {
 } = require("./helpers");
 const { traverse, traversal } = require("./point-helpers");
 const Grim = require("@lumine-code/grim");
+const FileState = require("./file-state");
 
 function advanceStringIndex(text, index, unicode) {
   if (!unicode || index + 1 >= text.length) return index + 1;
@@ -141,13 +142,11 @@ class TextBuffer {
    *
    * @param {Object} params - or `String` of text
    * @param params.text - The initial `String` text of the buffer.
-   * @param params.shouldDestroyOnFileDelete - A `Function` that returns a `Boolean` indicating whether the buffer should be destroyed if its file is deleted.
    */
   constructor(params) {
     if (params == null) params = {};
 
     this.refcount = 0;
-    this.conflict = false;
     this.file = null;
     this.fileSubscriptions = null;
     this.oldFileSubscriptions = null;
@@ -178,14 +177,15 @@ class TextBuffer {
     this.cachedHasAstral = null;
     this._emittedWillChangeEvent = false;
 
+    // File state is deliberately independent of the native buffer's dirty bit.
+    // Conflict and removal remain visible until a disk operation reconciles
+    // them, even if undo happens to return the text to its saved base.
+    this.fileState = this.buffer.getLength() > 0 ? FileState.MODIFIED : FileState.UNMODIFIED;
+    this.fileOperationGeneration = 0;
+
     // Whether a buffer has ever had a backing file, whether or not it exists
     // now.
     this.didHaveFileOnDisk = false;
-
-    // When a buffer's backing file is deleted while the file is unmodified,
-    // this trait flips to `true`… and then flips back to `false` if any
-    // further edits are made.
-    this.retainsUnmodifiedTraitAfterDeletion = false;
 
     // The path `subscribeToFile` currently watches through `watchPath`, and
     // the teardown of the previous subscription's watcher — settles once the
@@ -201,8 +201,6 @@ class TextBuffer {
     this.transactCallDepth = 0;
     this.markerUpdateBatchDepth = 0;
     this.digestWhenLastPersisted = false;
-
-    this.shouldDestroyOnFileDelete = params.shouldDestroyOnFileDelete || (() => false);
 
     if (params.filePath) {
       this.setPath(params.filePath);
@@ -222,7 +220,6 @@ class TextBuffer {
    * @param source - Either a `String` path to a local file or (experimentally) a file `Object` as described by the {@link #setFile} method.
    * @param params - An `Object` with the following properties:
    * @param {String} [params.encoding] - The file's encoding.
-   * @param [params.shouldDestroyOnFileDelete] - A `Function` that returns a `Boolean` indicating whether the buffer should be destroyed if its file is deleted.
    * @returns {Promise} that resolves with a {@link TextBuffer} instance.
    */
   static load(source, params) {
@@ -251,7 +248,6 @@ class TextBuffer {
    * @param filePath - The `String` file path.
    * @param params - An `Object` with the following properties:
    * @param {String} [params.encoding] - The file's encoding.
-   * @param [params.shouldDestroyOnFileDelete] - A `Function` that returns a `Boolean` indicating whether the buffer should be destroyed if its file is deleted.
    * @returns {TextBuffer} instance.
    */
   static loadSync(filePath, params) {
@@ -285,11 +281,45 @@ class TextBuffer {
     let buffer;
     let fileContentsChanged = false;
     if (params.filePath) {
-      buffer = await TextBuffer.load(params.filePath, params);
-      if (buffer.digestWhenLastPersisted === params.digestWhenLastPersisted) {
+      // `text` is the serialized in-memory contents of a dirty file-backed
+      // buffer, not its saved base. Load the actual base (or an empty missing
+      // path) first, then apply the serialized text in the branches below.
+      buffer = await TextBuffer.load(params.filePath, { ...params, text: "" });
+      const fileExists = fs.existsSync(params.filePath);
+      const persistedBaseMatchesDisk =
+        fileExists && buffer.digestWhenLastPersisted === params.digestWhenLastPersisted;
+      const hadBackingFile = params.digestWhenLastPersisted !== false;
+      const serializedState = params.fileState || FileState.UNMODIFIED;
+      const serializedDirty = serializedState !== FileState.UNMODIFIED;
+
+      if (persistedBaseMatchesDisk && serializedState === FileState.MODIFIED) {
         buffer.buffer.deserializeChanges(params.outstandingChanges);
+      }
+
+      if (!fileExists) {
+        if (serializedDirty && params.text != null) buffer.buffer.setText(params.text);
+        fileContentsChanged = hadBackingFile;
+        if (hadBackingFile) {
+          buffer.didHaveFileOnDisk = true;
+          buffer.setFileState(FileState.REMOVED);
+        } else {
+          buffer.updateFileStateFromBuffer({ resolveStickyState: true });
+        }
+      } else if (persistedBaseMatchesDisk) {
+        if (
+          (serializedState === FileState.CONFLICTED || serializedState === FileState.REMOVED) &&
+          params.text != null
+        ) {
+          buffer.buffer.setText(params.text);
+        }
+        buffer.setFileState(buffer.deriveFileStateFromBuffer());
+      } else if (serializedDirty && params.text != null) {
+        buffer.buffer.setText(params.text);
+        fileContentsChanged = true;
+        buffer.setFileState(FileState.CONFLICTED);
       } else {
         fileContentsChanged = true;
+        buffer.setFileState(FileState.UNMODIFIED);
       }
     } else {
       buffer = new TextBuffer(params);
@@ -385,8 +415,11 @@ class TextBuffer {
       result.filePath = filePath;
       result.digestWhenLastPersisted = this.digestWhenLastPersisted;
       result.outstandingChanges = this.buffer.serializeChanges();
+      result.fileState = this.fileState;
+      if (this.fileState !== FileState.UNMODIFIED) result.text = this.getText();
     } else {
       result.text = this.getText();
+      result.fileState = this.fileState;
     }
 
     return result;
@@ -474,28 +507,13 @@ class TextBuffer {
    * @public
    * @status public
    *
-   * Invoke the given callback when the in-memory contents of the
-   * buffer become in conflict with the contents of the file on disk.
+   * Invoke the given callback when the value of {@link #getFileState} changes.
    *
-   * @param {Function} callback - to be called when the buffer enters conflict.
+   * @param {Function} callback - to be called with a `FileState` value.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
-  onDidConflict(callback) {
-    return this.emitter.on("did-conflict", callback);
-  }
-
-  /**
-   * @public
-   * @status public
-   *
-   * Invoke the given callback if the value of {@link #isModified} changes.
-   *
-   * @param {Function} callback - to be called when {@link #isModified} changes.
-   * @param {Boolean} callback.modified - indicating whether the buffer is modified.
-   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   */
-  onDidChangeModified(callback) {
-    return this.emitter.on("did-change-modified", callback);
+  onDidChangeFileState(callback) {
+    return this.emitter.on("did-change-file-state", callback);
   }
 
   /**
@@ -598,20 +616,6 @@ class TextBuffer {
    * @public
    * @status public
    *
-   * Invoke the given callback after the file backing the buffer is
-   * deleted.
-   *
-   * @param {Function} callback - to be called after the buffer is deleted.
-   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   */
-  onDidDelete(callback) {
-    return this.emitter.on("did-delete", callback);
-  }
-
-  /**
-   * @public
-   * @status public
-   *
    * Invoke the given callback before the buffer is reloaded from the
    * contents of its file on disk.
    *
@@ -687,62 +691,12 @@ class TextBuffer {
    * @public
    * @status public
    *
-   * Determine if the in-memory contents of the buffer differ from its
-   * contents on disk.
+   * Get the buffer's mutually exclusive persistence state.
    *
-   * If the buffer is unsaved, always returns `true` unless the buffer is empty.
-   *
-   * @returns {Boolean}
+   * @returns {String} one of the values in `FileState`.
    */
-  isModified() {
-    if (this.isDeleted()) {
-      // We typically consider a deleted file to be modified… unless it was
-      // unmodified at the time of deletion and has not been modified since.
-      return !this.retainsUnmodifiedTraitAfterDeletion;
-    }
-    if (this.file) {
-      // Now that all deletion cases are weeded out, the main determination is
-      // whether the native buffer reports itself as modified — but we keep the
-      // `existsSync` check just to be thorough.
-      return !this.file.existsSync() || this.buffer.isModified();
-    } else {
-      // A buffer that never had any backing file on disk is always considered
-      // to be modified _unless_ it is completely empty. We should not be
-      // prompting users to save untitled buffers with empty contents.
-      return this.buffer.getLength() > 0;
-    }
-  }
-
-  /**
-   * @public
-   * @status public
-   *
-   * Determine if the buffer is in a deleted state — meaning that it
-   * was previously backed by a file on disk, but is no longer.
-   */
-  isDeleted() {
-    let hasNoFile = !this.file || !this.file.existsSync();
-    return hasNoFile && this.didHaveFileOnDisk;
-  }
-
-  /**
-   * @public
-   * @status public
-   *
-   * Determine if the in-memory contents of the buffer conflict with
-   * the on-disk contents of its associated file.
-   *
-   * This happens if the contents of a buffer’s backing file change while the
-   * editor has uncommitted changes. Those uncommitted changes build upon a
-   * state that is now stale; if those changes were committed to disk, it could
-   * clobber the changes made by the external program.
-   *
-   * @returns {Boolean}
-   */
-  isInConflict() {
-    // Deleted files are automatically in conflict if they consider themselves
-    // modified.
-    return this.isModified() && (this.fileHasChangedSinceLastLoad || this.isDeleted());
+  getFileState() {
+    return this.fileState;
   }
 
   /**
@@ -789,6 +743,8 @@ class TextBuffer {
     if (!this.file && !file) return;
     if (file === this.file) return;
 
+    this.fileOperationGeneration++;
+    this.loadCount++;
     this.file = file;
     if (this.file) {
       if (typeof this.file.setEncoding === "function") {
@@ -796,6 +752,8 @@ class TextBuffer {
       }
       this.subscribeToFile();
     }
+
+    if (!this.file) this.updateFileStateFromBuffer({ resolveStickyState: true });
 
     this.emitter.emit("did-change-path", this.getPath());
   }
@@ -817,7 +775,7 @@ class TextBuffer {
         this.file.setEncoding(encoding);
       }
       this.emitter.emit("did-change-encoding", encoding);
-      if (!this.isModified()) {
+      if (this.fileState === FileState.UNMODIFIED) {
         this.load({ clearHistory: true, internal: true });
       }
     } else {
@@ -1271,18 +1229,6 @@ class TextBuffer {
       this.buffer.setText(newText);
     } else {
       this.buffer.setTextInRange(oldRange, newText);
-    }
-
-    if (this.retainsUnmodifiedTraitAfterDeletion) {
-      // This buffer is in the "deleted" state but _not_ the "modified" state.
-      // This happens when the buffer's backing file is deleted _and_ the
-      // buffer is not already considered to be modified at the time of
-      // deletion.
-      //
-      // But this method introduces a change to the buffer, so we'll clear the
-      // flag that is preventing `isModified` from returning `true`.
-      this.retainsUnmodifiedTraitAfterDeletion = false;
-      this.emitModifiedStatusChanged(this.isModified());
     }
 
     if (this.markerLayers) {
@@ -2480,6 +2426,7 @@ class TextBuffer {
 
     const filePath = file.getPath();
 
+    this.fileOperationGeneration++;
     this.outstandingSaveCount++;
 
     try {
@@ -2526,10 +2473,10 @@ class TextBuffer {
     }
 
     this.setFile(file);
-    this.fileHasChangedSinceLastLoad = false;
+    this.fileOperationGeneration++;
     this.digestWhenLastPersisted = this.buffer.baseTextDigest();
     this.loaded = true;
-    this.emitModifiedStatusChanged(false);
+    this.updateFileStateFromBuffer({ resolveStickyState: true });
     this.emitter.emit("did-save", { path: filePath });
     return this;
   }
@@ -2642,11 +2589,37 @@ class TextBuffer {
   /**
    * @category Private Utility Methods
    */
+  setFileState(fileState) {
+    if (this.fileState === fileState) return false;
+    this.fileState = fileState;
+    this.emitter.emit("did-change-file-state", fileState);
+    return true;
+  }
+
+  deriveFileStateFromBuffer() {
+    if (this.file) {
+      return this.buffer.isModified() ? FileState.MODIFIED : FileState.UNMODIFIED;
+    }
+    return this.buffer.getLength() > 0 ? FileState.MODIFIED : FileState.UNMODIFIED;
+  }
+
+  updateFileStateFromBuffer({ resolveStickyState = false } = {}) {
+    if (
+      !resolveStickyState &&
+      (this.fileState === FileState.CONFLICTED || this.fileState === FileState.REMOVED)
+    ) {
+      return false;
+    }
+    return this.setFileState(this.deriveFileStateFromBuffer());
+  }
+
   registerSelectionsMarkerLayer(markerLayer) {
     return this.selectionsMarkerLayerIds.add(markerLayer.id);
   }
 
   loadSync(options) {
+    this.fileOperationGeneration++;
+    if (this.file?.existsSync()) this.didHaveFileOnDisk = true;
     let patch;
     let checkpoint = null;
     try {
@@ -2665,6 +2638,7 @@ class TextBuffer {
       if ((!options || !options.mustExist) && error.code === "ENOENT") {
         this.emitter.emit("will-reload");
         if (options && options.discardChanges) this.setText("");
+        if (this.didHaveFileOnDisk) this.setFileState(FileState.REMOVED);
         this.emitter.emit("did-reload");
       } else {
         throw error;
@@ -2675,15 +2649,17 @@ class TextBuffer {
   }
 
   async load(options) {
-    if (this.file instanceof File) {
+    if (this.file instanceof File && this.file.existsSync()) {
       // The consumer is allowed to set a `File` instance with a path that does
       // not currently exist on disk.
-      this.didHaveFileOnDisk = this.file.existsSync();
+      this.didHaveFileOnDisk = true;
     }
 
-    const source = this.file instanceof File ? this.file.getPath() : this.file.createReadStream();
+    const file = this.file;
+    const source = file instanceof File ? file.getPath() : file.createReadStream();
 
     const loadCount = ++this.loadCount;
+    const operationGeneration = ++this.fileOperationGeneration;
 
     let checkpoint = null;
     let patch;
@@ -2696,15 +2672,21 @@ class TextBuffer {
 
       // If this is not the most recent load of this file, then we should bow
       // out and let the newer call to `load` handle the tasks below.
-      if (this.loadCount > loadCount) return;
+      if (
+        this.loadCount !== loadCount ||
+        this.fileOperationGeneration !== operationGeneration ||
+        this.file !== file
+      ) {
+        return;
+      }
 
       // An automatic reload can begin while the buffer is clean, then finish
       // after the user has edited it. The native buffer returns `null` in that
       // case so it does not overwrite the edit. Preserve that decision here:
       // compare the unchanged base text with the file instead of treating the
       // cancelled load as a successful reload.
-      if (patch == null && this.loaded && this.fileHasChangedSinceLastLoad) {
-        await this.reconcileFileChangeAfterCancelledLoad(loadCount);
+      if (patch == null && this.loaded && options?.reconcileOnCancelledLoad) {
+        await this.reconcileFileChangeAfterCancelledLoad(loadCount, operationGeneration, file);
         return this;
       }
 
@@ -2723,8 +2705,16 @@ class TextBuffer {
       this.finishLoading(checkpoint, patch, options);
     } catch (error) {
       if ((!options || !options.mustExist) && error.code === "ENOENT") {
+        if (
+          this.loadCount !== loadCount ||
+          this.fileOperationGeneration !== operationGeneration ||
+          this.file !== file
+        ) {
+          return this;
+        }
         this.emitter.emit("will-reload");
         if (options && options.discardChanges) this.setText("");
+        if (this.didHaveFileOnDisk) this.setFileState(FileState.REMOVED);
         this.emitter.emit("did-reload");
       } else {
         throw error;
@@ -2745,15 +2735,14 @@ class TextBuffer {
     if (this.loaded && checkpoint == null && patch != null) {
       // The file was read successfully, but its contents were already equal
       // to the buffer's base text, so there is no patch or reload event.
-      this.fileHasChangedSinceLastLoad = false;
       this.digestWhenLastPersisted = this.buffer.baseTextDigest();
+      this.updateFileStateFromBuffer({ resolveStickyState: true });
       if (options && options.discardChanges) {
         this.emitter.emit("did-reload");
       }
       return;
     }
 
-    this.fileHasChangedSinceLastLoad = false;
     this.digestWhenLastPersisted = this.buffer.baseTextDigest();
     this.cachedText = null;
 
@@ -2795,30 +2784,50 @@ class TextBuffer {
       });
 
       this.emitDidChangeEvent(new ChangeEvent(this, changes));
+      this.updateFileStateFromBuffer({ resolveStickyState: true });
       this.emitDidChangeTextEvent();
       this.emitMarkerChangeEvents(markersSnapshot);
-      this.emitModifiedStatusChanged(this.isModified());
     }
 
     this.loaded = true;
+    this.updateFileStateFromBuffer({ resolveStickyState: true });
     this.emitter.emit("did-reload");
     return this;
   }
 
-  async reconcileFileChangeAfterCancelledLoad(loadCount) {
-    const file = this.file;
+  async reconcileFileChangeAfterCancelledLoad(loadCount, operationGeneration, file) {
     const source = file instanceof File ? file.getPath() : file.createReadStream();
-    const baseTextMatchesFile = await this.buffer.baseTextMatchesFile(source, this.getEncoding());
+    let baseTextMatchesFile;
+    try {
+      baseTextMatchesFile = await this.buffer.baseTextMatchesFile(source, this.getEncoding());
+    } catch (error) {
+      if (error.code !== "ENOENT") throw error;
+      if (
+        this.loadCount === loadCount &&
+        this.fileOperationGeneration === operationGeneration &&
+        this.file === file &&
+        !this.isDestroyed()
+      ) {
+        this.setFileState(FileState.REMOVED);
+      }
+      return;
+    }
 
     // A newer load or a new backing file owns the state now. Do not let this
     // older comparison clear or reintroduce its conflict.
-    if (this.loadCount !== loadCount || this.file !== file || this.isDestroyed()) return;
+    if (
+      this.loadCount !== loadCount ||
+      this.fileOperationGeneration !== operationGeneration ||
+      this.file !== file ||
+      this.isDestroyed()
+    ) {
+      return;
+    }
 
     if (baseTextMatchesFile) {
-      this.fileHasChangedSinceLastLoad = false;
+      this.updateFileStateFromBuffer({ resolveStickyState: true });
     } else {
-      this.fileHasChangedSinceLastLoad = true;
-      this.emitter.emit("did-conflict");
+      this.setFileState(FileState.CONFLICTED);
     }
   }
 
@@ -2893,51 +2902,58 @@ class TextBuffer {
       // consistent behavior with Mac/Windows.
       if (!this.file || !this.file.existsSync()) return;
       if (this.outstandingSaveCount > 0) return;
-      this.fileHasChangedSinceLastLoad = true;
+      const file = this.file;
+      const operationGeneration = ++this.fileOperationGeneration;
 
-      if (this.isModified()) {
+      if (this.fileState !== FileState.UNMODIFIED) {
         // Read the file the same way `load` does. A custom data source (see
         // `setFile`) may transform its contents on the way in and out, so its
         // raw bytes on disk are not what the base text was loaded from —
         // comparing against the path would report a conflict for every save.
-        const source =
-          this.file instanceof File ? this.file.getPath() : this.file.createReadStream();
-        if (!(await this.buffer.baseTextMatchesFile(source, this.getEncoding()))) {
-          // Emit `did-conflict` and take no other action. We will keep the
-          // current buffer contents so that the user's changes are not lost.
-          this.emitter.emit("did-conflict");
+        const source = file instanceof File ? file.getPath() : file.createReadStream();
+        let baseTextMatchesFile;
+        try {
+          baseTextMatchesFile = await this.buffer.baseTextMatchesFile(source, this.getEncoding());
+        } catch (error) {
+          if (error.code === "ENOENT") return onDidDelete();
+          throw error;
+        }
+        if (
+          this.fileOperationGeneration !== operationGeneration ||
+          this.file !== file ||
+          this.isDestroyed()
+        ) {
+          return;
+        }
+
+        if (!baseTextMatchesFile) {
+          if (this.buffer.isModified() || this.fileState === FileState.CONFLICTED) {
+            // Keep the current buffer contents so the user's changes are not
+            // lost. Conflict remains sticky across undo until disk and base
+            // are explicitly reconciled.
+            this.setFileState(FileState.CONFLICTED);
+          } else {
+            // A clean buffer whose removed file reappeared with different
+            // contents can safely follow the disk again.
+            return this.load({ internal: true, reconcileOnCancelledLoad: true });
+          }
         } else {
-          // Despite being modified, we're once again in alignment with what
-          // is on disk. This file is not in conflict.
-          this.fileHasChangedSinceLastLoad = false;
+          this.updateFileStateFromBuffer({ resolveStickyState: true });
         }
       } else {
         // This buffer was previously in sync with what was on disk, so we
         // can update its contents to match the new contents on disk. By
         // definition, this means there is no conflict if the load succeeds.
-        // Keep the flag set until then because the user can edit the buffer
-        // while the asynchronous load is in flight.
-        return this.load({ internal: true });
+        return this.load({ internal: true, reconcileOnCancelledLoad: true });
       }
     }, this.fileChangeDelay);
 
     const onDidDelete = () => {
-      // At this point, asking `isModified` of the native buffer will deliver
-      // an accurate result that does not care about whether the file still
-      // exists on disk.
-      const modified = this.buffer.isModified();
-      this.retainsUnmodifiedTraitAfterDeletion = !modified;
-      this.emitter.emit("did-delete");
-      if (!modified && this.shouldDestroyOnFileDelete()) {
-        return this.destroy();
-      } else {
-        return this.emitModifiedStatusChanged(this.isModified());
-      }
-      // We don't set `this.file` to `null` because we still have a
-      // _theoretical_ file, even if it's no longer present on disk. In this
-      // scenario, we can re-commit the file to disk at its previous path
-      // with a simple "Save" command. If we nulled out `file`, the editor
-      // would prompt the user again about a save destination.
+      this.fileOperationGeneration++;
+      this.didHaveFileOnDisk = true;
+      // Keep `this.file` so a regular Save recreates the same path. The
+      // workspace owns the optional clean-tab auto-close policy.
+      return this.setFileState(FileState.REMOVED);
     };
 
     const onDidRename = () => {
@@ -3186,6 +3202,7 @@ class TextBuffer {
         const displayLayer = this.displayLayers[id];
         displayLayer.emitDeferredChangeEvents();
       }
+      this.updateFileStateFromBuffer();
     }
   }
 
@@ -3200,7 +3217,6 @@ class TextBuffer {
 
   emitDidStopChangingEvent() {
     if (this.destroyed) return;
-    const modifiedStatus = this.isModified();
     const compactedChanges = Object.freeze(
       normalizePatchChanges(
         patchFromChanges(this.changesSinceLastStoppedChangingEvent).getChanges(),
@@ -3208,13 +3224,6 @@ class TextBuffer {
     );
     this.changesSinceLastStoppedChangingEvent.length = 0;
     this.emitter.emit("did-stop-changing", { changes: compactedChanges });
-    this.emitModifiedStatusChanged(modifiedStatus);
-  }
-
-  emitModifiedStatusChanged(modifiedStatus) {
-    if (modifiedStatus === this.previousModifiedStatus) return;
-    this.previousModifiedStatus = modifiedStatus;
-    return this.emitter.emit("did-change-modified", modifiedStatus);
   }
 
   logLines(start = 0, end = this.getLastRow()) {
@@ -3296,7 +3305,7 @@ class TextBuffer {
 }
 
 Object.assign(TextBuffer, {
-  version: 5,
+  version: 6,
   Point: Point,
   Range: Range,
   newlineRegex: newlineRegex,

@@ -4,6 +4,7 @@ const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const TextBuffer = require("./text-buffer");
+const FileState = require("./file-state");
 const { watchPath } = require("./path-watcher");
 
 const DefaultDirectoryProvider = require("./default-directory-provider");
@@ -155,15 +156,14 @@ module.exports = class Project extends Model {
     this.retiredBufferPaths = new Set();
 
     const handleBufferState = (bufferState) => {
-      if (bufferState.shouldDestroyOnFileDelete == null) {
-        bufferState.shouldDestroyOnFileDelete = () =>
-          lumine.config.get("core.closeDeletedFileTabs");
-      }
-
       // Use a little guilty knowledge of the way TextBuffers are serialized.
       // This allows TextBuffers that have never been saved (but have filePaths) to be deserialized, but prevents
-      // TextBuffers backed by files that have been deleted from being saved.
-      bufferState.mustExist = bufferState.digestWhenLastPersisted !== false;
+      // clean TextBuffers backed by files that have been deleted from being
+      // restored. Dirty buffers are retained as `removed` so their text can be
+      // recovered.
+      bufferState.mustExist =
+        bufferState.fileState === FileState.UNMODIFIED &&
+        bufferState.digestWhenLastPersisted !== false;
 
       return TextBuffer.deserialize(bufferState).catch((_) => {
         this.retiredBufferIDs.add(bufferState.id);
@@ -1056,10 +1056,10 @@ module.exports = class Project extends Model {
     return this.buffers.slice();
   }
 
-  // Is the buffer for the given path modified?
-  isPathModified(filePath) {
+  // Get the state of the open buffer for the given path.
+  getPathFileState(filePath) {
     const bufferForPath = this.findBufferForPath(this.resolvePath(filePath));
-    return bufferForPath && bufferForPath.isModified();
+    return bufferForPath?.getFileState();
   }
 
   findBufferForPath(filePath) {
@@ -1117,21 +1117,13 @@ module.exports = class Project extends Model {
     }
   }
 
-  shouldDestroyBufferOnFileDelete() {
-    return lumine.config.get("core.closeDeletedFileTabs");
-  }
-
   // Still needed when deserializing a tokenized buffer
   buildBufferSync(absoluteFilePath) {
-    const params = {
-      shouldDestroyOnFileDelete: this.shouldDestroyBufferOnFileDelete,
-    };
-
     let buffer;
     if (absoluteFilePath != null) {
-      buffer = TextBuffer.loadSync(absoluteFilePath, params);
+      buffer = TextBuffer.loadSync(absoluteFilePath);
     } else {
-      buffer = new TextBuffer(params);
+      buffer = new TextBuffer();
     }
     this.addBuffer(buffer);
     return buffer;
@@ -1144,14 +1136,10 @@ module.exports = class Project extends Model {
   //
   // Returns a `Promise` that resolves to the {@link TextBuffer}.
   async buildBuffer(absoluteFilePath) {
-    const params = {
-      shouldDestroyOnFileDelete: this.shouldDestroyBufferOnFileDelete,
-    };
-
     let buffer;
     if (absoluteFilePath != null) {
       if (this.loadPromisesByPath[absoluteFilePath] == null) {
-        this.loadPromisesByPath[absoluteFilePath] = TextBuffer.load(absoluteFilePath, params)
+        this.loadPromisesByPath[absoluteFilePath] = TextBuffer.load(absoluteFilePath)
           .then((result) => {
             delete this.loadPromisesByPath[absoluteFilePath];
             return result;
@@ -1163,7 +1151,7 @@ module.exports = class Project extends Model {
       }
       buffer = await this.loadPromisesByPath[absoluteFilePath];
     } else {
-      buffer = new TextBuffer(params);
+      buffer = new TextBuffer();
     }
 
     this.grammarRegistry.autoAssignLanguageMode(buffer);

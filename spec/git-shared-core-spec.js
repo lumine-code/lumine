@@ -1,6 +1,7 @@
 const { GitError, LargeRepoError } = require("../src/git-error");
 const { filterPatch, MAX_PATCH_CHARS } = require("../src/patch-filter");
 const lumineModule = require("../exports/lumine");
+const FileState = require("../src/file-state");
 
 describe("shared git core", () => {
   describe("git-error", () => {
@@ -15,6 +16,7 @@ describe("shared git core", () => {
       expect(lumineModule.GitError).toBe(GitError);
       expect(lumineModule.LargeRepoError).toBe(LargeRepoError);
       expect(lumineModule.filterPatch).toBe(filterPatch);
+      expect(lumineModule.FileState).toBe(FileState);
     });
   });
 

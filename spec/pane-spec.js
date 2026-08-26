@@ -6,6 +6,7 @@ const temp = require("@lumine-code/temp").track();
 const Pane = require("../src/pane");
 const PaneContainer = require("../src/pane-container");
 const { conditionPromise, timeoutPromise } = require("./helpers/async-spec-helpers");
+const FileState = require("../src/file-state");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -797,6 +798,35 @@ describe("Pane", () => {
           expect(success).toBe(true);
         });
       });
+    });
+
+    it("prompts for a generic saveable item with a dirty file state", async () => {
+      item1.getFileState = () => FileState.MODIFIED;
+      item1.getURI = () => "test";
+      item1.save = jasmine.createSpy("save");
+      confirm.and.returnValue(Promise.resolve(2));
+
+      expect(await pane.destroyItem(item1)).toBe(true);
+      expect(confirm).toHaveBeenCalled();
+      expect(item1.save).not.toHaveBeenCalled();
+    });
+
+    it("does not prompt for a read-only item in the removed state", async () => {
+      item1.getFileState = () => FileState.REMOVED;
+
+      expect(await pane.destroyItem(item1)).toBe(true);
+      expect(confirm).not.toHaveBeenCalled();
+    });
+
+    it("does not prompt for a dirty generic item when prompting is disabled", async () => {
+      lumine.config.set("core.promptOnCloseDirtyBuffer", false);
+      item1.getFileState = () => FileState.CONFLICTED;
+      item1.getURI = () => "test";
+      item1.save = jasmine.createSpy("save");
+
+      expect(await pane.destroyItem(item1)).toBe(true);
+      expect(confirm).not.toHaveBeenCalled();
+      expect(item1.save).not.toHaveBeenCalled();
     });
 
     describe("when the last item is destroyed", () => {
@@ -1789,10 +1819,10 @@ describe("Pane", () => {
 
       const saveItemsPromise = pane.saveItems();
       expect(saveItemsPromise instanceof Promise).toBe(true);
-      expect(editor2.getBuffer().isModified()).toBe(true);
+      expect(editor2.getBuffer().getFileState()).toBe(FileState.MODIFIED);
 
       await saveItemsPromise;
-      expect(editor2.getBuffer().isModified()).toBe(false);
+      expect(editor2.getBuffer().getFileState()).toBe(FileState.UNMODIFIED);
     });
   });
 });
