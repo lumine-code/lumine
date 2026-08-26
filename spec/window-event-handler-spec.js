@@ -7,7 +7,6 @@ describe("WindowEventHandler", () => {
   beforeEach(() => {
     lumine.uninstallWindowEventHandler();
     spyOn(lumine.window, "hide");
-    lumine.project.destroy();
     // Initialization must reconcile stale visual state with the document's
     // current focus rather than waiting for another focus event.
     document.body.classList.add("is-blurred");

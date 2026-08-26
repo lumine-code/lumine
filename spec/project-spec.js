@@ -1296,11 +1296,11 @@ describe("Project", () => {
   });
 
   describe(".reset()", () => {
-    it("re-attaches the repository registry when a destroyed project is reset", () => {
-      // Legacy window specs destroy the window's project and rely on the
-      // between-spec reset to bring it back; the registry must survive that.
+    it("revives a destroyed project and re-attaches its repository registry", () => {
       lumine.project.destroy();
+      expect(lumine.project.isDestroyed()).toBe(true);
       expect(() => lumine.project.reset(lumine.packages)).not.toThrow();
+      expect(lumine.project.isAlive()).toBe(true);
 
       lumine.project.setPaths([__dirname]);
       expect(lumine.repositories.getForPath(__dirname)).toBeTruthy();

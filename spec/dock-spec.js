@@ -4,7 +4,8 @@ const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
 
 describe("Dock", () => {
   describe("an empty split pane's context menu", () => {
-    it("offers Close Panel in every dock", () => {
+    it("offers Close Panel in every dock after the environment is reset", async () => {
+      await lumine.reset();
       jasmine.attachToDOM(lumine.workspace.getElement());
 
       const docks = [

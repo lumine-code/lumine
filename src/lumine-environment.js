@@ -676,21 +676,25 @@ class LumineEnvironment {
       properties: _.clone(ConfigSchema),
     });
 
+    // Clear all three registries before rebuilding them. KeymapManager::clear
+    // replaces its emitter, so the menu managers' startup subscriptions no
+    // longer receive `did-load-bundled-keymaps`; reload their platform items
+    // explicitly after the key bindings they derive accelerators from.
     this.keymaps.clear();
+    this.menu.clear();
+    this.contextMenu.clear();
     this.keymaps.loadBundledKeymaps();
+    this.menu.loadPlatformItems();
+    this.contextMenu.loadPlatformItems();
 
     this.commands.clear();
     this.registerDefaultCommands();
 
     this.styles.restoreSnapshot(this.initialStyleElements);
 
-    this.menu.clear();
-
     this.clipboard.reset();
 
     this.notifications.clear();
-
-    this.contextMenu.clear();
 
     await this.packages.reset();
     this.workspace.reset(this.packages);

@@ -79,6 +79,12 @@ module.exports = class Project extends Model {
   }
 
   reset(packageManager) {
+    // Reset is the test environment's reusable lifecycle boundary. A project
+    // destroyed by a preceding spec must become destroyable again; otherwise
+    // every later destroy is a no-op and any watchers created after the reset
+    // outlive their owner.
+    this.alive = true;
+
     // Dropped rather than re-attached: a window that used the index once and was
     // then reset is back to paying nothing for it, and there is no long-lived
     // subscription to go stale against the emitter replaced below — the next
@@ -95,10 +101,9 @@ module.exports = class Project extends Model {
       if (buffer != null) buffer.destroy();
     }
     this.buffers = [];
-    // Specs may destroy the window's project and then reset it. Destroying
-    // detached this project from the repository registry, so re-attach before
-    // any root or buffer bookkeeping runs (attaching also resets the
-    // registry's project subscriptions against the fresh emitter).
+    // Destroying detached this project from the repository registry, so
+    // re-attach before any root or buffer bookkeeping runs (attaching also
+    // resets the registry's project subscriptions against the fresh emitter).
     if (!this.repositoryRegistry.destroyed) this.repositoryRegistry.attachProject(this);
     this.setPaths([]);
     this.loadPromisesByPath = {};

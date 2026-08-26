@@ -1873,7 +1873,7 @@ describe("Workspace", () => {
     lumine2.packages.loadPackage("language-javascript");
     lumine2.packages.loadPackage("language-python");
     lumine2.packages.loadPackage("language-todo");
-    lumine2.project.deserialize(lumine.project.serialize());
+    await lumine2.project.deserialize(lumine.project.serialize());
     lumine2.workspace.deserialize(lumine.workspace.serialize(), lumine2.deserializers);
 
     let grammars = lumine2.grammars.getGrammars({ includeTreeSitter: true });
