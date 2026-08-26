@@ -1143,6 +1143,60 @@ describe("TextBuffer IO", () => {
       expect(events.length).toBe(0);
     });
 
+    it("reports a conflict when the buffer is edited during an automatic reload", async () => {
+      const controlledFile = new ControlledFile(filePath);
+      buffer.setFile(controlledFile);
+
+      const controlledLoad = pauseNextNativeLoad(buffer);
+      const loadSpy = spyOn(buffer, "load").and.callThrough();
+      const events = [];
+      buffer.onDidConflict(() => events.push("did-conflict"));
+      buffer.onDidReload(() => events.push("did-reload"));
+
+      fs.writeFileSync(filePath, "changed on disk");
+      controlledFile.emitDidChange();
+      await controlledLoad.started;
+
+      const automaticLoad = loadSpy.calls.mostRecent().returnValue;
+      buffer.append("f");
+      controlledLoad.release();
+      await automaticLoad;
+
+      expect(events).toEqual(["did-conflict"]);
+      expect(buffer.getText()).toBe("abcdef");
+      expect(buffer.fileHasChangedSinceLastLoad).toBe(true);
+      expect(buffer.isInConflict()).toBe(true);
+
+      expect(buffer.undo()).toBe(true);
+      expect(buffer.getText()).toBe("abcde");
+      expect(buffer.undo()).toBe(false);
+    });
+
+    it("does not report a conflict when the disk still matches the base after a cancelled reload", async () => {
+      const controlledFile = new ControlledFile(filePath);
+      buffer.setFile(controlledFile);
+
+      const controlledLoad = pauseNextNativeLoad(buffer);
+      const loadSpy = spyOn(buffer, "load").and.callThrough();
+      const events = [];
+      buffer.onDidConflict(() => events.push("did-conflict"));
+      buffer.onDidReload(() => events.push("did-reload"));
+
+      fs.writeFileSync(filePath, "abcde");
+      controlledFile.emitDidChange();
+      await controlledLoad.started;
+
+      const automaticLoad = loadSpy.calls.mostRecent().returnValue;
+      buffer.append("f");
+      controlledLoad.release();
+      await automaticLoad;
+
+      expect(events).toEqual([]);
+      expect(buffer.getText()).toBe("abcdef");
+      expect(buffer.fileHasChangedSinceLastLoad).toBe(false);
+      expect(buffer.isInConflict()).toBe(false);
+    });
+
     it("does not fire duplicate change events when multiple changes happen on disk", async () => {
       // Drive the file notifications explicitly. The path-watcher integration
       // is covered separately; this spec needs to control exactly when each
@@ -1356,6 +1410,33 @@ class ControlledFile extends TextBufferFile {
   emitDidChange() {
     this.didChangeCallback();
   }
+}
+
+function pauseNextNativeLoad(buffer) {
+  const originalLoad = buffer.buffer.load;
+  let releaseLoad;
+  let resolveLoadStarted;
+  const started = new Promise((resolve) => {
+    resolveLoadStarted = resolve;
+  });
+
+  spyOn(NativeTextBuffer.prototype, "load").and.callFake(function (pathToLoad, ...args) {
+    const pathToLoadCopy = temp.openSync("lumine").path;
+    fs.writeFileSync(pathToLoadCopy, fs.readFileSync(pathToLoad));
+
+    const promise = new Promise((resolve) => {
+      releaseLoad = () => resolve(originalLoad.call(this, pathToLoadCopy, ...args));
+    });
+    resolveLoadStarted();
+    return promise;
+  });
+
+  return {
+    started,
+    release() {
+      releaseLoad();
+    },
+  };
 }
 
 function reverseCase(buffer, _encoding) {

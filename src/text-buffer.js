@@ -25,6 +25,63 @@ const {
 const { traverse, traversal } = require("./point-helpers");
 const Grim = require("@lumine-code/grim");
 
+function advanceStringIndex(text, index, unicode) {
+  if (!unicode || index + 1 >= text.length) return index + 1;
+
+  const firstCodeUnit = text.charCodeAt(index);
+  if (firstCodeUnit < 0xd800 || firstCodeUnit > 0xdbff) return index + 1;
+
+  const secondCodeUnit = text.charCodeAt(index + 1);
+  if (secondCodeUnit < 0xdc00 || secondCodeUnit > 0xdfff) return index + 1;
+
+  return index + 2;
+}
+
+function getSubstitution(
+  matchedText,
+  sourceText,
+  matchIndex,
+  captures,
+  namedCaptures,
+  replacementText,
+) {
+  return replacementText.replace(/\$([$&'`]|\d{1,2}|<[^>]*>)/g, (token, reference) => {
+    switch (reference) {
+      case "$":
+        return "$";
+      case "&":
+        return matchedText;
+      case "`":
+        return sourceText.slice(0, matchIndex);
+      case "'":
+        return sourceText.slice(matchIndex + matchedText.length);
+    }
+
+    if (reference.startsWith("<")) {
+      if (namedCaptures == null) return token;
+      return namedCaptures[reference.slice(1, -1)] ?? "";
+    }
+
+    let captureIndex = Number(reference);
+    let suffix = "";
+    if (captureIndex > captures.length && reference.length === 2) {
+      captureIndex = Number(reference[0]);
+      suffix = reference[1];
+    }
+
+    if (captureIndex === 0 || captureIndex > captures.length) return token;
+    return (captures[captureIndex - 1] ?? "") + suffix;
+  });
+}
+
+function lastOccupiedRowForRange(range) {
+  if (range.end.row > range.start.row && range.end.column === 0) {
+    return range.end.row - 1;
+  }
+
+  return range.end.row;
+}
+
 /**
  * @public
  * @status extended
@@ -1964,21 +2021,48 @@ class TextBuffer {
    * @returns {Number} representing the number of replacements made.
    */
   replace(regex, replacementText) {
-    const doSave = !this.isModified();
-    let replacements = 0;
+    replacementText = String(replacementText);
+
+    const flags = regex.global ? regex.flags : `${regex.flags}g`;
+    const globalRegex = new RegExp(regex.source, flags);
+    const sourceText = this.getText();
+    const replacements = [];
+    const unicode = globalRegex.unicode || globalRegex.unicodeSets;
+    let match;
+
+    while ((match = globalRegex.exec(sourceText)) != null) {
+      const startIndex = match.index;
+      const endIndex = startIndex + match[0].length;
+      replacements.push({
+        range: new Range(
+          this.positionForCharacterIndex(startIndex),
+          this.positionForCharacterIndex(endIndex),
+        ),
+        text: getSubstitution(
+          match[0],
+          sourceText,
+          startIndex,
+          match.slice(1),
+          match.groups,
+          replacementText,
+        ),
+      });
+
+      if (match[0].length === 0) {
+        globalRegex.lastIndex = advanceStringIndex(sourceText, globalRegex.lastIndex, unicode);
+      }
+    }
 
     this.transact(() => {
-      return this.scan(regex, function ({ matchText, replace }) {
-        const text = matchText.replace(regex, replacementText);
-        replacementText = text === matchText ? replacementText : text;
-        replace(replacementText);
-        return replacements++;
-      });
+      for (let i = replacements.length - 1; i >= 0; i--) {
+        const replacement = replacements[i];
+        this.setTextInRange(replacement.range, replacement.text, {
+          normalizeLineEndings: false,
+        });
+      }
     });
 
-    if (doSave) this.save();
-
-    return replacements;
+    return replacements.length;
   }
 
   /**
@@ -2614,6 +2698,16 @@ class TextBuffer {
       // out and let the newer call to `load` handle the tasks below.
       if (this.loadCount > loadCount) return;
 
+      // An automatic reload can begin while the buffer is clean, then finish
+      // after the user has edited it. The native buffer returns `null` in that
+      // case so it does not overwrite the edit. Preserve that decision here:
+      // compare the unchanged base text with the file instead of treating the
+      // cancelled load as a successful reload.
+      if (patch == null && this.loaded && this.fileHasChangedSinceLastLoad) {
+        await this.reconcileFileChangeAfterCancelledLoad(loadCount);
+        return this;
+      }
+
       if (patch) {
         if (patch.getChangeCount() > 0) {
           checkpoint = this.historyProvider.createCheckpoint({
@@ -2641,7 +2735,18 @@ class TextBuffer {
   }
 
   finishLoading(checkpoint, patch, options) {
-    if (this.isDestroyed() || (this.loaded && checkpoint == null && patch != null)) {
+    if (this.isDestroyed()) {
+      if (options && options.discardChanges) {
+        this.emitter.emit("did-reload");
+      }
+      return;
+    }
+
+    if (this.loaded && checkpoint == null && patch != null) {
+      // The file was read successfully, but its contents were already equal
+      // to the buffer's base text, so there is no patch or reload event.
+      this.fileHasChangedSinceLastLoad = false;
+      this.digestWhenLastPersisted = this.buffer.baseTextDigest();
       if (options && options.discardChanges) {
         this.emitter.emit("did-reload");
       }
@@ -2698,6 +2803,23 @@ class TextBuffer {
     this.loaded = true;
     this.emitter.emit("did-reload");
     return this;
+  }
+
+  async reconcileFileChangeAfterCancelledLoad(loadCount) {
+    const file = this.file;
+    const source = file instanceof File ? file.getPath() : file.createReadStream();
+    const baseTextMatchesFile = await this.buffer.baseTextMatchesFile(source, this.getEncoding());
+
+    // A newer load or a new backing file owns the state now. Do not let this
+    // older comparison clear or reintroduce its conflict.
+    if (this.loadCount !== loadCount || this.file !== file || this.isDestroyed()) return;
+
+    if (baseTextMatchesFile) {
+      this.fileHasChangedSinceLastLoad = false;
+    } else {
+      this.fileHasChangedSinceLastLoad = true;
+      this.emitter.emit("did-conflict");
+    }
   }
 
   destroy() {
@@ -2792,9 +2914,9 @@ class TextBuffer {
       } else {
         // This buffer was previously in sync with what was on disk, so we
         // can update its contents to match the new contents on disk. By
-        // definition, this means there is no conflict, so we'll reset the
-        // appropriate flag.
-        this.fileHasChangedSinceLastLoad = false;
+        // definition, this means there is no conflict if the load succeeds.
+        // Keep the flag set until then because the user can edit the buffer
+        // while the asynchronous load is in flight.
         return this.load({ internal: true });
       }
     }, this.fileChangeDelay);
@@ -3247,7 +3369,12 @@ class SearchCallbackArgument {
   }
 
   get lineText() {
-    return this.buffer.lineForRow(this.range.start.row);
+    const lines = [];
+    const lastOccupiedRow = lastOccupiedRowForRange(this.range);
+    for (let row = this.range.start.row; row <= lastOccupiedRow; row++) {
+      lines.push(this.buffer.lineForRow(row));
+    }
+    return lines.join("\n");
   }
 
   get lineTextOffset() {
@@ -3272,8 +3399,9 @@ class SearchCallbackArgument {
     }
 
     argument.trailingContextLines = [];
+    const lastOccupiedRow = lastOccupiedRowForRange(argument.range);
     for (let i = 0, end = options.trailingContextLineCount || 0; i < end; i++) {
-      row = argument.range.start.row + i + 1;
+      row = lastOccupiedRow + i + 1;
       if (row >= argument.buffer.getLineCount()) break;
       argument.trailingContextLines.push(argument.buffer.lineForRow(row));
     }

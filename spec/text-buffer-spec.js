@@ -3054,6 +3054,88 @@ three\
         expect(buffer.getTextInRange([[12], [13, Infinity]])).toBe(buffer.lineForRow(12))));
   });
 
+  describe("::replace(regex, replacementText)", function () {
+    const cases = [
+      {
+        name: "numbered captures across multiple matches",
+        text: "alpha beta",
+        regex: /(alpha|beta)/,
+        replacementText: "<$1>",
+      },
+      {
+        name: "named and unmatched captures",
+        text: "first last; second third; fourth",
+        regex: /(?<first>\w+) (?<last>\w+)(!)?/,
+        replacementText: "$<last>, $<first>$3",
+      },
+      {
+        name: "replacement tokens and numeric capture fallback",
+        text: "abc",
+        regex: /(b)/,
+        replacementText: "[$$][$&][$`][$'][$10][$01][$99]",
+      },
+      {
+        name: "lookaround",
+        text: "foo1 foo2",
+        regex: /(?<=foo)(\d)(?=\s|$)/,
+        replacementText: "<$1>",
+      },
+      {
+        name: "zero-width Unicode matches",
+        text: "😀a",
+        regex: /(?=.)/u,
+        replacementText: "|",
+      },
+      {
+        name: "dot-all matches",
+        text: "a\nb a\nb",
+        regex: /a.b/s,
+        replacementText: "<$&>",
+      },
+    ];
+
+    for (const { name, text, regex, replacementText } of cases) {
+      it(`matches String.replace semantics for ${name}`, function () {
+        const flags = regex.global ? regex.flags : `${regex.flags}g`;
+        const expectedText = text.replace(new RegExp(regex.source, flags), replacementText);
+        const expectedCount = text.match(new RegExp(regex.source, flags))?.length ?? 0;
+        buffer = new TextBuffer(text);
+
+        const replacementCount = buffer.replace(regex, replacementText);
+
+        expect(replacementCount).toBe(expectedCount);
+        expect(buffer.getText()).toBe(expectedText);
+      });
+    }
+
+    it("groups granular edits into one undo operation, preserves markers, and performs no I/O", function () {
+      const filePath = temp.openSync("replace").path;
+      const originalText = "foo foo tail";
+      fs.writeFileSync(filePath, originalText);
+      buffer = TextBuffer.loadSync(filePath);
+      const marker = buffer.markRange([
+        [0, 8],
+        [0, 12],
+      ]);
+      spyOn(buffer, "save");
+
+      expect(buffer.replace(/foo/, "longer")).toBe(2);
+      expect(buffer.getText()).toBe("longer longer tail");
+      expect(buffer.getTextInRange(marker.getRange())).toBe("tail");
+      expect(marker.getRange()).toEqual([
+        [0, 14],
+        [0, 18],
+      ]);
+      expect(buffer.save).not.toHaveBeenCalled();
+      expect(fs.readFileSync(filePath, "utf8")).toBe(originalText);
+
+      buffer.undo();
+      expect(buffer.getText()).toBe(originalText);
+      buffer.redo();
+      expect(buffer.getText()).toBe("longer longer tail");
+    });
+  });
+
   describe("::scan(regex, fn)", function () {
     beforeEach(() => (buffer = TextBuffer.loadSync(require.resolve("./fixtures/sample.js"))));
 
@@ -3123,6 +3205,42 @@ three\
         "      current < pivot ? left.push(current) : right.push(current);",
       );
       expect(matches[1].trailingContextLines[1]).toBe("    }");
+    });
+
+    it("includes every occupied row in lineText and starts trailing context after the match", function () {
+      buffer = new TextBuffer("before\r\nxx first\r\nsecond yy\r\nafter\r\nlast");
+      const matches = [];
+
+      buffer.scan(
+        /first\r\nsecond/g,
+        { leadingContextLineCount: 1, trailingContextLineCount: 2 },
+        (match) => matches.push(match),
+      );
+
+      expect(matches.length).toBe(1);
+      expect(matches[0].lineText).toBe("xx first\nsecond yy");
+      expect(matches[0].leadingContextLines).toEqual(["before"]);
+      expect(matches[0].trailingContextLines).toEqual(["after", "last"]);
+    });
+
+    it("does not treat a match ending at column zero as occupying the next row", function () {
+      buffer = new TextBuffer("before\nfirst\nsecond\nafter");
+      const matches = [];
+
+      buffer.scan(
+        /first\n/g,
+        { leadingContextLineCount: 1, trailingContextLineCount: 2 },
+        (match) => matches.push(match),
+      );
+
+      expect(matches.length).toBe(1);
+      expect(matches[0].range).toEqual([
+        [1, 0],
+        [2, 0],
+      ]);
+      expect(matches[0].lineText).toBe("first");
+      expect(matches[0].leadingContextLines).toEqual(["before"]);
+      expect(matches[0].trailingContextLines).toEqual(["second", "after"]);
     });
   });
 
