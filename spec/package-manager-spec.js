@@ -1123,7 +1123,7 @@ describe("PackageManager", () => {
       });
 
       it("loads any tree-sitter grammars defined in the package", async () => {
-        lumine.config.set("language.useTreeSitterParsers", true);
+        lumine.config.set("editor.useTreeSitterParsers", true);
         await lumine.packages.activatePackage("package-with-tree-sitter-grammar");
         const grammar = lumine.grammars.selectGrammar("test.somelang");
         expect(grammar.name).toBe("Some Language");
@@ -1136,7 +1136,7 @@ describe("PackageManager", () => {
       it("loads the scoped properties", async () => {
         await lumine.packages.activatePackage("package-with-settings");
         expect(
-          lumine.config.get("language.increaseIndentPattern", {
+          lumine.config.get("editor.increaseIndentPattern", {
             scope: [".source.omg"],
           }),
         ).toBe("^a");
@@ -1462,14 +1462,14 @@ describe("PackageManager", () => {
     it("removes the package's scoped-properties", async () => {
       await lumine.packages.activatePackage("package-with-settings");
       expect(
-        lumine.config.get("language.increaseIndentPattern", {
+        lumine.config.get("editor.increaseIndentPattern", {
           scope: [".source.omg"],
         }),
       ).toBe("^a");
 
       await lumine.packages.deactivatePackage("package-with-settings");
       expect(
-        lumine.config.get("language.increaseIndentPattern", {
+        lumine.config.get("editor.increaseIndentPattern", {
           scope: [".source.omg"],
         }),
       ).toBeUndefined();

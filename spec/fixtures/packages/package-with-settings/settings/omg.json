@@ -1,6 +1,6 @@
 {
   ".source.omg": {
-    "language": {
+    "editor": {
       "increaseIndentPattern": "^a"
     }
   }

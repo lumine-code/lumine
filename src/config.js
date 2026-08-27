@@ -501,6 +501,7 @@ class Config {
     this.settingsLoaded = false;
     this.transactDepth = 0;
     this.pendingOperations = [];
+    this.pendingChangeRecords = [];
     this.legacyScopeAliases = new Map();
     this.requestSave = _.debounce(() => this.save(), 1);
   }
@@ -545,6 +546,9 @@ class Config {
       [keyPath, callback] = args;
     } else if (args.length === 3 && _.isString(args[0]) && _.isObject(args[1])) {
       [keyPath, options, callback] = args;
+      if (options.scopeSelector != null) {
+        throw new TypeError("Config::observe reads with 'scope', not 'scopeSelector'");
+      }
       scopeDescriptor = options.scope;
     } else {
       console.error(
@@ -554,7 +558,7 @@ class Config {
     }
 
     if (scopeDescriptor != null) {
-      return this.observeScopedKeyPath(scopeDescriptor, keyPath, callback);
+      return this.observeScopedKeyPath(scopeDescriptor, keyPath, options, callback);
     } else {
       return this.observeKeyPath(keyPath, options ?? {}, callback);
     }
@@ -583,21 +587,32 @@ class Config {
    */
   onDidChange(...args) {
     let callback, keyPath, scopeDescriptor;
+    let options = {};
     if (args.length === 1) {
       [callback] = args;
     } else if (args.length === 2) {
       [keyPath, callback] = args;
     } else {
-      let options;
       [keyPath, options, callback] = args;
+      if (options.scopeSelector != null) {
+        throw new TypeError("Config::onDidChange reads with 'scope', not 'scopeSelector'");
+      }
       scopeDescriptor = options.scope;
     }
 
     if (scopeDescriptor != null) {
-      return this.onDidChangeScopedKeyPath(scopeDescriptor, keyPath, callback);
+      return this.onDidChangeScopedKeyPath(scopeDescriptor, keyPath, options, callback);
     } else {
-      return this.onDidChangeKeyPath(keyPath, callback);
+      return this.onDidChangeKeyPath(keyPath, {}, callback);
     }
+  }
+
+  /**
+   * Observe configuration mutations at any source or selector. The event can
+   * be filtered with `affectsConfiguration`, including for scoped consumers.
+   */
+  onDidChangeConfiguration(callback) {
+    return this.emitter.on("did-change-configuration", callback);
   }
 
   /**
@@ -619,18 +634,18 @@ class Config {
    * ```
    *
    * With scope descriptors you can get settings within a specific editor
-   * scope. For example, you might want to know `language.tabLength` for ruby
+   * scope. For example, you might want to know `editor.tabLength` for ruby
    * files.
    *
    * ```js
-   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+   * lumine.config.get('editor.tabLength', { scope: ['source.ruby'] }) // => 2
    * ```
    *
    * This setting in ruby files might be different than the global tabLength setting
    *
    * ```js
-   * lumine.config.get('language.tabLength') // => 4
-   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
+   * lumine.config.get('editor.tabLength') // => 4
+   * lumine.config.get('editor.tabLength', { scope: ['source.ruby'] }) // => 2
    * ```
    *
    * You can get the language scope descriptor via
@@ -638,14 +653,14 @@ class Config {
    * for the editor's language.
    *
    * ```js
-   * lumine.config.get('language.tabLength', { scope: editor.getRootScopeDescriptor() }) // => 2
+   * lumine.config.get('editor.tabLength', { scope: editor.getRootScopeDescriptor() }) // => 2
    * ```
    *
    * Additionally, you can get the setting at the specific cursor position.
    *
    * ```js
    * const scopeDescriptor = editor.getLastCursor().getScopeDescriptor()
-   * lumine.config.get('language.tabLength', { scope: scopeDescriptor }) // => 2
+   * lumine.config.get('editor.tabLength', { scope: scopeDescriptor }) // => 2
    * ```
    *
    * @param {String} keyPath - The key to retrieve.
@@ -667,6 +682,9 @@ class Config {
     if (args.length > 1) {
       if (typeof args[0] === "string" || args[0] == null) {
         [keyPath, options] = args;
+        if (options.scopeSelector != null) {
+          throw new TypeError("Config::get reads with 'scope', not 'scopeSelector'");
+        }
         ({ scope } = options);
       }
     } else {
@@ -675,7 +693,14 @@ class Config {
 
     if (scope != null) {
       const value = this.getRawScopedValue(scope, keyPath, options);
-      return value != null ? value : this.getRawValue(keyPath, options);
+      const globalValue = this.getRawValue(keyPath, options);
+      if (value != null) {
+        if (isPlainObject(value) && isPlainObject(globalValue)) {
+          return this.deepDefaults(value, globalValue);
+        }
+        return value;
+      }
+      return globalValue;
     } else {
       return this.getRawValue(keyPath, options);
     }
@@ -697,6 +722,9 @@ class Config {
   getAll(keyPath, options) {
     let globalValue, result, scope;
     if (options != null) {
+      if (options.scopeSelector != null) {
+        throw new TypeError("Config::getAll reads with 'scope', not 'scopeSelector'");
+      }
       ({ scope } = options);
     }
 
@@ -721,7 +749,7 @@ class Config {
     }
 
     globalValue = this.getRawValue(keyPath, options);
-    if (globalValue) {
+    if (globalValue != null) {
       result.push({ scopeSelector: "*", value: globalValue });
     }
 
@@ -745,20 +773,20 @@ class Config {
    * ```
    *
    * You can also set scoped settings. For example, you might want change the
-   * `language.tabLength` only for ruby files.
+   * `editor.tabLength` only for ruby files.
    *
    * ```js
-   * lumine.config.get('language.tabLength') // => 4
-   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 4
-   * lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
+   * lumine.config.get('editor.tabLength') // => 4
+   * lumine.config.get('editor.tabLength', { scope: ['source.ruby'] }) // => 4
+   * lumine.config.get('editor.tabLength', { scope: ['source.js'] }) // => 4
    *
    * // Set ruby to 2
-   * lumine.config.set('language.tabLength', 2, { scopeSelector: '.source.ruby' }) // => true
+   * lumine.config.set('editor.tabLength', 2, { scopeSelector: '.source.ruby' }) // => true
    *
    * // Notice it's only set to 2 in the case of ruby
-   * lumine.config.get('language.tabLength') // => 4
-   * lumine.config.get('language.tabLength', { scope: ['source.ruby'] }) // => 2
-   * lumine.config.get('language.tabLength', { scope: ['source.js'] }) // => 4
+   * lumine.config.get('editor.tabLength') // => 4
+   * lumine.config.get('editor.tabLength', { scope: ['source.ruby'] }) // => 2
+   * lumine.config.get('editor.tabLength', { scope: ['source.js'] }) // => 4
    * ```
    *
    * @param {String} keyPath - The configuration key.
@@ -775,6 +803,10 @@ class Config {
    */
   set(...args) {
     let [keyPath, value, options = {}] = args;
+
+    if (options.scope != null) {
+      throw new TypeError("Config::set writes with 'scopeSelector', not 'scope'");
+    }
 
     if (!this.settingsLoaded) {
       this.pendingOperations.push(() => this.set(keyPath, value, options));
@@ -828,6 +860,9 @@ class Config {
       this.pendingOperations.push(() => this.unset(keyPath, options));
     }
 
+    if (options?.scope != null) {
+      throw new TypeError("Config::unset writes with 'scopeSelector', not 'scope'");
+    }
     let { scopeSelector, source } = options != null ? options : {};
     if (source == null) {
       source = this.mainSource;
@@ -849,6 +884,8 @@ class Config {
               source,
               priority: this.priorityForSource(source),
             });
+          } else {
+            this.emitChangeEvent({ keyPath, scopeSelector, source });
           }
 
           const configIsReady = source === this.mainSource && this.settingsLoaded;
@@ -858,7 +895,7 @@ class Config {
         }
       } else {
         this.scopedSettingsStore.removePropertiesForSourceAndSelector(source, scopeSelector);
-        return this.emitChangeEvent();
+        return this.emitChangeEvent({ keyPath: null, scopeSelector, source });
       }
     } else {
       for (scopeSelector in this.scopedSettingsStore.propertiesForSource(source)) {
@@ -879,6 +916,103 @@ class Config {
    */
   getSources() {
     return _.uniq(_.pluck(this.scopedSettingsStore.propertySets, "source")).sort();
+  }
+
+  /** Return every selector currently contributed by user, project, schema or package settings. */
+  getScopeSelectors() {
+    return _.uniq(
+      this.scopedSettingsStore.propertySets
+        .map((propertySet) => propertySet.selector.toString())
+        .filter((selector) => selector && selector !== "*"),
+    ).sort();
+  }
+
+  validateScopeSelector(selector) {
+    if (typeof selector !== "string" || selector.trim() === "") {
+      throw new TypeError("A scope selector must be a non-empty string");
+    }
+    return [...normalizedSelectorStrings(selector)];
+  }
+
+  /**
+   * Inspect the stored layers for a key at an exact selector. Complex
+   * selectors describe several possible scope chains, so only their exact
+   * entries are reported; simple chains also receive inherited/effective
+   * values.
+   */
+  inspect(keyPath, options = {}) {
+    if (options.scope != null) {
+      throw new TypeError("Config::inspect identifies storage with 'scopeSelector', not 'scope'");
+    }
+    const { scopeSelector, source = this.mainSource } = options;
+    const baseValue = this.get(keyPath);
+    const valuesBySource = {};
+    if (scopeSelector != null) {
+      for (const entrySource of this.getSources()) {
+        const properties = this.scopedSettingsStore.propertiesForSourceAndSelector(
+          entrySource,
+          scopeSelector,
+        );
+        const value = getValueAtKeyPath(properties, keyPath);
+        if (value !== undefined) valuesBySource[entrySource] = this.deepClone(value);
+      }
+    }
+
+    const overrideValue = valuesBySource[source];
+    const scopes = scopesForSimpleSelector(scopeSelector);
+    let inheritedValue;
+    let effectiveValue;
+    if (scopes) {
+      effectiveValue = this.get(keyPath, { scope: scopes });
+      inheritedValue = this.getScopedValueWithoutExactSource(
+        keyPath,
+        scopes,
+        scopeSelector,
+        source,
+      );
+    }
+
+    return {
+      keyPath,
+      schema: this.getSchema(keyPath),
+      scopeSelector: scopeSelector ?? null,
+      baseValue,
+      overrideValue,
+      hasOverride: overrideValue !== undefined,
+      valuesBySource,
+      inheritedValue,
+      effectiveValue,
+      variableByMatch: scopeSelector != null && !scopes,
+      projectValue: this.projectFile != null ? valuesBySource[this.projectFile] : undefined,
+    };
+  }
+
+  getScopedValueWithoutExactSource(keyPath, scopes, scopeSelector, source) {
+    const store = new SelectorStore();
+    const selectorStrings = normalizedSelectorStrings(scopeSelector);
+    const propertySets = this.scopedSettingsStore.propertySets.slice().reverse();
+    for (const propertySet of propertySets) {
+      const selector = propertySet.selector.toString();
+      let properties = this.deepClone(propertySet.properties);
+      if (propertySet.source === source && selectorStrings.has(selector)) {
+        deleteValueAtKeyPath(properties, keyPath);
+        properties = withoutEmptyObjects(properties);
+      }
+      if (properties != null) {
+        store.addProperties(propertySet.source, { [selector]: properties });
+      }
+    }
+
+    const descriptor = ScopeDescriptor.fromObject(scopes);
+    const scopedValue = store.getPropertyValue(descriptor.getScopeChain(), keyPath);
+    const globalValue = this.getRawValue(keyPath);
+    if (scopedValue != null) {
+      if (isPlainObject(scopedValue) && isPlainObject(globalValue)) {
+        return this.deepDefaults(scopedValue, globalValue);
+      }
+      return scopedValue;
+    }
+    return globalValue;
   }
 
   /**
@@ -1079,7 +1213,7 @@ class Config {
       this.resetScopedSettings(scopedSettings, { source });
     }
 
-    return this.transact(() => {
+    const result = this.transact(() => {
       this._clearUnscopedSettingsForSource(source);
       this.settingsLoaded = true;
       for (let key in newSettings) {
@@ -1093,6 +1227,7 @@ class Config {
         this.pendingOperations = [];
       }
     });
+    return result;
   }
 
   _clearUnscopedSettingsForSource(source) {
@@ -1189,18 +1324,22 @@ class Config {
         this[settingsToChange] = value;
       }
     }
-    return this.emitChangeEvent();
+    return this.emitChangeEvent({
+      keyPath,
+      scopeSelector: null,
+      source: source ?? this.mainSource,
+    });
   }
 
   observeKeyPath(keyPath, options, callback) {
-    callback(this.get(keyPath));
-    return this.onDidChangeKeyPath(keyPath, (event) => callback(event.newValue));
+    callback(this.get(keyPath, options));
+    return this.onDidChangeKeyPath(keyPath, options, (event) => callback(event.newValue));
   }
 
-  onDidChangeKeyPath(keyPath, callback) {
-    let oldValue = this.get(keyPath);
+  onDidChangeKeyPath(keyPath, options, callback) {
+    let oldValue = this.get(keyPath, options);
     return this.emitter.on("did-change", () => {
-      const newValue = this.get(keyPath);
+      const newValue = this.get(keyPath, options);
       if (!_.isEqual(oldValue, newValue)) {
         const event = { oldValue, newValue };
         oldValue = newValue;
@@ -1220,7 +1359,11 @@ class Config {
 
   setRawDefault(keyPath, value) {
     setValueAtKeyPath(this.defaultSettings, keyPath, value);
-    return this.emitChangeEvent();
+    return this.emitChangeEvent({
+      keyPath,
+      scopeSelector: null,
+      source: "schema-default",
+    });
   }
 
   setDefaults(keyPath, defaults) {
@@ -1330,9 +1473,10 @@ class Config {
       const properties = schema.properties || {};
       for (let key in properties) {
         const value = properties[key];
-        defaults[key] = this.extractDefaultsFromSchema(value);
+        const childDefault = this.extractDefaultsFromSchema(value);
+        if (childDefault !== undefined) defaults[key] = childDefault;
       }
-      return defaults;
+      return Object.keys(defaults).length ? defaults : undefined;
     }
   }
 
@@ -1391,9 +1535,40 @@ class Config {
     }
   }
 
-  emitChangeEvent() {
-    if (this.transactDepth <= 0) {
+  emitChangeEvent(change) {
+    if (change) this.pendingChangeRecords.push(change);
+    if (this.transactDepth > 0 || this.pendingChangeRecords.length === 0) return;
+
+    const changes = this.pendingChangeRecords;
+    this.pendingChangeRecords = [];
+    const event = Object.freeze({
+      changes: Object.freeze(changes.map((record) => Object.freeze(Object.assign({}, record)))),
+      affectsConfiguration: (keyPath, options = {}) => {
+        if (options.scopeSelector != null) {
+          throw new TypeError("Configuration change checks read with 'scope', not 'scopeSelector'");
+        }
+        if (options.scope != null) ScopeDescriptor.fromObject(options.scope);
+        return changes.some((record) => {
+          if (
+            record.keyPath != null &&
+            keyPath != null &&
+            !this.isSubKeyPath(record.keyPath, keyPath) &&
+            !this.isSubKeyPath(keyPath, record.keyPath)
+          ) {
+            return false;
+          }
+          // A base change can affect every scope. Scoped changes conservatively
+          // invalidate every observer of the key; consumers then read their
+          // own effective value and avoid false negatives for complex selectors.
+          return true;
+        });
+      },
+    });
+
+    try {
       return this.emitter.emit("did-change");
+    } finally {
+      this.emitter.emit("did-change-configuration", event);
     }
   }
 
@@ -1416,22 +1591,26 @@ class Config {
       }
     }
 
-    return this.emitChangeEvent();
+    return this.emitChangeEvent({ keyPath: null, scopeSelector: null, source });
   }
 
   setRawScopedValue(keyPath, value, source, selector, _options) {
+    let settings = this.scopedSettingsStore.propertiesForSourceAndSelector(source, selector);
     if (keyPath != null) {
-      const newValue = {};
-      setValueAtKeyPath(newValue, keyPath, value);
-      value = newValue;
+      setValueAtKeyPath(settings, keyPath, value);
+    } else {
+      settings = value;
     }
 
+    this.scopedSettingsStore.removePropertiesForSourceAndSelector(source, selector);
     const settingsBySelector = {};
-    settingsBySelector[selector] = value;
-    this.scopedSettingsStore.addProperties(source, settingsBySelector, {
-      priority: this.priorityForSource(source),
-    });
-    return this.emitChangeEvent();
+    settingsBySelector[selector] = withoutEmptyObjects(settings);
+    if (settingsBySelector[selector] != null) {
+      this.scopedSettingsStore.addProperties(source, settingsBySelector, {
+        priority: this.priorityForSource(source),
+      });
+    }
+    return this.emitChangeEvent({ keyPath, scopeSelector: selector, source });
   }
 
   getRawScopedValue(scopeDescriptor, keyPath, options) {
@@ -1455,15 +1634,19 @@ class Config {
     }
   }
 
-  observeScopedKeyPath(scope, keyPath, callback) {
-    callback(this.get(keyPath, { scope }));
-    return this.onDidChangeScopedKeyPath(scope, keyPath, (event) => callback(event.newValue));
+  observeScopedKeyPath(scope, keyPath, options, callback) {
+    const scopedOptions = Object.assign({}, options, { scope });
+    callback(this.get(keyPath, scopedOptions));
+    return this.onDidChangeScopedKeyPath(scope, keyPath, options, (event) =>
+      callback(event.newValue),
+    );
   }
 
-  onDidChangeScopedKeyPath(scope, keyPath, callback) {
-    let oldValue = this.get(keyPath, { scope });
+  onDidChangeScopedKeyPath(scope, keyPath, options, callback) {
+    const scopedOptions = Object.assign({}, options, { scope });
+    let oldValue = this.get(keyPath, scopedOptions);
     return this.emitter.on("did-change", () => {
-      const newValue = this.get(keyPath, { scope });
+      const newValue = this.get(keyPath, scopedOptions);
       if (!_.isEqual(oldValue, newValue)) {
         const event = { oldValue, newValue };
         oldValue = newValue;
@@ -1724,6 +1907,20 @@ Config.addSchemaEnforcers({
     },
   },
 });
+
+function scopesForSimpleSelector(selector) {
+  if (typeof selector !== "string" || selector.trim() === "") return null;
+  if (/[,:[\]#>+~]/.test(selector)) return null;
+  const components = selector.trim().split(/\s+/);
+  if (!components.every((component) => /^\.[A-Za-z0-9_.-]+$/.test(component))) return null;
+  return components.map((component) => component.slice(1));
+}
+
+function normalizedSelectorStrings(selector) {
+  const store = new SelectorStore();
+  store.addProperties("normalize", { [selector]: {} });
+  return new Set(store.propertySets.map((propertySet) => propertySet.selector.toString()));
+}
 
 let isPlainObject = (value) =>
   _.isObject(value) &&

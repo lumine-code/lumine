@@ -428,6 +428,84 @@ const configSchema = {
         type: ["string", "number"],
         default: 1.5,
       },
+      tabLength: {
+        title: "Tab Length",
+        description: "Number of spaces used to represent a tab.",
+        type: "integer",
+        minimum: 1,
+        default: 2,
+      },
+      tabType: {
+        title: "Tab Type",
+        description:
+          'Determine character inserted when Tab key is pressed. Possible values: "auto", "soft" and "hard". When set to "soft" or "hard", soft tabs (spaces) or hard tabs (tab characters) are used. When set to "auto", the editor auto-detects the tab type based on the contents of the buffer (it uses the first leading whitespace on a non-comment line), or uses the value of the Soft Tabs config setting if auto-detection fails.',
+        type: "string",
+        enum: ["auto", "soft", "hard"],
+        default: "auto",
+      },
+      softTabs: {
+        title: "Soft Tabs",
+        description:
+          'If the `Tab Type` config setting is set to "auto" and autodetection of tab type from buffer content fails, then this config setting determines whether a soft tab or a hard tab will be inserted when the Tab key is pressed.',
+        type: "boolean",
+        default: true,
+      },
+      atomicSoftTabs: {
+        title: "Atomic Soft Tabs",
+        description: "Skip over tab-length runs of leading whitespace when moving the cursor.",
+        type: "boolean",
+        default: true,
+      },
+      autoIndent: {
+        title: "Auto Indent",
+        description: "Automatically indent the cursor when inserting a newline.",
+        type: "boolean",
+        default: true,
+      },
+      autoIndentOnPaste: {
+        title: "Auto Indent On Paste",
+        description:
+          "Automatically indent pasted text based on the indentation of the previous line.",
+        type: "boolean",
+        default: true,
+      },
+      softWrap: {
+        title: "Soft Wrap",
+        description:
+          "Wraps lines that exceed the width of the window. When `Soft Wrap At Preferred Line Length` is set, it will wrap to the number of characters defined by the `Preferred Line Length` setting.",
+        type: "boolean",
+        default: false,
+      },
+      softWrapAtPreferredLineLength: {
+        title: "Soft Wrap At Preferred Line Length",
+        description:
+          "Instead of wrapping lines to the window's width, wrap lines to the number of characters defined by the `Preferred Line Length` setting. This will only take effect when the soft wrap config setting is enabled globally or for the current grammar.",
+        type: "boolean",
+        default: false,
+      },
+      preferredLineLength: {
+        title: "Preferred Line Length",
+        description:
+          "Identifies the length of a line which is used when wrapping text with the `Soft Wrap At Preferred Line Length` setting enabled, in number of characters.",
+        type: "integer",
+        minimum: 1,
+        default: 80,
+      },
+      softWrapHangingIndent: {
+        title: "Soft Wrap Hanging Indent",
+        description:
+          "When soft wrap is enabled, defines length of additional indentation applied to wrapped lines, in number of characters.",
+        type: "integer",
+        minimum: 0,
+        default: 0,
+      },
+      showInvisibles: {
+        title: "Show Invisibles",
+        description:
+          "Render placeholders for invisible characters, such as tabs, spaces and newlines.",
+        type: "boolean",
+        default: false,
+      },
       showLineNumbers: {
         title: "Show Line Numbers",
         description: "Show line numbers in the editor's gutter.",
@@ -529,6 +607,80 @@ const configSchema = {
         type: "integer",
         minimum: 0,
         default: 300,
+      },
+      nonWordCharacters: {
+        title: "Non Word Characters",
+        description: "A string of non-word characters to define word boundaries.",
+        type: "string",
+        default: "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…",
+      },
+      useTreeSitterParsers: {
+        title: "Use Tree-sitter Parsers",
+        description: "Use Tree-sitter parsers for supported languages.",
+        type: "boolean",
+        default: true,
+      },
+      largeFileThreshold: {
+        title: "Large File Threshold",
+        description:
+          "Files larger than this size in megabytes will open in large file mode with syntax highlighting disabled. Only applies to TextMate grammars; Tree-sitter grammars handle large files efficiently without this limitation. Set to 0 to always enable syntax highlighting regardless of file size.",
+        type: "number",
+        minimum: 0,
+        default: 2,
+      },
+      commentStart: {
+        title: "Comment Start",
+        description:
+          "Scope-specific string that begins a line comment. Set by language packages; not intended to be configured directly.",
+        type: ["string", "null"],
+        hidden: true,
+      },
+      commentEnd: {
+        title: "Comment End",
+        description:
+          "Scope-specific string that ends a block comment. Set by language packages; not intended to be configured directly.",
+        type: ["string", "null"],
+        hidden: true,
+      },
+      commentDelimiters: {
+        title: "Comment Delimiters",
+        description: "Scope-specific line and block comment delimiters supplied by grammars.",
+        type: "object",
+        hidden: true,
+      },
+      completions: {
+        title: "Completions",
+        description: "Legacy scope-specific completion words supplied by grammars.",
+        type: "array",
+        items: { type: "string" },
+        hidden: true,
+      },
+      increaseIndentPattern: {
+        title: "Increase Indent Pattern",
+        description:
+          "Scope-specific regular expression; a line matching it increases the indentation of the following line.",
+        type: ["string", "null"],
+        hidden: true,
+      },
+      decreaseIndentPattern: {
+        title: "Decrease Indent Pattern",
+        description:
+          "Scope-specific regular expression; a line matching it decreases its own indentation.",
+        type: ["string", "null"],
+        hidden: true,
+      },
+      decreaseNextIndentPattern: {
+        title: "Decrease Next Indent Pattern",
+        description:
+          "Scope-specific regular expression; a matching line decreases the indentation of the following line.",
+        type: ["string", "null"],
+        hidden: true,
+      },
+      foldEndPattern: {
+        title: "Fold End Pattern",
+        description: "Scope-specific regular expression that marks the end of a foldable region.",
+        type: ["string", "null"],
+        hidden: true,
       },
       invisibles: {
         title: "Invisibles",
@@ -646,138 +798,6 @@ const configSchema = {
           "When a commit or merge is GPG-signed and the signing key needs a passphrase, ask for it in an editor dialog instead of relying on a running gpg-agent. Enable this if signing fails silently because no agent or pinentry program is reachable. When disabled, signing relies on gpg-agent as usual.",
         type: "boolean",
         default: false,
-      },
-    },
-  },
-  language: {
-    type: "object",
-    properties: {
-      tabLength: {
-        title: "Tab Length",
-        description: "Number of spaces used to represent a tab.",
-        type: "integer",
-        minimum: 1,
-        default: 2,
-      },
-      tabType: {
-        title: "Tab Type",
-        description:
-          'Determine character inserted when Tab key is pressed. Possible values: "auto", "soft" and "hard". When set to "soft" or "hard", soft tabs (spaces) or hard tabs (tab characters) are used. When set to "auto", the editor auto-detects the tab type based on the contents of the buffer (it uses the first leading whitespace on a non-comment line), or uses the value of the Soft Tabs config setting if auto-detection fails.',
-        type: "string",
-        enum: ["auto", "soft", "hard"],
-        default: "auto",
-      },
-      softTabs: {
-        title: "Soft Tabs",
-        description:
-          'If the `Tab Type` config setting is set to "auto" and autodetection of tab type from buffer content fails, then this config setting determines whether a soft tab or a hard tab will be inserted when the Tab key is pressed.',
-        type: "boolean",
-        default: true,
-      },
-      atomicSoftTabs: {
-        title: "Atomic Soft Tabs",
-        description: "Skip over tab-length runs of leading whitespace when moving the cursor.",
-        type: "boolean",
-        default: true,
-      },
-      autoIndent: {
-        title: "Auto Indent",
-        description: "Automatically indent the cursor when inserting a newline.",
-        type: "boolean",
-        default: true,
-      },
-      autoIndentOnPaste: {
-        title: "Auto Indent On Paste",
-        description:
-          "Automatically indent pasted text based on the indentation of the previous line.",
-        type: "boolean",
-        default: true,
-      },
-      nonWordCharacters: {
-        title: "Non Word Characters",
-        description: "A string of non-word characters to define word boundaries.",
-        type: "string",
-        default: "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…",
-      },
-      softWrap: {
-        title: "Soft Wrap",
-        description:
-          "Wraps lines that exceed the width of the window. When `Soft Wrap At Preferred Line Length` is set, it will wrap to the number of characters defined by the `Preferred Line Length` setting.",
-        type: "boolean",
-        default: false,
-      },
-      softWrapAtPreferredLineLength: {
-        title: "Soft Wrap At Preferred Line Length",
-        description:
-          "Instead of wrapping lines to the window's width, wrap lines to the number of characters defined by the `Preferred Line Length` setting. This will only take effect when the soft wrap config setting is enabled globally or for the current language.",
-        type: "boolean",
-        default: false,
-      },
-      preferredLineLength: {
-        title: "Preferred Line Length",
-        description:
-          "Identifies the length of a line which is used when wrapping text with the `Soft Wrap At Preferred Line Length` setting enabled, in number of characters.",
-        type: "integer",
-        minimum: 1,
-        default: 80,
-      },
-      softWrapHangingIndent: {
-        title: "Soft Wrap Hanging Indent",
-        description:
-          "When soft wrap is enabled, defines length of additional indentation applied to wrapped lines, in number of characters.",
-        type: "integer",
-        minimum: 0,
-        default: 0,
-      },
-      showInvisibles: {
-        title: "Show Invisibles",
-        description:
-          "Render placeholders for invisible characters, such as tabs, spaces and newlines.",
-        type: "boolean",
-        default: false,
-      },
-      useTreeSitterParsers: {
-        title: "Use Tree-sitter Parsers",
-        description: "Use Tree-sitter parsers for supported languages.",
-        type: "boolean",
-        default: true,
-      },
-      largeFileThreshold: {
-        title: "Large File Threshold",
-        description:
-          "Files larger than this size in megabytes will open in large file mode with syntax highlighting disabled. Only applies to TextMate grammars; Tree-sitter grammars handle large files efficiently without this limitation. Set to 0 to always enable syntax highlighting regardless of file size.",
-        type: "number",
-        minimum: 0,
-        default: 2,
-      },
-      commentStart: {
-        title: "Comment Start",
-        description:
-          "Scope-specific string that begins a line comment. Set by language packages; not intended to be configured directly.",
-        type: ["string", "null"],
-      },
-      commentEnd: {
-        title: "Comment End",
-        description:
-          "Scope-specific string that ends a block comment. Set by language packages; not intended to be configured directly.",
-        type: ["string", "null"],
-      },
-      increaseIndentPattern: {
-        title: "Increase Indent Pattern",
-        description:
-          "Scope-specific regular expression; a line matching it increases the indentation of the following line.",
-        type: ["string", "null"],
-      },
-      decreaseIndentPattern: {
-        title: "Decrease Indent Pattern",
-        description:
-          "Scope-specific regular expression; a line matching it decreases its own indentation.",
-        type: ["string", "null"],
-      },
-      foldEndPattern: {
-        title: "Fold End Pattern",
-        description: "Scope-specific regular expression that marks the end of a foldable region.",
-        type: ["string", "null"],
       },
     },
   },

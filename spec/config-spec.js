@@ -318,14 +318,18 @@ describe("Config", () => {
 
     describe("when the key-path is null", () =>
       it("sets the root object", () => {
-        expect(lumine.config.set(null, { language: { tabLength: 6 } })).toBe(true);
-        expect(lumine.config.get("language.tabLength")).toBe(6);
+        expect(lumine.config.set(null, { editor: { tabLength: 6 } })).toBe(true);
+        expect(lumine.config.get("editor.tabLength")).toBe(6);
         expect(
-          lumine.config.set(null, {
-            language: { tabLength: 8, scopeSelector: [".source.js"] },
-          }),
+          lumine.config.set(
+            null,
+            { editor: { tabLength: 8 } },
+            {
+              scopeSelector: ".source.js",
+            },
+          ),
         ).toBe(true);
-        expect(lumine.config.get("language.tabLength", { scope: [".source.js"] })).toBe(8);
+        expect(lumine.config.get("editor.tabLength", { scope: [".source.js"] })).toBe(8);
       }));
 
     describe("when the value equals the default value", () =>
@@ -471,6 +475,7 @@ describe("Config", () => {
           expect(lumine.config.get("foo.bar", { scope: [".a.b"] })).toEqual({
             baz: 1,
             quux: 2,
+            ok: 0,
           });
 
           lumine.config.unset(null, { source: "source-a" });
@@ -2304,15 +2309,15 @@ describe("Config", () => {
         });
 
         it("gets scoped values correctly", () => {
-          lumine.config.set("foo", "bam", { scope: ["second"] });
-          expect(lumine.config.get("foo", { scopeSelector: "second" })).toBe("bam");
+          lumine.config.set("foo", "bam", { scopeSelector: "second" });
+          expect(lumine.config.get("foo", { scope: ["second"] })).toBe("bam");
           lumine.config.resetProjectSettings(
             { "*": { foo: "baz" }, second: { foo: "bar" } },
             dummyPath,
           );
-          expect(lumine.config.get("foo", { scopeSelector: "second" })).toBe("baz");
+          expect(lumine.config.get("foo", { scope: ["second"] })).toBe("bar");
           lumine.config.clearProjectSettings();
-          expect(lumine.config.get("foo", { scopeSelector: "second" })).toBe("bam");
+          expect(lumine.config.get("foo", { scope: ["second"] })).toBe("bam");
         });
 
         it("clears project settings correctly", () => {
@@ -2342,6 +2347,47 @@ describe("Config", () => {
             value: "b",
           },
         ]);
+      });
+
+      it("keeps falsy base values", () => {
+        lumine.config.set("a", false);
+        expect(lumine.config.getAll("a", { scope: ["source.js"] })).toEqual([
+          { scopeSelector: "*", value: false },
+        ]);
+      });
+    });
+
+    describe("scoped inspection and change events", () => {
+      it("separates exact, inherited and effective values", () => {
+        lumine.config.set("foo.bar.int", 10);
+        lumine.config.set("foo.bar.int", 20, { scopeSelector: ".source" });
+        lumine.config.set("foo.bar.int", 30, { scopeSelector: ".source.js" });
+        expect(lumine.config.inspect("foo.bar.int", { scopeSelector: ".source.js" })).toEqual(
+          jasmine.objectContaining({
+            baseValue: 10,
+            overrideValue: 30,
+            inheritedValue: 20,
+            effectiveValue: 30,
+            hasOverride: true,
+            variableByMatch: false,
+          }),
+        );
+      });
+
+      it("reports scoped-only mutations", () => {
+        const spy = jasmine.createSpy("onDidChangeConfiguration");
+        const subscription = lumine.config.onDidChangeConfiguration(spy);
+        lumine.config.set("foo.bar.int", 20, { scopeSelector: ".source.js" });
+        expect(spy).toHaveBeenCalled();
+        expect(spy.calls.mostRecent().args[0].affectsConfiguration("foo.bar.int")).toBe(true);
+        subscription.dispose();
+      });
+
+      it("rejects read and write option names used on the wrong operation", () => {
+        expect(() => lumine.config.get("foo", { scopeSelector: ".source.js" })).toThrowError(
+          TypeError,
+        );
+        expect(() => lumine.config.set("foo", 1, { scope: ["source.js"] })).toThrowError(TypeError);
       });
     });
   });

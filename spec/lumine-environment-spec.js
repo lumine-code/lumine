@@ -170,7 +170,7 @@ describe("LumineEnvironment", () => {
     it("loads the default core config schema", () => {
       expect(lumine.config.get("core.excludeVcsIgnoredPaths")).toBe(true);
       expect(lumine.config.get("core.followSymlinks")).toBe(true);
-      expect(lumine.config.get("language.showInvisibles")).toBe(false);
+      expect(lumine.config.get("editor.showInvisibles")).toBe(false);
     });
   });
 

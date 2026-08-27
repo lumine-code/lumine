@@ -32,7 +32,7 @@ class TextMateLanguageMode {
       scopes: [this.grammar.scopeName],
     });
     const largeFileThreshold =
-      this.config.get("language.largeFileThreshold", { scope: this.rootScopeDescriptor }) ?? 2;
+      this.config.get("editor.largeFileThreshold", { scope: this.rootScopeDescriptor }) ?? 2;
     this.largeFileMode =
       params.largeFileMode ??
       (largeFileThreshold > 0 &&
@@ -66,7 +66,7 @@ class TextMateLanguageMode {
 
   getNonWordCharacters(position) {
     const scope = this.scopeDescriptorForPosition(position);
-    return this.config.get("language.nonWordCharacters", { scope });
+    return this.config.get("editor.nonWordCharacters", { scope });
   }
 
   /*
@@ -201,20 +201,20 @@ class TextMateLanguageMode {
 
   commentStringsForPosition(position) {
     const scope = this.scopeDescriptorForPosition(position);
-    const commentStartEntries = this.config.getAll("language.commentStart", {
+    const commentStartEntries = this.config.getAll("editor.commentStart", {
       scope,
     });
-    const commentEndEntries = this.config.getAll("language.commentEnd", {
+    const commentEndEntries = this.config.getAll("editor.commentEnd", {
       scope,
     });
     const commentStartEntry = commentStartEntries[0];
     const commentEndEntry = commentEndEntries.find((entry) => {
-      return entry.scopeSelector === commentStartEntry.scopeSelector;
+      return entry.scopeSelector === commentStartEntry?.scopeSelector;
     });
     // If a `commentDelimiters` setting exists, return it in its entirety. This
     // can contain more comprehensive delimiter metadata for snippets and other
     // purposes.
-    const commentDelimiters = this.config.get("language.commentDelimiters", { scope });
+    const commentDelimiters = this.config.get("editor.commentDelimiters", { scope });
     if (commentStartEntry) {
       return {
         commentStartString: commentStartEntry && commentStartEntry.value,
@@ -761,19 +761,19 @@ class TextMateLanguageMode {
   }
 
   increaseIndentRegexForScopeDescriptor(scope) {
-    return this.regexForPattern(this.config.get("language.increaseIndentPattern", { scope }));
+    return this.regexForPattern(this.config.get("editor.increaseIndentPattern", { scope }));
   }
 
   decreaseIndentRegexForScopeDescriptor(scope) {
-    return this.regexForPattern(this.config.get("language.decreaseIndentPattern", { scope }));
+    return this.regexForPattern(this.config.get("editor.decreaseIndentPattern", { scope }));
   }
 
   decreaseNextIndentRegexForScopeDescriptor(scope) {
-    return this.regexForPattern(this.config.get("language.decreaseNextIndentPattern", { scope }));
+    return this.regexForPattern(this.config.get("editor.decreaseNextIndentPattern", { scope }));
   }
 
   foldEndRegexForScopeDescriptor(scope) {
-    return this.regexForPattern(this.config.get("language.foldEndPattern", { scope }));
+    return this.regexForPattern(this.config.get("editor.foldEndPattern", { scope }));
   }
 
   regexForPattern(pattern) {

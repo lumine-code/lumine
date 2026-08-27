@@ -1698,11 +1698,7 @@ module.exports = class TextEditor {
   // Determine whether the user should be prompted to save before closing
   // this editor.
   shouldPromptToSave({ windowCloseRequested, projectHasPaths } = {}) {
-    if (
-      !lumine.config.get("core.promptOnCloseDirtyBuffer", {
-        scope: this.getRootScopeDescriptor(),
-      })
-    ) {
+    if (!lumine.config.get("core.promptOnCloseDirtyBuffer")) {
       return false;
     }
 
@@ -5039,9 +5035,9 @@ module.exports = class TextEditor {
    * @status essential
    *
    * Set the on-screen length of tab characters. Setting this to a
-   * `Number` This will override the `language.tabLength` setting.
+   * `Number` This will override the `editor.tabLength` setting.
    *
-   * @param {Number} tabLength - length of a single tab. Setting to `null` will fallback to using the `language.tabLength` config setting
+   * @param {Number} tabLength - length of a single tab. Setting to `null` will fallback to using the `editor.tabLength` config setting
    */
   setTabLength(tabLength) {
     this.updateTabLength(tabLength, true);

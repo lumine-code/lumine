@@ -287,7 +287,7 @@ module.exports = function ({
       "window:toggle-invisibles": {
         description: "Show or hide the marks standing for spaces, tabs and line ends.",
         didDispatch: function () {
-          return config.set("language.showInvisibles", !config.get("language.showInvisibles"));
+          return config.set("editor.showInvisibles", !config.get("editor.showInvisibles"));
         },
       },
       "git:colorize-toggle": {
@@ -305,7 +305,7 @@ module.exports = function ({
       "window:toggle-auto-indent": {
         description: "Turn automatic indentation of newly typed lines on or off.",
         didDispatch: function () {
-          return config.set("language.autoIndent", !config.get("language.autoIndent"));
+          return config.set("editor.autoIndent", !config.get("editor.autoIndent"));
         },
       },
       "pane:reopen-closed-item": {

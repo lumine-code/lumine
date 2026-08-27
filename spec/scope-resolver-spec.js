@@ -83,7 +83,7 @@ describe("ScopeResolver", () => {
     editor = await lumine.workspace.open("");
     buffer = editor.getBuffer();
     lumine.grammars.addGrammar(grammar);
-    lumine.config.set("language.useTreeSitterParsers", true);
+    lumine.config.set("editor.useTreeSitterParsers", true);
   });
 
   afterEach(() => {
@@ -1409,14 +1409,18 @@ describe("ScopeResolver", () => {
       matched = await getAllMatchesWithScopeResolver(grammar, languageMode, scopeResolver);
       expect(matched.length).toBe(0);
 
-      lumine.config.set("core.careAboutBooleans", "something", { scope: [grammar.scopeName] });
+      lumine.config.set("core.careAboutBooleans", "something", {
+        scopeSelector: `.${grammar.scopeName}`,
+      });
 
       matched = await getAllMatchesWithScopeResolver(grammar, languageMode, scopeResolver);
       expect(matched.length).toBe(4);
 
       lumine.config.set("core.careAboutBooleans", "something");
 
-      lumine.config.set("core.careAboutBooleans", "something-else", { scope: [grammar.scopeName] });
+      lumine.config.set("core.careAboutBooleans", "something-else", {
+        scopeSelector: `.${grammar.scopeName}`,
+      });
       matched = await getAllMatchesWithScopeResolver(grammar, languageMode, scopeResolver);
       expect(matched.length).toBe(0);
     });

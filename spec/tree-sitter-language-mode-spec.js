@@ -50,7 +50,7 @@ describe("TreeSitterLanguageMode", () => {
     editor = await lumine.workspace.open("");
     buffer = editor.getBuffer();
     editor.displayLayer.reset({ foldCharacter: "…" });
-    lumine.config.set("language.useTreeSitterParsers", true);
+    lumine.config.set("editor.useTreeSitterParsers", true);
   });
 
   afterEach(() => {
@@ -3901,12 +3901,12 @@ describe("TreeSitterLanguageMode", () => {
 
   describe(".commentStringsForPosition(position)", () => {
     beforeEach(() => {
-      lumine.config.unset("language.commentDelimiters", { scopeSelector: ".source.js" });
-      lumine.config.unset("language.commentStart", { scopeSelector: ".source.js" });
-      lumine.config.unset("language.commentEnd", { scopeSelector: ".source.js" });
-      lumine.config.unset("language.commentDelimiters", { scopeSelector: ".text.html.basic" });
-      lumine.config.unset("language.commentStart", { scopeSelector: ".text.html.basic" });
-      lumine.config.unset("language.commentEnd", { scopeSelector: ".text.html.basic" });
+      lumine.config.unset("editor.commentDelimiters", { scopeSelector: ".source.js" });
+      lumine.config.unset("editor.commentStart", { scopeSelector: ".source.js" });
+      lumine.config.unset("editor.commentEnd", { scopeSelector: ".source.js" });
+      lumine.config.unset("editor.commentDelimiters", { scopeSelector: ".text.html.basic" });
+      lumine.config.unset("editor.commentStart", { scopeSelector: ".text.html.basic" });
+      lumine.config.unset("editor.commentEnd", { scopeSelector: ".text.html.basic" });
     });
 
     it("returns the correct comment strings for nested languages", async () => {
@@ -3923,7 +3923,7 @@ describe("TreeSitterLanguageMode", () => {
       lumine.grammars.addGrammar(htmlGrammar);
 
       lumine.config.set(
-        "language.commentDelimiters",
+        "editor.commentDelimiters",
         {
           line: "//",
           block: ["/*", "*/"],
@@ -3931,19 +3931,19 @@ describe("TreeSitterLanguageMode", () => {
         { scopeSelector: ".source.js" },
       );
 
-      lumine.config.set("language.commentStart", "//", { scopeSelector: ".source.js" });
+      lumine.config.set("editor.commentStart", "//", { scopeSelector: ".source.js" });
 
       lumine.config.set(
-        "language.commentDelimiters",
+        "editor.commentDelimiters",
         {
           block: ["<!--", "-->"],
         },
         { scopeSelector: ".text.html.basic" },
       );
 
-      lumine.config.set("language.commentStart", "<!--", { scopeSelector: ".text.html.basic" });
+      lumine.config.set("editor.commentStart", "<!--", { scopeSelector: ".text.html.basic" });
 
-      lumine.config.set("language.commentEnd", "-->", { scopeSelector: ".text.html.basic" });
+      lumine.config.set("editor.commentEnd", "-->", { scopeSelector: ".text.html.basic" });
 
       const languageMode = new TreeSitterLanguageMode({
         grammar: htmlGrammar,
@@ -4098,7 +4098,7 @@ describe("TreeSitterLanguageMode", () => {
       });
 
       lumine.config.set(
-        "language.commentDelimiters",
+        "editor.commentDelimiters",
         {
           line: "//",
           block: ["/*", "*/"],
@@ -4107,7 +4107,7 @@ describe("TreeSitterLanguageMode", () => {
       );
 
       lumine.config.set(
-        "language.commentDelimiters",
+        "editor.commentDelimiters",
         {
           block: ["<!--", "-->"],
         },

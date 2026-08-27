@@ -91,7 +91,7 @@ class ConfigCache {
     this.config = config;
 
     this.subscriptions.add(
-      this.config.onDidChange(() => this.clearAll()),
+      this.config.onDidChangeConfiguration(() => this.clearAll()),
       lumine.grammars.onDidAddGrammar(() => this.clearAll()),
       lumine.grammars.onDidUpdateGrammar(() => this.clearAll()),
     );

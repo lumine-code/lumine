@@ -152,7 +152,7 @@ module.exports = class TreeSitterGrammar {
    */
   getCommentDelimiters() {
     // Prefer the config system. It's a better place for this data to live.
-    let commentDelimiters = lumine.config.get("language.commentDelimiters", {
+    let commentDelimiters = lumine.config.get("editor.commentDelimiters", {
       scope: [this.scopeName],
     });
     if (commentDelimiters) return commentDelimiters;
@@ -164,8 +164,8 @@ module.exports = class TreeSitterGrammar {
 
     // If even that doesn't exist, we can fall back onto the older config
     // settings.
-    let start = lumine.config.get("language.commentStart", { scope: [this.scope] });
-    let end = lumine.config.get("language.commentEnd", { scope: [this.scope] });
+    let start = lumine.config.get("editor.commentStart", { scope: [this.scopeName] });
+    let end = lumine.config.get("editor.commentEnd", { scope: [this.scopeName] });
 
     return normalizeDelimiters({ start, end });
   }

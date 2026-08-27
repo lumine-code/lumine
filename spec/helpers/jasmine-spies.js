@@ -57,7 +57,7 @@ exports.register = (jasmineEnv) => {
     lumine.config.set("core.destroyEmptyPanes", false);
     lumine.config.set("editor.fontFamily", "Courier");
     lumine.config.set("editor.fontSize", 16);
-    lumine.config.set("language.autoIndent", false);
+    lumine.config.set("editor.autoIndent", false);
     lumine.config.set("core.disabledPackages", [
       "package-that-throws-an-exception",
       "package-with-broken-package-json",

@@ -136,7 +136,7 @@ describe("TextEditorRegistry", function () {
 
   describe(".build", function () {
     it("constructs a TextEditor with the right parameters based on its path and text", function () {
-      lumine.config.set("language.tabLength", 8, { scope: ".source.js" });
+      lumine.config.set("editor.tabLength", 8);
 
       const languageMode = {
         grammar: NullGrammar,
@@ -329,24 +329,24 @@ describe("TextEditorRegistry", function () {
       editor.update({ tabLength: 4 });
       expect(editor.getTabLength()).toBe(4);
 
-      lumine.config.set("language.tabLength", 8);
+      lumine.config.set("editor.tabLength", 8);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getTabLength()).toBe(8);
 
-      lumine.config.set("language.tabLength", 4);
+      lumine.config.set("editor.tabLength", 4);
       expect(editor.getTabLength()).toBe(4);
     });
 
     it('enables soft tabs when the tabType config setting is "soft"', async function () {
-      lumine.config.set("language.tabType", "soft");
+      lumine.config.set("editor.tabType", "soft");
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(true);
     });
 
     it('disables soft tabs when the tabType config setting is "hard"', async function () {
-      lumine.config.set("language.tabType", "hard");
+      lumine.config.set("editor.tabType", "hard");
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(false);
@@ -358,7 +358,7 @@ describe("TextEditorRegistry", function () {
         await lumine.packages.activatePackage("language-javascript");
         lumine.grammars.assignLanguageMode(editor, "source.js");
         let languageMode = setupLanguageMode(editor);
-        lumine.config.set("language.tabType", "auto");
+        lumine.config.set("editor.tabType", "auto");
         await initialPackageActivation;
         await languageMode.ready;
 
@@ -427,11 +427,11 @@ describe("TextEditorRegistry", function () {
         await initialPackageActivation;
 
         editor.setText("abc\ndef");
-        lumine.config.set("language.softTabs", true);
-        lumine.config.set("language.tabType", "auto");
+        lumine.config.set("editor.softTabs", true);
+        lumine.config.set("editor.tabType", "auto");
         expect(editor.getSoftTabs()).toBe(true);
 
-        lumine.config.set("language.softTabs", false);
+        lumine.config.set("editor.softTabs", false);
         expect(editor.getSoftTabs()).toBe(false);
       });
     });
@@ -440,16 +440,16 @@ describe("TextEditorRegistry", function () {
       editor.update({ softTabs: true });
       expect(editor.getSoftTabs()).toBe(true);
 
-      lumine.config.set("language.tabType", "hard");
+      lumine.config.set("editor.tabType", "hard");
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(false);
 
-      lumine.config.set("language.tabType", "soft");
+      lumine.config.set("editor.tabType", "soft");
       expect(editor.getSoftTabs()).toBe(true);
 
-      lumine.config.set("language.tabType", "auto");
-      lumine.config.set("language.softTabs", true);
+      lumine.config.set("editor.tabType", "auto");
+      lumine.config.set("editor.softTabs", true);
       expect(editor.getSoftTabs()).toBe(true);
     });
 
@@ -457,12 +457,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ atomicSoftTabs: true });
       expect(editor.hasAtomicSoftTabs()).toBe(true);
 
-      lumine.config.set("language.atomicSoftTabs", false);
+      lumine.config.set("editor.atomicSoftTabs", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.hasAtomicSoftTabs()).toBe(false);
 
-      lumine.config.set("language.atomicSoftTabs", true);
+      lumine.config.set("editor.atomicSoftTabs", true);
       expect(editor.hasAtomicSoftTabs()).toBe(true);
     });
 
@@ -489,7 +489,7 @@ describe("TextEditorRegistry", function () {
       });
       expect(editor.getInvisibles()).toEqual(invisibles1);
 
-      lumine.config.set("language.showInvisibles", true);
+      lumine.config.set("editor.showInvisibles", true);
       lumine.config.set("editor.invisibles", invisibles2);
       registry.maintainConfig(editor);
       await initialPackageActivation;
@@ -498,7 +498,7 @@ describe("TextEditorRegistry", function () {
       lumine.config.set("editor.invisibles", invisibles1);
       expect(editor.getInvisibles()).toEqual(invisibles1);
 
-      lumine.config.set("language.showInvisibles", false);
+      lumine.config.set("editor.showInvisibles", false);
       expect(editor.getInvisibles()).toEqual({});
     });
 
@@ -506,12 +506,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ softWrapped: true });
       expect(editor.isSoftWrapped()).toBe(true);
 
-      lumine.config.set("language.softWrap", false);
+      lumine.config.set("editor.softWrap", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.isSoftWrapped()).toBe(false);
 
-      lumine.config.set("language.softWrap", true);
+      lumine.config.set("editor.softWrap", true);
       expect(editor.isSoftWrapped()).toBe(true);
     });
 
@@ -519,12 +519,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ softWrapHangingIndentLength: 4 });
       expect(editor.getSoftWrapHangingIndentLength()).toBe(4);
 
-      lumine.config.set("language.softWrapHangingIndent", 2);
+      lumine.config.set("editor.softWrapHangingIndent", 2);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapHangingIndentLength()).toBe(2);
 
-      lumine.config.set("language.softWrapHangingIndent", 4);
+      lumine.config.set("editor.softWrapHangingIndent", 4);
       expect(editor.getSoftWrapHangingIndentLength()).toBe(4);
     });
 
@@ -538,13 +538,13 @@ describe("TextEditorRegistry", function () {
 
       expect(editor.getSoftWrapColumn()).toBe(80);
 
-      lumine.config.set("language.softWrap", true);
-      lumine.config.set("language.softWrapAtPreferredLineLength", false);
+      lumine.config.set("editor.softWrap", true);
+      lumine.config.set("editor.softWrapAtPreferredLineLength", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapColumn()).toBe(120);
 
-      lumine.config.set("language.softWrapAtPreferredLineLength", true);
+      lumine.config.set("editor.softWrapAtPreferredLineLength", true);
       expect(editor.getSoftWrapColumn()).toBe(80);
     });
 
@@ -556,7 +556,7 @@ describe("TextEditorRegistry", function () {
 
       expect(editor.getSoftWrapColumn()).toBe(1500);
 
-      lumine.config.set("language.softWrap", false);
+      lumine.config.set("editor.softWrap", false);
       lumine.config.set("editor.maxScreenLineLength", 500);
       registry.maintainConfig(editor);
       await initialPackageActivation;
@@ -567,12 +567,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ preferredLineLength: 80 });
       expect(editor.getPreferredLineLength()).toBe(80);
 
-      lumine.config.set("language.preferredLineLength", 110);
+      lumine.config.set("editor.preferredLineLength", 110);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getPreferredLineLength()).toBe(110);
 
-      lumine.config.set("language.preferredLineLength", 80);
+      lumine.config.set("editor.preferredLineLength", 80);
       expect(editor.getPreferredLineLength()).toBe(80);
     });
 
@@ -580,12 +580,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ autoIndent: true });
       expect(editor.shouldAutoIndent()).toBe(true);
 
-      lumine.config.set("language.autoIndent", false);
+      lumine.config.set("editor.autoIndent", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.shouldAutoIndent()).toBe(false);
 
-      lumine.config.set("language.autoIndent", true);
+      lumine.config.set("editor.autoIndent", true);
       expect(editor.shouldAutoIndent()).toBe(true);
     });
 
@@ -593,12 +593,12 @@ describe("TextEditorRegistry", function () {
       editor.update({ autoIndentOnPaste: true });
       expect(editor.shouldAutoIndentOnPaste()).toBe(true);
 
-      lumine.config.set("language.autoIndentOnPaste", false);
+      lumine.config.set("editor.autoIndentOnPaste", false);
       registry.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.shouldAutoIndentOnPaste()).toBe(false);
 
-      lumine.config.set("language.autoIndentOnPaste", true);
+      lumine.config.set("editor.autoIndentOnPaste", true);
       expect(editor.shouldAutoIndentOnPaste()).toBe(true);
     });
 

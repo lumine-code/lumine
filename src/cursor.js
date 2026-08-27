@@ -233,7 +233,7 @@ module.exports = class Cursor extends Model {
    * This method returns false if the character before or after the cursor is
    * whitespace.
    *
-   * @returns {Boolean} Whether the cursor is between a word and non-word character. Non-word characters come from the `language.nonWordCharacters` setting.
+   * @returns {Boolean} Whether the cursor is between a word and non-word character. Non-word characters come from the `editor.nonWordCharacters` setting.
    */
   isBetweenWordAndNonWord() {
     if (this.isAtBeginningOfLine() || this.isAtEndOfLine()) return false;

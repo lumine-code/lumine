@@ -60,7 +60,9 @@ module.exports = class GrammarRegistry {
     };
 
     this.subscriptions.add(
-      this.config.onDidChange("language.useTreeSitterParsers", onLanguageModeChange),
+      this.config.onDidChangeConfiguration((event) => {
+        if (event.affectsConfiguration("editor.useTreeSitterParsers")) onLanguageModeChange();
+      }),
     );
   }
 
@@ -291,7 +293,7 @@ module.exports = class GrammarRegistry {
     return { grammar: bestMatch, score: highestScore };
   }
 
-  // Looks up a scope-specific `language.useTreeSitterParsers` setting. This allows
+  // Looks up a scope-specific `editor.useTreeSitterParsers` setting. This allows
   // users to opt into or out of Tree-sitter parsers on a language-by-language
   // basis.
   getLanguageParserForScope(scope) {
@@ -299,7 +301,7 @@ module.exports = class GrammarRegistry {
       scope = new ScopeDescriptor({ scopes: [scope] });
     }
 
-    let useTreeSitterParsers = this.config.get("language.useTreeSitterParsers", { scope });
+    let useTreeSitterParsers = this.config.get("editor.useTreeSitterParsers", { scope });
     return useTreeSitterParsers ? "tree-sitter" : "textmate";
   }
 
@@ -334,8 +336,9 @@ module.exports = class GrammarRegistry {
     // If multiple grammars match by one of the above criteria, break ties.
     if (score > 0) {
       const isTreeSitter = grammar instanceof TreeSitterGrammar;
-      let scope = new ScopeDescriptor({ scopes: [grammar.scopeName] });
-      let parserConfig = this.getLanguageParserForScope(scope);
+      const parserConfig = grammar.scopeName
+        ? this.getLanguageParserForScope(new ScopeDescriptor({ scopes: [grammar.scopeName] }))
+        : this.getLanguageParserForScope();
 
       // Prefer either TextMate or Tree-sitter grammars based on the user's
       // settings.

@@ -4780,7 +4780,7 @@ describe("TextEditor", () => {
         expect(editor.indentationForBufferRow(1)).toBe(0);
       });
 
-      it("updates the line's indentation when the language.autoIndent setting is true", () => {
+      it("updates the line's indentation when the editor.autoIndent setting is true", () => {
         editor.update({ autoIndent: true });
         editor.setCursorBufferPosition([0, 0]);
         editor.moveLineDown();
@@ -5858,7 +5858,7 @@ describe("TextEditor", () => {
         });
       });
 
-      it("indents the new line to the correct level when language.autoIndent is true", () => {
+      it("indents the new line to the correct level when editor.autoIndent is true", () => {
         editor.update({ autoIndent: true });
 
         editor.setText("  var test");
@@ -5891,7 +5891,7 @@ describe("TextEditor", () => {
 
     describe(".insertNewLine()", () => {
       describe("when a new line is appended before a closing tag (e.g. by pressing enter before a selection)", () => {
-        it("moves the line down and keeps the indentation level the same when language.autoIndent is true", () => {
+        it("moves the line down and keeps the indentation level the same when editor.autoIndent is true", () => {
           editor.update({ autoIndent: true });
           editor.setCursorBufferPosition([9, 2]);
           editor.insertNewline();
@@ -5900,7 +5900,7 @@ describe("TextEditor", () => {
       });
 
       describe("when a newline is appended with a trailing closing tag behind the cursor (e.g. by pressing enter in the middel of a line)", () => {
-        it("indents the new line to the correct level when language.autoIndent is true and using a curly-bracket language", () => {
+        it("indents the new line to the correct level when editor.autoIndent is true and using a curly-bracket language", () => {
           editor.update({ autoIndent: true });
           lumine.grammars.assignLanguageMode(editor, "source.js");
           editor.setText("var test = () => {\n  return true;};");
@@ -5910,7 +5910,7 @@ describe("TextEditor", () => {
           expect(editor.indentationForBufferRow(2)).toBe(0);
         });
 
-        it("indents the new line to the current level when language.autoIndent is true and no increaseIndentPattern is specified", () => {
+        it("indents the new line to the current level when editor.autoIndent is true and no increaseIndentPattern is specified", () => {
           lumine.grammars.assignLanguageMode(editor, null);
           editor.update({ autoIndent: true });
           editor.setText("  if true");
@@ -5921,7 +5921,7 @@ describe("TextEditor", () => {
           expect(editor.indentationForBufferRow(1)).toBe(1);
         });
 
-        it("indents the new line to the correct level when language.autoIndent is true and using an off-side rule language", async () => {
+        it("indents the new line to the correct level when editor.autoIndent is true and using an off-side rule language", async () => {
           await lumine.packages.activatePackage("language-python");
           editor.update({ autoIndent: true });
           lumine.grammars.assignLanguageMode(editor, "source.python");
@@ -5935,10 +5935,10 @@ describe("TextEditor", () => {
       });
 
       describe("when a newline is appended on a line that matches the decreaseNextIndentPattern", () => {
-        it("indents the new line to the correct level when language.autoIndent is true", async () => {
+        it("indents the new line to the correct level when editor.autoIndent is true", async () => {
           await lumine.packages.activatePackage("language-python");
           lumine.config.set(
-            "language.decreaseNextIndentPattern",
+            "editor.decreaseNextIndentPattern",
             "^\\s*[^\\s()}]+(?<m>[^()]*\\((?:\\g<m>[^()]*|[^()]*)\\))*[^()]*\\)[,]?$",
             { scopeSelector: ".source.python" },
           );
@@ -6715,7 +6715,7 @@ describe("TextEditor", () => {
         });
       });
 
-      describe("if language.softTabs is false", () => {
+      describe("if editor.softTabs is false", () => {
         it("inserts a tab character into the buffer", () => {
           editor.setSoftTabs(false);
           expect(buffer.lineForRow(0)).not.toMatch(/^\t/);
@@ -8937,7 +8937,7 @@ describe("TextEditor", () => {
 
   describe("when the buffer's language mode changes", () => {
     beforeEach(() => {
-      lumine.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("editor.useTreeSitterParsers", false);
     });
 
     it("notifies onDidTokenize observers when retokenization is finished", async () => {
@@ -8966,8 +8966,8 @@ describe("TextEditor", () => {
     });
   });
 
-  describe("language.autoIndent", () => {
-    describe("when language.autoIndent is false (default)", () => {
+  describe("editor.autoIndent", () => {
+    describe("when editor.autoIndent is false (default)", () => {
       describe("when `indent` is triggered", () => {
         it("does not auto-indent the line", () => {
           editor.setCursorBufferPosition([1, 30]);
@@ -8981,7 +8981,7 @@ describe("TextEditor", () => {
       });
     });
 
-    describe("when language.autoIndent is true", () => {
+    describe("when editor.autoIndent is true", () => {
       beforeEach(() => editor.update({ autoIndent: true }));
 
       describe("when `indent` is triggered", () => {
@@ -9657,7 +9657,7 @@ describe("TextEditor", () => {
 
   describe("when the editor's grammar has an injection selector", () => {
     beforeEach(async () => {
-      lumine.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("editor.useTreeSitterParsers", false);
 
       await lumine.packages.activatePackage("language-text");
       await lumine.packages.activatePackage("language-javascript");
@@ -10509,7 +10509,7 @@ describe("TextEditor", () => {
 
   describe(".getCommentDelimitersForBufferPosition", () => {
     it("returns comment delimiters on a TextMate grammar", async () => {
-      lumine.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("editor.useTreeSitterParsers", false);
 
       editor = await lumine.workspace.open("sample.js", { autoIndent: false });
       await lumine.packages.activatePackage("language-javascript");
@@ -10537,7 +10537,7 @@ describe("TextEditor", () => {
 
     it("returns comment delimiters on a Tree-sitter grammar", async () => {
       jasmine.useRealClock();
-      lumine.config.set("language.useTreeSitterParsers", true);
+      lumine.config.set("editor.useTreeSitterParsers", true);
 
       editor = await lumine.workspace.open("sample.js", { autoIndent: false });
       await lumine.packages.activatePackage("language-javascript");
@@ -10566,7 +10566,7 @@ describe("TextEditor", () => {
 
   describe(".syntaxTreeScopeDescriptorForBufferPosition(position)", () => {
     it("returns the result of scopeDescriptorForBufferPosition() when textmate language mode is used", async () => {
-      lumine.config.set("language.useTreeSitterParsers", false);
+      lumine.config.set("editor.useTreeSitterParsers", false);
 
       editor = await lumine.workspace.open("sample.js", { autoIndent: false });
       await lumine.packages.activatePackage("language-javascript");

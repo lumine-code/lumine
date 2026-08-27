@@ -1021,7 +1021,7 @@ describe("WorkspaceElement", () => {
       workspaceElement.style.width = "1000px";
       jasmine.attachToDOM(workspaceElement);
 
-      lumine.config.set("language.softWrap", true);
+      lumine.config.set("editor.softWrap", true);
       const editor = await lumine.workspace.open();
       const lines = [];
       for (let i = 0; i < 400; i++) lines.push(`line ${i} ` + "word ".repeat(30));
@@ -1102,7 +1102,7 @@ describe("WorkspaceElement", () => {
       workspaceElement.style.width = "1000px";
       jasmine.attachToDOM(workspaceElement);
 
-      lumine.config.set("language.softWrap", true);
+      lumine.config.set("editor.softWrap", true);
       const editor = await lumine.workspace.open();
       const lines = [];
       for (let i = 0; i < 400; i++) lines.push(`line ${i} ` + "word ".repeat(30));
@@ -1126,11 +1126,11 @@ describe("WorkspaceElement", () => {
   describe("the 'window:toggle-invisibles' command", () => {
     it("shows/hides invisibles in all open and future editors", () => {
       const workspaceElement = lumine.workspace.getElement();
-      expect(lumine.config.get("language.showInvisibles")).toBe(false);
+      expect(lumine.config.get("editor.showInvisibles")).toBe(false);
       lumine.commands.dispatch(workspaceElement, "window:toggle-invisibles");
-      expect(lumine.config.get("language.showInvisibles")).toBe(true);
+      expect(lumine.config.get("editor.showInvisibles")).toBe(true);
       lumine.commands.dispatch(workspaceElement, "window:toggle-invisibles");
-      expect(lumine.config.get("language.showInvisibles")).toBe(false);
+      expect(lumine.config.get("editor.showInvisibles")).toBe(false);
     });
   });
 

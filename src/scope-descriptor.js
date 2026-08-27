@@ -26,8 +26,10 @@ module.exports = class ScopeDescriptor {
   static fromObject(scopes) {
     if (scopes instanceof ScopeDescriptor) {
       return scopes;
-    } else {
+    } else if (Array.isArray(scopes)) {
       return new ScopeDescriptor({ scopes });
+    } else {
+      throw new TypeError("A scope must be a ScopeDescriptor or an array of scope names");
     }
   }
 
@@ -45,6 +47,9 @@ module.exports = class ScopeDescriptor {
    * @param {Array<String>} object.scopes - The ordered syntax scopes.
    */
   constructor({ scopes }) {
+    if (!Array.isArray(scopes) || scopes.some((scope) => typeof scope !== "string" || !scope)) {
+      throw new TypeError("ScopeDescriptor scopes must be an array of non-empty strings");
+    }
     this.scopes = scopes;
   }
 
