@@ -24,6 +24,7 @@ class FakeProject {
     this.directories = [];
     this.crawls = [];
     this.config = config;
+    this.repository = null;
     this.notificationManager = { warnings: [], addWarning: (m, o) => this.warn(m, o) };
   }
 
@@ -79,6 +80,10 @@ class FakeProject {
       if (this.crawls[i].rootPath === rootPath) return this.crawls[i];
     }
     return null;
+  }
+
+  repositoryForPath() {
+    return Promise.resolve(this.repository);
   }
 }
 
@@ -417,32 +422,33 @@ describe("FileIndex", () => {
       await attach([under("a.js")]);
     });
 
-    const emit = (events) => {
+    const emit = async (events) => {
       project.emitFileEvents(events);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
       advanceClock(200);
     };
 
-    it("adds a created file", () => {
+    it("adds a created file", async () => {
       const created = touch("new.js");
-      emit([{ action: "created", path: created }]);
+      await emit([{ action: "created", path: created }]);
       expect(index.has(created)).toBe(true);
     });
 
-    it("does not add a created directory", () => {
+    it("does not add a created directory", async () => {
       const subdir = under("subdir");
       fs.mkdirSync(subdir, { recursive: true });
       // The recursive backend reports no entry kind, so the index has to ask.
-      emit([{ action: "created", path: subdir }]);
+      await emit([{ action: "created", path: subdir }]);
       expect(index.has(subdir)).toBe(false);
     });
 
-    it("does not add a created path that no longer exists", () => {
-      emit([{ action: "created", path: under("gone-already.js") }]);
+    it("does not add a created path that no longer exists", async () => {
+      await emit([{ action: "created", path: under("gone-already.js") }]);
       expect(index.has(under("gone-already.js"))).toBe(false);
     });
 
-    it("removes a deleted file", () => {
-      emit([{ action: "deleted", path: under("a.js") }]);
+    it("removes a deleted file", async () => {
+      await emit([{ action: "deleted", path: under("a.js") }]);
       expect(index.has(under("a.js"))).toBe(false);
     });
 
@@ -450,7 +456,7 @@ describe("FileIndex", () => {
       index.refresh();
       await completeCrawl([under("src", "one.js"), under("src", "two.js"), under("keep.js")]);
 
-      emit([{ action: "deleted", path: under("src") }]);
+      await emit([{ action: "deleted", path: under("src") }]);
 
       // A recursive delete arrives as one event for the directory, so an index
       // that only removed the exact path would keep both files forever.
@@ -459,34 +465,35 @@ describe("FileIndex", () => {
       expect(index.has(under("keep.js"))).toBe(true);
     });
 
-    it("ignores an updated event", () => {
+    it("ignores an updated event", async () => {
       const changes = [];
       index.observe((change) => changes.push(change));
-      emit([{ action: "updated", path: under("a.js") }]);
+      await emit([{ action: "updated", path: under("a.js") }]);
       expect(changes.length).toBe(1);
       expect(index.has(under("a.js"))).toBe(true);
     });
 
-    it("ignores an event outside every root", () => {
+    it("ignores an event outside every root", async () => {
       const outside = path.join(path.dirname(ROOT), "elsewhere", "x.js");
-      emit([{ action: "created", path: outside }]);
+      await emit([{ action: "created", path: outside }]);
       expect(index.has(outside)).toBe(false);
     });
 
-    it("tolerates a renamed event, which recursive roots never send", () => {
+    it("tolerates a renamed event, which recursive roots never send", async () => {
       const renamed = touch("b.js");
-      emit([{ action: "renamed", oldPath: under("a.js"), path: renamed }]);
+      await emit([{ action: "renamed", oldPath: under("a.js"), path: renamed }]);
       expect(index.has(under("a.js"))).toBe(false);
       expect(index.has(renamed)).toBe(true);
     });
 
-    it("reports a path added and removed within one window in neither array", () => {
+    it("reports a path added and removed within one window in neither array", async () => {
       const blip = touch("blip.js");
       const changes = [];
       index.observe((change) => changes.push(change));
 
       project.emitFileEvents([{ action: "created", path: blip }]);
       project.emitFileEvents([{ action: "deleted", path: blip }]);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
       advanceClock(200);
 
       for (const change of changes.slice(1)) {
@@ -495,13 +502,28 @@ describe("FileIndex", () => {
       }
     });
 
-    it("does not admit a created file that core policy excludes", () => {
+    it("does not admit a created file that core policy excludes", async () => {
       config.values["core.ignoredNames"] = ["node_modules"];
-      index.ignoreMatchers = null;
+      index.ignoredNamesMatcher = null;
       index.ignoreSource = null;
       const ignored = touch("node_modules", "dep.js");
-      emit([{ action: "created", path: ignored }]);
+      await emit([{ action: "created", path: ignored }]);
       expect(index.has(ignored)).toBe(false);
+    });
+
+    it("does not consult VCS when its exclusions are disabled", async () => {
+      config.values["core.excludeVcsIgnoredPaths"] = false;
+      const refreshStatusSnapshot = jasmine.createSpy("refresh status").and.resolveTo();
+      project.repository = {
+        refreshStatusSnapshot,
+        isPathIgnored: () => true,
+      };
+      const created = touch("ignored-by-vcs.js");
+
+      await emit([{ action: "created", path: created }]);
+
+      expect(refreshStatusSnapshot).not.toHaveBeenCalled();
+      expect(index.has(created)).toBe(true);
     });
   });
 
@@ -525,15 +547,36 @@ describe("FileIndex", () => {
       expect(project.crawls.length).toBe(before + 1);
     });
 
-    it("re-crawls once a trickle of blind admissions adds up", () => {
-      const before = project.crawls.length;
-      for (let batch = 0; batch < 11; batch++) {
-        const events = [];
-        for (let i = 0; i < 100; i++) {
-          events.push({ action: "created", path: touch("out", `b${batch}-${i}.js`) });
-        }
-        project.emitFileEvents(events);
+    it("checks every small-batch file against VCS before admitting it", async () => {
+      const refreshStatusSnapshot = jasmine.createSpy("refresh status").and.resolveTo();
+      project.repository = {
+        refreshStatusSnapshot,
+        isPathIgnored: (filePath) => path.basename(filePath) === "ignored.js",
+      };
+      const visible = touch("out", "visible.js");
+      const ignored = touch("out", "ignored.js");
+
+      project.emitFileEvents([
+        { action: "created", path: visible },
+        { action: "created", path: ignored },
+      ]);
+      for (let i = 0; i < 20 && index.entries.get(ROOT).pendingAdmissions.size > 0; i++) {
+        await Promise.resolve();
       }
+
+      expect(refreshStatusSnapshot.calls.count()).toBe(1);
+      expect(index.has(visible)).toBe(true);
+      expect(index.has(ignored)).toBe(false);
+    });
+
+    it("defers to a recrawl when a non-VCS ignore file can affect the path", () => {
+      fs.writeFileSync(under(".ignore"), "generated.js\n");
+      const generated = touch("generated.js");
+      const before = project.crawls.length;
+
+      project.emitFileEvents([{ action: "created", path: generated }]);
+
+      expect(index.has(generated)).toBe(false);
       advanceClock(2500);
       expect(project.crawls.length).toBe(before + 1);
     });
@@ -544,12 +587,19 @@ describe("FileIndex", () => {
       advanceClock(2500);
       expect(project.crawls.length).toBe(before + 1);
     });
+
+    it("re-crawls when .git/info/exclude is written", () => {
+      const before = project.crawls.length;
+      project.emitFileEvents([{ action: "updated", path: under(".git", "info", "exclude") }]);
+      advanceClock(2500);
+      expect(project.crawls.length).toBe(before + 1);
+    });
   });
 
   describe("the ignore predicate", () => {
     const ignoring = (names) => {
       config.values["core.ignoredNames"] = names;
-      index.ignoreMatchers = null;
+      index.ignoredNamesMatcher = null;
       index.ignoreSource = null;
       return (relativePath) => index.isIgnoredRelativePath(relativePath.split("/").join(path.sep));
     };
@@ -587,6 +637,7 @@ describe("FileIndex", () => {
       const ignored = ignoring([]);
       expect(ignored(".git/config")).toBe(true);
       expect(ignored(".hg/store")).toBe(true);
+      expect(ignored(".svn/wc.db")).toBe(true);
       expect(ignored("src/app.js")).toBe(false);
     });
   });
@@ -605,6 +656,7 @@ describe("FileIndex", () => {
       touch("Deep", "File.JS");
 
       project.emitFileEvents([{ action: "created", path: path.join(realRoot, "Deep", "File.JS") }]);
+      for (let i = 0; i < 5; i++) await Promise.resolve();
       advanceClock(200);
 
       // Rewritten onto the registered root, and the tail keeps the case the
@@ -627,8 +679,13 @@ describe("FileIndex with a real crawl and watcher", () => {
     fs.writeFileSync(path.join(root, "sub", "nested.txt"), "");
     fs.writeFileSync(path.join(root, ".gitignore"), "ignored.txt\n");
     fs.writeFileSync(path.join(root, "ignored.txt"), "");
-    fs.mkdirSync(path.join(root, ".git"));
-    fs.writeFileSync(path.join(root, ".git", "config"), "");
+    fs.cpSync(
+      path.join(__dirname, "fixtures", "git", "working-dir", "git.git"),
+      path.join(root, ".git"),
+      {
+        recursive: true,
+      },
+    );
     fs.mkdirSync(path.join(root, "node_modules"));
     fs.writeFileSync(path.join(root, "node_modules", "dep.js"), "");
     fs.mkdirSync(path.join(root, "build", "output"), { recursive: true });
@@ -755,6 +812,34 @@ describe("FileIndex with a real crawl and watcher", () => {
     // Nothing should ever admit this; give it a beat to prove it does not.
     await timeoutPromise(500);
     expect(lumine.project.hasFilePath(ignored)).toBe(false);
+  }, 30000);
+
+  it("never admits a newly created VCS-ignored file", async () => {
+    jasmine.useRealClock();
+    await stopAllWatchers();
+    lumine.config.set("core.ignoredNames", []);
+    await indexOnce();
+    await lumine.project.getWatcherPromise(dir);
+
+    const probeFile = path.join(dir, "watcher-probe.txt");
+    let probeCount = 0;
+    await conditionPromise(() => {
+      fs.writeFileSync(probeFile, `probe ${++probeCount}`);
+      return lumine.project.hasFilePath(probeFile);
+    }, "the watcher to start delivering events");
+
+    const ignored = path.join(dir, "ignored.txt");
+    fs.rmSync(ignored, { force: true });
+    await timeoutPromise(250);
+
+    const added = [];
+    const subscription = lumine.project.observeFilePaths((change) => added.push(...change.added));
+    fs.writeFileSync(ignored, "ignored again\n");
+    await timeoutPromise(1000);
+    subscription.dispose();
+
+    expect(lumine.project.hasFilePath(ignored)).toBe(false);
+    expect(added).not.toContain(ignored);
   }, 30000);
 
   // POSIX only: creating a symlink on Windows needs elevation or Developer Mode,

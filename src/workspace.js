@@ -20,6 +20,7 @@ const layoutDrag = require("./layout-drag");
 // and a window holds a single copy of it.
 const { SelectListView, InputDialogView } = require("@lumine-code/select-list");
 const FileState = require("./file-state");
+const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 
 function protocolForURI(uri) {
   try {
@@ -2757,7 +2758,9 @@ module.exports = class Workspace extends Model {
    * @param {RegExp} regex - to search with.
    * @param {Object} [options]
    * @param options.paths - An `Array` of glob patterns to search within. (See note below for multi-root projects.)
-   * @param {Boolean} options.includeVcsIgnoredPaths - default `false`; Whether to include paths excluded by VCS ignore files, regardless of the core preference.
+   * @param options.ignoredNames - an `Array` of additional `String` globs to exclude.
+   * @param {Boolean} options.useCoreIgnoredNames - whether to include `core.ignoredNames`; defaults to `true`.
+   * @param {Boolean} options.excludeVcsIgnoredPaths - whether to honor VCS ignore files. Defaults to `core.excludeVcsIgnoredPaths`.
    * @param {Function} [options.onPathsSearched] - to be periodically called with number of paths searched.
    * @param {Number} options.leadingContextLineCount - default `0`; The number of lines before the matched line to include in the results object.
    * @param {Number} options.trailingContextLineCount - default `0`; The number of lines after the matched line to include in the results object.
@@ -2769,6 +2772,14 @@ module.exports = class Workspace extends Model {
       iterator = options;
       options = {};
     }
+
+    const coreIgnoredNames =
+      options.useCoreIgnoredNames === false ? [] : (this.config.get("core.ignoredNames") ?? []);
+    const ignoredNames = compile(
+      merge(AlwaysIgnoredNames, coreIgnoredNames, options.ignoredNames),
+    ).patterns;
+    const excludeVcsIgnoredPaths =
+      options.excludeVcsIgnoredPaths ?? this.config.get("core.excludeVcsIgnoredPaths") ?? true;
 
     const hasMultipleProjectRoots = lumine.project.getPaths().length > 1;
     let pathsWithProjectRoots = options.paths?.map((p) => [null, p]) ?? undefined;
@@ -2938,10 +2949,8 @@ module.exports = class Workspace extends Model {
       const searchOptions = {
         inclusions: options.paths || [],
         includeHidden: true,
-        excludeVcsIgnores: options.includeVcsIgnoredPaths
-          ? false
-          : this.config.get("core.excludeVcsIgnoredPaths"),
-        exclusions: this.config.get("core.ignoredNames"),
+        excludeVcsIgnores: excludeVcsIgnoredPaths,
+        exclusions: ignoredNames,
         follow: this.config.get("core.followSymlinks"),
         leadingContextLineCount: options.leadingContextLineCount || 0,
         trailingContextLineCount: options.trailingContextLineCount || 0,

@@ -18,6 +18,8 @@ function buildFixture() {
   fs.writeFileSync(path.join(dir, "ignored.txt"), "secret\n");
   fs.mkdirSync(path.join(dir, ".git"));
   fs.writeFileSync(path.join(dir, ".git", "config"), "[core]\n");
+  fs.mkdirSync(path.join(dir, ".svn"));
+  fs.writeFileSync(path.join(dir, ".svn", "wc.db"), "metadata\n");
   fs.mkdirSync(path.join(dir, "node_modules"));
   fs.writeFileSync(path.join(dir, "node_modules", "dep.js"), "module.exports = 1;\n");
   fs.writeFileSync(path.join(dir, UNICODE_NAME), "unicode\n");
@@ -45,20 +47,22 @@ describe("RipgrepFileCrawler", () => {
     dir = buildFixture();
   });
 
-  it("lists files and hides VCS-ignored paths and .git contents by default", async () => {
+  it("lists files and hides VCS-ignored paths and VCS metadata by default", async () => {
     const rels = relativize(dir, await crawl([dir]));
 
     expect(rels.has("visible.txt")).toBe(true);
     expect(rels.has("sub/nested.txt")).toBe(true);
     expect(rels.has("ignored.txt")).toBe(false);
     expect([...rels].some((rel) => rel.startsWith(".git/"))).toBe(false);
+    expect([...rels].some((rel) => rel.startsWith(".svn/"))).toBe(false);
   });
 
-  it("reveals VCS-ignored files but still never descends into .git", async () => {
+  it("reveals VCS-ignored files but still never descends into VCS metadata", async () => {
     const rels = relativize(dir, await crawl([dir], { excludeVcsIgnoredPaths: false }));
 
     expect(rels.has("ignored.txt")).toBe(true);
     expect([...rels].some((rel) => rel.startsWith(".git/"))).toBe(false);
+    expect([...rels].some((rel) => rel.startsWith(".svn/"))).toBe(false);
   });
 
   it("excludes ignored names", async () => {

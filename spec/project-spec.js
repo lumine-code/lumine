@@ -1295,6 +1295,79 @@ describe("Project", () => {
     });
   });
 
+  describe("ignored-name discovery policy", () => {
+    let project;
+    let originalIgnoredNames;
+    let originalExcludeVcsIgnoredPaths;
+
+    beforeEach(() => {
+      originalIgnoredNames = lumine.config.get("core.ignoredNames");
+      originalExcludeVcsIgnoredPaths = lumine.config.get("core.excludeVcsIgnoredPaths");
+      lumine.config.set("core.ignoredNames", ["core-only", "shared"]);
+      lumine.config.set("core.excludeVcsIgnoredPaths", true);
+      project = buildProject({
+        notificationManager: lumine.notifications,
+        packageManager: lumine.packages,
+        config: lumine.config,
+        grammarRegistry: lumine.grammars,
+      });
+    });
+
+    afterEach(() => {
+      project.destroy();
+      lumine.config.set("core.ignoredNames", originalIgnoredNames);
+      lumine.config.set("core.excludeVcsIgnoredPaths", originalExcludeVcsIgnoredPaths);
+    });
+
+    it("compiles core and additional names into a snapshot", () => {
+      const matcher = project.compileIgnoredNames(["package-only", "shared"]);
+      lumine.config.set("core.ignoredNames", ["changed-later"]);
+
+      expect(matcher.patterns).toEqual(["core-only", "shared", "package-only"]);
+      expect(matcher.matches("src/core-only/file.js")).toBe(true);
+      expect(matcher.matches("src/package-only/file.js")).toBe(true);
+      expect(matcher.matches("changed-later/file.js")).toBe(false);
+    });
+
+    it("can compile package names without the core list", () => {
+      const matcher = project.compileIgnoredNames(["package-only"], {
+        useCoreIgnoredNames: false,
+      });
+
+      expect(matcher.patterns).toEqual(["package-only"]);
+      expect(matcher.matches("core-only/file.js")).toBe(false);
+      expect(matcher.matches("package-only/file.js")).toBe(true);
+    });
+
+    it("passes merged names and resolved VCS policy to the crawler", () => {
+      let receivedOptions;
+      const completed = Promise.resolve();
+      completed.cancel = () => {};
+      project.fileCrawler = {
+        crawl(_directoryPaths, options) {
+          receivedOptions = options;
+          return completed;
+        },
+      };
+
+      expect(
+        project.crawl({
+          ignoredNames: ["package-only"],
+          excludeVcsIgnoredPaths: false,
+        }),
+      ).toBe(completed);
+      expect(receivedOptions.ignoredNames).toEqual(["core-only", "shared", "package-only"]);
+      expect(receivedOptions.excludeVcsIgnoredPaths).toBe(false);
+
+      project.crawl({
+        ignoredNames: ["package-only"],
+        useCoreIgnoredNames: false,
+      });
+      expect(receivedOptions.ignoredNames).toEqual(["package-only"]);
+      expect(receivedOptions.excludeVcsIgnoredPaths).toBe(true);
+    });
+  });
+
   describe(".reset()", () => {
     it("revives a destroyed project and re-attaches its repository registry", () => {
       lumine.project.destroy();

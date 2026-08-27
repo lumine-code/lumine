@@ -1,8 +1,8 @@
 const path = require("path");
 
 const fs = require("@lumine-code/fs-plus");
-const picomatch = require("picomatch");
 const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
+const { AlwaysIgnoredNames, compile } = require("./ignored-names");
 
 // ripgrep hands over 100 paths at a time, so a 100k-file crawl would fire a
 // thousand callbacks. Deltas are coalesced into one emission per window. The
@@ -23,20 +23,13 @@ const ReconcileDebounceMs = 2000;
 // root is re-crawled instead, which is cheaper AND exact. See `admitCreated`.
 const CreatedBurstLimit = 100;
 
-// Small bursts are admitted on the in-process predicate alone, which cannot see
-// `.gitignore`. Each admission is therefore a guess, and the guesses are
-// counted: a build in watch mode dribbling one file at a time would otherwise
-// accumulate an unbounded amount of ignored output between crawls.
-const BlindAdmissionLimit = 1000;
-
 // A safety valve, not a policy. No real project reaches this; a root pointed at
 // `C:\` or `/` does, and retaining that would take the window down.
 const PathLimitPerRoot = 500000;
 
-// Never indexed, whatever `core.ignoredNames` says — `RipgrepFileCrawler` passes
-// `--glob !.git` / `--glob !.hg` unconditionally, so the in-process predicate
-// must too, or a created path could enter the index that a crawl then removes.
-const AlwaysIgnoredComponents = new Set([".git", ".hg"]);
+// Never indexed, whatever `core.ignoredNames` says. The crawler applies the
+// same list, so a created path cannot enter the index only to vanish on refresh.
+const alwaysIgnoredMatcher = compile(AlwaysIgnoredNames);
 
 // A root that is not a local absolute directory cannot be crawled: ripgrep would
 // be spawned with a URI as its working directory. Custom directory providers
@@ -86,7 +79,7 @@ module.exports = class FileIndex {
     this.pendingRemoved = new Set();
     this.emitTimer = null;
 
-    this.ignoreMatchers = null;
+    this.ignoredNamesMatcher = null;
     this.ignoreSource = null;
   }
 
@@ -246,7 +239,7 @@ module.exports = class FileIndex {
       generation: 0,
       staging: null,
       suppressed: null,
-      blindAdmissions: 0,
+      pendingAdmissions: new Map(),
       dirty: false,
       reconcileTimer: null,
     };
@@ -279,6 +272,7 @@ module.exports = class FileIndex {
     entry.crawl = null;
     entry.staging = null;
     entry.suppressed = null;
+    entry.pendingAdmissions.clear();
     if (entry.reconcileTimer != null) {
       clearTimeout(entry.reconcileTimer);
       entry.reconcileTimer = null;
@@ -298,8 +292,8 @@ module.exports = class FileIndex {
     this.resolveEntryPaths(entry);
     entry.staging = new Set();
     entry.suppressed = new Set();
+    entry.pendingAdmissions.clear();
     entry.dirty = false;
-    entry.blindAdmissions = 0;
     entry.truncated = false;
 
     // A first crawl streams into the index so a consumer can render as results
@@ -366,7 +360,9 @@ module.exports = class FileIndex {
       description:
         `\`${entry.rootPath}\` holds more than ${PathLimitPerRoot} files, so the file ` +
         "index stopped there. The file finder and path suggestions will not list them all. " +
-        "This usually means a root was opened much higher up the filesystem than intended.",
+        (this.getConfig()?.get("core.excludeVcsIgnoredPaths") === false
+          ? "VCS-ignored paths are currently included, so dependency or build-output directories may be the cause."
+          : "This usually means a root was opened much higher up the filesystem than intended."),
       dismissable: true,
     });
   }
@@ -381,7 +377,7 @@ module.exports = class FileIndex {
   }
 
   refreshForPolicyChange() {
-    this.ignoreMatchers = null;
+    this.ignoredNamesMatcher = null;
     this.ignoreSource = null;
     this.refresh();
   }
@@ -417,9 +413,7 @@ module.exports = class FileIndex {
       if (!eventPath) continue;
 
       if (this.isIgnoreRuleFile(eventPath)) {
-        for (const match of this.attribute(eventPath, directoryCache) ?? []) {
-          this.markDirty(match.entry);
-        }
+        this.markRootsContainingPathDirty(eventPath);
       }
 
       switch (event.action) {
@@ -443,6 +437,12 @@ module.exports = class FileIndex {
 
     this.admitCreated(created);
     this.scheduleEmit();
+  }
+
+  markRootsContainingPathDirty(eventPath) {
+    for (const entry of this.entries.values()) {
+      if (this.toIndexPath(entry, eventPath) != null) this.markDirty(entry);
+    }
   }
 
   // Returns the matching roots for a path's *directory*, each with the index
@@ -514,27 +514,19 @@ module.exports = class FileIndex {
     }
   }
 
-  // The created-file problem: ripgrep did the `.gitignore` filtering out of
-  // process and that cannot be replicated here, so every admission below is a
-  // guess. Two rules keep the guessing bounded and cheap.
+  // Small batches are checked against the repository asynchronously before
+  // admission. Large bursts are cheaper and more exact as one ripgrep crawl.
   admitCreated(created) {
     for (const [entry, batch] of created) {
-      // A bulk operation is exactly where per-file guessing is most expensive
-      // and most likely wrong — an install under an ignored `node_modules` is
-      // tens of thousands of wrong guesses — and it is also where one ripgrep
-      // run is cheaper than the guessing. Admit none of it and re-crawl.
       if (batch.length > CreatedBurstLimit) {
         this.markDirty(entry);
         continue;
       }
 
-      let admitted = 0;
+      const generation = entry.generation;
+      const candidates = [];
+      let needsRecrawl = false;
       for (const indexPath of batch) {
-        // The recursive backend reports no entry kind, so a directory and a file
-        // are indistinguishable without asking. Bounded by the burst limit
-        // above, which is what keeps this off the renderer's critical path; a
-        // created directory reports its own contents separately, so skipping it
-        // loses nothing.
         let stats;
         try {
           stats = fs.lstatSync(indexPath);
@@ -542,19 +534,112 @@ module.exports = class FileIndex {
           continue;
         }
         if (!stats.isFile()) continue;
-        this.addToRoot(entry, indexPath);
-        if (entry.staging) {
-          entry.staging.add(indexPath);
-          entry.suppressed.delete(indexPath);
+
+        // ripgrep always honors `.ignore` and `.rgignore`, independently of
+        // the VCS setting. Repository APIs cannot answer for those files, so
+        // retain exactness by letting the authoritative crawl decide.
+        if (this.hasNonVcsIgnoreFile(entry, indexPath)) {
+          needsRecrawl = true;
+          continue;
         }
-        admitted += 1;
+
+        const token = {};
+        entry.pendingAdmissions.set(indexPath, token);
+        candidates.push({ indexPath, token });
       }
 
-      // A build in watch mode dribbling ignored output one file at a time would
-      // otherwise accumulate without bound between crawls.
-      entry.blindAdmissions += admitted;
-      if (entry.blindAdmissions > BlindAdmissionLimit) this.markDirty(entry);
+      if (needsRecrawl) this.markDirty(entry);
+      if (candidates.length === 0) continue;
+
+      this.findVcsIgnoredPaths(candidates.map(({ indexPath }) => indexPath))
+        .then((ignoredPaths) => {
+          for (const candidate of candidates) {
+            if (ignoredPaths.has(candidate.indexPath)) continue;
+            this.admitCreatedPath(entry, candidate, generation);
+          }
+        })
+        .catch(() => {
+          // A crawl remains the authority when repository discovery or Git
+          // status fails; never turn unchecked paths into blind admissions.
+          if (entry.generation === generation) this.markDirty(entry);
+        })
+        .finally(() => {
+          for (const { indexPath, token } of candidates) {
+            if (entry.pendingAdmissions.get(indexPath) === token) {
+              entry.pendingAdmissions.delete(indexPath);
+            }
+          }
+        });
     }
+  }
+
+  hasNonVcsIgnoreFile(entry, filePath) {
+    let directoryPath = path.dirname(filePath);
+    while (true) {
+      if (
+        fs.existsSync(path.join(directoryPath, ".ignore")) ||
+        fs.existsSync(path.join(directoryPath, ".rgignore"))
+      ) {
+        return true;
+      }
+      if (fold(directoryPath) === entry.foldedRoot) return false;
+      const parentPath = path.dirname(directoryPath);
+      if (parentPath === directoryPath) return false;
+      directoryPath = parentPath;
+    }
+  }
+
+  async findVcsIgnoredPaths(filePaths) {
+    const ignoredPaths = new Set();
+    if (this.getConfig()?.get("core.excludeVcsIgnoredPaths") === false) return ignoredPaths;
+
+    const pathsByRepository = new Map();
+    const resolved = await Promise.all(
+      filePaths.map(async (filePath) => [filePath, await this.project.repositoryForPath(filePath)]),
+    );
+    for (const [filePath, repository] of resolved) {
+      if (!repository || typeof repository.isPathIgnored !== "function") continue;
+      let paths = pathsByRepository.get(repository);
+      if (!paths) {
+        paths = [];
+        pathsByRepository.set(repository, paths);
+      }
+      paths.push(filePath);
+    }
+
+    await Promise.all(
+      Array.from(pathsByRepository, async ([repository, paths]) => {
+        // A previously loaded snapshot can predate this filesystem event.
+        // Refresh once per repository and batch, then use its synchronous index.
+        await repository.refreshStatusSnapshot?.({ includeIgnored: true });
+        for (const filePath of paths) {
+          if (await repository.isPathIgnored(filePath)) ignoredPaths.add(filePath);
+        }
+      }),
+    );
+    return ignoredPaths;
+  }
+
+  admitCreatedPath(entry, { indexPath, token }, generation) {
+    if (this.destroyed || entry.generation !== generation) return;
+    if (entry.pendingAdmissions.get(indexPath) !== token) return;
+
+    // The file can disappear while repository discovery or status is loading.
+    // Re-check its kind at the point of mutation.
+    let stats;
+    try {
+      stats = fs.lstatSync(indexPath);
+    } catch {
+      return;
+    }
+    if (!stats.isFile()) return;
+
+    this.addToRoot(entry, indexPath);
+    if (entry.staging) {
+      entry.staging.add(indexPath);
+      entry.suppressed.delete(indexPath);
+    }
+    this.scheduleEmit();
   }
 
   handleDeleted(eventPath, directoryCache) {
@@ -564,6 +649,7 @@ module.exports = class FileIndex {
 
     for (const match of matches) {
       const indexPath = match.prefix + basename;
+      match.entry.pendingAdmissions.delete(indexPath);
       if (match.entry.paths.has(indexPath)) {
         this.removeFromRoot(match.entry, indexPath);
         match.entry.staging?.delete(indexPath);
@@ -579,6 +665,9 @@ module.exports = class FileIndex {
 
   removeSubtree(entry, indexPath) {
     const prefix = indexPath + path.sep;
+    for (const pendingPath of entry.pendingAdmissions.keys()) {
+      if (pendingPath.startsWith(prefix)) entry.pendingAdmissions.delete(pendingPath);
+    }
     for (const filePath of Array.from(entry.paths)) {
       if (!filePath.startsWith(prefix)) continue;
       this.removeFromRoot(entry, filePath);
@@ -608,60 +697,30 @@ module.exports = class FileIndex {
   // conditional `basename` flag, and a hole for anchored patterns.
   isIgnoredRelativePath(relativePath) {
     if (!relativePath) return false;
-    const parts = relativePath.split(path.sep);
-    for (const part of parts) {
-      if (AlwaysIgnoredComponents.has(part)) return true;
-    }
-
-    const matchers = this.getIgnoreMatchers();
-    if (matchers.length === 0) return false;
-
-    let prefix = "";
-    for (const part of parts) {
-      prefix = prefix ? `${prefix}/${part}` : part;
-      for (const matcher of matchers) {
-        if (matcher.anchored ? matcher.match(prefix) : matcher.match(part)) return true;
-      }
-    }
-    return false;
+    return (
+      alwaysIgnoredMatcher.matches(relativePath) ||
+      this.getIgnoredNamesMatcher().matches(relativePath)
+    );
   }
 
   // The leaf half of the same predicate, for a path whose directory has already
   // been cleared: every ancestor component has been tested, so only the basename
   // and an anchored pattern naming the file itself are left.
   isIgnoredLeaf(basename, relativeDirectory) {
-    if (AlwaysIgnoredComponents.has(basename)) return true;
-
-    const matchers = this.getIgnoreMatchers();
-    if (matchers.length === 0) return false;
-
     const relativePath = relativeDirectory ? `${relativeDirectory}/${basename}` : basename;
-    for (const matcher of matchers) {
-      if (matcher.anchored ? matcher.match(relativePath) : matcher.match(basename)) return true;
-    }
-    return false;
+    return this.isIgnoredRelativePath(relativePath);
   }
 
-  getIgnoreMatchers() {
+  getIgnoredNamesMatcher() {
     const names = this.getConfig()?.get("core.ignoredNames") ?? [];
     const source = names.join("\n");
-    if (this.ignoreMatchers && this.ignoreSource === source) return this.ignoreMatchers;
+    if (this.ignoredNamesMatcher && this.ignoreSource === source) {
+      return this.ignoredNamesMatcher;
+    }
 
     this.ignoreSource = source;
-    this.ignoreMatchers = [];
-    for (const name of names) {
-      if (!name) continue;
-      try {
-        this.ignoreMatchers.push({
-          match: picomatch(name.replace(/^\/+/, ""), { dot: true }),
-          anchored: name.includes("/"),
-        });
-      } catch {
-        // An unparseable glob excludes nothing, which is what ripgrep does with
-        // it too — it reports the bad pattern on stderr and carries on.
-      }
-    }
-    return this.ignoreMatchers;
+    this.ignoredNamesMatcher = compile(names);
+    return this.ignoredNamesMatcher;
   }
 
   /**

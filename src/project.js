@@ -10,6 +10,7 @@ const { watchPath } = require("./path-watcher");
 const DefaultDirectoryProvider = require("./default-directory-provider");
 const Model = require("./model");
 const GitRepositoryProvider = require("./git-repository-provider");
+const { compile: compileIgnoredNames, merge: mergeIgnoredNames } = require("./ignored-names");
 
 /**
  * @public
@@ -791,6 +792,32 @@ module.exports = class Project extends Model {
    * @public
    * @status public
    *
+   * Compile the editor's ignored-name semantics into an immutable matcher.
+   *
+   * Patterns without a slash match a name at any depth. Patterns containing a
+   * slash are rooted at a project directory, and matching a directory excludes
+   * everything beneath it. Paths passed to `matches` must be relative to the
+   * applicable project root; either path separator is accepted.
+   *
+   * The result is a snapshot. Compile it again after the underlying config
+   * changes.
+   *
+   * @param additionalIgnoredNames - an `Array` of additional `String` globs.
+   * @param {Object} [options]
+   * @param {Boolean} options.useCoreIgnoredNames - whether to include `core.ignoredNames`; defaults to `true`.
+   * @returns {Object} an immutable `{patterns, matches(relativePath)}` matcher.
+   */
+  compileIgnoredNames(additionalIgnoredNames = [], options = {}) {
+    const config = this.config ?? global.lumine?.config;
+    const coreIgnoredNames =
+      options.useCoreIgnoredNames === false ? [] : (config?.get("core.ignoredNames") ?? []);
+    return compileIgnoredNames(mergeIgnoredNames(coreIgnoredNames, additionalIgnoredNames));
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Lists the files under the project's directories.
    *
    * The crawl runs in a separate process (the bundled ripgrep binary), honors
@@ -810,7 +837,8 @@ module.exports = class Project extends Model {
    * @param {Function} options.didFindPaths - called with an `Array` of absolute paths as they are found. Called several times over the life of one crawl.
    * @param options.directoryPaths - an `Array` of `String` paths to crawl. Defaults to the project's root directories.
    * @param {String} options.inclusion - glob scoping the crawl. `**` means "everything".
-   * @param options.ignoredNames - an `Array` of `String` globs to exclude. Defaults to `core.ignoredNames`.
+   * @param options.ignoredNames - an `Array` of additional `String` globs to exclude.
+   * @param {Boolean} options.useCoreIgnoredNames - whether to include `core.ignoredNames`; defaults to `true`.
    * @param {Boolean} options.followSymlinks - whether to descend into symlinked directories. Defaults to `core.followSymlinks`.
    * @param {Boolean} options.excludeVcsIgnoredPaths - whether to honor VCS ignore files. Defaults to `core.excludeVcsIgnoredPaths`. Only takes effect inside a repository — a directory with no `.git` above it lists everything.
    * @param {Boolean} options.sort - whether to return paths in a stable order. Costs ripgrep its parallel walk, so only ask when the order is observable.
@@ -822,16 +850,19 @@ module.exports = class Project extends Model {
       this.fileCrawler = new RipgrepFileCrawler();
     }
 
-    const config = lumine.config;
     const directoryPaths = options.directoryPaths ?? this.getPaths() ?? [];
+    const ignoredNames = this.compileIgnoredNames(options.ignoredNames, {
+      useCoreIgnoredNames: options.useCoreIgnoredNames,
+    });
+    const config = this.config ?? global.lumine?.config;
 
     return this.fileCrawler.crawl(directoryPaths, {
       didFindPaths: options.didFindPaths,
       inclusion: options.inclusion,
-      ignoredNames: options.ignoredNames ?? config.get("core.ignoredNames") ?? [],
-      followSymlinks: options.followSymlinks ?? config.get("core.followSymlinks"),
+      ignoredNames: ignoredNames.patterns,
+      followSymlinks: options.followSymlinks ?? config?.get("core.followSymlinks"),
       excludeVcsIgnoredPaths:
-        options.excludeVcsIgnoredPaths ?? config.get("core.excludeVcsIgnoredPaths"),
+        options.excludeVcsIgnoredPaths ?? config?.get("core.excludeVcsIgnoredPaths") ?? true,
       sort: options.sort,
     });
   }

@@ -1,5 +1,6 @@
 const { spawn } = require("child_process");
 const path = require("path");
+const { toRipgrepGlobArgs } = require("./ignored-names");
 
 // `ripgrep` and `scandal` have a different way of handling the trailing and leading
 // context lines:
@@ -240,9 +241,7 @@ module.exports = class RipgrepDirectorySearcher {
     for (const inclusion of this.prepareGlobs(options.inclusions, directoryPath)) {
       args.push("--glob", inclusion);
     }
-    for (const exclusion of this.prepareGlobs(options.exclusions, directoryPath)) {
-      args.push("--glob", "!" + exclusion);
-    }
+    args.push(...toRipgrepGlobArgs(options.exclusions, { exclude: true }));
 
     if (this.isMultilineRegexp(regexpStr)) {
       args.push("--multiline");

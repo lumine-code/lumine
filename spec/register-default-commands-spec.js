@@ -20,7 +20,7 @@ describe("registerDefaultCommands", () => {
   // Every registration, keyed by command name. A name registered against more
   // than one selector keeps each listener, in registration order, so a spec
   // naming one cannot silently be handed another.
-  function commandsRegisteredOn(platform) {
+  function commandsRegisteredOn(platform, overrides = {}) {
     Object.defineProperty(process, "platform", { value: platform });
 
     const listenersByName = new Map();
@@ -50,6 +50,7 @@ describe("registerDefaultCommands", () => {
       project: {},
       repositories: {},
       clipboard: {},
+      ...overrides,
     });
 
     return listenersByName;
@@ -79,6 +80,59 @@ describe("registerDefaultCommands", () => {
     expect(commands.has("editor:collapse-blank-lines")).toBe(true);
     expect(commands.has("editor:collapse-content-spaces")).toBe(true);
     expect(commands.has("editor:delete-to-next-line-content")).toBe(true);
+  });
+
+  describe("core file discovery commands", () => {
+    function dispatch(commands, commandName) {
+      const [listener] = commands.get(commandName);
+      const didDispatch = typeof listener === "function" ? listener : listener.didDispatch;
+      return didDispatch();
+    }
+
+    it("toggles the shared VCS-ignore policy without refreshing explicitly", () => {
+      let excludeVcsIgnoredPaths = true;
+      const config = {
+        get: jasmine.createSpy("get").and.callFake(() => excludeVcsIgnoredPaths),
+        set: jasmine.createSpy("set").and.callFake((_keyPath, value) => {
+          excludeVcsIgnoredPaths = value;
+          return true;
+        }),
+      };
+      const project = { refreshFilePaths: jasmine.createSpy("refreshFilePaths") };
+      const commands = commandsRegisteredOn("win32", { config, project });
+      const [listener] = commands.get("core:toggle-vcs-ignored-paths");
+
+      expect(listener.displayName).toBe("Core: Toggle VCS Ignored Paths");
+      expect(listener.description).toBe(
+        "Include VCS-ignored paths in project discovery, or exclude them again.",
+      );
+      expect(dispatch(commands, "core:toggle-vcs-ignored-paths")).toBe(true);
+      expect(dispatch(commands, "core:toggle-vcs-ignored-paths")).toBe(true);
+      expect(config.get.calls.allArgs()).toEqual([
+        ["core.excludeVcsIgnoredPaths"],
+        ["core.excludeVcsIgnoredPaths"],
+      ]);
+      expect(config.set.calls.allArgs()).toEqual([
+        ["core.excludeVcsIgnoredPaths", false],
+        ["core.excludeVcsIgnoredPaths", true],
+      ]);
+      expect(project.refreshFilePaths).not.toHaveBeenCalled();
+    });
+
+    it("refreshes the shared file index on demand", () => {
+      const refresh = Promise.resolve();
+      const project = {
+        refreshFilePaths: jasmine.createSpy("refreshFilePaths").and.returnValue(refresh),
+      };
+      const commands = commandsRegisteredOn("win32", { project });
+      const [listener] = commands.get("core:refresh-file-index");
+
+      expect(listener.description).toBe(
+        "Crawl the project again and update the shared file index.",
+      );
+      expect(dispatch(commands, "core:refresh-file-index")).toBe(refresh);
+      expect(project.refreshFilePaths).toHaveBeenCalledOnceWith();
+    });
   });
 
   // The wrappers replace each handler with one of their own, so they are the

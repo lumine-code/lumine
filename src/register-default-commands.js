@@ -169,6 +169,20 @@ module.exports = function ({
           return repositories.update();
         },
       },
+      "core:toggle-vcs-ignored-paths": {
+        description: "Include VCS-ignored paths in project discovery, or exclude them again.",
+        displayName: "Core: Toggle VCS Ignored Paths",
+        didDispatch: function () {
+          const keyPath = "core.excludeVcsIgnoredPaths";
+          return config.set(keyPath, !config.get(keyPath));
+        },
+      },
+      "core:refresh-file-index": {
+        description: "Crawl the project again and update the shared file index.",
+        didDispatch: function () {
+          return project.refreshFilePaths();
+        },
+      },
       "application:minimize": function () {
         return ipcRenderer.send("command", "application:minimize");
       },

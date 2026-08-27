@@ -1,5 +1,6 @@
 const { spawn } = require("child_process");
 const path = require("path");
+const { AlwaysIgnoredNames, merge, toRipgrepGlobArgs } = require("./ignored-names");
 
 // How many paths to accumulate before handing a batch to the caller. Streaming
 // in batches keeps a crawl of a large project from turning into one callback
@@ -18,8 +19,8 @@ const PathsChunkSize = 100;
  * It exists so that the ripgrep invocation lives in exactly one place. Every
  * consumer that rolled its own got some of these details right and some wrong:
  * the `app.asar.unpacked` rewrite, decoding stdout as UTF-8 so a multibyte
- * character never straddles a chunk boundary, excluding `.git`/`.hg` explicitly
- * because `--hidden` would otherwise list their internals, and — the subtle one
+ * character never straddles a chunk boundary, excluding VCS metadata explicitly
+ * because `--hidden` would otherwise list its internals, and — the subtle one
  * — only passing a positive `--glob` when the caller actually narrowed the
  * search, since in ripgrep a positive glob overrides the ignore files and would
  * silently defeat `core.excludeVcsIgnoredPaths`.
@@ -94,16 +95,12 @@ module.exports = class RipgrepFileCrawler {
       args.push("--no-ignore-vcs");
     }
 
-    for (const ignoredName of options.ignoredNames || []) {
-      if (ignoredName) {
-        args.push("--glob", `!${ignoredName}`);
-      }
-    }
+    args.push(
+      ...toRipgrepGlobArgs(merge(options.ignoredNames, AlwaysIgnoredNames), { exclude: true }),
+    );
 
-    // Never surface `.git`/`.hg` internals, regardless of the VCS-ignore
-    // setting: `--hidden` lists them otherwise.
-    args.push("--glob", "!.git");
-    args.push("--glob", "!.hg");
+    // VCS metadata stays excluded through `AlwaysIgnoredNames`, regardless of
+    // the VCS-ignore setting: `--hidden` would list its internals otherwise.
 
     let cancelled = false;
     let child = null;

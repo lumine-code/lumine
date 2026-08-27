@@ -49,16 +49,16 @@ type DirectorySearcher = {
 
 `options` as core builds it:
 
-| Option                                                | Description                                                                         |
-| ----------------------------------------------------- | ----------------------------------------------------------------------------------- |
-| `inclusions`                                          | Path globs to restrict to; `[]` means everything.                                   |
-| `includeHidden`                                       | Always `true`.                                                                      |
-| `excludeVcsIgnores`, `exclusions`, `follow`           | From `core.excludeVcsIgnoredPaths`, `core.ignoredNames`, and `core.followSymlinks`. |
-| `leadingContextLineCount`, `trailingContextLineCount` | Context lines the caller asked for.                                                 |
-| `PCRE2`                                               | Whether the caller wants PCRE2 semantics.                                           |
-| `didMatch(result)`                                    | Call with `{ filePath, matches }` for each file that matched.                       |
-| `didError(error)`                                     | Call on failure.                                                                    |
-| `didSearchPaths(count)`                               | Call with a running count so the UI can show progress.                              |
+| Option                                                | Description                                                                                |
+| ----------------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `inclusions`                                          | Path globs to restrict to; `[]` means everything.                                          |
+| `includeHidden`                                       | Always `true`.                                                                             |
+| `excludeVcsIgnores`, `exclusions`, `follow`           | Resolved discovery policy for this scan; explicit scan options override the core defaults. |
+| `leadingContextLineCount`, `trailingContextLineCount` | Context lines the caller asked for.                                                        |
+| `PCRE2`                                               | Whether the caller wants PCRE2 semantics.                                                  |
+| `didMatch(result)`                                    | Call with `{ filePath, matches }` for each file that matched.                              |
+| `didError(error)`                                     | Call on failure.                                                                           |
+| `didSearchPaths(count)`                               | Call with a running count so the UI can show progress.                                     |
 
 ## Minimal example
 
@@ -94,6 +94,8 @@ Providers are consulted in **reverse registration order** — the most recently 
 `search` is called **once per directory**, not once per searcher, because each root may carry different `inclusions`. Do not assume a single call covers your whole claim.
 
 Core filters your matches: a result for a file with unsaved changes is dropped and re-searched against the buffer instead, so you do not need to know about modified buffers.
+
+`exclusions` already contains the normalized union of `scan`'s additional `ignoredNames`, the editor's always-on technical VCS-metadata exclusions, and `core.ignoredNames` unless the caller disables that core list. `excludeVcsIgnores` likewise contains the resolved value of `scan`'s `excludeVcsIgnoredPaths` option or its core default. A provider should apply these values as given rather than reading configuration itself.
 
 The returned promise **must carry a `cancel()`**. Core calls it when the user cancels a search, and a promise without it leaves work running.
 

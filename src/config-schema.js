@@ -5,7 +5,7 @@ const configSchema = {
       ignoredNames: {
         title: "Ignored Names",
         description:
-          "List of [glob patterns](https://en.wikipedia.org/wiki/Glob_%28programming%29). Files and directories matching these patterns will be ignored by some packages, such as the fuzzy finder and tree view. Individual packages might have additional config settings for ignoring names.",
+          "Shared list of [glob patterns](https://en.wikipedia.org/wiki/Glob_%28programming%29) excluded from project-file discovery. A name without a slash matches at any depth; a path containing a slash is relative to a project root. Packages may add their own ignored names, while explicitly opened files remain usable.",
         type: "array",
         items: {
           type: "string",
@@ -15,7 +15,7 @@ const configSchema = {
       excludeVcsIgnoredPaths: {
         title: "Exclude VCS Ignored Paths",
         description:
-          "Files and directories ignored by the current project's VCS will be ignored by some packages, such as the fuzzy finder and find and replace. For example, projects using Git have these paths defined in the .gitignore file. Individual packages might have additional config settings for ignoring VCS ignored files and folders.",
+          "Exclude paths ignored by the project's VCS from project-file discovery, including the shared file index, crawls, and project search. For Git this follows .gitignore and normally includes dependency and build-output directories such as node_modules. Explicitly opened files remain usable, and packages may provide a narrower override for their own project operations.",
         type: "boolean",
         default: true,
       },

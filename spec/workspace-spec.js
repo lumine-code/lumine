@@ -2790,14 +2790,14 @@ describe("Workspace", () => {
             expect(resultHandler).toHaveBeenCalledWith(path.join(projectPath, "ignored.txt"));
           });
 
-          it("includes ignored files when includeVcsIgnoredPaths is true", async () => {
+          it("includes ignored files when excludeVcsIgnoredPaths is false", async () => {
             lumine.project.setPaths([projectPath]);
             lumine.config.set("core.excludeVcsIgnoredPaths", true);
             const editor = await lumine.workspace.open(ignoredPath);
             editor.setText("modified buffer without the search term");
             const resultHandler = jasmine.createSpy("result found");
 
-            await scan(/match/, { includeVcsIgnoredPaths: true }, ({ filePath }) =>
+            await scan(/match/, { excludeVcsIgnoredPaths: false }, ({ filePath }) =>
               resultHandler(filePath),
             );
 
@@ -2977,6 +2977,69 @@ describe("Workspace", () => {
 
           expect(editor.getFileState()).toBe(FileState.MODIFIED);
           expect(resultHandler).not.toHaveBeenCalled();
+        });
+
+        it("can bypass core.ignoredNames for one search", async () => {
+          lumine.config.set("core.ignoredNames", ["a"]);
+          const resultHandler = jasmine.createSpy("result found");
+
+          await scan(/dollar/, { useCoreIgnoredNames: false }, ({ filePath }) =>
+            resultHandler(filePath),
+          );
+
+          expect(resultHandler).toHaveBeenCalled();
+        });
+
+        it("adds options.ignoredNames to the core list", async () => {
+          const resultHandler = jasmine.createSpy("result found");
+
+          await scan(/dollar/, { ignoredNames: ["a"] }, () => resultHandler());
+
+          expect(resultHandler).not.toHaveBeenCalled();
+        });
+
+        it("uses the same ignored-name semantics for matching, crawling, and searching", async () => {
+          const projectPath = temp.mkdirSync("ignored-names-differential");
+          const relativePaths = [
+            "visible.txt",
+            "cache/hidden.txt",
+            "build/output/bundle.txt",
+            "a/build/output/other.txt",
+            "node_modules/dep.txt",
+          ];
+          for (const relativePath of relativePaths) {
+            const filePath = path.join(projectPath, relativePath);
+            fs.makeTreeSync(path.dirname(filePath));
+            fs.writeFileSync(filePath, "ignored names differential\n");
+          }
+          lumine.project.setPaths([projectPath]);
+          lumine.config.set("core.ignoredNames", ["Cache"]);
+
+          const options = {
+            // A name equal to the project basename still refers to a component
+            // below the root; it must not be treated like a UI path inclusion.
+            ignoredNames: ["build/output", path.basename(projectPath)],
+            excludeVcsIgnoredPaths: false,
+          };
+          const matcher = lumine.project.compileIgnoredNames(options.ignoredNames);
+          const expected = relativePaths.filter((relativePath) => !matcher.matches(relativePath));
+
+          const crawled = [];
+          await lumine.project.crawl({
+            ...options,
+            didFindPaths: (paths) => crawled.push(...paths),
+          });
+          const searched = [];
+          await scan(/ignored names differential/, options, ({ filePath }) =>
+            searched.push(filePath),
+          );
+          const relative = (paths) =>
+            paths
+              .map((filePath) => path.relative(projectPath, filePath).replace(/\\/g, "/"))
+              .sort();
+
+          expect(relative(crawled)).toEqual(expected.sort());
+          expect(relative(searched)).toEqual(expected.sort());
         });
 
         it("searches the file on disk instead of its modified buffer", async () => {
