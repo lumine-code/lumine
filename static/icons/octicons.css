@@ -9,18 +9,21 @@
   src: url("icons/octicons-2.1.2.woff") format("woff");
   font-weight: normal;
   font-style: normal;
+  font-display: block;
 }
 @font-face {
   font-family: "Octicons Regular";
   src: url("icons/octicons.woff") format("woff");
   font-weight: normal;
   font-style: normal;
+  font-display: block;
 }
 @font-face {
   font-family: "Octicons Regular";
   src: url("icons/lumine-icons.woff") format("woff");
   font-weight: normal;
   font-style: normal;
+  font-display: block;
 }
 .icon-type-array::before {
   font-family: "Octicons Regular";

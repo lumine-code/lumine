@@ -6,6 +6,8 @@
       http-equiv="Content-Security-Policy"
       content="default-src 'self' lumine://*; connect-src * lumine://* file: wasm:; font-src 'self' lumine://* file: data:; frame-src * lumine://* file:; img-src * lumine://* file: blob: data:; media-src * lumine://* file: blob: data: mediastream:; object-src 'none'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' lumine://* 'unsafe-inline'; worker-src 'self' lumine://* file: blob:;"
     />
+    <!-- file:// CSS font requests use same-origin credentials in Electron. -->
+    <link rel="preload" href="icons/octicons.woff" as="font" type="font/woff" />
     <script src="index.js"></script>
   </head>
   <body tabindex="-1"></body>

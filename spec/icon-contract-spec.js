@@ -38,6 +38,21 @@ function expectContractBox(style, size = "16px") {
 }
 
 describe("icon geometry contract", () => {
+  it("keeps icon fonts out of Chromium's slow-network fallback intervention", () => {
+    const fontFaces = [...document.styleSheets]
+      .flatMap((styleSheet) => [...styleSheet.cssRules])
+      .filter(
+        (rule) =>
+          rule.type === CSSRule.FONT_FACE_RULE &&
+          rule.style.getPropertyValue("font-family").includes("Octicons Regular"),
+      );
+
+    expect(fontFaces.length).toBe(3);
+    for (const fontFace of fontFaces) {
+      expect(fontFace.style.getPropertyValue("font-display")).toBe("block");
+    }
+  });
+
   it("declares the contract version token on the root element", () => {
     const token = getComputedStyle(document.documentElement)
       .getPropertyValue("--icon-contract")
