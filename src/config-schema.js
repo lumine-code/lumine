@@ -233,6 +233,7 @@ const configSchema = {
     type: "object",
     properties: {
       fileEncoding: {
+        scopeResolution: "grammar",
         title: "File Encoding",
         description: "Default character set encoding to use when reading and writing files.",
         type: "string",
@@ -429,6 +430,7 @@ const configSchema = {
         default: 1.5,
       },
       tabLength: {
+        scopeResolution: "grammar",
         title: "Tab Length",
         description: "Number of spaces used to represent a tab.",
         type: "integer",
@@ -436,6 +438,7 @@ const configSchema = {
         default: 2,
       },
       tabType: {
+        scopeResolution: "grammar",
         title: "Tab Type",
         description:
           'Determine character inserted when Tab key is pressed. Possible values: "auto", "soft" and "hard". When set to "soft" or "hard", soft tabs (spaces) or hard tabs (tab characters) are used. When set to "auto", the editor auto-detects the tab type based on the contents of the buffer (it uses the first leading whitespace on a non-comment line), or uses the value of the Soft Tabs config setting if auto-detection fails.',
@@ -444,6 +447,7 @@ const configSchema = {
         default: "auto",
       },
       softTabs: {
+        scopeResolution: "grammar",
         title: "Soft Tabs",
         description:
           'If the `Tab Type` config setting is set to "auto" and autodetection of tab type from buffer content fails, then this config setting determines whether a soft tab or a hard tab will be inserted when the Tab key is pressed.',
@@ -451,18 +455,21 @@ const configSchema = {
         default: true,
       },
       atomicSoftTabs: {
+        scopeResolution: "grammar",
         title: "Atomic Soft Tabs",
         description: "Skip over tab-length runs of leading whitespace when moving the cursor.",
         type: "boolean",
         default: true,
       },
       autoIndent: {
+        scopeResolution: "grammar",
         title: "Auto Indent",
         description: "Automatically indent the cursor when inserting a newline.",
         type: "boolean",
         default: true,
       },
       autoIndentOnPaste: {
+        scopeResolution: "grammar",
         title: "Auto Indent On Paste",
         description:
           "Automatically indent pasted text based on the indentation of the previous line.",
@@ -470,6 +477,7 @@ const configSchema = {
         default: true,
       },
       softWrap: {
+        scopeResolution: "grammar",
         title: "Soft Wrap",
         description:
           "Wraps lines that exceed the width of the window. When `Soft Wrap At Preferred Line Length` is set, it will wrap to the number of characters defined by the `Preferred Line Length` setting.",
@@ -477,6 +485,7 @@ const configSchema = {
         default: false,
       },
       softWrapAtPreferredLineLength: {
+        scopeResolution: "grammar",
         title: "Soft Wrap At Preferred Line Length",
         description:
           "Instead of wrapping lines to the window's width, wrap lines to the number of characters defined by the `Preferred Line Length` setting. This will only take effect when the soft wrap config setting is enabled globally or for the current grammar.",
@@ -484,6 +493,7 @@ const configSchema = {
         default: false,
       },
       preferredLineLength: {
+        scopeResolution: "grammar",
         title: "Preferred Line Length",
         description:
           "Identifies the length of a line which is used when wrapping text with the `Soft Wrap At Preferred Line Length` setting enabled, in number of characters.",
@@ -492,6 +502,7 @@ const configSchema = {
         default: 80,
       },
       softWrapHangingIndent: {
+        scopeResolution: "grammar",
         title: "Soft Wrap Hanging Indent",
         description:
           "When soft wrap is enabled, defines length of additional indentation applied to wrapped lines, in number of characters.",
@@ -500,6 +511,7 @@ const configSchema = {
         default: 0,
       },
       showInvisibles: {
+        scopeResolution: "grammar",
         title: "Show Invisibles",
         description:
           "Render placeholders for invisible characters, such as tabs, spaces and newlines.",
@@ -507,12 +519,14 @@ const configSchema = {
         default: false,
       },
       showLineNumbers: {
+        scopeResolution: "grammar",
         title: "Show Line Numbers",
         description: "Show line numbers in the editor's gutter.",
         type: "boolean",
         default: true,
       },
       maxScreenLineLength: {
+        scopeResolution: "grammar",
         title: "Max Screen Line Length",
         description:
           "Defines the maximum width of the editor window before soft wrapping is enforced, in number of characters.",
@@ -521,6 +535,7 @@ const configSchema = {
         default: 500,
       },
       softWrapDebounceInterval: {
+        scopeResolution: "grammar",
         title: "Soft Wrap Debounce Interval",
         description:
           "While a pane divider or a dock handle is being dragged, soft-wrapped text re-wraps only once the width has held still for this many milliseconds, and again the moment the drag ends. A width change outside a drag always re-wraps immediately. `0` re-wraps on every change. Higher values reduce CPU usage while dragging against large files, at the cost of showing stale wrapping until the drag settles.",
@@ -530,6 +545,7 @@ const configSchema = {
         default: 100,
       },
       scrollSensitivity: {
+        scopeResolution: "grammar",
         title: "Scroll Sensitivity",
         description: "Determines how fast the editor scrolls when using a mouse or trackpad.",
         type: "integer",
@@ -538,6 +554,7 @@ const configSchema = {
         default: 40,
       },
       scrollPastEnd: {
+        scopeResolution: "grammar",
         title: "Scroll Past End",
         description: "Allow the editor to be scrolled past the end of the last line.",
         type: "boolean",
@@ -551,6 +568,7 @@ const configSchema = {
         default: true,
       },
       smoothScrolling: {
+        scopeResolution: "grammar",
         title: "Smooth Scrolling",
         description:
           "Animate mouse wheel and scroll command movements instead of jumping instantly.",
@@ -558,6 +576,7 @@ const configSchema = {
         default: true,
       },
       wheelSmoothness: {
+        scopeResolution: "grammar",
         title: "Wheel Smoothness",
         description:
           "How gradually the editor glides toward the target position when scrolling with the mouse wheel. Higher values feel floatier.",
@@ -567,6 +586,7 @@ const configSchema = {
         default: 8,
       },
       commandSmoothness: {
+        scopeResolution: "grammar",
         title: "Command Smoothness",
         description:
           "How gradually the editor glides when scrolling via the `editor:scroll-up` and `editor:scroll-down` commands.",
@@ -576,6 +596,7 @@ const configSchema = {
         default: 12,
       },
       altWheelMultiplier: {
+        scopeResolution: "grammar",
         title: "Alt Wheel Multiplier",
         description:
           "Speed multiplier applied to wheel scrolling while holding `alt`. Set to `1` to disable.",
@@ -585,6 +606,7 @@ const configSchema = {
         default: 7.5,
       },
       scrollCommandDistance: {
+        scopeResolution: "grammar",
         title: "Scroll Command Distance",
         description:
           "Distance scrolled by `editor:scroll-up` and `editor:scroll-down`, as a fraction of the editor height. `editor:increase-scroll-distance` and `editor:decrease-scroll-distance` double or halve it per editor without changing this setting.",
@@ -601,6 +623,7 @@ const configSchema = {
         default: true,
       },
       undoGroupingInterval: {
+        scopeResolution: "grammar",
         title: "Undo Grouping Interval",
         description:
           "Time interval in milliseconds within which text editing operations will be grouped together in the undo history.",
@@ -609,18 +632,21 @@ const configSchema = {
         default: 300,
       },
       nonWordCharacters: {
+        scopeResolution: "syntax",
         title: "Non Word Characters",
         description: "A string of non-word characters to define word boundaries.",
         type: "string",
         default: "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…",
       },
       useTreeSitterParsers: {
+        scopeResolution: "grammar",
         title: "Use Tree-sitter Parsers",
         description: "Use Tree-sitter parsers for supported languages.",
         type: "boolean",
         default: true,
       },
       largeFileThreshold: {
+        scopeResolution: "grammar",
         title: "Large File Threshold",
         description:
           "Files larger than this size in megabytes will open in large file mode with syntax highlighting disabled. Only applies to TextMate grammars; Tree-sitter grammars handle large files efficiently without this limitation. Set to 0 to always enable syntax highlighting regardless of file size.",
@@ -629,6 +655,7 @@ const configSchema = {
         default: 2,
       },
       commentStart: {
+        scopeResolution: "syntax",
         title: "Comment Start",
         description:
           "Scope-specific string that begins a line comment. Set by language packages; not intended to be configured directly.",
@@ -636,6 +663,7 @@ const configSchema = {
         hidden: true,
       },
       commentEnd: {
+        scopeResolution: "syntax",
         title: "Comment End",
         description:
           "Scope-specific string that ends a block comment. Set by language packages; not intended to be configured directly.",
@@ -643,12 +671,14 @@ const configSchema = {
         hidden: true,
       },
       commentDelimiters: {
+        scopeResolution: "syntax",
         title: "Comment Delimiters",
         description: "Scope-specific line and block comment delimiters supplied by grammars.",
         type: "object",
         hidden: true,
       },
       completions: {
+        scopeResolution: "syntax",
         title: "Completions",
         description: "Legacy scope-specific completion words supplied by grammars.",
         type: "array",
@@ -656,6 +686,7 @@ const configSchema = {
         hidden: true,
       },
       increaseIndentPattern: {
+        scopeResolution: "syntax",
         title: "Increase Indent Pattern",
         description:
           "Scope-specific regular expression; a line matching it increases the indentation of the following line.",
@@ -663,6 +694,7 @@ const configSchema = {
         hidden: true,
       },
       decreaseIndentPattern: {
+        scopeResolution: "syntax",
         title: "Decrease Indent Pattern",
         description:
           "Scope-specific regular expression; a line matching it decreases its own indentation.",
@@ -670,6 +702,7 @@ const configSchema = {
         hidden: true,
       },
       decreaseNextIndentPattern: {
+        scopeResolution: "syntax",
         title: "Decrease Next Indent Pattern",
         description:
           "Scope-specific regular expression; a matching line decreases the indentation of the following line.",
@@ -677,12 +710,14 @@ const configSchema = {
         hidden: true,
       },
       foldEndPattern: {
+        scopeResolution: "syntax",
         title: "Fold End Pattern",
         description: "Scope-specific regular expression that marks the end of a foldable region.",
         type: ["string", "null"],
         hidden: true,
       },
       invisibles: {
+        scopeResolution: "grammar",
         title: "Invisibles",
         description:
           "A hash of characters Lumine will use to render whitespace characters. Keys are whitespace character types, values are rendered characters (use value false to turn off individual whitespace character types).",

@@ -1359,6 +1359,27 @@ describe("Config", () => {
       });
     });
 
+    it("preserves and validates scope resolution metadata", () => {
+      lumine.config.setSchema("foo.bar", {
+        type: "object",
+        properties: {
+          explicitBase: { type: "boolean", scopeResolution: "base" },
+          contextual: { type: "boolean", scopeResolution: "grammar" },
+        },
+      });
+      expect(lumine.config.getSchema("foo.bar").scopeResolution).toBeUndefined();
+      expect(lumine.config.getSchema("foo.bar.explicitBase").scopeResolution).toBe("base");
+      expect(lumine.config.getSchema("foo.bar.contextual").scopeResolution).toBe("grammar");
+      expect(() =>
+        lumine.config.setSchema("foo.invalid", {
+          type: "object",
+          properties: {
+            setting: { type: "boolean", scopeResolution: "sometimes" },
+          },
+        }),
+      ).toThrowError(/scopeResolution must be/);
+    });
+
     it("sets defaults specified by the schema", () => {
       const schema = {
         type: "object",

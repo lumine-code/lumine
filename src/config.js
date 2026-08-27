@@ -12,6 +12,7 @@ const SelectorStore = require("@lumine-code/selector-store");
 const ScopeDescriptor = require("./scope-descriptor");
 
 const schemaEnforcers = {};
+const SCOPE_RESOLUTIONS = new Set(["base", "grammar", "syntax"]);
 
 /**
  * @public
@@ -1155,6 +1156,8 @@ class Config {
       );
     }
 
+    validateScopeResolutionMetadata(keyPath, schema);
+
     let rootSchema = this.schema;
     if (keyPath) {
       for (let key of splitKeyPath(keyPath)) {
@@ -1653,6 +1656,21 @@ class Config {
         callback(event);
       }
     });
+  }
+}
+
+function validateScopeResolutionMetadata(keyPath, schema) {
+  if (Object.hasOwn(schema, "scopeResolution") && !SCOPE_RESOLUTIONS.has(schema.scopeResolution)) {
+    throw new Error(
+      `Error loading schema for ${keyPath || "<root>"}: scopeResolution must be ` +
+        '"base", "grammar", or "syntax"',
+    );
+  }
+  for (const [name, childSchema] of Object.entries(schema.properties || {})) {
+    validateScopeResolutionMetadata(keyPath ? `${keyPath}.${name}` : name, childSchema);
+  }
+  if (isPlainObject(schema.items)) {
+    validateScopeResolutionMetadata(`${keyPath}[]`, schema.items);
   }
 }
 
