@@ -33,16 +33,29 @@ const { Emitter } = require("@lumine-code/event-kit");
  * earlier session, and ask again rather than fail.
  */
 class SecretStore {
-  constructor({ safeStorage, applicationDelegate, storagePath, notify } = {}) {
+  constructor({ safeStorage, applicationDelegate, storagePath, notify, withStorageLock } = {}) {
     this._safeStorage = safeStorage;
     this.applicationDelegate = applicationDelegate;
     this.storagePath = storagePath;
     this.notify = notify || null;
+    this.withStorageLock =
+      withStorageLock ||
+      ((callback) => {
+        const locks = globalThis.window?.navigator?.locks;
+        return locks
+          ? locks.request(
+              `lumine-secrets:${path.resolve(this.storagePath).toLowerCase()}`,
+              callback,
+            )
+          : callback();
+      });
     this.emitter = new Emitter();
     this.entries = null; // Map<key, base64 ciphertext>, loaded on first use
     this.memory = new Map(); // session-only fallback when encryption is off
     this.encryptionAvailable = null;
     this.warned = false;
+    this.watching = false;
+    this.handleStorageChange = this.handleStorageChange.bind(this);
   }
 
   /**
@@ -62,10 +75,10 @@ class SecretStore {
    * @returns {Promise} resolving to a `Boolean`.
    */
   async isEncryptionAvailable() {
-    if (typeof this.encryptionAvailable === "boolean") return this.encryptionAvailable;
+    if (this.encryptionAvailable === true) return true;
     if (this.encryptionAvailable) return this.encryptionAvailable;
 
-    this.encryptionAvailable = (async () => {
+    const availability = (async () => {
       try {
         if (this._safeStorage) {
           const method =
@@ -78,9 +91,13 @@ class SecretStore {
       }
     })();
 
-    this.encryptionAvailable = await this.encryptionAvailable;
-    if (!this.encryptionAvailable) this.warnUnavailable();
-    return this.encryptionAvailable;
+    this.encryptionAvailable = availability;
+    const available = await availability;
+    // A transient IPC/keyring failure must not condemn the whole window to
+    // session-only storage. Cache success, but retry a failure next time.
+    this.encryptionAvailable = available ? true : null;
+    if (!available) this.warnUnavailable();
+    return available;
   }
 
   warnUnavailable() {
@@ -95,25 +112,47 @@ class SecretStore {
     }
   }
 
-  loadEntries() {
-    if (this.entries) return this.entries;
-    this.entries = new Map();
+  readEntries() {
+    const entries = new Map();
     try {
       const parsed = JSON.parse(fs.readFileSync(this.storagePath, "utf8"));
       for (const key of Object.keys(parsed)) {
-        if (typeof parsed[key] === "string") this.entries.set(key, parsed[key]);
+        if (typeof parsed[key] === "string") entries.set(key, parsed[key]);
       }
     } catch {
       // No store yet, or an unreadable/corrupt file: start empty.
     }
+    return entries;
+  }
+
+  loadEntries({ reload = false } = {}) {
+    if (this.entries && !reload) return this.entries;
+    this.entries = this.readEntries();
     return this.entries;
   }
 
-  persistEntries() {
+  persistEntries(entries = this.loadEntries()) {
     const object = {};
-    for (const [key, value] of this.loadEntries()) object[key] = value;
+    for (const [key, value] of entries) object[key] = value;
     fs.mkdirSync(path.dirname(this.storagePath), { recursive: true });
     fs.writeFileSync(this.storagePath, JSON.stringify(object), { mode: 0o600 });
+    this.entries = entries;
+  }
+
+  startWatching() {
+    if (this.watching) return;
+    this.watching = true;
+    fs.watchFile(this.storagePath, { persistent: false, interval: 250 }, this.handleStorageChange);
+  }
+
+  handleStorageChange() {
+    const previous = this.entries || new Map();
+    const current = this.readEntries();
+    this.entries = current;
+    const keys = new Set([...previous.keys(), ...current.keys()]);
+    for (const key of keys) {
+      if (previous.get(key) !== current.get(key)) this.emitter.emit("did-change", { key });
+    }
   }
 
   /**
@@ -129,7 +168,12 @@ class SecretStore {
     if (!(await this.isEncryptionAvailable())) {
       return this.memory.has(key) ? this.memory.get(key) : null;
     }
-    const ciphertext = this.loadEntries().get(key);
+    if (this.memory.has(key)) {
+      const value = this.memory.get(key);
+      await this.set(key, value);
+      return value;
+    }
+    const ciphertext = this.loadEntries({ reload: true }).get(key);
     if (ciphertext == null) return null;
     try {
       let decrypted;
@@ -145,8 +189,15 @@ class SecretStore {
       }
 
       if (decrypted.replacementCiphertext) {
-        this.loadEntries().set(key, decrypted.replacementCiphertext);
-        this.persistEntries();
+        await this.withStorageLock(async () => {
+          const entries = this.loadEntries({ reload: true });
+          // Do not let a re-encryption of the value we just read overwrite a
+          // newer value written by another window while decryption was pending.
+          if (entries.get(key) === ciphertext) {
+            entries.set(key, decrypted.replacementCiphertext);
+            this.persistEntries(entries);
+          }
+        });
       }
       return decrypted.result;
     } catch {
@@ -180,8 +231,12 @@ class SecretStore {
     } else {
       ciphertext = await this.applicationDelegate.invokeSafeStorage("encrypt", String(value));
     }
-    this.loadEntries().set(key, ciphertext);
-    this.persistEntries();
+    await this.withStorageLock(async () => {
+      const entries = this.loadEntries({ reload: true });
+      entries.set(key, ciphertext);
+      this.persistEntries(entries);
+    });
+    this.memory.delete(key);
     this.emitter.emit("did-change", { key });
   }
 
@@ -198,10 +253,13 @@ class SecretStore {
    */
   async delete(key) {
     let changed = this.memory.delete(key);
-    if (this.loadEntries().delete(key)) {
-      this.persistEntries();
-      changed = true;
-    }
+    await this.withStorageLock(async () => {
+      const entries = this.loadEntries({ reload: true });
+      if (entries.delete(key)) {
+        this.persistEntries(entries);
+        changed = true;
+      }
+    });
     if (changed) this.emitter.emit("did-change", { key });
   }
 
@@ -223,10 +281,15 @@ class SecretStore {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChange(callback) {
+    this.startWatching();
     return this.emitter.on("did-change", callback);
   }
 
   dispose() {
+    if (this.watching) {
+      fs.unwatchFile(this.storagePath, this.handleStorageChange);
+      this.watching = false;
+    }
     this.emitter.dispose();
   }
 }

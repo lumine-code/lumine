@@ -80,6 +80,59 @@ describe("SecretStore", () => {
     expect(warnings.length).toBe(1);
   });
 
+  it("retries native encryption and persists a session value after a transient failure", async () => {
+    const safeStorage = fakeSafeStorage(false);
+    const store = new SecretStore({ safeStorage, storagePath });
+
+    await store.set("k", "v");
+    expect(fs.existsSync(storagePath)).toBe(false);
+
+    safeStorage.available = true;
+    expect(await store.get("k")).toBe("v");
+    const reopened = new SecretStore({ safeStorage, storagePath });
+    expect(await reopened.get("k")).toBe("v");
+  });
+
+  it("reloads other windows' entries before writing", async () => {
+    const safeStorage = fakeSafeStorage();
+    const first = new SecretStore({ safeStorage, storagePath });
+    const second = new SecretStore({ safeStorage, storagePath });
+
+    await first.set("a", "one");
+    expect(await second.get("a")).toBe("one");
+    await first.set("b", "two");
+    await second.set("c", "three");
+
+    const reopened = new SecretStore({ safeStorage, storagePath });
+    expect(await reopened.get("a")).toBe("one");
+    expect(await reopened.get("b")).toBe("two");
+    expect(await reopened.get("c")).toBe("three");
+  });
+
+  it("emits changes written by another window", async () => {
+    const safeStorage = fakeSafeStorage();
+    const first = new SecretStore({ safeStorage, storagePath });
+    const second = new SecretStore({ safeStorage, storagePath });
+    const externalChange = new Promise((resolve, reject) => {
+      const timeout = setTimeout(
+        () => reject(new Error("external secret change timed out")),
+        2_000,
+      );
+      second.onDidChange(({ key }) => {
+        clearTimeout(timeout);
+        resolve(key);
+      });
+    });
+    expect(await second.get("shared")).toBe(null);
+
+    await first.set("shared", "value");
+
+    expect(await externalChange).toBe("shared");
+    expect(await second.get("shared")).toBe("value");
+    first.dispose();
+    second.dispose();
+  });
+
   it("uses the asynchronous safe-storage contract and persists replacement ciphertext", async () => {
     let encryptedValue = "enc:first";
     const safeStorage = {
