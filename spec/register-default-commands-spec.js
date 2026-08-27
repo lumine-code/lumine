@@ -76,7 +76,7 @@ describe("registerDefaultCommands", () => {
     const commands = commandNamesRegisteredOn("win32");
 
     expect(commands.has("application:reopen-window-in-dev-mode")).toBe(true);
-    expect(commands.has("core:update-repositories")).toBe(true);
+    expect(commands.has("git:update-repositories")).toBe(true);
     expect(commands.has("editor:collapse-blank-lines")).toBe(true);
     expect(commands.has("editor:collapse-content-spaces")).toBe(true);
     expect(commands.has("editor:delete-to-next-line-content")).toBe(true);

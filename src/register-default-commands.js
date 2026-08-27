@@ -163,7 +163,7 @@ module.exports = function ({
       "application:add-project-folder": function () {
         return lumine.addProjectFolder();
       },
-      "core:update-repositories": {
+      "git:update-repositories": {
         description: "Look for Git repositories again and reread what each one holds.",
         didDispatch: function () {
           return repositories.update();
