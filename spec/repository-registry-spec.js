@@ -1206,6 +1206,37 @@ describe("RepositoryRegistry", () => {
     expect(events[1].event.error).toBeNull();
   });
 
+  it("rescans and refreshes every initialized repository cache on update", async () => {
+    const workdir = temp.mkdirSync("updated-repository");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    project.directories = [directoryFor(workdir)];
+
+    const result = await registry.update();
+
+    expect(result).toEqual([repository]);
+    expect(repository.refreshIndexCount).toBe(1);
+    expect(repository.refreshStatusCount).toBe(1);
+    expect(repository.refreshStatusSnapshotCount).toBe(1);
+    expect(repository.refreshRefsSnapshotCount).toBe(1);
+  });
+
+  it("keeps uninitialized repository snapshots lazy on update", async () => {
+    const workdir = temp.mkdirSync("lazily-updated-repository");
+    const repository = new FakeRepository(workdir);
+    repository.statusSnapshot = { initialized: false };
+    repository.refsSnapshot = { initialized: false };
+    repositories.push(repository);
+    project.directories = [directoryFor(workdir)];
+
+    await registry.update();
+
+    expect(repository.refreshIndexCount).toBe(1);
+    expect(repository.refreshStatusCount).toBe(1);
+    expect(repository.refreshStatusSnapshotCount).toBe(0);
+    expect(repository.refreshRefsSnapshotCount).toBe(0);
+  });
+
   it("optionally detects repositories added and removed below a root", () => {
     registry.destroy();
     registry = new RepositoryRegistry({

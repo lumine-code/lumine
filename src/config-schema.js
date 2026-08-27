@@ -594,7 +594,7 @@ const configSchema = {
       watchDiscovery: {
         title: "Watch For Repositories",
         description:
-          "Detect Git repositories created or removed below project roots, so initializing or deleting one reaches the tree view and the Git panel without a reload. Disable this on very large directory trees and use the repository rescan command instead.",
+          "Detect Git repositories created or removed below project roots, so initializing or deleting one reaches the tree view and the Git panel without a reload. Disable this on very large directory trees and use the repository update command instead.",
         type: "boolean",
         default: true,
       },

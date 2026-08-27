@@ -1785,6 +1785,42 @@ module.exports = class RepositoryRegistry {
     }
   }
 
+  /**
+   * @public
+   * @status public
+   *
+   * Discover the current repository set again, then refresh every repository's
+   * already-active caches and snapshots.
+   *
+   * Snapshot caches stay lazy: a status or refs snapshot that no consumer has
+   * initialized is not loaded merely because of an update. A refresh failure in
+   * one repository does not prevent the others from updating.
+   *
+   * @returns {Promise} that resolves to an `Array` of every registered {@link GitRepository}.
+   */
+  async update() {
+    await this.rescan();
+    const repositories = this.getRepositories();
+
+    await Promise.allSettled(
+      repositories.map(async (repository) => {
+        repository.refreshIndex?.();
+
+        const refreshes = [];
+        if (repository.refreshStatus) refreshes.push(repository.refreshStatus());
+        if (repository.refreshStatusSnapshot && repository.getStatusSnapshot?.().initialized) {
+          refreshes.push(repository.refreshStatusSnapshot());
+        }
+        if (repository.refreshRefsSnapshot && repository.getRefsSnapshot?.().initialized) {
+          refreshes.push(repository.refreshRefsSnapshot());
+        }
+        await Promise.all(refreshes);
+      }),
+    );
+
+    return repositories;
+  }
+
   async scanProjectRoots({ generation = this.scanGeneration, depth } = {}) {
     const scanDepth = depth ?? this.config?.get("git.scanDepth") ?? 1;
     if (scanDepth < 1) return [];

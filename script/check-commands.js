@@ -129,7 +129,6 @@ const EDITOR_NAMESPACES = [
   "window",
   "application",
   "modal",
-  "repositories",
   "git",
 ];
 
