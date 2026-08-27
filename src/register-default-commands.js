@@ -362,6 +362,24 @@ module.exports = function ({
     );
   }
   commandRegistry.add(
+    "lumine-dock",
+    {
+      "dock:hide": {
+        description: "Hide this dock.",
+        didDispatch: function () {
+          const workspace = this.closest("lumine-workspace")?.getModel?.();
+          const dock = [
+            workspace?.getLeftDock(),
+            workspace?.getRightDock(),
+            workspace?.getBottomDock(),
+          ].find((candidate) => candidate?.getElement() === this);
+          return dock?.hide();
+        },
+      },
+    },
+    false,
+  );
+  commandRegistry.add(
     "lumine-pane",
     {
       "pane:save-items": {

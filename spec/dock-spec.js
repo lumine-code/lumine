@@ -3,8 +3,8 @@ const etch = require("@lumine-code/etch");
 const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
 
 describe("Dock", () => {
-  describe("an empty split pane's context menu", () => {
-    it("offers Close Panel in every dock after the environment is reset", async () => {
+  describe("an empty dock's context menu", () => {
+    it("offers Hide Dock in every dock and hides the selected dock", async () => {
       await lumine.reset();
       jasmine.attachToDOM(lumine.workspace.getElement());
 
@@ -15,16 +15,43 @@ describe("Dock", () => {
       ];
 
       for (const dock of docks) {
+        dock.show();
         const pane = dock.getActivePane();
-        pane.addItem(document.createElement("div"));
-        const emptyPane = pane.splitRight();
-        const itemViews = emptyPane.getElement().querySelector(":scope > .item-views");
+        const itemViews = pane.getElement().querySelector(":scope > .item-views");
         const items = lumine.contextMenu
           .templateForElement(itemViews)
           .map(({ label, command }) => ({ label, command }));
 
-        expect(items).toEqual([{ label: "Close Panel", command: "pane:close" }]);
+        expect(items).toEqual([{ label: "Hide Dock", command: "dock:hide" }]);
+        expect(dock.isVisible()).toBe(true);
+        lumine.commands.dispatch(itemViews, "dock:hide");
+        expect(dock.isVisible()).toBe(false);
       }
+    });
+  });
+
+  describe("an empty split pane's context menu", () => {
+    it("offers Close Pane and Hide Dock", async () => {
+      await lumine.reset();
+      jasmine.attachToDOM(lumine.workspace.getElement());
+
+      const dock = lumine.workspace.getLeftDock();
+      const occupiedPane = dock.getActivePane();
+      occupiedPane.addItem(document.createElement("div"));
+      const emptyPane = occupiedPane.splitRight();
+      const itemViews = emptyPane.getElement().querySelector(":scope > .item-views");
+      const items = lumine.contextMenu
+        .templateForElement(itemViews)
+        .map(({ label, command }) => ({ label, command }));
+
+      expect(items).toEqual([
+        { label: "Close Pane", command: "pane:close" },
+        { label: "Hide Dock", command: "dock:hide" },
+      ]);
+      await lumine.commands.dispatch(itemViews, "pane:close");
+      expect(emptyPane.isDestroyed()).toBe(true);
+      expect(dock.getPanes()).toEqual([occupiedPane]);
+      expect(dock.isVisible()).toBe(true);
     });
   });
 

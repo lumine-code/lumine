@@ -693,13 +693,29 @@
         "type": "separator"
       }
     ],
-    "lumine-dock lumine-pane > .item-views:empty": [
+    "lumine-dock lumine-pane-container > lumine-pane > .item-views:empty": [
       {
         "type": "separator"
       },
       {
-        "label": "Close Panel",
+        "label": "Hide Dock",
+        "command": "dock:hide"
+      },
+      {
+        "type": "separator"
+      }
+    ],
+    "lumine-dock lumine-pane-axis lumine-pane > .item-views:empty": [
+      {
+        "type": "separator"
+      },
+      {
+        "label": "Close Pane",
         "command": "pane:close"
+      },
+      {
+        "label": "Hide Dock",
+        "command": "dock:hide"
       },
       {
         "type": "separator"
