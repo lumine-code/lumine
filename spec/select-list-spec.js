@@ -1120,6 +1120,8 @@ describe("SelectListView", () => {
     });
 
     it("hides item actions without a selection and keeps list actions", async () => {
+      const resolver = jasmine.createSpy("confirmAction").and.returnValue(null);
+      view.props.confirmAction = resolver;
       disposables.add(
         lumine.commands.add(view.element, {
           "spec:list-action": {
@@ -1132,6 +1134,7 @@ describe("SelectListView", () => {
 
       await view.selectNone();
       expect(view.itemActions().map((action) => action.command)).toEqual(["spec:list-action"]);
+      expect(resolver).toHaveBeenCalledWith(null);
     });
 
     it("does not resolve confirmAction for the Show more row", async () => {

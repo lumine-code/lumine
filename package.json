@@ -39,7 +39,7 @@
     "@lumine-code/keyboard-layout": "github:lumine-code/keyboard-layout#b9f185c336eafddb2d6c245787dd215a2f10eff6",
     "@lumine-code/season": "github:lumine-code/season#b9d78e669eff982a40e0e71a9b6ccbcc8c2d9519",
     "@lumine-code/second-mate": "github:lumine-code/second-mate#182758099f2d6131c79236d25b5d581a2b8d17b7",
-    "@lumine-code/select-list": "github:lumine-code/select-list#4940be82fdd00acb81ff15c9d1c9c3db601544f3",
+    "@lumine-code/select-list": "github:lumine-code/select-list#c374b0af69df82e3335228f9a007acbfed58629e",
     "@lumine-code/selector-store": "github:lumine-code/selector-store#8190d9f7ead061296de735084918d535a9711460",
     "@lumine-code/superstring": "github:lumine-code/superstring#c804e3ca81dadeaf357de6f58b79476a7734b135",
     "@lumine-code/temp": "github:lumine-code/node-temp#2a0b2ce5f1c90a8041f6043cfe52d75ceadb364d",
