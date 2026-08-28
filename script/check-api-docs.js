@@ -3,10 +3,9 @@
 const fs = require("node:fs");
 const path = require("node:path");
 const parser = require("@babel/parser");
-const { extractApi } = require("./api-extractor");
+const { apiSourceFiles, extractApi } = require("./api-extractor");
 
 const editorRoot = path.resolve(__dirname, "..");
-const sourceRoot = path.join(editorRoot, "src");
 const primitiveReferences = [
   "Array",
   "Boolean",
@@ -23,14 +22,6 @@ const primitiveReferences = [
   "Symbol",
   "Uint8Array",
 ];
-
-function walk(directory) {
-  return fs.readdirSync(directory, { withFileTypes: true }).flatMap((entry) => {
-    const fullPath = path.join(directory, entry.name);
-    if (entry.isDirectory()) return walk(fullPath);
-    return entry.isFile() && entry.name.endsWith(".js") ? [fullPath] : [];
-  });
-}
 
 function withoutMarkdownCode(markdown) {
   return markdown.replace(/```[\s\S]*?```|~~~[\s\S]*?~~~/g, "").replace(/`[^`\n]*`/g, "");
@@ -53,7 +44,7 @@ function checkDocumentationSyntax(api) {
   const legacyReference = new RegExp(`\\{(?:::[$\\w]+|[$\\w]+::[$\\w]+|(?:${referenceNames}))\\}`);
   const failures = [];
 
-  for (const filePath of walk(sourceRoot)) {
+  for (const filePath of apiSourceFiles(editorRoot)) {
     const source = fs.readFileSync(filePath, "utf8");
     let ast;
     try {

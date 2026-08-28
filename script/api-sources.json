@@ -1,0 +1,11 @@
+{
+  "dependencySources": {
+    "@lumine-code/event-kit": [
+      "lib/composite-disposable.js",
+      "lib/disposable.js",
+      "lib/emitter.js"
+    ],
+    "@lumine-code/second-mate": ["lib/grammar.js"]
+  },
+  "requiredClasses": ["CompositeDisposable", "Disposable", "Emitter", "Grammar"]
+}

@@ -28,6 +28,102 @@ function walk(directory) {
   });
 }
 
+function repositoryUrl(packageMetadata, fallback) {
+  const repository =
+    typeof packageMetadata.repository === "string"
+      ? packageMetadata.repository
+      : packageMetadata.repository?.url;
+  return (repository || fallback).replace(/^git\+/, "").replace(/\.git$/, "");
+}
+
+function readPackageMetadata(packageRoot) {
+  const manifestPath = path.join(packageRoot, "package.json");
+  if (!fs.existsSync(manifestPath)) {
+    throw new Error(`API source package has no manifest: ${manifestPath}`);
+  }
+  return JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+}
+
+function dependencyPackageRoot(editorRoot, packageName) {
+  const directoryName = packageName.split("/").at(-1);
+  const candidates = [
+    path.join(path.dirname(editorRoot), directoryName),
+    path.join(editorRoot, "node_modules", ...packageName.split("/")),
+  ];
+  for (const candidate of candidates) {
+    const manifestPath = path.join(candidate, "package.json");
+    if (!fs.existsSync(manifestPath)) continue;
+    const metadata = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+    if (metadata.name === packageName) return candidate;
+  }
+  throw new Error(
+    `Unable to locate API source package ${packageName}; expected a workspace sibling or installed dependency.`,
+  );
+}
+
+function sourceFile(packageRoot, relativePath) {
+  if (typeof relativePath !== "string" || !relativePath.endsWith(".js")) {
+    throw new Error(`Invalid API source path in ${packageRoot}: ${relativePath}`);
+  }
+  const resolvedPath = path.resolve(packageRoot, relativePath);
+  const relative = path.relative(packageRoot, resolvedPath);
+  if (!relative || relative.startsWith("..") || path.isAbsolute(relative)) {
+    throw new Error(`API source escapes its package root: ${relativePath}`);
+  }
+  if (!fs.existsSync(resolvedPath)) {
+    throw new Error(`API source does not exist: ${resolvedPath}`);
+  }
+  return resolvedPath;
+}
+
+function readSourceConfiguration(editorRoot) {
+  const configurationPath = path.join(editorRoot, "script", "api-sources.json");
+  if (!fs.existsSync(configurationPath)) {
+    throw new Error(`The editor checkout has no API source registry: ${configurationPath}`);
+  }
+  return JSON.parse(fs.readFileSync(configurationPath, "utf8"));
+}
+
+function sourceInputs(editorRoot, packageMetadata, sourceConfiguration) {
+  const editorSourceRoot = path.join(editorRoot, "src");
+  if (!fs.existsSync(editorSourceRoot)) {
+    throw new Error(`API source does not exist: ${editorSourceRoot}`);
+  }
+  const inputs = [
+    {
+      root: editorRoot,
+      repository: repositoryUrl(packageMetadata, "https://github.com/lumine-code/lumine"),
+      files: walk(editorSourceRoot),
+    },
+  ];
+  const dependencySources = sourceConfiguration.dependencySources || {};
+  for (const [packageName, relativePaths] of Object.entries(dependencySources)) {
+    if (!Array.isArray(relativePaths) || relativePaths.length === 0) {
+      throw new Error(`API source package ${packageName} must list at least one file.`);
+    }
+    const packageRoot = dependencyPackageRoot(editorRoot, packageName);
+    const metadata = readPackageMetadata(packageRoot);
+    inputs.push({
+      root: packageRoot,
+      repository: repositoryUrl(
+        metadata,
+        `https://github.com/lumine-code/${packageName.split("/").at(-1)}`,
+      ),
+      files: relativePaths.map((relativePath) => sourceFile(packageRoot, relativePath)),
+    });
+  }
+  return inputs;
+}
+
+function apiSourceFiles(editorRoot) {
+  const resolvedRoot = path.resolve(editorRoot);
+  const packageMetadata = readPackageMetadata(resolvedRoot);
+  const sourceConfiguration = readSourceConfiguration(resolvedRoot);
+  return sourceInputs(resolvedRoot, packageMetadata, sourceConfiguration).flatMap(
+    ({ files }) => files,
+  );
+}
+
 function visit(node, ancestors, callback) {
   if (!node || typeof node !== "object") return;
   callback(node, ancestors.at(-1), ancestors);
@@ -533,13 +629,14 @@ function parseFile(filePath, sourceInput, options) {
         }
         memberNames.add(memberKey);
       }
+      const sourcePath = path.relative(sourceInput.root, filePath).replaceAll("\\", "/");
       classes.push({
         name,
         visibility: classDoc?.visibility || inferredVisibility(members),
         description: classDoc?.description || (isDirective(own) ? "" : own),
         summary: classDoc?.summary || firstParagraph(isDirective(own) ? "" : own),
-        source: `${sourceInput.label}/${path.relative(sourceInput.root, filePath).replaceAll("\\", "/")}`,
-        sourcePath: `src/${path.relative(sourceInput.root, filePath).replaceAll("\\", "/")}`,
+        source: sourcePath,
+        sourcePath,
         repository: sourceInput.repository,
         line: node.loc.start.line,
         members,
@@ -554,6 +651,7 @@ function parseFile(filePath, sourceInput, options) {
         strict: options.strict,
         context,
       });
+      const sourcePath = path.relative(sourceInput.root, filePath).replaceAll("\\", "/");
       functions.push({
         name: node.id.name,
         signature: `${node.id.name}(${parameters.map((item) => item.source).join(", ")})`,
@@ -563,8 +661,8 @@ function parseFile(filePath, sourceInput, options) {
         parameters,
         returnType: doc.returns?.type || null,
         returnDescription: doc.returns?.description || "",
-        source: `${sourceInput.label}/${path.relative(sourceInput.root, filePath).replaceAll("\\", "/")}`,
-        sourcePath: `src/${path.relative(sourceInput.root, filePath).replaceAll("\\", "/")}`,
+        source: sourcePath,
+        sourcePath,
         repository: sourceInput.repository,
         line: node.loc.start.line,
       });
@@ -662,22 +760,13 @@ function extractApi({ editorRoot, parser, strict = true }) {
   if (!editorRoot) throw new Error("extractApi requires editorRoot.");
   if (!parser?.parse) throw new Error("extractApi requires a parser with a parse() method.");
   const resolvedRoot = path.resolve(editorRoot);
-  const sourceRoot = path.join(resolvedRoot, "src");
-  if (!fs.existsSync(sourceRoot)) throw new Error(`API source does not exist: ${sourceRoot}`);
   const packageMetadata = JSON.parse(
     fs.readFileSync(path.join(resolvedRoot, "package.json"), "utf8"),
   );
-  const repository =
-    typeof packageMetadata.repository === "string"
-      ? packageMetadata.repository
-      : packageMetadata.repository?.url;
-  const sourceInput = {
-    root: sourceRoot,
-    label: "src",
-    repository: (repository || "https://github.com/lumine-code/lumine").replace(/\.git$/, ""),
-  };
-  const parsed = walk(sourceRoot).map((filePath) =>
-    parseFile(filePath, sourceInput, { parser, strict }),
+  const sourceConfiguration = readSourceConfiguration(resolvedRoot);
+  const parsed = sourceInputs(resolvedRoot, packageMetadata, sourceConfiguration).flatMap(
+    (sourceInput) =>
+      sourceInput.files.map((filePath) => parseFile(filePath, sourceInput, { parser, strict })),
   );
   const classes = uniqueByName(
     parsed.flatMap((item) => item.classes),
@@ -685,6 +774,12 @@ function extractApi({ editorRoot, parser, strict = true }) {
   ).sort(compareClasses);
   if (classes[0]?.name !== "Environment") {
     throw new Error("Environment must be the first generated API class.");
+  }
+  const requiredClasses = sourceConfiguration.requiredClasses || [];
+  const classNames = new Set(classes.map(({ name }) => name));
+  const missingClasses = requiredClasses.filter((name) => !classNames.has(name));
+  if (missingClasses.length) {
+    throw new Error(`Required API classes were not extracted: ${missingClasses.join(", ")}.`);
   }
   const functions = uniqueByName(
     parsed.flatMap((item) => item.functions),
@@ -701,4 +796,4 @@ function extractApi({ editorRoot, parser, strict = true }) {
   };
 }
 
-module.exports = { API_STATUSES, SCHEMA_VERSION, extractApi };
+module.exports = { API_STATUSES, SCHEMA_VERSION, apiSourceFiles, extractApi };

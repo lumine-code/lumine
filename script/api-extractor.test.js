@@ -13,6 +13,7 @@ const fixturePath = path.join(__dirname, "fixtures", "api-extractor", "modern-ap
 function editorFixture(source = fs.readFileSync(fixturePath, "utf8")) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), "lumine-api-extractor-"));
   fs.mkdirSync(path.join(root, "src"));
+  fs.mkdirSync(path.join(root, "script"));
   fs.writeFileSync(
     path.join(root, "package.json"),
     JSON.stringify({
@@ -22,8 +23,57 @@ function editorFixture(source = fs.readFileSync(fixturePath, "utf8")) {
       repository: "https://github.com/lumine-code/lumine",
     }),
   );
+  fs.writeFileSync(
+    path.join(root, "script", "api-sources.json"),
+    JSON.stringify({ dependencySources: {}, requiredClasses: [] }),
+  );
   fs.writeFileSync(path.join(root, "src", "fixture.js"), source);
   return root;
+}
+
+function addDependencyApiSource(root, { requiredClasses = ["Disposable"] } = {}) {
+  const packageName = "@fixture/event-kit";
+  const packageRoot = path.join(root, "node_modules", "@fixture", "event-kit");
+  fs.mkdirSync(path.join(packageRoot, "lib"), { recursive: true });
+  fs.writeFileSync(
+    path.join(packageRoot, "package.json"),
+    JSON.stringify({
+      name: packageName,
+      repository: {
+        type: "git",
+        url: "git+https://github.com/lumine-code/event-kit.git",
+      },
+    }),
+  );
+  fs.writeFileSync(
+    path.join(packageRoot, "lib", "disposable.js"),
+    `/**
+ * @public
+ * @status essential
+ *
+ * A handle to a resource that can be disposed.
+ */
+module.exports = class Disposable {
+  /**
+   * @public
+   * @status public
+   *
+   * Release the resource.
+   */
+  dispose() {}
+};
+`,
+  );
+
+  fs.writeFileSync(
+    path.join(root, "script", "api-sources.json"),
+    JSON.stringify({
+      dependencySources: {
+        [packageName]: ["lib/disposable.js"],
+      },
+      requiredClasses,
+    }),
+  );
 }
 
 test("extracts structured JSDoc metadata from modern JavaScript", (context) => {
@@ -83,6 +133,42 @@ test("normalizes CRLF input", (context) => {
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const api = extractApi({ editorRoot: root, parser });
   assert.equal(api.memberCount, 7);
+});
+
+test("requires the canonical API source registry", (context) => {
+  const root = editorFixture();
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.rmSync(path.join(root, "script", "api-sources.json"));
+
+  assert.throws(
+    () => extractApi({ editorRoot: root, parser }),
+    /editor checkout has no API source registry/,
+  );
+});
+
+test("extracts required API classes from dependency source files", (context) => {
+  const root = editorFixture();
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  addDependencyApiSource(root);
+
+  const api = extractApi({ editorRoot: root, parser });
+  const disposable = api.classes.find(({ name }) => name === "Disposable");
+  assert.ok(disposable);
+  assert.equal(disposable.source, "lib/disposable.js");
+  assert.equal(disposable.sourcePath, "lib/disposable.js");
+  assert.equal(disposable.repository, "https://github.com/lumine-code/event-kit");
+  assert.equal(disposable.members[0].name, "dispose");
+});
+
+test("rejects missing required dependency classes", (context) => {
+  const root = editorFixture();
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  addDependencyApiSource(root, { requiredClasses: ["Disposable", "Emitter"] });
+
+  assert.throws(
+    () => extractApi({ editorRoot: root, parser }),
+    /Required API classes were not extracted: Emitter/,
+  );
 });
 
 test("uses a grammatical article for synthesized property descriptions", (context) => {
