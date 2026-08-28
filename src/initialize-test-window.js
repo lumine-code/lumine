@@ -3,7 +3,10 @@ const focusTestWindow = require("./focus-test-window");
 const { stopAllWatchers } = require("./path-watcher");
 const { setTimeout: delay } = require("node:timers/promises");
 
-const OUTPUT_DRAIN_TIMEOUT_MS = 5000;
+const HEADLESS_TEARDOWN_TIMEOUT_MS = 5000;
+
+const waitForHeadlessTeardown = (promise) =>
+  Promise.race([promise, delay(HEADLESS_TEARDOWN_TIMEOUT_MS, undefined, { ref: false })]);
 
 function cloneObject(object) {
   const clone = {};
@@ -27,10 +30,7 @@ module.exports = async function ({ blobStore }) {
   };
   const exitWithStatusCode = async (status) => {
     try {
-      await Promise.race([
-        Promise.all([flushOutputStreams(), pendingOutput]),
-        delay(OUTPUT_DRAIN_TIMEOUT_MS, undefined, { ref: false }),
-      ]);
+      await waitForHeadlessTeardown(Promise.all([flushOutputStreams(), pendingOutput]));
     } catch {
       status = 1;
     }
@@ -192,7 +192,7 @@ module.exports = async function ({ blobStore }) {
       // buffers briefly. Stop the shared manager before flushing output and
       // asking Electron to exit, or a macOS watcher worker can keep an
       // otherwise-complete headless suite alive indefinitely.
-      await stopAllWatchers();
+      await waitForHeadlessTeardown(stopAllWatchers());
       await exitWithStatusCode(statusCode);
     }
   } catch (error) {
