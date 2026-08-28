@@ -475,6 +475,7 @@ lumine-text-editor[mini] {
      always outranked — minis have rendered single-line all along, and a
      taller mini overflows the workspace and drags every fixed overlay with
      the scroll. */
+  height: calc(var(--ui-line-height) + 2px);
   max-height: calc(var(--ui-line-height) + 2px);
   padding-left: calc(var(--ui-padding) / 3);
   color: var(--text-color-highlight);
