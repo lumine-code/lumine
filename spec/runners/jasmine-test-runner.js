@@ -319,6 +319,7 @@ const buildHeadlessExitReporter = () => {
 
     jasmineDone: () => {
       const status = failedSpecs.length || Grim.getDeprecationsLength() > 0 ? 1 : 0;
+      process.stderr.write(`LUMINE_TEST_EXIT_STATUS=${status}\n`);
       require("electron").ipcRenderer.sendSync("lumine:test-exit", "exit", status);
     },
   };
