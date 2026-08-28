@@ -210,7 +210,7 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
     // Add the reporter and register the promise resolve as a callback
     jasmineEnv.addReporter(buildMetadataReporter());
     jasmineEnv.addReporter(buildReporter({ logFile, headless }));
-    jasmineEnv.addReporter(buildCompletionReporter(resolve));
+    jasmineEnv.addReporter(buildCompletionReporter(resolve, { headless }));
 
     // And finally execute the tests
     jasmineEnv.execute();
@@ -304,7 +304,7 @@ const buildReporter = ({ logFile, headless }) => {
   }
 };
 
-const buildCompletionReporter = (onCompleteCallback) => {
+const buildCompletionReporter = (onCompleteCallback, { headless }) => {
   const failedSpecs = [];
 
   return {
@@ -320,10 +320,15 @@ const buildCompletionReporter = (onCompleteCallback) => {
     },
 
     jasmineDone: () => {
-      onCompleteCallback({
+      const result = {
         failedSpecs,
         hasDeprecations: Grim.getDeprecationsLength() > 0,
-      });
+      };
+      if (headless) {
+        const status = result.failedSpecs.length || result.hasDeprecations ? 1 : 0;
+        void require("electron").ipcRenderer.invoke("lumine:test", "arm-exit", status);
+      }
+      onCompleteCallback(result);
     },
   };
 };
