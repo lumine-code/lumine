@@ -122,15 +122,7 @@ const MAX_LENGTH = 76;
 
 // The editor's own commands are not namespaced by its package name, so the
 // derivation that works for every package needs the list spelled out here.
-const EDITOR_NAMESPACES = [
-  "core",
-  "editor",
-  "pane",
-  "window",
-  "application",
-  "modal",
-  "git",
-];
+const EDITOR_NAMESPACES = ["core", "editor", "pane", "window", "application", "modal", "git"];
 
 const namespacesFor = (packageName) =>
   packageName === "lumine" ? EDITOR_NAMESPACES : [packageName];
