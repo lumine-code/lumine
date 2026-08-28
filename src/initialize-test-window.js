@@ -1,5 +1,6 @@
 const { requireModule } = require("./module-utils");
 const focusTestWindow = require("./focus-test-window");
+const { stopAllWatchers } = require("./path-watcher");
 
 function cloneObject(object) {
   const clone = {};
@@ -178,6 +179,11 @@ module.exports = async function ({ blobStore }) {
     });
 
     if (getWindowLoadSettings().headless) {
+      // Package specs may create native file watchers that outlive their
+      // buffers briefly. Stop the shared manager before flushing output and
+      // asking Electron to exit, or a macOS watcher worker can keep an
+      // otherwise-complete headless suite alive indefinitely.
+      await stopAllWatchers();
       await exitWithStatusCode(statusCode);
     }
   } catch (error) {
