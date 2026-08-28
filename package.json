@@ -28,7 +28,7 @@
   "dependencies": {
     "@babel/core": "8.0.1",
     "@jasminejs/reporters": "1.1.0",
-    "@lumine-code/babel-preset": "github:lumine-code/babel-preset#c6750929ac35150101c5fd157253c94cbaeb653a",
+    "@lumine-code/babel-preset": "github:lumine-code/babel-preset#6cfc10c5cfec29ac2e6c729b3bf2b9d9db5dabc2",
     "@lumine-code/ctags": "github:lumine-code/node-ctags#3c79cc6ab165ad4fc13d7002e305cb96f733612d",
     "@lumine-code/etch": "github:lumine-code/etch#c420908b271dab03ccc97ecf41e2534fc4277b32",
     "@lumine-code/event-kit": "github:lumine-code/event-kit#e58590f906728e92a9e13504fe2a55b0514926be",
