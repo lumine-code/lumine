@@ -209,8 +209,12 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
 
     // Add the reporter and register the promise resolve as a callback
     jasmineEnv.addReporter(buildMetadataReporter());
+    // Arm the headless exit before the output reporter flushes its final
+    // report. Jasmine awaits reporters in registration order, and on macOS a
+    // renderer retaining native handles can stall that flush indefinitely.
+    if (headless) jasmineEnv.addReporter(buildExitBackstopReporter());
     jasmineEnv.addReporter(buildReporter({ logFile, headless }));
-    jasmineEnv.addReporter(buildCompletionReporter(resolve, { headless }));
+    jasmineEnv.addReporter(buildCompletionReporter(resolve));
 
     // And finally execute the tests
     jasmineEnv.execute();
@@ -304,7 +308,22 @@ const buildReporter = ({ logFile, headless }) => {
   }
 };
 
-const buildCompletionReporter = (onCompleteCallback, { headless }) => {
+const buildExitBackstopReporter = () => {
+  const failedSpecs = [];
+
+  return {
+    specDone: (spec) => {
+      if (spec.status === "failed") failedSpecs.push(spec);
+    },
+
+    jasmineDone: () => {
+      const status = failedSpecs.length || Grim.getDeprecationsLength() > 0 ? 1 : 0;
+      void require("electron").ipcRenderer.invoke("lumine:test", "arm-exit", status);
+    },
+  };
+};
+
+const buildCompletionReporter = (onCompleteCallback) => {
   const failedSpecs = [];
 
   return {
@@ -320,15 +339,10 @@ const buildCompletionReporter = (onCompleteCallback, { headless }) => {
     },
 
     jasmineDone: () => {
-      const result = {
+      onCompleteCallback({
         failedSpecs,
         hasDeprecations: Grim.getDeprecationsLength() > 0,
-      };
-      if (headless) {
-        const status = result.failedSpecs.length || result.hasDeprecations ? 1 : 0;
-        void require("electron").ipcRenderer.invoke("lumine:test", "arm-exit", status);
-      }
-      onCompleteCallback(result);
+      });
     },
   };
 };
