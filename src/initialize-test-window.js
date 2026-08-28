@@ -34,7 +34,7 @@ module.exports = async function ({ blobStore }) {
     } catch {
       status = 1;
     }
-    await ipcRenderer.invoke("lumine:test", "exit", status);
+    ipcRenderer.sendSync("lumine:test-exit", "exit", status);
   };
 
   try {
@@ -192,7 +192,7 @@ module.exports = async function ({ blobStore }) {
       // cannot also be the only process responsible for escaping a teardown
       // that never settles. Arm a main-process backstop with the already-known
       // test status before awaiting any package-owned or watcher-owned work.
-      void ipcRenderer.invoke("lumine:test", "arm-exit", statusCode);
+      ipcRenderer.sendSync("lumine:test-exit", "arm-exit", statusCode);
       // Package specs may create native file watchers that outlive their
       // buffers briefly. Stop the shared manager before flushing output and
       // asking Electron to exit, or a macOS watcher worker can keep an

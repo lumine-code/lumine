@@ -318,7 +318,7 @@ const buildExitBackstopReporter = () => {
 
     jasmineDone: () => {
       const status = failedSpecs.length || Grim.getDeprecationsLength() > 0 ? 1 : 0;
-      void require("electron").ipcRenderer.invoke("lumine:test", "arm-exit", status);
+      require("electron").ipcRenderer.sendSync("lumine:test-exit", "arm-exit", status);
     },
   };
 };

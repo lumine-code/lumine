@@ -651,20 +651,31 @@ ipcMain.handle("lumine:test", async (event, action, value) => {
       return new Promise((resolve, reject) =>
         process.stderr.write(String(value), (error) => (error ? reject(error) : resolve())),
       );
+    default:
+      throw new Error(`Unsupported test action: ${action}`);
+  }
+});
+
+ipcMain.on("lumine:test-exit", (event, action, value) => {
+  const lumineWindow = currentLumineWindow(event);
+  if (!lumineWindow.isSpec) throw new Error("Test IPC is restricted to spec windows");
+  assertInteger(value, "exit status");
+  switch (action) {
     case "arm-exit":
-      assertInteger(value, "exit status");
       // A headless run is a command-line process, and its renderer can retain
-      // native handles after Jasmine has reported. `app.exit()` still waits on
-      // that renderer on macOS, defeating the backstop; terminate the process
-      // directly after the reporter has had ample time to flush its output.
+      // native handles after Jasmine has reported. Use synchronous IPC so the
+      // backstop cannot queue behind an unresolved stdout/stderr invocation,
+      // then terminate directly because app.exit() still waits on that
+      // renderer on macOS.
       setTimeout(() => process.exit(value), 15_000);
+      event.returnValue = true;
       return;
     case "exit":
-      assertInteger(value, "exit status");
+      event.returnValue = true;
       setTimeout(() => process.exit(value), 0);
       return;
     default:
-      throw new Error(`Unsupported test action: ${action}`);
+      throw new Error(`Unsupported test exit action: ${action}`);
   }
 });
 
