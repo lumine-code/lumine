@@ -1,4 +1,4 @@
-const LumineEnvironment = require("./lumine-environment");
+const Environment = require("./environment");
 const ApplicationDelegate = require("./application-delegate");
 const Clipboard = require("./clipboard");
 const TextEditor = require("./text-editor");
@@ -12,7 +12,7 @@ const clipboard = new Clipboard();
 TextEditor.setClipboard(clipboard);
 TextEditor.viewForItem = (item) => lumine.views.getView(item);
 
-global.lumine = new LumineEnvironment({
+global.lumine = new Environment({
   clipboard,
   applicationDelegate: new ApplicationDelegate(),
   enablePersistence: true,

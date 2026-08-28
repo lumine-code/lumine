@@ -2,13 +2,14 @@ const { conditionPromise } = require("./helpers/async-spec-helpers");
 const fs = require("fs");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
-const LumineEnvironment = require("../src/lumine-environment");
+const Environment = require("../src/environment");
 const { timeoutPromise: wait } = require("./helpers/async-spec-helpers");
 const FileState = require("../src/file-state");
 
-describe("LumineEnvironment", () => {
+describe("Environment", () => {
   it("is exposed only through the Lumine renderer global", () => {
     expect(global.lumine).toBe(lumine);
+    expect(lumine.constructor.name).toBe("Environment");
     expect(global.atom).toBeUndefined();
     expect(lumine.FileState).toBe(FileState);
   });
@@ -434,7 +435,7 @@ describe("LumineEnvironment", () => {
         expect(result).toBe(false);
         expect(errors.length).toBe(1);
         expect(errors[0].message).toBe("Assertion failed: a == b");
-        expect(errors[0].stack).toContain("lumine-environment-spec");
+        expect(errors[0].stack).toContain("environment-spec");
       });
 
       describe("if passed a callback function", () => {
@@ -516,7 +517,7 @@ describe("LumineEnvironment", () => {
 
     it("saves state when the CPU is idle after a keydown or mousedown event", async () => {
       jasmine.useRealClock();
-      const lumineEnv = new LumineEnvironment({
+      const lumineEnv = new Environment({
         applicationDelegate: global.lumine.applicationDelegate,
       });
       const idleCallbacks = [];
@@ -552,7 +553,7 @@ describe("LumineEnvironment", () => {
     });
 
     it("ignores mousedown/keydown events happening after calling prepareToUnloadEditorWindow", async () => {
-      const lumineEnv = new LumineEnvironment({
+      const lumineEnv = new Environment({
         applicationDelegate: global.lumine.applicationDelegate,
       });
       const idleCallbacks = [];
@@ -593,7 +594,7 @@ describe("LumineEnvironment", () => {
     // wait is bounded so that a package which never finishes cannot hold the
     // window open, which is what skipping deactivation used to buy.
     it("bounds package deactivation when preparing to unload", async () => {
-      const lumineEnv = new LumineEnvironment({
+      const lumineEnv = new Environment({
         applicationDelegate: global.lumine.applicationDelegate,
       });
       lumineEnv.initialize({
@@ -639,7 +640,7 @@ describe("LumineEnvironment", () => {
       const editor = await lumine.workspace.open("sample.js");
       expect(lumine.grammars.assignLanguageMode(editor, "text.plain")).toBe(true);
 
-      const lumine2 = new LumineEnvironment({
+      const lumine2 = new Environment({
         applicationDelegate: lumine.applicationDelegate,
         window: document.createElement("div"),
         document: Object.assign(document.createElement("div"), {
@@ -814,7 +815,7 @@ describe("LumineEnvironment", () => {
         fs.writeFileSync(filePath2, "def");
         fs.writeFileSync(filePath3, "ghi");
 
-        const env1 = new LumineEnvironment({
+        const env1 = new Environment({
           applicationDelegate: lumine.applicationDelegate,
         });
         env1.project.setPaths([projectPath]);
@@ -824,7 +825,7 @@ describe("LumineEnvironment", () => {
         const env1State = env1.serialize();
         env1.destroy();
 
-        const env2 = new LumineEnvironment({
+        const env2 = new Environment({
           applicationDelegate: lumine.applicationDelegate,
         });
         await env2.attemptRestoreProjectStateForPaths(env1State, [projectPath], [filePath2]);
@@ -836,14 +837,14 @@ describe("LumineEnvironment", () => {
       it("keeps persistent items open when restoring the saved state into the current environment", async () => {
         const projectPath = temp.mkdirSync();
 
-        const env1 = new LumineEnvironment({
+        const env1 = new Environment({
           applicationDelegate: lumine.applicationDelegate,
         });
         env1.project.setPaths([projectPath]);
         const env1State = env1.serialize();
         env1.destroy();
 
-        const env2 = new LumineEnvironment({
+        const env2 = new Environment({
           applicationDelegate: lumine.applicationDelegate,
         });
         const persistentItem = {
@@ -944,7 +945,7 @@ describe("LumineEnvironment", () => {
     // on and the state store points at the spec home, because this is nothing
     // but a state store round trip.
     const buildEnvironment = () => {
-      const built = new LumineEnvironment({
+      const built = new Environment({
         applicationDelegate: lumine.applicationDelegate,
         enablePersistence: true,
       });
@@ -1093,7 +1094,7 @@ describe("LumineEnvironment", () => {
     it("saves the BlobStore so it can be loaded after reload", () => {
       const configDirPath = temp.mkdirSync("lumine-spec-environment");
       const fakeBlobStore = jasmine.createSpyObj("blob store", ["save"]);
-      const lumineEnvironment = new LumineEnvironment({
+      const lumineEnvironment = new Environment({
         applicationDelegate: lumine.applicationDelegate,
         enablePersistence: true,
       });
@@ -1125,7 +1126,7 @@ describe("LumineEnvironment", () => {
         head: document.createElement("head"),
         body: document.createElement("body"),
       };
-      const lumineEnvironment = new LumineEnvironment({
+      const lumineEnvironment = new Environment({
         applicationDelegate: lumine.applicationDelegate,
       });
       lumineEnvironment.initialize({ window, document: fakeDocument });
@@ -1150,7 +1151,7 @@ describe("LumineEnvironment", () => {
         resolvePromise();
         return promise;
       };
-      lumineEnvironment = new LumineEnvironment({
+      lumineEnvironment = new Environment({
         applicationDelegate: lumine.applicationDelegate,
         updateProcessEnv() {
           return promise;
@@ -1179,7 +1180,7 @@ describe("LumineEnvironment", () => {
     let lumineEnvironment;
 
     beforeEach(() => {
-      lumineEnvironment = new LumineEnvironment({
+      lumineEnvironment = new Environment({
         applicationDelegate: lumine.applicationDelegate,
       });
       lumineEnvironment.initialize({ window, document });

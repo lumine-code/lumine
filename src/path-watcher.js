@@ -694,7 +694,7 @@ class PathWatcher {
     this.native = null;
     this.changeCallbacks = new Map();
 
-    // Whether the entire `LumineEnvironment` is destroying.
+    // Whether the entire `Environment` is destroying.
     this.isDestroying = false;
 
     this.attachedPromise = new Promise((resolve) => {

@@ -196,7 +196,7 @@ module.exports = class RepositoryRegistry {
   // Resetting the window runs `PackageManager#reset`, which clears every
   // consumer off the service hub. A subscription made only in the constructor
   // would survive that in name alone and no provider would reach the registry
-  // again, so this is re-run from `LumineEnvironment#reset` the same way Project
+  // again, so this is re-run from `Environment#reset` the same way Project
   // and Workspace re-run theirs.
   consumeServices(packageManager) {
     this.serviceSubscription?.dispose();

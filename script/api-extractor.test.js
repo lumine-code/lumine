@@ -36,7 +36,7 @@ test("extracts structured JSDoc metadata from modern JavaScript", (context) => {
   assert.equal(api.classes.length, 2);
   assert.equal(api.memberCount, 7);
   const environment = api.classes[0];
-  assert.equal(environment.name, "LumineEnvironment");
+  assert.equal(environment.name, "Environment");
   assert.equal(environment.visibility, "Essential");
   assert.equal(environment.description, "The public editor surface.");
   assert.equal(environment.members[0].propertyType, "FixtureService");

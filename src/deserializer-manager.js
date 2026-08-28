@@ -45,7 +45,7 @@ module.exports = class DeserializerManager {
    *
    * Register the given class(es) as deserializers.
    *
-   * @param deserializers - One or more deserializers to register. A deserializer can be any object with a `.name` property and a `.deserialize()` method. A common approach is to register a *constructor* as the deserializer for its instances by adding a `.deserialize()` class method. When your method is called, it will be passed serialized state as the first argument and the {@link LumineEnvironment} object as the second argument, which is useful if you wish to avoid referencing the `lumine` global.
+   * @param deserializers - One or more deserializers to register. A deserializer can be any object with a `.name` property and a `.deserialize()` method. A common approach is to register a *constructor* as the deserializer for its instances by adding a `.deserialize()` class method. When your method is called, it will be passed serialized state as the first argument and the {@link Environment} object as the second argument, which is useful if you wish to avoid referencing the `lumine` global.
    */
   add(...deserializers) {
     for (let i = 0; i < deserializers.length; i++) {

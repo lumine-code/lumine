@@ -10,14 +10,14 @@ temp.track();
 
 const specMetadataById = new Map();
 
-module.exports = function ({ logFile, headless, testPaths, buildLumineEnvironment }) {
+module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
   // Load Jasmine
   require("../helpers/jasmine-singleton");
   defineJasmineHelpersOnWindow(jasmine.getEnv());
 
   // Build the Lumine environment.
-  const { lumineHome, applicationDelegate } = require("../helpers/build-lumine-environment");
-  window.lumine = buildLumineEnvironment({
+  const { lumineHome, applicationDelegate } = require("../helpers/build-environment");
+  window.lumine = buildEnvironment({
     applicationDelegate,
     window,
     document,

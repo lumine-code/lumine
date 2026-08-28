@@ -201,7 +201,7 @@ module.exports = class ContextMenuManager {
   // Bindings resolve at `target` — the element that was right-clicked —
   // because that is the element the item's command is dispatched against:
   // `show` records it as `activeElement` and
-  // `LumineEnvironment::dispatchContextMenuCommand` dispatches there.
+  // `Environment::dispatchContextMenuCommand` dispatches there.
   // Resolving at `document.activeElement` instead advertised whichever
   // binding belonged to the element that happened to hold focus, which is not
   // the element the item acts on — right-clicking a tab or a tree-view entry

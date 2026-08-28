@@ -380,7 +380,7 @@ describe("LumineWindow", function () {
   describe("reload", function () {
     // A reload unloads exactly like a close does, deactivation included, so a
     // package tears down while the environment it is tearing down from is still
-    // whole. `LumineEnvironment` bounds the wait so one that never finishes
+    // whole. `Environment` bounds the wait so one that never finishes
     // cannot hold the reload.
     it("prepares to unload the same way a close does", async function () {
       const w = new LumineWindow(app, service, {

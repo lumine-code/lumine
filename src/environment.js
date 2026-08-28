@@ -76,12 +76,12 @@ let nextId = 0;
  * @public
  * @status public
  *
- * @class LumineEnvironment
+ * @class Environment
  * @classdesc Lumine global for dealing with packages, themes, menus, and the window.
  *
  * An instance of this class is always available as the `lumine` global.
  */
-class LumineEnvironment {
+class Environment {
   // Wiring the environment owns and nothing outside it may reach. Everything a
   // package is meant to use is a namespace carrying a `@type` annotation below;
   // these four are the machinery behind them, so they are hard-private rather
@@ -212,7 +212,7 @@ class LumineEnvironment {
 
     /** @private Window-state persistence. `TextEditor` consults it before
      * prompting to save, and specs stub it; not a package-facing namespace. */
-    this.stateStore = new StateStore("LumineEnvironments", 1);
+    this.stateStore = new StateStore("Environments", 1);
 
     /**
      * @public
@@ -1813,6 +1813,6 @@ function firstStackFrame(stack) {
   }
 }
 
-LumineEnvironment.version = 1;
-LumineEnvironment.prototype.saveStateDebounceInterval = 1000;
-module.exports = LumineEnvironment;
+Environment.version = 1;
+Environment.prototype.saveStateDebounceInterval = 1000;
+module.exports = Environment;

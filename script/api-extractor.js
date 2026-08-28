@@ -588,8 +588,8 @@ function uniqueByName(items, kind) {
 }
 
 function compareClasses(left, right) {
-  if (left.name === "LumineEnvironment") return -1;
-  if (right.name === "LumineEnvironment") return 1;
+  if (left.name === "Environment") return -1;
+  if (right.name === "Environment") return 1;
   return left.name.localeCompare(right.name);
 }
 
@@ -683,8 +683,8 @@ function extractApi({ editorRoot, parser, strict = true }) {
     parsed.flatMap((item) => item.classes),
     "class",
   ).sort(compareClasses);
-  if (classes[0]?.name !== "LumineEnvironment") {
-    throw new Error("LumineEnvironment must be the first generated API class.");
+  if (classes[0]?.name !== "Environment") {
+    throw new Error("Environment must be the first generated API class.");
   }
   const functions = uniqueByName(
     parsed.flatMap((item) => item.functions),

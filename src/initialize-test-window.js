@@ -29,7 +29,7 @@ module.exports = async function ({ blobStore }) {
 
   try {
     const path = require("path");
-    const LumineEnvironment = require("../src/lumine-environment");
+    const Environment = require("../src/environment");
     const ApplicationDelegate = require("../src/application-delegate");
     const Clipboard = require("../src/clipboard");
     const TextEditor = require("../src/text-editor");
@@ -147,7 +147,7 @@ module.exports = async function ({ blobStore }) {
     const testRunner = requireModule(testRunnerPath);
     const legacyTestRunner = require(legacyTestRunnerPath);
     const buildDefaultApplicationDelegate = () => new ApplicationDelegate();
-    const buildLumineEnvironment = function (params) {
+    const buildEnvironment = function (params) {
       params = cloneObject(params);
       if (!Object.hasOwn(params, "clipboard")) {
         params.clipboard = clipboard;
@@ -158,7 +158,7 @@ module.exports = async function ({ blobStore }) {
       if (!Object.hasOwn(params, "onlyLoadBaseStyleSheets")) {
         params.onlyLoadBaseStyleSheets = true;
       }
-      const lumineEnvironment = new LumineEnvironment(params);
+      const lumineEnvironment = new Environment(params);
       lumineEnvironment.initialize(params);
       TextEditor.setScheduler(lumineEnvironment.views);
       // The editor component has its own scheduler hook; etch consumers (the
@@ -172,7 +172,7 @@ module.exports = async function ({ blobStore }) {
       logFile,
       headless,
       testPaths,
-      buildLumineEnvironment,
+      buildEnvironment,
       buildDefaultApplicationDelegate,
       legacyTestRunner,
     });

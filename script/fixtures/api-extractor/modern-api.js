@@ -4,7 +4,7 @@
  *
  * The public editor surface.
  */
-class LumineEnvironment {
+class Environment {
   constructor() {
     /**
      * @public
@@ -115,4 +115,4 @@ function normalize(input = "") {
   return input.trim();
 }
 
-module.exports = { FixtureService, LumineEnvironment, normalize };
+module.exports = { FixtureService, Environment, normalize };

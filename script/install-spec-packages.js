@@ -9,7 +9,7 @@
 // demand rather than bundled. This clones each one into <home>/packages/<name>
 // and installs its dependencies, so a spec run started with LUMINE_HOME=<home>
 // and LUMINE_TEST_PACKAGES="<names>" finds them: the test bootstrap
-// (spec/helpers/build-lumine-environment.js) links each named package from
+// (spec/helpers/build-environment.js) links each named package from
 // $LUMINE_HOME/packages into the scratch config dir it builds per run.
 //
 // A package without the field is a strict no-op, so any CI can run this

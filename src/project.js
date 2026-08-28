@@ -476,7 +476,7 @@ module.exports = class Project extends Model {
    * Three things are worth knowing before reaching for this:
    *
    * * Development and safe mode belong to the window, so they cannot change
-   *   here. Use `LumineEnvironment.open` with `newWindow` for those.
+   *   here. Use `Environment.open` with `newWindow` for those.
    * * State is keyed by the set of folders, so a project already open in
    *   another window shares one saved state with it and the last window to
    *   save wins.

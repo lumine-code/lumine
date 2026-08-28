@@ -10,7 +10,7 @@ const RepositoryRegistry = require("../src/repository-registry");
 const platform = require("./helpers/platform");
 const _ = require("@lumine-code/underscore-plus");
 const fs = require("@lumine-code/fs-plus");
-const LumineEnvironment = require("../src/lumine-environment");
+const Environment = require("../src/environment");
 const { conditionPromise, timeoutPromise } = require("./helpers/async-spec-helpers");
 const FileState = require("../src/file-state");
 const { Emitter } = require("@lumine-code/event-kit");
@@ -1862,7 +1862,7 @@ describe("Workspace", () => {
       i = /test/; #FIXME\
     `);
 
-    const lumine2 = new LumineEnvironment({
+    const lumine2 = new Environment({
       applicationDelegate: lumine.applicationDelegate,
     });
     lumine2.initialize({
