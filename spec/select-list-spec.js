@@ -1002,6 +1002,52 @@ describe("SelectListView", () => {
       disposables.dispose();
     });
 
+    it("signals available actions beside the query editor", () => {
+      view.show();
+
+      const indicator = view.refs.itemActionsIndicator;
+      expect(indicator.hidden).toBe(false);
+      expect(indicator.classList.contains("icon-ellipsis")).toBe(true);
+      expect(indicator.getAttribute("aria-label")).toBe("Actions");
+      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(true);
+
+      const [tooltip] = lumine.tooltips.tooltips.get(indicator);
+      expect(tooltip.options.keyBindingCommand).toBe("select-list:actions");
+      expect(tooltip.options.keyBindingTarget).toBe(view.refs.queryEditor.element);
+    });
+
+    it("opens the actions list from the query-editor indicator", async () => {
+      view.show();
+      const indicator = view.refs.itemActionsIndicator;
+      const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
+      const click = new MouseEvent("click", { bubbles: true, cancelable: true });
+
+      indicator.dispatchEvent(mouseDown);
+      indicator.dispatchEvent(click);
+      await conditionPromise(() => view.itemActionsList?.isVisible());
+
+      expect(mouseDown.defaultPrevented).toBe(true);
+      expect(click.defaultPrevented).toBe(true);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Files", "Actions"]);
+      expect(view.itemActionsList.props.infoMessage).toBe("one");
+    });
+
+    it("updates the indicator when actionsFilter follows the selection", async () => {
+      view.props.actionsFilter = () => view.getSelectedItem() === "two";
+      view.show();
+
+      expect(view.refs.itemActionsIndicator.hidden).toBe(true);
+      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
+
+      await view.selectItem("two");
+      expect(view.refs.itemActionsIndicator.hidden).toBe(false);
+      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(true);
+
+      await view.selectItem("one");
+      expect(view.refs.itemActionsIndicator.hidden).toBe(true);
+      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
+    });
+
     it("derives the rows from the dialog's own commands and keymaps", async () => {
       view.show();
       await view.showItemActions();
@@ -1237,6 +1283,7 @@ describe("SelectListView", () => {
       view.show();
       await view.showItemActions();
       expect(view.itemActionsList.isVisible()).toBeTruthy();
+      expect(view.itemActionsList.refs.itemActionsIndicator).toBeUndefined();
 
       lumine.commands.dispatch(view.itemActionsList.element, "select-list:actions");
 
@@ -1260,6 +1307,8 @@ describe("SelectListView", () => {
       view.show();
       await view.showItemActions();
       expect(view.itemActionsList).toBeUndefined();
+      expect(view.refs.itemActionsIndicator.hidden).toBe(true);
+      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
     });
   });
 });

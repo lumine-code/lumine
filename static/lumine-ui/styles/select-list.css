@@ -134,6 +134,54 @@
   }
 }
 
+/* Item-actions affordance
+
+   The actions list is a modal-flow step, but its entry point belongs to the
+   query rather than to any one row: list-scoped actions remain meaningful
+   with no selection. Keep the indicator inside the mini editor so it neither
+   adds a message line nor competes with row trailing content. */
+
+.input-dialog .query-row {
+  position: relative;
+
+  &.has-item-actions lumine-text-editor[mini] {
+    padding-inline-end: calc(var(--ui-line-height) + 2px);
+  }
+
+  .item-actions-indicator {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 1px;
+    inset-inline-end: 1px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--ui-line-height);
+    height: var(--ui-line-height);
+    padding: 0;
+    border: 0;
+    border-radius: var(--component-border-radius);
+    color: var(--text-color-subtle);
+    background-color: transparent;
+    opacity: 0.65;
+    cursor: pointer;
+
+    &::before {
+      margin: 0;
+    }
+
+    &:hover {
+      color: var(--text-color-highlight);
+      background-color: var(--button-background-color-hover);
+      opacity: 1;
+    }
+
+    &[hidden] {
+      display: none;
+    }
+  }
+}
+
 /* The message line
 
    A select list carries `input-dialog` as well as `select-list`, because it is
