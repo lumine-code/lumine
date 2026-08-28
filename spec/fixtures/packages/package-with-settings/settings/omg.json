@@ -1,7 +1,12 @@
 {
-  ".source.omg": {
+  ".source.omg, .source.wow": {
     "editor": {
       "increaseIndentPattern": "^a"
+    }
+  },
+  ".source.omg": {
+    "editor": {
+      "decreaseIndentPattern": "^b"
     }
   }
 }

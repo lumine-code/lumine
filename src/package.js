@@ -1351,17 +1351,10 @@ class SettingsFile {
   }
 
   activate(config) {
-    for (let selector in this.properties) {
-      config.set(null, this.properties[selector], {
-        scopeSelector: selector,
-        source: this.path,
-      });
-    }
+    config.resetScopedSettings(this.properties, { source: this.path });
   }
 
   deactivate(config) {
-    for (let selector in this.properties) {
-      config.unset(null, { scopeSelector: selector, source: this.path });
-    }
+    config.resetScopedSettings({}, { source: this.path });
   }
 }

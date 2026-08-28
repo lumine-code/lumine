@@ -1140,6 +1140,16 @@ describe("PackageManager", () => {
             scope: [".source.omg"],
           }),
         ).toBe("^a");
+        expect(
+          lumine.config.get("editor.decreaseIndentPattern", {
+            scope: [".source.omg"],
+          }),
+        ).toBe("^b");
+        expect(
+          lumine.config.get("editor.increaseIndentPattern", {
+            scope: [".source.wow"],
+          }),
+        ).toBe("^a");
       });
     });
 
