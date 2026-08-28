@@ -1002,8 +1002,11 @@ describe("SelectListView", () => {
       disposables.dispose();
     });
 
-    it("signals available actions beside the query editor", () => {
+    it("signals available actions beside the query editor", async () => {
       view.show();
+      view.refs.queryEditor.setText("a".repeat(200));
+      view.refs.queryEditor.setCursorBufferPosition([0, 200]);
+      await nextUpdate();
 
       const indicator = view.refs.itemActionsIndicator;
       expect(indicator.hidden).toBe(false);
@@ -1014,6 +1017,16 @@ describe("SelectListView", () => {
       const [tooltip] = lumine.tooltips.tooltips.get(indicator);
       expect(tooltip.options.keyBindingCommand).toBe("select-list:actions");
       expect(tooltip.options.keyBindingTarget).toBe(view.refs.queryEditor.element);
+
+      // The editor adds one base character after the visible end-of-line
+      // cursor. Account for it: the caret itself should stop at the button,
+      // leaving the centred glyph equal optical space on either side.
+      const component = view.refs.queryEditor.element.component;
+      const textRight =
+        component.refs.clientContainer.getBoundingClientRect().right -
+        component.getBaseCharacterWidth();
+      const buttonLeft = indicator.getBoundingClientRect().left;
+      expect(textRight).toBeNear(buttonLeft);
     });
 
     it("opens the actions list from the query-editor indicator", async () => {

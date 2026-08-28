@@ -142,10 +142,18 @@
    adds a message line nor competes with row trailing content. */
 
 .input-dialog .query-row {
+  /* One shared absolute size: em-based UI variables resolve again inside the
+     mini editor at its larger input font size, which would reserve more room
+     for the text than the button actually occupies. */
+  --item-actions-indicator-size: calc(var(--component-line-height) + 1px);
+
   position: relative;
 
   &.has-item-actions lumine-text-editor[mini] {
-    padding-inline-end: calc(var(--ui-line-height) + 2px);
+    /* The editor's content width already carries one trailing base character
+       for the end-of-line cursor. Let that cell complete the reservation, or
+       the visible caret stops a whole character too far from the icon. */
+    padding-inline-end: calc(var(--item-actions-indicator-size) - 1ch);
   }
 
   .item-actions-indicator {
@@ -156,8 +164,8 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: var(--ui-line-height);
-    height: var(--ui-line-height);
+    width: var(--item-actions-indicator-size);
+    height: var(--item-actions-indicator-size);
     padding: 0;
     border: 0;
     border-radius: var(--component-border-radius);
