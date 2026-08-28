@@ -653,11 +653,15 @@ ipcMain.handle("lumine:test", async (event, action, value) => {
       );
     case "arm-exit":
       assertInteger(value, "exit status");
-      setTimeout(() => currentApplication().exit(value), 15_000);
+      // A headless run is a command-line process, and its renderer can retain
+      // native handles after Jasmine has reported. `app.exit()` still waits on
+      // that renderer on macOS, defeating the backstop; terminate the process
+      // directly after the reporter has had ample time to flush its output.
+      setTimeout(() => process.exit(value), 15_000);
       return;
     case "exit":
       assertInteger(value, "exit status");
-      setTimeout(() => currentApplication().exit(value), 0);
+      setTimeout(() => process.exit(value), 0);
       return;
     default:
       throw new Error(`Unsupported test action: ${action}`);
