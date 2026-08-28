@@ -17,8 +17,6 @@ const VERIFY_HISTORY_SNAPSHOTS = Boolean(process.env.LUMINE_VERIFY_MARKER_SNAPSH
  * @status experimental
  *
  * A container for a related set of markers.
- *
- * This API is experimental and subject to change on any release.
  */
 class MarkerLayer {
   static deserialize(delegate, state) {

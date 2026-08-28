@@ -9,8 +9,6 @@ const Point = require("./point");
  *
  * A container for a related set of markers at the `DisplayLayer` level. Wraps
  * an underlying {@link MarkerLayer} on the {@link TextBuffer}.
- *
- * This API is experimental and subject to change on any release.
  */
 class DisplayMarkerLayer {
   constructor(displayLayer, bufferMarkerLayer, ownsBufferMarkerLayer) {
