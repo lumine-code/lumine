@@ -1,6 +1,9 @@
 const { requireModule } = require("./module-utils");
 const focusTestWindow = require("./focus-test-window");
 const { stopAllWatchers } = require("./path-watcher");
+const { setTimeout: delay } = require("node:timers/promises");
+
+const OUTPUT_DRAIN_TIMEOUT_MS = 5000;
 
 function cloneObject(object) {
   const clone = {};
@@ -23,8 +26,14 @@ module.exports = async function ({ blobStore }) {
     return true;
   };
   const exitWithStatusCode = async (status) => {
-    await flushOutputStreams();
-    await pendingOutput;
+    try {
+      await Promise.race([
+        Promise.all([flushOutputStreams(), pendingOutput]),
+        delay(OUTPUT_DRAIN_TIMEOUT_MS, undefined, { ref: false }),
+      ]);
+    } catch {
+      status = 1;
+    }
     await ipcRenderer.invoke("lumine:test", "exit", status);
   };
 
