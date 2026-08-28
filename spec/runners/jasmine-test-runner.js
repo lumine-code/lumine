@@ -209,11 +209,12 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
 
     // Add the reporter and register the promise resolve as a callback
     jasmineEnv.addReporter(buildMetadataReporter());
-    // Arm the headless exit before the output reporter flushes its final
-    // report. Jasmine awaits reporters in registration order, and on macOS a
-    // renderer retaining native handles can stall that flush indefinitely.
-    if (headless) jasmineEnv.addReporter(buildExitBackstopReporter());
     jasmineEnv.addReporter(buildReporter({ logFile, headless }));
+    // A headless run owns a command-line process. Exit only after the output
+    // reporter has printed its final summary, but do it synchronously: a
+    // renderer retaining native handles can prevent the main event loop from
+    // ever reaching a scheduled exit on macOS.
+    if (headless) jasmineEnv.addReporter(buildHeadlessExitReporter());
     jasmineEnv.addReporter(buildCompletionReporter(resolve));
 
     // And finally execute the tests
@@ -308,7 +309,7 @@ const buildReporter = ({ logFile, headless }) => {
   }
 };
 
-const buildExitBackstopReporter = () => {
+const buildHeadlessExitReporter = () => {
   const failedSpecs = [];
 
   return {
@@ -318,7 +319,7 @@ const buildExitBackstopReporter = () => {
 
     jasmineDone: () => {
       const status = failedSpecs.length || Grim.getDeprecationsLength() > 0 ? 1 : 0;
-      require("electron").ipcRenderer.sendSync("lumine:test-exit", "arm-exit", status);
+      require("electron").ipcRenderer.sendSync("lumine:test-exit", "exit", status);
     },
   };
 };

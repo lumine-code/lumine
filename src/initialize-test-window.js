@@ -19,18 +19,19 @@ function cloneObject(object) {
 module.exports = async function ({ blobStore }) {
   const getWindowLoadSettings = require("./get-window-load-settings");
   const { ipcRenderer } = require("electron");
-  let pendingOutput = Promise.resolve();
   let flushOutputStreams = () => Promise.resolve();
   const writeTestOutput = (stream, output, callback) => {
-    pendingOutput = pendingOutput.then(() =>
-      ipcRenderer.invoke("lumine:test", stream, String(output)),
-    );
-    if (typeof callback === "function") pendingOutput.then(() => callback(), callback);
+    try {
+      ipcRenderer.sendSync("lumine:test-output", stream, String(output));
+      if (typeof callback === "function") callback();
+    } catch (error) {
+      if (typeof callback === "function") callback(error);
+    }
     return true;
   };
   const exitWithStatusCode = async (status) => {
     try {
-      await waitForHeadlessTeardown(Promise.all([flushOutputStreams(), pendingOutput]));
+      await waitForHeadlessTeardown(flushOutputStreams());
     } catch {
       status = 1;
     }
@@ -188,11 +189,6 @@ module.exports = async function ({ blobStore }) {
     });
 
     if (getWindowLoadSettings().headless) {
-      // The renderer performs an orderly watcher/output teardown below, but it
-      // cannot also be the only process responsible for escaping a teardown
-      // that never settles. Arm a main-process backstop with the already-known
-      // test status before awaiting any package-owned or watcher-owned work.
-      ipcRenderer.sendSync("lumine:test-exit", "arm-exit", statusCode);
       // Package specs may create native file watchers that outlive their
       // buffers briefly. Stop the shared manager before flushing output and
       // asking Electron to exit, or a macOS watcher worker can keep an

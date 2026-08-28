@@ -639,21 +639,20 @@ ipcMain.handle("lumine:profile-startup", async (event) => {
   await opened;
 });
 
-ipcMain.handle("lumine:test", async (event, action, value) => {
+ipcMain.on("lumine:test-output", (event, stream, value) => {
   const lumineWindow = currentLumineWindow(event);
   if (!lumineWindow.isSpec) throw new Error("Test IPC is restricted to spec windows");
-  switch (action) {
+  switch (stream) {
     case "stdout":
-      return new Promise((resolve, reject) =>
-        process.stdout.write(String(value), (error) => (error ? reject(error) : resolve())),
-      );
+      fs.writeSync(1, String(value));
+      break;
     case "stderr":
-      return new Promise((resolve, reject) =>
-        process.stderr.write(String(value), (error) => (error ? reject(error) : resolve())),
-      );
+      fs.writeSync(2, String(value));
+      break;
     default:
-      throw new Error(`Unsupported test action: ${action}`);
+      throw new Error(`Unsupported test output stream: ${stream}`);
   }
+  event.returnValue = true;
 });
 
 ipcMain.on("lumine:test-exit", (event, action, value) => {
@@ -661,18 +660,12 @@ ipcMain.on("lumine:test-exit", (event, action, value) => {
   if (!lumineWindow.isSpec) throw new Error("Test IPC is restricted to spec windows");
   assertInteger(value, "exit status");
   switch (action) {
-    case "arm-exit":
-      // A headless run is a command-line process, and its renderer can retain
-      // native handles after Jasmine has reported. Use synchronous IPC so the
-      // backstop cannot queue behind an unresolved stdout/stderr invocation,
-      // then terminate directly because app.exit() still waits on that
-      // renderer on macOS.
-      setTimeout(() => process.exit(value), 15_000);
-      event.returnValue = true;
-      return;
     case "exit":
-      event.returnValue = true;
-      setTimeout(() => process.exit(value), 0);
+      // A headless test is a command-line process, not an application window.
+      // Exit synchronously once its reporter has flushed: on macOS an active
+      // renderer can prevent both app.exit() and a scheduled process.exit()
+      // from ever running.
+      process.exit(value);
       return;
     default:
       throw new Error(`Unsupported test exit action: ${action}`);
