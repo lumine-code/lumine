@@ -651,6 +651,10 @@ ipcMain.handle("lumine:test", async (event, action, value) => {
       return new Promise((resolve, reject) =>
         process.stderr.write(String(value), (error) => (error ? reject(error) : resolve())),
       );
+    case "arm-exit":
+      assertInteger(value, "exit status");
+      setTimeout(() => currentApplication().exit(value), 15_000);
+      return;
     case "exit":
       assertInteger(value, "exit status");
       setTimeout(() => currentApplication().exit(value), 0);

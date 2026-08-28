@@ -188,6 +188,11 @@ module.exports = async function ({ blobStore }) {
     });
 
     if (getWindowLoadSettings().headless) {
+      // The renderer performs an orderly watcher/output teardown below, but it
+      // cannot also be the only process responsible for escaping a teardown
+      // that never settles. Arm a main-process backstop with the already-known
+      // test status before awaiting any package-owned or watcher-owned work.
+      void ipcRenderer.invoke("lumine:test", "arm-exit", statusCode);
       // Package specs may create native file watchers that outlive their
       // buffers briefly. Stop the shared manager before flushing output and
       // asking Electron to exit, or a macOS watcher worker can keep an
