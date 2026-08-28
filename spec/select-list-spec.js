@@ -889,7 +889,7 @@ describe("SelectListView", () => {
       view.show();
       view.refs.queryEditor.setText("tw");
 
-      // F12, then dismiss the actions list instead of coming back: the master
+      // Shift-F10, then dismiss the actions list instead of coming back: the master
       // is left suspended with nothing on screen, and the next open is an
       // open, not a resume.
       await view.showItemActions();
@@ -1095,6 +1095,35 @@ describe("SelectListView", () => {
       expect(view.getSelectedItem()).toBe("two");
       expect(lumine.workspace.getModalTrail()).toEqual(["Files", "Actions"]);
       expect(view.itemActionsList.props.infoMessage).toBe("two");
+    });
+
+    it("toggles the actions list with Shift-F10", async () => {
+      view.show();
+      const openEvent = new KeyboardEvent("keydown", {
+        key: "F10",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+
+      view.refs.queryEditor.element.dispatchEvent(openEvent);
+      await conditionPromise(() => view.itemActionsList?.isVisible());
+
+      expect(openEvent.defaultPrevented).toBe(true);
+      expect(lumine.workspace.getModalTrail()).toEqual(["Files", "Actions"]);
+
+      const closeEvent = new KeyboardEvent("keydown", {
+        key: "F10",
+        shiftKey: true,
+        bubbles: true,
+        cancelable: true,
+      });
+      view.itemActionsList.refs.queryEditor.element.dispatchEvent(closeEvent);
+
+      expect(closeEvent.defaultPrevented).toBe(true);
+      expect(view.isVisible()).toBeTruthy();
+      expect(view.itemActionsList.isVisible()).toBeFalsy();
+      expect(lumine.workspace.getModalTrail()).toEqual(["Files"]);
     });
 
     it("groups the row actions ahead of the list actions and rules between them", async () => {
