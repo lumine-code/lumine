@@ -1003,6 +1003,15 @@ describe("SelectListView", () => {
     });
 
     it("signals available actions beside the query editor", async () => {
+      disposables.add(
+        lumine.commands.add(view.element, {
+          "spec:list-action": {
+            description: "Does the test thing to the whole list",
+            actionScope: "list",
+            didDispatch: () => {},
+          },
+        }),
+      );
       view.show();
       view.refs.queryEditor.setText("a".repeat(200));
       view.refs.queryEditor.setCursorBufferPosition([0, 200]);
@@ -1077,6 +1086,119 @@ describe("SelectListView", () => {
       expect(actions.some((action) => action.command === "select-list:actions")).toBe(false);
       expect(lumine.workspace.getModalTrail()).toEqual(["Files", "Actions"]);
       expect(view.itemActionsList.props.infoMessage).toBe("one");
+    });
+
+    it("shows core:confirm on the semantic confirm action without listing the chrome", () => {
+      view.props.confirmAction = "spec:test-action";
+
+      const actions = view.itemActions();
+      const test = actions.find((action) => action.command === "spec:test-action");
+      // core binds Enter both globally and on select lists; the chip is one
+      // interaction, so identical raw keystrokes collapse before rendering.
+      expect(test.keystrokes).toEqual(["enter", "alt-x"]);
+      expect(actions.some((action) => action.command === "core:confirm")).toBe(false);
+    });
+
+    it("resolves a dynamic confirm action once for the selected item", async () => {
+      const seen = [];
+      view.props.confirmAction = (item) => {
+        seen.push(item);
+        return item === "two" ? "spec:other-action" : "spec:test-action";
+      };
+
+      let byCommand = new Map(view.itemActions().map((action) => [action.command, action]));
+      expect(byCommand.get("spec:test-action").keystrokes).toEqual(["enter", "alt-x"]);
+      expect(byCommand.get("spec:other-action").keystrokes).toEqual([]);
+      expect(seen).toEqual(["one"]);
+
+      seen.length = 0;
+      await view.selectItem("two");
+      byCommand = new Map(view.itemActions().map((action) => [action.command, action]));
+      expect(byCommand.get("spec:test-action").keystrokes).toEqual(["alt-x"]);
+      expect(byCommand.get("spec:other-action").keystrokes).toEqual(["enter"]);
+      expect(seen).toEqual(["two"]);
+    });
+
+    it("hides item actions without a selection and keeps list actions", async () => {
+      disposables.add(
+        lumine.commands.add(view.element, {
+          "spec:list-action": {
+            description: "Does the test thing to the whole list",
+            actionScope: "list",
+            didDispatch: () => {},
+          },
+        }),
+      );
+
+      await view.selectNone();
+      expect(view.itemActions().map((action) => action.command)).toEqual(["spec:list-action"]);
+    });
+
+    it("does not resolve confirmAction for the Show more row", async () => {
+      const resolver = jasmine.createSpy("confirmAction").and.returnValue("spec:test-action");
+      view.props.confirmAction = resolver;
+      disposables.add(
+        lumine.commands.add(view.element, {
+          "spec:list-action": {
+            description: "Does the test thing to the whole list",
+            actionScope: "list",
+            didDispatch: () => {},
+          },
+        }),
+      );
+      await view.update({ maxResults: 2 });
+      await view.selectIndex(2);
+
+      expect(view.itemActions().map((action) => action.command)).toEqual(["spec:list-action"]);
+      expect(resolver).not.toHaveBeenCalled();
+    });
+
+    it("includes named host commands once and applies actionsFilter to them", () => {
+      disposables.add(
+        lumine.commands.add("lumine-workspace", {
+          "spec:included-global": {
+            description: "Does the included global thing",
+            actionScope: "list",
+            didDispatch: () => dispatched.push("spec:included-global"),
+          },
+        }),
+      );
+      view.props.additionalActionCommands = [
+        "spec:included-global",
+        "spec:missing-global",
+        "spec:included-global",
+      ];
+
+      let actions = view.itemActions();
+      expect(actions.filter((action) => action.command === "spec:included-global").length).toBe(1);
+      expect(actions.find((action) => action.command === "spec:included-global").scope).toBe(
+        "list",
+      );
+      expect(actions.some((action) => action.command === "spec:missing-global")).toBe(false);
+
+      view.props.actionsFilter = (descriptor) => descriptor.name !== "spec:included-global";
+      actions = view.itemActions();
+      expect(actions.some((action) => action.command === "spec:included-global")).toBe(false);
+    });
+
+    it("updates the action-source props while the list is alive", async () => {
+      disposables.add(
+        lumine.commands.add("lumine-workspace", {
+          "spec:included-global": {
+            description: "Does the included global thing",
+            actionScope: "list",
+            didDispatch: () => {},
+          },
+        }),
+      );
+
+      await view.update({
+        confirmAction: "spec:test-action",
+        additionalActionCommands: ["spec:included-global"],
+      });
+      const byCommand = new Map(view.itemActions().map((action) => [action.command, action]));
+      expect(byCommand.get("spec:test-action").keystrokes).toEqual(["enter", "alt-x"]);
+      expect(byCommand.get("spec:included-global").scope).toBe("list");
     });
 
     it("opens the actions for the right-clicked item", async () => {
@@ -1253,6 +1375,27 @@ describe("SelectListView", () => {
       expect(lumine.workspace.getModalTrail()).toEqual(["Files"]);
     });
 
+    it("keeps Enter in the actions list on the highlighted action", async () => {
+      view.props.confirmAction = "spec:test-action";
+      view.show();
+      await view.showItemActions();
+      const index = view.itemActionsList.items.findIndex(
+        (item) => item.command === "spec:other-action",
+      );
+      await view.itemActionsList.selectIndex(index);
+
+      const event = new KeyboardEvent("keydown", {
+        key: "Enter",
+        bubbles: true,
+        cancelable: true,
+      });
+      view.itemActionsList.refs.queryEditor.element.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(dispatched).toEqual(["spec:other-action"]);
+      expect(view.isVisible()).toBeTruthy();
+    });
+
     it("hands the action the selection it was chosen for, past a reloading willShow", async () => {
       // The shape that breaks it: a list that reseeds its items every time it
       // is shown. Returning from the actions list shows it again, and the
@@ -1277,6 +1420,39 @@ describe("SelectListView", () => {
       view.itemActionsList.confirmSelection();
 
       expect(selections).toEqual(["three"]);
+    });
+
+    it("restores a rebuilt selection by its stable item id", async () => {
+      await view.destroy();
+      const selections = [];
+      const items = () => [
+        { id: "one", label: "one" },
+        { id: "two", label: "two" },
+      ];
+      view = new SelectListView({
+        items: items(),
+        idForItem: (item) => item.id,
+        filterKeyForItem: (item) => item.label,
+        elementForItem: (item) => ({ primary: item.label }),
+        willShow: () => view.update({ items: items() }),
+      });
+      disposables.add(
+        lumine.commands.add(view.element, {
+          "spec:read-selection": () => selections.push(view.getSelectedItem()?.id),
+        }),
+      );
+
+      view.show();
+      await view.selectIndex(1);
+      await view.showItemActions();
+      const index = view.itemActionsList.items.findIndex(
+        (item) => item.command === "spec:read-selection",
+      );
+      view.itemActionsList.selectIndex(index);
+      view.itemActionsList.confirmSelection();
+
+      expect(selections).toEqual(["two"]);
+      expect(view.getSelectedItem().id).toBe("two");
     });
 
     it("lets the reload's own selection stand when it dropped the selected item", async () => {

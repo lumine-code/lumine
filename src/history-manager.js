@@ -22,6 +22,7 @@ class HistoryManager {
         {
           "application:clear-project-history": {
             description: "Forget the projects offered by the Reopen Project menu.",
+            actionScope: "list",
             didDispatch: this.clearProjects.bind(this),
           },
         },

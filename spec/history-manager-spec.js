@@ -54,6 +54,7 @@ describe("HistoryManager", () => {
       const listener = cmdCall.args[1]["application:clear-project-history"];
       expect(typeof listener.didDispatch).toBe("function");
       expect(listener.description).toBe("Forget the projects offered by the Reopen Project menu.");
+      expect(listener.actionScope).toBe("list");
     });
 
     describe("getProjects", () => {
