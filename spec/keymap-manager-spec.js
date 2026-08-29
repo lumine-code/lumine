@@ -2951,7 +2951,7 @@ describe("KeymapManager", function () {
       });
     });
   });
-  return describe("events", function () {
+  describe("events", function () {
     it("emits `matched` when a key binding matches an event", function () {
       var binding, handler, keyboardEventTarget, keystrokes;
       handler = stub();
@@ -3083,6 +3083,51 @@ describe("KeymapManager", function () {
       ({ keystrokes, keyboardEventTarget } = handler.firstCall.args[0]);
       assert.equal(keystrokes, "ctrl-y");
       return assert.equal(keyboardEventTarget, document.body);
+    });
+  });
+
+  describe("with multiple documents", function () {
+    let frame;
+
+    beforeEach(function () {
+      frame = document.createElement("iframe");
+      document.body.appendChild(frame);
+    });
+
+    afterEach(function () {
+      frame.remove();
+    });
+
+    it("keeps pending chord state isolated per document", function () {
+      const mainTarget = document.createElement("div");
+      mainTarget.className = "surface-target";
+      document.body.appendChild(mainTarget);
+      const otherDocument = frame.contentDocument;
+      const otherTarget = otherDocument.createElement("div");
+      otherTarget.className = "surface-target";
+      otherDocument.body.appendChild(otherTarget);
+
+      keymapManager.add("test", {
+        ".surface-target": {
+          "x y": "surface:complete",
+        },
+      });
+
+      let dispatches = 0;
+      mainTarget.addEventListener("surface:complete", () => dispatches++);
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "x", target: mainTarget }));
+
+      const mainState = keymapManager.stateForDocument(document);
+      assert.deepEqual(mainState.queuedKeystrokes, ["x"]);
+      assert.equal(mainState.pendingPartialMatches.length, 1);
+
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "q", target: otherTarget }));
+      assert.deepEqual(mainState.queuedKeystrokes, ["x"]);
+      assert.equal(keymapManager.stateForDocument(otherDocument).pendingPartialMatches, null);
+
+      keymapManager.handleKeyboardEvent(buildKeydownEvent({ key: "y", target: mainTarget }));
+      assert.equal(dispatches, 1);
+      mainTarget.remove();
     });
   });
 });

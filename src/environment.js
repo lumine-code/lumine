@@ -14,6 +14,11 @@ const ConfigSchema = require("./config-schema");
 
 const DeserializerManager = require("./deserializer-manager");
 const ViewRegistry = require("./view-registry");
+const ElementRegistry = require("./element-registry");
+const DomContext = require("./dom-context");
+const registerCoreElements = require("./register-core-elements");
+const { WindowSurface, WindowSurfaceManager } = require("./window-surface");
+const DetachedPaneSurfaceManager = require("./detached-pane-surface-manager");
 const NotificationManager = require("./notification-manager");
 const Config = require("./config");
 const KeymapManager = require("./keymap-extensions");
@@ -46,6 +51,7 @@ const WorkspaceDropManager = require("./workspace-drop-manager");
 const PaneContainer = require("./pane-container");
 const PaneAxis = require("./pane-axis");
 const Pane = require("./pane");
+const DetachedPane = require("./detached-pane");
 const Dock = require("./dock");
 const TextEditor = require("./text-editor");
 const TextBuffer = require("./text-buffer");
@@ -184,6 +190,19 @@ class Environment {
      * @type {ViewRegistry}
      */
     this.views = new ViewRegistry(this);
+
+    /**
+     * @public
+     * @status extended
+     *
+     * Realm-safe DOM helpers for resolving owner Documents and Windows and loading scripts into a surface.
+     *
+     * @type {DomContext}
+     */
+    this.dom = DomContext;
+    this.elements = new ElementRegistry();
+    registerCoreElements(this.elements);
+    this.windowSurfaces = new WindowSurfaceManager();
 
     /**
      * @public
@@ -355,6 +374,7 @@ class Environment {
       config: this.config,
       notificationManager: this.notifications,
       packageManager: this.packages,
+      windowSurfaceManager: this.windowSurfaces,
     });
     // Interactive credential/passphrase prompting for git operations that run in
     // the git-host worker, so the user's system git credential helpers stay the
@@ -441,6 +461,7 @@ class Environment {
       styleManager: this.styles,
       enablePersistence: this.enablePersistence,
     });
+    this.tooltips.attachWorkspace(this.workspace);
 
     /**
      * @public
@@ -452,6 +473,7 @@ class Environment {
      */
     this.workspaceDrops = new WorkspaceDropManager({
       workspace: this.workspace,
+      config: this.config,
       applicationDelegate: this.applicationDelegate,
       windowService: this.window,
     });
@@ -552,7 +574,21 @@ class Environment {
       this.keymaps.loadBundledKeymaps();
     }
 
-    this.commands.attach(this.domWindow);
+    this.disposables.add(this.commands.attach(this.domWindow));
+    const hasLiveDocument =
+      this.document?.defaultView && this.domWindow?.document === this.document;
+    if (hasLiveDocument) {
+      this.disposables.add(this.views.registerDocument(this.document));
+      this.disposables.add(this.elements.addWindow(this.domWindow));
+      this.primaryWindowSurface = this.windowSurfaces.add(
+        new WindowSurface({
+          id: "primary",
+          kind: "primary",
+          window: this.domWindow,
+          document: this.document,
+        }),
+      );
+    }
 
     this.styles.initialize({ configDirPath: this.configDirPath });
     this.packages.initialize({
@@ -588,6 +624,10 @@ class Environment {
     this.#windowEventHandler.initialize(this.domWindow, this.document);
 
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
+    if (this.primaryWindowSurface) {
+      this.primaryWindowSurface.element = this.workspace.element || null;
+    }
+    this.initializeDetachedPaneSurfaces();
     this.workspaceDrops.initialize();
 
     const didChangeStyles = this.didChangeStyles.bind(this);
@@ -600,6 +640,34 @@ class Environment {
     this.disposables.add(
       this.applicationDelegate.onDidChangeHistoryManager(() => this.history.loadState()),
     );
+  }
+
+  initializeDetachedPaneSurfaces({ force = false } = {}) {
+    this.detachedPaneSurfaceManager?.destroy();
+    this.detachedPaneSurfaceManager = null;
+    this.workspace.setDetachedPaneSurfaceManager(null);
+    if (
+      !this.primaryWindowSurface ||
+      (!force && (this.window.isSpecMode() || this.window.isHeadless()))
+    ) {
+      return;
+    }
+
+    this.detachedPaneSurfaceManager = new DetachedPaneSurfaceManager({
+      workspace: this.workspace,
+      applicationDelegate: this.applicationDelegate,
+      primaryWindow: this.domWindow,
+      primaryDocument: this.document,
+      styleManager: this.styles,
+      themeManager: this.themes,
+      commandRegistry: this.commands,
+      keymapManager: this.keymaps,
+      contextMenuManager: this.contextMenu,
+      viewRegistry: this.views,
+      elementRegistry: this.elements,
+      surfaceManager: this.windowSurfaces,
+    });
+    this.workspace.setDetachedPaneSurfaceManager(this.detachedPaneSurfaceManager);
   }
 
   // Remove what an interrupted package install left in the packages directory.
@@ -637,6 +705,7 @@ class Environment {
     this.deserializers.add(PaneContainer);
     this.deserializers.add(PaneAxis);
     this.deserializers.add(Pane);
+    this.deserializers.add(DetachedPane);
     this.deserializers.add(Dock);
     this.deserializers.add(Project);
     this.deserializers.add(TextEditor);
@@ -695,6 +764,9 @@ class Environment {
   }
 
   async reset() {
+    this.detachedPaneSurfaceManager?.destroy();
+    this.detachedPaneSurfaceManager = null;
+    this.workspace.setDetachedPaneSurfaceManager(null);
     this.deserializers.clear();
     this.registerDefaultDeserializers();
 
@@ -729,6 +801,10 @@ class Environment {
     this.registerDefaultOpeners();
     this.project.reset(this.packages);
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
+    if (this.primaryWindowSurface) {
+      this.primaryWindowSurface.element = this.workspace.element || null;
+    }
+    this.initializeDetachedPaneSurfaces();
     // The reset recreated the pane containers, so the registry's active-item
     // subscription must be rebuilt against the new center.
     this.repositories.attachWorkspace(this.workspace);
@@ -752,6 +828,10 @@ class Environment {
     this.emitter.emit("will-destroy");
 
     this.menu.destroy();
+    this.detachedPaneSurfaceManager?.destroy();
+    this.detachedPaneSurfaceManager = null;
+    this.windowSurfaces?.destroy();
+    this.elements?.destroy();
     this.disposables.dispose();
     if (this.workspaceDrops) this.workspaceDrops.destroy();
     this.workspaceDrops = null;
@@ -949,6 +1029,15 @@ class Environment {
         this.applicationDelegate.onContextMenuCommand(this.dispatchContextMenuCommand.bind(this)),
       );
       this.disposables.add(
+        this.applicationDelegate.onSurfaceCommand(this.dispatchSurfaceCommand.bind(this)),
+        this.applicationDelegate.onSurfaceContextCommand(
+          this.dispatchSurfaceContextCommand.bind(this),
+        ),
+        this.applicationDelegate.onDidCloseSurfaceContextMenu(
+          this.didCloseSurfaceContextMenu.bind(this),
+        ),
+      );
+      this.disposables.add(
         this.applicationDelegate.onURIMessage(this.dispatchURIMessage.bind(this)),
       );
       this.disposables.add(
@@ -975,7 +1064,9 @@ class Environment {
         this.document.body.classList.add("hidden-title-bar");
       }
 
-      this.document.body.appendChild(this.workspace.getElement());
+      const workspaceElement = this.workspace.getElement();
+      if (this.primaryWindowSurface) this.primaryWindowSurface.element = workspaceElement;
+      this.document.body.appendChild(workspaceElement);
       if (this.backgroundStylesheet) this.backgroundStylesheet.remove();
 
       let previousProjectPaths = this.project.getPaths();
@@ -1002,6 +1093,7 @@ class Environment {
       StartupTime.addMarker("window:environment:start-editor-window:activate-packages");
       await this.packages.activate();
       StartupTime.addMarker("window:environment:start-editor-window:activate-packages:end");
+      await this.detachedPaneSurfaceManager?.restoreDetachedPanes();
       this.keymaps.loadUserKeymap();
       if (!this.window.isSafeMode()) this.requireUserInitScript();
 
@@ -1538,6 +1630,26 @@ class Environment {
 
   dispatchContextMenuCommand(command, ...args) {
     this.commands.dispatch(this.contextMenu.activeElement, command, args);
+  }
+
+  dispatchSurfaceCommand(surfaceId, command, arg) {
+    const surface = this.windowSurfaces.get(surfaceId);
+    if (!surface) return;
+    let activeElement = surface.document.activeElement;
+    if (activeElement === surface.document.body) activeElement = surface.element;
+    this.commands.dispatch(activeElement, command, arg);
+  }
+
+  dispatchSurfaceContextCommand(surfaceId, requestId, command, detail) {
+    const surface = this.windowSurfaces.get(surfaceId);
+    const target = this.contextMenu.targetForSurfaceRequest(requestId);
+    if (!surface || !target || target.ownerDocument !== surface.document) return;
+    this.contextMenu.closeSurfaceRequest(requestId);
+    this.commands.dispatch(target, command, detail);
+  }
+
+  didCloseSurfaceContextMenu(_surfaceId, requestId) {
+    this.contextMenu.closeSurfaceRequest(requestId);
   }
 
   dispatchURIMessage(uri) {

@@ -37,7 +37,7 @@ module.exports = class WorkspaceCenter {
   }
 
   activate() {
-    this.getActivePane().activate();
+    this.getActiveTiledPane().activate();
   }
 
   getLocation() {
@@ -186,6 +186,14 @@ module.exports = class WorkspaceCenter {
    */
   onDidDestroyPane(callback) {
     return this.paneContainer.onDidDestroyPane(callback);
+  }
+
+  onDidDetachPane(callback) {
+    return this.paneContainer.onDidDetachPane(callback);
+  }
+
+  onDidAttachPane(callback) {
+    return this.paneContainer.onDidAttachPane(callback);
   }
 
   /**
@@ -379,12 +387,36 @@ module.exports = class WorkspaceCenter {
    * @public
    * @status extended
    *
-   * Get all panes in the workspace center.
+   * Get all tiled and detached panes in the workspace center.
    *
    * @returns {Array} of {@link Pane Panes}.
    */
   getPanes() {
     return this.paneContainer.getPanes();
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the panes participating in the primary window's tiled layout.
+   *
+   * @returns {Array} of tiled {@link Pane Panes}.
+   */
+  getTiledPanes() {
+    return this.paneContainer.getTiledPanes();
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the one-item panes presented in detached native windows.
+   *
+   * @returns {Array} of detached panes.
+   */
+  getDetachedPanes() {
+    return this.paneContainer.getDetachedPanes();
   }
 
   /**
@@ -397,6 +429,33 @@ module.exports = class WorkspaceCenter {
    */
   getActivePane() {
     return this.paneContainer.getActivePane();
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the last active pane in the primary tiled surface.
+   *
+   * @returns {Pane}
+   */
+  getActiveTiledPane() {
+    return this.paneContainer.getActiveTiledPane();
+  }
+
+  /** @private */
+  resolveInsertionPane(pane) {
+    return this.paneContainer.resolveInsertionPane(pane);
+  }
+
+  /** @private */
+  detachPaneItem(item, options) {
+    return this.paneContainer.detachPaneItem(item, options);
+  }
+
+  /** @private */
+  attachDetachedPane(pane, options) {
+    return this.paneContainer.attachDetachedPane(pane, options);
   }
 
   /**

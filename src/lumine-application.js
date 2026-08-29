@@ -453,6 +453,25 @@ const handleWindowAction = async (event, action, ...args) => {
 };
 ipcMain.handle("lumine:window", handleWindowAction);
 
+const handleDetachedPaneWindowAction = (event, action, ...args) => {
+  const lumineWindow = currentLumineWindow(event);
+  const manager = lumineWindow.detachedPaneWindows;
+  if (!manager) throw new Error("Detached-pane windows are not available");
+  switch (action) {
+    case "reserve":
+      return manager.reserve(args[0] || {});
+    case "perform": {
+      const [transactionId, operation, ...operationArgs] = args;
+      assertString(transactionId, "transactionId");
+      assertString(operation, "operation");
+      return manager.perform(transactionId, operation, ...operationArgs);
+    }
+    default:
+      throw new Error(`Unsupported detached-pane window action: ${action}`);
+  }
+};
+ipcMain.handle("lumine:detached-pane-window", handleDetachedPaneWindowAction);
+
 const handleWindowBroadcast = (event, eventName, ...args) => {
   assertString(eventName, "eventName");
   const application = currentApplication();
@@ -751,6 +770,8 @@ module.exports = class LumineApplication extends EventEmitter {
     this._killProcess = options.killProcess || process.kill.bind(process);
     this.waitSessionsByWindow = new Map();
     this.lumineWindowsByWebContentsId = new Map();
+    this.detachedPaneWindowsByBrowserWindow = new Map();
+    this.detachedPaneWindowsById = new Map();
     this.windowStack = new WindowStack();
 
     let configFilePath = getConfigFilePath({ returnPlaceholder: true });
@@ -1011,6 +1032,33 @@ module.exports = class LumineApplication extends EventEmitter {
     for (const [id, registeredWindow] of this.lumineWindowsByWebContentsId) {
       if (registeredWindow === lumineWindow) this.lumineWindowsByWebContentsId.delete(id);
     }
+  }
+
+  registerDetachedPaneWindow(lumineWindow, surface) {
+    if (!surface?.id || !surface.browserWindow) {
+      throw new TypeError("A detached-pane BrowserWindow record is required");
+    }
+    if (this.detachedPaneWindowsById.has(surface.id)) {
+      throw new Error(`A detached-pane window named '${surface.id}' is already registered`);
+    }
+    const context = { lumineWindow, surface, browserWindow: surface.browserWindow };
+    this.detachedPaneWindowsById.set(surface.id, context);
+    this.detachedPaneWindowsByBrowserWindow.set(surface.browserWindow, context);
+  }
+
+  unregisterDetachedPaneWindow(surface) {
+    const context = surface && this.detachedPaneWindowsById.get(surface.id);
+    if (!context || context.surface !== surface) return false;
+    this.detachedPaneWindowsById.delete(surface.id);
+    this.detachedPaneWindowsByBrowserWindow.delete(surface.browserWindow);
+    return true;
+  }
+
+  didFocusDetachedPaneWindow(lumineWindow, surface) {
+    const context = this.detachedPaneWindowsById.get(surface.id);
+    if (!context || context.lumineWindow !== lumineWindow) return;
+    this.windowStack.touch(lumineWindow);
+    this.applicationMenu?.focusSurfaceWindow?.(surface.browserWindow, lumineWindow.browserWindow);
   }
 
   showWindow(lumineWindow) {
@@ -1501,7 +1549,11 @@ module.exports = class LumineApplication extends EventEmitter {
    */
   sendCommand(command, ...args) {
     if (!this.emit(command, ...args)) {
-      const focusedWindow = this.focusedWindow();
+      const context = this.focusedWindowContext();
+      if (context?.detached) {
+        return context.lumineWindow.sendCommandToSurface(context.surfaceId, command, ...args);
+      }
+      const focusedWindow = context?.lumineWindow || this.focusedWindow();
       if (focusedWindow) {
         return focusedWindow.sendCommand(command, ...args);
       } else {
@@ -1618,6 +1670,25 @@ module.exports = class LumineApplication extends EventEmitter {
     );
   }
 
+  windowContextForBrowserWindow(browserWindow) {
+    if (!browserWindow) return null;
+    const detached = this.detachedPaneWindowsByBrowserWindow.get(browserWindow);
+    if (detached) {
+      return {
+        lumineWindow: detached.lumineWindow,
+        browserWindow,
+        surfaceId: detached.surface.id,
+        detached: true,
+      };
+    }
+    const lumineWindow = this.lumineWindowForBrowserWindow(browserWindow);
+    return lumineWindow ? { lumineWindow, browserWindow, surfaceId: null, detached: false } : null;
+  }
+
+  focusedWindowContext() {
+    return this.windowContextForBrowserWindow(BrowserWindow.getFocusedWindow());
+  }
+
   /**
    * @public
    * @status public
@@ -1625,7 +1696,10 @@ module.exports = class LumineApplication extends EventEmitter {
    * @returns {LumineWindow|undefined} currently focused `LumineWindow` or undefined if none.
    */
   focusedWindow() {
-    return this.getAllWindows().find((window) => window.isFocused());
+    return (
+      this.focusedWindowContext()?.lumineWindow ||
+      this.getAllWindows().find((window) => window.isFocused())
+    );
   }
 
   // Replaces the focused window with a development-mode window after its
@@ -2560,4 +2634,5 @@ Object.assign(module.exports, {
   handleWindowAction,
   handleWindowBootstrap,
   handleWindowBroadcast,
+  handleDetachedPaneWindowAction,
 });

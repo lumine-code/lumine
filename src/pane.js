@@ -153,10 +153,53 @@ module.exports = class Pane {
     return this.container;
   }
 
-  setContainer(container) {
+  /**
+   * @public
+   * @status extended
+   *
+   * Return the native-window surface currently presenting this pane.
+   */
+  getSurface() {
+    return typeof lumine !== "undefined" ? lumine.workspace?.getWindowSurface?.(this) : null;
+  }
+
+  /** @private */
+  confirm(options) {
+    return (
+      this.getSurface()?.windowService?.confirm?.(options) ??
+      this.applicationDelegate.confirm(options)
+    );
+  }
+
+  /** @private */
+  showSaveDialog(options) {
+    return (
+      this.getSurface()?.windowService?.showSaveDialog?.(options) ??
+      this.applicationDelegate.showSaveDialog(options)
+    );
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Determine whether this pane is presented outside the tiled pane tree.
+   *
+   * @returns {Boolean}
+   */
+  isDetached() {
+    return false;
+  }
+
+  /** @private */
+  canAcceptItem(_item) {
+    return true;
+  }
+
+  setContainer(container, { notify = true } = {}) {
     if (container && container !== this.container) {
       this.container = container;
-      container.didAddPane({ pane: this });
+      if (notify) container.didAddPane({ pane: this });
     }
   }
 
@@ -288,7 +331,7 @@ module.exports = class Pane {
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeActive(callback) {
-    return this.container.onDidChangeActivePane((activePane) => {
+    return this.container.onDidChangeActiveTiledPane((activePane) => {
       const isActive = this === activePane;
       callback(isActive);
     });
@@ -725,6 +768,10 @@ module.exports = class Pane {
 
     if (this.items.includes(item)) return;
 
+    if (!this.canAcceptItem(item)) {
+      throw new Error(`Pane ${this.id} cannot accept another item`);
+    }
+
     const itemSubscriptions = new CompositeDisposable();
     this.subscriptionsPerItem.set(item, itemSubscriptions);
     if (typeof item.onDidDestroy === "function") {
@@ -749,7 +796,7 @@ module.exports = class Pane {
       // A moved item is not *added* as far as the workspace is concerned, but
       // it does now live in this container, so the registry follows it.
       if (moved) {
-        this.container.registerItem(item);
+        if (!options.preserveRegistration) this.container.registerItem(item, this);
       } else {
         this.container.didAddPaneItem(item, this, index);
       }
@@ -838,7 +885,7 @@ module.exports = class Pane {
     return items;
   }
 
-  removeItem(item, moved) {
+  removeItem(item, moved, options = {}) {
     const index = this.items.indexOf(item);
     if (index === -1) return;
     if (this.getPendingItem() === item) this.pendingItem = null;
@@ -871,12 +918,18 @@ module.exports = class Pane {
       // As in `addItem`: a move destroys nothing, but the item has left this
       // container and the registry has to say so.
       if (moved) {
-        this.container.unregisterItem(item);
+        if (!options.preserveRegistration) this.container.unregisterItem(item, this);
       } else {
         this.container.didDestroyPaneItem({ item, index, pane: this });
       }
     }
-    if (this.items.length === 0 && this.config.get("core.destroyEmptyPanes")) this.destroy();
+    if (this.items.length === 0 && !options.deferEmptyCleanup) {
+      if (this.container) {
+        this.container.didEmptyPane(this);
+      } else if (this.config.get("core.destroyEmptyPanes")) {
+        this.destroy();
+      }
+    }
   }
 
   // Remove the given item from the itemStack.
@@ -915,6 +968,9 @@ module.exports = class Pane {
    * @param {Number} index - indicating the index to which to move the item in the given pane.
    */
   moveItemToPane(item, pane, index) {
+    if (this.container && pane.getContainer() === this.container) {
+      return this.container.moveItem(item, this, pane, index);
+    }
     this.removeItem(item, true);
     return pane.addItem(item, { index, moved: true });
   }
@@ -1031,7 +1087,7 @@ module.exports = class Pane {
     const uri = item.getURI?.() ?? item.getUri?.() ?? null;
     const title = (typeof item.getTitle === "function" && item.getTitle()) || uri;
 
-    const response = await this.applicationDelegate.confirm({
+    const response = await this.confirm({
       message: `'${title}' has changed on disk. Do you want to overwrite this file with your changes?`,
       detail: "The contents of the buffer may be stale.",
 
@@ -1063,12 +1119,11 @@ module.exports = class Pane {
       const title = (typeof item.getTitle === "function" && item.getTitle()) || uri;
 
       const saveDialog = (saveButtonText, saveFn, message) => {
-        this.applicationDelegate
-          .confirm({
-            message,
-            detail: "Your changes will be lost if you close this item without saving.",
-            buttons: [saveButtonText, "Cancel", "&Don't Save"],
-          })
+        this.confirm({
+          message,
+          detail: "Your changes will be lost if you close this item without saving.",
+          buttons: [saveButtonText, "Cancel", "&Don't Save"],
+        })
           .then((response) => {
             switch (response) {
               case 0:
@@ -1229,7 +1284,7 @@ module.exports = class Pane {
     const itemPath = item.getPath();
     if (itemPath && !saveOptions.defaultPath) saveOptions.defaultPath = itemPath;
 
-    const { filePath: newItemPath } = await this.applicationDelegate.showSaveDialog(saveOptions);
+    const { filePath: newItemPath } = await this.showSaveDialog(saveOptions);
     if (!newItemPath) {
       return nextAction ? nextAction(new SaveCancelledError("Save Cancelled")) : undefined;
     }
@@ -1320,7 +1375,7 @@ module.exports = class Pane {
    * @returns {Boolean}
    */
   isActive() {
-    return this.container && this.container.getActivePane() === this;
+    return this.container && this.container.getActiveTiledPane() === this;
   }
 
   /**
@@ -1356,7 +1411,7 @@ module.exports = class Pane {
    * itself will not be destroyed.
    */
   destroy() {
-    if (this.container && this.container.isAlive() && this.container.getPanes().length === 1) {
+    if (this.container && this.container.isAlive() && this.container.getRoot() === this) {
       return this.destroyItems();
     }
 
@@ -1368,13 +1423,14 @@ module.exports = class Pane {
     }
     if (this.container) {
       this.container.willDestroyPane({ pane: this });
-      if (this.isActive()) this.container.activateNextPane();
+      this.container.activatePaneAfterDestroy(this);
+    }
+    for (let item of this.items.slice()) {
+      this.removeItem(item, false, { deferEmptyCleanup: true });
+      if (typeof item.destroy === "function") item.destroy();
     }
     this.emitter.emit("did-destroy");
     this.emitter.dispose();
-    for (let item of this.items.slice()) {
-      if (typeof item.destroy === "function") item.destroy();
-    }
     if (this.container) this.container.didDestroyPane({ pane: this });
   }
 

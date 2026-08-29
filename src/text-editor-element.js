@@ -1,5 +1,13 @@
 const { Emitter, Range } = require("lumine");
 const TextEditorComponent = require("./text-editor-component");
+const { classFactory } = require("./realm-custom-element");
+
+function initializeTextEditorElement() {
+  this.emitter = new Emitter();
+  this.initialText = this.textContent;
+  this.addEventListener("focus", (event) => this.getComponent().didFocus(event));
+  this.addEventListener("blur", (event) => this.getComponent().didBlur(event));
+}
 
 class TextEditorElement extends HTMLElement {
   initialize(component) {
@@ -9,16 +17,13 @@ class TextEditorElement extends HTMLElement {
 
   constructor() {
     super();
-    this.emitter = new Emitter();
-    this.initialText = this.textContent;
+    initializeTextEditorElement.call(this);
     // Deliberately no `tabIndex` here: a custom element constructor may not add
     // attributes, and assigning one fails silently rather than loudly. Chromium
     // reports an uncaught NotSupportedError and `createElement` hands back a bare
     // HTMLUnknownElement with none of this class on it, so every editor would
     // break somewhere downstream instead of at the call site. The component reads
     // any author-set value in its constructor, then sets its own in `buildShell`.
-    this.addEventListener("focus", (event) => this.getComponent().didFocus(event));
-    this.addEventListener("blur", (event) => this.getComponent().didBlur(event));
   }
 
   connectedCallback() {
@@ -409,11 +414,14 @@ class TextEditorElement extends HTMLElement {
     return this.getModel().getFirstVisibleScreenColumn();
   }
 
-  static createTextEditorElement() {
+  static createTextEditorElement(document = globalThis.document) {
     return document.createElement("lumine-text-editor");
   }
 }
 
-window.customElements.define("lumine-text-editor", TextEditorElement);
+TextEditorElement.elementDefinition = {
+  name: "lumine-text-editor",
+  factory: classFactory(TextEditorElement, initializeTextEditorElement),
+};
 
 module.exports = TextEditorElement;

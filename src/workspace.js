@@ -15,6 +15,7 @@ const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
+const WindowSurfaceTransitionCoordinator = require("./window-surface-transition");
 // Provided to packages through ::buildSelectList and ::buildInputDialog, so
 // that a package needs neither a manifest entry nor a pin for the list toolkit
 // and a window holds a single copy of it.
@@ -281,6 +282,7 @@ module.exports = class Workspace extends Model {
     this.styleManager = params.styleManager;
     this.draggingItem = false;
     this.itemLocationStore = new StateStore("LuminePreviousItemLocations", 1);
+    this.windowSurfaceTransitions = new WindowSurfaceTransitionCoordinator();
 
     this.emitter = new Emitter();
     this.openers = [];
@@ -617,7 +619,10 @@ module.exports = class Workspace extends Model {
         container = this.paneContainerForURI(uri);
       } else {
         container = this.paneContainers[location] || this.paneContainers.center;
-        const pane = container.getActivePane();
+        const pane =
+          typeof container.resolveInsertionPane === "function"
+            ? container.resolveInsertionPane(container.getActivePane())
+            : container.getActivePane();
         pane.addItem(item);
         pane.activateItem(item);
       }
@@ -800,6 +805,7 @@ module.exports = class Workspace extends Model {
               fileState === FileState.REMOVED &&
               this.config.get("core.closeDeletedFileTabs");
             previousFileState = fileState;
+            this.updateDocumentEdited();
             if (shouldClose) void pane.destroyItem(item, true);
           }),
         );
@@ -884,7 +890,7 @@ module.exports = class Workspace extends Model {
   // On macOS, fades the application window's proxy icon when the current item
   // has a dirty file state.
   updateDocumentEdited() {
-    const activePaneItem = this.getActivePaneItem();
+    const activePaneItem = this.getCenter().getActiveTiledPane()?.getActiveItem();
     const dirty =
       activePaneItem != null &&
       typeof activePaneItem.getFileState === "function" &&
@@ -1459,6 +1465,12 @@ module.exports = class Workspace extends Model {
         pane.clearPendingItem();
       }
 
+      // Detached panes are one-item surfaces. Existing items may be activated
+      // there, but every newly opened item belongs in the tiled center tree.
+      if (!pane.getItems().includes(item)) {
+        pane = pane.getContainer().resolveInsertionPane(pane);
+      }
+
       this.itemOpened(item);
 
       if (options.activateItem === false) {
@@ -1618,7 +1630,8 @@ module.exports = class Workspace extends Model {
     const activateItem = options.activateItem != null ? options.activateItem : true;
 
     const uri = this.project.resolvePath(uri_);
-    let item = this.getActivePane().itemForURI(uri);
+    let pane = this.getActivePane();
+    let item = pane.itemForURI(uri);
     if (uri && item == null) {
       for (const opener of this.getOpeners()) {
         item = opener(uri, options);
@@ -1629,13 +1642,11 @@ module.exports = class Workspace extends Model {
       item = this.project.openSync(uri, { initialLine, initialColumn });
     }
 
-    if (activateItem) {
-      this.getActivePane().activateItem(item);
-    }
+    const existingPane = this.paneForItem(item);
+    pane = existingPane || pane.getContainer().resolveInsertionPane(pane);
+    if (activateItem) pane.activateItem(item);
     this.itemOpened(item);
-    if (activatePane) {
-      this.getActivePane().activate();
-    }
+    if (activatePane) pane.activate();
     return item;
   }
 
@@ -1842,7 +1853,7 @@ module.exports = class Workspace extends Model {
    * @returns {SelectListView}
    */
   buildSelectList(props) {
-    return new SelectListView(props);
+    return this.bindModalOwner(new SelectListView(props), props);
   }
 
   /**
@@ -1868,7 +1879,24 @@ module.exports = class Workspace extends Model {
    * @returns {InputDialogView}
    */
   buildInputDialog(props) {
-    return new InputDialogView(props);
+    return this.bindModalOwner(new InputDialogView(props), props);
+  }
+
+  bindModalOwner(view, { owner, surface } = {}) {
+    if (!owner && !surface) return view;
+    const getPanel = view.getPanel.bind(view);
+    view.getPanel = () => this.withModalOwner({ owner, surface }, () => getPanel());
+    return view;
+  }
+
+  withModalOwner(owner, callback) {
+    const previous = this.pendingModalOwner;
+    this.pendingModalOwner = owner;
+    try {
+      return callback();
+    } finally {
+      this.pendingModalOwner = previous;
+    }
   }
 
   /**
@@ -1878,11 +1906,17 @@ module.exports = class Workspace extends Model {
   // The keeper of the window's modal breadcrumb trail. Internal — packages
   // reach the flow through {@link Panel#show}'s `crumb` option and the delegates
   // below.
-  getModalFlow() {
+  getModalFlow(surface = null) {
+    if (surface && !surface.isPrimary?.() && surface.modalFlow) return surface.modalFlow;
     if (this.modalFlowKeeper == null) {
       this.modalFlowKeeper = new ModalFlow(this);
     }
     return this.modalFlowKeeper;
+  }
+
+  getActiveModalFlow() {
+    const surface = this.detachedPaneSurfaceManager?.surfaceManager.getActive();
+    return this.getModalFlow(surface);
   }
 
   /**
@@ -1900,7 +1934,7 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} — `false` when there is no step to go back to.
    */
   popModal() {
-    return this.modalFlowKeeper ? this.modalFlowKeeper.pop() : false;
+    return this.getActiveModalFlow().pop();
   }
 
   /**
@@ -1913,7 +1947,7 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} — `false` when the index is not an earlier step.
    */
   popModalTo(index) {
-    return this.modalFlowKeeper ? this.modalFlowKeeper.popTo(index) : false;
+    return this.getActiveModalFlow().popTo(index);
   }
 
   /**
@@ -1925,7 +1959,7 @@ module.exports = class Workspace extends Model {
    * @returns {Array} of `String` labels, root first; empty when no flow is active.
    */
   getModalTrail() {
-    return this.modalFlowKeeper ? this.modalFlowKeeper.getTrail() : [];
+    return this.getActiveModalFlow().getTrail();
   }
 
   /**
@@ -2346,6 +2380,101 @@ module.exports = class Workspace extends Model {
 
   /**
    * @public
+   * @status public
+   *
+   * Move a center pane item into a one-item pane presented in a native window.
+   * The same item and view objects are transferred; they are never serialized
+   * or reopened during the operation.
+   *
+   * @param item - A pane item currently owned by a tiled center pane.
+   * @param {Object} [options] - Initial native-window bounds and an optional DnD transaction id.
+   * @returns {Promise<DetachedPane|undefined>} The detached pane, or `undefined` without an item.
+   */
+  async detachPaneItem(item = this.getCenter().getActivePaneItem(), options) {
+    if (!item) return;
+    if (this.detachedPaneSurfaceManager) {
+      return await this.detachedPaneSurfaceManager.detachPaneItem(item, options);
+    }
+    return this.getCenter().detachPaneItem(item, options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Move the sole item of a detached pane back into the tiled center.
+   *
+   * @param pane - The `DetachedPane` to attach.
+   * @param {Object} [options] - Optional explicit tiled pane and item index.
+   * @returns {Promise<Pane>} The tiled pane receiving the item.
+   */
+  async attachDetachedPane(pane, options) {
+    if (this.detachedPaneSurfaceManager) {
+      return await this.detachedPaneSurfaceManager.attachDetachedPane(pane, options);
+    }
+    return this.getCenter().attachDetachedPane(pane, options);
+  }
+
+  /** @private */
+  setDetachedPaneSurfaceManager(manager) {
+    this.detachedPaneSurfaceManager = manager;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Return the renderer window surface currently presenting an item or pane.
+   */
+  getWindowSurface(itemOrPane) {
+    if (!this.detachedPaneSurfaceManager) return null;
+    const pane = this.paneForItem(itemOrPane) || itemOrPane;
+    return pane?.getItems
+      ? this.detachedPaneSurfaceManager.surfaceForPane(pane)
+      : this.detachedPaneSurfaceManager.surfaceForItem(itemOrPane);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Observe which native-window surface presents a pane item.
+   *
+   * @returns {Disposable} A subscription disposable.
+   */
+  observePaneItemSurface(item, callback) {
+    if (!this.detachedPaneSurfaceManager) {
+      callback(null);
+      return new Disposable();
+    }
+    return this.detachedPaneSurfaceManager.observePaneItemSurface(item, callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Participate in every pane-item transition between native-window surfaces.
+   * The callback runs before the DOM moves and may return async `commit` and
+   * `rollback` methods. `commit` runs after adoption and connection in the new
+   * document; `rollback` runs after physical restoration to the old document.
+   *
+   * @param {Function} callback - Called with a frozen transition context. It may return a participant object, a promise for one, or nothing.
+   * @param {Object} callback.context - The transition context.
+   * @param {string} callback.context.id - A unique transition identifier.
+   * @param {"detach"|"attach"|"restore"|"recovery"} callback.context.reason - Why the item is changing surfaces.
+   * @param callback.context.item - The pane item whose existing view is moving.
+   * @param {Object} callback.context.from - A frozen snapshot of the source surface, with `id`, `kind`, `window`, `document`, and `element` properties.
+   * @param {Object} callback.context.to - A frozen snapshot of the destination surface, with `id`, `kind`, `window`, `document`, and `element` properties.
+   * @param {AbortSignal} callback.context.signal - Aborted if the transition can no longer finish.
+   * @returns {Disposable} A subscription on which `.dispose()` can be called to stop participating in future transitions.
+   */
+  addWindowSurfaceTransitionObserver(callback) {
+    return this.windowSurfaceTransitions.addObserver(callback);
+  }
+
+  /**
+   * @public
    * @status extended
    *
    * Close the workspace center's active pane item, or its active pane
@@ -2357,7 +2486,7 @@ module.exports = class Workspace extends Model {
   closeActivePaneItemOrEmptyPaneOrWindow() {
     if (this.getCenter().getActivePaneItem() != null) {
       this.getCenter().getActivePane().destroyActiveItem();
-    } else if (this.getCenter().getPanes().length > 1) {
+    } else if (this.getCenter().getTiledPanes().length > 1) {
       this.getCenter().destroyActivePane();
     } else if (this.config.get("core.closeEmptyWindows")) {
       lumine.window.close();
@@ -2414,6 +2543,7 @@ module.exports = class Workspace extends Model {
   // Called by Model superclass when destroyed
   destroyed() {
     this.closeStateStore();
+    this.windowSurfaceTransitions.destroy();
     this.paneContainers.center.destroy();
     this.paneContainers.left.destroy();
     this.paneContainers.right.destroy();
@@ -2705,8 +2835,11 @@ module.exports = class Workspace extends Model {
    * @returns {Panel} associated with the given item. Returns `null` when the item has no panel.
    */
   panelForItem(item) {
-    for (let location in this.panelContainers) {
-      const container = this.panelContainers[location];
+    const containers = Object.values(this.panelContainers);
+    for (const surface of this.detachedPaneSurfaceManager?.getSurfaces() || []) {
+      if (surface.modalPanelContainer) containers.push(surface.modalPanelContainer);
+    }
+    for (const container of containers) {
       const panel = container.panelForItem(item);
       if (panel != null) {
         return panel;
@@ -2716,7 +2849,12 @@ module.exports = class Workspace extends Model {
   }
 
   getPanels(location) {
-    return this.panelContainers[location].getPanels();
+    const panels = this.panelContainers[location].getPanels();
+    if (location !== "modal") return panels;
+    for (const surface of this.detachedPaneSurfaceManager?.getSurfaces() || []) {
+      panels.push(...(surface.modalPanelContainer?.getPanels() || []));
+    }
+    return panels;
   }
 
   addPanel(location, options) {
@@ -2725,6 +2863,22 @@ module.exports = class Workspace extends Model {
     }
     const panel = new Panel(options, this.viewRegistry);
     if (location === "modal") {
+      const explicitSurface = options.surface;
+      const ownerSurface = options.owner
+        ? this.detachedPaneSurfaceManager?.surfaceForItem(options.owner)
+        : null;
+      const pendingSurface = this.pendingModalOwner?.surface;
+      const pendingOwnerSurface = this.pendingModalOwner?.owner
+        ? this.detachedPaneSurfaceManager?.surfaceForItem(this.pendingModalOwner.owner)
+        : null;
+      const activeSurface = this.detachedPaneSurfaceManager?.surfaceManager.getActive();
+      const surface =
+        explicitSurface || ownerSurface || pendingSurface || pendingOwnerSurface || activeSurface;
+      if (surface && !surface.isPrimary?.()) {
+        panel.flowKeeper = surface.modalFlow;
+        panel.surface = surface;
+        return surface.modalPanelContainer.addPanel(panel);
+      }
       panel.flowKeeper = this.getModalFlow();
     } else if (panel.crumb != null) {
       throw new TypeError("The crumb option is only supported on modal panels");

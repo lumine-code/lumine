@@ -1,4 +1,6 @@
 const { Disposable } = require("@lumine-code/event-kit");
+const { isElement, windowFor } = require("./dom-context");
+const DocumentViewScheduler = require("./document-view-scheduler");
 
 const AnyConstructor = Symbol("any-constructor");
 
@@ -32,6 +34,9 @@ module.exports = class ViewRegistry {
     this.documentReadInProgress = false;
     this.performDocumentUpdate = this.performDocumentUpdate.bind(this);
     this.lumineEnvironment = lumineEnvironment;
+    this.documents = new Set();
+    this.documentSchedulers = new WeakMap();
+    this.liveDocumentSchedulers = new Set();
     this.clear();
   }
 
@@ -135,19 +140,19 @@ module.exports = class ViewRegistry {
   }
 
   createView(object) {
-    if (object instanceof HTMLElement) {
+    if (isElement(object)) {
       return object;
     }
 
     let element;
     if (object && typeof object.getElement === "function") {
       element = object.getElement();
-      if (element instanceof HTMLElement) {
+      if (isElement(element)) {
         return element;
       }
     }
 
-    if (object && object.element instanceof HTMLElement) {
+    if (object && isElement(object.element)) {
       return object.element;
     }
 
@@ -227,25 +232,76 @@ module.exports = class ViewRegistry {
   }
 
   clearDocumentRequests() {
+    for (const scheduler of this.liveDocumentSchedulers || []) scheduler.clear();
     this.documentReaders = [];
     this.documentWriters = [];
     this.nextUpdatePromise = null;
     this.resolveNextUpdatePromise = null;
     if (this.animationFrameRequest != null) {
-      cancelAnimationFrame(this.animationFrameRequest);
+      this.animationFrameWindow.cancelAnimationFrame(this.animationFrameRequest);
       this.animationFrameRequest = null;
+      this.animationFrameWindow = null;
     }
+  }
+
+  registerDocument(value) {
+    const domWindow = windowFor(value);
+    const document = domWindow?.document;
+    if (!document) throw new TypeError("A view document must belong to a live Window");
+    this.documents.add(document);
+    this.forDocument(document);
+    return new Disposable(() => {
+      this.documents.delete(document);
+      const documentScheduler = this.documentSchedulers.get(document);
+      documentScheduler?.destroy();
+      this.documentSchedulers.delete(document);
+      this.liveDocumentSchedulers.delete(documentScheduler);
+      if (this.animationFrameWindow === domWindow && this.animationFrameRequest != null) {
+        domWindow.cancelAnimationFrame(this.animationFrameRequest);
+        this.animationFrameRequest = null;
+        this.animationFrameWindow = null;
+        if (this.documentReaders.length > 0 || this.documentWriters.length > 0) {
+          this.requestDocumentUpdate();
+        }
+      }
+    });
+  }
+
+  forDocument(document) {
+    if (!document?.defaultView) throw new TypeError("A view scheduler requires a live Document");
+    let scheduler = this.documentSchedulers.get(document);
+    if (!scheduler) {
+      scheduler = new DocumentViewScheduler(document);
+      this.documentSchedulers.set(document, scheduler);
+      this.liveDocumentSchedulers.add(scheduler);
+    }
+    return scheduler;
+  }
+
+  animationWindow() {
+    const documents = Array.from(this.documents).filter((document) => document.defaultView);
+    return (
+      documents.find((document) => document.hasFocus?.())?.defaultView ||
+      documents.find((document) => !document.hidden)?.defaultView ||
+      documents[0]?.defaultView ||
+      this.lumineEnvironment?.domWindow ||
+      (typeof window !== "undefined" ? window : null)
+    );
   }
 
   requestDocumentUpdate() {
     if (this.animationFrameRequest == null) {
-      this.animationFrameRequest = requestAnimationFrame(this.performDocumentUpdate);
+      const domWindow = this.animationWindow();
+      if (!domWindow) throw new Error("No live workspace surface can schedule a document update");
+      this.animationFrameWindow = domWindow;
+      this.animationFrameRequest = domWindow.requestAnimationFrame(this.performDocumentUpdate);
     }
   }
 
   performDocumentUpdate() {
     const { resolveNextUpdatePromise } = this;
     this.animationFrameRequest = null;
+    this.animationFrameWindow = null;
     this.nextUpdatePromise = null;
     this.resolveNextUpdatePromise = null;
 

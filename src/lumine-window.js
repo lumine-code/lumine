@@ -5,6 +5,7 @@ const fs = require("fs");
 const url = require("url");
 const { EventEmitter } = require("events");
 const StartupTime = require("./startup-time");
+const DetachedPaneWindowManager = require("./detached-pane-window-manager");
 
 // Packaged builds ship the icon under resourcesPath; a source checkout falls
 // back to the repo's own copy. Parameterized by filename rather than a single
@@ -104,6 +105,8 @@ module.exports = class LumineWindow extends EventEmitter {
     const BrowserWindowConstructor = settings.browserWindowConstructor || BrowserWindow;
     this.browserWindow = new BrowserWindowConstructor(options);
     this.lumineApplication.registerLumineWindow?.(this);
+    this.detachedPaneWindows = new DetachedPaneWindowManager(this);
+    this.detachedPaneWindows.install();
 
     this.handleEvents();
 
@@ -242,6 +245,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     this.browserWindow.on("closed", () => {
+      this.detachedPaneWindows.destroy();
       this.fileRecoveryService.didCloseWindow(this);
       this.lumineApplication.removeWindow(this);
       this.resolveClosedPromise();
@@ -438,6 +442,8 @@ module.exports = class LumineWindow extends EventEmitter {
             return this.close();
         }
       }
+    } else if (this.focusedDetachedPaneSurface()) {
+      this.sendCommandToSurface(this.focusedDetachedPaneSurface().id, command, ...args);
     } else if (this.isWebViewFocused()) {
       this.sendCommandToBrowserWindow(command, ...args);
     } else if (!this.lumineApplication.sendCommandToFirstResponder(command)) {
@@ -452,6 +458,11 @@ module.exports = class LumineWindow extends EventEmitter {
   sendCommandToBrowserWindow(command, ...args) {
     const action = args[0] && args[0].contextCommand ? "context-command" : "command";
     this.sendToRenderer(action, command, ...args);
+  }
+
+  sendCommandToSurface(surfaceId, command, ...args) {
+    if (surfaceId == null) return this.sendCommandToBrowserWindow(command, ...args);
+    this.sendToRenderer("surface-command", surfaceId, command, ...args);
   }
 
   getDimensions() {
@@ -505,7 +516,7 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   isFocused() {
-    return this.browserWindow.isFocused();
+    return this.browserWindow.isFocused() || this.detachedPaneWindows.hasFocusedWindow();
   }
 
   isMaximized() {
@@ -523,7 +534,18 @@ module.exports = class LumineWindow extends EventEmitter {
     return (
       focusedWebContents === this.browserWindow.webContents ||
       focusedWebContents.hostWebContents === this.browserWindow.webContents ||
-      BrowserWindow.fromWebContents(focusedWebContents) === this.browserWindow
+      BrowserWindow.fromWebContents(focusedWebContents) === this.browserWindow ||
+      this.detachedPaneWindows.surfaceForBrowserWindow(
+        BrowserWindow.fromWebContents(focusedWebContents),
+      ) != null
+    );
+  }
+
+  focusedDetachedPaneSurface() {
+    const focusedWebContents = webContents.getFocusedWebContents();
+    if (!focusedWebContents) return null;
+    return this.detachedPaneWindows.surfaceForBrowserWindow(
+      BrowserWindow.fromWebContents(focusedWebContents),
     );
   }
 
@@ -546,6 +568,7 @@ module.exports = class LumineWindow extends EventEmitter {
     this.loadedPromise = new Promise((resolve) => {
       this.resolveLoadedPromise = resolve;
     });
+    this.detachedPaneWindows.closeAll("owner-reload");
     this.browserWindow.reload();
     return this.loadedPromise;
   }

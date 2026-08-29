@@ -6,6 +6,7 @@ module.exports = class DummyScrollbarComponent {
     this.lastAppliedNativePosition = null;
 
     const { orientation } = props;
+    const document = props.document || globalThis.document;
     this.element = document.createElement("div");
     this.element.className = `${orientation}-scrollbar`;
     this.innerElement = document.createElement("div");

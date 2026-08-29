@@ -2,11 +2,16 @@
 
 const { createFocusTrap } = require("focus-trap");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
+const { classFactory } = require("./realm-custom-element");
+
+function initializePanelContainerElement() {
+  this.subscriptions = new CompositeDisposable();
+}
 
 class PanelContainerElement extends HTMLElement {
   constructor() {
     super();
-    this.subscriptions = new CompositeDisposable();
+    initializePanelContainerElement.call(this);
   }
 
   connectedCallback() {
@@ -92,6 +97,7 @@ class PanelContainerElement extends HTMLElement {
           // focus restoration is handled centrally by the container, which
           // tracks focus across chained modals instead of per activation
           returnFocusOnDeactivate: false,
+          document: panelElement.ownerDocument,
         };
 
         if (panel.autoFocus !== true) {
@@ -122,6 +128,7 @@ class PanelContainerElement extends HTMLElement {
   // Remembers where focus was before a modal opened. When modals open on top
   // of each other, only the element focused before the first modal is kept.
   capturePriorFocus() {
+    const document = this.ownerDocument;
     const active = document.activeElement;
     if (active && active !== document.body && !this.contains(active)) {
       this.priorFocus = active;
@@ -135,6 +142,7 @@ class PanelContainerElement extends HTMLElement {
     if (this.model.getPanels().some((panel) => panel.isVisible())) return;
 
     // the user moved focus elsewhere themselves — don't steal it back
+    const document = this.ownerDocument;
     const active = document.activeElement;
     if (active && active !== document.body && !panelElement.contains(active)) return;
 
@@ -156,12 +164,14 @@ class PanelContainerElement extends HTMLElement {
   }
 }
 
-window.customElements.define("lumine-panel-container", PanelContainerElement);
-
-function createPanelContainerElement() {
+function createPanelContainerElement(document = globalThis.document) {
   return document.createElement("lumine-panel-container");
 }
 
 module.exports = {
   createPanelContainerElement,
+  elementDefinition: {
+    name: "lumine-panel-container",
+    factory: classFactory(PanelContainerElement, initializePanelContainerElement),
+  },
 };

@@ -2,6 +2,7 @@ const { Emitter, Disposable } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { createStylesElement } = require("./styles-element");
+const StyleMount = require("./style-mount");
 
 /**
  * @public
@@ -200,6 +201,17 @@ module.exports = class StyleManager {
     const stylesElement = createStylesElement();
     stylesElement.initialize(this);
     return stylesElement;
+  }
+
+  /**
+   * Mount the shared stylesheet set into a particular DOM document.
+   *
+   * Unlike `buildStylesElement`, this creates every style element in the
+   * target document's own realm and is therefore suitable for workspace
+   * surfaces created with `window.open()`.
+   */
+  mount(target, options) {
+    return new StyleMount(this, target, options);
   }
 
   /**

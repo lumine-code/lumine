@@ -1,12 +1,17 @@
 const { Emitter, CompositeDisposable } = require("@lumine-code/event-kit");
+const { classFactory } = require("./realm-custom-element");
+
+function initializeStylesElement() {
+  this.subscriptions = new CompositeDisposable();
+  this.emitter = new Emitter();
+  this.styleElementClonesByOriginalElement = new WeakMap();
+  this.context = null;
+}
 
 class StylesElement extends HTMLElement {
   constructor() {
     super();
-    this.subscriptions = new CompositeDisposable();
-    this.emitter = new Emitter();
-    this.styleElementClonesByOriginalElement = new WeakMap();
-    this.context = null;
+    initializeStylesElement.call(this);
   }
 
   onDidAddStyleElement(callback) {
@@ -127,12 +132,14 @@ class StylesElement extends HTMLElement {
   }
 }
 
-window.customElements.define("lumine-styles", StylesElement);
-
-function createStylesElement() {
+function createStylesElement(document = globalThis.document) {
   return document.createElement("lumine-styles");
 }
 
 module.exports = {
   createStylesElement,
+  elementDefinition: {
+    name: "lumine-styles",
+    factory: classFactory(StylesElement, initializeStylesElement),
+  },
 };

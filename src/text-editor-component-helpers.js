@@ -37,22 +37,29 @@ function objectsEqual(a, b) {
   return true;
 }
 
-function roundToPhysicalPixelBoundary(virtualPixelPosition) {
-  const virtualPixelsPerPhysicalPixel = 1 / window.devicePixelRatio;
+function devicePixelRatioFor(target) {
+  if (typeof target === "number") return target || 1;
+  return (
+    target?.ownerDocument?.defaultView?.devicePixelRatio || globalThis.window?.devicePixelRatio || 1
+  );
+}
+
+function roundToPhysicalPixelBoundary(virtualPixelPosition, target) {
+  const virtualPixelsPerPhysicalPixel = 1 / devicePixelRatioFor(target);
   return (
     Math.round(virtualPixelPosition / virtualPixelsPerPhysicalPixel) * virtualPixelsPerPhysicalPixel
   );
 }
 
-function ceilToPhysicalPixelBoundary(virtualPixelPosition) {
-  const virtualPixelsPerPhysicalPixel = 1 / window.devicePixelRatio;
+function ceilToPhysicalPixelBoundary(virtualPixelPosition, target) {
+  const virtualPixelsPerPhysicalPixel = 1 / devicePixelRatioFor(target);
   return (
     Math.ceil(virtualPixelPosition / virtualPixelsPerPhysicalPixel) * virtualPixelsPerPhysicalPixel
   );
 }
 
-function floorToPhysicalPixelBoundary(virtualPixelPosition) {
-  const virtualPixelsPerPhysicalPixel = 1 / window.devicePixelRatio;
+function floorToPhysicalPixelBoundary(virtualPixelPosition, target) {
+  const virtualPixelsPerPhysicalPixel = 1 / devicePixelRatioFor(target);
   return (
     Math.floor(virtualPixelPosition / virtualPixelsPerPhysicalPixel) * virtualPixelsPerPhysicalPixel
   );
@@ -66,4 +73,5 @@ module.exports = {
   roundToPhysicalPixelBoundary,
   ceilToPhysicalPixelBoundary,
   floorToPhysicalPixelBoundary,
+  devicePixelRatioFor,
 };

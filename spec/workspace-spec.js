@@ -4018,4 +4018,62 @@ describe("Workspace", () => {
       expect(workspace.itemLocationStore.save).not.toHaveBeenCalled();
     });
   });
+
+  describe("detached pane routing", () => {
+    it("accepts surface transition observers before native surfaces are initialized", () => {
+      const observer = jasmine.createSpy("surface transition observer");
+      const disposable = workspace.addWindowSurfaceTransitionObserver(observer);
+      expect(disposable).toBeDefined();
+      disposable.dispose();
+    });
+
+    it("opens new items in the return tiled pane while a detached pane is active", async () => {
+      const original = await workspace.open(null);
+      const tiledPane = workspace.getCenter().getActiveTiledPane();
+      const detachedPane = await workspace.detachPaneItem(original);
+
+      const opened = await workspace.open(null);
+
+      expect(workspace.paneForItem(opened)).toBe(tiledPane);
+      expect(detachedPane.getItems()).toEqual([original]);
+      expect(workspace.getCenter().getDetachedPanes()).toEqual([detachedPane]);
+      expect(workspace.getCenter().getActivePane()).toBe(tiledPane);
+    });
+
+    it("applies split opens to the tiled return target", async () => {
+      const original = await workspace.open(null);
+      const detachedPane = await workspace.detachPaneItem(original);
+
+      const opened = await workspace.open(null, { split: "right" });
+
+      expect(workspace.getCenter().getTiledPanes().length).toBe(2);
+      expect(workspace.paneForItem(opened).isDetached()).toBe(false);
+      expect(workspace.getCenter().getDetachedPanes()).toEqual([detachedPane]);
+      expect(detachedPane.getItems()).toEqual([original]);
+    });
+
+    it("routes an explicit detached destination to its tiled return target", async () => {
+      const original = await workspace.open(null);
+      const tiledPane = workspace.getCenter().getActiveTiledPane();
+      const detachedPane = await workspace.detachPaneItem(original);
+      const item = {};
+
+      await workspace.open(item, { pane: detachedPane });
+
+      expect(workspace.paneForItem(item)).toBe(tiledPane);
+      expect(detachedPane.getItems()).toEqual([original]);
+    });
+
+    it("reactivates an existing detached item instead of opening it tiled", async () => {
+      const original = await workspace.open(null);
+      const detachedPane = await workspace.detachPaneItem(original);
+      workspace.getCenter().getActiveTiledPane().activate();
+
+      const opened = await workspace.open(original, { searchAllPanes: true });
+
+      expect(opened).toBe(original);
+      expect(workspace.paneForItem(original)).toBe(detachedPane);
+      expect(workspace.getCenter().getActivePane()).toBe(detachedPane);
+    });
+  });
 });

@@ -59,22 +59,25 @@ Tooltip.DEFAULTS = {
 Tooltip.prototype.init = function (element, options) {
   this.enabled = true;
   this.element = element;
+  this.document = element.nodeType === 9 ? element : element.ownerDocument;
+  this.window = this.document.defaultView;
   this.options = this.getOptions(options);
   this.disposables = new EventKit.CompositeDisposable();
-  this.mutationObserver = new MutationObserver(this.handleMutations.bind(this));
+  this.mutationObserver = new this.window.MutationObserver(this.handleMutations.bind(this));
+  this.mutationObserverWindow = this.window;
 
   if (this.options.viewport) {
     if (typeof this.options.viewport === "function") {
       this.viewport = this.options.viewport.call(this, this.element);
     } else {
-      this.viewport = document.querySelector(
+      this.viewport = this.document.querySelector(
         this.options.viewport.selector || this.options.viewport,
       );
     }
   }
   this.inState = { click: false, hover: false, focus: false };
 
-  if (this.element instanceof document.constructor && !this.options.selector) {
+  if (this.element instanceof this.document.constructor && !this.options.selector) {
     throw new Error(
       "`selector` option must be specified when initializing tooltip on the window.document object!",
     );
@@ -164,7 +167,7 @@ Tooltip.prototype.stopObservingMutations = function () {
 };
 
 Tooltip.prototype.handleMutations = function () {
-  window.requestAnimationFrame(
+  this.window.requestAnimationFrame(
     function () {
       this.stopObservingMutations();
       this.recalculatePosition();
@@ -279,6 +282,18 @@ Tooltip.prototype.leave = function (event) {
 
 Tooltip.prototype.show = function () {
   if (this.hasContent() && this.enabled) {
+    this.document = this.element.ownerDocument || this.document;
+    this.window = this.document.defaultView;
+    if (this.mutationObserverWindow !== this.window) {
+      this.mutationObserver.disconnect();
+      this.mutationObserver = new this.window.MutationObserver(this.handleMutations.bind(this));
+      this.mutationObserverWindow = this.window;
+    }
+    if (this.options.viewport && typeof this.options.viewport !== "function") {
+      this.viewport = this.document.querySelector(
+        this.options.viewport.selector || this.options.viewport,
+      );
+    }
     // Read before retiring anything below, since hiding a tooltip reopens the
     // window itself.
     const isFollowThrough = followThroughTimer != null;
@@ -291,22 +306,25 @@ Tooltip.prototype.show = function () {
     }
 
     if (this.hideOnClickOutsideOfTooltip) {
-      window.addEventListener("click", this.hideOnClickOutsideOfTooltip, {
+      this.window.addEventListener("click", this.hideOnClickOutsideOfTooltip, {
         capture: true,
       });
     }
 
     if (this.hideOnKeydownOutsideOfTooltip) {
-      window.addEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
+      this.window.addEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
     }
 
     if (this.hideOnTargetScrolledAway) {
       // In capture, so a scroll of any container reaches this: a scroll event
       // does not bubble past the element that scrolled.
-      window.addEventListener("scroll", this.hideOnTargetScrolledAway, {
+      this.window.addEventListener("scroll", this.hideOnTargetScrolledAway, {
         capture: true,
         passive: true,
       });
+    }
+    if (this.hideOnWindowResize) {
+      this.window.addEventListener("resize", this.hideOnWindowResize);
     }
 
     const tip = this.getTooltipElement();
@@ -342,7 +360,7 @@ Tooltip.prototype.show = function () {
     tip.style.display = "block";
     tip.classList.add(placement);
 
-    document.body.appendChild(tip);
+    this.document.body.appendChild(tip);
 
     // The rect the tooltip is placed against, and so the one a later scroll is
     // measured against.
@@ -388,7 +406,7 @@ Tooltip.prototype.applyPlacement = function (offset, placement) {
   const height = tip.offsetHeight;
 
   // manually read margins because getBoundingClientRect includes difference
-  const computedStyle = window.getComputedStyle(tip);
+  const computedStyle = this.window.getComputedStyle(tip);
   const marginTop = parseInt(computedStyle.marginTop, 10);
   const marginLeft = parseInt(computedStyle.marginLeft, 10);
 
@@ -467,15 +485,18 @@ Tooltip.prototype.hide = function (callback) {
   clearTimeout(this.timeout);
 
   if (this.hideOnClickOutsideOfTooltip) {
-    window.removeEventListener("click", this.hideOnClickOutsideOfTooltip, true);
+    this.window.removeEventListener("click", this.hideOnClickOutsideOfTooltip, true);
   }
 
   if (this.hideOnKeydownOutsideOfTooltip) {
-    window.removeEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
+    this.window.removeEventListener("keydown", this.hideOnKeydownOutsideOfTooltip, true);
+  }
+  if (this.hideOnWindowResize) {
+    this.window.removeEventListener("resize", this.hideOnWindowResize);
   }
 
   if (this.hideOnTargetScrolledAway) {
-    window.removeEventListener("scroll", this.hideOnTargetScrolledAway, true);
+    this.window.removeEventListener("scroll", this.hideOnTargetScrolledAway, true);
   }
 
   this.tip && this.tip.classList.remove("in");
@@ -581,7 +602,7 @@ Tooltip.prototype.getUID = function (prefix) {
 
 Tooltip.prototype.getTooltipElement = function () {
   if (!this.tip) {
-    let div = document.createElement("div");
+    let div = this.document.createElement("div");
     div.innerHTML = this.options.template;
     if (div.children.length !== 1) {
       throw new Error("Tooltip `template` option must consist of exactly 1 top-level element!");
@@ -626,6 +647,7 @@ Tooltip.prototype.toggle = function (event) {
 Tooltip.prototype.destroy = function () {
   if (departingTooltip === this) departingTooltip = null;
   clearTimeout(this.timeout);
+  this.window?.removeEventListener("resize", this.hideOnWindowResize);
   this.tip && this.tip.remove();
   this.disposables.dispose();
 };

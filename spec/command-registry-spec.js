@@ -461,4 +461,36 @@ describe("CommandRegistry", () => {
       grandchild.dispatchEvent(new CustomEvent("command-1", { bubbles: true }));
       expect(commandSpy).toHaveBeenCalled();
     }));
+
+  describe("with more than one DOM Window", () => {
+    let frame;
+
+    beforeEach(() => {
+      frame = document.createElement("iframe");
+      document.body.appendChild(frame);
+    });
+
+    afterEach(() => frame.remove());
+
+    it("installs existing and future commands on every command root", () => {
+      const otherWindow = frame.contentWindow;
+      const otherElement = otherWindow.document.createElement("div");
+      otherElement.className = "other-surface-target";
+      otherWindow.document.body.appendChild(otherElement);
+      registry.attach(otherWindow);
+
+      const existing = jasmine.createSpy("existing");
+      registry.add(".other-surface-target", "surface:existing", existing);
+      otherElement.dispatchEvent(
+        new otherWindow.CustomEvent("surface:existing", { bubbles: true }),
+      );
+      expect(existing).toHaveBeenCalled();
+      expect(existing.calls.mostRecent().args[0].target).toBe(otherElement);
+
+      const future = jasmine.createSpy("future");
+      registry.add(".other-surface-target", "surface:future", future);
+      otherElement.dispatchEvent(new otherWindow.CustomEvent("surface:future", { bubbles: true }));
+      expect(future).toHaveBeenCalled();
+    });
+  });
 });

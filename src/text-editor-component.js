@@ -49,9 +49,8 @@ function scaleMouseDragAutoscrollDelta(delta) {
 // is loaded in every window anyway for the dock and several bundled packages.
 let scheduler = null;
 
-function getScheduler() {
-  if (!scheduler) scheduler = require("@lumine-code/etch").getScheduler();
-  return scheduler;
+function getScheduler(document = globalThis.document) {
+  return scheduler || require("@lumine-code/etch").getScheduler(document);
 }
 
 module.exports = class TextEditorComponent {
@@ -94,7 +93,9 @@ module.exports = class TextEditorComponent {
       this.element = props.element;
     } else {
       if (!TextEditorElement) TextEditorElement = require("./text-editor-element");
-      this.element = TextEditorElement.createTextEditorElement();
+      this.element = TextEditorElement.createTextEditorElement(
+        props.document || globalThis.document,
+      );
     }
     this.element.initialize(this);
     this.refs = {};
@@ -123,7 +124,7 @@ module.exports = class TextEditorComponent {
       this.props.cursorBlinkResumeDelay || CURSOR_BLINK_RESUME_DELAY,
     );
     this.lineTopIndex = new LineTopIndex();
-    this.lineNodesPool = new NodePool();
+    this.lineNodesPool = new NodePool(this.element);
     this.updateScheduled = false;
     this.suppressUpdates = false;
     this.hasInitialMeasurements = false;
@@ -154,12 +155,11 @@ module.exports = class TextEditorComponent {
     this.horizontalPixelPositionsByScreenLineId = new Map(); // Values are maps from column to horizontal pixel positions
     this.blockDecorationsToMeasure = new Set();
     this.blockDecorationsByElement = new WeakMap();
-    this.blockDecorationSentinel = document.createElement("div");
+    this.blockDecorationElements = new Set();
+    this.blockDecorationSentinel = this.element.ownerDocument.createElement("div");
     this.blockDecorationSentinel.style.height = "1px";
     this.heightsByBlockDecoration = new WeakMap();
-    this.blockDecorationResizeObserver = new ResizeObserver(
-      this.didResizeBlockDecorations.bind(this),
-    );
+    this.blockDecorationResizeObserver = null;
     this.lineComponentsByScreenLineId = new Map();
     this.overlayComponents = new Set();
     this.shouldRenderDummyScrollbars = true;
@@ -292,7 +292,7 @@ module.exports = class TextEditorComponent {
       this.updateSync();
     } else if (!this.updateScheduled) {
       this.updateScheduled = true;
-      getScheduler().updateDocument(() => {
+      getScheduler(this.element.ownerDocument).updateDocument(() => {
         if (this.updateScheduled) this.updateSync(true);
       });
     }
@@ -360,7 +360,7 @@ module.exports = class TextEditorComponent {
 
     this.updateSyncBeforeMeasuringContent();
     if (useScheduler === true) {
-      const documentScheduler = getScheduler();
+      const documentScheduler = getScheduler(this.element.ownerDocument);
       documentScheduler.readDocument(() => {
         // The scheduler flushes on a later animation frame, so the editor can
         // be destroyed between scheduling and this read. A destroyed editor
@@ -486,11 +486,11 @@ module.exports = class TextEditorComponent {
       const { blockDecorationMeasurementArea } = this.refs;
       const sentinelElements = new Set();
 
-      blockDecorationMeasurementArea.appendChild(document.createElement("div"));
+      blockDecorationMeasurementArea.appendChild(this.element.ownerDocument.createElement("div"));
       this.blockDecorationsToMeasure.forEach((decoration) => {
         const { item } = decoration.getProperties();
         const decorationElement = TextEditor.viewForItem(item);
-        if (document.contains(decorationElement)) {
+        if (this.element.ownerDocument.contains(decorationElement)) {
           const parentElement = decorationElement.parentElement;
 
           if (!decorationElement.previousSibling) {
@@ -687,6 +687,7 @@ module.exports = class TextEditorComponent {
     // hover tooltips mount editors for their code blocks all the time.
     this.element.addEventListener("wheel", this.didMouseWheel, { passive: false });
 
+    const document = this.element.ownerDocument;
     const clientContainer = document.createElement("div");
     let style = clientContainer.style;
     style.position = "relative";
@@ -745,6 +746,7 @@ module.exports = class TextEditorComponent {
   }
 
   buildCharacterMeasurementLine() {
+    const document = this.element.ownerDocument;
     const characterMeasurementLine = document.createElement("div");
     characterMeasurementLine.className = "line dummy";
     characterMeasurementLine.style.position = "absolute";
@@ -886,6 +888,7 @@ module.exports = class TextEditorComponent {
       }
     } else {
       const gutterContainerProps = {
+        document: this.element.ownerDocument,
         rootComponent: this,
         hasInitialMeasurements: this.hasInitialMeasurements,
         measuredContent: this.measuredContent,
@@ -955,8 +958,8 @@ module.exports = class TextEditorComponent {
       const cache = this.contentCache;
       const style = this.refs.content.style;
 
-      const width = ceilToPhysicalPixelBoundary(this.getScrollWidth()) + "px";
-      const height = ceilToPhysicalPixelBoundary(this.getScrollHeight()) + "px";
+      const width = ceilToPhysicalPixelBoundary(this.getScrollWidth(), this.element) + "px";
+      const height = ceilToPhysicalPixelBoundary(this.getScrollHeight(), this.element) + "px";
 
       if (width !== cache.width) {
         style.width = width;
@@ -984,7 +987,8 @@ module.exports = class TextEditorComponent {
       const cache = this.contentCache;
       const transform = `translate(${-roundToPhysicalPixelBoundary(
         this.getScrollLeft(),
-      )}px, ${-roundToPhysicalPixelBoundary(this.getScrollTop())}px)`;
+        this.element,
+      )}px, ${-roundToPhysicalPixelBoundary(this.getScrollTop(), this.element)}px)`;
       if (transform !== cache.transform) {
         this.refs.content.style.transform = transform;
         this.contentCache.transform = transform;
@@ -1011,6 +1015,7 @@ module.exports = class TextEditorComponent {
 
   buildHighlightsProps() {
     return {
+      document: this.element.ownerDocument,
       hasInitialMeasurements: this.hasInitialMeasurements,
       highlightDecorations: this.decorationsToRender.highlights.slice(),
       width: this.getScrollWidth(),
@@ -1021,6 +1026,7 @@ module.exports = class TextEditorComponent {
 
   buildCursorsAndInputProps() {
     return {
+      document: this.element.ownerDocument,
       didBlurHiddenInput: this.didBlurHiddenInput,
       didFocusHiddenInput: this.didFocusHiddenInput,
       didCopy: this.didCopy,
@@ -1072,6 +1078,7 @@ module.exports = class TextEditorComponent {
         seenTileIds.add(tileId);
 
         const tileProps = {
+          document: this.element.ownerDocument,
           measuredContent: this.measuredContent,
           height: tileHeight,
           width: tileWidth,
@@ -1157,7 +1164,7 @@ module.exports = class TextEditorComponent {
     }
     if (placeholderText != null) {
       if (!this.placeholderTextElement) {
-        this.placeholderTextElement = document.createElement("div");
+        this.placeholderTextElement = this.element.ownerDocument.createElement("div");
         this.placeholderTextElement.className = "placeholder-text";
       }
       if (placeholderText !== this.lastPlaceholderText) {
@@ -1230,6 +1237,7 @@ module.exports = class TextEditorComponent {
       }
 
       const verticalScrollbarProps = {
+        document: this.element.ownerDocument,
         orientation: "vertical",
         didScroll: this.didScrollDummyScrollbar,
         didMouseDown: this.didMouseDownOnContent,
@@ -1240,6 +1248,7 @@ module.exports = class TextEditorComponent {
         forceScrollbarVisible,
       };
       const horizontalScrollbarProps = {
+        document: this.element.ownerDocument,
         orientation: "horizontal",
         didScroll: this.didScrollDummyScrollbar,
         didMouseDown: this.didMouseDownOnContent,
@@ -1258,7 +1267,7 @@ module.exports = class TextEditorComponent {
         const horizontalScrollbar = new DummyScrollbarComponent(horizontalScrollbarProps);
 
         // Force a "corner" to render where the two scrollbars meet at the lower right
-        const scrollbarCorner = document.createElement("div");
+        const scrollbarCorner = this.element.ownerDocument.createElement("div");
         scrollbarCorner.className = "scrollbar-corner";
         const style = scrollbarCorner.style;
         style.position = "absolute";
@@ -1300,6 +1309,7 @@ module.exports = class TextEditorComponent {
 
       const componentProps = Object.assign(
         {
+          document: this.element.ownerDocument,
           overlayComponents: this.overlayComponents,
           didResize: this.didResizeOverlay,
         },
@@ -1998,7 +2008,7 @@ module.exports = class TextEditorComponent {
     let claim = null;
 
     if (avoidOverflow !== false) {
-      const computedStyle = window.getComputedStyle(element);
+      const computedStyle = element.ownerDocument.defaultView.getComputedStyle(element);
       marginLeft = parseInt(computedStyle.marginLeft) || 0;
       const marginTop = parseInt(computedStyle.marginTop) || 0;
       const marginBottom = parseInt(computedStyle.marginBottom) || 0;
@@ -2186,7 +2196,8 @@ module.exports = class TextEditorComponent {
   didAttach() {
     if (!this.attached) {
       this.attached = true;
-      this.intersectionObserver = new IntersectionObserver((entries) => {
+      const domWindow = this.element.ownerDocument.defaultView;
+      this.intersectionObserver = new domWindow.IntersectionObserver((entries) => {
         const { intersectionRect } = entries[entries.length - 1];
         if (intersectionRect.width > 0 || intersectionRect.height > 0) {
           this.didShow();
@@ -2196,13 +2207,21 @@ module.exports = class TextEditorComponent {
       });
       this.intersectionObserver.observe(this.element);
 
-      this.resizeObserver = new ResizeObserver(this.didResize.bind(this));
+      this.resizeObserver = new domWindow.ResizeObserver(this.didResize.bind(this));
       this.observeResizeTargets();
+
+      this.blockDecorationResizeObserver?.disconnect();
+      this.blockDecorationResizeObserver = new domWindow.ResizeObserver(
+        this.didResizeBlockDecorations.bind(this),
+      );
+      for (const element of this.blockDecorationElements) {
+        this.blockDecorationResizeObserver.observe(element);
+      }
 
       this.layoutDragSubscription = onDidEndLayoutDrag(this.didEndLayoutDrag.bind(this));
 
       if (this.refs.gutterContainer) {
-        this.gutterContainerResizeObserver = new ResizeObserver(
+        this.gutterContainerResizeObserver = new domWindow.ResizeObserver(
           this.didResizeGutterContainer.bind(this),
         );
         this.gutterContainerResizeObserver.observe(this.refs.gutterContainer.element);
@@ -2262,6 +2281,7 @@ module.exports = class TextEditorComponent {
       }
       this.intersectionObserver.disconnect();
       this.resizeObserver.disconnect();
+      this.blockDecorationResizeObserver?.disconnect();
       if (this.gutterContainerResizeObserver) this.gutterContainerResizeObserver.disconnect();
       if (this.layoutDragSubscription) {
         this.layoutDragSubscription.dispose();
@@ -2967,9 +2987,10 @@ module.exports = class TextEditorComponent {
   handleMouseDragUntilMouseUp({ didDrag, didStopDragging }) {
     let dragging = false;
     let lastMousemoveEvent;
+    const domWindow = this.element.ownerDocument.defaultView;
 
     const animationFrameLoop = () => {
-      window.requestAnimationFrame(() => {
+      domWindow.requestAnimationFrame(() => {
         if (dragging && this.visible) {
           // IntersectionObserver reports visibility changes asynchronously. A
           // pane can therefore lose its layout while `visible` is still true;
@@ -2988,18 +3009,18 @@ module.exports = class TextEditorComponent {
       }
     }
 
-    function didMouseUp() {
+    const didMouseUp = () => {
       this.stopDragging = null;
-      window.removeEventListener("mousemove", didMouseMove);
-      window.removeEventListener("mouseup", didMouseUp, { capture: true });
+      domWindow.removeEventListener("mousemove", didMouseMove);
+      domWindow.removeEventListener("mouseup", didMouseUp, { capture: true });
       if (dragging) {
         dragging = false;
         didStopDragging();
       }
-    }
+    };
 
-    window.addEventListener("mousemove", didMouseMove);
-    window.addEventListener("mouseup", didMouseUp, { capture: true });
+    domWindow.addEventListener("mousemove", didMouseMove);
+    domWindow.addEventListener("mouseup", didMouseUp, { capture: true });
     this.stopDragging = didMouseUp;
   }
 
@@ -3036,8 +3057,8 @@ module.exports = class TextEditorComponent {
       // less.
       scaledDelta =
         yDirection === 1
-          ? ceilToPhysicalPixelBoundary(scaledDelta)
-          : floorToPhysicalPixelBoundary(scaledDelta);
+          ? ceilToPhysicalPixelBoundary(scaledDelta, this.element)
+          : floorToPhysicalPixelBoundary(scaledDelta, this.element);
       scrolled = this.setScrollTop(this.getScrollTop() + scaledDelta);
     }
 
@@ -3048,8 +3069,8 @@ module.exports = class TextEditorComponent {
       // less.
       scaledDelta =
         xDirection === 1
-          ? ceilToPhysicalPixelBoundary(scaledDelta)
-          : floorToPhysicalPixelBoundary(scaledDelta);
+          ? ceilToPhysicalPixelBoundary(scaledDelta, this.element)
+          : floorToPhysicalPixelBoundary(scaledDelta, this.element);
       scrolled = this.setScrollLeft(this.getScrollLeft() + scaledDelta);
     }
 
@@ -3096,15 +3117,17 @@ module.exports = class TextEditorComponent {
     if (this.cursorsBlinking) {
       this.cursorsBlinkedOff = false;
       this.cursorsBlinking = false;
-      window.clearInterval(this.cursorBlinkIntervalHandle);
+      this.cursorBlinkWindow?.clearInterval(this.cursorBlinkIntervalHandle);
       this.cursorBlinkIntervalHandle = null;
+      this.cursorBlinkWindow = null;
       this.scheduleUpdate();
     }
   }
 
   startCursorBlinking() {
     if (!this.cursorsBlinking) {
-      this.cursorBlinkIntervalHandle = window.setInterval(
+      this.cursorBlinkWindow = this.element.ownerDocument.defaultView;
+      this.cursorBlinkIntervalHandle = this.cursorBlinkWindow.setInterval(
         () => {
           this.cursorsBlinkedOff = !this.cursorsBlinkedOff;
           this.scheduleUpdate(true);
@@ -3485,6 +3508,7 @@ module.exports = class TextEditorComponent {
       // and shifts `getContentWidth` by a pixel.
       this.measurements.longestLineWidth = roundToPhysicalPixelBoundary(
         lineComponent.element.firstChild.getBoundingClientRect().width,
+        this.element,
       );
       this.longestLineToMeasure = null;
     }
@@ -3588,7 +3612,7 @@ module.exports = class TextEditorComponent {
           // width specs rely on.
           positions.set(
             nextColumnToMeasure,
-            roundToPhysicalPixelBoundary(clientPixelPosition - lineNodeClientLeft),
+            roundToPhysicalPixelBoundary(clientPixelPosition - lineNodeClientLeft, this.element),
           );
           continue columnLoop;
         } else {
@@ -3612,7 +3636,7 @@ module.exports = class TextEditorComponent {
 
       positions.set(
         nextColumnToMeasure,
-        roundToPhysicalPixelBoundary(lastTextNodeRight - lineNodeClientLeft),
+        roundToPhysicalPixelBoundary(lastTextNodeRight - lineNodeClientLeft, this.element),
       );
     }
   }
@@ -3679,7 +3703,10 @@ module.exports = class TextEditorComponent {
     //
     // This should work wherever the point in question is rendered and visible
     // within the viewport — e.g., anywhere the user clicks.
-    let inherentRange = document.caretRangeFromPoint(targetClientLeft, targetClientTop);
+    let inherentRange = this.element.ownerDocument.caretRangeFromPoint(
+      targetClientLeft,
+      targetClientTop,
+    );
 
     if (inherentRange && textNodes.includes(inherentRange.startContainer)) {
       // The range identified a text node on this line. Now we can convert the
@@ -4216,7 +4243,8 @@ module.exports = class TextEditorComponent {
       this.lineTopIndex.insertBlock(decoration, row, 0, position === "after");
       this.blockDecorationsToMeasure.add(decoration);
       this.blockDecorationsByElement.set(element, decoration);
-      this.blockDecorationResizeObserver.observe(element);
+      this.blockDecorationElements.add(element);
+      this.blockDecorationResizeObserver?.observe(element);
 
       this.scheduleUpdate();
     }
@@ -4231,7 +4259,8 @@ module.exports = class TextEditorComponent {
           this.blockDecorationsToMeasure.delete(decoration);
           this.heightsByBlockDecoration.delete(decoration);
           this.blockDecorationsByElement.delete(element);
-          this.blockDecorationResizeObserver.unobserve(element);
+          this.blockDecorationElements.delete(element);
+          this.blockDecorationResizeObserver?.unobserve(element);
           this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
           this.scheduleUpdate();
         } else if (!wasValid && isValid) {
@@ -4254,7 +4283,8 @@ module.exports = class TextEditorComponent {
           this.blockDecorationsToMeasure.delete(decoration);
           this.heightsByBlockDecoration.delete(decoration);
           this.blockDecorationsByElement.delete(element);
-          this.blockDecorationResizeObserver.unobserve(element);
+          this.blockDecorationElements.delete(element);
+          this.blockDecorationResizeObserver?.unobserve(element);
           this.withScrollAnchor(() => this.lineTopIndex.removeBlock(decoration));
           this.scheduleUpdate();
         }
@@ -4302,11 +4332,11 @@ module.exports = class TextEditorComponent {
   }
 
   getWindowInnerHeight() {
-    return window.innerHeight;
+    return this.element.ownerDocument.defaultView.innerHeight;
   }
 
   getWindowInnerWidth() {
-    return window.innerWidth;
+    return this.element.ownerDocument.defaultView.innerWidth;
   }
 
   getLineHeight() {
@@ -4751,48 +4781,57 @@ module.exports = class TextEditorComponent {
   }
 };
 
-let rangeForMeasurement;
+const rangesForMeasurement = new WeakMap();
+function rangeForMeasurement(node) {
+  const document = node.ownerDocument;
+  let range = rangesForMeasurement.get(document);
+  if (!range) {
+    range = document.createRange();
+    rangesForMeasurement.set(document, range);
+  }
+  return range;
+}
+
 function clientRectForRange(textNode, startIndex, endIndex) {
-  rangeForMeasurement ??= document.createRange();
-  rangeForMeasurement.setStart(textNode, startIndex);
-  rangeForMeasurement.setEnd(textNode, endIndex);
-  return rangeForMeasurement.getBoundingClientRect();
+  const range = rangeForMeasurement(textNode);
+  range.setStart(textNode, startIndex);
+  range.setEnd(textNode, endIndex);
+  return range.getBoundingClientRect();
 }
 
 function clientRectsForRange(textNode, startIndex, endIndex) {
-  rangeForMeasurement ??= document.createRange();
-  rangeForMeasurement.setStart(textNode, startIndex);
-  rangeForMeasurement.setEnd(textNode, endIndex);
-  return rangeForMeasurement.getClientRects();
+  const range = rangeForMeasurement(textNode);
+  range.setStart(textNode, startIndex);
+  range.setEnd(textNode, endIndex);
+  return range.getClientRects();
 }
 
 function clientRectsForTextNode(textNode, startIndex = null, endIndex = null) {
-  rangeForMeasurement ??= document.createRange();
+  const range = rangeForMeasurement(textNode);
   if (startIndex === null) {
-    rangeForMeasurement.setStartBefore(textNode);
+    range.setStartBefore(textNode);
   } else {
-    rangeForMeasurement.setStart(textNode, startIndex);
+    range.setStart(textNode, startIndex);
   }
   if (endIndex === null) {
-    rangeForMeasurement.setEndAfter(textNode);
+    range.setEndAfter(textNode);
   } else {
-    rangeForMeasurement.setEnd(textNode, endIndex);
+    range.setEnd(textNode, endIndex);
   }
-  return rangeForMeasurement.getClientRects();
+  return range.getClientRects();
 }
 
 function boundingClientRectForTextNodes(textNodes) {
-  rangeForMeasurement ??= document.createRange();
-  rangeForMeasurement.setStartBefore(textNodes[0]);
-  rangeForMeasurement.setEndAfter(textNodes[textNodes.length - 1]);
-  return rangeForMeasurement.getBoundingClientRect();
+  const range = rangeForMeasurement(textNodes[0]);
+  range.setStartBefore(textNodes[0]);
+  range.setEndAfter(textNodes[textNodes.length - 1]);
+  return range.getBoundingClientRect();
 }
 
 // Given the `TextNodes` that make up a screen line and a starting and ending
 // column on that screen line, returns the `DOMRect`s that make up that
 // range.
 function clientRectsForTextNodes(textNodes, startColumn, endColumn) {
-  rangeForMeasurement ??= document.createRange();
   let [startTextNode, startOffset] = textNodeAndOffsetForColumn(textNodes, startColumn);
   let [endTextNode, endOffset] = textNodeAndOffsetForColumn(textNodes, endColumn);
 
@@ -4805,9 +4844,10 @@ function clientRectsForTextNodes(textNodes, startColumn, endColumn) {
     return [];
   }
 
-  rangeForMeasurement.setStart(startTextNode, startOffset);
-  rangeForMeasurement.setEnd(endTextNode, endOffset);
-  return consolidateClientRects(rangeForMeasurement.getClientRects());
+  const range = rangeForMeasurement(startTextNode);
+  range.setStart(startTextNode, startOffset);
+  range.setEnd(endTextNode, endOffset);
+  return consolidateClientRects(range.getClientRects());
 }
 
 // Returns whether two `DOMRect`s overlap. `epsilon` widens the comparison so

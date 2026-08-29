@@ -252,6 +252,50 @@ module.exports = class ApplicationDelegate {
     return ipcRenderer.invoke("lumine:window", action, ...args);
   }
 
+  reserveDetachedPaneWindow(options = {}) {
+    return ipcRenderer.invoke("lumine:detached-pane-window", "reserve", options);
+  }
+
+  performDetachedPaneWindowTransaction(transactionId, operation, ...args) {
+    return ipcRenderer.invoke(
+      "lumine:detached-pane-window",
+      "perform",
+      transactionId,
+      operation,
+      ...args,
+    );
+  }
+
+  onDidReceiveDetachedPaneWindowEvent(callback) {
+    const outerCallback = (_event, ...args) => callback(...args);
+    ipcRenderer.on("detached-pane-window-event", outerCallback);
+    return new Disposable(() =>
+      ipcRenderer.removeListener("detached-pane-window-event", outerCallback),
+    );
+  }
+
+  onSurfaceCommand(callback) {
+    const outerCallback = (_event, ...args) => callback(...args);
+    ipcRenderer.on("surface-command", outerCallback);
+    return new Disposable(() => ipcRenderer.removeListener("surface-command", outerCallback));
+  }
+
+  onSurfaceContextCommand(callback) {
+    const outerCallback = (_event, ...args) => callback(...args);
+    ipcRenderer.on("surface-context-command", outerCallback);
+    return new Disposable(() =>
+      ipcRenderer.removeListener("surface-context-command", outerCallback),
+    );
+  }
+
+  onDidCloseSurfaceContextMenu(callback) {
+    const outerCallback = (_event, ...args) => callback(...args);
+    ipcRenderer.on("surface-context-menu-closed", outerCallback);
+    return new Disposable(() =>
+      ipcRenderer.removeListener("surface-context-menu-closed", outerCallback),
+    );
+  }
+
   invokeApp(action, ...args) {
     return ipcRenderer.invoke("lumine:app", action, ...args);
   }

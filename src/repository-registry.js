@@ -143,7 +143,7 @@ function mergeRefreshHints(current, next) {
  * a window with no provider installed can answer nothing.
  */
 module.exports = class RepositoryRegistry {
-  constructor({ project, config, notificationManager, packageManager }) {
+  constructor({ project, config, notificationManager, packageManager, windowSurfaceManager }) {
     this.project = null;
     this.config = config;
     this.notificationManager = notificationManager;
@@ -180,9 +180,15 @@ module.exports = class RepositoryRegistry {
 
     this.consumeServices(packageManager);
 
-    // One focus listener for the whole registry, not one per repository: see
-    // handleWindowFocus for what focus can actually have made stale.
-    if (typeof window !== "undefined") {
+    // Every native workspace surface can become the focused view of this one
+    // repository registry. Follow the surface registry so a detached pane
+    // refreshes refs just as the primary window does.
+    if (windowSurfaceManager) {
+      for (const surface of windowSurfaceManager.getAll()) this.observeWindowSurface(surface);
+      this.subscriptions.add(
+        windowSurfaceManager.onDidAddSurface((surface) => this.observeWindowSurface(surface)),
+      );
+    } else if (typeof window !== "undefined") {
       const onWindowFocus = () => this.handleWindowFocus();
       window.addEventListener("focus", onWindowFocus);
       this.subscriptions.add(
@@ -191,6 +197,12 @@ module.exports = class RepositoryRegistry {
     }
 
     if (project) this.attachProject(project);
+  }
+
+  observeWindowSurface(surface) {
+    const subscription = surface.onDidFocus(() => this.handleWindowFocus());
+    this.subscriptions.add(subscription);
+    return subscription;
   }
 
   // Resetting the window runs `PackageManager#reset`, which clears every

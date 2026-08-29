@@ -55,10 +55,11 @@ module.exports = class Panel {
 
   getElement() {
     if (!this.element) {
+      const itemElement = this.viewRegistry.getView(this.item);
       this.element = document.createElement("lumine-panel");
       if (!this.visible) this.element.style.display = "none";
       if (this.className) this.element.classList.add(...this.className.split(" "));
-      this.element.appendChild(this.viewRegistry.getView(this.item));
+      this.element.appendChild(itemElement);
     }
     return this.element;
   }

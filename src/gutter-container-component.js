@@ -9,6 +9,7 @@ const {
 module.exports = class GutterContainerComponent {
   constructor(props) {
     this.props = props;
+    const document = props.document || globalThis.document;
     this.refs = {};
     this.gutterComponentsByGutter = new Map();
     this.lastTransform = null;
@@ -114,7 +115,7 @@ module.exports = class GutterContainerComponent {
   // window still covers the viewport.
   updateScrollTop(scrollTop) {
     this.props.scrollTop = scrollTop;
-    const transform = `translateY(${-roundToPhysicalPixelBoundary(scrollTop)}px)`;
+    const transform = `translateY(${-roundToPhysicalPixelBoundary(scrollTop, this.element)}px)`;
     if (transform !== this.lastTransform) {
       this.innerElement.style.transform = transform;
       this.lastTransform = transform;
@@ -201,7 +202,7 @@ class LineNumberGutterComponent {
   constructor(props) {
     this.props = props;
     this.element = this.props.element;
-    this.nodePool = new NodePool();
+    this.nodePool = new NodePool(this.element);
     this.didMouseDown = this.didMouseDown.bind(this);
     this.didMouseMove = this.didMouseMove.bind(this);
     this.tilesById = new Map();
@@ -215,10 +216,10 @@ class LineNumberGutterComponent {
     this.element.addEventListener("mousedown", this.didMouseDown);
     this.element.addEventListener("mousemove", this.didMouseMove);
 
-    this.placeholderElement = document.createElement("div");
+    this.placeholderElement = this.element.ownerDocument.createElement("div");
     this.placeholderElement.className = "line-number dummy";
     this.placeholderElement.style.visibility = "hidden";
-    this.placeholderIconElement = document.createElement("div");
+    this.placeholderIconElement = this.element.ownerDocument.createElement("div");
     this.placeholderIconElement.className = "icon-right";
     this.placeholderElement.appendChild(this.placeholderIconElement);
     this.element.appendChild(this.placeholderElement);
@@ -260,7 +261,7 @@ class LineNumberGutterComponent {
       this.lastClassName = rootClassName;
     }
 
-    const heightPx = ceilToPhysicalPixelBoundary(height) + "px";
+    const heightPx = ceilToPhysicalPixelBoundary(height, this.element) + "px";
     if (heightPx !== this.lastHeight) {
       this.element.style.height = heightPx;
       this.lastHeight = heightPx;
@@ -273,7 +274,7 @@ class LineNumberGutterComponent {
         this.placeholderTextNode = null;
       }
       if (placeholderText != null) {
-        this.placeholderTextNode = document.createTextNode(placeholderText);
+        this.placeholderTextNode = this.element.ownerDocument.createTextNode(placeholderText);
         this.placeholderElement.insertBefore(this.placeholderTextNode, this.placeholderIconElement);
       }
       this.lastPlaceholderText = placeholderText;
@@ -297,7 +298,7 @@ class LineNumberGutterComponent {
 
         let tile = this.tilesById.get(tileId);
         if (!tile) {
-          const tileElement = document.createElement("div");
+          const tileElement = this.element.ownerDocument.createElement("div");
           const style = tileElement.style;
           style.contain = "layout style";
           style.position = "absolute";
@@ -602,7 +603,7 @@ class CustomGutterComponent {
     this.lastHeight = null;
 
     this.element.setAttribute("gutter-name", props.name);
-    this.decorationsElement = document.createElement("div");
+    this.decorationsElement = this.element.ownerDocument.createElement("div");
     this.decorationsElement.className = "custom-decorations";
     this.element.appendChild(this.decorationsElement);
 
@@ -669,6 +670,7 @@ class CustomGutterComponent {
 class CustomGutterDecorationComponent {
   constructor(props) {
     this.props = props;
+    const document = props.element?.ownerDocument || globalThis.document;
     this.element = document.createElement("div");
     const { top, height, className, element } = this.props;
 

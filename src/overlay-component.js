@@ -1,6 +1,7 @@
 module.exports = class OverlayComponent {
   constructor(props) {
     this.props = props;
+    const document = props.document || props.element?.ownerDocument || globalThis.document;
     this.element = document.createElement("lumine-overlay");
     if (this.props.className != null) this.element.classList.add(this.props.className);
     this.element.appendChild(this.props.element);
@@ -17,7 +18,7 @@ module.exports = class OverlayComponent {
     // "loop limit exceeded" error. We disconnect the observer before
     // potentially mutating the DOM, and then reconnect it on the next tick.
     // Note: ResizeObserver calls its callback when .observe is called
-    this.resizeObserver = new ResizeObserver((entries) => {
+    this.resizeObserverCallback = (entries) => {
       const { contentRect } = entries[0];
 
       if (
@@ -33,7 +34,7 @@ module.exports = class OverlayComponent {
       }
 
       this.currentContentRect = contentRect;
-    });
+    };
     this.didAttach();
     this.props.overlayComponents.add(this);
   }
@@ -90,6 +91,12 @@ module.exports = class OverlayComponent {
   }
 
   didAttach() {
+    const document = this.element.ownerDocument;
+    if (this.resizeObserverDocument !== document) {
+      this.resizeObserver?.disconnect();
+      this.resizeObserver = new document.defaultView.ResizeObserver(this.resizeObserverCallback);
+      this.resizeObserverDocument = document;
+    }
     this.resizeObserver.observe(this.props.element);
   }
 
