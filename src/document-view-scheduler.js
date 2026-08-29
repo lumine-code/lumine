@@ -7,6 +7,7 @@ module.exports = class DocumentViewScheduler {
     this.writers = [];
     this.readers = [];
     this.frame = null;
+    this.performing = false;
     this.perform = this.perform.bind(this);
   }
 
@@ -37,12 +38,23 @@ module.exports = class DocumentViewScheduler {
     return this.nextUpdatePromise;
   }
 
+  hasPendingWork() {
+    return (
+      this.performing || this.frame != null || this.writers.length > 0 || this.readers.length > 0
+    );
+  }
+
+  getPendingUpdatePromise() {
+    return this.hasPendingWork() ? this.getNextUpdatePromise() : null;
+  }
+
   request() {
     if (this.frame == null) this.frame = this.window.requestAnimationFrame(this.perform);
   }
 
   perform() {
     this.frame = null;
+    this.performing = true;
     let completed = false;
     try {
       let callback;
@@ -51,6 +63,7 @@ module.exports = class DocumentViewScheduler {
       while ((callback = this.writers.shift())) callback();
       completed = true;
     } finally {
+      this.performing = false;
       const hasPendingWork = this.writers.length > 0 || this.readers.length > 0;
       if (hasPendingWork) this.request();
       if (completed || !hasPendingWork) {
@@ -65,6 +78,7 @@ module.exports = class DocumentViewScheduler {
   clear() {
     if (this.frame != null) this.window.cancelAnimationFrame(this.frame);
     this.frame = null;
+    this.performing = false;
     this.writers = [];
     this.readers = [];
     this.resolveNextUpdatePromise?.();

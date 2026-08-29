@@ -32,6 +32,7 @@ module.exports = class ViewRegistry {
   constructor(lumineEnvironment) {
     this.animationFrameRequest = null;
     this.documentReadInProgress = false;
+    this.documentUpdateInProgress = false;
     this.performDocumentUpdate = this.performDocumentUpdate.bind(this);
     this.lumineEnvironment = lumineEnvironment;
     this.documents = new Set();
@@ -222,19 +223,38 @@ module.exports = class ViewRegistry {
   }
 
   getNextUpdatePromise() {
-    if (this.nextUpdatePromise == null) {
-      this.nextUpdatePromise = new Promise((resolve) => {
-        this.resolveNextUpdatePromise = resolve;
-      });
+    const pendingUpdates = [];
+    if (this.hasPendingLegacyUpdate()) {
+      if (this.nextUpdatePromise == null) {
+        this.nextUpdatePromise = new Promise((resolve) => {
+          this.resolveNextUpdatePromise = resolve;
+        });
+      }
+      pendingUpdates.push(this.nextUpdatePromise);
     }
+    for (const scheduler of this.liveDocumentSchedulers) {
+      const pendingUpdate = scheduler.getPendingUpdatePromise();
+      if (pendingUpdate) pendingUpdates.push(pendingUpdate);
+    }
+    if (pendingUpdates.length === 0) return Promise.resolve();
+    return Promise.all(pendingUpdates).then(() => this.getNextUpdatePromise());
+  }
 
-    return this.nextUpdatePromise;
+  hasPendingLegacyUpdate() {
+    return (
+      this.documentUpdateInProgress ||
+      this.animationFrameRequest != null ||
+      this.documentReaders.length > 0 ||
+      this.documentWriters.length > 0
+    );
   }
 
   clearDocumentRequests() {
+    const resolveNextUpdatePromise = this.resolveNextUpdatePromise;
     for (const scheduler of this.liveDocumentSchedulers || []) scheduler.clear();
     this.documentReaders = [];
     this.documentWriters = [];
+    this.documentUpdateInProgress = false;
     this.nextUpdatePromise = null;
     this.resolveNextUpdatePromise = null;
     if (this.animationFrameRequest != null) {
@@ -242,6 +262,7 @@ module.exports = class ViewRegistry {
       this.animationFrameRequest = null;
       this.animationFrameWindow = null;
     }
+    resolveNextUpdatePromise?.();
   }
 
   registerDocument(value) {
@@ -299,35 +320,43 @@ module.exports = class ViewRegistry {
   }
 
   performDocumentUpdate() {
-    const { resolveNextUpdatePromise } = this;
     this.animationFrameRequest = null;
     this.animationFrameWindow = null;
-    this.nextUpdatePromise = null;
-    this.resolveNextUpdatePromise = null;
+    this.documentUpdateInProgress = true;
+    try {
+      let writer = this.documentWriters.shift();
+      while (writer) {
+        writer();
+        writer = this.documentWriters.shift();
+      }
 
-    let writer = this.documentWriters.shift();
-    while (writer) {
-      writer();
+      let reader = this.documentReaders.shift();
+      this.documentReadInProgress = true;
+      while (reader) {
+        reader();
+        reader = this.documentReaders.shift();
+      }
+      this.documentReadInProgress = false;
+
+      // process updates requested as a result of reads
       writer = this.documentWriters.shift();
-    }
-
-    let reader = this.documentReaders.shift();
-    this.documentReadInProgress = true;
-    while (reader) {
-      reader();
-      reader = this.documentReaders.shift();
-    }
-    this.documentReadInProgress = false;
-
-    // process updates requested as a result of reads
-    writer = this.documentWriters.shift();
-    while (writer) {
-      writer();
-      writer = this.documentWriters.shift();
-    }
-
-    if (resolveNextUpdatePromise) {
-      resolveNextUpdatePromise();
+      while (writer) {
+        writer();
+        writer = this.documentWriters.shift();
+      }
+    } finally {
+      const resolveNextUpdatePromise = this.resolveNextUpdatePromise;
+      this.nextUpdatePromise = null;
+      this.resolveNextUpdatePromise = null;
+      this.documentReadInProgress = false;
+      this.documentUpdateInProgress = false;
+      if (
+        this.animationFrameRequest == null &&
+        (this.documentReaders.length > 0 || this.documentWriters.length > 0)
+      ) {
+        this.requestDocumentUpdate();
+      }
+      resolveNextUpdatePromise?.();
     }
   }
 };
