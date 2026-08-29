@@ -452,8 +452,9 @@ describe("TextEditorComponent", () => {
       expect(horizontalScrollbar.scrollLeft).toBe(100);
 
       verticalScrollbar.scrollTop = 120;
+      verticalScrollbar.dispatchEvent(new Event("scroll"));
       horizontalScrollbar.scrollLeft = 120;
-      await component.getNextUpdatePromise();
+      horizontalScrollbar.dispatchEvent(new Event("scroll"));
       expect(component.getScrollTop()).toBe(120);
       expect(component.getScrollLeft()).toBe(120);
 
@@ -2327,13 +2328,57 @@ describe("TextEditorComponent", () => {
       expect(component.scrollTopPending).toBe(false);
       expect(component.scrollLeftPending).toBe(false);
 
-      // The programmatic scrollbar echo is a no-op, but clearing the pending
-      // flags above lets the next real scrollbar movement take over normally.
-      component.didScrollDummyScrollbar();
+      // Programmatic scrollbar echoes are filtered by the scrollbar itself,
+      // but the next real scrollbar movement still takes over normally.
+      component.refs.verticalScrollbar.element.dispatchEvent(new Event("scroll"));
+      component.refs.horizontalScrollbar.element.dispatchEvent(new Event("scroll"));
       expect(updateSync).not.toHaveBeenCalled();
-      component.refs.verticalScrollbar.element.scrollTop = component.getScrollTop() + 1;
-      component.didScrollDummyScrollbar();
+      const verticalScrollbar = component.refs.verticalScrollbar.element;
+      verticalScrollbar.scrollTop += 1;
+      const userScrollTop = verticalScrollbar.scrollTop;
+      verticalScrollbar.dispatchEvent(new Event("scroll"));
       expect(updateSync).toHaveBeenCalledTimes(1);
+      expect(component.scrollAnimator.isAnimating()).toBe(false);
+      expect(component.getScrollTop()).toBe(userScrollTop);
+    });
+
+    it("keeps gliding through programmatic scrollbar echoes at a very large offset", async () => {
+      const { component, editor } = buildSmoothComponent({ text: "first\nsecond\nthird\n" });
+      const marker = editor.markScreenPosition([0, 0], { invalidate: "never" });
+      const item = document.createElement("div");
+      item.style.height = "11000000px";
+      editor.decorateMarker(marker, { type: "block", item, position: "after" });
+      await component.getNextUpdatePromise();
+
+      const initialScrollTop = 10_498_232.805;
+      expect(component.getMaxScrollTop()).toBeGreaterThan(initialScrollTop + 48);
+      await setScrollTop(component, initialScrollTop);
+      const scrollbar = component.refs.verticalScrollbar.element;
+      const preventDefault = jasmine.createSpy("preventDefault");
+
+      component.didMouseWheel({
+        deltaX: 0,
+        deltaY: 160,
+        deltaMode: 0,
+        preventDefault,
+      });
+      const targetScrollTop = initialScrollTop + 160 * wheelDeltaParity * 0.25;
+      expect(preventDefault).toHaveBeenCalled();
+
+      component.scrollAnimator.advance(FRAME);
+      expect(component.getScrollTop()).toBeNear(initialScrollTop + 12);
+      scrollbar.dispatchEvent(new Event("scroll"));
+      expect(component.scrollAnimator.isAnimating()).toBe(true);
+
+      let frames = 1;
+      while (component.scrollAnimator.isAnimating() && frames < 1000) {
+        component.scrollAnimator.advance(FRAME);
+        scrollbar.dispatchEvent(new Event("scroll"));
+        frames++;
+      }
+      expect(component.scrollAnimator.isAnimating()).toBe(false);
+      expect(frames).toBeGreaterThan(2);
+      expect(component.getScrollTop()).toBeNear(targetScrollTop);
     });
 
     it("falls back to a complete update when scrolling crosses a tile boundary", () => {

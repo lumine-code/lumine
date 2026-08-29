@@ -1,14 +1,16 @@
 module.exports = class DummyScrollbarComponent {
   constructor(props) {
     this.props = props;
+    this.didScroll = this.didScroll.bind(this);
     this.didMouseDown = this.didMouseDown.bind(this);
+    this.lastAppliedNativePosition = null;
 
     const { orientation } = props;
     this.element = document.createElement("div");
     this.element.className = `${orientation}-scrollbar`;
     this.innerElement = document.createElement("div");
     this.element.appendChild(this.innerElement);
-    this.element.addEventListener("scroll", (event) => this.props.didScroll(event));
+    this.element.addEventListener("scroll", this.didScroll);
     this.element.addEventListener("mousedown", this.didMouseDown);
 
     const outerStyle = this.element.style;
@@ -59,6 +61,8 @@ module.exports = class DummyScrollbarComponent {
   }
 
   destroy() {
+    this.element.removeEventListener("scroll", this.didScroll);
+    this.element.removeEventListener("mousedown", this.didMouseDown);
     this.element.remove();
   }
 
@@ -103,11 +107,26 @@ module.exports = class DummyScrollbarComponent {
   }
 
   flushScrollPosition() {
+    // Blink quantizes very large scroll offsets more coarsely than a physical
+    // pixel. Read back the value it actually stored so its asynchronous scroll
+    // event can be distinguished from real native movement without a tolerance.
     if (this.props.orientation === "horizontal") {
       this.element.scrollLeft = this.props.scrollLeft;
+      this.lastAppliedNativePosition = this.element.scrollLeft;
     } else {
       this.element.scrollTop = this.props.scrollTop;
+      this.lastAppliedNativePosition = this.element.scrollTop;
     }
+  }
+
+  didScroll() {
+    const { orientation } = this.props;
+    const position =
+      orientation === "horizontal" ? this.element.scrollLeft : this.element.scrollTop;
+    // Keep the baseline until the next programmatic write. Duplicate and
+    // coalesced events all read the latest native position and remain no-ops.
+    if (position === this.lastAppliedNativePosition) return;
+    this.props.didScroll({ orientation, position });
   }
 
   didMouseDown(event) {

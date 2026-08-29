@@ -2488,31 +2488,18 @@ module.exports = class TextEditorComponent {
     }
   }
 
-  didScrollDummyScrollbar() {
-    let scrollTopChanged = false;
-    let scrollLeftChanged = false;
-    if (!this.scrollTopPending) {
-      const echoedScrollTop = this.refs.verticalScrollbar?.element.scrollTop ?? 0;
-      // The DOM element stores our fractional position snapped to its own
-      // grid, so its echo can disagree with the exact state by less than a
-      // physical pixel without anyone having scrolled. Adopt the echo only
-      // when it differs from our own position quantized — a real scroll moves
-      // at least a whole physical pixel and always does.
-      if (echoedScrollTop !== roundToPhysicalPixelBoundary(this.getScrollTop())) {
-        scrollTopChanged = this.setScrollTop(echoedScrollTop);
-      }
-      if (scrollTopChanged) {
+  didScrollDummyScrollbar({ orientation, position }) {
+    let scrollPositionChanged = false;
+    if (orientation === "vertical" && !this.scrollTopPending) {
+      scrollPositionChanged = this.setScrollTop(position);
+      if (scrollPositionChanged) {
         // The user took over the viewport; stop pinning the inherited anchor.
         this.settlingScrollAnchor = null;
       }
+    } else if (orientation === "horizontal" && !this.scrollLeftPending) {
+      scrollPositionChanged = this.setScrollLeft(position);
     }
-    if (!this.scrollLeftPending) {
-      const echoedScrollLeft = this.refs.horizontalScrollbar?.element.scrollLeft ?? 0;
-      if (echoedScrollLeft !== roundToPhysicalPixelBoundary(this.getScrollLeft())) {
-        scrollLeftChanged = this.setScrollLeft(echoedScrollLeft);
-      }
-    }
-    if (scrollTopChanged || scrollLeftChanged) this.updateSync();
+    if (scrollPositionChanged) this.updateSync();
   }
 
   didUpdateStyles() {
@@ -4567,8 +4554,7 @@ module.exports = class TextEditorComponent {
     if (scrollTop !== this.scrollTop) {
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.
-      // Value-changing sets only: the dummy scrollbar echoes the current
-      // position back through here after every frame.
+      // Programmatic dummy-scrollbar echoes are filtered before reaching here.
       if (
         this.scrollAnimator &&
         this.scrollAnimator.isAnimating() &&
@@ -4610,8 +4596,7 @@ module.exports = class TextEditorComponent {
     if (scrollLeft !== this.scrollLeft) {
       // A scroll that doesn't originate from the animator's own frame means
       // something else took over the viewport; stop the glide where it is.
-      // Value-changing sets only: the dummy scrollbar echoes the current
-      // position back through here after every frame.
+      // Programmatic dummy-scrollbar echoes are filtered before reaching here.
       if (
         this.scrollAnimator &&
         this.scrollAnimator.isAnimating() &&
