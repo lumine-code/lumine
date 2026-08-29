@@ -48,6 +48,12 @@ const FOLD_PREFILL_MAX_ROWS = 400;
 // more than the row does once the query machinery is warm.
 const FOLD_WINDOW_ROWS_BEHIND = 100;
 const FOLD_WINDOW_ROWS_AHEAD = 300;
+// `SyntaxNode#descendantsOfType` materializes its entire result synchronously.
+// Injection points often target common leaf nodes — strings and comments — so
+// one whole-file call can monopolize the renderer for hundreds of milliseconds.
+// Row windows keep each native traversal bounded while preserving document
+// order; nodes spanning a window boundary are deduplicated below.
+const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const PARSERS_IN_USE = new Set();
 
 const FUNCTION_TRUE = () => true;
@@ -246,7 +252,14 @@ const MAX_RANGE = new Range(Point.ZERO, Point.INFINITY).freeze();
  * @private
  */
 class TreeSitterLanguageMode {
-  constructor({ buffer, grammar, config, grammars, syncTimeoutMicros }) {
+  constructor({
+    buffer,
+    grammar,
+    config,
+    grammars,
+    syncTimeoutMicros,
+    injectionCandidateChunkRows,
+  }) {
     this.id = nextLanguageModeId++;
     this.buffer = buffer;
     this.grammar = grammar;
@@ -258,6 +271,8 @@ class TreeSitterLanguageMode {
     this.useAsyncIndent = FEATURE_ASYNC_INDENT;
     this.transactionReparseBudgetMs = REPARSE_BUDGET_PER_TRANSACTION_MILLIS;
     this.currentTransactionReparseBudgetMs = undefined;
+    this.injectionCandidateChunkRows =
+      injectionCandidateChunkRows ?? INJECTION_CANDIDATE_CHUNK_ROWS;
 
     this.injectionsMarkerLayer = buffer.addMarkerLayer();
 
@@ -380,6 +395,10 @@ class TreeSitterLanguageMode {
       this.parsersByLanguage.add(language, parser);
     }
     return parser;
+  }
+
+  _yieldForInjectionCandidateScan() {
+    return new Promise((resolve) => setImmediate(resolve));
   }
 
   bufferDidChange(change) {
@@ -2930,10 +2949,14 @@ class LanguageLayer {
     this.subscriptions = new CompositeDisposable();
 
     this.injectionPointsChanged = false;
+    this.injectionPointVersion = 0;
+    this.pendingInjectionPopulationRequests = [];
+    this.injectionPopulationDrainPromise = null;
 
     const handleInjectionPointChanges = () => {
       // When we add or remove injection points on this grammar, this language
       // layer must repopulate its injections.
+      this.injectionPointVersion++;
       this._populateInjections(MAX_RANGE, null);
     };
 
@@ -3098,6 +3121,8 @@ class LanguageLayer {
       return;
     }
     this.destroyed = true;
+    this.injectionPointVersion++;
+    this.pendingInjectionPopulationRequests.length = 0;
 
     // Clean up all Tree-sitter trees.
     let temporaryTrees = this.temporaryTrees ?? [];
@@ -4143,11 +4168,59 @@ class LanguageLayer {
   // to be created and where to create them, ideally reusing as many layers as
   // possible from previous updates.
   _populateInjections(range, nodeRangeSet) {
-    if (!this.tree) {
+    if (!this.tree || this.destroyed) {
       return;
     }
 
-    const promises = [];
+    this.pendingInjectionPopulationRequests.push({ range, nodeRangeSet });
+    if (this.injectionPopulationDrainPromise) {
+      return this.injectionPopulationDrainPromise;
+    }
+
+    let resolveDrain;
+    let rejectDrain;
+    const drainPromise = new Promise((resolve, reject) => {
+      resolveDrain = resolve;
+      rejectDrain = reject;
+    });
+    this.injectionPopulationDrainPromise = drainPromise;
+
+    const finishDrain = () => {
+      if (!this.destroyed && this.pendingInjectionPopulationRequests.length > 0) {
+        this._drainInjectionPopulationRequests().then(finishDrain, failDrain);
+        return;
+      }
+      if (this.injectionPopulationDrainPromise === drainPromise) {
+        this.injectionPopulationDrainPromise = null;
+      }
+      resolveDrain();
+    };
+    const failDrain = (error) => {
+      this.pendingInjectionPopulationRequests.length = 0;
+      if (this.injectionPopulationDrainPromise === drainPromise) {
+        this.injectionPopulationDrainPromise = null;
+      }
+      rejectDrain(error);
+    };
+
+    this._drainInjectionPopulationRequests().then(finishDrain, failDrain);
+    return drainPromise;
+  }
+
+  async _drainInjectionPopulationRequests() {
+    while (!this.destroyed && this.pendingInjectionPopulationRequests.length > 0) {
+      const { range, nodeRangeSet } = this.pendingInjectionPopulationRequests.shift();
+      await this._performPopulateInjections(range, nodeRangeSet);
+    }
+    if (this.destroyed) {
+      this.pendingInjectionPopulationRequests.length = 0;
+    }
+  }
+
+  _performPopulateInjections(range, nodeRangeSet) {
+    if (!this.tree) {
+      return;
+    }
 
     // We won't touch _all_ injections, but we will touch any injection that
     // could possibly have been affected by this layer's update.
@@ -4194,22 +4267,162 @@ class LanguageLayer {
     );
     existingInjectionMarkers.sort((a, b) => a.compare(b));
 
-    const markersToUpdate = new Map();
+    const tree = this.tree;
+    const injectionPointVersion = this.injectionPointVersion;
+    const injectionPointsByType = {};
+    for (const [type, injectionPoints] of Object.entries(this.grammar.injectionPointsByType)) {
+      injectionPointsByType[type] = injectionPoints.slice();
+    }
 
     // Query for all the nodes within the original range that could possibly
-    // prompt the creation of injection points.
-    const nodes = this.tree.rootNode.descendantsOfType(
-      Object.keys(this.grammar.injectionPointsByType),
-      range.start,
-      range.end,
+    // prompt the creation of injection points. A large range is collected in
+    // bounded row windows so the native query cannot monopolize one task.
+    const nodes = this._collectInjectionCandidateNodes(
+      tree,
+      Object.keys(injectionPointsByType),
+      range,
+      injectionPointVersion,
     );
+    if (nodes?.then) {
+      return nodes.then((resolvedNodes) => {
+        if (
+          resolvedNodes === null ||
+          !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)
+        ) {
+          return;
+        }
+        return this._reconcileInjections(
+          resolvedNodes,
+          range,
+          nodeRangeSet,
+          existingInjectionMarkers,
+          injectionPointsByType,
+          injectionPointVersion,
+        );
+      });
+    }
+
+    if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
+      return;
+    }
+    return this._reconcileInjections(
+      nodes,
+      range,
+      nodeRangeSet,
+      existingInjectionMarkers,
+      injectionPointsByType,
+      injectionPointVersion,
+    );
+  }
+
+  _injectionCandidateScanIsCurrent(tree, injectionPointVersion) {
+    return (
+      !this.destroyed &&
+      this.tree === tree &&
+      this.injectionPointVersion === injectionPointVersion &&
+      !tree.rootNode.hasChanges
+    );
+  }
+
+  _collectInjectionCandidateNodes(tree, types, range, injectionPointVersion) {
+    if (types.length === 0) {
+      return [];
+    }
+
+    const treeRange = rangeForNode(tree.rootNode);
+    const start = Point.max(range.start, treeRange.start);
+    const end = Point.min(range.end, treeRange.end);
+    if (start.compare(end) >= 0) {
+      return [];
+    }
+
+    const chunkRows = Math.max(1, this.languageMode.injectionCandidateChunkRows);
+    if (end.row - start.row <= chunkRows) {
+      return tree.rootNode.descendantsOfType(types, start, end);
+    }
+
+    let candidateQuery = null;
+    if (types.every((type) => /^[A-Za-z_][A-Za-z0-9_-]*$/.test(type))) {
+      try {
+        const patterns = types.map((type) => `  (${type})`).join("\n");
+        candidateQuery = this.grammar.createQuerySync(`[\n${patterns}\n] @_INJECTION_CANDIDATE_`);
+      } catch {
+        // An unusual node type can still use the slower compatibility path.
+      }
+    }
+
+    const result = this._collectInjectionCandidateNodesInChunks(
+      tree,
+      types,
+      start,
+      end,
+      chunkRows,
+      injectionPointVersion,
+      candidateQuery,
+    );
+    return candidateQuery ? result.finally(() => candidateQuery.delete()) : result;
+  }
+
+  async _collectInjectionCandidateNodesInChunks(
+    tree,
+    types,
+    start,
+    end,
+    chunkRows,
+    injectionPointVersion,
+    candidateQuery,
+  ) {
+    const result = [];
+    const seenNodeIds = new Set();
+    const rootNode = tree.rootNode;
+    let chunkStart = start;
+
+    while (chunkStart.compare(end) < 0) {
+      const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
+      let chunkEnd = nextRow === end.row ? end : new Point(nextRow, 0);
+      if (chunkEnd.compare(chunkStart) <= 0) {
+        chunkEnd = end;
+      }
+
+      const chunkNodes = candidateQuery
+        ? candidateQuery
+            .captures(rootNode, { startPosition: chunkStart, endPosition: chunkEnd })
+            .map((capture) => capture.node)
+        : rootNode.descendantsOfType(types, chunkStart, chunkEnd);
+      for (const node of chunkNodes) {
+        if (seenNodeIds.has(node.id)) continue;
+        seenNodeIds.add(node.id);
+        result.push(node);
+      }
+
+      if (chunkEnd.compare(end) >= 0) break;
+      await this.languageMode._yieldForInjectionCandidateScan();
+      if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
+        return null;
+      }
+      chunkStart = chunkEnd;
+    }
+
+    return result;
+  }
+
+  _reconcileInjections(
+    nodes,
+    range,
+    nodeRangeSet,
+    existingInjectionMarkers,
+    injectionPointsByType,
+    injectionPointVersion,
+  ) {
+    const promises = [];
+    const markersToUpdate = new Map();
 
     let existingInjectionMarkerIndex = 0;
     let newLanguageLayers = 0;
     for (const node of nodes) {
       // A given node can be the basis for an arbitrary number of injection
       // points, but first it has to pass our gauntlet of tests:
-      for (const injectionPoint of this.grammar.injectionPointsByType[node.type]) {
+      for (const injectionPoint of injectionPointsByType[node.type] ?? []) {
         // Does it give us a language string?
         const languageName = injectionPoint.language(node);
         if (!languageName) {
@@ -4382,7 +4595,9 @@ class LanguageLayer {
     // automatically re-populate injections whenever we add one for a given
     // grammar? That's an excellent question. In the future we'll do that
     // automatically and this logic will get marginally simpler.
-    this.injectionPointsChanged = false;
+    if (this.injectionPointVersion === injectionPointVersion) {
+      this.injectionPointsChanged = false;
+    }
 
     return Promise.all(promises);
   }

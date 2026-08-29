@@ -1003,6 +1003,124 @@ describe("TreeSitterLanguageMode", () => {
         htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
       });
 
+      it("yields while collecting injection candidates without losing or duplicating nodes", async () => {
+        jasmine.useRealClock();
+        const seen = [];
+        for (const type of ["identifier", "template_string"]) {
+          jsGrammar.addInjectionPoint({
+            type,
+            language(node) {
+              seen.push(`${node.type}:${node.startPosition.row}`);
+            },
+            content(node) {
+              return node;
+            },
+          });
+        }
+
+        buffer.setText("a;\nconst value = `\nb\nc\n`;\nd;");
+        spyOn(
+          TreeSitterLanguageMode.prototype,
+          "_yieldForInjectionCandidateScan",
+        ).and.callThrough();
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionCandidateChunkRows: 1,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        expect(languageMode._yieldForInjectionCandidateScan).toHaveBeenCalled();
+        expect(seen).toEqual(["identifier:0", "identifier:1", "template_string:1", "identifier:5"]);
+      });
+
+      it("abandons a stale candidate scan and retries against the final tree", async () => {
+        jasmine.useRealClock();
+        const seen = [];
+        jsGrammar.addInjectionPoint({
+          type: "identifier",
+          language(node) {
+            seen.push(node.text);
+          },
+          content(node) {
+            return node;
+          },
+        });
+
+        let resumeFirstScan;
+        const realYield = TreeSitterLanguageMode.prototype._yieldForInjectionCandidateScan;
+        spyOn(TreeSitterLanguageMode.prototype, "_yieldForInjectionCandidateScan").and.callFake(
+          function () {
+            if (!resumeFirstScan) {
+              return new Promise((resolve) => {
+                resumeFirstScan = resolve;
+              });
+            }
+            return realYield.call(this);
+          },
+        );
+
+        buffer.setText("a;\nb;\nc;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionCandidateChunkRows: 1,
+        });
+        buffer.setLanguageMode(languageMode);
+        while (!resumeFirstScan) await Promise.resolve();
+
+        buffer.setText("w;\nx;\ny;\nz;");
+        resumeFirstScan();
+        await languageMode.ready;
+
+        expect(seen).toEqual(["w", "x", "y", "z"]);
+      });
+
+      it("stops a yielded candidate scan safely when destroyed", async () => {
+        jasmine.useRealClock();
+        const language = jasmine.createSpy("injection language");
+        jsGrammar.addInjectionPoint({
+          type: "identifier",
+          language,
+          content(node) {
+            return node;
+          },
+        });
+
+        let resumeScan;
+        spyOn(TreeSitterLanguageMode.prototype, "_yieldForInjectionCandidateScan").and.callFake(
+          () =>
+            new Promise((resolve) => {
+              resumeScan = resolve;
+            }),
+        );
+
+        buffer.setText("a;\nb;\nc;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionCandidateChunkRows: 1,
+        });
+        buffer.setLanguageMode(languageMode);
+        while (!resumeScan) await Promise.resolve();
+
+        const rootLanguageLayer = languageMode.rootLanguageLayer;
+        languageMode.destroy();
+        resumeScan();
+        await languageMode.ready;
+
+        expect(language).not.toHaveBeenCalled();
+        expect(rootLanguageLayer.destroyed).toBe(true);
+        expect(rootLanguageLayer.childLayerMarkers.size).toBe(0);
+      });
+
       it("highlights code inside of injection points", async () => {
         jasmine.useRealClock();
         lumine.grammars.addGrammar(jsGrammar);
