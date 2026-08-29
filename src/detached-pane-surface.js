@@ -116,8 +116,11 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     this.element.tabIndex = -1;
     if (this.config) applyTextEditorFontConfig(this.element, this.config);
 
-    this.titlebarHost = document.createElement("div");
-    this.titlebarHost.className = "detached-pane-titlebar-host";
+    // Preserve the normal header-panel theme contract even though this shell
+    // does not own a Panel model. UI themes draw the header separator on the
+    // panel wrapper rather than on the title-bar package's element.
+    this.titlebarHost = document.createElement("lumine-panel");
+    this.titlebarHost.className = "detached-pane-titlebar-host header tool-panel panel-header";
     this.titlebar = document.createElement("header");
     this.titlebar.className = "detached-pane-titlebar";
     this.titlebar.setAttribute("role", "toolbar");

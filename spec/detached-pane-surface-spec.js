@@ -83,6 +83,10 @@ describe("DetachedPaneSurface", () => {
     const detachedPane = await lumine.workspace.detachPaneItem(item, { show: false });
     const surface = lumine.workspace.getWindowSurface(item);
 
+    expect(surface.titlebarHost.localName).toBe("lumine-panel");
+    expect(surface.titlebarHost.classList).toContain("header");
+    expect(surface.titlebarHost.classList).toContain("tool-panel");
+    expect(surface.titlebarHost.classList).toContain("panel-header");
     expect(surface.titlebarHost.children.length).toBe(1);
     expect(surface.titlebarHost.firstElementChild).toBe(surface.titlebar);
     expect(surface.titlebar.contains(surface.attachButton)).toBe(true);
