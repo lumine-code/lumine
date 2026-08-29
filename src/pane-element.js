@@ -70,19 +70,20 @@ class PaneElement extends HTMLElement {
       }
     };
     const handleDragOver = (event) => {
+      if (!hasNativeFiles(event.dataTransfer)) return;
       event.preventDefault();
       event.stopPropagation();
     };
     const handleDrop = (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      this.getModel().activate();
       const pathsToOpen = [...event.dataTransfer.files]
         .map((file) => getPathForDroppedFile(file))
         .filter(Boolean);
-      if (pathsToOpen.length > 0) {
-        this.applicationDelegate.open({ pathsToOpen, here: true });
-      }
+      if (pathsToOpen.length === 0) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+      this.getModel().activate();
+      this.applicationDelegate.open({ pathsToOpen, here: true });
     };
     this.addEventListener("focus", handleFocus, { capture: true });
     this.addEventListener("blur", handleBlur, { capture: true });
@@ -257,6 +258,11 @@ function createPaneElement() {
 }
 
 window.customElements.define("lumine-pane", PaneElement);
+
+function hasNativeFiles(dataTransfer) {
+  if (dataTransfer?.files?.length > 0) return true;
+  return Array.from(dataTransfer?.items ?? []).some((item) => item.kind === "file");
+}
 
 function getPathForDroppedFile(file) {
   if (typeof webUtils?.getPathForFile === "function") {

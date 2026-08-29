@@ -22,6 +22,20 @@ describe("WindowEventHandler", () => {
     lumine.installWindowEventHandler();
   });
 
+  it("marks an unhandled drag as unavailable", () => {
+    const event = {
+      dataTransfer: { dropEffect: "move" },
+      preventDefault: jasmine.createSpy("preventDefault"),
+      stopPropagation: jasmine.createSpy("stopPropagation"),
+    };
+
+    windowEventHandler.handleDragover(event);
+
+    expect(event.preventDefault).toHaveBeenCalled();
+    expect(event.stopPropagation).toHaveBeenCalled();
+    expect(event.dataTransfer.dropEffect).toBe("none");
+  });
+
   describe("when the window is loaded", () =>
     it("doesn't have .is-blurred on the body tag", (done) => {
       jasmine.filterByPlatform({ except: ["win32"] }, done); // Win32TestFailures - can not steal focus

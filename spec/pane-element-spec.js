@@ -376,9 +376,11 @@ describe("PaneElement", function () {
     }));
 
   describe("drag and drop", function () {
-    const buildDragEvent = function (type, files) {
+    const buildDragEvent = function (type, files, items = []) {
       const dataTransfer = {
         files,
+        items,
+        dropEffect: "move",
         data: {},
         setData(key, value) {
           this.data[key] = value;
@@ -388,10 +390,40 @@ describe("PaneElement", function () {
         },
       };
 
-      const event = new CustomEvent("drop");
+      const event = new CustomEvent(type, { bubbles: true, cancelable: true });
       event.dataTransfer = dataTransfer;
       return event;
     };
+
+    it("accepts a native file drag before the files list becomes available", () => {
+      jasmine.attachToDOM(paneElement);
+      const event = buildDragEvent("dragover", [], [{ kind: "file" }]);
+
+      paneElement.dispatchEvent(event);
+
+      expect(event.defaultPrevented).toBe(true);
+      expect(event.dataTransfer.dropEffect).toBe("move");
+    });
+
+    it("leaves an internal folder drag unclaimed over pane content and tab bars", () => {
+      jasmine.attachToDOM(paneElement);
+      const itemViews = paneElement.querySelector(":scope > .item-views");
+      const tabBar = document.createElement("div");
+      tabBar.classList.add("tab-bar");
+      paneElement.insertBefore(tabBar, itemViews);
+
+      for (const target of [itemViews, tabBar]) {
+        const event = buildDragEvent(
+          "dragover",
+          [],
+          [{ kind: "string", type: "lumine-tree-view-event" }],
+        );
+        target.dispatchEvent(event);
+
+        expect(event.defaultPrevented).toBe(false);
+        expect(event.dataTransfer.dropEffect).toBe("move");
+      }
+    });
 
     describe("when a file is dragged to the pane", () =>
       it("opens it", function () {
@@ -406,9 +438,12 @@ describe("PaneElement", function () {
 
     describe("when a non-file is dragged to the pane", () =>
       it("does nothing", function () {
+        const otherPane = pane.splitRight();
+        jasmine.attachToDOM(containerElement);
         const event = buildDragEvent("drop", []);
         paneElement.dispatchEvent(event);
         expect(lumine.applicationDelegate.open).not.toHaveBeenCalled();
+        expect(container.getActivePane()).toBe(otherPane);
       }));
 
     describe("when a dropped file has no resolved path", () =>
