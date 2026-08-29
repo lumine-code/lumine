@@ -88,12 +88,15 @@
       "label": "File",
       "submenu": [
         {
+          "label": "New File",
+          "command": "application:new-file"
+        },
+        {
           "label": "New Window",
           "command": "application:new-window"
         },
         {
-          "label": "New File",
-          "command": "application:new-file"
+          "type": "separator"
         },
         {
           "label": "Open…",
