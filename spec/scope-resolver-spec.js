@@ -869,6 +869,27 @@ describe("ScopeResolver", () => {
       ).toBe(true);
     });
 
+    it("supports test.typeAt and test.textAt", async () => {
+      await grammar.setQueryForTest(
+        "highlightsQuery",
+        `
+        ((identifier) @target-argument
+          (#is? test.typeAt "parent arguments")
+          (#is? test.textAt "parent.previousNamedSibling target"))
+      `,
+      );
+
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      buffer.setText("target(one); other(two);");
+      await languageMode.ready;
+
+      const matched = await getAllMatches(grammar, languageMode);
+      expect(matched.length).toBe(1);
+      expect(matched[0].name).toBe("target-argument");
+      expect(matched[0].node.text).toBe("one");
+    });
+
     it("supports test.ancestorOfType", async () => {
       await grammar.setQueryForTest(
         "highlightsQuery",

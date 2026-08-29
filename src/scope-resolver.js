@@ -878,6 +878,24 @@ ScopeResolver.TESTS = {
     return multiple ? target.includes(node.parent.type) : node.parent.type === type;
   },
 
+  // Passes when the node at a relative descriptor has one of the given types.
+  // This keeps queries rooted on the captured leaf while still letting them
+  // describe nearby structural context without traversing a large container.
+  typeAt(node, rawValue) {
+    let [descriptor, ...types] = rawValue.split(/\s+/);
+    if (!descriptor || types.length === 0) return false;
+    let target = resolveNodeDescriptor(node, descriptor);
+    return target ? types.includes(target.type) : false;
+  },
+
+  // Passes when the node at a relative descriptor has the given text.
+  textAt(node, rawValue) {
+    let [descriptor, ...text] = rawValue.split(/\s+/);
+    if (!descriptor || text.length === 0) return false;
+    let target = resolveNodeDescriptor(node, descriptor);
+    return target ? target.text === text.join(" ") : false;
+  },
+
   // Takes at least two node types (separated by spaces) and starts traversing
   // up the node's parent chain. Passes if the first node type is encountered
   // before any of the rest; fails if any of the rest are reached before the
