@@ -65,6 +65,54 @@ describe("DetachedPaneSurface", () => {
     ]);
   });
 
+  it("lays out the pane and active item in the visible child window", async () => {
+    item.element.classList.add("pane-item");
+    item.element.textContent = "Detached surface content";
+
+    const detachedPane = await lumine.workspace.detachPaneItem(item);
+    const surface = lumine.workspace.getWindowSurface(item);
+    const paneElement = detachedPane.getElement();
+    const itemView = lumine.views.getView(item);
+    await new Promise((resolve) => surface.window.requestAnimationFrame(resolve));
+
+    expect((await surface.windowService.getState()).visible).toBe(true);
+    expect(surface.document.visibilityState).toBe("visible");
+    expect(surface.paneHost.contains(paneElement)).toBe(true);
+    const paneContainer = surface.paneHost.querySelector(":scope > lumine-pane-container");
+    const itemViews = paneElement.querySelector(":scope > .item-views");
+    expect(paneContainer).not.toBeNull();
+    expect(itemViews).not.toBeNull();
+    if (!paneContainer || !itemViews) return;
+    expect(paneContainer.contains(paneElement)).toBe(true);
+    expect(itemViews.contains(itemView)).toBe(true);
+
+    const hostBounds = surface.paneHost.getBoundingClientRect();
+    const containerStyle = surface.window.getComputedStyle(paneContainer);
+    const paneStyle = surface.window.getComputedStyle(paneElement);
+    const itemViewsStyle = surface.window.getComputedStyle(itemViews);
+    const itemStyle = surface.window.getComputedStyle(itemView);
+    const paneBounds = paneElement.getBoundingClientRect();
+    const itemBounds = itemView.getBoundingClientRect();
+    expect(containerStyle.display).toBe("flex");
+    expect(paneStyle.display).toBe("flex");
+    expect(itemViewsStyle.display).toBe("flex");
+    expect(itemStyle.display).not.toBe("none");
+    expect(itemStyle.visibility).not.toBe("hidden");
+    // A theme may legally add a border or padding, so do not require pixel
+    // equality. Requiring almost the whole host still distinguishes the real
+    // pane layout from the item's small natural text box that masked the bug.
+    expect(paneBounds.width).toBeGreaterThan(hostBounds.width * 0.9);
+    expect(paneBounds.height).toBeGreaterThan(hostBounds.height * 0.9);
+    expect(itemBounds.width).toBeGreaterThan(paneBounds.width * 0.9);
+    expect(itemBounds.height).toBeGreaterThan(paneBounds.height * 0.9);
+
+    const hit = surface.document.elementFromPoint(
+      itemBounds.left + itemBounds.width / 2,
+      itemBounds.top + itemBounds.height / 2,
+    );
+    expect(hit === itemView || itemView.contains(hit)).toBe(true);
+  });
+
   it("physically restores the old DOM before invoking rollback", async () => {
     item.beginWindowSurfaceTransition = function (context) {
       this.transitions.push(["begin", context.reason, this.element.ownerDocument]);
@@ -130,7 +178,6 @@ describe("DetachedPaneSurface", () => {
       element.component.intersectionObserver instanceof surface.window.IntersectionObserver,
     ).toBe(true);
     expect(element.component.resizeObserver instanceof surface.window.ResizeObserver).toBe(true);
-
     await lumine.workspace.attachDetachedPane(detachedPane);
     expect(element.ownerDocument).toBe(document);
     expect(element.component.intersectionObserver instanceof window.IntersectionObserver).toBe(

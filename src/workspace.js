@@ -1853,7 +1853,8 @@ module.exports = class Workspace extends Model {
    * @returns {SelectListView}
    */
   buildSelectList(props) {
-    return this.bindModalOwner(new SelectListView(props), props);
+    const resolvedProps = this.withModalDocument(props);
+    return this.bindModalOwner(new SelectListView(resolvedProps), resolvedProps);
   }
 
   /**
@@ -1879,7 +1880,19 @@ module.exports = class Workspace extends Model {
    * @returns {InputDialogView}
    */
   buildInputDialog(props) {
-    return this.bindModalOwner(new InputDialogView(props), props);
+    const resolvedProps = this.withModalDocument(props);
+    return this.bindModalOwner(new InputDialogView(resolvedProps), resolvedProps);
+  }
+
+  withModalDocument(props) {
+    if (props.document) return props;
+    const surface = props.surface?.document
+      ? props.surface
+      : props.owner
+        ? this.getWindowSurface(props.owner)
+        : null;
+    const document = surface?.document || this.getElement().ownerDocument;
+    return { ...props, document };
   }
 
   bindModalOwner(view, { owner, surface } = {}) {

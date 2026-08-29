@@ -68,13 +68,30 @@ function applyTextEditorFontConfig(element, config) {
 class WorkspaceElement extends HTMLElement {
   connectedCallback() {
     this.focus();
-    if (!this.handleCenterLeave) return;
-    this.htmlElement = this.ownerDocument.documentElement;
-    this.htmlElement.addEventListener("mouseleave", this.handleCenterLeave);
+    this.observeDocumentMouseLeave();
   }
 
   disconnectedCallback() {
+    this.stopObservingDocumentMouseLeave();
+  }
+
+  observeDocumentMouseLeave() {
+    // Detached-pane surfaces use a presentational `lumine-workspace` that is
+    // connected without calling initialize(). The prototype method exists on
+    // that element, but it is not bound: registering it would make the root
+    // HTML element its `this` value when mouseleave fires. initialize() creates
+    // the own, bound handler that identifies an interactive workspace.
+    if (!this.isConnected || !Object.hasOwn(this, "handleCenterLeave")) return;
+    const htmlElement = this.ownerDocument.documentElement;
+    if (this.htmlElement === htmlElement) return;
+    this.stopObservingDocumentMouseLeave();
+    this.htmlElement = htmlElement;
+    this.htmlElement.addEventListener("mouseleave", this.handleCenterLeave);
+  }
+
+  stopObservingDocumentMouseLeave() {
     this.htmlElement?.removeEventListener("mouseleave", this.handleCenterLeave);
+    this.htmlElement = null;
   }
 
   initializeContent() {
@@ -227,6 +244,7 @@ class WorkspaceElement extends HTMLElement {
 
     this.subscriptions = new CompositeDisposable(
       new Disposable(() => {
+        this.stopObservingDocumentMouseLeave();
         this.paneContainer.removeEventListener("mouseenter", this.handleCenterEnter);
         this.paneContainer.removeEventListener("mouseleave", this.handleCenterLeave);
         this.removeEventListener("wheel", this.handleCtrlWheel, { capture: true });
@@ -282,6 +300,7 @@ class WorkspaceElement extends HTMLElement {
 
     this.paneContainer.addEventListener("mouseenter", this.handleCenterEnter);
     this.paneContainer.addEventListener("mouseleave", this.handleCenterLeave);
+    this.observeDocumentMouseLeave();
 
     return this;
   }

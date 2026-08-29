@@ -38,7 +38,8 @@
 }
 
 .detached-pane-host,
-.detached-pane-host > lumine-pane {
+.detached-pane-host > lumine-pane-container,
+.detached-pane-host > lumine-pane-container > lumine-pane {
   min-width: 0;
   min-height: 0;
   width: 100%;

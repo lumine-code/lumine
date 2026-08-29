@@ -93,6 +93,15 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
 
     this.paneHost = document.createElement("main");
     this.paneHost.className = "detached-pane-host";
+    // Keep the normal pane DOM ancestry even though this container is only a
+    // surface shell, not a second PaneContainer model. Core pane layout rules
+    // are deliberately scoped below lumine-pane-container; mounting the pane
+    // directly under <main> leaves it and .item-views as unstyled inline/block
+    // content, so real absolutely-positioned item roots paint into a zero-size
+    // pane while the detached titlebar remains visible.
+    this.paneContainerElement = document.createElement("lumine-pane-container");
+    this.paneContainerElement.classList.add("detached-pane-container");
+    this.paneHost.appendChild(this.paneContainerElement);
     this.modalHost = document.createElement("div");
     this.modalHost.className = "detached-pane-modal-host";
     this.element.append(this.titlebar, this.paneHost, this.modalHost);
@@ -210,7 +219,7 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     this.item = pane.getActiveItem();
     const paneElement = this.viewRegistry.getView(pane);
     if (paneElement.ownerDocument !== this.document) this.document.adoptNode(paneElement);
-    this.paneHost.replaceChildren(paneElement);
+    this.paneContainerElement.replaceChildren(paneElement);
     paneElement.classList.add("detached-pane");
     this.updateTitle();
     this.updateDocumentEdited();

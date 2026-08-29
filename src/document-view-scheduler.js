@@ -29,12 +29,12 @@ module.exports = class DocumentViewScheduler {
   }
 
   getNextUpdatePromise() {
-    if (!this.nextPromise) {
-      this.nextPromise = new Promise((resolve) => {
-        this.resolveNextPromise = resolve;
+    if (!this.nextUpdatePromise) {
+      this.nextUpdatePromise = new Promise((resolve) => {
+        this.resolveNextUpdatePromise = resolve;
       });
     }
-    return this.nextPromise;
+    return this.nextUpdatePromise;
   }
 
   request() {
@@ -54,9 +54,9 @@ module.exports = class DocumentViewScheduler {
       const hasPendingWork = this.writers.length > 0 || this.readers.length > 0;
       if (hasPendingWork) this.request();
       if (completed || !hasPendingWork) {
-        const resolve = this.resolveNextPromise;
-        this.nextPromise = null;
-        this.resolveNextPromise = null;
+        const resolve = this.resolveNextUpdatePromise;
+        this.nextUpdatePromise = null;
+        this.resolveNextUpdatePromise = null;
         resolve?.();
       }
     }
@@ -67,9 +67,9 @@ module.exports = class DocumentViewScheduler {
     this.frame = null;
     this.writers = [];
     this.readers = [];
-    this.resolveNextPromise?.();
-    this.nextPromise = null;
-    this.resolveNextPromise = null;
+    this.resolveNextUpdatePromise?.();
+    this.nextUpdatePromise = null;
+    this.resolveNextUpdatePromise = null;
   }
 
   destroy() {
