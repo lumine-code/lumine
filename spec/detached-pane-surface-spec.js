@@ -111,7 +111,9 @@ describe("DetachedPaneSurface", () => {
     expect(attach.getAttribute("aria-label")).toBe("Attach pane back to the editor");
     attach.click();
 
-    await conditionPromise(() => !lumine.workspace.paneForItem(item)?.isDetached?.());
+    await conditionPromise(
+      () => !lumine.workspace.paneForItem(item)?.isDetached?.() && surface.isDestroyed(),
+    );
     expect(detachedPane.isDestroyed()).toBe(true);
     expect(surface.isDestroyed()).toBe(true);
   });
