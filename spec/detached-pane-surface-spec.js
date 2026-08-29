@@ -91,6 +91,36 @@ describe("DetachedPaneSurface", () => {
     expect(detachedPane.getActiveItem()).toBe(item);
   });
 
+  it("attaches only the surface whose attach action was activated", async () => {
+    const secondItem = {
+      element: document.createElement("div"),
+      getTitle: () => "Second surface item",
+    };
+    const tiledPane = lumine.workspace.getCenter().getActiveTiledPane();
+    tiledPane.addItem(secondItem);
+    let secondPane;
+    try {
+      const firstPane = await lumine.workspace.detachPaneItem(item, { show: false });
+      secondPane = await lumine.workspace.detachPaneItem(secondItem, { show: false });
+      const firstSurface = lumine.workspace.getWindowSurface(item);
+      const secondSurface = lumine.workspace.getWindowSurface(secondItem);
+      expect(firstSurface).not.toBe(secondSurface);
+      expect(firstPane.isDetached()).toBe(true);
+      expect(secondPane.isDetached()).toBe(true);
+
+      await firstSurface.activateAttachAction();
+
+      expect(lumine.workspace.paneForItem(item).isDetached()).toBe(false);
+      expect(lumine.workspace.paneForItem(secondItem)).toBe(secondPane);
+      expect(secondPane.isDetached()).toBe(true);
+      expect(lumine.workspace.getWindowSurface(secondItem)).toBe(secondSurface);
+    } finally {
+      const pane = lumine.workspace.paneForItem(secondItem);
+      if (pane?.isDetached?.()) await lumine.workspace.attachDetachedPane(pane);
+      lumine.workspace.paneForItem(secondItem)?.removeItem(secondItem, true);
+    }
+  });
+
   it("uses the bundled title bar without an application menu and attaches through its tile", async () => {
     await lumine.packages.activatePackage("title-bar");
     const detachedPane = await lumine.workspace.detachPaneItem(item, { show: false });

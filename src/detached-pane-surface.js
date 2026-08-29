@@ -181,7 +181,7 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
         "window:reload": () => this.primaryWindow.lumine?.window?.reload?.(),
         "window:toggle-dev-tools": () => this.primaryWindow.lumine?.window?.toggleDevTools?.(),
       }),
-      this.commandRegistry.add("lumine-workspace.detached-pane-workspace", {
+      this.commandRegistry.add(this.element, {
         "pane:attach": {
           description: "Attach this pane back to the editor.",
           didDispatch: () => this.onAttach?.(this.pane),
