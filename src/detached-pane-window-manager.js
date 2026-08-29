@@ -234,7 +234,13 @@ module.exports = class DetachedPaneWindowManager {
         if (surface.state !== "ready" && surface.state !== "open") {
           throw new Error("Only a ready or open detached-pane window can be attached");
         }
-        return this.destroySurface(surface, "attached");
+        if (!this.destroySurface(surface, "attached")) return false;
+        // Destroying the focused child usually activates its owner, but that is
+        // window-manager policy rather than an Electron guarantee (and does
+        // not happen under Xvfb). Attaching means returning to the primary
+        // workspace, so make that focus transfer explicit.
+        if (!this.browserWindow.isDestroyed()) this.browserWindow.focus();
+        return true;
       case "close-accepted":
         if (surface.state !== "close-requested") {
           throw new Error("The detached-pane window did not request closure");

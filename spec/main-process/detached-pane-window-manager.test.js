@@ -116,8 +116,10 @@ describe("DetachedPaneWindowManager", function () {
   it("closes a committed surface programmatically after attaching its pane", function () {
     const transaction = openCommittedWindow(manager, owner);
     const child = manager.transactions.get(transaction.transactionId).surface.browserWindow;
+    assert.isFalse(owner.browserWindow.focused);
     assert.isTrue(manager.perform(transaction.transactionId, "attach"));
     assert.isTrue(child.isDestroyed());
+    assert.isTrue(owner.browserWindow.focused);
     assert.isFalse(manager.perform(transaction.transactionId, "attach"));
   });
 
