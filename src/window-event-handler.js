@@ -20,6 +20,8 @@ module.exports = class WindowEventHandler {
     this.handleWindowToggleMenuBar = this.handleWindowToggleMenuBar.bind(this);
     this.handleLinkClick = this.handleLinkClick.bind(this);
     this.handleDocumentContextmenu = this.handleDocumentContextmenu.bind(this);
+    this.handleDrop = this.handleDrop.bind(this);
+    this.handleDragover = this.handleDragover.bind(this);
     this.lumineEnvironment = lumineEnvironment;
     this.applicationDelegate = applicationDelegate;
     this.reloadRequested = false;
@@ -75,8 +77,8 @@ module.exports = class WindowEventHandler {
 
     this.addEventListener(this.document, "keyup", this.handleDocumentKeyEvent);
     this.addEventListener(this.document, "keydown", this.handleDocumentKeyEvent);
-    this.addEventListener(this.document, "drop", this.handleDocumentDrop);
-    this.addEventListener(this.document, "dragover", this.handleDocumentDragover);
+    this.addEventListener(this.document, "drop", this.handleDrop);
+    this.addEventListener(this.document, "dragover", this.handleDragover);
     this.addEventListener(this.document, "contextmenu", this.handleDocumentContextmenu);
     this.subscriptions.add(listen(this.document, "click", "a", this.handleLinkClick));
     this.subscriptions.add(listen(this.document, "submit", "form", this.handleFormSubmit));

@@ -348,6 +348,7 @@ module.exports = class Workspace extends Model {
         styleManager: this.styleManager,
       });
     }
+    this.workspaceDropManager?.rebind(this.element);
     return this.element;
   }
 

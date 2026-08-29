@@ -1,5 +1,4 @@
 const path = require("path");
-const { webUtils } = require("electron");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
 
 class PaneElement extends HTMLElement {
@@ -69,26 +68,8 @@ class PaneElement extends HTMLElement {
         this.model.blur();
       }
     };
-    const handleDragOver = (event) => {
-      if (!hasNativeFiles(event.dataTransfer)) return;
-      event.preventDefault();
-      event.stopPropagation();
-    };
-    const handleDrop = (event) => {
-      const pathsToOpen = [...event.dataTransfer.files]
-        .map((file) => getPathForDroppedFile(file))
-        .filter(Boolean);
-      if (pathsToOpen.length === 0) return;
-
-      event.preventDefault();
-      event.stopPropagation();
-      this.getModel().activate();
-      this.applicationDelegate.open({ pathsToOpen, here: true });
-    };
     this.addEventListener("focus", handleFocus, { capture: true });
     this.addEventListener("blur", handleBlur, { capture: true });
-    this.addEventListener("dragover", handleDragOver);
-    this.addEventListener("drop", handleDrop);
   }
 
   initialize(model, { views, applicationDelegate }) {
@@ -258,24 +239,6 @@ function createPaneElement() {
 }
 
 window.customElements.define("lumine-pane", PaneElement);
-
-function hasNativeFiles(dataTransfer) {
-  if (dataTransfer?.files?.length > 0) return true;
-  return Array.from(dataTransfer?.items ?? []).some((item) => item.kind === "file");
-}
-
-function getPathForDroppedFile(file) {
-  if (typeof webUtils?.getPathForFile === "function") {
-    try {
-      const filePath = webUtils.getPathForFile(file);
-      if (filePath) return filePath;
-    } catch {
-      // Spec fakes and older call sites may still provide a path property instead.
-    }
-  }
-
-  return file.path;
-}
 
 module.exports = {
   createPaneElement,

@@ -42,6 +42,7 @@ const ApplicationService = require("./application-service");
 const ShellService = require("./shell-service");
 const RuntimeService = require("./runtime-service");
 const Workspace = require("./workspace");
+const WorkspaceDropManager = require("./workspace-drop-manager");
 const PaneContainer = require("./pane-container");
 const PaneAxis = require("./pane-axis");
 const Pane = require("./pane");
@@ -441,6 +442,21 @@ class Environment {
       enablePersistence: this.enablePersistence,
     });
 
+    /**
+     * @public
+     * @status extended
+     *
+     * Shared protocol and routing for drops on workspace panes and package
+     * surfaces such as tab bars.
+     * @type {WorkspaceDropManager}
+     */
+    this.workspaceDrops = new WorkspaceDropManager({
+      workspace: this.workspace,
+      applicationDelegate: this.applicationDelegate,
+      windowService: this.window,
+    });
+    this.workspace.workspaceDropManager = this.workspaceDrops;
+
     this.themes.workspace = this.workspace;
     this.repositories.attachWorkspace(this.workspace);
 
@@ -572,6 +588,7 @@ class Environment {
     this.#windowEventHandler.initialize(this.domWindow, this.document);
 
     this.workspace.initialize({ configDirPath: this.getConfigDirPath() });
+    this.workspaceDrops.initialize();
 
     const didChangeStyles = this.didChangeStyles.bind(this);
     this.disposables.add(this.styles.onDidAddStyleElement(didChangeStyles));
@@ -736,6 +753,8 @@ class Environment {
 
     this.menu.destroy();
     this.disposables.dispose();
+    if (this.workspaceDrops) this.workspaceDrops.destroy();
+    this.workspaceDrops = null;
     if (this.workspace) this.workspace.destroy();
     this.workspace = null;
     this.themes.workspace = null;

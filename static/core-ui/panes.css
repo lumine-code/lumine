@@ -121,3 +121,16 @@ lumine-pane-container {
     cursor: row-resize;
   }
 }
+
+.workspace-drop-overlay {
+  position: fixed;
+  z-index: 11;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--text-color);
+  transition: opacity 0.2s ease-out;
+
+  &.visible {
+    opacity: 0.1;
+  }
+}
