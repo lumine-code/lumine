@@ -1,4 +1,5 @@
 const { Disposable } = require("@lumine-code/event-kit");
+const { conditionPromise } = require("./helpers/async-spec-helpers");
 
 describe("DetachedPaneSurface", () => {
   let item, titleBarProvider, titleBarWasActive;
@@ -54,7 +55,12 @@ describe("DetachedPaneSurface", () => {
     }
     pane?.removeItem?.(item, true);
     lumine.initializeDetachedPaneSurfaces();
-    if (titleBarWasActive) await lumine.packages.activatePackage("title-bar");
+    const titleBarIsActive = lumine.packages.isPackageActive("title-bar");
+    if (titleBarWasActive && !titleBarIsActive) {
+      await lumine.packages.activatePackage("title-bar");
+    } else if (!titleBarWasActive && titleBarIsActive) {
+      await lumine.packages.deactivatePackage("title-bar");
+    }
   });
 
   it("awaits realm rebuild after adoption and before completing detach and attach", async () => {
@@ -83,6 +89,31 @@ describe("DetachedPaneSurface", () => {
     expect(surface.attachButton.ownerDocument).toBe(surface.document);
     expect(surface.document.defaultView.getComputedStyle(surface.element).display).toBe("flex");
     expect(detachedPane.getActiveItem()).toBe(item);
+  });
+
+  it("uses the bundled title bar without an application menu and attaches through its tile", async () => {
+    await lumine.packages.activatePackage("title-bar");
+    const detachedPane = await lumine.workspace.detachPaneItem(item, { show: false });
+    const surface = lumine.workspace.getWindowSurface(item);
+    const titleBar = surface.titlebarHost.querySelector(":scope > .title-bar.surface-title-bar");
+
+    expect(titleBar).not.toBeNull();
+    expect(titleBar.ownerDocument).toBe(surface.document);
+    expect(titleBar.querySelector(".custom-title").textContent).toBe("Surface item");
+    expect(titleBar.querySelector(".app-menu")).toBeNull();
+    expect(surface.document.querySelector(".app-menu-submenu-portal")).toBeNull();
+    expect(titleBar.querySelectorAll(".window-buttons button").length).toBe(3);
+
+    const attach = titleBar.querySelector('[data-action="attach"]');
+    expect(attach).not.toBeNull();
+    expect(attach.classList).toContain("title-bar-item");
+    expect(attach.getAttribute("role")).toBe("button");
+    expect(attach.getAttribute("aria-label")).toBe("Attach pane back to the editor");
+    attach.click();
+
+    await conditionPromise(() => !lumine.workspace.paneForItem(item)?.isDetached?.());
+    expect(detachedPane.isDestroyed()).toBe(true);
+    expect(surface.isDestroyed()).toBe(true);
   });
 
   it("mounts provider chrome in the child realm and routes its controls to that window", async () => {
