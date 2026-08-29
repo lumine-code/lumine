@@ -63,4 +63,24 @@ describe("SurfaceWindowService", () => {
     expect(operations).toEqual([["drag-1", "attach"]]);
     expect(service.state).toBe("closed");
   });
+
+  it("routes surface chrome operations through its own native transaction", async () => {
+    const service = await SurfaceWindowService.reserve(delegate);
+
+    await service.focus();
+    await service.minimize();
+    await service.maximize();
+    await service.unmaximize();
+    await service.setBounds({ x: 10, y: 20, width: 900, height: 700 });
+    await service.requestClose();
+
+    expect(operations).toEqual([
+      ["drag-1", "focus"],
+      ["drag-1", "minimize"],
+      ["drag-1", "maximize"],
+      ["drag-1", "unmaximize"],
+      ["drag-1", "set-bounds", { x: 10, y: 20, width: 900, height: 700 }],
+      ["drag-1", "request-close"],
+    ]);
+  });
 });

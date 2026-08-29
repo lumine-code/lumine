@@ -5,6 +5,19 @@ const PanelContainer = require("./panel-container");
 const ModalFlow = require("./modal-flow");
 const { applyTextEditorFontConfig } = require("./workspace-element");
 
+const ATTACH_ACTION = Object.freeze({
+  id: "attach",
+  label: "Attach pane back to the editor",
+  iconName: "pin",
+  priority: -100,
+});
+
+function assertTitleBarFactory(factory) {
+  if (factory != null && (typeof factory !== "object" || typeof factory.create !== "function")) {
+    throw new TypeError("A surface title-bar factory must expose create(options)");
+  }
+}
+
 module.exports = class DetachedPaneSurface extends WindowSurface {
   constructor({
     windowService,
@@ -22,6 +35,8 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     workspace,
     config,
     onAttach,
+    titleBarFactory = null,
+    title = "Lumine",
   }) {
     const domWindow = windowService.domWindow;
     super({
@@ -45,9 +60,33 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     this.workspace = workspace;
     this.config = config;
     this.onAttach = onAttach;
+    this.initialTitle = title;
+    assertTitleBarFactory(titleBarFactory);
+    this.initialTitleBarFactory = titleBarFactory;
+    this.titleBarFactory = null;
+    this.titleBarHandle = null;
     this.pane = null;
     this.item = null;
     this.surfaceSubscriptions = new CompositeDisposable();
+    const service = this.windowService;
+    this.windowController = Object.freeze({
+      getState: () => service.getState(),
+      onDidChangeState: (callback) => service.onDidChangeState(callback),
+      onDidFocus: (callback) => service.onDidFocus(callback),
+      onDidBlur: (callback) => service.onDidBlur(callback),
+      focus: () => service.focus(),
+      minimize: () => service.minimize(),
+      maximize: () => service.maximize(),
+      unmaximize: () => service.unmaximize(),
+      close: () => service.requestClose(),
+      requestClose: () => service.requestClose(),
+      setBounds: (bounds) => service.setBounds(bounds),
+      getDoubleClickAction: () =>
+        this.primaryWindow.lumine?.application?.getUserDefault(
+          "AppleActionOnDoubleClick",
+          "string",
+        ),
+    });
   }
 
   initialize() {
@@ -77,6 +116,8 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     this.element.tabIndex = -1;
     if (this.config) applyTextEditorFontConfig(this.element, this.config);
 
+    this.titlebarHost = document.createElement("div");
+    this.titlebarHost.className = "detached-pane-titlebar-host";
     this.titlebar = document.createElement("header");
     this.titlebar.className = "detached-pane-titlebar";
     this.titlebar.setAttribute("role", "toolbar");
@@ -87,9 +128,10 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     this.attachButton.setAttribute("aria-label", "Attach pane back to the editor");
     this.attachButton.title = "Attach pane back to the editor";
     this.attachButton.addEventListener("click", () => {
-      void this.commandRegistry.dispatch(this.attachButton, "pane:attach");
+      void this.activateAttachAction();
     });
     this.titlebar.appendChild(this.attachButton);
+    this.titlebarHost.appendChild(this.titlebar);
 
     this.paneHost = document.createElement("main");
     this.paneHost.className = "detached-pane-host";
@@ -101,10 +143,10 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     // pane while the detached titlebar remains visible.
     this.paneContainerElement = document.createElement("lumine-pane-container");
     this.paneContainerElement.classList.add("detached-pane-container");
-    this.paneHost.appendChild(this.paneContainerElement);
     this.modalHost = document.createElement("div");
     this.modalHost.className = "detached-pane-modal-host";
-    this.element.append(this.titlebar, this.paneHost, this.modalHost);
+    this.paneHost.append(this.paneContainerElement, this.modalHost);
+    this.element.append(this.titlebarHost, this.paneHost);
     document.body.appendChild(this.element);
 
     this.modalPanelContainer = new PanelContainer({
@@ -197,7 +239,104 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
         document.removeEventListener("drop", rejectWorkspaceDrop);
       }),
     );
+    this.setTitleBarFactory(this.initialTitleBarFactory);
+    this.initialTitleBarFactory = null;
     return this;
+  }
+
+  activateAttachAction() {
+    return this.commandRegistry.dispatch(this.element, "pane:attach");
+  }
+
+  activateAppIcon() {
+    return this.commandRegistry.dispatch(this.element, "application:about");
+  }
+
+  setTitleBarFactory(factory) {
+    assertTitleBarFactory(factory);
+    if (factory === this.titleBarFactory && (factory == null || this.titleBarHandle)) return;
+
+    const oldHandle = this.titleBarHandle;
+    const oldElement = oldHandle?.element || this.titlebar;
+    if (!factory || !this.titlebarHost) {
+      this.titlebarHost?.replaceChildren(this.titlebar);
+      this.titleBarFactory = null;
+      this.titleBarHandle = null;
+      this.destroyTitleBarHandle(oldHandle);
+      return;
+    }
+
+    let newHandle;
+    try {
+      const action = Object.assign({}, ATTACH_ACTION, {
+        onDidActivate: () => this.activateAttachAction(),
+      });
+      newHandle = factory.create({
+        document: this.document,
+        controller: this.windowController,
+        title: this.titleForItem(),
+        actions: [action],
+        onDidActivateAppIcon: () => this.activateAppIcon(),
+      });
+      if (
+        !newHandle ||
+        !newHandle.element ||
+        newHandle.element.nodeType !== 1 ||
+        newHandle.element.ownerDocument !== this.document ||
+        typeof newHandle.setTitle !== "function" ||
+        typeof newHandle.destroy !== "function"
+      ) {
+        throw new TypeError(
+          "A surface title-bar handle must expose a child-document element, setTitle(), and destroy()",
+        );
+      }
+      if (
+        newHandle.element === this.titlebarHost ||
+        newHandle.element.contains(this.titlebarHost)
+      ) {
+        throw new TypeError("A surface title-bar element cannot contain its host");
+      }
+      newHandle.setTitle(this.titleForItem());
+      this.titlebarHost.replaceChildren(newHandle.element);
+    } catch (error) {
+      if (newHandle && newHandle !== oldHandle) {
+        try {
+          newHandle.destroy?.();
+        } catch (destroyError) {
+          console.error(destroyError);
+        }
+        if (newHandle.element && newHandle.element !== this.titlebarHost) {
+          newHandle.element.remove?.();
+        }
+      }
+      if (
+        this.titlebarHost.childElementCount !== 1 ||
+        this.titlebarHost.firstElementChild !== oldElement
+      ) {
+        try {
+          this.titlebarHost.replaceChildren(oldElement);
+        } catch (restoreError) {
+          console.error("Unable to restore the previous surface title bar", restoreError);
+        }
+      }
+      console.error("Unable to mount the surface title bar", error);
+      return;
+    }
+
+    this.titleBarFactory = factory;
+    this.titleBarHandle = newHandle;
+    if (oldHandle !== newHandle) this.destroyTitleBarHandle(oldHandle);
+  }
+
+  destroyTitleBarHandle(handle = this.titleBarHandle) {
+    if (!handle) return;
+    if (handle === this.titleBarHandle) this.titleBarHandle = null;
+    try {
+      handle.destroy();
+    } catch (error) {
+      console.error(error);
+    }
+    handle.element?.remove?.();
   }
 
   syncThemeClasses() {
@@ -240,12 +379,20 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
   }
 
   titleForItem() {
-    return this.item?.getLongTitle?.() || this.item?.getTitle?.() || "Lumine";
+    return this.item?.getLongTitle?.() || this.item?.getTitle?.() || this.initialTitle;
   }
 
   updateTitle() {
     const title = this.titleForItem();
     this.document.title = title;
+    if (this.titleBarHandle) {
+      try {
+        this.titleBarHandle.setTitle(title);
+      } catch (error) {
+        console.error("Unable to update the surface title bar", error);
+        this.setTitleBarFactory(null);
+      }
+    }
     void this.windowService.setTitle(title);
     void this.windowService.setRepresentedFilename(this.item?.getPath?.() || "");
   }
@@ -267,6 +414,7 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
 
   destroy() {
     if (this.isDestroyed()) return;
+    this.setTitleBarFactory(null);
     if (this.surfaceManager?.get(this.id) === this) this.surfaceManager.remove(this);
     this.surfaceSubscriptions.dispose();
     this.modalFlow?.destroy();

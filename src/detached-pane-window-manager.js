@@ -28,6 +28,34 @@ function normalizeOptions(options = {}) {
   return normalized;
 }
 
+function normalizeBounds(bounds, currentBounds = {}) {
+  if (!bounds || typeof bounds !== "object" || Array.isArray(bounds)) {
+    throw new TypeError("Detached-pane bounds must be an object");
+  }
+
+  const allowed = new Set(["x", "y", "width", "height"]);
+  for (const key of Object.keys(bounds)) {
+    if (!allowed.has(key)) throw new TypeError(`Unsupported detached-pane bound '${key}'`);
+  }
+
+  const normalized = Object.assign({}, currentBounds);
+  let changed = false;
+  for (const key of allowed) {
+    if (!Object.hasOwn(bounds, key)) continue;
+    if (!Number.isFinite(bounds[key])) {
+      throw new TypeError(`Detached-pane bound '${key}' must be finite`);
+    }
+    normalized[key] = Math.round(bounds[key]);
+    changed = true;
+  }
+  if (!changed) throw new TypeError("Detached-pane bounds must name at least one coordinate");
+  if (Object.hasOwn(bounds, "width")) normalized.width = Math.max(MINIMUM_SIZE, normalized.width);
+  if (Object.hasOwn(bounds, "height")) {
+    normalized.height = Math.max(MINIMUM_SIZE, normalized.height);
+  }
+  return normalized;
+}
+
 function visibleBounds({ width, height, x, y }, ownerBounds = {}) {
   const anchor = {
     x: x ?? ownerBounds.x ?? 0,
@@ -262,6 +290,9 @@ module.exports = class DetachedPaneWindowManager {
         return;
       case "get-state":
         return this.stateFor(surface);
+      case "set-bounds":
+        window.setBounds(normalizeBounds(args[0], window.getBounds?.() || {}));
+        return this.stateFor(surface);
       case "set-title":
         if (typeof args[0] !== "string") throw new TypeError("Window title must be a string");
         window.setTitle(args[0]);
@@ -437,4 +468,5 @@ module.exports = class DetachedPaneWindowManager {
 };
 
 module.exports.normalizeOptions = normalizeOptions;
+module.exports.normalizeBounds = normalizeBounds;
 module.exports.visibleBounds = visibleBounds;

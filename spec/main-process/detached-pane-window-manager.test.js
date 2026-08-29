@@ -148,6 +148,35 @@ describe("DetachedPaneWindowManager", function () {
     assert.equal(response, 1);
     assert.strictEqual(showMessageBox.calls.mostRecent().args[0], child);
   });
+
+  it("validates, rounds, and applies partial surface bounds", function () {
+    const transaction = openCommittedWindow(manager, owner);
+    const child = manager.transactions.get(transaction.transactionId).surface.browserWindow;
+
+    const state = manager.perform(transaction.transactionId, "set-bounds", {
+      x: 10.4,
+      y: 20.6,
+      width: 80,
+      height: 700.2,
+    });
+    assert.deepEqual(child.getBounds(), { x: 10, y: 21, width: 160, height: 700 });
+    assert.deepEqual(state.bounds, child.getBounds());
+
+    manager.perform(transaction.transactionId, "set-bounds", { width: 900 });
+    assert.deepEqual(child.getBounds(), { x: 10, y: 21, width: 900, height: 700 });
+    assert.throws(
+      () => manager.perform(transaction.transactionId, "set-bounds", { width: Infinity }),
+      /must be finite/,
+    );
+    assert.throws(
+      () => manager.perform(transaction.transactionId, "set-bounds", { opacity: 1 }),
+      /Unsupported detached-pane bound/,
+    );
+    assert.throws(
+      () => manager.perform(transaction.transactionId, "set-bounds", {}),
+      /at least one coordinate/,
+    );
+  });
 });
 
 function openCommittedWindow(manager, owner, transactionId = "command-1") {
@@ -172,6 +201,7 @@ class StubBrowserWindow extends EventEmitter {
     this.visible = false;
     this.focused = false;
     this.title = "";
+    this.bounds = { x: 0, y: 0, width: 800, height: 600 };
     this.webContents = new EventEmitter();
     this.webContents.destroyed = false;
     this.webContents.setWindowOpenHandler = (handler) => {
@@ -232,7 +262,7 @@ class StubBrowserWindow extends EventEmitter {
   }
 
   getBounds() {
-    return { x: 0, y: 0, width: 800, height: 600 };
+    return { ...this.bounds };
   }
 
   setTitle(title) {
@@ -240,7 +270,7 @@ class StubBrowserWindow extends EventEmitter {
   }
 
   setBounds(bounds) {
-    this.bounds = { x: 0, y: 0, width: 800, height: 600, ...bounds };
+    this.bounds = { ...this.bounds, ...bounds };
   }
 
   setMinimumSize() {}

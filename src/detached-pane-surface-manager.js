@@ -17,6 +17,8 @@ module.exports = class DetachedPaneSurfaceManager {
     viewRegistry,
     elementRegistry,
     surfaceManager,
+    serviceHub,
+    titleBarFactory = null,
   }) {
     this.workspace = workspace;
     this.config = config;
@@ -32,6 +34,10 @@ module.exports = class DetachedPaneSurfaceManager {
     this.viewRegistry = viewRegistry;
     this.elementRegistry = elementRegistry;
     this.surfaceManager = surfaceManager;
+    this.serviceHub = serviceHub;
+    this.initialTitleBarFactory = titleBarFactory;
+    this.titleBarFactoryRegistrations = [];
+    this.titleBarFactory = null;
     this.recordsByPane = new Map();
     this.surfacesByItem = new WeakMap();
     this.pendingPanes = new Set();
@@ -41,6 +47,84 @@ module.exports = class DetachedPaneSurfaceManager {
     this.subscriptions = new CompositeDisposable();
     this.center.paneContainer.detachedPaneAttacher = (pane, options) =>
       this.attachDetachedPane(pane, options);
+    this.setTitleBarFactory(titleBarFactory);
+    if (this.serviceHub) {
+      this.subscriptions.add(
+        this.serviceHub.consume("title-bar.surface", "^1.0.0", (factory) => {
+          const registration = { factory, disposed: false };
+          const previousFactory = this.titleBarFactory;
+          this.titleBarFactoryRegistrations.push(registration);
+          try {
+            this.applyRegisteredTitleBarFactory();
+          } catch (error) {
+            registration.disposed = true;
+            const index = this.titleBarFactoryRegistrations.indexOf(registration);
+            if (index !== -1) this.titleBarFactoryRegistrations.splice(index, 1);
+            try {
+              if (this.titleBarFactory !== previousFactory) {
+                this.setTitleBarFactory(previousFactory);
+              }
+            } catch (rollbackError) {
+              throw new AggregateError(
+                [error, rollbackError],
+                "Registering the surface title-bar provider failed and rollback also failed",
+                { cause: rollbackError },
+              );
+            }
+            throw error;
+          }
+          return {
+            dispose: () => {
+              if (registration.disposed) return;
+              registration.disposed = true;
+              const index = this.titleBarFactoryRegistrations.indexOf(registration);
+              if (index === -1) return;
+              const wasActive = index === this.titleBarFactoryRegistrations.length - 1;
+              this.titleBarFactoryRegistrations.splice(index, 1);
+              if (wasActive && !this.destroying) this.applyRegisteredTitleBarFactory();
+            },
+          };
+        }),
+      );
+    }
+  }
+
+  applyRegisteredTitleBarFactory() {
+    const registration = this.titleBarFactoryRegistrations.at(-1);
+    this.setTitleBarFactory(registration?.factory || this.initialTitleBarFactory || null);
+  }
+
+  setTitleBarFactory(factory) {
+    if (factory != null && (typeof factory !== "object" || typeof factory.create !== "function")) {
+      throw new TypeError("A surface title-bar factory must expose create(options)");
+    }
+    if (factory === this.titleBarFactory) return;
+    this.titleBarFactory = factory;
+    for (const surface of this.surfaceManager?.getAll?.() || []) {
+      if (surface instanceof DetachedPaneSurface) surface.setTitleBarFactory(factory);
+    }
+  }
+
+  createSurface(service, title) {
+    return new DetachedPaneSurface({
+      windowService: service,
+      primaryWindow: this.primaryWindow,
+      primaryDocument: this.primaryDocument,
+      primaryWorkspaceElement: this.workspace.getElement(),
+      styleManager: this.styleManager,
+      themeManager: this.themeManager,
+      commandRegistry: this.commandRegistry,
+      keymapManager: this.keymapManager,
+      contextMenuManager: this.contextMenuManager,
+      viewRegistry: this.viewRegistry,
+      elementRegistry: this.elementRegistry,
+      surfaceManager: this.surfaceManager,
+      workspace: this.workspace,
+      config: this.config,
+      onAttach: (pane) => this.attachDetachedPane(pane),
+      titleBarFactory: this.titleBarFactory,
+      title,
+    }).initialize();
   }
 
   async detachPaneItem(item, options = {}) {
@@ -70,23 +154,7 @@ module.exports = class DetachedPaneSurfaceManager {
     try {
       service.open(this.primaryWindow);
       await service.whenDocumentReady();
-      surface = new DetachedPaneSurface({
-        windowService: service,
-        primaryWindow: this.primaryWindow,
-        primaryDocument: this.primaryDocument,
-        primaryWorkspaceElement: this.workspace.getElement(),
-        styleManager: this.styleManager,
-        themeManager: this.themeManager,
-        commandRegistry: this.commandRegistry,
-        keymapManager: this.keymapManager,
-        contextMenuManager: this.contextMenuManager,
-        viewRegistry: this.viewRegistry,
-        elementRegistry: this.elementRegistry,
-        surfaceManager: this.surfaceManager,
-        workspace: this.workspace,
-        config: this.config,
-        onAttach: (pane) => this.attachDetachedPane(pane),
-      }).initialize();
+      surface = this.createSurface(service, item.getLongTitle?.() || item.getTitle?.());
       await service.ready();
 
       transition = await this.transitions.begin({
@@ -173,23 +241,7 @@ module.exports = class DetachedPaneSurfaceManager {
     try {
       service.open(this.primaryWindow);
       await service.whenDocumentReady();
-      surface = new DetachedPaneSurface({
-        windowService: service,
-        primaryWindow: this.primaryWindow,
-        primaryDocument: this.primaryDocument,
-        primaryWorkspaceElement: this.workspace.getElement(),
-        styleManager: this.styleManager,
-        themeManager: this.themeManager,
-        commandRegistry: this.commandRegistry,
-        keymapManager: this.keymapManager,
-        contextMenuManager: this.contextMenuManager,
-        viewRegistry: this.viewRegistry,
-        elementRegistry: this.elementRegistry,
-        surfaceManager: this.surfaceManager,
-        workspace: this.workspace,
-        config: this.config,
-        onAttach: (detachedPane) => this.attachDetachedPane(detachedPane),
-      }).initialize();
+      surface = this.createSurface(service, item?.getLongTitle?.() || item?.getTitle?.());
       await service.ready();
 
       const paneElement = this.viewRegistry.getView(pane);
@@ -450,6 +502,7 @@ module.exports = class DetachedPaneSurfaceManager {
       this.center.paneContainer.detachedPaneAttacher = null;
     }
     this.subscriptions.dispose();
+    this.titleBarFactoryRegistrations = [];
     for (const record of Array.from(this.recordsByPane.values())) {
       this.unregister(record);
       record.surface.destroy();

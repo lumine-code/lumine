@@ -4,16 +4,22 @@
 }
 
 .detached-pane-workspace {
-  display: grid;
-  grid-template-rows: 30px minmax(0, 1fr);
+  display: flex;
+  flex-direction: column;
   width: 100vw;
   height: 100vh;
   min-width: 0;
   min-height: 0;
 }
 
+.detached-pane-titlebar-host {
+  flex: 0 0 auto;
+  min-width: 0;
+}
+
 .detached-pane-titlebar {
   display: flex;
+  height: var(--title-bar-height, 32px);
   align-items: center;
   padding: 0 8px;
   padding-right: 140px;
@@ -46,9 +52,15 @@
   height: 100%;
 }
 
+.detached-pane-host {
+  flex: 1 1 auto;
+  height: auto;
+  position: relative;
+}
+
 .detached-pane-modal-host {
-  position: fixed;
-  inset: 30px 0 0;
+  position: absolute;
+  inset: 0;
   z-index: 1000;
   pointer-events: none;
 }

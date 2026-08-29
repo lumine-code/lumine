@@ -666,6 +666,8 @@ class Environment {
       viewRegistry: this.views,
       elementRegistry: this.elements,
       surfaceManager: this.windowSurfaces,
+      serviceHub: this.packages.serviceHub,
+      config: this.config,
     });
     this.workspace.setDetachedPaneSurfaceManager(this.detachedPaneSurfaceManager);
   }

@@ -104,6 +104,22 @@ module.exports = class SurfaceWindowService {
     return this.perform("focus");
   }
 
+  minimize() {
+    return this.perform("minimize");
+  }
+
+  maximize() {
+    return this.perform("maximize");
+  }
+
+  unmaximize() {
+    return this.perform("unmaximize");
+  }
+
+  setBounds(bounds) {
+    return this.perform("set-bounds", bounds);
+  }
+
   show() {
     return this.perform("show");
   }
