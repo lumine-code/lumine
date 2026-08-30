@@ -94,6 +94,17 @@ describe("the multi-document workspace foundation", () => {
     expect(views.getView(element)).toBe(element);
   });
 
+  it("recognizes wrapped views adopted from another Window", () => {
+    const views = new ViewRegistry({});
+    const element = document.createElement("div");
+    otherDocument.adoptNode(element);
+
+    expect(element.ownerDocument).toBe(otherDocument);
+    expect(element instanceof otherWindow.Element).toBe(false);
+    expect(isElement(element)).toBe(true);
+    expect(views.getView({ element })).toBe(element);
+  });
+
   it("tracks the active surface independently of the logical workspace", () => {
     const manager = new WindowSurfaceManager();
     const primary = manager.add(

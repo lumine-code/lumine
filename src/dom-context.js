@@ -25,9 +25,12 @@ function windowFor(value) {
 }
 
 function isElement(value) {
-  if (!value || value.nodeType !== 1) return false;
-  const domWindow = windowFor(value);
-  return Boolean(domWindow && value instanceof domWindow.Element);
+  // `adoptNode()` changes ownerDocument but deliberately leaves the node's
+  // prototype in its source realm. An instanceof check against the new
+  // owner's Element constructor therefore rejects the exact nodes moved
+  // between workspace surfaces. nodeType plus a live owner Document is the
+  // realm-neutral DOM contract used by isDocument() above as well.
+  return Boolean(value && value.nodeType === 1 && isDocument(value.ownerDocument));
 }
 
 function activeElementFor(value) {
