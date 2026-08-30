@@ -114,7 +114,7 @@ describe("TextEditorRegistry", function () {
       frame.contentDocument.body.appendChild(element);
       registry.surfaceManager = { getActive: () => ({ document: frame.contentDocument }) };
       registry.add(editor);
-      element.focus();
+      spyOnProperty(frame.contentDocument, "activeElement", "get").and.returnValue(element);
 
       try {
         expect(registry.getActiveTextEditor()).toBe(editor);
