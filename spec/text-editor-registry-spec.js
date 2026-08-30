@@ -119,6 +119,8 @@ describe("TextEditorRegistry", function () {
       try {
         expect(registry.getActiveTextEditor()).toBe(editor);
       } finally {
+        document.adoptNode(element);
+        registry.surfaceManager = null;
         frame.remove();
       }
     });
@@ -144,6 +146,7 @@ describe("TextEditorRegistry", function () {
       try {
         expect(registry.getTextEditorForElement(descendant)).toBe(editor);
       } finally {
+        document.adoptNode(element);
         frame.remove();
       }
     });
