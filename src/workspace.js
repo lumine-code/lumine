@@ -727,7 +727,18 @@ module.exports = class Workspace extends Model {
       pane = this.detachedPaneSurfaceManager?.paneForSurface(surface) || null;
     }
     if (!pane || pane.isDestroyed()) return;
+    const paneWasAlreadyActive =
+      this.getActivePaneContainer() === this.getCenter() &&
+      this.getCenter().paneContainer.getActivePane() === pane;
     pane.activate();
+    // Detach constructs and activates the DetachedPane before its native
+    // surface becomes active. When surface activation catches up, activating
+    // that same pane changes no PaneContainer state, but the public active
+    // context has changed from primary to detached and must still be emitted.
+    if (paneWasAlreadyActive) {
+      this.emitter.emit("did-change-active-pane", pane);
+      this.didChangeActivePaneItemOnPaneContainer(this.getCenter(), pane.getActiveItem());
+    }
   }
 
   getActiveCenterPane() {

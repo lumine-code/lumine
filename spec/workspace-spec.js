@@ -4117,6 +4117,34 @@ describe("Workspace", () => {
       disposable.dispose();
     });
 
+    it("publishes the detached editor when its surface activation catches up with its pane", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const editor = workspace.buildTextEditor();
+      workspace.getCenter().getActiveTiledPane().addItem(editor);
+      const activeItems = jasmine.createSpy("activeItems");
+      const activeEditors = jasmine.createSpy("activeEditors");
+      const itemSubscription = workspace.onDidChangeActivePaneItem(activeItems);
+      const editorSubscription = workspace.onDidChangeActiveTextEditor(activeEditors);
+      let detachedPane;
+
+      try {
+        detachedPane = await workspace.detachPaneItem(editor);
+        const surface = workspace.getWindowSurface(editor);
+
+        expect(workspace.getActiveWindowSurface()).toBe(surface);
+        expect(workspace.getActivePaneItem()).toBe(editor);
+        expect(workspace.getActiveTextEditor()).toBe(editor);
+        expect(activeItems).toHaveBeenCalledWith(editor);
+        expect(activeEditors).toHaveBeenCalledWith(editor);
+      } finally {
+        itemSubscription.dispose();
+        editorSubscription.dispose();
+        if (detachedPane?.isDetached?.()) await workspace.attachDetachedPane(detachedPane);
+        workspace.paneForItem(editor)?.destroyItem(editor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
+    });
+
     it("resolves the active pane item and editor from the focused native surface", async () => {
       lumine.initializeDetachedPaneSurfaces({ force: true });
       const pane = workspace.getCenter().getActiveTiledPane();
