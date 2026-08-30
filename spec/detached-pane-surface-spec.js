@@ -199,6 +199,10 @@ describe("DetachedPaneSurface", () => {
     expect(titleBar.querySelector(".app-menu")).toBeNull();
     expect(surface.document.querySelector(".app-menu-submenu-portal")).toBeNull();
     expect(titleBar.querySelectorAll(".window-buttons button").length).toBe(3);
+    const appIcon = titleBar.querySelector(".app-icon");
+    expect(appIcon.getAttribute("aria-hidden")).toBe("true");
+    expect(appIcon.hasAttribute("role")).toBe(false);
+    expect(appIcon.tabIndex).toBe(-1);
 
     const attach = titleBar.querySelector('[data-action="attach"]');
     expect(attach).not.toBeNull();
@@ -284,7 +288,7 @@ describe("DetachedPaneSurface", () => {
       }),
     );
     expect(typeof options.actions[0].onDidActivate).toBe("function");
-    expect(typeof options.onDidActivateAppIcon).toBe("function");
+    expect(options.onDidActivateAppIcon).toBeUndefined();
     expect(handle.element.ownerDocument).toBe(surface.document);
     expect(surface.titlebarHost.children.length).toBe(1);
     expect(surface.titlebarHost.firstElementChild).toBe(handle.element);

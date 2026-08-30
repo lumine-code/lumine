@@ -256,10 +256,6 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     return this.commandRegistry.dispatch(this.element, "pane:attach");
   }
 
-  activateAppIcon() {
-    return this.commandRegistry.dispatch(this.element, "application:about");
-  }
-
   setTitleBarFactory(factory) {
     assertTitleBarFactory(factory);
     if (factory === this.titleBarFactory && (factory == null || this.titleBarHandle)) return;
@@ -284,7 +280,6 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
         controller: this.windowController,
         title: this.titleForItem(),
         actions: [action],
-        onDidActivateAppIcon: () => this.activateAppIcon(),
       });
       if (
         !newHandle ||
