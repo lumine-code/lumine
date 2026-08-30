@@ -1,4 +1,5 @@
 const registerDefaultCommands = require("../src/register-default-commands");
+const { SaveConflictedError } = require("../src/pane");
 
 describe("registerDefaultCommands", () => {
   const macOSOnlyCommands = [
@@ -80,6 +81,29 @@ describe("registerDefaultCommands", () => {
     expect(commands.has("editor:collapse-blank-lines")).toBe(true);
     expect(commands.has("editor:collapse-content-spaces")).toBe(true);
     expect(commands.has("editor:delete-to-next-line-content")).toBe(true);
+  });
+
+  describe("save command outcomes", () => {
+    function dispatchSaveWith(result) {
+      const commands = commandsRegisteredOn("win32");
+      const [listener] = commands.get("core:save");
+      const didDispatch = typeof listener === "function" ? listener : listener.didDispatch;
+      return didDispatch.call({
+        getModel: () => ({ saveActivePaneItem: () => result }),
+      });
+    }
+
+    it("settles an expected save cancellation at the native command boundary", async () => {
+      const cancellation = new SaveConflictedError("Save cancelled due to conflict");
+
+      await expectAsync(dispatchSaveWith(Promise.reject(cancellation))).toBeResolved();
+    });
+
+    it("keeps unexpected save failures observable", async () => {
+      const error = new Error("disk failed");
+
+      await expectAsync(dispatchSaveWith(Promise.reject(error))).toBeRejectedWith(error);
+    });
   });
 
   describe("core file discovery commands", () => {

@@ -16,6 +16,10 @@ class SaveConflictedError extends Error {
   name = "SaveConflictedError";
 }
 
+function isSaveCancellationError(error) {
+  return error instanceof SaveCancelledError || error instanceof SaveConflictedError;
+}
+
 /**
  * @public
  * @status extended
@@ -1239,16 +1243,17 @@ module.exports = class Pane {
             if (nextAction) nextAction();
           })
           .catch((error) => {
+            // Cancellation is an API result, not a write failure worth a
+            // notification. Keep rejecting so explicit callers can observe
+            // it; native command handlers consume it at their boundary.
+            if (isSaveCancellationError(error)) {
+              if (nextAction) nextAction(error);
+              throw error;
+            }
             if (nextAction) {
               nextAction(error);
             } else {
               this.handleSaveError(error, item);
-            }
-            // Re-propagate cancellation errors so callers know the save was
-            // aborted. Other errors are already handled by
-            // handleSaveError/nextAction above.
-            if (error instanceof SaveCancelledError || error instanceof SaveConflictedError) {
-              return Promise.reject(error);
             }
           });
       } else if (nextAction) {
@@ -1718,6 +1723,10 @@ module.exports = class Pane {
     }
   }
 };
+
+module.exports.SaveCancelledError = SaveCancelledError;
+module.exports.SaveConflictedError = SaveConflictedError;
+module.exports.isSaveCancellationError = isSaveCancellationError;
 
 function promisify(callback) {
   try {

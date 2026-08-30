@@ -1,5 +1,12 @@
 const { ipcRenderer } = require("electron");
 const Grim = require("@lumine-code/grim");
+const { isSaveCancellationError } = require("./pane");
+
+function settleSaveCommand(result) {
+  return Promise.resolve(result).catch((error) => {
+    if (!isSaveCancellationError(error)) throw error;
+  });
+}
 
 module.exports = function ({
   commandRegistry,
@@ -282,7 +289,7 @@ module.exports = function ({
         });
       },
       "window:save-all": function () {
-        return this.getModel().saveAll();
+        return settleSaveCommand(this.getModel().saveAll());
       },
       "window:toggle-invisibles": {
         description: "Show or hide the marks standing for spaces, tabs and line ends.",
@@ -321,7 +328,7 @@ module.exports = function ({
         },
       },
       "core:save": function () {
-        return this.getModel().saveActivePaneItem();
+        return settleSaveCommand(this.getModel().saveActivePaneItem());
       },
       "core:save-as": function () {
         return this.getModel().saveActivePaneItemAs();
@@ -385,7 +392,7 @@ module.exports = function ({
       "pane:save-items": {
         description: "Save every unsaved tab in this pane.",
         didDispatch: function () {
-          return this.getModel().saveItems();
+          return settleSaveCommand(this.getModel().saveItems());
         },
       },
       "pane:split-left": {

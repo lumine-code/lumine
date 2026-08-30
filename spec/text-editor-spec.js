@@ -10731,11 +10731,13 @@ describe("TextEditor", () => {
       let contentsOnDisk = fs.readFileSync(destination, "utf8").toString();
       expect(editor.getFileState()).toBe(FileState.CONFLICTED);
 
-      promptOnSaveConflictedFileOutcome = () => Promise.reject({ path: destination });
+      const rejection = new Pane.SaveConflictedError("Save cancelled due to conflict");
+      rejection.path = destination;
+      promptOnSaveConflictedFileOutcome = () => Promise.reject(rejection);
       let uncommittedContents = editor.getText();
 
       let activePane = lumine.workspace.getActivePane();
-      activePane.saveItem(editor);
+      const save = activePane.saveItem(editor);
       await conditionPromise(() => {
         return Pane.prototype.promptOnSaveConflictedFile.calls.count() > 0;
       });
@@ -10747,6 +10749,7 @@ describe("TextEditor", () => {
       // Since we cancelled the write, the conflict state should still be
       // present and unresolved.
       expect(editor.getFileState()).toBe(FileState.CONFLICTED);
+      await expectAsync(save).toBeRejectedWith(rejection);
     });
 
     describe("but core.promptOnSaveConflictedFile is false", () => {
