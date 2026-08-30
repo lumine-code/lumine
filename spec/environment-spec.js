@@ -171,6 +171,8 @@ describe("Environment", () => {
     it("loads the default core config schema", () => {
       expect(lumine.config.get("core.excludeVcsIgnoredPaths")).toBe(true);
       expect(lumine.config.get("core.followSymlinks")).toBe(true);
+      expect(lumine.config.get("core.titleBar")).toBe("custom");
+      expect(lumine.config.getSchema("core.titleBar").hidden).toBe(true);
       expect(lumine.config.get("editor.showInvisibles")).toBe(false);
     });
   });

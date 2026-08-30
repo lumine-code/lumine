@@ -23,6 +23,9 @@ describe("WindowService", () => {
       onDidUnmaximizeWindow: jasmine.createSpy("onDidUnmaximizeWindow"),
       onDidFocusWindow: jasmine.createSpy("onDidFocusWindow"),
       onDidBlurWindow: jasmine.createSpy("onDidBlurWindow"),
+      onDidRequestApplicationMenuPopupSwitch: jasmine.createSpy(
+        "onDidRequestApplicationMenuPopupSwitch",
+      ),
     };
     service = new WindowService(delegate);
   });
@@ -34,6 +37,22 @@ describe("WindowService", () => {
   });
 
   it("maps state, action, dialog, menu, download, and DevTools calls to fixed actions", async () => {
+    const menuPopupRequest = {
+      kind: "submenu",
+      id: "file",
+      x: 10,
+      y: 20,
+      sourceType: "mouse",
+      activeHoverTarget: "submenu:file",
+      hoverTargets: [
+        {
+          key: "submenu:file",
+          kind: "submenu",
+          id: "file",
+          bounds: { x: 0, y: 0, width: 40, height: 24 },
+        },
+      ],
+    };
     await service.getState();
     await service.getSize();
     await service.setSize(800, 600);
@@ -58,6 +77,8 @@ describe("WindowService", () => {
     await service.getPrimaryDisplayWorkAreaSize();
     await service.setAutoHideMenuBar(true);
     await service.setMenuBarVisibility(false);
+    await service.showApplicationMenuPopup(menuPopupRequest);
+    await service.closeApplicationMenuPopup();
     await service.openDevTools();
     await service.closeDevTools();
     await service.toggleDevTools();
@@ -89,6 +110,8 @@ describe("WindowService", () => {
       ["getPrimaryDisplayWorkAreaSize"],
       ["setAutoHideMenuBar", true],
       ["setMenuBarVisibility", false],
+      ["showApplicationMenuPopup", menuPopupRequest],
+      ["closeApplicationMenuPopup"],
       ["openDevTools"],
       ["closeDevTools"],
       ["toggleDevTools"],
@@ -116,6 +139,7 @@ describe("WindowService", () => {
     service.onDidUnmaximize(callback);
     service.onDidFocus(callback);
     service.onDidBlur(callback);
+    service.onDidRequestApplicationMenuPopupSwitch(callback);
 
     expect(delegate.onDidEnterFullScreen).toHaveBeenCalledWith(callback);
     expect(delegate.onDidLeaveFullScreen).toHaveBeenCalledWith(callback);
@@ -123,5 +147,6 @@ describe("WindowService", () => {
     expect(delegate.onDidUnmaximizeWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidFocusWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidBlurWindow).toHaveBeenCalledWith(callback);
+    expect(delegate.onDidRequestApplicationMenuPopupSwitch).toHaveBeenCalledWith(callback);
   });
 });

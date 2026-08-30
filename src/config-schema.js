@@ -147,6 +147,7 @@ const configSchema = {
         title: "Title Bar",
         description:
           "Who draws the window's title bar. <code>custom</code> makes the window frameless and leaves the bar to a package such as <code>title-bar</code>; <code>native</code> keeps the operating system's own; <code>hidden</code> is frameless with no bar at all, for a theme that draws its own.<br>Changing this setting will require a relaunch of Lumine to take effect.",
+        hidden: true,
         type: "string",
         enum: [
           {

@@ -360,7 +360,7 @@ module.exports = class DetachedPaneWindowManager {
           throw new TypeError("A context-menu request id and template are required");
         }
         const ContextMenu = require("./context-menu");
-        return new ContextMenu(template, this.ownerWindow, {
+        new ContextMenu(template, this.ownerWindow, {
           browserWindow: window,
           sendCommand: (command, detail) =>
             this.ownerWindow.sendToRenderer(
@@ -373,6 +373,7 @@ module.exports = class DetachedPaneWindowManager {
           onClose: () =>
             this.ownerWindow.sendToRenderer("surface-context-menu-closed", surface.id, requestId),
         });
+        return;
       }
       case "minimize":
       case "maximize":

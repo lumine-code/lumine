@@ -1,7 +1,7 @@
 /* globals assert */
 
 const { EventEmitter } = require("events");
-const { dialog, screen } = require("electron");
+const { dialog, Menu, screen } = require("electron");
 const DetachedPaneWindowManager = require("../../src/detached-pane-window-manager");
 
 describe("DetachedPaneWindowManager", function () {
@@ -237,6 +237,44 @@ describe("DetachedPaneWindowManager", function () {
     });
     assert.equal(response, 1);
     assert.strictEqual(showMessageBox.calls.mostRecent().args[0], child);
+  });
+
+  it("opens detached native context menus without returning a main-process object", function () {
+    const transaction = openCommittedWindow(manager, owner);
+    const child = manager.transactions.get(transaction.transactionId).surface.browserWindow;
+    let builtTemplate, popupOptions;
+    spyOn(Menu, "buildFromTemplate").and.callFake((template) => {
+      builtTemplate = template;
+      return {
+        popup(options) {
+          popupOptions = options;
+          options.callback();
+        },
+      };
+    });
+
+    const result = manager.perform(transaction.transactionId, "show-context-menu", "request-1", [
+      { label: "Copy", command: "core:copy" },
+    ]);
+
+    assert.isUndefined(result);
+    assert.strictEqual(popupOptions.window, child);
+    assert.strictEqual(typeof popupOptions.callback, "function");
+    assert.deepEqual(Object.keys(popupOptions).sort(), ["callback", "window"]);
+    assert.deepEqual(owner.sent.at(-1), [
+      "surface-context-menu-closed",
+      transaction.surfaceId,
+      "request-1",
+    ]);
+
+    builtTemplate[0].click();
+    assert.deepEqual(owner.sent.at(-1), [
+      "surface-context-command",
+      transaction.surfaceId,
+      "request-1",
+      "core:copy",
+      { contextCommand: true },
+    ]);
   });
 
   it("toggles developer tools on the addressed detached BrowserWindow", function () {

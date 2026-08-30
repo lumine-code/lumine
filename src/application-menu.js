@@ -1,6 +1,34 @@
-const { app, Menu } = require("electron");
+const { app, Menu, screen } = require("electron");
 const _ = require("@lumine-code/underscore-plus");
 const MenuHelpers = require("./menu-helpers");
+
+function commandLineSwitchValue(argv, name) {
+  const prefix = `--${name}=`;
+  const argumentLimit = argv.indexOf("--");
+  const lastIndex = argumentLimit === -1 ? argv.length - 1 : argumentLimit - 1;
+
+  for (let index = lastIndex; index >= 0; index--) {
+    const argument = argv[index];
+    if (typeof argument === "string" && argument.toLowerCase().startsWith(prefix)) {
+      return argument.slice(prefix.length).toLowerCase();
+    }
+  }
+
+  return null;
+}
+
+function usesWayland(platform, environment, argv) {
+  if (platform !== "linux") return false;
+
+  const ozonePlatform = commandLineSwitchValue(argv, "ozone-platform");
+  if (ozonePlatform === "x11") return false;
+  if (ozonePlatform === "wayland") return true;
+
+  return (
+    environment?.XDG_SESSION_TYPE?.toLowerCase() === "wayland" ||
+    Boolean(environment?.WAYLAND_DISPLAY?.trim())
+  );
+}
 
 /**
  * Used to manage the global application menu.
@@ -16,7 +44,32 @@ module.exports = class ApplicationMenu {
     this.version = version;
     this.windowTemplates = new WeakMap();
     this.surfaceTemplateOwners = new WeakMap();
+    this.windowPopups = new WeakMap();
     this.setActiveTemplate(this.getDefaultTemplate());
+  }
+
+  static supportsPopupHover(
+    platform = process.platform,
+    environment = process.env,
+    argv = process.argv,
+  ) {
+    return !usesWayland(platform, environment, argv);
+  }
+
+  supportsPopupHover() {
+    return this.constructor.supportsPopupHover();
+  }
+
+  getCursorScreenPoint() {
+    return screen.getCursorScreenPoint();
+  }
+
+  setPopupHoverInterval(callback) {
+    return setInterval(callback, 30);
+  }
+
+  clearPopupHoverInterval(timer) {
+    clearInterval(timer);
   }
 
   /**
@@ -31,6 +84,7 @@ module.exports = class ApplicationMenu {
    *                       are Arrays containing the keystroke.
    */
   update(window, template, keystrokesByCommand) {
+    this.closePopupSafely(window);
     this.translateTemplate(template, keystrokesByCommand);
     this.substituteVersion(template);
     this.windowTemplates.set(window, template);
@@ -64,12 +118,241 @@ module.exports = class ApplicationMenu {
 
     window.on("focus", focusHandler);
     window.once("closed", () => {
+      this.closePopupSafely(window);
       if (window === this.lastFocusedWindow) this.lastFocusedWindow = null;
       this.windowTemplates.delete(window);
       window.removeListener("focus", focusHandler);
     });
 
     this.enableWindowSpecificItems(true);
+  }
+
+  /**
+   * Opens a native popup backed by the application-menu template associated
+   * with `window`.
+   *
+   * A submenu request opens one top-level item's existing native submenu. An
+   * overflow request builds a temporary menu from the requested top-level
+   * items in their canonical template order.
+   *
+   * Returns a Promise resolving to true after the popup closes, or false when
+   * the window has no current template matching the request.
+   */
+  async showPopup(window, request) {
+    const template = this.windowTemplates.get(window);
+    if (!template || window.isDestroyed?.()) return false;
+
+    if (request.kind === "submenu") {
+      const item = template.find(({ id }) => id === request.id);
+      if (!item || !Array.isArray(item.submenu)) return false;
+    } else {
+      const ids = new Set(request.ids);
+      const items = template.filter(({ id }) => ids.has(id));
+      if (items.length !== ids.size) return false;
+    }
+    if (!request.hoverTargets.every((target) => this.popupTargetExists(template, target))) {
+      return false;
+    }
+
+    let previousPopup;
+    while ((previousPopup = this.windowPopups.get(window))) {
+      this.closePopup(window);
+      await previousPopup.promise;
+      if (this.windowTemplates.get(window) !== template || window.isDestroyed?.()) return false;
+    }
+
+    let menu;
+    if (request.kind === "submenu") {
+      this.setActiveTemplate(template);
+      const nativeItem = this.menu.items.find(({ id }) => id === request.id);
+      if (!nativeItem?.submenu) return false;
+      menu = nativeItem.submenu;
+    } else {
+      const ids = new Set(request.ids);
+      const items = template.filter(({ id }) => ids.has(id));
+      menu = Menu.buildFromTemplate(_.deepClone(items));
+    }
+
+    let resolvePopup, rejectPopup;
+    const popupPromise = new Promise((resolve, reject) => {
+      resolvePopup = resolve;
+      rejectPopup = reject;
+    });
+    const record = {
+      menu,
+      promise: popupPromise,
+      resolve: resolvePopup,
+      reject: rejectPopup,
+      settled: false,
+      closing: false,
+      activeHoverTarget: request.activeHoverTarget,
+      hoverTargets: request.hoverTargets,
+      hoverTimer: null,
+      lastCursorPoint: null,
+      switchRequested: false,
+    };
+    this.windowPopups.set(window, record);
+
+    const callback = () => this.finishPopup(window, record);
+    try {
+      menu.popup({
+        window,
+        x: request.x,
+        y: request.y,
+        sourceType: request.sourceType,
+        callback,
+      });
+      this.startPopupHoverMonitor(window, record);
+    } catch (error) {
+      this.failPopup(window, record, error);
+    }
+    return popupPromise;
+  }
+
+  /**
+   * Closes the native application-menu popup owned by `window`.
+   *
+   * Returns true when a popup was closed and false when there was none.
+   */
+  closePopup(window) {
+    const record = this.windowPopups.get(window);
+    if (!record || record.closing) return false;
+
+    this.stopPopupHoverMonitor(record);
+
+    if (window.isDestroyed?.()) {
+      this.finishPopup(window, record);
+      return true;
+    }
+
+    record.closing = true;
+    try {
+      record.menu.closePopup(window);
+    } catch (error) {
+      this.failPopup(window, record, error);
+      throw error;
+    }
+    return true;
+  }
+
+  closePopupSafely(window) {
+    try {
+      return this.closePopup(window);
+    } catch {
+      return false;
+    }
+  }
+
+  finishPopup(window, record) {
+    if (record.settled) return;
+    record.settled = true;
+    this.stopPopupHoverMonitor(record);
+    if (this.windowPopups.get(window) === record) this.windowPopups.delete(window);
+    record.resolve(true);
+  }
+
+  failPopup(window, record, error) {
+    if (record.settled) return;
+    record.settled = true;
+    this.stopPopupHoverMonitor(record);
+    if (this.windowPopups.get(window) === record) this.windowPopups.delete(window);
+    record.reject(error);
+  }
+
+  popupTargetExists(template, target) {
+    if (target.kind === "submenu") {
+      const item = template.find(({ id }) => id === target.id);
+      return Array.isArray(item?.submenu);
+    }
+
+    const ids = new Set(target.ids);
+    return template.filter(({ id }) => ids.has(id)).length === ids.size;
+  }
+
+  startPopupHoverMonitor(window, record) {
+    if (
+      record.settled ||
+      !this.supportsPopupHover() ||
+      typeof window.getContentBounds !== "function" ||
+      typeof window.webContents?.send !== "function" ||
+      window.webContents.isDestroyed?.()
+    ) {
+      return;
+    }
+
+    try {
+      record.lastCursorPoint = this.getCursorScreenPoint();
+    } catch {
+      return;
+    }
+
+    try {
+      record.hoverTimer = this.setPopupHoverInterval(() => this.pollPopupHover(window, record));
+      record.hoverTimer.unref?.();
+    } catch {
+      record.hoverTimer = null;
+    }
+  }
+
+  stopPopupHoverMonitor(record) {
+    if (record.hoverTimer == null) return;
+    this.clearPopupHoverInterval(record.hoverTimer);
+    record.hoverTimer = null;
+  }
+
+  pollPopupHover(window, record) {
+    if (
+      record !== this.windowPopups.get(window) ||
+      record.settled ||
+      record.closing ||
+      record.switchRequested
+    ) {
+      this.stopPopupHoverMonitor(record);
+      return false;
+    }
+
+    let cursorPoint, contentBounds;
+    try {
+      cursorPoint = this.getCursorScreenPoint();
+      contentBounds = window.getContentBounds();
+    } catch {
+      this.stopPopupHoverMonitor(record);
+      return false;
+    }
+
+    if (
+      cursorPoint.x === record.lastCursorPoint?.x &&
+      cursorPoint.y === record.lastCursorPoint?.y
+    ) {
+      return false;
+    }
+    record.lastCursorPoint = cursorPoint;
+
+    const x = cursorPoint.x - contentBounds.x;
+    const y = cursorPoint.y - contentBounds.y;
+    const target = record.hoverTargets.find(
+      ({ bounds }) =>
+        x >= bounds.x &&
+        x < bounds.x + bounds.width &&
+        y >= bounds.y &&
+        y < bounds.y + bounds.height,
+    );
+    if (!target || target.key === record.activeHoverTarget) return false;
+
+    record.switchRequested = true;
+    this.stopPopupHoverMonitor(record);
+    if (window.webContents.isDestroyed?.()) return false;
+
+    const { bounds: _bounds, ...eventTarget } = target;
+    try {
+      window.webContents.send("application-menu-popup-switch", {
+        from: record.activeHoverTarget,
+        target: eventTarget,
+      });
+    } catch {
+      return false;
+    }
+    return true;
   }
 
   focusSurfaceWindow(surfaceWindow, templateOwner) {

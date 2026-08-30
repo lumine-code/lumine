@@ -133,6 +133,15 @@ module.exports = class ApplicationDelegate {
     return new Disposable(() => ipcRenderer.removeListener("context-command", outerCallback));
   }
 
+  onDidRequestApplicationMenuPopupSwitch(callback) {
+    const outerCallback = (_event, detail) => callback(detail);
+
+    ipcRenderer.on("application-menu-popup-switch", outerCallback);
+    return new Disposable(() =>
+      ipcRenderer.removeListener("application-menu-popup-switch", outerCallback),
+    );
+  }
+
   onURIMessage(handler) {
     const outerCallback = (event, ...args) => handler(...args);
 

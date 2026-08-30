@@ -7,7 +7,7 @@ module.exports = class ContextMenu {
     this.sendCommand = options.sendCommand;
     this.createClickHandlers(template);
     const menu = Menu.buildFromTemplate(template);
-    menu.popup(this.browserWindow, { async: true, callback: options.onClose });
+    menu.popup({ window: this.browserWindow, callback: options.onClose });
   }
 
   // It's necessary to build the event handlers in this process, otherwise

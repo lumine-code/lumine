@@ -439,6 +439,102 @@ class WindowService {
    * @public
    * @status public
    *
+   * Open a native popup for the current window's application menu.
+   *
+   * `request` is an exact-key union. A submenu request contains exactly
+   * `{kind, id, x, y, sourceType, activeHoverTarget, hoverTargets}`; an
+   * overflow request replaces `id` with `ids`.
+   *
+   * @param {Object} request - The popup request.
+   * @param {"submenu"|"overflow"} request.kind - Whether to open one top-level
+   *   submenu or a temporary menu containing several top-level items.
+   * @param {String} [request.id] - The non-empty top-level menu ID required by
+   *   a submenu request.
+   * @param {Array<String>} [request.ids] - The non-empty, unique top-level menu
+   *   IDs required by an overflow request.
+   * @param {Number} request.x - The active anchor's rounded, non-negative
+   *   32-bit integer `getBoundingClientRect().left` coordinate.
+   * @param {Number} request.y - The active anchor's rounded, non-negative
+   *   32-bit integer `getBoundingClientRect().bottom` coordinate.
+   * @param {"mouse"|"keyboard"} request.sourceType - The Electron popup input
+   *   source.
+   * @param {String} request.activeHoverTarget - The key of the visible anchor
+   *   containing the popup that is initially open; that descriptor must match
+   *   the requested submenu or overflow contents.
+   * @param {Array<Object>} request.hoverTargets - A non-empty array of exact
+   *   `{key, kind, id, bounds}` submenu descriptors or
+   *   `{key, kind, ids, bounds}` overflow descriptors. Keys and represented
+   *   menu IDs must be unique across the array.
+   * @param {String} request.hoverTargets[].key - The descriptor's unique,
+   *   non-empty key.
+   * @param {"submenu"|"overflow"} request.hoverTargets[].kind - The anchor
+   *   descriptor kind.
+   * @param {String} [request.hoverTargets[].id] - The non-empty top-level menu
+   *   ID present only on a submenu descriptor.
+   * @param {Array<String>} [request.hoverTargets[].ids] - The non-empty, unique
+   *   top-level menu IDs present only on an overflow descriptor.
+   * @param {Object} request.hoverTargets[].bounds - The anchor rectangle in the
+   *   current window's content coordinate system.
+   * @param {Number} request.hoverTargets[].bounds.x - A non-negative 32-bit
+   *   integer.
+   * @param {Number} request.hoverTargets[].bounds.y - A non-negative 32-bit
+   *   integer.
+   * @param {Number} request.hoverTargets[].bounds.width - A positive 32-bit
+   *   integer whose sum with `x` remains in the 32-bit range.
+   * @param {Number} request.hoverTargets[].bounds.height - A positive 32-bit
+   *   integer whose sum with `y` remains in the 32-bit range.
+   * @returns {Promise<Boolean>} A promise resolving to `true` after Electron
+   *   reports the popup closed, or `false` when the current menu is unavailable
+   *   or no longer matches the request. Invalid requests and Electron popup
+   *   failures reject the promise.
+   */
+  showApplicationMenuPopup(request) {
+    return this.applicationDelegate.invokeWindow("showApplicationMenuPopup", request);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Close the current window's native application-menu popup, if any.
+   *
+   * @returns {Promise<Boolean>} resolving to whether a popup was closed.
+   */
+  closeApplicationMenuPopup() {
+    return this.applicationDelegate.invokeWindow("closeApplicationMenuPopup");
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Subscribe to requests to replace an open native application-menu popup
+   * after the pointer moves over another visible top-level menu anchor.
+   *
+   * @param {Function} callback - Called with the switch event.
+   * @param {Object} callback.event - The exact `{from, target}` switch event.
+   * @param {String} callback.event.from - The key of the anchor whose popup is
+   *   currently open.
+   * @param {Object} callback.event.target - The target anchor descriptor. It is
+   *   the exact submenu shape `{key, kind, id}` or overflow shape
+   *   `{key, kind, ids}` and deliberately omits bounds.
+   * @param {String} callback.event.target.key - The target anchor's unique key.
+   * @param {"submenu"|"overflow"} callback.event.target.kind - The target
+   *   anchor kind.
+   * @param {String} [callback.event.target.id] - The top-level menu ID present
+   *   only for a submenu target.
+   * @param {Array<String>} [callback.event.target.ids] - The top-level menu IDs
+   *   present only for an overflow target.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidRequestApplicationMenuPopupSwitch(callback) {
+    return this.applicationDelegate.onDidRequestApplicationMenuPopupSwitch(callback);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Open the current window's developer tools.
    *
    * @returns {Promise} that resolves when the request is applied.

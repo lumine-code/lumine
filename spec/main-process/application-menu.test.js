@@ -257,6 +257,546 @@ describe("ApplicationMenu", () => {
     });
   });
 
+  describe("::showPopup(window, request)", () => {
+    const createFakeMenu = (template) => {
+      const menu = {
+        items: template.map((item) => ({
+          ...item,
+          submenu: Array.isArray(item.submenu) ? createFakeMenu(item.submenu) : undefined,
+        })),
+        popupCalls: [],
+        closePopupCalls: [],
+        popup(options) {
+          this.popupCalls.push(options);
+        },
+        closePopup(window) {
+          this.closePopupCalls.push(window);
+          this.popupCalls.at(-1)?.callback();
+        },
+      };
+      return menu;
+    };
+
+    const useFakeMenuBuilder = () => {
+      const builds = [];
+      Menu.buildFromTemplate = (template) => {
+        buildCount++;
+        const menu = createFakeMenu(template);
+        builds.push({ template, menu });
+        return menu;
+      };
+      return builds;
+    };
+
+    const submenuHoverTarget = (id, x = 0) => ({
+      key: `submenu:${id}`,
+      kind: "submenu",
+      id,
+      bounds: { x, y: 0, width: 40, height: 24 },
+    });
+    const overflowHoverTarget = (ids, x = 40) => ({
+      key: "overflow",
+      kind: "overflow",
+      ids,
+      bounds: { x, y: 0, width: 30, height: 24 },
+    });
+    const popupRequest = (overrides = {}) => ({
+      kind: "submenu",
+      id: "file",
+      x: 12,
+      y: 34,
+      sourceType: "mouse",
+      activeHoverTarget: "submenu:file",
+      hoverTargets: [submenuHoverTarget("file")],
+      ...overrides,
+    });
+    const overflowPopupRequest = (ids, overrides = {}) => ({
+      kind: "overflow",
+      ids,
+      x: 20,
+      y: 40,
+      sourceType: "mouse",
+      activeHoverTarget: "overflow",
+      hoverTargets: [overflowHoverTarget(ids)],
+      ...overrides,
+    });
+
+    it("enables hover polling outside Linux Wayland sessions", () => {
+      assert.isTrue(
+        ApplicationMenu.supportsPopupHover("win32", {
+          XDG_SESSION_TYPE: "wayland",
+          WAYLAND_DISPLAY: "wayland-0",
+        }),
+      );
+      assert.isTrue(ApplicationMenu.supportsPopupHover("darwin", {}, []));
+      assert.isTrue(ApplicationMenu.supportsPopupHover("linux", {}, []));
+      assert.isTrue(
+        ApplicationMenu.supportsPopupHover(
+          "linux",
+          { XDG_SESSION_TYPE: "x11", WAYLAND_DISPLAY: "" },
+          [],
+        ),
+      );
+      assert.isFalse(
+        ApplicationMenu.supportsPopupHover("linux", { XDG_SESSION_TYPE: "wayland" }, []),
+      );
+      assert.isFalse(
+        ApplicationMenu.supportsPopupHover("linux", { XDG_SESSION_TYPE: "WAYLAND" }, []),
+      );
+      assert.isFalse(
+        ApplicationMenu.supportsPopupHover("linux", { WAYLAND_DISPLAY: "wayland-1" }, []),
+      );
+    });
+
+    it("honors an explicitly forced Ozone display server", () => {
+      assert.isFalse(
+        ApplicationMenu.supportsPopupHover("linux", {}, ["lumine", "--ozone-platform=wayland"]),
+      );
+      assert.isFalse(
+        ApplicationMenu.supportsPopupHover("linux", { XDG_SESSION_TYPE: "x11" }, [
+          "lumine",
+          "--OZONE-PLATFORM=WAYLAND",
+        ]),
+      );
+      assert.isTrue(
+        ApplicationMenu.supportsPopupHover(
+          "linux",
+          { XDG_SESSION_TYPE: "wayland", WAYLAND_DISPLAY: "wayland-0" },
+          ["lumine", "--ozone-platform=x11"],
+        ),
+      );
+      assert.isTrue(
+        ApplicationMenu.supportsPopupHover("linux", { XDG_SESSION_TYPE: "wayland" }, [
+          "lumine",
+          "--ozone-platform=wayland",
+          "--ozone-platform=x11",
+        ]),
+      );
+      assert.isFalse(
+        ApplicationMenu.supportsPopupHover("linux", { XDG_SESSION_TYPE: "wayland" }, [
+          "lumine",
+          "--ozone-platform=x11",
+          "--ozone-platform=wayland",
+        ]),
+      );
+      assert.isFalse(
+        ApplicationMenu.supportsPopupHover("linux", { XDG_SESSION_TYPE: "wayland" }, [
+          "lumine",
+          "--",
+          "--ozone-platform=x11",
+        ]),
+      );
+    });
+
+    it("opens only a top-level item's native submenu with the requested options", async () => {
+      const window = new EventEmitter();
+      const nested = { label: "Nested", id: "nested", submenu: [] };
+      applicationMenu.update(
+        window,
+        [{ label: "File", id: "file", submenu: [{ label: "Save", submenu: [nested] }] }],
+        {},
+      );
+      const builds = useFakeMenuBuilder();
+
+      const result = applicationMenu.showPopup(window, popupRequest({ sourceType: "keyboard" }));
+      const submenu = builds[0].menu.items[0].submenu;
+      assert.lengthOf(submenu.popupCalls, 1);
+      assert.strictEqual(submenu.popupCalls[0].window, window);
+      assert.strictEqual(submenu.popupCalls[0].x, 12);
+      assert.strictEqual(submenu.popupCalls[0].y, 34);
+      assert.strictEqual(submenu.popupCalls[0].sourceType, "keyboard");
+
+      submenu.popupCalls[0].callback();
+      assert.isTrue(await result);
+      assert.isFalse(applicationMenu.closePopup(window));
+
+      assert.isFalse(await applicationMenu.showPopup(window, popupRequest({ id: "nested" })));
+    });
+
+    it("reuses the installed native submenu and its current item state", async () => {
+      const window = new EventEmitter();
+      const builds = useFakeMenuBuilder();
+      applicationMenu.addWindow(window);
+      applicationMenu.update(
+        window,
+        [
+          {
+            label: "File",
+            id: "file",
+            submenu: [{ label: "Save", command: "core:save", enabled: true }],
+          },
+        ],
+        {},
+      );
+      const nativeSubmenu = builds[0].menu.items[0].submenu;
+      nativeSubmenu.items[0].enabled = false;
+
+      const result = applicationMenu.showPopup(window, popupRequest());
+      assert.lengthOf(builds, 1);
+      assert.isFalse(nativeSubmenu.items[0].enabled);
+      nativeSubmenu.popupCalls[0].callback();
+      assert.isTrue(await result);
+    });
+
+    it("builds overflow items in canonical order from the exact window template", async () => {
+      const first = new EventEmitter();
+      const second = new EventEmitter();
+      applicationMenu.update(first, [{ label: "Wrong", id: "wrong", submenu: [] }], {});
+      applicationMenu.update(
+        second,
+        [
+          {
+            label: "File",
+            id: "file",
+            submenu: [{ label: "Save", command: "core:save", enabled: false }],
+          },
+          { label: "Edit", id: "edit", submenu: [] },
+          { label: "View", id: "view", visible: false, submenu: [] },
+        ],
+        { "core:save": ["ctrl-s"] },
+      );
+      const builds = useFakeMenuBuilder();
+
+      const result = applicationMenu.showPopup(second, overflowPopupRequest(["view", "file"]));
+      assert.deepEqual(
+        builds[0].template.map(({ id }) => id),
+        ["file", "view"],
+      );
+      assert.strictEqual(builds[0].template[0].submenu[0].accelerator, "Ctrl+S");
+      assert.isFalse(builds[0].template[0].submenu[0].enabled);
+      assert.isFalse(builds[0].template[1].visible);
+      builds[0].template[0].submenu[0].click();
+      assert.deepStrictEqual(sentCommands, [["core:save", undefined]]);
+
+      builds[0].menu.popupCalls[0].callback();
+      assert.isTrue(await result);
+
+      const oneItemResult = applicationMenu.showPopup(
+        second,
+        overflowPopupRequest(["edit"], { sourceType: "keyboard" }),
+      );
+      assert.deepEqual(
+        builds[1].template.map(({ id }) => id),
+        ["edit"],
+      );
+      builds[1].menu.popupCalls[0].callback();
+      assert.isTrue(await oneItemResult);
+    });
+
+    it("requests one renderer-local switch after the pointer moves over another anchor", async () => {
+      const sent = [];
+      const window = Object.assign(new EventEmitter(), {
+        getContentBounds: () => ({ x: 100, y: 200, width: 800, height: 600 }),
+        webContents: {
+          send: (...args) => sent.push(args),
+          isDestroyed: () => false,
+        },
+      });
+      applicationMenu.update(
+        window,
+        [
+          { label: "File", id: "file", submenu: [] },
+          { label: "Edit", id: "edit", submenu: [] },
+        ],
+        {},
+      );
+      const builds = useFakeMenuBuilder();
+      applicationMenu.supportsPopupHover = () => true;
+      const cursorPoints = [
+        { x: 110, y: 210 },
+        { x: 110, y: 210 },
+        { x: 115, y: 210 },
+        { x: 155, y: 210 },
+        { x: 160, y: 210 },
+      ];
+      applicationMenu.getCursorScreenPoint = () => cursorPoints.shift();
+      let poll;
+      const timer = { unref() {} };
+      applicationMenu.setPopupHoverInterval = (callback) => {
+        poll = callback;
+        return timer;
+      };
+      const cleared = [];
+      applicationMenu.clearPopupHoverInterval = (value) => cleared.push(value);
+
+      const result = applicationMenu.showPopup(
+        window,
+        popupRequest({
+          hoverTargets: [submenuHoverTarget("file"), submenuHoverTarget("edit", 40)],
+        }),
+      );
+      assert.isFalse(poll());
+      assert.isFalse(poll());
+      assert.isTrue(poll());
+      assert.deepEqual(sent, [
+        [
+          "application-menu-popup-switch",
+          {
+            from: "submenu:file",
+            target: { key: "submenu:edit", kind: "submenu", id: "edit" },
+          },
+        ],
+      ]);
+      assert.deepEqual(cleared, [timer]);
+      assert.isFalse(poll());
+      assert.lengthOf(sent, 1);
+
+      builds[0].menu.items[0].submenu.popupCalls[0].callback();
+      assert.isTrue(await result);
+    });
+
+    it("uses the visual overflow anchor when a hidden submenu was opened by mnemonic", async () => {
+      const sent = [];
+      const window = Object.assign(new EventEmitter(), {
+        getContentBounds: () => ({ x: 10, y: 20, width: 800, height: 600 }),
+        webContents: {
+          send: (...args) => sent.push(args),
+          isDestroyed: () => false,
+        },
+      });
+      applicationMenu.update(
+        window,
+        [
+          { label: "File", id: "file", submenu: [] },
+          { label: "Edit", id: "edit", submenu: [] },
+          { label: "Help", id: "help", submenu: [] },
+        ],
+        {},
+      );
+      const builds = useFakeMenuBuilder();
+      applicationMenu.supportsPopupHover = () => true;
+      const cursorPoints = [
+        { x: 95, y: 30 },
+        { x: 20, y: 30 },
+      ];
+      applicationMenu.getCursorScreenPoint = () => cursorPoints.shift();
+      let poll;
+      applicationMenu.setPopupHoverInterval = (callback) => {
+        poll = callback;
+        return { unref() {} };
+      };
+      applicationMenu.clearPopupHoverInterval = () => {};
+
+      const result = applicationMenu.showPopup(
+        window,
+        popupRequest({
+          id: "help",
+          activeHoverTarget: "overflow",
+          hoverTargets: [submenuHoverTarget("file"), overflowHoverTarget(["edit", "help"], 70)],
+        }),
+      );
+      assert.isTrue(poll());
+      assert.deepEqual(sent, [
+        [
+          "application-menu-popup-switch",
+          {
+            from: "overflow",
+            target: { key: "submenu:file", kind: "submenu", id: "file" },
+          },
+        ],
+      ]);
+
+      builds[0].menu.items[2].submenu.popupCalls[0].callback();
+      assert.isTrue(await result);
+    });
+
+    it("stops hover polling when a popup finishes, fails, updates, closes, or loses its window", async () => {
+      let timerId = 0;
+      const cleared = [];
+      applicationMenu.supportsPopupHover = () => true;
+      applicationMenu.getCursorScreenPoint = () => ({ x: 0, y: 0 });
+      applicationMenu.setPopupHoverInterval = () => ({ id: ++timerId, unref() {} });
+      applicationMenu.clearPopupHoverInterval = (timer) => cleared.push(timer.id);
+      useFakeMenuBuilder();
+
+      const createWindow = () =>
+        Object.assign(new EventEmitter(), {
+          getContentBounds: () => ({ x: 0, y: 0, width: 800, height: 600 }),
+          webContents: { send() {}, isDestroyed: () => false },
+        });
+      const open = (window) => {
+        applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+        const promise = applicationMenu.showPopup(window, popupRequest());
+        return { promise, record: applicationMenu.windowPopups.get(window) };
+      };
+
+      const finishedWindow = createWindow();
+      const finished = open(finishedWindow);
+      finished.record.menu.popupCalls.at(-1).callback();
+      assert.isTrue(await finished.promise);
+
+      const closedWindow = createWindow();
+      const closed = open(closedWindow);
+      assert.isTrue(applicationMenu.closePopup(closedWindow));
+      assert.isTrue(await closed.promise);
+
+      const updatedWindow = createWindow();
+      const updated = open(updatedWindow);
+      applicationMenu.update(updatedWindow, [{ label: "Edit", id: "edit", submenu: [] }], {});
+      assert.isTrue(await updated.promise);
+
+      const lostWindow = createWindow();
+      applicationMenu.addWindow(lostWindow);
+      const lost = open(lostWindow);
+      lostWindow.emit("closed");
+      assert.isTrue(await lost.promise);
+
+      const failedWindow = createWindow();
+      const failed = open(failedWindow);
+      const error = new Error("close failed");
+      failed.record.menu.closePopup = () => {
+        throw error;
+      };
+      const rejection = failed.promise.then(
+        () => assert.fail("close failure was accepted"),
+        (actualError) => actualError,
+      );
+      assert.throws(() => applicationMenu.closePopup(failedWindow), /close failed/);
+      assert.strictEqual(await rejection, error);
+
+      assert.deepEqual(cleared, [1, 2, 3, 4, 5]);
+    });
+
+    it("returns false instead of opening a missing or stale menu", async () => {
+      const window = new EventEmitter();
+      const builds = useFakeMenuBuilder();
+
+      assert.isFalse(await applicationMenu.showPopup(window, popupRequest()));
+      applicationMenu.update(window, [{ label: "File", id: "file" }], {});
+      assert.isFalse(await applicationMenu.showPopup(window, popupRequest()));
+      applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+      assert.isFalse(
+        await applicationMenu.showPopup(
+          window,
+          overflowPopupRequest(["file", "missing"], { x: 1, y: 2 }),
+        ),
+      );
+      assert.lengthOf(builds, 0);
+    });
+
+    it("keeps one popup per window and closes it explicitly or before an update", async () => {
+      const window = new EventEmitter();
+      applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+      const builds = useFakeMenuBuilder();
+
+      const firstResult = applicationMenu.showPopup(window, popupRequest());
+      const firstSubmenu = builds[0].menu.items[0].submenu;
+      assert.isTrue(applicationMenu.closePopup(window));
+      assert.deepEqual(firstSubmenu.closePopupCalls, [window]);
+      assert.isTrue(await firstResult);
+      assert.isFalse(applicationMenu.closePopup(window));
+
+      const secondResult = applicationMenu.showPopup(window, popupRequest());
+      applicationMenu.update(window, [{ label: "Edit", id: "edit", submenu: [] }], {});
+      assert.deepEqual(firstSubmenu.closePopupCalls, [window, window]);
+      assert.isTrue(await secondResult);
+    });
+
+    it("waits for the close callback before resolving or opening a replacement", async () => {
+      const window = new EventEmitter();
+      applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+      const builds = useFakeMenuBuilder();
+
+      const firstResult = applicationMenu.showPopup(window, popupRequest());
+      const submenu = builds[0].menu.items[0].submenu;
+      submenu.closePopup = function (closedWindow) {
+        this.closePopupCalls.push(closedWindow);
+      };
+      let firstSettled = false;
+      firstResult.then(() => {
+        firstSettled = true;
+      });
+
+      assert.isTrue(applicationMenu.closePopup(window));
+      assert.isFalse(applicationMenu.closePopup(window));
+      const secondResult = applicationMenu.showPopup(
+        window,
+        popupRequest({ sourceType: "keyboard" }),
+      );
+      await Promise.resolve();
+      assert.isFalse(firstSettled);
+      assert.lengthOf(submenu.popupCalls, 1);
+
+      submenu.popupCalls[0].callback();
+      assert.isTrue(await firstResult);
+      assert.lengthOf(submenu.popupCalls, 2);
+      submenu.popupCalls[1].callback();
+      assert.isTrue(await secondResult);
+    });
+
+    it("closes a popup when its window closes", async () => {
+      const window = new EventEmitter();
+      const builds = useFakeMenuBuilder();
+      applicationMenu.addWindow(window);
+      applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+
+      const result = applicationMenu.showPopup(window, popupRequest());
+      const submenu = builds[0].menu.items[0].submenu;
+      window.emit("closed");
+
+      assert.deepEqual(submenu.closePopupCalls, [window]);
+      assert.isTrue(await result);
+    });
+
+    it("rejects Electron popup failures and clears the popup record", async () => {
+      const window = new EventEmitter();
+      applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+      const error = new Error("native popup failed");
+
+      Menu.buildFromTemplate = (template) => {
+        const menu = createFakeMenu(template);
+        menu.items[0].submenu.popup = () => {
+          throw error;
+        };
+        return menu;
+      };
+      await applicationMenu.showPopup(window, popupRequest()).then(
+        () => assert.fail("popup failure was accepted"),
+        (actualError) => assert.strictEqual(actualError, error),
+      );
+      assert.isFalse(applicationMenu.closePopup(window));
+    });
+
+    it("keeps menu updates safe when Electron refuses to close a popup", async () => {
+      const window = new EventEmitter();
+      applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+      const builds = useFakeMenuBuilder();
+      const result = applicationMenu.showPopup(window, popupRequest());
+      const error = new Error("update close failed");
+      builds[0].menu.items[0].submenu.closePopup = () => {
+        throw error;
+      };
+      const rejection = result.then(
+        () => assert.fail("update close failure was accepted"),
+        (actualError) => actualError,
+      );
+
+      assert.doesNotThrow(() =>
+        applicationMenu.update(window, [{ label: "Edit", id: "edit", submenu: [] }], {}),
+      );
+      assert.strictEqual(await rejection, error);
+    });
+
+    it("keeps the window closed handler safe when Electron refuses to close a popup", async () => {
+      const window = new EventEmitter();
+      const builds = useFakeMenuBuilder();
+      applicationMenu.addWindow(window);
+      applicationMenu.update(window, [{ label: "File", id: "file", submenu: [] }], {});
+      const result = applicationMenu.showPopup(window, popupRequest());
+      const error = new Error("window close failed");
+      builds[0].menu.items[0].submenu.closePopup = () => {
+        throw error;
+      };
+      const rejection = result.then(
+        () => assert.fail("window close failure was accepted"),
+        (actualError) => actualError,
+      );
+
+      assert.doesNotThrow(() => window.emit("closed"));
+      assert.strictEqual(await rejection, error);
+    });
+  });
+
   describe("::addWindow(window)", () => {
     it("adopts the first window as the focused one", () => {
       const window = new EventEmitter();
