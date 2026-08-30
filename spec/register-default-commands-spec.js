@@ -83,6 +83,16 @@ describe("registerDefaultCommands", () => {
     expect(commands.has("editor:delete-to-next-line-content")).toBe(true);
   });
 
+  it("toggles Git colouring in the command target's document", () => {
+    const commands = commandsRegisteredOn("win32");
+    const [listener] = commands.get("git:colorize-toggle");
+    const toggle = jasmine.createSpy("toggle");
+
+    listener.didDispatch.call({ ownerDocument: { body: { classList: { toggle } } } });
+
+    expect(toggle).toHaveBeenCalledOnceWith("git-colorize-disabled");
+  });
+
   describe("save command outcomes", () => {
     function dispatchSaveWith(result) {
       const commands = commandsRegisteredOn("win32");
@@ -103,6 +113,41 @@ describe("registerDefaultCommands", () => {
       const error = new Error("disk failed");
 
       await expectAsync(dispatchSaveWith(Promise.reject(error))).toBeRejectedWith(error);
+    });
+  });
+
+  describe("pane:detach-item", () => {
+    function dispatchDetach({ target, targetedItem = null, activeItem = null }) {
+      const detachPaneItem = jasmine.createSpy("detachPaneItem").and.resolveTo();
+      const workspace = {
+        paneForItem: (item) => (item === targetedItem ? {} : null),
+        getCenter: () => ({
+          getActiveTiledPane: () => ({ getActiveItem: () => activeItem }),
+        }),
+        detachPaneItem,
+      };
+      const commands = commandsRegisteredOn("win32");
+      const [listener] = commands.get("pane:detach-item");
+
+      const result = listener.didDispatch.call({ getModel: () => workspace }, { target });
+      return { detachPaneItem, result };
+    }
+
+    it("detaches the pane item exposed by a nested command target", async () => {
+      const item = {};
+      const target = { parentNode: { item, parentNode: null } };
+      const { detachPaneItem, result } = dispatchDetach({ target, targetedItem: item });
+
+      await result;
+      expect(detachPaneItem).toHaveBeenCalledOnceWith(item);
+    });
+
+    it("falls back to the active tiled item for a global dispatch", async () => {
+      const item = {};
+      const { detachPaneItem, result } = dispatchDetach({ target: null, activeItem: item });
+
+      await result;
+      expect(detachPaneItem).toHaveBeenCalledOnceWith(item);
     });
   });
 

@@ -16,7 +16,7 @@ Detached panes do not create another `Environment`, `Workspace`, `Project`, pack
 
 ## Opening and attaching
 
-Detachment is always explicit. Normal openers and unaccepted tab drags leave items tiled; the `tabs:detach-tab` command, also exposed in the tab context menu, calls `await lumine.workspace.detachPaneItem(item)`. The titlebar pin calls `await lumine.workspace.attachDetachedPane(pane)`.
+Detachment is always explicit. Normal openers and unaccepted tab drags leave items tiled; the core `pane:detach-item` command, also exposed in the tab context menu, calls `await lumine.workspace.detachPaneItem(item)`. The titlebar pin calls `await lumine.workspace.attachDetachedPane(pane)`.
 
 The return target is the original tiled pane and tab index while that pane exists, then the active tiled pane, then the center root. A new open or split requested from a detached item uses the same tiled target and never adds a second item to the detached pane.
 

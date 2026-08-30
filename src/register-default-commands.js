@@ -8,6 +8,14 @@ function settleSaveCommand(result) {
   });
 }
 
+function paneItemForCommandTarget(workspace, target) {
+  for (let element = target; element; element = element.parentNode) {
+    const item = element.item;
+    if (item && workspace.paneForItem(item)) return item;
+  }
+  return workspace.getCenter().getActiveTiledPane()?.getActiveItem() ?? null;
+}
+
 module.exports = function ({
   commandRegistry,
   commandInstaller,
@@ -300,7 +308,7 @@ module.exports = function ({
       "git:colorize-toggle": {
         description: "Turn the Git status colouring off across this window.",
         didDispatch: function () {
-          document.body.classList.toggle("git-colorize-disabled");
+          this.ownerDocument.body.classList.toggle("git-colorize-disabled");
         },
       },
       "window:log-deprecation-warnings": {
@@ -325,6 +333,14 @@ module.exports = function ({
         description: "Close the active tab, or the empty pane, or the window.",
         didDispatch: function () {
           return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow();
+        },
+      },
+      "pane:detach-item": {
+        description: "Move the targeted or active workspace-center item into its own window.",
+        didDispatch: function (event) {
+          const workspace = this.getModel();
+          const item = paneItemForCommandTarget(workspace, event.target);
+          if (item) return workspace.detachPaneItem(item);
         },
       },
       "core:save": function () {
