@@ -1434,13 +1434,13 @@ module.exports = class Workspace extends Model {
           const splitParams = { activate: options.activatePane !== false };
           switch (options.split) {
             case "left":
-              pane = pane.findLeftmostSibling();
+              pane = pane.findOrCreateLeftmostSibling(splitParams);
               break;
             case "right":
               pane = pane.findOrCreateRightmostSibling(splitParams);
               break;
             case "up":
-              pane = pane.findTopmostSibling();
+              pane = pane.findOrCreateTopmostSibling(splitParams);
               break;
             case "down":
               pane = pane.findOrCreateBottommostSibling(splitParams);

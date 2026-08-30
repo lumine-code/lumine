@@ -1604,6 +1604,17 @@ module.exports = class Pane {
     }
   }
 
+  // If the parent is a horizontal axis, returns its first child if it is a pane;
+  // otherwise returns a new pane created by splitting this pane leftward.
+  findOrCreateLeftmostSibling(params) {
+    const leftmostSibling = this.findLeftmostSibling();
+    if (leftmostSibling === this) {
+      return this.splitLeft(params);
+    } else {
+      return leftmostSibling;
+    }
+  }
+
   // If the parent is a horizontal axis, returns its last child if it is a pane;
   // otherwise returns a new pane created by splitting this pane rightward.
   findOrCreateRightmostSibling(params) {
@@ -1640,6 +1651,17 @@ module.exports = class Pane {
       }
     } else {
       return this;
+    }
+  }
+
+  // If the parent is a vertical axis, returns its first child if it is a pane;
+  // otherwise returns a new pane created by splitting this pane upward.
+  findOrCreateTopmostSibling(params) {
+    const topmostSibling = this.findTopmostSibling();
+    if (topmostSibling === this) {
+      return this.splitUp(params);
+    } else {
+      return topmostSibling;
     }
   }
 

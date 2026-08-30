@@ -474,6 +474,17 @@ describe("Workspace", () => {
 
     describe("when the 'split' option is set", () => {
       describe("when the 'split' option is 'left'", () => {
+        it("opens the editor in a new pane to the left when the current pane has no row siblings", async () => {
+          const pane1 = workspace.getActivePane();
+
+          const editor = await workspace.open("a", { split: "left" });
+          const pane2 = workspace.paneForItem(editor);
+
+          expect(pane2).not.toBe(pane1);
+          expect(workspace.getActivePane()).toBe(pane2);
+          expect(workspace.getCenter().paneContainer.root.children).toEqual([pane2, pane1]);
+        });
+
         it("opens the editor in the leftmost pane of the current pane axis", async () => {
           const pane1 = workspace.getActivePane();
           const pane2 = pane1.splitRight();
@@ -496,18 +507,25 @@ describe("Workspace", () => {
       });
 
       describe("when a pane axis is the leftmost sibling of the current pane", () => {
-        it("opens the new item in the current pane", async () => {
-          let editor;
+        it("opens the new item in a new pane split to the left of the current pane", async () => {
           const pane1 = workspace.getActivePane();
           const pane2 = pane1.splitLeft();
-          pane2.splitDown();
+          const pane3 = pane2.splitDown();
           pane1.activate();
           expect(workspace.getActivePane()).toBe(pane1);
 
-          editor = await workspace.open("a", { split: "left" });
+          const editor = await workspace.open("a", { split: "left" });
+          const pane4 = workspace.paneForItem(editor);
 
-          expect(workspace.getActivePane()).toBe(pane1);
-          expect(pane1.items).toEqual([editor]);
+          expect(workspace.getActivePane()).toBe(pane4);
+          expect(pane1.items).toEqual([]);
+          expect(pane4.items).toEqual([editor]);
+          expect(workspace.getCenter().paneContainer.root.children).toEqual([
+            pane2.parent,
+            pane4,
+            pane1,
+          ]);
+          expect(pane2.parent.children).toEqual([pane2, pane3]);
         });
       });
 
@@ -555,6 +573,17 @@ describe("Workspace", () => {
       });
 
       describe("when the 'split' option is 'up'", () => {
+        it("opens the editor in a new pane above when the current pane has no column siblings", async () => {
+          const pane1 = workspace.getActivePane();
+
+          const editor = await workspace.open("a", { split: "up" });
+          const pane2 = workspace.paneForItem(editor);
+
+          expect(pane2).not.toBe(pane1);
+          expect(workspace.getActivePane()).toBe(pane2);
+          expect(workspace.getCenter().paneContainer.root.children).toEqual([pane2, pane1]);
+        });
+
         it("opens the editor in the topmost pane of the current pane axis", async () => {
           const pane1 = workspace.getActivePane();
           const pane2 = pane1.splitDown();
@@ -577,18 +606,25 @@ describe("Workspace", () => {
       });
 
       describe("when a pane axis is the topmost sibling of the current pane", () => {
-        it("opens the new item in the current pane", async () => {
-          let editor;
+        it("opens the new item in a new pane split above the current pane", async () => {
           const pane1 = workspace.getActivePane();
           const pane2 = pane1.splitUp();
-          pane2.splitRight();
+          const pane3 = pane2.splitRight();
           pane1.activate();
           expect(workspace.getActivePane()).toBe(pane1);
 
-          editor = await workspace.open("a", { split: "up" });
+          const editor = await workspace.open("a", { split: "up" });
+          const pane4 = workspace.paneForItem(editor);
 
-          expect(workspace.getActivePane()).toBe(pane1);
-          expect(pane1.items).toEqual([editor]);
+          expect(workspace.getActivePane()).toBe(pane4);
+          expect(pane1.items).toEqual([]);
+          expect(pane4.items).toEqual([editor]);
+          expect(workspace.getCenter().paneContainer.root.children).toEqual([
+            pane2.parent,
+            pane4,
+            pane1,
+          ]);
+          expect(pane2.parent.children).toEqual([pane2, pane3]);
         });
       });
 
@@ -635,6 +671,20 @@ describe("Workspace", () => {
       });
 
       describe("when 'activatePane' is false and the split creates a new pane", () => {
+        it("leaves the original pane active when splitting left", async () => {
+          const pane1 = workspace.getActivePane();
+
+          const editor = await workspace.open("a", {
+            split: "left",
+            activatePane: false,
+          });
+
+          const pane2 = workspace.paneForItem(editor);
+          expect(pane2).not.toBe(pane1);
+          expect(pane2.items).toEqual([editor]);
+          expect(workspace.getActivePane()).toBe(pane1);
+        });
+
         it("leaves the original pane active when splitting right", async () => {
           const pane1 = workspace.getActivePane();
 
@@ -659,6 +709,20 @@ describe("Workspace", () => {
 
           const pane2 = workspace.getPanes().filter((p) => p !== pane1)[0];
           expect(pane2).toBeDefined();
+          expect(pane2.items).toEqual([editor]);
+          expect(workspace.getActivePane()).toBe(pane1);
+        });
+
+        it("leaves the original pane active when splitting up", async () => {
+          const pane1 = workspace.getActivePane();
+
+          const editor = await workspace.open("a", {
+            split: "up",
+            activatePane: false,
+          });
+
+          const pane2 = workspace.paneForItem(editor);
+          expect(pane2).not.toBe(pane1);
           expect(pane2.items).toEqual([editor]);
           expect(workspace.getActivePane()).toBe(pane1);
         });
@@ -4040,17 +4104,19 @@ describe("Workspace", () => {
       expect(workspace.getCenter().getActivePane()).toBe(tiledPane);
     });
 
-    it("applies split opens to the tiled return target", async () => {
-      const original = await workspace.open(null);
-      const detachedPane = await workspace.detachPaneItem(original);
+    for (const split of ["left", "right", "up", "down"]) {
+      it(`applies ${split} split opens to the tiled return target`, async () => {
+        const original = await workspace.open(null);
+        const detachedPane = await workspace.detachPaneItem(original);
 
-      const opened = await workspace.open(null, { split: "right" });
+        const opened = await workspace.open(null, { split });
 
-      expect(workspace.getCenter().getTiledPanes().length).toBe(2);
-      expect(workspace.paneForItem(opened).isDetached()).toBe(false);
-      expect(workspace.getCenter().getDetachedPanes()).toEqual([detachedPane]);
-      expect(detachedPane.getItems()).toEqual([original]);
-    });
+        expect(workspace.getCenter().getTiledPanes().length).toBe(2);
+        expect(workspace.paneForItem(opened).isDetached()).toBe(false);
+        expect(workspace.getCenter().getDetachedPanes()).toEqual([detachedPane]);
+        expect(detachedPane.getItems()).toEqual([original]);
+      });
+    }
 
     it("routes an explicit detached destination to its tiled return target", async () => {
       const original = await workspace.open(null);

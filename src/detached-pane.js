@@ -168,6 +168,10 @@ module.exports = class DetachedPane extends Pane {
     return this.getReturnPane().findRightmostSibling();
   }
 
+  findOrCreateLeftmostSibling(params) {
+    return this.getReturnPane().findOrCreateLeftmostSibling(params);
+  }
+
   findOrCreateRightmostSibling(params) {
     return this.getReturnPane().findOrCreateRightmostSibling(params);
   }
@@ -178,6 +182,10 @@ module.exports = class DetachedPane extends Pane {
 
   findBottommostSibling() {
     return this.getReturnPane().findBottommostSibling();
+  }
+
+  findOrCreateTopmostSibling(params) {
+    return this.getReturnPane().findOrCreateTopmostSibling(params);
   }
 
   findOrCreateBottommostSibling(params) {
