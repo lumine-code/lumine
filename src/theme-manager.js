@@ -21,7 +21,6 @@ const BASE_STYLESHEETS = [
   "core-ui/panels.css",
   "core-ui/docks.css",
   "core-ui/panes.css",
-  "core-ui/detached-pane.css",
   "core-ui/syntax.css",
   "core-ui/text-editor.css",
   "core-ui/workspace-view.css",

@@ -1,5 +1,4 @@
 const { CompositeDisposable } = require("@lumine-code/event-kit");
-const { classFactory } = require("./realm-custom-element");
 require("./pane-resize-handle-element");
 
 class PaneAxisElement extends HTMLElement {
@@ -62,14 +61,14 @@ class PaneAxisElement extends HTMLElement {
     const prevElement = view.previousSibling;
     // if previous element is not pane resize element, then insert new resize element
     if (prevElement != null && !this.isPaneResizeHandleElement(prevElement)) {
-      resizeHandle = this.ownerDocument.createElement("lumine-pane-resize-handle");
+      resizeHandle = document.createElement("lumine-pane-resize-handle");
       this.insertBefore(resizeHandle, view);
     }
 
     const nextElement = view.nextSibling;
     // if next element isnot resize element, then insert new resize element
     if (nextElement != null && !this.isPaneResizeHandleElement(nextElement)) {
-      resizeHandle = this.ownerDocument.createElement("lumine-pane-resize-handle");
+      resizeHandle = document.createElement("lumine-pane-resize-handle");
       return this.insertBefore(resizeHandle, nextElement);
     }
   }
@@ -87,11 +86,11 @@ class PaneAxisElement extends HTMLElement {
   childReplaced({ index, oldChild, newChild }) {
     let focusedElement;
     if (this.hasFocus()) {
-      focusedElement = this.ownerDocument.activeElement;
+      focusedElement = document.activeElement;
     }
     this.childRemoved({ child: oldChild, index });
     this.childAdded({ child: newChild, index });
-    if (this.ownerDocument.activeElement === this.ownerDocument.body) {
+    if (document.activeElement === document.body) {
       return focusedElement != null ? focusedElement.focus() : undefined;
     }
   }
@@ -101,19 +100,16 @@ class PaneAxisElement extends HTMLElement {
   }
 
   hasFocus() {
-    const activeElement = this.ownerDocument.activeElement;
-    return this === activeElement || this.contains(activeElement);
+    return this === document.activeElement || this.contains(document.activeElement);
   }
 }
 
-function createPaneAxisElement(document = globalThis.document) {
+window.customElements.define("lumine-pane-axis", PaneAxisElement);
+
+function createPaneAxisElement() {
   return document.createElement("lumine-pane-axis");
 }
 
 module.exports = {
   createPaneAxisElement,
-  elementDefinition: {
-    name: "lumine-pane-axis",
-    factory: classFactory(PaneAxisElement),
-  },
 };

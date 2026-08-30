@@ -1,16 +1,11 @@
 const { beginLayoutDrag } = require("./layout-drag");
-const { classFactory } = require("./realm-custom-element");
-
-function initializePaneResizeHandleElement() {
-  this.resizePane = this.resizePane.bind(this);
-  this.resizeStopped = this.resizeStopped.bind(this);
-  this.subscribeToDOMEvents();
-}
 
 class PaneResizeHandleElement extends HTMLElement {
   constructor() {
     super();
-    initializePaneResizeHandleElement.call(this);
+    this.resizePane = this.resizePane.bind(this);
+    this.resizeStopped = this.resizeStopped.bind(this);
+    this.subscribeToDOMEvents();
   }
 
   subscribeToDOMEvents() {
@@ -43,19 +38,19 @@ class PaneResizeHandleElement extends HTMLElement {
   resizeStarted(e) {
     e.stopPropagation();
     if (!this.overlay) {
-      this.overlay = this.ownerDocument.createElement("div");
+      this.overlay = document.createElement("div");
       this.overlay.classList.add("lumine-pane-cursor-overlay");
       this.overlay.classList.add(this.isHorizontal ? "horizontal" : "vertical");
       this.appendChild(this.overlay);
     }
-    this.ownerDocument.addEventListener("mousemove", this.resizePane);
-    this.ownerDocument.addEventListener("mouseup", this.resizeStopped);
+    document.addEventListener("mousemove", this.resizePane);
+    document.addEventListener("mouseup", this.resizeStopped);
     this.layoutDrag = beginLayoutDrag();
   }
 
   resizeStopped() {
-    this.ownerDocument.removeEventListener("mousemove", this.resizePane);
-    this.ownerDocument.removeEventListener("mouseup", this.resizeStopped);
+    document.removeEventListener("mousemove", this.resizePane);
+    document.removeEventListener("mouseup", this.resizeStopped);
     if (this.layoutDrag) this.layoutDrag.dispose();
     if (this.overlay) {
       this.removeChild(this.overlay);
@@ -108,14 +103,12 @@ class PaneResizeHandleElement extends HTMLElement {
   }
 }
 
-function createPaneResizeHandleElement(document = globalThis.document) {
+window.customElements.define("lumine-pane-resize-handle", PaneResizeHandleElement);
+
+function createPaneResizeHandleElement() {
   return document.createElement("lumine-pane-resize-handle");
 }
 
 module.exports = {
   createPaneResizeHandleElement,
-  elementDefinition: {
-    name: "lumine-pane-resize-handle",
-    factory: classFactory(PaneResizeHandleElement, initializePaneResizeHandleElement),
-  },
 };

@@ -9,7 +9,7 @@ module.exports = class CursorsAndInputComponent {
     this.lastScrollWidth = props.scrollWidth;
     this.lastScrollHeight = props.scrollHeight;
 
-    this.element = props.document.createElement("div");
+    this.element = document.createElement("div");
     this.element.className = this.lastClassName;
     const style = this.element.style;
     style.position = "absolute";
@@ -91,7 +91,7 @@ module.exports = class CursorsAndInputComponent {
       let node = this.cursorNodes[i];
       let cache = this.cursorCaches[i];
       if (!node) {
-        node = this.element.ownerDocument.createElement("div");
+        node = document.createElement("div");
         this.element.appendChild(node);
         this.cursorNodes.push(node);
         cache = {};
@@ -136,7 +136,7 @@ module.exports = class CursorsAndInputComponent {
       didCompositionEnd,
     } = this.props;
 
-    const input = this.element.ownerDocument.createElement("input");
+    const input = document.createElement("input");
     input.className = "hidden-input";
     input.addEventListener("blur", didBlurHiddenInput);
     input.addEventListener("focus", didFocusHiddenInput);

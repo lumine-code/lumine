@@ -2,7 +2,6 @@ const _ = require("@lumine-code/underscore-plus");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const TextEditor = require("./text-editor");
 const ScopeDescriptor = require("./scope-descriptor");
-const { activeElementFor, isElement } = require("./dom-context");
 
 const EDITOR_PARAMS_BY_SETTING_KEY = [
   ["editor.fileEncoding", "encoding"],
@@ -96,12 +95,11 @@ const ROLES = new Set(["document", "fragment", "background"]);
  *   features like completion sourcing leave it alone.
  */
 module.exports = class TextEditorRegistry {
-  constructor({ config, assert, grammarRegistry, packageManager, surfaceManager = null }) {
+  constructor({ config, assert, grammarRegistry, packageManager }) {
     this.config = config;
     this.assert = assert;
     this.grammarRegistry = grammarRegistry;
     this.packageManager = packageManager;
-    this.surfaceManager = surfaceManager;
     this.clear();
   }
 
@@ -242,8 +240,7 @@ module.exports = class TextEditorRegistry {
    * @returns {TextEditor}, or `null` if focus is not in one.
    */
   getActiveTextEditor() {
-    const surface = this.surfaceManager?.getActive() || globalThis.document;
-    return this.getTextEditorForElement(activeElementFor(surface));
+    return this.getTextEditorForElement(document.activeElement);
   }
 
   /**
@@ -252,8 +249,8 @@ module.exports = class TextEditorRegistry {
    *
    * Resolve the innermost registered text editor containing a DOM target.
    * This is the target-specific counterpart to {@link #getActiveTextEditor}:
-   * context menus and pointer actions use it before falling back to the active
-   * editor. Adopted nodes are accepted across native-window realms.
+   * context menus and pointer actions can use it before falling back to the
+   * active editor.
    *
    * @param {Element} target - Element inside a text editor.
    * @param {Object} [options]
@@ -261,7 +258,7 @@ module.exports = class TextEditorRegistry {
    * @returns {TextEditor|null} The registered editor, or null.
    */
   getTextEditorForElement(target, { includeMini = true } = {}) {
-    let element = isElement(target) ? target.closest("lumine-text-editor") : null;
+    let element = target?.nodeType === 1 ? target.closest?.("lumine-text-editor") : null;
     while (element) {
       const editor = typeof element.getModel === "function" ? element.getModel() : null;
       if (editor && this.editors.has(editor) && (includeMini || !editor.isMini?.())) {

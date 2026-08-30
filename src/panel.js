@@ -16,9 +16,8 @@ module.exports = class Panel {
    */
 
   constructor(
-    { item, owner, autoFocus, restoreFocus, visible, priority, className, crumb },
+    { item, autoFocus, restoreFocus, visible, priority, className, crumb },
     viewRegistry,
-    presentPrimary,
   ) {
     this.destroyed = false;
     this.item = item;
@@ -28,9 +27,6 @@ module.exports = class Panel {
     this.priority = priority == null ? 100 : priority;
     this.className = className;
     this.crumb = crumb;
-    this.owner = owner ?? null;
-    this.container = null;
-    this.presentPrimary = presentPrimary;
     // Assigned by the workspace for modal panels; the keeper of the window's
     // modal breadcrumb trail (see Workspace::addPanel and src/modal-flow.js).
     this.flowKeeper = null;
@@ -57,18 +53,12 @@ module.exports = class Panel {
     return this.emitter.dispose();
   }
 
-  /** @private */
-  isDestroyed() {
-    return this.destroyed;
-  }
-
   getElement() {
     if (!this.element) {
-      const itemElement = this.viewRegistry.getView(this.item);
       this.element = document.createElement("lumine-panel");
       if (!this.visible) this.element.style.display = "none";
       if (this.className) this.element.classList.add(...this.className.split(" "));
-      this.element.appendChild(itemElement);
+      this.element.appendChild(this.viewRegistry.getView(this.item));
     }
     return this.element;
   }
@@ -120,21 +110,6 @@ module.exports = class Panel {
   }
 
   /**
-   * @private
-   *
-   * Return the panel container that currently presents this panel, or null
-   * before its initial add and after destruction.
-   */
-  getContainer() {
-    return this.container;
-  }
-
-  /** @private */
-  setContainer(container) {
-    this.container = container;
-  }
-
-  /**
    * @public
    * @status public
    *
@@ -181,13 +156,6 @@ module.exports = class Panel {
    * @param options.crumb - Modal panels only. A `String`, or `true` to use the label the panel declared when it was added. The panel announces "display me now and take me into the breadcrumb": the modal that is visible at this moment becomes the previous entry of the window's modal trail, the breadcrumb strip shows the path, and `modal:go-back` (Shift-Escape) or a click on an earlier crumb returns to it. Without `crumb` the panel is shown standalone, exactly as before — and showing a modal standalone ends whatever trail another flow had built.
    */
   show(options) {
-    if (this.destroyed) {
-      throw new Error("Cannot show a destroyed panel");
-    }
-    if (!this.container || this.container.isDestroyed() || !this.container.containsPanel(this)) {
-      throw new Error("Cannot show a panel that is not mounted in a live panel container");
-    }
-    this.presentPrimary?.();
     if (options != null) {
       for (const key of Object.keys(options)) {
         if (key !== "crumb") {

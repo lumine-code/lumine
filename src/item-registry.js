@@ -1,34 +1,20 @@
 module.exports = class ItemRegistry {
   constructor() {
-    this.owners = new WeakMap();
+    this.items = new WeakSet();
   }
 
-  addItem(item, pane) {
+  addItem(item) {
     if (this.hasItem(item)) {
       throw new Error(`The workspace can only contain one instance of item ${item}`);
     }
-    this.owners.set(item, pane);
-    return item;
+    return this.items.add(item);
   }
 
-  removeItem(item, pane) {
-    if (pane != null && this.owners.get(item) !== pane) return false;
-    return this.owners.delete(item);
-  }
-
-  moveItem(item, sourcePane, destinationPane) {
-    if (this.owners.get(item) !== sourcePane) {
-      throw new Error("Cannot move an item from a pane that does not own it");
-    }
-    this.owners.set(item, destinationPane);
-    return item;
+  removeItem(item) {
+    return this.items.delete(item);
   }
 
   hasItem(item) {
-    return this.owners.has(item);
-  }
-
-  paneForItem(item) {
-    return this.owners.get(item);
+    return this.items.has(item);
   }
 };

@@ -828,20 +828,6 @@ describe("ApplicationMenu", () => {
       assert.isNull(applicationMenu.lastFocusedWindow);
       assert.isUndefined(applicationMenu.windowTemplates.get(window));
     });
-
-    it("uses the owner window's template while a detached surface is focused", () => {
-      const owner = new EventEmitter();
-      const surface = new EventEmitter();
-      applicationMenu.addWindow(owner);
-      applicationMenu.update(owner, [{ label: "Owner" }], {});
-
-      applicationMenu.focusSurfaceWindow(surface, owner);
-      assert.strictEqual(applicationMenu.lastFocusedWindow, surface);
-      assert.strictEqual(applicationMenu.activeTemplate[0].label, "Owner");
-
-      applicationMenu.update(owner, [{ label: "Updated Owner" }], {});
-      assert.strictEqual(applicationMenu.activeTemplate[0].label, "Updated Owner");
-    });
   });
 
   describe("::enableWindowSpecificItems(enable)", () => {

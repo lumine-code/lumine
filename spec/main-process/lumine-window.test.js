@@ -11,7 +11,7 @@ const dedent = require("dedent");
 const { BrowserWindow, dialog, webContents } = require("electron");
 
 const LumineWindow = require("../../src/lumine-window");
-const { emitterEventPromise, conditionPromise } = require("../helpers/async-spec-helpers");
+const { emitterEventPromise } = require("../helpers/async-spec-helpers");
 
 describe("LumineWindow", function () {
   let sinon, app, service;
@@ -125,188 +125,6 @@ describe("LumineWindow", function () {
         }),
       );
     });
-
-    it("moves one pane item into a same-renderer detached window and attaches it back", async function () {
-      const w = new LumineWindow(app, service, {
-        resourcePath,
-        windowInitializationScript,
-        headless: true,
-      });
-      ({ browserWindow } = w);
-      await w.getLoadedPromise();
-
-      const detached = await browserWindow.webContents.executeJavaScript(
-        `
-        (async () => {
-          lumine.initializeDetachedPaneSurfaces({force: true});
-          const item = await lumine.workspace.open(null);
-          const tiledPane = lumine.workspace.paneForItem(item);
-          const pane = await lumine.workspace.detachPaneItem(item, {show: false});
-          const surface = lumine.workspace.getWindowSurface(pane);
-          const realmScriptLoads = await lumine.dom.loadScript(
-            surface.document,
-            ${JSON.stringify(path.join(resourcePath, "spec", "fixtures", "realm-script.js"))},
-            {global: "__realmScriptLoads"},
-          );
-          const modalItem = document.createElement("div");
-          const modal = lumine.workspace.addModalPanel({item: modalItem, owner: item});
-          const modalInPrimary = modal.getElement().ownerDocument === document;
-          modal.destroy();
-          const list = lumine.workspace.buildSelectList({
-            owner: item,
-            items: [{name: "One"}],
-            filterKeyForItem: ({name}) => name,
-            elementForItem: ({name}) => ({primary: name}),
-          });
-          list.show();
-          const selectListInPrimary = list.getPanel().getElement().ownerDocument === document;
-          list.destroy();
-          window.__detachedPaneIntegration = {item, pane, tiledPane};
-          return {
-            surfaceId: surface.id,
-            sameItem: pane.getActiveItem() === item,
-            belongsToCenter: pane.getContainer().getLocation() === "center",
-            outsideTiledTree: !lumine.workspace.getCenter().getTiledPanes().includes(pane),
-            otherDocument: surface.document !== document,
-            mountedInChild: surface.document.contains(lumine.views.getView(item)),
-            modalInPrimary,
-            selectListInPrimary,
-            stylesMounted: surface.document.head.querySelectorAll("style").length > 0,
-            realmScriptLoads,
-          };
-        })()
-      `,
-        true,
-      );
-
-      assert.isTrue(detached.sameItem);
-      assert.isTrue(detached.belongsToCenter);
-      assert.isTrue(detached.outsideTiledTree);
-      assert.isTrue(detached.otherDocument);
-      assert.isTrue(detached.mountedInChild);
-      assert.isTrue(detached.modalInPrimary);
-      assert.isTrue(detached.selectListInPrimary);
-      assert.isTrue(detached.stylesMounted);
-      assert.strictEqual(detached.realmScriptLoads, 1);
-      const nativeSurface = w.detachedPaneWindows.surfaces.get(detached.surfaceId);
-      assert.isDefined(nativeSurface);
-      assert.isFalse(nativeSurface.browserWindow.isVisible());
-      assert.strictEqual(
-        nativeSurface.browserWindow.webContents.getOSProcessId(),
-        browserWindow.webContents.getOSProcessId(),
-      );
-
-      const attached = await browserWindow.webContents.executeJavaScript(`
-        (async () => {
-          const {item, pane, tiledPane} = window.__detachedPaneIntegration;
-          const targetPromise = new Promise((resolve) => {
-            const subscription = lumine.workspace.getCenter().onDidAttachPane(({targetPane}) => {
-              subscription.dispose();
-              resolve(targetPane);
-            });
-          });
-          lumine.workspace.getWindowSurface(pane).attachButton.click();
-          const target = await targetPromise;
-          delete window.__detachedPaneIntegration;
-          return {
-            targetRestored: target === tiledPane,
-            sameItem: target.getActiveItem() === item,
-            primaryDocument: lumine.views.getView(item).ownerDocument === document,
-          };
-        })()
-      `);
-      assert.deepEqual(attached, {
-        targetRestored: true,
-        sameItem: true,
-        primaryDocument: true,
-      });
-      await conditionPromise(() => w.detachedPaneWindows.surfaces.size === 0);
-
-      const webgl = await browserWindow.webContents.executeJavaScript(`
-        (async () => {
-          const element = document.createElement("div");
-          const canvas = document.createElement("canvas");
-          element.appendChild(canvas);
-          const context = canvas.getContext("webgl2");
-          if (!context) return {supported: false};
-          const item = {
-            element,
-            getTitle: () => "Detached WebGL test",
-          };
-          await lumine.workspace.open(item);
-          const pane = await lumine.workspace.detachPaneItem(item, {show: false});
-          const contextInChild = canvas.getContext("webgl2");
-          const preservedInChild = contextInChild === context && !context.isContextLost();
-          await lumine.workspace.attachDetachedPane(pane);
-          return {
-            supported: true,
-            preservedInChild,
-            preservedAfterAttach: canvas.getContext("webgl2") === context && !context.isContextLost(),
-          };
-        })()
-      `);
-      if (webgl.supported) {
-        assert.isTrue(webgl.preservedInChild);
-        assert.isTrue(webgl.preservedAfterAttach);
-      }
-      await conditionPromise(() => w.detachedPaneWindows.surfaces.size === 0);
-
-      const recoverySurfaceId = await browserWindow.webContents.executeJavaScript(`
-        (async () => {
-          let resolveRecovery;
-          const recovered = new Promise((resolve) => { resolveRecovery = resolve; });
-          const order = [];
-          let commitResult;
-          const item = {
-            element: document.createElement("div"),
-            getTitle: () => "Recovery transition test",
-            beginWindowSurfaceTransition(context) {
-              if (context.reason !== "recovery") return;
-              return {
-                commit() {
-                  order.push("commit");
-                  commitResult = {
-                    reason: context.reason,
-                    primaryDocument: item.element.ownerDocument === document,
-                    connected: item.element.isConnected,
-                  };
-                },
-              };
-            },
-          };
-          await lumine.workspace.open(item);
-          const pane = await lumine.workspace.detachPaneItem(item, {show: false});
-          const surface = lumine.workspace.getWindowSurface(item);
-          let subscription;
-          subscription = lumine.workspace.observePaneItemSurface(item, (nextSurface) => {
-            if (nextSurface?.kind !== "primary") return;
-            order.push("change");
-            resolveRecovery({...commitResult, order});
-            subscription?.dispose();
-          });
-          window.__recoveryTransition = {item, pane, recovered, subscription};
-          return surface.id;
-        })()
-      `);
-      w.detachedPaneWindows.surfaces.get(recoverySurfaceId).browserWindow.destroy();
-      const recovered = await browserWindow.webContents.executeJavaScript(`
-        (async () => {
-          const {item, recovered} = window.__recoveryTransition;
-          const result = await recovered;
-          result.detached = lumine.workspace.paneForItem(item).isDetached();
-          delete window.__recoveryTransition;
-          return result;
-        })()
-      `);
-      assert.deepEqual(recovered, {
-        reason: "recovery",
-        primaryDocument: true,
-        connected: true,
-        order: ["commit", "change"],
-        detached: false,
-      });
-      await conditionPromise(() => w.detachedPaneWindows.surfaces.size === 0);
-    });
   });
 
   describe("launch behavior", function () {
@@ -319,26 +137,6 @@ describe("LumineWindow", function () {
         assert.isDefined(browserWindow.options.icon);
         assert.isFalse(browserWindow.options.icon.isEmpty());
       }
-    });
-
-    it("selects distinct normal, dev, and safe window icons", function () {
-      sinon.stub(process, "platform").value("win32");
-      const iconFor = (settings) =>
-        new LumineWindow(app, service, {
-          browserWindowConstructor: StubBrowserWindow,
-          ...settings,
-        })
-          .getWindowIcon()
-          .toDataURL();
-
-      const normalIcon = iconFor({ devMode: false, safeMode: false });
-      const devIcon = iconFor({ devMode: true, safeMode: false });
-      const safeIcon = iconFor({ devMode: false, safeMode: true });
-
-      assert.notEqual(normalIcon, devIcon);
-      assert.notEqual(normalIcon, safeIcon);
-      assert.notEqual(devIcon, safeIcon);
-      assert.equal(iconFor({ devMode: true, safeMode: true }), safeIcon);
     });
 
     it('sets frame to "false" for a hidden title bar on non-spec windows', function () {
@@ -940,9 +738,6 @@ class StubBrowserWindow extends EventEmitter {
     };
 
     this.webContents = new EventEmitter();
-    this.webContents.setWindowOpenHandler = (handler) => {
-      this.webContents.windowOpenHandler = handler;
-    };
     this.webContents.setVisualZoomLevelLimits = () => {};
     this.webContents.isDestroyed = () => this.destroyed;
     this.webContents.send = (...args) => {

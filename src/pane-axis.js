@@ -115,9 +115,6 @@ class PaneAxis extends Model {
   }
 
   addChild(child, index = this.children.length) {
-    if (typeof child.isDetached === "function" && child.isDetached()) {
-      throw new Error("Detached panes cannot be inserted into a pane axis");
-    }
     this.children.splice(index, 0, child);
     child.setParent(this);
     child.setContainer(this.container);
@@ -156,9 +153,6 @@ class PaneAxis extends Model {
   }
 
   replaceChild(oldChild, newChild) {
-    if (typeof newChild.isDetached === "function" && newChild.isDetached()) {
-      throw new Error("Detached panes cannot be inserted into a pane axis");
-    }
     this.unsubscribeFromChild(oldChild);
     this.subscribeToChild(newChild);
 

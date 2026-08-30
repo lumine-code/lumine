@@ -80,32 +80,6 @@ describe("Dock", () => {
       expect(document.activeElement).toBe(dock.getActivePane().getElement());
       expect(didChangeVisibleSpy).toHaveBeenCalledWith(true);
     });
-
-    it("focuses the primary window when invoked from a detached pane", async () => {
-      lumine.initializeDetachedPaneSurfaces({ force: true });
-      const editor = lumine.workspace.buildTextEditor();
-      lumine.workspace.getCenter().getActiveTiledPane().addItem(editor);
-      let detachedPane;
-
-      try {
-        lumine.workspace.getLeftDock().hide();
-        detachedPane = await lumine.workspace.detachPaneItem(editor, { show: false });
-        lumine.windowSurfaces.activate(lumine.workspace.getWindowSurface(editor));
-
-        lumine.workspace.getLeftDock().toggle();
-
-        expect(lumine.workspace.getActiveWindowSurface()).toBe(
-          lumine.workspace.getPrimaryWindowSurface(),
-        );
-        expect(lumine.workspace.getLeftDock().isVisible()).toBe(true);
-      } finally {
-        if (detachedPane?.isDetached?.()) {
-          await lumine.workspace.attachDetachedPane(detachedPane);
-        }
-        lumine.workspace.paneForItem(editor)?.destroyItem(editor, true);
-        lumine.initializeDetachedPaneSurfaces();
-      }
-    });
   });
 
   describe("when a dock is hidden", () => {

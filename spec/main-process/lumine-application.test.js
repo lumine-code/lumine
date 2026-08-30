@@ -947,38 +947,6 @@ describe("LumineApplication", function () {
       assert.isTrue(w1.consumeStartupMarkers.calledOnce);
     });
 
-    it("routes detached-pane IPC only through the registered owner WebContents", function () {
-      const manager = {
-        reserve: sinon.stub().returns({ transactionId: "drag-1" }),
-        perform: sinon.stub().returns({ state: "ready" }),
-      };
-      w1.detachedPaneWindows = manager;
-      const event = { sender: w1.browserWindow.webContents };
-
-      assert.deepEqual(
-        LumineApplication.handleDetachedPaneWindowAction(event, "reserve", {
-          transactionId: "drag-1",
-        }),
-        { transactionId: "drag-1" },
-      );
-      assert.deepEqual(
-        LumineApplication.handleDetachedPaneWindowAction(event, "perform", "drag-1", "ready"),
-        { state: "ready" },
-      );
-      assert.isTrue(manager.reserve.calledOnce);
-      assert.isTrue(manager.perform.calledOnceWithExactly("drag-1", "ready"));
-
-      assert.throws(
-        () =>
-          LumineApplication.handleDetachedPaneWindowAction(
-            { sender: { id: 9999, isDestroyed: () => false } },
-            "reserve",
-            {},
-          ),
-        /not a registered Lumine window/,
-      );
-    });
-
     it("handles allowlisted window state and lifecycle operations for the originating window", async function () {
       const window = w1.browserWindow;
       const contents = window.webContents;

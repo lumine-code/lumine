@@ -1,12 +1,7 @@
 module.exports = class NodePool {
-  constructor(owner = globalThis.document) {
-    this.owner = owner;
+  constructor() {
     this.elementsByType = {};
     this.textNodes = [];
-  }
-
-  get document() {
-    return this.owner?.ownerDocument || this.owner;
   }
 
   getElement(type, className, style) {
@@ -26,7 +21,6 @@ module.exports = class NodePool {
     }
 
     if (element) {
-      if (element.ownerDocument !== this.document) this.document.adoptNode(element);
       element.className = className || "";
       element.attributeStyleMap.forEach((value, key) => {
         if (style && style[key] != null) return;
@@ -40,7 +34,7 @@ module.exports = class NodePool {
       while (element.firstChild) element.firstChild.remove();
       return element;
     } else {
-      const newElement = this.document.createElement(type);
+      const newElement = document.createElement(type);
       if (className) newElement.className = className;
       if (style) this.applyStyle(newElement, style);
       return newElement;
@@ -57,11 +51,10 @@ module.exports = class NodePool {
   getTextNode(text) {
     if (this.textNodes.length > 0) {
       const node = this.textNodes.pop();
-      if (node.ownerDocument !== this.document) this.document.adoptNode(node);
       node.textContent = text;
       return node;
     } else {
-      return this.document.createTextNode(text);
+      return document.createTextNode(text);
     }
   }
 

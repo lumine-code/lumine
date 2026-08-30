@@ -43,7 +43,6 @@ module.exports = class ApplicationMenu {
   constructor(version) {
     this.version = version;
     this.windowTemplates = new WeakMap();
-    this.surfaceTemplateOwners = new WeakMap();
     this.windowPopups = new WeakMap();
     this.setActiveTemplate(this.getDefaultTemplate());
   }
@@ -88,12 +87,7 @@ module.exports = class ApplicationMenu {
     this.translateTemplate(template, keystrokesByCommand);
     this.substituteVersion(template);
     this.windowTemplates.set(window, template);
-    if (
-      window === this.lastFocusedWindow ||
-      this.surfaceTemplateOwners.get(this.lastFocusedWindow) === window
-    ) {
-      return this.setActiveTemplate(template);
-    }
+    if (window === this.lastFocusedWindow) return this.setActiveTemplate(template);
   }
 
   setActiveTemplate(template) {
@@ -353,19 +347,6 @@ module.exports = class ApplicationMenu {
       return false;
     }
     return true;
-  }
-
-  focusSurfaceWindow(surfaceWindow, templateOwner) {
-    if (!this.surfaceTemplateOwners.has(surfaceWindow)) {
-      this.surfaceTemplateOwners.set(surfaceWindow, templateOwner);
-      surfaceWindow.once("closed", () => {
-        this.surfaceTemplateOwners.delete(surfaceWindow);
-        if (this.lastFocusedWindow === surfaceWindow) this.lastFocusedWindow = null;
-      });
-    }
-    this.lastFocusedWindow = surfaceWindow;
-    const template = this.windowTemplates.get(templateOwner);
-    if (template) this.setActiveTemplate(template);
   }
 
   // Flattens the given menu and submenu items into a single Array.

@@ -25,9 +25,8 @@ function calculateTimeBasedStep(pending, smoothness, elapsed) {
 class ScrollAnimator {
   constructor(component, { requestAnimationFrame, cancelAnimationFrame } = {}) {
     this.component = component;
-    this.raf = requestAnimationFrame;
-    this.caf = cancelAnimationFrame;
-    this.frameWindow = null;
+    this.raf = requestAnimationFrame || ((callback) => window.requestAnimationFrame(callback));
+    this.caf = cancelAnimationFrame || ((handle) => window.cancelAnimationFrame(handle));
     this.animating = false;
     this.frameHandle = null;
     this.lastFrameTime = null;
@@ -68,10 +67,8 @@ class ScrollAnimator {
   // scheduling any further frames.
   cancel() {
     if (this.frameHandle != null) {
-      if (this.caf) this.caf(this.frameHandle);
-      else this.frameWindow?.cancelAnimationFrame(this.frameHandle);
+      this.caf(this.frameHandle);
       this.frameHandle = null;
-      this.frameWindow = null;
     }
     this.lastFrameTime = null;
     const wasAnimating = this.animating;
@@ -109,7 +106,7 @@ class ScrollAnimator {
     this.animating = true;
     this.lastFrameTime = null;
     this.component.element.emitter.emit("did-start-scroll-animation");
-    this.frameHandle = this.requestFrame(this.step);
+    this.frameHandle = this.raf(this.step);
   }
 
   step(timestamp) {
@@ -123,7 +120,6 @@ class ScrollAnimator {
   advance(elapsed) {
     if (!this.animating) return;
     this.frameHandle = null;
-    this.frameWindow = null;
 
     // A reflow mid-glide can shrink the scrollable area; re-clamp so the glide
     // never targets or occupies a position past the end.
@@ -164,7 +160,7 @@ class ScrollAnimator {
       Math.abs(this.pendingX()) >= COMPLETION_THRESHOLD ||
       Math.abs(this.pendingY()) >= COMPLETION_THRESHOLD
     ) {
-      this.frameHandle = this.requestFrame(this.step);
+      this.frameHandle = this.raf(this.step);
     } else {
       this.animating = false;
       this.lastFrameTime = null;
@@ -177,12 +173,6 @@ class ScrollAnimator {
 
   pendingY() {
     return this.targetScrollTop - this.virtualScrollTop;
-  }
-
-  requestFrame(callback) {
-    if (this.raf) return this.raf(callback);
-    this.frameWindow = this.component.element.ownerDocument.defaultView;
-    return this.frameWindow.requestAnimationFrame(callback);
   }
 
   pendingX() {

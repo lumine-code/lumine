@@ -86,21 +86,6 @@ module.exports = class TooltipManager {
     this.tooltips = new Map();
   }
 
-  attachWorkspace(workspace) {
-    this.surfaceTransitionSubscription?.dispose();
-    this.surfaceTransitionSubscription = workspace.addWindowSurfaceTransitionObserver(
-      ({ item }) => {
-        const itemView = this.viewRegistry.getView(item);
-        for (const [target, tooltips] of this.tooltips) {
-          if (target === itemView || itemView?.contains?.(target)) {
-            for (const tooltip of tooltips) tooltip.hide();
-          }
-        }
-      },
-    );
-    return this.surfaceTransitionSubscription;
-  }
-
   /**
    * @public
    * @status essential
@@ -233,9 +218,12 @@ module.exports = class TooltipManager {
       tooltip.hide();
     };
 
-    tooltip.hideOnWindowResize = hideTooltip;
+    // note: adding a listener here adds a new listener for every tooltip element that's registered.  Adding unnecessary listeners is bad for performance.  It would be better to add/remove listeners when tooltips are actually created in the dom.
+    window.addEventListener("resize", hideTooltip);
 
     const disposable = new Disposable(() => {
+      window.removeEventListener("resize", hideTooltip);
+
       hideTooltip();
       tooltip.destroy();
 

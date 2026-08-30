@@ -6,14 +6,13 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const _ = require("@lumine-code/underscore-plus");
-const { classFactory } = require("./realm-custom-element");
 
 // Measures how Chromium renders scrollbars in this window: an off-screen
 // scrollable probe reserves no width for overlay scrollbars and a nonzero
 // width for always-visible ones. The probe lives outside `lumine-workspace` so
 // the theme's `.scrollbars-visible-* ::-webkit-scrollbar` rules can't affect
 // the measurement.
-function measureScrollbarStyle(document) {
+function measureScrollbarStyle() {
   const probe = document.createElement("div");
   probe.style.cssText =
     "position: absolute; top: -9999px; width: 50px; height: 50px; overflow: scroll;";
@@ -25,83 +24,38 @@ function measureScrollbarStyle(document) {
 
 // Reports the current scrollbar style, then subscribes to a handler so it can
 // be notified of further changes. Returns a `Disposable`.
-function observeScrollbarStyle(document, callback) {
+function observeScrollbarStyle(callback) {
   // We want to act like `lumine.config.observe`: set up a change handler, but
   // immediately invoke the callback with the current value as well. Change
   // notifications come from the main process, which watches the macOS
   // system setting.
-  callback(measureScrollbarStyle(document));
+  callback(measureScrollbarStyle());
   let result = ipcHelpers.on(ipcRenderer, "did-change-scrollbar-style", (_, style) =>
     callback(style),
   );
   return result;
 }
 
-function applyTextEditorFontConfig(element, config) {
-  const fontSize = config.get("editor.fontSize");
-  const fontFamily = config.get("editor.fontFamily");
-  let lineHeight = config.get("editor.lineHeight");
-  const pixelRatio = element.ownerDocument.defaultView.devicePixelRatio;
-  let adjustedLineHeight;
-
-  if (typeof lineHeight === "string" && Number(lineHeight).toString() === lineHeight) {
-    lineHeight = Number(lineHeight);
-  }
-  if (typeof lineHeight === "string") {
-    if (lineHeight.endsWith("px")) {
-      const lineHeightPixelValue = parseFloat(lineHeight);
-      const computedLineHeight = Math.round(lineHeightPixelValue * pixelRatio) / pixelRatio;
-      adjustedLineHeight = `${computedLineHeight.toFixed(6)}px`;
-    } else {
-      adjustedLineHeight = lineHeight;
-    }
-  } else {
-    const computedLineHeight = Math.round(fontSize * lineHeight * pixelRatio) / pixelRatio;
-    adjustedLineHeight = `${computedLineHeight.toFixed(6)}px`;
-  }
-  element.style.setProperty("--editor-font-size", `${fontSize}px`);
-  element.style.setProperty("--editor-font-family", fontFamily);
-  element.style.setProperty("--editor-line-height", adjustedLineHeight);
-  return { fontSize, fontFamily, adjustedLineHeight };
-}
-
 class WorkspaceElement extends HTMLElement {
   connectedCallback() {
     this.focus();
-    this.observeDocumentMouseLeave();
-  }
-
-  disconnectedCallback() {
-    this.stopObservingDocumentMouseLeave();
-  }
-
-  observeDocumentMouseLeave() {
-    // Detached-pane surfaces use a presentational `lumine-workspace` that is
-    // connected without calling initialize(). The prototype method exists on
-    // that element, but it is not bound: registering it would make the root
-    // HTML element its `this` value when mouseleave fires. initialize() creates
-    // the own, bound handler that identifies an interactive workspace.
-    if (!this.isConnected || !Object.hasOwn(this, "handleCenterLeave")) return;
-    const htmlElement = this.ownerDocument.documentElement;
-    if (this.htmlElement === htmlElement) return;
-    this.stopObservingDocumentMouseLeave();
-    this.htmlElement = htmlElement;
+    this.htmlElement = document.querySelector("html");
     this.htmlElement.addEventListener("mouseleave", this.handleCenterLeave);
   }
 
-  stopObservingDocumentMouseLeave() {
-    this.htmlElement?.removeEventListener("mouseleave", this.handleCenterLeave);
-    this.htmlElement = null;
+  disconnectedCallback() {
+    this.subscriptions.dispose();
+    this.htmlElement.removeEventListener("mouseleave", this.handleCenterLeave);
   }
 
   initializeContent() {
     this.classList.add("workspace");
     this.setAttribute("tabindex", -1);
 
-    this.verticalAxis = this.ownerDocument.createElement("lumine-workspace-axis");
+    this.verticalAxis = document.createElement("lumine-workspace-axis");
     this.verticalAxis.classList.add("vertical");
 
-    this.horizontalAxis = this.ownerDocument.createElement("lumine-workspace-axis");
+    this.horizontalAxis = document.createElement("lumine-workspace-axis");
     this.horizontalAxis.classList.add("horizontal");
     this.horizontalAxis.appendChild(this.verticalAxis);
 
@@ -116,7 +70,7 @@ class WorkspaceElement extends HTMLElement {
       //
       // This event isn't emitted by the main process on other platforms, so
       // it won't do anything on Windows or Linux.
-      observeScrollbarStyle(this.ownerDocument, (style) => {
+      observeScrollbarStyle((style) => {
         switch (style) {
           case "legacy":
             this.classList.remove("scrollbars-visible-when-scrolling");
@@ -134,25 +88,25 @@ class WorkspaceElement extends HTMLElement {
   }
 
   observeTextEditorFontConfig() {
-    const update = this.updateGlobalTextEditorStyleSheet.bind(this);
-    update();
+    this.updateGlobalTextEditorStyleSheet();
     this.subscriptions.add(
-      this.config.onDidChange("editor.fontSize", update),
-      this.config.onDidChange("editor.fontFamily", update),
-      this.config.onDidChange("editor.lineHeight", update),
+      this.config.onDidChange("editor.fontSize", this.updateGlobalTextEditorStyleSheet.bind(this)),
     );
-    const domWindow = this.ownerDocument.defaultView;
-    const updateForDisplay = () => {
-      if (this.textEditorPixelRatio !== domWindow.devicePixelRatio) update();
-    };
-    domWindow.addEventListener("resize", updateForDisplay);
     this.subscriptions.add(
-      new Disposable(() => domWindow.removeEventListener("resize", updateForDisplay)),
+      this.config.onDidChange(
+        "editor.fontFamily",
+        this.updateGlobalTextEditorStyleSheet.bind(this),
+      ),
+    );
+    this.subscriptions.add(
+      this.config.onDidChange(
+        "editor.lineHeight",
+        this.updateGlobalTextEditorStyleSheet.bind(this),
+      ),
     );
   }
 
   updateGlobalTextEditorStyleSheet() {
-    this.textEditorPixelRatio = this.ownerDocument.defaultView.devicePixelRatio;
     // We multiply `editor.fontSize` by `editor.lineHeight` to determine how
     // tall our lines will be. We could just pass `editor.lineHeight` into the
     // CSS as a factor and let CSS do the math, but Chromium tends to make a
@@ -199,22 +153,72 @@ class WorkspaceElement extends HTMLElement {
     // here remains a best-effort mitigation for line-to-line rendering; it
     // cannot be exact anyway, because Chromium quantizes layout to 1/64 CSS
     // pixel, so even a device-aligned `line-height` measures back fractional.
-    const { fontSize, fontFamily, adjustedLineHeight } = applyTextEditorFontConfig(
-      this,
-      this.config,
-    );
-    this.styleManager.addStyleSheet(
-      `lumine-workspace {
+    let fontSize = this.config.get("editor.fontSize");
+    let fontFamily = this.config.get("editor.fontFamily");
+    let lineHeight = this.config.get("editor.lineHeight");
+    let pixelRatio = window.devicePixelRatio;
+    let adjustedLineHeight;
+
+    // The config schema allows `editor.lineHeight` to be either a bare number
+    // or a string; in the latter case, the expectation is that the user can
+    // specify the value using any valid CSS measurement. This makes
+    // interpretation of the value tricky!
+    //
+    // There's one case that should be treated identically to the number case…
+    if (typeof lineHeight === "string" && Number(lineHeight).toString() === lineHeight) {
+      // …when the user has specified a string with bare number. We'll treat
+      // this as if the setting were _actually_ a number.
+      lineHeight = Number(lineHeight);
+    }
+
+    // There are other string-value cases that we may want to reconcile with
+    // the Chromium rendering issue described above.
+    if (typeof lineHeight === "string") {
+      if (lineHeight.endsWith("px")) {
+        // The user has specified the `editor.lineHeight` setting with a pixel
+        // value like `"27px"`. We want to make sure this value results in a
+        // line-height that snaps to the hardware pixel grid, so we'll adjust
+        // it if necessary.
+        let lineHeightPixelValue = parseFloat(lineHeight);
+        let computedLineHeight = Math.round(lineHeightPixelValue * pixelRatio) / pixelRatio;
+        adjustedLineHeight = `${computedLineHeight.toFixed(6)}px`;
+      } else {
+        // If it's some other sort of string value, then we'll leave it as-is.
+        // It could be a more exotic CSS measurement — `1.4rem`, `3ch`, etc. —
+        // or it could just be altogether invalid. Either way, we can't easily
+        // convert it into its pixel equivalent, so we won't bother to try to
+        // avoid the Chromium rendering issue.
+        adjustedLineHeight = lineHeight;
+      }
+    } else {
+      // The `editor.lineHeight` setting is a number expressing a ratio based
+      // on the value of `editor.fontSize`. We'll turn that into a pixel value
+      // and adjust it if necessary so that it snaps to the hardware pixel
+      // grid.
+      //
+      // For instance: most screens out there these days have a
+      // `devicePixelRatio` of `2`, meaning that `1px` in CSS will use two
+      // screen pixels. So this would have the effect of snapping the line
+      // height to the nearest half-CSS-pixel.
+      //
+      // On older displays with lower DPI, `devicePixelRatio` would be `1`;
+      // this adjustment would thus snap the value to the nearest whole pixel.
+      let computedLineHeight = Math.round(fontSize * lineHeight * pixelRatio) / pixelRatio;
+      adjustedLineHeight = `${computedLineHeight.toFixed(6)}px`;
+    }
+
+    const styleSheetSource = `lumine-workspace {
   --editor-font-size: ${fontSize}px;
   --editor-font-family: ${fontFamily};
   --editor-line-height: ${adjustedLineHeight};
-}`,
-      { sourcePath: "global-text-editor-styles", priority: -1 },
-    );
+}`;
+    this.styleManager.addStyleSheet(styleSheetSource, {
+      sourcePath: "global-text-editor-styles",
+      priority: -1,
+    });
   }
 
   initialize(model, { config, project, styleManager, viewRegistry }) {
-    const domWindow = this.ownerDocument.defaultView;
     this.handleCenterEnter = this.handleCenterEnter.bind(this);
     this.handleCenterLeave = this.handleCenterLeave.bind(this);
     this.handleEdgesMouseMove = _.throttle(this.handleEdgesMouseMove.bind(this), 100);
@@ -244,15 +248,14 @@ class WorkspaceElement extends HTMLElement {
 
     this.subscriptions = new CompositeDisposable(
       new Disposable(() => {
-        this.stopObservingDocumentMouseLeave();
         this.paneContainer.removeEventListener("mouseenter", this.handleCenterEnter);
         this.paneContainer.removeEventListener("mouseleave", this.handleCenterLeave);
         this.removeEventListener("wheel", this.handleCtrlWheel, { capture: true });
-        domWindow.removeEventListener("mousemove", this.handleEdgesMouseMove);
-        domWindow.removeEventListener("dragend", this.handleDockDragEnd);
-        domWindow.removeEventListener("dragstart", this.handleDragStart);
-        domWindow.removeEventListener("dragend", this.handleDragEnd, true);
-        domWindow.removeEventListener("drop", this.handleDrop, true);
+        window.removeEventListener("mousemove", this.handleEdgesMouseMove);
+        window.removeEventListener("dragend", this.handleDockDragEnd);
+        window.removeEventListener("dragstart", this.handleDragStart);
+        window.removeEventListener("dragend", this.handleDragEnd, true);
+        window.removeEventListener("drop", this.handleDrop, true);
       }),
       ...[this.model.getLeftDock(), this.model.getRightDock(), this.model.getBottomDock()].map(
         (dock) =>
@@ -274,8 +277,8 @@ class WorkspaceElement extends HTMLElement {
     // wheel handler.
     this.addEventListener("wheel", this.handleCtrlWheel, { capture: true, passive: false });
 
-    domWindow.addEventListener("dragstart", this.handleDragStart);
-    domWindow.addEventListener("mousemove", this.handleEdgesMouseMove);
+    window.addEventListener("dragstart", this.handleDragStart);
+    window.addEventListener("mousemove", this.handleEdgesMouseMove);
 
     this.panelContainers = {
       top: this.model.panelContainers.top.getElement(),
@@ -300,7 +303,6 @@ class WorkspaceElement extends HTMLElement {
 
     this.paneContainer.addEventListener("mouseenter", this.handleCenterEnter);
     this.paneContainer.addEventListener("mouseleave", this.handleCenterLeave);
-    this.observeDocumentMouseLeave();
 
     return this;
   }
@@ -318,9 +320,8 @@ class WorkspaceElement extends HTMLElement {
     const { item } = event.target;
     if (!item) return;
     this.model.setDraggingItem(item);
-    const domWindow = this.ownerDocument.defaultView;
-    domWindow.addEventListener("dragend", this.handleDragEnd, { capture: true });
-    domWindow.addEventListener("drop", this.handleDrop, { capture: true });
+    window.addEventListener("dragend", this.handleDragEnd, { capture: true });
+    window.addEventListener("drop", this.handleDrop, { capture: true });
   }
 
   handleDragEnd(_event) {
@@ -333,9 +334,8 @@ class WorkspaceElement extends HTMLElement {
 
   dragEnded() {
     this.model.setDraggingItem(null);
-    const domWindow = this.ownerDocument.defaultView;
-    domWindow.removeEventListener("dragend", this.handleDragEnd, true);
-    domWindow.removeEventListener("drop", this.handleDrop, true);
+    window.removeEventListener("dragend", this.handleDragEnd, true);
+    window.removeEventListener("drop", this.handleDrop, true);
   }
 
   // Holding ctrl while wheel scrolling over a center-pane text editor scrolls
@@ -377,7 +377,7 @@ class WorkspaceElement extends HTMLElement {
     // being hovered.
     this.cursorInCenter = false;
     this.updateHoveredDock({ x: event.pageX, y: event.pageY });
-    this.ownerDocument.defaultView.addEventListener("dragend", this.handleDockDragEnd);
+    window.addEventListener("dragend", this.handleDockDragEnd);
   }
 
   handleEdgesMouseMove(event) {
@@ -403,7 +403,7 @@ class WorkspaceElement extends HTMLElement {
 
   checkCleanupDockHoverEvents() {
     if (this.cursorInCenter && !this.hoveredDock) {
-      this.ownerDocument.defaultView.removeEventListener("dragend", this.handleDockDragEnd);
+      window.removeEventListener("dragend", this.handleDockDragEnd);
     }
   }
 
@@ -551,15 +551,12 @@ function isTab(element) {
   return false;
 }
 
-function createWorkspaceElement(document = globalThis.document) {
+window.customElements.define("lumine-workspace", WorkspaceElement);
+
+function createWorkspaceElement() {
   return document.createElement("lumine-workspace");
 }
 
 module.exports = {
-  applyTextEditorFontConfig,
   createWorkspaceElement,
-  elementDefinition: {
-    name: "lumine-workspace",
-    factory: classFactory(WorkspaceElement),
-  },
 };

@@ -99,13 +99,7 @@ module.exports = class WindowEventHandler {
         this.lumineEnvironment.commands.add(
           ".native-key-bindings",
           command,
-          (event) => {
-            const surface = this.lumineEnvironment.workspace.getWindowSurface(event.target);
-            return (
-              surface?.windowService?.performWebContentsAction?.(action) ??
-              this.applicationDelegate.performWebContentsAction(action)
-            );
-          },
+          (_event) => this.applicationDelegate.performWebContentsAction(action),
           false,
         ),
       );

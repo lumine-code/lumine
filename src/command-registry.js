@@ -3,7 +3,6 @@
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const { calculateSpecificity, validateSelector } = require("./css-selectors");
 const _ = require("@lumine-code/underscore-plus");
-const { customEventFor, eventPhaseFor, windowFor } = require("./dom-context");
 
 let SequenceCount = 0;
 
@@ -53,21 +52,13 @@ let SequenceCount = 0;
  * ```
  */
 module.exports = class CommandRegistry {
-  constructor({ surfaceManager = null } = {}) {
+  constructor() {
     this.handleCommandEvent = this.handleCommandEvent.bind(this);
-    this.surfaceManager = surfaceManager;
-    this.rootNodes = new Set();
-    this.registeredCommandsByRoot = new Map();
+    this.rootNode = null;
     this.clear();
   }
 
   clear() {
-    for (const [rootNode, commandNames] of this.registeredCommandsByRoot) {
-      for (const commandName of commandNames) {
-        rootNode.removeEventListener(commandName, this.handleCommandEvent, true);
-      }
-      commandNames.clear();
-    }
     this.registeredCommands = {};
     this.selectorBasedListenersByCommandName = {};
     this.inlineListenersByCommandName = {};
@@ -75,12 +66,7 @@ module.exports = class CommandRegistry {
   }
 
   attach(rootNode) {
-    if (!rootNode?.addEventListener || !rootNode?.removeEventListener) {
-      throw new TypeError("A command root must be a DOM EventTarget");
-    }
-    if (this.rootNodes.has(rootNode)) return new Disposable();
-    this.rootNodes.add(rootNode);
-    this.registeredCommandsByRoot.set(rootNode, new Set());
+    this.rootNode = rootNode;
     for (const command in this.selectorBasedListenersByCommandName) {
       this.commandRegistered(command);
     }
@@ -88,23 +74,12 @@ module.exports = class CommandRegistry {
     for (const command in this.inlineListenersByCommandName) {
       this.commandRegistered(command);
     }
-    return new Disposable(() => this.detach(rootNode));
-  }
-
-  detach(rootNode) {
-    if (!this.rootNodes.delete(rootNode)) return false;
-    const commandNames = this.registeredCommandsByRoot.get(rootNode);
-    if (commandNames) {
-      for (const commandName of commandNames) {
-        rootNode.removeEventListener(commandName, this.handleCommandEvent, true);
-      }
-    }
-    this.registeredCommandsByRoot.delete(rootNode);
-    return true;
   }
 
   destroy() {
-    for (const rootNode of Array.from(this.rootNodes)) this.detach(rootNode);
+    for (const commandName in this.registeredCommands) {
+      this.rootNode.removeEventListener(commandName, this.handleCommandEvent, true);
+    }
   }
 
   /**
@@ -274,11 +249,10 @@ module.exports = class CommandRegistry {
         }
       }
 
-      const targetWindow = windowFor(target);
-      if (currentTarget === targetWindow) {
+      if (currentTarget === window) {
         break;
       }
-      currentTarget = currentTarget.parentNode || targetWindow;
+      currentTarget = currentTarget.parentNode || window;
     }
 
     return commands;
@@ -304,7 +278,7 @@ module.exports = class CommandRegistry {
    * @param detail - Any value that will be assigned to the event's `.detail` property. Pass an object with multiple properties if you need multiple command arguments.
    */
   dispatch(target, commandName, detail) {
-    const event = customEventFor(target, commandName, { bubbles: true, detail });
+    const event = new CustomEvent(commandName, { bubbles: true, detail });
     Object.defineProperty(event, "target", { value: target });
     return this.handleCommandEvent(event);
   }
@@ -353,22 +327,17 @@ module.exports = class CommandRegistry {
   }
 
   handleCommandEvent(event) {
-    const previousSurface = this.surfaceManager?.getActive?.();
-    const surface = this.surfaceManager?.surfaceFor(event.target);
-    if (surface) this.surfaceManager.activate(surface);
     let propagationStopped = false;
     let immediatePropagationStopped = false;
     let matched = [];
     let currentTarget = event.target;
 
-    const targetWindow = windowFor(event.target);
-    if (!targetWindow) throw new TypeError("A command target must belong to a live Window");
-    const dispatchedEvent = customEventFor(event.target, event.type, {
+    const dispatchedEvent = new CustomEvent(event.type, {
       bubbles: true,
       detail: event.detail,
     });
     Object.defineProperty(dispatchedEvent, "eventPhase", {
-      value: eventPhaseFor(event.target, "BUBBLING_PHASE"),
+      value: Event.BUBBLING_PHASE,
     });
     Object.defineProperty(dispatchedEvent, "currentTarget", {
       get() {
@@ -433,43 +402,27 @@ module.exports = class CommandRegistry {
         matched.push(listener.didDispatch.call(currentTarget, dispatchedEvent));
       }
 
-      if (currentTarget === targetWindow) {
+      if (currentTarget === window) {
         break;
       }
       if (propagationStopped) {
         break;
       }
-      currentTarget = currentTarget.parentNode || targetWindow;
+      currentTarget = currentTarget.parentNode || window;
     }
 
     this.emitter.emit("did-dispatch", dispatchedEvent);
 
-    const restoreFocusedSurface = () => {
-      if (
-        previousSurface &&
-        previousSurface !== surface &&
-        !previousSurface.isDestroyed() &&
-        previousSurface.document.hasFocus?.()
-      ) {
-        this.surfaceManager.activate(previousSurface);
-      }
-    };
-    if (matched.length === 0) {
-      restoreFocusedSurface();
-      return null;
-    }
-    return Promise.all(matched).finally(restoreFocusedSurface);
+    return matched.length > 0 ? Promise.all(matched) : null;
   }
 
   commandRegistered(commandName) {
-    for (const rootNode of this.rootNodes) {
-      const registeredCommands = this.registeredCommandsByRoot.get(rootNode);
-      if (!registeredCommands.has(commandName)) {
-        rootNode.addEventListener(commandName, this.handleCommandEvent, { capture: true });
-        registeredCommands.add(commandName);
-      }
+    if (this.rootNode != null && !this.registeredCommands[commandName]) {
+      this.rootNode.addEventListener(commandName, this.handleCommandEvent, {
+        capture: true,
+      });
+      return (this.registeredCommands[commandName] = true);
     }
-    this.registeredCommands[commandName] = true;
   }
 };
 

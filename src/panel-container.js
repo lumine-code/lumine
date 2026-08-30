@@ -6,29 +6,20 @@ const { createPanelContainerElement } = require("./panel-container-element");
 module.exports = class PanelContainer {
   constructor({ location, dock, viewRegistry } = {}) {
     this.location = location;
-    this.destroying = false;
-    this.destroyed = false;
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
-    this.panelSubscriptions = new Map();
     this.panels = [];
     this.dock = dock;
     this.viewRegistry = viewRegistry;
   }
 
   destroy() {
-    if (this.destroyed || this.destroying) return;
-    this.destroying = true;
-    for (const panel of this.getPanels()) panel.destroy();
+    for (let panel of this.getPanels()) {
+      panel.destroy();
+    }
     this.subscriptions.dispose();
-    this.destroyed = true;
-    this.destroying = false;
     this.emitter.emit("did-destroy", this);
     this.emitter.dispose();
-  }
-
-  isDestroyed() {
-    return this.destroyed || this.destroying;
   }
 
   getElement() {
@@ -70,66 +61,18 @@ module.exports = class PanelContainer {
     return this.panels.slice();
   }
 
-  containsPanel(panel) {
-    return this.panels.includes(panel);
-  }
-
   addPanel(panel) {
-    if (this.isDestroyed()) throw new Error("Cannot add a panel to a destroyed container");
-    if (panel.isDestroyed()) throw new Error("Cannot add a destroyed panel to a container");
-    if (panel.getContainer() === this) return panel;
-    const previousContainer = panel.getContainer();
-    if (previousContainer) {
-      throw new Error("A panel cannot belong to more than one container");
+    this.subscriptions.add(panel.onDidDestroy(this.panelDestroyed.bind(this)));
+
+    const index = this.getPanelIndex(panel);
+    if (index === this.panels.length) {
+      this.panels.push(panel);
+    } else {
+      this.panels.splice(index, 0, panel);
     }
 
-    const index = this.attachPanelState(panel);
-    try {
-      this.emitter.emit("did-add-panel", { panel, index });
-    } catch (error) {
-      this.detachPanelState(panel);
-      panel.destroy();
-      throw error;
-    }
+    this.emitter.emit("did-add-panel", { panel, index });
     return panel;
-  }
-
-  removePanel(panel) {
-    const index = this.panels.indexOf(panel);
-    if (index === -1) return false;
-
-    this.detachPanelState(panel);
-    this.emitter.emit("did-remove-panel", { panel, index });
-    return true;
-  }
-
-  attachPanelState(panel, index = this.getPanelIndex(panel)) {
-    if (this.panelSubscriptions.has(panel) || this.panels.includes(panel)) {
-      throw new Error("The panel is already present in this container");
-    }
-    const destroySubscription = panel.onDidDestroy(() => this.removePanel(panel));
-    this.panelSubscriptions.set(panel, destroySubscription);
-    this.subscriptions.add(destroySubscription);
-    panel.setContainer(this);
-    this.panels.splice(index, 0, panel);
-    return index;
-  }
-
-  detachPanelState(panel) {
-    const index = this.panels.indexOf(panel);
-    if (index === -1) return -1;
-    this.panels.splice(index, 1);
-    const destroySubscription = this.panelSubscriptions.get(panel);
-    if (destroySubscription) {
-      this.panelSubscriptions.delete(panel);
-      this.subscriptions.remove(destroySubscription);
-      destroySubscription.dispose();
-    }
-    if (panel.getContainer() === this) {
-      panel.setContainer(null);
-      if (this.isModal()) panel.flowKeeper = null;
-    }
-    return index;
   }
 
   panelForItem(item) {
@@ -139,6 +82,14 @@ module.exports = class PanelContainer {
       }
     }
     return null;
+  }
+
+  panelDestroyed(panel) {
+    const index = this.panels.indexOf(panel);
+    if (index > -1) {
+      this.panels.splice(index, 1);
+      this.emitter.emit("did-remove-panel", { panel, index });
+    }
   }
 
   getPanelIndex(panel) {

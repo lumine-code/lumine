@@ -15,7 +15,6 @@ const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
-const WindowSurfaceTransitionCoordinator = require("./window-surface-transition");
 // Provided to packages through ::buildSelectList and ::buildInputDialog, so
 // that a package needs neither a manifest entry nor a pin for the list toolkit
 // and a window holds a single copy of it.
@@ -274,20 +273,18 @@ module.exports = class Workspace extends Model {
     this.project = params.project;
     this.notificationManager = params.notificationManager;
     this.viewRegistry = params.viewRegistry;
-    // This editor owns the select-list copy used by its modal factory. Set its
-    // document-aware scheduler explicitly instead of relying on module-load
-    // timing to find the global environment.
+    // The select-list dependency owns its own Etch instance, so bind it to
+    // this application's view scheduler explicitly instead of relying on
+    // module-load order and the global environment.
     SelectListView.setScheduler(this.viewRegistry);
     this.grammarRegistry = params.grammarRegistry;
     this.applicationDelegate = params.applicationDelegate;
     this.assert = params.assert;
     this.deserializerManager = params.deserializerManager;
     this.textEditorRegistry = params.textEditorRegistry;
-    this.surfaceManager = params.surfaceManager || null;
     this.styleManager = params.styleManager;
     this.draggingItem = false;
     this.itemLocationStore = new StateStore("LuminePreviousItemLocations", 1);
-    this.windowSurfaceTransitions = new WindowSurfaceTransitionCoordinator();
 
     this.emitter = new Emitter();
     this.openers = [];
@@ -305,9 +302,6 @@ module.exports = class Workspace extends Model {
       bottom: this.createDock("bottom"),
     };
     this.activePaneContainer = this.paneContainers.center;
-    this.primaryActivePaneContainer = this.paneContainers.center;
-    this.lastPublishedActivePane = this.getActivePane();
-    this.lastPublishedActivePaneItem = this.getActivePaneItem();
     this.hasActiveTextEditor = false;
     this.previousActiveFileTextEditor = undefined;
     this.previousActiveEmbeddedTextEditor = undefined;
@@ -345,14 +339,8 @@ module.exports = class Workspace extends Model {
         location: "modal",
       }),
     };
+
     this.incoming = new Map();
-    if (this.surfaceManager) {
-      this.disposables.add(
-        this.surfaceManager.onDidChangeActiveSurface((surface) =>
-          this.didChangeActiveWindowSurface(surface),
-        ),
-      );
-    }
   }
 
   getElement() {
@@ -379,14 +367,11 @@ module.exports = class Workspace extends Model {
       didChangeActivePane: this.didChangeActivePaneOnPaneContainer,
       didChangeActivePaneItem: this.didChangeActivePaneItemOnPaneContainer,
       didDestroyPaneItem: this.didDestroyPaneItem,
-      resolveActivePane: () => this.getActiveCenterPane(),
-      focusPrimaryWindow: () => this.focusPrimaryPaneContainer(this.getCenter()),
     });
   }
 
   createDock(location) {
-    let dock;
-    dock = new Dock({
+    return new Dock({
       location,
       config: this.config,
       applicationDelegate: this.applicationDelegate,
@@ -397,21 +382,13 @@ module.exports = class Workspace extends Model {
       didChangeActivePane: this.didChangeActivePaneOnPaneContainer,
       didChangeActivePaneItem: this.didChangeActivePaneItemOnPaneContainer,
       didDestroyPaneItem: this.didDestroyPaneItem,
-      focusPrimaryWindow: () => this.focusPrimaryPaneContainer(dock),
     });
-    return dock;
   }
 
   reset(packageManager) {
     this.packageManager = packageManager;
-    this.cancelStoppedChangingActivePaneItemTimeout();
     this.emitter.dispose();
     this.emitter = new Emitter();
-
-    if (this.activeItemSubscriptions) {
-      this.activeItemSubscriptions.dispose();
-      this.activeItemSubscriptions = null;
-    }
 
     if (this.activeItemTextEditorsSubscription) {
       this.activeItemTextEditorsSubscription.dispose();
@@ -434,9 +411,6 @@ module.exports = class Workspace extends Model {
       bottom: this.createDock("bottom"),
     };
     this.activePaneContainer = this.paneContainers.center;
-    this.primaryActivePaneContainer = this.paneContainers.center;
-    this.lastPublishedActivePane = this.getActivePane();
-    this.lastPublishedActivePaneItem = this.getActivePaneItem();
     this.hasActiveTextEditor = false;
     this.previousActiveFileTextEditor = undefined;
     this.previousActiveEmbeddedTextEditor = undefined;
@@ -647,10 +621,7 @@ module.exports = class Workspace extends Model {
         container = this.paneContainerForURI(uri);
       } else {
         container = this.paneContainers[location] || this.paneContainers.center;
-        const pane =
-          typeof container.resolveInsertionPane === "function"
-            ? container.resolveInsertionPane(container.getActivePane())
-            : container.getActivePane();
+        const pane = container.getActivePane();
         pane.addItem(item);
         pane.activateItem(item);
       }
@@ -707,55 +678,29 @@ module.exports = class Workspace extends Model {
   }
 
   didActivatePaneContainer(paneContainer) {
-    const surface = this.getActiveWindowSurface();
-    if (!surface || surface.isPrimary()) {
-      this.primaryActivePaneContainer = paneContainer;
-    }
     if (paneContainer !== this.getActivePaneContainer()) {
       this.activePaneContainer = paneContainer;
+      this.didChangeActivePaneItem(this.activePaneContainer.getActivePaneItem());
       this.emitter.emit("did-change-active-pane-container", this.activePaneContainer);
-      this.publishActiveContext();
+      this.emitter.emit("did-change-active-pane", this.activePaneContainer.getActivePane());
+      this.emitter.emit(
+        "did-change-active-pane-item",
+        this.activePaneContainer.getActivePaneItem(),
+      );
     }
   }
 
-  didChangeActiveWindowSurface(surface) {
-    if (!this.alive || !surface) return;
-    let pane;
-    if (surface.isPrimary()) {
-      const paneContainer = this.primaryActivePaneContainer || this.getCenter();
-      pane =
-        paneContainer === this.getCenter()
-          ? this.getCenter().getActiveTiledPane()
-          : paneContainer.getActivePane();
-    } else {
-      pane = this.detachedPaneSurfaceManager?.paneForSurface(surface) || null;
+  didChangeActivePaneOnPaneContainer(paneContainer, pane) {
+    if (paneContainer === this.getActivePaneContainer()) {
+      this.emitter.emit("did-change-active-pane", pane);
     }
-    if (!pane || pane.isDestroyed()) return;
-    pane.activate();
-    // The target can be a dock in the primary window, but changing native
-    // surfaces always changes which center pane its public getters resolve.
-    this.getCenter().didChangeActiveWindowSurface();
-    this.publishActiveContext();
-  }
-
-  getActiveCenterPane() {
-    const center = this.paneContainers?.center;
-    if (!center) return null;
-    if (!this.detachedPaneSurfaceManager) return center.paneContainer.getActivePane();
-    const surface = this.getActiveWindowSurface();
-    if (surface && !surface.isPrimary()) {
-      const detachedPane = this.detachedPaneSurfaceManager?.paneForSurface(surface);
-      if (detachedPane?.isAlive()) return detachedPane;
-    }
-    return center.getActiveTiledPane() || center.paneContainer.getActivePane();
-  }
-
-  didChangeActivePaneOnPaneContainer(paneContainer) {
-    if (paneContainer === this.getActivePaneContainer()) this.publishActiveContext();
   }
 
   didChangeActivePaneItemOnPaneContainer(paneContainer, item) {
-    if (paneContainer === this.getActivePaneContainer()) this.publishActiveContext();
+    if (paneContainer === this.getActivePaneContainer()) {
+      this.didChangeActivePaneItem(item);
+      this.emitter.emit("did-change-active-pane-item", item);
+    }
 
     if (paneContainer === this.getCenter()) {
       const hadActiveTextEditor = this.hasActiveTextEditor;
@@ -767,22 +712,6 @@ module.exports = class Workspace extends Model {
       }
 
       this.didChangeCenterTextEditorResolutions(item);
-    }
-  }
-
-  publishActiveContext() {
-    const pane = this.getActivePane();
-    const item = pane?.getActiveItem();
-    const paneChanged = pane !== this.lastPublishedActivePane;
-    const itemChanged = paneChanged || item !== this.lastPublishedActivePaneItem;
-    if (!paneChanged && !itemChanged) return;
-
-    this.lastPublishedActivePane = pane;
-    this.lastPublishedActivePaneItem = item;
-    if (paneChanged) this.emitter.emit("did-change-active-pane", pane);
-    if (itemChanged) {
-      this.didChangeActivePaneItem(item);
-      this.emitter.emit("did-change-active-pane-item", item);
     }
   }
 
@@ -875,7 +804,6 @@ module.exports = class Workspace extends Model {
               fileState === FileState.REMOVED &&
               this.config.get("core.closeDeletedFileTabs");
             previousFileState = fileState;
-            this.updateDocumentEdited();
             if (shouldClose) void pane.destroyItem(item, true);
           }),
         );
@@ -960,7 +888,7 @@ module.exports = class Workspace extends Model {
   // On macOS, fades the application window's proxy icon when the current item
   // has a dirty file state.
   updateDocumentEdited() {
-    const activePaneItem = this.getCenter().getActiveTiledPane()?.getActiveItem();
+    const activePaneItem = this.getActivePaneItem();
     const dirty =
       activePaneItem != null &&
       typeof activePaneItem.getFileState === "function" &&
@@ -1374,9 +1302,7 @@ module.exports = class Workspace extends Model {
    * Opens the given URI in Lumine asynchronously.
    * If the URI is already open, the existing item for that URI will be
    * activated. If no URI is given, or no registered opener can open
-   * the URI, a new empty {@link TextEditor} will be created. New presentation
-   * focuses the primary window; activating an already-open detached item
-   * focuses its existing surface. `activatePane: false` moves no native focus.
+   * the URI, a new empty {@link TextEditor} will be created.
    *
    * @param [itemOrURI] - An item to open or a `String` containing a URI.
    * @param {Object} [options]
@@ -1537,20 +1463,6 @@ module.exports = class Workspace extends Model {
         pane.clearPendingItem();
       }
 
-      // Detached panes are one-item surfaces. Existing items may be activated
-      // there, but every newly opened item belongs in the tiled center tree.
-      if (!pane.getItems().includes(item)) {
-        pane = pane.getContainer().resolveInsertionPane(pane);
-      }
-
-      if (options.activatePane !== false) {
-        if (pane.isDetached()) {
-          await this.focusWindowSurface(this.getWindowSurface(pane));
-        } else {
-          await this.focusPrimaryPaneContainer(this.paneContainerForPane(pane));
-        }
-      }
-
       this.itemOpened(item);
 
       if (options.activateItem === false) {
@@ -1634,7 +1546,6 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} indicating whether any items were found (and hidden).
    */
   hide(itemOrURI) {
-    this.focusPrimaryWindow();
     let foundItems = false;
 
     // If any visible item has the given URI, hide it
@@ -1711,8 +1622,7 @@ module.exports = class Workspace extends Model {
     const activateItem = options.activateItem != null ? options.activateItem : true;
 
     const uri = this.project.resolvePath(uri_);
-    let pane = this.getActivePane();
-    let item = pane.itemForURI(uri);
+    let item = this.getActivePane().itemForURI(uri);
     if (uri && item == null) {
       for (const opener of this.getOpeners()) {
         item = opener(uri, options);
@@ -1723,18 +1633,13 @@ module.exports = class Workspace extends Model {
       item = this.project.openSync(uri, { initialLine, initialColumn });
     }
 
-    const existingPane = this.paneForItem(item);
-    pane = existingPane || pane.getContainer().resolveInsertionPane(pane);
-    if (activatePane) {
-      if (pane.isDetached()) {
-        this.focusWindowSurface(this.getWindowSurface(pane));
-      } else {
-        this.focusPrimaryPaneContainer(this.paneContainerForPane(pane));
-      }
+    if (activateItem) {
+      this.getActivePane().activateItem(item);
     }
-    if (activateItem) pane.activateItem(item);
     this.itemOpened(item);
-    if (activatePane) pane.activate();
+    if (activatePane) {
+      this.getActivePane().activate();
+    }
     return item;
   }
 
@@ -1941,8 +1846,7 @@ module.exports = class Workspace extends Model {
    * @returns {SelectListView}
    */
   buildSelectList(props) {
-    const resolvedProps = this.withModalDocument(props);
-    return new SelectListView(resolvedProps);
+    return new SelectListView(props);
   }
 
   /**
@@ -1968,12 +1872,7 @@ module.exports = class Workspace extends Model {
    * @returns {InputDialogView}
    */
   buildInputDialog(props) {
-    const resolvedProps = this.withModalDocument(props);
-    return new InputDialogView(resolvedProps);
-  }
-
-  withModalDocument(props) {
-    return { ...props, document: this.getElement().ownerDocument };
+    return new InputDialogView(props);
   }
 
   /**
@@ -1988,10 +1887,6 @@ module.exports = class Workspace extends Model {
       this.modalFlowKeeper = new ModalFlow(this);
     }
     return this.modalFlowKeeper;
-  }
-
-  getActiveModalFlow() {
-    return this.getModalFlow();
   }
 
   /**
@@ -2009,8 +1904,7 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} — `false` when there is no step to go back to.
    */
   popModal() {
-    this.focusPrimaryWindow();
-    return this.getActiveModalFlow().pop();
+    return this.modalFlowKeeper ? this.modalFlowKeeper.pop() : false;
   }
 
   /**
@@ -2023,8 +1917,7 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} — `false` when the index is not an earlier step.
    */
   popModalTo(index) {
-    this.focusPrimaryWindow();
-    return this.getActiveModalFlow().popTo(index);
+    return this.modalFlowKeeper ? this.modalFlowKeeper.popTo(index) : false;
   }
 
   /**
@@ -2036,7 +1929,7 @@ module.exports = class Workspace extends Model {
    * @returns {Array} of `String` labels, root first; empty when no flow is active.
    */
   getModalTrail() {
-    return this.getActiveModalFlow().getTrail();
+    return this.modalFlowKeeper ? this.modalFlowKeeper.getTrail() : [];
   }
 
   /**
@@ -2160,32 +2053,6 @@ module.exports = class Workspace extends Model {
     return this.getPaneItems().filter((item) => item instanceof TextEditor);
   }
 
-  /**
-   * @public
-   * @status extended
-   *
-   * Return the workspace-center pane item that owns a text editor. A normal
-   * editor owns itself; a composite item may expose its file or currently
-   * active embedded editor through the standard editor-resolution methods.
-   *
-   * @param {TextEditor} editor
-   * @returns {*} Pane item, or null when the editor is not owned by the center.
-   */
-  getPaneItemForTextEditor(editor) {
-    if (!(editor instanceof TextEditor)) return null;
-    const pane = this.paneForItem(editor);
-    if (pane && this.paneContainerForItem(editor) === this.getCenter()) return editor;
-    return (
-      this.getCenter()
-        .getPaneItems()
-        .find(
-          (item) =>
-            item.getFileTextEditor?.() === editor ||
-            item.getActiveEmbeddedTextEditor?.() === editor,
-        ) || null
-    );
-  }
-
   // Long titles for every open editor, computed together and kept until
   // something they depend on changes: which editors are open, and where each
   // one's file lives. A tab bar asks for one per tab and does so again for
@@ -2207,10 +2074,7 @@ module.exports = class Workspace extends Model {
    * @public
    * @status essential
    *
-   * Get the focused native surface's active center item if it is a
-   * {@link TextEditor}. A detached pane remains part of the workspace center,
-   * so focusing its window makes its editor active here exactly as focusing a
-   * tiled pane does in the primary window.
+   * Get the workspace center's active item if it is a {@link TextEditor}.
    *
    * @returns {TextEditor} or `undefined` if the workspace center's current active item is not a {@link TextEditor}.
    */
@@ -2227,7 +2091,7 @@ module.exports = class Workspace extends Model {
    *
    * Get the {@link TextEditor} holding the active item's file content.
    *
-   * The focused surface's active center item itself when it is a text editor;
+   * The workspace center's active item itself when it is a text editor;
    * otherwise the editor the item names through its `getFileTextEditor()`
    * method — a notebook names its backing source editor. File-identity status
    * tiles (encoding, line ending) describe this editor, so they stay truthful
@@ -2253,7 +2117,7 @@ module.exports = class Workspace extends Model {
    *
    * Get the {@link TextEditor} being edited inside the active item.
    *
-   * The focused surface's active center item itself when it is a text editor;
+   * The workspace center's active item itself when it is a text editor;
    * otherwise the editor the item names through its
    * `getActiveEmbeddedTextEditor()` method — a notebook names its active
    * cell's editor. Editing-state status tiles (the grammar tile) describe
@@ -2378,11 +2242,7 @@ module.exports = class Workspace extends Model {
   }
 
   getVisiblePanes() {
-    const panes = this.getCenter().getTiledPanes();
-    for (const container of this.getVisiblePaneContainers()) {
-      if (container !== this.getCenter()) panes.push(...container.getPanes());
-    }
-    return panes;
+    return _.flatten(this.getVisiblePaneContainers().map((container) => container.getPanes()));
   }
 
   /**
@@ -2404,7 +2264,6 @@ module.exports = class Workspace extends Model {
    * Make the next pane active.
    */
   activateNextPane() {
-    this.focusPrimaryWindow();
     return this.getActivePaneContainer().activateNextPane();
   }
 
@@ -2415,7 +2274,6 @@ module.exports = class Workspace extends Model {
    * Make the previous pane active.
    */
   activatePreviousPane() {
-    this.focusPrimaryWindow();
     return this.getActivePaneContainer().activatePreviousPane();
   }
 
@@ -2444,11 +2302,6 @@ module.exports = class Workspace extends Model {
    */
   paneContainerForItem(item) {
     return this.getPaneContainers().find((container) => container.paneForItem(item));
-  }
-
-  /** @private */
-  paneContainerForPane(pane) {
-    return this.getPaneContainers().find((container) => container.getPanes().includes(pane));
   }
 
   /**
@@ -2497,265 +2350,6 @@ module.exports = class Workspace extends Model {
 
   /**
    * @public
-   * @status public
-   *
-   * Move a center pane item into a one-item pane presented in a native window.
-   * The same item and view objects are transferred; they are never serialized
-   * or reopened during the operation.
-   *
-   * @param item - A pane item currently owned by a tiled center pane.
-   * @param {Object} [options] - Initial native-window bounds and an optional DnD transaction id.
-   * @returns {Promise<DetachedPane|undefined>} The detached pane, or `undefined` without an item.
-   */
-  async detachPaneItem(item = this.getCenter().getActivePaneItem(), options) {
-    if (!item) return;
-    if (this.detachedPaneSurfaceManager) {
-      return await this.detachedPaneSurfaceManager.detachPaneItem(item, options);
-    }
-    return this.getCenter().detachPaneItem(item, options);
-  }
-
-  /**
-   * @public
-   * @status public
-   *
-   * Move the sole item of a detached pane back into the tiled center.
-   *
-   * @param pane - The `DetachedPane` to attach.
-   * @param {Object} [options] - Optional explicit tiled pane and item index.
-   * @returns {Promise<Pane>} The tiled pane receiving the item.
-   */
-  async attachDetachedPane(pane, options) {
-    if (this.detachedPaneSurfaceManager) {
-      return await this.detachedPaneSurfaceManager.attachDetachedPane(pane, options);
-    }
-    return this.getCenter().attachDetachedPane(pane, options);
-  }
-
-  /** @private */
-  setDetachedPaneSurfaceManager(manager) {
-    this.detachedPaneSurfaceManager = manager;
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Return the native-window surface that currently owns workspace focus.
-   * Active pane and editor getters resolve against this surface.
-   *
-   * @returns {WindowSurface|null}
-   */
-  getActiveWindowSurface() {
-    return this.surfaceManager?.getActive() || null;
-  }
-
-  /** Return the primary native-window surface for this workspace. */
-  getPrimaryWindowSurface() {
-    return this.surfaceManager?.getPrimary() || null;
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Focus the primary native window that owns workspace chrome. The logical
-   * surface changes synchronously; the returned value may be a Promise for
-   * the native window-manager request.
-   *
-   * @returns {Boolean|Promise} whether focus was requested, or its native completion.
-   */
-  focusPrimaryWindow() {
-    const primary = this.surfaceManager?.getPrimary();
-    if (primary) {
-      if (this.surfaceManager.getActive() === primary) return true;
-      return this.surfaceManager.focusPrimary();
-    }
-    return this.applicationDelegate.focusWindow?.() ?? false;
-  }
-
-  /** @private */
-  focusPrimaryPaneContainer(paneContainer) {
-    if (!this.getPaneContainers().includes(paneContainer)) {
-      throw new TypeError("Primary focus requires a live workspace pane container");
-    }
-    this.primaryActivePaneContainer = paneContainer;
-    return this.focusPrimaryWindow();
-  }
-
-  /** @private */
-  focusWindowSurface(surface) {
-    if (!this.surfaceManager || !surface) return false;
-    return this.surfaceManager.focus(surface);
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Return every native-window surface presenting this workspace. The primary
-   * window and detached-pane windows all present the same workspace model.
-   *
-   * @returns {Array<WindowSurface>}
-   */
-  getWindowSurfaces() {
-    return this.surfaceManager?.getAll() || [];
-  }
-
-  /** Observe every current and future workspace window surface. */
-  observeWindowSurfaces(callback) {
-    for (const surface of this.getWindowSurfaces()) callback(surface);
-    return this.surfaceManager?.onDidAddSurface(callback) || new Disposable();
-  }
-
-  /** Subscribe when a workspace window surface is removed. */
-  onDidRemoveWindowSurface(callback) {
-    return this.surfaceManager?.onDidRemoveSurface(callback) || new Disposable();
-  }
-
-  /** Subscribe when native-window focus changes the active surface. */
-  onDidChangeActiveWindowSurface(callback) {
-    return this.surfaceManager?.onDidChangeActiveSurface(callback) || new Disposable();
-  }
-
-  /** Observe the active surface now and whenever native-window focus changes. */
-  observeActiveWindowSurface(callback) {
-    callback(this.getActiveWindowSurface());
-    return this.onDidChangeActiveWindowSurface(callback);
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Return the renderer window surface currently presenting an item or pane,
-   * or the surface whose Document owns a DOM target.
-   *
-   * @param {Object|Pane|Node|Document|Window} itemOrPane - Workspace model or DOM value to resolve.
-   * @returns {WindowSurface|null} Its current renderer surface.
-   */
-  getWindowSurface(itemOrPane) {
-    const directSurface = this.surfaceManager?.surfaceFor(itemOrPane);
-    if (directSurface) return directSurface;
-    const itemPane = this.paneForItem(itemOrPane);
-    const pane = itemPane || (this.getPanes().includes(itemOrPane) ? itemOrPane : null);
-    if (!pane) return null;
-    if (!this.detachedPaneSurfaceManager) {
-      return this.surfaceManager?.getPrimary() || null;
-    }
-    return this.detachedPaneSurfaceManager.surfaceForPane(pane);
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Show a native confirmation dialog owned by the window presenting a live
-   * pane item.
-   *
-   * @param item - A live workspace pane item.
-   * @param {Object} options - Native confirmation options.
-   * @returns {Promise} resolving to the selected button index.
-   */
-  confirmForPaneItem(item, options) {
-    return this.dialogServiceForPaneItem(item).confirm(options);
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Show a native save dialog owned by the window presenting a live pane item.
-   *
-   * @param item - A live workspace pane item.
-   * @param {Object} options - Native save-dialog options.
-   * @returns {Promise} resolving to the native save-dialog result.
-   */
-  showSaveDialogForPaneItem(item, options) {
-    return this.dialogServiceForPaneItem(item).showSaveDialog(options);
-  }
-
-  /** @private */
-  dialogServiceForPaneItem(item) {
-    const pane = this.paneForItem(item);
-    if (!pane || !pane.isAlive() || !pane.getItems().includes(item)) {
-      throw new TypeError("A native pane-item dialog requires a live workspace pane item");
-    }
-    const surface = this.getWindowSurface(pane);
-    return surface && !surface.isPrimary() ? surface.windowService : this.applicationDelegate;
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Observe which native-window surface presents a pane item.
-   *
-   * @returns {Disposable} A subscription disposable.
-   */
-  observePaneItemSurface(item, callback) {
-    if (item == null || typeof callback !== "function") {
-      throw new TypeError("Surface observation requires an item and callback");
-    }
-    const subscriptions = new CompositeDisposable();
-    let surfaceSubscription = null;
-    let lastSurface;
-    const emit = (surface) => {
-      if (surface === lastSurface) return;
-      lastSurface = surface;
-      callback(surface);
-    };
-    const bind = () => {
-      const pane = this.paneForItem(item);
-      if (!pane) return false;
-      surfaceSubscription?.dispose();
-      surfaceSubscription = null;
-      if (this.paneContainerForItem(item) === this.getCenter() && this.detachedPaneSurfaceManager) {
-        surfaceSubscription = this.detachedPaneSurfaceManager.observePaneItemSurface(item, emit);
-        subscriptions.add(surfaceSubscription);
-      } else {
-        emit(this.getPrimaryWindowSurface());
-      }
-      return true;
-    };
-
-    if (!bind()) {
-      // Openers construct items before Workspace::open assigns their pane. At
-      // that point primary is the only legal initial presentation surface.
-      emit(this.getPrimaryWindowSurface());
-      const added = this.onDidAddPaneItem(({ item: addedItem }) => {
-        if (addedItem === item) bind();
-      });
-      subscriptions.add(added);
-    }
-    return subscriptions;
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Participate in every pane-item transition between native-window surfaces.
-   * The callback runs before the DOM moves and may return async `commit` and
-   * `rollback` methods. `commit` runs after adoption and connection in the new
-   * document; `rollback` runs after physical restoration to the old document.
-   *
-   * @param {Function} callback - Called with a frozen transition context. It may return a participant object, a promise for one, or nothing.
-   * @param {Object} callback.context - The transition context.
-   * @param {string} callback.context.id - A unique transition identifier.
-   * @param {"detach"|"attach"|"restore"|"recovery"} callback.context.reason - Why the item is changing surfaces.
-   * @param callback.context.item - The pane item whose existing view is moving.
-   * @param {Object} callback.context.from - A frozen snapshot of the source surface, with `id`, `kind`, `window`, `document`, and `element` properties.
-   * @param {Object} callback.context.to - A frozen snapshot of the destination surface, with `id`, `kind`, `window`, `document`, and `element` properties.
-   * @param {AbortSignal} callback.context.signal - Aborted if the transition can no longer finish.
-   * @returns {Disposable} A subscription on which `.dispose()` can be called to stop participating in future transitions.
-   */
-  addWindowSurfaceTransitionObserver(callback) {
-    return this.windowSurfaceTransitions.addObserver(callback);
-  }
-
-  /**
-   * @public
    * @status extended
    *
    * Close the workspace center's active pane item, or its active pane
@@ -2767,7 +2361,7 @@ module.exports = class Workspace extends Model {
   closeActivePaneItemOrEmptyPaneOrWindow() {
     if (this.getCenter().getActivePaneItem() != null) {
       this.getCenter().getActivePane().destroyActiveItem();
-    } else if (this.getCenter().getTiledPanes().length > 1) {
+    } else if (this.getCenter().getPanes().length > 1) {
       this.getCenter().destroyActivePane();
     } else if (this.config.get("core.closeEmptyWindows")) {
       lumine.window.close();
@@ -2809,9 +2403,6 @@ module.exports = class Workspace extends Model {
   // Adds the destroyed item's uri to the list of items to reopen.
   didDestroyPaneItem({ item }) {
     this.invalidateLongTitles();
-    for (const panel of this.getPanels("modal")) {
-      if (panel.owner === item) panel.destroy();
-    }
     let uri;
     if (typeof item.getURI === "function") {
       uri = item.getURI();
@@ -2827,9 +2418,6 @@ module.exports = class Workspace extends Model {
   // Called by Model superclass when destroyed
   destroyed() {
     this.closeStateStore();
-    this.windowSurfaceTransitions.destroy();
-    this.modalFlowKeeper?.destroy();
-    this.modalFlowKeeper = null;
     this.paneContainers.center.destroy();
     this.paneContainers.left.destroy();
     this.paneContainers.right.destroy();
@@ -3107,7 +2695,6 @@ module.exports = class Workspace extends Model {
    * @param {Boolean|Element} [options.autoFocus] - true if you want modal focus managed for you by Lumine. Lumine will automatically focus on this element or your modal panel's first tabbable element when the modal opens and will restore the previously selected element when the modal closes. Lumine will also automatically restrict user tab focus within your modal while it is open. (default: false)
    * @param {Boolean} [options.restoreFocus] - false if you want to manage focus restoration yourself. By default, when a modal panel is hidden, focus returns to the element that was focused before the modal opened — or, for chained modals, before the first modal in the chain opened. (default: true)
    * @param {String} [options.crumb] - the label this panel carries on the modal breadcrumb trail. Used when the panel is shown as a flow step without an explicit label — `panel.show({crumb: true})` — and when a step shown on top of this panel adopts it as the trail root. See {@link Panel#show}.
-   * @param {*} [options.owner] - a live workspace pane item whose destruction also destroys this modal. The modal itself is always presented in the primary window.
    * @returns {Panel}
    */
   addModalPanel(options = {}) {
@@ -3122,9 +2709,12 @@ module.exports = class Workspace extends Model {
    * @returns {Panel} associated with the given item. Returns `null` when the item has no panel.
    */
   panelForItem(item) {
-    for (const container of Object.values(this.panelContainers)) {
+    for (let location in this.panelContainers) {
+      const container = this.panelContainers[location];
       const panel = container.panelForItem(item);
-      if (panel != null) return panel;
+      if (panel != null) {
+        return panel;
+      }
     }
     return null;
   }
@@ -3133,24 +2723,12 @@ module.exports = class Workspace extends Model {
     return this.panelContainers[location].getPanels();
   }
 
-  addPanel(location, options = {}) {
-    if (options.surface != null || options.surfaceRelocatable != null) {
-      throw new TypeError("Workspace panels are presented only in the primary window");
+  addPanel(location, options) {
+    if (options == null) {
+      options = {};
     }
-    if (options.owner != null) {
-      if (location !== "modal") {
-        throw new TypeError("Only a modal panel can have a pane-item owner");
-      }
-      const pane = this.paneForItem(options.owner);
-      if (!pane || !pane.isAlive() || !pane.getItems().includes(options.owner)) {
-        throw new TypeError("A modal owner must be a live workspace pane item");
-      }
-    }
-
-    if (options.visible !== false) this.focusPrimaryWindow();
-    const panel = new Panel(options, this.viewRegistry, () => this.focusPrimaryWindow());
+    const panel = new Panel(options, this.viewRegistry);
     if (location === "modal") {
-      panel.owner = options.owner ?? null;
       panel.flowKeeper = this.getModalFlow();
     } else if (panel.crumb != null) {
       throw new TypeError("The crumb option is only supported on modal panels");
@@ -3496,7 +3074,7 @@ module.exports = class Workspace extends Model {
       };
 
       if (this.config.get("git.confirmCheckoutHeadRevision")) {
-        const response = await this.confirmForPaneItem(editor, {
+        const response = await this.applicationDelegate.confirm({
           message: "Confirm Checkout HEAD Revision",
           detail: `Are you sure you want to discard all changes to "${editor.getFileName()}" since the last Git commit?`,
           buttons: ["OK", "Cancel"],

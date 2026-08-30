@@ -241,7 +241,7 @@ describe("WindowEventHandler", () => {
       expect(dispatchedCommands[0].type).toBe("foo-command");
     }));
 
-  describe("native key bindings", () => {
+  describe("native key bindings", () =>
     it("correctly dispatches them to active elements with the '.native-key-bindings' class", () => {
       spyOn(lumine.applicationDelegate, "performWebContentsAction");
 
@@ -266,43 +266,5 @@ describe("WindowEventHandler", () => {
       lumine.dispatchApplicationMenuCommand("core:paste");
 
       expect(lumine.applicationDelegate.performWebContentsAction).not.toHaveBeenCalled();
-    });
-
-    it("targets the detached web contents for child-native inputs", async () => {
-      lumine.initializeDetachedPaneSurfaces({ force: true });
-      const item = { element: document.createElement("div") };
-      const input = document.createElement("input");
-      input.classList.add("native-key-bindings");
-      item.element.appendChild(input);
-      lumine.workspace.getCenter().getActiveTiledPane().addItem(item);
-      let detachedPane;
-
-      try {
-        detachedPane = await lumine.workspace.detachPaneItem(item, { show: false });
-        const surface = lumine.workspace.getWindowSurface(item);
-        const childAction = spyOn(
-          surface.windowService,
-          "performWebContentsAction",
-        ).and.resolveTo();
-        const primaryAction = spyOn(lumine.applicationDelegate, "performWebContentsAction");
-
-        for (const [command, action] of [
-          ["core:copy", "copy"],
-          ["core:paste", "paste"],
-          ["core:undo", "undo"],
-          ["core:redo", "redo"],
-          ["core:select-all", "selectAll"],
-          ["core:cut", "cut"],
-        ]) {
-          lumine.commands.dispatch(input, command);
-          expect(childAction).toHaveBeenCalledWith(action);
-        }
-        expect(primaryAction).not.toHaveBeenCalled();
-      } finally {
-        if (detachedPane?.isDetached?.()) await lumine.workspace.attachDetachedPane(detachedPane);
-        lumine.workspace.paneForItem(item)?.destroyItem(item, true);
-        lumine.initializeDetachedPaneSurfaces();
-      }
-    });
-  });
+    }));
 });

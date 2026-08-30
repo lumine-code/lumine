@@ -27,7 +27,6 @@ const {
   isKeyup,
 } = require("./keymap-helpers");
 const PartialKeyupMatcher = require("./partial-keyup-matcher");
-const { customEventFor, documentFor, windowFor } = require("./dom-context");
 
 const Platforms = ["darwin", "freebsd", "linux", "sunos", "win32"];
 const OtherPlatforms = Platforms.filter((platform) => platform !== process.platform);
@@ -99,6 +98,14 @@ module.exports = KeymapManager = (function () {
        */
 
       this.prototype.partialMatchTimeout = 1000;
+
+      this.prototype.defaultTarget = null;
+      this.prototype.pendingPartialMatches = null;
+      this.prototype.pendingStateTimeoutHandle = null;
+
+      // Pending matches to bindings that begin with keydowns and end with a subset
+      // of matching keyups
+      this.prototype.pendingKeyupMatcher = new PartialKeyupMatcher();
     }
     /**
      * @category Class Methods
@@ -144,11 +151,6 @@ module.exports = KeymapManager = (function () {
       if (options == null) {
         options = {};
       }
-      this.documentStates = new WeakMap();
-      this.fallbackState = this.createDocumentState(null);
-      this.activeDocumentState = null;
-      this.lastDocumentState = null;
-      this._defaultTarget = null;
       for (var key in options) {
         var value = options[key];
         this[key] = value;
@@ -168,126 +170,9 @@ module.exports = KeymapManager = (function () {
     clear() {
       this.emitter = new Emitter();
       this.keyBindings = [];
-      this.documentStates = new WeakMap();
-      this.fallbackState = this.createDocumentState(null);
-      this.lastDocumentState = null;
-      if (this._defaultTarget)
-        this.stateForDocument(documentFor(this._defaultTarget)).defaultTarget = this._defaultTarget;
-    }
-
-    createDocumentState(document) {
-      return {
-        document,
-        defaultTarget: null,
-        queuedKeyboardEvents: [],
-        queuedKeystrokes: [],
-        bindingsToDisable: [],
-        pendingPartialMatches: null,
-        pendingStateTimeoutHandle: null,
-        pendingKeyupMatcher: new PartialKeyupMatcher(),
-      };
-    }
-
-    stateForDocument(document, create = true) {
-      if (!document) return this.fallbackState;
-      let state = this.documentStates.get(document);
-      if (!state && create) {
-        state = this.createDocumentState(document);
-        if (this._defaultTarget && documentFor(this._defaultTarget) === document) {
-          state.defaultTarget = this._defaultTarget;
-        }
-        this.documentStates.set(document, state);
-      }
-      return state || null;
-    }
-
-    currentDocumentState() {
-      return (
-        this.activeDocumentState ||
-        this.lastDocumentState ||
-        this.stateForDocument(documentFor(this._defaultTarget))
-      );
-    }
-
-    withDocumentState(state, callback) {
-      if (this.activeDocumentState === state) return callback();
-      const previousState = this.activeDocumentState;
-      this.activeDocumentState = state;
-      this.lastDocumentState = state;
-      try {
-        return callback();
-      } finally {
-        this.activeDocumentState = previousState;
-      }
-    }
-
-    setDefaultTarget(document, target) {
-      if (target === undefined) {
-        target = document;
-        document = documentFor(target);
-      }
-      if (target != null && documentFor(target) !== document) {
-        throw new TypeError("A keymap default target must belong to its Document");
-      }
-      this.stateForDocument(document).defaultTarget = target;
-      if (target && !this._defaultTarget) this._defaultTarget = target;
-    }
-
-    get defaultTarget() {
-      return this._defaultTarget;
-    }
-
-    set defaultTarget(target) {
-      this._defaultTarget = target;
-      if (target) this.stateForDocument(documentFor(target)).defaultTarget = target;
-    }
-
-    get queuedKeyboardEvents() {
-      return this.currentDocumentState().queuedKeyboardEvents;
-    }
-
-    set queuedKeyboardEvents(value) {
-      this.currentDocumentState().queuedKeyboardEvents = value;
-    }
-
-    get queuedKeystrokes() {
-      return this.currentDocumentState().queuedKeystrokes;
-    }
-
-    set queuedKeystrokes(value) {
-      this.currentDocumentState().queuedKeystrokes = value;
-    }
-
-    get bindingsToDisable() {
-      return this.currentDocumentState().bindingsToDisable;
-    }
-
-    set bindingsToDisable(value) {
-      this.currentDocumentState().bindingsToDisable = value;
-    }
-
-    get pendingPartialMatches() {
-      return this.currentDocumentState().pendingPartialMatches;
-    }
-
-    set pendingPartialMatches(value) {
-      this.currentDocumentState().pendingPartialMatches = value;
-    }
-
-    get pendingStateTimeoutHandle() {
-      return this.currentDocumentState().pendingStateTimeoutHandle;
-    }
-
-    set pendingStateTimeoutHandle(value) {
-      this.currentDocumentState().pendingStateTimeoutHandle = value;
-    }
-
-    get pendingKeyupMatcher() {
-      return this.currentDocumentState().pendingKeyupMatcher;
-    }
-
-    set pendingKeyupMatcher(value) {
-      this.currentDocumentState().pendingKeyupMatcher = value;
+      this.queuedKeyboardEvents = [];
+      this.queuedKeystrokes = [];
+      return (this.bindingsToDisable = []);
     }
 
     /**
@@ -559,8 +444,7 @@ module.exports = KeymapManager = (function () {
         const candidateBindings = bindings;
         bindings = [];
         let element = target;
-        const targetDocument = documentFor(target);
-        while (element != null && element !== targetDocument) {
+        while (element != null && element !== document) {
           var matchingBindings = candidateBindings
             .filter((binding) => element.webkitMatchesSelector(binding.selector))
             .sort((a, b) => a.compare(b));
@@ -739,11 +623,6 @@ module.exports = KeymapManager = (function () {
      * @param event - A `KeyboardEvent` of type 'keydown'
      */
     handleKeyboardEvent(event, param) {
-      const state = this.stateForDocument(documentFor(event.target));
-      return this.withDocumentState(state, () => this.handleKeyboardEventForDocument(event, param));
-    }
-
-    handleKeyboardEventForDocument(event, param) {
       // Handling keyboard events is complicated and very nuanced. The complexity
       // is all due to supporting multi-stroke bindings. An example binding we'll
       // use throughout this very long comment:
@@ -855,11 +734,9 @@ module.exports = KeymapManager = (function () {
 
       // If the event's target is document.body, assign it to defaultTarget instead
       // to provide a catch-all element when nothing is focused.
-      const targetDocument = documentFor(event.target);
       let { target } = event;
-      const defaultTarget = this.currentDocumentState().defaultTarget;
-      if (event.target === targetDocument?.body && defaultTarget != null) {
-        target = defaultTarget;
+      if (event.target === document.body && this.defaultTarget != null) {
+        target = this.defaultTarget;
       }
 
       // First screen for any bindings that match the current keystrokes,
@@ -899,7 +776,7 @@ module.exports = KeymapManager = (function () {
       if (exactMatchCandidates.length > 0) {
         let currentTarget = target;
         let eventHandled = false;
-        while (!eventHandled && currentTarget != null && currentTarget !== targetDocument) {
+        while (!eventHandled && currentTarget != null && currentTarget !== document) {
           var exactMatches = this.findExactMatches(exactMatchCandidates, currentTarget);
           for (exactMatchCandidate of Array.from(exactMatches)) {
             if (exactMatchCandidate.command === "native!") {
@@ -1076,10 +953,8 @@ module.exports = KeymapManager = (function () {
     simulateTextInput(keydownEvent) {
       let character;
       if ((character = characterForKeyboardEvent(keydownEvent))) {
-        const targetDocument = documentFor(keydownEvent.target);
-        const targetWindow = windowFor(keydownEvent.target);
-        const textInputEvent = targetDocument.createEvent("TextEvent");
-        textInputEvent.initTextEvent("textInput", true, true, targetWindow, character);
+        const textInputEvent = document.createEvent("TextEvent");
+        textInputEvent.initTextEvent("textInput", true, true, window, character);
         return keydownEvent.target.dispatchEvent(textInputEvent);
       }
     }
@@ -1126,8 +1001,7 @@ module.exports = KeymapManager = (function () {
         }
       });
 
-      const targetDocument = documentFor(target);
-      while (partialMatchCandidates.length > 0 && target != null && target !== targetDocument) {
+      while (partialMatchCandidates.length > 0 && target != null && target !== document) {
         partialMatchCandidates = partialMatchCandidates.filter(function (binding) {
           if (
             !ignoreKeystrokes.has(binding.keystrokes) &&
@@ -1166,31 +1040,17 @@ module.exports = KeymapManager = (function () {
       }
       this.pendingPartialMatches = pendingPartialMatches;
       if (enableTimeout) {
-        const state = this.currentDocumentState();
-        const timerWindow = state.document?.defaultView || globalThis;
-        return (this.pendingStateTimeoutHandle = timerWindow.setTimeout(
-          () => this.withDocumentState(state, () => this.terminatePendingState(true)),
+        return (this.pendingStateTimeoutHandle = setTimeout(
+          this.terminatePendingState.bind(this, true),
           this.partialMatchTimeout,
         ));
       }
     }
 
     cancelPendingState() {
-      const state = this.currentDocumentState();
-      const timerWindow = state.document?.defaultView || globalThis;
-      timerWindow.clearTimeout(this.pendingStateTimeoutHandle);
+      clearTimeout(this.pendingStateTimeoutHandle);
       this.pendingStateTimeoutHandle = null;
       return (this.pendingPartialMatches = null);
-    }
-
-    cancelPendingStateForDocument(document) {
-      const state = this.stateForDocument(document, false);
-      if (!state) return;
-      return this.withDocumentState(state, () => {
-        if (this.pendingStateTimeoutHandle != null) this.cancelPendingState();
-        this.clearQueuedKeystrokes();
-        this.pendingKeyupMatcher = new PartialKeyupMatcher();
-      });
     }
 
     // This is called by {@link #handleKeyboardEvent} when no matching bindings are
@@ -1238,11 +1098,11 @@ module.exports = KeymapManager = (function () {
       // Here we use prototype chain injection to add CommandEvent methods to this
       // custom event to support aborting key bindings and simulated bubbling for
       // detached targets.
-      const commandEvent = customEventFor(target, command, { bubbles: true, cancelable: true });
-      Object.setPrototypeOf(commandEvent, CommandEvent.prototype);
+      const commandEvent = new CustomEvent(command, { bubbles: true, cancelable: true });
+      commandEvent.__proto__ = CommandEvent.prototype;
       commandEvent.originalEvent = keyboardEvent;
 
-      if (documentFor(target)?.contains(target)) {
+      if (document.contains(target)) {
         target.dispatchEvent(commandEvent);
       } else {
         this.simulateBubblingOnDetachedTarget(target, commandEvent);
@@ -1269,16 +1129,15 @@ module.exports = KeymapManager = (function () {
         },
       });
       var currentTarget = target;
-      const targetWindow = windowFor(target);
       while (currentTarget != null) {
         currentTarget.dispatchEvent(commandEvent);
         if (commandEvent.propagationStopped) {
           break;
         }
-        if (currentTarget === targetWindow) {
+        if (currentTarget === window) {
           break;
         }
-        currentTarget = currentTarget.parentNode != null ? currentTarget.parentNode : targetWindow;
+        currentTarget = currentTarget.parentNode != null ? currentTarget.parentNode : window;
       }
     }
   };

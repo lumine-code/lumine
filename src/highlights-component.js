@@ -1,7 +1,6 @@
 module.exports = class HighlightsComponent {
   constructor(props) {
     this.props = {};
-    const document = props.document || globalThis.document;
     this.element = document.createElement("div");
     this.element.className = "highlights";
     this.element.style.contain = "strict";
@@ -31,10 +30,7 @@ module.exports = class HighlightsComponent {
       if (highlightDecorations) {
         for (let i = 0; i < highlightDecorations.length; i++) {
           const highlightDecoration = highlightDecorations[i];
-          const highlightProps = Object.assign(
-            { lineHeight, document: this.element.ownerDocument },
-            highlightDecorations[i],
-          );
+          const highlightProps = Object.assign({ lineHeight }, highlightDecorations[i]);
 
           let highlightComponent = this.highlightComponentsByKey.get(highlightDecoration.key);
           if (highlightComponent) {
@@ -91,7 +87,6 @@ module.exports = class HighlightsComponent {
 class HighlightComponent {
   constructor(props) {
     this.props = props;
-    const document = props.document || globalThis.document;
     this.element = document.createElement("div");
     this.lastClassName = null;
     this.renderRegions();
@@ -101,7 +96,7 @@ class HighlightComponent {
   destroy() {
     if (this.timeoutsByClassName) {
       this.timeoutsByClassName.forEach((timeout) => {
-        this.element.ownerDocument.defaultView.clearTimeout(timeout);
+        window.clearTimeout(timeout);
       });
       this.timeoutsByClassName.clear();
     }
@@ -123,15 +118,15 @@ class HighlightComponent {
     // flash again on the next frame to ensure CSS transitions apply to the
     // second flash.
     if (this.timeoutsByClassName.has(flashClass)) {
-      this.element.ownerDocument.defaultView.clearTimeout(this.timeoutsByClassName.get(flashClass));
+      window.clearTimeout(this.timeoutsByClassName.get(flashClass));
       this.timeoutsByClassName.delete(flashClass);
       this.element.classList.remove(flashClass);
-      this.element.ownerDocument.defaultView.requestAnimationFrame(() => this.performFlash());
+      requestAnimationFrame(() => this.performFlash());
     } else {
       this.element.classList.add(flashClass);
       this.timeoutsByClassName.set(
         flashClass,
-        this.element.ownerDocument.defaultView.setTimeout(() => {
+        window.setTimeout(() => {
           this.element.classList.remove(flashClass);
         }, flashDuration),
       );
@@ -165,7 +160,7 @@ class HighlightComponent {
         // should start vertically; the `rect` just gets used for its
         // `left` and `width`.
         children.push(
-          buildRegion(this.element.ownerDocument, regionClassName, {
+          buildRegion(regionClassName, {
             top: startPixelTop + "px",
             left: r.left + "px",
             width: r.width + "px",
@@ -195,7 +190,7 @@ class HighlightComponent {
           style.width = r.width + "px";
         }
 
-        children.push(buildRegion(this.element.ownerDocument, regionClassName, style));
+        children.push(buildRegion(regionClassName, style));
       }
 
       if (screenRange.end.row - screenRange.start.row > 1) {
@@ -203,7 +198,7 @@ class HighlightComponent {
         // and ending lines of the selection, we can represent all of it with a
         // single decoration.
         children.push(
-          buildRegion(this.element.ownerDocument, regionClassName, {
+          buildRegion(regionClassName, {
             top: startPixelTop + lineHeight + "px",
             left: 0,
             right: 0,
@@ -231,7 +226,7 @@ class HighlightComponent {
             style.width = r.left + r.width + "px";
             style.left = 0;
           }
-          children.push(buildRegion(this.element.ownerDocument, regionClassName, style));
+          children.push(buildRegion(regionClassName, style));
         }
       }
     }
@@ -240,7 +235,7 @@ class HighlightComponent {
   }
 }
 
-function buildRegion(document, className, style) {
+function buildRegion(className, style) {
   const region = document.createElement("div");
   region.className = className;
   region.style.position = "absolute";

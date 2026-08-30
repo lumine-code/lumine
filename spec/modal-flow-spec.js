@@ -181,35 +181,6 @@ describe("modal flow", () => {
     });
   });
 
-  describe("native-window presentation", () => {
-    it("presents an owner modal only in the primary workspace", async () => {
-      lumine.initializeDetachedPaneSurfaces({ force: true });
-      const editor = lumine.workspace.buildTextEditor();
-      lumine.workspace.getCenter().getActiveTiledPane().addItem(editor);
-      let detachedPane;
-
-      try {
-        detachedPane = await lumine.workspace.detachPaneItem(editor, { show: false });
-        const detached = lumine.workspace.getWindowSurface(editor);
-        lumine.windowSurfaces.activate(detached);
-        const panel = addModal({ owner: editor });
-
-        panel.show();
-
-        expect(lumine.workspace.getActiveWindowSurface()).toBe(
-          lumine.workspace.getPrimaryWindowSurface(),
-        );
-        expect(panel.getContainer()).toBe(lumine.workspace.panelContainers.modal);
-        expect(panel.getElement().ownerDocument).toBe(document);
-        expect(detached.element.querySelector("lumine-panel-container.modal")).toBeNull();
-      } finally {
-        if (detachedPane?.isDetached?.()) await lumine.workspace.attachDetachedPane(detachedPane);
-        lumine.workspace.paneForItem(editor)?.destroyItem(editor, true);
-        lumine.initializeDetachedPaneSurfaces();
-      }
-    });
-  });
-
   describe("trail teardown", () => {
     it("clears when the top step is hidden by its owner", () => {
       const root = addModal({ crumb: "Root" });

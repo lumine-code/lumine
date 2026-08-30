@@ -1,13 +1,11 @@
 const { Menu } = require("electron");
 
 module.exports = class ContextMenu {
-  constructor(template, lumineWindow, options = {}) {
+  constructor(template, lumineWindow) {
     this.lumineWindow = lumineWindow;
-    this.browserWindow = options.browserWindow || lumineWindow.browserWindow;
-    this.sendCommand = options.sendCommand;
     this.createClickHandlers(template);
     const menu = Menu.buildFromTemplate(template);
-    menu.popup({ window: this.browserWindow, callback: options.onClose });
+    menu.popup({ window: this.lumineWindow.browserWindow });
   }
 
   // It's necessary to build the event handlers in this process, otherwise
@@ -19,15 +17,11 @@ module.exports = class ContextMenu {
         if (!item.commandDetail) item.commandDetail = {};
         item.commandDetail.contextCommand = true;
         item.click = () => {
-          if (this.sendCommand) {
-            this.sendCommand(item.command, item.commandDetail);
-          } else {
-            global.lumineApplication.sendCommandToWindow(
-              item.command,
-              this.lumineWindow,
-              item.commandDetail,
-            );
-          }
+          global.lumineApplication.sendCommandToWindow(
+            item.command,
+            this.lumineWindow,
+            item.commandDetail,
+          );
         };
       } else if (item.submenu) {
         this.createClickHandlers(item.submenu);

@@ -303,31 +303,9 @@ module.exports = class ContextMenuManager {
     return this.applicationDelegate.showContextMenu(menuTemplate);
   }
 
-  showForSurfaceEvent(event, surface) {
-    const menuTemplate = this.templateForEvent(event);
-    if (!(menuTemplate && menuTemplate.length > 0)) return;
-    this.appendMultiKeystrokeLabels(menuTemplate);
-    const requestId = `surface-context-${++this.nextSurfaceRequestId}`;
-    this.surfaceTargets.set(requestId, event.target);
-    return surface.windowService.showContextMenu(requestId, menuTemplate).catch((error) => {
-      this.surfaceTargets.delete(requestId);
-      throw error;
-    });
-  }
-
-  targetForSurfaceRequest(requestId) {
-    return this.surfaceTargets.get(requestId) || null;
-  }
-
-  closeSurfaceRequest(requestId) {
-    return this.surfaceTargets.delete(requestId);
-  }
-
   clear() {
     this.activeElement = null;
     this.itemSets = [];
-    this.surfaceTargets = new Map();
-    this.nextSurfaceRequestId = 0;
   }
 };
 

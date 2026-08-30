@@ -5,7 +5,6 @@ const { arraysEqual, textDecorationsEqual } = require("./text-editor-component-h
 module.exports = class LinesTileComponent {
   constructor(props) {
     this.props = props;
-    const document = props.document || globalThis.document;
 
     // Lines and block decorations are manually inserted into this container
     // for efficiency.

@@ -144,14 +144,11 @@ module.exports = class ModalFlow {
   clear() {
     if (this.stack.length === 0) return;
     this.stack = [];
-    this.disposeSubscriptions();
+    if (this.subscriptions) {
+      this.subscriptions.dispose();
+      this.subscriptions = null;
+    }
     this.didChange();
-  }
-
-  disposeSubscriptions() {
-    if (!this.subscriptions) return;
-    this.subscriptions.dispose();
-    this.subscriptions = null;
   }
 
   // A step change swaps one panel for another while the modal surface
@@ -177,22 +174,15 @@ module.exports = class ModalFlow {
   // panel that has since left the flow — a fresh reopen keeps its easing.
   settleAnimations(panel) {
     const element = panel.getElement();
-    const domWindow = element.ownerDocument.defaultView;
     if (typeof element.getAnimations !== "function") return;
     this.finishAnimations(element, (animation) => animation.effect?.target === element);
     const sweep = (framesLeft) => {
       const top = this.stack[this.stack.length - 1];
       if (!top || top.panel !== panel || !panel.isVisible()) return;
-      this.finishAnimations(
-        element,
-        // Adopted nodes keep source-realm prototypes, and animation wrappers
-        // are allowed to do the same. CSSTransition's own identifying surface
-        // is realm-neutral; CSSAnimation exposes animationName instead.
-        (animation) => typeof animation.transitionProperty === "string",
-      );
-      if (framesLeft > 0) domWindow.requestAnimationFrame(() => sweep(framesLeft - 1));
+      this.finishAnimations(element, (animation) => animation instanceof CSSTransition);
+      if (framesLeft > 0) requestAnimationFrame(() => sweep(framesLeft - 1));
     };
-    domWindow.requestAnimationFrame(() => sweep(2));
+    requestAnimationFrame(() => sweep(2));
   }
 
   finishAnimations(element, shouldFinish) {
@@ -215,11 +205,7 @@ module.exports = class ModalFlow {
   }
 
   modalPanels() {
-    return this.getPanelContainer().getPanels();
-  }
-
-  getPanelContainer() {
-    return this.workspace.panelContainers.modal;
+    return this.workspace.panelContainers.modal.getPanels();
   }
 
   // Subscribed only while a trail exists; the container reference is read
@@ -237,7 +223,9 @@ module.exports = class ModalFlow {
       );
     };
     for (const panel of this.modalPanels()) observe(panel);
-    this.subscriptions.add(this.getPanelContainer().onDidAddPanel(({ panel }) => observe(panel)));
+    this.subscriptions.add(
+      this.workspace.panelContainers.modal.onDidAddPanel(({ panel }) => observe(panel)),
+    );
   }
 
   didChange() {
@@ -255,7 +243,6 @@ module.exports = class ModalFlow {
       return;
     }
     const strip = this.getStrip();
-    const document = strip.ownerDocument;
     strip.textContent = "";
     this.stack.forEach(({ label }, index) => {
       const crumb = document.createElement("span");
@@ -279,12 +266,10 @@ module.exports = class ModalFlow {
 
   getStrip() {
     if (!this.strip) {
-      const rootElement = this.workspace.getElement();
-      const document = rootElement.ownerDocument;
       this.strip = document.createElement("div");
       this.strip.classList.add("modal-breadcrumbs");
       this.strip.style.display = "none";
-      document.defaultView.addEventListener("resize", this.positionStrip);
+      window.addEventListener("resize", this.positionStrip);
     }
     if (!this.strip.isConnected) {
       this.workspace.getElement().appendChild(this.strip);
@@ -303,15 +288,5 @@ module.exports = class ModalFlow {
     this.strip.style.left = `${rect.left + rect.width / 2}px`;
     this.strip.style.maxWidth = `${rect.width}px`;
     this.strip.style.top = `${Math.max(rect.top, this.strip.offsetHeight)}px`;
-  }
-
-  destroy() {
-    this.clear();
-    if (this.strip) {
-      this.strip.ownerDocument.defaultView.removeEventListener("resize", this.positionStrip);
-      this.strip.remove();
-      this.strip = null;
-    }
-    this.emitter.dispose();
   }
 };

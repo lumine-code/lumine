@@ -1,14 +1,9 @@
 const { CompositeDisposable } = require("@lumine-code/event-kit");
-const { classFactory } = require("./realm-custom-element");
-
-function initializePaneContainerElement() {
-  this.subscriptions = new CompositeDisposable();
-}
 
 class PaneContainerElement extends HTMLElement {
   constructor() {
     super();
-    initializePaneContainerElement.call(this);
+    this.subscriptions = new CompositeDisposable();
   }
 
   initialize(model, { views }) {
@@ -26,7 +21,7 @@ class PaneContainerElement extends HTMLElement {
   }
 
   rootChanged(root) {
-    const focusedElement = this.hasFocus() ? this.ownerDocument.activeElement : null;
+    const focusedElement = this.hasFocus() ? document.activeElement : null;
     if (this.firstChild != null) {
       this.firstChild.remove();
     }
@@ -40,19 +35,16 @@ class PaneContainerElement extends HTMLElement {
   }
 
   hasFocus() {
-    const activeElement = this.ownerDocument.activeElement;
-    return this === activeElement || this.contains(activeElement);
+    return this === document.activeElement || this.contains(document.activeElement);
   }
 }
 
-function createPaneContainerElement(document = globalThis.document) {
+window.customElements.define("lumine-pane-container", PaneContainerElement);
+
+function createPaneContainerElement() {
   return document.createElement("lumine-pane-container");
 }
 
 module.exports = {
   createPaneContainerElement,
-  elementDefinition: {
-    name: "lumine-pane-container",
-    factory: classFactory(PaneContainerElement, initializePaneContainerElement),
-  },
 };

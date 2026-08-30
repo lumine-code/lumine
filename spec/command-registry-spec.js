@@ -1,5 +1,4 @@
 const CommandRegistry = require("../src/command-registry");
-const { WindowSurface, WindowSurfaceManager } = require("../src/window-surface");
 const _ = require("@lumine-code/underscore-plus");
 
 describe("CommandRegistry", () => {
@@ -210,24 +209,6 @@ describe("CommandRegistry", () => {
       expect(sequence[0][1] === sequence[1][1] && sequence[1][1] === sequence[2][1]).toBe(true);
       expect(sequence[0][1].constructor).toBe(CustomEvent);
       expect(sequence[0][1].target).toBe(grandchild);
-    });
-
-    it("activates the command target's window surface before invoking listeners", () => {
-      registry.destroy();
-      const surface = {};
-      const surfaceManager = {
-        surfaceFor: jasmine.createSpy("surfaceFor").and.returnValue(surface),
-        activate: jasmine.createSpy("activate"),
-      };
-      registry = new CommandRegistry({ surfaceManager });
-      registry.attach(parent);
-      registry.add(".grandchild", "command", () => {
-        expect(surfaceManager.activate).toHaveBeenCalledOnceWith(surface);
-      });
-
-      registry.dispatch(grandchild, "command");
-
-      expect(surfaceManager.surfaceFor).toHaveBeenCalledOnceWith(grandchild);
     });
   });
 
@@ -480,67 +461,4 @@ describe("CommandRegistry", () => {
       grandchild.dispatchEvent(new CustomEvent("command-1", { bubbles: true }));
       expect(commandSpy).toHaveBeenCalled();
     }));
-
-  describe("with more than one DOM Window", () => {
-    let frame;
-
-    beforeEach(() => {
-      frame = document.createElement("iframe");
-      document.body.appendChild(frame);
-    });
-
-    afterEach(() => frame.remove());
-
-    it("installs existing and future commands on every command root", () => {
-      const otherWindow = frame.contentWindow;
-      const otherElement = otherWindow.document.createElement("div");
-      otherElement.className = "other-surface-target";
-      otherWindow.document.body.appendChild(otherElement);
-      registry.attach(otherWindow);
-
-      const existing = jasmine.createSpy("existing");
-      registry.add(".other-surface-target", "surface:existing", existing);
-      otherElement.dispatchEvent(
-        new otherWindow.CustomEvent("surface:existing", { bubbles: true }),
-      );
-      expect(existing).toHaveBeenCalled();
-      expect(existing.calls.mostRecent().args[0].target).toBe(otherElement);
-
-      const future = jasmine.createSpy("future");
-      registry.add(".other-surface-target", "surface:future", future);
-      otherElement.dispatchEvent(new otherWindow.CustomEvent("surface:future", { bubbles: true }));
-      expect(future).toHaveBeenCalled();
-    });
-
-    it("restores the still-focused surface after dispatching to another realm", async () => {
-      const otherWindow = frame.contentWindow;
-      const otherElement = otherWindow.document.createElement("div");
-      otherElement.className = "other-surface-target";
-      otherWindow.document.body.appendChild(otherElement);
-      const surfaces = new WindowSurfaceManager();
-      const primary = surfaces.add(
-        new WindowSurface({ id: "primary", kind: "primary", window, document }),
-      );
-      const detached = surfaces.add(
-        new WindowSurface({
-          id: "detached",
-          window: otherWindow,
-          document: otherWindow.document,
-        }),
-      );
-      const surfaceRegistry = new CommandRegistry({ surfaceManager: surfaces });
-      let activeDuringDispatch;
-      surfaceRegistry.add(".other-surface-target", "surface:context", () => {
-        activeDuringDispatch = surfaces.getActive();
-      });
-      spyOn(document, "hasFocus").and.returnValue(true);
-
-      await surfaceRegistry.dispatch(otherElement, "surface:context");
-
-      expect(activeDuringDispatch).toBe(detached);
-      expect(surfaces.getActive()).toBe(primary);
-      surfaceRegistry.destroy();
-      surfaces.destroy();
-    });
-  });
 });

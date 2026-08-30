@@ -24,20 +24,6 @@ describe("WorkspaceElement", () => {
     }
   });
 
-  it("does not bind document mouseleave for an uninitialized workspace surface", () => {
-    const addEventListener = spyOn(document.documentElement, "addEventListener").and.callThrough();
-    const workspaceElement = document.createElement("lumine-workspace");
-
-    document.body.appendChild(workspaceElement);
-
-    expect(addEventListener).not.toHaveBeenCalledWith(
-      "mouseleave",
-      workspaceElement.handleCenterLeave,
-    );
-    expect(workspaceElement.htmlElement).toBeUndefined();
-    workspaceElement.remove();
-  });
-
   afterEach(() => {
     try {
       temp.cleanupSync();

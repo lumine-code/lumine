@@ -1,6 +1,4 @@
 const { Disposable } = require("@lumine-code/event-kit");
-const { isElement, windowFor } = require("./dom-context");
-const DocumentViewScheduler = require("./document-view-scheduler");
 
 const AnyConstructor = Symbol("any-constructor");
 
@@ -32,12 +30,8 @@ module.exports = class ViewRegistry {
   constructor(lumineEnvironment) {
     this.animationFrameRequest = null;
     this.documentReadInProgress = false;
-    this.documentUpdateInProgress = false;
     this.performDocumentUpdate = this.performDocumentUpdate.bind(this);
     this.lumineEnvironment = lumineEnvironment;
-    this.documents = new Set();
-    this.documentSchedulers = new WeakMap();
-    this.liveDocumentSchedulers = new Set();
     this.clear();
   }
 
@@ -141,19 +135,19 @@ module.exports = class ViewRegistry {
   }
 
   createView(object) {
-    if (isElement(object)) {
+    if (object instanceof HTMLElement) {
       return object;
     }
 
     let element;
     if (object && typeof object.getElement === "function") {
       element = object.getElement();
-      if (isElement(element)) {
+      if (element instanceof HTMLElement) {
         return element;
       }
     }
 
-    if (object && isElement(object.element)) {
+    if (object && object.element instanceof HTMLElement) {
       return object.element;
     }
 
@@ -223,140 +217,61 @@ module.exports = class ViewRegistry {
   }
 
   getNextUpdatePromise() {
-    const pendingUpdates = [];
-    if (this.hasPendingLegacyUpdate()) {
-      if (this.nextUpdatePromise == null) {
-        this.nextUpdatePromise = new Promise((resolve) => {
-          this.resolveNextUpdatePromise = resolve;
-        });
-      }
-      pendingUpdates.push(this.nextUpdatePromise);
+    if (this.nextUpdatePromise == null) {
+      this.nextUpdatePromise = new Promise((resolve) => {
+        this.resolveNextUpdatePromise = resolve;
+      });
     }
-    for (const scheduler of this.liveDocumentSchedulers) {
-      const pendingUpdate = scheduler.getPendingUpdatePromise();
-      if (pendingUpdate) pendingUpdates.push(pendingUpdate);
-    }
-    if (pendingUpdates.length === 0) return Promise.resolve();
-    return Promise.all(pendingUpdates).then(() => this.getNextUpdatePromise());
-  }
 
-  hasPendingLegacyUpdate() {
-    return (
-      this.documentUpdateInProgress ||
-      this.animationFrameRequest != null ||
-      this.documentReaders.length > 0 ||
-      this.documentWriters.length > 0
-    );
+    return this.nextUpdatePromise;
   }
 
   clearDocumentRequests() {
-    const resolveNextUpdatePromise = this.resolveNextUpdatePromise;
-    for (const scheduler of this.liveDocumentSchedulers || []) scheduler.clear();
     this.documentReaders = [];
     this.documentWriters = [];
-    this.documentUpdateInProgress = false;
     this.nextUpdatePromise = null;
     this.resolveNextUpdatePromise = null;
     if (this.animationFrameRequest != null) {
-      this.animationFrameWindow.cancelAnimationFrame(this.animationFrameRequest);
+      cancelAnimationFrame(this.animationFrameRequest);
       this.animationFrameRequest = null;
-      this.animationFrameWindow = null;
     }
-    resolveNextUpdatePromise?.();
-  }
-
-  registerDocument(value) {
-    const domWindow = windowFor(value);
-    const document = domWindow?.document;
-    if (!document) throw new TypeError("A view document must belong to a live Window");
-    this.documents.add(document);
-    this.forDocument(document);
-    return new Disposable(() => {
-      this.documents.delete(document);
-      const documentScheduler = this.documentSchedulers.get(document);
-      documentScheduler?.destroy();
-      this.documentSchedulers.delete(document);
-      this.liveDocumentSchedulers.delete(documentScheduler);
-      if (this.animationFrameWindow === domWindow && this.animationFrameRequest != null) {
-        domWindow.cancelAnimationFrame(this.animationFrameRequest);
-        this.animationFrameRequest = null;
-        this.animationFrameWindow = null;
-        if (this.documentReaders.length > 0 || this.documentWriters.length > 0) {
-          this.requestDocumentUpdate();
-        }
-      }
-    });
-  }
-
-  forDocument(document) {
-    if (!document?.defaultView) throw new TypeError("A view scheduler requires a live Document");
-    let scheduler = this.documentSchedulers.get(document);
-    if (!scheduler) {
-      scheduler = new DocumentViewScheduler(document);
-      this.documentSchedulers.set(document, scheduler);
-      this.liveDocumentSchedulers.add(scheduler);
-    }
-    return scheduler;
-  }
-
-  animationWindow() {
-    const documents = Array.from(this.documents).filter((document) => document.defaultView);
-    return (
-      documents.find((document) => document.hasFocus?.())?.defaultView ||
-      documents.find((document) => !document.hidden)?.defaultView ||
-      documents[0]?.defaultView ||
-      this.lumineEnvironment?.domWindow ||
-      (typeof window !== "undefined" ? window : null)
-    );
   }
 
   requestDocumentUpdate() {
     if (this.animationFrameRequest == null) {
-      const domWindow = this.animationWindow();
-      if (!domWindow) throw new Error("No live workspace surface can schedule a document update");
-      this.animationFrameWindow = domWindow;
-      this.animationFrameRequest = domWindow.requestAnimationFrame(this.performDocumentUpdate);
+      this.animationFrameRequest = requestAnimationFrame(this.performDocumentUpdate);
     }
   }
 
   performDocumentUpdate() {
+    const { resolveNextUpdatePromise } = this;
     this.animationFrameRequest = null;
-    this.animationFrameWindow = null;
-    this.documentUpdateInProgress = true;
-    try {
-      let writer = this.documentWriters.shift();
-      while (writer) {
-        writer();
-        writer = this.documentWriters.shift();
-      }
+    this.nextUpdatePromise = null;
+    this.resolveNextUpdatePromise = null;
 
-      let reader = this.documentReaders.shift();
-      this.documentReadInProgress = true;
-      while (reader) {
-        reader();
-        reader = this.documentReaders.shift();
-      }
-      this.documentReadInProgress = false;
-
-      // process updates requested as a result of reads
+    let writer = this.documentWriters.shift();
+    while (writer) {
+      writer();
       writer = this.documentWriters.shift();
-      while (writer) {
-        writer();
-        writer = this.documentWriters.shift();
-      }
-    } finally {
-      const resolveNextUpdatePromise = this.resolveNextUpdatePromise;
-      this.nextUpdatePromise = null;
-      this.resolveNextUpdatePromise = null;
-      this.documentReadInProgress = false;
-      this.documentUpdateInProgress = false;
-      if (
-        this.animationFrameRequest == null &&
-        (this.documentReaders.length > 0 || this.documentWriters.length > 0)
-      ) {
-        this.requestDocumentUpdate();
-      }
-      resolveNextUpdatePromise?.();
+    }
+
+    let reader = this.documentReaders.shift();
+    this.documentReadInProgress = true;
+    while (reader) {
+      reader();
+      reader = this.documentReaders.shift();
+    }
+    this.documentReadInProgress = false;
+
+    // process updates requested as a result of reads
+    writer = this.documentWriters.shift();
+    while (writer) {
+      writer();
+      writer = this.documentWriters.shift();
+    }
+
+    if (resolveNextUpdatePromise) {
+      resolveNextUpdatePromise();
     }
   }
 };

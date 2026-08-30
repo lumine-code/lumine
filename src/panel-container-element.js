@@ -1,18 +1,12 @@
 "use strict";
 
 const { createFocusTrap } = require("focus-trap");
-const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
-const { classFactory } = require("./realm-custom-element");
-
-function initializePanelContainerElement() {
-  this.subscriptions = new CompositeDisposable();
-  this.panelSubscriptions = new Map();
-}
+const { CompositeDisposable } = require("@lumine-code/event-kit");
 
 class PanelContainerElement extends HTMLElement {
   constructor() {
     super();
-    initializePanelContainerElement.call(this);
+    this.subscriptions = new CompositeDisposable();
   }
 
   connectedCallback() {
@@ -26,7 +20,6 @@ class PanelContainerElement extends HTMLElement {
     this.viewRegistry = viewRegistry;
 
     this.subscriptions.add(this.model.onDidAddPanel(this.panelAdded.bind(this)));
-    this.subscriptions.add(this.model.onDidRemovePanel(this.panelRemoved.bind(this)));
     this.subscriptions.add(this.model.onDidDestroy(this.destroyed.bind(this)));
     this.classList.add(this.model.getLocation());
 
@@ -43,13 +36,8 @@ class PanelContainerElement extends HTMLElement {
   }
 
   panelAdded({ panel, index }) {
-    this.disposePanelSubscriptions(panel);
     const panelElement = panel.getElement();
     panelElement.classList.add(this.model.getLocation());
-    const panelSubscriptions = new CompositeDisposable();
-    this.panelSubscriptions.set(panel, panelSubscriptions);
-    this.subscriptions.add(panelSubscriptions);
-
     if (this.model.isModal()) {
       panelElement.classList.add("overlay", "from-top");
     } else {
@@ -62,6 +50,7 @@ class PanelContainerElement extends HTMLElement {
       const referenceItem = this.childNodes[index];
       this.insertBefore(panelElement, referenceItem);
     }
+
     if (this.model.isModal()) {
       // Only a panel that arrives visible displaces the current modal. Modals
       // are usually created hidden and shown later — that add must not
@@ -69,7 +58,7 @@ class PanelContainerElement extends HTMLElement {
       if (panel.isVisible()) {
         this.hideAllPanelsExcept(panel);
       }
-      panelSubscriptions.add(
+      this.subscriptions.add(
         panel.onDidChangeVisible((visible) => {
           if (visible) {
             this.hideAllPanelsExcept(panel);
@@ -79,7 +68,7 @@ class PanelContainerElement extends HTMLElement {
 
       if (panel.restoreFocus) {
         if (panel.isVisible()) this.capturePriorFocus();
-        panelSubscriptions.add(
+        this.subscriptions.add(
           panel.onDidChangeVisible((visible) => {
             if (visible) {
               this.capturePriorFocus();
@@ -103,7 +92,6 @@ class PanelContainerElement extends HTMLElement {
           // focus restoration is handled centrally by the container, which
           // tracks focus across chained modals instead of per activation
           returnFocusOnDeactivate: false,
-          document: panelElement.ownerDocument,
         };
 
         if (panel.autoFocus !== true) {
@@ -111,7 +99,7 @@ class PanelContainerElement extends HTMLElement {
         }
         const modalFocusTrap = createFocusTrap(panelElement, focusOptions);
 
-        panelSubscriptions.add(
+        this.subscriptions.add(
           panel.onDidChangeVisible((visible) => {
             if (visible) {
               modalFocusTrap.activate();
@@ -119,41 +107,13 @@ class PanelContainerElement extends HTMLElement {
               modalFocusTrap.deactivate();
             }
           }),
-          new Disposable(() => modalFocusTrap.deactivate()),
         );
-        if (panel.isVisible()) modalFocusTrap.activate();
       }
     }
-  }
-
-  panelRemoved({ panel }) {
-    const panelElement = panel.element;
-    this.disposePanelSubscriptions(panel);
-    if (panelElement) {
-      panelElement.classList.remove(this.model.getLocation());
-      if (this.model.isModal()) {
-        panelElement.classList.remove("overlay", "from-top");
-      } else {
-        panelElement.classList.remove("tool-panel", `panel-${this.model.getLocation()}`);
-      }
-      if (panelElement.parentNode === this) panelElement.remove();
-    }
-    if (panel.isVisible() && !this.model.getPanels().some((candidate) => candidate.isVisible())) {
-      this.priorFocus = null;
-    }
-  }
-
-  disposePanelSubscriptions(panel) {
-    const panelSubscriptions = this.panelSubscriptions.get(panel);
-    if (!panelSubscriptions) return;
-    this.panelSubscriptions.delete(panel);
-    this.subscriptions.remove(panelSubscriptions);
-    panelSubscriptions.dispose();
   }
 
   destroyed() {
     this.subscriptions.dispose();
-    this.panelSubscriptions.clear();
     if (this.parentNode != null) {
       this.parentNode.removeChild(this);
     }
@@ -162,7 +122,6 @@ class PanelContainerElement extends HTMLElement {
   // Remembers where focus was before a modal opened. When modals open on top
   // of each other, only the element focused before the first modal is kept.
   capturePriorFocus() {
-    const document = this.ownerDocument;
     const active = document.activeElement;
     if (active && active !== document.body && !this.contains(active)) {
       this.priorFocus = active;
@@ -176,7 +135,6 @@ class PanelContainerElement extends HTMLElement {
     if (this.model.getPanels().some((panel) => panel.isVisible())) return;
 
     // the user moved focus elsewhere themselves — don't steal it back
-    const document = this.ownerDocument;
     const active = document.activeElement;
     if (active && active !== document.body && !panelElement.contains(active)) return;
 
@@ -198,14 +156,12 @@ class PanelContainerElement extends HTMLElement {
   }
 }
 
-function createPanelContainerElement(document = globalThis.document) {
+window.customElements.define("lumine-panel-container", PanelContainerElement);
+
+function createPanelContainerElement() {
   return document.createElement("lumine-panel-container");
 }
 
 module.exports = {
   createPanelContainerElement,
-  elementDefinition: {
-    name: "lumine-panel-container",
-    factory: classFactory(PanelContainerElement, initializePanelContainerElement),
-  },
 };

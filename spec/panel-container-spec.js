@@ -25,12 +25,6 @@ describe("PanelContainer", () => {
       container.addPanel(panel2);
       expect(addPanelSpy).toHaveBeenCalledWith({ panel: panel2, index: 1 });
     });
-
-    it("rejects show on an unmounted panel", () => {
-      const panel = new Panel({ item: new TestPanelItem(), visible: false }, lumine.views);
-      expect(() => panel.show()).toThrowError(/not mounted in a live panel container/);
-      panel.destroy();
-    });
   });
 
   describe("when a panel is destroyed", () => {
@@ -73,18 +67,6 @@ describe("PanelContainer", () => {
 
       expect(container.getPanels().length).toBe(0);
       expect(destroyedPanels).toEqual([panel1, panel2]);
-    });
-
-    it("clears a panel's container when the container is destroyed", () => {
-      const panel = new Panel({ item: new TestPanelItem(), visible: false }, lumine.views);
-      const destroyed = jasmine.createSpy("destroyed");
-      panel.onDidDestroy(destroyed);
-      container.addPanel(panel);
-
-      container.destroy();
-
-      expect(destroyed).toHaveBeenCalledOnceWith(panel);
-      expect(panel.getContainer()).toBeNull();
     });
   });
 

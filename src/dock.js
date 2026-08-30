@@ -40,7 +40,6 @@ module.exports = class Dock {
     this.notificationManager = params.notificationManager;
     this.viewRegistry = params.viewRegistry;
     this.didActivate = params.didActivate;
-    this.focusPrimaryWindow = params.focusPrimaryWindow;
     this.layoutDrag = null;
 
     this.emitter = new Emitter();
@@ -62,8 +61,7 @@ module.exports = class Dock {
     this.subscriptions = new CompositeDisposable(
       this.emitter,
       this.paneContainer.onDidActivatePane(() => {
-        this.focusPrimaryWindow?.();
-        this.setState({ visible: true });
+        this.show();
         this.didActivate(this);
       }),
       this.paneContainer.observePanes((pane) => {
@@ -125,7 +123,6 @@ module.exports = class Dock {
    * Show the dock and focus its active {@link Pane}.
    */
   activate() {
-    this.focusPrimaryWindow?.();
     this.getActivePane().activate();
   }
 
@@ -136,7 +133,6 @@ module.exports = class Dock {
    * Show the dock without focusing it.
    */
   show() {
-    this.focusPrimaryWindow?.();
     this.setState({ visible: true });
   }
 
@@ -161,7 +157,6 @@ module.exports = class Dock {
   toggle() {
     const state = { visible: !this.state.visible };
     if (!state.visible) state.hovered = false;
-    this.focusPrimaryWindow?.();
     this.setState(state);
   }
 

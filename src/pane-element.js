@@ -1,19 +1,14 @@
 const path = require("path");
 const { CompositeDisposable } = require("@lumine-code/event-kit");
-const { classFactory } = require("./realm-custom-element");
-
-function initializePaneElement() {
-  this.attached = false;
-  this.subscriptions = new CompositeDisposable();
-  this.inlineDisplayStyles = new WeakMap();
-  this.subscribeToDOMEvents();
-  this.itemViews = this.ownerDocument.createElement("div");
-}
 
 class PaneElement extends HTMLElement {
   constructor() {
     super();
-    initializePaneElement.call(this);
+    this.attached = false;
+    this.subscriptions = new CompositeDisposable();
+    this.inlineDisplayStyles = new WeakMap();
+    this.subscribeToDOMEvents();
+    this.itemViews = document.createElement("div");
   }
 
   connectedCallback() {
@@ -204,7 +199,7 @@ class PaneElement extends HTMLElement {
   itemRemoved({ item, index: _index, destroyed: _destroyed }) {
     const viewToRemove = this.views.getView(item);
     if (viewToRemove) {
-      const hadFocus = viewToRemove.contains(this.ownerDocument.activeElement);
+      const hadFocus = viewToRemove.contains(document.activeElement);
       if (this.visibleItemView === viewToRemove) this.visibleItemView = null;
       viewToRemove.remove();
       // Removing the focused element drops focus on `body` without firing any
@@ -235,19 +230,16 @@ class PaneElement extends HTMLElement {
   }
 
   hasFocus() {
-    const activeElement = this.ownerDocument.activeElement;
-    return this === activeElement || this.contains(activeElement);
+    return this === document.activeElement || this.contains(document.activeElement);
   }
 }
 
-function createPaneElement(document = globalThis.document) {
+function createPaneElement() {
   return document.createElement("lumine-pane");
 }
 
+window.customElements.define("lumine-pane", PaneElement);
+
 module.exports = {
   createPaneElement,
-  elementDefinition: {
-    name: "lumine-pane",
-    factory: classFactory(PaneElement, initializePaneElement),
-  },
 };

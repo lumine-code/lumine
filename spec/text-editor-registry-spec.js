@@ -107,24 +107,6 @@ describe("TextEditorRegistry", function () {
       other.destroy();
     });
 
-    it("resolves focus from the active detached surface document", function () {
-      const frame = document.createElement("iframe");
-      jasmine.attachToDOM(frame);
-      const element = editor.getElement();
-      frame.contentDocument.body.appendChild(element);
-      registry.surfaceManager = { getActive: () => ({ document: frame.contentDocument }) };
-      registry.add(editor);
-      spyOnProperty(frame.contentDocument, "activeElement", "get").and.returnValue(element);
-
-      try {
-        expect(registry.getActiveTextEditor()).toBe(editor);
-      } finally {
-        document.adoptNode(element);
-        registry.surfaceManager = null;
-        frame.remove();
-      }
-    });
-
     it("does not instantiate views of other registered editors", function () {
       registry.add(editor); // never given an element
       expect(editor.component).toBeUndefined();
@@ -134,21 +116,13 @@ describe("TextEditorRegistry", function () {
   });
 
   describe(".getTextEditorForElement", function () {
-    it("resolves a registered editor from a descendant in another Window", function () {
-      const frame = document.createElement("iframe");
-      jasmine.attachToDOM(frame);
+    it("resolves a registered editor from a descendant", function () {
       const element = editor.getElement();
-      const descendant = element.ownerDocument.createElement("span");
+      const descendant = document.createElement("span");
       element.appendChild(descendant);
-      frame.contentDocument.body.appendChild(element);
       registry.add(editor);
 
-      try {
-        expect(registry.getTextEditorForElement(descendant)).toBe(editor);
-      } finally {
-        document.adoptNode(element);
-        frame.remove();
-      }
+      expect(registry.getTextEditorForElement(descendant)).toBe(editor);
     });
 
     it("rejects non-elements and editors outside the registry", function () {

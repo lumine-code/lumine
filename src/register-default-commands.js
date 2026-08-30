@@ -8,23 +8,6 @@ function settleSaveCommand(result) {
   });
 }
 
-function paneItemForCommandTarget(workspace, target) {
-  for (let element = target; element; element = element.parentNode) {
-    const item = element.item;
-    const pane = item && workspace.paneForItem(item);
-    if (pane && !pane.isDetached()) return item;
-  }
-  const item = workspace.getActivePaneItem();
-  const pane = item && workspace.paneForItem(item);
-  return pane && !pane.isDetached() ? item : null;
-}
-
-function primaryWorkspaceElement(element) {
-  const workspace = element.getModel();
-  workspace.focusPrimaryWindow();
-  return workspace.getElement();
-}
-
 module.exports = function ({
   commandRegistry,
   commandInstaller,
@@ -243,7 +226,7 @@ module.exports = function ({
       "window:run-package-specs": {
         description: "Run the spec suite of the package this window has open.",
         didDispatch: function () {
-          return primaryWorkspaceElement(this).runPackageSpecs();
+          return this.runPackageSpecs();
         },
       },
       "window:toggle-left-dock": function () {
@@ -262,46 +245,46 @@ module.exports = function ({
         return this.getModel().activatePreviousPane();
       },
       "window:focus-pane-above": function () {
-        return primaryWorkspaceElement(this).focusPaneViewAbove();
+        return this.focusPaneViewAbove();
       },
       "window:focus-pane-below": function () {
-        return primaryWorkspaceElement(this).focusPaneViewBelow();
+        return this.focusPaneViewBelow();
       },
       "window:focus-pane-on-left": function () {
-        return primaryWorkspaceElement(this).focusPaneViewOnLeft();
+        return this.focusPaneViewOnLeft();
       },
       "window:focus-pane-on-right": function () {
-        return primaryWorkspaceElement(this).focusPaneViewOnRight();
+        return this.focusPaneViewOnRight();
       },
       "window:move-active-item-to-pane-above": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneAbove();
+        return this.moveActiveItemToPaneAbove();
       },
       "window:move-active-item-to-pane-below": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneBelow();
+        return this.moveActiveItemToPaneBelow();
       },
       "window:move-active-item-to-pane-on-left": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneOnLeft();
+        return this.moveActiveItemToPaneOnLeft();
       },
       "window:move-active-item-to-pane-on-right": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneOnRight();
+        return this.moveActiveItemToPaneOnRight();
       },
       "window:copy-active-item-to-pane-above": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneAbove({
+        return this.moveActiveItemToPaneAbove({
           keepOriginal: true,
         });
       },
       "window:copy-active-item-to-pane-below": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneBelow({
+        return this.moveActiveItemToPaneBelow({
           keepOriginal: true,
         });
       },
       "window:copy-active-item-to-pane-on-left": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneOnLeft({
+        return this.moveActiveItemToPaneOnLeft({
           keepOriginal: true,
         });
       },
       "window:copy-active-item-to-pane-on-right": function () {
-        return primaryWorkspaceElement(this).moveActiveItemToPaneOnRight({
+        return this.moveActiveItemToPaneOnRight({
           keepOriginal: true,
         });
       },
@@ -317,9 +300,7 @@ module.exports = function ({
       "git:colorize-toggle": {
         description: "Turn the Git status colouring off across this window.",
         didDispatch: function () {
-          this.getModel()
-            .getActiveWindowSurface()
-            ?.document.body.classList.toggle("git-colorize-disabled");
+          document.body.classList.toggle("git-colorize-disabled");
         },
       },
       "window:log-deprecation-warnings": {
@@ -344,14 +325,6 @@ module.exports = function ({
         description: "Close the active tab, or the empty pane, or the window.",
         didDispatch: function () {
           return this.getModel().closeActivePaneItemOrEmptyPaneOrWindow();
-        },
-      },
-      "pane:detach-item": {
-        description: "Move the targeted or active workspace-center item into its own window.",
-        didDispatch: function (event) {
-          const workspace = this.getModel();
-          const item = paneItemForCommandTarget(workspace, event.target);
-          if (item) return workspace.detachPaneItem(item);
         },
       },
       "core:save": function () {

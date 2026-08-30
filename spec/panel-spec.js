@@ -1,5 +1,4 @@
 const Panel = require("../src/panel");
-const PanelContainer = require("../src/panel-container");
 
 describe("Panel", () => {
   class TestPanelItem {
@@ -54,8 +53,6 @@ describe("Panel", () => {
   describe("changing panel visibility", () => {
     it("notifies observers added with onDidChangeVisible", () => {
       const panel = new Panel({ item: new TestPanelItem() }, lumine.views);
-      const container = new PanelContainer({ location: "left", viewRegistry: lumine.views });
-      container.addPanel(panel);
 
       const spy = jasmine.createSpy();
       panel.onDidChangeVisible(spy);
@@ -82,8 +79,6 @@ describe("Panel", () => {
 
     it("hides and shows the panel element when Panel::hide() and Panel::show() are called", () => {
       const panel = new Panel({ item: new TestPanelItem() }, lumine.views);
-      const container = new PanelContainer({ location: "left", viewRegistry: lumine.views });
-      container.addPanel(panel);
       const element = panel.getElement();
       expect(element.style.display).not.toBe("none");
 
