@@ -13,7 +13,7 @@ const fs = require("@lumine-code/fs-plus");
 const Environment = require("../src/environment");
 const { conditionPromise, timeoutPromise } = require("./helpers/async-spec-helpers");
 const FileState = require("../src/file-state");
-const { Emitter } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 
 describe("Workspace", () => {
   let workspace;
@@ -4119,12 +4119,26 @@ describe("Workspace", () => {
 
     it("publishes the detached editor when its surface activation catches up with its pane", async () => {
       lumine.initializeDetachedPaneSurfaces({ force: true });
+      const fallbackEditor = workspace.buildTextEditor();
       const editor = workspace.buildTextEditor();
-      workspace.getCenter().getActiveTiledPane().addItem(editor);
+      const center = workspace.getCenter();
+      const tiledPane = center.getActiveTiledPane();
+      tiledPane.addItems([fallbackEditor, editor]);
+      tiledPane.activateItem(editor);
       const activeItems = jasmine.createSpy("activeItems");
       const activeEditors = jasmine.createSpy("activeEditors");
-      const itemSubscription = workspace.onDidChangeActivePaneItem(activeItems);
-      const editorSubscription = workspace.onDidChangeActiveTextEditor(activeEditors);
+      const centerPaneContexts = [];
+      const centerItemContexts = [];
+      const subscriptions = new CompositeDisposable(
+        workspace.onDidChangeActivePaneItem(activeItems),
+        workspace.onDidChangeActiveTextEditor(activeEditors),
+        center.onDidChangeActivePane((pane) => {
+          centerPaneContexts.push({ pane, resolvedPane: center.getActivePane() });
+        }),
+        center.onDidChangeActivePaneItem((item) => {
+          centerItemContexts.push({ item, resolvedItem: center.getActivePaneItem() });
+        }),
+      );
       let detachedPane;
 
       try {
@@ -4136,11 +4150,177 @@ describe("Workspace", () => {
         expect(workspace.getActiveTextEditor()).toBe(editor);
         expect(activeItems).toHaveBeenCalledWith(editor);
         expect(activeEditors).toHaveBeenCalledWith(editor);
+        expect(centerPaneContexts.every(({ pane, resolvedPane }) => pane === resolvedPane)).toBe(
+          true,
+        );
+        expect(centerItemContexts.every(({ item, resolvedItem }) => item === resolvedItem)).toBe(
+          true,
+        );
+        expect(centerPaneContexts.at(-1)).toEqual({
+          pane: detachedPane,
+          resolvedPane: detachedPane,
+        });
+        expect(centerItemContexts.at(-1)).toEqual({ item: editor, resolvedItem: editor });
+        const publishedItems = centerItemContexts.map(({ item }) => item);
+        expect(publishedItems).toContain(fallbackEditor);
+        expect(publishedItems.indexOf(fallbackEditor)).toBeLessThan(
+          publishedItems.lastIndexOf(editor),
+        );
       } finally {
-        itemSubscription.dispose();
-        editorSubscription.dispose();
+        subscriptions.dispose();
         if (detachedPane?.isDetached?.()) await workspace.attachDetachedPane(detachedPane);
         workspace.paneForItem(editor)?.destroyItem(editor, true);
+        workspace.paneForItem(fallbackEditor)?.destroyItem(fallbackEditor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
+    });
+
+    it("does not publish center context changes when an inactive item is detached hidden", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const center = workspace.getCenter();
+      const tiledPane = center.getActiveTiledPane();
+      const detachedEditor = workspace.buildTextEditor();
+      const activeEditor = workspace.buildTextEditor();
+      tiledPane.addItems([detachedEditor, activeEditor]);
+      tiledPane.activateItem(activeEditor);
+      const activePanes = [];
+      const activeItems = [];
+      const subscriptions = new CompositeDisposable(
+        center.onDidChangeActivePane((pane) => activePanes.push(pane)),
+        center.onDidChangeActivePaneItem((item) => activeItems.push(item)),
+      );
+      let detachedPane;
+
+      try {
+        detachedPane = await workspace.detachPaneItem(detachedEditor, { show: false });
+
+        expect(center.getActivePane()).toBe(tiledPane);
+        expect(center.getActivePaneItem()).toBe(activeEditor);
+        expect(activePanes).toEqual([]);
+        expect(activeItems).toEqual([]);
+      } finally {
+        subscriptions.dispose();
+        if (detachedPane?.isDetached?.()) await workspace.attachDetachedPane(detachedPane);
+        workspace.paneForItem(detachedEditor)?.destroyItem(detachedEditor, true);
+        workspace.paneForItem(activeEditor)?.destroyItem(activeEditor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
+    });
+
+    it("publishes the tiled center context when focus returns to a primary dock", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const center = workspace.getCenter();
+      const tiledPane = center.getActiveTiledPane();
+      const detachedEditor = workspace.buildTextEditor();
+      const primaryEditor = workspace.buildTextEditor();
+      const otherPrimaryEditor = workspace.buildTextEditor();
+      tiledPane.addItems([detachedEditor, primaryEditor, otherPrimaryEditor]);
+      tiledPane.activateItem(primaryEditor);
+      const dock = workspace.getLeftDock();
+      const dockPane = dock.getActivePane();
+      const dockItem = { element: document.createElement("div") };
+      dockPane.activateItem(dockItem);
+      let detachedPane;
+      let subscriptions;
+
+      try {
+        detachedPane = await workspace.detachPaneItem(detachedEditor, { show: false });
+        const detachedSurface = workspace.getWindowSurface(detachedEditor);
+        const primarySurface = workspace.getPrimaryWindowSurface();
+        dock.activate();
+        lumine.windowSurfaces.activate(detachedSurface);
+        expect(workspace.getActivePaneItem()).toBe(detachedEditor);
+
+        const centerPaneContexts = [];
+        const centerItemContexts = [];
+        const workspaceItemContexts = [];
+        const activeEditorContexts = [];
+        subscriptions = new CompositeDisposable(
+          center.onDidChangeActivePane((pane) => {
+            centerPaneContexts.push({ pane, resolvedPane: center.getActivePane() });
+          }),
+          center.onDidChangeActivePaneItem((item) => {
+            centerItemContexts.push({ item, resolvedItem: center.getActivePaneItem() });
+          }),
+          workspace.onDidChangeActivePaneItem((item) => {
+            workspaceItemContexts.push({ item, resolvedItem: workspace.getActivePaneItem() });
+          }),
+          workspace.onDidChangeActiveTextEditor((editor) => {
+            activeEditorContexts.push({ editor, resolvedEditor: workspace.getActiveTextEditor() });
+          }),
+        );
+
+        lumine.windowSurfaces.activate(primarySurface);
+
+        expect(workspace.getActivePaneContainer()).toBe(dock);
+        expect(workspace.getActivePaneItem()).toBe(dockItem);
+        expect(centerPaneContexts).toEqual([{ pane: tiledPane, resolvedPane: tiledPane }]);
+        expect(centerItemContexts).toEqual([{ item: primaryEditor, resolvedItem: primaryEditor }]);
+        expect(workspaceItemContexts).toEqual([{ item: dockItem, resolvedItem: dockItem }]);
+
+        centerItemContexts.length = 0;
+        workspaceItemContexts.length = 0;
+        activeEditorContexts.length = 0;
+        tiledPane.activateItem(otherPrimaryEditor);
+
+        expect(center.getActivePane()).toBe(tiledPane);
+        expect(center.getActivePaneItem()).toBe(otherPrimaryEditor);
+        expect(workspace.getActivePaneItem()).toBe(dockItem);
+        expect(workspace.getActiveTextEditor()).toBe(otherPrimaryEditor);
+        expect(centerItemContexts).toEqual([
+          { item: otherPrimaryEditor, resolvedItem: otherPrimaryEditor },
+        ]);
+        expect(workspaceItemContexts).toEqual([]);
+        expect(activeEditorContexts).toEqual([
+          { editor: otherPrimaryEditor, resolvedEditor: otherPrimaryEditor },
+        ]);
+      } finally {
+        subscriptions?.dispose();
+        if (detachedPane?.isDetached?.()) await workspace.attachDetachedPane(detachedPane);
+        workspace.paneForItem(detachedEditor)?.destroyItem(detachedEditor, true);
+        workspace.paneForItem(primaryEditor)?.destroyItem(primaryEditor, true);
+        workspace.paneForItem(otherPrimaryEditor)?.destroyItem(otherPrimaryEditor, true);
+        dockPane.destroyItem(dockItem, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
+    });
+
+    it("publishes one coherent center context transition when attaching the active detached pane", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const center = workspace.getCenter();
+      const tiledPane = center.getActiveTiledPane();
+      const fallbackEditor = workspace.buildTextEditor();
+      const detachedEditor = workspace.buildTextEditor();
+      tiledPane.addItems([fallbackEditor, detachedEditor]);
+      tiledPane.activateItem(detachedEditor);
+      let detachedPane;
+      let subscriptions;
+
+      try {
+        detachedPane = await workspace.detachPaneItem(detachedEditor);
+        const paneContexts = [];
+        const itemContexts = [];
+        subscriptions = new CompositeDisposable(
+          center.onDidChangeActivePane((pane) => {
+            paneContexts.push({ pane, resolvedPane: center.getActivePane() });
+          }),
+          center.onDidChangeActivePaneItem((item) => {
+            itemContexts.push({ item, resolvedItem: center.getActivePaneItem() });
+          }),
+        );
+
+        await workspace.attachDetachedPane(detachedPane);
+        detachedPane = null;
+
+        expect(center.getActivePane()).toBe(tiledPane);
+        expect(center.getActivePaneItem()).toBe(detachedEditor);
+        expect(paneContexts).toEqual([{ pane: tiledPane, resolvedPane: tiledPane }]);
+        expect(itemContexts).toEqual([{ item: detachedEditor, resolvedItem: detachedEditor }]);
+      } finally {
+        subscriptions?.dispose();
+        if (detachedPane?.isDetached?.()) await workspace.attachDetachedPane(detachedPane);
+        workspace.paneForItem(detachedEditor)?.destroyItem(detachedEditor, true);
+        workspace.paneForItem(fallbackEditor)?.destroyItem(fallbackEditor, true);
         lumine.initializeDetachedPaneSurfaces();
       }
     });

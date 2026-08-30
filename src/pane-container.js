@@ -29,6 +29,7 @@ module.exports = class PaneContainer {
     this.mutationStartActivePane = null;
     this.mutationStartActiveItem = null;
     this.mutationActivated = false;
+    this.mutationChangedActiveItemPanes = null;
 
     this.setRoot(
       new Pane({
@@ -161,6 +162,10 @@ module.exports = class PaneContainer {
 
   onDidChangeActiveTiledPane(fn) {
     return this.emitter.on("did-change-active-tiled-pane", fn);
+  }
+
+  onDidChangePaneActiveItem(fn) {
+    return this.emitter.on("did-change-pane-active-item", fn);
   }
 
   onDidActivatePane(fn) {
@@ -513,6 +518,7 @@ module.exports = class PaneContainer {
       this.mutationStartActiveItem = this.activePane && this.activePane.getActiveItem();
       this.mutationActiveItemChanged = false;
       this.mutationActivated = false;
+      this.mutationChangedActiveItemPanes = new Set();
     }
     try {
       return callback();
@@ -524,6 +530,8 @@ module.exports = class PaneContainer {
   flushPaneMutation() {
     const paneChanged = this.activePane !== this.mutationStartActivePane;
     const activeItem = this.activePane && this.activePane.getActiveItem();
+    const changedActiveItemPanes = this.mutationChangedActiveItemPanes;
+    this.mutationChangedActiveItemPanes = null;
     if (paneChanged) this.emitter.emit("did-change-active-pane", this.activePane);
     if (
       paneChanged ||
@@ -531,6 +539,12 @@ module.exports = class PaneContainer {
       this.mutationActiveItemChanged
     ) {
       this.emitActivePaneItemChanged(activeItem);
+    }
+    for (const pane of changedActiveItemPanes) {
+      this.emitter.emit("did-change-pane-active-item", {
+        pane,
+        item: pane.getActiveItem(),
+      });
     }
     if (this.mutationActivated) this.emitter.emit("did-activate-pane", this.activePane);
     this.mutationStartActivePane = null;
@@ -620,13 +634,19 @@ module.exports = class PaneContainer {
   }
 
   didChangeActiveItemOnPane(pane, activeItem) {
-    if (this.isAlive() && pane === this.getActivePane()) {
-      if (this.mutationDepth > 0) {
+    if (!this.isAlive()) return;
+    if (this.mutationDepth > 0) {
+      this.mutationChangedActiveItemPanes.add(pane);
+      if (pane === this.getActivePane()) {
         this.mutationActiveItemChanged = true;
-      } else {
-        this.emitActivePaneItemChanged(activeItem);
       }
+      return;
     }
+
+    if (pane === this.getActivePane()) {
+      this.emitActivePaneItemChanged(activeItem);
+    }
+    this.emitter.emit("did-change-pane-active-item", { pane, item: activeItem });
   }
 
   emitActivePaneItemChanged(activeItem) {

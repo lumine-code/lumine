@@ -241,6 +241,22 @@ describe("PaneContainer", () => {
     });
   });
 
+  describe("::onDidChangePaneActiveItem()", () => {
+    it("reports active-item changes in panes that are not the raw active pane", () => {
+      const container = new PaneContainer(params);
+      container.getRoot().addItems([{}, {}]);
+      container.getRoot().splitRight({ items: [{}, {}] });
+      const [inactivePane, activePane] = container.getPanes();
+      const observed = [];
+      container.onDidChangePaneActiveItem((event) => observed.push(event));
+
+      inactivePane.activateNextItem();
+
+      expect(container.getActivePane()).toBe(activePane);
+      expect(observed).toEqual([{ pane: inactivePane, item: inactivePane.getActiveItem() }]);
+    });
+  });
+
   describe("::onDidStopChangingActivePaneItem()", () => {
     let container, pane1, pane2, observed;
 

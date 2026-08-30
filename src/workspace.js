@@ -306,6 +306,8 @@ module.exports = class Workspace extends Model {
     };
     this.activePaneContainer = this.paneContainers.center;
     this.primaryActivePaneContainer = this.paneContainers.center;
+    this.lastPublishedActivePane = this.getActivePane();
+    this.lastPublishedActivePaneItem = this.getActivePaneItem();
     this.hasActiveTextEditor = false;
     this.previousActiveFileTextEditor = undefined;
     this.previousActiveEmbeddedTextEditor = undefined;
@@ -404,8 +406,14 @@ module.exports = class Workspace extends Model {
 
   reset(packageManager) {
     this.packageManager = packageManager;
+    this.cancelStoppedChangingActivePaneItemTimeout();
     this.emitter.dispose();
     this.emitter = new Emitter();
+
+    if (this.activeItemSubscriptions) {
+      this.activeItemSubscriptions.dispose();
+      this.activeItemSubscriptions = null;
+    }
 
     if (this.activeItemTextEditorsSubscription) {
       this.activeItemTextEditorsSubscription.dispose();
@@ -428,6 +436,9 @@ module.exports = class Workspace extends Model {
       bottom: this.createDock("bottom"),
     };
     this.activePaneContainer = this.paneContainers.center;
+    this.primaryActivePaneContainer = this.paneContainers.center;
+    this.lastPublishedActivePane = this.getActivePane();
+    this.lastPublishedActivePaneItem = this.getActivePaneItem();
     this.hasActiveTextEditor = false;
     this.previousActiveFileTextEditor = undefined;
     this.previousActiveEmbeddedTextEditor = undefined;
@@ -704,13 +715,8 @@ module.exports = class Workspace extends Model {
     }
     if (paneContainer !== this.getActivePaneContainer()) {
       this.activePaneContainer = paneContainer;
-      this.didChangeActivePaneItem(this.activePaneContainer.getActivePaneItem());
       this.emitter.emit("did-change-active-pane-container", this.activePaneContainer);
-      this.emitter.emit("did-change-active-pane", this.activePaneContainer.getActivePane());
-      this.emitter.emit(
-        "did-change-active-pane-item",
-        this.activePaneContainer.getActivePaneItem(),
-      );
+      this.publishActiveContext();
     }
   }
 
@@ -727,18 +733,11 @@ module.exports = class Workspace extends Model {
       pane = this.detachedPaneSurfaceManager?.paneForSurface(surface) || null;
     }
     if (!pane || pane.isDestroyed()) return;
-    const paneWasAlreadyActive =
-      this.getActivePaneContainer() === this.getCenter() &&
-      this.getCenter().paneContainer.getActivePane() === pane;
     pane.activate();
-    // Detach constructs and activates the DetachedPane before its native
-    // surface becomes active. When surface activation catches up, activating
-    // that same pane changes no PaneContainer state, but the public active
-    // context has changed from primary to detached and must still be emitted.
-    if (paneWasAlreadyActive) {
-      this.emitter.emit("did-change-active-pane", pane);
-      this.didChangeActivePaneItemOnPaneContainer(this.getCenter(), pane.getActiveItem());
-    }
+    // The target can be a dock in the primary window, but changing native
+    // surfaces always changes which center pane its public getters resolve.
+    this.getCenter().didChangeActiveWindowSurface();
+    this.publishActiveContext();
   }
 
   getActiveCenterPane() {
@@ -753,17 +752,12 @@ module.exports = class Workspace extends Model {
     return center.getActiveTiledPane() || center.paneContainer.getActivePane();
   }
 
-  didChangeActivePaneOnPaneContainer(paneContainer, pane) {
-    if (paneContainer === this.getActivePaneContainer()) {
-      this.emitter.emit("did-change-active-pane", pane);
-    }
+  didChangeActivePaneOnPaneContainer(paneContainer) {
+    if (paneContainer === this.getActivePaneContainer()) this.publishActiveContext();
   }
 
   didChangeActivePaneItemOnPaneContainer(paneContainer, item) {
-    if (paneContainer === this.getActivePaneContainer()) {
-      this.didChangeActivePaneItem(item);
-      this.emitter.emit("did-change-active-pane-item", item);
-    }
+    if (paneContainer === this.getActivePaneContainer()) this.publishActiveContext();
 
     if (paneContainer === this.getCenter()) {
       const hadActiveTextEditor = this.hasActiveTextEditor;
@@ -775,6 +769,22 @@ module.exports = class Workspace extends Model {
       }
 
       this.didChangeCenterTextEditorResolutions(item);
+    }
+  }
+
+  publishActiveContext() {
+    const pane = this.getActivePane();
+    const item = pane?.getActiveItem();
+    const paneChanged = pane !== this.lastPublishedActivePane;
+    const itemChanged = paneChanged || item !== this.lastPublishedActivePaneItem;
+    if (!paneChanged && !itemChanged) return;
+
+    this.lastPublishedActivePane = pane;
+    this.lastPublishedActivePaneItem = item;
+    if (paneChanged) this.emitter.emit("did-change-active-pane", pane);
+    if (itemChanged) {
+      this.didChangeActivePaneItem(item);
+      this.emitter.emit("did-change-active-pane-item", item);
     }
   }
 
