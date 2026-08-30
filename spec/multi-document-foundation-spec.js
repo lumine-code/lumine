@@ -128,7 +128,7 @@ describe("the multi-document workspace foundation", () => {
     manager.activate(primary);
     const input = otherDocument.createElement("input");
     otherDocument.body.appendChild(input);
-    input.focus();
+    input.dispatchEvent(new otherWindow.FocusEvent("focusin", { bubbles: true }));
     expect(manager.getActive()).toBe(detached);
     manager.destroy();
   });
