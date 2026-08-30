@@ -1,11 +1,12 @@
 "use strict";
 
 const { createFocusTrap } = require("focus-trap");
-const { CompositeDisposable } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const { classFactory } = require("./realm-custom-element");
 
 function initializePanelContainerElement() {
   this.subscriptions = new CompositeDisposable();
+  this.panelSubscriptions = new Map();
 }
 
 class PanelContainerElement extends HTMLElement {
@@ -25,6 +26,7 @@ class PanelContainerElement extends HTMLElement {
     this.viewRegistry = viewRegistry;
 
     this.subscriptions.add(this.model.onDidAddPanel(this.panelAdded.bind(this)));
+    this.subscriptions.add(this.model.onDidRemovePanel(this.panelRemoved.bind(this)));
     this.subscriptions.add(this.model.onDidDestroy(this.destroyed.bind(this)));
     this.classList.add(this.model.getLocation());
 
@@ -41,8 +43,13 @@ class PanelContainerElement extends HTMLElement {
   }
 
   panelAdded({ panel, index }) {
+    this.disposePanelSubscriptions(panel);
     const panelElement = panel.getElement();
     panelElement.classList.add(this.model.getLocation());
+    const panelSubscriptions = new CompositeDisposable();
+    this.panelSubscriptions.set(panel, panelSubscriptions);
+    this.subscriptions.add(panelSubscriptions);
+
     if (this.model.isModal()) {
       panelElement.classList.add("overlay", "from-top");
     } else {
@@ -55,6 +62,7 @@ class PanelContainerElement extends HTMLElement {
       const referenceItem = this.childNodes[index];
       this.insertBefore(panelElement, referenceItem);
     }
+    panel.didChangeDocument(panelElement.ownerDocument);
 
     if (this.model.isModal()) {
       // Only a panel that arrives visible displaces the current modal. Modals
@@ -63,7 +71,7 @@ class PanelContainerElement extends HTMLElement {
       if (panel.isVisible()) {
         this.hideAllPanelsExcept(panel);
       }
-      this.subscriptions.add(
+      panelSubscriptions.add(
         panel.onDidChangeVisible((visible) => {
           if (visible) {
             this.hideAllPanelsExcept(panel);
@@ -72,8 +80,8 @@ class PanelContainerElement extends HTMLElement {
       );
 
       if (panel.restoreFocus) {
-        if (panel.isVisible()) this.capturePriorFocus();
-        this.subscriptions.add(
+        if (panel.isVisible()) this.capturePriorFocus(panel.transferPriorFocus);
+        panelSubscriptions.add(
           panel.onDidChangeVisible((visible) => {
             if (visible) {
               this.capturePriorFocus();
@@ -105,7 +113,7 @@ class PanelContainerElement extends HTMLElement {
         }
         const modalFocusTrap = createFocusTrap(panelElement, focusOptions);
 
-        this.subscriptions.add(
+        panelSubscriptions.add(
           panel.onDidChangeVisible((visible) => {
             if (visible) {
               modalFocusTrap.activate();
@@ -113,13 +121,61 @@ class PanelContainerElement extends HTMLElement {
               modalFocusTrap.deactivate();
             }
           }),
+          new Disposable(() => modalFocusTrap.deactivate()),
         );
+        if (panel.isVisible()) modalFocusTrap.activate();
       }
     }
+
+    const transferFocusTarget = panel.transferFocusTarget;
+    if (
+      panel.transferring &&
+      panel.isVisible() &&
+      transferFocusTarget?.isConnected &&
+      transferFocusTarget.ownerDocument === panelElement.ownerDocument
+    ) {
+      transferFocusTarget.focus();
+    }
+    panel.transferFocusTarget = null;
+  }
+
+  panelRemoved({ panel }) {
+    const panelElement = panel.element;
+    if (panel.transferring && panel.isVisible() && panelElement) {
+      const activeElement = panelElement.ownerDocument.activeElement;
+      if (activeElement && panelElement.contains(activeElement)) {
+        panel.transferFocusTarget = activeElement;
+      }
+    }
+    if (panel.transferring && panel.isVisible() && !panel.transferPriorFocus) {
+      panel.transferPriorFocus = this.priorFocus;
+    }
+    this.disposePanelSubscriptions(panel);
+    if (panelElement) {
+      panelElement.classList.remove(this.model.getLocation());
+      if (this.model.isModal()) {
+        panelElement.classList.remove("overlay", "from-top");
+      } else {
+        panelElement.classList.remove("tool-panel", `panel-${this.model.getLocation()}`);
+      }
+      if (panelElement.parentNode === this) panelElement.remove();
+    }
+    if (panel.isVisible() && !this.model.getPanels().some((candidate) => candidate.isVisible())) {
+      this.priorFocus = null;
+    }
+  }
+
+  disposePanelSubscriptions(panel) {
+    const panelSubscriptions = this.panelSubscriptions.get(panel);
+    if (!panelSubscriptions) return;
+    this.panelSubscriptions.delete(panel);
+    this.subscriptions.remove(panelSubscriptions);
+    panelSubscriptions.dispose();
   }
 
   destroyed() {
     this.subscriptions.dispose();
+    this.panelSubscriptions.clear();
     if (this.parentNode != null) {
       this.parentNode.removeChild(this);
     }
@@ -127,8 +183,16 @@ class PanelContainerElement extends HTMLElement {
 
   // Remembers where focus was before a modal opened. When modals open on top
   // of each other, only the element focused before the first modal is kept.
-  capturePriorFocus() {
+  capturePriorFocus(preferredElement = null) {
     const document = this.ownerDocument;
+    if (
+      preferredElement?.isConnected &&
+      preferredElement.ownerDocument === document &&
+      !this.contains(preferredElement)
+    ) {
+      this.priorFocus = preferredElement;
+      return;
+    }
     const active = document.activeElement;
     if (active && active !== document.body && !this.contains(active)) {
       this.priorFocus = active;

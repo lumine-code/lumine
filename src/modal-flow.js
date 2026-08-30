@@ -143,14 +143,72 @@ module.exports = class ModalFlow {
     if (this.stack.some((entry) => entry.panel === panel)) this.clear();
   }
 
+  hasPanel(panel) {
+    return this.stack.some((entry) => entry.panel === panel);
+  }
+
+  getStackPanels() {
+    return this.stack.map((entry) => entry.panel);
+  }
+
+  transferTo(destination) {
+    if (destination === this) return;
+    if (!destination || typeof destination.ensureSubscriptions !== "function") {
+      throw new TypeError("A modal flow can move only to another ModalFlow");
+    }
+    if (this.stack.length === 0) {
+      throw new Error("Cannot transfer an empty modal flow");
+    }
+    if (destination.stack.length !== 0) {
+      throw new Error("Cannot transfer a modal flow onto another active modal flow");
+    }
+
+    const entries = this.stack.slice();
+    this.disposeSubscriptions();
+    this.stack = [];
+    destination.stack = entries;
+    try {
+      destination.ensureSubscriptions();
+      this.didChange();
+      destination.didChange();
+    } catch (error) {
+      const rollbackErrors = [];
+      try {
+        destination.disposeSubscriptions();
+        destination.stack = [];
+        this.stack = entries;
+        this.ensureSubscriptions();
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+      try {
+        destination.didChange();
+        this.didChange();
+      } catch (rollbackError) {
+        rollbackErrors.push(rollbackError);
+      }
+      if (rollbackErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...rollbackErrors],
+          "Modal-flow transfer failed and could not be rolled back cleanly",
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  }
+
   clear() {
     if (this.stack.length === 0) return;
     this.stack = [];
-    if (this.subscriptions) {
-      this.subscriptions.dispose();
-      this.subscriptions = null;
-    }
+    this.disposeSubscriptions();
     this.didChange();
+  }
+
+  disposeSubscriptions() {
+    if (!this.subscriptions) return;
+    this.subscriptions.dispose();
+    this.subscriptions = null;
   }
 
   // A step change swaps one panel for another while the modal surface

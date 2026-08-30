@@ -178,6 +178,64 @@ describe("PanelContainerElement", () => {
       expect(panel1.getElement()).toHaveClass("from-top");
     });
 
+    it("transfers per-panel behavior when a stable panel moves to another container", () => {
+      const destination = new PanelContainer({
+        viewRegistry: lumine.views,
+        location: "modal",
+      });
+      const destinationElement = destination.getElement();
+      jasmineContent.appendChild(destinationElement);
+      const panel = new Panel(
+        { item: new TestPanelContainerItem(), visible: false, surfaceRelocatable: true },
+        lumine.views,
+      );
+      container.addPanel(panel);
+      spyOn(element, "hideAllPanelsExcept").and.callThrough();
+      spyOn(destinationElement, "hideAllPanelsExcept").and.callThrough();
+
+      destination.addPanel(panel);
+      panel.show();
+
+      expect(panel.getElement().parentNode).toBe(destinationElement);
+      expect(element.hideAllPanelsExcept).not.toHaveBeenCalled();
+      expect(destinationElement.hideAllPanelsExcept).toHaveBeenCalledOnceWith(panel);
+      destination.destroy();
+      panel.destroy();
+    });
+
+    it("moves a visible stable modal without a hide/show cycle and rebuilds focus handling", () => {
+      const destination = new PanelContainer({
+        viewRegistry: lumine.views,
+        location: "modal",
+      });
+      const destinationElement = destination.getElement();
+      jasmineContent.appendChild(destinationElement);
+      const panel = new Panel(
+        {
+          item: new TestPanelContainerItem(),
+          visible: false,
+          autoFocus: true,
+          surfaceRelocatable: true,
+        },
+        lumine.views,
+      );
+      container.addPanel(panel);
+      const input = document.createElement("input");
+      panel.getElement().appendChild(input);
+      const visibilityChanges = jasmine.createSpy("visibilityChanges");
+      panel.onDidChangeVisible(visibilityChanges);
+      panel.show();
+      visibilityChanges.calls.reset();
+
+      destination.addPanel(panel);
+
+      expect(panel.getElement().parentNode).toBe(destinationElement);
+      expect(panel.isVisible()).toBe(true);
+      expect(document.activeElement).toBe(input);
+      expect(visibilityChanges).not.toHaveBeenCalled();
+      destination.destroy();
+    });
+
     describe("autoFocus", () => {
       function createPanel(autoFocus = true) {
         const panel = new Panel(

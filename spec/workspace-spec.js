@@ -2120,6 +2120,26 @@ describe("Workspace", () => {
         expect(itemView instanceof TestItemElement).toBe(true);
         expect(itemView.getModel()).toBe(model);
       });
+
+      it("rejects ambiguous, unregistered, and stale modal routes", () => {
+        const owner = workspace.buildTextEditor();
+        workspace.getActivePane().addItem(owner);
+        const primary = lumine.windowSurfaces.getPrimary();
+        const item = new TestItem();
+
+        expect(() => workspace.addModalPanel({ item, owner, surface: primary })).toThrowError(
+          /either owner or surface/,
+        );
+        expect(() => workspace.addModalPanel({ item, surface: { id: primary.id } })).toThrowError(
+          /registered with this workspace/,
+        );
+
+        workspace.getActivePane().destroyItem(owner, true);
+        expect(() => workspace.addModalPanel({ item, owner })).toThrowError(
+          /live workspace pane item/,
+        );
+        expect(workspace.getModalPanels()).toEqual([]);
+      });
     });
 
     describe("::addRightPanel(model)", () => {
@@ -4112,6 +4132,7 @@ describe("Workspace", () => {
       const activeEditors = jasmine.createSpy("activeEditors");
       const activeFileEditors = jasmine.createSpy("activeFileEditors");
       const activeEmbeddedEditors = jasmine.createSpy("activeEmbeddedEditors");
+      const primaryEditorSurfaces = jasmine.createSpy("primaryEditorSurfaces");
       const surfaceSubscriptions = [
         workspace.observeWindowSurfaces(observedSurfaces),
         workspace.onDidRemoveWindowSurface(removedSurfaces),
@@ -4120,9 +4141,11 @@ describe("Workspace", () => {
         workspace.onDidChangeActiveTextEditor(activeEditors),
         workspace.onDidChangeActiveFileTextEditor(activeFileEditors),
         workspace.onDidChangeActiveEmbeddedTextEditor(activeEmbeddedEditors),
+        workspace.observePaneItemSurface(primaryEditor, primaryEditorSurfaces),
       ];
 
       try {
+        expect(() => workspace.observePaneItemSurface({}, () => {})).toThrowError(TypeError);
         detachedPane = await workspace.detachPaneItem(detachedEditor, { show: false });
         const detachedSurface = workspace.getWindowSurface(detachedEditor);
         const primarySurface = lumine.windowSurfaces.getPrimary();
@@ -4130,6 +4153,7 @@ describe("Workspace", () => {
         expect(workspace.getWindowSurfaces()).toEqual([primarySurface, detachedSurface]);
         expect(observedSurfaces).toHaveBeenCalledWith(primarySurface);
         expect(observedSurfaces).toHaveBeenCalledWith(detachedSurface);
+        expect(primaryEditorSurfaces).toHaveBeenCalledOnceWith(primarySurface);
 
         lumine.windowSurfaces.activate(primarySurface);
         expect(workspace.getActiveWindowSurface()).toBe(primarySurface);

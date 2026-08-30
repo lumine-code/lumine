@@ -70,6 +70,32 @@ describe("SelectListView", () => {
       expect(listTexts()).toEqual(["beta"]);
     });
 
+    it("keeps an adopted element returned by elementForItem", async () => {
+      const frame = document.createElement("iframe");
+      document.body.appendChild(frame);
+      const elementRegistration = lumine.elements.addWindow(frame.contentWindow);
+      const documentRegistration = lumine.views.registerDocument(frame.contentDocument);
+      const itemElement = document.createElement("li");
+      itemElement.textContent = "adopted";
+      frame.contentDocument.adoptNode(itemElement);
+
+      try {
+        view = new SelectListView({
+          document: frame.contentDocument,
+          items: ["one"],
+          elementForItem: () => itemElement,
+        });
+
+        expect(view.element.querySelector("li")).toBe(itemElement);
+      } finally {
+        await view?.destroy();
+        view = null;
+        documentRegistration.dispose();
+        elementRegistration.dispose();
+        frame.remove();
+      }
+    });
+
     it("renders standalone separators before items selected by id", async () => {
       view = textItemView({ separatorIds: ["two"] });
 
@@ -411,6 +437,160 @@ describe("SelectListView", () => {
       await view.destroy();
       view = null;
       expect(lumine.workspace.getModalPanels()).not.toContain(panel);
+    });
+
+    it("moves a visible stable panel across surfaces and rehomes it on surface teardown", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const editor = lumine.workspace.buildTextEditor();
+      lumine.workspace.getActivePane().addItem(editor);
+      const primarySurface = lumine.workspace.getWindowSurface(
+        lumine.views.getView(lumine.workspace),
+      );
+      let detachedPane;
+      const relocationCancelled = jasmine.createSpy("relocationCancelled");
+
+      view = new SelectListView({
+        owner: editor,
+        preserveQuery: true,
+        didCancelSelection: relocationCancelled,
+        items: ["one", "two"],
+        initiallyVisibleItemCount: 1,
+        elementForItem: (item, { visible }) => {
+          // Deliberately return a primary-realm row. The list must adopt it
+          // before ListItemView schedules work against its owner Document.
+          const element = document.createElement("li");
+          if (visible) element.textContent = item;
+          return element;
+        },
+      });
+      const panel = view.getPanel();
+      const visibilityChanges = jasmine.createSpy("visibilityChanges");
+      panel.onDidChangeVisible(visibilityChanges);
+
+      try {
+        editor.getElement().focus();
+        view.show();
+        expect(panel.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(view.element.ownerDocument).toBe(document);
+        expect(view.visibilityObserver instanceof window.IntersectionObserver).toBe(true);
+        view.refs.queryEditor.setText("kept");
+
+        detachedPane = await lumine.workspace.detachPaneItem(editor, { show: false });
+        const detachedSurface = lumine.workspace.getWindowSurface(editor);
+        await view.update({ items: ["three", "four"] });
+
+        expect(view.getPanel()).toBe(panel);
+        expect(panel.getContainer()).toBe(detachedSurface.modalPanelContainer);
+        expect(panel.getElement().ownerDocument).toBe(detachedSurface.document);
+        expect(view.element.ownerDocument).toBe(detachedSurface.document);
+        expect(view.refs.queryEditor.element.ownerDocument).toBe(detachedSurface.document);
+        expect(
+          Array.from(view.element.querySelectorAll("li")).every(
+            (element) => element.ownerDocument === detachedSurface.document,
+          ),
+        ).toBe(true);
+        expect(view.visibilityObserver instanceof detachedSurface.window.IntersectionObserver).toBe(
+          true,
+        );
+        expect(view.element.contains(detachedSurface.document.activeElement)).toBe(true);
+        expect(view.getQuery()).toBe("kept");
+        expect(visibilityChanges.calls.allArgs()).toEqual([[true]]);
+
+        const fixedView = new SelectListView({
+          surface: primarySurface,
+          items: ["fixed"],
+          elementForItem: (item, { document }) => {
+            const element = document.createElement("li");
+            element.textContent = item;
+            return element;
+          },
+        });
+        try {
+          expect(() => fixedView.show({ surface: detachedSurface })).toThrowError(
+            /cannot override the dialog's declared route/,
+          );
+          expect(fixedView.getPanel().getContainer()).toBe(lumine.workspace.panelContainers.modal);
+          expect(fixedView.element.ownerDocument).toBe(document);
+        } finally {
+          await fixedView.destroy();
+        }
+
+        await lumine.workspace.attachDetachedPane(detachedPane);
+        detachedPane = null;
+        expect(panel.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(view.element.ownerDocument).toBe(document);
+        expect(view.document).toBe(document);
+        expect(view.getPanel()).toBe(panel);
+        expect(view.visibilityObserver instanceof window.IntersectionObserver).toBe(true);
+        expect(view.isVisible()).toBe(true);
+        expect(view.getQuery()).toBe("kept");
+        expect(view.element.contains(document.activeElement)).toBe(true);
+        expect(visibilityChanges.calls.allArgs()).toEqual([[true]]);
+        expect(relocationCancelled).not.toHaveBeenCalled();
+        view.hide();
+        expect(editor.getElement().contains(document.activeElement)).toBe(true);
+        expect(visibilityChanges.calls.allArgs()).toEqual([[true], [false]]);
+      } finally {
+        view.hide();
+        if (detachedPane?.isDetached?.()) {
+          await lumine.workspace.attachDetachedPane(detachedPane);
+        }
+        lumine.workspace.paneForItem(editor)?.destroyItem(editor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
+    });
+
+    it("destroys an owner-routed panel when its pane item is destroyed", () => {
+      const editor = lumine.workspace.buildTextEditor();
+      const pane = lumine.workspace.getActivePane();
+      pane.addItem(editor);
+      const cancelled = jasmine.createSpy("cancelled");
+      view = textItemView({ owner: editor, didCancelSelection: cancelled });
+      const panel = view.getPanel();
+      view.show();
+
+      pane.destroyItem(editor, true);
+
+      expect(panel.isDestroyed()).toBe(true);
+      expect(view.isVisible()).toBe(false);
+      expect(cancelled).toHaveBeenCalledTimes(1);
+    });
+
+    it("returns an owner-routed visible panel when a surface transition rolls back", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const editor = lumine.workspace.buildTextEditor();
+      lumine.workspace.getActivePane().addItem(editor);
+      view = textItemView({ owner: editor, preserveQuery: true });
+      const panel = view.getPanel();
+      const visibilityChanges = jasmine.createSpy("visibilityChanges");
+      panel.onDidChangeVisible(visibilityChanges);
+      editor.getElement().focus();
+      view.show();
+      view.refs.queryEditor.setText("kept");
+      const rejection = lumine.workspace.addWindowSurfaceTransitionObserver(() => ({
+        commit() {
+          throw new Error("later participant failed");
+        },
+      }));
+
+      try {
+        await expectAsync(
+          lumine.workspace.detachPaneItem(editor, { show: false }),
+        ).toBeRejectedWithError(/later participant failed/);
+
+        expect(lumine.workspace.paneForItem(editor).isDetached()).toBe(false);
+        expect(panel.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(panel.getElement().ownerDocument).toBe(document);
+        expect(view.isVisible()).toBe(true);
+        expect(view.getQuery()).toBe("kept");
+        expect(view.element.contains(document.activeElement)).toBe(true);
+        expect(visibilityChanges.calls.allArgs()).toEqual([[true]]);
+      } finally {
+        rejection.dispose();
+        view.hide();
+        lumine.workspace.paneForItem(editor)?.destroyItem(editor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
     });
   });
 

@@ -412,16 +412,19 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
 
   focusPane() {
     this.pane?.activate();
+    if (this.modalPanelContainer?.getPanels().some((panel) => panel.isVisible())) return;
     this.pane?.getElement?.().focus();
   }
 
   destroy() {
-    if (this.isDestroyed()) return;
+    if (this.isDestroyed() || this.destroying) return;
+    this.workspace.rehomeModalPanelsFromSurface(this);
+    this.destroying = true;
     this.setTitleBarFactory(null);
-    if (this.surfaceManager?.get(this.id) === this) this.surfaceManager.remove(this);
     this.surfaceSubscriptions.dispose();
     this.modalFlow?.destroy();
     this.modalPanelContainer?.destroy();
+    if (this.surfaceManager?.get(this.id) === this) this.surfaceManager.remove(this);
     this.element?.remove();
     this.pane = null;
     this.item = null;

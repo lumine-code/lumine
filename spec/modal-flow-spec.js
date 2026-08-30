@@ -181,6 +181,99 @@ describe("modal flow", () => {
     });
   });
 
+  describe("window-surface transfer", () => {
+    it("moves the whole flow from a hidden member and preserves it through teardown", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const editor = lumine.workspace.buildTextEditor();
+      lumine.workspace.getActivePane().addItem(editor);
+      const primary = lumine.windowSurfaces.getPrimary();
+      let detachedPane;
+
+      try {
+        detachedPane = await lumine.workspace.detachPaneItem(editor, { show: false });
+        const detached = lumine.workspace.getWindowSurface(editor);
+        const root = addModal({
+          surface: primary,
+          surfaceRelocatable: true,
+          crumb: "Root",
+        });
+        const step = addModal({ surface: primary, surfaceRelocatable: true });
+        root.show();
+        step.show({ crumb: "Step" });
+        const rootVisibility = jasmine.createSpy("rootVisibility");
+        const stepVisibility = jasmine.createSpy("stepVisibility");
+        root.onDidChangeVisible(rootVisibility);
+        step.onDidChangeVisible(stepVisibility);
+
+        // Root is hidden, but it is a member of a live flow. Moving it must
+        // move the visible top too, without synthesizing hide/show events.
+        lumine.workspace.rehomeModalPanel(root, { surface: detached });
+
+        expect(root.getContainer()).toBe(detached.modalPanelContainer);
+        expect(step.getContainer()).toBe(detached.modalPanelContainer);
+        expect(root.getElement().ownerDocument).toBe(detached.document);
+        expect(step.getElement().ownerDocument).toBe(detached.document);
+        expect(lumine.workspace.getModalFlow(primary).getTrail()).toEqual([]);
+        expect(detached.modalFlow.getTrail()).toEqual(["Root", "Step"]);
+        expect(rootVisibility).not.toHaveBeenCalled();
+        expect(stepVisibility).not.toHaveBeenCalled();
+
+        lumine.windowSurfaces.activate(detached);
+        expect(lumine.workspace.popModal()).toBe(true);
+        expect(root.isVisible()).toBe(true);
+        expect(step.isVisible()).toBe(false);
+
+        await lumine.workspace.attachDetachedPane(detachedPane);
+        detachedPane = null;
+
+        expect(root.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(step.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(root.getElement().ownerDocument).toBe(document);
+        expect(root.isVisible()).toBe(true);
+        expect(lumine.workspace.getModalFlow(primary).getTrail()).toEqual(["Root"]);
+      } finally {
+        if (detachedPane?.isDetached?.()) {
+          await lumine.workspace.attachDetachedPane(detachedPane);
+        }
+        lumine.workspace.paneForItem(editor)?.destroyItem(editor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
+    });
+
+    it("rejects a mixed flow atomically", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const editor = lumine.workspace.buildTextEditor();
+      lumine.workspace.getActivePane().addItem(editor);
+      const primary = lumine.windowSurfaces.getPrimary();
+      let detachedPane;
+
+      try {
+        detachedPane = await lumine.workspace.detachPaneItem(editor, { show: false });
+        const detached = lumine.workspace.getWindowSurface(editor);
+        const fixedRoot = addModal({ surface: primary, crumb: "Fixed" });
+        const reusableStep = addModal({ surface: primary, surfaceRelocatable: true });
+        fixedRoot.show();
+        reusableStep.show({ crumb: "Reusable" });
+
+        expect(() =>
+          lumine.workspace.rehomeModalPanel(reusableStep, { surface: detached }),
+        ).toThrowError(/Every panel in a transferred modal flow must be surface-relocatable/);
+        expect(fixedRoot.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(reusableStep.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(fixedRoot.isVisible()).toBe(false);
+        expect(reusableStep.isVisible()).toBe(true);
+        expect(lumine.workspace.getModalFlow(primary).getTrail()).toEqual(["Fixed", "Reusable"]);
+        expect(detached.modalPanelContainer.getPanels()).toEqual([]);
+      } finally {
+        if (detachedPane?.isDetached?.()) {
+          await lumine.workspace.attachDetachedPane(detachedPane);
+        }
+        lumine.workspace.paneForItem(editor)?.destroyItem(editor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
+    });
+  });
+
   describe("trail teardown", () => {
     it("clears when the top step is hidden by its owner", () => {
       const root = addModal({ crumb: "Root" });

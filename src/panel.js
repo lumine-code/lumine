@@ -16,7 +16,7 @@ module.exports = class Panel {
    */
 
   constructor(
-    { item, autoFocus, restoreFocus, visible, priority, className, crumb },
+    { item, autoFocus, restoreFocus, visible, priority, className, crumb, surfaceRelocatable },
     viewRegistry,
   ) {
     this.destroyed = false;
@@ -27,6 +27,18 @@ module.exports = class Panel {
     this.priority = priority == null ? 100 : priority;
     this.className = className;
     this.crumb = crumb;
+    // A reusable modal (a picker or input dialog) keeps one Panel identity
+    // while successive shows may belong to different native-window surfaces.
+    // A transfer changes its source and destination ownership atomically; a
+    // live reusable panel is never exposed without a live modal container.
+    this.surfaceRelocatable = Boolean(surfaceRelocatable);
+    this.container = null;
+    this.transferring = false;
+    this.transferFocusTarget = null;
+    this.transferPriorFocus = null;
+    this.surface = null;
+    this.modalRoute = null;
+    this.document = null;
     // Assigned by the workspace for modal panels; the keeper of the window's
     // modal breadcrumb trail (see Workspace::addPanel and src/modal-flow.js).
     this.flowKeeper = null;
@@ -46,11 +58,19 @@ module.exports = class Panel {
    */
   destroy() {
     if (this.destroyed) return;
+    if (this.transferring) {
+      throw new Error("Cannot destroy a panel while its window-surface transfer is in progress");
+    }
     this.destroyed = true;
     this.hide();
     if (this.element) this.element.remove();
     this.emitter.emit("did-destroy", this);
     return this.emitter.dispose();
+  }
+
+  /** @private */
+  isDestroyed() {
+    return this.destroyed;
   }
 
   getElement() {
@@ -60,8 +80,34 @@ module.exports = class Panel {
       if (!this.visible) this.element.style.display = "none";
       if (this.className) this.element.classList.add(...this.className.split(" "));
       this.element.appendChild(itemElement);
+      this.didChangeDocument(this.element.ownerDocument);
     }
     return this.element;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Invoke the callback after this panel's element moves to another native
+   * window Document. Rebuild browser objects tied to the previous Window in
+   * this callback; the panel item and Panel identity do not change.
+   *
+   * @param {Function} callback - Called with the old and new Documents.
+   * @param {Document|null} callback.event.oldDocument - The previous owner.
+   * @param {Document} callback.event.newDocument - The current owner.
+   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
+   */
+  onDidChangeDocument(callback) {
+    return this.emitter.on("did-change-document", callback);
+  }
+
+  /** @private */
+  didChangeDocument(document) {
+    if (this.document === document) return;
+    const oldDocument = this.document;
+    this.document = document;
+    this.emitter.emit("did-change-document", { oldDocument, newDocument: document });
   }
 
   /**
@@ -111,6 +157,40 @@ module.exports = class Panel {
   }
 
   /**
+   * @private
+   *
+   * Return the panel container that currently presents this panel, or null
+   * before its initial add and after destruction.
+   */
+  getContainer() {
+    return this.container;
+  }
+
+  /** @private */
+  setContainer(container) {
+    this.container = container;
+  }
+
+  /** @private */
+  isSurfaceRelocatable() {
+    return this.surfaceRelocatable;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Return whether this visible panel is currently moving between native
+   * window Documents. DOM blur events emitted during that synchronous move do
+   * not mean the user dismissed the panel.
+   *
+   * @returns {Boolean} true during the container transfer.
+   */
+  isTransferring() {
+    return this.transferring;
+  }
+
+  /**
    * @public
    * @status public
    *
@@ -157,6 +237,12 @@ module.exports = class Panel {
    * @param options.crumb - Modal panels only. A `String`, or `true` to use the label the panel declared when it was added. The panel announces "display me now and take me into the breadcrumb": the modal that is visible at this moment becomes the previous entry of the window's modal trail, the breadcrumb strip shows the path, and `modal:go-back` (Shift-Escape) or a click on an earlier crumb returns to it. Without `crumb` the panel is shown standalone, exactly as before — and showing a modal standalone ends whatever trail another flow had built.
    */
   show(options) {
+    if (this.destroyed) {
+      throw new Error("Cannot show a destroyed panel");
+    }
+    if (!this.container || this.container.isDestroyed() || !this.container.containsPanel(this)) {
+      throw new Error("Cannot show a panel that is not mounted in a live panel container");
+    }
     if (options != null) {
       for (const key of Object.keys(options)) {
         if (key !== "crumb") {

@@ -274,6 +274,10 @@ module.exports = class Workspace extends Model {
     this.project = params.project;
     this.notificationManager = params.notificationManager;
     this.viewRegistry = params.viewRegistry;
+    // This editor owns the select-list copy used by its modal factory. Set its
+    // document-aware scheduler explicitly instead of relying on module-load
+    // timing to find the global environment.
+    SelectListView.setScheduler(this.viewRegistry);
     this.grammarRegistry = params.grammarRegistry;
     this.applicationDelegate = params.applicationDelegate;
     this.assert = params.assert;
@@ -339,6 +343,11 @@ module.exports = class Workspace extends Model {
         location: "modal",
       }),
     };
+    this.disposables.add(
+      this.windowSurfaceTransitions.addObserver((context) =>
+        this.beginModalOwnerSurfaceTransition(context),
+      ),
+    );
 
     this.incoming = new Map();
     if (this.surfaceManager) {
@@ -1896,7 +1905,7 @@ module.exports = class Workspace extends Model {
    */
   buildSelectList(props) {
     const resolvedProps = this.withModalDocument(props);
-    return this.bindModalOwner(new SelectListView(resolvedProps), resolvedProps);
+    return new SelectListView(resolvedProps);
   }
 
   /**
@@ -1923,35 +1932,14 @@ module.exports = class Workspace extends Model {
    */
   buildInputDialog(props) {
     const resolvedProps = this.withModalDocument(props);
-    return this.bindModalOwner(new InputDialogView(resolvedProps), resolvedProps);
+    return new InputDialogView(resolvedProps);
   }
 
   withModalDocument(props) {
     if (props.document) return props;
-    const surface = props.surface?.document
-      ? props.surface
-      : props.owner
-        ? this.getWindowSurface(props.owner)
-        : null;
+    const surface = this.modalSurfaceFor(props);
     const document = surface?.document || this.getElement().ownerDocument;
     return { ...props, document };
-  }
-
-  bindModalOwner(view, { owner, surface } = {}) {
-    if (!owner && !surface) return view;
-    const getPanel = view.getPanel.bind(view);
-    view.getPanel = () => this.withModalOwner({ owner, surface }, () => getPanel());
-    return view;
-  }
-
-  withModalOwner(owner, callback) {
-    const previous = this.pendingModalOwner;
-    this.pendingModalOwner = owner;
-    try {
-      return callback();
-    } finally {
-      this.pendingModalOwner = previous;
-    }
   }
 
   /**
@@ -2588,8 +2576,12 @@ module.exports = class Workspace extends Model {
    * @returns {Disposable} A subscription disposable.
    */
   observePaneItemSurface(item, callback) {
+    const pane = this.paneForItem(item);
+    if (!pane || this.paneContainerForItem(item) !== this.getCenter()) {
+      throw new TypeError("Surface observation requires a workspace-center pane item");
+    }
     if (!this.detachedPaneSurfaceManager) {
-      callback(null);
+      callback(this.getPrimaryWindowSurface());
       return new Disposable();
     }
     return this.detachedPaneSurfaceManager.observePaneItemSurface(item, callback);
@@ -2673,6 +2665,11 @@ module.exports = class Workspace extends Model {
   // Adds the destroyed item's uri to the list of items to reopen.
   didDestroyPaneItem({ item }) {
     this.invalidateLongTitles();
+    for (const panel of this.getPanels("modal")) {
+      if (panel.modalRoute?.kind === "owner" && panel.modalRoute.owner === item) {
+        panel.destroy();
+      }
+    }
     let uri;
     if (typeof item.getURI === "function") {
       uri = item.getURI();
@@ -2966,10 +2963,232 @@ module.exports = class Workspace extends Model {
    * @param {Boolean|Element} [options.autoFocus] - true if you want modal focus managed for you by Lumine. Lumine will automatically focus on this element or your modal panel's first tabbable element when the modal opens and will restore the previously selected element when the modal closes. Lumine will also automatically restrict user tab focus within your modal while it is open. (default: false)
    * @param {Boolean} [options.restoreFocus] - false if you want to manage focus restoration yourself. By default, when a modal panel is hidden, focus returns to the element that was focused before the modal opened — or, for chained modals, before the first modal in the chain opened. (default: true)
    * @param {String} [options.crumb] - the label this panel carries on the modal breadcrumb trail. Used when the panel is shown as a flow step without an explicit label — `panel.show({crumb: true})` — and when a step shown on top of this panel adopts it as the trail root. See {@link Panel#show}.
+   * @param {*} [options.owner] - a live workspace pane item whose native-window surface owns this modal. A surface-relocatable panel follows the owner through committed detach and attach transitions, returns with it on rollback, and is destroyed when the owner is destroyed.
+   * @param {WindowSurface} [options.surface] - one registered live native-window surface that owns this modal. Mutually exclusive with `owner`; without either route, the current active surface is captured.
+   * @param {Boolean} [options.surfaceRelocatable] - whether the same Panel may move between native-window modal containers, including while visible. Reusable picker and input-dialog infrastructure sets this; ordinary package panels remain owned by the container that created them.
    * @returns {Panel}
    */
   addModalPanel(options = {}) {
     return this.addPanel("modal", options);
+  }
+
+  /** @private */
+  beginModalOwnerSurfaceTransition(context) {
+    const panels = this.getPanels("modal").filter(
+      (panel) =>
+        !panel.isDestroyed() &&
+        panel.isSurfaceRelocatable() &&
+        panel.modalRoute?.kind === "owner" &&
+        panel.modalRoute.owner === context.item,
+    );
+    if (panels.length === 0) return;
+
+    const followOwner = () => {
+      for (const panel of panels) {
+        if (
+          panel.isDestroyed() ||
+          panel.modalRoute?.kind !== "owner" ||
+          panel.modalRoute.owner !== context.item
+        ) {
+          continue;
+        }
+        this.rehomeModalPanel(panel, { owner: context.item });
+      }
+    };
+    // The pane item is moved between begin() and commit(). A later participant
+    // may still reject the transition, so rollback resolves the owner's model
+    // location again instead of assuming either snapshot won.
+    return { commit: followOwner, rollback: followOwner };
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Move a reusable modal panel to the native-window surface selected
+   * by `owner`, `surface`, or the currently active surface. The Panel object
+   * and its item remain the same; only its presenting container changes.
+   * Moving any member of an active modal flow transfers the complete flow.
+   * The operation validates every panel and the destination before changing
+   * ownership, and rolls the complete move back if a container rejects it.
+   * A visible panel remains visible, keeps its focused descendant, and does
+   * not emit a synthetic visibility change during the move.
+   *
+   * @param {Panel} panel - A modal panel created with `surfaceRelocatable`.
+   * @param {Object} [options]
+   * @param {*} [options.owner] - Pane item whose current surface owns the modal.
+   * @param {WindowSurface} [options.surface] - Explicit fixed surface.
+   * @returns {Panel} The same panel instance.
+   */
+  rehomeModalPanel(panel, options = {}) {
+    if (!(panel instanceof Panel)) {
+      throw new TypeError("rehomeModalPanel requires a Panel owned by this workspace");
+    }
+    if (!options || typeof options !== "object") {
+      throw new TypeError("rehomeModalPanel options must be an object");
+    }
+    for (const key of Object.keys(options)) {
+      if (key !== "owner" && key !== "surface") {
+        throw new TypeError(`rehomeModalPanel received an unknown option "${key}"`);
+      }
+    }
+    if (!panel.isSurfaceRelocatable()) {
+      throw new TypeError("Only a surface-relocatable modal panel can move between surfaces");
+    }
+    if (panel.isDestroyed()) {
+      throw new Error("A destroyed modal panel cannot move between surfaces");
+    }
+
+    const currentContainer = panel.getContainer();
+    if (
+      !currentContainer ||
+      currentContainer.isDestroyed() ||
+      !currentContainer.containsPanel(panel)
+    ) {
+      throw new Error("A reusable modal panel must belong to a live modal container");
+    }
+    if (!currentContainer.isModal()) {
+      throw new TypeError("Only a modal panel can move between window surfaces");
+    }
+
+    const destination = this.modalPanelDestination(options);
+    const nextRoute = this.modalRouteForOptions(options, destination.surface);
+    if (currentContainer === destination.container) {
+      panel.modalRoute = nextRoute;
+      return panel;
+    }
+
+    const sourceFlow = panel.flowKeeper;
+    const flowPanels = sourceFlow?.hasPanel(panel)
+      ? Array.from(new Set(sourceFlow.getStackPanels()))
+      : null;
+    const panels = flowPanels || [panel];
+
+    if (flowPanels) {
+      if (sourceFlow === destination.flowKeeper) {
+        throw new Error("A modal flow cannot span more than one modal container");
+      }
+      if (destination.flowKeeper.getStackPanels().length > 0) {
+        throw new Error("Cannot move a modal flow onto another active modal flow");
+      }
+    }
+
+    for (const candidate of panels) {
+      if (!candidate.isSurfaceRelocatable()) {
+        throw new Error("Every panel in a transferred modal flow must be surface-relocatable");
+      }
+      if (
+        candidate.isDestroyed() ||
+        candidate.getContainer() !== currentContainer ||
+        !currentContainer.containsPanel(candidate)
+      ) {
+        throw new Error("Every panel in a transferred modal flow must share one live container");
+      }
+    }
+
+    if (
+      panels.some((candidate) => candidate.isVisible()) &&
+      destination.container.getPanels().some((candidate) => candidate.isVisible())
+    ) {
+      throw new Error(
+        "Cannot move a visible modal onto a surface that already has a visible modal",
+      );
+    }
+
+    const originalMetadata = new Map(
+      panels.map((candidate) => [
+        candidate,
+        { flowKeeper: candidate.flowKeeper, surface: candidate.surface },
+      ]),
+    );
+    const transferred = [];
+    let flowTransferred = false;
+    try {
+      for (const candidate of panels) {
+        currentContainer.transferPanelTo(candidate, destination.container);
+        transferred.push(candidate);
+      }
+      for (const candidate of panels) {
+        candidate.flowKeeper = destination.flowKeeper;
+        candidate.surface = destination.surface;
+      }
+      if (flowPanels) {
+        sourceFlow.transferTo(destination.flowKeeper);
+        flowTransferred = true;
+      }
+      panel.modalRoute = nextRoute;
+      return panel;
+    } catch (error) {
+      const rollbackErrors = [];
+      if (flowTransferred) {
+        try {
+          destination.flowKeeper.transferTo(sourceFlow);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      for (const [candidate, metadata] of originalMetadata) {
+        candidate.flowKeeper = metadata.flowKeeper;
+        candidate.surface = metadata.surface;
+      }
+      for (const candidate of transferred.reverse()) {
+        try {
+          destination.container.transferPanelTo(candidate, currentContainer);
+        } catch (rollbackError) {
+          rollbackErrors.push(rollbackError);
+        }
+      }
+      if (rollbackErrors.length > 0) {
+        throw new AggregateError(
+          [error, ...rollbackErrors],
+          "Modal-panel transfer failed and could not be rolled back cleanly",
+          { cause: error },
+        );
+      }
+      throw error;
+    }
+  }
+
+  /** @private */
+  rehomeModalPanelsFromSurface(surface) {
+    const sourceContainer = surface?.modalPanelContainer;
+    const sourceFlow = surface?.modalFlow;
+    if (!sourceContainer || sourceContainer.isDestroyed()) return;
+    const primary = this.modalSurfaceFor({ surface: this.surfaceManager.getPrimary() });
+    if (surface === primary) return;
+    const primaryDestination = this.modalPanelDestination({ surface: primary });
+    const originalRoutes = new Map(
+      sourceContainer.getPanels().map((candidate) => [candidate, candidate.modalRoute]),
+    );
+    const dismissPrimaryModal = () => {
+      for (const candidate of primaryDestination.container.getPanels()) {
+        if (candidate.isVisible()) candidate.hide();
+      }
+    };
+
+    const flowPanels = Array.from(new Set(sourceFlow?.getStackPanels() || []));
+    if (flowPanels.length > 0) {
+      if (flowPanels.every((candidate) => candidate.isSurfaceRelocatable())) {
+        if (flowPanels.some((candidate) => candidate.isVisible())) dismissPrimaryModal();
+        this.rehomeModalPanel(flowPanels[0], { surface: primary });
+      } else {
+        // A mixed flow cannot keep a meaningful trail after its fixed panels'
+        // window disappears. End the trail before preserving its reusable
+        // members individually.
+        sourceFlow.clear();
+      }
+    }
+
+    for (const candidate of sourceContainer.getPanels()) {
+      if (!candidate.isSurfaceRelocatable()) continue;
+      if (candidate.isVisible()) dismissPrimaryModal();
+      this.rehomeModalPanel(candidate, { surface: primary });
+    }
+    for (const [candidate, route] of originalRoutes) {
+      if (candidate.getContainer() === sourceContainer) continue;
+      candidate.modalRoute =
+        route?.kind === "owner" ? route : this.modalRouteForOptions({ surface: primary }, primary);
+    }
   }
 
   /**
@@ -3006,29 +3225,86 @@ module.exports = class Workspace extends Model {
     if (options == null) {
       options = {};
     }
+    if (options.surfaceRelocatable && location !== "modal") {
+      throw new TypeError("Only a modal panel can be surface-relocatable");
+    }
+    const destination = location === "modal" ? this.modalPanelDestination(options) : null;
     const panel = new Panel(options, this.viewRegistry);
     if (location === "modal") {
-      const explicitSurface = options.surface;
-      const ownerSurface = options.owner
-        ? this.detachedPaneSurfaceManager?.surfaceForItem(options.owner)
-        : null;
-      const pendingSurface = this.pendingModalOwner?.surface;
-      const pendingOwnerSurface = this.pendingModalOwner?.owner
-        ? this.detachedPaneSurfaceManager?.surfaceForItem(this.pendingModalOwner.owner)
-        : null;
-      const activeSurface = this.detachedPaneSurfaceManager?.surfaceManager.getActive();
-      const surface =
-        explicitSurface || ownerSurface || pendingSurface || pendingOwnerSurface || activeSurface;
-      if (surface && !surface.isPrimary?.()) {
-        panel.flowKeeper = surface.modalFlow;
-        panel.surface = surface;
-        return surface.modalPanelContainer.addPanel(panel);
-      }
-      panel.flowKeeper = this.getModalFlow();
+      panel.flowKeeper = destination.flowKeeper;
+      panel.surface = destination.surface;
+      panel.modalRoute = this.modalRouteForOptions(options, destination.surface);
+      destination.container.addPanel(panel);
+      return panel;
     } else if (panel.crumb != null) {
       throw new TypeError("The crumb option is only supported on modal panels");
     }
     return this.panelContainers[location].addPanel(panel);
+  }
+
+  modalPanelDestination({ owner, surface } = {}) {
+    const resolvedSurface = this.modalSurfaceFor({ owner, surface });
+    if (resolvedSurface && !resolvedSurface.isPrimary()) {
+      if (
+        !resolvedSurface.modalPanelContainer ||
+        resolvedSurface.modalPanelContainer.isDestroyed() ||
+        !resolvedSurface.modalFlow
+      ) {
+        throw new Error("The selected window surface cannot present modal panels");
+      }
+      return {
+        container: resolvedSurface.modalPanelContainer,
+        flowKeeper: resolvedSurface.modalFlow,
+        surface: resolvedSurface,
+      };
+    }
+    if (this.panelContainers.modal.isDestroyed()) {
+      throw new Error("The primary window surface cannot present modal panels after teardown");
+    }
+    return {
+      container: this.panelContainers.modal,
+      flowKeeper: this.getModalFlow(),
+      surface: resolvedSurface?.isPrimary()
+        ? resolvedSurface
+        : this.detachedPaneSurfaceManager?.surfaceManager.getPrimary() || null,
+    };
+  }
+
+  modalRouteForOptions({ owner, surface } = {}, resolvedSurface) {
+    if (owner != null) return Object.freeze({ kind: "owner", owner });
+    if (surface != null) return Object.freeze({ kind: "surface", surface });
+    return Object.freeze({ kind: "active", surface: resolvedSurface });
+  }
+
+  modalSurfaceFor({ owner, surface } = {}) {
+    if (owner != null && surface != null) {
+      throw new TypeError("A modal route accepts either owner or surface, not both");
+    }
+    const surfaceManager = this.surfaceManager || this.detachedPaneSurfaceManager?.surfaceManager;
+    if (!surfaceManager) throw new Error("The workspace has no window-surface registry");
+
+    let ownerSurface = null;
+    if (owner != null) {
+      const pane = this.paneForItem(owner);
+      if (!pane || !pane.isAlive() || !pane.getItems().includes(owner)) {
+        throw new TypeError("A modal owner must be a live workspace pane item");
+      }
+      ownerSurface = this.getWindowSurface(owner);
+      if (!ownerSurface) {
+        throw new Error("The modal owner's window surface is not registered");
+      }
+    }
+    if (surface != null && surfaceManager.get(surface.id) !== surface) {
+      throw new TypeError("A modal surface must be registered with this workspace");
+    }
+    const resolvedSurface = surface || ownerSurface || surfaceManager.getActive() || null;
+    if (!resolvedSurface || surfaceManager.get(resolvedSurface.id) !== resolvedSurface) {
+      throw new Error("A modal route must resolve to exactly one registered window surface");
+    }
+    if (resolvedSurface.isDestroyed()) {
+      throw new Error("Cannot present a modal panel in a destroyed window surface");
+    }
+    return resolvedSurface;
   }
 
   /**
