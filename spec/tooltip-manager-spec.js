@@ -59,6 +59,48 @@ describe("TooltipManager", () => {
         disposables.dispose();
       });
 
+      it("keeps follow-through handoff scoped to one surface Window", () => {
+        const frame = document.createElement("iframe");
+        jasmine.attachToDOM(frame);
+        const primaryTarget = createElement("primary");
+        const childTarget = frame.contentDocument.createElement("div");
+        frame.contentDocument.body.appendChild(childTarget);
+        const disposables = new CompositeDisposable(
+          manager.add(primaryTarget, { title: "Primary" }),
+          manager.add(childTarget, { title: "Detached" }),
+        );
+
+        mouseEnter(primaryTarget);
+        advanceClock(manager.hoverDefaults.delay.show);
+        mouseLeave(primaryTarget);
+        mouseEnter(childTarget);
+
+        expect(document.body.querySelector(".tooltip")).toHaveText("Primary");
+        expect(frame.contentDocument.body.querySelector(".tooltip")).toBeNull();
+
+        disposables.dispose();
+        frame.remove();
+      });
+
+      it("allocates tooltip ids in the target document", () => {
+        const frame = document.createElement("iframe");
+        jasmine.attachToDOM(frame);
+        const target = frame.contentDocument.createElement("div");
+        frame.contentDocument.body.appendChild(target);
+        const collision = frame.contentDocument.createElement("div");
+        collision.id = "tooltip0";
+        frame.contentDocument.body.appendChild(collision);
+        const tooltip = new Tooltip(target, { title: "Detached" }, lumine.views);
+        spyOn(Math, "random").and.returnValues(0, 0.001);
+
+        try {
+          expect(tooltip.getUID("tooltip")).toBe("tooltip01000");
+        } finally {
+          tooltip.destroy();
+          frame.remove();
+        }
+      });
+
       it("displays the next tooltip immediately while the previous one is hiding", () => {
         const element1 = createElement("foo");
         const element2 = createElement("bar");

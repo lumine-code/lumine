@@ -7,19 +7,30 @@ const listen = require("./delegated-listener");
 // This tooltip class is derived from Bootstrap 3, but modified to not require
 // jQuery, which is an expensive dependency we want to eliminate.
 
-let followThroughTimer = null;
-
 // The tooltip that has been left but is still on screen, waiting out its hide
 // delay. The follow-through window opens the moment a visible tooltip is left,
 // so the next tooltip entered within it shows immediately — well before this
 // one has finished leaving. Handing the window over means retiring this one at
 // that point rather than leaving the two overlapping for the hide delay.
-let departingTooltip = null;
+// Each native surface owns this state: moving across controls in one window
+// must neither accelerate nor dismiss a tooltip in another.
+const followThroughStateByWindow = new WeakMap();
 
-function startFollowThroughTimer() {
-  clearTimeout(followThroughTimer);
-  followThroughTimer = setTimeout(function () {
-    followThroughTimer = null;
+function followThroughState(tooltip) {
+  const domWindow = tooltip.element.ownerDocument.defaultView;
+  let state = followThroughStateByWindow.get(domWindow);
+  if (!state) {
+    state = { timer: null, departingTooltip: null };
+    followThroughStateByWindow.set(domWindow, state);
+  }
+  return state;
+}
+
+function startFollowThroughTimer(tooltip) {
+  const state = followThroughState(tooltip);
+  clearTimeout(state.timer);
+  state.timer = setTimeout(function () {
+    state.timer = null;
   }, Tooltip.FOLLOW_THROUGH_DURATION);
 }
 
@@ -226,7 +237,7 @@ Tooltip.prototype.enter = function (event) {
 
   this.hoverState = "in";
 
-  if (!this.options.delay || !this.options.delay.show || followThroughTimer) {
+  if (!this.options.delay || !this.options.delay.show || followThroughState(this).timer) {
     return this.show();
   }
 
@@ -266,8 +277,9 @@ Tooltip.prototype.leave = function (event) {
   // entering another tooltip before this one finishes its hide delay does
   // not wait for the normal show delay.
   if (this.getTooltipElement().classList.contains("in")) {
-    startFollowThroughTimer();
-    departingTooltip = this;
+    const state = followThroughState(this);
+    startFollowThroughTimer(this);
+    state.departingTooltip = this;
   }
 
   if (!this.options.delay || !this.options.delay.hide) return this.hide();
@@ -296,13 +308,14 @@ Tooltip.prototype.show = function () {
     }
     // Read before retiring anything below, since hiding a tooltip reopens the
     // window itself.
-    const isFollowThrough = followThroughTimer != null;
+    const state = followThroughState(this);
+    const isFollowThrough = state.timer != null;
 
     // Whatever was on its way out has been handed over to this one, and two
     // tooltips must never share the screen: retire it now rather than letting
     // its hide delay run out on top of this one.
-    if (departingTooltip && departingTooltip !== this) {
-      departingTooltip.hide();
+    if (state.departingTooltip && state.departingTooltip !== this) {
+      state.departingTooltip.hide();
     }
 
     if (this.hideOnClickOutsideOfTooltip) {
@@ -481,7 +494,8 @@ Tooltip.prototype.setContent = function () {
 Tooltip.prototype.hide = function (callback) {
   this.inState = {};
 
-  if (departingTooltip === this) departingTooltip = null;
+  const state = followThroughState(this);
+  if (state.departingTooltip === this) state.departingTooltip = null;
   clearTimeout(this.timeout);
 
   if (this.hideOnClickOutsideOfTooltip) {
@@ -510,7 +524,7 @@ Tooltip.prototype.hide = function (callback) {
 
   this.hoverState = null;
 
-  startFollowThroughTimer();
+  startFollowThroughTimer(this);
 
   return this;
 };
@@ -596,7 +610,7 @@ Tooltip.prototype.getTitle = function () {
 
 Tooltip.prototype.getUID = function (prefix) {
   do prefix += ~~(Math.random() * 1000000);
-  while (document.getElementById(prefix));
+  while (this.document.getElementById(prefix));
   return prefix;
 };
 
@@ -645,7 +659,8 @@ Tooltip.prototype.toggle = function (event) {
 };
 
 Tooltip.prototype.destroy = function () {
-  if (departingTooltip === this) departingTooltip = null;
+  const state = followThroughState(this);
+  if (state.departingTooltip === this) state.departingTooltip = null;
   clearTimeout(this.timeout);
   this.window?.removeEventListener("resize", this.hideOnWindowResize);
   this.tip && this.tip.remove();

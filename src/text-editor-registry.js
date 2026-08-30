@@ -95,11 +95,12 @@ const ROLES = new Set(["document", "fragment", "background"]);
  *   features like completion sourcing leave it alone.
  */
 module.exports = class TextEditorRegistry {
-  constructor({ config, assert, grammarRegistry, packageManager }) {
+  constructor({ config, assert, grammarRegistry, packageManager, surfaceManager = null }) {
     this.config = config;
     this.assert = assert;
     this.grammarRegistry = grammarRegistry;
     this.packageManager = packageManager;
+    this.surfaceManager = surfaceManager;
     this.clear();
   }
 
@@ -240,6 +241,7 @@ module.exports = class TextEditorRegistry {
    * @returns {TextEditor}, or `null` if focus is not in one.
    */
   getActiveTextEditor() {
+    const document = this.surfaceManager?.getActive()?.document || globalThis.document;
     let element = document.activeElement?.closest?.("lumine-text-editor");
     while (element) {
       const editor = typeof element.getModel === "function" ? element.getModel() : null;

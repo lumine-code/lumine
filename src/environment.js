@@ -431,6 +431,7 @@ class Environment {
       grammarRegistry: this.grammars,
       assert: this.assert.bind(this),
       packageManager: this.packages,
+      surfaceManager: this.windowSurfaces,
     });
     /**
      * @public

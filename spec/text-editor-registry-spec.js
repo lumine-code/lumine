@@ -107,6 +107,22 @@ describe("TextEditorRegistry", function () {
       other.destroy();
     });
 
+    it("resolves focus from the active detached surface document", function () {
+      const frame = document.createElement("iframe");
+      jasmine.attachToDOM(frame);
+      const element = editor.getElement();
+      frame.contentDocument.body.appendChild(element);
+      registry.surfaceManager = { getActive: () => ({ document: frame.contentDocument }) };
+      registry.add(editor);
+      element.focus();
+
+      try {
+        expect(registry.getActiveTextEditor()).toBe(editor);
+      } finally {
+        frame.remove();
+      }
+    });
+
     it("does not instantiate views of other registered editors", function () {
       registry.add(editor); // never given an element
       expect(editor.component).toBeUndefined();

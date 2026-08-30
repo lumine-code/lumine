@@ -184,9 +184,10 @@ module.exports = class ModalFlow {
       if (!top || top.panel !== panel || !panel.isVisible()) return;
       this.finishAnimations(
         element,
-        (animation) =>
-          typeof domWindow.CSSTransition === "function" &&
-          animation instanceof domWindow.CSSTransition,
+        // Adopted nodes keep source-realm prototypes, and animation wrappers
+        // are allowed to do the same. CSSTransition's own identifying surface
+        // is realm-neutral; CSSAnimation exposes animationName instead.
+        (animation) => typeof animation.transitionProperty === "string",
       );
       if (framesLeft > 0) domWindow.requestAnimationFrame(() => sweep(framesLeft - 1));
     };
