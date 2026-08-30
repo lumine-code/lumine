@@ -16,9 +16,11 @@ Detached panes do not create another `Environment`, `Workspace`, `Project`, pack
 
 ## Opening and attaching
 
-Detachment is always explicit. Normal openers create tiled items; a command or a tab drag outside the main workspace calls `await lumine.workspace.detachPaneItem(item)`. The titlebar pin calls `await lumine.workspace.attachDetachedPane(pane)`.
+Detachment is always explicit. Normal openers and unaccepted tab drags leave items tiled; the `tabs:detach-tab` command, also exposed in the tab context menu, calls `await lumine.workspace.detachPaneItem(item)`. The titlebar pin calls `await lumine.workspace.attachDetachedPane(pane)`.
 
 The return target is the original tiled pane and tab index while that pane exists, then the active tiled pane, then the center root. A new open or split requested from a detached item uses the same tiled target and never adds a second item to the detached pane.
+
+Native window commands target the surface that received them: close, minimize, maximize, full screen, and developer tools act on that detached `BrowserWindow`. Reload is deliberately different because a detached child is not independently bootstrapped: `window:reload` reloads the owning editor window, which tears down and rebuilds all of its surfaces; reloading only the child's `webContents` would discard its mounted pane without a renderer lifecycle capable of restoring it.
 
 ## DOM realms
 

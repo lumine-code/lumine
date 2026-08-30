@@ -82,8 +82,10 @@ module.exports = class LumineWindow extends EventEmitter {
     // set here, the same as an unpackaged source checkout does. So this runs
     // unconditionally on win32, not just when process.defaultApp is true.
     const iconPath = resolveIconPath(iconFileNameForMode(this.safeMode, this.devMode));
+    this.windowIcon = null;
     if (process.platform === "linux" || process.platform === "win32") {
-      options.icon = nativeImage.createFromPath(iconPath);
+      this.windowIcon = nativeImage.createFromPath(iconPath);
+      options.icon = this.windowIcon;
     }
     // The dock icon is one per app, not per window, so with several windows
     // open in different modes the most recently created one wins — the same
@@ -473,6 +475,10 @@ module.exports = class LumineWindow extends EventEmitter {
 
   getSimpleFullscreen() {
     return this.lumineApplication.config.get("core.simpleFullScreenWindows");
+  }
+
+  getWindowIcon() {
+    return this.windowIcon;
   }
 
   shouldHideTitleBar() {

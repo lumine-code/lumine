@@ -321,6 +321,26 @@ describe("LumineWindow", function () {
       }
     });
 
+    it("selects distinct normal, dev, and safe window icons", function () {
+      sinon.stub(process, "platform").value("win32");
+      const iconFor = (settings) =>
+        new LumineWindow(app, service, {
+          browserWindowConstructor: StubBrowserWindow,
+          ...settings,
+        })
+          .getWindowIcon()
+          .toDataURL();
+
+      const normalIcon = iconFor({ devMode: false, safeMode: false });
+      const devIcon = iconFor({ devMode: true, safeMode: false });
+      const safeIcon = iconFor({ devMode: false, safeMode: true });
+
+      assert.notEqual(normalIcon, devIcon);
+      assert.notEqual(normalIcon, safeIcon);
+      assert.notEqual(devIcon, safeIcon);
+      assert.equal(iconFor({ devMode: true, safeMode: true }), safeIcon);
+    });
+
     it('sets frame to "false" for a hidden title bar on non-spec windows', function () {
       app.config["core.titleBar"] = "hidden";
 

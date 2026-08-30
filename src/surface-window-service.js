@@ -148,6 +148,10 @@ module.exports = class SurfaceWindowService {
     return this.perform("show-save-dialog", options);
   }
 
+  toggleDevTools() {
+    return this.perform("toggle-dev-tools");
+  }
+
   performWebContentsAction(action) {
     return this.perform("web-contents-action", action);
   }

@@ -156,10 +156,13 @@ module.exports = class DetachedPaneWindowManager {
     }
 
     transaction.state = "accepted";
-    return {
+    const response = {
       action: "allow",
       outlivesOpener: false,
     };
+    const icon = this.ownerWindow.getWindowIcon?.();
+    if (icon) response.overrideBrowserWindowOptions = { icon };
+    return response;
   }
 
   didCreateWindow(browserWindow, details) {
@@ -325,6 +328,9 @@ module.exports = class DetachedPaneWindowManager {
         }
         return dialog.showSaveDialog(window, options);
       }
+      case "toggle-dev-tools":
+        window.webContents.toggleDevTools();
+        return;
       case "web-contents-action": {
         const webContentsAction = args[0];
         if (!["copy", "paste", "undo", "redo", "selectAll", "cut"].includes(webContentsAction)) {

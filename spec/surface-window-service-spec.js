@@ -72,6 +72,7 @@ describe("SurfaceWindowService", () => {
     await service.maximize();
     await service.unmaximize();
     await service.setBounds({ x: 10, y: 20, width: 900, height: 700 });
+    await service.toggleDevTools();
     await service.requestClose();
 
     expect(operations).toEqual([
@@ -80,6 +81,7 @@ describe("SurfaceWindowService", () => {
       ["drag-1", "maximize"],
       ["drag-1", "unmaximize"],
       ["drag-1", "set-bounds", { x: 10, y: 20, width: 900, height: 700 }],
+      ["drag-1", "toggle-dev-tools"],
       ["drag-1", "request-close"],
     ]);
   });

@@ -1,5 +1,25 @@
 const { Disposable } = require("@lumine-code/event-kit");
 const { conditionPromise } = require("./helpers/async-spec-helpers");
+const fs = require("fs");
+const path = require("path");
+
+function contentSecurityPolicy(fileName) {
+  const html = fs.readFileSync(path.join(__dirname, "..", "static", fileName), "utf8");
+  return new DOMParser()
+    .parseFromString(html, "text/html")
+    .querySelector('meta[http-equiv="Content-Security-Policy"]')
+    .getAttribute("content");
+}
+
+describe("the detached pane document", () => {
+  it("uses the workspace content security policy", () => {
+    // The shell policy is applied while detached-pane.html is parsed. Removing
+    // its meta element later cannot relax it, and an additional policy only
+    // intersects with it, so a detached pane must start with every capability
+    // that a normal workspace item may use.
+    expect(contentSecurityPolicy("detached-pane.html")).toBe(contentSecurityPolicy("index.html"));
+  });
+});
 
 describe("DetachedPaneSurface", () => {
   let item, titleBarProvider, titleBarWasActive;
@@ -95,6 +115,48 @@ describe("DetachedPaneSurface", () => {
     expect(detachedPane.getActiveItem()).toBe(item);
   });
 
+  it("allows mounted styles to import package stylesheets through the lumine protocol", async () => {
+    await lumine.workspace.detachPaneItem(item, { show: false });
+    const surface = lumine.workspace.getWindowSurface(item);
+    const violations = [];
+    const recordViolation = (event) => violations.push(event);
+    surface.document.addEventListener("securitypolicyviolation", recordViolation);
+    const stylesheet = lumine.styles.addStyleSheet(
+      '@import url("lumine://title-bar/styles/main.css");',
+      {
+        sourcePath: "detached-pane-csp-spec.css",
+      },
+    );
+    const mounted = surface.document.head.querySelector(
+      'style[source-path="detached-pane-csp-spec.css"]',
+    );
+    const importedValue = () =>
+      surface.window
+        .getComputedStyle(surface.document.documentElement)
+        .getPropertyValue("--title-bar-transition-slow")
+        .trim();
+
+    try {
+      expect(mounted).not.toBeNull();
+      expect(mounted.ownerDocument).toBe(surface.document);
+      await conditionPromise(
+        () => importedValue() === "0.15s",
+        "the detached stylesheet import to load",
+        4000,
+      );
+      await Promise.resolve();
+      expect(
+        violations.filter(
+          ({ violatedDirective, blockedURI }) =>
+            violatedDirective === "style-src-elem" && blockedURI.startsWith("lumine://"),
+        ),
+      ).toEqual([]);
+    } finally {
+      stylesheet.dispose();
+      surface.document.removeEventListener("securitypolicyviolation", recordViolation);
+    }
+  });
+
   it("attaches only the surface whose attach action was activated", async () => {
     const secondItem = {
       element: document.createElement("div"),
@@ -150,6 +212,44 @@ describe("DetachedPaneSurface", () => {
     );
     expect(detachedPane.isDestroyed()).toBe(true);
     expect(surface.isDestroyed()).toBe(true);
+  });
+
+  it("renders custom context menus and dispatches their commands in the child realm", async () => {
+    await lumine.packages.activatePackage("title-bar");
+    await lumine.workspace.detachPaneItem(item, { show: false });
+    const surface = lumine.workspace.getWindowSurface(item);
+    const titleBar = surface.titlebarHost.querySelector(":scope > .title-bar.surface-title-bar");
+    const command = "detached-pane-surface-spec:context-action";
+    const didDispatch = jasmine.createSpy("didDispatch");
+    const commandDisposable = lumine.commands.add(surface.element, { [command]: didDispatch });
+    const menuDisposable = lumine.contextMenu.add({
+      ".surface-title-bar": [{ label: "Surface Context Action", command }],
+    });
+    const nativeContextMenu = spyOn(surface.windowService, "showContextMenu").and.resolveTo();
+
+    try {
+      const event = new surface.window.MouseEvent("contextmenu", {
+        bubbles: true,
+        cancelable: true,
+        clientX: 20,
+        clientY: 20,
+      });
+      titleBar.dispatchEvent(event);
+
+      const menu = surface.document.querySelector(".context-menu-container");
+      expect(event.defaultPrevented).toBe(true);
+      expect(menu).not.toBeNull();
+      expect(menu.ownerDocument).toBe(surface.document);
+      expect(nativeContextMenu).not.toHaveBeenCalled();
+      menu.querySelector(".menu-item").click();
+      advanceClock(20);
+      await Promise.resolve();
+      expect(didDispatch).toHaveBeenCalledTimes(1);
+      expect(didDispatch.calls.mostRecent().args[0].target).toBe(titleBar);
+    } finally {
+      menuDisposable.dispose();
+      commandDisposable.dispose();
+    }
   });
 
   it("mounts provider chrome in the child realm and routes its controls to that window", async () => {
@@ -248,6 +348,21 @@ describe("DetachedPaneSurface", () => {
     expect(lumine.workspace.paneForItem(item).isDetached()).toBe(false);
     expect(handle.destroy).toHaveBeenCalledTimes(1);
     expect(detachedPane.isDestroyed()).toBe(true);
+  });
+
+  it("opens developer tools for its child but reloads the shared editor owner", async () => {
+    await lumine.workspace.detachPaneItem(item, { show: false });
+    const surface = lumine.workspace.getWindowSurface(item);
+    const toggleDevTools = spyOn(surface.windowService, "toggleDevTools").and.resolveTo();
+    const ownerToggleDevTools = spyOn(lumine.window, "toggleDevTools").and.resolveTo();
+    const ownerReload = spyOn(lumine.window, "reload").and.resolveTo();
+
+    await lumine.commands.dispatch(surface.element, "window:toggle-dev-tools");
+    expect(toggleDevTools).toHaveBeenCalledTimes(1);
+    expect(ownerToggleDevTools).not.toHaveBeenCalled();
+
+    await lumine.commands.dispatch(surface.element, "window:reload");
+    expect(ownerReload).toHaveBeenCalledTimes(1);
   });
 
   it("upgrades an existing surface, updates its title, and restores fallback on deactivation", async () => {

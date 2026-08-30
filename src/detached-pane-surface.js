@@ -181,8 +181,13 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
           const state = await this.windowService.getState();
           return this.windowService.perform("set-full-screen", !state.fullScreen);
         },
+        // The child is a presentation surface controlled by the opener's
+        // renderer, not an independently bootstrapped editor. Reloading only
+        // its webContents would discard the mounted pane without rebuilding
+        // it, so reload retains workspace-owner semantics. Developer tools,
+        // in contrast, inspect this surface's own native webContents.
         "window:reload": () => this.primaryWindow.lumine?.window?.reload?.(),
-        "window:toggle-dev-tools": () => this.primaryWindow.lumine?.window?.toggleDevTools?.(),
+        "window:toggle-dev-tools": () => this.windowService.toggleDevTools(),
       }),
       this.commandRegistry.add(this.element, {
         "pane:attach": {

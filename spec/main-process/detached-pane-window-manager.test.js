@@ -51,6 +51,19 @@ describe("DetachedPaneWindowManager", function () {
     assert.equal(manager.transactions.size, 1);
   });
 
+  it("creates detached windows with the owning editor window's icon", function () {
+    const icon = {};
+    owner.getWindowIcon = () => icon;
+    const transaction = manager.reserve({ transactionId: "drag-1" });
+
+    const response = owner.browserWindow.webContents.windowOpenHandler({
+      url: transaction.url,
+      frameName: transaction.frameName,
+    });
+
+    assert.strictEqual(response.overrideBrowserWindowOptions.icon, icon);
+  });
+
   it("keeps a created window hidden until the transaction is committed", function () {
     const transaction = manager.reserve({ transactionId: "drag-1", bounds: { width: 700 } });
     const response = owner.browserWindow.webContents.windowOpenHandler({
@@ -149,6 +162,19 @@ describe("DetachedPaneWindowManager", function () {
     assert.strictEqual(showMessageBox.calls.mostRecent().args[0], child);
   });
 
+  it("toggles developer tools on the addressed detached BrowserWindow", function () {
+    const first = openCommittedWindow(manager, owner, "first");
+    const second = openCommittedWindow(manager, owner, "second");
+    const firstChild = manager.transactions.get(first.transactionId).surface.browserWindow;
+    const secondChild = manager.transactions.get(second.transactionId).surface.browserWindow;
+
+    manager.perform(first.transactionId, "toggle-dev-tools");
+
+    assert.equal(firstChild.webContents.devToolsToggleCount, 1);
+    assert.equal(secondChild.webContents.devToolsToggleCount, 0);
+    assert.equal(owner.browserWindow.webContents.devToolsToggleCount, 0);
+  });
+
   it("validates, rounds, and applies partial surface bounds", function () {
     const transaction = openCommittedWindow(manager, owner);
     const child = manager.transactions.get(transaction.transactionId).surface.browserWindow;
@@ -209,6 +235,8 @@ class StubBrowserWindow extends EventEmitter {
     };
     this.webContents.setVisualZoomLevelLimits = () => {};
     this.webContents.isDestroyed = () => this.webContents.destroyed;
+    this.webContents.devToolsToggleCount = 0;
+    this.webContents.toggleDevTools = () => this.webContents.devToolsToggleCount++;
   }
 
   show() {
