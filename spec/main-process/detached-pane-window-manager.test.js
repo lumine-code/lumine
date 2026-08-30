@@ -88,7 +88,7 @@ describe("DetachedPaneWindowManager", function () {
     });
   });
 
-  it("centers default detached bounds over the owning editor window", function () {
+  it("centers unpositioned detached bounds over the owning editor window", function () {
     const workArea = screen.getDisplayNearestPoint({ x: 0, y: 0 }).workArea;
     const width = Math.min(400, workArea.width);
     const height = Math.min(300, workArea.height);
@@ -113,6 +113,27 @@ describe("DetachedPaneWindowManager", function () {
       show: false,
       x: ownerX + Math.round((ownerWidth - width) / 2),
       y: ownerY + Math.round((ownerHeight - height) / 2),
+      width,
+      height,
+    });
+  });
+
+  it("uses a larger default size and clamps it to the display work area", function () {
+    const workArea = screen.getDisplayNearestPoint({ x: 0, y: 0 }).workArea;
+    const width = Math.min(1000, workArea.width);
+    const height = Math.min(700, workArea.height);
+    owner.browserWindow.bounds = { ...workArea };
+    const transaction = manager.reserve();
+
+    const response = owner.browserWindow.webContents.windowOpenHandler({
+      url: transaction.url,
+      frameName: transaction.frameName,
+    });
+
+    assert.deepEqual(response.overrideBrowserWindowOptions, {
+      show: false,
+      x: workArea.x + Math.round((workArea.width - width) / 2),
+      y: workArea.y + Math.round((workArea.height - height) / 2),
       width,
       height,
     });

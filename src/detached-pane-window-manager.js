@@ -5,6 +5,8 @@ const { dialog, screen } = require("electron");
 
 const RESERVATION_TTL = 30_000;
 const MINIMUM_SIZE = 160;
+const DEFAULT_WIDTH = 1000;
+const DEFAULT_HEIGHT = 700;
 
 function finiteInteger(value, fallback) {
   return Number.isFinite(value) ? Math.round(value) : fallback;
@@ -17,8 +19,8 @@ function normalizeOptions(options = {}) {
   const bounds = options.bounds || {};
   const normalized = {
     title: typeof options.title === "string" && options.title ? options.title : "Lumine",
-    width: Math.max(MINIMUM_SIZE, finiteInteger(bounds.width, 800)),
-    height: Math.max(MINIMUM_SIZE, finiteInteger(bounds.height, 600)),
+    width: Math.max(MINIMUM_SIZE, finiteInteger(bounds.width, DEFAULT_WIDTH)),
+    height: Math.max(MINIMUM_SIZE, finiteInteger(bounds.height, DEFAULT_HEIGHT)),
     show: options.show !== false,
   };
   if (Number.isFinite(bounds.x) && Number.isFinite(bounds.y)) {
