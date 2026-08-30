@@ -53,8 +53,9 @@ let SequenceCount = 0;
  * ```
  */
 module.exports = class CommandRegistry {
-  constructor() {
+  constructor({ surfaceManager = null } = {}) {
     this.handleCommandEvent = this.handleCommandEvent.bind(this);
+    this.surfaceManager = surfaceManager;
     this.rootNodes = new Set();
     this.registeredCommandsByRoot = new Map();
     this.clear();
@@ -352,6 +353,8 @@ module.exports = class CommandRegistry {
   }
 
   handleCommandEvent(event) {
+    const surface = this.surfaceManager?.surfaceFor(event.target);
+    if (surface) this.surfaceManager.activate(surface);
     let propagationStopped = false;
     let immediatePropagationStopped = false;
     let matched = [];

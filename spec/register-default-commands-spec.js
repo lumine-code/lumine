@@ -83,12 +83,15 @@ describe("registerDefaultCommands", () => {
     expect(commands.has("editor:delete-to-next-line-content")).toBe(true);
   });
 
-  it("toggles Git colouring in the command target's document", () => {
+  it("toggles Git colouring in the active workspace surface", () => {
     const commands = commandsRegisteredOn("win32");
     const [listener] = commands.get("git:colorize-toggle");
     const toggle = jasmine.createSpy("toggle");
+    const workspace = {
+      getActiveWindowSurface: () => ({ document: { body: { classList: { toggle } } } }),
+    };
 
-    listener.didDispatch.call({ ownerDocument: { body: { classList: { toggle } } } });
+    listener.didDispatch.call({ getModel: () => workspace });
 
     expect(toggle).toHaveBeenCalledOnceWith("git-colorize-disabled");
   });
@@ -117,13 +120,12 @@ describe("registerDefaultCommands", () => {
   });
 
   describe("pane:detach-item", () => {
-    function dispatchDetach({ target, targetedItem = null, activeItem = null }) {
+    function dispatchDetach({ target, targetedItem = null, activeItem = null, detached = false }) {
       const detachPaneItem = jasmine.createSpy("detachPaneItem").and.resolveTo();
       const workspace = {
-        paneForItem: (item) => (item === targetedItem ? {} : null),
-        getCenter: () => ({
-          getActiveTiledPane: () => ({ getActiveItem: () => activeItem }),
-        }),
+        paneForItem: (item) =>
+          item === targetedItem || item === activeItem ? { isDetached: () => detached } : null,
+        getActivePaneItem: () => activeItem,
         detachPaneItem,
       };
       const commands = commandsRegisteredOn("win32");
@@ -142,12 +144,24 @@ describe("registerDefaultCommands", () => {
       expect(detachPaneItem).toHaveBeenCalledOnceWith(item);
     });
 
-    it("falls back to the active tiled item for a global dispatch", async () => {
+    it("falls back to the active workspace-center item for a global dispatch", async () => {
       const item = {};
       const { detachPaneItem, result } = dispatchDetach({ target: null, activeItem: item });
 
       await result;
       expect(detachPaneItem).toHaveBeenCalledOnceWith(item);
+    });
+
+    it("does not detach an unrelated tiled item from a detached surface", () => {
+      const item = {};
+      const { detachPaneItem, result } = dispatchDetach({
+        target: null,
+        activeItem: item,
+        detached: true,
+      });
+
+      expect(result).toBeUndefined();
+      expect(detachPaneItem).not.toHaveBeenCalled();
     });
   });
 

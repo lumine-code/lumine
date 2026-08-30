@@ -11,9 +11,12 @@ function settleSaveCommand(result) {
 function paneItemForCommandTarget(workspace, target) {
   for (let element = target; element; element = element.parentNode) {
     const item = element.item;
-    if (item && workspace.paneForItem(item)) return item;
+    const pane = item && workspace.paneForItem(item);
+    if (pane && !pane.isDetached()) return item;
   }
-  return workspace.getCenter().getActiveTiledPane()?.getActiveItem() ?? null;
+  const item = workspace.getActivePaneItem();
+  const pane = item && workspace.paneForItem(item);
+  return pane && !pane.isDetached() ? item : null;
 }
 
 module.exports = function ({
@@ -308,7 +311,9 @@ module.exports = function ({
       "git:colorize-toggle": {
         description: "Turn the Git status colouring off across this window.",
         didDispatch: function () {
-          this.ownerDocument.body.classList.toggle("git-colorize-disabled");
+          this.getModel()
+            .getActiveWindowSurface()
+            ?.document.body.classList.toggle("git-colorize-disabled");
         },
       },
       "window:log-deprecation-warnings": {

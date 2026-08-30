@@ -83,13 +83,16 @@ class WindowSurfaceManager {
     if (!this.activeSurface || surface.document.hasFocus?.()) this.activate(surface);
 
     const focus = () => this.activate(surface);
+    const focusIn = () => this.activate(surface);
     const blur = () => surface.emitter.emit("did-blur", surface);
     surface.window.addEventListener("focus", focus);
     surface.window.addEventListener("blur", blur);
+    surface.document.addEventListener("focusin", focusIn);
     surface.subscriptions.add({
       dispose: () => {
         surface.window.removeEventListener("focus", focus);
         surface.window.removeEventListener("blur", blur);
+        surface.document.removeEventListener("focusin", focusIn);
       },
     });
 

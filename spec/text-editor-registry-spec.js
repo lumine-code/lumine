@@ -131,6 +131,41 @@ describe("TextEditorRegistry", function () {
     });
   });
 
+  describe(".getTextEditorForElement", function () {
+    it("resolves a registered editor from a descendant in another Window", function () {
+      const frame = document.createElement("iframe");
+      jasmine.attachToDOM(frame);
+      const element = editor.getElement();
+      const descendant = element.ownerDocument.createElement("span");
+      element.appendChild(descendant);
+      frame.contentDocument.body.appendChild(element);
+      registry.add(editor);
+
+      try {
+        expect(registry.getTextEditorForElement(descendant)).toBe(editor);
+      } finally {
+        frame.remove();
+      }
+    });
+
+    it("rejects non-elements and editors outside the registry", function () {
+      const element = editor.getElement();
+      expect(registry.getTextEditorForElement(element)).toBeNull();
+      expect(registry.getTextEditorForElement(document)).toBeNull();
+      expect(registry.getTextEditorForElement(null)).toBeNull();
+    });
+
+    it("can exclude registered mini editors", function () {
+      const mini = new TextEditor({ mini: true });
+      const element = mini.getElement();
+      registry.add(mini);
+
+      expect(registry.getTextEditorForElement(element)).toBe(mini);
+      expect(registry.getTextEditorForElement(element, { includeMini: false })).toBeNull();
+      mini.destroy();
+    });
+  });
+
   describe(".observe", function () {
     it("calls the callback for current and future editors until unsubscribed", function () {
       const spy = jasmine.createSpy();

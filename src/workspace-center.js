@@ -14,6 +14,7 @@ module.exports = class WorkspaceCenter {
     params.location = "center";
     this.paneContainer = new PaneContainer(params);
     this.didActivate = params.didActivate;
+    this.resolveActivePane = params.resolveActivePane;
     this.paneContainer.onDidActivatePane(() => this.didActivate(this));
     this.paneContainer.onDidChangeActivePane((pane) => {
       params.didChangeActivePane(this, pane);
@@ -340,7 +341,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Object} pane item `Object`.
    */
   getActivePaneItem() {
-    return this.paneContainer.getActivePaneItem();
+    return this.getActivePane()?.getActiveItem();
   }
 
   /**
@@ -428,7 +429,7 @@ module.exports = class WorkspaceCenter {
    * @returns {Pane}
    */
   getActivePane() {
-    return this.paneContainer.getActivePane();
+    return this.resolveActivePane?.() || this.paneContainer.getActivePane();
   }
 
   /**

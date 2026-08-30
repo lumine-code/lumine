@@ -261,7 +261,7 @@ class Environment {
      *
      * @type {CommandRegistry}
      */
-    this.commands = new CommandRegistry();
+    this.commands = new CommandRegistry({ surfaceManager: this.windowSurfaces });
 
     /**
      * @public
@@ -459,11 +459,11 @@ class Environment {
       viewRegistry: this.views,
       assert: this.assert.bind(this),
       textEditorRegistry: this.textEditors,
+      surfaceManager: this.windowSurfaces,
       styleManager: this.styles,
       enablePersistence: this.enablePersistence,
     });
     this.tooltips.attachWorkspace(this.workspace);
-
     /**
      * @public
      * @status extended

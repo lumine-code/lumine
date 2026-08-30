@@ -77,6 +77,7 @@ describe("Workspace", () => {
       viewRegistry: lumine.views,
       assert: lumine.assert.bind(lumine),
       textEditorRegistry: lumine.textEditors,
+      surfaceManager: lumine.windowSurfaces,
     });
     workspace.initialize({ configDirPath: lumine.getConfigDirPath() });
     workspace.deserialize(workspaceState, lumine.deserializers);
@@ -1828,6 +1829,11 @@ describe("Workspace", () => {
       expect(workspace.getActiveTextEditor()).toBeUndefined();
       expect(workspace.getActiveFileTextEditor()).toBe(fileEditor);
       expect(workspace.getActiveEmbeddedTextEditor()).toBe(cellEditorA);
+      expect(workspace.getPaneItemForTextEditor(fileEditor)).toBe(item);
+      expect(workspace.getPaneItemForTextEditor(cellEditorA)).toBe(item);
+      const unowned = new TextEditor();
+      expect(workspace.getPaneItemForTextEditor(unowned)).toBeNull();
+      unowned.destroy();
       expect(files).toEqual([fileEditor]);
       expect(embedded).toEqual([cellEditorA]);
     });
@@ -4089,6 +4095,74 @@ describe("Workspace", () => {
       const disposable = workspace.addWindowSurfaceTransitionObserver(observer);
       expect(disposable).toBeDefined();
       disposable.dispose();
+    });
+
+    it("resolves the active pane item and editor from the focused native surface", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const pane = workspace.getCenter().getActiveTiledPane();
+      const detachedEditor = workspace.buildTextEditor();
+      const primaryEditor = workspace.buildTextEditor();
+      pane.addItem(detachedEditor);
+      pane.addItem(primaryEditor);
+      let detachedPane;
+      const observedSurfaces = jasmine.createSpy("observedSurfaces");
+      const removedSurfaces = jasmine.createSpy("removedSurfaces");
+      const activeSurfaces = jasmine.createSpy("activeSurfaces");
+      const activeItems = jasmine.createSpy("activeItems");
+      const activeEditors = jasmine.createSpy("activeEditors");
+      const activeFileEditors = jasmine.createSpy("activeFileEditors");
+      const activeEmbeddedEditors = jasmine.createSpy("activeEmbeddedEditors");
+      const surfaceSubscriptions = [
+        workspace.observeWindowSurfaces(observedSurfaces),
+        workspace.onDidRemoveWindowSurface(removedSurfaces),
+        workspace.observeActiveWindowSurface(activeSurfaces),
+        workspace.onDidChangeActivePaneItem(activeItems),
+        workspace.onDidChangeActiveTextEditor(activeEditors),
+        workspace.onDidChangeActiveFileTextEditor(activeFileEditors),
+        workspace.onDidChangeActiveEmbeddedTextEditor(activeEmbeddedEditors),
+      ];
+
+      try {
+        detachedPane = await workspace.detachPaneItem(detachedEditor, { show: false });
+        const detachedSurface = workspace.getWindowSurface(detachedEditor);
+        const primarySurface = lumine.windowSurfaces.getPrimary();
+        expect(workspace.getWindowSurface({})).toBeNull();
+        expect(workspace.getWindowSurfaces()).toEqual([primarySurface, detachedSurface]);
+        expect(observedSurfaces).toHaveBeenCalledWith(primarySurface);
+        expect(observedSurfaces).toHaveBeenCalledWith(detachedSurface);
+
+        lumine.windowSurfaces.activate(primarySurface);
+        expect(workspace.getActiveWindowSurface()).toBe(primarySurface);
+        expect(workspace.getCenter().getActivePane()).toBe(pane);
+        expect(workspace.getCenter().getActivePaneItem()).toBe(primaryEditor);
+        expect(workspace.getActiveTextEditor()).toBe(primaryEditor);
+        expect(workspace.getActiveFileTextEditor()).toBe(primaryEditor);
+        expect(workspace.getActiveEmbeddedTextEditor()).toBe(primaryEditor);
+
+        lumine.windowSurfaces.activate(detachedSurface);
+        expect(workspace.getActiveWindowSurface()).toBe(detachedSurface);
+        expect(workspace.getActivePaneContainer()).toBe(workspace.getCenter());
+        expect(workspace.getCenter().getActivePane()).toBe(detachedPane);
+        expect(workspace.getCenter().getActivePaneItem()).toBe(detachedEditor);
+        expect(workspace.getActivePaneItem()).toBe(detachedEditor);
+        expect(workspace.getActiveTextEditor()).toBe(detachedEditor);
+        expect(workspace.getActiveFileTextEditor()).toBe(detachedEditor);
+        expect(workspace.getActiveEmbeddedTextEditor()).toBe(detachedEditor);
+        expect(activeSurfaces).toHaveBeenCalledWith(detachedSurface);
+        expect(activeItems).toHaveBeenCalledWith(detachedEditor);
+        expect(activeEditors).toHaveBeenCalledWith(detachedEditor);
+        expect(activeFileEditors).toHaveBeenCalledWith(detachedEditor);
+        expect(activeEmbeddedEditors).toHaveBeenCalledWith(detachedEditor);
+
+        await workspace.attachDetachedPane(detachedPane);
+        detachedPane = null;
+        expect(removedSurfaces).toHaveBeenCalledWith(detachedSurface);
+      } finally {
+        if (detachedPane?.isDetached?.()) await workspace.attachDetachedPane(detachedPane);
+        for (const subscription of surfaceSubscriptions) subscription.dispose();
+        pane.destroyItem(primaryEditor, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
     });
 
     it("opens new items in the return tiled pane while a detached pane is active", async () => {

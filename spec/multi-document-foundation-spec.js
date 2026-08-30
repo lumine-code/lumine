@@ -1,7 +1,7 @@
 const ElementRegistry = require("../src/element-registry");
 const StyleManager = require("../src/style-manager");
 const ViewRegistry = require("../src/view-registry");
-const { documentFor, isElement, windowFor } = require("../src/dom-context");
+const { activeElementFor, documentFor, isElement, windowFor } = require("../src/dom-context");
 const { loadScript } = require("../src/dom-context");
 const path = require("path");
 const { WindowSurface, WindowSurfaceManager } = require("../src/window-surface");
@@ -23,6 +23,7 @@ describe("the multi-document workspace foundation", () => {
     expect(documentFor(element)).toBe(otherDocument);
     expect(windowFor(element)).toBe(otherWindow);
     expect(isElement(element)).toBe(true);
+    expect(activeElementFor(element)).toBe(otherDocument.body);
   });
 
   it("defines a distinct custom-element constructor in each Window", () => {
@@ -122,6 +123,12 @@ describe("the multi-document workspace foundation", () => {
     expect(manager.surfaceFor(otherDocument.body)).toBe(detached);
 
     otherWindow.dispatchEvent(new otherWindow.Event("focus"));
+    expect(manager.getActive()).toBe(detached);
+
+    manager.activate(primary);
+    const input = otherDocument.createElement("input");
+    otherDocument.body.appendChild(input);
+    input.focus();
     expect(manager.getActive()).toBe(detached);
     manager.destroy();
   });

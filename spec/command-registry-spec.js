@@ -210,6 +210,24 @@ describe("CommandRegistry", () => {
       expect(sequence[0][1].constructor).toBe(CustomEvent);
       expect(sequence[0][1].target).toBe(grandchild);
     });
+
+    it("activates the command target's window surface before invoking listeners", () => {
+      registry.destroy();
+      const surface = {};
+      const surfaceManager = {
+        surfaceFor: jasmine.createSpy("surfaceFor").and.returnValue(surface),
+        activate: jasmine.createSpy("activate"),
+      };
+      registry = new CommandRegistry({ surfaceManager });
+      registry.attach(parent);
+      registry.add(".grandchild", "command", () => {
+        expect(surfaceManager.activate).toHaveBeenCalledOnceWith(surface);
+      });
+
+      registry.dispatch(grandchild, "command");
+
+      expect(surfaceManager.surfaceFor).toHaveBeenCalledOnceWith(grandchild);
+    });
   });
 
   describe("::add(selector, commandName, callback)", () => {

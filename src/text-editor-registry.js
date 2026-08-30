@@ -2,6 +2,7 @@ const _ = require("@lumine-code/underscore-plus");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const TextEditor = require("./text-editor");
 const ScopeDescriptor = require("./scope-descriptor");
+const { activeElementFor, isElement } = require("./dom-context");
 
 const EDITOR_PARAMS_BY_SETTING_KEY = [
   ["editor.fileEncoding", "encoding"],
@@ -241,11 +242,29 @@ module.exports = class TextEditorRegistry {
    * @returns {TextEditor}, or `null` if focus is not in one.
    */
   getActiveTextEditor() {
-    const document = this.surfaceManager?.getActive()?.document || globalThis.document;
-    let element = document.activeElement?.closest?.("lumine-text-editor");
+    const surface = this.surfaceManager?.getActive() || globalThis.document;
+    return this.getTextEditorForElement(activeElementFor(surface));
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Resolve the innermost registered text editor containing a DOM target.
+   * This is the target-specific counterpart to {@link #getActiveTextEditor}:
+   * context menus and pointer actions use it before falling back to the active
+   * editor. Adopted nodes are accepted across native-window realms.
+   *
+   * @param {Element} target - Element inside a text editor.
+   * @param {Object} [options]
+   * @param {Boolean} [options.includeMini=true] - Whether mini editors qualify.
+   * @returns {TextEditor|null} The registered editor, or null.
+   */
+  getTextEditorForElement(target, { includeMini = true } = {}) {
+    let element = isElement(target) ? target.closest("lumine-text-editor") : null;
     while (element) {
       const editor = typeof element.getModel === "function" ? element.getModel() : null;
-      if (editor && this.editors.has(editor)) {
+      if (editor && this.editors.has(editor) && (includeMini || !editor.isMini?.())) {
         return editor;
       }
       element = element.parentElement?.closest?.("lumine-text-editor");

@@ -39,6 +39,7 @@ module.exports = class DetachedPaneSurfaceManager {
     this.titleBarFactoryRegistrations = [];
     this.titleBarFactory = null;
     this.recordsByPane = new Map();
+    this.recordsBySurface = new Map();
     this.surfacesByItem = new WeakMap();
     this.pendingPanes = new Set();
     this.destroying = false;
@@ -175,7 +176,12 @@ module.exports = class DetachedPaneSurfaceManager {
       await service.commit();
       transition.complete();
       detachedPane.setSurfaceState(await service.getState());
-      surface.focusPane();
+      if (options.show === false) {
+        this.center.getActiveTiledPane().activate();
+      } else {
+        this.surfaceManager.activate(surface);
+        surface.focusPane();
+      }
       this.emitSurfaceChange(item, this.surfaceManager.getPrimary(), surface);
       return record.pane;
     } catch (error) {
@@ -309,6 +315,7 @@ module.exports = class DetachedPaneSurfaceManager {
       state: "open",
     };
     this.recordsByPane.set(pane, record);
+    this.recordsBySurface.set(surface, record);
     this.surfacesByItem.set(record.item, surface);
     record.subscriptions.add(
       service.onDidRequestClose(() => void this.closeRequested(record)),
@@ -462,17 +469,25 @@ module.exports = class DetachedPaneSurfaceManager {
   unregister(record) {
     if (this.recordsByPane.get(record.pane) !== record) return false;
     this.recordsByPane.delete(record.pane);
+    this.recordsBySurface.delete(record.surface);
     this.surfacesByItem.delete(record.item);
     record.subscriptions.dispose();
     return true;
   }
 
   surfaceForItem(item) {
-    return this.surfacesByItem.get(item) || this.surfaceManager.getPrimary();
+    return (
+      this.surfacesByItem.get(item) ||
+      (this.center.paneForItem(item) ? this.surfaceManager.getPrimary() : null)
+    );
   }
 
   surfaceForPane(pane) {
     return this.recordsByPane.get(pane)?.surface || this.surfaceManager.getPrimary();
+  }
+
+  paneForSurface(surface) {
+    return this.recordsBySurface.get(surface)?.pane || null;
   }
 
   getSurfaces() {
@@ -480,6 +495,9 @@ module.exports = class DetachedPaneSurfaceManager {
   }
 
   observePaneItemSurface(item, callback) {
+    if (!this.center.paneForItem(item)) {
+      throw new TypeError("Surface observation requires a workspace-center pane item");
+    }
     callback(this.surfaceForItem(item));
     return this.emitter.on("did-change-item-surface", (event) => {
       if (event.item === item) callback(event.newSurface, event.oldSurface);

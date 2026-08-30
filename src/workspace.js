@@ -279,6 +279,7 @@ module.exports = class Workspace extends Model {
     this.assert = params.assert;
     this.deserializerManager = params.deserializerManager;
     this.textEditorRegistry = params.textEditorRegistry;
+    this.surfaceManager = params.surfaceManager || null;
     this.styleManager = params.styleManager;
     this.draggingItem = false;
     this.itemLocationStore = new StateStore("LuminePreviousItemLocations", 1);
@@ -300,6 +301,7 @@ module.exports = class Workspace extends Model {
       bottom: this.createDock("bottom"),
     };
     this.activePaneContainer = this.paneContainers.center;
+    this.primaryActivePaneContainer = this.paneContainers.center;
     this.hasActiveTextEditor = false;
     this.previousActiveFileTextEditor = undefined;
     this.previousActiveEmbeddedTextEditor = undefined;
@@ -339,6 +341,13 @@ module.exports = class Workspace extends Model {
     };
 
     this.incoming = new Map();
+    if (this.surfaceManager) {
+      this.disposables.add(
+        this.surfaceManager.onDidChangeActiveSurface((surface) =>
+          this.didChangeActiveWindowSurface(surface),
+        ),
+      );
+    }
   }
 
   getElement() {
@@ -365,6 +374,7 @@ module.exports = class Workspace extends Model {
       didChangeActivePane: this.didChangeActivePaneOnPaneContainer,
       didChangeActivePaneItem: this.didChangeActivePaneItemOnPaneContainer,
       didDestroyPaneItem: this.didDestroyPaneItem,
+      resolveActivePane: () => this.getActiveCenterPane(),
     });
   }
 
@@ -679,6 +689,10 @@ module.exports = class Workspace extends Model {
   }
 
   didActivatePaneContainer(paneContainer) {
+    const surface = this.getActiveWindowSurface();
+    if (!surface || surface.isPrimary()) {
+      this.primaryActivePaneContainer = paneContainer;
+    }
     if (paneContainer !== this.getActivePaneContainer()) {
       this.activePaneContainer = paneContainer;
       this.didChangeActivePaneItem(this.activePaneContainer.getActivePaneItem());
@@ -689,6 +703,34 @@ module.exports = class Workspace extends Model {
         this.activePaneContainer.getActivePaneItem(),
       );
     }
+  }
+
+  didChangeActiveWindowSurface(surface) {
+    if (!this.alive || !surface) return;
+    let pane;
+    if (surface.isPrimary()) {
+      const paneContainer = this.primaryActivePaneContainer || this.getCenter();
+      pane =
+        paneContainer === this.getCenter()
+          ? this.getCenter().getActiveTiledPane()
+          : paneContainer.getActivePane();
+    } else {
+      pane = this.detachedPaneSurfaceManager?.paneForSurface(surface) || null;
+    }
+    if (!pane || pane.isDestroyed()) return;
+    pane.activate();
+  }
+
+  getActiveCenterPane() {
+    const center = this.paneContainers?.center;
+    if (!center) return null;
+    if (!this.detachedPaneSurfaceManager) return center.paneContainer.getActivePane();
+    const surface = this.getActiveWindowSurface();
+    if (surface && !surface.isPrimary()) {
+      const detachedPane = this.detachedPaneSurfaceManager?.paneForSurface(surface);
+      if (detachedPane?.isAlive()) return detachedPane;
+    }
+    return center.getActiveTiledPane() || center.paneContainer.getActivePane();
   }
 
   didChangeActivePaneOnPaneContainer(paneContainer, pane) {
@@ -2096,6 +2138,32 @@ module.exports = class Workspace extends Model {
     return this.getPaneItems().filter((item) => item instanceof TextEditor);
   }
 
+  /**
+   * @public
+   * @status extended
+   *
+   * Return the workspace-center pane item that owns a text editor. A normal
+   * editor owns itself; a composite item may expose its file or currently
+   * active embedded editor through the standard editor-resolution methods.
+   *
+   * @param {TextEditor} editor
+   * @returns {*} Pane item, or null when the editor is not owned by the center.
+   */
+  getPaneItemForTextEditor(editor) {
+    if (!(editor instanceof TextEditor)) return null;
+    const pane = this.paneForItem(editor);
+    if (pane && this.paneContainerForItem(editor) === this.getCenter()) return editor;
+    return (
+      this.getCenter()
+        .getPaneItems()
+        .find(
+          (item) =>
+            item.getFileTextEditor?.() === editor ||
+            item.getActiveEmbeddedTextEditor?.() === editor,
+        ) || null
+    );
+  }
+
   // Long titles for every open editor, computed together and kept until
   // something they depend on changes: which editors are open, and where each
   // one's file lives. A tab bar asks for one per tab and does so again for
@@ -2117,7 +2185,10 @@ module.exports = class Workspace extends Model {
    * @public
    * @status essential
    *
-   * Get the workspace center's active item if it is a {@link TextEditor}.
+   * Get the focused native surface's active center item if it is a
+   * {@link TextEditor}. A detached pane remains part of the workspace center,
+   * so focusing its window makes its editor active here exactly as focusing a
+   * tiled pane does in the primary window.
    *
    * @returns {TextEditor} or `undefined` if the workspace center's current active item is not a {@link TextEditor}.
    */
@@ -2134,7 +2205,7 @@ module.exports = class Workspace extends Model {
    *
    * Get the {@link TextEditor} holding the active item's file content.
    *
-   * The workspace center's active item itself when it is a text editor;
+   * The focused surface's active center item itself when it is a text editor;
    * otherwise the editor the item names through its `getFileTextEditor()`
    * method — a notebook names its backing source editor. File-identity status
    * tiles (encoding, line ending) describe this editor, so they stay truthful
@@ -2160,7 +2231,7 @@ module.exports = class Workspace extends Model {
    *
    * Get the {@link TextEditor} being edited inside the active item.
    *
-   * The workspace center's active item itself when it is a text editor;
+   * The focused surface's active center item itself when it is a text editor;
    * otherwise the editor the item names through its
    * `getActiveEmbeddedTextEditor()` method — a notebook names its active
    * cell's editor. Editing-state status tiles (the grammar tile) describe
@@ -2437,14 +2508,75 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
-   * Return the renderer window surface currently presenting an item or pane.
+   * Return the native-window surface that currently owns workspace focus.
+   * Active pane and editor getters resolve against this surface.
+   *
+   * @returns {WindowSurface|null}
+   */
+  getActiveWindowSurface() {
+    return this.surfaceManager?.getActive() || null;
+  }
+
+  /** Return the primary native-window surface for this workspace. */
+  getPrimaryWindowSurface() {
+    return this.surfaceManager?.getPrimary() || null;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Return every native-window surface presenting this workspace. The primary
+   * window and detached-pane windows all present the same workspace model.
+   *
+   * @returns {Array<WindowSurface>}
+   */
+  getWindowSurfaces() {
+    return this.surfaceManager?.getAll() || [];
+  }
+
+  /** Observe every current and future workspace window surface. */
+  observeWindowSurfaces(callback) {
+    for (const surface of this.getWindowSurfaces()) callback(surface);
+    return this.surfaceManager?.onDidAddSurface(callback) || new Disposable();
+  }
+
+  /** Subscribe when a workspace window surface is removed. */
+  onDidRemoveWindowSurface(callback) {
+    return this.surfaceManager?.onDidRemoveSurface(callback) || new Disposable();
+  }
+
+  /** Subscribe when native-window focus changes the active surface. */
+  onDidChangeActiveWindowSurface(callback) {
+    return this.surfaceManager?.onDidChangeActiveSurface(callback) || new Disposable();
+  }
+
+  /** Observe the active surface now and whenever native-window focus changes. */
+  observeActiveWindowSurface(callback) {
+    callback(this.getActiveWindowSurface());
+    return this.onDidChangeActiveWindowSurface(callback);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Return the renderer window surface currently presenting an item or pane,
+   * or the surface whose Document owns a DOM target.
+   *
+   * @param {Object|Pane|Node|Document|Window} itemOrPane - Workspace model or DOM value to resolve.
+   * @returns {WindowSurface|null} Its current renderer surface.
    */
   getWindowSurface(itemOrPane) {
-    if (!this.detachedPaneSurfaceManager) return null;
-    const pane = this.paneForItem(itemOrPane) || itemOrPane;
-    return pane?.getItems
-      ? this.detachedPaneSurfaceManager.surfaceForPane(pane)
-      : this.detachedPaneSurfaceManager.surfaceForItem(itemOrPane);
+    const directSurface = this.surfaceManager?.surfaceFor(itemOrPane);
+    if (directSurface) return directSurface;
+    const itemPane = this.paneForItem(itemOrPane);
+    const pane = itemPane || (this.getPanes().includes(itemOrPane) ? itemOrPane : null);
+    if (!pane) return null;
+    if (!this.detachedPaneSurfaceManager) {
+      return this.surfaceManager?.getPrimary() || null;
+    }
+    return this.detachedPaneSurfaceManager.surfaceForPane(pane);
   }
 
   /**
