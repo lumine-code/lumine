@@ -1,7 +1,7 @@
 /* globals assert */
 
 const { EventEmitter } = require("events");
-const { dialog } = require("electron");
+const { dialog, screen } = require("electron");
 const DetachedPaneWindowManager = require("../../src/detached-pane-window-manager");
 
 describe("DetachedPaneWindowManager", function () {
@@ -64,6 +64,60 @@ describe("DetachedPaneWindowManager", function () {
     assert.strictEqual(response.overrideBrowserWindowOptions.icon, icon);
   });
 
+  it("creates a hidden detached window at its explicit final bounds", function () {
+    const workArea = screen.getDisplayNearestPoint({ x: 0, y: 0 }).workArea;
+    const width = Math.min(700, workArea.width);
+    const height = Math.min(500, workArea.height);
+    const x = workArea.x + Math.floor((workArea.width - width) / 2);
+    const y = workArea.y + Math.floor((workArea.height - height) / 2);
+    const transaction = manager.reserve({
+      bounds: { x, y, width, height },
+    });
+
+    const response = owner.browserWindow.webContents.windowOpenHandler({
+      url: transaction.url,
+      frameName: transaction.frameName,
+    });
+
+    assert.deepEqual(response.overrideBrowserWindowOptions, {
+      show: false,
+      x,
+      y,
+      width,
+      height,
+    });
+  });
+
+  it("centers default detached bounds over the owning editor window", function () {
+    const workArea = screen.getDisplayNearestPoint({ x: 0, y: 0 }).workArea;
+    const width = Math.min(400, workArea.width);
+    const height = Math.min(300, workArea.height);
+    const ownerWidth = Math.min(width + 200, workArea.width);
+    const ownerHeight = Math.min(height + 200, workArea.height);
+    const ownerX = workArea.x + Math.floor((workArea.width - ownerWidth) / 2);
+    const ownerY = workArea.y + Math.floor((workArea.height - ownerHeight) / 2);
+    owner.browserWindow.bounds = {
+      x: ownerX,
+      y: ownerY,
+      width: ownerWidth,
+      height: ownerHeight,
+    };
+    const transaction = manager.reserve({ bounds: { width, height } });
+
+    const response = owner.browserWindow.webContents.windowOpenHandler({
+      url: transaction.url,
+      frameName: transaction.frameName,
+    });
+
+    assert.deepEqual(response.overrideBrowserWindowOptions, {
+      show: false,
+      x: ownerX + Math.round((ownerWidth - width) / 2),
+      y: ownerY + Math.round((ownerHeight - height) / 2),
+      width,
+      height,
+    });
+  });
+
   it("keeps a created window hidden until the transaction is committed", function () {
     const transaction = manager.reserve({ transactionId: "drag-1", bounds: { width: 700 } });
     const response = owner.browserWindow.webContents.windowOpenHandler({
@@ -78,6 +132,8 @@ describe("DetachedPaneWindowManager", function () {
     });
     assert.lengthOf(application.registered, 1);
     assert.isFalse(child.visible);
+    assert.equal(child.hideCallCount, 0);
+    assert.equal(child.setBoundsCallCount, 0);
 
     const ready = manager.perform(transaction.transactionId, "ready");
     assert.equal(ready.state, "ready");
@@ -226,6 +282,8 @@ class StubBrowserWindow extends EventEmitter {
     this.destroyed = false;
     this.visible = false;
     this.focused = false;
+    this.hideCallCount = 0;
+    this.setBoundsCallCount = 0;
     this.title = "";
     this.bounds = { x: 0, y: 0, width: 800, height: 600 };
     this.webContents = new EventEmitter();
@@ -244,6 +302,7 @@ class StubBrowserWindow extends EventEmitter {
   }
 
   hide() {
+    this.hideCallCount++;
     this.visible = false;
   }
 
@@ -298,6 +357,7 @@ class StubBrowserWindow extends EventEmitter {
   }
 
   setBounds(bounds) {
+    this.setBoundsCallCount++;
     this.bounds = { ...this.bounds, ...bounds };
   }
 

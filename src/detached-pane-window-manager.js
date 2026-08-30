@@ -57,13 +57,26 @@ function normalizeBounds(bounds, currentBounds = {}) {
 }
 
 function visibleBounds({ width, height, x, y }, ownerBounds = {}) {
-  const anchor = {
-    x: x ?? ownerBounds.x ?? 0,
-    y: y ?? ownerBounds.y ?? 0,
-  };
-  const workArea = screen.getDisplayNearestPoint(anchor).workArea;
+  const hasExplicitPosition = x != null && y != null;
+  const ownerX = finiteInteger(ownerBounds.x, 0);
+  const ownerY = finiteInteger(ownerBounds.y, 0);
+  const ownerWidth = finiteInteger(ownerBounds.width, width);
+  const ownerHeight = finiteInteger(ownerBounds.height, height);
+  const displayPoint = hasExplicitPosition
+    ? { x, y }
+    : {
+        x: ownerX + Math.round(ownerWidth / 2),
+        y: ownerY + Math.round(ownerHeight / 2),
+      };
+  const workArea = screen.getDisplayNearestPoint(displayPoint).workArea;
   width = Math.min(width, workArea.width);
   height = Math.min(height, workArea.height);
+  const anchor = hasExplicitPosition
+    ? { x, y }
+    : {
+        x: ownerX + Math.round((ownerWidth - width) / 2),
+        y: ownerY + Math.round((ownerHeight - height) / 2),
+      };
   return {
     x: Math.max(workArea.x, Math.min(anchor.x, workArea.x + workArea.width - width)),
     y: Math.max(workArea.y, Math.min(anchor.y, workArea.y + workArea.height - height)),
@@ -159,9 +172,13 @@ module.exports = class DetachedPaneWindowManager {
     const response = {
       action: "allow",
       outlivesOpener: false,
+      overrideBrowserWindowOptions: {
+        show: false,
+        ...visibleBounds(transaction.options, this.browserWindow.getBounds?.() || {}),
+      },
     };
     const icon = this.ownerWindow.getWindowIcon?.();
-    if (icon) response.overrideBrowserWindowOptions = { icon };
+    if (icon) response.overrideBrowserWindowOptions.icon = icon;
     return response;
   }
 
@@ -185,12 +202,8 @@ module.exports = class DetachedPaneWindowManager {
     transaction.surface = surface;
     this.surfaces.set(surface.id, surface);
     const { title } = transaction.options;
-    browserWindow.hide();
     browserWindow.setTitle(title);
     browserWindow.setMinimumSize?.(MINIMUM_SIZE, MINIMUM_SIZE);
-    browserWindow.setBounds?.(
-      visibleBounds(transaction.options, this.browserWindow.getBounds?.() || {}),
-    );
     browserWindow.setAutoHideMenuBar?.(true);
     this.application.registerDetachedPaneWindow?.(this.ownerWindow, surface);
     this.bindSurface(surface);
