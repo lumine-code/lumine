@@ -2675,9 +2675,14 @@ module.exports = class LumineApplication extends EventEmitter {
       }
     })();
 
-    // Show the open dialog as child window on Windows and Linux, and as an independent dialog on macOS. This matches
-    // most native apps.
-    const parentWindow = process.platform === "darwin" ? null : BrowserWindow.getFocusedWindow();
+    // Workspace open dialogs belong to the primary editor window even when a
+    // detached pane initiated the command. Keep macOS's independent-dialog
+    // convention, but still move native focus back to the owner first.
+    let focusedWindow = BrowserWindow.getFocusedWindow();
+    const detachedContext = this.detachedPaneWindowsByBrowserWindow.get(focusedWindow);
+    if (detachedContext) focusedWindow = detachedContext.lumineWindow.browserWindow;
+    focusedWindow?.focus();
+    const parentWindow = process.platform === "darwin" ? null : focusedWindow;
 
     const openOptions = {
       properties: properties.concat(["multiSelections", "createDirectory"]),

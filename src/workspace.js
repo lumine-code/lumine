@@ -345,12 +345,6 @@ module.exports = class Workspace extends Model {
         location: "modal",
       }),
     };
-    this.disposables.add(
-      this.windowSurfaceTransitions.addObserver((context) =>
-        this.beginModalOwnerSurfaceTransition(context),
-      ),
-    );
-
     this.incoming = new Map();
     if (this.surfaceManager) {
       this.disposables.add(
@@ -386,11 +380,13 @@ module.exports = class Workspace extends Model {
       didChangeActivePaneItem: this.didChangeActivePaneItemOnPaneContainer,
       didDestroyPaneItem: this.didDestroyPaneItem,
       resolveActivePane: () => this.getActiveCenterPane(),
+      focusPrimaryWindow: () => this.focusPrimaryPaneContainer(this.getCenter()),
     });
   }
 
   createDock(location) {
-    return new Dock({
+    let dock;
+    dock = new Dock({
       location,
       config: this.config,
       applicationDelegate: this.applicationDelegate,
@@ -401,7 +397,9 @@ module.exports = class Workspace extends Model {
       didChangeActivePane: this.didChangeActivePaneOnPaneContainer,
       didChangeActivePaneItem: this.didChangeActivePaneItemOnPaneContainer,
       didDestroyPaneItem: this.didDestroyPaneItem,
+      focusPrimaryWindow: () => this.focusPrimaryPaneContainer(dock),
     });
+    return dock;
   }
 
   reset(packageManager) {
@@ -1376,7 +1374,9 @@ module.exports = class Workspace extends Model {
    * Opens the given URI in Lumine asynchronously.
    * If the URI is already open, the existing item for that URI will be
    * activated. If no URI is given, or no registered opener can open
-   * the URI, a new empty {@link TextEditor} will be created.
+   * the URI, a new empty {@link TextEditor} will be created. New presentation
+   * focuses the primary window; activating an already-open detached item
+   * focuses its existing surface. `activatePane: false` moves no native focus.
    *
    * @param [itemOrURI] - An item to open or a `String` containing a URI.
    * @param {Object} [options]
@@ -1543,6 +1543,14 @@ module.exports = class Workspace extends Model {
         pane = pane.getContainer().resolveInsertionPane(pane);
       }
 
+      if (options.activatePane !== false) {
+        if (pane.isDetached()) {
+          await this.focusWindowSurface(this.getWindowSurface(pane));
+        } else {
+          await this.focusPrimaryPaneContainer(this.paneContainerForPane(pane));
+        }
+      }
+
       this.itemOpened(item);
 
       if (options.activateItem === false) {
@@ -1626,6 +1634,7 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} indicating whether any items were found (and hidden).
    */
   hide(itemOrURI) {
+    this.focusPrimaryWindow();
     let foundItems = false;
 
     // If any visible item has the given URI, hide it
@@ -1716,6 +1725,13 @@ module.exports = class Workspace extends Model {
 
     const existingPane = this.paneForItem(item);
     pane = existingPane || pane.getContainer().resolveInsertionPane(pane);
+    if (activatePane) {
+      if (pane.isDetached()) {
+        this.focusWindowSurface(this.getWindowSurface(pane));
+      } else {
+        this.focusPrimaryPaneContainer(this.paneContainerForPane(pane));
+      }
+    }
     if (activateItem) pane.activateItem(item);
     this.itemOpened(item);
     if (activatePane) pane.activate();
@@ -1957,10 +1973,7 @@ module.exports = class Workspace extends Model {
   }
 
   withModalDocument(props) {
-    if (props.document) return props;
-    const surface = this.modalSurfaceFor(props);
-    const document = surface?.document || this.getElement().ownerDocument;
-    return { ...props, document };
+    return { ...props, document: this.getElement().ownerDocument };
   }
 
   /**
@@ -1970,8 +1983,7 @@ module.exports = class Workspace extends Model {
   // The keeper of the window's modal breadcrumb trail. Internal — packages
   // reach the flow through {@link Panel#show}'s `crumb` option and the delegates
   // below.
-  getModalFlow(surface = null) {
-    if (surface && !surface.isPrimary?.() && surface.modalFlow) return surface.modalFlow;
+  getModalFlow() {
     if (this.modalFlowKeeper == null) {
       this.modalFlowKeeper = new ModalFlow(this);
     }
@@ -1979,8 +1991,7 @@ module.exports = class Workspace extends Model {
   }
 
   getActiveModalFlow() {
-    const surface = this.detachedPaneSurfaceManager?.surfaceManager.getActive();
-    return this.getModalFlow(surface);
+    return this.getModalFlow();
   }
 
   /**
@@ -1998,6 +2009,7 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} — `false` when there is no step to go back to.
    */
   popModal() {
+    this.focusPrimaryWindow();
     return this.getActiveModalFlow().pop();
   }
 
@@ -2011,6 +2023,7 @@ module.exports = class Workspace extends Model {
    * @returns {Boolean} — `false` when the index is not an earlier step.
    */
   popModalTo(index) {
+    this.focusPrimaryWindow();
     return this.getActiveModalFlow().popTo(index);
   }
 
@@ -2365,7 +2378,11 @@ module.exports = class Workspace extends Model {
   }
 
   getVisiblePanes() {
-    return _.flatten(this.getVisiblePaneContainers().map((container) => container.getPanes()));
+    const panes = this.getCenter().getTiledPanes();
+    for (const container of this.getVisiblePaneContainers()) {
+      if (container !== this.getCenter()) panes.push(...container.getPanes());
+    }
+    return panes;
   }
 
   /**
@@ -2387,6 +2404,7 @@ module.exports = class Workspace extends Model {
    * Make the next pane active.
    */
   activateNextPane() {
+    this.focusPrimaryWindow();
     return this.getActivePaneContainer().activateNextPane();
   }
 
@@ -2397,6 +2415,7 @@ module.exports = class Workspace extends Model {
    * Make the previous pane active.
    */
   activatePreviousPane() {
+    this.focusPrimaryWindow();
     return this.getActivePaneContainer().activatePreviousPane();
   }
 
@@ -2425,6 +2444,11 @@ module.exports = class Workspace extends Model {
    */
   paneContainerForItem(item) {
     return this.getPaneContainers().find((container) => container.paneForItem(item));
+  }
+
+  /** @private */
+  paneContainerForPane(pane) {
+    return this.getPaneContainers().find((container) => container.getPanes().includes(pane));
   }
 
   /**
@@ -2535,6 +2559,40 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
+   * Focus the primary native window that owns workspace chrome. The logical
+   * surface changes synchronously; the returned value may be a Promise for
+   * the native window-manager request.
+   *
+   * @returns {Boolean|Promise} whether focus was requested, or its native completion.
+   */
+  focusPrimaryWindow() {
+    const primary = this.surfaceManager?.getPrimary();
+    if (primary) {
+      if (this.surfaceManager.getActive() === primary) return true;
+      return this.surfaceManager.focusPrimary();
+    }
+    return this.applicationDelegate.focusWindow?.() ?? false;
+  }
+
+  /** @private */
+  focusPrimaryPaneContainer(paneContainer) {
+    if (!this.getPaneContainers().includes(paneContainer)) {
+      throw new TypeError("Primary focus requires a live workspace pane container");
+    }
+    this.primaryActivePaneContainer = paneContainer;
+    return this.focusPrimaryWindow();
+  }
+
+  /** @private */
+  focusWindowSurface(surface) {
+    if (!this.surfaceManager || !surface) return false;
+    return this.surfaceManager.focus(surface);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Return every native-window surface presenting this workspace. The primary
    * window and detached-pane windows all present the same workspace model.
    *
@@ -2592,20 +2650,85 @@ module.exports = class Workspace extends Model {
    * @public
    * @status extended
    *
+   * Show a native confirmation dialog owned by the window presenting a live
+   * pane item.
+   *
+   * @param item - A live workspace pane item.
+   * @param {Object} options - Native confirmation options.
+   * @returns {Promise} resolving to the selected button index.
+   */
+  confirmForPaneItem(item, options) {
+    return this.dialogServiceForPaneItem(item).confirm(options);
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Show a native save dialog owned by the window presenting a live pane item.
+   *
+   * @param item - A live workspace pane item.
+   * @param {Object} options - Native save-dialog options.
+   * @returns {Promise} resolving to the native save-dialog result.
+   */
+  showSaveDialogForPaneItem(item, options) {
+    return this.dialogServiceForPaneItem(item).showSaveDialog(options);
+  }
+
+  /** @private */
+  dialogServiceForPaneItem(item) {
+    const pane = this.paneForItem(item);
+    if (!pane || !pane.isAlive() || !pane.getItems().includes(item)) {
+      throw new TypeError("A native pane-item dialog requires a live workspace pane item");
+    }
+    const surface = this.getWindowSurface(pane);
+    return surface && !surface.isPrimary() ? surface.windowService : this.applicationDelegate;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Observe which native-window surface presents a pane item.
    *
    * @returns {Disposable} A subscription disposable.
    */
   observePaneItemSurface(item, callback) {
-    const pane = this.paneForItem(item);
-    if (!pane || this.paneContainerForItem(item) !== this.getCenter()) {
-      throw new TypeError("Surface observation requires a workspace-center pane item");
+    if (item == null || typeof callback !== "function") {
+      throw new TypeError("Surface observation requires an item and callback");
     }
-    if (!this.detachedPaneSurfaceManager) {
-      callback(this.getPrimaryWindowSurface());
-      return new Disposable();
+    const subscriptions = new CompositeDisposable();
+    let surfaceSubscription = null;
+    let lastSurface;
+    const emit = (surface) => {
+      if (surface === lastSurface) return;
+      lastSurface = surface;
+      callback(surface);
+    };
+    const bind = () => {
+      const pane = this.paneForItem(item);
+      if (!pane) return false;
+      surfaceSubscription?.dispose();
+      surfaceSubscription = null;
+      if (this.paneContainerForItem(item) === this.getCenter() && this.detachedPaneSurfaceManager) {
+        surfaceSubscription = this.detachedPaneSurfaceManager.observePaneItemSurface(item, emit);
+        subscriptions.add(surfaceSubscription);
+      } else {
+        emit(this.getPrimaryWindowSurface());
+      }
+      return true;
+    };
+
+    if (!bind()) {
+      // Openers construct items before Workspace::open assigns their pane. At
+      // that point primary is the only legal initial presentation surface.
+      emit(this.getPrimaryWindowSurface());
+      const added = this.onDidAddPaneItem(({ item: addedItem }) => {
+        if (addedItem === item) bind();
+      });
+      subscriptions.add(added);
     }
-    return this.detachedPaneSurfaceManager.observePaneItemSurface(item, callback);
+    return subscriptions;
   }
 
   /**
@@ -2687,9 +2810,7 @@ module.exports = class Workspace extends Model {
   didDestroyPaneItem({ item }) {
     this.invalidateLongTitles();
     for (const panel of this.getPanels("modal")) {
-      if (panel.modalRoute?.kind === "owner" && panel.modalRoute.owner === item) {
-        panel.destroy();
-      }
+      if (panel.owner === item) panel.destroy();
     }
     let uri;
     if (typeof item.getURI === "function") {
@@ -2707,6 +2828,8 @@ module.exports = class Workspace extends Model {
   destroyed() {
     this.closeStateStore();
     this.windowSurfaceTransitions.destroy();
+    this.modalFlowKeeper?.destroy();
+    this.modalFlowKeeper = null;
     this.paneContainers.center.destroy();
     this.paneContainers.left.destroy();
     this.paneContainers.right.destroy();
@@ -2984,232 +3107,11 @@ module.exports = class Workspace extends Model {
    * @param {Boolean|Element} [options.autoFocus] - true if you want modal focus managed for you by Lumine. Lumine will automatically focus on this element or your modal panel's first tabbable element when the modal opens and will restore the previously selected element when the modal closes. Lumine will also automatically restrict user tab focus within your modal while it is open. (default: false)
    * @param {Boolean} [options.restoreFocus] - false if you want to manage focus restoration yourself. By default, when a modal panel is hidden, focus returns to the element that was focused before the modal opened — or, for chained modals, before the first modal in the chain opened. (default: true)
    * @param {String} [options.crumb] - the label this panel carries on the modal breadcrumb trail. Used when the panel is shown as a flow step without an explicit label — `panel.show({crumb: true})` — and when a step shown on top of this panel adopts it as the trail root. See {@link Panel#show}.
-   * @param {*} [options.owner] - a live workspace pane item whose native-window surface owns this modal. A surface-relocatable panel follows the owner through committed detach and attach transitions, returns with it on rollback, and is destroyed when the owner is destroyed.
-   * @param {WindowSurface} [options.surface] - one registered live native-window surface that owns this modal. Mutually exclusive with `owner`; without either route, the current active surface is captured.
-   * @param {Boolean} [options.surfaceRelocatable] - whether the same Panel may move between native-window modal containers, including while visible. Reusable picker and input-dialog infrastructure sets this; ordinary package panels remain owned by the container that created them.
+   * @param {*} [options.owner] - a live workspace pane item whose destruction also destroys this modal. The modal itself is always presented in the primary window.
    * @returns {Panel}
    */
   addModalPanel(options = {}) {
     return this.addPanel("modal", options);
-  }
-
-  /** @private */
-  beginModalOwnerSurfaceTransition(context) {
-    const panels = this.getPanels("modal").filter(
-      (panel) =>
-        !panel.isDestroyed() &&
-        panel.isSurfaceRelocatable() &&
-        panel.modalRoute?.kind === "owner" &&
-        panel.modalRoute.owner === context.item,
-    );
-    if (panels.length === 0) return;
-
-    const followOwner = () => {
-      for (const panel of panels) {
-        if (
-          panel.isDestroyed() ||
-          panel.modalRoute?.kind !== "owner" ||
-          panel.modalRoute.owner !== context.item
-        ) {
-          continue;
-        }
-        this.rehomeModalPanel(panel, { owner: context.item });
-      }
-    };
-    // The pane item is moved between begin() and commit(). A later participant
-    // may still reject the transition, so rollback resolves the owner's model
-    // location again instead of assuming either snapshot won.
-    return { commit: followOwner, rollback: followOwner };
-  }
-
-  /**
-   * @public
-   * @status extended
-   *
-   * Move a reusable modal panel to the native-window surface selected
-   * by `owner`, `surface`, or the currently active surface. The Panel object
-   * and its item remain the same; only its presenting container changes.
-   * Moving any member of an active modal flow transfers the complete flow.
-   * The operation validates every panel and the destination before changing
-   * ownership, and rolls the complete move back if a container rejects it.
-   * A visible panel remains visible, keeps its focused descendant, and does
-   * not emit a synthetic visibility change during the move.
-   *
-   * @param {Panel} panel - A modal panel created with `surfaceRelocatable`.
-   * @param {Object} [options]
-   * @param {*} [options.owner] - Pane item whose current surface owns the modal.
-   * @param {WindowSurface} [options.surface] - Explicit fixed surface.
-   * @returns {Panel} The same panel instance.
-   */
-  rehomeModalPanel(panel, options = {}) {
-    if (!(panel instanceof Panel)) {
-      throw new TypeError("rehomeModalPanel requires a Panel owned by this workspace");
-    }
-    if (!options || typeof options !== "object") {
-      throw new TypeError("rehomeModalPanel options must be an object");
-    }
-    for (const key of Object.keys(options)) {
-      if (key !== "owner" && key !== "surface") {
-        throw new TypeError(`rehomeModalPanel received an unknown option "${key}"`);
-      }
-    }
-    if (!panel.isSurfaceRelocatable()) {
-      throw new TypeError("Only a surface-relocatable modal panel can move between surfaces");
-    }
-    if (panel.isDestroyed()) {
-      throw new Error("A destroyed modal panel cannot move between surfaces");
-    }
-
-    const currentContainer = panel.getContainer();
-    if (
-      !currentContainer ||
-      currentContainer.isDestroyed() ||
-      !currentContainer.containsPanel(panel)
-    ) {
-      throw new Error("A reusable modal panel must belong to a live modal container");
-    }
-    if (!currentContainer.isModal()) {
-      throw new TypeError("Only a modal panel can move between window surfaces");
-    }
-
-    const destination = this.modalPanelDestination(options);
-    const nextRoute = this.modalRouteForOptions(options, destination.surface);
-    if (currentContainer === destination.container) {
-      panel.modalRoute = nextRoute;
-      return panel;
-    }
-
-    const sourceFlow = panel.flowKeeper;
-    const flowPanels = sourceFlow?.hasPanel(panel)
-      ? Array.from(new Set(sourceFlow.getStackPanels()))
-      : null;
-    const panels = flowPanels || [panel];
-
-    if (flowPanels) {
-      if (sourceFlow === destination.flowKeeper) {
-        throw new Error("A modal flow cannot span more than one modal container");
-      }
-      if (destination.flowKeeper.getStackPanels().length > 0) {
-        throw new Error("Cannot move a modal flow onto another active modal flow");
-      }
-    }
-
-    for (const candidate of panels) {
-      if (!candidate.isSurfaceRelocatable()) {
-        throw new Error("Every panel in a transferred modal flow must be surface-relocatable");
-      }
-      if (
-        candidate.isDestroyed() ||
-        candidate.getContainer() !== currentContainer ||
-        !currentContainer.containsPanel(candidate)
-      ) {
-        throw new Error("Every panel in a transferred modal flow must share one live container");
-      }
-    }
-
-    if (
-      panels.some((candidate) => candidate.isVisible()) &&
-      destination.container.getPanels().some((candidate) => candidate.isVisible())
-    ) {
-      throw new Error(
-        "Cannot move a visible modal onto a surface that already has a visible modal",
-      );
-    }
-
-    const originalMetadata = new Map(
-      panels.map((candidate) => [
-        candidate,
-        { flowKeeper: candidate.flowKeeper, surface: candidate.surface },
-      ]),
-    );
-    const transferred = [];
-    let flowTransferred = false;
-    try {
-      for (const candidate of panels) {
-        currentContainer.transferPanelTo(candidate, destination.container);
-        transferred.push(candidate);
-      }
-      for (const candidate of panels) {
-        candidate.flowKeeper = destination.flowKeeper;
-        candidate.surface = destination.surface;
-      }
-      if (flowPanels) {
-        sourceFlow.transferTo(destination.flowKeeper);
-        flowTransferred = true;
-      }
-      panel.modalRoute = nextRoute;
-      return panel;
-    } catch (error) {
-      const rollbackErrors = [];
-      if (flowTransferred) {
-        try {
-          destination.flowKeeper.transferTo(sourceFlow);
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
-      }
-      for (const [candidate, metadata] of originalMetadata) {
-        candidate.flowKeeper = metadata.flowKeeper;
-        candidate.surface = metadata.surface;
-      }
-      for (const candidate of transferred.reverse()) {
-        try {
-          destination.container.transferPanelTo(candidate, currentContainer);
-        } catch (rollbackError) {
-          rollbackErrors.push(rollbackError);
-        }
-      }
-      if (rollbackErrors.length > 0) {
-        throw new AggregateError(
-          [error, ...rollbackErrors],
-          "Modal-panel transfer failed and could not be rolled back cleanly",
-          { cause: error },
-        );
-      }
-      throw error;
-    }
-  }
-
-  /** @private */
-  rehomeModalPanelsFromSurface(surface) {
-    const sourceContainer = surface?.modalPanelContainer;
-    const sourceFlow = surface?.modalFlow;
-    if (!sourceContainer || sourceContainer.isDestroyed()) return;
-    const primary = this.modalSurfaceFor({ surface: this.surfaceManager.getPrimary() });
-    if (surface === primary) return;
-    const primaryDestination = this.modalPanelDestination({ surface: primary });
-    const originalRoutes = new Map(
-      sourceContainer.getPanels().map((candidate) => [candidate, candidate.modalRoute]),
-    );
-    const dismissPrimaryModal = () => {
-      for (const candidate of primaryDestination.container.getPanels()) {
-        if (candidate.isVisible()) candidate.hide();
-      }
-    };
-
-    const flowPanels = Array.from(new Set(sourceFlow?.getStackPanels() || []));
-    if (flowPanels.length > 0) {
-      if (flowPanels.every((candidate) => candidate.isSurfaceRelocatable())) {
-        if (flowPanels.some((candidate) => candidate.isVisible())) dismissPrimaryModal();
-        this.rehomeModalPanel(flowPanels[0], { surface: primary });
-      } else {
-        // A mixed flow cannot keep a meaningful trail after its fixed panels'
-        // window disappears. End the trail before preserving its reusable
-        // members individually.
-        sourceFlow.clear();
-      }
-    }
-
-    for (const candidate of sourceContainer.getPanels()) {
-      if (!candidate.isSurfaceRelocatable()) continue;
-      if (candidate.isVisible()) dismissPrimaryModal();
-      this.rehomeModalPanel(candidate, { surface: primary });
-    }
-    for (const [candidate, route] of originalRoutes) {
-      if (candidate.getContainer() === sourceContainer) continue;
-      candidate.modalRoute =
-        route?.kind === "owner" ? route : this.modalRouteForOptions({ surface: primary }, primary);
-    }
   }
 
   /**
@@ -3220,112 +3122,40 @@ module.exports = class Workspace extends Model {
    * @returns {Panel} associated with the given item. Returns `null` when the item has no panel.
    */
   panelForItem(item) {
-    const containers = Object.values(this.panelContainers);
-    for (const surface of this.detachedPaneSurfaceManager?.getSurfaces() || []) {
-      if (surface.modalPanelContainer) containers.push(surface.modalPanelContainer);
-    }
-    for (const container of containers) {
+    for (const container of Object.values(this.panelContainers)) {
       const panel = container.panelForItem(item);
-      if (panel != null) {
-        return panel;
-      }
+      if (panel != null) return panel;
     }
     return null;
   }
 
   getPanels(location) {
-    const panels = this.panelContainers[location].getPanels();
-    if (location !== "modal") return panels;
-    for (const surface of this.detachedPaneSurfaceManager?.getSurfaces() || []) {
-      panels.push(...(surface.modalPanelContainer?.getPanels() || []));
-    }
-    return panels;
+    return this.panelContainers[location].getPanels();
   }
 
-  addPanel(location, options) {
-    if (options == null) {
-      options = {};
+  addPanel(location, options = {}) {
+    if (options.surface != null || options.surfaceRelocatable != null) {
+      throw new TypeError("Workspace panels are presented only in the primary window");
     }
-    if (options.surfaceRelocatable && location !== "modal") {
-      throw new TypeError("Only a modal panel can be surface-relocatable");
+    if (options.owner != null) {
+      if (location !== "modal") {
+        throw new TypeError("Only a modal panel can have a pane-item owner");
+      }
+      const pane = this.paneForItem(options.owner);
+      if (!pane || !pane.isAlive() || !pane.getItems().includes(options.owner)) {
+        throw new TypeError("A modal owner must be a live workspace pane item");
+      }
     }
-    const destination = location === "modal" ? this.modalPanelDestination(options) : null;
-    const panel = new Panel(options, this.viewRegistry);
+
+    if (options.visible !== false) this.focusPrimaryWindow();
+    const panel = new Panel(options, this.viewRegistry, () => this.focusPrimaryWindow());
     if (location === "modal") {
-      panel.flowKeeper = destination.flowKeeper;
-      panel.surface = destination.surface;
-      panel.modalRoute = this.modalRouteForOptions(options, destination.surface);
-      destination.container.addPanel(panel);
-      return panel;
+      panel.owner = options.owner ?? null;
+      panel.flowKeeper = this.getModalFlow();
     } else if (panel.crumb != null) {
       throw new TypeError("The crumb option is only supported on modal panels");
     }
     return this.panelContainers[location].addPanel(panel);
-  }
-
-  modalPanelDestination({ owner, surface } = {}) {
-    const resolvedSurface = this.modalSurfaceFor({ owner, surface });
-    if (resolvedSurface && !resolvedSurface.isPrimary()) {
-      if (
-        !resolvedSurface.modalPanelContainer ||
-        resolvedSurface.modalPanelContainer.isDestroyed() ||
-        !resolvedSurface.modalFlow
-      ) {
-        throw new Error("The selected window surface cannot present modal panels");
-      }
-      return {
-        container: resolvedSurface.modalPanelContainer,
-        flowKeeper: resolvedSurface.modalFlow,
-        surface: resolvedSurface,
-      };
-    }
-    if (this.panelContainers.modal.isDestroyed()) {
-      throw new Error("The primary window surface cannot present modal panels after teardown");
-    }
-    return {
-      container: this.panelContainers.modal,
-      flowKeeper: this.getModalFlow(),
-      surface: resolvedSurface?.isPrimary()
-        ? resolvedSurface
-        : this.detachedPaneSurfaceManager?.surfaceManager.getPrimary() || null,
-    };
-  }
-
-  modalRouteForOptions({ owner, surface } = {}, resolvedSurface) {
-    if (owner != null) return Object.freeze({ kind: "owner", owner });
-    if (surface != null) return Object.freeze({ kind: "surface", surface });
-    return Object.freeze({ kind: "active", surface: resolvedSurface });
-  }
-
-  modalSurfaceFor({ owner, surface } = {}) {
-    if (owner != null && surface != null) {
-      throw new TypeError("A modal route accepts either owner or surface, not both");
-    }
-    const surfaceManager = this.surfaceManager || this.detachedPaneSurfaceManager?.surfaceManager;
-    if (!surfaceManager) throw new Error("The workspace has no window-surface registry");
-
-    let ownerSurface = null;
-    if (owner != null) {
-      const pane = this.paneForItem(owner);
-      if (!pane || !pane.isAlive() || !pane.getItems().includes(owner)) {
-        throw new TypeError("A modal owner must be a live workspace pane item");
-      }
-      ownerSurface = this.getWindowSurface(owner);
-      if (!ownerSurface) {
-        throw new Error("The modal owner's window surface is not registered");
-      }
-    }
-    if (surface != null && surfaceManager.get(surface.id) !== surface) {
-      throw new TypeError("A modal surface must be registered with this workspace");
-    }
-    const resolvedSurface = surface || ownerSurface || surfaceManager.getActive() || null;
-    if (!resolvedSurface || surfaceManager.get(resolvedSurface.id) !== resolvedSurface) {
-      throw new Error("A modal route must resolve to exactly one registered window surface");
-    }
-    if (resolvedSurface.isDestroyed()) {
-      throw new Error("Cannot present a modal panel in a destroyed window surface");
-    }
-    return resolvedSurface;
   }
 
   /**
@@ -3666,7 +3496,7 @@ module.exports = class Workspace extends Model {
       };
 
       if (this.config.get("git.confirmCheckoutHeadRevision")) {
-        const response = await this.applicationDelegate.confirm({
+        const response = await this.confirmForPaneItem(editor, {
           message: "Confirm Checkout HEAD Revision",
           detail: `Are you sure you want to discard all changes to "${editor.getFileName()}" since the last Git commit?`,
           buttons: ["OK", "Cancel"],

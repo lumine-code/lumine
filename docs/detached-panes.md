@@ -9,7 +9,7 @@ Detached panes do not create another `Environment`, `Workspace`, `Project`, pack
 - A `DetachedPane` belongs to `workspace.getCenter()` and is returned by `paneForItem()` and the center's normal pane and item enumeration.
 - A detached pane contains exactly one item, has no `PaneAxis` parent, and never participates in tiled layout calculations.
 - `getPanes()` includes tiled and detached panes; spatial code uses `getTiledPanes()`.
-- Opening a new item always targets a tiled pane. An already-open detached item is activated in its existing window.
+- Opening a new item always focuses the primary window and targets its tiled center or a primary dock. An already-open detached item is activated in its existing window because no new workspace chrome is being created.
 - Detaching and attaching transfer ownership atomically and emit no workspace-level item add or destroy event.
 - Closing a detached native window closes its item through the normal save prompt. Attaching it is nondestructive and prompts for nothing.
 - A detached child cannot outlive its logical Lumine window and is not stored as an application-level project window.
@@ -18,7 +18,7 @@ Detached panes do not create another `Environment`, `Workspace`, `Project`, pack
 
 Detachment is always explicit. Normal openers and unaccepted tab drags leave items tiled; the core `pane:detach-item` command, also exposed in the tab context menu, calls `await lumine.workspace.detachPaneItem(item)`. The titlebar pin calls `await lumine.workspace.attachDetachedPane(pane)`.
 
-The return target is the original tiled pane and tab index while that pane exists, then the active tiled pane, then the center root. A new open or split requested from a detached item uses the same tiled target and never adds a second item to the detached pane.
+The return target is the original tiled pane and tab index while that pane exists, then the active tiled pane, then the center root. A new open or split requested from a detached item focuses the primary window, uses that tiled target, and never adds a second item to the detached pane. `workspace.open(..., {activatePane: false})` remains a background operation and does not move native focus.
 
 Native window commands target the surface that received them: close, minimize, maximize, full screen, and developer tools act on that detached `BrowserWindow`. Reload is deliberately different because a detached child is not independently bootstrapped: `window:reload` reloads the owning editor window, which tears down and rebuilds all of its surfaces; reloading only the child's `webContents` would discard its mounted pane without a renderer lifecycle capable of restoring it.
 
@@ -40,6 +40,8 @@ A UMD runtime that binds itself to `window` must be loaded in the destination re
 
 ## Chrome and overlays
 
-A detached surface contains the pane, a pin control, and a transient modal overlay. It has no tab bar, dock, status bar, or tiled pane axis. Package-owned dock panels remain in the primary window and may continue to follow the active detached center item.
+A detached surface contains exactly the title bar, one pane, and that pane's one item. It has no tab bar, dock, status bar, panel container, modal flow, notification host, or tiled pane axis. Package-owned docks and panels remain in the primary window and may continue to follow the active detached center item.
 
-Modal lists and input dialogs should pass their owning pane item as `owner`; this presents them in the owner's current surface while leaving application-level notifications and permanent panels in the primary window. A reusable dialog keeps one `Panel` identity and a validated route: an owner-routed panel follows its item through detach, attach, and rollback and is destroyed with that item; an explicit `surface` stays fixed while it is live; and an unowned dialog captures the active surface on each explicit show. Moving a visible panel preserves visibility, focused content, prior-focus restoration, and the complete modal flow without emitting synthetic hide/show events. `Panel#onDidChangeDocument` is the hook for rebuilding browser objects tied to the old realm, while `Panel#isTransferring()` distinguishes adoption blur from dismissal. Detached-surface teardown rehomes every surviving relocatable panel to primary before destroying the child container.
+Workspace presentation APIs own the boundary. Opening a new item, showing a dock or panel, displaying a select list or input dialog, and changing tiled layout focus the primary window before presenting UI. Commands themselves are not redirected: they first resolve their original child-DOM target, so editing, saving, autocomplete, hover, tooltips, context menus, title-bar actions, and developer tools continue to act on the detached item or window. A modal `owner` is only a lifecycle association that destroys the primary modal with its pane item; `surface` routes and cross-window modal transfer do not exist.
+
+Native dialogs follow ownership rather than the workspace-chrome rule. Save, close, conflict, and export dialogs concerning a pane item use `workspace.confirmForPaneItem(item, options)` or `workspace.showSaveDialogForPaneItem(item, options)` and are parented to the window presenting that item. Application Open and other global pickers focus and belong to the primary window.

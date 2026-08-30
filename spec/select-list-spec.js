@@ -439,102 +439,51 @@ describe("SelectListView", () => {
       expect(lumine.workspace.getModalPanels()).not.toContain(panel);
     });
 
-    it("moves a visible stable panel across surfaces and rehomes it on surface teardown", async () => {
+    it("keeps an owner dialog in the primary workspace", async () => {
       lumine.initializeDetachedPaneSurfaces({ force: true });
       const editor = lumine.workspace.buildTextEditor();
-      lumine.workspace.getActivePane().addItem(editor);
-      const primarySurface = lumine.workspace.getWindowSurface(
-        lumine.views.getView(lumine.workspace),
-      );
+      lumine.workspace.getCenter().getActiveTiledPane().addItem(editor);
       let detachedPane;
-      const relocationCancelled = jasmine.createSpy("relocationCancelled");
-
-      view = new SelectListView({
-        owner: editor,
-        preserveQuery: true,
-        didCancelSelection: relocationCancelled,
-        items: ["one", "two"],
-        initiallyVisibleItemCount: 1,
-        elementForItem: (item, { visible }) => {
-          // Deliberately return a primary-realm row. The list must adopt it
-          // before ListItemView schedules work against its owner Document.
-          const element = document.createElement("li");
-          if (visible) element.textContent = item;
-          return element;
-        },
-      });
-      const panel = view.getPanel();
-      const visibilityChanges = jasmine.createSpy("visibilityChanges");
-      panel.onDidChangeVisible(visibilityChanges);
 
       try {
-        editor.getElement().focus();
-        view.show();
-        expect(panel.getContainer()).toBe(lumine.workspace.panelContainers.modal);
-        expect(view.element.ownerDocument).toBe(document);
-        expect(view.visibilityObserver instanceof window.IntersectionObserver).toBe(true);
-        view.refs.queryEditor.setText("kept");
-
         detachedPane = await lumine.workspace.detachPaneItem(editor, { show: false });
         const detachedSurface = lumine.workspace.getWindowSurface(editor);
-        await view.update({ items: ["three", "four"] });
-
-        expect(view.getPanel()).toBe(panel);
-        expect(panel.getContainer()).toBe(detachedSurface.modalPanelContainer);
-        expect(panel.getElement().ownerDocument).toBe(detachedSurface.document);
-        expect(view.element.ownerDocument).toBe(detachedSurface.document);
-        expect(view.refs.queryEditor.element.ownerDocument).toBe(detachedSurface.document);
-        expect(
-          Array.from(view.element.querySelectorAll("li")).every(
-            (element) => element.ownerDocument === detachedSurface.document,
-          ),
-        ).toBe(true);
-        expect(view.visibilityObserver instanceof detachedSurface.window.IntersectionObserver).toBe(
-          true,
-        );
-        expect(view.element.contains(detachedSurface.document.activeElement)).toBe(true);
-        expect(view.getQuery()).toBe("kept");
-        expect(visibilityChanges.calls.allArgs()).toEqual([[true]]);
-
-        const fixedView = new SelectListView({
-          surface: primarySurface,
-          items: ["fixed"],
-          elementForItem: (item, { document }) => {
+        lumine.windowSurfaces.activate(detachedSurface);
+        view = new SelectListView({
+          owner: editor,
+          preserveQuery: true,
+          items: ["one", "two"],
+          initiallyVisibleItemCount: 1,
+          elementForItem: (item, { document, visible }) => {
             const element = document.createElement("li");
-            element.textContent = item;
+            if (visible) element.textContent = item;
             return element;
           },
         });
-        try {
-          expect(() => fixedView.show({ surface: detachedSurface })).toThrowError(
-            /cannot override the dialog's declared route/,
-          );
-          expect(fixedView.getPanel().getContainer()).toBe(lumine.workspace.panelContainers.modal);
-          expect(fixedView.element.ownerDocument).toBe(document);
-        } finally {
-          await fixedView.destroy();
-        }
+        const panel = view.getPanel();
 
-        await lumine.workspace.attachDetachedPane(detachedPane);
-        detachedPane = null;
-        expect(panel.getContainer()).toBe(lumine.workspace.panelContainers.modal);
-        expect(view.element.ownerDocument).toBe(document);
-        expect(view.document).toBe(document);
+        view.show();
+        view.refs.queryEditor.setText("kept");
+        await view.update({ items: ["three", "four"] });
+
+        expect(lumine.workspace.getActiveWindowSurface()).toBe(
+          lumine.workspace.getPrimaryWindowSurface(),
+        );
         expect(view.getPanel()).toBe(panel);
-        expect(view.visibilityObserver instanceof window.IntersectionObserver).toBe(true);
-        expect(view.isVisible()).toBe(true);
+        expect(panel.getContainer()).toBe(lumine.workspace.panelContainers.modal);
+        expect(panel.getElement().ownerDocument).toBe(document);
+        expect(view.element.ownerDocument).toBe(document);
+        expect(view.refs.queryEditor.element.ownerDocument).toBe(document);
+        expect(
+          Array.from(view.element.querySelectorAll("li")).every(
+            (element) => element.ownerDocument === document,
+          ),
+        ).toBe(true);
         expect(view.getQuery()).toBe("kept");
-        expect(view.element.contains(document.activeElement)).toBe(true);
-        expect(visibilityChanges.calls.allArgs()).toEqual([[true]]);
-        expect(relocationCancelled).not.toHaveBeenCalled();
-        view.hide();
-        expect(editor.getElement().contains(document.activeElement)).toBe(true);
-        expect(visibilityChanges.calls.allArgs()).toEqual([[true], [false]]);
+        expect(detachedSurface.element.querySelector("lumine-panel-container.modal")).toBeNull();
       } finally {
-        view.hide();
-        if (detachedPane?.isDetached?.()) {
-          await lumine.workspace.attachDetachedPane(detachedPane);
-        }
+        view?.hide();
+        if (detachedPane?.isDetached?.()) await lumine.workspace.attachDetachedPane(detachedPane);
         lumine.workspace.paneForItem(editor)?.destroyItem(editor, true);
         lumine.initializeDetachedPaneSurfaces();
       }
@@ -556,7 +505,7 @@ describe("SelectListView", () => {
       expect(cancelled).toHaveBeenCalledTimes(1);
     });
 
-    it("returns an owner-routed visible panel when a surface transition rolls back", async () => {
+    it("keeps an owner dialog intact when its item transition rolls back", async () => {
       lumine.initializeDetachedPaneSurfaces({ force: true });
       const editor = lumine.workspace.buildTextEditor();
       lumine.workspace.getActivePane().addItem(editor);
@@ -583,7 +532,6 @@ describe("SelectListView", () => {
         expect(panel.getElement().ownerDocument).toBe(document);
         expect(view.isVisible()).toBe(true);
         expect(view.getQuery()).toBe("kept");
-        expect(view.element.contains(document.activeElement)).toBe(true);
         expect(visibilityChanges.calls.allArgs()).toEqual([[true]]);
       } finally {
         rejection.dispose();

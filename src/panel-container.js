@@ -80,7 +80,7 @@ module.exports = class PanelContainer {
     if (panel.getContainer() === this) return panel;
     const previousContainer = panel.getContainer();
     if (previousContainer) {
-      return previousContainer.transferPanelTo(panel, this);
+      throw new Error("A panel cannot belong to more than one container");
     }
 
     const index = this.attachPanelState(panel);
@@ -94,93 +94,13 @@ module.exports = class PanelContainer {
     return panel;
   }
 
-  // A live surface-relocatable panel is never released into an ownerless
-  // state. It moves through transferPanelTo(), which changes both containers'
-  // model state before either emits an observable event.
   removePanel(panel) {
     const index = this.panels.indexOf(panel);
     if (index === -1) return false;
-    if (panel.isSurfaceRelocatable() && !panel.isDestroyed()) {
-      throw new Error("A live surface-relocatable panel must move directly to another container");
-    }
 
     this.detachPanelState(panel);
     this.emitter.emit("did-remove-panel", { panel, index });
     return true;
-  }
-
-  transferPanelTo(panel, destination) {
-    this.validateTransfer(panel, destination);
-    if (destination === this) return panel;
-
-    const sourceIndex = this.panels.indexOf(panel);
-    let destinationIndex = -1;
-    panel.transferring = true;
-
-    try {
-      this.detachPanelState(panel, { keepContainer: true });
-      destinationIndex = destination.attachPanelState(panel);
-      this.emitter.emit("did-remove-panel", { panel, index: sourceIndex });
-      destination.emitter.emit("did-add-panel", { panel, index: destinationIndex });
-      return panel;
-    } catch (error) {
-      const rollbackErrors = [];
-      try {
-        if (destination.containsPanel(panel)) {
-          destination.detachPanelState(panel, { keepContainer: true });
-        }
-        if (!this.containsPanel(panel)) this.attachPanelState(panel, sourceIndex);
-      } catch (rollbackError) {
-        rollbackErrors.push(rollbackError);
-      }
-      try {
-        if (destinationIndex !== -1) {
-          destination.emitter.emit("did-remove-panel", { panel, index: destinationIndex });
-        }
-      } catch (rollbackError) {
-        rollbackErrors.push(rollbackError);
-      }
-      try {
-        this.emitter.emit("did-add-panel", { panel, index: sourceIndex });
-      } catch (rollbackError) {
-        rollbackErrors.push(rollbackError);
-      }
-      if (rollbackErrors.length > 0) {
-        throw new AggregateError(
-          [error, ...rollbackErrors],
-          "Panel transfer failed and could not be rolled back cleanly",
-          { cause: error },
-        );
-      }
-      throw error;
-    } finally {
-      panel.transferring = false;
-      panel.transferFocusTarget = null;
-      panel.transferPriorFocus = null;
-    }
-  }
-
-  validateTransfer(panel, destination) {
-    if (!(destination instanceof PanelContainer)) {
-      throw new TypeError("A panel destination must be a PanelContainer");
-    }
-    if (this.isDestroyed() || destination?.isDestroyed?.()) {
-      throw new Error("A panel can move only between live containers");
-    }
-    if (!this.containsPanel(panel) || panel.getContainer() !== this) {
-      throw new Error("The source container does not own this panel");
-    }
-    if (!panel.isSurfaceRelocatable()) {
-      throw new Error("Only a surface-relocatable panel can move between containers");
-    }
-    if (!this.isModal() || !destination?.isModal?.()) {
-      throw new Error("A surface-relocatable panel can move only between modal containers");
-    }
-    if (panel.isVisible() && destination.getPanels().some((candidate) => candidate.isVisible())) {
-      throw new Error(
-        "A visible modal cannot move onto a surface that already has a visible modal",
-      );
-    }
   }
 
   attachPanelState(panel, index = this.getPanelIndex(panel)) {
@@ -195,7 +115,7 @@ module.exports = class PanelContainer {
     return index;
   }
 
-  detachPanelState(panel, { keepContainer = false } = {}) {
+  detachPanelState(panel) {
     const index = this.panels.indexOf(panel);
     if (index === -1) return -1;
     this.panels.splice(index, 1);
@@ -205,12 +125,9 @@ module.exports = class PanelContainer {
       this.subscriptions.remove(destroySubscription);
       destroySubscription.dispose();
     }
-    if (!keepContainer && panel.getContainer() === this) {
+    if (panel.getContainer() === this) {
       panel.setContainer(null);
-      if (this.isModal()) {
-        panel.flowKeeper = null;
-        panel.surface = null;
-      }
+      if (this.isModal()) panel.flowKeeper = null;
     }
     return index;
   }

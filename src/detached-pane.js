@@ -103,6 +103,7 @@ module.exports = class DetachedPane extends Pane {
     }
     const target = this.getReturnPane();
     if (!target) throw new Error("Detached pane has no tiled insertion target");
+    this.container.focusPrimaryWindow?.();
     target.activateItem(item, options);
     target.activate();
     return item;
@@ -141,6 +142,7 @@ module.exports = class DetachedPane extends Pane {
 
   splitTiled(method, params = {}) {
     const target = this.getReturnPane();
+    this.container.focusPrimaryWindow?.();
     const splitParams = Object.assign({}, params);
     const moveActiveItem = splitParams.moveActiveItem;
     const copyActiveItem = splitParams.copyActiveItem;

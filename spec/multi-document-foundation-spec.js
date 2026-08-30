@@ -133,6 +133,40 @@ describe("the multi-document workspace foundation", () => {
     manager.destroy();
   });
 
+  it("focuses the registered primary surface through its native service", () => {
+    const manager = new WindowSurfaceManager();
+    const nativeFocus = jasmine.createSpy("nativeFocus").and.returnValue("focused");
+    const primary = manager.add(
+      new WindowSurface({
+        id: "primary",
+        kind: "primary",
+        window,
+        document,
+        windowService: { focus: nativeFocus },
+      }),
+    );
+    const detached = manager.add(
+      new WindowSurface({
+        id: "detached",
+        window: otherWindow,
+        document: otherDocument,
+      }),
+    );
+    manager.activate(detached);
+
+    expect(manager.focusPrimary()).toBe("focused");
+    expect(manager.getActive()).toBe(primary);
+    expect(nativeFocus).toHaveBeenCalledTimes(1);
+    expect(() =>
+      manager.focus(
+        new WindowSurface({ id: "unregistered", window: otherWindow, document: otherDocument }),
+      ),
+    ).toThrowError(/registered window surface/);
+
+    manager.destroy();
+    expect(() => manager.focus(primary)).toThrowError(/registered window surface/);
+  });
+
   it("loads and caches a UMD-style script in the target Window only", async () => {
     const source = path.join(__dirname, "fixtures", "realm-script.js");
     const first = await loadScript(otherDocument, source, { global: "__realmScriptLoads" });

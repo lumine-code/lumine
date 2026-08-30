@@ -41,9 +41,10 @@ class WindowSurface {
   }
 
   focus() {
-    if (this.destroyed) return;
-    this.windowService?.focus?.();
+    if (this.destroyed) return false;
+    const result = this.windowService?.focus?.();
     this.window.focus?.();
+    return result ?? true;
   }
 
   destroy() {
@@ -123,6 +124,20 @@ class WindowSurfaceManager {
       this.emitter.emit("did-change-active-surface", surface);
     }
     surface.emitter.emit("did-focus", surface);
+  }
+
+  focus(surface) {
+    if (!(surface instanceof WindowSurface) || this.surfacesById.get(surface.id) !== surface) {
+      throw new TypeError("Only a registered window surface can be focused");
+    }
+    if (surface.isDestroyed()) throw new Error("A destroyed window surface cannot be focused");
+    this.activate(surface);
+    return surface.focus();
+  }
+
+  focusPrimary() {
+    if (!this.primarySurface) throw new Error("The workspace has no primary window surface");
+    return this.focus(this.primarySurface);
   }
 
   get(id) {

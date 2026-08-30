@@ -587,6 +587,7 @@ class Environment {
           kind: "primary",
           window: this.domWindow,
           document: this.document,
+          windowService: this.window,
         }),
       );
     }
@@ -767,7 +768,7 @@ class Environment {
   }
 
   async reset() {
-    this.detachedPaneSurfaceManager?.destroy();
+    await this.detachedPaneSurfaceManager?.destroy();
     this.detachedPaneSurfaceManager = null;
     this.workspace.setDetachedPaneSurfaceManager(null);
     this.deserializers.clear();

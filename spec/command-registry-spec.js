@@ -1,4 +1,5 @@
 const CommandRegistry = require("../src/command-registry");
+const { WindowSurface, WindowSurfaceManager } = require("../src/window-surface");
 const _ = require("@lumine-code/underscore-plus");
 
 describe("CommandRegistry", () => {
@@ -509,6 +510,37 @@ describe("CommandRegistry", () => {
       registry.add(".other-surface-target", "surface:future", future);
       otherElement.dispatchEvent(new otherWindow.CustomEvent("surface:future", { bubbles: true }));
       expect(future).toHaveBeenCalled();
+    });
+
+    it("restores the still-focused surface after dispatching to another realm", async () => {
+      const otherWindow = frame.contentWindow;
+      const otherElement = otherWindow.document.createElement("div");
+      otherElement.className = "other-surface-target";
+      otherWindow.document.body.appendChild(otherElement);
+      const surfaces = new WindowSurfaceManager();
+      const primary = surfaces.add(
+        new WindowSurface({ id: "primary", kind: "primary", window, document }),
+      );
+      const detached = surfaces.add(
+        new WindowSurface({
+          id: "detached",
+          window: otherWindow,
+          document: otherWindow.document,
+        }),
+      );
+      const surfaceRegistry = new CommandRegistry({ surfaceManager: surfaces });
+      let activeDuringDispatch;
+      surfaceRegistry.add(".other-surface-target", "surface:context", () => {
+        activeDuringDispatch = surfaces.getActive();
+      });
+      spyOn(document, "hasFocus").and.returnValue(true);
+
+      await surfaceRegistry.dispatch(otherElement, "surface:context");
+
+      expect(activeDuringDispatch).toBe(detached);
+      expect(surfaces.getActive()).toBe(primary);
+      surfaceRegistry.destroy();
+      surfaces.destroy();
     });
   });
 });

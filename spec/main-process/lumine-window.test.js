@@ -150,7 +150,7 @@ describe("LumineWindow", function () {
           );
           const modalItem = document.createElement("div");
           const modal = lumine.workspace.addModalPanel({item: modalItem, owner: item});
-          const modalInChild = modal.getElement().ownerDocument === surface.document;
+          const modalInPrimary = modal.getElement().ownerDocument === document;
           modal.destroy();
           const list = lumine.workspace.buildSelectList({
             owner: item,
@@ -159,7 +159,7 @@ describe("LumineWindow", function () {
             elementForItem: ({name}) => ({primary: name}),
           });
           list.show();
-          const selectListInChild = list.getPanel().getElement().ownerDocument === surface.document;
+          const selectListInPrimary = list.getPanel().getElement().ownerDocument === document;
           list.destroy();
           window.__detachedPaneIntegration = {item, pane, tiledPane};
           return {
@@ -169,8 +169,8 @@ describe("LumineWindow", function () {
             outsideTiledTree: !lumine.workspace.getCenter().getTiledPanes().includes(pane),
             otherDocument: surface.document !== document,
             mountedInChild: surface.document.contains(lumine.views.getView(item)),
-            modalInChild,
-            selectListInChild,
+            modalInPrimary,
+            selectListInPrimary,
             stylesMounted: surface.document.head.querySelectorAll("style").length > 0,
             realmScriptLoads,
           };
@@ -184,8 +184,8 @@ describe("LumineWindow", function () {
       assert.isTrue(detached.outsideTiledTree);
       assert.isTrue(detached.otherDocument);
       assert.isTrue(detached.mountedInChild);
-      assert.isTrue(detached.modalInChild);
-      assert.isTrue(detached.selectListInChild);
+      assert.isTrue(detached.modalInPrimary);
+      assert.isTrue(detached.selectListInPrimary);
       assert.isTrue(detached.stylesMounted);
       assert.strictEqual(detached.realmScriptLoads, 1);
       const nativeSurface = w.detachedPaneWindows.surfaces.get(detached.surfaceId);

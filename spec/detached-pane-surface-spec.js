@@ -83,6 +83,34 @@ describe("DetachedPaneSurface", () => {
     }
   });
 
+  it("mounts only one pane beneath the detached title bar", async () => {
+    await lumine.workspace.detachPaneItem(item, { show: false });
+    const surface = lumine.workspace.getWindowSurface(item);
+
+    expect(surface.element.getModel()).toBe(lumine.workspace);
+    expect(Array.from(surface.element.children)).toEqual([surface.titlebarHost, surface.paneHost]);
+    expect(Array.from(surface.paneHost.children)).toEqual([surface.paneContainerElement]);
+    expect(surface.element.querySelector("lumine-panel-container.modal")).toBeNull();
+    expect("modalPanelContainer" in surface).toBe(false);
+    expect("modalFlow" in surface).toBe(false);
+    expect(() => lumine.commands.dispatch(surface.element, "core:save")).not.toThrow();
+  });
+
+  it("owns pane-item native dialogs in the detached window", async () => {
+    await lumine.workspace.detachPaneItem(item, { show: false });
+    const service = lumine.workspace.getWindowSurface(item).windowService;
+    const confirm = spyOn(service, "confirm").and.resolveTo(0);
+    const save = spyOn(service, "showSaveDialog").and.resolveTo({ filePath: "result.txt" });
+
+    expect(await lumine.workspace.confirmForPaneItem(item, { message: "Continue?" })).toBe(0);
+    expect(await lumine.workspace.showSaveDialogForPaneItem(item, { title: "Save" })).toEqual({
+      filePath: "result.txt",
+    });
+    expect(confirm).toHaveBeenCalledWith({ message: "Continue?" });
+    expect(save).toHaveBeenCalledWith({ title: "Save" });
+    expect(() => lumine.workspace.confirmForPaneItem({}, {})).toThrowError(/live workspace/);
+  });
+
   it("awaits realm rebuild after adoption and before completing detach and attach", async () => {
     const detachedPane = await lumine.workspace.detachPaneItem(item, { show: false });
     const surface = lumine.workspace.getWindowSurface(item);

@@ -353,6 +353,7 @@ module.exports = class CommandRegistry {
   }
 
   handleCommandEvent(event) {
+    const previousSurface = this.surfaceManager?.getActive?.();
     const surface = this.surfaceManager?.surfaceFor(event.target);
     if (surface) this.surfaceManager.activate(surface);
     let propagationStopped = false;
@@ -443,7 +444,21 @@ module.exports = class CommandRegistry {
 
     this.emitter.emit("did-dispatch", dispatchedEvent);
 
-    return matched.length > 0 ? Promise.all(matched) : null;
+    const restoreFocusedSurface = () => {
+      if (
+        previousSurface &&
+        previousSurface !== surface &&
+        !previousSurface.isDestroyed() &&
+        previousSurface.document.hasFocus?.()
+      ) {
+        this.surfaceManager.activate(previousSurface);
+      }
+    };
+    if (matched.length === 0) {
+      restoreFocusedSurface();
+      return null;
+    }
+    return Promise.all(matched).finally(restoreFocusedSurface);
   }
 
   commandRegistered(commandName) {

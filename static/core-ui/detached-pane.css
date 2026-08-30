@@ -57,14 +57,3 @@
   height: auto;
   position: relative;
 }
-
-.detached-pane-modal-host {
-  position: absolute;
-  inset: 0;
-  z-index: 1000;
-  pointer-events: none;
-}
-
-.detached-pane-modal-host > * {
-  pointer-events: auto;
-}

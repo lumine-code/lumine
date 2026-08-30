@@ -68,7 +68,9 @@ module.exports = class SurfaceWindowService {
       ...args,
     );
     if (result?.state) this.state = result.state;
-    if (["cancel", "attach", "close-accepted"].includes(operation)) this.state = "closed";
+    if (["cancel", "attach", "close-accepted", "dispose"].includes(operation)) {
+      this.state = "closed";
+    }
     return result;
   }
 
@@ -158,6 +160,19 @@ module.exports = class SurfaceWindowService {
 
   showContextMenu(requestId, template) {
     return this.perform("show-context-menu", requestId, template);
+  }
+
+  shutdown() {
+    if (this.shutdownPromise) return this.shutdownPromise;
+    this.shutdownPromise = (async () => {
+      try {
+        if (["reserved", "accepted"].includes(this.state)) await this.cancel();
+        else if (this.state !== "closed") await this.perform("dispose");
+      } finally {
+        this.destroy();
+      }
+    })();
+    return this.shutdownPromise;
   }
 
   onDidRequestClose(callback) {

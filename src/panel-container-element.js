@@ -62,8 +62,6 @@ class PanelContainerElement extends HTMLElement {
       const referenceItem = this.childNodes[index];
       this.insertBefore(panelElement, referenceItem);
     }
-    panel.didChangeDocument(panelElement.ownerDocument);
-
     if (this.model.isModal()) {
       // Only a panel that arrives visible displaces the current modal. Modals
       // are usually created hidden and shown later — that add must not
@@ -80,7 +78,7 @@ class PanelContainerElement extends HTMLElement {
       );
 
       if (panel.restoreFocus) {
-        if (panel.isVisible()) this.capturePriorFocus(panel.transferPriorFocus);
+        if (panel.isVisible()) this.capturePriorFocus();
         panelSubscriptions.add(
           panel.onDidChangeVisible((visible) => {
             if (visible) {
@@ -126,30 +124,10 @@ class PanelContainerElement extends HTMLElement {
         if (panel.isVisible()) modalFocusTrap.activate();
       }
     }
-
-    const transferFocusTarget = panel.transferFocusTarget;
-    if (
-      panel.transferring &&
-      panel.isVisible() &&
-      transferFocusTarget?.isConnected &&
-      transferFocusTarget.ownerDocument === panelElement.ownerDocument
-    ) {
-      transferFocusTarget.focus();
-    }
-    panel.transferFocusTarget = null;
   }
 
   panelRemoved({ panel }) {
     const panelElement = panel.element;
-    if (panel.transferring && panel.isVisible() && panelElement) {
-      const activeElement = panelElement.ownerDocument.activeElement;
-      if (activeElement && panelElement.contains(activeElement)) {
-        panel.transferFocusTarget = activeElement;
-      }
-    }
-    if (panel.transferring && panel.isVisible() && !panel.transferPriorFocus) {
-      panel.transferPriorFocus = this.priorFocus;
-    }
     this.disposePanelSubscriptions(panel);
     if (panelElement) {
       panelElement.classList.remove(this.model.getLocation());
@@ -183,16 +161,8 @@ class PanelContainerElement extends HTMLElement {
 
   // Remembers where focus was before a modal opened. When modals open on top
   // of each other, only the element focused before the first modal is kept.
-  capturePriorFocus(preferredElement = null) {
+  capturePriorFocus() {
     const document = this.ownerDocument;
-    if (
-      preferredElement?.isConnected &&
-      preferredElement.ownerDocument === document &&
-      !this.contains(preferredElement)
-    ) {
-      this.priorFocus = preferredElement;
-      return;
-    }
     const active = document.activeElement;
     if (active && active !== document.body && !this.contains(active)) {
       this.priorFocus = active;

@@ -2121,17 +2121,20 @@ describe("Workspace", () => {
         expect(itemView.getModel()).toBe(model);
       });
 
-      it("rejects ambiguous, unregistered, and stale modal routes", () => {
+      it("rejects surface routes and stale modal owners", () => {
         const owner = workspace.buildTextEditor();
         workspace.getActivePane().addItem(owner);
         const primary = lumine.windowSurfaces.getPrimary();
         const item = new TestItem();
 
         expect(() => workspace.addModalPanel({ item, owner, surface: primary })).toThrowError(
-          /either owner or surface/,
+          /only in the primary window/,
         );
         expect(() => workspace.addModalPanel({ item, surface: { id: primary.id } })).toThrowError(
-          /registered with this workspace/,
+          /only in the primary window/,
+        );
+        expect(() => workspace.addModalPanel({ item, surfaceRelocatable: true })).toThrowError(
+          /only in the primary window/,
         );
 
         workspace.getActivePane().destroyItem(owner, true);
@@ -3960,6 +3963,21 @@ describe("Workspace", () => {
       expect(workspace.getVisiblePanes()).toContain(rightDockPane);
       expect(workspace.getVisiblePanes()).toContain(bottomDockPane);
     });
+
+    it("excludes detached panes from primary-window geometry", () => {
+      const center = workspace.getCenter();
+      const item = document.createElement("div");
+      const tiledPane = center.getActiveTiledPane();
+      tiledPane.addItem(item);
+      const detachedPane = center.detachPaneItem(item);
+
+      expect(workspace.getPanes()).toContain(detachedPane);
+      expect(workspace.getVisiblePanes()).toContain(tiledPane);
+      expect(workspace.getVisiblePanes()).not.toContain(detachedPane);
+
+      center.attachDetachedPane(detachedPane);
+      tiledPane.destroyItem(item, true);
+    });
   });
 
   describe("::getVisiblePaneContainers", () => {
@@ -4353,7 +4371,11 @@ describe("Workspace", () => {
       ];
 
       try {
-        expect(() => workspace.observePaneItemSurface({}, () => {})).toThrowError(TypeError);
+        const unopenedItemSurfaces = jasmine.createSpy("unopenedItemSurfaces");
+        const unopenedSubscription = workspace.observePaneItemSurface({}, unopenedItemSurfaces);
+        expect(unopenedItemSurfaces).toHaveBeenCalledOnceWith(workspace.getPrimaryWindowSurface());
+        unopenedSubscription.dispose();
+        expect(() => workspace.observePaneItemSurface({}, null)).toThrowError(TypeError);
         detachedPane = await workspace.detachPaneItem(detachedEditor, { show: false });
         const detachedSurface = workspace.getWindowSurface(detachedEditor);
         const primarySurface = lumine.windowSurfaces.getPrimary();
@@ -4446,6 +4468,42 @@ describe("Workspace", () => {
       expect(opened).toBe(original);
       expect(workspace.paneForItem(original)).toBe(detachedPane);
       expect(workspace.getCenter().getActivePane()).toBe(detachedPane);
+    });
+
+    it("focuses primary for new presentation but preserves background and existing detached opens", async () => {
+      lumine.initializeDetachedPaneSurfaces({ force: true });
+      const original = await workspace.open(null);
+      let detachedPane;
+      let background;
+      let opened;
+
+      try {
+        detachedPane = await workspace.detachPaneItem(original, { show: false });
+        const detachedSurface = workspace.getWindowSurface(original);
+        lumine.windowSurfaces.activate(detachedSurface);
+
+        background = await workspace.open(null, {
+          activateItem: false,
+          activatePane: false,
+        });
+        expect(workspace.getActiveWindowSurface()).toBe(detachedSurface);
+        expect(workspace.paneForItem(background).isDetached()).toBe(false);
+
+        opened = await workspace.open(null);
+        expect(workspace.getActiveWindowSurface()).toBe(workspace.getPrimaryWindowSurface());
+        expect(workspace.paneForItem(opened).isDetached()).toBe(false);
+
+        lumine.windowSurfaces.activate(detachedSurface);
+        expect(await workspace.open(original, { searchAllPanes: true })).toBe(original);
+        expect(workspace.getActiveWindowSurface()).toBe(detachedSurface);
+        expect(workspace.paneForItem(original)).toBe(detachedPane);
+      } finally {
+        if (detachedPane?.isDetached?.()) await workspace.attachDetachedPane(detachedPane);
+        workspace.paneForItem(background)?.destroyItem(background, true);
+        workspace.paneForItem(opened)?.destroyItem(opened, true);
+        workspace.paneForItem(original)?.destroyItem(original, true);
+        lumine.initializeDetachedPaneSurfaces();
+      }
     });
   });
 });

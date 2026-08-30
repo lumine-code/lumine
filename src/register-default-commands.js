@@ -19,6 +19,12 @@ function paneItemForCommandTarget(workspace, target) {
   return pane && !pane.isDetached() ? item : null;
 }
 
+function primaryWorkspaceElement(element) {
+  const workspace = element.getModel();
+  workspace.focusPrimaryWindow();
+  return workspace.getElement();
+}
+
 module.exports = function ({
   commandRegistry,
   commandInstaller,
@@ -237,7 +243,7 @@ module.exports = function ({
       "window:run-package-specs": {
         description: "Run the spec suite of the package this window has open.",
         didDispatch: function () {
-          return this.runPackageSpecs();
+          return primaryWorkspaceElement(this).runPackageSpecs();
         },
       },
       "window:toggle-left-dock": function () {
@@ -256,46 +262,46 @@ module.exports = function ({
         return this.getModel().activatePreviousPane();
       },
       "window:focus-pane-above": function () {
-        return this.focusPaneViewAbove();
+        return primaryWorkspaceElement(this).focusPaneViewAbove();
       },
       "window:focus-pane-below": function () {
-        return this.focusPaneViewBelow();
+        return primaryWorkspaceElement(this).focusPaneViewBelow();
       },
       "window:focus-pane-on-left": function () {
-        return this.focusPaneViewOnLeft();
+        return primaryWorkspaceElement(this).focusPaneViewOnLeft();
       },
       "window:focus-pane-on-right": function () {
-        return this.focusPaneViewOnRight();
+        return primaryWorkspaceElement(this).focusPaneViewOnRight();
       },
       "window:move-active-item-to-pane-above": function () {
-        return this.moveActiveItemToPaneAbove();
+        return primaryWorkspaceElement(this).moveActiveItemToPaneAbove();
       },
       "window:move-active-item-to-pane-below": function () {
-        return this.moveActiveItemToPaneBelow();
+        return primaryWorkspaceElement(this).moveActiveItemToPaneBelow();
       },
       "window:move-active-item-to-pane-on-left": function () {
-        return this.moveActiveItemToPaneOnLeft();
+        return primaryWorkspaceElement(this).moveActiveItemToPaneOnLeft();
       },
       "window:move-active-item-to-pane-on-right": function () {
-        return this.moveActiveItemToPaneOnRight();
+        return primaryWorkspaceElement(this).moveActiveItemToPaneOnRight();
       },
       "window:copy-active-item-to-pane-above": function () {
-        return this.moveActiveItemToPaneAbove({
+        return primaryWorkspaceElement(this).moveActiveItemToPaneAbove({
           keepOriginal: true,
         });
       },
       "window:copy-active-item-to-pane-below": function () {
-        return this.moveActiveItemToPaneBelow({
+        return primaryWorkspaceElement(this).moveActiveItemToPaneBelow({
           keepOriginal: true,
         });
       },
       "window:copy-active-item-to-pane-on-left": function () {
-        return this.moveActiveItemToPaneOnLeft({
+        return primaryWorkspaceElement(this).moveActiveItemToPaneOnLeft({
           keepOriginal: true,
         });
       },
       "window:copy-active-item-to-pane-on-right": function () {
-        return this.moveActiveItemToPaneOnRight({
+        return primaryWorkspaceElement(this).moveActiveItemToPaneOnRight({
           keepOriginal: true,
         });
       },

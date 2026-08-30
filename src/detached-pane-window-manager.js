@@ -287,6 +287,8 @@ module.exports = class DetachedPaneWindowManager {
         // workspace, so make that focus transfer explicit.
         if (!this.browserWindow.isDestroyed()) this.browserWindow.focus();
         return true;
+      case "dispose":
+        return this.destroySurface(surface, "renderer-disposed");
       case "close-accepted":
         if (surface.state !== "close-requested") {
           throw new Error("The detached-pane window did not request closure");

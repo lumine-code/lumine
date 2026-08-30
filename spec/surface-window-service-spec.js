@@ -64,6 +64,23 @@ describe("SurfaceWindowService", () => {
     expect(service.state).toBe("closed");
   });
 
+  it("closes native transactions when their renderer-side manager shuts down", async () => {
+    const reserved = await SurfaceWindowService.reserve(delegate);
+    await reserved.shutdown();
+    await reserved.shutdown();
+    expect(operations).toEqual([["drag-1", "cancel"]]);
+
+    operations.length = 0;
+    const ready = await SurfaceWindowService.reserve(delegate);
+    await ready.ready();
+    await ready.shutdown();
+    expect(operations).toEqual([
+      ["drag-1", "ready"],
+      ["drag-1", "dispose"],
+    ]);
+    expect(ready.state).toBe("closed");
+  });
+
   it("routes surface chrome operations through its own native transaction", async () => {
     const service = await SurfaceWindowService.reserve(delegate);
 

@@ -1,8 +1,6 @@
 const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
 const FileState = require("./file-state");
 const { WindowSurface } = require("./window-surface");
-const PanelContainer = require("./panel-container");
-const ModalFlow = require("./modal-flow");
 const { applyTextEditorFontConfig } = require("./workspace-element");
 
 const ATTACH_ACTION = Object.freeze({
@@ -114,6 +112,7 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     this.element.className = this.primaryWorkspaceElement.className;
     this.element.classList.add("workspace", "detached-pane-workspace");
     this.element.tabIndex = -1;
+    this.element.model = this.workspace;
     if (this.config) applyTextEditorFontConfig(this.element, this.config);
 
     // Preserve the normal header-panel theme contract even though this shell
@@ -146,23 +145,9 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
     // pane while the detached titlebar remains visible.
     this.paneContainerElement = document.createElement("lumine-pane-container");
     this.paneContainerElement.classList.add("detached-pane-container");
-    this.modalHost = document.createElement("div");
-    this.modalHost.className = "detached-pane-modal-host";
-    this.paneHost.append(this.paneContainerElement, this.modalHost);
+    this.paneHost.appendChild(this.paneContainerElement);
     this.element.append(this.titlebarHost, this.paneHost);
     document.body.appendChild(this.element);
-
-    this.modalPanelContainer = new PanelContainer({
-      location: "modal",
-      viewRegistry: this.viewRegistry,
-    });
-    const modalElement = this.modalPanelContainer.getElement();
-    if (modalElement.ownerDocument !== document) document.adoptNode(modalElement);
-    this.modalHost.appendChild(modalElement);
-    this.modalFlow = new ModalFlow(this.workspace, {
-      panelContainer: this.modalPanelContainer,
-      rootElement: this.element,
-    });
 
     // Package code executed by callbacks still resolves the shared Lumine
     // environment. The child owns a Window and Document, not another editor.
@@ -412,18 +397,14 @@ module.exports = class DetachedPaneSurface extends WindowSurface {
 
   focusPane() {
     this.pane?.activate();
-    if (this.modalPanelContainer?.getPanels().some((panel) => panel.isVisible())) return;
     this.pane?.getElement?.().focus();
   }
 
   destroy() {
     if (this.isDestroyed() || this.destroying) return;
-    this.workspace.rehomeModalPanelsFromSurface(this);
     this.destroying = true;
     this.setTitleBarFactory(null);
     this.surfaceSubscriptions.dispose();
-    this.modalFlow?.destroy();
-    this.modalPanelContainer?.destroy();
     if (this.surfaceManager?.get(this.id) === this) this.surfaceManager.remove(this);
     this.element?.remove();
     this.pane = null;

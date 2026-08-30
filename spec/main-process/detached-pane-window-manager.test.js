@@ -213,6 +213,14 @@ describe("DetachedPaneWindowManager", function () {
     assert.isFalse(manager.perform(transaction.transactionId, "attach"));
   });
 
+  it("disposes a surface when its renderer-side manager is torn down", function () {
+    const transaction = openCommittedWindow(manager, owner);
+
+    assert.isTrue(manager.perform(transaction.transactionId, "dispose"));
+    assert.isFalse(manager.surfaces.has(transaction.surfaceId));
+    assert.isFalse(manager.transactions.has(transaction.transactionId));
+  });
+
   it("closes every child without a renderer prompt before owner reload", function () {
     const first = openCommittedWindow(manager, owner, "first");
     const second = openCommittedWindow(manager, owner, "second");

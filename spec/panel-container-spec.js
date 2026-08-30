@@ -26,79 +26,6 @@ describe("PanelContainer", () => {
       expect(addPanelSpy).toHaveBeenCalledWith({ panel: panel2, index: 1 });
     });
 
-    it("moves one stable panel between containers without destroying it", () => {
-      container.destroy();
-      container = new PanelContainer({
-        location: "modal",
-        viewRegistry: lumine.views,
-      });
-      const destination = new PanelContainer({
-        location: "modal",
-        viewRegistry: lumine.views,
-      });
-      const panel = new Panel(
-        { item: new TestPanelItem(), visible: false, surfaceRelocatable: true },
-        lumine.views,
-      );
-      const removed = jasmine.createSpy("removed");
-      const destroyed = jasmine.createSpy("destroyed");
-      container.onDidRemovePanel(removed);
-      panel.onDidDestroy(destroyed);
-
-      container.addPanel(panel);
-      destination.addPanel(panel);
-
-      expect(container.getPanels()).toEqual([]);
-      expect(destination.getPanels()).toEqual([panel]);
-      expect(panel.getContainer()).toBe(destination);
-      expect(removed).toHaveBeenCalledOnceWith({ panel, index: 0 });
-      expect(destroyed).not.toHaveBeenCalled();
-
-      container.addPanel(panel);
-      expect(panel.getContainer()).toBe(container);
-      destination.destroy();
-      expect(destroyed).not.toHaveBeenCalled();
-
-      panel.destroy();
-    });
-
-    it("rolls a visible transfer back when the destination rejects it", () => {
-      container.destroy();
-      container = new PanelContainer({ location: "modal", viewRegistry: lumine.views });
-      const destination = new PanelContainer({ location: "modal", viewRegistry: lumine.views });
-      const panel = new Panel(
-        { item: new TestPanelItem(), visible: true, surfaceRelocatable: true },
-        lumine.views,
-      );
-      const visibilityChanges = jasmine.createSpy("visibilityChanges");
-      panel.onDidChangeVisible(visibilityChanges);
-      container.addPanel(panel);
-      destination.onDidAddPanel(() => {
-        throw new Error("destination failed");
-      });
-
-      expect(() => destination.addPanel(panel)).toThrowError("destination failed");
-      expect(container.getPanels()).toEqual([panel]);
-      expect(destination.getPanels()).toEqual([]);
-      expect(panel.getContainer()).toBe(container);
-      expect(panel.isVisible()).toBe(true);
-      expect(visibilityChanges).not.toHaveBeenCalled();
-
-      destination.destroy();
-    });
-
-    it("does not allow a live stable panel to become ownerless", () => {
-      const panel = new Panel(
-        { item: new TestPanelItem(), visible: false, surfaceRelocatable: true },
-        lumine.views,
-      );
-      container.addPanel(panel);
-
-      expect(() => container.removePanel(panel)).toThrowError(/must move directly/);
-      expect(panel.getContainer()).toBe(container);
-      expect(container.getPanels()).toEqual([panel]);
-    });
-
     it("rejects show on an unmounted panel", () => {
       const panel = new Panel({ item: new TestPanelItem(), visible: false }, lumine.views);
       expect(() => panel.show()).toThrowError(/not mounted in a live panel container/);
@@ -148,11 +75,8 @@ describe("PanelContainer", () => {
       expect(destroyedPanels).toEqual([panel1, panel2]);
     });
 
-    it("destroys relocatable panels with the primary container", () => {
-      const panel = new Panel(
-        { item: new TestPanelItem(), visible: false, surfaceRelocatable: true },
-        lumine.views,
-      );
+    it("clears a panel's container when the container is destroyed", () => {
+      const panel = new Panel({ item: new TestPanelItem(), visible: false }, lumine.views);
       const destroyed = jasmine.createSpy("destroyed");
       panel.onDidDestroy(destroyed);
       container.addPanel(panel);

@@ -17,6 +17,7 @@ module.exports = class PaneContainer {
       deserializerManager: this.deserializerManager,
       viewRegistry: this.viewRegistry,
       location: this.location,
+      focusPrimaryWindow: this.focusPrimaryWindow,
     } = params);
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();

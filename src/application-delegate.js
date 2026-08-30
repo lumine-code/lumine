@@ -86,6 +86,10 @@ module.exports = class ApplicationDelegate {
     return this.invokeWindow(action);
   }
 
+  focusWindow() {
+    return this.invokeWindow("focus");
+  }
+
   async setUserSettings(config, configFilePath) {
     this.pendingSettingsUpdateCount++;
     try {

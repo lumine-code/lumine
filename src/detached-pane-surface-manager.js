@@ -513,7 +513,7 @@ module.exports = class DetachedPaneSurfaceManager {
   }
 
   destroy() {
-    if (this.destroying) return;
+    if (this.destroying) return this.destroyPromise;
     this.destroying = true;
     this.transitions.abortActive();
     if (this.center.paneContainer.detachedPaneAttacher) {
@@ -521,11 +521,14 @@ module.exports = class DetachedPaneSurfaceManager {
     }
     this.subscriptions.dispose();
     this.titleBarFactoryRegistrations = [];
+    const shutdowns = [];
     for (const record of Array.from(this.recordsByPane.values())) {
       this.unregister(record);
       record.surface.destroy();
-      record.service.destroy();
+      shutdowns.push(record.service.shutdown());
     }
     this.emitter.dispose();
+    this.destroyPromise = Promise.allSettled(shutdowns);
+    return this.destroyPromise;
   }
 };

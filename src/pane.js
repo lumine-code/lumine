@@ -169,18 +169,18 @@ module.exports = class Pane {
 
   /** @private */
   confirm(options) {
-    return (
-      this.getSurface()?.windowService?.confirm?.(options) ??
-      this.applicationDelegate.confirm(options)
-    );
+    const surface = this.getSurface();
+    return surface && !surface.isPrimary()
+      ? surface.windowService.confirm(options)
+      : this.applicationDelegate.confirm(options);
   }
 
   /** @private */
   showSaveDialog(options) {
-    return (
-      this.getSurface()?.windowService?.showSaveDialog?.(options) ??
-      this.applicationDelegate.showSaveDialog(options)
-    );
+    const surface = this.getSurface();
+    return surface && !surface.isPrimary()
+      ? surface.windowService.showSaveDialog(options)
+      : this.applicationDelegate.showSaveDialog(options);
   }
 
   /**
