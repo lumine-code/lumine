@@ -1182,7 +1182,7 @@ module.exports = class TextEditorComponent {
         // insertBefore detaches a connected element before re-inserting it,
         // and detaching the subtree that holds the focused hidden input
         // silently drops focus on `body`. That is not hypothetical: a package
-        // that appends its own overlay into `.lines` (colors does) leaves
+        // that appends its own overlay into `.lines` (color-inline does) leaves
         // `cursorsAndInput` with a trailing sibling, so this walk repositions
         // it on the next render -- while it holds focus. moveBefore
         // repositions a connected node atomically, keeping focus intact.

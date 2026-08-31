@@ -1472,7 +1472,7 @@ describe("TextEditorComponent", () => {
     });
 
     it("keeps focus when a render repositions the cursors container around a foreign element", () => {
-      // A package may append its own overlay into `.lines` (colors does),
+      // A package may append its own overlay into `.lines` (color-inline does),
       // which leaves the cursors container with a trailing sibling, so the
       // next render repositions it to keep it last. Re-inserting the subtree
       // that holds the focused hidden input silently dropped focus on `body`;
