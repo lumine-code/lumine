@@ -404,15 +404,15 @@ describe("TextEditorComponent", () => {
       const { component, editor } = buildComponent({ text: "abc\n" });
       editor.setCursorBufferPosition([1, 0]);
       await component.getNextUpdatePromise();
-      expect(lineNumberNodeForScreenRow(component, 0).querySelector(".foldable")).toBeNull();
+      expect(lineNumberNodeForScreenRow(component, 0).classList.contains("foldable")).toBe(false);
 
       editor.insertText("  def");
       await component.getNextUpdatePromise();
-      expect(lineNumberNodeForScreenRow(component, 0).querySelector(".foldable")).toBeDefined();
+      expect(lineNumberNodeForScreenRow(component, 0).classList.contains("foldable")).toBe(true);
 
       editor.undo();
       await component.getNextUpdatePromise();
-      expect(lineNumberNodeForScreenRow(component, 0).querySelector(".foldable")).toBeNull();
+      expect(lineNumberNodeForScreenRow(component, 0).classList.contains("foldable")).toBe(false);
     });
 
     it("shows the foldable icon on the last screen row of a buffer row that can be folded", async () => {
@@ -4076,6 +4076,79 @@ describe("TextEditorComponent", () => {
       const bNumbers = gutterBElement.querySelectorAll("div.line-number[data-buffer-row]");
       const bLabels = Array.from(bNumbers, (e) => e.textContent);
       expect(bLabels).toEqual(["b - 0", "b - 1", "b - 2", "b - 3", "b - 4", "b - 5"]);
+    });
+
+    it("only renders fold controls in the default line number gutter", async () => {
+      const { component, editor } = buildComponent({ text: "parent\nchild\nsibling" });
+      const foldability = [];
+      const gutter = editor.addGutter({
+        name: "custom-line-numbers",
+        type: "line-number",
+        labelFn({ bufferRow, foldable }) {
+          foldability[bufferRow] = foldable;
+          return foldable ? "fold" : "";
+        },
+      });
+
+      await component.getNextUpdatePromise();
+
+      const defaultGutter = editor.getLineNumberGutter().getElement();
+      const customGutter = gutter.getElement();
+      expect(defaultGutter.querySelector('[data-buffer-row="0"]')).not.toHaveClass("foldable");
+      expect(defaultGutter.querySelectorAll(".icon-right").length).toBeGreaterThan(0);
+      expect(customGutter.querySelector(".foldable")).toBeNull();
+      expect(customGutter.querySelector(".icon-right")).toBeNull();
+      expect(customGutter.querySelector('[data-buffer-row="0"]').textContent).toBe("");
+      expect(foldability[0]).toBe(false);
+
+      editor.setCursorBufferPosition([1, 0]);
+      editor.insertText("  ");
+      await component.getNextUpdatePromise();
+
+      expect(defaultGutter.querySelector('[data-buffer-row="0"]')).toHaveClass("foldable");
+      expect(customGutter.querySelector(".foldable")).toBeNull();
+      expect(customGutter.querySelector(".icon-right")).toBeNull();
+      expect(customGutter.querySelector('[data-buffer-row="0"]').textContent).toBe("fold");
+      expect(foldability[0]).toBe(true);
+    });
+
+    it("reports custom line number gutter events for child targets and ignores non-row targets", async () => {
+      const mouseDownEvents = [];
+      const mouseMoveEvents = [];
+      const { component, editor } = buildComponent();
+      const gutter = editor.addGutter({
+        name: "custom-line-numbers",
+        type: "line-number",
+        onMouseDown(event) {
+          mouseDownEvents.push(event);
+        },
+        onMouseMove(event) {
+          mouseMoveEvents.push(event);
+        },
+      });
+
+      await component.getNextUpdatePromise();
+
+      const gutterElement = gutter.getElement();
+      const lineNumber = gutterElement.querySelector('[data-buffer-row="2"]');
+      const child = document.createElement("span");
+      lineNumber.appendChild(child);
+
+      const mouseDown = new MouseEvent("mousedown", { bubbles: true });
+      const mouseMove = new MouseEvent("mousemove", { bubbles: true });
+      child.dispatchEvent(mouseDown);
+      child.dispatchEvent(mouseMove);
+
+      expect(mouseDownEvents).toEqual([{ bufferRow: 2, screenRow: 2, domEvent: mouseDown }]);
+      expect(mouseMoveEvents).toEqual([{ bufferRow: 2, screenRow: 2, domEvent: mouseMove }]);
+
+      const dummy = gutterElement.querySelector(".line-number.dummy");
+      dummy.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      dummy.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      gutterElement.dispatchEvent(new MouseEvent("mousedown", { bubbles: true }));
+      gutterElement.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      expect(mouseDownEvents.length).toBe(1);
+      expect(mouseMoveEvents.length).toBe(1);
     });
 
     it("updates the editor's soft wrap width when a custom gutter's measurement is available", () => {

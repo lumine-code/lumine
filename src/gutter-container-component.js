@@ -179,6 +179,7 @@ module.exports = class GutterContainerComponent {
         width,
         lineHeight: lineHeight,
         showLineNumbers,
+        showFoldControls: oneTrueLineNumberGutter,
       };
     } else {
       return {
@@ -189,6 +190,7 @@ module.exports = class GutterContainerComponent {
         onMouseMove: gutter.onMouseMove,
         maxDigits: lineNumbersToRender.maxDigits,
         showLineNumbers,
+        showFoldControls: oneTrueLineNumberGutter,
       };
     }
   }
@@ -218,9 +220,12 @@ class LineNumberGutterComponent {
     this.placeholderElement = document.createElement("div");
     this.placeholderElement.className = "line-number dummy";
     this.placeholderElement.style.visibility = "hidden";
-    this.placeholderIconElement = document.createElement("div");
-    this.placeholderIconElement.className = "icon-right";
-    this.placeholderElement.appendChild(this.placeholderIconElement);
+    this.placeholderIconElement = null;
+    if (props.showFoldControls) {
+      this.placeholderIconElement = document.createElement("div");
+      this.placeholderIconElement.className = "icon-right";
+      this.placeholderElement.appendChild(this.placeholderIconElement);
+    }
     this.element.appendChild(this.placeholderElement);
 
     this.updateGutter();
@@ -365,6 +370,7 @@ class LineNumberGutterComponent {
       softWrappedFlags,
       foldableFlags,
       decorations,
+      showFoldControls,
     } = this.props;
 
     const rowCount = tileEndRow - tileStartRow;
@@ -380,7 +386,7 @@ class LineNumberGutterComponent {
       const screenRow = screenRows[j];
 
       let className = "line-number";
-      if (foldable) className = className + " foldable";
+      if (showFoldControls && foldable) className = className + " foldable";
 
       const decorationsForRow = decorations[row - startRow];
       if (decorationsForRow) className = className + " " + decorationsForRow;
@@ -419,6 +425,7 @@ class LineNumberGutterComponent {
         number,
         marginTop,
         nodePool: this.nodePool,
+        showFoldControls,
       };
       newKeys.add(key);
     }
@@ -513,10 +520,11 @@ class LineNumberGutterComponent {
     if (this.props.onMouseDown == null) {
       this.props.rootComponent.didMouseDownOnLineNumberGutter(event);
     } else {
-      const { bufferRow, screenRow } = event.target.dataset;
+      const row = this.rowForMouseEvent(event);
+      if (row == null) return;
       this.props.onMouseDown({
-        bufferRow: parseInt(bufferRow, 10),
-        screenRow: parseInt(screenRow, 10),
+        bufferRow: row.bufferRow,
+        screenRow: row.screenRow,
         domEvent: event,
       });
     }
@@ -524,19 +532,40 @@ class LineNumberGutterComponent {
 
   didMouseMove(event) {
     if (this.props.onMouseMove != null) {
-      const { bufferRow, screenRow } = event.target.dataset;
+      const row = this.rowForMouseEvent(event);
+      if (row == null) return;
       this.props.onMouseMove({
-        bufferRow: parseInt(bufferRow, 10),
-        screenRow: parseInt(screenRow, 10),
+        bufferRow: row.bufferRow,
+        screenRow: row.screenRow,
         domEvent: event,
       });
     }
+  }
+
+  rowForMouseEvent(event) {
+    const lineNumber = event.target?.closest?.(".line-number[data-buffer-row][data-screen-row]");
+    if (lineNumber == null || !this.element.contains(lineNumber)) return null;
+
+    const bufferRow = parseInt(lineNumber.dataset.bufferRow, 10);
+    const screenRow = parseInt(lineNumber.dataset.screenRow, 10);
+    if (!Number.isInteger(bufferRow) || !Number.isInteger(screenRow)) return null;
+
+    return { bufferRow, screenRow };
   }
 }
 
 class LineNumberComponent {
   constructor(props) {
-    const { className, width, marginTop, bufferRow, screenRow, number, nodePool } = props;
+    const {
+      className,
+      width,
+      marginTop,
+      bufferRow,
+      screenRow,
+      number,
+      nodePool,
+      showFoldControls,
+    } = props;
     this.props = props;
     const style = {};
     if (width != null && width > 0) style.width = width + "px";
@@ -544,8 +573,10 @@ class LineNumberComponent {
     this.element = nodePool.getElement("DIV", className, style);
     this.element.dataset.bufferRow = bufferRow;
     this.element.dataset.screenRow = screenRow;
-    if (number) this.element.appendChild(nodePool.getTextNode(number));
-    this.element.appendChild(nodePool.getElement("DIV", "icon-right", null));
+    if (number != null) this.element.appendChild(nodePool.getTextNode(number));
+    if (showFoldControls) {
+      this.element.appendChild(nodePool.getElement("DIV", "icon-right", null));
+    }
   }
 
   destroy() {
