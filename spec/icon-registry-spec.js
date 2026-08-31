@@ -1,8 +1,10 @@
+const fs = require("fs");
+const path = require("path");
 const IconRegistry = require("../src/icon-registry");
 const { Icon } = require("../src/icon-descriptor");
 // The same object a package reaches for, which is the only way it can express
 // `Icon.none()` — the answer that stops the chain.
-const { Icon: PublicIcon } = require("lumine");
+const { Emitter, Icon: PublicIcon } = require("lumine");
 
 describe("IconRegistry", () => {
   let registry;
@@ -186,6 +188,107 @@ describe("IconRegistry", () => {
     it("lets an override remove an icon entirely", () => {
       registry.defineKinds({ class: null });
       expect(registry.iconFor({ kind: "class" }).render).toBe("none");
+    });
+  });
+
+  describe("central path metadata", () => {
+    it("derives and caches symlink state while explicit hints still win", () => {
+      const filePath = path.resolve("linked-directory");
+      const lstat = spyOn(fs, "lstatSync").and.returnValue({
+        isDirectory: () => false,
+        isSymbolicLink: () => true,
+      });
+      spyOn(fs, "statSync").and.returnValue({ isDirectory: () => true });
+
+      expect(registry.iconFor({ path: filePath, hints: { directory: true } }).classes).toEqual([
+        "icon-file-symlink-directory",
+      ]);
+      registry.iconFor({ path: filePath, hints: { directory: true } });
+      expect(lstat).toHaveBeenCalledTimes(1);
+
+      lstat.and.returnValue({
+        isDirectory: () => true,
+        isSymbolicLink: () => false,
+      });
+      registry.invalidate({ paths: [filePath] });
+      expect(registry.iconFor({ path: filePath, hints: { directory: true } }).classes).toEqual([
+        "icon-file-directory",
+      ]);
+      expect(lstat).toHaveBeenCalledTimes(2);
+
+      expect(
+        registry.iconFor({
+          path: filePath,
+          hints: { directory: true, symlink: false },
+        }).classes,
+      ).toEqual(["icon-file-directory"]);
+    });
+
+    it("derives repository roots and submodules and repaints on routing changes", () => {
+      const changes = new Emitter();
+      const repositoryPath = path.resolve("repository");
+      const submodulePath = path.join(repositoryPath, "vendor");
+      const lstat = spyOn(fs, "lstatSync").and.returnValue({
+        isDirectory: () => true,
+        isSymbolicLink: () => false,
+      });
+      let repository = null;
+      registry.attachRepositories({
+        getForPath: () => repository,
+        onDidChange: (callback) => changes.on("change", callback),
+      });
+
+      const node = element();
+      registry.applyTo(node, {
+        path: repositoryPath,
+        hints: { directory: true },
+      });
+      expect(node.classList).toContain("icon-file-directory");
+
+      repository = {
+        relativize: (filePath) => (filePath === repositoryPath ? "" : "vendor"),
+        isSubmodule: (filePath) => filePath === submodulePath,
+      };
+      changes.emit("change");
+      expect(node.classList).toContain("icon-repo");
+      expect(node.classList).not.toContain("icon-file-directory");
+      expect(lstat).toHaveBeenCalledTimes(1);
+      expect(
+        registry.iconFor({
+          path: submodulePath,
+          hints: { directory: true, symlink: false },
+        }).classes,
+      ).toEqual(["icon-file-submodule"]);
+
+      expect(
+        registry.iconFor({
+          path: repositoryPath,
+          hints: {
+            directory: true,
+            symlink: false,
+            repositoryRoot: false,
+            submodule: false,
+          },
+        }).classes,
+      ).toEqual(["icon-file-directory"]);
+    });
+
+    it("does not inspect virtual paths", () => {
+      const getForPath = jasmine.createSpy("getForPath");
+      spyOn(fs, "lstatSync");
+      registry.attachRepositories({
+        getForPath,
+        onDidChange: () => ({ dispose() {} }),
+      });
+
+      expect(
+        registry.iconFor({
+          path: "/archive.zip/folder",
+          hints: { directory: true, virtual: true },
+        }).classes,
+      ).toEqual(["icon-file-directory"]);
+      expect(fs.lstatSync).not.toHaveBeenCalled();
+      expect(getForPath).not.toHaveBeenCalled();
     });
   });
 

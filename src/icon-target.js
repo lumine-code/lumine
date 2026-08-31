@@ -67,10 +67,10 @@ function pathForItem(item) {
   return null;
 }
 
-// A hint left undefined means "I don't know", which is a different question
-// from "I know it is false". Keeping the three states apart in the key is what
-// lets a tree-view entry (which knows) and a fuzzy-finder guess (which does
-// not) cache the same path separately instead of poisoning each other.
+// A hint left undefined means "derive it if possible", which is different from
+// an explicit false. Keeping the three states apart lets IconRegistry enrich a
+// target before caching without an uncertain caller poisoning an authoritative
+// one for the same path.
 function hintSignature(hints) {
   let signature = "";
   for (const key of HINT_KEYS) {

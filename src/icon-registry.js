@@ -1,3 +1,5 @@
+const fs = require("fs");
+const path = require("path");
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const { normalizeTarget, cacheKeyFor, defaultDataName } = require("./icon-target");
 const { Icon, NONE } = require("./icon-descriptor");
@@ -74,16 +76,17 @@ class Application {
   apply() {
     if (this.disposed) return;
 
+    const target = this.registry.enrichTarget(this.target);
     // The cache key folds in whether any provider varies by context, which can
     // change when a provider is added or removed.
-    const key = cacheKeyFor(this.target, { context: this.registry.contextSensitive });
+    const key = cacheKeyFor(target, { context: this.registry.contextSensitive });
     if (key !== this.key) {
       this.registry.unbind(this);
       this.key = key;
       if (this.options.live) this.registry.bind(this);
     }
 
-    const descriptor = this.registry.descriptorFor(this.target, this.options);
+    const descriptor = this.registry.descriptorFor(target, this.options);
     if (Icon.equal(descriptor, this.descriptor)) return;
     this.undo();
     this.descriptor = descriptor;
@@ -217,6 +220,8 @@ module.exports = class IconRegistry {
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
     this.projectSubscriptions = new CompositeDisposable();
+    this.repositorySubscriptions = new CompositeDisposable();
+    this.repositories = null;
     this.overrides = { name: new Map(), kind: new Map() };
     this.applications = new Map();
     this.keysByPath = new Map();
@@ -265,6 +270,26 @@ module.exports = class IconRegistry {
     );
   }
 
+  // Repository discovery is asynchronous and changes the semantic identity of
+  // directory paths after they may already be on screen. Keep path metadata
+  // here so every consumer gets the same answer without duplicating filesystem
+  // checks, repository routing, or repaint subscriptions.
+  attachRepositories(repositories) {
+    this.repositorySubscriptions.dispose();
+    this.repositorySubscriptions = new CompositeDisposable();
+    this.repositories = repositories ?? null;
+    if (this.repositories?.onDidChange) {
+      this.repositorySubscriptions.add(
+        this.repositories.onDidChange(() => {
+          this.repositoryMetadata.clear();
+          this.invalidate({ types: ["path"] });
+        }),
+      );
+    }
+    this.repositoryMetadata.clear();
+    this.invalidate({ types: ["path"] });
+  }
+
   // Drop every package-supplied provider and cached answer, leaving the core
   // chain. Called when the window is reset.
   clear() {
@@ -278,6 +303,8 @@ module.exports = class IconRegistry {
     this.nextRegistrationOrder = 0;
     this.contextSensitive = false;
     this.caches = { path: new LRUCache(PATH_CACHE_SIZE), name: new Map(), kind: new Map() };
+    this.filesystemMetadata = new LRUCache(PATH_CACHE_SIZE);
+    this.repositoryMetadata = new LRUCache(PATH_CACHE_SIZE);
 
     this.addProvider(createPathProvider(), { priority: -100, core: true });
     this.addProvider(createNameProvider(this.overrides.name), { priority: -90, core: true });
@@ -368,7 +395,7 @@ module.exports = class IconRegistry {
    * `src/icon-target.js`.
    */
   iconFor(target, options = {}) {
-    return this.descriptorFor(normalizeTarget(target), options);
+    return this.descriptorFor(this.enrichTarget(normalizeTarget(target)), options);
   }
 
   descriptorFor(normalized, { skipFallback = false } = {}) {
@@ -377,6 +404,84 @@ module.exports = class IconRegistry {
     // opinion" — what keeps a plain tab's title unadorned.
     if (skipFallback && entry.core) return NONE;
     return entry.descriptor;
+  }
+
+  enrichTarget(normalized) {
+    if (normalized.type !== "path" || !normalized.path || normalized.hints.virtual) {
+      return normalized;
+    }
+
+    const hints = normalized.hints;
+    let { directory, symlink, submodule, repositoryRoot } = hints;
+
+    if ((directory === undefined || symlink === undefined) && path.isAbsolute(normalized.path)) {
+      const metadata = this.metadataForPath(normalized.path, { filesystem: true });
+      directory ??= metadata.directory;
+      symlink ??= metadata.symlink;
+    }
+
+    if (
+      directory !== false &&
+      (repositoryRoot === undefined || submodule === undefined) &&
+      this.repositories?.getForPath
+    ) {
+      const metadata = this.metadataForPath(normalized.path, { repositories: true });
+      repositoryRoot ??= metadata.repositoryRoot;
+      submodule ??= metadata.submodule;
+    }
+
+    if ((repositoryRoot || submodule) && hints.directory === undefined) directory = true;
+    if (
+      directory === hints.directory &&
+      symlink === hints.symlink &&
+      submodule === hints.submodule &&
+      repositoryRoot === hints.repositoryRoot
+    ) {
+      return normalized;
+    }
+    return Object.freeze({
+      ...normalized,
+      hints: Object.freeze({ ...hints, directory, symlink, submodule, repositoryRoot }),
+    });
+  }
+
+  metadataForPath(filePath, { filesystem = false, repositories = false } = {}) {
+    let metadata = {};
+
+    if (filesystem) {
+      let resolved = this.filesystemMetadata.get(filePath);
+      if (!resolved) {
+        let directory;
+        let symlink;
+        try {
+          const stats = fs.lstatSync(filePath);
+          directory = stats.isDirectory();
+          symlink = stats.isSymbolicLink();
+          if (symlink) directory = fs.statSync(filePath).isDirectory();
+        } catch {
+          // Missing, remote, and stale paths still receive useful name-based
+          // icons. Repository routing below may independently prove a directory.
+        }
+        resolved = { directory, symlink };
+        this.filesystemMetadata.set(filePath, resolved);
+      }
+      metadata = { ...metadata, ...resolved };
+    }
+
+    if (repositories) {
+      let resolved = this.repositoryMetadata.get(filePath);
+      if (!resolved) {
+        const repository = this.repositories?.getForPath?.(filePath) ?? null;
+        resolved = {
+          repositoryRoot: repository != null && repository.relativize?.(filePath) === "",
+          submodule: repository?.isSubmodule?.(filePath) === true,
+        };
+        this.repositoryMetadata.set(filePath, resolved);
+      }
+      metadata = { ...metadata, ...resolved };
+      if (resolved.repositoryRoot || resolved.submodule) metadata.directory = true;
+    }
+    return metadata;
   }
 
   resolveEntry(normalized) {
@@ -427,11 +532,10 @@ module.exports = class IconRegistry {
    *
    * Render `target`'s icon into `element` and keep it current.
    *
-   * Current with respect to providers, not to the target: `live` re-renders as
-   * icon providers come and go, but the target — its hints included — is read
-   * once. A caller whose hints can change (a repository registered after
-   * startup, say) calls `applyTo` again with fresh hints; the new application
-   * replaces the old one on the element wholesale.
+   * `live` re-renders as providers come and go and as centrally derived path
+   * metadata changes. Explicit target hints are read once; a caller changing
+   * one of those calls `applyTo` again and replaces the old application on the
+   * element wholesale.
    *
    * @param {Element} element - The element that receives the icon.
    * @param {Object} target - The icon target.
@@ -543,6 +647,8 @@ module.exports = class IconRegistry {
   }
 
   dropPath(filePath, affected) {
+    this.filesystemMetadata.delete(filePath);
+    this.repositoryMetadata.delete(filePath);
     const keys = this.keysByPath.get(filePath);
     if (!keys) return;
     for (const key of keys) {
@@ -642,6 +748,8 @@ module.exports = class IconRegistry {
     this.registrations = [];
     this.serviceSubscription?.dispose();
     this.projectSubscriptions.dispose();
+    this.repositorySubscriptions.dispose();
+    this.repositories = null;
     this.subscriptions.dispose();
     this.emitter.dispose();
   }

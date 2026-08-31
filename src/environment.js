@@ -329,9 +329,8 @@ class Environment {
 
     // The single source of every icon the editor renders. Built before the
     // project and the workspace so a package activating early can register a
-    // provider before anything asks for an icon. It deliberately takes no
-    // repository dependency — a caller that knows a directory is a repository
-    // root says so on the target.
+    // provider before anything asks for an icon. Repository routing is attached
+    // immediately after its registry is constructed below.
     /**
      * @public
      * @status public
@@ -356,6 +355,7 @@ class Environment {
       notificationManager: this.notifications,
       packageManager: this.packages,
     });
+    this.icons.attachRepositories(this.repositories);
     // Interactive credential/passphrase prompting for git operations that run in
     // the git-host worker, so the user's system git credential helpers stay the
     // source of truth and this only supplies the GUI fallback.

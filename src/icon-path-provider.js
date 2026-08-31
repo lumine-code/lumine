@@ -90,10 +90,8 @@ function fileClass(filePath) {
   return "icon-file-text";
 }
 
-// Only used when the caller supplied no `directory` hint. Every bundled
-// consumer does supply one, so in practice this fires for a fuzzy-finder query
-// against a path nothing has classified yet — where skipping the stat would
-// mean showing a directory as a text file.
+// Defensive fallback for direct provider use. IconRegistry normally enriches
+// local paths with cached filesystem hints before the provider chain runs.
 function statHints(filePath) {
   try {
     const stats = fs.lstatSync(filePath);
