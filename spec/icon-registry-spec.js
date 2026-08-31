@@ -100,7 +100,12 @@ describe("IconRegistry", () => {
         },
       );
 
-      expect(registry.iconFor({ path: "/a" }).classes).toEqual(["icon-file-text"]);
+      expect(
+        registry.iconFor({
+          path: "/a",
+          hints: { directory: false, symlink: false },
+        }).classes,
+      ).toEqual(["icon-file-text"]);
       expect(console.error.calls.argsFor(0)[0]).toBe('Icon provider "hand-rolled" threw');
       expect(console.error.calls.argsFor(1)[0]).toBe('Icon provider "loose" threw');
       expect(console.error.calls.mostRecent().args[1].message).toBe(
