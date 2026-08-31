@@ -1698,11 +1698,13 @@ module.exports = class RepositoryRegistry {
     }
 
     const removed = [];
+    const removedRoutingPrefixes = [];
     for (const entry of Array.from(this.entriesById.values())) {
       if (!this.hasOwners(entry)) {
         const updatedIndex = updated.indexOf(entry.repository);
         if (updatedIndex >= 0) updated.splice(updatedIndex, 1);
         removed.push(entry.repository);
+        removedRoutingPrefixes.push(...entry.routingDirectories);
         this.removeEntry(entry, { emit: false, destroy: true });
       }
     }
@@ -1721,9 +1723,15 @@ module.exports = class RepositoryRegistry {
         rootsAdded,
         rootsRemoved,
         routingChangedPrefixes: [
-          ...rootsAdded,
-          ...rootsRemoved,
-          ...updated.map((repository) => repository.getWorkingDirectory()),
+          ...rootsAdded.flatMap(pathAliases),
+          ...rootsRemoved.flatMap(pathAliases),
+          ...removedRoutingPrefixes,
+          ...added.flatMap(
+            (repository) => this.entryByRepository.get(repository)?.routingDirectories ?? [],
+          ),
+          ...updated.flatMap(
+            (repository) => this.entryByRepository.get(repository)?.routingDirectories ?? [],
+          ),
         ],
       });
     }
@@ -2097,7 +2105,7 @@ module.exports = class RepositoryRegistry {
                 updated: [entry.repository],
                 rootsAdded: [],
                 rootsRemoved: [],
-                routingChangedPrefixes: [entry.workingDirectory],
+                routingChangedPrefixes: [...entry.routingDirectories],
               });
             }
           }
@@ -2121,7 +2129,7 @@ module.exports = class RepositoryRegistry {
                 updated: [entry.repository],
                 rootsAdded: [],
                 rootsRemoved: [],
-                routingChangedPrefixes: [entry.workingDirectory],
+                routingChangedPrefixes: [...entry.routingDirectories],
               });
             } else {
               this.prune(entry);
@@ -2253,7 +2261,7 @@ module.exports = class RepositoryRegistry {
         updated: [],
         rootsAdded: [],
         rootsRemoved: [],
-        routingChangedPrefixes: [workingDirectory],
+        routingChangedPrefixes: [...entry.routingDirectories],
       });
     }
 
@@ -2335,7 +2343,7 @@ module.exports = class RepositoryRegistry {
         updated: [],
         rootsAdded: [],
         rootsRemoved: [],
-        routingChangedPrefixes: [entry.workingDirectory],
+        routingChangedPrefixes: [...entry.routingDirectories],
       });
     }
   }

@@ -158,14 +158,14 @@ const ALL_LOCATIONS = ["center", "left", "right", "bottom"];
  *
  * #### `getIconName()`
  *
- * Return a `String` with the name of an icon. If this method is defined and
- * returns a string, the item's tab element will be rendered with the `icon` and
- * `icon-${iconName}` CSS classes.
+ * Return a `String` with the semantic name of an icon. The icon registry
+ * resolves that name to a descriptor, so an icon provider may render it as
+ * classes, an image, SVG, or a letter.
  *
  * ### `onDidChangeIcon(callback)`
  *
- * Called by the workspace so it can be notified when the item's icon changes.
- * Must return a `Disposable`.
+ * Called by the icon binding so it can be notified when the item's icon
+ * changes. Must return a `Disposable`.
  *
  * #### `getDefaultLocation()`
  *

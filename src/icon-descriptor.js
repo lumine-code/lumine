@@ -4,6 +4,7 @@
 // check to skip DOM writes when an icon has not actually changed.
 
 const EMPTY_CLASSES = Object.freeze([]);
+const DESCRIPTOR = Symbol("IconDescriptor");
 
 function freezeClasses(value) {
   if (value == null) return EMPTY_CLASSES;
@@ -13,8 +14,8 @@ function freezeClasses(value) {
 }
 
 // The class each non-glyph variant needs for the core stylesheet to render it.
-// Applied in `create` rather than in the factories so a provider that builds a
-// descriptor by hand — `{render: "image", source}` — still renders.
+// Applied in `create` rather than in each factory so every descriptor variant
+// receives the same structural treatment.
 const STRUCTURAL_CLASSES = { image: "icon-image", svg: "icon-svg", letter: "icon-letter" };
 
 function withStructuralClass(render, classes) {
@@ -25,6 +26,7 @@ function withStructuralClass(render, classes) {
 
 function create(fields) {
   return Object.freeze({
+    [DESCRIPTOR]: true,
     render: fields.render,
     classes: withStructuralClass(fields.render, freezeClasses(fields.classes)),
     source: fields.source ?? null,
@@ -85,7 +87,7 @@ const Icon = {
   },
 
   isDescriptor(value) {
-    return value != null && typeof value === "object" && typeof value.render === "string";
+    return value != null && typeof value === "object" && value[DESCRIPTOR] === true;
   },
 
   // Two descriptors that would render identically. Cached descriptors compare
@@ -110,14 +112,14 @@ const Icon = {
     return left.classes.every((name, index) => name === right.classes[index]);
   },
 
-  // Accept the loose shapes a provider may return: a descriptor, a class
-  // string, or an array of classes. A hand-rolled descriptor is rebuilt rather
-  // than passed through, so it gains the structural class its variant needs.
+  // Rebuild a provider's descriptor rather than passing it through, so it gains
+  // the structural class its variant needs and records which provider answered.
+  // Providers deliberately have one return shape: use `Icon.classes()` instead
+  // of returning a bare class string or array.
   coerce(value, { providerId = null } = {}) {
     if (value == null) return null;
     if (!Icon.isDescriptor(value)) {
-      const descriptor = Icon.classes(value);
-      return providerId ? create({ ...descriptor, providerId }) : descriptor;
+      throw new TypeError("Icon providers must return an Icon descriptor or null");
     }
     return create({ ...value, providerId: providerId ?? value.providerId ?? null });
   },

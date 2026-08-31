@@ -13,39 +13,148 @@ const SVG_NAMESPACE = "http://www.w3.org/2000/svg";
 const APPLICATIONS = new WeakMap();
 
 // Paths are the only open-ended vocabulary; names and kinds are closed sets of
-// a few dozen entries and live in plain Maps.
-const PATH_CACHE_SIZE = 4000;
+// a few dozen entries and live in plain Maps. Metadata gets its own budget: it
+// is cheaper than repeating filesystem or repository lookups, and a project
+// with a few thousand visible entries must fit without a cyclic LRU scan
+// evicting every entry before the next pass reaches it.
+const DEFAULT_CACHE_SIZES = Object.freeze({ path: 16000, filesystem: 16000, repository: 16000 });
+const REPOSITORY_INVALIDATION_DELAY = 16;
 
 class LRUCache {
-  constructor(maxSize) {
+  constructor(maxSize, onEvict = null) {
     this.cache = new Map();
     this.maxSize = maxSize;
+    this.onEvict = onEvict;
+    this.newestKey = null;
   }
 
   get(key) {
     if (!this.cache.has(key)) return undefined;
     const value = this.cache.get(key);
-    this.cache.delete(key);
-    this.cache.set(key, value);
+    // A repeatedly requested hot entry is already newest. Avoiding a delete +
+    // set here matters in a Map with thousands of entries, where repeatedly
+    // moving the same key otherwise accumulates enough tombstones to trigger
+    // periodic O(n) compaction.
+    if (key !== this.newestKey) {
+      this.cache.delete(key);
+      this.cache.set(key, value);
+      this.newestKey = key;
+    }
     return value;
   }
 
   set(key, value) {
     if (this.cache.has(key)) this.cache.delete(key);
-    else if (this.cache.size >= this.maxSize) this.cache.delete(this.cache.keys().next().value);
+    else if (this.cache.size >= this.maxSize) {
+      const oldestKey = this.cache.keys().next().value;
+      const oldestValue = this.cache.get(oldestKey);
+      this.cache.delete(oldestKey);
+      this.onEvict?.(oldestKey, oldestValue);
+    }
     this.cache.set(key, value);
+    this.newestKey = key;
   }
 
   delete(key) {
+    if (!this.cache.has(key)) return false;
+    const value = this.cache.get(key);
     this.cache.delete(key);
+    if (key === this.newestKey) this.newestKey = null;
+    this.onEvict?.(key, value);
+    return true;
+  }
+
+  take(key) {
+    if (!this.cache.has(key)) return undefined;
+    const value = this.cache.get(key);
+    this.cache.delete(key);
+    if (key === this.newestKey) this.newestKey = null;
+    return value;
   }
 
   clear() {
+    const entries = this.onEvict ? Array.from(this.cache) : null;
     this.cache.clear();
+    this.newestKey = null;
+    if (entries) {
+      for (const [key, value] of entries) this.onEvict(key, value);
+    }
   }
 
   keys() {
     return this.cache.keys();
+  }
+
+  has(key) {
+    return this.cache.has(key);
+  }
+}
+
+class PathPrefixIndex {
+  constructor() {
+    this.root = this.node();
+  }
+
+  node() {
+    return { children: new Map(), paths: new Set() };
+  }
+
+  segments(normalizedPath) {
+    return normalizedPath.split(path.sep).filter((segment) => segment.length > 0);
+  }
+
+  add(filePath, normalizedPath) {
+    let node = this.root;
+    for (const segment of this.segments(normalizedPath)) {
+      let child = node.children.get(segment);
+      if (!child) node.children.set(segment, (child = this.node()));
+      node = child;
+    }
+    node.paths.add(filePath);
+  }
+
+  delete(filePath, normalizedPath) {
+    let node = this.root;
+    const branch = [];
+    for (const segment of this.segments(normalizedPath)) {
+      const child = node.children.get(segment);
+      if (!child) return;
+      branch.push([node, segment, child]);
+      node = child;
+    }
+    node.paths.delete(filePath);
+    for (let index = branch.length - 1; index >= 0; index--) {
+      const [parent, segment, child] = branch[index];
+      if (child.paths.size > 0 || child.children.size > 0) break;
+      parent.children.delete(segment);
+    }
+  }
+
+  pathsUnder(normalizedPath) {
+    let node = this.root;
+    for (const segment of this.segments(normalizedPath)) {
+      node = node.children.get(segment);
+      if (!node) return [];
+    }
+    const paths = [];
+    const pending = [node];
+    while (pending.length > 0) {
+      const current = pending.pop();
+      paths.push(...current.paths);
+      pending.push(...current.children.values());
+    }
+    return paths;
+  }
+
+  minimalPaths() {
+    const paths = [];
+    const pending = [this.root];
+    while (pending.length > 0) {
+      const node = pending.pop();
+      if (node.paths.size > 0) paths.push(...node.paths);
+      else pending.push(...node.children.values());
+    }
+    return paths;
   }
 }
 
@@ -56,12 +165,13 @@ const CORE_NONE = Object.freeze({ descriptor: NONE, core: true });
 // `className` is what keeps `status-modified`, `squashed-dir` and `selected`
 // alive across an icon change.
 class Application {
-  constructor(registry, element, target, options) {
+  constructor(registry, element, input, options) {
     this.registry = registry;
     this.element = element;
-    this.target = target;
+    this.input = snapshotTarget(input);
+    this.target = normalizeTarget(this.input);
     this.options = options;
-    this.key = cacheKeyFor(target, { context: registry.contextSensitive });
+    this.key = cacheKeyFor(this.target, { context: registry.contextSensitive });
     this.descriptor = null;
     this.addedClasses = [];
     this.previousAttributes = new Map();
@@ -71,23 +181,52 @@ class Application {
     // Held by the registry's bindings, so it must not close over anything the
     // application does not already own.
     this.ref = new WeakRef(this);
+    this.targetSubscriptions = new CompositeDisposable();
+    this.hasTargetSubscriptions = false;
+    this.boundPath = null;
+
+    if (this.options.live && this.input.item) {
+      this.subscribeToTarget(this.input.item, "onDidChangeIcon");
+      this.subscribeToTarget(this.input.item, "onDidChangePath");
+      if (this.hasTargetSubscriptions) this.registry.trackTargetSubscriptions(this);
+    }
+  }
+
+  subscribeToTarget(item, method) {
+    if (typeof item[method] !== "function") return;
+    const applicationRef = this.ref;
+    const subscription = item[method](() => {
+      const application = applicationRef.deref();
+      if (!application) return;
+      application.target = normalizeTarget(application.input);
+      application.apply();
+    });
+    if (subscription && typeof subscription.dispose === "function") {
+      this.targetSubscriptions.add(subscription);
+      this.hasTargetSubscriptions = true;
+    } else {
+      console.warn(`Icon target ${method} must return a Disposable`, item);
+    }
   }
 
   apply() {
     if (this.disposed) return;
 
-    const target = this.registry.enrichTarget(this.target);
     // The cache key folds in whether any provider varies by context, which can
     // change when a provider is added or removed.
-    const key = cacheKeyFor(target, { context: this.registry.contextSensitive });
-    if (key !== this.key) {
+    const key = cacheKeyFor(this.target, { context: this.registry.contextSensitive });
+    const targetChanged = key !== this.key;
+    if (targetChanged) {
       this.registry.unbind(this);
       this.key = key;
       if (this.options.live) this.registry.bind(this);
     }
 
-    const descriptor = this.registry.descriptorFor(target, this.options);
-    if (Icon.equal(descriptor, this.descriptor)) return;
+    const descriptor = this.registry.descriptorFor(this.target, this.options);
+    if (Icon.equal(descriptor, this.descriptor)) {
+      if (targetChanged) this.renderData();
+      return;
+    }
     this.undo();
     this.descriptor = descriptor;
     this.render(descriptor);
@@ -103,10 +242,7 @@ class Application {
       for (const name of descriptor.classes) this.addClass(name);
     }
 
-    if (this.options.setData) {
-      this.setAttribute("data-name", this.options.name ?? defaultDataName(this.target));
-      this.setAttribute("data-path", this.target.path);
-    }
+    this.renderData();
     if (descriptor.title) this.setAttribute("title", descriptor.title);
 
     if (!this.options.render) return;
@@ -138,6 +274,12 @@ class Application {
       default:
         break;
     }
+  }
+
+  renderData() {
+    if (!this.options.setData) return;
+    this.setAttribute("data-name", this.options.name ?? defaultDataName(this.target));
+    this.setAttribute("data-path", this.target.path);
   }
 
   addClass(name) {
@@ -191,8 +333,36 @@ class Application {
     this.disposed = true;
     this.undo();
     this.registry.unbind(this);
+    this.registry.untrackTargetSubscriptions(this);
+    this.targetSubscriptions.dispose();
     if (APPLICATIONS.get(this.element) === this) APPLICATIONS.delete(this.element);
   }
+}
+
+function snapshotTarget(target) {
+  return Object.freeze({
+    ...target,
+    hints: target.hints == null ? target.hints : Object.freeze({ ...target.hints }),
+  });
+}
+
+function normalizedPrefix(filePath) {
+  if (typeof filePath !== "string" || filePath.length === 0) return null;
+  let normalized = path.resolve(filePath);
+  const root = path.parse(normalized).root;
+  while (normalized.length > root.length && normalized.endsWith(path.sep)) {
+    normalized = normalized.slice(0, -1);
+  }
+  return process.platform === "win32" ? normalized.toLowerCase() : normalized;
+}
+
+function compactPrefixes(prefixes) {
+  const normalized = new Set(
+    Array.from(prefixes ?? [], normalizedPrefix).filter((prefix) => prefix != null),
+  );
+  const index = new PathPrefixIndex();
+  for (const prefix of normalized) index.add(prefix, prefix);
+  return index.minimalPaths();
 }
 
 /**
@@ -212,7 +382,7 @@ class Application {
  * An instance of this class is always available as the `lumine.icons` global.
  */
 module.exports = class IconRegistry {
-  constructor({ config, themeManager, grammarRegistry, packageManager } = {}) {
+  constructor({ config, themeManager, grammarRegistry, packageManager, cacheSizes } = {}) {
     this.config = config;
     this.themes = themeManager;
     this.grammars = grammarRegistry;
@@ -227,6 +397,17 @@ module.exports = class IconRegistry {
     this.keysByPath = new Map();
     this.warnedProviders = new Set();
     this.destroyed = false;
+    this.bindingGeneration = 0;
+    this.cacheSizes = { ...DEFAULT_CACHE_SIZES, ...cacheSizes };
+    this.repositoryInvalidationPrefixes = new Set();
+    this.repositoryInvalidationTimer = null;
+    const registryRef = new WeakRef(this);
+    this.applicationFinalizer = new FinalizationRegistry(({ key, ref, filePath, generation }) => {
+      registryRef.deref()?.finalizeBinding(key, ref, filePath, generation);
+    });
+    this.targetSubscriptionFinalizer = new FinalizationRegistry((subscriptions) => {
+      subscriptions.dispose();
+    });
 
     this.clear();
 
@@ -275,36 +456,51 @@ module.exports = class IconRegistry {
   // here so every consumer gets the same answer without duplicating filesystem
   // checks, repository routing, or repaint subscriptions.
   attachRepositories(repositories) {
+    this.cancelRepositoryInvalidation();
     this.repositorySubscriptions.dispose();
     this.repositorySubscriptions = new CompositeDisposable();
     this.repositories = repositories ?? null;
     if (this.repositories?.onDidChange) {
       this.repositorySubscriptions.add(
-        this.repositories.onDidChange(() => {
-          this.repositoryMetadata.clear();
-          this.invalidate({ types: ["path"] });
-        }),
+        this.repositories.onDidChange((event) =>
+          this.queueRepositoryInvalidation(event?.routingChangedPrefixes),
+        ),
       );
     }
-    this.repositoryMetadata.clear();
+    this.clearRepositoryMetadata();
     this.invalidate({ types: ["path"] });
   }
 
   // Drop every package-supplied provider and cached answer, leaving the core
   // chain. Called when the window is reset.
   clear() {
+    this.cancelRepositoryInvalidation();
     for (const registration of this.registrations ?? []) registration.subscription?.dispose();
     for (const set of this.applications?.values() ?? []) {
       for (const ref of Array.from(set)) ref.deref()?.dispose();
     }
+    this.bindingGeneration++;
     this.applications = new Map();
     this.keysByPath = new Map();
+    this.pathByKey = new Map();
+    this.normalizedPaths = new Map();
+    this.pathIndex = new PathPrefixIndex();
+    this.repositoryDependentPaths = new Set();
+    this.activePathCounts = new Map();
+    this.activeFilesystemMetadata = new Map();
+    this.activeRepositoryMetadata = new Map();
     this.registrations = [];
     this.nextRegistrationOrder = 0;
     this.contextSensitive = false;
-    this.caches = { path: new LRUCache(PATH_CACHE_SIZE), name: new Map(), kind: new Map() };
-    this.filesystemMetadata = new LRUCache(PATH_CACHE_SIZE);
-    this.repositoryMetadata = new LRUCache(PATH_CACHE_SIZE);
+    this.caches = {
+      path: new LRUCache(this.cacheSizes.path, (key) => this.prunePathKey(key)),
+      name: new Map(),
+      kind: new Map(),
+    };
+    this.filesystemMetadata = new LRUCache(this.cacheSizes.filesystem);
+    this.repositoryMetadata = new LRUCache(this.cacheSizes.repository, (filePath) =>
+      this.pruneRepositoryPath(filePath),
+    );
 
     this.addProvider(createPathProvider(), { priority: -100, core: true });
     this.addProvider(createNameProvider(this.overrides.name), { priority: -90, core: true });
@@ -330,8 +526,8 @@ module.exports = class IconRegistry {
    * Register an icon provider. Returns a `Disposable`.
    *
    * Providers are consulted highest `priority` first, and equal priorities keep
-   * registration order. `iconFor(target)` returns an icon descriptor, a class
-   * string or array, or `null` to defer to the next provider.
+   * registration order. `iconFor(target)` returns an icon descriptor, or
+   * `null` to defer to the next provider.
    */
   addProvider(provider, { priority = 0, id = null, core = false } = {}) {
     if (!provider || typeof provider.iconFor !== "function") {
@@ -395,7 +591,7 @@ module.exports = class IconRegistry {
    * `src/icon-target.js`.
    */
   iconFor(target, options = {}) {
-    return this.descriptorFor(this.enrichTarget(normalizeTarget(target)), options);
+    return this.descriptorFor(normalizeTarget(target), options);
   }
 
   descriptorFor(normalized, { skipFallback = false } = {}) {
@@ -414,8 +610,12 @@ module.exports = class IconRegistry {
     const hints = normalized.hints;
     let { directory, symlink, submodule, repositoryRoot } = hints;
 
-    if ((directory === undefined || symlink === undefined) && path.isAbsolute(normalized.path)) {
+    const needsDirectory = directory === undefined;
+    const needsDirectorySymlink = directory === true && symlink === undefined;
+    let inspectedFilesystem = false;
+    if ((needsDirectory || needsDirectorySymlink) && path.isAbsolute(normalized.path)) {
       const metadata = this.metadataForPath(normalized.path, { filesystem: true });
+      inspectedFilesystem = true;
       directory ??= metadata.directory;
       symlink ??= metadata.symlink;
     }
@@ -425,11 +625,19 @@ module.exports = class IconRegistry {
       (repositoryRoot === undefined || submodule === undefined) &&
       this.repositories?.getForPath
     ) {
+      this.markRepositoryDependent(normalized.path);
       const metadata = this.metadataForPath(normalized.path, { repositories: true });
       repositoryRoot ??= metadata.repositoryRoot;
       submodule ??= metadata.submodule;
     }
 
+    // A failed lookup still answers the filesystem question. Resolve a missing
+    // path by name after repository routing had its chance to prove that it is
+    // a directory, rather than letting the fallback provider repeat `lstat`.
+    if (inspectedFilesystem) {
+      directory ??= false;
+      symlink ??= false;
+    }
     if ((repositoryRoot || submodule) && hints.directory === undefined) directory = true;
     if (
       directory === hints.directory &&
@@ -445,11 +653,45 @@ module.exports = class IconRegistry {
     });
   }
 
+  filesystemMetadataForPath(filePath) {
+    return this.activeFilesystemMetadata.get(filePath) ?? this.filesystemMetadata.get(filePath);
+  }
+
+  setFilesystemMetadata(filePath, metadata) {
+    if (this.activePathCounts.has(filePath)) this.activeFilesystemMetadata.set(filePath, metadata);
+    else this.filesystemMetadata.set(filePath, metadata);
+  }
+
+  deleteFilesystemMetadata(filePath) {
+    this.activeFilesystemMetadata.delete(filePath);
+    this.filesystemMetadata.delete(filePath);
+  }
+
+  repositoryMetadataForPath(filePath) {
+    return this.activeRepositoryMetadata.get(filePath) ?? this.repositoryMetadata.get(filePath);
+  }
+
+  setRepositoryMetadata(filePath, metadata) {
+    if (this.activePathCounts.has(filePath)) this.activeRepositoryMetadata.set(filePath, metadata);
+    else this.repositoryMetadata.set(filePath, metadata);
+  }
+
+  deleteRepositoryMetadata(filePath) {
+    this.activeRepositoryMetadata.delete(filePath);
+    this.repositoryMetadata.delete(filePath);
+    this.pruneRepositoryPath(filePath);
+  }
+
+  clearRepositoryMetadata() {
+    this.activeRepositoryMetadata.clear();
+    this.repositoryMetadata.clear();
+  }
+
   metadataForPath(filePath, { filesystem = false, repositories = false } = {}) {
     let metadata = {};
 
     if (filesystem) {
-      let resolved = this.filesystemMetadata.get(filePath);
+      let resolved = this.filesystemMetadataForPath(filePath);
       if (!resolved) {
         let directory;
         let symlink;
@@ -463,20 +705,20 @@ module.exports = class IconRegistry {
           // icons. Repository routing below may independently prove a directory.
         }
         resolved = { directory, symlink };
-        this.filesystemMetadata.set(filePath, resolved);
+        this.setFilesystemMetadata(filePath, resolved);
       }
       metadata = { ...metadata, ...resolved };
     }
 
     if (repositories) {
-      let resolved = this.repositoryMetadata.get(filePath);
+      let resolved = this.repositoryMetadataForPath(filePath);
       if (!resolved) {
         const repository = this.repositories?.getForPath?.(filePath) ?? null;
         resolved = {
           repositoryRoot: repository != null && repository.relativize?.(filePath) === "",
           submodule: repository?.isSubmodule?.(filePath) === true,
         };
-        this.repositoryMetadata.set(filePath, resolved);
+        this.setRepositoryMetadata(filePath, resolved);
       }
       metadata = { ...metadata, ...resolved };
       if (resolved.repositoryRoot || resolved.submodule) metadata.directory = true;
@@ -492,13 +734,12 @@ module.exports = class IconRegistry {
     const cached = cache.get(key);
     if (cached) return cached;
 
-    const entry = this.resolveUncached(normalized);
+    // Explicit and unknown hints have distinct keys. Enrichment is therefore
+    // needed only on a miss; a warm lookup can return the descriptor without a
+    // repository lookup, filesystem-cache touch, or fresh frozen target.
+    const entry = this.resolveUncached(this.enrichTarget(normalized));
     cache.set(key, entry);
-    if (normalized.type === "path") {
-      let keys = this.keysByPath.get(normalized.path);
-      if (!keys) this.keysByPath.set(normalized.path, (keys = new Set()));
-      keys.add(key);
-    }
+    if (normalized.type === "path") this.indexPathKey(normalized.path, key);
     return entry;
   }
 
@@ -506,9 +747,11 @@ module.exports = class IconRegistry {
     for (const registration of this.registrations) {
       if (registration.handles && !registration.handles.has(normalized.type)) continue;
 
-      let answer;
+      let descriptor;
       try {
-        answer = registration.provider.iconFor(normalized);
+        const answer = registration.provider.iconFor(normalized);
+        if (answer == null) continue;
+        descriptor = Icon.coerce(answer, { providerId: registration.id });
       } catch (error) {
         // One misbehaving provider costs its own icon, not the whole chain.
         if (!this.warnedProviders.has(registration.id)) {
@@ -517,10 +760,6 @@ module.exports = class IconRegistry {
         }
         continue;
       }
-
-      if (answer == null) continue;
-      const descriptor = Icon.coerce(answer, { providerId: registration.id });
-      if (descriptor == null) continue;
       return { descriptor, core: registration.core };
     }
     return CORE_NONE;
@@ -533,9 +772,10 @@ module.exports = class IconRegistry {
    * Render `target`'s icon into `element` and keep it current.
    *
    * `live` re-renders as providers come and go and as centrally derived path
-   * metadata changes. Explicit target hints are read once; a caller changing
-   * one of those calls `applyTo` again and replaces the old application on the
-   * element wholesale.
+   * metadata changes. An `{item}` target also follows its icon-name and path
+   * events. Explicit target hints are read once; a caller changing one of those
+   * calls `applyTo` again and replaces the old application on the element
+   * wholesale.
    *
    * @param {Element} element - The element that receives the icon.
    * @param {Object} target - The icon target.
@@ -553,7 +793,7 @@ module.exports = class IconRegistry {
   applyTo(element, target, options = {}) {
     if (!element) throw new TypeError("applyTo needs an element to render into");
 
-    const normalized = normalizeTarget(target);
+    normalizeTarget(target);
     const resolved = {
       classes: options.classes ?? [],
       name: options.name,
@@ -565,15 +805,14 @@ module.exports = class IconRegistry {
 
     APPLICATIONS.get(element)?.dispose();
 
-    const application = new Application(this, element, normalized, resolved);
+    const application = new Application(this, element, target, resolved);
     APPLICATIONS.set(element, application);
-    if (resolved.live && application.key != null) this.bind(application);
+    if (resolved.live) this.bind(application);
     application.apply();
     return application;
   }
 
   bind(application) {
-    if (application.key == null) return;
     let set = this.applications.get(application.key);
     if (!set) this.applications.set(application.key, (set = new Set()));
     // Weakly, so a transient row — a fuzzy-finder result, a symbol in a list
@@ -581,13 +820,98 @@ module.exports = class IconRegistry {
     // being pinned here until something happens to invalidate its key. A
     // consumer that wants a definite lifetime holds the returned Disposable.
     set.add(application.ref);
+    this.pinApplicationPath(application);
+    this.applicationFinalizer.register(
+      application,
+      {
+        key: application.key,
+        ref: application.ref,
+        filePath: application.boundPath,
+        generation: this.bindingGeneration,
+      },
+      application,
+    );
   }
 
   unbind(application) {
+    this.applicationFinalizer.unregister(application);
+    this.unpinApplicationPath(application);
     const set = this.applications.get(application.key);
     if (!set) return;
     set.delete(application.ref);
-    if (set.size === 0) this.applications.delete(application.key);
+    if (set.size === 0) {
+      this.applications.delete(application.key);
+      this.prunePathKey(application.key);
+    }
+  }
+
+  finalizeBinding(key, ref, filePath, generation) {
+    if (generation !== this.bindingGeneration) return;
+    this.unpinPath(filePath);
+    const set = this.applications.get(key);
+    if (!set) return;
+    set.delete(ref);
+    if (set.size === 0) {
+      this.applications.delete(key);
+      this.prunePathKey(key);
+    }
+  }
+
+  trackTargetSubscriptions(application) {
+    this.targetSubscriptionFinalizer.register(
+      application,
+      application.targetSubscriptions,
+      application,
+    );
+  }
+
+  untrackTargetSubscriptions(application) {
+    this.targetSubscriptionFinalizer.unregister(application);
+  }
+
+  pinApplicationPath(application) {
+    const filePath = application.target.type === "path" ? application.target.path : null;
+    application.boundPath = filePath;
+    if (filePath == null) return;
+    const count = this.activePathCounts.get(filePath) ?? 0;
+    this.activePathCounts.set(filePath, count + 1);
+    if (count > 0) return;
+
+    const filesystem = this.filesystemMetadata.take(filePath);
+    if (filesystem !== undefined) this.activeFilesystemMetadata.set(filePath, filesystem);
+    const repository = this.repositoryMetadata.take(filePath);
+    if (repository !== undefined) this.activeRepositoryMetadata.set(filePath, repository);
+  }
+
+  unpinApplicationPath(application) {
+    const filePath = application.boundPath;
+    application.boundPath = null;
+    this.unpinPath(filePath);
+  }
+
+  unpinPath(filePath) {
+    if (filePath == null) return;
+    const count = this.activePathCounts.get(filePath);
+    if (count == null) return;
+    if (count > 1) {
+      this.activePathCounts.set(filePath, count - 1);
+      return;
+    }
+    this.activePathCounts.delete(filePath);
+    const filesystem = this.activeFilesystemMetadata.get(filePath);
+    if (filesystem !== undefined) {
+      this.activeFilesystemMetadata.delete(filePath);
+      this.filesystemMetadata.set(filePath, filesystem);
+    }
+    const repository = this.activeRepositoryMetadata.get(filePath);
+    if (repository !== undefined) {
+      this.activeRepositoryMetadata.delete(filePath);
+      this.repositoryMetadata.set(filePath, repository);
+    }
+  }
+
+  pathHasLiveApplications(filePath) {
+    return (this.activePathCounts.get(filePath) ?? 0) > 0;
   }
 
   // Resolve a bound set, dropping the entries whose application has been
@@ -600,7 +924,10 @@ module.exports = class IconRegistry {
       if (application) into.add(application);
       else set.delete(ref);
     }
-    if (set.size === 0) this.applications.delete(key);
+    if (set.size === 0) {
+      this.applications.delete(key);
+      this.prunePathKey(key);
+    }
   }
 
   /**
@@ -610,28 +937,30 @@ module.exports = class IconRegistry {
    * Drop cached answers and repaint what they were rendered into.
    *
    * `scope` is undefined or null for everything, or an object narrowing it to
-   * `{types}`, `{paths}`, `{names}`, or `{kinds}`. Narrowing matters: a
-   * provider that resolves one file extension asynchronously should repaint the
-   * rows showing that extension, not every row in the tree.
+   * `{types}`, `{paths}`, `{pathPrefixes}`, `{names}`, or `{kinds}`. Narrowing
+   * matters: a provider that resolves one file extension asynchronously should
+   * repaint the rows showing that extension, not every row in the tree.
    */
   invalidate(scope) {
     const affected = new Set();
+    const resolvedScope =
+      scope != null && typeof scope === "object" && Object.keys(scope).length === 0 ? null : scope;
 
-    if (scope == null) {
+    if (resolvedScope == null) {
       for (const cache of Object.values(this.caches)) cache.clear();
-      this.keysByPath.clear();
       for (const key of Array.from(this.applications.keys())) {
         this.liveApplications(key, affected);
       }
     } else {
-      for (const type of scope.types ?? []) this.dropType(type, affected);
-      for (const filePath of scope.paths ?? []) this.dropPath(filePath, affected);
-      for (const name of scope.names ?? []) this.dropIdentity("name", name, affected);
-      for (const kind of scope.kinds ?? []) this.dropIdentity("kind", kind, affected);
+      for (const type of resolvedScope.types ?? []) this.dropType(type, affected);
+      for (const filePath of resolvedScope.paths ?? []) this.dropPath(filePath, affected);
+      this.dropPathPrefixes(compactPrefixes(resolvedScope.pathPrefixes), affected);
+      for (const name of resolvedScope.names ?? []) this.dropIdentity("name", name, affected);
+      for (const kind of resolvedScope.kinds ?? []) this.dropIdentity("kind", kind, affected);
     }
 
     this.flush(affected);
-    this.emitter.emit("did-change", scope ?? null);
+    this.emitter.emit("did-change", resolvedScope ?? null);
   }
 
   invalidateAll() {
@@ -641,21 +970,46 @@ module.exports = class IconRegistry {
   dropType(type, affected) {
     const cache = this.caches[type];
     if (!cache) return;
-    for (const key of Array.from(cache.keys())) this.collect(key, affected);
+    if (type === "path") {
+      // A live application can outlast its bounded descriptor-cache entry. The
+      // path index contains both cached and live keys, so a type invalidation
+      // still repaints every bound element above the cache limit.
+      for (const keys of Array.from(this.keysByPath.values())) {
+        for (const key of Array.from(keys)) this.collect(key, affected);
+      }
+    } else {
+      for (const key of Array.from(cache.keys())) this.collect(key, affected);
+    }
     cache.clear();
-    if (type === "path") this.keysByPath.clear();
   }
 
   dropPath(filePath, affected) {
-    this.filesystemMetadata.delete(filePath);
-    this.repositoryMetadata.delete(filePath);
+    this.deleteFilesystemMetadata(filePath);
+    this.deleteRepositoryMetadata(filePath);
+    this.dropPathAnswer(filePath, affected);
+  }
+
+  dropPathAnswer(filePath, affected) {
     const keys = this.keysByPath.get(filePath);
     if (!keys) return;
-    for (const key of keys) {
+    for (const key of Array.from(keys)) {
       this.caches.path.delete(key);
       this.collect(key, affected);
+      this.prunePathKey(key);
     }
-    this.keysByPath.delete(filePath);
+  }
+
+  dropPathPrefixes(prefixes, affected) {
+    if (prefixes.length === 0) return;
+    const index = new PathPrefixIndex();
+    for (const filePath of this.keysByPath.keys()) {
+      index.add(filePath, normalizedPrefix(filePath));
+    }
+    const paths = new Set();
+    for (const prefix of prefixes) {
+      for (const filePath of index.pathsUnder(prefix)) paths.add(filePath);
+    }
+    for (const filePath of paths) this.dropPathAnswer(filePath, affected);
   }
 
   dropIdentity(type, identity, affected) {
@@ -671,6 +1025,115 @@ module.exports = class IconRegistry {
 
   collect(key, affected) {
     this.liveApplications(key, affected);
+  }
+
+  indexPathKey(filePath, key) {
+    let keys = this.keysByPath.get(filePath);
+    if (!keys) this.keysByPath.set(filePath, (keys = new Set()));
+    keys.add(key);
+    this.pathByKey.set(key, filePath);
+  }
+
+  ensureIndexedPath(filePath) {
+    if (this.normalizedPaths.has(filePath)) return;
+    const normalized = normalizedPrefix(filePath);
+    this.normalizedPaths.set(filePath, normalized);
+    this.pathIndex.add(filePath, normalized);
+  }
+
+  markRepositoryDependent(filePath) {
+    this.repositoryDependentPaths.add(filePath);
+    this.ensureIndexedPath(filePath);
+  }
+
+  hasRepositoryMetadata(filePath) {
+    return this.activeRepositoryMetadata.has(filePath) || this.repositoryMetadata.has(filePath);
+  }
+
+  pruneRepositoryPath(filePath) {
+    if (this.keysByPath.has(filePath) || this.hasRepositoryMetadata(filePath)) return;
+    this.repositoryDependentPaths.delete(filePath);
+    const normalized = this.normalizedPaths.get(filePath);
+    if (normalized != null) this.pathIndex.delete(filePath, normalized);
+    this.normalizedPaths.delete(filePath);
+  }
+
+  prunePathKey(key) {
+    if (this.caches?.path?.has(key) || this.applications?.has(key)) return;
+    const filePath = this.pathByKey?.get(key);
+    if (filePath == null) return;
+    this.pathByKey.delete(key);
+    const keys = this.keysByPath.get(filePath);
+    keys?.delete(key);
+    if (keys?.size === 0) {
+      this.keysByPath.delete(filePath);
+      this.pruneRepositoryPath(filePath);
+    }
+  }
+
+  queueRepositoryInvalidation(prefixes) {
+    // Repository events unrelated to routing — operation providers are the
+    // common case — cannot alter repository-root or submodule icons.
+    if (!Array.isArray(prefixes) || prefixes.length === 0) return;
+    for (const prefix of prefixes) {
+      const normalized = normalizedPrefix(prefix);
+      if (normalized != null) this.repositoryInvalidationPrefixes.add(normalized);
+    }
+    if (
+      this.repositoryInvalidationPrefixes.size === 0 ||
+      this.repositoryInvalidationTimer != null
+    ) {
+      return;
+    }
+    this.repositoryInvalidationTimer = setTimeout(
+      () => this.flushRepositoryInvalidations(),
+      REPOSITORY_INVALIDATION_DELAY,
+    );
+  }
+
+  cancelRepositoryInvalidation() {
+    if (this.repositoryInvalidationTimer != null) clearTimeout(this.repositoryInvalidationTimer);
+    this.repositoryInvalidationTimer = null;
+    this.repositoryInvalidationPrefixes.clear();
+  }
+
+  flushRepositoryInvalidations() {
+    if (this.repositoryInvalidationTimer != null) clearTimeout(this.repositoryInvalidationTimer);
+    this.repositoryInvalidationTimer = null;
+    const prefixes = compactPrefixes(this.repositoryInvalidationPrefixes);
+    this.repositoryInvalidationPrefixes.clear();
+    if (prefixes.length === 0) return;
+
+    const affected = new Set();
+    const paths = new Set();
+    for (const prefix of prefixes) {
+      for (const filePath of this.pathIndex.pathsUnder(prefix)) {
+        if (this.repositoryDependentPaths.has(filePath)) paths.add(filePath);
+      }
+    }
+    for (const filePath of paths) {
+      // Inactive cached answers can be dropped and recomputed lazily. Only live
+      // elements need an eager repository lookup, and even those repaint only
+      // when the two icon-relevant repository facts actually changed.
+      if (!this.pathHasLiveApplications(filePath)) {
+        this.deleteRepositoryMetadata(filePath);
+        this.dropPathAnswer(filePath, affected);
+        continue;
+      }
+      const previous = this.repositoryMetadataForPath(filePath);
+      this.deleteRepositoryMetadata(filePath);
+      const next = this.metadataForPath(filePath, { repositories: true });
+      if (
+        previous &&
+        previous.repositoryRoot === next.repositoryRoot &&
+        previous.submodule === next.submodule
+      ) {
+        continue;
+      }
+      this.dropPathAnswer(filePath, affected);
+    }
+    this.flush(affected);
+    this.emitter.emit("did-change", { pathPrefixes: prefixes });
   }
 
   // Detached elements are repainted like any other. A consumer routinely builds
@@ -741,6 +1204,7 @@ module.exports = class IconRegistry {
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.cancelRepositoryInvalidation();
     for (const set of Array.from(this.applications.values())) {
       for (const ref of Array.from(set)) ref.deref()?.dispose();
     }

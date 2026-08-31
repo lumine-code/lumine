@@ -254,6 +254,28 @@ describe("RepositoryRegistry", () => {
     expect(fs.realpathSync.native).not.toHaveBeenCalled();
   });
 
+  it("reports every routing alias when a repository is added or removed", () => {
+    const workdir = temp.mkdirSync("aliased-routing-repository");
+    const repository = new FakeRepository(workdir);
+    repository.openedWorkingDirectoryPath = path.join(
+      path.dirname(workdir),
+      "opened-through-alias",
+    );
+    repositories.push(repository);
+    const changes = [];
+    registry.onDidChange((change) => changes.push(change));
+
+    const entry = registry.register(repository);
+    expect(changes[0].routingChangedPrefixes).toEqual(entry.routingDirectories);
+    const normalizedAlias = path.resolve(repository.openedWorkingDirectoryPath);
+    expect(entry.routingDirectories).toContain(
+      process.platform === "win32" ? normalizedAlias.toLowerCase() : normalizedAlias,
+    );
+
+    repository.destroy();
+    expect(changes.at(-1).routingChangedPrefixes).toEqual(entry.routingDirectories);
+  });
+
   it("does not remove and re-add a repository when roots are replaced inside it", () => {
     const workdir = temp.mkdirSync("reconciled-repository");
     const repository = new FakeRepository(workdir);
@@ -289,6 +311,25 @@ describe("RepositoryRegistry", () => {
     registry.setProjectRoots([]);
     expect(registry.getRepositories()).toEqual([]);
     expect(repository.isDestroyed()).toBe(true);
+  });
+
+  it("reports repository aliases when a root change removes its last owner", () => {
+    const workdir = temp.mkdirSync("removed-root-alias-repository");
+    const repository = new FakeRepository(workdir);
+    repository.openedWorkingDirectoryPath = path.join(path.dirname(workdir), "removed-root-alias");
+    repositories.push(repository);
+    const changes = [];
+    registry.onDidChange((change) => changes.push(change));
+    registry.setProjectRoots([directoryFor(path.join(workdir, "frontend"))]);
+    const entry = registry.entryByRepository.get(repository);
+    changes.length = 0;
+
+    registry.setProjectRoots([]);
+    expect(changes).toHaveSize(1);
+    expect(changes[0].removed).toEqual([repository]);
+    for (const prefix of entry.routingDirectories) {
+      expect(changes[0].routingChangedPrefixes).toContain(prefix);
+    }
   });
 
   it("keeps a pinned repository after its root is removed", () => {

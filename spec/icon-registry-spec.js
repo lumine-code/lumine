@@ -86,19 +86,26 @@ describe("IconRegistry", () => {
       expect(registry.iconFor({ path: "/a/b.png" }).render).toBe("none");
     });
 
-    it("accepts a bare class string or array from a provider", () => {
-      const disposable = registry.addProvider(
-        provider(() => "one two"),
-        { priority: 2 },
-      );
-      expect(registry.iconFor({ path: "/a" }).classes).toEqual(["one", "two"]);
-      disposable.dispose();
-
+    it("rejects a provider answer that is not an Icon descriptor", () => {
+      spyOn(console, "error");
       registry.addProvider(
-        provider(() => ["three"]),
-        { priority: 2 },
+        provider(() => "one two"),
+        { priority: 2, id: "loose" },
       );
-      expect(registry.iconFor({ path: "/a" }).classes).toEqual(["three"]);
+      registry.addProvider(
+        provider(() => ({ render: "image" })),
+        {
+          priority: 3,
+          id: "hand-rolled",
+        },
+      );
+
+      expect(registry.iconFor({ path: "/a" }).classes).toEqual(["icon-file-text"]);
+      expect(console.error.calls.argsFor(0)[0]).toBe('Icon provider "hand-rolled" threw');
+      expect(console.error.calls.argsFor(1)[0]).toBe('Icon provider "loose" threw');
+      expect(console.error.calls.mostRecent().args[1].message).toBe(
+        "Icon providers must return an Icon descriptor or null",
+      );
     });
 
     it("never calls a provider for a type it does not declare", () => {
@@ -192,6 +199,32 @@ describe("IconRegistry", () => {
   });
 
   describe("central path metadata", () => {
+    it("does not inspect a path the caller identifies as a file", () => {
+      const lstat = spyOn(fs, "lstatSync");
+      const filePath = path.resolve("known-file.js");
+
+      expect(registry.iconFor({ path: filePath, hints: { directory: false } }).classes).toEqual([
+        "icon-file-text",
+      ]);
+      expect(
+        registry.iconFor({
+          path: filePath,
+          hints: { directory: false, symlink: true },
+        }).classes,
+      ).toEqual(["icon-file-symlink-file"]);
+      expect(lstat).not.toHaveBeenCalled();
+    });
+
+    it("inspects a missing path only once before classifying it by name", () => {
+      const lstat = spyOn(fs, "lstatSync").and.throwError(
+        Object.assign(new Error("missing"), { code: "ENOENT" }),
+      );
+      const filePath = path.resolve("missing.png");
+
+      expect(registry.iconFor({ path: filePath }).classes).toEqual(["icon-file-media"]);
+      expect(lstat).toHaveBeenCalledTimes(1);
+    });
+
     it("derives and caches symlink state while explicit hints still win", () => {
       const filePath = path.resolve("linked-directory");
       const lstat = spyOn(fs, "lstatSync").and.returnValue({
@@ -249,7 +282,8 @@ describe("IconRegistry", () => {
         relativize: (filePath) => (filePath === repositoryPath ? "" : "vendor"),
         isSubmodule: (filePath) => filePath === submodulePath,
       };
-      changes.emit("change");
+      changes.emit("change", { routingChangedPrefixes: [repositoryPath] });
+      registry.flushRepositoryInvalidations();
       expect(node.classList).toContain("icon-repo");
       expect(node.classList).not.toContain("icon-file-directory");
       expect(lstat).toHaveBeenCalledTimes(1);
@@ -271,6 +305,97 @@ describe("IconRegistry", () => {
           },
         }).classes,
       ).toEqual(["icon-file-directory"]);
+    });
+
+    it("ignores non-routing repository events and invalidates only changed prefixes", () => {
+      const changes = new Emitter();
+      const leftPath = path.resolve("left-repository");
+      const rightPath = path.resolve("left-repository-sibling");
+      let leftIsRepository = false;
+      const getForPath = jasmine.createSpy("getForPath").and.callFake((filePath) => {
+        if (!leftIsRepository || filePath !== leftPath) return null;
+        return {
+          relativize: (candidate) => (candidate === leftPath ? "" : candidate),
+          isSubmodule: () => false,
+        };
+      });
+      registry.attachRepositories({
+        getForPath,
+        onDidChange: (callback) => changes.on("change", callback),
+      });
+
+      const left = element();
+      const right = element();
+      const hints = { directory: true, symlink: false };
+      registry.applyTo(left, { path: leftPath, hints });
+      registry.applyTo(right, { path: rightPath, hints });
+      expect(getForPath).toHaveBeenCalledTimes(2);
+
+      changes.emit("change", { routingChangedPrefixes: [] });
+      registry.flushRepositoryInvalidations();
+      expect(getForPath).toHaveBeenCalledTimes(2);
+
+      leftIsRepository = true;
+      changes.emit("change", {
+        routingChangedPrefixes: [leftPath, path.join(leftPath, "nested")],
+      });
+      registry.flushRepositoryInvalidations();
+      expect(left.classList).toContain("icon-repo");
+      expect(right.classList).toContain("icon-file-directory");
+      expect(getForPath).toHaveBeenCalledTimes(3);
+    });
+
+    it("keeps repository metadata indexed after its descriptor is evicted", () => {
+      registry.destroy();
+      registry = new IconRegistry({ cacheSizes: { path: 2, repository: 10 } });
+      const changes = new Emitter();
+      const repositoryPath = path.resolve("evicted-repository");
+      let repository = null;
+      registry.attachRepositories({
+        getForPath: () => repository,
+        onDidChange: (callback) => changes.on("change", callback),
+      });
+      const directoryHints = { directory: true, symlink: false };
+      const fileHints = { directory: false, symlink: false };
+
+      registry.iconFor({ path: repositoryPath, hints: directoryHints });
+      registry.iconFor({ path: path.resolve("other-a.js"), hints: fileHints });
+      registry.iconFor({ path: path.resolve("other-b.js"), hints: fileHints });
+      expect(registry.keysByPath.has(repositoryPath)).toBe(false);
+      expect(registry.repositoryMetadata.has(repositoryPath)).toBe(true);
+
+      repository = {
+        relativize: (filePath) => (filePath === repositoryPath ? "" : filePath),
+        isSubmodule: () => false,
+      };
+      changes.emit("change", { routingChangedPrefixes: [repositoryPath] });
+      registry.flushRepositoryInvalidations();
+      expect(registry.iconFor({ path: repositoryPath, hints: directoryHints }).classes).toEqual([
+        "icon-repo",
+      ]);
+    });
+
+    it("protects repository metadata for live paths beyond the inactive LRU limit", () => {
+      registry.destroy();
+      registry = new IconRegistry({ cacheSizes: { path: 10, repository: 2 } });
+      const changes = new Emitter();
+      const getForPath = jasmine.createSpy("getForPath").and.returnValue(null);
+      registry.attachRepositories({
+        getForPath,
+        onDidChange: (callback) => changes.on("change", callback),
+      });
+      const root = path.resolve("live-repositories");
+      const hints = { directory: true, symlink: false };
+      for (const name of ["a", "b", "c"]) {
+        registry.applyTo(element(), { path: path.join(root, name), hints });
+      }
+      expect(registry.activeRepositoryMetadata.size).toBe(3);
+      expect(registry.repositoryMetadata.cache.size).toBe(0);
+
+      changes.emit("change", { routingChangedPrefixes: [root] });
+      registry.flushRepositoryInvalidations();
+      expect(getForPath).toHaveBeenCalledTimes(6);
+      expect(registry.activeRepositoryMetadata.size).toBe(3);
     });
 
     it("does not inspect virtual paths", () => {
@@ -339,6 +464,16 @@ describe("IconRegistry", () => {
       expect(spy.calls.count()).toBe(2);
     });
 
+    it("treats an empty invalidation scope as everything", () => {
+      const spy = jasmine.createSpy("provider").and.returnValue(Icon.classes(["x"]));
+      registry.addProvider(provider(spy));
+
+      registry.iconFor({ path: "/a" });
+      registry.invalidate({});
+      registry.iconFor({ path: "/a" });
+      expect(spy.calls.count()).toBe(2);
+    });
+
     it("invalidates only the named path", () => {
       const spy = jasmine.createSpy("provider").and.returnValue(Icon.classes(["x"]));
       registry.addProvider(provider(spy));
@@ -361,6 +496,20 @@ describe("IconRegistry", () => {
       registry.iconFor({ path: "/a" });
       registry.iconFor({ kind: "class" });
       expect(spy.calls.count()).toBe(3);
+    });
+
+    it("bounds the path index with the descriptor cache", () => {
+      registry.destroy();
+      registry = new IconRegistry({ cacheSizes: { path: 2 } });
+      const hints = { directory: false, symlink: false };
+
+      registry.iconFor({ path: path.resolve("one.js"), hints });
+      registry.iconFor({ path: path.resolve("two.js"), hints });
+      registry.iconFor({ path: path.resolve("three.js"), hints });
+
+      expect(registry.caches.path.cache.size).toBe(2);
+      expect(registry.keysByPath.size).toBe(2);
+      expect(registry.pathByKey.size).toBe(2);
     });
   });
 
@@ -507,6 +656,110 @@ describe("IconRegistry", () => {
     });
 
     describe("live re-application", () => {
+      it("re-reads a pane item when its icon name or path changes", () => {
+        const changes = new Emitter();
+        let iconName = "tools";
+        let itemPath = path.resolve("item.js");
+        const item = {
+          getIconName: () => iconName,
+          getPath: () => itemPath,
+          onDidChangeIcon: (callback) => changes.on("icon", callback),
+          onDidChangePath: (callback) => changes.on("path", callback),
+        };
+        const node = element();
+        registry.applyTo(node, { item, context: "tabs" });
+        expect(node.classList).toContain("icon-tools");
+
+        iconName = "gear";
+        changes.emit("icon");
+        expect(node.classList).toContain("icon-gear");
+        expect(node.classList).not.toContain("icon-tools");
+
+        iconName = null;
+        itemPath = path.resolve("item.pdf");
+        changes.emit("path");
+        expect(node.classList).toContain("icon-file-pdf");
+        expect(node.classList).not.toContain("icon-gear");
+      });
+
+      it("updates path data when the new target has the same descriptor", () => {
+        const changes = new Emitter();
+        let itemPath = path.resolve("first.js");
+        const item = {
+          getPath: () => itemPath,
+          onDidChangePath: (callback) => changes.on("path", callback),
+        };
+        const node = element();
+        registry.applyTo(node, { item });
+        expect(node.dataset.path).toBe(itemPath);
+        expect(node.dataset.name).toBe("first.js");
+
+        itemPath = path.resolve("second.js");
+        changes.emit("path");
+        expect(node.classList).toContain("icon-file-text");
+        expect(node.dataset.path).toBe(itemPath);
+        expect(node.dataset.name).toBe("second.js");
+      });
+
+      it("keeps explicit target fields as a snapshot across pane-item events", () => {
+        const changes = new Emitter();
+        let iconName = "tools";
+        const item = {
+          getIconName: () => iconName,
+          onDidChangeIcon: (callback) => changes.on("icon", callback),
+        };
+        const target = {
+          item,
+          path: path.resolve("original.pdf"),
+          hints: { directory: false },
+        };
+        const node = element();
+        registry.applyTo(node, target);
+
+        target.path = path.resolve("mutated.png");
+        target.hints.directory = true;
+        iconName = null;
+        changes.emit("icon");
+        expect(node.classList).toContain("icon-file-pdf");
+        expect(node.classList).not.toContain("icon-file-media");
+        expect(node.classList).not.toContain("icon-file-directory");
+      });
+
+      it("tracks a live pane item while it has no icon target", () => {
+        let iconName = null;
+        let notify;
+        let disposed = 0;
+        const item = {
+          getIconName: () => iconName,
+          onDidChangeIcon(callback) {
+            notify = callback;
+            return {
+              dispose() {
+                disposed++;
+                notify = null;
+              },
+            };
+          },
+        };
+        const node = element();
+        const application = registry.applyTo(node, { item });
+        expect(registry.applications.has(null)).toBe(true);
+
+        iconName = "gear";
+        notify();
+        expect(node.classList).toContain("icon-gear");
+
+        iconName = null;
+        notify();
+        expect(node.classList).not.toContain("icon");
+        expect(registry.applications.has(null)).toBe(true);
+
+        registry.clear();
+        expect(application.disposed).toBe(true);
+        expect(disposed).toBe(1);
+        expect(notify).toBeNull();
+      });
+
       it("repaints without the consumer subscribing to anything", () => {
         let classes = ["one"];
         registry.addProvider(provider(() => Icon.classes(classes)));
@@ -590,6 +843,20 @@ describe("IconRegistry", () => {
         expect(registry.applications.get(key).size).toBe(1);
       });
 
+      it("ignores a late finalizer from before a registry reset", () => {
+        const filePath = path.resolve("same-path-after-reset.js");
+        const hints = { directory: false, symlink: false };
+        registry.applyTo(element(), { path: filePath, hints });
+        const oldGeneration = registry.bindingGeneration;
+
+        registry.clear();
+        registry.applyTo(element(), { path: filePath, hints });
+        expect(registry.activePathCounts.get(filePath)).toBe(1);
+
+        registry.finalizeBinding("old-key", { deref: () => undefined }, filePath, oldGeneration);
+        expect(registry.activePathCounts.get(filePath)).toBe(1);
+      });
+
       // A consumer routinely builds a row, gives it an icon and appends it
       // afterwards — the tree view does exactly that. Skipping what is not in
       // the document yet left such a row wearing the classes of whichever icon
@@ -608,6 +875,29 @@ describe("IconRegistry", () => {
 
         expect(node.classList.contains("two")).toBe(true);
         expect(node.classList.contains("one")).toBe(false);
+      });
+
+      it("repaints live paths whose descriptors were evicted", () => {
+        registry.destroy();
+        registry = new IconRegistry({ cacheSizes: { path: 2 } });
+        let suffix = "one";
+        registry.addProvider(
+          provider((target) => Icon.classes([`${path.basename(target.path)}-${suffix}`])),
+        );
+        const hints = { directory: false, symlink: false };
+        const nodes = ["a", "b", "c"].map((name) => {
+          const node = element();
+          registry.applyTo(node, { path: path.resolve(name), hints });
+          return node;
+        });
+        expect(registry.caches.path.cache.size).toBe(2);
+
+        suffix = "two";
+        registry.invalidate({ types: ["path"] });
+        for (const [index, name] of ["a", "b", "c"].entries()) {
+          expect(nodes[index].classList).toContain(`${name}-two`);
+          expect(nodes[index].classList).not.toContain(`${name}-one`);
+        }
       });
 
       it("repaints when a provider is added or removed", () => {
@@ -677,7 +967,9 @@ describe("IconRegistry", () => {
       const serviceHub = new ServiceHub();
       const hubRegistry = new IconRegistry({ packageManager: { serviceHub } });
 
-      serviceHub.provide("icons.provider", "1.0.0", { iconFor: () => "from-hub" });
+      serviceHub.provide("icons.provider", "1.0.0", {
+        iconFor: () => Icon.classes(["from-hub"]),
+      });
       expect(hubRegistry.iconFor({ path: "/a" }).classes).toEqual(["from-hub"]);
 
       hubRegistry.destroy();
@@ -689,7 +981,9 @@ describe("IconRegistry", () => {
 
       serviceHub.clear();
       hubRegistry.clear();
-      serviceHub.provide("icons.provider", "1.0.0", { iconFor: () => "after-reset" });
+      serviceHub.provide("icons.provider", "1.0.0", {
+        iconFor: () => Icon.classes(["after-reset"]),
+      });
 
       expect(hubRegistry.iconFor({ path: "/a" }).classes).toEqual(["after-reset"]);
 

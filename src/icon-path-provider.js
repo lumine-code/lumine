@@ -1,4 +1,3 @@
-const fs = require("fs");
 const path = require("path");
 const { Icon } = require("./icon-descriptor");
 
@@ -90,20 +89,6 @@ function fileClass(filePath) {
   return "icon-file-text";
 }
 
-// Defensive fallback for direct provider use. IconRegistry normally enriches
-// local paths with cached filesystem hints before the provider chain runs.
-function statHints(filePath) {
-  try {
-    const stats = fs.lstatSync(filePath);
-    return { directory: stats.isDirectory(), symlink: stats.isSymbolicLink() };
-  } catch {
-    // Not on disk. Archive entries, remote items, and results for a file that
-    // has since been deleted all land here and still get a useful icon from
-    // the name alone.
-    return { directory: false, symlink: false };
-  }
-}
-
 module.exports = function createPathProvider() {
   return {
     id: "core-path",
@@ -114,12 +99,7 @@ module.exports = function createPathProvider() {
       const filePath = target.path;
       if (typeof filePath !== "string" || filePath.length === 0) return null;
 
-      let { directory, symlink } = target.hints;
-      if (directory === undefined && !target.hints.virtual && path.isAbsolute(filePath)) {
-        const stats = statHints(filePath);
-        directory = stats.directory;
-        if (symlink === undefined) symlink = stats.symlink;
-      }
+      const { directory, symlink } = target.hints;
 
       if (directory) {
         return Icon.classes([

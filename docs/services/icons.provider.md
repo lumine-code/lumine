@@ -1,6 +1,6 @@
 # icons.provider
 
-Answers what icon a thing should have. The thing may be a file path, a semantic name, a symbol kind, or a pane item, and the answer may be glyph classes, an image, inline SVG, or a letter.
+Answers what icon a thing should have. The thing may be a file path, a semantic name, a symbol kind, or a pane item, and the descriptor may render glyph classes, an image, inline SVG, or a letter.
 
 |             |                                         |
 | ----------- | --------------------------------------- |
@@ -31,7 +31,7 @@ Core consumes this directly on the service hub, so there is no consumer package 
 
 ```ts
 type IconsProvider = {
-  iconFor(target: Target): Descriptor | string | string[] | null;
+  iconFor(target: Target): Descriptor | null;
   priority?: number;
   id?: string;
   handles?: Array<"path" | "name" | "kind">;
@@ -58,6 +58,7 @@ type Descriptor =
 type Scope = {
   types?: Array<"path" | "name" | "kind">;
   paths?: string[];
+  pathPrefixes?: string[];
   names?: string[];
   kinds?: string[];
 };
@@ -84,7 +85,7 @@ type Target = {
 
 | Member                  | Description                                                                                                                           |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
-| `iconFor(target)`       | Return a descriptor, a class string or array, or **`null` to defer to the next provider**.                                            |
+| `iconFor(target)`       | Return an icon descriptor, or **`null` to defer to the next provider**.                                                               |
 | `priority`              | Higher is consulted first. Must be finite. Core's own providers sit at `-100` and `-90`, so any default-`0` provider outranks them.   |
 | `id`                    | Names the provider in error messages. Defaults to a generated one.                                                                    |
 | `handles`               | Restricts you to certain target types, so you are not called for the rest.                                                            |
@@ -98,7 +99,7 @@ Build the return value with the `Icon` factories rather than by hand — `requir
 const { Icon } = require("lumine");
 ```
 
-`Icon.classes(names)`, `Icon.image(url)`, `Icon.svg(markup)`, `Icon.letter(char)`, and `Icon.none()`. A bare string or array of strings is coerced to `Icon.classes`.
+`Icon.classes(names)`, `Icon.image(url)`, `Icon.svg(markup)`, `Icon.letter(char)`, and `Icon.none()`. Providers have one strict return shape; a bare class string or array is invalid.
 
 **`null` and `Icon.none()` are different.** `null` means "not mine, ask the next provider"; `Icon.none()` means "the answer is: no icon", and stops the chain.
 
@@ -117,7 +118,7 @@ module.exports = {
       iconFor(target) {
         if (target.hints.directory) return null;
         if (!target.path?.endsWith(".rs")) return null;
-        return ["my-icon", "my-icon-rust"];
+        return Icon.classes(["my-icon", "my-icon-rust"]);
       },
       onDidChange: (callback) => emitter.on("did-change", callback),
     };
@@ -131,11 +132,13 @@ Providers are consulted highest `priority` first, and equal priorities keep regi
 
 **A provider that throws costs only its own icon.** Core catches it, logs once per provider id, and moves to the next one, so one broken provider cannot blank every icon in the window.
 
-Answers are cached per target, with paths in a bounded LRU and names and kinds in plain maps. Core invalidates on the `core.customFileTypes` setting, a grammar being added or updated, a project file being renamed or deleted, repository routing changing, and the active theme changing — that last one so a set with a light and a dark palette does not have to watch for it. Anything else that changes your answers is yours to report through `onDidChange`.
+Answers are cached per target, with paths in a bounded LRU and names and kinds in plain maps. Core invalidates on the `core.customFileTypes` setting, a grammar being added or updated, a project file being renamed or deleted, repository routing changing, and the active theme changing — that last one so a set with a light and a dark palette does not have to watch for it. Repository routing changes are coalesced and invalidate only paths below the changed prefixes; events with no changed prefix do no icon work. Anything else that changes your answers is yours to report through `onDidChange`.
 
-`target.hints` carries facts the caller already knows. For local paths core fills missing `directory` and `symlink` values from one cached filesystem lookup, and fills missing `repositoryRoot` and `submodule` values from the repository registry. Explicit hints win, while `virtual: true` disables all local enrichment. This gives every consumer the same folder semantics without repeated `lstat` or repository routing. `expanded` remains caller-owned; no consumer sets it today, so an open-versus-closed folder icon has nothing to branch on yet.
+`target.hints` carries facts the caller already knows. For local paths core derives the file type when `directory` is absent, and checks a known directory for a symlink when `directory: true` leaves `symlink` absent. `directory: false` is authoritative and performs no filesystem lookup; a known symlinked file therefore passes `symlink: true` explicitly. Core fills missing `repositoryRoot` and `submodule` values from the repository registry. Explicit hints win, while `virtual: true` disables all local enrichment. This gives every consumer the same folder semantics without repeated `lstat` or repository routing. `expanded` remains caller-owned; no consumer sets it today, so an open-versus-closed folder icon has nothing to branch on yet.
 
 `target.context` names the call site — `"tree-view"`, `"tabs"`, `"search-panel"` and so on. To answer differently per call site you must declare `usesContext: true`; reading `target.context` without declaring it will not work, because the cache key omits the context until some provider opts in, so whichever call site asked first wins for every other. Declaring it multiplies cache entries by call site, so leave it alone unless you need it.
+
+`lumine.icons.applyTo(element, {item})` is a live pane-item binding. It reads `getIconName()` first and falls back to `getPath()`/`getURI()`, then re-reads the item when `onDidChangeIcon` or `onDidChangePath` fires. Those subscriptions must return a `Disposable`. Other explicit target fields and hints are snapshots; a caller that changes one applies the target again.
 
 Resetting the window clears every package-supplied provider and re-subscribes, so a provider is re-registered rather than surviving in name only.
 

@@ -123,6 +123,7 @@
   "private": true,
   "scripts": {
     "build": "electron-rebuild",
+    "benchmark:icons": "node script/benchmark-icons.js",
     "start": "electron --no-sandbox --enable-logging . -f --dev",
     "dist": "node script/electron-builder.js",
     "full": "npm install && npm run build && npm run dist",

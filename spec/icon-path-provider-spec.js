@@ -37,7 +37,9 @@ describe("the built-in path icon provider", () => {
     it("identifies directories", () => {
       const dirPath = path.join(tempDir, "sub");
       fs.mkdirSync(dirPath);
-      expect(classesFor({ path: dirPath })).toEqual(["icon-file-directory"]);
+      expect(classesFor({ path: dirPath, hints: { directory: true } })).toEqual([
+        "icon-file-directory",
+      ]);
     });
 
     it("classifies files by extension", () => {
