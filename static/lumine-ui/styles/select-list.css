@@ -172,7 +172,7 @@
     color: var(--text-color-subtle);
     background-color: transparent;
     opacity: 0.65;
-    cursor: pointer;
+    cursor: default;
 
     &::before {
       margin: 0;
@@ -275,7 +275,7 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  cursor: pointer;
+  cursor: default;
 }
 
 /* Popover List */

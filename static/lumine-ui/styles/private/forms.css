@@ -216,7 +216,7 @@ output {
     padding-left: 20px;
     margin-bottom: 0;
     font-weight: normal;
-    cursor: pointer;
+    cursor: default;
   }
 }
 .radio input[type="radio"],
@@ -241,7 +241,7 @@ output {
   margin-bottom: 0;
   vertical-align: middle;
   font-weight: normal;
-  cursor: pointer;
+  cursor: default;
 }
 .radio-inline + .radio-inline,
 .checkbox-inline + .checkbox-inline {

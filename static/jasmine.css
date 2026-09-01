@@ -147,7 +147,7 @@ body {
         }
 
         float: right;
-        cursor: pointer;
+        cursor: default;
         opacity: 0;
         color: #999;
 
@@ -265,7 +265,7 @@ body {
     }
 
     float: right;
-    cursor: pointer;
+    cursor: default;
     opacity: 0;
     color: #999;
 

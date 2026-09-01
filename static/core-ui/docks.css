@@ -179,7 +179,7 @@ lumine-dock {
     text-align: center;
     justify-content: center;
     align-items: center;
-    cursor: pointer;
+    cursor: default;
 
     /* Promote to its own compositing layer to avoid a rendering artifact */
     will-change: transform;

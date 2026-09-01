@@ -185,7 +185,7 @@ select {
 button,
 input[type="reset"],
 input[type="submit"] {
-  cursor: pointer; /* 1 */
+  cursor: default; /* 1 */
 }
 
 /*
