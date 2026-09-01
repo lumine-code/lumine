@@ -27,10 +27,12 @@ module.exports = class MenuBarView {
     this.element.appendChild(this.overflowButton.element);
     this.boundKeyDown = (event) => this.onKeyDown(event);
     this.boundKeyUp = (event) => this.onKeyUp(event);
+    this.boundWheel = (event) => this.onWheel(event);
     this.boundFocusOut = (event) => this.onFocusOut(event);
     this.boundWindowClick = (event) => this.onWindowClick(event);
     document.body.addEventListener("keydown", this.boundKeyDown);
     document.body.addEventListener("keyup", this.boundKeyUp);
+    document.body.addEventListener("wheel", this.boundWheel, { passive: true });
     window.addEventListener("click", this.boundWindowClick);
     this.element.addEventListener("focusout", this.boundFocusOut);
     this.subscriptions.add(menuManager.onDidChange(() => this.scheduleUpdate()));
@@ -318,6 +320,10 @@ module.exports = class MenuBarView {
     this.altPressedAlone = false;
   }
 
+  onWheel(event) {
+    if (event.altKey) this.altPressedAlone = false;
+  }
+
   onFocusOut(event) {
     if (this.popup || this.element.contains(event.relatedTarget)) return;
     requestAnimationFrame(() => {
@@ -386,6 +392,7 @@ module.exports = class MenuBarView {
     this.subscriptions.dispose();
     document.body.removeEventListener("keydown", this.boundKeyDown);
     document.body.removeEventListener("keyup", this.boundKeyUp);
+    document.body.removeEventListener("wheel", this.boundWheel);
     window.removeEventListener("click", this.boundWindowClick);
     this.element.removeEventListener("focusout", this.boundFocusOut);
     this.element.remove();

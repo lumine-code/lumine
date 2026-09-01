@@ -374,6 +374,30 @@ describe("HTML menu UI", () => {
     emitter.dispose();
   });
 
+  it("does not activate the MenuBar after Alt+wheel scrolling", () => {
+    const emitter = new Emitter();
+    const fakeManager = {
+      getTemplate: () => [{ label: "&File", submenu: [{ label: "Open", command: "core:open" }] }],
+      onDidChange: (callback) => emitter.on("change", callback),
+      showPopup: (options) => showMenuPopup(contextViews, options),
+    };
+    const menuBar = new MenuBarView(fakeManager, { altGivesFocus: true });
+    document.body.appendChild(menuBar.element);
+
+    document.body.dispatchEvent(
+      new KeyboardEvent("keydown", { key: "Alt", altKey: true, bubbles: true }),
+    );
+    document.body.dispatchEvent(new WheelEvent("wheel", { altKey: true, bubbles: true }));
+    document.body.dispatchEvent(new KeyboardEvent("keyup", { key: "Alt", bubbles: true }));
+
+    expect(document.activeElement).not.toBe(
+      menuBar.element.querySelector(".menu-label:not(.overflow-menu-label)"),
+    );
+    expect(menuBar.element.classList).not.toContain("focused");
+    menuBar.destroy();
+    emitter.dispose();
+  });
+
   it("conceals an auto-hidden MenuBar after an outside click", () => {
     const emitter = new Emitter();
     const fakeManager = {
