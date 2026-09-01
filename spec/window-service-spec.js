@@ -23,9 +23,7 @@ describe("WindowService", () => {
       onDidUnmaximizeWindow: jasmine.createSpy("onDidUnmaximizeWindow"),
       onDidFocusWindow: jasmine.createSpy("onDidFocusWindow"),
       onDidBlurWindow: jasmine.createSpy("onDidBlurWindow"),
-      onDidRequestApplicationMenuPopupSwitch: jasmine.createSpy(
-        "onDidRequestApplicationMenuPopupSwitch",
-      ),
+      setSheetOffset: jasmine.createSpy("setSheetOffset").and.returnValue(Promise.resolve()),
     };
     service = new WindowService(delegate);
   });
@@ -37,22 +35,6 @@ describe("WindowService", () => {
   });
 
   it("maps state, action, dialog, menu, download, and DevTools calls to fixed actions", async () => {
-    const menuPopupRequest = {
-      kind: "submenu",
-      id: "file",
-      x: 10,
-      y: 20,
-      sourceType: "mouse",
-      activeHoverTarget: "submenu:file",
-      hoverTargets: [
-        {
-          key: "submenu:file",
-          kind: "submenu",
-          id: "file",
-          bounds: { x: 0, y: 0, width: 40, height: 24 },
-        },
-      ],
-    };
     await service.getState();
     await service.getSize();
     await service.setSize(800, 600);
@@ -75,10 +57,7 @@ describe("WindowService", () => {
     await service.showSaveDialog({ title: "Save" });
     await service.downloadURL("https://example.test/file");
     await service.getPrimaryDisplayWorkAreaSize();
-    await service.setAutoHideMenuBar(true);
-    await service.setMenuBarVisibility(false);
-    await service.showApplicationMenuPopup(menuPopupRequest);
-    await service.closeApplicationMenuPopup();
+    await service.setSheetOffset(32);
     await service.openDevTools();
     await service.closeDevTools();
     await service.toggleDevTools();
@@ -108,15 +87,12 @@ describe("WindowService", () => {
       ["showSaveDialog", { title: "Save" }],
       ["downloadURL", "https://example.test/file"],
       ["getPrimaryDisplayWorkAreaSize"],
-      ["setAutoHideMenuBar", true],
-      ["setMenuBarVisibility", false],
-      ["showApplicationMenuPopup", menuPopupRequest],
-      ["closeApplicationMenuPopup"],
       ["openDevTools"],
       ["closeDevTools"],
       ["toggleDevTools"],
       ["executeJavaScriptInDevTools", "1 + 1"],
     ]);
+    expect(delegate.setSheetOffset).toHaveBeenCalledWith(32);
   });
 
   it("validates and forwards cross-window events", async () => {
@@ -139,7 +115,6 @@ describe("WindowService", () => {
     service.onDidUnmaximize(callback);
     service.onDidFocus(callback);
     service.onDidBlur(callback);
-    service.onDidRequestApplicationMenuPopupSwitch(callback);
 
     expect(delegate.onDidEnterFullScreen).toHaveBeenCalledWith(callback);
     expect(delegate.onDidLeaveFullScreen).toHaveBeenCalledWith(callback);
@@ -147,6 +122,5 @@ describe("WindowService", () => {
     expect(delegate.onDidUnmaximizeWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidFocusWindow).toHaveBeenCalledWith(callback);
     expect(delegate.onDidBlurWindow).toHaveBeenCalledWith(callback);
-    expect(delegate.onDidRequestApplicationMenuPopupSwitch).toHaveBeenCalledWith(callback);
   });
 });

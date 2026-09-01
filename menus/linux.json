@@ -330,10 +330,6 @@
           "command": "window:toggle-full-screen"
         },
         {
-          "label": "Toggle Menu Bar",
-          "command": "window:toggle-menu-bar"
-        },
-        {
           "label": "Panes",
           "submenu": [
             {

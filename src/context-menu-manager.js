@@ -63,9 +63,9 @@ if (
  * {@link #add} for more information.
  */
 module.exports = class ContextMenuManager {
-  constructor({ keymapManager, applicationDelegate }) {
+  constructor({ keymapManager, menuManager }) {
     this.keymapManager = keymapManager;
-    this.applicationDelegate = applicationDelegate;
+    this.menuManager = menuManager;
     this.definitions = {};
     this.clear();
     this.keymapManager.onDidLoadBundledKeymaps(() => this.loadPlatformItems());
@@ -189,49 +189,22 @@ module.exports = class ContextMenuManager {
     // each menu on them, drops the empty groups and rejoins with exactly one
     // between the survivors, recursively. Nothing has to prune first.
     //
-    // The positioning keys are spent once it has read them, and this template
-    // goes on to `Menu.buildFromTemplate`, which would apply its own id-keyed
-    // reading of the same keys over items already in order.
+    // Positioning keys are spent once sorting has read them; the HTML renderer
+    // receives only the final item order.
     return MenuHelpers.stripPositioningKeys(this.sortTemplate(template));
   }
 
-  // Adds an `accelerator` property to items that have key bindings. Electron
-  // uses this property to surface the relevant keymaps in the context menu.
-  //
-  // Bindings resolve at `target` — the element that was right-clicked —
-  // because that is the element the item's command is dispatched against:
-  // `show` records it as `activeElement` and
-  // `Environment::dispatchContextMenuCommand` dispatches there.
-  // Resolving at `document.activeElement` instead advertised whichever
-  // binding belonged to the element that happened to hold focus, which is not
-  // the element the item acts on — right-clicking a tab or a tree-view entry
-  // while an editor holds focus showed the editor's keystroke.
-  //
-  // The walk deliberately passes any `data-context-menu-boundary`: that
-  // attribute limits which items a surface inherits, not where a command
-  // dispatches, and the keystroke really would fire.
+  // Resolve displayed key bindings at the element the command will target.
+  // The HTML renderer receives one canonical label produced by
+  // underscore-plus for both single strokes and chords.
   addAccelerators(template, target) {
     for (const item of template) {
       if (item.command) {
-        const keymaps = this.keymapManager.findKeyBindings({
-          command: item.command,
-          target,
-        });
-        const keystrokes = keymaps && keymaps[0] ? keymaps[0].keystrokes : undefined;
-        if (keystrokes) {
-          // Electron does not support multi-keystroke accelerators. Expose
-          // them separately so the native menu path can render them next to
-          // the item's label without polluting the label itself.
-          if (keystrokes.includes(" ")) {
-            item.multiKeystrokeLabel = _.humanizeKeystroke(keystrokes);
-          } else {
-            item.accelerator = MenuHelpers.acceleratorForKeystroke(keystrokes);
-          }
-        }
+        const bindings = this.keymapManager.findKeyBindings({ command: item.command, target });
+        const keystrokes = bindings?.[0]?.keystrokes;
+        if (keystrokes) item.keyBindingLabel = _.humanizeKeystroke(keystrokes);
       }
-      if (Array.isArray(item.submenu)) {
-        this.addAccelerators(item.submenu, target);
-      }
+      if (Array.isArray(item.submenu)) this.addAccelerators(item.submenu, target);
     }
   }
 
@@ -266,45 +239,38 @@ module.exports = class ContextMenuManager {
     return item;
   }
 
-  // The native menu cannot render multi-keystroke accelerators, so show the
-  // keystrokes next to the item's label instead.
-  appendMultiKeystrokeLabels(template) {
-    for (const item of template) {
-      if (item.multiKeystrokeLabel) {
-        item.label += ` [${item.multiKeystrokeLabel}]`;
-      }
-      if (Array.isArray(item.submenu)) {
-        this.appendMultiKeystrokeLabels(item.submenu);
-      }
-    }
-  }
-
   showForEvent(event) {
     const menuTemplate = this.templateForEvent(event);
     if (!(menuTemplate && menuTemplate.length > 0)) {
       return;
     }
-    this.appendMultiKeystrokeLabels(menuTemplate);
-    return this.show(event.target, menuTemplate);
+    return this.show(event.target, menuTemplate, { anchor: event });
   }
 
   /**
    * @public
    * @status public
    *
-   * Show a native context menu for a DOM target.
+   * Show a theme-aware HTML context menu for a DOM target.
    *
    * @param target - The local DOM `Element` that receives selected commands.
-   * @param menuTemplate - A serializable Electron menu-template `Array`; functions and native Electron objects are not allowed.
-   * @returns {Promise} that resolves after the menu is shown.
+   * @param menuTemplate - A menu-template `Array`.
+   * @param options - Optional popup placement options, including `anchor`.
+   * @returns {Object} the popup controller.
    */
-  show(target, menuTemplate) {
-    this.activeElement = target;
-    return this.applicationDelegate.showContextMenu(menuTemplate);
+  show(target, menuTemplate, options = {}) {
+    return this.menuManager.showPopup({
+      template: menuTemplate,
+      target,
+      anchor: options.anchor ?? target,
+      placement: options.placement,
+      alignment: options.alignment,
+      autoSelectFirstItem: options.autoSelectFirstItem,
+      className: "context-menu-popup",
+    });
   }
 
   clear() {
-    this.activeElement = null;
     this.itemSets = [];
   }
 };

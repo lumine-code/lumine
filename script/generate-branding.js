@@ -49,9 +49,9 @@ const path = require("node:path");
 const zlib = require("node:zlib");
 const { app, BrowserWindow, Menu } = require("electron");
 
-// This utility uses a hidden frameless window and never needs an application
-// menu. Suppress Electron's default menu before `ready`.
-Menu.setApplicationMenu(null);
+// This utility uses a hidden frameless window. Suppress Electron's in-window
+// menu on Windows and Linux while leaving the macOS system menu intact.
+if (process.platform !== "darwin") Menu.setApplicationMenu(null);
 
 const REPO_ROOT = path.resolve(__dirname, "..");
 const APP_ICONS_DIR = path.join(REPO_ROOT, "resources", "app-icons");

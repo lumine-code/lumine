@@ -9,9 +9,10 @@ const { app, Menu, protocol } = require("electron");
 const parseCommandLineOptions = require("./parse-command-line-options");
 const { getAppArguments } = parseCommandLineOptions;
 
-// Lumine installs its own application menu during initialization. Suppress
-// Electron's default menu before `ready` so it is never built in the meantime.
-Menu.setApplicationMenu(null);
+// The macOS application menu lives in the system menu bar and is installed by
+// MacApplicationMenu during initialization. Windows and Linux render their menu
+// inside the frameless window, so Electron must not create a second native one.
+if (process.platform !== "darwin") Menu.setApplicationMenu(null);
 
 // Declare the `lumine://` scheme privileged before the app is ready, so packages
 // can load fonts and use fetch/XHR against lumine:// URLs from the file://

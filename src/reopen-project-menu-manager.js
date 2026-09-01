@@ -28,10 +28,10 @@ module.exports = class ReopenProjectMenuManager {
 
   reopenProjectCommand(e) {
     if (e.detail == null) return;
-    if (e.detail.index != null && this.projects[e.detail.index] != null) {
-      this.open(this.projects[e.detail.index].paths);
-    } else if (e.detail.paths != null) {
+    if (e.detail.paths != null) {
       this.open(e.detail.paths);
+    } else if (e.detail.index != null && this.projects[e.detail.index] != null) {
+      this.open(this.projects[e.detail.index].paths);
     }
   }
 

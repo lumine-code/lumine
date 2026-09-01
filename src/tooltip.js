@@ -460,7 +460,7 @@ Tooltip.prototype.setContent = function () {
   tip.classList.remove("fade", "in", "top", "bottom", "left", "right");
 };
 
-Tooltip.prototype.hide = function (callback) {
+Tooltip.prototype.hide = function (callback, { followThrough = true } = {}) {
   this.inState = {};
 
   if (departingTooltip === this) departingTooltip = null;
@@ -489,9 +489,19 @@ Tooltip.prototype.hide = function (callback) {
 
   this.hoverState = null;
 
-  startFollowThroughTimer();
+  if (followThrough) {
+    startFollowThroughTimer();
+  } else {
+    clearTimeout(followThroughTimer);
+    followThroughTimer = null;
+    departingTooltip = null;
+  }
 
   return this;
+};
+
+Tooltip.prototype.cancel = function () {
+  return this.hide(undefined, { followThrough: false });
 };
 
 Tooltip.prototype.fixTitle = function () {

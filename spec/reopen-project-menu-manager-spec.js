@@ -100,6 +100,15 @@ describe("ReopenProjectMenuManager", () => {
       expect(openFunction.calls.all()[0].args[0]).toEqual(["/x", "/y"]);
     });
 
+    it("prefers stable detail paths over a stale detail index", () => {
+      historyManager.getProjects.and.returnValue([{ paths: ["/a"] }, { paths: ["/b"] }]);
+      reopenProjects.update();
+
+      reopenProjectCommand()({ detail: { index: 0, paths: ["/b"] } });
+
+      expect(openFunction).toHaveBeenCalledWith(["/b"]);
+    });
+
     it("does not call open when no command detail is supplied", () => {
       reopenProjectCommand()({});
 

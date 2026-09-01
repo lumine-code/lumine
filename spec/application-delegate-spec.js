@@ -1,5 +1,4 @@
 const ApplicationDelegate = require("../src/application-delegate");
-const { ipcRenderer } = require("electron");
 
 describe("ApplicationDelegate", function () {
   describe("set/getTemporaryWindowState", function () {
@@ -15,23 +14,14 @@ describe("ApplicationDelegate", function () {
     });
   });
 
-  describe("onDidRequestApplicationMenuPopupSwitch", function () {
-    it("subscribes to the dedicated renderer event and can unsubscribe", function () {
+  describe("setSheetOffset", function () {
+    it("routes the offset through the fixed window action", async function () {
       const applicationDelegate = new ApplicationDelegate();
-      const callback = jasmine.createSpy("callback");
-      const detail = {
-        from: "submenu:file",
-        target: { key: "submenu:edit", kind: "submenu", id: "edit" },
-      };
-      const disposable = applicationDelegate.onDidRequestApplicationMenuPopupSwitch(callback);
+      spyOn(applicationDelegate, "invokeWindow").and.returnValue(Promise.resolve());
 
-      ipcRenderer.emit("application-menu-popup-switch", {}, detail);
-      expect(callback).toHaveBeenCalledWith(detail);
+      await applicationDelegate.setSheetOffset(28);
 
-      disposable.dispose();
-      callback.calls.reset();
-      ipcRenderer.emit("application-menu-popup-switch", {}, detail);
-      expect(callback).not.toHaveBeenCalled();
+      expect(applicationDelegate.invokeWindow).toHaveBeenCalledWith("setSheetOffset", 28);
     });
   });
 });

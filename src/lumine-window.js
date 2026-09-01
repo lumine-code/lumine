@@ -52,6 +52,7 @@ module.exports = class LumineWindow extends EventEmitter {
     });
 
     const options = {
+      frame: false,
       show: false,
       title: getAppName(),
       tabbingIdentifier: "lumine",
@@ -89,8 +90,6 @@ module.exports = class LumineWindow extends EventEmitter {
     // "last one drawn" rule the taskbar/dock already applies to everything
     // else about window state.
     if (process.platform === "darwin") app.dock.setIcon(iconPath);
-    if (this.shouldHideTitleBar()) options.frame = false;
-
     // Enabling window transparency creates several downstream issues relating
     // to management of window size and maximixed state.
     //
@@ -203,14 +202,6 @@ module.exports = class LumineWindow extends EventEmitter {
     );
   }
 
-  setupContextMenu() {
-    const ContextMenu = require("./context-menu");
-
-    this.browserWindow.on("context-menu", (menuTemplate) => {
-      return new ContextMenu(menuTemplate, this);
-    });
-  }
-
   containsLocations(locations) {
     return locations.every((location) => this.containsLocation(location));
   }
@@ -309,8 +300,6 @@ module.exports = class LumineWindow extends EventEmitter {
     this.browserWindow.webContents.on("will-navigate", (event, url) => {
       if (url !== this.browserWindow.webContents.getURL()) event.preventDefault();
     });
-
-    this.setupContextMenu();
 
     // Spec window's web view should always have focus
     if (this.isSpec) this.browserWindow.on("blur", () => this.browserWindow.focusOnWebView());
@@ -450,8 +439,7 @@ module.exports = class LumineWindow extends EventEmitter {
   }
 
   sendCommandToBrowserWindow(command, ...args) {
-    const action = args[0] && args[0].contextCommand ? "context-command" : "command";
-    this.sendToRenderer(action, command, ...args);
+    this.sendToRenderer("command", command, ...args);
   }
 
   getDimensions() {
@@ -462,10 +450,6 @@ module.exports = class LumineWindow extends EventEmitter {
 
   getSimpleFullscreen() {
     return this.lumineApplication.config.get("core.simpleFullScreenWindows");
-  }
-
-  shouldHideTitleBar() {
-    return !this.isSpec && this.lumineApplication.config.get("core.titleBar") !== "native";
   }
 
   close() {
@@ -494,10 +478,6 @@ module.exports = class LumineWindow extends EventEmitter {
 
   setFullScreen(fullScreen) {
     return this.browserWindow.setFullScreen(fullScreen);
-  }
-
-  setAutoHideMenuBar(autoHideMenuBar) {
-    return this.browserWindow.setAutoHideMenuBar(autoHideMenuBar);
   }
 
   handlesLumineCommands() {

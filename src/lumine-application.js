@@ -1,5 +1,4 @@
 const LumineWindow = require("./lumine-window");
-const ApplicationMenu = require("./application-menu");
 const LumineProtocolHandler = require("./lumine-protocol-handler");
 const { onDidChangeScrollbarStyle } = require("./scrollbar-style");
 const { getAccentColor, onDidChangeAccentColor } = require("./accent-color");
@@ -192,144 +191,6 @@ function assertInteger(value, name, { positive = false } = {}) {
   }
 }
 
-function hasExactKeys(value, expectedKeys) {
-  const keys = Object.keys(value);
-  return keys.length === expectedKeys.length && keys.every((key) => expectedKeys.includes(key));
-}
-
-function validateApplicationMenuPopupIds(ids, name) {
-  if (
-    !Array.isArray(ids) ||
-    ids.length === 0 ||
-    !ids.every((id) => typeof id === "string" && id.length > 0)
-  ) {
-    throw new TypeError(`${name} must be a non-empty array of strings`);
-  }
-  if (new Set(ids).size !== ids.length) {
-    throw new TypeError(`${name} must be unique`);
-  }
-}
-
-function validateApplicationMenuPopupHoverTarget(target, index) {
-  if (!target || typeof target !== "object" || Array.isArray(target)) {
-    throw new TypeError(`Application-menu popup hover target ${index} must be an object`);
-  }
-
-  const expectedKeys =
-    target.kind === "submenu"
-      ? ["key", "kind", "id", "bounds"]
-      : target.kind === "overflow"
-        ? ["key", "kind", "ids", "bounds"]
-        : null;
-  if (!expectedKeys) {
-    throw new TypeError("Application-menu popup hover target kind must be submenu or overflow");
-  }
-  if (!hasExactKeys(target, expectedKeys)) {
-    throw new TypeError("Application-menu popup hover target has invalid fields");
-  }
-
-  assertString(target.key, "Application-menu popup hover target key");
-  if (target.kind === "submenu") {
-    assertString(target.id, "Application-menu popup hover target id");
-  } else {
-    validateApplicationMenuPopupIds(target.ids, "Application-menu popup hover target ids");
-  }
-
-  const bounds = target.bounds;
-  if (
-    !bounds ||
-    typeof bounds !== "object" ||
-    Array.isArray(bounds) ||
-    !hasExactKeys(bounds, ["x", "y", "width", "height"])
-  ) {
-    throw new TypeError("Application-menu popup hover target bounds have invalid fields");
-  }
-  for (const name of ["x", "y", "width", "height"]) {
-    const value = bounds[name];
-    const positive = name === "width" || name === "height";
-    if (!Number.isInteger(value) || value < (positive ? 1 : 0) || value > 0x7fffffff) {
-      throw new TypeError(
-        `Application-menu popup hover target bounds ${name} must be a ${positive ? "positive" : "non-negative"} 32-bit integer`,
-      );
-    }
-  }
-  if (bounds.x + bounds.width > 0x7fffffff || bounds.y + bounds.height > 0x7fffffff) {
-    throw new TypeError("Application-menu popup hover target bounds exceed 32-bit coordinates");
-  }
-}
-
-function validateApplicationMenuPopupRequest(request) {
-  if (!request || typeof request !== "object" || Array.isArray(request)) {
-    throw new TypeError("Application-menu popup request must be an object");
-  }
-
-  const commonKeys = ["kind", "sourceType", "x", "y", "activeHoverTarget", "hoverTargets"];
-  let expectedKeys;
-  if (request.kind === "submenu") {
-    expectedKeys = [...commonKeys, "id"];
-  } else if (request.kind === "overflow") {
-    expectedKeys = [...commonKeys, "ids"];
-  } else {
-    throw new TypeError("Application-menu popup kind must be submenu or overflow");
-  }
-
-  if (!hasExactKeys(request, expectedKeys)) {
-    throw new TypeError("Application-menu popup request has invalid fields");
-  }
-
-  if (!Number.isInteger(request.x) || request.x < 0 || request.x > 0x7fffffff) {
-    throw new TypeError("Application-menu popup x must be a non-negative 32-bit integer");
-  }
-  if (!Number.isInteger(request.y) || request.y < 0 || request.y > 0x7fffffff) {
-    throw new TypeError("Application-menu popup y must be a non-negative 32-bit integer");
-  }
-  if (request.sourceType !== "mouse" && request.sourceType !== "keyboard") {
-    throw new TypeError("Application-menu popup sourceType must be mouse or keyboard");
-  }
-
-  if (request.kind === "submenu") {
-    assertString(request.id, "Application-menu popup id");
-  } else {
-    validateApplicationMenuPopupIds(request.ids, "Application-menu popup ids");
-  }
-
-  assertString(request.activeHoverTarget, "Application-menu popup active hover target");
-  if (!Array.isArray(request.hoverTargets) || request.hoverTargets.length === 0) {
-    throw new TypeError("Application-menu popup hoverTargets must be a non-empty array");
-  }
-  request.hoverTargets.forEach(validateApplicationMenuPopupHoverTarget);
-  const hoverTargetKeys = request.hoverTargets.map(({ key }) => key);
-  if (new Set(hoverTargetKeys).size !== hoverTargetKeys.length) {
-    throw new TypeError("Application-menu popup hover target keys must be unique");
-  }
-  const activeHoverTarget = request.hoverTargets.find(
-    ({ key }) => key === request.activeHoverTarget,
-  );
-  if (!activeHoverTarget) {
-    throw new TypeError("Application-menu popup active hover target must name a hover target");
-  }
-
-  const visibleIds = request.hoverTargets.flatMap((target) =>
-    target.kind === "submenu" ? [target.id] : target.ids,
-  );
-  if (new Set(visibleIds).size !== visibleIds.length) {
-    throw new TypeError("Application-menu popup hover target ids must be unique across targets");
-  }
-
-  const activeTargetMatchesRequest =
-    request.kind === "submenu"
-      ? (activeHoverTarget.kind === "submenu" && activeHoverTarget.id === request.id) ||
-        (activeHoverTarget.kind === "overflow" && activeHoverTarget.ids.includes(request.id))
-      : activeHoverTarget.kind === "overflow" &&
-        activeHoverTarget.ids.length === request.ids.length &&
-        request.ids.every((id) => activeHoverTarget.ids.includes(id));
-  if (!activeTargetMatchesRequest) {
-    throw new TypeError("Application-menu popup active hover target does not match the popup");
-  }
-
-  return request;
-}
-
 function assertOptionalString(value, name) {
   if (value != null && typeof value !== "string") {
     throw new TypeError(`${name} must be a string when provided`);
@@ -378,7 +239,9 @@ const handleWindowAction = async (event, action, ...args) => {
     // crossing IPC when teardown unregisters their renderer. Neither can be
     // applied without the registered BrowserWindow, so discard only these
     // stale, non-mutating actions; every other action keeps strict validation.
-    if (action === "updateApplicationMenu" || action === "loaded") return;
+    if (action === "updateApplicationMenu" || action === "loaded" || action === "setSheetOffset") {
+      return;
+    }
     error.message = `${error.message} (window action: ${action})`;
     throw error;
   }
@@ -494,29 +357,12 @@ const handleWindowAction = async (event, action, ...args) => {
       const { width, height } = screen.getPrimaryDisplay().workAreaSize;
       return { width, height };
     }
-    case "setAutoHideMenuBar":
-      assertBoolean(args[0], "autoHide");
-      window.setAutoHideMenuBar(args[0]);
-      return;
-    case "setMenuBarVisibility":
-      assertBoolean(args[0], "visible");
-      window.setMenuBarVisibility(args[0]);
-      return;
-    case "showApplicationMenuPopup": {
-      if (args.length !== 1) {
-        throw new TypeError("Application-menu popup action requires exactly one request");
+    case "setSheetOffset":
+      if (args.length !== 1 || !Number.isInteger(args[0]) || args[0] < 0) {
+        throw new TypeError("sheet offset must be a non-negative integer");
       }
-      const request = validateApplicationMenuPopupRequest(args[0]);
-      const applicationMenu = currentApplication().applicationMenu;
-      return applicationMenu ? applicationMenu.showPopup(window, request) : false;
-    }
-    case "closeApplicationMenuPopup": {
-      if (args.length !== 0) {
-        throw new TypeError("Application-menu popup close action takes no arguments");
-      }
-      const applicationMenu = currentApplication().applicationMenu;
-      return applicationMenu ? applicationMenu.closePopup(window) : false;
-    }
+      if (process.platform === "darwin") window.setSheetOffset(args[0]);
+      return;
     case "openDevTools":
       lumineWindow.openDevTools();
       return;
@@ -562,7 +408,13 @@ const handleWindowAction = async (event, action, ...args) => {
       window.emit("window:locations-opened");
       return;
     case "updateApplicationMenu":
-      if (!Array.isArray(args[0]) || !args[1] || typeof args[1] !== "object") {
+      if (
+        args.length !== 2 ||
+        !Array.isArray(args[0]) ||
+        !args[1] ||
+        typeof args[1] !== "object" ||
+        Array.isArray(args[1])
+      ) {
         throw new TypeError("Application-menu data must be serializable template and keymap data");
       }
       if (currentApplication().applicationMenu) {
@@ -619,14 +471,6 @@ const handleWindowBroadcast = (event, eventName, ...args) => {
 };
 ipcMain.handle("lumine:window-broadcast", handleWindowBroadcast);
 
-const handleContextMenu = (event, template) => {
-  const lumineWindow = currentLumineWindow(event);
-  if (!Array.isArray(template)) throw new TypeError("Context menu template must be an array");
-  const ContextMenu = require("./context-menu");
-  new ContextMenu(template, lumineWindow);
-};
-ipcMain.handle("lumine:context-menu", handleContextMenu);
-
 // Render a complete HTML document to a PDF file.
 //
 // A package cannot do this itself: `BrowserWindow` is main-process only, and
@@ -641,6 +485,7 @@ ipcMain.handle("lumine:context-menu", handleContextMenu);
 const printHtmlToPDF = async (html, outputPath, options) => {
   const sourcePath = path.join(app.getPath("temp"), `lumine-print-${crypto.randomUUID()}.html`);
   const printWindow = new BrowserWindow({
+    frame: false,
     show: false,
     webPreferences: {
       javascript: false,
@@ -941,7 +786,11 @@ module.exports = class LumineApplication extends EventEmitter {
 
     global.lumineApplication = this;
 
-    this.applicationMenu = new ApplicationMenu(this.version);
+    this.applicationMenu = null;
+    if (process.platform === "darwin") {
+      const MacApplicationMenu = require("./application-menu");
+      this.applicationMenu = new MacApplicationMenu(this.version);
+    }
     this.lumineProtocolHandler = new LumineProtocolHandler(
       this.resourcePath,
       this.safeMode,
@@ -978,7 +827,6 @@ module.exports = class LumineApplication extends EventEmitter {
     if (!this.configFilePromise) {
       this.configFilePromise = this.configFile.watch().then((disposable) => {
         this.disposable.add(disposable);
-        this.config.onDidChange("core.titleBar", () => this.promptForRestart());
         this.config.onDidChange("core.colorProfile", () => this.promptForRestart());
         this.config.onDidChange("core.allowWindowTransparency", () => this.promptForRestart());
       });
@@ -2708,7 +2556,6 @@ class WindowStack {
 
 Object.assign(module.exports, {
   handleAppAction,
-  handleContextMenu,
   handleSafeStorageAction,
   handleWindowAction,
   handleWindowBootstrap,

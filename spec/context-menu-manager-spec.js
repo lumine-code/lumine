@@ -1,14 +1,14 @@
 const ContextMenuManager = require("../src/context-menu-manager");
 
 describe("ContextMenuManager", function () {
-  let [contextMenu, applicationDelegate, parent, child, grandchild] = [];
+  let [contextMenu, menuManager, parent, child, grandchild] = [];
 
   beforeEach(function () {
     const resourcePath = lumine.application.getResourcePath();
-    applicationDelegate = {
-      showContextMenu: jasmine.createSpy("showContextMenu").and.returnValue(Promise.resolve()),
+    menuManager = {
+      showPopup: jasmine.createSpy("showPopup").and.returnValue({ close() {} }),
     };
-    contextMenu = new ContextMenuManager({ keymapManager: lumine.keymaps, applicationDelegate });
+    contextMenu = new ContextMenuManager({ keymapManager: lumine.keymaps, menuManager });
     contextMenu.initialize({ resourcePath });
 
     parent = document.createElement("div");
@@ -31,11 +31,12 @@ describe("ContextMenuManager", function () {
     document.body.removeChild(parent);
   });
 
-  it("keeps the DOM target local and sends only a serializable menu template", async () => {
+  it("shows the HTML popup against the DOM target", () => {
     const template = [{ label: "Run", command: "package:run" }];
-    await contextMenu.show(grandchild, template);
-    expect(contextMenu.activeElement).toBe(grandchild);
-    expect(applicationDelegate.showContextMenu).toHaveBeenCalledWith(template);
+    contextMenu.show(grandchild, template);
+    expect(menuManager.showPopup.calls.mostRecent().args[0]).toEqual(
+      jasmine.objectContaining({ template, target: grandchild, anchor: grandchild }),
+    );
   });
 
   describe("::add(itemsBySelector)", function () {
@@ -412,40 +413,40 @@ describe("ContextMenuManager", function () {
 
     afterEach(() => keymaps.dispose());
 
-    it("adds Electron-style accelerators to items that have keybindings", function () {
+    it("adds humanized labels to items that have keybindings", function () {
       const dispatchedEvent = { target: child };
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([
         {
           label: "My Command",
           id: "My Command",
           command: "test:my-command",
-          accelerator: "Ctrl+A",
+          keyBindingLabel: "Ctrl+A",
           submenu: [
             {
               label: "My Other Command",
               id: "My Other Command",
               command: "test:my-other-command",
-              accelerator: "Shift+B",
+              keyBindingLabel: "Shift+B",
             },
           ],
         },
       ]);
     });
 
-    it("adds accelerators declared on an ancestor of the right-clicked element", function () {
+    it("adds labels for bindings declared on an ancestor of the target", function () {
       const dispatchedEvent = { target: grandchild };
       expect(contextMenu.templateForEvent(dispatchedEvent)).toEqual([
         {
           label: "My Command",
           id: "My Command",
           command: "test:my-command",
-          accelerator: "Ctrl+A",
+          keyBindingLabel: "Ctrl+A",
           submenu: [
             {
               label: "My Other Command",
               id: "My Other Command",
               command: "test:my-other-command",
-              accelerator: "Shift+B",
+              keyBindingLabel: "Shift+B",
             },
           ],
         },
@@ -477,9 +478,8 @@ describe("ContextMenuManager", function () {
     jasmine.itWithDocumentFocus(
       "resolves accelerators at the right-clicked element, not the focused one",
       function () {
-        // The command dispatches at the element that was right-clicked —
-        // `show` records it and `dispatchContextMenuCommand` dispatches there —
-        // so the keystroke advertised beside it has to be resolved there too.
+        // The HTML popup dispatches directly at the element that was
+        // right-clicked, so the advertised keystroke resolves there too.
         grandchild.focus();
         expect(contextMenu.templateForEvent({ target: parent })).toEqual([
           {
@@ -502,13 +502,13 @@ describe("ContextMenuManager", function () {
             label: "My Command",
             id: "My Command",
             command: "test:my-command",
-            accelerator: "Ctrl+A",
+            keyBindingLabel: "Ctrl+A",
             submenu: [
               {
                 label: "My Other Command",
                 id: "My Other Command",
                 command: "test:my-other-command",
-                accelerator: "Shift+B",
+                keyBindingLabel: "Shift+B",
               },
             ],
           },
@@ -522,20 +522,20 @@ describe("ContextMenuManager", function () {
           label: "My Command",
           id: "My Command",
           command: "test:my-command",
-          accelerator: "Ctrl+A",
+          keyBindingLabel: "Ctrl+A",
           submenu: [
             {
               label: "My Other Command",
               id: "My Other Command",
               command: "test:my-other-command",
-              accelerator: "Shift+B",
+              keyBindingLabel: "Shift+B",
             },
           ],
         },
       ]);
     });
 
-    it("does not add accelerators for multi-keystroke key bindings", function () {
+    it("humanizes multi-keystroke key bindings", function () {
       lumine.keymaps.add("source", {
         ".child": {
           "ctrl-a ctrl-b": "test:multi-keystroke-command",
@@ -557,7 +557,7 @@ describe("ContextMenuManager", function () {
           label: "Multi-keystroke command",
           id: `Multi-keystroke command`,
           command: "test:multi-keystroke-command",
-          multiKeystrokeLabel: keystrokeLabel,
+          keyBindingLabel: keystrokeLabel,
         },
       ]);
     });

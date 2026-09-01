@@ -1,0 +1,244 @@
+:root {
+  --menu-font-family: var(--font-family);
+  --menu-font-size: var(--font-size);
+  --menu-item-height: 28px;
+  --menu-item-padding: 14px;
+  --menu-item-margin: 3px;
+  --menu-item-radius: 4px;
+  --menu-box-radius: 6px;
+  --menu-box-min-width: 200px;
+  --menu-box-shadow: 0 2px 8px rgb(0 0 0 / 16%);
+  --menu-bar-label-padding: 8px;
+  --menu-bar-label-radius: 0;
+  --menu-transition-fast: 0.05s;
+  --menu-transition-normal: 0.1s;
+}
+
+lumine-context-view .menu-box,
+lumine-context-view .context-view-surface.menu-box {
+  min-width: var(--menu-box-min-width);
+  padding: 6px 0;
+  border: 1px solid var(--overlay-border-color);
+  border-radius: var(--menu-box-radius);
+  background-color: var(--overlay-background-color);
+  box-shadow: var(--menu-box-shadow);
+  color: var(--text-color);
+  font-family: var(--menu-font-family);
+  font-size: var(--menu-font-size);
+  font-weight: 400;
+  overflow-x: hidden;
+  overflow-y: auto;
+  contain: layout style;
+
+  .menu-separator,
+  > hr {
+    height: 1px;
+    margin: 4px 0;
+    border: none;
+    background-color: var(--base-border-color);
+  }
+
+  .menu-item {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: var(--menu-item-height);
+    margin: 0 var(--menu-item-margin);
+    padding: 0 var(--menu-item-padding);
+    border-radius: var(--menu-item-radius);
+    outline: none;
+    color: var(--text-color);
+    transition: background-color var(--menu-transition-fast) ease;
+
+    &.disabled {
+      color: var(--text-color-subtle);
+      pointer-events: none;
+    }
+
+    &.invisible {
+      display: none;
+    }
+
+    &.selected:not(.disabled),
+    &:hover:not(.disabled) {
+      background-color: var(--background-color-highlight);
+    }
+
+    &:active:not(.disabled) {
+      background-color: var(--background-color-selected);
+    }
+
+    &.checked::before {
+      content: "✓";
+      position: absolute;
+      left: 4px;
+    }
+
+    .menu-item-name,
+    .menu-item-keystroke {
+      white-space: nowrap;
+    }
+
+    .menu-item-keystroke {
+      display: inline-flex;
+      align-items: center;
+      height: 100%;
+      margin-left: 24px;
+      color: var(--text-color-subtle);
+      font-size: var(--menu-font-size);
+    }
+
+    &.has-submenu > .menu-item-keystroke::after {
+      content: "";
+      display: block;
+      width: 0;
+      height: 0;
+      margin-right: -4px;
+      margin-left: 8px;
+      border-top: 4px solid transparent;
+      border-bottom: 4px solid transparent;
+      border-left: 5px solid currentColor;
+      opacity: 0.7;
+    }
+  }
+
+  /* While the pointer is inside this list, :hover is the sole visible row
+     state. Selection remains in the model for keyboard navigation and for an
+     open submenu, then becomes visible again when the pointer enters that
+     submenu's separate portal. */
+  &:hover .menu-item.selected:not(:hover) {
+    background-color: transparent;
+  }
+
+  /* An open submenu owns its parent-row highlight only after the pointer has
+     left this list for the separately portaled submenu. */
+  &:not(:hover) .menu-item.open:not(.disabled) {
+    background-color: var(--background-color-highlight);
+  }
+}
+
+lumine-context-view .menu-popup-panel:not(.context-view-surface) {
+  position: fixed;
+  pointer-events: auto;
+}
+
+lumine-context-view.application-menu-popup
+  .menu-box
+  > .menu-separator:is(:first-child, :last-child) {
+  display: none;
+}
+
+/* Put popup scrollbars on the inner/left edge. Each row restores LTR so only
+   the scroll container, not authored menu text, changes direction. */
+lumine-context-view :is(.menu-box, .select-box-list) {
+  direction: rtl;
+
+  > * {
+    direction: ltr;
+  }
+
+  &::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+    background: transparent;
+  }
+
+  &::-webkit-scrollbar-track {
+    background: var(--scrollbar-background-color);
+    border-radius: var(--menu-box-radius) 0 0 var(--menu-box-radius);
+  }
+
+  &::-webkit-scrollbar-thumb {
+    border: 3px solid var(--scrollbar-background-color);
+    border-radius: 5px;
+    background: var(--scrollbar-color);
+    background-clip: content-box;
+  }
+
+  &::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+}
+
+/* Chromium does not match held scrollbar-part selectors reliably when these
+   two rules are nested. */
+lumine-context-view :is(.menu-box, .select-box-list)::-webkit-scrollbar-thumb:vertical:active {
+  border-right-width: 0;
+  border-left-width: 0;
+  border-radius: 0;
+}
+
+lumine-context-view :is(.menu-box, .select-box-list)::-webkit-scrollbar-thumb:horizontal:active {
+  border-top-width: 0;
+  border-bottom-width: 0;
+  border-radius: 0;
+}
+
+.app-menu {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  cursor: default;
+
+  &.no-menu-bar .menu-label {
+    opacity: 0;
+    transform: translateX(-12px);
+    pointer-events: none;
+  }
+
+  .menu-label {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    box-sizing: border-box;
+    height: 100%;
+    padding: 0 var(--menu-bar-label-padding);
+    outline: none;
+    color: var(--text-color);
+    opacity: 1;
+    transform: translateX(0);
+    transition:
+      opacity var(--menu-transition-normal) ease,
+      transform var(--menu-transition-normal) ease;
+    white-space: nowrap;
+
+    &::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      border-radius: var(--menu-bar-label-radius);
+      background-color: transparent;
+      transition: background-color var(--menu-transition-normal) ease;
+    }
+
+    &:hover::before,
+    &.focused::before,
+    &.open::before {
+      background-color: var(--background-color-highlight);
+    }
+
+    &:active::before {
+      background-color: var(--background-color-selected);
+    }
+
+    u {
+      text-decoration: none;
+    }
+
+    &.focused u,
+    &.open u {
+      text-decoration: underline;
+    }
+
+    &.overflowed {
+      display: none;
+    }
+  }
+
+  &.focused .menu-label u,
+  &.alt-down .menu-label u {
+    text-decoration: underline;
+  }
+}

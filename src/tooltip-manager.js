@@ -84,6 +84,11 @@ module.exports = class TooltipManager {
     this.keymapManager = keymapManager;
     this.viewRegistry = viewRegistry;
     this.tooltips = new Map();
+    this.tooltipCancellationEvents = ["click", "contextmenu", "auxclick"];
+    this.boundPointerAction = (event) => this.cancelTooltipsForPointerAction(event);
+    for (const eventName of this.tooltipCancellationEvents) {
+      window.addEventListener(eventName, this.boundPointerAction, true);
+    }
   }
 
   /**
@@ -103,7 +108,7 @@ module.exports = class TooltipManager {
    * @param options.trigger.'hover' - Show the tooltip when the mouse hovers over the element. This is the default.
    * @param options.trigger.'click' - Show the tooltip when the element is clicked. The tooltip will be hidden after clicking the element again or anywhere else outside of the tooltip itself.
    * @param options.trigger.'focus' - Show the tooltip when the element is focused.
-   * @param options.trigger.'manual' - Show the tooltip immediately and only hide it when the returned disposable is disposed.
+   * @param options.trigger.'manual' - Show the tooltip immediately. A click hides it; disposing the returned object removes it permanently.
    * @param options.delay - An object specifying the show and hide delay in milliseconds. Defaults to `{show: 1000, hide: 100}` if the `trigger` is `hover` and otherwise defaults to `0` for both values.
    * @param options.keyBindingCommand - A `String` containing a command name. If you specify this option and a key binding exists that matches the command, it will be appended to the title or rendered alone if no title is specified.
    * @param options.keyBindingTarget - An `HTMLElement` on which to look up the key binding. If this option is not supplied, the first of all matching key bindings for the given command will be rendered.
@@ -257,6 +262,35 @@ module.exports = class TooltipManager {
     } else {
       return [];
     }
+  }
+
+  cancelTooltipsForPointerAction(event) {
+    for (const [target, tooltips] of this.tooltips) {
+      for (const tooltip of tooltips) {
+        const clickTriggered = tooltip.options.trigger.split(/\s+/).includes("click");
+        const clickedTrigger =
+          event.target === target ||
+          Boolean(event.target?.nodeType && target.contains(event.target));
+        // A click-triggered tooltip owns the ordinary click on its trigger: the
+        // target's toggle handler either opens it for the first time or closes
+        // it. RMB/contextmenu and auxclick are still cancellation actions.
+        if (event.type === "click" && clickTriggered && clickedTrigger) continue;
+        tooltip.cancel();
+      }
+    }
+  }
+
+  destroy() {
+    for (const eventName of this.tooltipCancellationEvents) {
+      window.removeEventListener(eventName, this.boundPointerAction, true);
+    }
+    for (const tooltips of this.tooltips.values()) {
+      for (const tooltip of tooltips) {
+        tooltip.cancel();
+        tooltip.destroy();
+      }
+    }
+    this.tooltips.clear();
   }
 };
 

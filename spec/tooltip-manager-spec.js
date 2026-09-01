@@ -25,6 +25,10 @@ describe("TooltipManager", () => {
     element = createElement("foo");
   });
 
+  afterEach(function () {
+    manager.destroy();
+  });
+
   describe("::add(target, options)", () => {
     describe("when the trigger is 'hover' (the default)", () => {
       it("creates a tooltip when hovering over the target element", () => {
@@ -186,6 +190,39 @@ describe("TooltipManager", () => {
         });
       });
 
+      it("cancels pending and visible tooltips on click", () => {
+        const disposable = manager.add(element, { title: "Title" });
+
+        mouseEnter(element);
+        element.click();
+        advanceClock(manager.hoverDefaults.delay.show);
+        expect(document.body.querySelector(".tooltip")).toBeNull();
+
+        mouseLeave(element);
+        mouseEnter(element);
+        expect(document.body.querySelector(".tooltip")).toBeNull();
+        advanceClock(manager.hoverDefaults.delay.show);
+        expect(document.body.querySelector(".tooltip")).not.toBeNull();
+        document.body.click();
+        expect(document.body.querySelector(".tooltip")).toBeNull();
+        disposable.dispose();
+      });
+
+      it("cancels a tooltip on RMB even when the target intercepts contextmenu", () => {
+        const disposable = manager.add(element, { title: "Title" });
+        element.addEventListener("contextmenu", (event) => event.stopPropagation());
+        mouseEnter(element);
+        advanceClock(manager.hoverDefaults.delay.show);
+        expect(document.body.querySelector(".tooltip")).not.toBeNull();
+
+        element.dispatchEvent(
+          new MouseEvent("contextmenu", { bubbles: true, cancelable: true, button: 2 }),
+        );
+
+        expect(document.body.querySelector(".tooltip")).toBeNull();
+        disposable.dispose();
+      });
+
       // A scroll moves the target out from under a pointer that never moved,
       // and no mouseout follows to say so.
       it("hides the tooltip when a scroll moves the target", () => {
@@ -218,12 +255,14 @@ describe("TooltipManager", () => {
     });
 
     describe("when the trigger is 'manual'", () =>
-      it("creates a tooltip immediately and only hides it on dispose", () => {
+      it("creates a tooltip immediately and hides it on click", () => {
         const disposable = manager.add(element, {
           title: "Title",
           trigger: "manual",
         });
         expect(document.body.querySelector(".tooltip")).toHaveText("Title");
+        document.body.click();
+        expect(document.body.querySelector(".tooltip")).toBeNull();
         disposable.dispose();
         expect(document.body.querySelector(".tooltip")).toBeNull();
       }));
@@ -237,12 +276,13 @@ describe("TooltipManager", () => {
         element.click();
         expect(document.body.querySelector(".tooltip")).toBeNull();
 
-        // Hide the tooltip when clicking anywhere but inside the tooltip element
+        // Any click outside the trigger hides the tooltip, including a click
+        // inside the tooltip itself.
         element.click();
         expect(document.body.querySelector(".tooltip")).not.toBeNull();
         document.body.querySelector(".tooltip").click();
-        expect(document.body.querySelector(".tooltip")).not.toBeNull();
-        document.body.querySelector(".tooltip").firstChild.click();
+        expect(document.body.querySelector(".tooltip")).toBeNull();
+        element.click();
         expect(document.body.querySelector(".tooltip")).not.toBeNull();
         document.body.click();
         expect(document.body.querySelector(".tooltip")).toBeNull();

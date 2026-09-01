@@ -921,6 +921,9 @@ describe("LumineApplication", function () {
         await LumineApplication.handleWindowAction(staleEvent, "updateApplicationMenu", [], {}),
       );
       assert.isUndefined(await LumineApplication.handleWindowAction(staleEvent, "loaded"));
+      assert.isUndefined(
+        await LumineApplication.handleWindowAction(staleEvent, "setSheetOffset", 0),
+      );
       await LumineApplication.handleWindowAction(staleEvent, "getState").then(
         () => assert.fail("a stale sender could perform a window action"),
         (error) => assert.match(error.message, /not a registered Lumine window/),
@@ -959,8 +962,7 @@ describe("LumineApplication", function () {
       window.isMaximized = sinon.stub().returns(true);
       window.isFullScreen = sinon.stub().returns(false);
       window.isVisible = sinon.stub().returns(true);
-      window.setAutoHideMenuBar = sinon.spy();
-      window.setMenuBarVisibility = sinon.spy();
+      window.setSheetOffset = sinon.spy();
       contents.focus = sinon.spy();
       contents.downloadURL = sinon.spy();
       contents.openDevTools = sinon.spy();
@@ -1000,8 +1002,7 @@ describe("LumineApplication", function () {
       await LumineApplication.handleWindowAction(event, "unmaximize");
       await LumineApplication.handleWindowAction(event, "setFullScreen", true);
       await LumineApplication.handleWindowAction(event, "downloadURL", "https://example.test/a");
-      await LumineApplication.handleWindowAction(event, "setAutoHideMenuBar", true);
-      await LumineApplication.handleWindowAction(event, "setMenuBarVisibility", false);
+      await LumineApplication.handleWindowAction(event, "setSheetOffset", 28);
       await LumineApplication.handleWindowAction(event, "openDevTools");
       await LumineApplication.handleWindowAction(event, "closeDevTools");
       await LumineApplication.handleWindowAction(event, "toggleDevTools");
@@ -1016,8 +1017,10 @@ describe("LumineApplication", function () {
       assert.isTrue(w1.maximize.calledOnce);
       assert.isTrue(w1.setFullScreen.calledWithExactly(true));
       assert.isTrue(contents.downloadURL.calledWithExactly("https://example.test/a"));
-      assert.isTrue(window.setAutoHideMenuBar.calledWithExactly(true));
-      assert.isTrue(window.setMenuBarVisibility.calledWithExactly(false));
+      assert.strictEqual(window.setSheetOffset.called, process.platform === "darwin");
+      if (process.platform === "darwin") {
+        assert.isTrue(window.setSheetOffset.calledWithExactly(28));
+      }
       assert.isTrue(contents.openDevTools.calledOnce);
       assert.isTrue(contents.closeDevTools.calledOnce);
       assert.isTrue(contents.toggleDevTools.calledOnce);
@@ -1026,188 +1029,64 @@ describe("LumineApplication", function () {
         () => assert.fail("invalid size was accepted"),
         (error) => assert.match(error.message, /positive integer/),
       );
+      for (const args of [[], [-1], [1.5], [0, 1]]) {
+        await assert.rejects(
+          LumineApplication.handleWindowAction(event, "setSheetOffset", ...args),
+          /non-negative integer/,
+        );
+      }
       await LumineApplication.handleWindowAction(event, "not-allowlisted").then(
         () => assert.fail("unknown window action was accepted"),
         (error) => assert.match(error.message, /Unsupported window action/),
       );
     });
 
-    it("strictly validates and routes native application-menu popup actions", async function () {
+    it("strictly validates and routes macOS application-menu updates", async function () {
       const originalApplicationMenu = app.applicationMenu;
-      const applicationMenu = {
-        showPopup: sinon.stub().resolves(true),
-        closePopup: sinon.stub().returns(true),
-      };
+      const applicationMenu = { update: sinon.spy() };
       app.applicationMenu = applicationMenu;
 
       try {
         const event = { sender: w1.browserWindow.webContents };
-        const submenuHoverTarget = {
-          key: "submenu:file",
-          kind: "submenu",
-          id: "file",
-          bounds: { x: 0, y: 0, width: 40, height: 24 },
-        };
-        const submenuRequest = {
-          kind: "submenu",
-          id: "file",
-          x: 12,
-          y: 34,
-          sourceType: "mouse",
-          activeHoverTarget: "submenu:file",
-          hoverTargets: [submenuHoverTarget],
-        };
-        const overflowHoverTarget = {
-          key: "overflow",
-          kind: "overflow",
-          ids: ["file", "edit"],
-          bounds: { x: 40, y: 0, width: 30, height: 24 },
-        };
-        const overflowRequest = {
-          kind: "overflow",
-          ids: ["file", "edit"],
-          x: 56,
-          y: 78,
-          sourceType: "keyboard",
-          activeHoverTarget: "overflow",
-          hoverTargets: [overflowHoverTarget],
-        };
+        const template = [{ label: "File", submenu: [{ label: "Save", command: "core:save" }] }];
+        const keybindings = { "core:save": ["cmd-s"] };
 
-        assert.isTrue(
+        assert.isUndefined(
           await LumineApplication.handleWindowAction(
             event,
-            "showApplicationMenuPopup",
-            submenuRequest,
+            "updateApplicationMenu",
+            template,
+            keybindings,
           ),
         );
         assert.isTrue(
-          applicationMenu.showPopup.calledWithExactly(w1.browserWindow, submenuRequest),
+          applicationMenu.update.calledWithExactly(w1.browserWindow, template, keybindings),
         );
-        assert.isTrue(
-          await LumineApplication.handleWindowAction(
-            event,
-            "showApplicationMenuPopup",
-            overflowRequest,
-          ),
-        );
-        assert.isTrue(
-          applicationMenu.showPopup.calledWithExactly(w1.browserWindow, overflowRequest),
-        );
-        assert.isTrue(
-          await LumineApplication.handleWindowAction(event, "closeApplicationMenuPopup"),
-        );
-        assert.isTrue(applicationMenu.closePopup.calledWithExactly(w1.browserWindow));
 
         app.applicationMenu = null;
-        assert.isFalse(
+        assert.isUndefined(
           await LumineApplication.handleWindowAction(
             event,
-            "showApplicationMenuPopup",
-            submenuRequest,
+            "updateApplicationMenu",
+            template,
+            keybindings,
           ),
-        );
-        assert.isFalse(
-          await LumineApplication.handleWindowAction(event, "closeApplicationMenuPopup"),
         );
         app.applicationMenu = applicationMenu;
 
-        const invalidRequests = [
-          null,
-          {},
-          { ...submenuRequest, kind: "unknown" },
-          { ...submenuRequest, extra: true },
-          { ...submenuRequest, id: "" },
-          { ...submenuRequest, x: -1 },
-          { ...submenuRequest, x: 1.5 },
-          { ...submenuRequest, y: 0x80000000 },
-          { ...submenuRequest, sourceType: "touch" },
-          { ...overflowRequest, ids: [] },
-          { ...overflowRequest, ids: ["file", ""] },
-          { ...overflowRequest, ids: ["file", "file"] },
-          { ...overflowRequest, id: "file" },
-          { ...submenuRequest, activeHoverTarget: "missing" },
-          { ...submenuRequest, hoverTargets: [] },
-          {
-            ...submenuRequest,
-            hoverTargets: [{ ...submenuHoverTarget, extra: true }],
-          },
-          {
-            ...submenuRequest,
-            hoverTargets: [{ ...submenuHoverTarget, key: "" }],
-          },
-          {
-            ...submenuRequest,
-            hoverTargets: [submenuHoverTarget, { ...submenuHoverTarget, key: "duplicate-target" }],
-          },
-          {
-            ...submenuRequest,
-            hoverTargets: [
-              submenuHoverTarget,
-              { ...submenuHoverTarget, id: "edit", bounds: { x: 40, y: 0, width: 40, height: 24 } },
-            ],
-          },
-          {
-            ...submenuRequest,
-            hoverTargets: [{ ...submenuHoverTarget, bounds: { x: 0, y: 0, width: 0, height: 24 } }],
-          },
-          {
-            ...submenuRequest,
-            hoverTargets: [
-              { ...submenuHoverTarget, bounds: { x: 0.5, y: 0, width: 40, height: 24 } },
-            ],
-          },
-          {
-            ...submenuRequest,
-            hoverTargets: [
-              {
-                ...submenuHoverTarget,
-                bounds: { x: 0x7fffffff, y: 0, width: 1, height: 24 },
-              },
-            ],
-          },
-          {
-            ...submenuRequest,
-            activeHoverTarget: "overflow",
-            hoverTargets: [{ ...overflowHoverTarget, ids: ["edit"] }],
-          },
-          {
-            ...overflowRequest,
-            hoverTargets: [{ ...overflowHoverTarget, ids: ["file"] }],
-          },
-        ];
-        for (const request of invalidRequests) {
+        for (const args of [
+          [],
+          [template],
+          [null, keybindings],
+          [template, null],
+          [template, []],
+          [template, keybindings, true],
+        ]) {
           await assert.rejects(
-            LumineApplication.handleWindowAction(event, "showApplicationMenuPopup", request),
+            LumineApplication.handleWindowAction(event, "updateApplicationMenu", ...args),
             TypeError,
           );
         }
-        await assert.rejects(
-          LumineApplication.handleWindowAction(event, "showApplicationMenuPopup"),
-          TypeError,
-        );
-        await assert.rejects(
-          LumineApplication.handleWindowAction(
-            event,
-            "showApplicationMenuPopup",
-            submenuRequest,
-            submenuRequest,
-          ),
-          TypeError,
-        );
-        await assert.rejects(
-          LumineApplication.handleWindowAction(event, "closeApplicationMenuPopup", true),
-          TypeError,
-        );
-
-        const staleEvent = { sender: { id: 9003, isDestroyed: () => false } };
-        await assert.rejects(
-          LumineApplication.handleWindowAction(
-            staleEvent,
-            "showApplicationMenuPopup",
-            submenuRequest,
-          ),
-          /not a registered Lumine window/,
-        );
       } finally {
         app.applicationMenu = originalApplicationMenu;
       }

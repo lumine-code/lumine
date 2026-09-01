@@ -115,6 +115,10 @@ module.exports = class ApplicationDelegate {
     return this.invokeWindow("showSaveDialog", options);
   }
 
+  setSheetOffset(offsetY) {
+    return this.invokeWindow("setSheetOffset", offsetY);
+  }
+
   onDidOpenLocations(callback) {
     return this.ipcMessageEmitter().on("open-locations", callback);
   }
@@ -124,22 +128,6 @@ module.exports = class ApplicationDelegate {
 
     ipcRenderer.on("command", outerCallback);
     return new Disposable(() => ipcRenderer.removeListener("command", outerCallback));
-  }
-
-  onContextMenuCommand(handler) {
-    const outerCallback = (event, ...args) => handler(...args);
-
-    ipcRenderer.on("context-command", outerCallback);
-    return new Disposable(() => ipcRenderer.removeListener("context-command", outerCallback));
-  }
-
-  onDidRequestApplicationMenuPopupSwitch(callback) {
-    const outerCallback = (_event, detail) => callback(detail);
-
-    ipcRenderer.on("application-menu-popup-switch", outerCallback);
-    return new Disposable(() =>
-      ipcRenderer.removeListener("application-menu-popup-switch", outerCallback),
-    );
   }
 
   onURIMessage(handler) {
@@ -267,9 +255,5 @@ module.exports = class ApplicationDelegate {
 
   invokeSafeStorage(action, ...args) {
     return ipcRenderer.invoke("lumine:safe-storage", action, ...args);
-  }
-
-  showContextMenu(template) {
-    return ipcRenderer.invoke("lumine:context-menu", template);
   }
 };

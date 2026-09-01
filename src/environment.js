@@ -320,7 +320,7 @@ class Environment {
      */
     this.contextMenu = new ContextMenuManager({
       keymapManager: this.keymaps,
-      applicationDelegate: this.applicationDelegate,
+      menuManager: this.menu,
     });
 
     this.packages.setMenuManager(this.menu);
@@ -594,8 +594,7 @@ class Environment {
     this.disposables.add(this.styles.onDidAddStyleElement(didChangeStyles));
     this.disposables.add(this.styles.onDidUpdateStyleElement(didChangeStyles));
     this.disposables.add(this.styles.onDidRemoveStyleElement(didChangeStyles));
-
-    this.observeAutoHideMenuBar();
+    this.observeGitSettings();
 
     this.disposables.add(
       this.applicationDelegate.onDidChangeHistoryManager(() => this.history.loadState()),
@@ -674,17 +673,7 @@ class Environment {
     this.keymaps.defaultTarget = this.workspace.getElement();
   }
 
-  observeAutoHideMenuBar() {
-    this.disposables.add(
-      this.config.onDidChange("core.autoHideMenuBar", ({ newValue }) => {
-        if (newValue === undefined) {
-          newValue = true;
-        }
-        this.#setAutoHideMenuBar(newValue);
-      }),
-    );
-    if (this.config.get("core.autoHideMenuBar")) this.#setAutoHideMenuBar(true);
-
+  observeGitSettings() {
     // The git-host worker reads git.* settings from its fork environment,
     // so restart it when they change; the next Git command lazily re-forks with
     // the new values.
@@ -752,6 +741,7 @@ class Environment {
     this.emitter.emit("will-destroy");
 
     this.menu.destroy();
+    this.tooltips.destroy();
     this.disposables.dispose();
     if (this.workspaceDrops) this.workspaceDrops.destroy();
     this.workspaceDrops = null;
@@ -946,9 +936,6 @@ class Environment {
         ),
       );
       this.disposables.add(
-        this.applicationDelegate.onContextMenuCommand(this.dispatchContextMenuCommand.bind(this)),
-      );
-      this.disposables.add(
         this.applicationDelegate.onURIMessage(this.dispatchURIMessage.bind(this)),
       );
       this.disposables.add(
@@ -970,10 +957,6 @@ class Environment {
       StartupTime.addMarker("window:environment:start-editor-window:deserialize-state");
       await this.deserialize(state);
       this.deserializeTimings.lumine = Date.now() - startTime;
-
-      if (this.config.get("core.titleBar") === "hidden") {
-        this.document.body.classList.add("hidden-title-bar");
-      }
 
       this.document.body.appendChild(this.workspace.getElement());
       if (this.backgroundStylesheet) this.backgroundStylesheet.remove();
@@ -1429,7 +1412,6 @@ class Environment {
     if (!state) return Promise.resolve();
 
     await this.window.setFullScreen(Boolean(state.fullScreen));
-    this.#setAutoHideMenuBar(this.config.get("core.autoHideMenuBar"));
 
     const missingProjectPaths = [];
 
@@ -1519,14 +1501,6 @@ class Environment {
     this.document.body.classList.add(`platform-${process.platform}`);
   }
 
-  #setAutoHideMenuBar(autoHide) {
-    autoHide = Boolean(autoHide);
-    return Promise.all([
-      this.window.setAutoHideMenuBar(autoHide),
-      this.window.setMenuBarVisibility(!autoHide),
-    ]);
-  }
-
   dispatchApplicationMenuCommand(command, arg) {
     let { activeElement } = this.document;
     // Use the workspace element if body has focus
@@ -1534,10 +1508,6 @@ class Environment {
       activeElement = this.workspace.getElement();
     }
     this.commands.dispatch(activeElement, command, arg);
-  }
-
-  dispatchContextMenuCommand(command, ...args) {
-    this.commands.dispatch(this.contextMenu.activeElement, command, args);
   }
 
   dispatchURIMessage(uri) {

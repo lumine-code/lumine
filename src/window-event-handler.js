@@ -17,7 +17,6 @@ module.exports = class WindowEventHandler {
     this.handleWindowClose = this.handleWindowClose.bind(this);
     this.handleWindowReload = this.handleWindowReload.bind(this);
     this.handleWindowToggleDevTools = this.handleWindowToggleDevTools.bind(this);
-    this.handleWindowToggleMenuBar = this.handleWindowToggleMenuBar.bind(this);
     this.handleLinkClick = this.handleLinkClick.bind(this);
     this.handleDocumentContextmenu = this.handleDocumentContextmenu.bind(this);
     this.handleDrop = this.handleDrop.bind(this);
@@ -48,14 +47,6 @@ module.exports = class WindowEventHandler {
         "window:toggle-dev-tools": this.handleWindowToggleDevTools,
       }),
     );
-
-    if (["win32", "linux"].includes(process.platform)) {
-      this.subscriptions.add(
-        this.lumineEnvironment.commands.add(this.window, {
-          "window:toggle-menu-bar": this.handleWindowToggleMenuBar,
-        }),
-      );
-    }
 
     this.subscriptions.add(
       this.lumineEnvironment.commands.add(this.document, {
@@ -280,18 +271,6 @@ module.exports = class WindowEventHandler {
 
   handleWindowToggleDevTools() {
     this.lumineEnvironment.window.toggleDevTools();
-  }
-
-  handleWindowToggleMenuBar() {
-    this.lumineEnvironment.config.set(
-      "core.autoHideMenuBar",
-      !this.lumineEnvironment.config.get("core.autoHideMenuBar"),
-    );
-
-    if (this.lumineEnvironment.config.get("core.autoHideMenuBar")) {
-      const detail = "To toggle, press the Alt key or execute the window:toggle-menu-bar command";
-      this.lumineEnvironment.notifications.addHint("Menu bar hidden", { detail });
-    }
   }
 
   handleLinkClick(event) {

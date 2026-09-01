@@ -223,6 +223,12 @@ module.exports = function ({
       "application:open-api-reference": function () {
         return ipcRenderer.send("command", "application:open-api-reference");
       },
+      "application:report-issue": function () {
+        return ipcRenderer.send("command", "application:report-issue");
+      },
+      "application:search-issues": function () {
+        return ipcRenderer.send("command", "application:search-issues");
+      },
       "window:run-package-specs": {
         description: "Run the spec suite of the package this window has open.",
         didDispatch: function () {

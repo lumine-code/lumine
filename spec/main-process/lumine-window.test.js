@@ -139,9 +139,7 @@ describe("LumineWindow", function () {
       }
     });
 
-    it('sets frame to "false" for a hidden title bar on non-spec windows', function () {
-      app.config["core.titleBar"] = "hidden";
-
+    it("creates every editor and spec window without a native frame", function () {
       const { browserWindow: w0 } = new LumineWindow(app, service, {
         browserWindowConstructor: StubBrowserWindow,
       });
@@ -151,7 +149,7 @@ describe("LumineWindow", function () {
         browserWindowConstructor: StubBrowserWindow,
         isSpec: true,
       });
-      assert.isUndefined(w1.options.frame);
+      assert.isFalse(w1.options.frame);
     });
 
     it("opens initial locations", async function () {
@@ -686,10 +684,7 @@ describe("LumineWindow", function () {
 
 class StubApplication {
   constructor(sinon) {
-    this.config = {
-      "core.titleBar": "hidden",
-      get: (key) => this.config[key] || null,
-    };
+    this.config = { get: (key) => this.config[key] || null };
     this.configFile = {
       path: "stub-config-path",
       get() {

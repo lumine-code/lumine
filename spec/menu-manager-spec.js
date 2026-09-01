@@ -125,8 +125,7 @@ describe("MenuManager", function () {
   });
 
   describe("::update()", function () {
-    const originalPlatform = process.platform;
-    afterEach(() => Object.defineProperty(process, "platform", { value: originalPlatform }));
+    beforeEach(() => (menu.platform = "darwin"));
 
     it("sends the current menu template and associated key bindings to the browser process", function () {
       menu.add([{ label: "A", submenu: [{ label: "B", command: "b" }] }]);
@@ -154,7 +153,6 @@ describe("MenuManager", function () {
     });
 
     it("omits key bindings that could conflict with AltGraph characters on macOS", function () {
-      Object.defineProperty(process, "platform", { value: "darwin" });
       menu.add([
         {
           label: "A",
@@ -178,33 +176,6 @@ describe("MenuManager", function () {
       expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toBeUndefined();
       expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["c"]).toBeUndefined();
       expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["d"]).toEqual(["alt-cmd-d"]);
-    });
-
-    it("omits key bindings that could conflict with AltGraph characters on Windows", function () {
-      Object.defineProperty(process, "platform", { value: "win32" });
-      menu.add([
-        {
-          label: "A",
-          submenu: [
-            { label: "B", command: "b" },
-            { label: "C", command: "c" },
-            { label: "D", command: "d" },
-          ],
-        },
-      ]);
-
-      lumine.keymaps.add("test", {
-        "lumine-workspace": {
-          "ctrl-alt-b": "b",
-          "ctrl-alt-shift-c": "c",
-          "ctrl-alt-cmd-d": "d",
-        },
-      });
-
-      advanceClock(1);
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["b"]).toBeUndefined();
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["c"]).toBeUndefined();
-      expect(menu.sendToBrowserProcess.calls.argsFor(0)[1]["d"]).toEqual(["ctrl-alt-cmd-d"]);
     });
 
     it("collects a command that names something on Object.prototype", function () {

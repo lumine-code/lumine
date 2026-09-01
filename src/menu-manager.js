@@ -3,8 +3,9 @@ const _ = require("@lumine-code/underscore-plus");
 const { ipcRenderer } = require("electron");
 const CSON = require("@lumine-code/season");
 const fs = require("@lumine-code/fs-plus");
-const { CompositeDisposable, Disposable } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const MenuHelpers = require("./menu-helpers");
+const ContextViewManager = require("./context-view-manager");
 
 const buildMetadata = require("../package.json");
 var platformMenu;
@@ -70,13 +71,16 @@ if (buildMetadata) {
  * See {@link #add} for more information about adding menus directly.
  */
 module.exports = class MenuManager {
-  constructor({ resourcePath, keymapManager, packageManager }) {
+  constructor({ resourcePath, keymapManager, packageManager, platform = process.platform }) {
     this.resourcePath = resourcePath;
     this.keymapManager = keymapManager;
     this.packageManager = packageManager;
+    this.platform = platform;
     this.initialized = false;
     this.pendingUpdateOperation = null;
     this.disposables = new CompositeDisposable();
+    this.emitter = new Emitter();
+    this.contextViewManager = null;
     this.template = [];
     // Top-level menus the platform file declares. They belong to the menu bar
     // rather than to whichever package fills them, so `unmerge` must not splice
@@ -94,6 +98,7 @@ module.exports = class MenuManager {
 
   initialize({ resourcePath }) {
     this.resourcePath = resourcePath;
+    this.contextViewManager ??= new ContextViewManager();
     this.disposables.add(this.keymapManager.onDidReloadKeymap(() => this.update()));
     this.update();
     this.initialized = true;
@@ -106,6 +111,76 @@ module.exports = class MenuManager {
       this.pendingUpdateOperation = null;
     }
     this.disposables.dispose();
+    this.contextViewManager?.destroy();
+    this.contextViewManager = null;
+    this.emitter.dispose();
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Invoke `callback` whenever the canonical application-menu template or the
+   * key bindings displayed beside its commands change.
+   *
+   * @param {Function} callback
+   * @returns {Disposable}
+   */
+  onDidChange(callback) {
+    return this.emitter.on("did-change", callback);
+  }
+
+  getTemplate() {
+    return _.deepClone(this.template);
+  }
+
+  ensureContextViewManager() {
+    this.contextViewManager ??= new ContextViewManager();
+    return this.contextViewManager;
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Create an HTML application-menu bar bound to this manager's live template.
+   *
+   * @param {Object} options
+   * @returns {Object} a disposable menu-bar controller and its `element`.
+   */
+  createMenuBar(options = {}) {
+    const MenuBarView = require("./menu-bar-view");
+    this.ensureContextViewManager();
+    return new MenuBarView(this, options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Show a theme-aware HTML command menu at an element, pointer event, or rect.
+   *
+   * @param {Object} options
+   * @returns {Object} a disposable popup controller.
+   */
+  showPopup(options = {}) {
+    const { showMenuPopup } = require("./menu-view");
+    return showMenuPopup(this.ensureContextViewManager(), options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
+   * Create a theme-aware single-choice control with an HTML listbox popup.
+   *
+   * @param {Object} options
+   * @returns {Object} a disposable select-box controller and its `element`.
+   */
+  createSelectBox(options = {}) {
+    const SelectBoxView = require("./select-box-view");
+    this.ensureContextViewManager();
+    return new SelectBoxView(this, options);
   }
 
   /**
@@ -223,9 +298,14 @@ module.exports = class MenuManager {
    * Refreshes the currently visible menu.
    */
   update() {
+    this.emitter.emit("did-change", this.getTemplate());
     if (!this.initialized) {
       return;
     }
+    // Only macOS presents the application template in the main process. The
+    // HTML menu bar on Windows and Linux reads `this.template` directly and
+    // resolves displayed bindings when it opens.
+    if (this.platform !== "darwin") return;
     if (this.pendingUpdateOperation != null) {
       clearTimeout(this.pendingUpdateOperation);
     }
@@ -255,10 +335,10 @@ module.exports = class MenuManager {
           if (unsetKeystrokes.has(binding.keystrokes)) {
             continue;
           }
-          if (process.platform === "darwin" && /^alt-(shift-)?.$/.test(binding.keystrokes)) {
+          if (this.platform === "darwin" && /^alt-(shift-)?.$/.test(binding.keystrokes)) {
             continue;
           }
-          if (process.platform === "win32" && /^ctrl-alt-(shift-)?.$/.test(binding.keystrokes)) {
+          if (this.platform === "win32" && /^ctrl-alt-(shift-)?.$/.test(binding.keystrokes)) {
             continue;
           }
           if (keystrokesByCommand[binding.command] == null) {
@@ -301,6 +381,7 @@ module.exports = class MenuManager {
   }
 
   sendToBrowserProcess(template, keystrokesByCommand) {
+    if (this.platform !== "darwin") return;
     if (global.lumine?.isDestroying || global.lumine?.unloading) return;
     void ipcRenderer
       .invoke("lumine:window", "updateApplicationMenu", template, keystrokesByCommand)

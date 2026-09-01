@@ -1,0 +1,18 @@
+:root {
+  --context-view-z-index: 99999;
+}
+
+lumine-context-view.context-view {
+  position: fixed;
+  inset: 0;
+  z-index: var(--context-view-z-index);
+  pointer-events: none;
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+
+  > .context-view-surface {
+    position: fixed;
+    pointer-events: auto;
+  }
+}
