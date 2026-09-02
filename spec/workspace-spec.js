@@ -1,4 +1,5 @@
 const path = require("path");
+const etch = require("@lumine-code/etch");
 const temp = require("@lumine-code/temp").track();
 const dedent = require("dedent");
 const TextBuffer = require("../src/text-buffer");
@@ -73,6 +74,9 @@ describe("Workspace", () => {
       styleManager: lumine.styles,
       deserializerManager: lumine.deserializers,
       notificationManager: lumine.notifications,
+      commandRegistry: lumine.commands,
+      keymapManager: lumine.keymaps,
+      tooltipManager: lumine.tooltips,
       applicationDelegate: lumine.applicationDelegate,
       viewRegistry: lumine.views,
       assert: lumine.assert.bind(lumine),
@@ -2294,8 +2298,8 @@ describe("Workspace", () => {
         },
       });
 
-      list.refs.queryEditor.setText("al");
-      await list.constructor.getScheduler().getNextUpdatePromise();
+      list.getQueryEditor().setText("al");
+      await etch.getScheduler().getNextUpdatePromise();
 
       const matches = list.element.querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["al"]);
@@ -2362,7 +2366,7 @@ describe("Workspace", () => {
       let confirmed = null;
       const dialog = build({ didConfirm: (query) => (confirmed = query) });
 
-      dialog.refs.queryEditor.setText("a-name");
+      dialog.getQueryEditor().setText("a-name");
       dialog.confirm();
 
       expect(confirmed).toBe("a-name");

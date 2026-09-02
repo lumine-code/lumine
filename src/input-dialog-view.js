@@ -40,7 +40,7 @@ const INTERACTIVE_SELECTOR =
  *
  * Custom DOM can be hosted through `headerElement` (above the query editor)
  * and `contentElement` (below the messages). The `checkboxes` prop renders a
- * row of checkboxes; a checkbox with a `config` key is bound to `lumine.config`
+ * row of checkboxes; a checkbox with a `config` key is bound to the editor config
  * so toggling it updates the setting and propagates to every renderer.
  *
  * The query is the dialog's own state, not the caller's: it is cleared on
@@ -48,22 +48,12 @@ const INTERACTIVE_SELECTOR =
  * dialog closes, and put back on demand by `select-list:restore-query` (F11).
  * `preserveQuery` opts out of the clearing. A dialog therefore never needs to
  * call `reset()` before `show()`.
+ * @private
  */
 class InputDialogView {
-  // The scheduler is installed once, at module scope in ./select-list. These
-  // two remain because this package resolves its own copy of etch: a caller
-  // holding a different copy cannot reach this one's scheduler except through
-  // them, which is what a test pinning a fake scheduler needs.
-  static setScheduler(scheduler) {
-    etch.setScheduler(scheduler);
-  }
-
-  static getScheduler() {
-    return etch.getScheduler();
-  }
-
-  constructor(props) {
+  constructor(props, services) {
     this.props = props;
+    this.services = services;
     this.localCheckboxState = new Map();
     this.statusTimer = null;
     this.destroyed = false;
@@ -77,10 +67,10 @@ class InputDialogView {
     this.disposables = new CompositeDisposable();
     this.setupCheckboxSubscriptions();
     etch.initialize(this);
-    this.disposables.add(lumine.textEditors.add(this.refs.queryEditor));
+    this.disposables.add(this.services.textEditorRegistry.add(this.refs.queryEditor));
     if (this.refs.itemActionsIndicator) {
       this.disposables.add(
-        lumine.tooltips.add(this.refs.itemActionsIndicator, {
+        this.services.tooltipManager.add(this.refs.itemActionsIndicator, {
           title: "Actions",
           keyBindingCommand: "select-list:actions",
           keyBindingTarget: this.refs.queryEditor.element,
@@ -100,9 +90,7 @@ class InputDialogView {
       this.refs.queryEditor.setPlaceholderText(props.placeholderText);
     }
     this.scheduleStatusExpiry();
-    if (!props.skipCommandsRegistration) {
-      this.disposables.add(this.registerLumineCommands());
-    }
+    this.disposables.add(this.registerCommands());
     const didLoseFocus = this.didLoseFocus.bind(this);
     const didMouseDownOnElement = this.didMouseDownOnElement.bind(this);
     this.element.addEventListener("focusout", didLoseFocus);
@@ -195,7 +183,7 @@ class InputDialogView {
   }
 
   /**
-   * (Re)subscribes to `lumine.config` for every checkbox that binds to a config
+   * (Re)subscribes to the editor config for every checkbox that binds to a config
    * key, so external changes (including from other windows) re-render the
    * checkbox. Config-bound checkboxes are the source of truth for their key;
    * unbound checkboxes keep local state.
@@ -211,9 +199,9 @@ class InputDialogView {
     this.checkboxDisposables = new CompositeDisposable();
     this.disposables.add(this.checkboxDisposables);
     for (const checkbox of checkboxes) {
-      if (checkbox.config && typeof lumine !== "undefined" && lumine.config) {
+      if (checkbox.config) {
         this.checkboxDisposables.add(
-          lumine.config.onDidChange(checkbox.config, () => etch.update(this)),
+          this.services.config.onDidChange(checkbox.config, () => etch.update(this)),
         );
       }
     }
@@ -227,8 +215,8 @@ class InputDialogView {
    * @returns {boolean} Whether the checkbox is checked
    */
   isCheckboxChecked(checkbox, index) {
-    if (checkbox.config && typeof lumine !== "undefined" && lumine.config) {
-      return !!lumine.config.get(checkbox.config);
+    if (checkbox.config) {
+      return !!this.services.config.get(checkbox.config);
     }
     if (this.localCheckboxState.has(index)) {
       return this.localCheckboxState.get(index);
@@ -245,8 +233,8 @@ class InputDialogView {
    */
   didToggleCheckbox(index, checked) {
     const checkbox = this.props.checkboxes[index];
-    if (checkbox.config && typeof lumine !== "undefined" && lumine.config) {
-      lumine.config.set(checkbox.config, checked);
+    if (checkbox.config) {
+      this.services.config.set(checkbox.config, checked);
     } else {
       this.localCheckboxState.set(index, checked);
     }
@@ -295,7 +283,7 @@ class InputDialogView {
    * when the panel is shown from outside, e.g. by the modal flow re-showing
    * this dialog on a back navigation.
    *
-   * @param {Object} [options] - Passed through to Panel::show. `{crumb:
+   * @param {Object} [options] - Passed through to Panel#show. `{crumb:
    *   "Label"}` (or `crumb: true` to use the dialog's `crumb` prop) displays
    *   the dialog as a step of the modal flow: the modal visible at that
    *   moment becomes the previous breadcrumb entry, and Shift-Escape or a
@@ -314,7 +302,7 @@ class InputDialogView {
 
   /**
    * Runs the show side effects. Invoked whenever the panel becomes visible,
-   * whether through {InputDialogView::show}, a modal-flow step change, or a
+   * whether through {@link #show}, a modal-flow step change, or a
    * back navigation re-showing this dialog.
    *
    * A dialog opens on an empty query. The one exception is a dialog coming
@@ -358,7 +346,7 @@ class InputDialogView {
    */
   getPanel() {
     if (!this.panel) {
-      this.panel = lumine.workspace.addModalPanel({
+      this.panel = this.services.workspace.addModalPanel({
         item: this.props.panelItem ?? this,
         visible: false,
         crumb: this.props.crumb,
@@ -427,8 +415,8 @@ class InputDialogView {
     return Boolean(this.panel?.isVisible());
   }
 
-  registerLumineCommands() {
-    return lumine.commands.add(this.element, this.commandsForElement());
+  registerCommands() {
+    return this.services.commandRegistry.add(this.element, this.commandsForElement());
   }
 
   /**
@@ -450,7 +438,7 @@ class InputDialogView {
         if (this.props.skipItemActions) {
           // Shift+F10 toggles: pressed in the actions list itself, it goes back to
           // the dialog it belongs to.
-          lumine.workspace.popModal();
+          this.services.workspace.popModal();
         } else {
           this.showItemActions();
         }
@@ -501,11 +489,13 @@ class InputDialogView {
     // difference would also sweep in every selector-based editor command.
     // From the root it holds exactly what the dialog contributes — packages
     // register their actions inline on this element.
-    const host = this.getPanel().getElement().parentNode ?? lumine.workspace.getElement();
+    const host = this.getPanel().getElement().parentNode ?? this.services.workspace.getElement();
     const above = new Set(
-      lumine.commands.findCommands({ target: host }).map((descriptor) => descriptor.name),
+      this.services.commandRegistry
+        .findCommands({ target: host })
+        .map((descriptor) => descriptor.name),
     );
-    const available = lumine.commands.findCommands({ target: this.element });
+    const available = this.services.commandRegistry.findCommands({ target: this.element });
     const descriptorsByName = new Map(available.map((descriptor) => [descriptor.name, descriptor]));
     const descriptors = [];
     const seenCommands = new Set();
@@ -527,7 +517,7 @@ class InputDialogView {
     const selected = hasSelection ? (this.getSelectedItem() ?? null) : null;
     const confirmAction =
       typeof this.confirmActionForItem === "function" ? this.confirmActionForItem(selected) : null;
-    // The chrome exclusions are the library's own and hold whatever the
+    // The chrome exclusions are built in and hold whatever the
     // caller says. An item action needs a selected item; `actionsFilter` only
     // narrows what survives those built-in rules.
     const filter = (descriptor) =>
@@ -543,7 +533,10 @@ class InputDialogView {
       const seenKeystrokes = new Set();
       const keystrokes = [];
       for (const command of bindingCommands) {
-        for (const binding of lumine.keymaps.findKeyBindings({ command, target: bindingTarget })) {
+        for (const binding of this.services.keymapManager.findKeyBindings({
+          command,
+          target: bindingTarget,
+        })) {
           if (seenKeystrokes.has(binding.keystrokes)) continue;
           seenKeystrokes.add(binding.keystrokes);
           keystrokes.push(binding.keystrokes);
@@ -598,37 +591,40 @@ class InputDialogView {
     if (actions.length === 0) return;
 
     if (!this.itemActionsList) {
-      // Lazy: select-list.js requires this module while it is still loading,
+      // Lazy: select-list-view.js requires this module while it is still loading,
       // so the class is only reachable after both modules are initialized.
-      const { SelectListView } = require("./select-list-view");
-      this.itemActionsList = new SelectListView({
-        // The actions list wears the master's classes, so the package's own
-        // keymap applies inside it untouched — an action keystroke resolves
-        // there exactly as it does in the master. Packages bind actions in
-        // their own namespace and leave the chrome keys (enter, escape,
-        // navigation, Shift+F10) alone, so the base bindings keep working here.
-        className: ["select-list-actions", this.props.className].filter(Boolean).join(" "),
-        // An actions list of an actions list would only find the forwarders.
-        skipItemActions: true,
-        items: [],
-        filterKeyForItem: (item) => `${item.name} ${item.description ?? ""}`,
-        // The row/list divider means something only while the registration
-        // order is on screen. Under a query the two groups interleave by
-        // score, and a line drawn anywhere in that would be a lie.
-        idForItem: (item) => (this.itemActionsList.getQuery() === "" ? item.command : null),
-        elementForItem: (item, { highlight }) => ({
-          primary: highlight(item.name),
-          secondary: item.description,
-          // Rendered the way the command palette writes keystrokes
-          // (Alt+Enter); the raw form stays on the item for dispatching.
-          trailing: item.keystrokes.map((keystrokes) => ({
-            text: humanizeKeystroke(keystrokes),
-            className: "key-binding",
-          })),
-        }),
-        didConfirmSelection: (item) => this.runItemAction(item.command),
-        didCancelSelection: () => this.itemActionsList.hide(),
-      });
+      const SelectListView = require("./select-list-view");
+      this.itemActionsList = new SelectListView(
+        {
+          // The actions list wears the master's classes, so the package's own
+          // keymap applies inside it untouched — an action keystroke resolves
+          // there exactly as it does in the master. Packages bind actions in
+          // their own namespace and leave the chrome keys (enter, escape,
+          // navigation, Shift+F10) alone, so the base bindings keep working here.
+          className: ["select-list-actions", this.props.className].filter(Boolean).join(" "),
+          // An actions list of an actions list would only find the forwarders.
+          skipItemActions: true,
+          items: [],
+          filterKeyForItem: (item) => `${item.name} ${item.description ?? ""}`,
+          // The row/list divider means something only while the registration
+          // order is on screen. Under a query the two groups interleave by
+          // score, and a line drawn anywhere in that would be a lie.
+          idForItem: (item) => (this.itemActionsList.getQuery() === "" ? item.command : null),
+          elementForItem: (item, { highlight }) => ({
+            primary: highlight(item.name),
+            secondary: item.description,
+            // Rendered the way the command palette writes keystrokes
+            // (Alt+Enter); the raw form stays on the item for dispatching.
+            trailing: item.keystrokes.map((keystrokes) => ({
+              text: humanizeKeystroke(keystrokes),
+              className: "key-binding",
+            })),
+          }),
+          didConfirmSelection: (item) => this.runItemAction(item.command),
+          didCancelSelection: () => this.itemActionsList.hide(),
+        },
+        this.services,
+      );
     }
 
     // Command listeners live on this dialog's element, so a keystroke
@@ -644,7 +640,7 @@ class InputDialogView {
       };
     }
     this.itemActionsDisposables = new CompositeDisposable(
-      lumine.commands.add(this.itemActionsList.element, forwarders),
+      this.services.commandRegistry.add(this.itemActionsList.element, forwarders),
       this.itemActionsList.getPanel().onDidChangeVisible((visible) => {
         if (visible) return;
         this.itemActionsDisposables?.dispose();
@@ -688,7 +684,7 @@ class InputDialogView {
         ? this.getIdForItem(selected)
         : null;
 
-    if (!lumine.workspace.popModal()) {
+    if (!this.services.workspace.popModal()) {
       // The trail is gone (the actions list was somehow orphaned); recover by
       // swapping the panels directly.
       this.itemActionsList.hide();
@@ -703,7 +699,7 @@ class InputDialogView {
       if (restored != null) this.selectItem(restored);
     }
 
-    lumine.commands.dispatch(this.refs.queryEditor.element, command);
+    this.services.commandRegistry.dispatch(this.refs.queryEditor.element, command);
   }
 
   /**
@@ -1006,12 +1002,16 @@ class InputDialogView {
     }
   }
 
+  getQueryEditor() {
+    return this.refs.queryEditor;
+  }
+
   getFilterQuery() {
     return this.props.filterQuery ? this.props.filterQuery(this.getQuery()) : this.getQuery();
   }
 
   setQueryFromSelection() {
-    const editor = lumine.workspace.getActiveTextEditor();
+    const editor = this.services.workspace.getActiveTextEditor();
     if (!editor) return false;
     const text = editor.getSelectedText();
     if (!text || /\n/.test(text)) return false;
@@ -1041,6 +1041,7 @@ class InputDialogView {
 /**
  * Etch component that adopts a caller-owned DOM element so raw DOM content can
  * participate in the etch tree. Used for the `contentElement` prop.
+ * @private
  */
 class ContentView {
   constructor(props) {
@@ -1061,4 +1062,4 @@ class ContentView {
   }
 }
 
-module.exports = { InputDialogView, ContentView };
+module.exports = InputDialogView;

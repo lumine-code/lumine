@@ -17,7 +17,8 @@ const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
 // Provided to packages through ::buildSelectList and ::buildInputDialog, so
 // that the editor owns the list toolkit and every window holds one implementation.
-const { SelectListView, InputDialogView } = require("./select-list-view");
+const SelectListView = require("./select-list-view");
+const InputDialogView = require("./input-dialog-view");
 const FileState = require("./file-state");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 
@@ -272,10 +273,14 @@ module.exports = class Workspace extends Model {
     this.project = params.project;
     this.notificationManager = params.notificationManager;
     this.viewRegistry = params.viewRegistry;
-    // The select-list dependency owns its own Etch instance, so bind it to
-    // this application's view scheduler explicitly instead of relying on
-    // module-load order and the global environment.
-    SelectListView.setScheduler(this.viewRegistry);
+    this.selectListServices = Object.freeze({
+      workspace: this,
+      config: params.config,
+      commandRegistry: params.commandRegistry,
+      keymapManager: params.keymapManager,
+      tooltipManager: params.tooltipManager,
+      textEditorRegistry: params.textEditorRegistry,
+    });
     this.grammarRegistry = params.grammarRegistry;
     this.applicationDelegate = params.applicationDelegate;
     this.assert = params.assert;
@@ -1838,7 +1843,7 @@ module.exports = class Workspace extends Model {
    * @returns {SelectListView}
    */
   buildSelectList(props) {
-    return new SelectListView(props);
+    return new SelectListView(props, this.selectListServices);
   }
 
   /**
@@ -1864,7 +1869,7 @@ module.exports = class Workspace extends Model {
    * @returns {InputDialogView}
    */
   buildInputDialog(props) {
-    return new InputDialogView(props);
+    return new InputDialogView(props, this.selectListServices);
   }
 
   /**

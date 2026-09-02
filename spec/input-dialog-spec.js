@@ -1,7 +1,13 @@
-const { InputDialogView, SelectListView } = require("../src/select-list-view");
+const etch = require("@lumine-code/etch");
+const InputDialogView = require("../src/input-dialog-view");
+const SelectListView = require("../src/select-list-view");
 
 describe("InputDialogView", () => {
   let view;
+
+  function createInputDialog(props) {
+    return new InputDialogView(props, lumine.workspace.selectListServices);
+  }
 
   beforeEach(() => {
     jasmine.attachToDOM(lumine.views.getView(lumine.workspace));
@@ -16,18 +22,18 @@ describe("InputDialogView", () => {
 
   describe("rendering", () => {
     it("renders a query editor with the input-dialog root class and custom classes", () => {
-      view = new InputDialogView({ className: "my-package my-dialog" });
+      view = createInputDialog({ className: "my-package my-dialog" });
       expect(view.element.classList.contains("input-dialog")).toBe(true);
       expect(view.element.classList.contains("select-list")).toBe(false);
       expect(view.element.classList.contains("my-dialog")).toBe(true);
-      expect(view.refs.queryEditor).toBeDefined();
+      expect(view.getQueryEditor()).toBeDefined();
       expect(view.element.querySelector("ol")).toBeNull();
     });
 
     it("hosts a caller-owned content element and preserves it across updates", async () => {
       const content = document.createElement("div");
       content.className = "dialog-body";
-      view = new InputDialogView({ contentElement: content });
+      view = createInputDialog({ contentElement: content });
       expect(view.element.contains(content)).toBe(true);
 
       await view.update({ infoMessage: "changed" });
@@ -40,7 +46,7 @@ describe("InputDialogView", () => {
     });
 
     it("shows one message at a time, loading over status over info", async () => {
-      view = new InputDialogView({});
+      view = createInputDialog({});
       await view.update({
         status: { type: "error", message: "boom" },
         infoMessage: "fyi",
@@ -60,10 +66,10 @@ describe("InputDialogView", () => {
     });
 
     it("clears a status on the next keystroke unless it is sticky", async () => {
-      view = new InputDialogView({});
+      view = createInputDialog({});
 
       await view.update({ status: { type: "error", message: "Enter a value." } });
-      view.refs.queryEditor.setText("a");
+      view.getQueryEditor().setText("a");
       // The clear renders through the scheduler, so poll for the result
       // rather than awaiting the next update: the render may already have
       // flushed by the time we ask, and then there is no next update to wait
@@ -71,7 +77,7 @@ describe("InputDialogView", () => {
       await conditionPromise(() => !view.refs.statusMessage);
 
       await view.update({ status: { message: "background", sticky: true } });
-      view.refs.queryEditor.setText("ab");
+      view.getQueryEditor().setText("ab");
       // Nothing to poll for here — a sticky status is expected not to move —
       // so flush with an update of our own and then assert.
       await view.update({});
@@ -81,11 +87,11 @@ describe("InputDialogView", () => {
     it("renders a header element above the query editor", () => {
       const header = document.createElement("label");
       header.textContent = "Prompt";
-      view = new InputDialogView({ headerElement: header });
+      view = createInputDialog({ headerElement: header });
       const children = Array.from(view.element.children);
       const headerIndex = children.indexOf(header);
       const editorIndex = children.findIndex((child) =>
-        child.contains(view.refs.queryEditor.element),
+        child.contains(view.getQueryEditor().element),
       );
       expect(headerIndex).toBe(0);
       expect(headerIndex).toBeLessThan(editorIndex);
@@ -101,7 +107,7 @@ describe("InputDialogView", () => {
 
     it("reflects the bound config value and updates it on toggle", () => {
       lumine.config.set(CONFIG_KEY, true);
-      view = new InputDialogView({
+      view = createInputDialog({
         checkboxes: [{ label: "Do the thing", config: CONFIG_KEY }],
       });
       const input = view.element.querySelector(".input-checkbox");
@@ -115,19 +121,19 @@ describe("InputDialogView", () => {
 
     it("re-renders when the bound config changes externally", async () => {
       lumine.config.set(CONFIG_KEY, false);
-      view = new InputDialogView({
+      view = createInputDialog({
         checkboxes: [{ label: "Flag", config: CONFIG_KEY }],
       });
       expect(view.element.querySelector(".input-checkbox").checked).toBe(false);
 
       lumine.config.set(CONFIG_KEY, true);
-      await InputDialogView.getScheduler().getNextUpdatePromise();
+      await etch.getScheduler().getNextUpdatePromise();
       expect(view.element.querySelector(".input-checkbox").checked).toBe(true);
     });
 
     it("keeps local state and calls onChange for unbound checkboxes", () => {
       const changes = [];
-      view = new InputDialogView({
+      view = createInputDialog({
         checkboxes: [{ label: "Local", checked: false, onChange: (c) => changes.push(c) }],
       });
       const input = view.element.querySelector(".input-checkbox");
@@ -140,42 +146,42 @@ describe("InputDialogView", () => {
     });
 
     it("returns focus to the query editor after a toggle so Enter still confirms", () => {
-      view = new InputDialogView({ checkboxes: [{ label: "Flag", checked: false }] });
+      view = createInputDialog({ checkboxes: [{ label: "Flag", checked: false }] });
       view.show();
       const input = view.element.querySelector(".input-checkbox");
       input.checked = true;
       input.dispatchEvent(new Event("change", { bubbles: true }));
-      expect(view.refs.queryEditor.element.contains(document.activeElement)).toBe(true);
+      expect(view.getQueryEditor().element.contains(document.activeElement)).toBe(true);
     });
   });
 
   describe("confirm and cancel", () => {
     it("confirms with the raw query text", () => {
       const confirmed = [];
-      view = new InputDialogView({ didConfirm: (query) => confirmed.push(query) });
-      view.refs.queryEditor.setText("hello world");
+      view = createInputDialog({ didConfirm: (query) => confirmed.push(query) });
+      view.getQueryEditor().setText("hello world");
       view.confirm();
       expect(confirmed).toEqual(["hello world"]);
     });
 
     it("invokes didCancel on cancel", () => {
       let cancelled = false;
-      view = new InputDialogView({ didCancel: () => (cancelled = true) });
+      view = createInputDialog({ didCancel: () => (cancelled = true) });
       view.cancel();
       expect(cancelled).toBe(true);
     });
 
     it("reports query changes through didChangeQuery", () => {
       const queries = [];
-      view = new InputDialogView({ didChangeQuery: (query) => queries.push(query) });
-      view.refs.queryEditor.setText("abc");
+      view = createInputDialog({ didChangeQuery: (query) => queries.push(query) });
+      view.getQueryEditor().setText("abc");
       expect(queries).toEqual(["abc"]);
     });
   });
 
   describe("panel management", () => {
     it("shows and hides a modal panel and focuses the query editor", () => {
-      view = new InputDialogView({});
+      view = createInputDialog({});
       expect(view.isVisible()).toBe(false);
 
       view.show();
@@ -193,7 +199,7 @@ describe("InputDialogView", () => {
       // window-blur test.
       spyOn(document, "hasFocus").and.returnValue(true);
       let cancelled = false;
-      view = new InputDialogView({ didCancel: () => (cancelled = true) });
+      view = createInputDialog({ didCancel: () => (cancelled = true) });
       view.show();
 
       const outside = document.createElement("input");
@@ -209,8 +215,8 @@ describe("InputDialogView", () => {
   describe("modal flow integration", () => {
     it("runs the show side effects when the panel is shown from outside", () => {
       let willShowCalls = 0;
-      view = new InputDialogView({ willShow: () => willShowCalls++ });
-      view.refs.queryEditor.setText("stale");
+      view = createInputDialog({ willShow: () => willShowCalls++ });
+      view.getQueryEditor().setText("stale");
 
       view.getPanel().show();
 
@@ -222,16 +228,16 @@ describe("InputDialogView", () => {
     });
 
     it("selects a preserved query on show, so a keystroke still replaces it", () => {
-      view = new InputDialogView({ preserveQuery: true });
-      view.refs.queryEditor.setText("kept");
+      view = createInputDialog({ preserveQuery: true });
+      view.getQueryEditor().setText("kept");
 
       view.getPanel().show();
 
-      expect(view.refs.queryEditor.getSelectedText()).toBe("kept");
+      expect(view.getQueryEditor().getSelectedText()).toBe("kept");
     });
 
     it("carries the crumb prop on its panel and keeps it in sync", async () => {
-      view = new InputDialogView({ crumb: "Branches" });
+      view = createInputDialog({ crumb: "Branches" });
       expect(view.getPanel().crumb).toBe("Branches");
 
       await view.update({ crumb: "Refs" });
@@ -240,8 +246,8 @@ describe("InputDialogView", () => {
 
     it("enters a flow step without cancelling the dialog it covers", async () => {
       let cancelled = false;
-      view = new InputDialogView({ crumb: "Root", didCancel: () => (cancelled = true) });
-      const step = new InputDialogView({});
+      view = createInputDialog({ crumb: "Root", didCancel: () => (cancelled = true) });
+      const step = createInputDialog({});
       try {
         view.show();
 
@@ -257,7 +263,7 @@ describe("InputDialogView", () => {
     });
 
     it("offers its own commands as item actions, like a select list", async () => {
-      view = new InputDialogView({ className: "dialog-spec", crumb: "Dialog" });
+      view = createInputDialog({ className: "dialog-spec", crumb: "Dialog" });
       const commands = lumine.commands.add(view.element, {
         "dialog-spec:clear": {
           description: "Clear the field and start over",
@@ -282,11 +288,11 @@ describe("InputDialogView", () => {
 
     it("re-runs the show side effects when the flow navigates back", async () => {
       let willShowCalls = 0;
-      view = new InputDialogView({ crumb: "Root", willShow: () => willShowCalls++ });
-      const step = new InputDialogView({});
+      view = createInputDialog({ crumb: "Root", willShow: () => willShowCalls++ });
+      const step = createInputDialog({});
       try {
         view.show();
-        view.refs.queryEditor.setText("query");
+        view.getQueryEditor().setText("query");
         step.show({ crumb: "Step" });
         expect(willShowCalls).toBe(1);
 
@@ -294,8 +300,8 @@ describe("InputDialogView", () => {
 
         expect(willShowCalls).toBe(2);
         expect(view.isVisible()).toBe(true);
-        expect(view.refs.queryEditor.getText()).toBe("query");
-        expect(view.refs.queryEditor.getSelectedText()).toBe("query");
+        expect(view.getQueryEditor().getText()).toBe("query");
+        expect(view.getQueryEditor().getSelectedText()).toBe("query");
         expect(view.element.contains(document.activeElement)).toBe(true);
         expect(lumine.workspace.getModalTrail()).toEqual(["Root"]);
       } finally {
@@ -308,7 +314,7 @@ describe("InputDialogView", () => {
     it("keeps focus in the query editor when pressing non-interactive content", () => {
       const content = document.createElement("div");
       content.textContent = "static";
-      view = new InputDialogView({ contentElement: content });
+      view = createInputDialog({ contentElement: content });
       view.show();
 
       const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
@@ -320,7 +326,7 @@ describe("InputDialogView", () => {
       const content = document.createElement("div");
       const input = document.createElement("input");
       content.appendChild(input);
-      view = new InputDialogView({ contentElement: content });
+      view = createInputDialog({ contentElement: content });
       view.show();
 
       const event = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
@@ -334,9 +340,9 @@ describe("InputDialogView", () => {
     it("does not refocus when focus moves into the query editor's own subtree", () => {
       // Refocusing here would re-fire focusout and recurse (RangeError). The
       // guard skips the refocus when the new focus target is inside the editor.
-      view = new InputDialogView({});
+      view = createInputDialog({});
       view.show();
-      const editorElement = view.refs.queryEditor.element;
+      const editorElement = view.getQueryEditor().element;
       const inner = editorElement.querySelector("input") || editorElement;
       spyOn(editorElement, "focus");
 
@@ -349,9 +355,9 @@ describe("InputDialogView", () => {
 
   describe("typing", () => {
     it("lets a backtick through as a normal character", () => {
-      view = new InputDialogView({});
+      view = createInputDialog({});
       const event = new KeyboardEvent("keydown", { key: "`", bubbles: true, cancelable: true });
-      view.refs.queryEditor.element.dispatchEvent(event);
+      view.getQueryEditor().element.dispatchEvent(event);
       expect(event.defaultPrevented).toBe(false);
     });
   });

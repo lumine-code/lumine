@@ -2,37 +2,26 @@
 
 const { Disposable } = require("@lumine-code/event-kit");
 const etch = require("@lumine-code/etch");
-const { InputDialogView } = require("./input-dialog-view");
+const InputDialogView = require("./input-dialog-view");
 const { highlightMatches, createTwoLineItem } = require("./select-list-helpers");
 const fuzzyMatcher = require("./fuzzy-matcher");
 const $ = etch.dom;
-
-// Etch holds its scheduler per copy of the library, and this package resolves
-// its own copy — so the assignment the editor makes on core's copy never
-// reaches it. Point it at the view registry before anything renders, or this
-// package's DOM writes land on an animation frame of their own alongside the
-// editor's and force a synchronous reflow.
-//
-// Guarded, unlike the packages that do the same thing: this is a library, and
-// its own test suite loads it under plain Node with no editor around it.
-if (typeof lumine !== "undefined" && lumine.views) {
-  etch.setScheduler(lumine.views);
-}
 
 // Rendering hundreds of rows costs real time and nobody scans them; the list
 // caps itself and ends with a "Show more…" row that reveals the next batch.
 // `maxResults` changes the batch size, it no longer means "drop the rest".
 const DEFAULT_MAX_RESULTS = 99;
 
-// The library's own last row when matches exceed the cap. Never handed to the
+// The component's own last row when matches exceed the cap. Never handed to the
 // consumer's callbacks: confirming it grows the list, selecting it reads as
-// no selection, and the library renders it itself.
+// no selection, and the component renders it itself.
 const SHOW_MORE_ITEM = Object.freeze({ showMoreSentinel: true });
 
 /**
  * Fuzzy-searchable select list. Extends InputDialogView — which owns the
  * modal panel, query editor, focus handling, and confirm/cancel commands —
  * with items, filtering, selection, and list rendering.
+ * @private
  */
 class SelectListView extends InputDialogView {
   initializeState() {
@@ -634,7 +623,7 @@ class SelectListView extends InputDialogView {
    * @returns {HTMLElement} The resolved element
    */
   resolveElement(item, opts) {
-    // The library renders its own last row; the consumer's renderer never
+    // The component renders its own last row; the consumer's renderer never
     // sees the sentinel.
     if (item === SHOW_MORE_ITEM) {
       return createTwoLineItem({ primary: "Show more…", className: "show-more-item" });
@@ -801,6 +790,7 @@ class SelectListView extends InputDialogView {
   }
 }
 
+/** @private */
 class ListItemView {
   constructor(props) {
     this.mouseDown = this.mouseDown.bind(this);
@@ -889,8 +879,4 @@ class ListItemView {
   }
 }
 
-// The public surface is the two view classes and nothing else. The render
-// helpers in ./helpers are reached through a view: `highlight` on the
-// `elementForItem` options, and a descriptor return from `elementForItem`.
-module.exports.SelectListView = SelectListView;
-module.exports.InputDialogView = InputDialogView;
+module.exports = SelectListView;

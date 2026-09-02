@@ -2,11 +2,10 @@
 
 const fuzzyMatcher = require("./fuzzy-matcher");
 
-// Internal render helpers. These are not part of the package's public surface —
-// `lib/select-list.js` exports only the two view classes. Consumers reach this
-// behavior through the view instead: `highlightMatches` through the `highlight`
-// function on the `elementForItem` options, and `createTwoLineItem` by returning
-// a descriptor object from `elementForItem` rather than an element.
+// Internal render helpers. Packages reach this behavior through the view:
+// `highlightMatches` through the `highlight` function on the `elementForItem`
+// options, and `createTwoLineItem` by returning a descriptor object from
+// `elementForItem` rather than an element.
 
 /**
  * Computes fuzzy match indices for a text against a query.
@@ -16,6 +15,7 @@ const fuzzyMatcher = require("./fuzzy-matcher");
  * @param {boolean} [options.removeDiacritics=false] - Match accent-insensitively.
  *   Folding is done natively; the returned indices refer to the original `text`.
  * @returns {number[]|null} Array of character indices that matched, or null if no match
+ * @private
  */
 function getMatchIndices(text, query, options = {}) {
   if (!text || !query) return null;
@@ -82,6 +82,7 @@ function highlightMatches(text, matchIndices, options = {}) {
  * `{text, className}` descriptors, or falsy so callers can inline conditionals.
  * @param {Node|Array} trailing - A node, or a list of nodes and descriptors
  * @returns {HTMLSpanElement|null} The container, or null when there is nothing to show
+ * @private
  */
 function createTrailingBlock(trailing) {
   const entries = (Array.isArray(trailing) ? trailing : [trailing]).filter(Boolean);
@@ -117,6 +118,7 @@ function createTrailingBlock(trailing) {
  * @param {string|string[]} [options.className] - Extra class names for the item
  * @param {Node|Array} [options.trailing] - Right-hand content for the primary line
  * @returns {HTMLLIElement} The created list item element
+ * @private
  */
 function createTwoLineItem({ primary, secondary, icon, className, trailing }) {
   const li = document.createElement("li");

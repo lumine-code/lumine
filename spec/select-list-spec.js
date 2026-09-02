@@ -1,16 +1,17 @@
 const { CompositeDisposable } = require("lumine");
+const etch = require("@lumine-code/etch");
 const { humanizeKeystroke } = require("@lumine-code/underscore-plus");
-// The component is an npm package that consumes the Lumine API, so it can only
-// run inside the editor — which is also where its contract lives, since
-// packages reach it through `lumine.workspace.buildSelectList`. Its own repo
-// keeps the jsdom tests for the pure render helpers.
-const { SelectListView } = require("../src/select-list-view");
+const SelectListView = require("../src/select-list-view");
 
 describe("SelectListView", () => {
   let view;
 
+  function createSelectList(props) {
+    return new SelectListView(props, lumine.workspace.selectListServices);
+  }
+
   function textItemView(props = {}) {
-    return new SelectListView({
+    return createSelectList({
       items: ["one", "two", "three"],
       elementForItem: (item) => {
         const li = document.createElement("li");
@@ -26,7 +27,7 @@ describe("SelectListView", () => {
   }
 
   async function nextUpdate() {
-    await SelectListView.getScheduler().getNextUpdatePromise();
+    await etch.getScheduler().getNextUpdatePromise();
   }
 
   beforeEach(() => {
@@ -45,17 +46,17 @@ describe("SelectListView", () => {
       view = textItemView();
       expect(listTexts()).toEqual(["one", "two", "three"]);
 
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
       await nextUpdate();
       expect(listTexts()).toEqual(["two"]);
 
-      view.refs.queryEditor.setText("");
+      view.getQueryEditor().setText("");
       await nextUpdate();
       expect(listTexts()).toEqual(["one", "two", "three"]);
     });
 
     it("filters via filterKeyForItem for object items", async () => {
-      view = new SelectListView({
+      view = createSelectList({
         items: [{ name: "alpha" }, { name: "beta" }],
         filterKeyForItem: (item) => item.name,
         elementForItem: (item) => {
@@ -65,7 +66,7 @@ describe("SelectListView", () => {
         },
       });
 
-      view.refs.queryEditor.setText("bet");
+      view.getQueryEditor().setText("bet");
       await nextUpdate();
       expect(listTexts()).toEqual(["beta"]);
     });
@@ -92,7 +93,7 @@ describe("SelectListView", () => {
 
     it("supports custom item identifiers for separators", () => {
       const items = [{ name: "alpha" }, { name: "beta" }];
-      view = new SelectListView({
+      view = createSelectList({
         items,
         separatorIds: ["BETA"],
         idForItem: (item) => item.name.toUpperCase(),
@@ -112,13 +113,13 @@ describe("SelectListView", () => {
 
     it("renders emptyMessage when no items match", async () => {
       view = textItemView({ emptyMessage: "nothing here" });
-      view.refs.queryEditor.setText("zzz");
+      view.getQueryEditor().setText("zzz");
       await nextUpdate();
       expect(view.refs.emptyMessage.textContent).toBe("nothing here");
     });
 
     it("renders two-line items from {primary, secondary} descriptors", () => {
-      view = new SelectListView({
+      view = createSelectList({
         items: ["item"],
         elementForItem: (item) => ({ primary: item, secondary: "detail" }),
       });
@@ -129,7 +130,7 @@ describe("SelectListView", () => {
     });
 
     it("passes matchIndices aligned with the filter key to elementForItem", async () => {
-      view = new SelectListView({
+      view = createSelectList({
         items: ["abc", "xyz"],
         elementForItem: (item, { filterKey, matchIndices, highlight }) => {
           const li = document.createElement("li");
@@ -140,7 +141,7 @@ describe("SelectListView", () => {
         },
       });
 
-      view.refs.queryEditor.setText("ac");
+      view.getQueryEditor().setText("ac");
       await nextUpdate();
       const matches = view.element.querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["a", "c"]);
@@ -148,7 +149,7 @@ describe("SelectListView", () => {
 
     it("hands a descriptor's didRender the finished element", async () => {
       const rendered = [];
-      view = new SelectListView({
+      view = createSelectList({
         items: ["one", "two"],
         elementForItem: (item) => ({
           primary: item,
@@ -169,7 +170,7 @@ describe("SelectListView", () => {
     });
 
     it("passes a highlight function bound to the item's own match indices", async () => {
-      view = new SelectListView({
+      view = createSelectList({
         items: ["abc", "xyz"],
         elementForItem: (item, { filterKey, highlight }) => {
           const li = document.createElement("li");
@@ -178,14 +179,14 @@ describe("SelectListView", () => {
         },
       });
 
-      view.refs.queryEditor.setText("ac");
+      view.getQueryEditor().setText("ac");
       await nextUpdate();
       const matches = view.element.querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["a", "c"]);
     });
 
     it("lets highlight take explicit indices, for callers that shift offsets", async () => {
-      view = new SelectListView({
+      view = createSelectList({
         items: ["abc"],
         elementForItem: (item, { highlight }) => {
           const li = document.createElement("li");
@@ -205,7 +206,7 @@ describe("SelectListView", () => {
         "getMatchIndices",
       ).and.callThrough();
 
-      view = new SelectListView({
+      view = createSelectList({
         items: ["abc"],
         elementForItem: (item, { highlight }) => {
           const li = document.createElement("li");
@@ -219,7 +220,7 @@ describe("SelectListView", () => {
     });
 
     it("provides highlight on the re-render path as well", async () => {
-      view = new SelectListView({
+      view = createSelectList({
         // Forces the IntersectionObserver path, so re-rendering a row goes
         // through renderItemAtIndex rather than a full renderItems pass.
         initiallyVisibleItemCount: 1,
@@ -231,7 +232,7 @@ describe("SelectListView", () => {
         },
       });
 
-      view.refs.queryEditor.setText("ab");
+      view.getQueryEditor().setText("ab");
       await nextUpdate();
       await view.selectIndex(1);
       const matches = view.element.querySelectorAll("li .character-match");
@@ -336,7 +337,7 @@ describe("SelectListView", () => {
       view.confirmSelection();
       expect(confirmed).toEqual(["one"]);
 
-      view.refs.queryEditor.setText("zzz");
+      view.getQueryEditor().setText("zzz");
       await nextUpdate();
       view.confirmSelection();
       expect(confirmedEmpty).toBe(true);
@@ -419,7 +420,7 @@ describe("SelectListView", () => {
       const items = [];
       for (let i = 0; i < 10; i++) items.push(`item-${i}`);
 
-      view = new SelectListView({
+      view = createSelectList({
         items,
         initiallyVisibleItemCount: 4,
         elementForItem: (item, { visible }) => {
@@ -437,7 +438,7 @@ describe("SelectListView", () => {
 
     it("re-renders an item with visible: true when selected", async () => {
       const items = ["a", "b", "c"];
-      view = new SelectListView({
+      view = createSelectList({
         items,
         initiallyVisibleItemCount: 1,
         elementForItem: (item, { visible }) => {
@@ -454,7 +455,7 @@ describe("SelectListView", () => {
 
     it("always reports visible: true when the feature is off", () => {
       const seen = [];
-      view = new SelectListView({
+      view = createSelectList({
         items: ["x"],
         elementForItem: (item, { visible }) => {
           seen.push(visible);
@@ -522,7 +523,7 @@ describe("SelectListView", () => {
       view = textItemView({ infoMessage: "resting" });
 
       await view.update({ status: { type: "error", message: "Enter a value." } });
-      view.refs.queryEditor.setText("o");
+      view.getQueryEditor().setText("o");
       // Polled rather than awaiting the next update: the render may already
       // have flushed by the time we ask, leaving no next update to wait for.
       await conditionPromise(() => !view.refs.statusMessage);
@@ -530,7 +531,7 @@ describe("SelectListView", () => {
       expect(view.refs.infoMessage.textContent).toBe("resting");
 
       await view.update({ status: { type: "error", message: "background", sticky: true } });
-      view.refs.queryEditor.setText("on");
+      view.getQueryEditor().setText("on");
       // A sticky status is expected not to move, so there is nothing to poll
       // for; flush with an update of our own instead.
       await view.update({});
@@ -573,7 +574,7 @@ describe("SelectListView", () => {
 
     it("stands the empty message down while a message is showing", async () => {
       view = textItemView({ emptyMessage: "nothing here" });
-      view.refs.queryEditor.setText("zzz");
+      view.getQueryEditor().setText("zzz");
       await nextUpdate();
       expect(view.refs.emptyMessage.textContent).toBe("nothing here");
 
@@ -592,7 +593,7 @@ describe("SelectListView", () => {
     it("keeps the resting info line alongside an empty list", async () => {
       // A stat line and "no matches" are two different statements.
       view = textItemView({ emptyMessage: "nothing here", infoMessage: "3 items" });
-      view.refs.queryEditor.setText("zzz");
+      view.getQueryEditor().setText("zzz");
       await nextUpdate();
       expect(view.refs.infoMessage.textContent).toBe("3 items");
       expect(view.refs.emptyMessage.textContent).toBe("nothing here");
@@ -606,7 +607,7 @@ describe("SelectListView", () => {
       view = textItemView({ contentElement: content });
       expect(view.element.contains(content)).toBe(true);
 
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
       await nextUpdate();
       expect(view.element.contains(content)).toBe(true);
 
@@ -620,7 +621,7 @@ describe("SelectListView", () => {
       const content = document.createElement("div");
       content.textContent = "dialog body";
       let confirmedEmpty = false;
-      view = new SelectListView({
+      view = createSelectList({
         items: [],
         contentElement: content,
         didConfirmEmptySelection: () => (confirmedEmpty = true),
@@ -689,7 +690,7 @@ describe("SelectListView", () => {
       expect(view.getSelectedItem()).toBeNull();
 
       view.confirmSelection();
-      await view.constructor.getScheduler().getNextUpdatePromise();
+      await etch.getScheduler().getNextUpdatePromise();
 
       expect(confirmed).toEqual([]);
       expect(view.getSelectedItem()).toBe("item-005");
@@ -756,7 +757,7 @@ describe("SelectListView", () => {
       await view.showMore();
       expect(view.element.querySelectorAll("li").length).toBe(199);
 
-      view.refs.queryEditor.setText("item-0");
+      view.getQueryEditor().setText("item-0");
       await nextUpdate();
 
       // 100 matches (item-000 … item-099) cap back to 99 plus the row.
@@ -775,7 +776,7 @@ describe("SelectListView", () => {
       expect(before).toBeGreaterThan(0);
 
       view.didClickItem(view.items.length - 1);
-      await view.constructor.getScheduler().getNextUpdatePromise();
+      await etch.getScheduler().getNextUpdatePromise();
 
       expect(view.refs.items).toBe(scroller);
       expect(scroller.scrollTop).toBe(before);
@@ -804,7 +805,7 @@ describe("SelectListView", () => {
     it("never hands the sentinel to the consumer's renderer or filter key", () => {
       const rendered = [];
       const keyed = [];
-      view = new SelectListView({
+      view = createSelectList({
         items: Array.from({ length: 150 }, (_, i) => ({ name: `n${i}` })),
         filterKeyForItem: (item) => {
           keyed.push(item);
@@ -828,7 +829,7 @@ describe("SelectListView", () => {
     it("clears the query on every show, and remembers what it cleared", () => {
       view = textItemView();
       view.show();
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
       view.hide();
 
       view.show();
@@ -837,13 +838,13 @@ describe("SelectListView", () => {
       expect(view.restoreQuery()).toBe(true);
       expect(view.getQuery()).toBe("tw");
       // Selected, so the next keystroke replaces it rather than appending.
-      expect(view.refs.queryEditor.getSelectedText()).toBe("tw");
+      expect(view.getQueryEditor().getSelectedText()).toBe("tw");
     });
 
     it("has nothing to restore before the first close", () => {
       view = textItemView();
       view.show();
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
 
       expect(view.restoreQuery()).toBe(false);
       expect(view.getQuery()).toBe("tw");
@@ -852,19 +853,19 @@ describe("SelectListView", () => {
     it("keeps the query when preserveQuery is set", () => {
       view = textItemView({ preserveQuery: true });
       view.show();
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
       view.hide();
 
       view.show();
       expect(view.getQuery()).toBe("tw");
-      expect(view.refs.queryEditor.getSelectedText()).toBe("tw");
+      expect(view.getQueryEditor().getSelectedText()).toBe("tw");
     });
 
     it("clears before willShow runs, so a reload sees the empty query", () => {
       const queries = [];
       view = textItemView({ willShow: () => queries.push(view.getQuery()) });
       view.show();
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
       view.hide();
       view.show();
 
@@ -877,7 +878,7 @@ describe("SelectListView", () => {
         "spec:some-action": () => {},
       });
       view.show();
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
 
       await view.showItemActions();
       expect(view.isVisible()).toBe(false);
@@ -896,7 +897,7 @@ describe("SelectListView", () => {
         "spec:some-action": () => {},
       });
       view.show();
-      view.refs.queryEditor.setText("tw");
+      view.getQueryEditor().setText("tw");
 
       // Shift-F10, then dismiss the actions list instead of coming back: the master
       // is left suspended with nothing on screen, and the next open is an
@@ -912,7 +913,7 @@ describe("SelectListView", () => {
 
   describe("recent items", () => {
     function recentView(props = {}) {
-      return new SelectListView({
+      return createSelectList({
         items: ["one", "two", "three", "four"],
         elementForItem: (item) => {
           const li = document.createElement("li");
@@ -942,11 +943,11 @@ describe("SelectListView", () => {
     it("stands down under a query, where the ranking is the answer", async () => {
       view = recentView({ recentIds: ["three", "one"] });
 
-      view.refs.queryEditor.setText("o");
+      view.getQueryEditor().setText("o");
       await nextUpdate();
       expect(view.element.querySelector(".select-list-separator")).toBeNull();
 
-      view.refs.queryEditor.setText("");
+      view.getQueryEditor().setText("");
       await nextUpdate();
       expect(view.items[0]).toBe("three");
       expect(view.element.querySelector(".select-list-separator")).not.toBeNull();
@@ -962,7 +963,7 @@ describe("SelectListView", () => {
     });
 
     it("resolves recent ids through idForItem", () => {
-      view = new SelectListView({
+      view = createSelectList({
         items: [{ name: "alpha" }, { name: "beta" }],
         recentIds: ["BETA"],
         idForItem: (item) => item.name.toUpperCase(),
@@ -1022,8 +1023,8 @@ describe("SelectListView", () => {
         }),
       );
       view.show();
-      view.refs.queryEditor.setText("a".repeat(200));
-      view.refs.queryEditor.setCursorBufferPosition([0, 200]);
+      view.getQueryEditor().setText("a".repeat(200));
+      view.getQueryEditor().setCursorBufferPosition([0, 200]);
       await nextUpdate();
 
       const indicator = view.refs.itemActionsIndicator;
@@ -1034,12 +1035,12 @@ describe("SelectListView", () => {
 
       const [tooltip] = lumine.tooltips.tooltips.get(indicator);
       expect(tooltip.options.keyBindingCommand).toBe("select-list:actions");
-      expect(tooltip.options.keyBindingTarget).toBe(view.refs.queryEditor.element);
+      expect(tooltip.options.keyBindingTarget).toBe(view.getQueryEditor().element);
 
       // The editor adds one base character after the visible end-of-line
       // cursor. Account for it: the caret itself should stop at the button,
       // leaving the centred glyph equal optical space on either side.
-      const component = view.refs.queryEditor.element.component;
+      const component = view.getQueryEditor().element.component;
       const textRight =
         component.refs.clientContainer.getBoundingClientRect().right -
         component.getBaseCharacterWidth();
@@ -1240,7 +1241,7 @@ describe("SelectListView", () => {
         cancelable: true,
       });
 
-      view.refs.queryEditor.element.dispatchEvent(openEvent);
+      view.getQueryEditor().element.dispatchEvent(openEvent);
       await conditionPromise(() => view.itemActionsList?.isVisible());
 
       expect(openEvent.defaultPrevented).toBe(true);
@@ -1252,7 +1253,7 @@ describe("SelectListView", () => {
         bubbles: true,
         cancelable: true,
       });
-      view.itemActionsList.refs.queryEditor.element.dispatchEvent(closeEvent);
+      view.itemActionsList.getQueryEditor().element.dispatchEvent(closeEvent);
 
       expect(closeEvent.defaultPrevented).toBe(true);
       expect(view.isVisible()).toBeTruthy();
@@ -1301,7 +1302,7 @@ describe("SelectListView", () => {
 
       view.show();
       await view.showItemActions();
-      view.itemActionsList.refs.queryEditor.setText("action");
+      view.itemActionsList.getQueryEditor().setText("action");
       await nextUpdate();
 
       expect(view.itemActionsList.element.querySelector(".select-list-separator")).toBeNull();
@@ -1401,7 +1402,7 @@ describe("SelectListView", () => {
         bubbles: true,
         cancelable: true,
       });
-      view.itemActionsList.refs.queryEditor.element.dispatchEvent(event);
+      view.itemActionsList.getQueryEditor().element.dispatchEvent(event);
 
       expect(event.defaultPrevented).toBe(true);
       expect(dispatched).toEqual(["spec:other-action"]);
@@ -1441,7 +1442,7 @@ describe("SelectListView", () => {
         { id: "one", label: "one" },
         { id: "two", label: "two" },
       ];
-      view = new SelectListView({
+      view = createSelectList({
         items: items(),
         idForItem: (item) => item.id,
         filterKeyForItem: (item) => item.label,
@@ -1499,7 +1500,7 @@ describe("SelectListView", () => {
       // The dynamic keymap carries the binding into the actions context...
       const bindings = lumine.keymaps.findKeyBindings({
         command: "spec:test-action",
-        target: view.itemActionsList.refs.queryEditor.element,
+        target: view.itemActionsList.getQueryEditor().element,
       });
       expect(bindings.some((binding) => binding.keystrokes === "alt-x")).toBe(true);
 
