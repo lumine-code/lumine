@@ -1,4 +1,4 @@
-const { InputDialogView, SelectListView } = require("@lumine-code/select-list");
+const { InputDialogView, SelectListView } = require("../src/select-list-view");
 
 describe("InputDialogView", () => {
   let view;

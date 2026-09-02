@@ -16,9 +16,8 @@ const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
 // Provided to packages through ::buildSelectList and ::buildInputDialog, so
-// that a package needs neither a manifest entry nor a pin for the list toolkit
-// and a window holds a single copy of it.
-const { SelectListView, InputDialogView } = require("@lumine-code/select-list");
+// that the editor owns the list toolkit and every window holds one implementation.
+const { SelectListView, InputDialogView } = require("./select-list-view");
 const FileState = require("./file-state");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 

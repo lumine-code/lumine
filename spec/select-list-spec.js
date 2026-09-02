@@ -4,7 +4,7 @@ const { humanizeKeystroke } = require("@lumine-code/underscore-plus");
 // run inside the editor — which is also where its contract lives, since
 // packages reach it through `lumine.workspace.buildSelectList`. Its own repo
 // keeps the jsdom tests for the pure render helpers.
-const { SelectListView } = require("@lumine-code/select-list");
+const { SelectListView } = require("../src/select-list-view");
 
 describe("SelectListView", () => {
   let view;
