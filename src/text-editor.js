@@ -5482,6 +5482,31 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
+   * Get the smallest Tree-sitter syntax node at the given position in buffer
+   * coordinates across all language layers.
+   *
+   * Node breadth decides between candidates first; the deeper language layer
+   * wins only when candidates have equal breadth. An optional predicate
+   * receives each candidate node and its grammar. Returns `null` when no syntax
+   * tree is available, including before the grammar's first parse and while
+   * using the null grammar.
+   *
+   * The returned node belongs to the current parse snapshot. Do not retain it
+   * after the buffer changes or the grammar reparses; request it again instead.
+   *
+   * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
+   * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
+   * @returns {Object|null} A Tree-sitter syntax node, or `null`.
+   */
+  getSyntaxNodeAtBufferPosition(bufferPosition, where) {
+    const languageMode = this.buffer.getLanguageMode();
+    return languageMode.getSyntaxNodeAtPosition?.(bufferPosition, where) ?? null;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Get the range in buffer coordinates of all tokens surrounding the
    * cursor that match the given scope selector.
    *
@@ -5778,6 +5803,24 @@ module.exports = class TextEditor {
   /**
    * @category Folds
    */
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Get the foldable range that starts at the given row in buffer coordinates
+   * without creating a fold.
+   *
+   * Unlike {@link #foldBufferRow}, this method does not search preceding rows
+   * for a fold that contains the given row.
+   *
+   * @param bufferRow - A `Number`.
+   * @returns {Range|null} The exact foldable range, or `null` when the row does not start one.
+   */
+  getFoldableRangeAtBufferRow(bufferRow) {
+    const languageMode = this.buffer.getLanguageMode();
+    return languageMode.getFoldRangeForRow?.(bufferRow, this.getTabLength()) ?? null;
+  }
 
   /**
    * @public

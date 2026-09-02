@@ -87,10 +87,14 @@ module.exports = class NullLanguageMode {
   isFoldableAtRow(row) {
     return this.endRowForFoldAtRow(row, 1, true) != null;
   }
+  getFoldRangeForRow(row, tabLength) {
+    const endRow = this.endRowForFoldAtRow(row, tabLength);
+    return endRow == null ? null : Range(Point(row, Infinity), Point(endRow, Infinity));
+  }
   getFoldableRangeContainingPoint(point, tabLength) {
     if (point.column >= this.buffer.lineLengthForRow(point.row)) {
-      const endRow = this.endRowForFoldAtRow(point.row, tabLength);
-      if (endRow != null) return Range(Point(point.row, Infinity), Point(endRow, Infinity));
+      const fold = this.getFoldRangeForRow(point.row, tabLength);
+      if (fold) return fold;
     }
 
     for (let row = point.row - 1; row >= 0; row--) {

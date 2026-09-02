@@ -10399,6 +10399,81 @@ describe("TextEditor advanced behavior", () => {
     });
   });
 
+  describe(".getSyntaxNodeAtBufferPosition(bufferPosition, where)", () => {
+    it("returns null in the null language mode", () => {
+      editor = new TextEditor({ buffer: new TextBuffer({ text: "plain text" }) });
+
+      expect(editor.getSyntaxNodeAtBufferPosition([0, 2])).toBeNull();
+    });
+
+    it("returns null before the first parse is ready", async () => {
+      jasmine.useRealClock();
+      await lumine.packages.activatePackage("language-javascript");
+      const buffer = new TextBuffer({ text: "const value = 1;" });
+      const languageMode = new TreeSitterLanguageMode({
+        buffer,
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
+        grammars: lumine.grammars,
+      });
+      buffer.setLanguageMode(languageMode);
+      editor = new TextEditor({ buffer });
+
+      expect(editor.getSyntaxNodeAtBufferPosition([0, 6])).toBeNull();
+
+      await languageMode.ready;
+      expect(editor.getSyntaxNodeAtBufferPosition([0, 6]).type).toBe("identifier");
+    });
+
+    it("chooses the smallest node across layers, using depth only as a tie-breaker", async () => {
+      jasmine.useRealClock();
+      await lumine.packages.activatePackage("language-html");
+      await lumine.packages.activatePackage("language-javascript");
+      editor = await lumine.workspace.open();
+      const text = "const view = html`<section>Body</section>`;\nconst tied = html`plain`;";
+      editor.setGrammar(lumine.grammars.grammarForScopeName("source.js"));
+      editor.setText(text);
+      await editor.getBuffer().getLanguageMode().atTransactionEnd();
+
+      const nodeBreadth = (node) => node.endIndex - node.startIndex;
+      const sectionPosition = editor
+        .getBuffer()
+        .positionForCharacterIndex(text.indexOf("section") + 1);
+      const smallest = editor.getSyntaxNodeAtBufferPosition(sectionPosition);
+      const sectionHtmlNode = editor.getSyntaxNodeAtBufferPosition(
+        sectionPosition,
+        (_node, grammar) => grammar.scopeName === "text.html.basic",
+      );
+      const sectionJavascriptNode = editor.getSyntaxNodeAtBufferPosition(
+        sectionPosition,
+        (_node, grammar) => grammar.scopeName === "source.js",
+      );
+
+      expect(smallest.id).toBe(sectionHtmlNode.id);
+      expect(sectionHtmlNode.type).toBe("tag_name");
+      expect(sectionHtmlNode.text).toBe("section");
+      expect(sectionJavascriptNode.type).toBe("string_fragment");
+      expect(nodeBreadth(sectionHtmlNode)).toBeLessThan(nodeBreadth(sectionJavascriptNode));
+
+      const tiedPosition = editor
+        .getBuffer()
+        .positionForCharacterIndex(text.lastIndexOf("plain") + 1);
+      const tiedSmallest = editor.getSyntaxNodeAtBufferPosition(tiedPosition);
+      const tiedHtmlNode = editor.getSyntaxNodeAtBufferPosition(
+        tiedPosition,
+        (_node, grammar) => grammar.scopeName === "text.html.basic",
+      );
+      const tiedJavascriptNode = editor.getSyntaxNodeAtBufferPosition(
+        tiedPosition,
+        (_node, grammar) => grammar.scopeName === "source.js",
+      );
+
+      expect(nodeBreadth(tiedHtmlNode)).toBe(nodeBreadth(tiedJavascriptNode));
+      expect(tiedSmallest.id).toBe(tiedHtmlNode.id);
+      expect(tiedHtmlNode.type).toBe("text");
+      expect(tiedJavascriptNode.type).toBe("string_fragment");
+    });
+  });
+
   describe("when the file on disk is changed while we have pending modifications", () => {
     let destination;
     let disposables;
@@ -11074,6 +11149,32 @@ describe("TextEditor advanced behavior", () => {
   describe("folding", () => {
     beforeEach(async () => {
       await lumine.packages.activatePackage("language-javascript");
+    });
+
+    describe(".getFoldableRangeAtBufferRow(bufferRow)", () => {
+      it("returns only a fold that starts on the requested row", async () => {
+        editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+        await languageModeReady(editor);
+        const languageMode = editor.getBuffer().getLanguageMode();
+        spyOn(languageMode, "getFoldableRangeContainingPoint").and.throwError(
+          "must not search backwards",
+        );
+
+        const range = editor.getFoldableRangeAtBufferRow(1);
+        expect([range.start.row, range.end.row]).toEqual([1, 9]);
+        expect(editor.getFoldableRangeAtBufferRow(8)).toBeNull();
+      });
+
+      it("preserves exact-row indentation folds in the null language mode", () => {
+        editor = new TextEditor({
+          buffer: new TextBuffer({ text: "outer\n\tchild\n  grandchild\nnext\n" }),
+        });
+        editor.setTabLength(2);
+
+        const range = editor.getFoldableRangeAtBufferRow(0);
+        expect([range.start.row, range.end.row]).toEqual([0, 2]);
+        expect(editor.getFoldableRangeAtBufferRow(1)).toBeNull();
+      });
     });
 
     it("maintains cursor buffer position when a folding/unfolding", async () => {
