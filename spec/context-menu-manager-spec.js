@@ -390,6 +390,8 @@ describe("ContextMenuManager", function () {
 
   describe("::templateForEvent(target)", function () {
     let [keymaps, item] = [];
+    const controlALabel = process.platform === "darwin" ? "⌃A" : "Ctrl+A";
+    const shiftBLabel = process.platform === "darwin" ? "⇧B" : "Shift+B";
 
     beforeEach(function () {
       keymaps = lumine.keymaps.add("source", {
@@ -420,13 +422,13 @@ describe("ContextMenuManager", function () {
           label: "My Command",
           id: "My Command",
           command: "test:my-command",
-          keyBindingLabel: "Ctrl+A",
+          keyBindingLabel: controlALabel,
           submenu: [
             {
               label: "My Other Command",
               id: "My Other Command",
               command: "test:my-other-command",
-              keyBindingLabel: "Shift+B",
+              keyBindingLabel: shiftBLabel,
             },
           ],
         },
@@ -440,13 +442,13 @@ describe("ContextMenuManager", function () {
           label: "My Command",
           id: "My Command",
           command: "test:my-command",
-          keyBindingLabel: "Ctrl+A",
+          keyBindingLabel: controlALabel,
           submenu: [
             {
               label: "My Other Command",
               id: "My Other Command",
               command: "test:my-other-command",
-              keyBindingLabel: "Shift+B",
+              keyBindingLabel: shiftBLabel,
             },
           ],
         },
@@ -502,13 +504,13 @@ describe("ContextMenuManager", function () {
             label: "My Command",
             id: "My Command",
             command: "test:my-command",
-            keyBindingLabel: "Ctrl+A",
+            keyBindingLabel: controlALabel,
             submenu: [
               {
                 label: "My Other Command",
                 id: "My Other Command",
                 command: "test:my-other-command",
-                keyBindingLabel: "Shift+B",
+                keyBindingLabel: shiftBLabel,
               },
             ],
           },
@@ -522,13 +524,13 @@ describe("ContextMenuManager", function () {
           label: "My Command",
           id: "My Command",
           command: "test:my-command",
-          keyBindingLabel: "Ctrl+A",
+          keyBindingLabel: controlALabel,
           submenu: [
             {
               label: "My Other Command",
               id: "My Other Command",
               command: "test:my-other-command",
-              keyBindingLabel: "Shift+B",
+              keyBindingLabel: shiftBLabel,
             },
           ],
         },
