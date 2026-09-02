@@ -94,6 +94,149 @@ describe("TreeSitterLanguageMode", () => {
     });
   });
 
+  describe("atGrammarSettlement", () => {
+    async function buildLanguageMode() {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      return languageMode;
+    }
+
+    function defer() {
+      let resolve;
+      let reject;
+      const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      });
+      return { promise, resolve, reject };
+    }
+
+    it("rescans new layers and work created while an earlier batch settles", async () => {
+      jasmine.useRealClock();
+      const languageMode = await buildLanguageMode();
+      const rootLayer = languageMode.rootLanguageLayer;
+      const rootQuery = defer();
+      const rootDrain = defer();
+      const lateQuery = defer();
+      const lateDrain = defer();
+      const lateLayer = {
+        grammar: { queryPaths: { tagsQuery: "late-tags.scm" } },
+        queryReloadPromise: lateQuery.promise,
+        injectionPopulationDrainPromise: lateDrain.promise,
+        destroy() {},
+      };
+      const layers = [rootLayer];
+      rootLayer.queryReloadPromise = rootQuery.promise;
+      rootLayer.injectionPopulationDrainPromise = rootDrain.promise;
+      const getLayers = spyOn(languageMode, "getAllLanguageLayers").and.callFake(() => layers);
+      let settled = false;
+
+      const settlement = languageMode.atGrammarSettlement().then((transaction) => {
+        settled = true;
+        return transaction;
+      });
+      await waitForCondition(() => getLayers.calls.count() >= 1);
+      expect(settled).toBe(false);
+
+      rootLayer.queryReloadPromise = null;
+      rootLayer.injectionPopulationDrainPromise = null;
+      layers.push(lateLayer);
+      rootQuery.resolve();
+      rootDrain.resolve();
+      await waitForCondition(() => getLayers.calls.count() >= 2);
+      expect(settled).toBe(false);
+
+      lateLayer.queryReloadPromise = null;
+      lateLayer.injectionPopulationDrainPromise = null;
+      lateQuery.resolve();
+      lateDrain.resolve();
+
+      const transaction = await settlement;
+      expect(transaction.parseError).toBeNull();
+      expect(languageMode.hasQuery("tagsQuery")).toBe(true);
+    });
+
+    it("waits for a chunked late grammar injection before exposing its query", async () => {
+      jasmine.useRealClock();
+      const rootConfig = {
+        ...jsConfig,
+        treeSitter: { ...jsConfig.treeSitter },
+      };
+      delete rootConfig.treeSitter.tagsQuery;
+      const rootGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, rootConfig);
+      const injectedGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, {
+        ...htmlConfig,
+        injectionNames: ["late-capture-html"],
+      });
+      grammar = rootGrammar;
+      await injectedGrammar.setQueryForTest("tagsQuery", "(text) @name");
+      rootGrammar.addInjectionPoint({
+        type: "identifier",
+        language: () => "late-capture-html",
+        content: (node) => node,
+        includeChildren: true,
+        languageScope: null,
+      });
+      buffer.setText("const alpha = one;\nconst beta = two;\nconst gamma = three;");
+      const languageMode = new TreeSitterLanguageMode({
+        grammar: rootGrammar,
+        buffer,
+        grammars: lumine.grammars,
+        injectionCandidateChunkRows: 1,
+        injectionCandidateChunkCodeUnits: 16,
+      });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      expect(languageMode.hasQuery("tagsQuery")).toBe(false);
+
+      let releaseChunk;
+      const chunk = new Promise((resolve) => (releaseChunk = resolve));
+      const yieldForChunk = spyOn(languageMode, "_yieldForInjectionCandidateScan").and.returnValue(
+        chunk,
+      );
+      const registration = lumine.grammars.addGrammar(injectedGrammar);
+
+      try {
+        await waitForCondition(() => yieldForChunk.calls.count() > 0);
+        let settled = false;
+        const settlement = editor.whenGrammarSettled().then((value) => {
+          settled = true;
+          return value;
+        });
+        await Promise.resolve();
+        expect(settled).toBe(false);
+        expect(languageMode.hasQuery("tagsQuery")).toBe(false);
+
+        releaseChunk();
+        expect(await settlement).toBe(true);
+        expect(languageMode.hasQuery("tagsQuery")).toBe(true);
+
+        const groups = await editor.getGrammarQueryCaptureGroups("tagsQuery");
+        expect(groups.some(({ grammar: groupGrammar }) => groupGrammar === injectedGrammar)).toBe(
+          true,
+        );
+      } finally {
+        buffer.setLanguageMode(null);
+        registration.dispose();
+        injectedGrammar.deactivate();
+      }
+    });
+
+    it("propagates a layer settlement failure", async () => {
+      const languageMode = await buildLanguageMode();
+      languageMode.rootLanguageLayer.queryReloadPromise = Promise.reject(
+        new Error("query reload failed"),
+      );
+
+      await expectAsync(languageMode.atGrammarSettlement()).toBeRejectedWithError(
+        "query reload failed",
+      );
+      languageMode.rootLanguageLayer.queryReloadPromise = null;
+    });
+  });
+
   describe("query reload lifecycle", () => {
     async function buildLanguageLayer() {
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);

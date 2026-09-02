@@ -837,6 +837,35 @@ class TreeSitterLanguageMode {
     return this.atTransactionEndPromise;
   }
 
+  // Resolves only after the current parse transaction and all layer work that
+  // can change the active grammar/query topology have settled. Awaiting a
+  // batch may create another layer or schedule another reload, so rescan the
+  // complete, current layer set until no unseen work remains.
+  async atGrammarSettlement() {
+    await this.ready;
+    let transaction = await this.atTransactionEnd();
+    const awaitedPromises = new Set();
+
+    while (!this.destroyed && !transaction.parseError) {
+      const pending = new Set();
+      for (const layer of this.getAllLanguageLayers()) {
+        for (const promise of [layer?.queryReloadPromise, layer?.injectionPopulationDrainPromise]) {
+          if (typeof promise?.then === "function" && !awaitedPromises.has(promise)) {
+            pending.add(promise);
+          }
+        }
+      }
+      if (pending.size === 0) break;
+
+      for (const promise of pending) awaitedPromises.add(promise);
+      await Promise.all(pending);
+      if (this.destroyed) break;
+      transaction = await this.atTransactionEnd();
+    }
+
+    return transaction;
+  }
+
   transactionMetadata() {
     return {
       changeCount: this.lastTransactionChangeCount ?? 0,
@@ -1966,13 +1995,28 @@ class TreeSitterLanguageMode {
   }
 
   async getQueryCaptureGroups(queryType, { signal } = {}) {
-    await this.ready;
-    if (this.destroyed || signal?.aborted) return [];
-    const transaction = await this.atTransactionEnd();
-    if (this.destroyed || signal?.aborted || transaction.parseError) return [];
+    let layers;
+    while (true) {
+      const transaction = await this.atGrammarSettlement();
+      if (this.destroyed || signal?.aborted || transaction.parseError) return [];
+
+      // Promise continuations run in their own microtask. Topology work may
+      // have been scheduled after the settlement's final scan but before this
+      // continuation, so take one last synchronous snapshot. Once it contains
+      // no pending work, captures below run in the same stack and therefore
+      // describe exactly this layer set.
+      layers = this.getAllLanguageLayers();
+      const hasPendingWork = layers.some(
+        (layer) => layer?.queryReloadPromise?.then || layer?.injectionPopulationDrainPromise?.then,
+      );
+      if (!this.resolveNextTransaction && !hasPendingWork) {
+        if (this.lastTransactionParseError) return [];
+        break;
+      }
+    }
 
     const groups = [];
-    for (const layer of this.getAllLanguageLayers()) {
+    for (const layer of layers) {
       const query = layer?.queries?.[queryType];
       if (!query || !layer.tree) continue;
       const extent = layer.getExtent();

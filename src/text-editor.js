@@ -5487,7 +5487,7 @@ module.exports = class TextEditor {
    *
    * Returns `false` when the editor is destroyed, the grammar changes, the
    * optional signal is aborted, or parsing the current transaction fails. A
-   * parser-loading failure rejects the returned promise.
+   * parser-loading or grammar-settlement failure rejects the returned promise.
    *
    * @param {Object} [options]
    * @param {AbortSignal} [options.signal] - Cancels this wait when aborted.
@@ -5497,9 +5497,14 @@ module.exports = class TextEditor {
     if (this.isDestroyed() || signal?.aborted) return Promise.resolve(false);
 
     const languageMode = this.buffer.getLanguageMode();
+    const atGrammarSettlement = languageMode.atGrammarSettlement;
     const ready = languageMode.ready;
     const atTransactionEnd = languageMode.atTransactionEnd;
-    if (!ready?.then && typeof atTransactionEnd !== "function") {
+    if (
+      typeof atGrammarSettlement !== "function" &&
+      typeof ready?.then !== "function" &&
+      typeof atTransactionEnd !== "function"
+    ) {
       return Promise.resolve(true);
     }
 
@@ -5537,7 +5542,14 @@ module.exports = class TextEditor {
 
       (async () => {
         try {
-          if (ready?.then) await ready;
+          if (typeof atGrammarSettlement === "function") {
+            const transaction = await atGrammarSettlement.call(languageMode);
+            if (!isCurrent()) return cancel();
+            complete(!transaction?.parseError);
+            return;
+          }
+
+          if (typeof ready?.then === "function") await ready;
           if (!isCurrent()) return cancel();
 
           const transaction =

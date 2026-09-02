@@ -10452,6 +10452,41 @@ describe("TextEditor advanced behavior", () => {
       coldBuffer.destroy();
     });
 
+    it("prefers the complete grammar-settlement hook", async () => {
+      const grammarSettlement = defer();
+      const atGrammarSettlement = spyOn(languageMode, "atGrammarSettlement").and.returnValue(
+        grammarSettlement.promise,
+      );
+      const atTransactionEnd = spyOn(languageMode, "atTransactionEnd").and.throwError(
+        "must use complete grammar settlement",
+      );
+
+      const settled = editor.whenGrammarSettled();
+      grammarSettlement.resolve({ parseError: null });
+
+      expect(await settled).toBe(true);
+      expect(atGrammarSettlement).toHaveBeenCalledTimes(1);
+      expect(atTransactionEnd).not.toHaveBeenCalled();
+    });
+
+    it("falls back to ready and the current transaction without a settlement hook", async () => {
+      const ready = defer();
+      const transaction = defer();
+      languageMode.atGrammarSettlement = undefined;
+      languageMode.ready = ready.promise;
+      const atTransactionEnd = spyOn(languageMode, "atTransactionEnd").and.returnValue(
+        transaction.promise,
+      );
+
+      const settled = editor.whenGrammarSettled();
+      expect(atTransactionEnd).not.toHaveBeenCalled();
+
+      ready.resolve();
+      await conditionPromise(() => atTransactionEnd.calls.count() === 1);
+      transaction.resolve({ parseError: null });
+      expect(await settled).toBe(true);
+    });
+
     it("resolves false when the grammar changes while waiting", async () => {
       const ready = defer();
       languageMode.ready = ready.promise;
@@ -10578,6 +10613,12 @@ describe("TextEditor advanced behavior", () => {
   describe("grammar query access", () => {
     let buffer, languageMode;
 
+    function defer() {
+      let resolve;
+      const promise = new Promise((resolvePromise) => (resolve = resolvePromise));
+      return { promise, resolve };
+    }
+
     beforeEach(async () => {
       jasmine.useRealClock();
       editor = await lumine.workspace.open("sample.js", { autoIndent: false });
@@ -10607,6 +10648,50 @@ describe("TextEditor advanced behavior", () => {
       const javascriptGroup = groups.find(({ grammar }) => grammar.scopeName === "source.js");
       expect(javascriptGroup).toBeDefined();
       expect(javascriptGroup.captures.length).toBeGreaterThan(0);
+    });
+
+    it("waits for topology work scheduled between public settlement and capture", async () => {
+      const firstDrain = defer();
+      const secondDrain = defer();
+      const rootLayer = languageMode.rootLanguageLayer;
+      const originalSettlement = languageMode.atGrammarSettlement.bind(languageMode);
+      let settlementCount = 0;
+      const atGrammarSettlement = spyOn(languageMode, "atGrammarSettlement").and.callFake(
+        async () => {
+          const transaction = await originalSettlement();
+          settlementCount++;
+          if (settlementCount === 1) {
+            rootLayer.injectionPopulationDrainPromise = firstDrain.promise;
+          } else if (settlementCount === 2) {
+            rootLayer.injectionPopulationDrainPromise = secondDrain.promise;
+          } else if (settlementCount === 3) {
+            languageMode.refreshNextTransactionPromise();
+          }
+          return transaction;
+        },
+      );
+      let resolved = false;
+
+      const request = editor.getGrammarQueryCaptureGroups("tagsQuery").then((groups) => {
+        resolved = true;
+        return groups;
+      });
+      await conditionPromise(() => atGrammarSettlement.calls.count() >= 2);
+      expect(resolved).toBe(false);
+
+      rootLayer.injectionPopulationDrainPromise = null;
+      firstDrain.resolve();
+      await conditionPromise(() => atGrammarSettlement.calls.count() >= 3);
+      expect(resolved).toBe(false);
+
+      rootLayer.injectionPopulationDrainPromise = null;
+      secondDrain.resolve();
+      await conditionPromise(() => atGrammarSettlement.calls.count() >= 4);
+      expect(resolved).toBe(false);
+
+      languageMode.resolveNextTransactionPromise();
+      const groups = await request;
+      expect(groups.length).toBeGreaterThan(0);
     });
 
     it("returns safe empty results for null and already-aborted requests", async () => {
