@@ -61,7 +61,7 @@
     "focus-trap": "8.2.2",
     "git-diff": "github:lumine-code/git-diff#be975626bb8aa89170b5f6dc7fd7471513ea9681",
     "go-to-line": "github:lumine-code/go-to-line#2fa052f67a6de2e7b3a4d67c97ee8c188c5e4539",
-    "grammar-selector": "github:lumine-code/grammar-selector#f248f3a2e2de0fd01b6d70198a8ab8aca14642b1",
+    "grammar-selector": "github:lumine-code/grammar-selector#ce755c49db8cf52c434e14e17b423930da07d007",
     "gray-matter": "^4.0.3",
     "incompatible-packages": "github:lumine-code/incompatible-packages#47ea15e80bace771bff5c79125b390267cfb1e9c",
     "item-status": "github:lumine-code/item-status#83db7cede09c11d04874c744a6847ac01cdb4873",
