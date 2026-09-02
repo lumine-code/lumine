@@ -207,7 +207,9 @@ jobs:
             const out = [];
             for (const name of scanBundledPackageNames(".")) {
               const dir = resolveBundledPackageDir(".", name);
-              if (dir && fs.existsSync(path.join(dir, "spec"))) out.push(path.join(dir, "spec"));
+              if (dir && fs.existsSync(path.join(dir, "spec"))) {
+                out.push(path.join(dir, "spec").split(path.sep).join("/"));
+              }
             }
             console.log(out.join("\n"));
           ')
