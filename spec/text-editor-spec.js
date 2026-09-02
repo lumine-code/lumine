@@ -10305,7 +10305,7 @@ describe("TextEditor", () => {
   });
 });
 
-describe("TextEditor", () => {
+describe("TextEditor advanced behavior", () => {
   let editor;
 
   afterEach(() => {
@@ -10317,6 +10317,15 @@ describe("TextEditor", () => {
       editor = new TextEditor({ buffer: new TextBuffer() });
       const scopeDescriptor = editor.scopeDescriptorForBufferPosition([0, 0]);
       expect(scopeDescriptor.getScopesArray()).toEqual(["text.plain.null-grammar"]);
+    });
+  });
+
+  describe(".getNonWordCharacters(position)", () => {
+    it("reads the scoped setting in the null language mode", () => {
+      editor = new TextEditor({ buffer: new TextBuffer() });
+      lumine.config.set("editor.nonWordCharacters", "");
+
+      expect(editor.getNonWordCharacters([0, 0])).toBe("");
     });
   });
 

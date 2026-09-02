@@ -6376,9 +6376,13 @@ module.exports = class TextEditor {
    */
   getNonWordCharacters(position) {
     const languageMode = this.buffer.getLanguageMode();
+    const queryPosition = position || Point(0, 0);
+    const languageValue = languageMode.getNonWordCharacters?.(queryPosition);
+    if (languageValue != null) return languageValue;
+
+    const scope = languageMode.scopeDescriptorForPosition?.(queryPosition);
     return (
-      (languageMode.getNonWordCharacters &&
-        languageMode.getNonWordCharacters(position || Point(0, 0))) ||
+      globalThis.lumine?.config?.get("editor.nonWordCharacters", { scope }) ??
       DEFAULT_NON_WORD_CHARACTERS
     );
   }
