@@ -1624,6 +1624,35 @@ describe("TreeSitterLanguageMode", () => {
         expect(updatedLayers).toContain(secondLayer);
       });
 
+      it("reuses included-range markers when their adapted ranges still match", async () => {
+        jasmine.useRealClock();
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
+        buffer.setText("const value = html `<b>${name}</b>`;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        const htmlLayer = languageMode
+          .getAllInjectionLayers()
+          .find((layer) => layer.grammar === htmlGrammar);
+        const originalMarkers = htmlLayer.currentRangesLayer.getMarkers();
+        expect(originalMarkers.length).toBe(2);
+
+        buffer.setTextInRange(buffer.findSync("<b>"), "<i>");
+        await languageMode.atTransactionEnd();
+
+        const updatedMarkers = htmlLayer.currentRangesLayer.getMarkers();
+        expect(updatedMarkers.length).toBe(2);
+        expect(updatedMarkers).toContain(originalMarkers[0]);
+        expect(updatedMarkers).toContain(originalMarkers[1]);
+      });
+
       it("highlights code inside of injection points", async () => {
         jasmine.useRealClock();
         lumine.grammars.addGrammar(jsGrammar);

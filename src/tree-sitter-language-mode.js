@@ -3984,10 +3984,20 @@ class LanguageLayer {
     if (this.depth === 0) {
       return;
     }
-    this.currentRangesCache = undefined;
-    let oldRangeMarkers = this.currentRangesLayer.getMarkers();
-    for (let marker of oldRangeMarkers) {
-      marker.destroy();
+    const newRanges = includedRanges.map((range) => rangeForNode(range).freeze());
+    const oldMarkers = this.currentRangesLayer.getMarkers();
+    const markersByRange = new Map();
+    const rangeKey = (range) =>
+      `${range.start.row},${range.start.column}/${range.end.row},${range.end.column}`;
+
+    for (const marker of oldMarkers) {
+      const key = rangeKey(marker.getRange());
+      let markers = markersByRange.get(key);
+      if (!markers) {
+        markers = [];
+        markersByRange.set(key, markers);
+      }
+      markers.push(marker);
     }
 
     // These are the “official” ranges, received right after the parent layer's
@@ -3995,10 +4005,31 @@ class LanguageLayer {
     // next transaction, but until then, we should try our best to adapt to
     // buffer changes, and to allow each range to shift or grow or shrink so
     // that off-schedule parses are more likely to be accurate.
-    for (let range of includedRanges) {
-      range = rangeForNode(range);
-      this.currentRangesLayer.markRange(range);
+    const retainedMarkers = new Set();
+    const unmatchedRanges = [];
+    for (const range of newRanges) {
+      const markers = markersByRange.get(rangeKey(range));
+      const marker = markers?.shift();
+      if (marker) {
+        retainedMarkers.add(marker);
+      } else {
+        unmatchedRanges.push(range);
+      }
     }
+
+    const unmatchedMarkers = oldMarkers.filter((marker) => !retainedMarkers.has(marker));
+    const reusedCount = Math.min(unmatchedMarkers.length, unmatchedRanges.length);
+    for (let index = 0; index < reusedCount; index++) {
+      unmatchedMarkers[index].setRange(unmatchedRanges[index]);
+    }
+    for (let index = reusedCount; index < unmatchedMarkers.length; index++) {
+      unmatchedMarkers[index].destroy();
+    }
+    for (let index = reusedCount; index < unmatchedRanges.length; index++) {
+      this.currentRangesLayer.markRange(unmatchedRanges[index]);
+    }
+
+    this.currentRangesCache = newRanges;
   }
 
   getCurrentRanges() {
