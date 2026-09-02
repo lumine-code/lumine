@@ -146,6 +146,7 @@ module.exports = class TreeSitterGrammar {
 
     this.queryCache = new Map();
     this.internalQueryCache = new Map();
+    this.queryReferenceCounts = new Map();
     this.querySourceMaps = new Map();
     this.promisesForQueryFiles = new Map();
     this.promisesForQueries = new Map();
@@ -412,7 +413,7 @@ module.exports = class TreeSitterGrammar {
         this.querySourceMaps.set(queryType, sourceMap);
         if (this[queryType] !== output) {
           this[queryType] = output;
-          this.queryCache.delete(queryType);
+          this.uncacheQuery(queryType);
           // The source changed, so any previously reported errors for this
           // query type are stale; allow them to be reported afresh.
           for (let reportedKey of this.reportedQueryErrors) {
@@ -443,7 +444,7 @@ module.exports = class TreeSitterGrammar {
         error.queryDescriptor ??= this.describeQueryError(error, queryType);
         throw error;
       }
-      this.queryCache.set(queryType, query);
+      this.cacheQuery(queryType, query);
     }
     return query;
   }
@@ -598,7 +599,7 @@ module.exports = class TreeSitterGrammar {
           query = this._createQuery(language, this[queryType]);
 
           // if (inDevMode) { console.timeEnd(timeTag); }
-          this.queryCache.set(queryType, query);
+          this.cacheQuery(queryType, query);
           resolve(query);
         } catch (error) {
           // if (inDevMode) { console.timeEnd(timeTag); }
@@ -651,6 +652,35 @@ module.exports = class TreeSitterGrammar {
     return this._createQuery(this._language, queryContents);
   }
 
+  retainQuery(query) {
+    if (!query) return;
+    this.queryReferenceCounts.set(query, (this.queryReferenceCounts.get(query) ?? 0) + 1);
+  }
+
+  releaseQuery(query) {
+    if (!query) return;
+    const count = this.queryReferenceCounts.get(query);
+    if (!count) return;
+    if (count === 1) {
+      this.queryReferenceCounts.delete(query);
+      query.delete?.();
+    } else {
+      this.queryReferenceCounts.set(query, count - 1);
+    }
+  }
+
+  cacheQuery(queryType, query) {
+    this.queryCache.set(queryType, query);
+    this.retainQuery(query);
+  }
+
+  uncacheQuery(queryType) {
+    const query = this.queryCache.get(queryType);
+    if (!query) return;
+    this.queryCache.delete(queryType);
+    this.releaseQuery(query);
+  }
+
   // Internal queries are derived from runtime state rather than query files.
   // They are immutable and shared by every language layer using this grammar,
   // so compiling a given source more than once only wastes time and Wasm
@@ -667,7 +697,7 @@ module.exports = class TreeSitterGrammar {
   // Used by the specs to override a particular query for testing.
   async setQueryForTest(queryType, contents) {
     await this.getLanguage();
-    this.queryCache.delete(queryType);
+    this.uncacheQuery(queryType);
     // The programmatic source no longer corresponds to any file on disk.
     this.querySourceMaps.delete(queryType);
     this[queryType] = contents;
@@ -693,7 +723,7 @@ module.exports = class TreeSitterGrammar {
             lumine.notifications.beep();
             this.reportQueryError(error, queryType);
             this[queryType] = existingQuery;
-            this.queryCache.delete(queryType);
+            this.uncacheQuery(queryType);
             return;
           }
           this.emitter.emit("did-change-query", { filePath, queryType });
@@ -807,10 +837,9 @@ module.exports = class TreeSitterGrammar {
     // A new query object gets instantiated for each kind of query every time a
     // grammar activates. WASM queries need explicit cleanup; native queries
     // are garbage-collected and do not expose `delete`.
-    for (let value of this.queryCache.values()) {
-      value.delete?.();
+    for (let queryType of [...this.queryCache.keys()]) {
+      this.uncacheQuery(queryType);
     }
-    this.queryCache.clear();
     for (let value of this.internalQueryCache.values()) {
       value.delete?.();
     }

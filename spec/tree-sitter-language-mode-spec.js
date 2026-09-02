@@ -139,6 +139,18 @@ describe("TreeSitterLanguageMode", () => {
 
       expect(layer.queries.foldsQuery).toBeDefined();
     });
+
+    it("deletes a replaced Wasm query after the layer releases it", async () => {
+      const layer = await buildLanguageLayer();
+      const oldQuery = layer.queries.highlightsQuery;
+      spyOn(oldQuery, "delete").and.callThrough();
+
+      await grammar.setQueryForTest("highlightsQuery", "(identifier) @constant");
+      await layer.queryReloadPromise;
+
+      expect(layer.queries.highlightsQuery).not.toBe(oldQuery);
+      expect(oldQuery.delete).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe("update scheduling", () => {

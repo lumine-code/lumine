@@ -3115,7 +3115,9 @@ class LanguageLayer {
             let promise = this.grammar
               .getQuery(queryType)
               .then((query) => {
+                if (this.destroyed) return;
                 this.queries[queryType] = query;
+                this.grammar.retainQuery(query);
               })
               .catch((error) => {
                 // Collect every failure instead of letting `Promise.all`
@@ -3226,6 +3228,10 @@ class LanguageLayer {
     this.foldResolver?.reset();
     this.scopeResolver?.destroy();
     this.subscriptions.dispose();
+    for (const query of new Set(Object.values(this.queries))) {
+      this.grammar.releaseQuery(query);
+    }
+    this.queries = {};
 
     const childLayerMarkers = [...this.childLayerMarkers];
     this.childLayerMarkers.clear();
@@ -3243,7 +3249,13 @@ class LanguageLayer {
     try {
       let query = await this.grammar.getQuery(queryType);
       if (this.destroyed) return;
+      if (query !== originalQuery) {
+        this.grammar.retainQuery(query);
+      }
       this.queries[queryType] = query;
+      if (query !== originalQuery) {
+        this.grammar.releaseQuery(originalQuery);
+      }
       if (queryType === "foldsQuery") {
         this.foldResolver.reset();
       }
