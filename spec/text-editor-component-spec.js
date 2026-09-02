@@ -13,6 +13,10 @@ const path = require("path");
 const electron = require("electron");
 const clipboardBridge = require("../src/clipboard-bridge");
 const { beginLayoutDrag } = require("../src/layout-drag");
+const {
+  UPDATE_MODE_NORMAL,
+  UPDATE_MODE_SCROLL_TILES,
+} = require("../src/text-editor-component-helpers");
 
 function createClipboardData(initialData = {}) {
   const data = new Map(Object.entries(initialData));
@@ -1215,7 +1219,7 @@ describe("TextEditorComponent", () => {
       // scheduler, which flushes on a later frame - an editor destroyed in
       // that gap must not be measured or rendered (see scheduleUpdate: a
       // destroyed editor must never render).
-      component.updateSync(true);
+      component.updateSync({ useScheduler: true });
       spyOn(component, "measureContentDuringUpdateSync").and.callThrough();
       spyOn(component, "renderSync").and.callThrough();
       editor.destroy();
@@ -2396,13 +2400,125 @@ describe("TextEditorComponent", () => {
       component.scrollAnimator.advance(FRAME);
 
       expect(updateSync).toHaveBeenCalledTimes(1);
+      expect(updateSync).toHaveBeenCalledWith({ updateMode: UPDATE_MODE_SCROLL_TILES });
       expect(component.mountedTileStartRow).toBe(boundaryRow);
+    });
+
+    it("updates only entering line-number gutter tiles when scrolling crosses a tile boundary", async () => {
+      const { component, editor } = buildSmoothComponent({
+        text: `${"x".repeat(80)}\n`.repeat(100),
+        softWrapped: true,
+        rowsPerTile: 3,
+        width: 180,
+      });
+      const labelFns = ["old", "new"].map((prefix) =>
+        jasmine
+          .createSpy(`${prefix}Label`)
+          .and.callFake(({ bufferRow, screenRow }) => `${prefix}:${bufferRow}:${screenRow}`),
+      );
+      const gutters = labelFns.map((labelFn, index) =>
+        editor.addGutter({
+          name: `diff-${index}`,
+          priority: index,
+          type: "line-number",
+          labelFn,
+        }),
+      );
+      const marker = editor.markBufferRange(editor.getBuffer().getRange(), {
+        invalidate: "never",
+      });
+      gutters.forEach((gutter) => gutter.decorateMarker(marker, { class: "changed" }));
+      await component.getNextUpdatePromise();
+      component.updateSync();
+
+      const previousEndRow = component.mountedTileEndRow;
+      const boundaryRow = component.mountedTileStartRow + component.getRowsPerTile();
+      const boundaryTop = Math.ceil(component.pixelPositionBeforeBlocksForRow(boundaryRow));
+      labelFns.forEach((labelFn) => labelFn.calls.reset());
+      expect(component.canUpdateForScrollOnly(false, true)).toBe(true);
+
+      component.scrollAnimator.scrollTo({ top: boundaryTop, smoothness: 1 });
+      component.scrollAnimator.advance(FRAME);
+
+      const enteringRows = Array.from(
+        { length: component.mountedTileEndRow - previousEndRow },
+        (_, index) => previousEndRow + index,
+      );
+      for (const labelFn of labelFns) {
+        expect(
+          labelFn.calls
+            .allArgs()
+            .map(([{ screenRow }]) => screenRow)
+            .sort((a, b) => a - b),
+        ).toEqual(enteringRows);
+      }
+
+      for (let index = 0; index < gutters.length; index++) {
+        const prefix = index === 0 ? "old" : "new";
+        const lineNumbers = Array.from(
+          gutters[index].getElement().querySelectorAll(".line-number:not(.dummy)"),
+        ).sort((a, b) => Number(a.dataset.screenRow) - Number(b.dataset.screenRow));
+        expect(lineNumbers.length).toBe(
+          component.getRenderedEndRow() - component.getRenderedStartRow(),
+        );
+        for (const lineNumber of lineNumbers) {
+          const screenRow = Number(lineNumber.dataset.screenRow);
+          const bufferRow = editor.bufferRowForScreenRow(screenRow);
+          expect(Number(lineNumber.dataset.bufferRow)).toBe(bufferRow);
+          expect(lineNumber.textContent).toBe(`${prefix}:${bufferRow}:${screenRow}`);
+          expect(lineNumber).toHaveClass("changed");
+          expect(lineNumber.getBoundingClientRect().top).toBeNear(
+            lineNodeForScreenRow(component, screenRow).getBoundingClientRect().top,
+          );
+        }
+      }
+    });
+
+    it("refreshes retained line-number gutter tiles when other work is pending", async () => {
+      const { component, editor } = buildSmoothComponent({
+        text: "line\n".repeat(100),
+        rowsPerTile: 3,
+      });
+      let prefix = "old";
+      const labelFn = jasmine
+        .createSpy("label")
+        .and.callFake(({ screenRow }) => `${prefix}:${screenRow}`);
+      const gutter = editor.addGutter({ name: "diff", type: "line-number", labelFn });
+      await component.getNextUpdatePromise();
+
+      const boundaryRow = component.mountedTileStartRow + component.getRowsPerTile();
+      const retainedLineNumber = () =>
+        gutter.getElement().querySelector(`[data-screen-row="${boundaryRow}"]`);
+      expect(retainedLineNumber().textContent).toBe(`old:${boundaryRow}`);
+
+      prefix = "new";
+      labelFn.calls.reset();
+      const marker = editor.markScreenRange(
+        [
+          [boundaryRow, 0],
+          [boundaryRow, 1],
+        ],
+        { invalidate: "never" },
+      );
+      gutter.decorateMarker(marker, { class: "pending-change" });
+      expect(component.updateScheduled).toBe(true);
+
+      const boundaryTop = Math.ceil(component.pixelPositionBeforeBlocksForRow(boundaryRow));
+      component.scrollAnimator.scrollTo({ top: boundaryTop, smoothness: 1 });
+      component.scrollAnimator.advance(FRAME);
+
+      expect(labelFn.calls.count()).toBe(
+        component.getRenderedEndRow() - component.getRenderedStartRow(),
+      );
+      expect(retainedLineNumber().textContent).toBe(`new:${boundaryRow}`);
+      expect(retainedLineNumber()).toHaveClass("pending-change");
     });
 
     it("rejects scroll-only updates whenever other editor work is pending", async () => {
       const { component } = buildSmoothComponent();
       if (component.updateScheduled) await component.getNextUpdatePromise();
       expect(component.canUpdateScrollPositionOnly(false, true)).toBe(true);
+      expect(component.canUpdateForScrollOnly(false, true)).toBe(true);
 
       const unsafeStates = [
         ["updateScheduled", true],
@@ -2418,25 +2534,36 @@ describe("TextEditorComponent", () => {
         const original = component[property];
         component[property] = value;
         expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+        expect(component.canUpdateForScrollOnly(false, true)).toBe(false);
         component[property] = original;
       }
 
       component.linesToMeasure.set(0, {});
       expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+      expect(component.canUpdateForScrollOnly(false, true)).toBe(false);
       component.linesToMeasure.clear();
       component.horizontalPositionsToMeasure.set(0, []);
       expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+      expect(component.canUpdateForScrollOnly(false, true)).toBe(false);
       component.horizontalPositionsToMeasure.clear();
-      component.blockDecorationsToMeasure.add({});
-      expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
-      component.blockDecorationsToMeasure.clear();
 
       const updateSync = spyOn(component, "updateSync");
+      component.blockDecorationsToMeasure.add({});
+      expect(component.canUpdateScrollPositionOnly(false, true)).toBe(false);
+      expect(component.canUpdateForScrollOnly(false, true)).toBe(false);
+      expect(component.updateScrollAnimationFrame({ horizontal: false, vertical: true })).toBe(
+        false,
+      );
+      expect(updateSync).toHaveBeenCalledWith({ updateMode: UPDATE_MODE_NORMAL });
+      updateSync.calls.reset();
+      component.blockDecorationsToMeasure.clear();
+
       component.decorationsToRender.overlays.push({});
       expect(component.updateScrollAnimationFrame({ horizontal: false, vertical: true })).toBe(
         false,
       );
       expect(updateSync).toHaveBeenCalledTimes(1);
+      expect(updateSync).toHaveBeenCalledWith({ updateMode: UPDATE_MODE_NORMAL });
     });
 
     it("cancels the glide when the scroll position is set directly", () => {

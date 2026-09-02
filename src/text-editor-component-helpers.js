@@ -1,5 +1,7 @@
 const NBSP_CHARACTER = "\u00a0";
 const ZERO_WIDTH_NBSP_CHARACTER = "\ufeff";
+const UPDATE_MODE_NORMAL = "normal";
+const UPDATE_MODE_SCROLL_TILES = "scroll-tiles";
 
 function textDecorationsEqual(oldDecorations, newDecorations) {
   if (!oldDecorations && newDecorations) return false;
@@ -61,6 +63,8 @@ function floorToPhysicalPixelBoundary(virtualPixelPosition) {
 module.exports = {
   NBSP_CHARACTER,
   ZERO_WIDTH_NBSP_CHARACTER,
+  UPDATE_MODE_NORMAL,
+  UPDATE_MODE_SCROLL_TILES,
   textDecorationsEqual,
   arraysEqual,
   roundToPhysicalPixelBoundary,

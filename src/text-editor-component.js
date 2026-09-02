@@ -17,6 +17,8 @@ const {
   roundToPhysicalPixelBoundary,
   ceilToPhysicalPixelBoundary,
   floorToPhysicalPixelBoundary,
+  UPDATE_MODE_NORMAL,
+  UPDATE_MODE_SCROLL_TILES,
 } = require("./text-editor-component-helpers");
 
 let TextEditorElement;
@@ -293,12 +295,12 @@ module.exports = class TextEditorComponent {
     } else if (!this.updateScheduled) {
       this.updateScheduled = true;
       getScheduler().updateDocument(() => {
-        if (this.updateScheduled) this.updateSync(true);
+        if (this.updateScheduled) this.updateSync({ useScheduler: true });
       });
     }
   }
 
-  updateSync(useScheduler = false) {
+  updateSync({ useScheduler = false, updateMode = UPDATE_MODE_NORMAL } = {}) {
     // Don't proceed if the model was destroyed (see scheduleUpdate; an
     // already-scheduled update can also land after a synchronous destroy).
     if (this.props.model.isDestroyed()) {
@@ -358,7 +360,7 @@ module.exports = class TextEditorComponent {
 
     if (this.isVisible()) this.measureBlockDecorations();
 
-    this.updateSyncBeforeMeasuringContent();
+    this.updateSyncBeforeMeasuringContent(updateMode);
     if (useScheduler === true) {
       const documentScheduler = getScheduler();
       documentScheduler.readDocument(() => {
@@ -379,18 +381,18 @@ module.exports = class TextEditorComponent {
             return;
           }
           if (restartFrame) {
-            this.updateSync(true);
+            this.updateSync({ useScheduler: true, updateMode });
           } else {
-            this.updateSyncAfterMeasuringContent();
+            this.updateSyncAfterMeasuringContent(updateMode);
           }
         });
       });
     } else {
       const restartFrame = this.measureContentDuringUpdateSync();
       if (restartFrame) {
-        this.updateSync(false);
+        this.updateSync({ updateMode });
       } else {
-        this.updateSyncAfterMeasuringContent();
+        this.updateSyncAfterMeasuringContent(updateMode);
       }
     }
 
@@ -403,8 +405,12 @@ module.exports = class TextEditorComponent {
   // Everything else retains the complete update path as its correctness
   // fallback.
   updateScrollAnimationFrame({ horizontal, vertical }) {
-    if (!this.canUpdateScrollPositionOnly(horizontal, vertical)) {
-      this.updateSync();
+    if (!this.canUpdateForScrollOnly(horizontal, vertical)) {
+      this.updateSync({ updateMode: UPDATE_MODE_NORMAL });
+      return false;
+    }
+    if (!this.mountedTilesCoverViewport()) {
+      this.updateSync({ updateMode: UPDATE_MODE_SCROLL_TILES });
       return false;
     }
 
@@ -422,6 +428,26 @@ module.exports = class TextEditorComponent {
   }
 
   canUpdateScrollPositionOnly(horizontal, vertical) {
+    return this.canUpdateForScrollOnly(horizontal, vertical) && this.mountedTilesCoverViewport();
+  }
+
+  mountedTilesCoverViewport() {
+    const firstVisibleRow = this.rowForPixelPosition(this.getScrollTop());
+    const lastVisibleRow = Math.min(
+      this.props.model.getApproximateScreenLineCount() - 1,
+      this.rowForPixelPosition(this.getScrollBottom()),
+    );
+    return (
+      this.tileStartRowForRow(firstVisibleRow) === this.mountedTileStartRow &&
+      firstVisibleRow >= this.mountedTileStartRow &&
+      lastVisibleRow < this.mountedTileEndRow
+    );
+  }
+
+  // A smooth-scroll frame may recycle the mounted row tiles only when scrolling
+  // is the sole pending editor change. If anything else needs attention, the
+  // normal update path must refresh every retained tile as well.
+  canUpdateForScrollOnly(horizontal, vertical) {
     if (
       !this.attached ||
       !this.visible ||
@@ -449,17 +475,7 @@ module.exports = class TextEditorComponent {
     ) {
       return false;
     }
-
-    const firstVisibleRow = this.rowForPixelPosition(this.getScrollTop());
-    const lastVisibleRow = Math.min(
-      this.props.model.getApproximateScreenLineCount() - 1,
-      this.rowForPixelPosition(this.getScrollBottom()),
-    );
-    return (
-      this.tileStartRowForRow(firstVisibleRow) === this.mountedTileStartRow &&
-      firstVisibleRow >= this.mountedTileStartRow &&
-      lastVisibleRow < this.mountedTileEndRow
-    );
+    return true;
   }
 
   measureBlockDecorations() {
@@ -563,7 +579,7 @@ module.exports = class TextEditorComponent {
     }
   }
 
-  updateSyncBeforeMeasuringContent() {
+  updateSyncBeforeMeasuringContent(updateMode = UPDATE_MODE_NORMAL) {
     this.measuredContent = false;
     this.derivedDimensionsCache = {};
     this.updateModelSoftWrapColumn();
@@ -594,7 +610,7 @@ module.exports = class TextEditorComponent {
     this.queryDecorationsToRender();
     this.queryExtraScreenLinesToRender();
     this.shouldRenderDummyScrollbars = !this.remeasureScrollbars;
-    this.renderSync();
+    this.renderSync(updateMode);
     this.updateClassList();
     this.shouldRenderDummyScrollbars = true;
     this.didMeasureVisibleBlockDecoration = false;
@@ -635,9 +651,9 @@ module.exports = class TextEditorComponent {
     );
   }
 
-  updateSyncAfterMeasuringContent() {
+  updateSyncAfterMeasuringContent(updateMode = UPDATE_MODE_NORMAL) {
     this.derivedDimensionsCache = {};
-    this.renderSync();
+    this.renderSync(updateMode);
 
     this.currentFrameLineNumberGutterProps = null;
     this.scrollTopPending = false;
@@ -653,7 +669,7 @@ module.exports = class TextEditorComponent {
 
       this.measureScrollbarDimensions();
       this.remeasureScrollbars = false;
-      this.renderSync();
+      this.renderSync(updateMode);
     }
 
     this.mountedTileStartRow = this.getRenderedStartRow();
@@ -776,10 +792,10 @@ module.exports = class TextEditorComponent {
   // virtual-DOM diff this component previously performed. Regions are visited
   // in the same top-down order the diff used so that event and lifecycle
   // timing are unchanged.
-  renderSync() {
+  renderSync(updateMode = UPDATE_MODE_NORMAL) {
     this.updateRootElement();
     this.updateClientContainerElement();
-    this.syncGutterContainer();
+    this.syncGutterContainer(updateMode);
     this.updateScrollContainerElement();
     this.updateContentElement();
     this.updateLineTilesElement();
@@ -878,7 +894,7 @@ module.exports = class TextEditorComponent {
     this.updateClientContainerObservation();
   }
 
-  syncGutterContainer() {
+  syncGutterContainer(updateMode = UPDATE_MODE_NORMAL) {
     if (this.props.model.isMini()) {
       if (this.refs.gutterContainer) {
         this.refs.gutterContainer.element.remove();
@@ -902,6 +918,7 @@ module.exports = class TextEditorComponent {
         showLineNumbers: this.showLineNumbers,
         lineNumbersToRender: this.lineNumbersToRender,
         didMeasureVisibleBlockDecoration: this.didMeasureVisibleBlockDecoration,
+        updateMode,
       };
 
       if (this.refs.gutterContainer) {

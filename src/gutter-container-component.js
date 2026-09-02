@@ -4,6 +4,7 @@ const {
   ceilToPhysicalPixelBoundary,
   roundToPhysicalPixelBoundary,
   NBSP_CHARACTER,
+  UPDATE_MODE_SCROLL_TILES,
 } = require("./text-editor-component-helpers");
 
 module.exports = class GutterContainerComponent {
@@ -147,6 +148,7 @@ module.exports = class GutterContainerComponent {
       scrollHeight,
       lineNumberGutterWidth,
       lineHeight,
+      updateMode,
     } = this.props;
 
     const oneTrueLineNumberGutter = gutter.name === "line-number";
@@ -180,6 +182,7 @@ module.exports = class GutterContainerComponent {
         lineHeight: lineHeight,
         showLineNumbers,
         showFoldControls: oneTrueLineNumberGutter,
+        updateMode,
       };
     } else {
       return {
@@ -191,6 +194,7 @@ module.exports = class GutterContainerComponent {
         maxDigits: lineNumbersToRender.maxDigits,
         showLineNumbers,
         showFoldControls: oneTrueLineNumberGutter,
+        updateMode,
       };
     }
   }
@@ -312,6 +316,8 @@ class LineNumberGutterComponent {
             height: null,
             width: null,
             top: null,
+            startRow: null,
+            endRow: null,
           };
           this.tilesById.set(tileId, tile);
         }
@@ -337,7 +343,15 @@ class LineNumberGutterComponent {
           tile.top = tileTop;
         }
 
-        this.updateTileLineNumbers(tile, tileStartRow, tileEndRow);
+        if (
+          this.props.updateMode !== UPDATE_MODE_SCROLL_TILES ||
+          tile.startRow !== tileStartRow ||
+          tile.endRow !== tileEndRow
+        ) {
+          this.updateTileLineNumbers(tile, tileStartRow, tileEndRow);
+        }
+        tile.startRow = tileStartRow;
+        tile.endRow = tileEndRow;
 
         if (tile.element.previousSibling !== previousElement) {
           this.element.insertBefore(tile.element, previousElement.nextSibling);
@@ -460,6 +474,7 @@ class LineNumberGutterComponent {
   shouldUpdate(newProps) {
     const oldProps = this.props;
 
+    if (newProps.updateMode !== UPDATE_MODE_SCROLL_TILES) return true;
     if (oldProps.showLineNumbers !== newProps.showLineNumbers) return true;
     if (oldProps.height !== newProps.height) return true;
     if (oldProps.width !== newProps.width) return true;
