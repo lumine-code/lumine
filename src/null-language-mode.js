@@ -35,6 +35,9 @@ module.exports = class NullLanguageMode {
   getGrammar() {
     return this.grammar;
   }
+  isTokenized() {
+    return true;
+  }
   scopeDescriptorForPosition() {
     return this.rootScopeDescriptor;
   }
