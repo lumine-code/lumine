@@ -1484,7 +1484,7 @@ class TreeSitterLanguageMode {
       }
     }
 
-    let foldsByLevel = new Index();
+    let foldsAtGoalLevel = [];
     let currentLevel = 0;
     let iterator = rangeTree.begin;
 
@@ -1493,7 +1493,7 @@ class TreeSitterLanguageMode {
     while (iterator.key) {
       let { start, end } = iterator.value;
       if (start) {
-        foldsByLevel.add(currentLevel, start);
+        if (currentLevel === goalLevel) foldsAtGoalLevel.push(start);
         currentLevel++;
       } else if (end) {
         currentLevel--;
@@ -1501,7 +1501,7 @@ class TreeSitterLanguageMode {
       iterator.next();
     }
 
-    return foldsByLevel.get(goalLevel) || [];
+    return foldsAtGoalLevel;
   }
 
   // Adjusts a buffer position by a fixed number of characters.
@@ -4301,12 +4301,24 @@ class LanguageLayer {
 
   async _drainInjectionPopulationRequests() {
     while (!this.destroyed && this.pendingInjectionPopulationRequests.length > 0) {
-      const { range, nodeRangeSet } = this.pendingInjectionPopulationRequests.shift();
+      const { range, nodeRangeSet } = this._takePendingInjectionPopulationRequest();
       await this._performPopulateInjections(range, nodeRangeSet);
     }
     if (this.destroyed) {
       this.pendingInjectionPopulationRequests.length = 0;
     }
+  }
+
+  _takePendingInjectionPopulationRequest() {
+    const requests = this.pendingInjectionPopulationRequests.splice(0);
+    let range = requests[0].range;
+    let nodeRangeSet = requests[0].nodeRangeSet;
+    for (let index = 1; index < requests.length; index++) {
+      const request = requests[index];
+      range = range.union(request.range);
+      if (request.nodeRangeSet) nodeRangeSet = request.nodeRangeSet;
+    }
+    return { range, nodeRangeSet };
   }
 
   _performPopulateInjections(range, nodeRangeSet) {
@@ -5013,29 +5025,6 @@ class OpenScopeMap extends Map {
     if (!candidateKey) return false;
     removeLastOccurrenceOf(this.get(candidateKey), scopeId);
     return true;
-  }
-}
-
-/**
- * A subclass of `Map` that anticipates multiple values at each key.
- * The main way to add a value at a given key is via a new `Index::add` method.
- *
- * @private
- */
-class Index extends Map {
-  constructor() {
-    super();
-  }
-
-  // Like `Map::set`, but adds one or more values at a given key. Initializes
-  // the key's value to be an empty array if necessary.
-  add(key, ...values) {
-    let existing = this.get(key);
-    if (!existing) {
-      existing = [];
-      this.set(key, existing);
-    }
-    existing.push(...values);
   }
 }
 

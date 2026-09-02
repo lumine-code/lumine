@@ -1477,6 +1477,42 @@ describe("TreeSitterLanguageMode", () => {
         expect(jsGrammar.createQuerySync).toHaveBeenCalledTimes(1);
       });
 
+      it("coalesces injection requests that arrive while the drain is busy", async () => {
+        jasmine.useRealClock();
+        buffer.setText("a;b;c;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+        const rootLayer = languageMode.rootLanguageLayer;
+        let releaseFirstRequest;
+        const seenRanges = [];
+        spyOn(rootLayer, "_performPopulateInjections").and.callFake((range) => {
+          seenRanges.push(range);
+          if (seenRanges.length === 1) {
+            return new Promise((resolve) => {
+              releaseFirstRequest = resolve;
+            });
+          }
+        });
+
+        const firstPromise = rootLayer._populateInjections(new Range([0, 0], [0, 1]), null);
+        const secondPromise = rootLayer._populateInjections(new Range([0, 2], [0, 3]), null);
+        const thirdPromise = rootLayer._populateInjections(new Range([0, 4], [0, 5]), null);
+        expect(secondPromise).toBe(firstPromise);
+        expect(thirdPromise).toBe(firstPromise);
+
+        releaseFirstRequest();
+        await firstPromise;
+
+        expect(seenRanges).toEqual([new Range([0, 0], [0, 1]), new Range([0, 2], [0, 5])]);
+        expect(rootLayer.injectionPopulationDrainPromise).toBeNull();
+      });
+
       it("abandons a stale candidate scan and retries against the final tree", async () => {
         jasmine.useRealClock();
         const seen = [];
