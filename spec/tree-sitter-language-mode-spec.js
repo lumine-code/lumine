@@ -153,6 +153,24 @@ describe("TreeSitterLanguageMode", () => {
     });
   });
 
+  describe("query capture groups", () => {
+    it("returns resolved captures without exposing language layers", async () => {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest("tagsQuery", "(identifier) @name");
+      buffer.setText("const alpha = beta;");
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+
+      expect(languageMode.hasQuery("tagsQuery")).toBe(true);
+      const groups = await languageMode.getQueryCaptureGroups("tagsQuery");
+
+      expect(groups.length).toBe(1);
+      expect(groups[0].grammar).toBe(grammar);
+      expect(groups[0].captures.map((capture) => capture.node.text)).toEqual(["alpha", "beta"]);
+      expect(languageMode.rootLanguageLayer.scopeResolver.boundaries.size).toBe(0);
+    });
+  });
+
   describe("update scheduling", () => {
     it("skips injection work for a grammar with no injection points or layers", async () => {
       jasmine.useRealClock();

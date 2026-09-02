@@ -1793,6 +1793,49 @@ class TreeSitterLanguageMode {
     return results;
   }
 
+  hasQuery(queryType) {
+    const declaresQuery = (grammar) => {
+      return typeof grammar?.[queryType] === "string" || Boolean(grammar?.queryPaths?.[queryType]);
+    };
+    if (declaresQuery(this.grammar)) return true;
+    return this.getAllLanguageLayers((layer) => declaresQuery(layer?.grammar)).length > 0;
+  }
+
+  isTokenized() {
+    return this.tokenized;
+  }
+
+  async getQueryCaptureGroups(queryType, { signal } = {}) {
+    await this.ready;
+    if (this.destroyed || signal?.aborted) return [];
+    const transaction = await this.atTransactionEnd();
+    if (this.destroyed || signal?.aborted || transaction.parseError) return [];
+
+    const groups = [];
+    for (const layer of this.getAllLanguageLayers()) {
+      const query = layer?.queries?.[queryType];
+      if (!query || !layer.tree) continue;
+      const extent = layer.getExtent();
+      const captures = query.captures(layer.tree.rootNode, {
+        startPosition: extent.start,
+        endPosition: extent.end,
+      });
+      const resolvedCaptures = [];
+      layer.scopeResolver.reset();
+      try {
+        for (const capture of captures) {
+          if (layer.scopeResolver.store(capture, { boundaries: false })) {
+            resolvedCaptures.push(capture);
+          }
+        }
+      } finally {
+        layer.scopeResolver.reset();
+      }
+      groups.push({ grammar: layer.grammar, captures: resolvedCaptures });
+    }
+    return groups;
+  }
+
   /**
    * @public
    * @status extended
