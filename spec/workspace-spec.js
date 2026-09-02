@@ -1952,12 +1952,9 @@ describe("Workspace", () => {
     // The grammars a restored environment registers are the root and injected
     // Tree-sitter grammars its deserialized editors actually use, not everything
     // its loaded packages could provide. JavaScript contributes nothing here
-    // because no open editor references source.js.
-    expect(grammarScopes).toEqual([
-      "source.python",
-      "text.plain.null-grammar",
-      "text.python.traceback",
-    ]);
+    // because no open editor references source.js; the FIXME comment activates
+    // the TODO injection.
+    expect(grammarScopes).toEqual(["source.python", "text.plain.null-grammar", "text.todo"]);
 
     lumine2.destroy();
   });

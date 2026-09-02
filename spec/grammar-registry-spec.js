@@ -467,6 +467,7 @@ describe("GrammarRegistry", () => {
           name: "test1",
           scopeName: "source1",
           fileTypes: ["test"],
+          injectionNames: [],
         });
         grammarRegistry.addGrammar(grammar1);
         expect(grammarRegistry.selectGrammar("more.test", "")).toBe(grammar1);
@@ -476,6 +477,7 @@ describe("GrammarRegistry", () => {
           name: "test2",
           scopeName: "source2",
           fileTypes: ["test", "more.test"],
+          injectionNames: [],
         });
         grammarRegistry.addGrammar(grammar2);
         expect(grammarRegistry.selectGrammar("more.test", "")).toBe(grammar2);
