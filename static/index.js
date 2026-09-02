@@ -43,7 +43,6 @@
       await bootstrapPromise;
       StartupTime.addMarker("window:onload:start");
       const startTime = Date.now();
-      await require("@lumine-code/second-mate").ready;
 
       process.on("unhandledRejection", function (error, promise) {
         console.error("Unhandled promise rejection %o with error: %o", promise, error);

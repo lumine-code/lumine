@@ -3,15 +3,10 @@
     "alittle"
   ],
   "name": "Alittle",
+  "type": "tree-sitter",
   "scopeName": "source.alittle",
-  "patterns": [
-    {
-      "captures": {
-        "0": {
-          "name": "keyword.alittle"
-        }
-      },
-      "match": "alittle"
-    }
-  ]
+  "treeSitter": {
+    "grammar": "../../package-with-tree-sitter-grammar/grammars/tree-sitter-empty.wasm",
+    "highlightsQuery": "../../package-with-tree-sitter-grammar/grammars/tree-sitter-empty.scm"
+  }
 }

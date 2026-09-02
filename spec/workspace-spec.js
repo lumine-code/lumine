@@ -791,8 +791,10 @@ describe("Workspace", () => {
       it("unfolds the fold containing the line", async () => {
         let editor;
 
+        await lumine.packages.activatePackage("language-javascript");
         await workspace.open("../sample-with-many-folds.js");
         editor = workspace.getActiveTextEditor();
+        await editor.getBuffer().getLanguageMode().ready;
         editor.foldBufferRow(2);
         expect(editor.isFoldedAtBufferRow(2)).toBe(true);
         expect(editor.isFoldedAtBufferRow(3)).toBe(true);
@@ -1943,25 +1945,18 @@ describe("Workspace", () => {
     await lumine2.project.deserialize(lumine.project.serialize());
     lumine2.workspace.deserialize(lumine.workspace.serialize(), lumine2.deserializers);
 
-    let grammars = lumine2.grammars.getGrammars({ includeTreeSitter: true });
+    let grammars = lumine2.grammars.getGrammars();
 
     let grammarScopes = grammars.map((grammar) => grammar.scopeName).sort();
 
-    // The grammars a restored environment registers are the ones its
-    // deserialized editors actually resolve, not everything its loaded packages
-    // could provide: language-javascript is loaded above and contributes
-    // nothing here because no open editor references source.js.
+    // The grammars a restored environment registers are the root and injected
+    // Tree-sitter grammars its deserialized editors actually use, not everything
+    // its loaded packages could provide. JavaScript contributes nothing here
+    // because no open editor references source.js.
     expect(grammarScopes).toEqual([
-      "source.python", // Tree-sitter grammars also load
       "source.python",
-      "source.python.ipy",
-      "source.python.ipy",
-      "source.regexp.python",
       "text.plain.null-grammar",
-      "text.python.console",
       "text.python.traceback",
-      "text.todo",
-      "text.todo",
     ]);
 
     lumine2.destroy();

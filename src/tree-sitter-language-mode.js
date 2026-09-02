@@ -1,12 +1,11 @@
-const { Node, Parser } = require("web-tree-sitter");
-const TokenIterator = require("./token-iterator");
+const NativeTreeSitter = require("tree-sitter");
+const { Node } = require("web-tree-sitter");
 const { Point, Range, spliceArray } = require("./text-buffer");
 const { Patch } = require("@lumine-code/superstring");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const ScopeDescriptor = require("./scope-descriptor");
 const ScopeResolver = require("./scope-resolver");
 const Token = require("./token");
-const TokenizedLine = require("./tokenized-line");
 const { matcherForSelector } = require("./selectors");
 const { commentStringsFromDelimiters, getDelimitersForScope } = require("./comment-utils.js");
 
@@ -162,6 +161,7 @@ function patchNodePrototype(proto) {
 }
 
 patchNodePrototype(Node.prototype);
+patchNodePrototype(NativeTreeSitter.SyntaxNode.prototype);
 
 // Compares “informal” points like the ones in a Tree-sitter tree; saves us
 // from having to convert them to actual `Point`s.
@@ -295,7 +295,7 @@ class TreeSitterLanguageMode {
     this.grammarForLanguageString = this.grammarForLanguageString.bind(this);
 
     this.parsersByLanguage = new Index();
-    this.tokenIterator = new TokenIterator(this);
+    this.grammarsByLanguage = new Map();
 
     this.autoIndentRequests = 0;
 
@@ -330,6 +330,7 @@ class TreeSitterLanguageMode {
       .getLanguage()
       .then((language) => {
         this.rootLanguage = language;
+        this.registerGrammarForLanguage(language, grammar);
         this.rootLanguageLayer = new LanguageLayer(null, this, grammar, 0);
         return this.getOrCreateParserForLanguage(language);
       })
@@ -351,15 +352,13 @@ class TreeSitterLanguageMode {
     this.subscriptions?.dispose();
 
     // Clean up all `Parser` instances created during the lifetime of this
-    // buffer — except any still mid-parse. Deleting one of those frees the
-    // wasm memory its next batch is about to read, which faults the renderer
-    // with `RuntimeError: memory access out of bounds` and a stack that names
-    // nothing useful. The parse loop sees `destroyed`, stops, and deletes its
-    // own parser.
+    // buffer — except any still mid-parse. Deleting a web-tree-sitter parser
+    // that is still running frees memory its next batch is about to read. The
+    // native backend is garbage-collected and has no `delete` method.
     for (let parsers of this.parsersByLanguage.values()) {
       for (let parser of parsers) {
         if (PARSERS_IN_USE.has(parser)) continue;
-        parser.delete();
+        parser.delete?.();
       }
     }
     this.parsersByLanguage.clear();
@@ -382,6 +381,10 @@ class TreeSitterLanguageMode {
     return this.getOrCreateParserForLanguage(this.rootLanguage);
   }
 
+  registerGrammarForLanguage(language, grammar) {
+    this.grammarsByLanguage.set(language, grammar);
+  }
+
   getOrCreateParserForLanguage(language) {
     let pool = this.parsersByLanguage.get(language);
     let parser;
@@ -390,11 +393,44 @@ class TreeSitterLanguageMode {
     }
 
     if (!parser) {
-      parser = new Parser();
-      parser.setLanguage(language);
+      let grammar = this.grammarsByLanguage.get(language);
+      if (!grammar) {
+        throw new Error("Cannot create a Tree-sitter parser for an unregistered language");
+      }
+      parser = grammar.createParser(language);
       this.parsersByLanguage.add(language, parser);
     }
     return parser;
+  }
+
+  discardParserForLanguage(language, parser) {
+    const pool = this.parsersByLanguage.get(language);
+    if (!pool) return;
+    const index = pool.indexOf(parser);
+    if (index !== -1) pool.splice(index, 1);
+    if (pool.length === 0) this.parsersByLanguage.delete(language);
+    PARSERS_IN_USE.delete(parser);
+  }
+
+  resetParserForLanguage(language, parser, scopeName) {
+    try {
+      parser.reset();
+      return parser;
+    } catch (error) {
+      // A parser can outlive the Wasm state behind it during a live grammar
+      // reload. Calling into that stale handle faults before parsing starts,
+      // so remove it from the pool without invoking `delete` on the same bad
+      // pointer and retry with a fresh parser for the cached language.
+      this.discardParserForLanguage(language, parser);
+      if (lumine.window.isDevMode()) {
+        console.warn(`Replacing a stale Tree-sitter parser for '${scopeName ?? "unknown"}'`, error);
+      }
+      const grammar = this.grammarsByLanguage.get(language);
+      if (!grammar) throw error;
+      const replacement = grammar.createParser(language);
+      this.parsersByLanguage.add(language, replacement);
+      return replacement;
+    }
   }
 
   _yieldForInjectionCandidateScan() {
@@ -632,14 +668,8 @@ class TreeSitterLanguageMode {
   }
 
   grammarForLanguageString(languageString) {
-    let result = this.grammarRegistry.treeSitterGrammarForLanguageString(languageString, "wasm");
+    let result = this.grammarRegistry.treeSitterGrammarForLanguageString(languageString);
     return result;
-  }
-
-  // Deprecated alias of {@link #updateInjectionsForGrammar}, kept for packages
-  // that still use the legacy Tree-sitter method name.
-  updateForInjection(grammar) {
-    return this.updateInjectionsForGrammar(grammar);
   }
 
   // Called when any grammar is added or changed, on the off chance that it
@@ -650,9 +680,9 @@ class TreeSitterLanguageMode {
       // be handled later.
       return;
     }
-    if (!grammar.injectionRegex && !grammar.injectionRegExp) {
-      // This grammar has no injection regex, hence there's no way for another
-      // grammar to use it for injection.
+    if (!grammar.injectionNames?.length) {
+      // This grammar has no injection aliases, hence there's no way for
+      // another grammar to use it for injection.
       return;
     }
     if (grammar.type !== "tree-sitter") {
@@ -670,6 +700,10 @@ class TreeSitterLanguageMode {
     // need only start the process.
     this.rootLanguageLayer.updateInjectionsForGrammar(grammar, cache);
     cache.clear();
+  }
+
+  repopulateInjections() {
+    this.rootLanguageLayer?._populateInjections(MAX_RANGE, null);
   }
 
   /*
@@ -853,9 +887,8 @@ class TreeSitterLanguageMode {
     // Constrain the point to the buffer range.
     point = this.buffer.clipPosition(point);
 
-    // If the position is the end of a line, get scope of left character
-    // instead of newline. This is to match TextMate behavior; see
-    // https://github.com/atom/atom/issues/18463.
+    // If the position is the end of a line, get the scope of the character to
+    // its left instead of the newline.
     if (point.column > 0 && point.column === this.buffer.lineLengthForRow(point.row)) {
       point.column--;
     }
@@ -863,10 +896,9 @@ class TreeSitterLanguageMode {
     return point;
   }
 
-  // A fault inside a grammar's wasm surfaces as a bare
-  // `RuntimeError: memory access out of bounds` whose stack stops at
-  // `Parser.parse` — it names neither the grammar nor what it was parsing, and
-  // an injection layer means the file's own grammar is not even a good guess.
+  // A backend fault can surface with a stack that stops at `Parser.parse` — it
+  // names neither the grammar nor what it was parsing, and an injection layer
+  // means the file's own grammar is not even a good guess.
   // This says which grammar faulted and on what, which is the whole difference
   // between a reportable bug and a shrug.
   describeParseFailure(error, { scopeName, includedRanges }) {
@@ -887,7 +919,11 @@ class TreeSitterLanguageMode {
     // incremental parse keeps its configured slice so a zero-budget test
     // parser still advances one progress tick per batch.
     let batchTimeoutMicros = oldTree ? this.syncTimeoutMicros : BATCH_PARSE_JOB_LIMIT_MICROS;
-    parser.reset();
+    try {
+      parser = this.resetParserForLanguage(language, parser, scopeName);
+    } catch (error) {
+      throw this.describeParseFailure(error, { scopeName, includedRanges });
+    }
     PARSERS_IN_USE.add(parser);
 
     // When you edit a tree, the positions of nodes in the tree are adjusted
@@ -898,9 +934,8 @@ class TreeSitterLanguageMode {
     // will fail incorrectly.
     //
     // Instead, we can pass a callback that will look up the relevant ranges of
-    // text as needed. This callback works exactly like the default callback
-    // within web-tree-sitter, except that we'll update the text as the buffer
-    // changes. This lets us safely perform captures against dirty trees.
+    // text as needed. This works with both Tree-sitter backends and updates the
+    // text as the buffer changes, so captures against dirty trees stay safe.
     //
     // In practice, captures against dirty trees will only happen on injection
     // layers, and only when the edits that have been made since the last clean
@@ -963,7 +998,7 @@ class TreeSitterLanguageMode {
           // that this check gets to run first.
           if (this.destroyed) {
             cleanup();
-            parser.delete();
+            parser.delete?.();
             return resolve(null);
           }
           try {
@@ -1491,10 +1526,8 @@ class TreeSitterLanguageMode {
     return indentLength / tabLength;
   }
 
-  // In an ideal world, we would use synchronous indentation all the time. It's
-  // feature-equivalent to TextMate-style indentation.
-  //
-  // But it requires us to be able to tell the editor, at an arbitrary point in
+  // In an ideal world, we would use synchronous indentation all the time. But
+  // it requires us to be able to tell the editor, at an arbitrary point in
   // time, what the suggested indentation for a buffer row is. We might get
   // asked this question only once in a transaction — or 100 times. We don't
   // know ahead of time. And if we want to be able to answer the question
@@ -1675,7 +1708,7 @@ class TreeSitterLanguageMode {
         if (typeof source !== "string") continue;
         try {
           let query = grammar.createQuerySync(source);
-          query.delete();
+          query.delete?.();
           validatedCount++;
         } catch (error) {
           let descriptor = error.queryDescriptor ?? grammar.describeQueryError(error, queryType);
@@ -1763,64 +1796,8 @@ class TreeSitterLanguageMode {
     );
   }
 
-  // DEPRECATED
-
-  // Implemented for parity with `TextMateLanguageMode`. If you want to analyze
-  // the content of a row or other buffer range, you can inspect a Tree-sitter
-  // tree or run queries against it.
-  tokenizedLineForRow(row) {
-    const lineText = this.buffer.lineForRow(row);
-    const tokens = [];
-
-    const iterator = this.buildHighlightIterator();
-    let start = { row, column: 0 };
-
-    const scopes = iterator.seek(start, row) || [];
-
-    while (true) {
-      const end = { ...iterator.getPosition() };
-      if (end.row > row) {
-        end.row = row;
-        end.column = lineText.length;
-      }
-
-      if (end.column > start.column) {
-        tokens.push(
-          new Token({
-            value: lineText.substring(start.column, end.column),
-            scopes: scopes.map((s) => this.scopeNameForScopeId(s)),
-          }),
-        );
-      }
-
-      if (end.column < lineText.length) {
-        const closeScopeCount = iterator.getCloseScopeIds().length;
-        for (let i = 0; i < closeScopeCount; i++) {
-          scopes.pop();
-        }
-        scopes.push(...iterator.getOpenScopeIds());
-        start = end;
-        iterator.moveToSuccessor();
-      } else {
-        break;
-      }
-    }
-
-    return new TokenizedLine({
-      openScopes: [],
-      text: lineText,
-      tokens,
-      tags: [],
-      ruleStack: [],
-      lineEnding: this.buffer.lineEndingForRow(row),
-      tokenIterator: this.tokenIterator,
-      grammar: this.grammar,
-    });
-  }
-
-  // Implemented for parity with `TextMateLanguageMode`. If you want to analyze
-  // the content of a point, you can inspect a Tree-sitter tree or run queries
-  // against it.
+  // If you want to analyze the content at a point, prefer inspecting the syntax
+  // tree or running queries against it.
   tokenForPosition(point) {
     if (Array.isArray(point)) {
       point = new Point(...point);
@@ -2348,11 +2325,7 @@ class HighlightIterator {
     }
 
     if (!endRow) {
-      // Creative consumers of `HighlightIterator` exist in the wild; some of
-      // them expect the `TextMateHighlightIterator::seek` signature that needs
-      // only a starting position.
-      //
-      // So if `endRow` isn’t specified, we should assume it wants to go to the
+      // If `endRow` isn’t specified, assume the caller wants to go to the
       // end of the buffer. This is why `endRow` defaults to `Infinity`. It
       // will get clipped to the end of the buffer or the end of the language
       // layer as appropriate.
@@ -2981,6 +2954,7 @@ class LanguageLayer {
       .getLanguage()
       .then((language) => {
         this.language = language;
+        this.languageMode.registerGrammarForLanguage(language, this.grammar);
         // All queries are optional. Regular expression language layers, for
         // instance, don't really have a need for any queries other than
         // `highlightsQuery`, and some kinds of layers don't even need
@@ -3138,7 +3112,7 @@ class LanguageLayer {
       if (!tree) {
         continue;
       }
-      tree.delete();
+      tree.delete?.();
     }
 
     this.marker?.destroy();
@@ -3872,12 +3846,12 @@ class LanguageLayer {
       this.tree = tree;
       this.treeIsDirty = false;
 
-      oldTree?.delete();
-      oldSyntaxTree?.delete();
+      oldTree?.delete?.();
+      oldSyntaxTree?.delete?.();
 
       while (this.temporaryTrees.length > 0) {
         let tree = this.temporaryTrees.pop();
-        tree.delete();
+        tree.delete?.();
       }
 
       if (rangesWithSyntaxChanges.length > 0) {
@@ -3905,10 +3879,8 @@ class LanguageLayer {
       // transaction's tree later on.
       this.lastSyntaxTree = tree;
 
-      // We used to need to monkey-patch the `Node` class by grabbing a
-      // reference to its constructor from an actual node instance. But
-      // `web-tree-sitter` allows us to import the `Node` class directly now,
-      // so we can do this much earlier in the bootstrapping process.
+      // Both backends expose their base syntax-node class, so compatibility
+      // helpers can be installed before any tree is parsed.
 
       this.rangeList.add(rangeForNode(tree.rootNode));
       if (includedRanges) {
@@ -4360,7 +4332,7 @@ class LanguageLayer {
       injectionPointVersion,
       candidateQuery,
     );
-    return candidateQuery ? result.finally(() => candidateQuery.delete()) : result;
+    return candidateQuery ? result.finally(() => candidateQuery.delete?.()) : result;
   }
 
   async _collectInjectionCandidateNodesInChunks(

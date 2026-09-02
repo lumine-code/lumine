@@ -162,7 +162,7 @@ class TextBuffer {
     );
     this.maxUndoEntries = params.maxUndoEntries ?? this.defaultMaxUndoEntries;
     this.setHistoryProvider(new DefaultHistoryProvider(this));
-    this.languageMode = new NullLanguageMode();
+    this.languageMode = new NullLanguageMode({ buffer: this });
     this.nextMarkerLayerId = 0;
     this.nextDisplayLayerId = 0;
     this.defaultMarkerLayer = new MarkerLayer(this, String(this.nextMarkerLayerId++));
@@ -2548,8 +2548,8 @@ class TextBuffer {
    * @param languageMode.buildHighlightIterator.seek - A `Function` that takes a {@link Point} and resets the iterator to that position.
    * @param languageMode.buildHighlightIterator.moveToSuccessor - A `Function` that advances the iterator to the next token
    * @param languageMode.buildHighlightIterator.getPosition - A `Function` that returns a {@link Point} representing the iterator's current position in the buffer.
-   * @param languageMode.buildHighlightIterator.getCloseTags - A `Function` that returns an `Array` of `Numbers` representing tokens that end at the current position.
-   * @param languageMode.buildHighlightIterator.getOpenTags - A `Function` that returns an `Array` of `Numbers` representing tokens that begin at the current position.
+   * @param languageMode.buildHighlightIterator.getCloseScopeIds - A `Function` that returns an `Array` of `Numbers` representing scopes that end at the current position.
+   * @param languageMode.buildHighlightIterator.getOpenScopeIds - A `Function` that returns an `Array` of `Numbers` representing scopes that begin at the current position.
    */
   setLanguageMode(languageMode) {
     if (languageMode !== this.languageMode) {
@@ -2557,7 +2557,7 @@ class TextBuffer {
       if (typeof this.languageMode.destroy === "function") {
         this.languageMode.destroy();
       }
-      this.languageMode = languageMode || new NullLanguageMode();
+      this.languageMode = languageMode || new NullLanguageMode({ buffer: this });
       for (const id in this.displayLayers) {
         const displayLayer = this.displayLayers[id];
         displayLayer.bufferDidChangeLanguageMode(languageMode);

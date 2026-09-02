@@ -12,7 +12,7 @@ const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 // It shows up constantly in spec runs, which open and tear down windows in
 // quick succession, and for a user on closing a large file mid-parse.
 
-const jsGrammarPath = require.resolve("language-javascript/grammars/tree-sitter-javascript.json");
+const jsGrammarPath = require.resolve("language-javascript/grammars/javascript.json");
 
 function buildSource(lines) {
   const parts = [];
@@ -89,5 +89,26 @@ describe("destroying a buffer during an async parse", () => {
     languageMode.destroy();
 
     expect(parser.delete).toHaveBeenCalled();
+  });
+
+  it("replaces a parser whose Wasm handle faults during reset", async () => {
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+    buffer.setLanguageMode(languageMode);
+    await languageMode.ready;
+
+    const language = grammar.getLanguageSync();
+    const staleParser = languageMode.getOrCreateParserForLanguage(language);
+    spyOn(staleParser, "reset").and.throwError(
+      new WebAssembly.RuntimeError("memory access out of bounds"),
+    );
+
+    const tree = await languageMode.parseAsync(language, null, undefined, {
+      scopeName: "source.js",
+    });
+
+    expect(tree.rootNode.type).toBe("program");
+    expect(languageMode.getOrCreateParserForLanguage(language)).not.toBe(staleParser);
+    tree.delete();
   });
 });

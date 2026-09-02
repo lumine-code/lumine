@@ -634,9 +634,9 @@ describe("Environment", () => {
     });
 
     it("serializes the text editor registry", async () => {
-      await lumine.packages.activatePackage("language-text");
+      await lumine.packages.activatePackage("language-javascript");
       const editor = await lumine.workspace.open("sample.js");
-      expect(lumine.grammars.assignLanguageMode(editor, "text.plain")).toBe(true);
+      expect(lumine.grammars.assignLanguageMode(editor, "source.js")).toBe(true);
 
       const lumine2 = new Environment({
         applicationDelegate: lumine.applicationDelegate,
@@ -649,9 +649,9 @@ describe("Environment", () => {
       lumine2.initialize({ document, window });
 
       await lumine2.deserialize(lumine.serialize());
-      await lumine2.packages.activatePackage("language-text");
+      await lumine2.packages.activatePackage("language-javascript");
       const editor2 = lumine2.workspace.getActiveTextEditor();
-      expect(editor2.getBuffer().getLanguageMode().getLanguageId()).toBe("text.plain");
+      expect(editor2.getBuffer().getLanguageMode().getLanguageId()).toBe("source.js");
       lumine2.destroy();
     });
 

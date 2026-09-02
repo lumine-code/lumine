@@ -2,12 +2,14 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const CSON = require("@lumine-code/season");
+const { Language: WebLanguage } = require("web-tree-sitter");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 
 // Language packages live in their own repositories and arrive through
 // node_modules, so resolve by name rather than by a path into packages/.
-const jsGrammarPath = require.resolve("language-javascript/grammars/tree-sitter-javascript.json");
+const jsGrammarPath = require.resolve("language-javascript/grammars/javascript.json");
+const nativePythonModulePath = require.resolve("tree-sitter-python");
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -62,6 +64,93 @@ describe("TreeSitterGrammar", () => {
       },
     });
   }
+
+  function makeNativeGrammar(treeSitterOverrides = {}) {
+    return new TreeSitterGrammar(lumine.grammars, path.join(tempDir, "native-grammar.json"), {
+      name: "Test Native Python",
+      scopeName: "source.test-native-python",
+      type: "tree-sitter",
+      parser: "tree-sitter-python",
+      treeSitter: {
+        runtime: "node",
+        languageModule: nativePythonModulePath,
+        ...treeSitterOverrides,
+      },
+    });
+  }
+
+  describe("Node runtime", () => {
+    it("loads a native language module and parses through the language mode", async () => {
+      writeQueryFile(
+        "native-highlights.scm",
+        "((function_definition name: (identifier) @entity.name.function.python)\n  (#set! capture.final true))\n",
+      );
+      let grammar = makeNativeGrammar({ highlightsQuery: "native-highlights.scm" });
+      let languageMode;
+
+      try {
+        let editor = await lumine.workspace.open("");
+        let buffer = editor.getBuffer();
+        buffer.setText("def greet(name):\n    return name\n");
+        languageMode = new TreeSitterLanguageMode({ buffer, grammar, syncTimeoutMicros: 0 });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        expect(grammar.treeSitterRuntime).toBe("node");
+        expect(languageMode.tree.rootNode.type).toBe("module");
+        expect(languageMode.tree.rootNode.hasError).toBe(false);
+        expect(languageMode.tree.rootNode.range.start.row).toBe(0);
+        expect(languageMode.tree.rootNode.range.start.column).toBe(0);
+
+        await wait(0);
+        expect(editor.scopeDescriptorForBufferPosition([0, 4]).getScopesArray()).toContain(
+          "entity.name.function.python",
+        );
+
+        let captures = languageMode.rootLanguageLayer.queries.highlightsQuery.captures(
+          languageMode.tree.rootNode,
+        );
+        expect(captures.some(({ node }) => node.text === "greet")).toBe(true);
+
+        buffer.setText("def renamed():\n    return 1\n");
+        await languageMode.atTransactionEnd();
+        expect(languageMode.tree.rootNode.toString()).toContain("function_definition");
+        expect(languageMode.tree.rootNode.text).toContain("renamed");
+      } finally {
+        languageMode?.destroy();
+        grammar.deactivate();
+      }
+    });
+
+    it("requires a language module and rejects unknown runtimes", () => {
+      let makeWith = (treeSitter) =>
+        new TreeSitterGrammar(lumine.grammars, path.join(tempDir, "invalid.json"), {
+          name: "Invalid",
+          scopeName: "source.invalid",
+          type: "tree-sitter",
+          treeSitter,
+        });
+
+      expect(() => makeWith({ runtime: "node" })).toThrowError(/languageModule/);
+      expect(() => makeWith({ runtime: "other" })).toThrowError(/Unsupported Tree-sitter runtime/);
+    });
+  });
+
+  describe("WASM runtime", () => {
+    it("shares one in-flight language load between grammars using the same Wasm", async () => {
+      const originalLoad = WebLanguage.load;
+      const load = spyOn(WebLanguage, "load").and.callFake(async (input) => {
+        await wait(10);
+        return originalLoad(input);
+      });
+      const first = makeGrammar();
+      const second = makeGrammar();
+
+      await Promise.all([first.getLanguage(), second.getLanguage()]);
+
+      expect(load).toHaveBeenCalledTimes(1);
+    });
+  });
 
   describe("query error descriptors", () => {
     it("maps an unknown node type to the offending file and line in a multi-file query", async () => {

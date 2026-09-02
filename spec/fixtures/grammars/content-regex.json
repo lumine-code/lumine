@@ -1,7 +1,11 @@
 {
   "name": "Content Regex",
+  "type": "tree-sitter",
   "scopeName": "source.content-regex",
   "fileTypes": ["content-regex-sentinel"],
   "contentRegex": "CONTENT-REGEX-SENTINEL",
-  "patterns": []
+  "treeSitter": {
+    "grammar": "../packages/package-with-tree-sitter-grammar/grammars/tree-sitter-empty.wasm",
+    "highlightsQuery": "../packages/package-with-tree-sitter-grammar/grammars/tree-sitter-empty.scm"
+  }
 }

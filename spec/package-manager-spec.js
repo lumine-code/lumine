@@ -1123,7 +1123,6 @@ describe("PackageManager", () => {
       });
 
       it("loads any tree-sitter grammars defined in the package", async () => {
-        lumine.config.set("editor.useTreeSitterParsers", true);
         await lumine.packages.activatePackage("package-with-tree-sitter-grammar");
         const grammar = lumine.grammars.selectGrammar("test.somelang");
         expect(grammar.name).toBe("Some Language");
@@ -1136,20 +1135,20 @@ describe("PackageManager", () => {
       it("loads the scoped properties", async () => {
         await lumine.packages.activatePackage("package-with-settings");
         expect(
-          lumine.config.get("editor.increaseIndentPattern", {
+          lumine.config.get("editor.commentStart", {
             scope: [".source.omg"],
           }),
-        ).toBe("^a");
+        ).toBe("//");
         expect(
-          lumine.config.get("editor.decreaseIndentPattern", {
+          lumine.config.get("editor.commentEnd", {
             scope: [".source.omg"],
           }),
-        ).toBe("^b");
+        ).toBe("*/");
         expect(
-          lumine.config.get("editor.increaseIndentPattern", {
+          lumine.config.get("editor.commentStart", {
             scope: [".source.wow"],
           }),
-        ).toBe("^a");
+        ).toBe("//");
       });
     });
 
@@ -1472,14 +1471,14 @@ describe("PackageManager", () => {
     it("removes the package's scoped-properties", async () => {
       await lumine.packages.activatePackage("package-with-settings");
       expect(
-        lumine.config.get("editor.increaseIndentPattern", {
+        lumine.config.get("editor.commentStart", {
           scope: [".source.omg"],
         }),
-      ).toBe("^a");
+      ).toBe("//");
 
       await lumine.packages.deactivatePackage("package-with-settings");
       expect(
-        lumine.config.get("editor.increaseIndentPattern", {
+        lumine.config.get("editor.commentStart", {
           scope: [".source.omg"],
         }),
       ).toBeUndefined();
@@ -1536,7 +1535,7 @@ describe("PackageManager", () => {
 
       const packages = packageActivator.calls.mostRecent().args[0];
       for (let pack of packages) {
-        expect(["lumine", "textmate"]).toContain(pack.getType());
+        expect(pack.getType()).toBe("lumine");
       }
 
       const themes = themeActivator.calls.mostRecent().args[0];

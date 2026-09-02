@@ -9,7 +9,7 @@ const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 // because injection layers parse through the same path, the file's own grammar
 // is not even a reliable guess. Everything here is about the message.
 
-const jsGrammarPath = require.resolve("language-javascript/grammars/tree-sitter-javascript.json");
+const jsGrammarPath = require.resolve("language-javascript/grammars/javascript.json");
 
 describe("parse failure diagnostics", () => {
   let buffer, languageMode, grammar;

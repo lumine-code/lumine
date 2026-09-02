@@ -22,21 +22,30 @@ function scm(strings) {
   return strings.join("");
 }
 
-const cGrammarPath = resolve("language-c/grammars/tree-sitter-c.json");
-const pythonGrammarPath = resolve("language-python/grammars/tree-sitter-python.json");
-const jsGrammarPath = resolve("language-javascript/grammars/tree-sitter-javascript.json");
+const cGrammarPath = resolve("language-c/grammars/c.json");
+const pythonGrammarPath = resolve("language-python/grammars/python.json");
+const jsGrammarPath = resolve("language-javascript/grammars/javascript.json");
 
-const jsRegexGrammarPath = resolve("language-javascript/grammars/tree-sitter-regex.json");
+const jsRegexGrammarPath = resolve("language-regex/grammars/regex.json");
 
-const jsdocGrammarPath = resolve("language-javascript/grammars/tree-sitter-jsdoc.json");
-const htmlGrammarPath = resolve("language-html/grammars/tree-sitter-html.json");
-const ejsGrammarPath = resolve("language-html/grammars/tree-sitter-ejs.json");
+const jsdocGrammarPath = resolve("language-javascript/grammars/jsdoc.json");
+const htmlGrammarPath = resolve("language-html/grammars/html.json");
+const ejsGrammarPath = resolve("language-html/grammars/ejs.json");
 
-let jsConfig = CSON.readFileSync(jsGrammarPath);
-let jsRegexConfig = CSON.readFileSync(jsRegexGrammarPath);
-let cConfig = CSON.readFileSync(cGrammarPath);
-let pythonConfig = CSON.readFileSync(pythonGrammarPath);
-let htmlConfig = CSON.readFileSync(htmlGrammarPath);
+let jsConfig = {
+  ...CSON.readFileSync(jsGrammarPath),
+  injectionNames: ["js", "javascript"],
+};
+let jsRegexConfig = {
+  ...CSON.readFileSync(jsRegexGrammarPath),
+  injectionNames: ["js-regex"],
+};
+let cConfig = { ...CSON.readFileSync(cGrammarPath), injectionNames: ["c"] };
+let pythonConfig = {
+  ...CSON.readFileSync(pythonGrammarPath),
+  injectionNames: ["py", "python"],
+};
+let htmlConfig = { ...CSON.readFileSync(htmlGrammarPath), injectionNames: ["html"] };
 
 function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -50,7 +59,6 @@ describe("TreeSitterLanguageMode", () => {
     editor = await lumine.workspace.open("");
     buffer = editor.getBuffer();
     editor.displayLayer.reset({ foldCharacter: "…" });
-    lumine.config.set("editor.useTreeSitterParsers", true);
   });
 
   afterEach(() => {
@@ -969,7 +977,7 @@ describe("TreeSitterLanguageMode", () => {
       let jsGrammar, htmlGrammar;
 
       beforeEach(async () => {
-        let tempJsConfig = { ...jsConfig };
+        let tempJsConfig = { ...jsConfig, injectionNames: ["js", "javascript"] };
         jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, tempJsConfig);
 
         await jsGrammar.setQueryForTest(
@@ -988,7 +996,7 @@ describe("TreeSitterLanguageMode", () => {
         jsGrammar.addInjectionPoint(HTML_INNERHTML_ASSIGNMENT_INJECTION_POINT);
         jsGrammar.addInjectionPoint(JSDOC_INJECTION_POINT);
 
-        let tempHtmlConfig = { ...htmlConfig };
+        let tempHtmlConfig = { ...htmlConfig, injectionNames: ["html"] };
         htmlGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, tempHtmlConfig);
 
         await htmlGrammar.setQueryForTest(
@@ -1236,7 +1244,7 @@ describe("TreeSitterLanguageMode", () => {
         ]);
       });
 
-      it("updates a buffer's highlighting when a grammar with injectionRegex is added", async () => {
+      it("updates a buffer's highlighting when a grammar with an injection alias is added", async () => {
         jasmine.useRealClock();
         lumine.grammars.addGrammar(jsGrammar);
 
@@ -1298,6 +1306,28 @@ describe("TreeSitterLanguageMode", () => {
             { text: ";", scopes: [] },
           ],
         ]);
+      });
+
+      it("removes active injection layers when their target grammar is removed", async () => {
+        jasmine.useRealClock();
+        lumine.grammars.addGrammar(jsGrammar);
+        const htmlRegistration = lumine.grammars.addGrammar(htmlGrammar);
+        buffer.setText('node.innerHTML = `<img src="d">`;');
+        expect(lumine.grammars.assignLanguageMode(buffer, "source.js")).toBe(true);
+
+        const languageMode = buffer.getLanguageMode();
+        await languageMode.ready;
+        await wait(0);
+        expect(languageMode.getAllInjectionLayers().map((layer) => layer.grammar)).toContain(
+          htmlGrammar,
+        );
+
+        htmlRegistration.dispose();
+        await languageMode.nextTransaction;
+        await wait(0);
+        expect(languageMode.getAllInjectionLayers().map((layer) => layer.grammar)).not.toContain(
+          htmlGrammar,
+        );
       });
 
       it("updates a buffer’s highlighting when a new injection point is added to its grammar", async () => {
@@ -1602,11 +1632,10 @@ describe("TreeSitterLanguageMode", () => {
       });
 
       it("only covers scope boundaries in parent layers if a nested layer has a boundary at the same position", async () => {
-        const jsdocGrammar = new TreeSitterGrammar(
-          lumine.grammars,
-          jsdocGrammarPath,
-          CSON.readFileSync(jsdocGrammarPath),
-        );
+        const jsdocGrammar = new TreeSitterGrammar(lumine.grammars, jsdocGrammarPath, {
+          ...CSON.readFileSync(jsdocGrammarPath),
+          injectionNames: ["jsdoc"],
+        });
 
         jsdocGrammar.setQueryForTest("highlightsQuery", "");
 
@@ -1635,9 +1664,10 @@ describe("TreeSitterLanguageMode", () => {
 
       it("reports scopes from shallower layers when they are at the start or end of an injection", async () => {
         jasmine.useRealClock();
-        await lumine.packages.activatePackage("language-javascript");
-
-        let jsdocGrammar = lumine.grammars.grammarForScopeName("source.jsdoc");
+        const jsdocGrammar = new TreeSitterGrammar(lumine.grammars, jsdocGrammarPath, {
+          ...CSON.readFileSync(jsdocGrammarPath),
+          injectionNames: ["jsdoc"],
+        });
         await jsdocGrammar.setQueryForTest(
           "highlightsQuery",
           `
@@ -1649,13 +1679,17 @@ describe("TreeSitterLanguageMode", () => {
         `,
         );
 
-        let jsGrammar = lumine.grammars.grammarForScopeName("source.js");
+        const jsGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+        jsGrammar.addInjectionPoint(JSDOC_INJECTION_POINT);
         await jsGrammar.setQueryForTest(
           "highlightsQuery",
           `
           ["{" "}"] @punctuation.brace
         `,
         );
+
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(jsdocGrammar);
 
         editor.setGrammar(jsGrammar);
         editor.setText("/** @babel */\n{\n}");
@@ -3457,7 +3491,7 @@ describe("TreeSitterLanguageMode", () => {
 
       let tempJsRegexConfig = {
         ...jsRegexConfig,
-        injectionRegex: "^(js-regex-for-test)$",
+        injectionNames: ["js-regex-for-test"],
       };
 
       const regexGrammar = new TreeSitterGrammar(
@@ -3531,7 +3565,7 @@ describe("TreeSitterLanguageMode", () => {
 
       let tempJsRegexConfig = {
         ...jsRegexConfig,
-        injectionRegex: "^(js-regex-for-test)$",
+        injectionNames: ["js-regex-for-test"],
       };
 
       const regexGrammar = new TreeSitterGrammar(
@@ -3888,7 +3922,7 @@ describe("TreeSitterLanguageMode", () => {
 
         let tempJsRegexConfig = {
           ...jsRegexConfig,
-          injectionRegex: "^(js-regex-for-test)$",
+          injectionNames: ["js-regex-for-test"],
         };
 
         const regexGrammar = new TreeSitterGrammar(
@@ -4406,68 +4440,6 @@ describe("TreeSitterLanguageMode", () => {
       expect(editor.getSelectedText()).toBe("` <b>c${def()}e${f}g</b> `");
       editor.selectLargerSyntaxNode();
       expect(editor.getSelectedText()).toBe("html ` <b>c${def()}e${f}g</b> `");
-    });
-  });
-
-  describe(".tokenizedLineForRow(row)", () => {
-    it("returns a shimmed TokenizedLine with tokens", async () => {
-      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
-
-      await grammar.setQueryForTest(
-        "highlightsQuery",
-        `
-        (program) @source
-
-        (call_expression
-          (member_expression
-            (property_identifier) @method)
-            (#set! capture.final true))
-
-        (call_expression
-            (identifier) @function
-            (#set! capture.final true))
-
-        ((property_identifier) @property
-          (#set! capture.final true))
-        (identifier) @variable
-      `,
-      );
-
-      buffer.setText("aa.bbb = cc(d.eee());\n\n    \n  b");
-
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
-      buffer.setLanguageMode(languageMode);
-      await languageMode.ready;
-
-      let streamlinedTokenizedRows = [];
-      for (let i = 0; i < 4; i++) {
-        let tokenizedRow = languageMode.tokenizedLineForRow(i).tokens;
-        for (let { scopes } of tokenizedRow) {
-          if (scopes[0] === "source.js") {
-            scopes.shift();
-          }
-        }
-        streamlinedTokenizedRows.push(tokenizedRow);
-      }
-
-      expect(streamlinedTokenizedRows[0]).toEqual([
-        { value: "aa", scopes: ["source", "variable"] },
-        { value: ".", scopes: ["source"] },
-        { value: "bbb", scopes: ["source", "property"] },
-        { value: " = ", scopes: ["source"] },
-        { value: "cc", scopes: ["source", "function"] },
-        { value: "(", scopes: ["source"] },
-        { value: "d", scopes: ["source", "variable"] },
-        { value: ".", scopes: ["source"] },
-        { value: "eee", scopes: ["source", "method"] },
-        { value: "());", scopes: ["source"] },
-      ]);
-      expect(streamlinedTokenizedRows[1]).toEqual([]);
-      expect(streamlinedTokenizedRows[2]).toEqual([{ value: "    ", scopes: ["source"] }]);
-      expect(streamlinedTokenizedRows[3]).toEqual([
-        { value: "  ", scopes: ["source"] },
-        { value: "b", scopes: ["source", "variable"] },
-      ]);
     });
   });
 

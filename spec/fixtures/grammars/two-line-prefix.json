@@ -1,6 +1,10 @@
 {
   "name": "Two Line Prefix",
+  "type": "tree-sitter",
   "scopeName": "source.two-line-prefix",
-  "firstLineMatch": "^TWO-LINE-SENTINEL\\nSECOND-LINE",
-  "patterns": []
+  "firstLineRegex": "^TWO-LINE-SENTINEL\\nSECOND-LINE",
+  "treeSitter": {
+    "grammar": "../packages/package-with-tree-sitter-grammar/grammars/tree-sitter-empty.wasm",
+    "highlightsQuery": "../packages/package-with-tree-sitter-grammar/grammars/tree-sitter-empty.scm"
+  }
 }

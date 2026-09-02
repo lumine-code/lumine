@@ -1,5 +1,4 @@
-// This will normalize the comments for the special format of grammar tests
-// that TextMate and Tree-Sitter do
+// Normalize comments in the assertion format used by Tree-sitter grammar tests.
 //
 // Basically, receiving a text editor and the regex that probably defines
 // what a comment is, it'll return an object with `expect` - that is what was

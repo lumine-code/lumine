@@ -1,12 +1,12 @@
 {
   ".source.omg, .source.wow": {
     "editor": {
-      "increaseIndentPattern": "^a"
+      "commentStart": "//"
     }
   },
   ".source.omg": {
     "editor": {
-      "decreaseIndentPattern": "^b"
+      "commentEnd": "*/"
     }
   }
 }

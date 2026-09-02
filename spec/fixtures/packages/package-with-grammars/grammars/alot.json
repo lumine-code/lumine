@@ -4,15 +4,10 @@
     "foobizbang"
   ],
   "name": "Alot",
+  "type": "tree-sitter",
   "scopeName": "source.alot",
-  "patterns": [
-    {
-      "captures": {
-        "0": {
-          "name": "keyword.alot"
-        }
-      },
-      "match": "alot"
-    }
-  ]
+  "treeSitter": {
+    "grammar": "../../package-with-tree-sitter-grammar/grammars/tree-sitter-empty.wasm",
+    "highlightsQuery": "../../package-with-tree-sitter-grammar/grammars/tree-sitter-empty.scm"
+  }
 }

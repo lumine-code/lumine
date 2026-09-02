@@ -646,31 +646,24 @@ module.exports = class Workspace extends Model {
 
   getPackageNamesWithActiveGrammars() {
     const packageNames = [];
-    const addGrammar = ({ includedGrammarScopes, packageName } = {}) => {
+    const addGrammar = ({ packageName } = {}) => {
       if (!packageName) {
         return;
       }
-      // Prevent cycles
       if (packageNames.indexOf(packageName) !== -1) {
         return;
       }
 
       packageNames.push(packageName);
-      for (let scopeName of includedGrammarScopes != null ? includedGrammarScopes : []) {
-        addGrammar(this.grammarRegistry.grammarForScopeName(scopeName));
-      }
     };
 
     const editors = this.getTextEditors();
     for (let editor of editors) {
-      addGrammar(editor.getGrammar());
-    }
-
-    if (editors.length > 0) {
-      for (let grammar of this.grammarRegistry.getGrammars()) {
-        if (grammar.injectionSelector) {
-          addGrammar(grammar);
-        }
+      const languageMode = editor.getBuffer().getLanguageMode();
+      if (languageMode.rootLanguageLayer && languageMode.getAllLanguageLayers) {
+        for (const layer of languageMode.getAllLanguageLayers()) addGrammar(layer.grammar);
+      } else {
+        addGrammar(editor.getGrammar());
       }
     }
 

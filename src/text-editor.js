@@ -8,11 +8,10 @@ const DecorationManager = require("./decoration-manager");
 const Cursor = require("./cursor");
 const Selection = require("./selection");
 const NullGrammar = require("./null-grammar");
-const TextMateLanguageMode = require("./text-mate-language-mode");
 const ScopeDescriptor = require("./scope-descriptor");
 const FileState = require("./file-state");
+const { selectorMatchesAnyScope } = require("./selectors");
 
-const TextMateScopeSelector = require("@lumine-code/second-mate").ScopeSelector;
 const GutterContainer = require("./gutter-container");
 let TextEditorComponent = null;
 let TextEditorElement = null;
@@ -239,9 +238,6 @@ module.exports = class TextEditor {
       this.buffer = params.buffer;
     } else {
       this.buffer = new TextBuffer();
-      this.buffer.setLanguageMode(
-        new TextMateLanguageMode({ buffer: this.buffer, config: lumine.config }),
-      );
     }
 
     const languageMode = this.buffer.getLanguageMode();
@@ -1048,7 +1044,7 @@ module.exports = class TextEditor {
    * the current grammar.
    *
    * @param {Function} callback
-   * @param {Grammar} callback.grammar
+   * @param {TreeSitterGrammar|Object} callback.grammar - A Tree-sitter grammar or the null grammar sentinel.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   observeGrammar(callback) {
@@ -1064,7 +1060,7 @@ module.exports = class TextEditor {
    * colorizes the text has been changed.
    *
    * @param {Function} callback
-   * @param {Grammar} callback.grammar
+   * @param {TreeSitterGrammar|Object} callback.grammar - A Tree-sitter grammar or the null grammar sentinel.
    * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
    */
   onDidChangeGrammar(callback) {
@@ -5397,19 +5393,19 @@ module.exports = class TextEditor {
    * @public
    * @status essential
    *
-   * Get the current `Grammar` of this editor.
+   * Get the current {@link TreeSitterGrammar}, or the null grammar sentinel.
    */
   getGrammar() {
     const languageMode = this.buffer.getLanguageMode();
     return (languageMode.getGrammar && languageMode.getGrammar()) || NullGrammar;
   }
 
-  // Deprecated: Set the current `Grammar` of this editor.
+  // Deprecated: Set the current Tree-sitter grammar of this editor.
   //
   // Assigning a grammar will cause the editor to re-tokenize based on the new
   // grammar.
   //
-  // * `grammar` `Grammar`
+  // * `grammar` {@link TreeSitterGrammar}
   setGrammar(grammar) {
     const buffer = this.getBuffer();
     buffer.setLanguageMode(lumine.grammars.languageModeForGrammarAndBuffer(grammar, buffer));
@@ -5466,17 +5462,12 @@ module.exports = class TextEditor {
    * @status essential
    *
    * Get the syntactic tree {@link ScopeDescriptor} for the given position in buffer
-   * coordinates or the syntactic {@link ScopeDescriptor} for TextMate language mode
+   * coordinates.
    *
    * For example, if called with a position inside the parameter list of a
    * JavaScript class function, this method returns a {@link ScopeDescriptor} with
    * the following syntax nodes array:
    * `["source.js", "program", "expression_statement", "assignment_expression", "class", "class_body", "method_definition", "formal_parameters", "identifier"]`
-   * if tree-sitter is used
-   * and the following scopes array:
-   * `["source.js"]`
-   * if textmate is used
-   *
    * @param bufferPosition - A {@link Point} or `Array` of `[row, column]`.
    * @returns {ScopeDescriptor}
    */
@@ -5533,9 +5524,8 @@ module.exports = class TextEditor {
   isBufferRowCommented(bufferRow) {
     const match = this.lineTextForBufferRow(bufferRow).match(/\S/);
     if (match) {
-      if (!this.commentScopeSelector)
-        this.commentScopeSelector = new TextMateScopeSelector("comment.*");
-      return this.commentScopeSelector.matches(
+      return selectorMatchesAnyScope(
+        "comment",
         this.scopeDescriptorForBufferPosition([bufferRow, match.index]).scopes,
       );
     }

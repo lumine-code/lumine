@@ -12,11 +12,14 @@ function resolve(modulePath) {
   return require.resolve(modulePath);
 }
 
-const jsGrammarPath = resolve("language-javascript/grammars/tree-sitter-javascript.json");
+const jsGrammarPath = resolve("language-javascript/grammars/javascript.json");
 let jsConfig = CSON.readFileSync(jsGrammarPath);
 
-const jsRegexGrammarPath = resolve("language-javascript/grammars/tree-sitter-regex.json");
-let jsRegexConfig = CSON.readFileSync(jsRegexGrammarPath);
+const jsRegexGrammarPath = resolve("language-regex/grammars/regex.json");
+let jsRegexConfig = {
+  ...CSON.readFileSync(jsRegexGrammarPath),
+  injectionNames: ["js-regex"],
+};
 
 async function getAllCapturesWithScopeResolver(grammar, languageMode, scopeResolver, layer = null) {
   let query = await grammar.getQuery("highlightsQuery");
@@ -83,7 +86,6 @@ describe("ScopeResolver", () => {
     editor = await lumine.workspace.open("");
     buffer = editor.getBuffer();
     lumine.grammars.addGrammar(grammar);
-    lumine.config.set("editor.useTreeSitterParsers", true);
   });
 
   afterEach(() => {

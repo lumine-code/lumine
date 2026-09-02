@@ -3,8 +3,6 @@ const path = require("path");
 const _ = require("@lumine-code/underscore-plus");
 const TextEditorElement = require("../../src/text-editor-element");
 const TextEditor = require("../../src/text-editor");
-const TextMateLanguageMode = require("../../src/text-mate-language-mode");
-const { CompositeDisposable } = require("@lumine-code/event-kit");
 const clipboardBridge = require("../../src/clipboard-bridge");
 const getWindowLoadSettings = require("../../src/get-window-load-settings");
 
@@ -71,32 +69,6 @@ exports.register = (jasmineEnv) => {
     TextEditorElement.prototype.setUpdatedSynchronously(true);
 
     spyOn(TextEditor.prototype, "shouldPromptToSave").and.returnValue(false);
-
-    // make tokenization synchronous
-    TextMateLanguageMode.prototype.chunkSize = Infinity;
-    spyOn(TextMateLanguageMode.prototype, "tokenizeInBackground").and.callFake(function () {
-      return this.tokenizeNextChunk();
-    });
-
-    // Without this spy, TextEditor.onDidTokenize callbacks would not be called
-    // after the buffer's language mode changed, because by the time the editor
-    // called its new language mode's onDidTokenize method, the language mode
-    // would already be fully tokenized.
-    spyOn(TextEditor.prototype, "onDidTokenize").and.callFake(function (callback) {
-      return new CompositeDisposable(
-        this.emitter.on("did-tokenize", callback),
-        this.onDidChangeGrammar(() => {
-          const languageMode = this.buffer.getLanguageMode();
-          if (
-            languageMode.tokenizeInBackground != null
-              ? languageMode.tokenizeInBackground.originalValue
-              : undefined
-          ) {
-            return callback();
-          }
-        }),
-      );
-    });
 
     // Keep a spec run off the real clipboard. The bridge is the seam rather
     // than {Clipboard} itself, so every spec still exercises the metadata and

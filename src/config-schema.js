@@ -617,22 +617,6 @@ const configSchema = {
         type: "string",
         default: "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…",
       },
-      useTreeSitterParsers: {
-        scopeResolution: "grammar",
-        title: "Use Tree-sitter Parsers",
-        description: "Use Tree-sitter parsers for supported languages.",
-        type: "boolean",
-        default: true,
-      },
-      largeFileThreshold: {
-        scopeResolution: "grammar",
-        title: "Large File Threshold",
-        description:
-          "Files larger than this size in megabytes will open in large file mode with syntax highlighting disabled. Only applies to TextMate grammars; Tree-sitter grammars handle large files efficiently without this limitation. Set to 0 to always enable syntax highlighting regardless of file size.",
-        type: "number",
-        minimum: 0,
-        default: 2,
-      },
       commentStart: {
         scopeResolution: "syntax",
         title: "Comment Start",
@@ -662,37 +646,6 @@ const configSchema = {
         description: "Legacy scope-specific completion words supplied by grammars.",
         type: "array",
         items: { type: "string" },
-        hidden: true,
-      },
-      increaseIndentPattern: {
-        scopeResolution: "syntax",
-        title: "Increase Indent Pattern",
-        description:
-          "Scope-specific regular expression; a line matching it increases the indentation of the following line.",
-        type: ["string", "null"],
-        hidden: true,
-      },
-      decreaseIndentPattern: {
-        scopeResolution: "syntax",
-        title: "Decrease Indent Pattern",
-        description:
-          "Scope-specific regular expression; a line matching it decreases its own indentation.",
-        type: ["string", "null"],
-        hidden: true,
-      },
-      decreaseNextIndentPattern: {
-        scopeResolution: "syntax",
-        title: "Decrease Next Indent Pattern",
-        description:
-          "Scope-specific regular expression; a matching line decreases the indentation of the following line.",
-        type: ["string", "null"],
-        hidden: true,
-      },
-      foldEndPattern: {
-        scopeResolution: "syntax",
-        title: "Fold End Pattern",
-        description: "Scope-specific regular expression that marks the end of a foldable region.",
-        type: ["string", "null"],
         hidden: true,
       },
       invisibles: {

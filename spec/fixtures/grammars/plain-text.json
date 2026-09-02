@@ -1,8 +1,8 @@
 {
-  "name": "One Line Prefix",
+  "name": "Plain Text",
   "type": "tree-sitter",
-  "scopeName": "source.one-line-prefix",
-  "firstLineRegex": "^ONE-LINE-SENTINEL",
+  "scopeName": "text.plain",
+  "fileTypes": ["txt"],
   "treeSitter": {
     "grammar": "../packages/package-with-tree-sitter-grammar/grammars/tree-sitter-empty.wasm",
     "highlightsQuery": "../packages/package-with-tree-sitter-grammar/grammars/tree-sitter-empty.scm"

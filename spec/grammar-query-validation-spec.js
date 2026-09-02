@@ -111,8 +111,13 @@ describe("bundled Tree-sitter grammars", () => {
       try {
         let language = await grammar.getLanguage();
 
-        expect(language.abiVersion).toBeGreaterThanOrEqual(TreeSitter.MIN_COMPATIBLE_VERSION);
-        expect(language.abiVersion).toBeLessThanOrEqual(TreeSitter.LANGUAGE_VERSION);
+        // web-tree-sitter exposes the loaded WASM ABI. Native language
+        // modules are validated by `Parser#setLanguage` when the language mode
+        // creates its parser and do not expose an equivalent property.
+        if (grammar.treeSitterRuntime === "wasm") {
+          expect(language.abiVersion).toBeGreaterThanOrEqual(TreeSitter.MIN_COMPATIBLE_VERSION);
+          expect(language.abiVersion).toBeLessThanOrEqual(TreeSitter.LANGUAGE_VERSION);
+        }
 
         let failures = [];
         for (let key of Object.keys(config.treeSitter)) {

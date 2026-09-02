@@ -11,7 +11,6 @@ const os = require("os");
 const Pane = require("../src/pane");
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
-const TextMateLanguageMode = require("../src/text-mate-language-mode");
 const TreeSitterLanguageMode = require("../src/tree-sitter-language-mode");
 const FileState = require("../src/file-state");
 
@@ -5910,7 +5909,7 @@ describe("TextEditor", () => {
           expect(editor.indentationForBufferRow(2)).toBe(0);
         });
 
-        it("indents the new line to the current level when editor.autoIndent is true and no increaseIndentPattern is specified", () => {
+        it("keeps the current indent with the parserless null grammar", () => {
           lumine.grammars.assignLanguageMode(editor, null);
           editor.update({ autoIndent: true });
           editor.setText("  if true");
@@ -5934,14 +5933,9 @@ describe("TextEditor", () => {
         });
       });
 
-      describe("when a newline is appended on a line that matches the decreaseNextIndentPattern", () => {
+      describe("when a newline follows a continued call in an off-side language", () => {
         it("indents the new line to the correct level when editor.autoIndent is true", async () => {
           await lumine.packages.activatePackage("language-python");
-          lumine.config.set(
-            "editor.decreaseNextIndentPattern",
-            "^\\s*[^\\s()}]+(?<m>[^()]*\\((?:\\g<m>[^()]*|[^()]*)\\))*[^()]*\\)[,]?$",
-            { scopeSelector: ".source.python" },
-          );
           editor.update({ autoIndent: true });
           lumine.grammars.assignLanguageMode(editor, "source.python");
           editor.setText('print("some%s",\n  "thing")');
@@ -7088,7 +7082,7 @@ describe("TextEditor", () => {
             });
           });
 
-          describe("when pasting line(s) above a line that matches the decreaseIndentPattern", () =>
+          describe("when pasting line(s) above a closing brace", () =>
             it("auto-indents based on the pasted line(s) only", async () => {
               lumine.clipboard.write("a(x);\n  b(x);\n    c(x);\n", {
                 indentBasis: 0,
@@ -8936,22 +8930,15 @@ describe("TextEditor", () => {
   });
 
   describe("when the buffer's language mode changes", () => {
-    beforeEach(() => {
-      lumine.config.set("editor.useTreeSitterParsers", false);
-    });
-
     it("notifies onDidTokenize observers when retokenization is finished", async () => {
-      // Exercise the full `tokenizeInBackground` code path, which bails out early if
-      // `.setVisible` has not been called with `true`.
-      jasmine.unspy(TextMateLanguageMode.prototype, "tokenizeInBackground");
-      jasmine.attachToDOM(editor.getElement());
+      jasmine.useRealClock();
 
       const events = [];
       editor.onDidTokenize((event) => events.push(event));
 
       await lumine.packages.activatePackage("language-c");
       expect(lumine.grammars.assignLanguageMode(editor.getBuffer(), "source.c")).toBe(true);
-      advanceClock(1);
+      await editor.getBuffer().getLanguageMode().ready;
       expect(events.length).toBe(1);
     });
 
@@ -9059,8 +9046,8 @@ describe("TextEditor", () => {
         });
       });
 
-      describe("when inserted text matches a decrease indent pattern", () => {
-        describe("when the preceding line matches an increase indent pattern", () => {
+      describe("when inserted text begins with a closing brace", () => {
+        describe("when the preceding line opens the block", () => {
           it("decreases the indentation to match that of the preceding line", () => {
             editor.setCursorBufferPosition([1, Infinity]);
             editor.insertText("\n");
@@ -9070,7 +9057,7 @@ describe("TextEditor", () => {
           });
         });
 
-        describe("when the preceding line doesn't match an increase indent pattern", () => {
+        describe("when the preceding line does not open the block", () => {
           it("decreases the indentation to be one level below that of the preceding line", () => {
             editor.setCursorBufferPosition([3, Infinity]);
             editor.insertText("\n    ");
@@ -9087,7 +9074,7 @@ describe("TextEditor", () => {
         });
       });
 
-      describe("when inserted text does not match a decrease indent pattern", () => {
+      describe("when inserted text does not begin a dedented syntax node", () => {
         it("does not decrease the indentation", () => {
           editor.setCursorBufferPosition([12, 0]);
           editor.insertText("  ");
@@ -9097,7 +9084,7 @@ describe("TextEditor", () => {
         });
       });
 
-      describe("when the current line does not match a decrease indent pattern", () => {
+      describe("when the current line does not contain a dedented syntax node", () => {
         it("leaves the line unchanged", () => {
           editor.setCursorBufferPosition([2, 4]);
           expect(editor.indentationForBufferRow(2)).toBe(editor.indentationForBufferRow(1) + 1);
@@ -9651,195 +9638,6 @@ describe("TextEditor", () => {
         editor.setCursorBufferPosition([0, 0]);
         editor.setIndentationForBufferRow(0, 2.1);
         expect(editor.getText()).toBe("    1\n\t2");
-      });
-    });
-  });
-
-  describe("when the editor's grammar has an injection selector", () => {
-    beforeEach(async () => {
-      lumine.config.set("editor.useTreeSitterParsers", false);
-
-      await lumine.packages.activatePackage("language-text");
-      await lumine.packages.activatePackage("language-javascript");
-    });
-
-    it("includes the grammar's patterns when the selector matches the current scope in other grammars", async () => {
-      await lumine.packages.activatePackage("language-hyperlink");
-
-      const grammar = lumine.grammars.selectGrammar("text.js");
-      const { line, tags } = grammar.tokenizeLine("var i; // http://github.com");
-
-      const tokens = lumine.grammars.decodeTokens(line, tags);
-      expect(tokens[0].value).toBe("var");
-      expect(tokens[0].scopes).toEqual(["source.js", "storage.type.var.js"]);
-      expect(tokens[6].value).toBe("http://github.com");
-      expect(tokens[6].scopes).toEqual([
-        "source.js",
-        "comment.line.double-slash.js",
-        "markup.underline.link.http.hyperlink",
-      ]);
-    });
-
-    describe("when the grammar is added", () => {
-      it("retokenizes existing buffers that contain tokens that match the injection selector", async () => {
-        editor = await lumine.workspace.open("sample.js");
-        editor.setText("// http://github.com");
-        let tokens = editor.tokensForScreenRow(0);
-        expect(tokens).toEqual([
-          {
-            text: "//",
-            scopes: [
-              "syntax--source syntax--js",
-              "syntax--comment syntax--line syntax--double-slash syntax--js",
-              "syntax--punctuation syntax--definition syntax--comment syntax--js",
-            ],
-          },
-          {
-            text: " http://github.com",
-            scopes: [
-              "syntax--source syntax--js",
-              "syntax--comment syntax--line syntax--double-slash syntax--js",
-            ],
-          },
-        ]);
-
-        await lumine.packages.activatePackage("language-hyperlink");
-        tokens = editor.tokensForScreenRow(0);
-        expect(tokens).toEqual([
-          {
-            text: "//",
-            scopes: [
-              "syntax--source syntax--js",
-              "syntax--comment syntax--line syntax--double-slash syntax--js",
-              "syntax--punctuation syntax--definition syntax--comment syntax--js",
-            ],
-          },
-          {
-            text: " ",
-            scopes: [
-              "syntax--source syntax--js",
-              "syntax--comment syntax--line syntax--double-slash syntax--js",
-            ],
-          },
-          {
-            text: "http://github.com",
-            scopes: [
-              "syntax--source syntax--js",
-              "syntax--comment syntax--line syntax--double-slash syntax--js",
-              "syntax--markup syntax--underline syntax--link syntax--http syntax--hyperlink",
-            ],
-          },
-        ]);
-      });
-
-      describe("when the grammar is updated", () => {
-        it("retokenizes existing buffers that contain tokens that match the injection selector", async () => {
-          editor = await lumine.workspace.open("sample.js");
-          editor.setText("// SELECT * FROM OCTOCATS");
-          let tokens = editor.tokensForScreenRow(0);
-          expect(tokens).toEqual([
-            {
-              text: "//",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-                "syntax--punctuation syntax--definition syntax--comment syntax--js",
-              ],
-            },
-            {
-              text: " SELECT * FROM OCTOCATS",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-              ],
-            },
-          ]);
-
-          await lumine.packages.activatePackage("package-with-injection-selector");
-          tokens = editor.tokensForScreenRow(0);
-          expect(tokens).toEqual([
-            {
-              text: "//",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-                "syntax--punctuation syntax--definition syntax--comment syntax--js",
-              ],
-            },
-            {
-              text: " SELECT * FROM OCTOCATS",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-              ],
-            },
-          ]);
-
-          await lumine.packages.activatePackage("language-sql");
-          tokens = editor.tokensForScreenRow(0);
-          expect(tokens).toEqual([
-            {
-              text: "//",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-                "syntax--punctuation syntax--definition syntax--comment syntax--js",
-              ],
-            },
-            {
-              text: " ",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-              ],
-            },
-            {
-              text: "SELECT",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-                "syntax--keyword syntax--other syntax--DML syntax--sql",
-              ],
-            },
-            {
-              text: " ",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-              ],
-            },
-            {
-              text: "*",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-                "syntax--keyword syntax--operator syntax--star syntax--sql",
-              ],
-            },
-            {
-              text: " ",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-              ],
-            },
-            {
-              text: "FROM",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-                "syntax--keyword syntax--other syntax--DML syntax--sql",
-              ],
-            },
-            {
-              text: " OCTOCATS",
-              scopes: [
-                "syntax--source syntax--js",
-                "syntax--comment syntax--line syntax--double-slash syntax--js",
-              ],
-            },
-          ]);
-        });
       });
     });
   });
@@ -10500,44 +10298,16 @@ describe("TextEditor", () => {
   });
 
   describe(".scopeDescriptorForBufferPosition(position)", () => {
-    it("returns a default scope descriptor when no language mode is assigned", () => {
+    it("returns the null grammar scope before a language package is active", () => {
       editor = new TextEditor({ buffer: new TextBuffer() });
       const scopeDescriptor = editor.scopeDescriptorForBufferPosition([0, 0]);
-      expect(scopeDescriptor.getScopesArray()).toEqual(["text"]);
+      expect(scopeDescriptor.getScopesArray()).toEqual(["text.plain.null-grammar"]);
     });
   });
 
   describe(".getCommentDelimitersForBufferPosition", () => {
-    it("returns comment delimiters on a TextMate grammar", async () => {
-      lumine.config.set("editor.useTreeSitterParsers", false);
-
-      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
-      await lumine.packages.activatePackage("language-javascript");
-
-      let buffer = editor.getBuffer();
-
-      let languageMode = new TextMateLanguageMode({
-        buffer,
-        grammar: lumine.grammars.grammarForScopeName("source.js"),
-      });
-
-      buffer.setLanguageMode(languageMode);
-
-      languageMode.startTokenizing();
-      while (languageMode.firstInvalidRow() != null) {
-        advanceClock();
-      }
-
-      let delimiters = editor.getCommentDelimitersForBufferPosition([8, 0]);
-      expect(delimiters).toEqual({
-        line: "//",
-        block: ["/*", "*/"],
-      });
-    });
-
     it("returns comment delimiters on a Tree-sitter grammar", async () => {
       jasmine.useRealClock();
-      lumine.config.set("editor.useTreeSitterParsers", true);
 
       editor = await lumine.workspace.open("sample.js", { autoIndent: false });
       await lumine.packages.activatePackage("language-javascript");
@@ -10565,34 +10335,7 @@ describe("TextEditor", () => {
   });
 
   describe(".syntaxTreeScopeDescriptorForBufferPosition(position)", () => {
-    it("returns the result of scopeDescriptorForBufferPosition() when textmate language mode is used", async () => {
-      lumine.config.set("editor.useTreeSitterParsers", false);
-
-      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
-      await lumine.packages.activatePackage("language-javascript");
-
-      let buffer = editor.getBuffer();
-
-      let languageMode = new TextMateLanguageMode({
-        buffer,
-        grammar: lumine.grammars.grammarForScopeName("source.js"),
-      });
-
-      buffer.setLanguageMode(languageMode);
-
-      languageMode.startTokenizing();
-      while (languageMode.firstInvalidRow() != null) {
-        advanceClock();
-      }
-
-      const syntaxTreeeScopeDescriptor = editor.syntaxTreeScopeDescriptorForBufferPosition([4, 17]);
-      expect(syntaxTreeeScopeDescriptor.getScopesArray()).toEqual([
-        "source.js",
-        "support.variable.property.js",
-      ]);
-    });
-
-    it("returns the result of syntaxTreeScopeDescriptorForBufferPosition() when tree-sitter language mode is used", async () => {
+    it("returns the Tree-sitter syntax path", async () => {
       jasmine.useRealClock();
       editor = await lumine.workspace.open("sample.js", { autoIndent: false });
       await lumine.packages.activatePackage("language-javascript");
@@ -11403,11 +11146,13 @@ describe("TextEditor", () => {
     describe(".foldCurrentRow()", () => {
       it("creates a fold at the location of the last cursor", async () => {
         editor = await lumine.workspace.open();
+        expect(lumine.grammars.assignLanguageMode(editor, "source.js")).toBe(true);
         editor.setText("\nif (x) {\n  y()\n}");
+        await editor.getBuffer().getLanguageMode().ready;
         editor.setCursorBufferPosition([1, 0]);
         expect(editor.getScreenLineCount()).toBe(4);
         editor.foldCurrentRow();
-        expect(editor.getScreenLineCount()).toBe(3);
+        expect(editor.getScreenLineCount()).toBe(2);
       });
 
       it("does nothing when the current row cannot be folded", async () => {

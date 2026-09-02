@@ -11,7 +11,7 @@ const {
 // engines.lumine range. The count is a tripwire, like EXPECTED_GRAMMAR_COUNT
 // in the grammar sweep: adding or dropping a bundled package means updating
 // it deliberately, and a partial node_modules cannot silently shrink the set.
-const EXPECTED_BUNDLED_COUNT = 48;
+const EXPECTED_BUNDLED_COUNT = 51;
 
 describe("bundled-packages", function () {
   const repoRoot = path.resolve(__dirname, "..");
@@ -27,7 +27,15 @@ describe("bundled-packages", function () {
     // language-source carries the base .source indent and comment settings every
     // source.* grammar without its own settings/ falls back to.
     expect(names).toEqual(
-      jasmine.arrayContaining(["snippets", "language-source", "language-gfm", "language-git"]),
+      jasmine.arrayContaining([
+        "snippets",
+        "language-source",
+        "language-gfm",
+        "language-git",
+        "language-ipython",
+        "language-log",
+        "language-regex",
+      ]),
     );
     // Deliberately unbundled — in packages/index.json, installed on demand.
     expect(names).not.toContain("autocomplete");

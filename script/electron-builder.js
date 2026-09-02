@@ -173,7 +173,6 @@ let options = {
     // node_modules of the fuzzy-native package are only required for building it
     "!node_modules/@lumine-code/fuzzy-native/node_modules",
     "!**/node_modules/spellchecker/vendor/hunspell/.*",
-    "!**/oniguruma/deps",
     "!**/get-parameter-names/node_modules/testla",
     "!**/get-parameter-names/node_modules/.bin/testla",
     "!**/jasmine-reporters/ext",
