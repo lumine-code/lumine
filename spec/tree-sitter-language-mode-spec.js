@@ -690,6 +690,37 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     describe("asynchronous parsing (progress-callback time slicing)", () => {
+      it("feeds parsers bounded chunks while preserving text for large nodes", async () => {
+        jasmine.useRealClock();
+        grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+        const contents = "x".repeat(20000);
+        buffer.setText(`const value = \`${contents}\`;`);
+        const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        const parser = languageMode.getRootParser();
+        const parse = parser.parse.bind(parser);
+        let largestChunk = 0;
+        spyOn(parser, "parse").and.callFake((callback, ...args) => {
+          return parse(
+            (...callbackArgs) => {
+              const chunk = callback(...callbackArgs);
+              largestChunk = Math.max(largestChunk, chunk.length);
+              return chunk;
+            },
+            ...args,
+          );
+        });
+
+        const tree = languageMode.parse(languageMode.rootLanguage, null, null);
+        const template = tree.rootNode.descendantsOfType("template_string")[0];
+
+        expect(largestChunk).toBeLessThanOrEqual(4096);
+        expect(template.text).toBe(`\`${contents}\``);
+        tree.delete();
+      });
+
       it("deletes the previous canonical tree only once after an incremental parse", async () => {
         jasmine.useRealClock();
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);

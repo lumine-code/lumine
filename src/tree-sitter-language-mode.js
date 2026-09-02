@@ -18,6 +18,12 @@ const FEATURE_ASYNC_INDENT = true;
 const FEATURE_ASYNC_PARSE = true;
 
 const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
+// Both Tree-sitter bindings call input callbacks with an index and a position,
+// not an end index. Returning the entire remaining suffix makes every callback
+// allocate O(file size), while web-tree-sitter copies at most 10 KiB of UTF-16
+// data into Wasm anyway. A bounded chunk is composed transparently by both
+// bindings for parsing and SyntaxNode#text.
+const INPUT_CHUNK_CODE_UNITS = 4096;
 
 // How many milliseconds we can spend on synchronous re-parses (for indentation
 // purposes) in a given transaction before we fall back to asynchronous
@@ -734,8 +740,8 @@ class TreeSitterLanguageMode {
     return this.grammar.scopeNameForScopeId(scopeId);
   }
 
-  idForScope(name, text) {
-    return this.grammar.idForScope(name, text);
+  idForScope(name) {
+    return this.grammar.idForScope(name);
   }
 
   // Behaves like `scopeDescriptorForPosition`, but returns a list of
@@ -959,13 +965,13 @@ class TreeSitterLanguageMode {
     // accurate captures.
     let parseDone = false;
     let text = this.buffer.getText();
-    let callback = (index, _, endIndex) => {
+    let callback = (index) => {
       // Stick with a frozen copy of the text at parse time… until parsing is
       // done, at which point we should use the latest buffer text. (The
       // buffer caches the result of `getText` until its next change, so this
       // does not re-build the string on every lookup.)
       let currentText = parseDone ? this.buffer.getText() : text;
-      return currentText.slice(index, endIndex);
+      return currentText.slice(index, index + INPUT_CHUNK_CODE_UNITS);
     };
 
     let tree;
@@ -1049,8 +1055,8 @@ class TreeSitterLanguageMode {
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     }
 
-    let callback = (index, _, endIndex) => {
-      return this.buffer.getText().slice(index, endIndex);
+    let callback = (index) => {
+      return this.buffer.getText().slice(index, index + INPUT_CHUNK_CODE_UNITS);
     };
 
     if (devMode && tag) {
@@ -3019,9 +3025,7 @@ class LanguageLayer {
         this.observeQueryChanges();
 
         this.tree = null;
-        this.scopeResolver = new ScopeResolver(this, (name, text) =>
-          this.languageMode.idForScope(name, text),
-        );
+        this.scopeResolver = new ScopeResolver(this, (name) => this.languageMode.idForScope(name));
         this.foldResolver = new FoldResolver(this.buffer, this);
 
         // What should our language scope name be? Should we even have one?

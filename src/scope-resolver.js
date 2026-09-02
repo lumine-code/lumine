@@ -2,6 +2,8 @@ const { CompositeDisposable } = require("@lumine-code/event-kit");
 const { Point } = require("./text-buffer");
 const ScopeDescriptor = require("./scope-descriptor");
 
+const EMPTY_PROPERTIES = Object.freeze({});
+
 // TODO: These utility functions are duplicated between this file and
 // `tree-sitter-language-mode.js`. Eventually they might need to be moved
 // into a `utils` file somewhere.
@@ -259,15 +261,7 @@ class ScopeResolver {
 
   setDataForRange(range, props) {
     let key = this._keyForRange(range);
-    let normalizedProps = { ...props };
-    // TEMP: No longer needed when we remove support for (#set! test.final
-    // true).
-    for (let prop of ["final", "shy"]) {
-      if (`test.${prop}` in normalizedProps) {
-        normalizedProps[`capture.${prop}`] = normalizedProps[`test.${prop}`];
-      }
-    }
-    return this.rangeData.set(key, normalizedProps);
+    return this.rangeData.set(key, props);
   }
 
   getDataForRange(syntax) {
@@ -329,24 +323,12 @@ class ScopeResolver {
     if (prop.startsWith("test.")) {
       prop = prop.substring(5);
     }
-
-    // TEMP: Normalize `onlyIfNotFoo` and `onlyIfFoo` to `foo`.
-    if (prop.startsWith("onlyIfNot")) {
-      prop = prop.charAt(9).toLowerCase() + prop.substring(10);
-    }
-    if (prop.startsWith("onlyIf")) {
-      prop = prop.charAt(6).toLowerCase() + prop.substring(7);
-    }
     return prop;
   }
 
   normalizeCaptureSettingProperty(prop) {
     if (prop.startsWith("capture.")) {
       prop = prop.substring(8);
-    }
-    // TEMP: Normalize `test.final` and `test.shy` to `final` and `shy`.
-    if (prop === "test.final" || prop === "test.shy") {
-      prop = prop.substring(5);
     }
     return prop;
   }
@@ -357,10 +339,6 @@ class ScopeResolver {
   }
 
   capturePropertyIsCaptureSetting(prop) {
-    // TEMP: Support `test.final` and `test.shy` temporarily.
-    if (prop === "test.final" || prop === "test.shy") {
-      return true;
-    }
     if (prop.includes(".") && !prop.startsWith("capture.")) {
       return false;
     }
@@ -369,10 +347,8 @@ class ScopeResolver {
   }
 
   applyTest(prop, ...args) {
-    let isLegacyNegation = prop.includes("onlyIfNot");
     prop = this.normalizeTestProperty(prop);
-    let result = ScopeResolver.TESTS[prop](...args);
-    return isLegacyNegation ? !result : result;
+    return ScopeResolver.TESTS[prop](...args);
   }
 
   applyCaptureSettingProperty(prop, ...args) {
@@ -397,7 +373,7 @@ class ScopeResolver {
     // object that has all four of `startPosition`, `endPosition`,
     // `startIndex`, and `endIndex`. Any single node can thus fulfill this
     // contract, but so can a plain object of our own construction.
-    let { setProperties: props = {} } = capture;
+    let props = capture.setProperties ?? EMPTY_PROPERTIES;
     if (!this.adjustsCaptureRange(capture)) {
       return capture.node;
     }
@@ -446,29 +422,24 @@ class ScopeResolver {
   }
 
   isFinal(existingData = {}) {
-    return "capture.final" in existingData || "final" in existingData;
+    return "capture.final" in existingData;
   }
 
   // Given a syntax capture, test whether we should include its scope in the
   // document.
   test(capture, existingData) {
-    let {
-      node,
-      setProperties: props = {},
-      assertedProperties: asserted = {},
-      refutedProperties: refuted = {},
-    } = capture;
+    let { node } = capture;
+    let props = capture.setProperties ?? EMPTY_PROPERTIES;
+    let asserted = capture.assertedProperties ?? EMPTY_PROPERTIES;
+    let refuted = capture.refutedProperties ?? EMPTY_PROPERTIES;
 
     if (this.isFinal(existingData)) {
       return false;
     }
 
     // Capture settings (final/shy) are the only keys in `setProperties` that
-    // matter when testing this capture.
-    //
-    // TODO: For compatibility reasons, we're still checking tests of the form
-    // (#set! test.final) here, but this should be removed before modern
-    // Tree-sitter ships.
+    // are interpreted outside the `test.*` namespace. Custom query tests may
+    // use either `#set! test.*` or the dedicated `#is?`/`#is-not?` predicates.
     for (let key in props) {
       let isCaptureSettingProperty = this.capturePropertyIsCaptureSetting(key);
       let isTest = this.capturePropertyIsTest(key);
@@ -485,14 +456,12 @@ class ScopeResolver {
         }
         continue;
       }
-      let value = props[key] ?? true;
       if (isCaptureSettingProperty) {
         if (!this.applyCaptureSettingProperty(key, node, existingData, this)) {
           return false;
         }
       } else {
-        // TODO: Remove this once third-party grammars have had time to adapt to
-        // the migration of tests to `#is?` and `#is-not?`.
+        let value = props[key] ?? true;
         if (!this.applyTestGuarded(key, node, value, existingData)) {
           return false;
         }
@@ -556,7 +525,8 @@ class ScopeResolver {
   // Will return `false` if the scope should not be added for the given range;
   // otherwise will return the computed range.
   store(capture) {
-    let { node, name, setProperties: props = {} } = capture;
+    let { node, name } = capture;
+    let props = capture.setProperties ?? EMPTY_PROPERTIES;
 
     name = ScopeResolver.interpolateName(name, node);
 
@@ -606,7 +576,7 @@ class ScopeResolver {
     // ignored.
     let isEmpty = comparePoints(range.startPosition, range.endPosition) === 0;
 
-    let id = this.idForScope(name, node.childCount === 0 ? node.text : undefined);
+    let id = this.idForScope(name);
 
     let { startPosition: start, endPosition: end } = range;
 
@@ -696,7 +666,7 @@ ScopeResolver.CAPTURE_SETTINGS = {
   // define `final` or not.
   final(_node, existingData) {
     if (!existingData) return true;
-    return !("capture.final" in existingData) && !("final" in existingData);
+    return !("capture.final" in existingData);
   },
 
   // Passes only if no earlier capture has occurred for the exact same range.

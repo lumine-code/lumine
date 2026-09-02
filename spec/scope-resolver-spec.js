@@ -119,36 +119,6 @@ describe("ScopeResolver", () => {
     }
   });
 
-  it("provides the grammar with the text of leaf nodes only", async () => {
-    await grammar.setQueryForTest(
-      "highlightsQuery",
-      `
-      (expression_statement) @not_leaf_node
-      (call_expression) @also_not_leaf_node
-      (identifier) @leaf_node
-      (property_identifier) @also_leaf_node
-    `,
-    );
-
-    let tokens = [];
-    const original = grammar.idForScope.bind(grammar);
-    grammar.idForScope = function (scope, text) {
-      if (text) {
-        tokens.push(text);
-      }
-      return original(scope, text);
-    };
-
-    const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
-    buffer.setLanguageMode(languageMode);
-    buffer.setText("aa.bb(cc.dd());");
-    await languageMode.ready;
-
-    // If non-leaf nodes are included, this list would included things like
-    // 'aa.bb()' and `cc.dd()`
-    expect(tokens).toEqual(["aa", "bb", "cc", "dd"]);
-  });
-
   it("interpolates magic tokens in scope names", async () => {
     await grammar.setQueryForTest(
       "highlightsQuery",
@@ -471,45 +441,6 @@ describe("ScopeResolver", () => {
       }
     });
 
-    it("temporarily supports the deprecated (#set! test.final true)", async () => {
-      await grammar.setQueryForTest(
-        "highlightsQuery",
-        `
-        (comment) @comment
-        (string) @string0
-        ((string) @string1
-          (#set! test.final true))
-
-        (string) @string2
-        "=" @operator
-      `,
-      );
-
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
-      buffer.setLanguageMode(languageMode);
-      buffer.setText(dedent`
-        // this is a comment
-        const foo = "ahaha";
-      `);
-      await languageMode.ready;
-
-      let { scopeResolver, captures } = await getAllCaptures(grammar, languageMode);
-
-      for (let capture of captures) {
-        let { name } = capture;
-        let result = scopeResolver.store(capture);
-        if (name === "string0") {
-          expect(!!result).toBe(true);
-        }
-        if (name === "string1") {
-          expect(!!result).toBe(true);
-        }
-        if (name === "string2") {
-          expect(!!result).toBe(false);
-        }
-      }
-    });
-
     it("rejects scopes for ranges that have already been claimed if set with (#set! capture.shy true)", async () => {
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -517,41 +448,6 @@ describe("ScopeResolver", () => {
         (comment) @comment
         (string "\\"") @string.double
         ((string) @string.other (#set! capture.shy true))
-        "=" @operator
-      `,
-      );
-
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
-      buffer.setLanguageMode(languageMode);
-      buffer.setText(dedent`
-        // this is a comment
-        const foo = "ahaha";
-        const bar = 'troz'
-      `);
-      await languageMode.ready;
-
-      let { scopeResolver, captures } = await getAllCaptures(grammar, languageMode);
-
-      let first = true;
-      for (let capture of captures) {
-        let { name } = capture;
-        let result = scopeResolver.store(capture);
-        // First string.other should fail; second should succeed.
-        if (name === "string.other") {
-          let expected = first ? false : true;
-          first = false;
-          expect(!!result).toBe(expected);
-        }
-      }
-    });
-
-    it("temporarily supports the deprecated (#set! test.shy true)", async () => {
-      await grammar.setQueryForTest(
-        "highlightsQuery",
-        `
-        (comment) @comment
-        (string "\\"") @string.double
-        ((string) @string.other (#set! test.shy true))
         "=" @operator
       `,
       );
@@ -592,48 +488,6 @@ describe("ScopeResolver", () => {
           (#is? test.first true))
         ((string) "'" @punctuation.last
           (#is? test.last true))
-      `,
-      );
-
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
-      buffer.setLanguageMode(languageMode);
-      buffer.setText(dedent`
-        // this is a comment
-        const foo = "ahaha";
-        const bar = 'troz'
-      `);
-      await languageMode.ready;
-
-      let { scopeResolver, captures } = await getAllCaptures(grammar, languageMode);
-
-      for (let capture of captures) {
-        let { node, name } = capture;
-        let result = scopeResolver.store(capture);
-        // Impossible for string_fragment to be the first or last child.
-        if (name.startsWith("impossible")) {
-          expect(!!result).toBe(false);
-        }
-
-        if (name === "punctuation.first") {
-          expect(node.id).toBe(node.parent.lastChild.id);
-        } else if (name === "punctuation.last") {
-          expect(node.id).toBe(node.parent.firstChild.id);
-        }
-      }
-    });
-
-    it("temporarily supports the deprecated (#set! test.onlyIfFirst) and (#set! test.onlyIfLast)", async () => {
-      await grammar.setQueryForTest(
-        "highlightsQuery",
-        `
-        ((string_fragment) @impossible.first
-          (#is? test.onlyIfFirst true))
-        ((string_fragment) @impossible.last
-          (#is? test.onlyIfLast true))
-        ((string) "'" @punctuation.first
-          (#is? test.onlyIfFirst true))
-        ((string) "'" @punctuation.last
-          (#is? test.onlyIfLast true))
       `,
       );
 
