@@ -1922,11 +1922,12 @@ describe("Workspace", () => {
       lumine.packages.activatePackage("language-todo"),
     ]);
 
-    await lumine.workspace.open("sample.py");
+    const sourceEditor = await lumine.workspace.open("sample.py");
 
-    lumine.workspace.getActiveTextEditor().setText(dedent`
+    sourceEditor.setText(dedent`
       i = /test/; #FIXME\
     `);
+    await sourceEditor.getBuffer().getLanguageMode().atTransactionEnd();
 
     const lumine2 = new Environment({
       applicationDelegate: lumine.applicationDelegate,
