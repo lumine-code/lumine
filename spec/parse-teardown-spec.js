@@ -99,6 +99,7 @@ describe("destroying a buffer during an async parse", () => {
 
     const language = grammar.getLanguageSync();
     const staleParser = languageMode.getOrCreateParserForLanguage(language);
+    spyOn(staleParser, "delete").and.callThrough();
     spyOn(staleParser, "reset").and.throwError(
       new WebAssembly.RuntimeError("memory access out of bounds"),
     );
@@ -108,8 +109,16 @@ describe("destroying a buffer during an async parse", () => {
     });
 
     expect(tree.rootNode.type).toBe("program");
-    expect(languageMode.getOrCreateParserForLanguage(language)).not.toBe(staleParser);
+    expect(staleParser.delete).not.toHaveBeenCalled();
+    const replacement = languageMode.getOrCreateParserForLanguage(language);
+    expect(replacement).not.toBe(staleParser);
     tree.delete();
+
+    const secondTree = await languageMode.parseAsync(language, null, undefined, {
+      scopeName: "source.js",
+    });
+    expect(languageMode.getOrCreateParserForLanguage(language)).toBe(replacement);
+    secondTree.delete();
   });
 
   it("also replaces a stale parser before a synchronous parse", async () => {
@@ -120,6 +129,7 @@ describe("destroying a buffer during an async parse", () => {
 
     const language = grammar.getLanguageSync();
     const staleParser = languageMode.getOrCreateParserForLanguage(language);
+    spyOn(staleParser, "delete").and.callThrough();
     spyOn(staleParser, "reset").and.throwError(
       new WebAssembly.RuntimeError("memory access out of bounds"),
     );
@@ -127,7 +137,29 @@ describe("destroying a buffer during an async parse", () => {
     const tree = languageMode.parse(language, null, undefined, { scopeName: "source.js" });
 
     expect(tree.rootNode.type).toBe("program");
-    expect(languageMode.getOrCreateParserForLanguage(language)).not.toBe(staleParser);
+    expect(staleParser.delete).not.toHaveBeenCalled();
+    const replacement = languageMode.getOrCreateParserForLanguage(language);
+    expect(replacement).not.toBe(staleParser);
     tree.delete();
+
+    const secondTree = languageMode.parse(language, null, undefined, { scopeName: "source.js" });
+    expect(languageMode.getOrCreateParserForLanguage(language)).toBe(replacement);
+    secondTree.delete();
+  });
+
+  it("does not hide ordinary parser reset failures", async () => {
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+    buffer.setLanguageMode(languageMode);
+    await languageMode.ready;
+
+    const language = grammar.getLanguageSync();
+    const parser = languageMode.getOrCreateParserForLanguage(language);
+    spyOn(parser, "reset").and.throwError(new Error("unexpected reset failure"));
+
+    expect(() =>
+      languageMode.parse(language, null, undefined, { scopeName: "source.js" }),
+    ).toThrowError(/unexpected reset failure/);
+    expect(languageMode.getOrCreateParserForLanguage(language)).toBe(parser);
   });
 });

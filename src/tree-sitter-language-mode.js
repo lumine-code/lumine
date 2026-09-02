@@ -417,6 +417,13 @@ class TreeSitterLanguageMode {
       parser.reset();
       return parser;
     } catch (error) {
+      const grammar = this.grammarsByLanguage.get(language);
+      const recoverable =
+        grammar?.treeSitterRuntime === "wasm" &&
+        error instanceof WebAssembly.RuntimeError &&
+        /memory access out of bounds/i.test(error.message);
+      if (!recoverable) throw error;
+
       // A parser can outlive the Wasm state behind it during a live grammar
       // reload. Calling into that stale handle faults before parsing starts,
       // so remove it from the pool without invoking `delete` on the same bad
@@ -425,8 +432,6 @@ class TreeSitterLanguageMode {
       if (lumine.window.isDevMode()) {
         console.warn(`Replacing a stale Tree-sitter parser for '${scopeName ?? "unknown"}'`, error);
       }
-      const grammar = this.grammarsByLanguage.get(language);
-      if (!grammar) throw error;
       const replacement = grammar.createParser(language);
       this.parsersByLanguage.add(language, replacement);
       return replacement;
