@@ -341,13 +341,22 @@ class TreeSitterLanguageMode {
     this.ready = this.grammar
       .getLanguage()
       .then((language) => {
+        if (this.destroyed) return null;
         this.rootLanguage = language;
         this.registerGrammarForLanguage(language, grammar);
         this.rootLanguageLayer = new LanguageLayer(null, this, grammar, 0);
         return this.getOrCreateParserForLanguage(language);
       })
-      .then(() => this.rootLanguageLayer.update(null))
-      .then(() => this.emitter.emit("did-tokenize"));
+      .then((parser) => {
+        if (this.destroyed || !parser) return null;
+        return this.rootLanguageLayer.update(null);
+      })
+      .then(() => {
+        if (!this.destroyed) this.emitter.emit("did-tokenize");
+      })
+      .catch((error) => {
+        if (!this.destroyed) throw error;
+      });
   }
 
   destroy() {
@@ -481,6 +490,7 @@ class TreeSitterLanguageMode {
       this.transactionChangeCount = 1;
       this.refreshNextTransactionPromise();
       this.didAutoIndentAfterTransaction = false;
+      this.lastTransactionParseError = null;
     } else {
       // We have a different definition of "changes" than what we get from
       // `bufferDidFinishTransaction`. Even when multiple calls to `insertText`
@@ -508,47 +518,60 @@ class TreeSitterLanguageMode {
       });
     }
 
-    this.rootLanguageLayer.update(null).then((shouldEndTransaction) => {
-      if (shouldEndTransaction) {
+    this.rootLanguageLayer.update(null).then(
+      (shouldEndTransaction) => {
+        if (shouldEndTransaction) {
+          this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
+          this.lastTransactionChangeCount = this.transactionChangeCount;
+          this.lastTransactionAutoIndentRequests = this.autoIndentRequests;
+        }
+
+        // The editor is going to ask if a number of on-screen lines are now
+        // foldable. This would ordinarly trigger a number of `folds.scm` queries
+        // — one per line. But since we know they're coming, we can run a single
+        // capture query over the whole range.
+        for (let { newRange } of changes) {
+          this.prefillFoldCache(newRange);
+        }
+
+        let allLayers = this.getAllInjectionLayers();
+        for (let layer of allLayers) {
+          // Either the tree got re-parsed — and it's now up-to-date — or it
+          // didn't, which means that the edits in the tree did not affect the
+          // layer's contents. Either way, the tree is safe to use. (This is part
+          // of why we keep a separate boolean instead of checking the tree
+          // directly — we have a looser definition of "clean.")
+          layer.treeIsDirty = false;
+
+          // If this layer didn't get updated, then it didn't need to, and the
+          // edits made in the last transaction are no longer relevant.
+          layer.editedRange = null;
+        }
+
+        // At this point, all trees are safely re-parsed, including those of
+        // injection layers. So we can proceed with any actions that were waiting
+        // on a clean tree.
+        if (shouldEndTransaction) {
+          this.resolveNextTransactionPromise();
+          this.transactionChangeCount = 0;
+          this.autoIndentRequests = 0;
+          // Since a new transaction is starting, we can reset our reparse
+          // budget.
+          this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
+        }
+      },
+      (error) => {
         this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
         this.lastTransactionChangeCount = this.transactionChangeCount;
         this.lastTransactionAutoIndentRequests = this.autoIndentRequests;
-      }
-
-      // The editor is going to ask if a number of on-screen lines are now
-      // foldable. This would ordinarly trigger a number of `folds.scm` queries
-      // — one per line. But since we know they're coming, we can run a single
-      // capture query over the whole range.
-      for (let { newRange } of changes) {
-        this.prefillFoldCache(newRange);
-      }
-
-      let allLayers = this.getAllInjectionLayers();
-      for (let layer of allLayers) {
-        // Either the tree got re-parsed — and it's now up-to-date — or it
-        // didn't, which means that the edits in the tree did not affect the
-        // layer's contents. Either way, the tree is safe to use. (This is part
-        // of why we keep a separate boolean instead of checking the tree
-        // directly — we have a looser definition of "clean.")
-        layer.treeIsDirty = false;
-
-        // If this layer didn't get updated, then it didn't need to, and the
-        // edits made in the last transaction are no longer relevant.
-        layer.editedRange = null;
-      }
-
-      // At this point, all trees are safely re-parsed, including those of
-      // injection layers. So we can proceed with any actions that were waiting
-      // on a clean tree.
-      if (shouldEndTransaction) {
+        this.lastTransactionParseError = error;
+        console.error("Tree-sitter update failed", error);
         this.resolveNextTransactionPromise();
         this.transactionChangeCount = 0;
         this.autoIndentRequests = 0;
-        // Since a new transaction is starting, we can reset our reparse
-        // budget.
         this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
-      }
-    });
+      },
+    );
   }
 
   // Invalidate fold caches for the rows touched by the given range.
@@ -648,6 +671,7 @@ class TreeSitterLanguageMode {
       changeCount: this.lastTransactionChangeCount ?? 0,
       range: this.lastTransactionEditedRange ?? null,
       autoIndentRequests: this.lastTransactionAutoIndentRequests ?? 0,
+      parseError: this.lastTransactionParseError ?? null,
     };
   }
 
@@ -2978,6 +3002,7 @@ class LanguageLayer {
     this.languageLoaded = this.grammar
       .getLanguage()
       .then((language) => {
+        if (this.destroyed) return false;
         this.language = language;
         this.languageMode.registerGrammarForLanguage(language, this.grammar);
         // All queries are optional. Regular expression language layers, for
@@ -3005,6 +3030,7 @@ class LanguageLayer {
           }
         }
         return Promise.all(promises).then(() => {
+          if (this.destroyed) return false;
           for (let failure of failures) {
             grammar.reportQueryError(failure.originalError ?? failure, failure.queryType);
           }
@@ -3013,9 +3039,11 @@ class LanguageLayer {
             // propagate errors.
             grammar.setQueryForTest("highlightsQuery", `; (placeholder)`);
           }
+          return true;
         });
       })
-      .then(() => {
+      .then((loaded) => {
+        if (!loaded || this.destroyed) return;
         // This used to be called only in dev mode. But there are other use cases
         // for dynamically reloading queries, so now we observer for changes in a
         // grammar's queries in all cases.
@@ -3057,6 +3085,9 @@ class LanguageLayer {
           this.languageScopeId = this.languageMode.idForScope(languageScope);
         }
         this.ready = true;
+      })
+      .catch((error) => {
+        if (!this.destroyed) throw error;
       });
   }
 
@@ -3568,25 +3599,28 @@ class LanguageLayer {
     }
 
     if (!this.currentParsePromise) {
-      do {
-        params = { ...params, async: false };
-        if (!this.ready) {
-          params.async = true;
-          await this.languageLoaded;
-          // While we were waiting for this language to load, another update may
-          // have been scheduled.
-          if (this.currentParsePromise) return false;
-        }
-        this.currentParsePromise = this._performUpdate(nodeRangeSet, params);
-        if (!params.async) {
-          break;
-        }
-        await this.currentParsePromise;
-      } while (!this.destroyed && (!this.tree || this.tree.rootNode.hasChanges));
+      try {
+        do {
+          params = { ...params, async: false };
+          if (!this.ready) {
+            params.async = true;
+            await this.languageLoaded;
+            // While we were waiting for this language to load, another update may
+            // have been scheduled.
+            if (this.currentParsePromise) return false;
+          }
+          this.currentParsePromise = this._performUpdate(nodeRangeSet, params);
+          await this.currentParsePromise;
+          if (!params.async) {
+            break;
+          }
+        } while (!this.destroyed && (!this.tree || this.tree.rootNode.hasChanges));
 
-      this.currentParsePromise = null;
-      // `true` means that this update occurs in its own distinct transaction.
-      return true;
+        // `true` means that this update occurs in its own distinct transaction.
+        return true;
+      } finally {
+        this.currentParsePromise = null;
+      }
     } else {
       // `false` means that the previous transaction isn't done, so this
       // transaction's work will be subsumed into it.
@@ -3818,30 +3852,27 @@ class LanguageLayer {
     this.patchSinceCurrentParseStarted = new Patch();
     let language = this.grammar.getLanguageSync();
     let tree;
-    if (this.languageMode.useAsyncParsing) {
-      tree = this.languageMode.parseAsync(
-        language,
-        this.tree,
-        includedRanges,
-        // { tag: `Parsing ${this.inspect()} (async) ${params.id}` }
-        { scopeName: this.grammar.scopeName },
-      );
-      if (tree.then) {
-        params.async = true;
-        tree = await tree;
-        // An async parse abandoned because the buffer went away resolves with
-        // no tree. The entry guard above cannot cover this: the layer was alive
-        // when the parse started.
-        if (!tree) return;
+    try {
+      if (this.languageMode.useAsyncParsing) {
+        tree = this.languageMode.parseAsync(language, this.tree, includedRanges, {
+          scopeName: this.grammar.scopeName,
+        });
+        if (tree.then) {
+          params.async = true;
+          tree = await tree;
+          // An async parse abandoned because the buffer went away resolves with
+          // no tree. The entry guard above cannot cover this: the layer was alive
+          // when the parse started.
+          if (!tree) return;
+        }
+      } else {
+        tree = this.languageMode.parse(language, this.tree, includedRanges, {
+          scopeName: this.grammar.scopeName,
+        });
       }
-    } else {
-      tree = this.languageMode.parse(
-        language,
-        this.tree,
-        includedRanges,
-        // { tag: `Parsing ${this.inspect()} (sync) ${params.id}` }
-        { scopeName: this.grammar.scopeName },
-      );
+    } catch (error) {
+      this.patchSinceCurrentParseStarted = null;
+      throw error;
     }
 
     let changes = this.patchSinceCurrentParseStarted.getChanges();

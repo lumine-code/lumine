@@ -106,4 +106,25 @@ describe("parse failure diagnostics", () => {
     // subsequent parse builds a fresh one and the old one leaks.
     expect(languageMode.getOrCreateParserForLanguage(language)).toBe(parser);
   });
+
+  it("settles a failed edit transaction and allows the next one to recover", async () => {
+    const language = grammar.getLanguageSync();
+    const parser = languageMode.getOrCreateParserForLanguage(language);
+    const parse = spyOn(parser, "parse").and.throwError(new Error("broken incremental parse"));
+    spyOn(console, "error");
+
+    buffer.append("const first = 1;\n");
+    const failedTransaction = await languageMode.atTransactionEnd();
+
+    expect(failedTransaction.parseError.message).toContain("broken incremental parse");
+    expect(languageMode.rootLanguageLayer.currentParsePromise).toBeNull();
+    expect(languageMode.rootLanguageLayer.patchSinceCurrentParseStarted).toBeNull();
+
+    parse.and.callThrough();
+    buffer.append("const second = 2;\n");
+    const recoveredTransaction = await languageMode.atTransactionEnd();
+
+    expect(recoveredTransaction.parseError).toBeNull();
+    expect(languageMode.tree.rootNode.hasChanges).toBe(false);
+  });
 });

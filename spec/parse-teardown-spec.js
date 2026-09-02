@@ -61,6 +61,28 @@ describe("destroying a buffer during an async parse", () => {
     await expectAsync(result).toBeResolvedTo(null);
   });
 
+  it("does not create a root layer when destroyed before the grammar loads", async () => {
+    const language = await grammar.getLanguage();
+    let releaseLanguage;
+    spyOn(grammar, "getLanguage").and.returnValue(
+      new Promise((resolve) => {
+        releaseLanguage = () => resolve(language);
+      }),
+    );
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+    const didTokenize = jasmine.createSpy("did-tokenize");
+    languageMode.onDidTokenize(didTokenize);
+
+    languageMode.destroy();
+    releaseLanguage();
+    await languageMode.ready;
+
+    expect(languageMode.rootLanguageLayer).toBeNull();
+    expect(languageMode.parsersByLanguage.size).toBe(0);
+    expect(didTokenize).not.toHaveBeenCalled();
+  });
+
   it("leaves a parser that is still mid-parse for the loop to delete", async () => {
     await startLongParse();
 
