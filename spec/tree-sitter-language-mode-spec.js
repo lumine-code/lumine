@@ -3590,6 +3590,64 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe("folding", () => {
+    it("reuses an empty fold boundary cache until the syntax tree is replaced", async () => {
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
+      buffer.setText("const first = 1;\nconst second = 2;");
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+
+      const layer = languageMode.rootLanguageLayer;
+      const foldResolver = layer.foldResolver;
+      const captures = spyOn(layer.queries.foldsQuery, "captures").and.callThrough();
+      const range = new Range([0, 0], [1, 0]);
+      foldResolver.reset();
+
+      foldResolver.prefillFoldCache(range);
+      foldResolver.prefillFoldCache(range);
+
+      expect(captures).toHaveBeenCalledTimes(1);
+      expect(foldResolver.boundaries.begin.key).toBeUndefined();
+      expect(foldResolver.boundariesTree).toBe(layer.tree);
+
+      const originalTree = layer.tree;
+      const replacementTree = languageMode.parse(languageMode.rootLanguage, null, null);
+      try {
+        layer.tree = replacementTree;
+        foldResolver.prefillFoldCache(range);
+
+        expect(captures).toHaveBeenCalledTimes(2);
+        expect(foldResolver.boundariesTree).toBe(replacementTree);
+      } finally {
+        foldResolver.reset();
+        layer.tree = originalTree;
+        replacementTree.delete?.();
+      }
+    });
+
+    it("continues reusing a nonempty fold boundary cache for the same tree", async () => {
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
+      buffer.setText("if (ready) {\n  run();\n}");
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+
+      const layer = languageMode.rootLanguageLayer;
+      const foldResolver = layer.foldResolver;
+      const captures = spyOn(layer.queries.foldsQuery, "captures").and.callThrough();
+      const range = new Range([0, 0], [1, 0]);
+      foldResolver.reset();
+
+      foldResolver.prefillFoldCache(range);
+      foldResolver.prefillFoldCache(range);
+
+      expect(captures).toHaveBeenCalledTimes(1);
+      expect(foldResolver.boundaries.begin.key).toBeDefined();
+      expect(foldResolver.boundariesTree).toBe(layer.tree);
+    });
+
     it("finds a containing fold without querying every preceding row", async () => {
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
       await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");

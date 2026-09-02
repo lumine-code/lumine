@@ -2175,6 +2175,8 @@ class FoldResolver {
     this.layer = layer;
 
     this.boundaries = null;
+    this.boundariesRange = null;
+    this.boundariesTree = null;
     this.dividedFoldEndsByStartNodeId = new Map();
   }
 
@@ -2277,11 +2279,12 @@ class FoldResolver {
   reset() {
     this.boundaries = null;
     this.boundariesRange = null;
+    this.boundariesTree = null;
     this.dividedFoldEndsByStartNodeId.clear();
   }
 
   canReuseBoundaries(start, end) {
-    if (!this.boundariesRange) {
+    if (!this.boundariesRange || this.boundariesTree !== this.layer.tree) {
       return false;
     }
     return this.boundariesRange.containsRange(new Range(start, end));
@@ -2299,14 +2302,7 @@ class FoldResolver {
       return null;
     }
     if (this.canReuseBoundaries(start, end)) {
-      let result = this.boundaries.ge(start);
-      // Are the captures from this cached red-black-tree still fresh?
-      if (result?.value?.node?.tree?.rootNode) {
-        // If this node still exists, we have a fresh tree. If not, these
-        // captures were executed against a tree that's no longer valid, so we
-        // can't inspect them, and we should proceed with a new folds query.
-        return result;
-      }
+      return this.boundaries.ge(start);
     }
 
     let scopeResolver = this.layer.scopeResolver;
@@ -2381,6 +2377,7 @@ class FoldResolver {
     this.indexDividedFoldPairs(boundaries);
     // The widened range, so the neighbors this pass read for can reuse it.
     this.boundariesRange = new Range(queryStart, queryEnd);
+    this.boundariesTree = this.layer.tree;
 
     return boundaries.ge(start);
   }
