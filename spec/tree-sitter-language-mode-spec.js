@@ -1072,6 +1072,33 @@ describe("TreeSitterLanguageMode", () => {
         expect(seen).toEqual(["identifier:0", "identifier:1", "template_string:1", "identifier:5"]);
       });
 
+      it("compiles a large-file injection candidate query only once per grammar", async () => {
+        jasmine.useRealClock();
+        jsGrammar.addInjectionPoint({
+          type: "identifier",
+          language() {},
+          content(node) {
+            return node;
+          },
+        });
+        spyOn(jsGrammar, "createQuerySync").and.callThrough();
+
+        buffer.setText("a;\nb;\nc;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionCandidateChunkRows: 1,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        await languageMode.rootLanguageLayer._populateInjections(buffer.getRange(), null);
+
+        expect(jsGrammar.createQuerySync).toHaveBeenCalledTimes(1);
+      });
+
       it("abandons a stale candidate scan and retries against the final tree", async () => {
         jasmine.useRealClock();
         const seen = [];

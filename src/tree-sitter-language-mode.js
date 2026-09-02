@@ -4220,22 +4220,25 @@ class LanguageLayer {
 
     // We won't touch _all_ injections, but we will touch any injection that
     // could possibly have been affected by this layer's update.
-    let existingInjectionMarkers = Array.from(this.childLayerMarkers).filter((m) =>
-      m.getRange().intersectsWith(range),
+    const childMarkerRanges = Array.from(this.childLayerMarkers, (marker) => ({
+      marker,
+      range: marker.getRange(),
+    }));
+    let existingInjectionMarkerEntries = childMarkerRanges.filter((entry) =>
+      entry.range.intersectsWith(range),
     );
 
-    if (existingInjectionMarkers.length > 0) {
+    if (existingInjectionMarkerEntries.length > 0) {
       // Enlarge our range to contain all of the injection zones in the
       // affected buffer range.
       let earliest = range.start,
         latest = range.end;
-      for (let marker of existingInjectionMarkers) {
-        range = marker.getRange();
-        if (range.start.compare(earliest) === -1) {
-          earliest = range.start;
+      for (const entry of existingInjectionMarkerEntries) {
+        if (entry.range.start.compare(earliest) === -1) {
+          earliest = entry.range.start;
         }
-        if (range.end.compare(latest) === 1) {
-          latest = range.end;
+        if (entry.range.end.compare(latest) === 1) {
+          latest = entry.range.end;
         }
       }
 
@@ -4258,10 +4261,14 @@ class LanguageLayer {
     //
     // This time, though, we check for containment rather than intersection
     // so that we don't have to enlarge the range again.
-    existingInjectionMarkers = Array.from(this.childLayerMarkers).filter((m) =>
-      range.containsRange(m.getRange()),
+    existingInjectionMarkerEntries = childMarkerRanges.filter((entry) =>
+      range.containsRange(entry.range),
     );
-    existingInjectionMarkers.sort((a, b) => a.compare(b));
+    existingInjectionMarkerEntries.sort((a, b) => a.range.compare(b.range));
+    const existingInjectionMarkers = existingInjectionMarkerEntries.map((entry) => entry.marker);
+    const rangesByInjectionMarker = new Map(
+      existingInjectionMarkerEntries.map((entry) => [entry.marker, entry.range]),
+    );
 
     const tree = this.tree;
     const injectionPointVersion = this.injectionPointVersion;
@@ -4292,6 +4299,7 @@ class LanguageLayer {
           range,
           nodeRangeSet,
           existingInjectionMarkers,
+          rangesByInjectionMarker,
           injectionPointsByType,
           injectionPointVersion,
         );
@@ -4306,6 +4314,7 @@ class LanguageLayer {
       range,
       nodeRangeSet,
       existingInjectionMarkers,
+      rangesByInjectionMarker,
       injectionPointsByType,
       injectionPointVersion,
     );
@@ -4341,13 +4350,15 @@ class LanguageLayer {
     if (types.every((type) => /^[A-Za-z_][A-Za-z0-9_-]*$/.test(type))) {
       try {
         const patterns = types.map((type) => `  (${type})`).join("\n");
-        candidateQuery = this.grammar.createQuerySync(`[\n${patterns}\n] @_INJECTION_CANDIDATE_`);
+        candidateQuery = this.grammar._getOrCreateInternalQuerySync(
+          `[\n${patterns}\n] @_INJECTION_CANDIDATE_`,
+        );
       } catch {
         // An unusual node type can still use the slower compatibility path.
       }
     }
 
-    const result = this._collectInjectionCandidateNodesInChunks(
+    return this._collectInjectionCandidateNodesInChunks(
       tree,
       types,
       start,
@@ -4356,7 +4367,6 @@ class LanguageLayer {
       injectionPointVersion,
       candidateQuery,
     );
-    return candidateQuery ? result.finally(() => candidateQuery.delete?.()) : result;
   }
 
   async _collectInjectionCandidateNodesInChunks(
@@ -4407,6 +4417,7 @@ class LanguageLayer {
     range,
     nodeRangeSet,
     existingInjectionMarkers,
+    rangesByInjectionMarker,
     injectionPointsByType,
     injectionPointVersion,
   ) {
@@ -4474,7 +4485,7 @@ class LanguageLayer {
           i++
         ) {
           const existingMarker = existingInjectionMarkers[i];
-          const comparison = existingMarker.getRange().compare(injectionRange);
+          const comparison = rangesByInjectionMarker.get(existingMarker).compare(injectionRange);
           if (comparison > 0) {
             // This marker seems to occur after the range we want to inject
             // into, meaning there's a good chance it's not ours. And it means
@@ -4502,7 +4513,7 @@ class LanguageLayer {
             // equal or later range, there's no chance of this marker matching
             // any candidates from this point forward. We can ignore it, and
             // anything before it, in subsequent trips through the loop.
-            existingInjectionMarkerIndex = i;
+            existingInjectionMarkerIndex = i + 1;
           }
         }
 

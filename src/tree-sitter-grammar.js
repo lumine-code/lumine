@@ -126,6 +126,7 @@ module.exports = class TreeSitterGrammar {
     this.subscriptions = new CompositeDisposable();
 
     this.queryCache = new Map();
+    this.internalQueryCache = new Map();
     this.querySourceMaps = new Map();
     this.promisesForQueryFiles = new Map();
     this.promisesForQueries = new Map();
@@ -630,6 +631,19 @@ module.exports = class TreeSitterGrammar {
     return this._createQuery(this._language, queryContents);
   }
 
+  // Internal queries are derived from runtime state rather than query files.
+  // They are immutable and shared by every language layer using this grammar,
+  // so compiling a given source more than once only wastes time and Wasm
+  // memory. Callers must not delete the returned query; the grammar owns it.
+  _getOrCreateInternalQuerySync(queryContents) {
+    let query = this.internalQueryCache.get(queryContents);
+    if (!query) {
+      query = this.createQuerySync(queryContents);
+      this.internalQueryCache.set(queryContents, query);
+    }
+    return query;
+  }
+
   // Used by the specs to override a particular query for testing.
   async setQueryForTest(queryType, contents) {
     await this.getLanguage();
@@ -777,6 +791,10 @@ module.exports = class TreeSitterGrammar {
       value.delete?.();
     }
     this.queryCache.clear();
+    for (let value of this.internalQueryCache.values()) {
+      value.delete?.();
+    }
+    this.internalQueryCache.clear();
     this._language = null;
   }
 

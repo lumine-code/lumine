@@ -150,6 +150,22 @@ describe("TreeSitterGrammar", () => {
 
       expect(load).toHaveBeenCalledTimes(1);
     });
+
+    it("shares internal queries and deletes them when the grammar deactivates", async () => {
+      const grammar = makeGrammar();
+      await grammar.getLanguage();
+      const query = { delete: jasmine.createSpy("delete") };
+      spyOn(grammar, "createQuerySync").and.returnValue(query);
+
+      expect(grammar._getOrCreateInternalQuerySync("(identifier) @candidate")).toBe(query);
+      expect(grammar._getOrCreateInternalQuerySync("(identifier) @candidate")).toBe(query);
+      expect(grammar.createQuerySync).toHaveBeenCalledTimes(1);
+
+      grammar.deactivate();
+
+      expect(query.delete).toHaveBeenCalledTimes(1);
+      expect(grammar.internalQueryCache.size).toBe(0);
+    });
   });
 
   describe("query error descriptors", () => {
