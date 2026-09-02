@@ -2286,7 +2286,7 @@ describe("Config", () => {
     describe("config.get", () => {
       const dummyPath = "/Users/dummy/path.json";
       describe("project settings", () => {
-        it("returns a deep clone of the property value", () => {
+        it("returns a deep clone of a project property value", () => {
           lumine.config.resetProjectSettings(
             { "*": { value: { array: [1, { b: 2 }, 3] } } },
             dummyPath,
@@ -2321,7 +2321,7 @@ describe("Config", () => {
           expect(lumine.config.get("foo.bar.str", { scope: [".source.js"] })).toBe("scoped");
         });
 
-        it("returns a deep clone of the property value", () => {
+        it("returns a deep clone of a regular property value", () => {
           lumine.config.set("value", { array: [1, { b: 2 }, 3] });
           const retrievedValue = lumine.config.get("value");
           retrievedValue.array[0] = 4;

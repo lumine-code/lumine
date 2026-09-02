@@ -188,6 +188,10 @@ describe("InputDialogView", () => {
     });
 
     it("cancels when focus moves outside the dialog", async () => {
+      // Window focus is a separate guard in the implementation. Pin it here so
+      // an open DevTools window cannot turn an in-dialog focus test into a
+      // window-blur test.
+      spyOn(document, "hasFocus").and.returnValue(true);
       let cancelled = false;
       view = new InputDialogView({ didCancel: () => (cancelled = true) });
       view.show();

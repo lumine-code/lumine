@@ -1531,7 +1531,7 @@ describe("Marker", function () {
       expect(buffer.findMarkers({ intersectsRow: 1 })).toEqual([marker4, marker2, marker3]);
     });
 
-    it("can find markers that intersect a given range", function () {
+    it("can find markers that intersect a given row range", function () {
       buffer.setTextInRange(
         [
           [0, 7],

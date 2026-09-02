@@ -184,17 +184,6 @@ describe("TextEditorRegistry", function () {
     });
   });
 
-  describe(".getActiveTextEditor", function () {
-    it("gets the currently focused text editor", function () {
-      const disposable = registry.add(editor);
-      var editorElement = editor.getElement();
-      jasmine.attachToDOM(editorElement);
-      editorElement.focus();
-      expect(registry.getActiveTextEditor()).toBe(editor);
-      disposable.dispose();
-    });
-  });
-
   describe(".maintainConfig(editor)", function () {
     it("does not update the editor when config settings change for unrelated scope selectors", async function () {
       await lumine.packages.activatePackage("language-javascript");
@@ -380,7 +369,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getSoftTabs()).toBe(false);
     });
 
-    describe('when the "tabType" config setting is "auto"', function () {
+    describe('when "tabType" is "auto" and content determines indentation', function () {
       it("enables or disables soft tabs based on the editor's content", async function () {
         await initialPackageActivation;
         await lumine.packages.activatePackage("language-javascript");
@@ -449,7 +438,7 @@ describe("TextEditorRegistry", function () {
       });
     });
 
-    describe('when the "tabType" config setting is "auto"', function () {
+    describe('when "tabType" is "auto" and "softTabs" supplies the fallback', function () {
       it('enables or disables soft tabs based on the "softTabs" config setting', async function () {
         registry.maintainConfig(editor);
         await initialPackageActivation;

@@ -10,7 +10,7 @@ describe("Point", function () {
     jasmine.addCustomEqualityTester(require("@lumine-code/underscore-plus").isEqual),
   );
 
-  describe("::negate()", () =>
+  describe("::negate() sign handling", () =>
     it("should negate the row and column", function () {
       expect(new Point(0, 0).negate().toString()).toBe("(0, 0)");
       expect(new Point(1, 2).negate().toString()).toBe("(-1, -2)");

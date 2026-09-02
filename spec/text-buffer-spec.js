@@ -2798,7 +2798,7 @@ three\
     });
   });
 
-  describe("::setText(text)", function () {
+  describe("::setText(text) change events", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
       buffer = TextBuffer.loadSync(filePath);
@@ -2989,7 +2989,7 @@ three\
     });
   });
 
-  describe("::getTextInRange(range)", function () {
+  describe("::getTextInRange(range) on a loaded buffer", function () {
     beforeEach(function (done) {
       const filePath = require.resolve("./fixtures/sample.js");
       TextBuffer.load(filePath).then(function (result) {
@@ -4348,7 +4348,7 @@ three\
     });
   });
 
-  describe("::characterIndexForPosition(position)", function () {
+  describe("::characterIndexForPosition(position) on a loaded buffer", function () {
     beforeEach(function () {
       const filePath = require.resolve("./fixtures/sample.js");
       buffer = TextBuffer.loadSync(filePath);

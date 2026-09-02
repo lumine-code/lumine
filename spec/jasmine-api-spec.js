@@ -1,3 +1,5 @@
+const { jasmineRunFailed, specBody } = require("./runners/jasmine-test-runner");
+
 // The runner used to shim the Jasmine 1.3 API so that specs written against it
 // kept passing. That made a half-converted file indistinguishable from a
 // converted one — nothing reported the old spelling, so it survived the
@@ -71,35 +73,52 @@ describe("the Jasmine API available to specs", () => {
       expect(() => spyOn(target, "method")).not.toThrow();
       expect(spyOn(target, "method")).toBe(first);
     });
+
+    it("fails the run for suite-level errors even when every registered spec passes", () => {
+      expect(
+        jasmineRunFailed({
+          overallStatus: "failed",
+          failedSpecs: [],
+          globalFailures: [new Error("duplicate suite")],
+        }),
+      ).toBe(true);
+    });
   });
 
-  // `pending()` reports itself by throwing. The runner used to catch that and
-  // complete the spec, which reported one that never ran as passing — and from
-  // a `beforeEach`, let the body it was meant to skip run anyway against the
-  // state that beforeEach never got as far as setting up. Specs run in
-  // declaration order (`random: false`), so the last one here sees the rest.
-  describe("a spec that marks itself pending", () => {
-    let bodyRan = false;
-    let bodyRanAfterPendingSetup = false;
+  // `pending()` reports itself by throwing. Pin the wrapper's propagation with
+  // the same control flow but a private sentinel, so testing pending behavior
+  // does not make the repository's own run pending.
+  describe("a body that stops itself", () => {
+    for (const kind of ["spec", "hook"]) {
+      it(`propagates the ${kind} exception before later statements run`, () => {
+        const stop = new Error(`${kind} stopped`);
+        let bodyRan = false;
+        const stopNow = () => {
+          throw stop;
+        };
+        const original =
+          kind === "spec"
+            ? () => {
+                stopNow();
+                bodyRan = true;
+              }
+            : (done) => {
+                stopNow();
+                bodyRan = true;
+                done();
+              };
+        const wrapped = specBody(original);
+        const invoke = kind === "spec" ? () => wrapped() : () => wrapped(() => {});
 
-    it("stops at the pending() call", () => {
-      pending("pins that the line below never runs");
-      bodyRan = true;
-    });
-
-    describe("from a beforeEach", () => {
-      beforeEach(() => {
-        pending("pins that the spec below never runs");
+        let caught;
+        try {
+          invoke();
+        } catch (error) {
+          caught = error;
+        }
+        expect(caught).toBe(stop);
+        expect(bodyRan).toBe(false);
       });
-
-      it("never reaches the spec body", () => {
-        bodyRanAfterPendingSetup = true;
-      });
-    });
-
-    it("ran neither body", () => {
-      expect(bodyRan).toBe(false);
-      expect(bodyRanAfterPendingSetup).toBe(false);
-    });
+    }
   });
 });

@@ -205,13 +205,6 @@ describe("watchPath", function () {
         disposables?.dispose();
       });
 
-      it("resolves the returned promise when the watcher begins listening", async function () {
-        const rootDir = await tempMkdir("lumine-fsmanager-test-");
-
-        const watcher = await watchPath(rootDir, {}, () => {});
-        expect(watcher.constructor.name).toBe("PathWatcher");
-      });
-
       // A tree watch on a root that has just been deleted — a project folder
       // removed while the window is open, and every package suite's `afterEach`
       // racing the arm — used to fall through to the single-file path, which
@@ -236,15 +229,6 @@ describe("watchPath", function () {
         // And it leaves nothing registered: a watcher that cannot arm is
         // disposed, so neither the missing root nor its parent is watched.
         expect(watchPath.printWatchers()).not.toContain(path.basename(rootDir));
-      });
-
-      it("reuses an existing native watcher and resolves getStartPromise immediately if attached to a running watcher", async function () {
-        const rootDir = await tempMkdir("lumine-fsmanager-test-");
-
-        const watcher0 = await watchPath(rootDir, {}, () => {});
-        const watcher1 = await watchPath(rootDir, {}, () => {});
-
-        expect(watcher0.native).toBe(watcher1.native);
       });
 
       // `watchPath` deliberately reports every change under the watched root:

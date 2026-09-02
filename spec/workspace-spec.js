@@ -946,23 +946,22 @@ describe("Workspace", () => {
       });
     });
 
-    it("adds the file to the application's recent documents list", async () => {
-      jasmine.filterByPlatform({ only: ["darwin"] }); // Feature only supported on macOS
+    if (process.platform === "darwin") {
+      it("adds the file to the application's recent documents list", async () => {
+        spyOn(lumine.applicationDelegate, "addRecentDocument");
+        await workspace.open();
 
-      spyOn(lumine.applicationDelegate, "addRecentDocument");
+        expect(lumine.applicationDelegate.addRecentDocument).not.toHaveBeenCalled();
 
-      await workspace.open();
+        await workspace.open("something://a/url");
 
-      expect(lumine.applicationDelegate.addRecentDocument).not.toHaveBeenCalled();
+        expect(lumine.applicationDelegate.addRecentDocument).not.toHaveBeenCalled();
 
-      await workspace.open("something://a/url");
+        await workspace.open(__filename);
 
-      expect(lumine.applicationDelegate.addRecentDocument).not.toHaveBeenCalled();
-
-      await workspace.open(__filename);
-
-      expect(lumine.applicationDelegate.addRecentDocument).toHaveBeenCalledWith(__filename);
-    });
+        expect(lumine.applicationDelegate.addRecentDocument).toHaveBeenCalledWith(__filename);
+      });
+    }
 
     it("notifies ::onDidAddTextEditor observers", async () => {
       const absolutePath = require.resolve("./fixtures/dir/a");
@@ -3688,7 +3687,7 @@ describe("Workspace", () => {
     });
 
     describe("when there is an error", () => {
-      it("emits a warning notification when the file cannot be saved", async () => {
+      it("emits a warning when a filesystem-style save error has no code", async () => {
         spyOn(editor, "save").and.callFake(() => {
           throw new Error("'/some/file' is a directory");
         });
@@ -3772,7 +3771,7 @@ describe("Workspace", () => {
         expect(notificationSpy.calls.mostRecent().args[0].getMessage()).toContain("Unable to save");
       });
 
-      it("emits a warning notification when the file cannot be saved", async () => {
+      it("rejects when the save error is not recognized", async () => {
         spyOn(editor, "save").and.callFake(() => {
           throw new Error("no one knows");
         });

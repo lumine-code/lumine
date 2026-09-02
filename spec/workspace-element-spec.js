@@ -1,11 +1,8 @@
 const { ipcRenderer } = require("electron");
-const etch = require("@lumine-code/etch");
 const path = require("path");
 const temp = require("@lumine-code/temp").track();
 
-const { conditionPromise } = require("./helpers/async-spec-helpers");
-
-const getNextUpdatePromise = () => etch.getScheduler().nextUpdatePromise;
+const { conditionPromise, waitForFrames } = require("./helpers/async-spec-helpers");
 
 describe("WorkspaceElement", () => {
   it("registers only Lumine custom element names", () => {
@@ -631,129 +628,108 @@ describe("WorkspaceElement", () => {
       // --- Right Dock ---
 
       // Mouse over where the toggle button would be if the dock were hovered
-      moveMouse({ clientX: 440, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 440, clientY: 150 });
       expectToggleButtonHidden(leftDock);
       expectToggleButtonHidden(rightDock);
       expectToggleButtonHidden(bottomDock);
 
       // Mouse over the dock
-      moveMouse({ clientX: 460, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 460, clientY: 150 });
       expectToggleButtonHidden(leftDock);
       expectToggleButtonVisible(rightDock, "icon-chevron-right");
       expectToggleButtonHidden(bottomDock);
 
       // Mouse over the toggle button
-      moveMouse({ clientX: 440, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 440, clientY: 150 });
       expectToggleButtonHidden(leftDock);
       expectToggleButtonVisible(rightDock, "icon-chevron-right");
       expectToggleButtonHidden(bottomDock);
 
       // Click the toggle button
-      rightDock.refs.toggleButton.refs.innerElement.click();
-      await getNextUpdatePromise();
+      await clickToggle(rightDock);
       expect(rightDock.isVisible()).toBe(false);
       expectToggleButtonHidden(rightDock);
 
       // Mouse to edge of the window
-      moveMouse({ clientX: 575, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 575, clientY: 150 });
       expectToggleButtonHidden(rightDock);
-      moveMouse({ clientX: 598, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 598, clientY: 150 });
       expectToggleButtonVisible(rightDock, "icon-chevron-left");
 
       // Click the toggle button again
-      rightDock.refs.toggleButton.refs.innerElement.click();
-      await getNextUpdatePromise();
+      await clickToggle(rightDock);
       expect(rightDock.isVisible()).toBe(true);
       expectToggleButtonVisible(rightDock, "icon-chevron-right");
 
       // --- Left Dock ---
 
       // Mouse over where the toggle button would be if the dock were hovered
-      moveMouse({ clientX: 160, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 160, clientY: 150 });
       expectToggleButtonHidden(leftDock);
       expectToggleButtonHidden(rightDock);
       expectToggleButtonHidden(bottomDock);
 
       // Mouse over the dock
-      moveMouse({ clientX: 140, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 140, clientY: 150 });
       expectToggleButtonVisible(leftDock, "icon-chevron-left");
       expectToggleButtonHidden(rightDock);
       expectToggleButtonHidden(bottomDock);
 
       // Mouse over the toggle button
-      moveMouse({ clientX: 160, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 160, clientY: 150 });
       expectToggleButtonVisible(leftDock, "icon-chevron-left");
       expectToggleButtonHidden(rightDock);
       expectToggleButtonHidden(bottomDock);
 
       // Click the toggle button
-      leftDock.refs.toggleButton.refs.innerElement.click();
-      await getNextUpdatePromise();
+      await clickToggle(leftDock);
       expect(leftDock.isVisible()).toBe(false);
       expectToggleButtonHidden(leftDock);
 
       // Mouse to edge of the window
-      moveMouse({ clientX: 25, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 25, clientY: 150 });
       expectToggleButtonHidden(leftDock);
-      moveMouse({ clientX: 2, clientY: 150 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 2, clientY: 150 });
       expectToggleButtonVisible(leftDock, "icon-chevron-right");
 
       // Click the toggle button again
-      leftDock.refs.toggleButton.refs.innerElement.click();
-      await getNextUpdatePromise();
+      await clickToggle(leftDock);
       expect(leftDock.isVisible()).toBe(true);
       expectToggleButtonVisible(leftDock, "icon-chevron-left");
 
       // --- Bottom Dock ---
 
       // Mouse over where the toggle button would be if the dock were hovered
-      moveMouse({ clientX: 300, clientY: 190 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 300, clientY: 190 });
       expectToggleButtonHidden(leftDock);
       expectToggleButtonHidden(rightDock);
       expectToggleButtonHidden(bottomDock);
 
       // Mouse over the dock
-      moveMouse({ clientX: 300, clientY: 210 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 300, clientY: 210 });
       expectToggleButtonHidden(leftDock);
       expectToggleButtonHidden(rightDock);
       expectToggleButtonVisible(bottomDock, "icon-chevron-down");
 
       // Mouse over the toggle button
-      moveMouse({ clientX: 300, clientY: 195 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 300, clientY: 195 });
       expectToggleButtonHidden(leftDock);
       expectToggleButtonHidden(rightDock);
       expectToggleButtonVisible(bottomDock, "icon-chevron-down");
 
       // Click the toggle button
-      bottomDock.refs.toggleButton.refs.innerElement.click();
-      await getNextUpdatePromise();
+      await clickToggle(bottomDock);
       expect(bottomDock.isVisible()).toBe(false);
       expectToggleButtonHidden(bottomDock);
 
       // Mouse to edge of the window
-      moveMouse({ clientX: 300, clientY: 290 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 300, clientY: 290 });
       expectToggleButtonHidden(leftDock);
-      moveMouse({ clientX: 300, clientY: 299 });
-      await getNextUpdatePromise();
+      await moveMouse({ clientX: 300, clientY: 299 });
       expectToggleButtonVisible(bottomDock, "icon-chevron-up");
 
       // Click the toggle button again
-      bottomDock.refs.toggleButton.refs.innerElement.click();
-      await getNextUpdatePromise();
+      await clickToggle(bottomDock);
       expect(bottomDock.isVisible()).toBe(true);
       expectToggleButtonVisible(bottomDock, "icon-chevron-down");
     });
@@ -764,7 +740,7 @@ describe("WorkspaceElement", () => {
     // while the workspace happens to start at the viewport origin — which it
     // does when this file runs alone and does not when the whole suite has
     // been leaving elements in the body before it.
-    function moveMouse(coordinates) {
+    async function moveMouse(coordinates) {
       const bounds = workspaceElement.getBoundingClientRect();
       // Simulate a mouse move event by calling the method that handles that event.
       workspaceElement.updateHoveredDock({
@@ -772,6 +748,13 @@ describe("WorkspaceElement", () => {
         y: bounds.top + coordinates.clientY,
       });
       advanceClock(100);
+      await waitForFrames(() => true, { frames: 2, description: "dock hover render" });
+    }
+
+    async function clickToggle(dock) {
+      dock.refs.toggleButton.refs.innerElement.click();
+      advanceClock(100);
+      await waitForFrames(() => true, { frames: 2, description: "dock toggle render" });
     }
 
     function expectToggleButtonHidden(dock) {

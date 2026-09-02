@@ -10,6 +10,29 @@ temp.track();
 
 const specMetadataById = new Map();
 
+const jasmineRunFailed = ({
+  overallStatus,
+  failedSpecs = [],
+  globalFailures = [],
+  hasDeprecations = false,
+}) =>
+  overallStatus !== "passed" ||
+  failedSpecs.length > 0 ||
+  globalFailures.length > 0 ||
+  hasDeprecations;
+
+// A body that declares no parameter is handed to Jasmine as a promise-returning
+// function and awaited; one that declares a parameter is given Jasmine's `done`
+// and left to call it, its return value deliberately dropped.
+const specBody = (originalFn) =>
+  originalFn.length > 0
+    ? function (done) {
+        originalFn.call(this, done);
+      }
+    : function () {
+        return originalFn.call(this);
+      };
+
 module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
   // Load Jasmine
   require("../helpers/jasmine-singleton");
@@ -36,7 +59,6 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
   require("../helpers/default-timeout");
   require("../helpers/attach-to-dom");
   require("../helpers/deprecation-snapshots");
-  require("../helpers/platform-filter");
   require("../helpers/document-focus");
 
   const jasmineContent = document.createElement("div");
@@ -54,19 +76,11 @@ module.exports = function ({ logFile, headless, testPaths, buildEnvironment }) {
   return loadSpecsAndRunThem(logFile, headless, testPaths).then((result) => {
     reportDocumentFocusSkips();
 
-    // A spec failed: exit non-zero on the first run. Failures are deliberately
-    // not retried - a flaky spec must be fixed at its source, not masked by
-    // re-running it until it happens to pass.
-    if (result.failedSpecs.length !== 0) return 1;
+    if (result.hasDeprecations) Grim.logDeprecations();
 
-    // Some of the tests had deprecation warnings, we should log them and return with a non-zero exit code
-    if (result.hasDeprecations) {
-      Grim.logDeprecations();
-      return 1;
-    }
-
-    // Everything went good, time to return with a zero exit code
-    return 0;
+    // Failures are deliberately not retried - a flaky spec must be fixed at
+    // its source, not masked by re-running it until it happens to pass.
+    return jasmineRunFailed(result) ? 1 : 0;
   });
 };
 
@@ -93,27 +107,13 @@ const defineJasmineHelpersOnWindow = (jasmineEnv) => {
     };
   });
 
-  // A spec body that declares no parameter is handed to Jasmine as a
-  // promise-returning function and awaited; one that declares a parameter is
-  // given Jasmine's `done` and left to call it, its return value deliberately
-  // dropped. That distinction is the whole wrapper — never mix the two, because
-  // an `async (done)` body is not awaited and a rejection in it hangs the spec
-  // instead of failing it.
-  //
-  // Neither half interprets what the body threw. Jasmine already fails on an
+  // Never mix the two body forms: an `async (done)` body is not awaited and a
+  // rejection in it hangs the spec instead of failing it. Neither half
+  // interprets what the body threw. Jasmine already fails on an
   // exception and pends on the one `pending()` throws to mark itself, and a
   // wrapper that caught the second and called `done()` reported a spec that
   // never ran as a passing one — and, from a `beforeEach`, let the body it was
   // meant to skip run anyway against the state it never set up.
-  const specBody = (originalFn) =>
-    originalFn.length > 0
-      ? function (done) {
-          originalFn.call(this, done);
-        }
-      : function () {
-          return originalFn.call(this);
-        };
-
   ["it", "fit", "xit"].forEach((key) => {
     window[key] = (name, originalFn, timeout) => {
       if (typeof originalFn !== "function") {
@@ -187,7 +187,7 @@ const loadSpecsAndRunThem = (logFile, headless, testPaths) => {
     const jasmineEnv = jasmine.getEnv();
     // jasmine 3+ randomizes spec order by default; these specs assume the
     // deterministic order they had under jasmine 2, so keep it sequential.
-    configureJasmineEnv({ forbidDuplicateNames: false, random: false });
+    configureJasmineEnv({ random: false });
 
     // Load before and after hooks, custom matchers
     require("../helpers/jasmine-custom-matchers").register(jasmineEnv);
@@ -317,8 +317,15 @@ const buildHeadlessExitReporter = () => {
       if (spec.status === "failed") failedSpecs.push(spec);
     },
 
-    jasmineDone: () => {
-      const status = failedSpecs.length || Grim.getDeprecationsLength() > 0 ? 1 : 0;
+    jasmineDone: (result) => {
+      const status = jasmineRunFailed({
+        overallStatus: result.overallStatus,
+        failedSpecs,
+        globalFailures: result.failedExpectations,
+        hasDeprecations: Grim.getDeprecationsLength() > 0,
+      })
+        ? 1
+        : 0;
       process.stderr.write(`LUMINE_TEST_EXIT_STATUS=${status}\n`);
       require("electron").ipcRenderer.sendSync("lumine:test-exit", "exit", status);
     },
@@ -340,9 +347,11 @@ const buildCompletionReporter = (onCompleteCallback) => {
       }
     },
 
-    jasmineDone: () => {
+    jasmineDone: (result) => {
       onCompleteCallback({
         failedSpecs,
+        globalFailures: result.failedExpectations ?? [],
+        overallStatus: result.overallStatus,
         hasDeprecations: Grim.getDeprecationsLength() > 0,
       });
     },
@@ -417,3 +426,6 @@ const buildConsoleReporter = (logFile) => {
     return reporter;
   }
 };
+
+module.exports.jasmineRunFailed = jasmineRunFailed;
+module.exports.specBody = specBody;

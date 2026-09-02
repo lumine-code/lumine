@@ -1,7 +1,7 @@
 const { sortMenuItems } = require("../src/menu-sort-helpers");
 
 describe("contextMenu", () => {
-  describe("dedupes separators", () => {
+  describe("preserves submenus", () => {
     it("preserves existing submenus", () => {
       const items = [{ submenu: [] }];
       expect(sortMenuItems(items)).toEqual(items);

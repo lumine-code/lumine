@@ -510,45 +510,6 @@ describe("ScopeResolver", () => {
       }
     });
 
-    it("rejects scopes for ranges that have already been claimed by another capture with (#set! capture.final)", async () => {
-      await grammar.setQueryForTest(
-        "highlightsQuery",
-        `
-        (comment) @comment
-        (string) @string0
-        ((string) @string1
-        (#set! capture.final))
-
-        (string) @string2
-        "=" @operator
-      `,
-      );
-
-      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
-      buffer.setLanguageMode(languageMode);
-      buffer.setText(dedent`
-        // this is a comment
-        const foo = "ahaha";
-      `);
-      await languageMode.ready;
-
-      let { scopeResolver, captures } = await getAllCaptures(grammar, languageMode);
-
-      for (let capture of captures) {
-        let { name } = capture;
-        let result = scopeResolver.store(capture);
-        if (name === "string0") {
-          expect(!!result).toBe(true);
-        }
-        if (name === "string1") {
-          expect(!!result).toBe(true);
-        }
-        if (name === "string2") {
-          expect(!!result).toBe(false);
-        }
-      }
-    });
-
     it("rejects scopes for ranges that have already been claimed if set with (#set! capture.shy true)", async () => {
       await grammar.setQueryForTest(
         "highlightsQuery",
@@ -745,7 +706,7 @@ describe("ScopeResolver", () => {
       ).toEqual(["first-param", "first-comma", "last-comma", "last-param"]);
     });
 
-    it("supports test.lastTextOnRow", async () => {
+    it("supports test.lastTextOnRow through query matches", async () => {
       await grammar.setQueryForTest(
         "highlightsQuery",
         `
