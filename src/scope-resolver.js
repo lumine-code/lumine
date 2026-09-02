@@ -170,7 +170,6 @@ class ScopeResolver {
     this.idForScope = idForScope ?? ((x) => x);
     this.boundaries = new Map();
     this.rangeData = new Map();
-    this.pointKeyCache = new Map();
     this.patternCache = new Map();
     this.configCache = ConfigCache.forConfig(this.config).getCacheForGrammar(this.grammar);
   }
@@ -234,24 +233,6 @@ class ScopeResolver {
 
   shouldInvalidateFoldOnChange(capture) {
     return capture.setProperties && "fold.invalidateOnChange" in capture.setProperties;
-  }
-
-  // We want to index scope data on buffer position, but each `Point` (or
-  // ad-hoc point object) is a different object. We could normalize them to a
-  // string and use the string as the map key, but we'd have to convert them
-  // back to `Point`s later on, so let's just do it now.
-  //
-  // Here we make it so that every point that describes the same buffer
-  // position is keyed on the same `Point` instance.
-  _keyForPoint(point) {
-    let { row, column } = point;
-    let key = `${row},${column}`;
-    let normalized = this.pointKeyCache.get(key);
-    if (!normalized) {
-      normalized = new Point(Number(row), Number(column));
-      this.pointKeyCache.set(key, normalized.freeze());
-    }
-    return normalized;
   }
 
   _keyForRange(range) {
@@ -589,13 +570,16 @@ class ScopeResolver {
   }
 
   setBoundary(point, id, which, { root = false } = {}) {
-    let key = this._keyForPoint(point);
-
-    if (!this.boundaries.has(key)) {
-      this.boundaries.set(key, { open: [], close: [] });
-    }
-
+    const key = `${point.row},${point.column}`;
     let bundle = this.boundaries.get(key);
+    if (!bundle) {
+      bundle = {
+        point: new Point(Number(point.row), Number(point.column)).freeze(),
+        open: [],
+        close: [],
+      };
+      this.boundaries.set(key, bundle);
+    }
     let idBundle = bundle[which];
 
     // In general, we want to close scopes in the reverse order of when they
@@ -630,16 +614,15 @@ class ScopeResolver {
   destroy() {
     this.reset();
     this.patternCache.clear();
-    this.pointKeyCache.clear();
   }
 
   *[Symbol.iterator]() {
     // Iterate in buffer position order.
-    let keys = [...this.boundaries.keys()];
-    keys.sort((a, b) => a.compare(b));
+    let bundles = [...this.boundaries.values()];
+    bundles.sort((a, b) => a.point.compare(b.point));
 
-    for (let key of keys) {
-      yield [key, this.boundaries.get(key)];
+    for (let bundle of bundles) {
+      yield [bundle.point, bundle];
     }
   }
 }

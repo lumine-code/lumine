@@ -2396,6 +2396,51 @@ class NullLayerHighlightIterator {
   }
 }
 
+// Highlight boundaries arrive from ScopeResolver in document order and are
+// consumed sequentially. A persistent red-black tree used to clone O(log n)
+// nodes for every insertion even though this path never mutates or performs a
+// random lookup after construction.
+class SortedBoundaryList {
+  constructor() {
+    this.entries = [];
+  }
+
+  add(key, value) {
+    this.entries.push({ key, value });
+  }
+
+  get begin() {
+    return new SortedBoundaryIterator(this.entries);
+  }
+}
+
+class SortedBoundaryIterator {
+  constructor(entries) {
+    this.entries = entries;
+    this.index = 0;
+  }
+
+  get key() {
+    return this.entries[this.index]?.key;
+  }
+
+  get value() {
+    return this.entries[this.index]?.value;
+  }
+
+  get hasNext() {
+    return this.index + 1 < this.entries.length;
+  }
+
+  next() {
+    this.index++;
+  }
+
+  prev() {
+    this.index--;
+  }
+}
+
 let lastIteratorId = 0;
 
 // An iterator for marking boundaries in the buffer to apply syntax
@@ -3369,7 +3414,7 @@ class LanguageLayer {
     from = buffer.clipPosition(Point.fromObject(from, true));
     to = buffer.clipPosition(Point.fromObject(to, true));
 
-    let boundaries = createTree(compareBoundaries);
+    let boundaries = new SortedBoundaryList();
     let extent = this.getExtent();
 
     let captures =
@@ -3543,7 +3588,7 @@ class LanguageLayer {
 
       // Each point will contain either one or more scopes to _close_…
       if (data.close.length > 0) {
-        boundaries = boundaries.insert(CLOSE_KEY, {
+        boundaries.add(CLOSE_KEY, {
           scopeIds: Object.freeze(data.close),
         });
       }
@@ -3552,7 +3597,7 @@ class LanguageLayer {
       // one scope and open another; there's always a chance that a different
       // injection layer needs to act in between.
       if (data.open.length > 0) {
-        boundaries = boundaries.insert(OPEN_KEY, {
+        boundaries.add(OPEN_KEY, {
           scopeIds: Object.freeze(data.open),
         });
       }
