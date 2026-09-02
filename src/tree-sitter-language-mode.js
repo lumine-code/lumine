@@ -3277,7 +3277,7 @@ class LanguageLayer {
 
   // Reload a query of a given type from the grammar.
   async reloadGrammarQuery(queryType) {
-    if (!this.queries[queryType]) {
+    if (typeof this.grammar[queryType] !== "string") {
       return;
     }
     let originalQuery = this.queries[queryType];
@@ -3295,9 +3295,12 @@ class LanguageLayer {
       this.nodesToInvalidateOnChange.clear();
       this.foldNodesToInvalidateOnChange.clear();
     } catch (error) {
-      this.queries[queryType] = originalQuery;
-      console.error(`Error parsing query file: ${queryType}`);
-      console.error(error);
+      if (originalQuery) {
+        this.queries[queryType] = originalQuery;
+      } else {
+        delete this.queries[queryType];
+      }
+      this.grammar.reportQueryError(error, queryType);
     }
   }
 

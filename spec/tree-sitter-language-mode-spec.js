@@ -129,6 +129,16 @@ describe("TreeSitterLanguageMode", () => {
         ["foldsQuery"],
       ]);
     });
+
+    it("recovers a query that was unavailable when the layer loaded", async () => {
+      const layer = await buildLanguageLayer();
+      delete layer.queries.foldsQuery;
+
+      await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
+      await layer.queryReloadPromise;
+
+      expect(layer.queries.foldsQuery).toBeDefined();
+    });
   });
 
   describe("update scheduling", () => {
