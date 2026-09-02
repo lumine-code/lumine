@@ -5,6 +5,7 @@ const { Patch } = require("@lumine-code/superstring");
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
 const ScopeDescriptor = require("./scope-descriptor");
 const ScopeResolver = require("./scope-resolver");
+const TreeSitterRangeList = require("./tree-sitter-range-list");
 const Token = require("./token");
 const { matcherForSelector } = require("./selectors");
 const { commentStringsFromDelimiters, getDelimitersForScope } = require("./comment-utils.js");
@@ -2934,7 +2935,7 @@ class LanguageLayer {
     this.grammar = grammar;
     this.depth = depth;
     this.injectionPoint = injectionPoint;
-    this.rangeList = new RangeList();
+    this.rangeList = new TreeSitterRangeList();
 
     this.nodesToInvalidateOnChange = new Set();
     this.foldNodesToInvalidateOnChange = new Set();
@@ -3836,7 +3837,7 @@ class LanguageLayer {
     this.lastTransactionEditedRange = this.editedRange;
     this.editedRange = null;
 
-    let foldRangeList = new RangeList();
+    let foldRangeList = new TreeSitterRangeList();
 
     // Look for a node that was marked with `invalidateOnChange`. If we find
     // one, we should invalidate that node's entire buffer region.
@@ -3880,9 +3881,7 @@ class LanguageLayer {
       }
 
       if (rangesWithSyntaxChanges.length > 0) {
-        for (const range of rangesWithSyntaxChanges) {
-          this.rangeList.add(rangeForNode(range));
-        }
+        this.rangeList.addAll(rangesWithSyntaxChanges.map(rangeForNode));
 
         const combinedRangeWithSyntaxChange = new Range(
           rangesWithSyntaxChanges[0].startPosition,
@@ -4879,70 +4878,6 @@ class Index extends Map {
       this.set(key, existing);
     }
     existing.push(...values);
-  }
-}
-
-/**
- * A class designed to aggregate and normalize a set of ranges. Each
- * time a buffer range is added, it's compared to the existing list; if there
- * are intersections with range already in the list, those intersections are
- * combined into one larger range.
- *
- * The ranges can be iterated via `for..of`.
- *
- * Assumes all ranges are instances of `Range` rather than Tree-sitter range
- * specs.
- *
- * @private
- */
-class RangeList {
-  constructor() {
-    this.ranges = [];
-  }
-
-  clear() {
-    this.ranges.length = 0;
-  }
-
-  // Add a new `Range` to the list.
-  //
-  // If this range intersects with a range already in the list, it will merge
-  // with the existing range. Otherwise it'll insert itself such that the list
-  // maintains buffer ordering.
-  add(newRange) {
-    let intersecting = [];
-    for (let range of this.ranges) {
-      if (newRange.intersectsWith(range)) {
-        intersecting.push(range);
-      }
-    }
-
-    for (let i = intersecting.length - 1; i >= 0; i--) {
-      let index = this.ranges.indexOf(intersecting[i]);
-      this.ranges.splice(index, 1);
-    }
-    while (intersecting.length > 0) {
-      newRange = newRange.union(intersecting.shift());
-    }
-    this.insertOrdered(newRange);
-  }
-
-  insertOrdered(newRange) {
-    let index = this.ranges.findIndex((r) => {
-      return r.start.compare(newRange.start) > 0;
-    });
-    this.ranges.splice(index, 0, newRange);
-  }
-
-  inspect() {
-    let ranges = this.ranges.map((r) => r.toString());
-    return `[RangeList: ${ranges.join(", ")}]`;
-  }
-
-  *[Symbol.iterator]() {
-    for (let range of this.ranges) {
-      yield range;
-    }
   }
 }
 
