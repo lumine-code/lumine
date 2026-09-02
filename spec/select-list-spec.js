@@ -649,6 +649,15 @@ describe("SelectListView", () => {
       expect(rows[99].classList.contains("show-more-item")).toBe(true);
     });
 
+    it("keeps the Show more row to one line when items reserve an active marker", () => {
+      view = bigListView(12, { maxResults: 5, itemsClassList: ["mark-active"] });
+      view.show();
+
+      const item = view.element.querySelector("li:not(.show-more-item)");
+      const showMore = view.element.querySelector("li.show-more-item");
+      expect(showMore.offsetHeight).toBe(item.offsetHeight);
+    });
+
     it("renders no Show more row when everything fits", () => {
       view = bigListView(99);
       const rows = view.element.querySelectorAll("li");

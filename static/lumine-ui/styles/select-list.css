@@ -99,8 +99,10 @@
     &.mark-active {
       --active-icon-size: 14px;
 
-      /* Reserve the same icon carrier for active and inactive rows. */
-      li:not(.select-list-separator)::before {
+      /* Reserve the same icon carrier for active and inactive rows. The Show
+         more row is list chrome with a block child; giving it an inline
+         carrier creates an empty line above its label. */
+      li:not(.select-list-separator, .show-more-item)::before {
         content: "";
         background-color: transparent;
         position: static;
@@ -115,7 +117,7 @@
         vertical-align: text-bottom;
       }
 
-      > li:not(.active, .select-list-separator)::before {
+      > li:not(.active, .select-list-separator, .show-more-item)::before {
         margin-right: var(--ui-padding-icon);
       }
 
