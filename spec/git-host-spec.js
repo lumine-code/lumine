@@ -87,6 +87,67 @@ describe("GitHost transport", () => {
     expect(error.stderr).toBe("bad");
   });
 
+  it("preserves native libgit2 error metadata across IPC", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    current().emit("message", { event: "git:ready" });
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", {
+      event: "git:reply",
+      id,
+      error: {
+        message: "cannot read index",
+        code: "ERR_GIT_NATIVE_SNAPSHOT",
+        operation: "snapshot",
+        libgit2Code: -1,
+        libgit2Class: 10,
+        libgit2Message: "index corrupt",
+      },
+    });
+
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.operation).toBe("snapshot");
+    expect(error.libgit2Code).toBe(-1);
+    expect(error.libgit2Class).toBe(10);
+    expect(error.libgit2Message).toBe("index corrupt");
+  });
+
+  it("keeps native initialization failure non-retriable without re-forking", async () => {
+    const first = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    current().emit("message", {
+      event: "git:init-error",
+      error: {
+        message: "wrong libgit2",
+        code: "ERR_GIT_NATIVE_INIT",
+        operation: "initialize",
+        retriable: false,
+      },
+    });
+
+    let firstError;
+    try {
+      await first;
+    } catch (caught) {
+      firstError = caught;
+    }
+    expect(firstError.code).toBe("ERR_GIT_NATIVE_INIT");
+    expect(firstError.retriable).toBe(false);
+
+    let secondError;
+    try {
+      await host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    } catch (caught) {
+      secondError = caught;
+    }
+    expect(secondError).toBe(firstError);
+    expect(children.length).toBe(1);
+  });
+
   it("revives an exec GitOperationError with its command and stdout", async () => {
     const pending = host.request("exec", {
       workingDirectory: "/repo",

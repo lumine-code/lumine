@@ -50,6 +50,16 @@ function reviveError(serialized) {
   if (serialized.stdout !== undefined) error.stdout = serialized.stdout;
   if (serialized.command !== undefined) error.command = serialized.command;
   if (serialized.gitError !== undefined) error.gitError = serialized.gitError;
+  if (serialized.operation !== undefined) error.operation = serialized.operation;
+  if (serialized.libgit2Code !== undefined) error.libgit2Code = serialized.libgit2Code;
+  if (serialized.libgit2Class !== undefined) error.libgit2Class = serialized.libgit2Class;
+  if (serialized.libgit2Message !== undefined) error.libgit2Message = serialized.libgit2Message;
+  if (serialized.retriable !== undefined) error.retriable = serialized.retriable;
+  if (serialized.maxBytes !== undefined) error.maxBytes = serialized.maxBytes;
+  if (serialized.structuredBytes !== undefined) {
+    error.structuredBytes = serialized.structuredBytes;
+  }
+  if (serialized.patchBytes !== undefined) error.patchBytes = serialized.patchBytes;
   return error;
 }
 
@@ -100,6 +110,8 @@ class GitHost {
     this.pending = new Map(); // id -> { resolve, reject, signal, onAbort }
     this.nextId = 0;
     this.inProcessOps = null; // op table when running without a forked worker
+    this.nativeVersions = null;
+    this.fatalError = null;
   }
 
   shouldFork() {
@@ -137,12 +149,22 @@ class GitHost {
     if (this.readyPromise) return this.readyPromise;
 
     if (!this.shouldFork()) {
-      const GitRunner = require("./git-runner");
-      const createGitHostOps = require("./git-host-ops");
-      this.inProcessOps = createGitHostOps(
-        new GitRunner({ trustAllRepositories: this.trustAllRepositories() }),
-      );
-      this.readyPromise = Promise.resolve();
+      try {
+        const GitRunner = require("./git-runner");
+        const createGitHostOps = require("./git-host-ops");
+        const { configureNativeBackend, loadNativeBackend } = require("./git-native-backend");
+        const loaded = loadNativeBackend();
+        configureNativeBackend(loaded, { trustAllRepositories: this.trustAllRepositories() });
+        this.nativeVersions = loaded.versions;
+        this.inProcessOps = createGitHostOps(
+          new GitRunner({ trustAllRepositories: this.trustAllRepositories() }),
+          { nativeBackend: loaded.nativeBackend },
+        );
+        this.readyPromise = Promise.resolve();
+      } catch (error) {
+        this.fatalError = error;
+        this.readyPromise = Promise.reject(error);
+      }
       return this.readyPromise;
     }
 
@@ -173,7 +195,16 @@ class GitHost {
     if (!message) return;
     switch (message.event) {
       case "git:ready":
+        this.nativeVersions = message.versions || null;
         this.resolveReady?.();
+        this.resolveReady = null;
+        this.rejectReady = null;
+        return;
+      case "git:init-error":
+        this.fatalError = reviveError(
+          message.error || { message: "git-utils initialization failed" },
+        );
+        this.rejectReady?.(this.fatalError);
         this.resolveReady = null;
         this.rejectReady = null;
         return;
@@ -203,7 +234,7 @@ class GitHost {
     // request with a retriable error and drop state so the next request forks a
     // fresh worker. Background refreshes already swallow rejections; while the
     // window unloads nothing is settled at all (see isUnloading).
-    if (!isUnloading()) this.rejectReady?.(restartError());
+    if (!isUnloading() && !this.fatalError) this.rejectReady?.(restartError());
     this.resolveReady = null;
     this.rejectReady = null;
 
@@ -213,7 +244,7 @@ class GitHost {
       this.child.removeAllListeners();
       this.child = null;
     }
-    this.readyPromise = null;
+    if (!this.fatalError) this.readyPromise = null;
   }
 
   // Drop every pending request, failing it as retriable so the caller can retry
@@ -239,6 +270,7 @@ class GitHost {
     if (isUnloading()) return abandonedRequest();
 
     await this.ensureStarted();
+    if (this.fatalError) throw this.fatalError;
 
     // In-process mode (spec harness): run the op directly, translating the
     // caller's AbortSignal to a local controller so cancellation still works.
@@ -307,6 +339,8 @@ class GitHost {
     this.resolveReady = null;
     this.rejectReady = null;
     this.inProcessOps = null;
+    this.nativeVersions = null;
+    this.fatalError = null;
   }
 }
 

@@ -1565,6 +1565,16 @@ module.exports = class RepositoryRegistry {
 
   reportRefreshFailure(repository, error) {
     if (repository.isDestroyed?.()) return;
+    // GitRepository owns the once-per-repository reporting policy for native
+    // snapshot failures. Route post-operation failures through the same gate so
+    // simultaneous status+refs refreshes cannot produce duplicate warnings.
+    if (
+      String(error?.code || "").startsWith("ERR_GIT_NATIVE_") &&
+      typeof repository.reportNativeSnapshotError === "function"
+    ) {
+      repository.reportNativeSnapshotError(error);
+      return;
+    }
     // The Git command has already succeeded. Never report it as failed (and
     // invite a dangerous retry) merely because the read cache did not refresh.
     this.notificationManager?.addWarning("Repository refresh failed after Git operation", {

@@ -378,6 +378,7 @@ let options = {
     "**/node_modules/spellchecker/**", // Matching upstream glob
     "**/node_modules/@vscode/ripgrep*/**", // rg binary must be spawnable outside asar
     "node_modules/symbol-ctags/vendor/**", // ctags binaries must be spawnable outside asar
+    "node_modules/@lumine-code/git-utils/build/Release/git.node", // native git-host backend
   ],
 };
 

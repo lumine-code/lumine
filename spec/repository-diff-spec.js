@@ -315,8 +315,15 @@ describe("repository diff", () => {
           (line) => line.kind === "added" && line.text === "three",
         ),
       ).toBe(true);
-      expect(indexToWorktree.rawPatch).toContain("+three");
+      expect(indexToWorktree.rawPatch).toBeUndefined();
       expect(Object.isFrozen(indexToWorktree)).toBe(true);
+
+      const withPatch = await repo.getDiff({ format: "both" });
+      expect(withPatch.rawPatch).toContain("+three");
+      expect(withPatch.files.length).toBe(1);
+      const patchOnly = await repo.getDiff({ format: "patch" });
+      expect(patchOnly.rawPatch).toContain("+three");
+      expect(patchOnly.files).toEqual([]);
 
       const commitToCommit = await repo.getDiff({
         from: { type: "commit", revision: "HEAD~1" },

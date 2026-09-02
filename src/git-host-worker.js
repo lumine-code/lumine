@@ -6,11 +6,24 @@
 
 const GitRunner = require("./git-runner");
 const createGitHostOps = require("./git-host-ops");
+const { configureNativeBackend, loadNativeBackend } = require("./git-native-backend");
 
 // git.trustAllRepositories is passed in the fork environment; trust unless
 // it was explicitly disabled ("0").
 const runner = new GitRunner({ trustAllRepositories: process.env.LUMINE_GIT_TRUST_ALL !== "0" });
-const ops = createGitHostOps(runner);
+let ops = null;
+let nativeVersions = null;
+let initializationFailure = null;
+try {
+  const loaded = loadNativeBackend();
+  configureNativeBackend(loaded, {
+    trustAllRepositories: process.env.LUMINE_GIT_TRUST_ALL !== "0",
+  });
+  nativeVersions = loaded.versions;
+  ops = createGitHostOps(runner, { nativeBackend: loaded.nativeBackend });
+} catch (error) {
+  initializationFailure = error;
+}
 
 // id -> AbortController for the in-flight request, so git:cancel can abort it.
 const inflight = new Map();
@@ -26,6 +39,14 @@ function serializeError(error) {
     stdout: error.stdout != null ? String(error.stdout) : undefined,
     command: error.command,
     gitError: error.gitError,
+    operation: error.operation,
+    libgit2Code: error.libgit2Code,
+    libgit2Class: error.libgit2Class,
+    libgit2Message: error.libgit2Message,
+    retriable: error.retriable,
+    maxBytes: error.maxBytes,
+    structuredBytes: error.structuredBytes,
+    patchBytes: error.patchBytes,
   };
 }
 
@@ -41,6 +62,10 @@ function replyError(id, error) {
 }
 
 async function handleRequest({ id, op, payload }) {
+  if (initializationFailure) {
+    replyError(id, initializationFailure);
+    return;
+  }
   const run = ops[op];
   if (!run) {
     const error = new Error(`Unknown git-host op: ${op}`);
@@ -73,5 +98,11 @@ process.on("message", (message) => {
 // Exit cleanly when the renderer goes away so no orphan worker lingers.
 process.on("disconnect", () => process.exit(0));
 
-// Signal readiness after the message handler is installed.
-process.send({ event: "git:ready" });
+// Signal readiness only after the native ABI/version gate has passed. A failed
+// load is reported without exiting, so the renderer retains one stable,
+// non-retriable initialization error instead of entering a fork/restart loop.
+if (initializationFailure) {
+  process.send({ event: "git:init-error", error: serializeError(initializationFailure) });
+} else {
+  process.send({ event: "git:ready", versions: nativeVersions });
+}

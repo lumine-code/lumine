@@ -1,183 +1,411 @@
 const GitRunner = require("../src/git-runner");
 const createGitHostOps = require("../src/git-host-ops");
 
-// Exercises the git-host op registry in-process (no fork) against a fake
-// `execute`, mirroring how git-repository-*-provider specs inject execute.
 describe("git-host ops", () => {
-  let calls;
+  let cliCalls;
+  let nativeCalls;
 
-  function opsReturning(result) {
-    calls = [];
-    const execute = (args, cwd, options) => {
-      calls.push({ args, cwd, options });
-      return Promise.resolve({ exitCode: 0, stdout: "OUT", stderr: "", ...result });
+  function nativeBackend(overrides = {}) {
+    const record =
+      (operation, result) =>
+      (...args) => {
+        nativeCalls.push({ operation, args });
+        return typeof result === "function" ? result(...args) : Promise.resolve(result);
+      };
+    return {
+      versions: () => ({ gitUtils: "10.0.0", napi: 10, libgit2: "1.9.6" }),
+      configure: (options) => options,
+      snapshot: record("snapshot", {}),
+      diff: record("diff", { schemaVersion: 1, files: [] }),
+      history: record("history", []),
+      commit: record("commit", null),
+      blame: record("blame", []),
+      describe: record("describe", "main"),
+      branchesContaining: record("branchesContaining", []),
+      readObjects: record("readObjects", []),
+      readConfig: record("readConfig", {}),
+      fileMode: record("fileMode", null),
+      submodulePaths: record("submodulePaths", []),
+      lineDiff: record("lineDiff", []),
+      mutate: record("mutate", true),
+      ...overrides,
     };
-    return createGitHostOps(new GitRunner({ execute }));
   }
 
-  it("runs status with porcelain v2 and returns the raw stdout", async () => {
-    const ops = opsReturning();
-    const result = await ops.status(
-      { workingDirectory: "/repo", options: { includeIgnored: true } },
-      {},
+  function createOps({ native = {}, cliResult = {} } = {}) {
+    cliCalls = [];
+    nativeCalls = [];
+    const execute = (args, cwd, options) => {
+      cliCalls.push({ args, cwd, options });
+      return Promise.resolve({ exitCode: 0, stdout: "OUT", stderr: "", ...cliResult });
+    };
+    return createGitHostOps(new GitRunner({ execute }), {
+      nativeBackend: nativeBackend(native),
+    });
+  }
+
+  const descriptor = { gitDirectory: "/repo/.git", workingDirectory: "/repo" };
+  const submoduleDescriptor = {
+    ...descriptor,
+    hasSubmodules: true,
+    submodulePaths: ["vendor/library"],
+  };
+
+  it("routes combined snapshots to git-utils without spawning Git", async () => {
+    const value = {
+      status: { fingerprint: "abc", unchanged: true },
+      refs: { fingerprint: "def", unchanged: true },
+    };
+    const ops = createOps({ native: { snapshot: async () => value } });
+    const controller = new AbortController();
+    const result = await ops.snapshot(
+      { descriptor, request: { status: true, refs: true } },
+      { signal: controller.signal },
     );
-    expect(result).toBe("OUT");
-    expect(calls[0].cwd).toBe("/repo");
-    expect(calls[0].args).toContain("status");
-    expect(calls[0].args).toContain("--porcelain=v2");
-    expect(calls[0].args).toContain("--ignored=matching");
+
+    expect(result).toEqual(value);
+    expect(cliCalls).toEqual([]);
   });
 
-  it("fans refs out to five git commands and returns the raw bundle", async () => {
-    const ops = opsReturning();
-    const result = await ops.refs({ workingDirectory: "/repo", options: {} }, {});
-    expect(calls.length).toBe(5);
-    expect(result).toEqual({
-      forEachRef: "OUT",
-      remotes: "OUT",
-      worktrees: "OUT",
-      symbolicHead: "OUT",
-      headOid: "OUT",
+  it("routes submodule status to CLI while reading refs natively in parallel", async () => {
+    const oid = "a".repeat(40);
+    const statusOutput = `# branch.oid ${oid}\0# branch.head main\0? untracked.txt\0`;
+    let nativeRequest;
+    const refs = { fingerprint: "refs", unchanged: true };
+    const ops = createOps({
+      cliResult: { stdout: statusOutput },
+      native: {
+        snapshot: async (receivedDescriptor, request) => {
+          expect(receivedDescriptor).toEqual(submoduleDescriptor);
+          nativeRequest = request;
+          return { refs };
+        },
+      },
+    });
+    const controller = new AbortController();
+    const result = await ops.snapshot(
+      {
+        descriptor: submoduleDescriptor,
+        request: {
+          status: true,
+          refs: true,
+          includeIgnored: true,
+          knownFingerprints: {},
+          generations: { status: 7, refs: 4 },
+        },
+        options: { priority: "interactive" },
+      },
+      { signal: controller.signal },
+    );
+
+    expect(nativeRequest.status).toBe(false);
+    expect(nativeRequest.refs).toBe(true);
+    expect(result.refs).toBe(refs);
+    expect(result.status.unchanged).toBe(false);
+    expect(result.status.value.generation).toBe(7);
+    expect(result.status.value.files[0].path).toBe("untracked.txt");
+    expect(cliCalls.length).toBe(1);
+    expect(cliCalls[0].args).toContain("status");
+    expect(cliCalls[0].args).toContain("--ignored=matching");
+    expect(cliCalls[0].options.env.GIT_OPTIONAL_LOCKS).toBeUndefined();
+    expect(cliCalls[0].options.signal).toBe(controller.signal);
+
+    const unchanged = await ops.snapshot(
+      {
+        descriptor: submoduleDescriptor,
+        request: {
+          status: true,
+          refs: false,
+          includeIgnored: true,
+          knownFingerprints: { status: result.status.fingerprint },
+          generations: { status: 8 },
+        },
+      },
+      {},
+    );
+    expect(unchanged.status).toEqual({
+      fingerprint: result.status.fingerprint,
+      unchanged: true,
     });
   });
 
-  it("maps a diff request onto git diff arguments", async () => {
-    const ops = opsReturning();
-    await ops.diffPatch(
+  it("routes structured diffs to git-utils and enforces maxBytes", async () => {
+    const ops = createOps({
+      native: {
+        diff: async () => ({
+          schemaVersion: 1,
+          files: [{ oldPath: "a", newPath: "a", hunks: [{ lines: [{ text: "changed" }] }] }],
+        }),
+      },
+    });
+
+    const result = await ops.diff(
+      { descriptor, request: { format: "structured" }, maxBytes: 1024 },
+      {},
+    );
+    expect(result.files.length).toBe(1);
+    expect(cliCalls).toEqual([]);
+
+    let error;
+    try {
+      await ops.diff({ descriptor, request: { format: "structured" }, maxBytes: 4 }, {});
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_DIFF_TOO_LARGE");
+  });
+
+  it("routes worktree diffs in submodule repositories to CLI with requested formatting", async () => {
+    const rawPatch = [
+      "diff --git a/file.txt b/file.txt",
+      "index 1111111..2222222 100644",
+      "--- a/file.txt",
+      "+++ b/file.txt",
+      "@@ -1 +1 @@",
+      "-before",
+      "+after",
+      "",
+    ].join("\n");
+    const ops = createOps({
+      cliResult: { stdout: rawPatch },
+      native: {
+        diff: async () => {
+          throw new Error("native diff must not run for this static route");
+        },
+      },
+    });
+
+    const structured = await ops.diff(
       {
-        workingDirectory: "/repo",
-        request: { from: { type: "index" }, to: { type: "worktree" }, context: 3 },
+        descriptor: submoduleDescriptor,
+        request: {
+          from: { type: "index" },
+          to: { type: "worktree" },
+          format: "structured",
+        },
+      },
+      {},
+    );
+    const patch = await ops.diff(
+      {
+        descriptor: submoduleDescriptor,
+        request: {
+          from: { type: "commit", revision: "HEAD" },
+          to: { type: "worktree" },
+          format: "patch",
+        },
+      },
+      {},
+    );
+    const both = await ops.diff(
+      {
+        descriptor: submoduleDescriptor,
+        request: {
+          from: { type: "index" },
+          to: { type: "worktree" },
+          format: "both",
+        },
+      },
+      {},
+    );
+
+    expect(structured.files.length).toBe(1);
+    expect(structured.rawPatch).toBeUndefined();
+    expect(patch.files).toEqual([]);
+    expect(patch.rawPatch).toBe(rawPatch);
+    expect(both.files.length).toBe(1);
+    expect(both.rawPatch).toBe(rawPatch);
+    expect(cliCalls.length).toBe(3);
+    expect(cliCalls.every((call) => call.args.includes("diff"))).toBe(true);
+  });
+
+  it("never broadens the submodule exception after a native diff failure", async () => {
+    const nativeError = new Error("native commit diff failed");
+    nativeError.code = "ERR_GIT_NATIVE_DIFF";
+    const ops = createOps({
+      native: { diff: async () => Promise.reject(nativeError) },
+    });
+
+    let error;
+    try {
+      await ops.diff(
+        {
+          descriptor: submoduleDescriptor,
+          request: {
+            from: { type: "commit", revision: "HEAD~1" },
+            to: { type: "commit", revision: "HEAD" },
+            format: "structured",
+          },
+        },
+        {},
+      );
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBe(nativeError);
+    expect(cliCalls).toEqual([]);
+  });
+
+  it("never falls back to Git when a native operation fails", async () => {
+    const nativeError = new Error("native failed");
+    nativeError.code = "ERR_GIT_NATIVE_SNAPSHOT";
+    const ops = createOps({ native: { snapshot: async () => Promise.reject(nativeError) } });
+
+    let error;
+    try {
+      await ops.snapshot({ descriptor, request: { status: true } }, {});
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBe(nativeError);
+    expect(cliCalls).toEqual([]);
+  });
+
+  it("does not fall back across native read, diff, config, blame, or mutation categories", async () => {
+    const categories = [
+      {
+        nativeName: "diff",
+        op: "diff",
+        run: (ops) => ops.diff({ descriptor, request: { format: "structured" } }, {}),
+      },
+      {
+        nativeName: "history",
+        op: "history",
+        run: (ops) => ops.history({ descriptor, request: { revision: "HEAD" } }, {}),
+      },
+      {
+        nativeName: "readConfig",
+        op: "readConfig",
+        run: (ops) => ops.readConfig({ descriptor, keys: ["user.name"] }, {}),
+      },
+      {
+        nativeName: "readObjects",
+        op: "readObjects",
+        run: (ops) => ops.readObjects({ descriptor, requests: [{ oid: "a".repeat(40) }] }, {}),
+      },
+      {
+        nativeName: "blame",
+        op: "blame",
+        run: (ops) => ops.blame({ descriptor, request: { path: "a.txt" } }, {}),
+      },
+      {
+        nativeName: "mutate",
+        op: "mutate",
+        run: (ops) =>
+          ops.mutate(
+            { descriptor, request: { operation: "setConfig", key: "user.name", value: "X" } },
+            {},
+          ),
+      },
+    ];
+
+    for (const category of categories) {
+      const nativeError = new Error(`${category.op} failed`);
+      nativeError.code = `ERR_GIT_NATIVE_${category.op.replace(/([a-z])([A-Z])/g, "$1_$2").toUpperCase()}`;
+      const ops = createOps({
+        native: { [category.nativeName]: async () => Promise.reject(nativeError) },
+      });
+      let error;
+      try {
+        await category.run(ops);
+      } catch (caught) {
+        error = caught;
+      }
+      expect(error).toBe(nativeError);
+      expect(cliCalls).toEqual([]);
+    }
+  });
+
+  it("passes readObjects cancellation as the third options argument", async () => {
+    let received;
+    const ops = createOps({
+      native: {
+        readObjects: async (...args) => {
+          received = args;
+          return [];
+        },
+      },
+    });
+    const controller = new AbortController();
+    const requests = [{ source: "index", path: "staged.txt" }];
+    await ops.readObjects({ descriptor, requests }, { signal: controller.signal });
+
+    expect(received[0]).toEqual(descriptor);
+    expect(received[1]).toEqual(requests);
+    expect(received[1][0].signal).toBeUndefined();
+    expect(received[2].signal).toBe(controller.signal);
+    expect(cliCalls).toEqual([]);
+  });
+
+  it("batches native config reads and safe mutations", async () => {
+    const config = { "remote.origin.url": "https://example.invalid/repo.git" };
+    const ops = createOps({
+      native: {
+        readConfig: async () => config,
+        mutate: async () => true,
+      },
+    });
+
+    expect(await ops.readConfig({ descriptor, keys: ["remote.origin.url"] }, {})).toEqual(config);
+    expect(
+      await ops.mutate(
+        { descriptor, request: { operation: "setConfig", key: "user.name", value: "Lumine" } },
+        {},
+      ),
+    ).toBe(true);
+    expect(cliCalls).toEqual([]);
+  });
+
+  it("caches a native HEAD blob and line-diffs subsequent buffer text natively", async () => {
+    let objectReads = 0;
+    const ops = createOps({
+      native: {
+        readObjects: async () => {
+          objectReads++;
+          return [{ oid: "blob", type: "blob", size: 4, content: Buffer.from("a\nb\n") }];
+        },
+        lineDiff: async () => [{ oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 }],
+      },
+    });
+    const payload = {
+      descriptor,
+      relativePosixPath: "f.txt",
+      headOid: "abc",
+      text: "a\nB\n",
+    };
+
+    expect(await ops.lineDiff(payload, {})).toEqual([
+      { oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 },
+    ]);
+    await ops.lineDiff({ ...payload, text: "a\nC\n" }, {});
+    expect(objectReads).toBe(1);
+    expect(cliCalls).toEqual([]);
+  });
+
+  it("uses system Git only for path-follow history", async () => {
+    const ops = createOps({ cliResult: { stdout: "LOG" } });
+    const output = await ops.logFollow(
+      {
+        descriptor,
+        request: { revision: "HEAD", path: "renamed.txt", limit: 10, skip: 0 },
         options: {},
       },
       {},
     );
-    expect(calls[0].args).toContain("diff");
-    expect(calls[0].args).toContain("--patch");
-    expect(calls[0].args).toContain("--unified=3");
+    expect(output).toBe("LOG");
+    expect(cliCalls.length).toBe(1);
+    expect(cliCalls[0].args).toContain("--follow");
+    expect(cliCalls[0].args).toContain("renamed.txt");
   });
 
-  it("threads the worker AbortSignal through to the runner", async () => {
-    const ops = opsReturning();
-    const controller = new AbortController();
-    await ops.status({ workingDirectory: "/repo", options: {} }, { signal: controller.signal });
-    expect(calls[0].options.signal).toBe(controller.signal);
-  });
-
-  it("passes options.priority through the exec op to the runner's limiter", async () => {
-    const priorities = [];
-    const limiter = {
-      run: (fn, priority) => {
-        priorities.push(priority);
-        return fn();
-      },
-    };
-    const execute = async () => ({ exitCode: 0, stdout: "", stderr: "" });
-    const ops = createGitHostOps(new GitRunner({ execute, limiter }));
-
-    await ops.exec(
-      {
-        workingDirectory: "/repo",
-        args: ["add", "--", "a.txt"],
-        options: { priority: "interactive" },
-        raw: false,
-      },
-      {},
-    );
-    await ops.status({ workingDirectory: "/repo", options: {} }, {});
-
-    expect(priorities).toEqual(["interactive", "background"]);
-  });
-
-  it("keeps unborn/missing-path handling in the worker op (returns null)", async () => {
-    const execute = () =>
-      Promise.resolve({
-        exitCode: 128,
-        stdout: "",
-        stderr: "fatal: path 'x' does not exist in 'HEAD'",
-      });
-    const ops = createGitHostOps(new GitRunner({ execute }));
-    const result = await ops.fileAtRevision(
-      { workingDirectory: "/repo", relativePosixPath: "x", revision: "HEAD", options: {} },
-      {},
-    );
-    expect(result).toBeNull();
-  });
-
-  it("fetches the HEAD blob for lineDiff and returns hunks", async () => {
-    const ops = opsReturning({ stdout: "a\nb\nc\n" });
-    const hunks = await ops.lineDiff(
-      { workingDirectory: "/repo", relativePosixPath: "f.txt", headOid: "abc", text: "a\nB\nc\n" },
-      {},
-    );
-    // `cat-file blob`, never `show`: `show <rev>:<path>` mistakes a path holding
-    // a glob metacharacter for a pathspec and answers with the commit message.
-    expect(calls[0].args).toContain("cat-file");
-    expect(calls[0].args).toContain("blob");
-    expect(calls[0].args).toContain("abc:f.txt");
-    expect(hunks).toEqual([{ oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 }]);
-  });
-
-  it("caches the HEAD blob per oid so repeated lineDiffs do not re-fetch", async () => {
-    const ops = opsReturning({ stdout: "a\nb\nc\n" });
-    const payload = {
-      workingDirectory: "/repo",
-      relativePosixPath: "f.txt",
-      headOid: "abc",
-      text: "a\nB\nc\n",
-    };
-    await ops.lineDiff(payload, {});
-    await ops.lineDiff({ ...payload, text: "a\nZ\nc\n" }, {});
-    expect(calls.length).toBe(1);
-  });
-
-  it("reads a config value with `config -z --get` and strips the trailing NUL", async () => {
-    const ops = opsReturning({ stdout: "https://example.com/repo.git\0" });
-    const value = await ops.configGet({ workingDirectory: "/repo", key: "remote.origin.url" }, {});
-    expect(value).toBe("https://example.com/repo.git");
-    expect(calls[0].args).toContain("config");
-    expect(calls[0].args).toContain("--get");
-    expect(calls[0].args).toContain("remote.origin.url");
-  });
-
-  it("returns null for an unset config key (git config exit code 1)", async () => {
-    const execute = () => Promise.resolve({ exitCode: 1, stdout: "", stderr: "" });
-    const ops = createGitHostOps(new GitRunner({ execute }));
-    const value = await ops.configGet({ workingDirectory: "/repo", key: "branch.x.remote" }, {});
-    expect(value).toBeNull();
-  });
-
-  it("runs an arbitrary write command with runResult semantics (exec)", async () => {
-    const ops = opsReturning({ stdout: "done\n" });
+  it("keeps CLI-designated writes on exec", async () => {
+    const ops = createOps({ cliResult: { stdout: "done\n" } });
     const result = await ops.exec(
       { workingDirectory: "/repo", args: ["commit", "--file=-"], options: { stdin: "msg" } },
       {},
     );
-    expect(result.exitCode).toBe(0);
     expect(result.stdout).toBe("done\n");
-    expect(calls[0].cwd).toBe("/repo");
-    expect(calls[0].args).toContain("commit");
-    expect(calls[0].options.stdin).toBe("msg");
-  });
-
-  it("runs a raw command without the color config (exec raw)", async () => {
-    const ops = opsReturning();
-    await ops.exec({ workingDirectory: "/repo", args: ["--version"], options: {}, raw: true }, {});
-    expect(calls[0].args).toEqual(["--version"]);
-  });
-
-  it("rejects exec with a GitOperationError carrying command and stdout", async () => {
-    const execute = () => Promise.resolve({ exitCode: 1, stdout: "partial", stderr: "boom" });
-    const ops = createGitHostOps(new GitRunner({ execute }));
-
-    let error;
-    try {
-      await ops.exec({ workingDirectory: "/repo", args: ["checkout", "x"], options: {} }, {});
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error.name).toBe("GitOperationError");
-    expect(error.command).toBe("checkout");
-    expect(error.stdout).toBe("partial");
-    expect(error.exitCode).toBe(1);
+    expect(cliCalls[0].args.slice(-2)).toEqual(["commit", "--file=-"]);
+    expect(cliCalls[0].options.stdin).toBe("msg");
   });
 });
