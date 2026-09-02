@@ -78,8 +78,8 @@ describe("watchFile", function () {
   });
 
   // Two watchers over one directory is the config directory's normal state:
-  // `keymap.json`, `styles.css` and any package's own file each arm their own
-  // watch on the same parent.
+  // `keymap.json`, `styles.css` and any package's own file share one physical
+  // watch on the same parent while keeping independent logical subscriptions.
   it("reports writes to two files watched in the same directory", async function () {
     const first = seed(path.join(root, "first.json"));
     const second = seed(path.join(root, "second.json"));

@@ -39,12 +39,6 @@ const EVENT_MAP = {
   change: "updated",
 };
 
-// The default backend probes for a Watchman server first; on Windows that
-// probe runs `watchman get-sockname` through `_popen` (cmd.exe), which
-// flashes an empty console window. Pin the backend there so the probe never
-// runs; elsewhere the probe is windowless and the default order is fine.
-const BACKEND = process.platform === "win32" ? "windows" : undefined;
-
 // Maps the non-recursive watcher's low-level event types to the normalized
 // action vocabulary the renderer expects.
 const NODE_EVENT_MAP = {
@@ -153,7 +147,6 @@ async function handleMessage(message) {
           console.log("Generated ignore globs:", ignore);
           handle = await watcher.subscribe(normalizedPath, wrappedHandler, {
             ignore,
-            backend: BACKEND,
           });
         } else {
           // Single file, or a non-recursive directory watch → reliable

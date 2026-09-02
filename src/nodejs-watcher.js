@@ -31,6 +31,12 @@ const path = require("path");
 // Live watchers, for leak detection and global teardown.
 const ACTIVE = new Set();
 
+// Physical `fs.watch` handles keyed by their watched root. A project commonly
+// has several open files in one directory; each logical watcher still keeps
+// its own rename and existence state, but the operating-system subscription is
+// shared until the final logical watcher is closed.
+const WATCH_ROOTS = new Map();
+
 // Delay before deciding whether a vanished file was truly deleted or merely
 // atomically replaced. VS Code uses ~100ms for the same purpose.
 const RENAME_VERIFY_DELAY = 60;
@@ -92,6 +98,69 @@ function reconcileAfterRebuild(except) {
   for (const watcher of Array.from(ACTIVE)) {
     if (watcher === except) continue;
     watcher.reconcile();
+  }
+}
+
+class SharedWatchRoot {
+  constructor(watchRoot) {
+    this.watchRoot = watchRoot;
+    this.watchers = new Set();
+    this.handle = null;
+  }
+
+  add(watcher) {
+    this.watchers.add(watcher);
+    if (this.handle) return false;
+
+    try {
+      this.handle = fs.watch(this.watchRoot, { persistent: true }, (eventType, fileName) => {
+        for (const subscriber of Array.from(this.watchers)) {
+          subscriber.handleRawEvent(eventType, fileName);
+        }
+      });
+      this.handle.on("error", (error) => this.handleError(error));
+      waitForArm(this.watchRoot);
+      return true;
+    } catch (error) {
+      this.watchers.delete(watcher);
+      this.closeHandle();
+      if (this.watchers.size === 0) WATCH_ROOTS.delete(this.watchRoot);
+      throw error;
+    }
+  }
+
+  remove(watcher) {
+    this.watchers.delete(watcher);
+    if (this.watchers.size > 0) return false;
+
+    const didClose = this.closeHandle();
+    WATCH_ROOTS.delete(this.watchRoot);
+    return didClose;
+  }
+
+  closeHandle() {
+    if (!this.handle) return false;
+    const handle = this.handle;
+    this.handle = null;
+    handle.removeAllListeners();
+    handle.close();
+    return true;
+  }
+
+  handleError(error) {
+    const watchers = Array.from(this.watchers);
+    this.watchers.clear();
+    const didClose = this.closeHandle();
+    WATCH_ROOTS.delete(this.watchRoot);
+
+    for (const watcher of watchers) {
+      if (watcher.sharedRoot === this) watcher.sharedRoot = null;
+    }
+    for (const watcher of watchers) watcher.handleError(error);
+
+    // One physical handle was released, so macOS rebuilt the process-wide
+    // FSEventStream once. Reconcile the unaffected roots across that window.
+    if (didClose) reconcileAfterRebuild(null);
   }
 }
 
@@ -174,13 +243,17 @@ class NodejsWatcher {
     this.callback = null;
     this.errorCallback = null;
     this.closed = false;
-    this.handle = null;
+    this.sharedRoot = null;
     this.verifyTimer = null;
     // What the target looked like when we last spoke about it, so a rebuild of
     // the macOS event stream can be reconciled across. See `reconcileAfterRebuild`.
     this.signature = this.readSignature();
 
     ACTIVE.add(this);
+  }
+
+  get handle() {
+    return this.sharedRoot?.handle ?? null;
   }
 
   onDidChange(callback, errorCallback = null) {
@@ -194,15 +267,23 @@ class NodejsWatcher {
   // `watch()` lets it out so the worker can answer the watch request with an
   // error, while a re-arm treats it as the end of the watch.
   startWatching() {
-    if (this.closed || this.handle) return;
-    this.handle = fs.watch(this.watchRoot, { persistent: true }, (eventType, fileName) => {
-      this.handleRawEvent(eventType, fileName);
-    });
-    this.handle.on("error", (err) => this.handleError(err));
-    waitForArm(this.watchRoot);
-    // Arming rebuilt the shared stream, so everything else watching just lost
-    // whatever was still in flight.
-    reconcileAfterRebuild(this);
+    if (this.closed || this.sharedRoot) return;
+
+    let sharedRoot = WATCH_ROOTS.get(this.watchRoot);
+    if (!sharedRoot) {
+      sharedRoot = new SharedWatchRoot(this.watchRoot);
+      WATCH_ROOTS.set(this.watchRoot, sharedRoot);
+    }
+
+    this.sharedRoot = sharedRoot;
+    try {
+      const didArm = sharedRoot.add(this);
+      // Only a new physical handle rebuilds macOS's shared event stream.
+      if (didArm) reconcileAfterRebuild(this);
+    } catch (error) {
+      this.sharedRoot = null;
+      throw error;
+    }
   }
 
   handleRawEvent(eventType, rawName) {
@@ -438,13 +519,12 @@ class NodejsWatcher {
   }
 
   stopHandle() {
-    if (this.handle) {
-      this.handle.removeAllListeners();
-      this.handle.close();
-      this.handle = null;
-      // Releasing rebuilds the shared stream just as arming does.
-      reconcileAfterRebuild(this);
-    }
+    if (!this.sharedRoot) return;
+    const sharedRoot = this.sharedRoot;
+    this.sharedRoot = null;
+    // Releasing the final physical handle rebuilds the shared stream just as
+    // arming does; releasing only a logical subscriber does not.
+    if (sharedRoot.remove(this)) reconcileAfterRebuild(this);
   }
 
   // Stop watching and release the underlying `fs.watch` handle.
@@ -494,9 +574,7 @@ function watch(pathToWatch, callback, errorCallback = null) {
 
 // Return the distinct roots currently watched. Used for leak detection.
 function getWatchedPaths() {
-  const result = new Set();
-  for (const w of ACTIVE) result.add(w.watchRoot);
-  return Array.from(result);
+  return Array.from(WATCH_ROOTS.keys());
 }
 
 // Close every live non-recursive watcher.

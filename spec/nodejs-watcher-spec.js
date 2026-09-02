@@ -92,6 +92,29 @@ describe("NodejsWatcher", () => {
         expect(renamed.oldPath).toBe(file);
       }
     });
+
+    it("shares one physical watch between files in the same directory", async () => {
+      const other = path.join(dir, "other.txt");
+      fs.writeFileSync(other, "one\n");
+      const otherEvents = [];
+      const first = watchers[0];
+      const second = watchFor(other, otherEvents);
+
+      expect(first.sharedRoot).toBe(second.sharedRoot);
+      expect(first.handle).toBe(second.handle);
+      expect(getWatchedPaths()).toEqual([dir]);
+
+      first.close();
+      expect(second.handle).not.toBeNull();
+      fs.writeFileSync(other, "two\n");
+      await conditionPromise(
+        () => otherEvents.some((event) => event.type === "change"),
+        "change through the remaining shared watcher",
+      );
+
+      second.close();
+      expect(getWatchedPaths()).toEqual([]);
+    });
   });
 
   describe("watching a directory (non-recursive)", () => {
@@ -182,6 +205,35 @@ describe("NodejsWatcher", () => {
       expect(errors[0].message).toBe("boom");
       // Ended, and admitting it: no handle, and gone from the live set.
       expect(w.handle).toBeNull();
+      expect(getWatchedPaths()).not.toContain(dir);
+    });
+
+    it("reports a shared-handle error to every watcher on that root", () => {
+      const first = path.join(dir, "first.txt");
+      const second = path.join(dir, "second.txt");
+      fs.writeFileSync(first, "one\n");
+      fs.writeFileSync(second, "one\n");
+      const firstErrors = [];
+      const secondErrors = [];
+      const a = watch(
+        first,
+        () => {},
+        (error) => firstErrors.push(error),
+      );
+      const b = watch(
+        second,
+        () => {},
+        (error) => secondErrors.push(error),
+      );
+      watchers.push(a, b);
+
+      expect(a.handle).toBe(b.handle);
+      a.handle.emit("error", Object.assign(new Error("shared boom"), { code: "EPERM" }));
+
+      expect(firstErrors.map((error) => error.message)).toEqual(["shared boom"]);
+      expect(secondErrors.map((error) => error.message)).toEqual(["shared boom"]);
+      expect(a.handle).toBeNull();
+      expect(b.handle).toBeNull();
       expect(getWatchedPaths()).not.toContain(dir);
     });
   });
