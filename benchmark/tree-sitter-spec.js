@@ -12,6 +12,7 @@ const htmlGrammarPath = require.resolve("language-html/grammars/html.json");
 const RUNS = Number(process.env.LUMINE_TREE_SITTER_BENCHMARK_RUNS || 5);
 const WARMUPS = Number(process.env.LUMINE_TREE_SITTER_BENCHMARK_WARMUPS || 2);
 const LINES = Number(process.env.LUMINE_TREE_SITTER_BENCHMARK_LINES || 4000);
+const CANDIDATES = Number(process.env.LUMINE_TREE_SITTER_BENCHMARK_CANDIDATES || 20000);
 
 function sourceLines(count) {
   return Array.from({ length: count }, (_, index) => {
@@ -84,15 +85,28 @@ describe("Tree-sitter benchmark", () => {
     const jsConfig = { ...CSON.readFileSync(jsGrammarPath), injectionNames: ["javascript"] };
     const htmlConfig = CSON.readFileSync(htmlGrammarPath);
     const jsGrammar = new TreeSitterGrammar(grammars, jsGrammarPath, jsConfig);
+    const candidateGrammar = new TreeSitterGrammar(grammars, jsGrammarPath, jsConfig);
     const htmlGrammar = new TreeSitterGrammar(grammars, htmlGrammarPath, htmlConfig);
     htmlGrammar.addInjectionPoint({
       type: "script_element",
       language: () => "javascript",
       content: (node) => node.child(1),
     });
+    let candidateVisits = 0;
+    candidateGrammar.addInjectionPoint({
+      type: "identifier",
+      language() {
+        candidateVisits++;
+      },
+      content: (node) => node,
+    });
     const registrations = [grammars.addGrammar(jsGrammar), grammars.addGrammar(htmlGrammar)];
 
-    await Promise.all([jsGrammar.getLanguage(), htmlGrammar.getLanguage()]);
+    await Promise.all([
+      jsGrammar.getLanguage(),
+      candidateGrammar.getLanguage(),
+      htmlGrammar.getLanguage(),
+    ]);
     await Promise.all(
       [jsGrammar, htmlGrammar].flatMap((grammar) =>
         ["highlightsQuery", "foldsQuery", "indentsQuery", "localsQuery", "tagsQuery"]
@@ -102,6 +116,7 @@ describe("Tree-sitter benchmark", () => {
     );
 
     const jsSource = sourceLines(LINES);
+    const candidateSource = Array.from({ length: CANDIDATES }, (_, index) => `v${index};`).join("");
     const initialParse = await measure(async () => {
       const mode = await createMode(jsSource, jsGrammar, grammars);
       expect(mode.languageMode.tree.rootNode.hasError).toBe(false);
@@ -149,6 +164,13 @@ describe("Tree-sitter benchmark", () => {
       highlightChecksum = checksum;
     });
 
+    const denseInjectionPipeline = await measure(async () => {
+      candidateVisits = 0;
+      const mode = await createMode(candidateSource, candidateGrammar, grammars);
+      expect(candidateVisits).toBe(CANDIDATES);
+      destroyMode(mode);
+    });
+
     console.log(
       `TREE_SITTER_BENCHMARK=${JSON.stringify({
         runtime: {
@@ -156,9 +178,22 @@ describe("Tree-sitter benchmark", () => {
           node: process.versions.node,
           webTreeSitter: luminePackage.dependencies["web-tree-sitter"],
         },
-        input: { lines: LINES, bytes: Buffer.byteLength(jsSource), runs: RUNS, warmups: WARMUPS },
+        input: {
+          lines: LINES,
+          bytes: Buffer.byteLength(jsSource),
+          candidates: CANDIDATES,
+          candidateBytes: Buffer.byteLength(candidateSource),
+          runs: RUNS,
+          warmups: WARMUPS,
+        },
         checksums: { highlighting: highlightChecksum },
-        metrics: { initialParse, incrementalEdit, injectionEdit, highlighting },
+        metrics: {
+          initialParse,
+          incrementalEdit,
+          injectionEdit,
+          denseInjectionPipeline,
+          highlighting,
+        },
       })}`,
     );
 
@@ -167,6 +202,7 @@ describe("Tree-sitter benchmark", () => {
     destroyMode(highlightMode);
     for (const registration of registrations) registration.dispose();
     jsGrammar.deactivate();
+    candidateGrammar.deactivate();
     htmlGrammar.deactivate();
     grammars.clear();
   });
