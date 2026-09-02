@@ -59,10 +59,10 @@ const FOLD_WINDOW_ROWS_AHEAD = 300;
 // `SyntaxNode#descendantsOfType` materializes its entire result synchronously.
 // Injection points often target common leaf nodes — strings and comments — so
 // one whole-file call can monopolize the renderer for hundreds of milliseconds.
-// Row windows keep each native traversal bounded while preserving document
-// order; nodes spanning a window boundary are deduplicated below.
+// Row and code-unit windows keep each native traversal bounded while preserving
+// document order; nodes spanning a window boundary are deduplicated below.
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
-const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 65536;
+const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 8192;
 const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
 const PARSERS_IN_USE = new Set();
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
@@ -4374,15 +4374,18 @@ class LanguageLayer {
     }
 
     let candidateQuery = null;
-    if (types.every((type) => /^[A-Za-z_][A-Za-z0-9_-]*$/.test(type))) {
-      try {
-        const patterns = types.map((type) => `  (${type})`).join("\n");
-        candidateQuery = this.grammar._getOrCreateInternalQuerySync(
-          `[\n${patterns}\n] @_INJECTION_CANDIDATE_`,
-        );
-      } catch {
-        // An unusual node type can still use the slower compatibility path.
-      }
+    try {
+      const patterns = types
+        .map((type) =>
+          /^[A-Za-z_][A-Za-z0-9_-]*$/.test(type) ? `  (${type})` : `  ${JSON.stringify(type)}`,
+        )
+        .join("\n");
+      candidateQuery = this.grammar._getOrCreateInternalQuerySync(
+        `[\n${patterns}\n] @_INJECTION_CANDIDATE_`,
+      );
+    } catch {
+      // A type the query compiler doesn't recognize can still use the slower
+      // compatibility traversal.
     }
 
     return this._collectInjectionCandidateNodesInChunks(
@@ -4474,12 +4477,19 @@ class LanguageLayer {
       recognizedLanguageNames: new Set(),
       unrecognizedLanguageNames: new Set(),
       grammarsByLanguageName: new Map(),
+      phase: "candidates",
+      candidateIndex: 0,
+      existingInjectionMarkers,
+      rangesByInjectionMarker,
+      existingInjectionMarkerIndex: 0,
+      claimedMarkers: new Set(),
+      assignments: [],
     };
     const chunkSize = Math.max(1, this.languageMode.injectionReconcileChunkSize);
 
-    if (this._advanceInjectionPlan(plan, chunkSize)) {
+    if (this._advanceInjectionPlan(plan, chunkSize, tree, injectionPointVersion)) {
       if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return;
-      return this._commitInjectionPlan(plan, existingInjectionMarkers, rangesByInjectionMarker);
+      return this._commitInjectionPlan(plan);
     }
 
     return this._finishInjectionPlanInChunks(plan, chunkSize, tree, injectionPointVersion).then(
@@ -4487,79 +4497,185 @@ class LanguageLayer {
         if (!completedPlan || !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
           return;
         }
-        return this._commitInjectionPlan(
-          completedPlan,
-          existingInjectionMarkers,
-          rangesByInjectionMarker,
-        );
+        return this._commitInjectionPlan(completedPlan);
       },
     );
   }
 
-  _advanceInjectionPlan(plan, chunkSize) {
+  _advanceInjectionPlan(plan, chunkSize, tree, injectionPointVersion) {
     let operations = 0;
+    const isCurrent = () => this._injectionCandidateScanIsCurrent(tree, injectionPointVersion);
 
-    while (plan.nodeIndex < plan.nodes.length) {
-      const node = plan.nodes[plan.nodeIndex];
-      const injectionPoints = plan.injectionPointsByType[node.type] ?? [];
+    if (plan.phase === "candidates") {
+      while (plan.nodeIndex < plan.nodes.length) {
+        const node = plan.nodes[plan.nodeIndex];
+        const injectionPoints = plan.injectionPointsByType[node.type] ?? [];
 
-      while (plan.injectionPointIndex < injectionPoints.length) {
-        const injectionPoint = injectionPoints[plan.injectionPointIndex++];
-        operations++;
-
-        const languageName = injectionPoint.language(node);
-        if (languageName) {
-          let grammar;
-          if (plan.grammarsByLanguageName.has(languageName)) {
-            grammar = plan.grammarsByLanguageName.get(languageName);
-          } else {
-            grammar = this.languageMode.grammarForLanguageString(languageName);
-            plan.grammarsByLanguageName.set(languageName, grammar);
+        while (plan.injectionPointIndex < injectionPoints.length) {
+          if (!isCurrent()) {
+            plan.stale = true;
+            return true;
           }
 
-          if (grammar) {
-            plan.recognizedLanguageNames.add(languageName);
-            const contentNodes = injectionPoint.content(node, this.buffer);
-            if (contentNodes) {
-              const injectionNodes = Array.isArray(contentNodes) ? contentNodes : [contentNodes];
-              if (injectionNodes.length > 0) {
-                plan.candidates.push({
-                  grammar,
-                  injectionPoint,
-                  languageName,
-                  injectionRange: node.range,
-                  nodeRangeSet: new NodeRangeSet(plan.nodeRangeSet, injectionNodes, injectionPoint),
-                });
-              }
+          const injectionPoint = injectionPoints[plan.injectionPointIndex++];
+          operations++;
+
+          const languageName = injectionPoint.language(node);
+          if (!isCurrent()) {
+            plan.stale = true;
+            return true;
+          }
+
+          if (languageName) {
+            let grammar;
+            if (plan.grammarsByLanguageName.has(languageName)) {
+              grammar = plan.grammarsByLanguageName.get(languageName);
+            } else {
+              grammar = this.languageMode.grammarForLanguageString(languageName);
+              plan.grammarsByLanguageName.set(languageName, grammar);
             }
-          } else {
-            plan.unrecognizedLanguageNames.add(languageName);
+
+            if (grammar) {
+              plan.recognizedLanguageNames.add(languageName);
+              const contentNodes = injectionPoint.content(node, this.buffer);
+              if (!isCurrent()) {
+                plan.stale = true;
+                return true;
+              }
+              if (contentNodes) {
+                const injectionNodes = Array.isArray(contentNodes) ? contentNodes : [contentNodes];
+                if (injectionNodes.length > 0) {
+                  plan.candidates.push({
+                    grammar,
+                    injectionPoint,
+                    languageName,
+                    injectionRange: node.range,
+                    nodeRangeSet: new NodeRangeSet(
+                      plan.nodeRangeSet,
+                      injectionNodes,
+                      injectionPoint,
+                    ),
+                  });
+                }
+              }
+            } else {
+              plan.unrecognizedLanguageNames.add(languageName);
+            }
           }
+
+          if (operations >= chunkSize) return false;
         }
 
-        if (operations >= chunkSize) return false;
+        plan.nodeIndex++;
+        plan.injectionPointIndex = 0;
       }
 
-      plan.nodeIndex++;
-      plan.injectionPointIndex = 0;
+      plan.phase = "pairing";
+    }
+
+    while (plan.candidateIndex < plan.candidates.length) {
+      if (!isCurrent()) {
+        plan.stale = true;
+        return true;
+      }
+
+      const candidate = plan.candidates[plan.candidateIndex++];
+      const { grammar, injectionPoint, injectionRange } = candidate;
+      let marker;
+
+      for (
+        let index = plan.existingInjectionMarkerIndex;
+        index < plan.existingInjectionMarkers.length;
+        index++
+      ) {
+        const existingMarker = plan.existingInjectionMarkers[index];
+        const comparison = plan.rangesByInjectionMarker.get(existingMarker).compare(injectionRange);
+        if (comparison > 0) {
+          break;
+        } else if (comparison === 0) {
+          if (
+            !plan.claimedMarkers.has(existingMarker) &&
+            existingMarker.languageLayer.grammar === grammar &&
+            existingMarker.languageLayer.injectionPoint === injectionPoint
+          ) {
+            marker = existingMarker;
+            plan.claimedMarkers.add(existingMarker);
+            break;
+          }
+        } else {
+          plan.existingInjectionMarkerIndex = index + 1;
+        }
+      }
+
+      plan.assignments.push({ candidate, marker });
+      operations++;
+      if (operations >= chunkSize) return false;
     }
 
     return true;
   }
-
   async _finishInjectionPlanInChunks(plan, chunkSize, tree, injectionPointVersion) {
     while (true) {
       await this.languageMode._yieldForInjectionReconcile();
       if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
         return null;
       }
-      if (this._advanceInjectionPlan(plan, chunkSize)) {
+      if (this._advanceInjectionPlan(plan, chunkSize, tree, injectionPointVersion)) {
         return plan;
       }
     }
   }
 
-  _commitInjectionPlan(plan, existingInjectionMarkers, rangesByInjectionMarker) {
+  _commitInjectionPlan(plan) {
+    if (plan.stale) return;
+
+    const createdMarkers = [];
+    const markersToUpdate = new Map();
+
+    try {
+      for (const assignment of plan.assignments) {
+        const { candidate } = assignment;
+        let { marker } = assignment;
+        const { grammar, injectionPoint, languageName, injectionRange, nodeRangeSet } = candidate;
+
+        if (!marker) {
+          marker = this.languageMode.injectionsMarkerLayer.markRange(injectionRange);
+          createdMarkers.push(marker);
+          marker.languageLayer = new LanguageLayer(
+            marker,
+            this.languageMode,
+            grammar,
+            this.depth + 1,
+            injectionPoint,
+          );
+          marker.parentLanguageLayer = this;
+          marker.languageString = languageName;
+          this.childLayerMarkers.add(marker);
+        }
+
+        markersToUpdate.set(marker, nodeRangeSet);
+      }
+    } catch (error) {
+      for (const marker of createdMarkers) {
+        this.childLayerMarkers.delete(marker);
+        if (marker.languageLayer) {
+          marker.languageLayer.destroy();
+        } else {
+          marker.destroy();
+        }
+      }
+      throw error;
+    }
+
+    const staleRanges = [];
+    for (const marker of plan.existingInjectionMarkers) {
+      if (!plan.claimedMarkers.has(marker)) {
+        staleRanges.push(marker.getRange());
+        this.childLayerMarkers.delete(marker);
+        marker.languageLayer.destroy();
+      }
+    }
+
     for (const languageName of plan.recognizedLanguageNames) {
       this.unrecognizedLanguageStrings.delete(languageName);
     }
@@ -4567,62 +4683,11 @@ class LanguageLayer {
       this.unrecognizedLanguageStrings.add(languageName);
     }
 
+    for (const staleRange of staleRanges) {
+      this.languageMode.emitRangeUpdate(staleRange);
+    }
+
     const promises = [];
-    const markersToUpdate = new Map();
-    let existingInjectionMarkerIndex = 0;
-
-    for (const candidate of plan.candidates) {
-      const { grammar, injectionPoint, languageName, injectionRange, nodeRangeSet } = candidate;
-      let marker;
-
-      for (
-        let index = existingInjectionMarkerIndex;
-        index < existingInjectionMarkers.length;
-        index++
-      ) {
-        const existingMarker = existingInjectionMarkers[index];
-        const comparison = rangesByInjectionMarker.get(existingMarker).compare(injectionRange);
-        if (comparison > 0) {
-          break;
-        } else if (comparison === 0) {
-          if (
-            !markersToUpdate.has(existingMarker) &&
-            existingMarker.languageLayer.grammar === grammar &&
-            existingMarker.languageLayer.injectionPoint === injectionPoint
-          ) {
-            marker = existingMarker;
-            break;
-          }
-        } else {
-          existingInjectionMarkerIndex = index + 1;
-        }
-      }
-
-      if (!marker) {
-        marker = this.languageMode.injectionsMarkerLayer.markRange(injectionRange);
-        marker.languageLayer = new LanguageLayer(
-          marker,
-          this.languageMode,
-          grammar,
-          this.depth + 1,
-          injectionPoint,
-        );
-        marker.parentLanguageLayer = this;
-        marker.languageString = languageName;
-        this.childLayerMarkers.add(marker);
-      }
-
-      markersToUpdate.set(marker, nodeRangeSet);
-    }
-
-    for (const marker of existingInjectionMarkers) {
-      if (!markersToUpdate.has(marker)) {
-        this.languageMode.emitRangeUpdate(marker.getRange());
-        this.childLayerMarkers.delete(marker);
-        marker.languageLayer.destroy();
-      }
-    }
-
     for (const [marker, ranges] of markersToUpdate) {
       promises.push(marker.languageLayer.update(ranges));
     }

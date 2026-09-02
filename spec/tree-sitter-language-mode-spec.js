@@ -1344,6 +1344,38 @@ describe("TreeSitterLanguageMode", () => {
         ]);
       });
 
+      it("uses a candidate query for anonymous node types on long rows", async () => {
+        jasmine.useRealClock();
+        const seen = [];
+        jsGrammar.addInjectionPoint({
+          type: "+",
+          language(node) {
+            seen.push(node.text);
+          },
+          content(node) {
+            return node;
+          },
+        });
+        spyOn(jsGrammar, "_getOrCreateInternalQuerySync").and.callThrough();
+        buffer.setText(Array.from({ length: 60 }, () => "value").join("+"));
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionCandidateChunkCodeUnits: 24,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        expect(seen).toEqual(Array.from({ length: 59 }, () => "+"));
+        expect(
+          jsGrammar._getOrCreateInternalQuerySync.calls
+            .allArgs()
+            .some(([source]) => source.includes('"+"')),
+        ).toBe(true);
+      });
+
       it("abandons a stale reconcile plan before mutating injection layers", async () => {
         jasmine.useRealClock();
         jsGrammar.addInjectionPoint({
@@ -1386,6 +1418,36 @@ describe("TreeSitterLanguageMode", () => {
 
         expect(rootLayer._commitInjectionPlan).toHaveBeenCalledTimes(1);
         expect(rootLayer.childLayerMarkers.size).toBe(0);
+      });
+
+      it("does not partially commit a reconcile plan when a callback throws", async () => {
+        jasmine.useRealClock();
+        lumine.grammars.addGrammar(htmlGrammar);
+        let contentCalls = 0;
+        jsGrammar.addInjectionPoint({
+          type: "identifier",
+          language: () => "html",
+          content(node) {
+            contentCalls++;
+            if (contentCalls === 2) throw new Error("broken injection content");
+            return node;
+          },
+          includeChildren: true,
+        });
+        buffer.setText("first; second;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionReconcileChunkSize: 1,
+        });
+        buffer.setLanguageMode(languageMode);
+
+        await expectAsync(languageMode.ready).toBeRejectedWithError(/broken injection content/);
+        expect(languageMode.rootLanguageLayer.childLayerMarkers.size).toBe(0);
+        expect(languageMode.injectionsMarkerLayer.getMarkerCount()).toBe(0);
+        expect(languageMode.rootLanguageLayer.unrecognizedLanguageStrings.size).toBe(0);
       });
 
       it("compiles a large-file injection candidate query only once per grammar", async () => {
@@ -1528,6 +1590,7 @@ describe("TreeSitterLanguageMode", () => {
           buffer,
           config: lumine.config,
           grammars: lumine.grammars,
+          injectionReconcileChunkSize: 1,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
