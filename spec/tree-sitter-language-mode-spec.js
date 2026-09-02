@@ -2372,7 +2372,7 @@ describe("TreeSitterLanguageMode", () => {
         buffer.setText(text);
         buffer.clearUndoStack();
         let languageModeA = buffer.getLanguageMode();
-        // await buffer.getLanguageMode().parseCompletePromise();
+        // await buffer.getLanguageMode().atTransactionEnd();
         expect(languageModeA instanceof TreeSitterLanguageMode).toBe(true);
         await languageModeA.ready;
         editor.displayLayer.getScreenLines();
@@ -2399,7 +2399,7 @@ describe("TreeSitterLanguageMode", () => {
 
           // Sometimes, let the parse complete before re-rendering.
           // Sometimes re-render and move on before the parse completes.
-          // if (random(2)) await buffer.getLanguageMode().parseCompletePromise();
+          // if (random(2)) await buffer.getLanguageMode().atTransactionEnd();
           await buffer.getLanguageMode().nextTransaction;
           editor.displayLayer.getScreenLines();
         }
@@ -2413,7 +2413,7 @@ describe("TreeSitterLanguageMode", () => {
         // Each undo queues another parse. Wait for them to settle, or the
         // incremental highlighting below is read while it is still catching up
         // and reports scopes that simply have not been applied yet.
-        await languageModeA.parseCompletePromise();
+        await languageModeA.atTransactionEnd();
 
         // Create a fresh buffer and editor with the same text.
         const buffer2 = new TextBuffer(buffer.getText());
@@ -2424,7 +2424,7 @@ describe("TreeSitterLanguageMode", () => {
         let languageModeB = buffer2.getLanguageMode();
         expect(languageModeB instanceof TreeSitterLanguageMode).toBe(true);
         await languageModeB.ready;
-        await languageModeB.parseCompletePromise();
+        await languageModeB.atTransactionEnd();
         expect(languageModeA.tree.rootNode.toString())
           .withContext(`Seed: ${seed}`)
           .toEqual(languageModeB.tree.rootNode.toString());

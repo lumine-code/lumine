@@ -158,23 +158,6 @@ function patchNodePrototype(proto) {
       return rangeForNode(this);
     },
   });
-
-  // `autocomplete-html` expects a `closest` function to exist on nodes.
-  Object.defineProperty(proto, "closest", {
-    value: function closest(types) {
-      if (!Array.isArray(types)) {
-        types = [types];
-      }
-      let node = this;
-      while (node) {
-        if (types.includes(node.type)) {
-          return node;
-        }
-        node = node.parent;
-      }
-      return null;
-    },
-  });
 }
 
 patchNodePrototype(Node.prototype);
@@ -254,7 +237,6 @@ function isBetweenPoints(point, a, b) {
   return comparePoints(point, lesser) >= 0 && comparePoints(point, greater) <= 0;
 }
 
-let nextLanguageModeId = 0;
 const COMMENT_MATCHER = matcherForSelector("comment");
 const MAX_RANGE = new Range(Point.ZERO, Point.INFINITY).freeze();
 
@@ -274,7 +256,6 @@ class TreeSitterLanguageMode {
     syncTimeoutMicros,
     injectionCandidateChunkRows,
   }) {
-    this.id = nextLanguageModeId++;
     this.buffer = buffer;
     this.grammar = grammar;
     this.config = config ?? lumine.config;
@@ -494,7 +475,6 @@ class TreeSitterLanguageMode {
       // transaction is finished.
       this.transactionChangeCount = 1;
       this.refreshNextTransactionPromise();
-      this.didAutoIndentAfterTransaction = false;
       this.lastTransactionParseError = null;
     } else {
       // We have a different definition of "changes" than what we get from
@@ -709,12 +689,6 @@ class TreeSitterLanguageMode {
       autoIndentRequests: this.lastTransactionAutoIndentRequests ?? 0,
       parseError: this.lastTransactionParseError ?? null,
     };
-  }
-
-  // Alias for `atTransactionEnd` for packages that used the implementation
-  // details of the legacy Tree-sitter system.
-  parseCompletePromise() {
-    return this.atTransactionEnd();
   }
 
   prefillFoldCache(range) {
@@ -2441,8 +2415,6 @@ class SortedBoundaryIterator {
   }
 }
 
-let lastIteratorId = 0;
-
 // An iterator for marking boundaries in the buffer to apply syntax
 // highlighting.
 //
@@ -2452,13 +2424,8 @@ let lastIteratorId = 0;
 // advanced next.
 class HighlightIterator {
   constructor(languageMode) {
-    this.id = lastIteratorId++;
     this.languageMode = languageMode;
     this.iterators = null;
-  }
-
-  inspect() {
-    return `[HighlightIterator id=${this.id} iterators=${this.iterators?.length ?? 0}]`;
   }
 
   seek(start, endRow) {
@@ -3181,54 +3148,6 @@ class LanguageLayer {
       });
   }
 
-  // Previously we were storing compiled queries directly on the language
-  // layer. Now we store them on a `queries` object instead.
-  //
-  // All internal usages have been changed, but packages might still try to
-  // find these queries at their old locations. For that reason, we'll define
-  // shims for backward compatibility.
-  get highlightsQuery() {
-    return this.queries.highlightsQuery;
-  }
-  set highlightsQuery(value) {
-    this.queries.highlightsQuery = value;
-  }
-
-  get indentsQuery() {
-    return this.queries.indentsQuery;
-  }
-  set indentsQuery(value) {
-    this.queries.indentsQuery = value;
-  }
-
-  get foldsQuery() {
-    return this.queries.foldsQuery;
-  }
-  set foldsQuery(value) {
-    this.queries.foldsQuery = value;
-  }
-
-  get tagsQuery() {
-    return this.queries.tagsQuery;
-  }
-  set tagsQuery(value) {
-    this.queries.tagsQuery = value;
-  }
-
-  get localsQuery() {
-    return this.queries.localsQuery;
-  }
-  set localsQuery(value) {
-    this.queries.localsQuery = value;
-  }
-
-  isDirty() {
-    if (!this.tree) {
-      return false;
-    }
-    return this.tree.rootNode.hasChanges;
-  }
-
   inspect() {
     let { scopeName } = this.grammar;
     return `[LanguageLayer ${scopeName || "(anonymous)"} depth=${this.depth} file=${this.buffer.getPath()}]`;
@@ -3721,189 +3640,6 @@ class LanguageLayer {
     }
   }
 
-  getLocalReferencesAtPoint(point) {
-    if (!this.queries.localsQuery) {
-      return [];
-    }
-    let captures = this.queries.localsQuery.captures(this.tree.rootNode, {
-      startPosition: point,
-      endPosition: point.translate(ONE_CHAR_FORWARD_TRAVERSAL),
-    });
-
-    captures = captures.filter((cap) => {
-      if (cap.name !== "local.reference") {
-        return false;
-      }
-      if (!rangeForNode(cap.node).containsPoint(point)) {
-        return false;
-      }
-      return true;
-    });
-
-    let nodes = captures.map((cap) => cap.node);
-    nodes = nodes.sort((a, b) => b.range.compare(a.range));
-
-    return nodes;
-  }
-
-  // EXPERIMENTAL: Given a local reference node, tries to find the node that
-  // defines it.
-  findDefinitionForLocalReference(node, captures = null) {
-    if (!this.queries.localsQuery) {
-      return [];
-    }
-    let name = node.text;
-    if (!name) {
-      return [];
-    }
-    let localRange = rangeForNode(node);
-    let globalScope = this.tree.rootNode;
-
-    if (!captures) {
-      let { startPosition, endPosition } = globalScope;
-      captures = this.groupLocalsCaptures(
-        this.queries.localsQuery.captures(globalScope, { startPosition, endPosition }),
-      );
-    }
-
-    let { scopes, definitions } = captures;
-
-    // Consider only the scopes that can influence our local node.
-    let relevantScopes = scopes
-      .filter((scope) => {
-        let range = rangeForNode(scope);
-        return range.containsRange(localRange);
-      })
-      .sort((a, b) => {
-        a.range.compare(b.range);
-      });
-
-    relevantScopes.push(globalScope);
-
-    // Consider only the definitions whose names match the target's.
-    let relevantDefinitions = definitions.filter((def) => def.text === name);
-    if (relevantDefinitions.length === 0) {
-      return [];
-    }
-
-    let definitionsByBaseScope = new Index();
-    for (let rDef of relevantDefinitions) {
-      // Find all the scopes that include this definition. The largest of those
-      // scopes will be its "base" scope. If there are no scopes that include
-      // this definition, it must have been defined globally.
-      let rDefScopes = scopes
-        .filter((s) => {
-          return isBetweenPoints(rDef.startPosition, s.startPosition, s.endPosition);
-        })
-        .sort((a, b) => {
-          return rangeForNode(b).compare(rangeForNode(a));
-        });
-
-      let baseScope = rDefScopes[0] ?? globalScope;
-
-      // Group each definition by its scope. Since any variable can be
-      // redefined an arbitrary number of times, each scope might include
-      // multiple definitions of this identifier.
-      definitionsByBaseScope.add(baseScope, rDef);
-    }
-
-    // Moving from smallest to largest scope, get definitions that were made in
-    // that scope, and return the closest one to the reference.
-    for (let scope of relevantScopes) {
-      let definitionsInScope = definitionsByBaseScope.get(scope) ?? [];
-      let { length } = definitionsInScope;
-      if (length === 0) {
-        continue;
-      }
-      if (length === 1) {
-        return definitionsInScope[0];
-      }
-
-      // Here's how we want to sort these candidates:
-      //
-      // * In each scope, look for a definitions that happen before the local's
-      //   position. The closest such definition in the narrowest scope is our
-      //   ideal target.
-      // * Failing that, take note of all the definitions that happened _after_
-      //   the local's position in all relevant scopes. Choose the closest to
-      //   the local.
-      //
-      let definitionsBeforeLocal = [];
-      let definitionsAfterLocal = [];
-
-      for (let def of definitionsInScope) {
-        let result = comparePoints(def.startPosition, localRange.start);
-
-        let bucket = result < 0 ? definitionsBeforeLocal : definitionsAfterLocal;
-
-        bucket.push(def);
-      }
-
-      if (definitionsBeforeLocal.length > 0) {
-        let maxBeforeLocal;
-        for (let def of definitionsBeforeLocal) {
-          if (!maxBeforeLocal) {
-            maxBeforeLocal = def;
-            continue;
-          }
-
-          let result = comparePoints(def, maxBeforeLocal);
-          if (result > 0) {
-            maxBeforeLocal = def;
-          }
-        }
-        return maxBeforeLocal;
-      }
-
-      // TODO: For definitions that happen after the local in the buffer, it's
-      // not 100% clear what the right answer should be. I imagine it varies by
-      // language. Best guess for now is the one that's closest to the local
-      // reference.
-      let minAfterLocal;
-      for (let def of definitionsAfterLocal) {
-        if (!minAfterLocal) {
-          minAfterLocal = def;
-          continue;
-        }
-
-        let result = comparePoints(def, minAfterLocal);
-        if (result < 0) {
-          minAfterLocal = def;
-        }
-      }
-
-      return minAfterLocal;
-    }
-  }
-
-  groupLocalsCaptures(captures) {
-    let scopes = [];
-    let definitions = [];
-    let references = [];
-
-    for (let capture of captures) {
-      let { name, node } = capture;
-      switch (name) {
-        case "local.scope":
-          scopes.push(node);
-          break;
-        case "local.definition":
-          definitions.push(node);
-          break;
-        case "local.reference":
-          references.push(node);
-          break;
-      }
-    }
-
-    return { scopes, definitions, references };
-  }
-
-  // Given a range and a `Set` of node IDs, test if any of those nodes' ranges
-  // overlap with the given range.
-  //
-  // We use this to test if a given edit should trigger the behavior indicated
-  // by `(fold|highlight).invalidateOnChange`.
   searchForNodesInRange(range, nodeIdSet) {
     let node = this.getSyntaxNodeContainingRange(range, (n) => nodeIdSet.has(n.id));
 
@@ -4241,15 +3977,6 @@ class LanguageLayer {
       this.temporaryTrees.push(tree);
     }
     return tree;
-  }
-
-  getText() {
-    let { buffer } = this.languageMode;
-    if (!this.marker) {
-      return buffer.getText();
-    } else {
-      return buffer.getTextInRange(this.marker.getRange());
-    }
   }
 
   // Given a point, return all syntax captures that are active at that point.
@@ -4990,21 +4717,6 @@ class NodeRangeSet {
  * @private
  */
 class OpenScopeMap extends Map {
-  constructor() {
-    super();
-  }
-
-  getScopesArray() {
-    let results = [];
-    let keys = [...this.keys()];
-    keys.sort(comparePoints);
-    for (let key of keys) {
-      let value = this.get(key);
-      results.push(...value);
-    }
-    return results;
-  }
-
   removeLastOccurrenceOf(scopeId) {
     let candidateKey;
     // Of the keys whose values include this scope, find the one that occurs
