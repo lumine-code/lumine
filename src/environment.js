@@ -684,6 +684,9 @@ class Environment {
   }
 
   async reset() {
+    // Config::clear replaces its emitter, so observers held by ThemeManager
+    // must be disposed before the reset and recreated on the next activation.
+    this.themes.stopObservingThemeChanges();
     this.deserializers.clear();
     this.registerDefaultDeserializers();
 
@@ -743,11 +746,12 @@ class Environment {
     this.menu.destroy();
     this.tooltips.destroy();
     this.disposables.dispose();
+    if (this.themes) this.themes.destroy();
+    this.themes = null;
     if (this.workspaceDrops) this.workspaceDrops.destroy();
     this.workspaceDrops = null;
     if (this.workspace) this.workspace.destroy();
     this.workspace = null;
-    this.themes.workspace = null;
     if (this.project) this.project.destroy();
     this.project = null;
     if (this.repositories) this.repositories.destroy();

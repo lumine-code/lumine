@@ -53,6 +53,23 @@ describe("lumine.themes", () => {
       }));
   });
 
+  it("installs theme and accent observers only once across repeated activation", async () => {
+    spyOn(lumine.config, "onDidChange").and.callThrough();
+    spyOn(lumine.themes.applicationDelegate, "onDidChangeAccentColor").and.callThrough();
+
+    await lumine.themes.activateThemes();
+    const configObserverCount = lumine.config.onDidChange.calls.count();
+    const accentObserverCount =
+      lumine.themes.applicationDelegate.onDidChangeAccentColor.calls.count();
+
+    await lumine.themes.activateThemes();
+
+    expect(lumine.config.onDidChange.calls.count()).toBe(configObserverCount);
+    expect(lumine.themes.applicationDelegate.onDidChangeAccentColor.calls.count()).toBe(
+      accentObserverCount,
+    );
+  });
+
   describe("theme packs", () => {
     let registration;
 

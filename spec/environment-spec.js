@@ -1132,8 +1132,12 @@ describe("Environment", () => {
       spyOn(lumineEnvironment.packages, "activate").and.returnValue(Promise.resolve());
       spyOn(lumineEnvironment, "displayWindow").and.returnValue(Promise.resolve());
       await lumineEnvironment.startEditorWindow();
+      const themeManager = lumineEnvironment.themes;
+      spyOn(themeManager, "destroy").and.callThrough();
       lumineEnvironment.unloadEditorWindow();
       lumineEnvironment.destroy();
+      expect(themeManager.destroy).toHaveBeenCalled();
+      expect(lumineEnvironment.themes).toBeNull();
     });
   });
 

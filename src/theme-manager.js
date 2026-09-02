@@ -1,6 +1,6 @@
 const path = require("path");
 const _ = require("@lumine-code/underscore-plus");
-const { Disposable, Emitter } = require("@lumine-code/event-kit");
+const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const fs = require("@lumine-code/fs-plus");
 
 // Keeping a reference to the entire object so that it can be mocked more
@@ -108,6 +108,7 @@ module.exports = class ThemeManager {
     this.viewRegistry = viewRegistry;
     this.applicationDelegate = applicationDelegate;
     this.emitter = new Emitter();
+    this.themeObservationSubscriptions = null;
     this.styleSheetDisposablesBySourcePath = {};
     this.initialLoadComplete = false;
     this.themeSwitchPromise = Promise.resolve();
@@ -619,11 +620,18 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
   // starting value has to be asked for, and only when it is actually wanted —
   // under the default `theme` source nothing here ever crosses IPC.
   observeSystemAccentColor() {
-    this.config.onDidChange("theme.accentSource", () => this.refreshSystemAccentColor());
-    this.applicationDelegate?.onDidChangeAccentColor?.((accentColor) => {
-      this.systemAccentColor = accentColor;
-      this.applyAccentColor();
-    });
+    this.themeObservationSubscriptions.add(
+      this.config.onDidChange("theme.accentSource", () => this.refreshSystemAccentColor()),
+    );
+    const accentColorSubscription = this.applicationDelegate?.onDidChangeAccentColor?.(
+      (accentColor) => {
+        this.systemAccentColor = accentColor;
+        this.applyAccentColor();
+      },
+    );
+    if (accentColorSubscription) {
+      this.themeObservationSubscriptions.add(accentColorSubscription);
+    }
     return this.refreshSystemAccentColor();
   }
 
@@ -685,21 +693,45 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
       // The initial activation resolves the returned promise.
       queueSwitch(resolve);
 
-      this.config.onDidChange("theme.mode", () => queueSwitch());
-      this.config.onDidChange("theme.light", () => {
-        if (!this.isDarkThemeMode()) queueSwitch();
-      });
-      this.config.onDidChange("theme.dark", () => {
-        if (this.isDarkThemeMode()) queueSwitch();
-      });
-      this.systemThemeQuery.addEventListener("change", () => {
-        if (this.config.get("theme.mode") === "system") queueSwitch();
-      });
+      if (!this.themeObservationSubscriptions) {
+        this.themeObservationSubscriptions = new CompositeDisposable();
+        this.themeObservationSubscriptions.add(
+          this.config.onDidChange("theme.mode", () => queueSwitch()),
+          this.config.onDidChange("theme.light", () => {
+            if (!this.isDarkThemeMode()) queueSwitch();
+          }),
+          this.config.onDidChange("theme.dark", () => {
+            if (this.isDarkThemeMode()) queueSwitch();
+          }),
+        );
+        const systemThemeChange = () => {
+          if (this.config.get("theme.mode") === "system") queueSwitch();
+        };
+        const systemThemeQuery = this.systemThemeQuery;
+        systemThemeQuery.addEventListener("change", systemThemeChange);
+        this.themeObservationSubscriptions.add(
+          new Disposable(() => systemThemeQuery.removeEventListener?.("change", systemThemeChange)),
+        );
 
-      // Independent of the theme pair: the accent override rides above whichever
-      // themes are active, so it neither waits for nor blocks a switch.
-      this.observeSystemAccentColor();
+        // Independent of the theme pair: the accent override rides above whichever
+        // themes are active, so it neither waits for nor blocks a switch.
+        this.observeSystemAccentColor();
+      }
     });
+  }
+
+  destroy() {
+    this.stopObservingThemeChanges();
+    this.userStylesheetSubscription?.dispose();
+    this.userStylesheetSubscription = null;
+    this.removeUserStylesheet();
+    this.emitter.dispose();
+    this.workspace = null;
+  }
+
+  stopObservingThemeChanges() {
+    this.themeObservationSubscriptions?.dispose();
+    this.themeObservationSubscriptions = null;
   }
 
   // Whether the dark theme pair should be in effect for the current mode.
@@ -851,6 +883,7 @@ On Linux the per-user inotify watch limit is often too low. See [this document][
   }
 
   deactivateThemes() {
+    this.stopObservingThemeChanges();
     this.removeActiveThemeClasses();
     this.unwatchUserStylesheet();
     this.removeUserStylesheet();
