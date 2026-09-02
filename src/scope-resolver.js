@@ -141,6 +141,9 @@ ConfigCache.forConfig = (config) => {
 };
 
 ConfigCache.clear = () => {
+  for (const cache of ConfigCache.CACHES_FOR_CONFIG_OBJECTS.values()) {
+    cache.dispose();
+  }
   ConfigCache.CACHES_FOR_CONFIG_OBJECTS.clear();
 };
 

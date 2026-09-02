@@ -84,7 +84,9 @@ function last(array) {
 }
 
 function removeLastOccurrenceOf(array, item) {
-  return array.splice(array.lastIndexOf(item), 1);
+  const index = array.lastIndexOf(item);
+  if (index === -1) return [];
+  return array.splice(index, 1);
 }
 
 function clamp(value, min, max) {
@@ -244,9 +246,6 @@ function isBetweenPoints(point, a, b) {
   return comparePoints(point, lesser) >= 0 && comparePoints(point, greater) <= 0;
 }
 
-// eslint-disable-next-line no-unused-vars
-let totalBufferChanges = 0;
-let nextTransactionId = 1;
 let nextLanguageModeId = 0;
 const COMMENT_MATCHER = matcherForSelector("comment");
 const MAX_RANGE = new Range(Point.ZERO, Point.INFINITY).freeze();
@@ -341,7 +340,7 @@ class TreeSitterLanguageMode {
         this.rootLanguageLayer = new LanguageLayer(null, this, grammar, 0);
         return this.getOrCreateParserForLanguage(language);
       })
-      .then(() => this.rootLanguageLayer.update(null, { id: 0 }))
+      .then(() => this.rootLanguageLayer.update(null))
       .then(() => this.emitter.emit("did-tokenize"));
   }
 
@@ -473,7 +472,6 @@ class TreeSitterLanguageMode {
       // This is the first change after the last transaction finished, so we
       // need to create a new promise that will resolve when the next
       // transaction is finished.
-      totalBufferChanges++;
       this.transactionChangeCount = 1;
       this.refreshNextTransactionPromise();
       this.didAutoIndentAfterTransaction = false;
@@ -484,7 +482,6 @@ class TreeSitterLanguageMode {
       // them into a single "change" — but what we care about is how many
       // atomic operations have taken place. So we keep track on our own.
       this.transactionChangeCount++;
-      totalBufferChanges++;
     }
 
     this.rootLanguageLayer.handleTextChange(edit, oldText, newText);
@@ -495,7 +492,6 @@ class TreeSitterLanguageMode {
   }
 
   bufferDidFinishTransaction({ changes }) {
-    let id = nextTransactionId++;
     if (!this.rootLanguageLayer) {
       return;
     }
@@ -506,7 +502,7 @@ class TreeSitterLanguageMode {
       });
     }
 
-    this.rootLanguageLayer.update(null, { id }).then((shouldEndTransaction) => {
+    this.rootLanguageLayer.update(null).then((shouldEndTransaction) => {
       if (shouldEndTransaction) {
         this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
         this.lastTransactionChangeCount = this.transactionChangeCount;
@@ -584,13 +580,6 @@ class TreeSitterLanguageMode {
     if (this.resolveNextTransaction) {
       this.resolveNextTransaction();
       this.resolveNextTransaction = null;
-    }
-
-    // These transaction IDs are useful to have around, but we don't want them
-    // to grow indefinitely. If we reach this point, then all outstanding
-    // transactions are settled, and it's safe to reset our numbering scheme.
-    if (nextTransactionId > 100) {
-      nextTransactionId = 1;
     }
 
     if (!this.nextTransaction) {
@@ -2642,20 +2631,16 @@ class HighlightIterator {
   detectCoveredScope() {
     const layerCount = this.iterators.length;
     if (layerCount > 1) {
-      const rest = [...this.iterators];
-      const leader = rest.pop();
-      let covers = false;
-      for (let it of rest) {
-        let iteratorCovers = it.coversIteratorAtPosition(leader, leader.getPosition());
+      const leader = this.iterators[layerCount - 1];
+      const position = leader.getPosition();
+      for (let i = 0; i < layerCount - 1; i++) {
+        const iterator = this.iterators[i];
+        if (!iterator.coverShallowerScopes || leader.depth >= iterator.depth) continue;
+        const iteratorCovers = iterator.coversIteratorAtPosition(leader, position);
         if (iteratorCovers !== false) {
-          covers = iteratorCovers;
-          break;
+          this.currentIteratorIsCovered = iteratorCovers;
+          return;
         }
-      }
-
-      if (covers) {
-        this.currentIteratorIsCovered = covers;
-        return;
       }
     }
 
@@ -2800,12 +2785,12 @@ class LayerHighlightIterator {
 
   getOpenScopeIds() {
     let { key, value } = this.iterator;
-    return key.boundary === "end" ? EMPTY_SCOPES : [...value.scopeIds];
+    return key.boundary === "end" ? EMPTY_SCOPES : value.scopeIds;
   }
 
   getCloseScopeIds() {
     let { key, value } = this.iterator;
-    return key.boundary === "start" ? EMPTY_SCOPES : [...value.scopeIds];
+    return key.boundary === "start" ? EMPTY_SCOPES : value.scopeIds;
   }
 
   opensScopes() {
@@ -2947,12 +2932,12 @@ class LanguageLayer {
 
     this.subscriptions = new CompositeDisposable();
 
-    this.injectionPointsChanged = false;
     this.injectionPointVersion = 0;
     this.pendingInjectionPopulationRequests = [];
     this.injectionPopulationDrainPromise = null;
     this.pendingQueryReloadTypes = new Set();
     this.queryReloadPromise = null;
+    this.currentRangesCache = undefined;
 
     const handleInjectionPointChanges = () => {
       // When we add or remove injection points on this grammar, this language
@@ -3126,6 +3111,7 @@ class LanguageLayer {
     this.injectionPointVersion++;
     this.pendingInjectionPopulationRequests.length = 0;
     this.pendingQueryReloadTypes.clear();
+    this.currentRangesCache = null;
 
     // Clean up all Tree-sitter trees.
     let temporaryTrees = this.temporaryTrees ?? [];
@@ -3144,16 +3130,17 @@ class LanguageLayer {
       tree.delete?.();
     }
 
+    this.marker?.parentLanguageLayer?.childLayerMarkers.delete(this.marker);
     this.marker?.destroy();
     this.currentRangesLayer?.destroy();
     this.foldResolver?.reset();
     this.scopeResolver?.destroy();
     this.subscriptions.dispose();
 
-    for (const marker of this.languageMode.injectionsMarkerLayer.getMarkers()) {
-      if (marker.parentLanguageLayer === this) {
-        marker.languageLayer.destroy();
-      }
+    const childLayerMarkers = [...this.childLayerMarkers];
+    this.childLayerMarkers.clear();
+    for (const marker of childLayerMarkers) {
+      marker.languageLayer.destroy();
     }
   }
 
@@ -3167,6 +3154,9 @@ class LanguageLayer {
       let query = await this.grammar.getQuery(queryType);
       if (this.destroyed) return;
       this.queries[queryType] = query;
+      if (queryType === "foldsQuery") {
+        this.foldResolver.reset();
+      }
 
       // Force a re-highlight of this layer's entire region.
       let range = this.getExtent();
@@ -3322,7 +3312,7 @@ class LanguageLayer {
       // `allowEmpty` to force these to be considered, but for marking scopes,
       // there's no need for it; it'd just cause us to open and close a scope
       // in the same position.
-      if (node.childCount === 0 && node.text === "") {
+      if (node.childCount === 0 && node.startIndex === node.endIndex) {
         continue;
       }
 
@@ -3501,6 +3491,7 @@ class LanguageLayer {
     if (this.foldResolver) {
       this.foldResolver.reset();
     }
+    this.currentRangesCache = undefined;
 
     const { startPosition, oldEndPosition, newEndPosition } = edit;
 
@@ -3903,7 +3894,9 @@ class LanguageLayer {
       this.treeIsDirty = false;
 
       oldTree?.delete?.();
-      oldSyntaxTree?.delete?.();
+      if (oldSyntaxTree !== oldTree) {
+        oldSyntaxTree?.delete?.();
+      }
 
       while (this.temporaryTrees.length > 0) {
         let tree = this.temporaryTrees.pop();
@@ -3973,6 +3966,7 @@ class LanguageLayer {
     if (this.depth === 0) {
       return;
     }
+    this.currentRangesCache = undefined;
     let oldRangeMarkers = this.currentRangesLayer.getMarkers();
     for (let marker of oldRangeMarkers) {
       marker.destroy();
@@ -3990,11 +3984,16 @@ class LanguageLayer {
   }
 
   getCurrentRanges() {
+    if (this.currentRangesCache !== undefined) {
+      return this.currentRangesCache;
+    }
     let markers = this.currentRangesLayer?.getMarkers();
     if (!markers || markers.length === 0) {
-      return null;
+      this.currentRangesCache = null;
+    } else {
+      this.currentRangesCache = markers.map((marker) => marker.getRange());
     }
-    return markers.map((m) => m.getRange());
+    return this.currentRangesCache;
   }
 
   // Checks whether a given {@link Point} lies within one of this layer's content
@@ -4331,7 +4330,6 @@ class LanguageLayer {
           existingInjectionMarkers,
           rangesByInjectionMarker,
           injectionPointsByType,
-          injectionPointVersion,
         );
       });
     }
@@ -4346,7 +4344,6 @@ class LanguageLayer {
       existingInjectionMarkers,
       rangesByInjectionMarker,
       injectionPointsByType,
-      injectionPointVersion,
     );
   }
 
@@ -4449,7 +4446,6 @@ class LanguageLayer {
     existingInjectionMarkers,
     rangesByInjectionMarker,
     injectionPointsByType,
-    injectionPointVersion,
   ) {
     const promises = [];
     const markersToUpdate = new Map();
@@ -4590,49 +4586,6 @@ class LanguageLayer {
       }
     }
 
-    // Now that we've identified all the injection points for this layer, we
-    // can consider them stable until one of these three things happens:
-    //
-    // 1. The buffer changes in any way.
-    // 2. A grammar is added or changed.
-    // 3. A new injection point is added via
-    //   `GrammarRegistry#addInjectionPoint`.
-    //
-    // If #1 happens, all bets are off. But given a buffer change, we know that
-    // only a subset of the buffer is meaningfully affected; hence only the
-    // injections within that range need reappraisal. The other two require
-    // re-assessment of this layer's _entire_ range.
-    //
-    // If #2 happens, we can use what we learned in our last trip through this
-    // function; it's still conclusive _if_ the grammar has not had any new
-    // injection points defined. We can look at all the injection language
-    // names generated in previous calls to this function (whether or not they
-    // were successfully matched with grammars in the past) and see if any of
-    // them would apply to the changed/added grammar. If not, we can skip this
-    // layer.
-    //
-    // On the other hand: if injection points have changed since the last trip
-    // through this function, then a future grammar addition or change must
-    // take the slow path — running this function all over again in case the
-    // different set of injection points produces different injection
-    // candidates. (This very grammar that's just been added could've had
-    // package initializer code that added an injection point to this layer's
-    // grammar.)
-    //
-    // Hence we set the flag below to `false`. Any changes to injection points
-    // will trigger a callback that flips it to `true`. If a new grammar
-    // activates after we're done, it can check this flag as part of its
-    // heuristic to decide if this new grammar would affect the injections
-    // defined on this layer.
-    //
-    // TODO: If adding an injection point is so meaningful, why don't we
-    // automatically re-populate injections whenever we add one for a given
-    // grammar? That's an excellent question. In the future we'll do that
-    // automatically and this logic will get marginally simpler.
-    if (this.injectionPointVersion === injectionPointVersion) {
-      this.injectionPointsChanged = false;
-    }
-
     return Promise.all(promises);
   }
 
@@ -4669,20 +4622,20 @@ class NodeRangeSet {
     // sure the tree is fresh.
     this.nodeSpecs = [];
     for (let node of nodes) {
-      this.nodeSpecs.push(this.getNodeSpec(node, true));
+      this.nodeSpecs.push(this.getNodeSpec(node, !this.includeChildren));
     }
+    this.nodeSpecs.sort((a, b) => a.startIndex - b.startIndex || a.endIndex - b.endIndex);
   }
 
   // Extracts the information we need from fresh tree nodes so that it's
   // guaranteed to survive even if the tree is destroyed.
   getNodeSpec(node, getChildren) {
-    let { startIndex, endIndex, startPosition, endPosition, id } = node;
-    let result = { startIndex, endIndex, startPosition, endPosition, id };
-    // `children` is a getter, so checking `childCount` is cheaper than
-    // checking `children.length`.
+    let { startIndex, endIndex, startPosition, endPosition } = node;
+    let result = { startIndex, endIndex, startPosition, endPosition };
     if (getChildren && node.childCount > 0) {
       result.children = [];
-      for (let child of node.children) {
+      for (let i = 0; i < node.childCount; i++) {
+        const child = node.child(i);
         result.children.push(this.getNodeSpec(child, false));
       }
     }
@@ -4731,31 +4684,28 @@ class NodeRangeSet {
       }
     }
 
-    let whitespaceRanges = [];
     if (this.includeAdjacentWhitespace && result.length > 1) {
+      const rangesWithWhitespace = [result[0]];
       // Look at the region between each pair of results. If it's entirely
       // whitespace, include it in the range.
       for (let i = 1; i < result.length; i++) {
         let current = result[i],
           previous = result[i - 1];
-        if (current.startIndex === previous.endIndex) {
-          continue;
+        if (current.startIndex !== previous.endIndex) {
+          let pseudoRange = {
+            startPosition: previous.endPosition,
+            startIndex: previous.endIndex,
+            endPosition: current.startPosition,
+            endIndex: current.startIndex,
+          };
+          let rangeText = buffer.getTextInRange(rangeForNode(pseudoRange));
+          if (!/\S/.test(rangeText)) {
+            rangesWithWhitespace.push(pseudoRange);
+          }
         }
-        let pseudoRange = {
-          startPosition: previous.endPosition,
-          startIndex: previous.endIndex,
-          endPosition: current.startPosition,
-          endIndex: current.startIndex,
-        };
-        let rangeText = buffer.getTextInRange(rangeForNode(pseudoRange));
-        if (!/\S/.test(rangeText)) {
-          whitespaceRanges.push(pseudoRange);
-        }
+        rangesWithWhitespace.push(current);
       }
-      result.push(...whitespaceRanges);
-      result = result.sort((a, b) => {
-        return a.startIndex - b.startIndex || a.endIndex - b.endIndex;
-      });
+      result = rangesWithWhitespace;
     }
     return this._consolidateRanges(result);
   }
@@ -4808,13 +4758,6 @@ class NodeRangeSet {
     return consolidated;
   }
 
-  coversRange(candidateRange) {
-    let ranges = this.getRanges().map((r) => rangeForNode(r));
-    return ranges.some((range) => {
-      return range.containsRange(candidateRange);
-    });
-  }
-
   _pushRange(buffer, previousRanges, newRanges, newRange) {
     if (!previousRanges) {
       if (this.newlinesBetween) {
@@ -4825,7 +4768,19 @@ class NodeRangeSet {
       return;
     }
 
-    for (const previousRange of previousRanges) {
+    let low = 0;
+    let high = previousRanges.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (previousRanges[middle].endIndex <= newRange.startIndex) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+
+    for (let i = low; i < previousRanges.length; i++) {
+      const previousRange = previousRanges[i];
       if (previousRange.endIndex <= newRange.startIndex) continue;
       if (previousRange.startIndex >= newRange.endIndex) break;
       const startIndex = Math.max(previousRange.startIndex, newRange.startIndex);

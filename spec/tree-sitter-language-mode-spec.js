@@ -690,6 +690,23 @@ describe("TreeSitterLanguageMode", () => {
     });
 
     describe("asynchronous parsing (progress-callback time slicing)", () => {
+      it("deletes the previous canonical tree only once after an incremental parse", async () => {
+        jasmine.useRealClock();
+        grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+        buffer.setText("const value = 1;");
+        const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        const previousTree = languageMode.tree;
+        spyOn(previousTree, "delete").and.callThrough();
+
+        buffer.append("\nvalue++;");
+        await languageMode.atTransactionEnd();
+
+        expect(previousTree.delete).toHaveBeenCalledTimes(1);
+      });
+
       it("yields to the event loop when the sync budget is exhausted, then resolves to a complete tree", async () => {
         jasmine.useRealClock();
         grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
