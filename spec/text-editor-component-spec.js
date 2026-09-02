@@ -7845,7 +7845,6 @@ describe("TextEditorComponent", () => {
 
     it("gracefully handles the editor being hidden after a styling change", async () => {
       jasmine.useRealClock();
-      jasmine.filterByPlatform({ only: ["linux"] });
       // Seems to make this test less flaky.
       await wait(0);
 

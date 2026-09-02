@@ -156,27 +156,27 @@ describe("Project", () => {
       expect(deserializedProject.getBuffers().length).toBe(0);
     });
 
-    it("does not deserialize buffers when their path is inaccessible", async () => {
-      jasmine.filterByPlatform({ except: ["win32"] }); // chmod not supported on win32
+    if (process.platform !== "win32") {
+      it("does not deserialize buffers when their path is inaccessible", async () => {
+        const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
+        fs.writeFileSync(pathToOpen, "");
 
-      const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
-      fs.writeFileSync(pathToOpen, "");
+        await lumine.workspace.open(pathToOpen);
 
-      await lumine.workspace.open(pathToOpen);
+        expect(lumine.project.getBuffers().length).toBe(1);
+        fs.chmodSync(pathToOpen, "000");
+        deserializedProject = buildProject({
+          notificationManager: lumine.notifications,
+          packageManager: lumine.packages,
+          confirm: lumine.window.confirm,
+          grammarRegistry: lumine.grammars,
+        });
 
-      expect(lumine.project.getBuffers().length).toBe(1);
-      fs.chmodSync(pathToOpen, "000");
-      deserializedProject = buildProject({
-        notificationManager: lumine.notifications,
-        packageManager: lumine.packages,
-        confirm: lumine.window.confirm,
-        grammarRegistry: lumine.grammars,
+        await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
+
+        expect(deserializedProject.getBuffers().length).toBe(0);
       });
-
-      await deserializedProject.deserialize(lumine.project.serialize({ isUnloading: false }));
-
-      expect(deserializedProject.getBuffers().length).toBe(0);
-    });
+    }
 
     it("does not deserialize buffers with their path is no longer present", async () => {
       const pathToOpen = path.join(temp.mkdirSync("lumine-spec-project"), "file.txt");
@@ -1459,13 +1459,11 @@ describe("Project", () => {
     });
   });
 
-  describe(".resolvePath(uri)", () => {
-    it("normalizes disk drive letter in passed path on win32", (done) => {
-      jasmine.filterByPlatform({ only: ["win32"] }, done);
-
-      expect(lumine.project.resolvePath("d:\\file.txt")).toEqual("D:\\file.txt");
-
-      done();
+  if (process.platform === "win32") {
+    describe(".resolvePath(uri)", () => {
+      it("normalizes disk drive letter in passed path on win32", () => {
+        expect(lumine.project.resolvePath("d:\\file.txt")).toEqual("D:\\file.txt");
+      });
     });
-  });
+  }
 });

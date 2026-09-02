@@ -163,13 +163,9 @@ describe("GitRepository", () => {
       editor = await lumine.workspace.open(filePath);
     });
 
-    it("restores the editor's file to the version at HEAD", (done) => {
-      jasmine.filterByPlatform({ except: ["win32"] }, done); // Flakey EPERM opening a.txt on Win32
-
-      repo.checkoutHeadForEditor(editor).then(() => {
-        expect(fs.readFileSync(filePath, "utf8")).toBe("");
-        done();
-      });
+    it("restores the editor's file to the version at HEAD", async () => {
+      await repo.checkoutHeadForEditor(editor);
+      expect(fs.readFileSync(filePath, "utf8")).toBe("");
     });
   });
 

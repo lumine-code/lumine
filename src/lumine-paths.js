@@ -23,11 +23,11 @@ const getAppDirectory = () => {
 };
 
 module.exports = {
-  setLumineHome: (homePath) => {
+  setLumineHome: (homePath, appDirectory = getAppDirectory()) => {
     // When a read-writeable `.lumine` folder exists above the app directory,
     // use that. The portability means that we don't have to use a different
     // name to distinguish the release channel.
-    const portableHomePath = path.join(getAppDirectory(), "..", ".lumine");
+    const portableHomePath = path.join(appDirectory, "..", ".lumine");
     if (fs.existsSync(portableHomePath)) {
       if (hasWriteAccess(portableHomePath)) {
         process.env.LUMINE_HOME = portableHomePath;

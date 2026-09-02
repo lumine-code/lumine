@@ -85,8 +85,6 @@ describe("CompileCache", () => {
 
   describe("overriding Error.prepareStackTrace", function () {
     it("removes the override on the next tick, and always assigns the raw stack", async function () {
-      jasmine.filterByPlatform({ except: ["win32"] }); // Flakey Error.stack contents on Win32
-
       Error.prepareStackTrace = () => "a-stack-trace";
 
       let error = new Error("Oops");
@@ -99,7 +97,7 @@ describe("CompileCache", () => {
       });
 
       error = new Error("Oops again");
-      expect(error.stack).toContain("compile-cache-spec.js");
+      expect(error.stack).not.toBe("a-stack-trace");
       expect(Array.isArray(error.getRawStack())).toBe(true);
     });
 

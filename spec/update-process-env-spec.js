@@ -261,8 +261,6 @@ describe("updateProcessEnv(launchEnv)", function () {
   describe("when the launch environment does not come from a shell", function () {
     describe("on macOS", function () {
       it("updates process.env to match the environment in the user's login shell", async function () {
-        jasmine.filterByPlatform({ only: ["darwin"] }); // TestsThatFailOnWin32
-
         process.env.SHELL = "/my/custom/bash";
         spawn.setDefault(
           spawn.simple(
@@ -270,7 +268,7 @@ describe("updateProcessEnv(launchEnv)", function () {
             "FOO=BAR=BAZ=QUUX\0MULTILINE\nNAME=multiline\nvalue\0TERM=xterm-something\0PATH=/usr/bin:/bin:/usr/sbin:/sbin:/crazy/path",
           ),
         );
-        await updateProcessEnv(process.env);
+        await updateProcessEnv(process.env, "darwin");
         expect(spawn.calls.length).toBe(1);
         expect(spawn.calls[0].command).toBe("/my/custom/bash");
         expect(spawn.calls[0].args).toEqual([
@@ -285,14 +283,12 @@ describe("updateProcessEnv(launchEnv)", function () {
         });
 
         // Doesn't error
-        await updateProcessEnv(null);
+        await updateProcessEnv(null, "darwin");
       });
     });
 
     describe("on linux", function () {
       it("updates process.env to match the environment in the user's login shell", async function () {
-        jasmine.filterByPlatform({ only: ["linux"] }); // TestsThatFailOnWin32
-
         process.env.SHELL = "/my/custom/bash";
         spawn.setDefault(
           spawn.simple(
@@ -300,7 +296,7 @@ describe("updateProcessEnv(launchEnv)", function () {
             "FOO=BAR=BAZ=QUUX\0MULTILINE\nNAME=multiline\nvalue\0TERM=xterm-something\0PATH=/usr/bin:/bin:/usr/sbin:/sbin:/crazy/path",
           ),
         );
-        await updateProcessEnv(process.env);
+        await updateProcessEnv(process.env, "linux");
         expect(spawn.calls.length).toBe(1);
         expect(spawn.calls[0].command).toBe("/my/custom/bash");
         expect(spawn.calls[0].args).toEqual([
@@ -315,7 +311,7 @@ describe("updateProcessEnv(launchEnv)", function () {
         });
 
         // Doesn't error
-        await updateProcessEnv(null);
+        await updateProcessEnv(null, "linux");
       });
     });
 
@@ -331,29 +327,17 @@ describe("updateProcessEnv(launchEnv)", function () {
     });
 
     describe("shouldGetEnvFromShell()", function () {
-      it("indicates when the environment should be fetched from the shell", function (done) {
-        jasmine.filterByPlatform({ except: ["win32"] }, done); // TestsThatFailOnWin32
-
-        process.platform = "darwin";
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/sh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/sh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/bash" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/bash" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/zsh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/zsh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/fish" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/fish" })).toBe(true);
-        process.platform = "linux";
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/sh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/sh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/bash" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/bash" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/zsh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/zsh" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/bin/fish" })).toBe(true);
-        expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/fish" })).toBe(true);
-
-        done();
+      it("indicates when the environment should be fetched from the shell", function () {
+        for (const platform of ["darwin", "linux"]) {
+          expect(shouldGetEnvFromShell({ SHELL: "/bin/sh" }, platform)).toBe(true);
+          expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/sh" }, platform)).toBe(true);
+          expect(shouldGetEnvFromShell({ SHELL: "/bin/bash" }, platform)).toBe(true);
+          expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/bash" }, platform)).toBe(true);
+          expect(shouldGetEnvFromShell({ SHELL: "/bin/zsh" }, platform)).toBe(true);
+          expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/zsh" }, platform)).toBe(true);
+          expect(shouldGetEnvFromShell({ SHELL: "/bin/fish" }, platform)).toBe(true);
+          expect(shouldGetEnvFromShell({ SHELL: "/usr/local/bin/fish" }, platform)).toBe(true);
+        }
       });
 
       it("returns false when the environment indicates that Lumine was launched from a shell", function () {

@@ -17,10 +17,10 @@ const PLATFORMS_KNOWN_TO_WORK = new Set(["darwin", "linux"]);
 // to work with some non GNU awks.
 const ENV_COMMAND = "command awk 'BEGIN{for(v in ENVIRON) printf(\"%s=%s%c\", v, ENVIRON[v], 0)}'";
 
-async function updateProcessEnv(launchEnv) {
+async function updateProcessEnv(launchEnv, platform = process.platform) {
   let envToAssign;
   if (launchEnv) {
-    if (shouldGetEnvFromShell(launchEnv)) {
+    if (shouldGetEnvFromShell(launchEnv, platform)) {
       envToAssign = await getEnvFromShell(launchEnv);
     } else if (launchEnv.PWD || launchEnv.PROMPT || launchEnv.PSModulePath) {
       envToAssign = launchEnv;
@@ -46,8 +46,8 @@ async function updateProcessEnv(launchEnv) {
   }
 }
 
-function shouldGetEnvFromShell(env) {
-  if (!PLATFORMS_KNOWN_TO_WORK.has(process.platform)) {
+function shouldGetEnvFromShell(env, platform = process.platform) {
+  if (!PLATFORMS_KNOWN_TO_WORK.has(platform)) {
     return false;
   }
 

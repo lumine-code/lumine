@@ -34,19 +34,17 @@ describe("DefaultDirectoryProvider", function () {
       expect(directory.getPath()).toEqual(tmp);
     });
 
-    it("normalizes disk drive letter in path on win32", function (done) {
-      jasmine.filterByPlatform({ only: ["win32"] }, done);
+    if (process.platform === "win32") {
+      it("normalizes disk drive letter in path on win32", function () {
+        const provider = new DefaultDirectoryProvider();
+        const nonNormalizedPath = tmp[0].toLowerCase() + tmp.slice(1);
+        expect(tmp).not.toMatch(/^[a-z]:/);
+        expect(nonNormalizedPath).toMatch(/^[a-z]:/);
 
-      const provider = new DefaultDirectoryProvider();
-      const nonNormalizedPath = tmp[0].toLowerCase() + tmp.slice(1);
-      expect(tmp).not.toMatch(/^[a-z]:/);
-      expect(nonNormalizedPath).toMatch(/^[a-z]:/);
-
-      const directory = provider.directoryForURISync(nonNormalizedPath);
-      expect(directory.getPath()).toEqual(tmp);
-
-      done();
-    });
+        const directory = provider.directoryForURISync(nonNormalizedPath);
+        expect(directory.getPath()).toEqual(tmp);
+      });
+    }
 
     it("creates a Directory for its parent dir when passed a file", function () {
       const provider = new DefaultDirectoryProvider();

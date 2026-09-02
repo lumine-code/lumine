@@ -17,10 +17,21 @@ const app = {
 };
 
 describe("LuminePaths", () => {
-  const portableLumineHomePath = path.join(luminePaths.getAppDirectory(), "..", ".lumine");
+  let appDirectory;
+  let originalLumineHome;
+  let portableLumineHomePath;
+
+  beforeEach(() => {
+    originalLumineHome = process.env.LUMINE_HOME;
+    const appRoot = temp.mkdirSync("lumine-paths-spec-app");
+    appDirectory = path.join(appRoot, "app");
+    fs.mkdirSync(appDirectory);
+    portableLumineHomePath = path.join(appRoot, ".lumine");
+  });
 
   afterEach(() => {
-    luminePaths.setLumineHome(app.getPath("home"));
+    if (originalLumineHome === undefined) delete process.env.LUMINE_HOME;
+    else process.env.LUMINE_HOME = originalLumineHome;
   });
 
   describe("SetLumineHomePath", () => {
@@ -38,21 +49,19 @@ describe("LuminePaths", () => {
       });
 
       it("sets LUMINE_HOME to the portable .lumine folder if it has permission", () => {
-        luminePaths.setLumineHome(app.getPath("home"));
+        luminePaths.setLumineHome(app.getPath("home"), appDirectory);
         expect(process.env.LUMINE_HOME).toEqual(portableLumineHomePath);
       });
 
-      it("uses LUMINE_HOME if no write access to portable .lumine folder", (done) => {
-        jasmine.filterByPlatform({ except: ["win32"] }, done);
-
-        const readOnlyPath = temp.mkdirSync("lumine-path-spec-no-write-access");
-        process.env.LUMINE_HOME = readOnlyPath;
-        fs.chmodSync(portableLumineHomePath, 0o444);
-        luminePaths.setLumineHome(app.getPath("home"));
-        expect(process.env.LUMINE_HOME).toEqual(readOnlyPath);
-
-        done();
-      });
+      if (process.platform !== "win32") {
+        it("uses LUMINE_HOME if no write access to portable .lumine folder", () => {
+          const readOnlyPath = temp.mkdirSync("lumine-path-spec-no-write-access");
+          process.env.LUMINE_HOME = readOnlyPath;
+          fs.chmodSync(portableLumineHomePath, 0o444);
+          luminePaths.setLumineHome(app.getPath("home"), appDirectory);
+          expect(process.env.LUMINE_HOME).toEqual(readOnlyPath);
+        });
+      }
     });
 
     describe("when a portable folder does not exist", () => {
@@ -68,13 +77,13 @@ describe("LuminePaths", () => {
       it("leaves LUMINE_HOME unmodified if it was already set", () => {
         const temporaryHome = temp.mkdirSync("lumine-spec-setluminehomepath");
         process.env.LUMINE_HOME = temporaryHome;
-        luminePaths.setLumineHome(app.getPath("home"));
+        luminePaths.setLumineHome(app.getPath("home"), appDirectory);
         expect(process.env.LUMINE_HOME).toEqual(temporaryHome);
       });
 
       it("sets LUMINE_HOME to a default location if not yet set", () => {
         const expectedPath = path.join(app.getPath("home"), ".lumine");
-        luminePaths.setLumineHome(app.getPath("home"));
+        luminePaths.setLumineHome(app.getPath("home"), appDirectory);
         expect(process.env.LUMINE_HOME).toEqual(expectedPath);
       });
     });
@@ -93,7 +102,7 @@ describe("LuminePaths", () => {
       tempLumineConfigPath = path.join(tempLumineHomePath, ".lumine");
       fs.mkdirSync(tempLumineConfigPath);
       electronUserDataPath = path.join(tempLumineConfigPath, "electronUserData");
-      luminePaths.setLumineHome(tempLumineHomePath);
+      luminePaths.setLumineHome(tempLumineHomePath, appDirectory);
     });
 
     afterEach(() => {
@@ -114,19 +123,17 @@ describe("LuminePaths", () => {
         expect(app.getPath("userData")).toEqual(electronUserDataPath);
       });
 
-      it("leaves userData unchanged if no write access to electronUserData folder", (done) => {
-        jasmine.filterByPlatform({ except: ["win32"] }, done);
-
-        fs.mkdirSync(electronUserDataPath);
-        // Octal modes: the decimal literals used previously produced modes
-        // without owner write/execute, so the folder could never be cleaned up.
-        fs.chmodSync(electronUserDataPath, 0o444);
-        luminePaths.setUserData(app);
-        fs.chmodSync(electronUserDataPath, 0o755);
-        expect(app.getPath("userData")).toEqual(defaultElectronUserDataPath);
-
-        done();
-      });
+      if (process.platform !== "win32") {
+        it("leaves userData unchanged if no write access to electronUserData folder", () => {
+          fs.mkdirSync(electronUserDataPath);
+          // Octal modes: the decimal literals used previously produced modes
+          // without owner write/execute, so the folder could never be cleaned up.
+          fs.chmodSync(electronUserDataPath, 0o444);
+          luminePaths.setUserData(app);
+          fs.chmodSync(electronUserDataPath, 0o755);
+          expect(app.getPath("userData")).toEqual(defaultElectronUserDataPath);
+        });
+      }
     });
 
     describe("when an electronUserDataPath folder does not exist", () => {

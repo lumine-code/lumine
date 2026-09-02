@@ -10,6 +10,7 @@ describe("WindowEventHandler", () => {
     // Initialization must reconcile stale visual state with the document's
     // current focus rather than waiting for another focus event.
     document.body.classList.add("is-blurred");
+    spyOn(document, "hasFocus").and.returnValue(true);
     windowEventHandler = new WindowEventHandler({
       lumineEnvironment: lumine,
       applicationDelegate: lumine.applicationDelegate,
@@ -37,11 +38,8 @@ describe("WindowEventHandler", () => {
   });
 
   describe("when the window is loaded", () =>
-    it("doesn't have .is-blurred on the body tag", (done) => {
-      jasmine.filterByPlatform({ except: ["win32"] }, done); // Win32TestFailures - can not steal focus
+    it("doesn't have .is-blurred on the body tag", () => {
       expect(document.body.className).not.toMatch("is-blurred");
-
-      done();
     }));
 
   describe("when the window is blurred", () => {
