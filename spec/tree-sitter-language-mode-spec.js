@@ -2,7 +2,7 @@ const fs = require("fs");
 const path = require("path");
 const dedent = require("dedent");
 const TextBuffer = require("../src/text-buffer");
-const { Point } = TextBuffer;
+const { Point, Range } = TextBuffer;
 const CSON = require("@lumine-code/season");
 const TextEditor = require("../src/text-editor");
 const TreeSitterGrammar = require("../src/tree-sitter-grammar");
@@ -128,6 +128,45 @@ describe("TreeSitterLanguageMode", () => {
         ["highlightsQuery"],
         ["foldsQuery"],
       ]);
+    });
+  });
+
+  describe("update scheduling", () => {
+    it("skips injection work for a grammar with no injection points or layers", async () => {
+      jasmine.useRealClock();
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      buffer.setText("const value = 1;");
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      const rootLayer = languageMode.rootLanguageLayer;
+      spyOn(rootLayer, "_collectInjectionCandidateNodes").and.callThrough();
+
+      buffer.append("\nvalue++;");
+      await languageMode.atTransactionEnd();
+
+      expect(rootLayer._collectInjectionCandidateNodes).not.toHaveBeenCalled();
+    });
+
+    it("coalesces dirty-tree highlight requests until the transaction settles", async () => {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      let settleTransaction;
+      languageMode.nextTransaction = new Promise((resolve) => {
+        settleTransaction = resolve;
+      });
+      spyOn(languageMode, "emitRangeUpdate");
+
+      languageMode.scheduleDirtyHighlightUpdate(new Range([1, 0], [3, 0]));
+      languageMode.scheduleDirtyHighlightUpdate(new Range([2, 0], [4, 0]));
+      expect(languageMode.emitRangeUpdate).not.toHaveBeenCalled();
+
+      settleTransaction();
+      await languageMode.dirtyHighlightPromise;
+
+      expect(languageMode.emitRangeUpdate).toHaveBeenCalledOnceWith(new Range([1, 0], [4, 0]));
     });
   });
 
@@ -702,15 +741,21 @@ describe("TreeSitterLanguageMode", () => {
         const parser = languageMode.getRootParser();
         const parse = parser.parse.bind(parser);
         let largestChunk = 0;
+        let parsing = false;
         spyOn(parser, "parse").and.callFake((callback, ...args) => {
-          return parse(
-            (...callbackArgs) => {
-              const chunk = callback(...callbackArgs);
-              largestChunk = Math.max(largestChunk, chunk.length);
-              return chunk;
-            },
-            ...args,
-          );
+          parsing = true;
+          try {
+            return parse(
+              (...callbackArgs) => {
+                const chunk = callback(...callbackArgs);
+                if (parsing) largestChunk = Math.max(largestChunk, chunk.length);
+                return chunk;
+              },
+              ...args,
+            );
+          } finally {
+            parsing = false;
+          }
         });
 
         const tree = languageMode.parse(languageMode.rootLanguage, null, null);

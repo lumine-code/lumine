@@ -23,7 +23,9 @@ const LINE_LENGTH_LIMIT_FOR_HIGHLIGHTING = 10000;
 // allocate O(file size), while web-tree-sitter copies at most 10 KiB of UTF-16
 // data into Wasm anyway. A bounded chunk is composed transparently by both
 // bindings for parsing and SyntaxNode#text.
-const INPUT_CHUNK_CODE_UNITS = 4096;
+const WASM_PARSE_INPUT_CHUNK_CODE_UNITS = 4096;
+const NATIVE_PARSE_INPUT_CHUNK_CODE_UNITS = 32768;
+const NODE_TEXT_INPUT_CHUNK_CODE_UNITS = 32768;
 
 // How many milliseconds we can spend on synchronous re-parses (for indentation
 // purposes) in a given transaction before we fall back to asynchronous
@@ -295,6 +297,8 @@ class TreeSitterLanguageMode {
 
     this.emitter = new Emitter();
     this.isFoldableCache = [];
+    this.pendingDirtyHighlightRanges = new TreeSitterRangeList();
+    this.dirtyHighlightPromise = null;
 
     this.tokenized = false;
 
@@ -370,6 +374,7 @@ class TreeSitterLanguageMode {
     }
     this.injectionsMarkerLayer?.destroy();
     this.rootLanguageLayer = null;
+    this.pendingDirtyHighlightRanges.clear();
     this.subscriptions?.dispose();
 
     // Clean up all `Parser` instances created during the lifetime of this
@@ -599,6 +604,37 @@ class TreeSitterLanguageMode {
   emitRangeUpdate(range) {
     this.emitFoldUpdate(range);
     this.emitter.emit("did-change-highlighting", range);
+  }
+
+  scheduleDirtyHighlightUpdate(range) {
+    this.pendingDirtyHighlightRanges.add(range);
+    if (this.dirtyHighlightPromise) return;
+
+    const updatePromise = this.atTransactionEnd().then(() => {
+      const ranges = [...this.pendingDirtyHighlightRanges];
+      this.pendingDirtyHighlightRanges.clear();
+      if (this.destroyed) return;
+      for (const dirtyRange of ranges) {
+        this.emitRangeUpdate(dirtyRange);
+      }
+    });
+    this.dirtyHighlightPromise = updatePromise;
+    updatePromise.then(
+      () => this.finishDirtyHighlightUpdate(updatePromise),
+      (error) => {
+        console.error("Error scheduling Tree-sitter highlight update", error);
+        this.pendingDirtyHighlightRanges.clear();
+        this.finishDirtyHighlightUpdate(updatePromise);
+      },
+    );
+  }
+
+  finishDirtyHighlightUpdate(updatePromise) {
+    if (this.dirtyHighlightPromise !== updatePromise) return;
+    this.dirtyHighlightPromise = null;
+    if (!this.destroyed && this.pendingDirtyHighlightRanges.ranges.length > 0) {
+      this.scheduleDirtyHighlightUpdate(this.pendingDirtyHighlightRanges.ranges[0]);
+    }
   }
 
   // Resolve the promise that was created when we reacted to the first change
@@ -989,13 +1025,19 @@ class TreeSitterLanguageMode {
     // accurate captures.
     let parseDone = false;
     let text = this.buffer.getText();
+    const grammar = this.grammarsByLanguage.get(language);
+    const parseChunkSize =
+      grammar?.treeSitterRuntime === "wasm"
+        ? WASM_PARSE_INPUT_CHUNK_CODE_UNITS
+        : NATIVE_PARSE_INPUT_CHUNK_CODE_UNITS;
     let callback = (index) => {
       // Stick with a frozen copy of the text at parse time… until parsing is
       // done, at which point we should use the latest buffer text. (The
       // buffer caches the result of `getText` until its next change, so this
       // does not re-build the string on every lookup.)
       let currentText = parseDone ? this.buffer.getText() : text;
-      return currentText.slice(index, index + INPUT_CHUNK_CODE_UNITS);
+      const chunkSize = parseDone ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS : parseChunkSize;
+      return currentText.slice(index, index + chunkSize);
     };
 
     let tree;
@@ -1079,8 +1121,15 @@ class TreeSitterLanguageMode {
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     }
 
+    let parseDone = false;
+    const grammar = this.grammarsByLanguage.get(language);
+    const parseChunkSize =
+      grammar?.treeSitterRuntime === "wasm"
+        ? WASM_PARSE_INPUT_CHUNK_CODE_UNITS
+        : NATIVE_PARSE_INPUT_CHUNK_CODE_UNITS;
     let callback = (index) => {
-      return this.buffer.getText().slice(index, index + INPUT_CHUNK_CODE_UNITS);
+      const chunkSize = parseDone ? NODE_TEXT_INPUT_CHUNK_CODE_UNITS : parseChunkSize;
+      return this.buffer.getText().slice(index, index + chunkSize);
     };
 
     if (devMode && tag) {
@@ -1092,6 +1141,7 @@ class TreeSitterLanguageMode {
     } catch (error) {
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     } finally {
+      parseDone = true;
       if (devMode && tag) {
         console.timeEnd(tag);
       }
@@ -2438,9 +2488,7 @@ class HighlightIterator {
       // we should also schedule a re-highlight at the end of the transaction,
       // once the tree will be clean again.
       let range = new Range(start, iterator._getEndPosition(endRow));
-      this.languageMode.atTransactionEnd().then(() => {
-        this.languageMode.emitRangeUpdate(range);
-      });
+      this.languageMode.scheduleDirtyHighlightUpdate(range);
     }
 
     // An iterator can contribute to the list of already open scopes even if it
@@ -2751,37 +2799,34 @@ class LayerHighlightIterator {
 
     // …and one of this iterator's content ranges actually includes this
     // position. (With caveats!)
-    let ranges = this.languageLayer.getCurrentRanges();
-    if (ranges) {
-      // A given layer's content ranges aren't allowed to overlap each other.
-      // So only a single range from this list can possibly match.
-      let overlappingRange = ranges.find((range) => range.containsPoint(position));
-      if (!overlappingRange) return false;
+    // A given layer's content ranges aren't allowed to overlap each other, so
+    // a binary search can identify the only possible match.
+    let overlappingRange = this.languageLayer.currentRangeContainingPoint(position);
+    if (!overlappingRange) return false;
 
-      // If the current position is right in the middle of an injection's
-      // range, then it should cover all attempts to apply scopes. But what if
-      // we're on one of its edges? Since closing scopes act before opening
-      // scopes,
-      //
-      // * if this iterator _starts_ a range at position X, it doesn't get to
-      //   prevent another iterator from _ending_ a scope at position X;
-      // * if this iterator _ends_ a range at position X, it doesn't get to
-      //   prevent another iterator from _starting_ a scope at position X.
-      //
-      // So at a given position, `currentIteratorIsCovered` can be `true` (all
-      // scopes suppressed), `false` (none suppressed), `"close"` (only closing
-      // scopes suppressed), or `"open"` (only opening scopes suppressed).
-      if (overlappingRange.end.compare(position) === 0) {
-        // We're at the right edge of the injection range. We want to prevent
-        // iterators from closing scopes, but not from opening them.
-        return "close";
-      } else if (overlappingRange.start.compare(position) === 0) {
-        // We're at the left edge of the injection range. We want to prevent
-        // iterators from opening scopes, but not from closing them.
-        return "open";
-      } else {
-        return true;
-      }
+    // If the current position is right in the middle of an injection's
+    // range, then it should cover all attempts to apply scopes. But what if
+    // we're on one of its edges? Since closing scopes act before opening
+    // scopes,
+    //
+    // * if this iterator _starts_ a range at position X, it doesn't get to
+    //   prevent another iterator from _ending_ a scope at position X;
+    // * if this iterator _ends_ a range at position X, it doesn't get to
+    //   prevent another iterator from _starting_ a scope at position X.
+    //
+    // So at a given position, `currentIteratorIsCovered` can be `true` (all
+    // scopes suppressed), `false` (none suppressed), `"close"` (only closing
+    // scopes suppressed), or `"open"` (only opening scopes suppressed).
+    if (overlappingRange.end.compare(position) === 0) {
+      // We're at the right edge of the injection range. We want to prevent
+      // iterators from closing scopes, but not from opening them.
+      return "close";
+    } else if (overlappingRange.start.compare(position) === 0) {
+      // We're at the left edge of the injection range. We want to prevent
+      // iterators from opening scopes, but not from closing them.
+      return "open";
+    } else {
+      return true;
     }
   }
 
@@ -3610,10 +3655,10 @@ class LanguageLayer {
             if (this.currentParsePromise) return false;
           }
           this.currentParsePromise = this._performUpdate(nodeRangeSet, params);
-          await this.currentParsePromise;
           if (!params.async) {
-            break;
+            return this.currentParsePromise.then(() => true);
           }
+          await this.currentParsePromise;
         } while (!this.destroyed && (!this.tree || this.tree.rootNode.hasChanges));
 
         // `true` means that this update occurs in its own distinct transaction.
@@ -4041,8 +4086,29 @@ class LanguageLayer {
   // ranges — not just its extent. The optional `exclusive` flag will return
   // `false` if the point lies on a boundary of a content range.
   containsPoint(point, exclusive = false) {
-    let ranges = this.getCurrentRanges() ?? [this.getExtent()];
-    return ranges.some((r) => r.containsPoint(point, exclusive));
+    if (this.depth === 0) {
+      return this.getExtent().containsPoint(point, exclusive);
+    }
+    return Boolean(this.currentRangeContainingPoint(point, exclusive));
+  }
+
+  currentRangeContainingPoint(point, exclusive = false) {
+    const ranges = this.getCurrentRanges();
+    if (!ranges?.length) return null;
+
+    let low = 0;
+    let high = ranges.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (ranges[middle].start.compare(point) <= 0) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+
+    const candidate = ranges[low - 1];
+    return candidate?.containsPoint(point, exclusive) ? candidate : null;
   }
 
   // Returns a syntax tree for the current buffer.
@@ -4235,6 +4301,12 @@ class LanguageLayer {
   // possible from previous updates.
   _populateInjections(range, nodeRangeSet) {
     if (!this.tree || this.destroyed) {
+      return;
+    }
+    if (
+      this.childLayerMarkers.size === 0 &&
+      Object.keys(this.grammar.injectionPointsByType).length === 0
+    ) {
       return;
     }
 
@@ -4490,6 +4562,7 @@ class LanguageLayer {
   ) {
     const promises = [];
     const markersToUpdate = new Map();
+    const grammarsByLanguageName = new Map();
 
     let existingInjectionMarkerIndex = 0;
     for (const node of nodes) {
@@ -4503,7 +4576,13 @@ class LanguageLayer {
         }
 
         // Does that string match up with a grammar that we recognize?
-        const grammar = this.languageMode.grammarForLanguageString(languageName);
+        let grammar;
+        if (grammarsByLanguageName.has(languageName)) {
+          grammar = grammarsByLanguageName.get(languageName);
+        } else {
+          grammar = this.languageMode.grammarForLanguageString(languageName);
+          grammarsByLanguageName.set(languageName, grammar);
+        }
         if (!grammar) {
           // Keep track of these failures. When a new grammar is added, some of
           // them might match.
@@ -4522,7 +4601,7 @@ class LanguageLayer {
           continue;
         }
 
-        const injectionNodes = [].concat(contentNodes);
+        const injectionNodes = Array.isArray(contentNodes) ? contentNodes : [contentNodes];
         if (!injectionNodes.length) continue;
 
         const injectionRange = node.range;
@@ -4627,7 +4706,7 @@ class LanguageLayer {
       }
     }
 
-    return Promise.all(promises);
+    return promises.length > 0 ? Promise.all(promises) : undefined;
   }
 
   _treeEditForBufferChange(start, oldEnd, newEnd, oldText, newText) {
