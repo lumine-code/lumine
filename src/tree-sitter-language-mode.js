@@ -2131,7 +2131,7 @@ class FoldResolver {
       // Attempts to use `capture.final` and `capture.shy` won't harm anything,
       // but they'll be redundant. Other types of custom predicates, however,
       // should work just fine.
-      let result = scopeResolver.store(capture);
+      let result = scopeResolver.store(capture, { boundaries: false });
       if (!result) {
         continue;
       }
@@ -4032,7 +4032,7 @@ class LanguageLayer {
     for (let capture of captures) {
       // Storing the capture will return its range (after any potential
       // adjustments) — or `false`, to signify that the capture was ignored.
-      let range = scopeResolver.store(capture);
+      let range = scopeResolver.store(capture, { boundaries: false });
       if (!range) {
         continue;
       }
@@ -5086,7 +5086,7 @@ class IndentResolver {
 
       // Ignore anything that fails a scope test. This applies all the tests of
       // the form `(#is? test.foo)`.
-      if (!scopeResolver.store(capture)) {
+      if (!scopeResolver.store(capture, { boundaries: false })) {
         continue;
       }
       // Apply indentation-specific scope tests and skip this capture if any
@@ -5319,7 +5319,7 @@ class IndentResolver {
         }
 
         // Ignore anything that fails a scope test.
-        if (!scopeResolver.store(capture)) {
+        if (!scopeResolver.store(capture, { boundaries: false })) {
           continue;
         }
         // Apply indentation-specific scope tests and skip this capture if any
@@ -5797,7 +5797,7 @@ class IndentResolver {
         continue;
       }
       // Ignore captures that fail their scope tests.
-      if (!scopeResolver.store(indent)) {
+      if (!scopeResolver.store(indent, { boundaries: false })) {
         continue;
       }
       // Apply indentation-specific scope tests and skip this capture if any

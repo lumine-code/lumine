@@ -505,11 +505,13 @@ class ScopeResolver {
   //
   // Will return `false` if the scope should not be added for the given range;
   // otherwise will return the computed range.
-  store(capture) {
+  store(capture, { boundaries = true } = {}) {
     let { node, name } = capture;
     let props = capture.setProperties ?? EMPTY_PROPERTIES;
 
-    name = ScopeResolver.interpolateName(name, node);
+    if (boundaries) {
+      name = ScopeResolver.interpolateName(name, node);
+    }
 
     // Find out which range this capture wants.
     let range = this.determineCaptureRange(capture);
@@ -539,6 +541,10 @@ class ScopeResolver {
       // A query can also use multiple different @_IGNORE_-style variables by
       // adding segments after the @_IGNORE_, such as @_IGNORE_.foo.bar.
       return false;
+    }
+
+    if (!boundaries) {
+      return range;
     }
 
     // We should not store any boundaries for an empty capture — one whose
