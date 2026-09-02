@@ -64,7 +64,7 @@ const FOLD_WINDOW_ROWS_AHEAD = 300;
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 8192;
 const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
-const PARSERS_IN_USE = new Set();
+const MAX_IDLE_PARSERS_PER_LANGUAGE = 2;
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
 // keep that rare object alive for the renderer's remaining lifetime. This is a
@@ -259,6 +259,7 @@ class TreeSitterLanguageMode {
     injectionCandidateChunkRows,
     injectionCandidateChunkCodeUnits,
     injectionReconcileChunkSize,
+    maxIdleParsersPerLanguage,
   }) {
     this.buffer = buffer;
     this.grammar = grammar;
@@ -276,6 +277,7 @@ class TreeSitterLanguageMode {
       injectionCandidateChunkCodeUnits ?? INJECTION_CANDIDATE_CHUNK_CODE_UNITS;
     this.injectionReconcileChunkSize =
       injectionReconcileChunkSize ?? INJECTION_RECONCILE_CHUNK_SIZE;
+    this.maxIdleParsersPerLanguage = maxIdleParsersPerLanguage ?? MAX_IDLE_PARSERS_PER_LANGUAGE;
 
     this.injectionsMarkerLayer = buffer.addMarkerLayer();
 
@@ -301,7 +303,7 @@ class TreeSitterLanguageMode {
 
     this.grammarForLanguageString = this.grammarForLanguageString.bind(this);
 
-    this.parsersByLanguage = new Index();
+    this.parsersByLanguage = new Map();
     this.grammarsByLanguage = new Map();
 
     this.autoIndentRequests = 0;
@@ -368,17 +370,16 @@ class TreeSitterLanguageMode {
     this.pendingDirtyHighlightRanges.clear();
     this.subscriptions?.dispose();
 
-    // Clean up all `Parser` instances created during the lifetime of this
-    // buffer — except any still mid-parse. Deleting a web-tree-sitter parser
-    // that is still running frees memory its next batch is about to read. The
-    // native backend is garbage-collected and has no `delete` method.
-    for (let parsers of this.parsersByLanguage.values()) {
-      for (let parser of parsers) {
-        if (PARSERS_IN_USE.has(parser)) continue;
+    // Active parsers release themselves when their current batch observes the
+    // destroyed flag. Deleting one here would free memory that batch is about
+    // to read; idle parsers are safe to release immediately.
+    for (const [language, pool] of this.parsersByLanguage) {
+      for (const parser of pool.idle) {
         parser.delete?.();
       }
+      pool.idle.length = 0;
+      if (pool.active.size === 0) this.parsersByLanguage.delete(language);
     }
-    this.parsersByLanguage.clear();
   }
 
   getGrammar() {
@@ -402,32 +403,63 @@ class TreeSitterLanguageMode {
     this.grammarsByLanguage.set(language, grammar);
   }
 
-  getOrCreateParserForLanguage(language) {
+  getParserPoolForLanguage(language) {
     let pool = this.parsersByLanguage.get(language);
-    let parser;
-    if (pool) {
-      parser = pool.find((p) => !PARSERS_IN_USE.has(p));
+    if (!pool) {
+      pool = { idle: [], active: new Set() };
+      this.parsersByLanguage.set(language, pool);
+    }
+    return pool;
+  }
+
+  createParserForLanguage(language) {
+    const grammar = this.grammarsByLanguage.get(language);
+    if (!grammar) {
+      throw new Error("Cannot create a Tree-sitter parser for an unregistered language");
+    }
+    return grammar.createParser(language);
+  }
+
+  getOrCreateParserForLanguage(language) {
+    const pool = this.getParserPoolForLanguage(language);
+    if (pool.idle.length === 0) {
+      pool.idle.push(this.createParserForLanguage(language));
+    }
+    return pool.idle[pool.idle.length - 1];
+  }
+
+  acquireParserForLanguage(language) {
+    const pool = this.getParserPoolForLanguage(language);
+    const parser = pool.idle.pop() ?? this.createParserForLanguage(language);
+    pool.active.add(parser);
+    return parser;
+  }
+
+  releaseParserForLanguage(language, parser) {
+    const pool = this.parsersByLanguage.get(language);
+    if (!pool?.active.delete(parser)) return;
+
+    if (this.destroyed || pool.idle.length >= this.maxIdleParsersPerLanguage) {
+      parser.delete?.();
+    } else {
+      pool.idle.push(parser);
     }
 
-    if (!parser) {
-      let grammar = this.grammarsByLanguage.get(language);
-      if (!grammar) {
-        throw new Error("Cannot create a Tree-sitter parser for an unregistered language");
-      }
-      parser = grammar.createParser(language);
-      this.parsersByLanguage.add(language, parser);
+    if (pool.idle.length === 0 && pool.active.size === 0) {
+      this.parsersByLanguage.delete(language);
     }
-    return parser;
   }
 
   quarantineParserForLanguage(language, parser) {
     const pool = this.parsersByLanguage.get(language);
-    if (!pool) return;
-    const index = pool.indexOf(parser);
-    if (index !== -1) pool.splice(index, 1);
-    if (pool.length === 0) this.parsersByLanguage.delete(language);
-    PARSERS_IN_USE.delete(parser);
+    const wasActive = pool?.active.delete(parser) ?? false;
+    const idleIndex = pool?.idle.indexOf(parser) ?? -1;
+    if (idleIndex !== -1) pool.idle.splice(idleIndex, 1);
+    if (pool && pool.idle.length === 0 && pool.active.size === 0) {
+      this.parsersByLanguage.delete(language);
+    }
     QUARANTINED_WASM_PARSERS.add(parser);
+    return wasActive;
   }
 
   resetParserForLanguage(language, parser, scopeName) {
@@ -445,12 +477,17 @@ class TreeSitterLanguageMode {
       // A parser can outlive the Wasm state behind it during a live grammar
       // reload. Calling into that stale handle faults before parsing starts,
       // so quarantine it and retry with a fresh parser for the cached language.
-      this.quarantineParserForLanguage(language, parser);
+      const wasActive = this.quarantineParserForLanguage(language, parser);
       if (lumine.window.isDevMode()) {
         console.warn(`Replacing a stale Tree-sitter parser for '${scopeName ?? "unknown"}'`, error);
       }
       const replacement = grammar.createParser(language);
-      this.parsersByLanguage.add(language, replacement);
+      const pool = this.getParserPoolForLanguage(language);
+      if (wasActive) {
+        pool.active.add(replacement);
+      } else {
+        pool.idle.push(replacement);
+      }
       return replacement;
     }
   }
@@ -984,7 +1021,7 @@ class TreeSitterLanguageMode {
 
   parseAsync(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
     let devMode = lumine.window.isDevMode();
-    let parser = this.getOrCreateParserForLanguage(language);
+    let parser = this.acquireParserForLanguage(language);
     oldTree = this.compatibleOldTreeForLanguage(language, oldTree);
     let timeoutMicros = oldTree ? this.syncTimeoutMicros : INITIAL_PARSE_JOB_LIMIT_MICROS;
     // Async batches of an initial parse get their own, smaller budget; an
@@ -994,9 +1031,9 @@ class TreeSitterLanguageMode {
     try {
       parser = this.resetParserForLanguage(language, parser, scopeName);
     } catch (error) {
+      this.releaseParserForLanguage(language, parser);
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     }
-    PARSERS_IN_USE.add(parser);
 
     // When you edit a tree, the positions of nodes in the tree are adjusted
     // accordingly. But if you had passed a string into `parse`, all those
@@ -1040,8 +1077,11 @@ class TreeSitterLanguageMode {
     let tree;
 
     let batchCount = 0;
+    let cleanedUp = false;
 
     const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
       parseDone = true;
       if (devMode && tag) {
         console.timeEnd(tag);
@@ -1049,7 +1089,7 @@ class TreeSitterLanguageMode {
           console.log(`(async: ${batchCount} batches)`);
         }
       }
-      PARSERS_IN_USE.delete(parser);
+      this.releaseParserForLanguage(language, parser);
     };
 
     if (devMode && tag) {
@@ -1076,7 +1116,6 @@ class TreeSitterLanguageMode {
           // that this check gets to run first.
           if (this.destroyed) {
             cleanup();
-            parser.delete?.();
             return resolve(null);
           }
           try {
@@ -1110,11 +1149,12 @@ class TreeSitterLanguageMode {
 
   parse(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
     let devMode = lumine.window.isDevMode();
-    let parser = this.getOrCreateParserForLanguage(language);
+    let parser = this.acquireParserForLanguage(language);
     oldTree = this.compatibleOldTreeForLanguage(language, oldTree);
     try {
       parser = this.resetParserForLanguage(language, parser, scopeName);
     } catch (error) {
+      this.releaseParserForLanguage(language, parser);
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     }
 
@@ -1139,6 +1179,7 @@ class TreeSitterLanguageMode {
       throw this.describeParseFailure(error, { scopeName, includedRanges });
     } finally {
       parseDone = true;
+      this.releaseParserForLanguage(language, parser);
       if (devMode && tag) {
         console.timeEnd(tag);
       }

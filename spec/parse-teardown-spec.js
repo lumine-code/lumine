@@ -113,6 +113,52 @@ describe("destroying a buffer during an async parse", () => {
     expect(parser.delete).toHaveBeenCalled();
   });
 
+  it("keeps only a bounded number of idle parsers after a burst", async () => {
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({
+      buffer,
+      grammar,
+      maxIdleParsersPerLanguage: 2,
+    });
+    buffer.setLanguageMode(languageMode);
+    await languageMode.ready;
+
+    const language = grammar.getLanguageSync();
+    const parsers = Array.from({ length: 6 }, () =>
+      languageMode.acquireParserForLanguage(language),
+    );
+    for (const parser of parsers) spyOn(parser, "delete").and.callThrough();
+    const pool = languageMode.getParserPoolForLanguage(language);
+    expect(pool.active.size).toBe(6);
+    expect(pool.idle.length).toBe(0);
+
+    for (const parser of parsers) {
+      languageMode.releaseParserForLanguage(language, parser);
+    }
+
+    expect(pool.active.size).toBe(0);
+    expect(pool.idle.length).toBe(2);
+    expect(parsers.filter((parser) => parser.delete.calls.count() === 1).length).toBe(4);
+  });
+
+  it("lets an active parser release itself after the language mode is destroyed", async () => {
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+    buffer.setLanguageMode(languageMode);
+    await languageMode.ready;
+
+    const language = grammar.getLanguageSync();
+    const parser = languageMode.acquireParserForLanguage(language);
+    spyOn(parser, "delete").and.callThrough();
+
+    languageMode.destroy();
+    expect(parser.delete).not.toHaveBeenCalled();
+
+    languageMode.releaseParserForLanguage(language, parser);
+    expect(parser.delete).toHaveBeenCalledTimes(1);
+    expect(languageMode.parsersByLanguage.size).toBe(0);
+  });
+
   it("replaces a parser whose Wasm handle faults during reset", async () => {
     buffer = new TextBuffer("const value = 1;");
     languageMode = new TreeSitterLanguageMode({ buffer, grammar });
