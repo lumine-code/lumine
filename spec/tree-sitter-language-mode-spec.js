@@ -51,6 +51,14 @@ function wait(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function waitForCondition(condition) {
+  for (let attempt = 0; attempt < 100; attempt++) {
+    if (condition()) return;
+    await wait(0);
+  }
+  throw new Error("Timed out waiting for condition");
+}
+
 describe("TreeSitterLanguageMode", () => {
   let editor, buffer, grammar;
 
@@ -1212,6 +1220,447 @@ describe("TreeSitterLanguageMode", () => {
         );
 
         htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
+      });
+
+      describe("initial injection update scheduling", () => {
+        let failingIdentifierText;
+
+        beforeEach(async () => {
+          jasmine.useRealClock();
+          failingIdentifierText = null;
+          jsGrammar.addInjectionPoint({
+            type: "identifier",
+            language: () => "html",
+            content(node) {
+              if (node.text === failingIdentifierText) {
+                throw new Error("broken adopted injection update");
+              }
+              return node;
+            },
+            includeChildren: true,
+            languageScope: null,
+          });
+          lumine.grammars.addGrammar(jsGrammar);
+          lumine.grammars.addGrammar(htmlGrammar);
+          grammar = jsGrammar;
+          await Promise.all([jsGrammar.getLanguage(), htmlGrammar.getLanguage()]);
+        });
+
+        function startLanguageMode(text, options = {}) {
+          buffer.setText(text);
+          const languageMode = new TreeSitterLanguageMode({
+            grammar: jsGrammar,
+            buffer,
+            config: lumine.config,
+            grammars: lumine.grammars,
+            ...options,
+          });
+          buffer.setLanguageMode(languageMode);
+          return languageMode;
+        }
+
+        it("commits every layer before yielding and budgets their first updates together", async () => {
+          const yieldResolvers = [];
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            () =>
+              new Promise((resolve) => {
+                yieldResolvers.push(resolve);
+              }),
+          );
+
+          const languageMode = startLanguageMode("first; second; third;", {
+            initialInjectionUpdateBudgetMs: 0,
+            syncTimeoutMicros: 0,
+          });
+          let readySettled = false;
+          languageMode.ready.then(() => (readySettled = true));
+          await waitForCondition(() => yieldResolvers.length === 1);
+
+          const layers = languageMode.getAllInjectionLayers();
+          expect(layers.length).toBe(3);
+          expect(layers.every((layer) => layer.tree === null)).toBe(true);
+          expect(readySettled).toBe(false);
+
+          const updateStarts = [];
+          for (const layer of layers) {
+            const performUpdate = layer._performUpdate.bind(layer);
+            spyOn(layer, "_performUpdate").and.callFake((...args) => {
+              updateStarts.push(layer);
+              return performUpdate(...args);
+            });
+          }
+          const initialTimeouts = [];
+          const parseAsync = languageMode.parseAsync.bind(languageMode);
+          spyOn(languageMode, "parseAsync").and.callFake((...args) => {
+            initialTimeouts.push(args[3]?.initialTimeoutMicros);
+            return parseAsync(...args);
+          });
+
+          yieldResolvers.shift()();
+          await waitForCondition(() => updateStarts.length === 1 && yieldResolvers.length === 1);
+          expect(readySettled).toBe(false);
+
+          yieldResolvers.shift()();
+          await waitForCondition(() => updateStarts.length === 2 && yieldResolvers.length === 1);
+          expect(readySettled).toBe(false);
+
+          yieldResolvers.shift()();
+          await languageMode.ready;
+
+          expect(updateStarts.length).toBe(3);
+          expect(initialTimeouts).toEqual([0, 0, 0]);
+          expect(layers.every((layer) => layer.tree !== null)).toBe(true);
+          expect(languageMode.pendingInitialInjectionUpdates.length).toBe(0);
+          expect(languageMode.initialInjectionUpdateDrainPromise).toBeNull();
+        });
+
+        it("cancels first updates that are still queued when destroyed", async () => {
+          const yieldResolvers = [];
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            () =>
+              new Promise((resolve) => {
+                yieldResolvers.push(resolve);
+              }),
+          );
+          const languageMode = startLanguageMode("first; second; third;", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await waitForCondition(() => yieldResolvers.length === 1);
+
+          const layers = languageMode.getAllInjectionLayers();
+          const updateStarts = [];
+          for (const layer of layers) {
+            spyOn(layer, "_performUpdate").and.callFake(() => {
+              updateStarts.push(layer);
+            });
+          }
+          const drainPromise = languageMode.initialInjectionUpdateDrainPromise;
+
+          languageMode.destroy();
+          yieldResolvers.shift()();
+          await Promise.all([languageMode.ready, drainPromise]);
+
+          expect(updateStarts.length).toBe(0);
+          expect(languageMode.pendingInitialInjectionUpdates.length).toBe(0);
+          expect(languageMode.initialInjectionUpdateDrainPromise).toBeNull();
+          expect(languageMode.parsersByLanguage.size).toBe(0);
+        });
+
+        it("settles an edited transaction when destroyed with first updates queued", async () => {
+          let resumeFirstYield;
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            () =>
+              new Promise((resolve) => {
+                resumeFirstYield = resolve;
+              }),
+          );
+          const languageMode = startLanguageMode("first; second; third;", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await waitForCondition(() => Boolean(resumeFirstYield));
+
+          buffer.setText("final;");
+          const transactionPromise = languageMode.nextTransaction;
+          expect(languageMode.resolveNextTransaction).not.toBeNull();
+
+          languageMode.destroy();
+          resumeFirstYield();
+          await Promise.all([languageMode.ready, transactionPromise]);
+          await languageMode.atTransactionEnd();
+
+          expect(languageMode.pendingTransactionRanges.ranges.length).toBe(0);
+          expect(languageMode.resolveNextTransaction).toBeNull();
+          expect(languageMode.transactionChangeCount).toBe(0);
+          expect(languageMode.autoIndentRequests).toBe(0);
+        });
+
+        it("adopts edits made while first injection updates are queued", async () => {
+          let resumeFirstYield;
+          const realYield = TreeSitterLanguageMode.prototype._yieldForInitialInjectionUpdates;
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            function () {
+              if (!resumeFirstYield) {
+                return new Promise((resolve) => {
+                  resumeFirstYield = resolve;
+                });
+              }
+              return realYield.call(this);
+            },
+          );
+          const languageMode = startLanguageMode("first; second; third;", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await waitForCondition(() => Boolean(resumeFirstYield));
+          expect(languageMode.getAllInjectionLayers().length).toBe(3);
+
+          buffer.setText("final;");
+          resumeFirstYield();
+          await languageMode.ready;
+          const transaction = await languageMode.atTransactionEnd();
+
+          const finalLayers = languageMode.getAllInjectionLayers();
+          expect(transaction.parseError).toBeNull();
+          expect(finalLayers.length).toBe(1);
+          expect(buffer.getTextInRange(finalLayers[0].getExtent())).toBe("final");
+          expect(finalLayers[0].tree).not.toBeNull();
+        });
+
+        it("keeps a completed child dirty until the owning update finishes an adopted edit", async () => {
+          let yieldCount = 0;
+          let resumeAfterFirstUpdate;
+          const realYield = TreeSitterLanguageMode.prototype._yieldForInitialInjectionUpdates;
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            function () {
+              yieldCount++;
+              if (yieldCount === 1) return Promise.resolve();
+              if (yieldCount === 2) {
+                return new Promise((resolve) => {
+                  resumeAfterFirstUpdate = resolve;
+                });
+              }
+              return realYield.call(this);
+            },
+          );
+          const languageMode = startLanguageMode("first; second; third;", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await waitForCondition(() => Boolean(resumeAfterFirstUpdate));
+          await waitForCondition(() =>
+            languageMode.getAllInjectionLayers().some((layer) => layer.tree !== null),
+          );
+          const completedLayer = languageMode
+            .getAllInjectionLayers()
+            .find((layer) => layer.tree !== null);
+          const editColumn = completedLayer.getExtent().start.column + 1;
+
+          buffer.setTextInRange(
+            [
+              [0, editColumn],
+              [0, editColumn + 1],
+            ],
+            "x",
+          );
+          await wait(0);
+
+          expect(completedLayer.treeIsDirty).toBe(true);
+          expect(completedLayer.editedRange).not.toBeNull();
+
+          resumeAfterFirstUpdate();
+          await languageMode.ready;
+          await languageMode.atTransactionEnd();
+
+          expect(languageMode.getAllInjectionLayers()).toContain(completedLayer);
+          expect(completedLayer.treeIsDirty).toBe(false);
+          expect(completedLayer.editedRange).toBeNull();
+        });
+
+        it("reconciles the replacement parent tree after queued children abort", async () => {
+          let resumeFirstYield;
+          const realYield = TreeSitterLanguageMode.prototype._yieldForInitialInjectionUpdates;
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            function () {
+              if (!resumeFirstYield) {
+                return new Promise((resolve) => {
+                  resumeFirstYield = resolve;
+                });
+              }
+              return realYield.call(this);
+            },
+          );
+          const languageMode = startLanguageMode("first; second; third;", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await waitForCondition(() => Boolean(resumeFirstYield));
+
+          buffer.setText("final;");
+          const rootLayer = languageMode.rootLanguageLayer;
+          const replacementTree = rootLayer.getOrParseTree();
+          expect(rootLayer.tree).toBe(replacementTree);
+          expect(replacementTree.rootNode.hasChanges).toBe(false);
+
+          resumeFirstYield();
+          await languageMode.ready;
+          await languageMode.atTransactionEnd();
+
+          const finalLayers = languageMode.getAllInjectionLayers();
+          expect(finalLayers.length).toBe(1);
+          expect(buffer.getTextInRange(finalLayers[0].getExtent())).toBe("final");
+          expect(finalLayers[0].tree).not.toBeNull();
+        });
+
+        it("reconciles a replacement parent tree after a child update has started", async () => {
+          const yieldResolvers = [];
+          let useRealYields = false;
+          const realYield = TreeSitterLanguageMode.prototype._yieldForInitialInjectionUpdates;
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            function () {
+              if (useRealYields) return realYield.call(this);
+              return new Promise((resolve) => {
+                yieldResolvers.push(resolve);
+              });
+            },
+          );
+          const languageMode = startLanguageMode("first; second; third;", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await waitForCondition(() => yieldResolvers.length === 1);
+          const firstLayer = languageMode.getAllInjectionLayers()[0];
+          const rootLayer = languageMode.rootLanguageLayer;
+          let finishParsedChild;
+          let staleChildTree;
+          let holdFirstChildParse = true;
+          const parseAsync = languageMode.parseAsync.bind(languageMode);
+          spyOn(languageMode, "parseAsync").and.callFake((...args) => {
+            const result = parseAsync(...args);
+            if (!holdFirstChildParse) return result;
+            holdFirstChildParse = false;
+            return Promise.resolve(result).then(
+              (tree) =>
+                new Promise((resolve) => {
+                  staleChildTree = tree;
+                  spyOn(staleChildTree, "delete").and.callThrough();
+                  finishParsedChild = () => resolve(tree);
+                }),
+            );
+          });
+          spyOn(firstLayer, "setCurrentRanges").and.callThrough();
+          spyOn(languageMode, "emitRangeUpdate").and.callThrough();
+          spyOn(languageMode, "emitFoldUpdate").and.callThrough();
+
+          let resumeParentRetry;
+          const performRootUpdate = rootLayer._performUpdate.bind(rootLayer);
+          spyOn(rootLayer, "_performUpdate").and.callFake(
+            (...args) =>
+              new Promise((resolve, reject) => {
+                resumeParentRetry = () => {
+                  Promise.resolve(performRootUpdate(...args)).then(resolve, reject);
+                };
+              }),
+          );
+
+          yieldResolvers.shift()();
+          await waitForCondition(() => Boolean(finishParsedChild) && yieldResolvers.length === 1);
+          expect(firstLayer.tree).toBeNull();
+
+          buffer.setText("final;");
+          const replacementTree = rootLayer.getOrParseTree();
+          expect(rootLayer.tree).toBe(replacementTree);
+          expect(replacementTree.rootNode.hasChanges).toBe(false);
+
+          finishParsedChild();
+          yieldResolvers.shift()();
+          await waitForCondition(() => yieldResolvers.length === 1);
+          yieldResolvers.shift()();
+          await waitForCondition(() => Boolean(resumeParentRetry));
+
+          expect(staleChildTree.delete).toHaveBeenCalledTimes(1);
+          expect(firstLayer.tree).toBeNull();
+          expect(firstLayer.currentRangesLayer.getMarkerCount()).toBe(0);
+          expect(firstLayer.setCurrentRanges).not.toHaveBeenCalled();
+          expect(languageMode.emitRangeUpdate).not.toHaveBeenCalled();
+          expect(languageMode.emitFoldUpdate).not.toHaveBeenCalled();
+
+          useRealYields = true;
+          resumeParentRetry();
+          await languageMode.ready;
+          await languageMode.atTransactionEnd();
+
+          const finalLayers = languageMode.getAllInjectionLayers();
+          expect(finalLayers.length).toBe(1);
+          expect(buffer.getTextInRange(finalLayers[0].getExtent())).toBe("final");
+          expect(finalLayers[0].tree).not.toBeNull();
+        });
+
+        it("settles an adopted transaction when a queued update ultimately fails", async () => {
+          let resumeFirstYield;
+          const realYield = TreeSitterLanguageMode.prototype._yieldForInitialInjectionUpdates;
+          spyOn(TreeSitterLanguageMode.prototype, "_yieldForInitialInjectionUpdates").and.callFake(
+            function () {
+              if (!resumeFirstYield) {
+                return new Promise((resolve) => {
+                  resumeFirstYield = resolve;
+                });
+              }
+              return realYield.call(this);
+            },
+          );
+          spyOn(console, "error");
+          const languageMode = startLanguageMode("first; second;", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await waitForCondition(() => Boolean(resumeFirstYield));
+
+          failingIdentifierText = "broken";
+          buffer.setText("broken;");
+          const transactionPromise = languageMode.nextTransaction;
+          resumeFirstYield();
+
+          await expectAsync(languageMode.ready).toBeRejectedWithError(
+            /broken adopted injection update/,
+          );
+          await expectAsync(transactionPromise).toBeResolved();
+
+          expect(languageMode.lastTransactionParseError).toEqual(
+            jasmine.objectContaining({ message: "broken adopted injection update" }),
+          );
+          expect(languageMode.lastTransactionChangeCount).toBe(1);
+          expect(languageMode.resolveNextTransaction).toBeNull();
+          expect(languageMode.transactionChangeCount).toBe(0);
+          expect(languageMode.autoIndentRequests).toBe(0);
+          expect(languageMode.pendingTransactionRanges.ranges.length).toBe(0);
+          expect(console.error).toHaveBeenCalledWith(
+            "Tree-sitter update failed",
+            languageMode.lastTransactionParseError,
+          );
+        });
+
+        it("continues draining after one scheduled update fails", async () => {
+          const languageMode = startLanguageMode("", {
+            initialInjectionUpdateBudgetMs: 0,
+          });
+          await languageMode.ready;
+          const calls = [];
+          const firstPromise = languageMode.scheduleInitialInjectionUpdate(() => {
+            calls.push("first");
+            return Promise.reject(new Error("broken scheduled update"));
+          });
+          const secondPromise = languageMode.scheduleInitialInjectionUpdate(() => {
+            calls.push("second");
+            return "complete";
+          });
+
+          await expectAsync(firstPromise).toBeRejectedWithError(/broken scheduled update/);
+          await expectAsync(secondPromise).toBeResolvedTo("complete");
+
+          expect(calls).toEqual(["first", "second"]);
+          expect(languageMode.pendingInitialInjectionUpdates.length).toBe(0);
+          expect(languageMode.initialInjectionUpdateDrainPromise).toBeNull();
+        });
+
+        it("bypasses the initial-injection scheduler for the root and reused layers", async () => {
+          const scheduleUpdate = spyOn(
+            TreeSitterLanguageMode.prototype,
+            "scheduleInitialInjectionUpdate",
+          ).and.callThrough();
+          const languageMode = startLanguageMode("first;");
+          await languageMode.ready;
+
+          expect(scheduleUpdate).toHaveBeenCalledTimes(1);
+          const originalLayer = languageMode.getAllInjectionLayers()[0];
+          scheduleUpdate.calls.reset();
+
+          buffer.setTextInRange(
+            [
+              [0, 1],
+              [0, 2],
+            ],
+            "x",
+          );
+          await languageMode.atTransactionEnd();
+
+          expect(scheduleUpdate).not.toHaveBeenCalled();
+          expect(languageMode.getAllInjectionLayers()).toEqual([originalLayer]);
+        });
       });
 
       it("orders coterminous injection layers from deepest to shallowest", async () => {

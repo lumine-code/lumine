@@ -64,6 +64,11 @@ const FOLD_WINDOW_ROWS_AHEAD = 300;
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 8192;
 const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
+// Newly-created injection layers often become ready together because they
+// share a grammar's cached language and queries. Without a shared budget,
+// their first parses all begin in the same microtask checkpoint and each may
+// consume its own synchronous parse allowance before yielding.
+const INITIAL_INJECTION_UPDATE_BUDGET_MILLIS = 8;
 const MAX_IDLE_PARSERS_PER_LANGUAGE = 2;
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
@@ -259,6 +264,7 @@ class TreeSitterLanguageMode {
     injectionCandidateChunkRows,
     injectionCandidateChunkCodeUnits,
     injectionReconcileChunkSize,
+    initialInjectionUpdateBudgetMs,
     maxIdleParsersPerLanguage,
   }) {
     this.buffer = buffer;
@@ -277,6 +283,8 @@ class TreeSitterLanguageMode {
       injectionCandidateChunkCodeUnits ?? INJECTION_CANDIDATE_CHUNK_CODE_UNITS;
     this.injectionReconcileChunkSize =
       injectionReconcileChunkSize ?? INJECTION_RECONCILE_CHUNK_SIZE;
+    this.initialInjectionUpdateBudgetMs =
+      initialInjectionUpdateBudgetMs ?? INITIAL_INJECTION_UPDATE_BUDGET_MILLIS;
     this.maxIdleParsersPerLanguage = maxIdleParsersPerLanguage ?? MAX_IDLE_PARSERS_PER_LANGUAGE;
 
     this.injectionsMarkerLayer = buffer.addMarkerLayer();
@@ -305,6 +313,9 @@ class TreeSitterLanguageMode {
 
     this.parsersByLanguage = new Map();
     this.grammarsByLanguage = new Map();
+    this.pendingInitialInjectionUpdates = [];
+    this.initialInjectionUpdateDrainPromise = null;
+    this.pendingTransactionRanges = new TreeSitterRangeList();
 
     this.autoIndentRequests = 0;
 
@@ -348,11 +359,24 @@ class TreeSitterLanguageMode {
         if (this.destroyed || !parser) return null;
         return this.rootLanguageLayer.update(null);
       })
-      .then(() => {
-        if (!this.destroyed) this.emitter.emit("did-tokenize");
+      .then((shouldEndTransaction) => {
+        if (this.destroyed) return;
+        if (shouldEndTransaction && this.resolveNextTransaction) {
+          // An edit can arrive while the initial parse is waiting on its first
+          // injection layers. The buffer's update is then subsumed into this
+          // one, so its own completion callback receives `false`; finish that
+          // pending transaction here after the initial update adopts it.
+          this.finishTransactionUpdate();
+        }
+        this.emitter.emit("did-tokenize");
       })
       .catch((error) => {
-        if (!this.destroyed) throw error;
+        if (!this.destroyed) {
+          if (this.resolveNextTransaction || this.pendingTransactionRanges.ranges.length > 0) {
+            this.finishTransactionUpdate(error);
+          }
+          throw error;
+        }
       });
   }
 
@@ -365,6 +389,12 @@ class TreeSitterLanguageMode {
     for (let layer of layers) {
       layer?.destroy();
     }
+    this.cancelPendingInitialInjectionUpdates();
+    this.pendingTransactionRanges.clear();
+    this.resolveNextTransactionPromise();
+    this.transactionChangeCount = 0;
+    this.autoIndentRequests = 0;
+    this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
     this.injectionsMarkerLayer?.destroy();
     this.rootLanguageLayer = null;
     this.pendingDirtyHighlightRanges.clear();
@@ -500,6 +530,84 @@ class TreeSitterLanguageMode {
     return new Promise((resolve) => setImmediate(resolve));
   }
 
+  _yieldForInitialInjectionUpdates() {
+    return new Promise((resolve) => setImmediate(resolve));
+  }
+
+  scheduleInitialInjectionUpdate(callback) {
+    if (this.destroyed) return Promise.resolve(false);
+
+    let resolveJob;
+    let rejectJob;
+    const jobPromise = new Promise((resolve, reject) => {
+      resolveJob = resolve;
+      rejectJob = reject;
+    });
+    this.pendingInitialInjectionUpdates.push({
+      callback,
+      resolve: resolveJob,
+      reject: rejectJob,
+    });
+    this.ensureInitialInjectionUpdateDrain();
+    return jobPromise;
+  }
+
+  ensureInitialInjectionUpdateDrain() {
+    if (this.destroyed || this.initialInjectionUpdateDrainPromise) return;
+
+    const drainPromise = this.drainInitialInjectionUpdates();
+    this.initialInjectionUpdateDrainPromise = drainPromise;
+    drainPromise.then(
+      () => this.finishInitialInjectionUpdateDrain(drainPromise),
+      (error) => {
+        const pendingJobs = this.pendingInitialInjectionUpdates.splice(0);
+        for (const job of pendingJobs) job.reject(error);
+        this.finishInitialInjectionUpdateDrain(drainPromise);
+      },
+    );
+  }
+
+  async drainInitialInjectionUpdates() {
+    while (!this.destroyed && this.pendingInitialInjectionUpdates.length > 0) {
+      await this._yieldForInitialInjectionUpdates();
+      if (this.destroyed) break;
+
+      const startedAt = performance.now();
+      do {
+        const job = this.pendingInitialInjectionUpdates.shift();
+        if (!job) break;
+
+        let result;
+        try {
+          result = job.callback();
+        } catch (error) {
+          job.reject(error);
+          continue;
+        }
+        Promise.resolve(result).then(job.resolve, job.reject);
+      } while (
+        !this.destroyed &&
+        this.pendingInitialInjectionUpdates.length > 0 &&
+        performance.now() - startedAt < this.initialInjectionUpdateBudgetMs
+      );
+    }
+
+    if (this.destroyed) this.cancelPendingInitialInjectionUpdates();
+  }
+
+  finishInitialInjectionUpdateDrain(drainPromise) {
+    if (this.initialInjectionUpdateDrainPromise !== drainPromise) return;
+    this.initialInjectionUpdateDrainPromise = null;
+    if (!this.destroyed && this.pendingInitialInjectionUpdates.length > 0) {
+      this.ensureInitialInjectionUpdateDrain();
+    }
+  }
+
+  cancelPendingInitialInjectionUpdates() {
+    const pendingJobs = this.pendingInitialInjectionUpdates.splice(0);
+    for (const job of pendingJobs) job.resolve(false);
+  }
+
   bufferDidChange(change) {
     if (!this.rootLanguageLayer) {
       return;
@@ -555,61 +663,46 @@ class TreeSitterLanguageMode {
         length: newRange.end.row - newRange.start.row,
       });
     }
+    this.pendingTransactionRanges.addAll(changes.map(({ newRange }) => newRange));
 
     this.rootLanguageLayer.update(null).then(
       (shouldEndTransaction) => {
-        if (shouldEndTransaction) {
-          this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
-          this.lastTransactionChangeCount = this.transactionChangeCount;
-          this.lastTransactionAutoIndentRequests = this.autoIndentRequests;
-        }
-
-        // The editor is going to ask if a number of on-screen lines are now
-        // foldable. This would ordinarly trigger a number of `folds.scm` queries
-        // — one per line. But since we know they're coming, we can run a single
-        // capture query over the whole range.
-        for (let { newRange } of changes) {
-          this.prefillFoldCache(newRange);
-        }
-
-        let allLayers = this.getAllInjectionLayers();
-        for (let layer of allLayers) {
-          // Either the tree got re-parsed — and it's now up-to-date — or it
-          // didn't, which means that the edits in the tree did not affect the
-          // layer's contents. Either way, the tree is safe to use. (This is part
-          // of why we keep a separate boolean instead of checking the tree
-          // directly — we have a looser definition of "clean.")
-          layer.treeIsDirty = false;
-
-          // If this layer didn't get updated, then it didn't need to, and the
-          // edits made in the last transaction are no longer relevant.
-          layer.editedRange = null;
-        }
-
-        // At this point, all trees are safely re-parsed, including those of
-        // injection layers. So we can proceed with any actions that were waiting
-        // on a clean tree.
-        if (shouldEndTransaction) {
-          this.resolveNextTransactionPromise();
-          this.transactionChangeCount = 0;
-          this.autoIndentRequests = 0;
-          // Since a new transaction is starting, we can reset our reparse
-          // budget.
-          this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
-        }
+        if (shouldEndTransaction) this.finishTransactionUpdate();
       },
-      (error) => {
-        this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
-        this.lastTransactionChangeCount = this.transactionChangeCount;
-        this.lastTransactionAutoIndentRequests = this.autoIndentRequests;
-        this.lastTransactionParseError = error;
-        console.error("Tree-sitter update failed", error);
-        this.resolveNextTransactionPromise();
-        this.transactionChangeCount = 0;
-        this.autoIndentRequests = 0;
-        this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
-      },
+      (error) => this.finishTransactionUpdate(error),
     );
+  }
+
+  finishTransactionUpdate(error = null) {
+    this.lastTransactionEditedRange = this.rootLanguageLayer?.lastTransactionEditedRange;
+    this.lastTransactionChangeCount = this.transactionChangeCount;
+    this.lastTransactionAutoIndentRequests = this.autoIndentRequests;
+    this.lastTransactionParseError = error;
+
+    const ranges = [...this.pendingTransactionRanges];
+    this.pendingTransactionRanges.clear();
+    if (error) {
+      console.error("Tree-sitter update failed", error);
+    } else {
+      // The editor is going to ask if the changed on-screen lines are now
+      // foldable. Run one capture query per accumulated range only after the
+      // update that owns every subsumed transaction has finished.
+      for (const range of ranges) {
+        this.prefillFoldCache(range);
+      }
+
+      for (const layer of this.getAllInjectionLayers()) {
+        // The owning update has now either reparsed this layer or proved that
+        // the transaction did not affect its contents.
+        layer.treeIsDirty = false;
+        layer.editedRange = null;
+      }
+    }
+
+    this.resolveNextTransactionPromise();
+    this.transactionChangeCount = 0;
+    this.autoIndentRequests = 0;
+    this.currentTransactionReparseBudgetMs = this.transactionReparseBudgetMs;
   }
 
   // Invalidate fold caches for the rows touched by the given range.
@@ -1019,11 +1112,18 @@ class TreeSitterLanguageMode {
     return oldTree;
   }
 
-  parseAsync(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
+  parseAsync(
+    language,
+    oldTree,
+    includedRanges,
+    { tag = null, scopeName = null, initialTimeoutMicros = null } = {},
+  ) {
     let devMode = lumine.window.isDevMode();
     let parser = this.acquireParserForLanguage(language);
     oldTree = this.compatibleOldTreeForLanguage(language, oldTree);
-    let timeoutMicros = oldTree ? this.syncTimeoutMicros : INITIAL_PARSE_JOB_LIMIT_MICROS;
+    let timeoutMicros = oldTree
+      ? this.syncTimeoutMicros
+      : (initialTimeoutMicros ?? INITIAL_PARSE_JOB_LIMIT_MICROS);
     // Async batches of an initial parse get their own, smaller budget; an
     // incremental parse keeps its configured slice so a zero-budget test
     // parser still advances one progress tick per batch.
@@ -3162,6 +3262,7 @@ class LanguageLayer {
     this.subscriptions = new CompositeDisposable();
 
     this.injectionPointVersion = 0;
+    this.injectionPopulationNeedsRetry = false;
     this.pendingInjectionPopulationRequests = [];
     this.injectionPopulationDrainPromise = null;
     this.pendingQueryReloadTypes = new Set();
@@ -3774,7 +3875,11 @@ class LanguageLayer {
             return this.currentParsePromise.then(() => true);
           }
           await this.currentParsePromise;
-        } while (!this.destroyed && (!this.tree || this.tree.rootNode.hasChanges));
+        } while (
+          !params.initialInjectionUpdateAborted &&
+          !this.destroyed &&
+          (this.injectionPopulationNeedsRetry || !this.tree || this.tree.rootNode.hasChanges)
+        );
 
         // `true` means that this update occurs in its own distinct transaction.
         return true;
@@ -3806,11 +3911,70 @@ class LanguageLayer {
     return null;
   }
 
+  injectionParentSnapshotIsCurrent({ layer, tree, injectionPointVersion }) {
+    return Boolean(
+      layer &&
+      tree &&
+      !layer.destroyed &&
+      layer.tree === tree &&
+      layer.injectionPointVersion === injectionPointVersion &&
+      !tree.rootNode.hasChanges,
+    );
+  }
+
+  requestInjectionParentRetry(parentSnapshot) {
+    const parentLayer = parentSnapshot?.layer;
+    if (parentLayer && !parentLayer.destroyed) {
+      parentLayer.injectionPopulationNeedsRetry = true;
+    }
+  }
+
   async _performUpdate(nodeRangeSet, params = {}) {
     // It's much more common in specs than in real life, but it's always
     // possible for a layer to get destroyed during the async period between
     // layer updates.
     if (this.destroyed) return;
+
+    if (
+      this.languageMode.useAsyncParsing &&
+      this.depth > 0 &&
+      !this.tree &&
+      !params.initialInjectionUpdateStarted
+    ) {
+      // The topology for this layer has already been committed. Defer only its
+      // first parse so a burst of newly-ready injection layers shares one
+      // renderer-task budget instead of each consuming a separate initial
+      // parse allowance in the same microtask checkpoint.
+      const parentLayer = this.marker?.parentLanguageLayer;
+      const parentSnapshot = {
+        layer: parentLayer,
+        tree: parentLayer?.tree,
+        injectionPointVersion: parentLayer?.injectionPointVersion,
+      };
+      params.async = true;
+      return this.languageMode.scheduleInitialInjectionUpdate(() => {
+        if (this.destroyed || !this.injectionParentSnapshotIsCurrent(parentSnapshot)) {
+          // The included ranges were planned from an older parent tree. Let
+          // the parent's in-flight update finish and retry reconciliation
+          // instead of parsing invalid ranges or spinning this layer's retry
+          // loop while the parent is waiting on it.
+          this.requestInjectionParentRetry(parentSnapshot);
+          params.initialInjectionUpdateAborted = true;
+          return;
+        }
+        const updatePromise = this._performUpdate(nodeRangeSet, {
+          ...params,
+          initialInjectionUpdateStarted: true,
+          initialInjectionParentSnapshot: parentSnapshot,
+        });
+        return Promise.resolve(updatePromise).finally(() => {
+          if (!this.injectionParentSnapshotIsCurrent(parentSnapshot)) {
+            this.requestInjectionParentRetry(parentSnapshot);
+            params.initialInjectionUpdateAborted = true;
+          }
+        });
+      });
+    }
 
     let includedRanges = null;
     this.rangeList.clear();
@@ -3833,6 +3997,9 @@ class LanguageLayer {
       if (this.languageMode.useAsyncParsing) {
         tree = this.languageMode.parseAsync(language, this.tree, includedRanges, {
           scopeName: this.grammar.scopeName,
+          initialTimeoutMicros: params.initialInjectionUpdateStarted
+            ? this.languageMode.syncTimeoutMicros
+            : null,
         });
         if (tree.then) {
           params.async = true;
@@ -3854,6 +4021,19 @@ class LanguageLayer {
 
     let changes = this.patchSinceCurrentParseStarted.getChanges();
     this.patchSinceCurrentParseStarted = null;
+
+    if (
+      params.initialInjectionParentSnapshot &&
+      !this.injectionParentSnapshotIsCurrent(params.initialInjectionParentSnapshot)
+    ) {
+      // The parse used included ranges planned from a superseded parent tree.
+      // Do not publish it even briefly: current-range markers, canonical trees
+      // and invalidation events must all continue to describe the last
+      // committed parent topology until its owner retries reconciliation.
+      tree.delete?.();
+      this.requestInjectionParentRetry(params.initialInjectionParentSnapshot);
+      return;
+    }
 
     for (let change of changes) {
       let newExtent = Point.fromObject(change.newEnd).traversalFrom(change.newStart);
@@ -3969,6 +4149,14 @@ class LanguageLayer {
       // re-highlighting. But sometimes we need to go further and invalidate
       // rows that don't even need highlighting changes.
       this.languageMode.emitFoldUpdate(range);
+    }
+
+    if (this.injectionPopulationNeedsRetry) {
+      // A queued child update was planned from an older tree. The current tree
+      // may already have been synchronously replaced with a clean one, so its
+      // `hasChanges` bit alone cannot request this reconciliation retry.
+      affectedRange = this.getExtent();
+      this.injectionPopulationNeedsRetry = false;
     }
 
     if (affectedRange) {
