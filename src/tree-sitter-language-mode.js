@@ -62,6 +62,7 @@ const FOLD_WINDOW_ROWS_AHEAD = 300;
 // Row windows keep each native traversal bounded while preserving document
 // order; nodes spanning a window boundary are deduplicated below.
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
+const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 65536;
 const PARSERS_IN_USE = new Set();
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
@@ -255,6 +256,7 @@ class TreeSitterLanguageMode {
     grammars,
     syncTimeoutMicros,
     injectionCandidateChunkRows,
+    injectionCandidateChunkCodeUnits,
   }) {
     this.buffer = buffer;
     this.grammar = grammar;
@@ -268,6 +270,8 @@ class TreeSitterLanguageMode {
     this.currentTransactionReparseBudgetMs = undefined;
     this.injectionCandidateChunkRows =
       injectionCandidateChunkRows ?? INJECTION_CANDIDATE_CHUNK_ROWS;
+    this.injectionCandidateChunkCodeUnits =
+      injectionCandidateChunkCodeUnits ?? INJECTION_CANDIDATE_CHUNK_CODE_UNITS;
 
     this.injectionsMarkerLayer = buffer.addMarkerLayer();
 
@@ -4352,7 +4356,10 @@ class LanguageLayer {
     }
 
     const chunkRows = Math.max(1, this.languageMode.injectionCandidateChunkRows);
-    if (end.row - start.row <= chunkRows) {
+    const chunkCodeUnits = Math.max(1, this.languageMode.injectionCandidateChunkCodeUnits);
+    const startIndex = this.buffer.characterIndexForPosition(start);
+    const endIndex = this.buffer.characterIndexForPosition(end);
+    if (end.row - start.row <= chunkRows && endIndex - startIndex <= chunkCodeUnits) {
       return tree.rootNode.descendantsOfType(types, start, end);
     }
 
@@ -4373,7 +4380,10 @@ class LanguageLayer {
       types,
       start,
       end,
+      startIndex,
+      endIndex,
       chunkRows,
+      chunkCodeUnits,
       injectionPointVersion,
       candidateQuery,
     );
@@ -4384,7 +4394,10 @@ class LanguageLayer {
     types,
     start,
     end,
+    startIndex,
+    endIndex,
     chunkRows,
+    chunkCodeUnits,
     injectionPointVersion,
     candidateQuery,
   ) {
@@ -4392,17 +4405,26 @@ class LanguageLayer {
     const seenNodeIds = new Set();
     const rootNode = tree.rootNode;
     let chunkStart = start;
+    let chunkStartIndex = startIndex;
 
-    while (chunkStart.compare(end) < 0) {
+    while (chunkStartIndex < endIndex) {
       const nextRow = Math.min(end.row, chunkStart.row + chunkRows);
-      let chunkEnd = nextRow === end.row ? end : new Point(nextRow, 0);
-      if (chunkEnd.compare(chunkStart) <= 0) {
-        chunkEnd = end;
+      const rowChunkEnd = nextRow === end.row ? end : new Point(nextRow, 0);
+      const rowChunkEndIndex = this.buffer.characterIndexForPosition(rowChunkEnd);
+      const codeUnitChunkEndIndex = Math.min(endIndex, chunkStartIndex + chunkCodeUnits);
+      let chunkEndIndex = Math.min(rowChunkEndIndex, codeUnitChunkEndIndex);
+      if (chunkEndIndex <= chunkStartIndex) {
+        chunkEndIndex = codeUnitChunkEndIndex;
       }
+      const chunkEnd =
+        chunkEndIndex === endIndex ? end : this.buffer.positionForCharacterIndex(chunkEndIndex);
 
       const chunkNodes = candidateQuery
         ? candidateQuery
-            .captures(rootNode, { startPosition: chunkStart, endPosition: chunkEnd })
+            .captures(rootNode, {
+              startPosition: chunkStart,
+              endPosition: chunkEnd,
+            })
             .map((capture) => capture.node)
         : rootNode.descendantsOfType(types, chunkStart, chunkEnd);
       for (const node of chunkNodes) {
@@ -4411,12 +4433,13 @@ class LanguageLayer {
         result.push(node);
       }
 
-      if (chunkEnd.compare(end) >= 0) break;
+      if (chunkEndIndex >= endIndex) break;
       await this.languageMode._yieldForInjectionCandidateScan();
       if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
         return null;
       }
       chunkStart = chunkEnd;
+      chunkStartIndex = chunkEndIndex;
     }
 
     return result;

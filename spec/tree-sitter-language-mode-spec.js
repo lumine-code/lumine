@@ -1275,6 +1275,38 @@ describe("TreeSitterLanguageMode", () => {
         expect(seen).toEqual(["identifier:0", "identifier:1", "template_string:1", "identifier:5"]);
       });
 
+      it("yields while collecting candidates from one very long row", async () => {
+        jasmine.useRealClock();
+        const identifiers = Array.from({ length: 80 }, (_, index) => `value${index}`);
+        const seen = [];
+        jsGrammar.addInjectionPoint({
+          type: "identifier",
+          language(node) {
+            seen.push(node.text);
+          },
+          content(node) {
+            return node;
+          },
+        });
+        buffer.setText(identifiers.map((identifier) => `${identifier};`).join(""));
+        spyOn(
+          TreeSitterLanguageMode.prototype,
+          "_yieldForInjectionCandidateScan",
+        ).and.callThrough();
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionCandidateChunkCodeUnits: 64,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        expect(languageMode._yieldForInjectionCandidateScan).toHaveBeenCalled();
+        expect(seen).toEqual(identifiers);
+      });
+
       it("compiles a large-file injection candidate query only once per grammar", async () => {
         jasmine.useRealClock();
         jsGrammar.addInjectionPoint({
