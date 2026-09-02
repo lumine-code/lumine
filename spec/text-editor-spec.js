@@ -10555,9 +10555,21 @@ describe("TextEditor advanced behavior", () => {
       editor = new TextEditor({ buffer });
 
       expect(editor.getSyntaxNodeAtBufferPosition([0, 6])).toBeNull();
+      expect(
+        editor.getSyntaxNodeContainingBufferRange([
+          [0, 6],
+          [0, 7],
+        ]),
+      ).toBeNull();
 
       await languageMode.ready;
       expect(editor.getSyntaxNodeAtBufferPosition([0, 6]).type).toBe("identifier");
+      expect(
+        editor.getSyntaxNodeContainingBufferRange([
+          [0, 6],
+          [0, 7],
+        ]).type,
+      ).toBe("identifier");
     });
 
     it("chooses the smallest node across layers, using depth only as a tie-breaker", async () => {
@@ -10607,6 +10619,59 @@ describe("TextEditor advanced behavior", () => {
       expect(tiedSmallest.id).toBe(tiedHtmlNode.id);
       expect(tiedHtmlNode.type).toBe("text");
       expect(tiedJavascriptNode.type).toBe("string_fragment");
+    });
+  });
+
+  describe(".getSyntaxNodeContainingBufferRange(bufferRange, where)", () => {
+    it("returns null in the null language mode", () => {
+      editor = new TextEditor({ buffer: new TextBuffer({ text: "plain text" }) });
+
+      expect(
+        editor.getSyntaxNodeContainingBufferRange([
+          [0, 1],
+          [0, 3],
+        ]),
+      ).toBeNull();
+    });
+
+    it("uses only layers shared by both endpoints and passes their grammar to the predicate", async () => {
+      jasmine.useRealClock();
+      await lumine.packages.activatePackage("language-html");
+      await lumine.packages.activatePackage("language-javascript");
+      editor = await lumine.workspace.open();
+      const text = "const view = html`<section>Body</section>`;";
+      editor.setGrammar(lumine.grammars.grammarForScopeName("source.js"));
+      editor.setText(text);
+      expect(await editor.whenGrammarSettled()).toBe(true);
+
+      const sectionIndex = text.indexOf("section");
+      const sectionRange = [
+        editor.getBuffer().positionForCharacterIndex(sectionIndex + 1),
+        editor.getBuffer().positionForCharacterIndex(sectionIndex + 2),
+      ];
+      const htmlNode = editor.getSyntaxNodeContainingBufferRange(
+        sectionRange,
+        (_node, grammar) => grammar.scopeName === "text.html.basic",
+      );
+      expect(htmlNode.type).toBe("tag_name");
+
+      const crossLayerRange = [
+        editor.getBuffer().positionForCharacterIndex(text.indexOf("html")),
+        sectionRange[1],
+      ];
+      const sharedNode = editor.getSyntaxNodeContainingBufferRange(crossLayerRange);
+      const javascriptNode = editor.getSyntaxNodeContainingBufferRange(
+        crossLayerRange,
+        (_node, grammar) => grammar.scopeName === "source.js",
+      );
+      const injectedNode = editor.getSyntaxNodeContainingBufferRange(
+        crossLayerRange,
+        (_node, grammar) => grammar.scopeName === "text.html.basic",
+      );
+      expect(sharedNode.id).toBe(javascriptNode.id);
+      expect(javascriptNode.startIndex).toBeLessThanOrEqual(text.indexOf("html"));
+      expect(javascriptNode.endIndex).toBeGreaterThan(sectionIndex + 2);
+      expect(injectedNode).toBeNull();
     });
   });
 

@@ -5652,6 +5652,32 @@ module.exports = class TextEditor {
    * @public
    * @status extended
    *
+   * Get the smallest Tree-sitter syntax node that contains the given range in
+   * buffer coordinates across all language layers shared by both endpoints.
+   *
+   * Node breadth decides between candidates first; the deeper language layer
+   * wins only when candidates have equal breadth. An optional predicate
+   * receives each candidate node and its grammar. Returns `null` when no syntax
+   * tree or shared containing layer is available.
+   *
+   * The returned node belongs to the current parse snapshot. Do not retain it
+   * after the buffer changes or the grammar reparses; request it again instead.
+   *
+   * @param bufferRange - A {@link Range} or `Array` of two `[row, column]` points.
+   * @param {Function} [where] - Optional predicate receiving a syntax node and its {@link TreeSitterGrammar}.
+   * @returns {Object|null} A Tree-sitter syntax node, or `null`.
+   */
+  getSyntaxNodeContainingBufferRange(bufferRange, where) {
+    const languageMode = this.buffer.getLanguageMode();
+    return (
+      languageMode.getSyntaxNodeContainingRange?.(Range.fromObject(bufferRange), where) ?? null
+    );
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
    * Determine whether the current root grammar or an active injected grammar
    * declares a query of the given type.
    *
