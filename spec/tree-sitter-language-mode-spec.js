@@ -1293,18 +1293,99 @@ describe("TreeSitterLanguageMode", () => {
           TreeSitterLanguageMode.prototype,
           "_yieldForInjectionCandidateScan",
         ).and.callThrough();
+        spyOn(TreeSitterLanguageMode.prototype, "_yieldForInjectionReconcile").and.callThrough();
         const languageMode = new TreeSitterLanguageMode({
           grammar: jsGrammar,
           buffer,
           config: lumine.config,
           grammars: lumine.grammars,
           injectionCandidateChunkCodeUnits: 64,
+          injectionReconcileChunkSize: 10,
         });
         buffer.setLanguageMode(languageMode);
         await languageMode.ready;
 
         expect(languageMode._yieldForInjectionCandidateScan).toHaveBeenCalled();
+        expect(languageMode._yieldForInjectionReconcile).toHaveBeenCalled();
         expect(seen).toEqual(identifiers);
+      });
+
+      it("deduplicates a Unicode node spanning several column chunks", async () => {
+        jasmine.useRealClock();
+        const seen = [];
+        for (const type of ["identifier", "string"]) {
+          jsGrammar.addInjectionPoint({
+            type,
+            language(node) {
+              seen.push(`${node.type}:${node.text}`);
+            },
+            content(node) {
+              return node;
+            },
+          });
+        }
+        const stringContents = "🙂".repeat(80);
+        buffer.setText(`const first = "${stringContents}"; const after = value;`);
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionCandidateChunkCodeUnits: 31,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        expect(seen).toEqual([
+          "identifier:first",
+          `string:"${stringContents}"`,
+          "identifier:after",
+          "identifier:value",
+        ]);
+      });
+
+      it("abandons a stale reconcile plan before mutating injection layers", async () => {
+        jasmine.useRealClock();
+        jsGrammar.addInjectionPoint({
+          type: "identifier",
+          language() {},
+          content(node) {
+            return node;
+          },
+        });
+
+        let resumePlan;
+        const realYield = TreeSitterLanguageMode.prototype._yieldForInjectionReconcile;
+        spyOn(TreeSitterLanguageMode.prototype, "_yieldForInjectionReconcile").and.callFake(
+          function () {
+            if (!resumePlan) {
+              return new Promise((resolve) => {
+                resumePlan = resolve;
+              });
+            }
+            return realYield.call(this);
+          },
+        );
+
+        buffer.setText("a;b;c;");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+          injectionReconcileChunkSize: 1,
+        });
+        buffer.setLanguageMode(languageMode);
+        while (!resumePlan) await Promise.resolve();
+        const rootLayer = languageMode.rootLanguageLayer;
+        spyOn(rootLayer, "_commitInjectionPlan").and.callThrough();
+
+        buffer.setText("w;x;y;z;");
+        resumePlan();
+        await languageMode.ready;
+
+        expect(rootLayer._commitInjectionPlan).toHaveBeenCalledTimes(1);
+        expect(rootLayer.childLayerMarkers.size).toBe(0);
       });
 
       it("compiles a large-file injection candidate query only once per grammar", async () => {

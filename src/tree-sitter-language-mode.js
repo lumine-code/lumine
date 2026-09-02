@@ -63,6 +63,7 @@ const FOLD_WINDOW_ROWS_AHEAD = 300;
 // order; nodes spanning a window boundary are deduplicated below.
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const INJECTION_CANDIDATE_CHUNK_CODE_UNITS = 65536;
+const INJECTION_RECONCILE_CHUNK_SIZE = 1000;
 const PARSERS_IN_USE = new Set();
 // web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
 // whose Wasm handle already faults cannot be deleted or finalized safely, so
@@ -257,6 +258,7 @@ class TreeSitterLanguageMode {
     syncTimeoutMicros,
     injectionCandidateChunkRows,
     injectionCandidateChunkCodeUnits,
+    injectionReconcileChunkSize,
   }) {
     this.buffer = buffer;
     this.grammar = grammar;
@@ -272,6 +274,8 @@ class TreeSitterLanguageMode {
       injectionCandidateChunkRows ?? INJECTION_CANDIDATE_CHUNK_ROWS;
     this.injectionCandidateChunkCodeUnits =
       injectionCandidateChunkCodeUnits ?? INJECTION_CANDIDATE_CHUNK_CODE_UNITS;
+    this.injectionReconcileChunkSize =
+      injectionReconcileChunkSize ?? INJECTION_RECONCILE_CHUNK_SIZE;
 
     this.injectionsMarkerLayer = buffer.addMarkerLayer();
 
@@ -452,6 +456,10 @@ class TreeSitterLanguageMode {
   }
 
   _yieldForInjectionCandidateScan() {
+    return new Promise((resolve) => setImmediate(resolve));
+  }
+
+  _yieldForInjectionReconcile() {
     return new Promise((resolve) => setImmediate(resolve));
   }
 
@@ -4312,11 +4320,12 @@ class LanguageLayer {
         }
         return this._reconcileInjections(
           resolvedNodes,
-          range,
           nodeRangeSet,
           existingInjectionMarkers,
           rangesByInjectionMarker,
           injectionPointsByType,
+          tree,
+          injectionPointVersion,
         );
       });
     }
@@ -4326,11 +4335,12 @@ class LanguageLayer {
     }
     return this._reconcileInjections(
       nodes,
-      range,
       nodeRangeSet,
       existingInjectionMarkers,
       rangesByInjectionMarker,
       injectionPointsByType,
+      tree,
+      injectionPointVersion,
     );
   }
 
@@ -4447,145 +4457,165 @@ class LanguageLayer {
 
   _reconcileInjections(
     nodes,
-    range,
     nodeRangeSet,
     existingInjectionMarkers,
     rangesByInjectionMarker,
     injectionPointsByType,
+    tree,
+    injectionPointVersion,
   ) {
-    const promises = [];
-    const markersToUpdate = new Map();
-    const grammarsByLanguageName = new Map();
+    const plan = {
+      nodes,
+      nodeRangeSet,
+      injectionPointsByType,
+      nodeIndex: 0,
+      injectionPointIndex: 0,
+      candidates: [],
+      recognizedLanguageNames: new Set(),
+      unrecognizedLanguageNames: new Set(),
+      grammarsByLanguageName: new Map(),
+    };
+    const chunkSize = Math.max(1, this.languageMode.injectionReconcileChunkSize);
 
-    let existingInjectionMarkerIndex = 0;
-    for (const node of nodes) {
-      // A given node can be the basis for an arbitrary number of injection
-      // points, but first it has to pass our gauntlet of tests:
-      for (const injectionPoint of injectionPointsByType[node.type] ?? []) {
-        // Does it give us a language string?
+    if (this._advanceInjectionPlan(plan, chunkSize)) {
+      if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) return;
+      return this._commitInjectionPlan(plan, existingInjectionMarkers, rangesByInjectionMarker);
+    }
+
+    return this._finishInjectionPlanInChunks(plan, chunkSize, tree, injectionPointVersion).then(
+      (completedPlan) => {
+        if (!completedPlan || !this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
+          return;
+        }
+        return this._commitInjectionPlan(
+          completedPlan,
+          existingInjectionMarkers,
+          rangesByInjectionMarker,
+        );
+      },
+    );
+  }
+
+  _advanceInjectionPlan(plan, chunkSize) {
+    let operations = 0;
+
+    while (plan.nodeIndex < plan.nodes.length) {
+      const node = plan.nodes[plan.nodeIndex];
+      const injectionPoints = plan.injectionPointsByType[node.type] ?? [];
+
+      while (plan.injectionPointIndex < injectionPoints.length) {
+        const injectionPoint = injectionPoints[plan.injectionPointIndex++];
+        operations++;
+
         const languageName = injectionPoint.language(node);
-        if (!languageName) {
-          continue;
-        }
+        if (languageName) {
+          let grammar;
+          if (plan.grammarsByLanguageName.has(languageName)) {
+            grammar = plan.grammarsByLanguageName.get(languageName);
+          } else {
+            grammar = this.languageMode.grammarForLanguageString(languageName);
+            plan.grammarsByLanguageName.set(languageName, grammar);
+          }
 
-        // Does that string match up with a grammar that we recognize?
-        let grammar;
-        if (grammarsByLanguageName.has(languageName)) {
-          grammar = grammarsByLanguageName.get(languageName);
-        } else {
-          grammar = this.languageMode.grammarForLanguageString(languageName);
-          grammarsByLanguageName.set(languageName, grammar);
-        }
-        if (!grammar) {
-          // Keep track of these failures. When a new grammar is added, some of
-          // them might match.
-          this.unrecognizedLanguageStrings.add(languageName);
-          continue;
-        }
-
-        // We matched a language string here, so remove it from this set just
-        // in case it was in there from a past failure.
-        this.unrecognizedLanguageStrings.delete(languageName);
-
-        // Does it offer us a node, or array of nodes, which a new injection
-        // layer should use for its content?
-        const contentNodes = injectionPoint.content(node, this.buffer);
-        if (!contentNodes) {
-          continue;
-        }
-
-        const injectionNodes = Array.isArray(contentNodes) ? contentNodes : [contentNodes];
-        if (!injectionNodes.length) continue;
-
-        const injectionRange = node.range;
-
-        let marker;
-
-        // It's surprisingly hard to match up the injection point that we now
-        // know we need… with the one that may already exist that was created
-        // or updated based on the state of the tree from the last keystroke.
-        // There is no continuity between the previous tree and the new tree
-        // that we can rely on. Unless the marker and the base node of the
-        // injection point agree on an exact range, we can't be sure enough to
-        // re-use an existing layer.
-        //
-        // This isn't a huge deal because (a) markers are good at adapting to
-        // changes, so those two things will agree more often than you think;
-        // (b) even when they don't agree, it's not very costly to destroy and
-        // recreate another `LanguageLayer`.
-        //
-        // Since both `existingInjectionMarkers` and `nodes` are guaranteed to
-        // be sorted in buffer order, we can take shortcuts in how we pair them
-        // up.
-        //
-        for (
-          let i = existingInjectionMarkerIndex, n = existingInjectionMarkers.length;
-          i < n;
-          i++
-        ) {
-          const existingMarker = existingInjectionMarkers[i];
-          const comparison = rangesByInjectionMarker.get(existingMarker).compare(injectionRange);
-          if (comparison > 0) {
-            // This marker seems to occur after the range we want to inject
-            // into, meaning there's a good chance it's not ours. And it means
-            // that none of the remaining markers will likely be our candidate,
-            // either; so we should give up and create a new one.
-            break;
-          } else if (comparison === 0) {
-            // A range can host several injections into the same grammar. Reuse
-            // this marker only when it belongs to this exact registered
-            // injection point and has not already been claimed by another
-            // coterminous candidate. Keep the scan index before the whole run
-            // of equal ranges so subsequent candidates can find their own
-            // markers regardless of the order in which those markers compare.
-            if (
-              !markersToUpdate.has(existingMarker) &&
-              existingMarker.languageLayer.grammar === grammar &&
-              existingMarker.languageLayer.injectionPoint === injectionPoint
-            ) {
-              marker = existingMarker;
-              break;
+          if (grammar) {
+            plan.recognizedLanguageNames.add(languageName);
+            const contentNodes = injectionPoint.content(node, this.buffer);
+            if (contentNodes) {
+              const injectionNodes = Array.isArray(contentNodes) ? contentNodes : [contentNodes];
+              if (injectionNodes.length > 0) {
+                plan.candidates.push({
+                  grammar,
+                  injectionPoint,
+                  languageName,
+                  injectionRange: node.range,
+                  nodeRangeSet: new NodeRangeSet(plan.nodeRangeSet, injectionNodes, injectionPoint),
+                });
+              }
             }
           } else {
-            // This marker occurs before our range. Since all injection
-            // candidates from this point forward are guaranteed to be of an
-            // equal or later range, there's no chance of this marker matching
-            // any candidates from this point forward. We can ignore it, and
-            // anything before it, in subsequent trips through the loop.
-            existingInjectionMarkerIndex = i + 1;
+            plan.unrecognizedLanguageNames.add(languageName);
           }
         }
 
-        if (!marker) {
-          // If we didn't match up with an existing marker/layer, we'll have to
-          // create them.
-          marker = this.languageMode.injectionsMarkerLayer.markRange(injectionRange);
-
-          marker.languageLayer = new LanguageLayer(
-            marker,
-            this.languageMode,
-            grammar,
-            this.depth + 1,
-            injectionPoint,
-          );
-
-          marker.parentLanguageLayer = this;
-
-          // Keep track of the language strings we attempt to match to
-          // grammars. This gives us a quick way to determine whether a newly
-          // added grammar will affect our injections.
-          marker.languageString = languageName;
-
-          this.childLayerMarkers.add(marker);
-        }
-
-        markersToUpdate.set(marker, new NodeRangeSet(nodeRangeSet, injectionNodes, injectionPoint));
+        if (operations >= chunkSize) return false;
       }
+
+      plan.nodeIndex++;
+      plan.injectionPointIndex = 0;
+    }
+
+    return true;
+  }
+
+  async _finishInjectionPlanInChunks(plan, chunkSize, tree, injectionPointVersion) {
+    while (true) {
+      await this.languageMode._yieldForInjectionReconcile();
+      if (!this._injectionCandidateScanIsCurrent(tree, injectionPointVersion)) {
+        return null;
+      }
+      if (this._advanceInjectionPlan(plan, chunkSize)) {
+        return plan;
+      }
+    }
+  }
+
+  _commitInjectionPlan(plan, existingInjectionMarkers, rangesByInjectionMarker) {
+    for (const languageName of plan.recognizedLanguageNames) {
+      this.unrecognizedLanguageStrings.delete(languageName);
+    }
+    for (const languageName of plan.unrecognizedLanguageNames) {
+      this.unrecognizedLanguageStrings.add(languageName);
+    }
+
+    const promises = [];
+    const markersToUpdate = new Map();
+    let existingInjectionMarkerIndex = 0;
+
+    for (const candidate of plan.candidates) {
+      const { grammar, injectionPoint, languageName, injectionRange, nodeRangeSet } = candidate;
+      let marker;
+
+      for (
+        let index = existingInjectionMarkerIndex;
+        index < existingInjectionMarkers.length;
+        index++
+      ) {
+        const existingMarker = existingInjectionMarkers[index];
+        const comparison = rangesByInjectionMarker.get(existingMarker).compare(injectionRange);
+        if (comparison > 0) {
+          break;
+        } else if (comparison === 0) {
+          if (
+            !markersToUpdate.has(existingMarker) &&
+            existingMarker.languageLayer.grammar === grammar &&
+            existingMarker.languageLayer.injectionPoint === injectionPoint
+          ) {
+            marker = existingMarker;
+            break;
+          }
+        } else {
+          existingInjectionMarkerIndex = index + 1;
+        }
+      }
+
+      if (!marker) {
+        marker = this.languageMode.injectionsMarkerLayer.markRange(injectionRange);
+        marker.languageLayer = new LanguageLayer(
+          marker,
+          this.languageMode,
+          grammar,
+          this.depth + 1,
+          injectionPoint,
+        );
+        marker.parentLanguageLayer = this;
+        marker.languageString = languageName;
+        this.childLayerMarkers.add(marker);
+      }
+
+      markersToUpdate.set(marker, nodeRangeSet);
     }
 
     for (const marker of existingInjectionMarkers) {
-      // Any markers that didn't get matched up with injection points are now
-      // stale and should be destroyed.
       if (!markersToUpdate.has(marker)) {
         this.languageMode.emitRangeUpdate(marker.getRange());
         this.childLayerMarkers.delete(marker);
@@ -4593,15 +4623,12 @@ class LanguageLayer {
       }
     }
 
-    if (markersToUpdate.size > 0) {
-      for (const [marker, nodeRangeSet] of markersToUpdate) {
-        promises.push(marker.languageLayer.update(nodeRangeSet));
-      }
+    for (const [marker, ranges] of markersToUpdate) {
+      promises.push(marker.languageLayer.update(ranges));
     }
 
     return promises.length > 0 ? Promise.all(promises) : undefined;
   }
-
   _treeEditForBufferChange(start, oldEnd, newEnd, oldText, newText) {
     let startIndex = this.buffer.characterIndexForPosition(start);
     return {
