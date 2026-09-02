@@ -81,7 +81,7 @@
     "language-log": "github:lumine-code/language-log#96ad0ce222db25374f2b0ebd01f4fedf5c6c4f6a",
     "language-powershell": "github:lumine-code/language-powershell#c637b5595c7cf299452daed716020d1f11013f98",
     "language-python": "github:lumine-code/language-python#a38d5ac570a8f48e94648bc8bd6e38310ae1b6f6",
-    "language-regex": "github:lumine-code/language-regex#1104d0291f3c2eb8b3c1feb0a268d7900f59508e",
+    "language-regex": "github:lumine-code/language-regex#6b68665fbcf7976782046bd2d582446be9736891",
     "language-shellscript": "github:lumine-code/language-shellscript#d951b4f1a11a5c2016733dc0b342d9b8227023f1",
     "language-source": "github:lumine-code/language-source#8d088681f16f7ed4ad8d179783b6e89d03c1eef5",
     "language-sql": "github:lumine-code/language-sql#b21b70a17d47c11e4f1d61bb7de28346623ea014",
