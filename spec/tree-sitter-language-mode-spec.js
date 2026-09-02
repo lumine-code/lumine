@@ -177,6 +177,50 @@ describe("TreeSitterLanguageMode", () => {
       expect(groups[0].captures.map((capture) => capture.node.text)).toEqual(["alpha", "beta"]);
       expect(languageMode.rootLanguageLayer.scopeResolver.boundaries.size).toBe(0);
     });
+
+    it("returns separate capture groups for root and injected grammars", async () => {
+      const rootGrammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      const injectedGrammar = new TreeSitterGrammar(lumine.grammars, htmlGrammarPath, {
+        ...htmlConfig,
+        injectionNames: ["capture-html"],
+      });
+      grammar = rootGrammar;
+      await rootGrammar.setQueryForTest("tagsQuery", "(identifier) @root.name");
+      await injectedGrammar.setQueryForTest("tagsQuery", "(text) @injected.name");
+      rootGrammar.addInjectionPoint({
+        type: "identifier",
+        language: () => "capture-html",
+        content: (node) => node,
+        includeChildren: true,
+        languageScope: null,
+      });
+      const registration = lumine.grammars.addGrammar(injectedGrammar);
+      buffer.setText("const alpha = beta;");
+
+      try {
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: rootGrammar,
+          buffer,
+          grammars: lumine.grammars,
+        });
+        buffer.setLanguageMode(languageMode);
+        const groups = await languageMode.getQueryCaptureGroups("tagsQuery");
+
+        const rootGroup = groups.find(({ grammar: groupGrammar }) => groupGrammar === rootGrammar);
+        const injectedGroups = groups.filter(
+          ({ grammar: groupGrammar }) => groupGrammar === injectedGrammar,
+        );
+        expect(rootGroup.captures.map(({ node }) => node.text)).toEqual(["alpha", "beta"]);
+        expect(injectedGroups.length).toBe(2);
+        expect(
+          injectedGroups.flatMap(({ captures }) => captures.map(({ node }) => node.text)),
+        ).toEqual(["alpha", "beta"]);
+      } finally {
+        buffer.setLanguageMode(null);
+        registration.dispose();
+        injectedGrammar.deactivate();
+      }
+    });
   });
 
   describe("update scheduling", () => {

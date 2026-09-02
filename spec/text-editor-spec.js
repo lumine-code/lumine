@@ -10399,6 +10399,107 @@ describe("TextEditor advanced behavior", () => {
     });
   });
 
+  describe(".whenGrammarSettled(options)", () => {
+    let buffer, languageMode;
+
+    beforeEach(async () => {
+      jasmine.useRealClock();
+      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+      await lumine.packages.activatePackage("language-javascript");
+      buffer = editor.getBuffer();
+      languageMode = buffer.getLanguageMode();
+      await languageMode.ready;
+    });
+
+    function defer() {
+      let resolve;
+      let reject;
+      const promise = new Promise((resolvePromise, rejectPromise) => {
+        resolve = resolvePromise;
+        reject = rejectPromise;
+      });
+      return { promise, resolve, reject };
+    }
+
+    it("resolves true for ready and null language modes", async () => {
+      expect(await editor.whenGrammarSettled()).toBe(true);
+
+      buffer.setLanguageMode(null);
+      expect(await editor.whenGrammarSettled()).toBe(true);
+    });
+
+    it("waits for a real cold Tree-sitter parse", async () => {
+      jasmine.useRealClock();
+      const coldBuffer = new TextBuffer({ text: "const cold = true;" });
+      const coldLanguageMode = new TreeSitterLanguageMode({
+        buffer: coldBuffer,
+        grammar: lumine.grammars.grammarForScopeName("source.js"),
+        grammars: lumine.grammars,
+      });
+      coldBuffer.setLanguageMode(coldLanguageMode);
+      const coldEditor = new TextEditor({ buffer: coldBuffer });
+      let settled = false;
+
+      const result = coldEditor.whenGrammarSettled().then((value) => {
+        settled = true;
+        return value;
+      });
+      expect(settled).toBe(false);
+      expect(await result).toBe(true);
+      expect(coldLanguageMode.rootLanguageLayer.tree).not.toBeNull();
+
+      coldEditor.destroy();
+      coldBuffer.destroy();
+    });
+
+    it("resolves false when the grammar changes while waiting", async () => {
+      const ready = defer();
+      languageMode.ready = ready.promise;
+
+      const settled = editor.whenGrammarSettled();
+      buffer.setLanguageMode(null);
+
+      expect(await settled).toBe(false);
+      ready.resolve();
+      await ready.promise;
+    });
+
+    it("resolves false when destroyed while waiting", async () => {
+      const readyForDestroy = defer();
+      languageMode.ready = readyForDestroy.promise;
+      const destroyedResult = editor.whenGrammarSettled();
+      editor.destroy();
+      expect(await destroyedResult).toBe(false);
+      readyForDestroy.resolve();
+      await readyForDestroy.promise;
+    });
+
+    it("resolves false when aborted while waiting", async () => {
+      const readyForAbort = defer();
+      languageMode.ready = readyForAbort.promise;
+      const controller = new AbortController();
+      const abortedResult = editor.whenGrammarSettled({ signal: controller.signal });
+      controller.abort();
+      expect(await abortedResult).toBe(false);
+      readyForAbort.resolve();
+      await readyForAbort.promise;
+    });
+
+    it("resolves false for a transaction parse error", async () => {
+      spyOn(languageMode, "atTransactionEnd").and.resolveTo({
+        parseError: new Error("broken incremental parse"),
+      });
+
+      expect(await editor.whenGrammarSettled()).toBe(false);
+    });
+
+    it("rejects a parser-loading failure while the grammar remains current", async () => {
+      languageMode.ready = Promise.reject(new Error("parser load failed"));
+
+      await expectAsync(editor.whenGrammarSettled()).toBeRejectedWithError("parser load failed");
+    });
+  });
+
   describe(".getSyntaxNodeAtBufferPosition(bufferPosition, where)", () => {
     it("returns null in the null language mode", () => {
       editor = new TextEditor({ buffer: new TextBuffer({ text: "plain text" }) });
@@ -10471,6 +10572,85 @@ describe("TextEditor advanced behavior", () => {
       expect(tiedSmallest.id).toBe(tiedHtmlNode.id);
       expect(tiedHtmlNode.type).toBe("text");
       expect(tiedJavascriptNode.type).toBe("string_fragment");
+    });
+  });
+
+  describe("grammar query access", () => {
+    let buffer, languageMode;
+
+    beforeEach(async () => {
+      jasmine.useRealClock();
+      editor = await lumine.workspace.open("sample.js", { autoIndent: false });
+      await lumine.packages.activatePackage("language-javascript");
+      buffer = editor.getBuffer();
+      languageMode = buffer.getLanguageMode();
+      await languageMode.ready;
+    });
+
+    async function startHangingCaptureRequest(options) {
+      const getGroups = spyOn(languageMode, "getQueryCaptureGroups").and.returnValue(
+        new Promise(() => {}),
+      );
+      const request = editor.getGrammarQueryCaptureGroups("tagsQuery", options);
+      await conditionPromise(() => getGroups.calls.count() === 1);
+      return { request };
+    }
+
+    it("reports declarations and returns resolved capture groups", async () => {
+      editor.setText("function alpha() { return alpha; }");
+      await languageMode.atTransactionEnd();
+
+      expect(editor.hasGrammarQuery("tagsQuery")).toBe(true);
+      expect(editor.hasGrammarQuery("missingQuery")).toBe(false);
+
+      const groups = await editor.getGrammarQueryCaptureGroups("tagsQuery");
+      const javascriptGroup = groups.find(({ grammar }) => grammar.scopeName === "source.js");
+      expect(javascriptGroup).toBeDefined();
+      expect(javascriptGroup.captures.length).toBeGreaterThan(0);
+    });
+
+    it("returns safe empty results for null and already-aborted requests", async () => {
+      const controller = new AbortController();
+      controller.abort();
+      expect(
+        await editor.getGrammarQueryCaptureGroups("tagsQuery", { signal: controller.signal }),
+      ).toEqual([]);
+
+      buffer.setLanguageMode(null);
+      expect(editor.hasGrammarQuery("tagsQuery")).toBe(false);
+      expect(await editor.getGrammarQueryCaptureGroups("tagsQuery")).toEqual([]);
+    });
+
+    it("cancels capture collection when the language mode changes", async () => {
+      const { request } = await startHangingCaptureRequest();
+      buffer.setLanguageMode(null);
+
+      expect(await request).toEqual([]);
+    });
+
+    it("cancels capture collection when its signal is aborted", async () => {
+      const controller = new AbortController();
+      const { request } = await startHangingCaptureRequest({ signal: controller.signal });
+      controller.abort();
+
+      expect(await request).toEqual([]);
+    });
+
+    it("cancels capture collection when the editor is destroyed", async () => {
+      const { request } = await startHangingCaptureRequest();
+      editor.destroy();
+
+      expect(await request).toEqual([]);
+    });
+
+    it("rejects a query failure while the grammar remains current", async () => {
+      spyOn(languageMode, "getQueryCaptureGroups").and.rejectWith(
+        new Error("capture query failed"),
+      );
+
+      await expectAsync(editor.getGrammarQueryCaptureGroups("tagsQuery")).toBeRejectedWithError(
+        "capture query failed",
+      );
     });
   });
 

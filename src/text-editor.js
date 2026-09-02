@@ -33,6 +33,63 @@ let nextId = 0;
 
 const DEFAULT_NON_WORD_CHARACTERS = "/\\()\"':,.;<>~!@#$%^&*|+=[]{}`?-…";
 
+function runCancellableGrammarOperation(editor, languageMode, signal, cancelledValue, operation) {
+  if (editor.isDestroyed() || signal?.aborted || editor.buffer.getLanguageMode() !== languageMode) {
+    return Promise.resolve(cancelledValue);
+  }
+
+  return new Promise((resolve, reject) => {
+    let completed = false;
+    const subscriptions = new CompositeDisposable();
+    const cleanup = () => {
+      subscriptions.dispose();
+      signal?.removeEventListener?.("abort", cancel);
+    };
+    const finish = (callback) => {
+      if (completed) return;
+      completed = true;
+      cleanup();
+      callback();
+    };
+    const complete = (value) => finish(() => resolve(value));
+    const fail = (error) => finish(() => reject(error));
+    const cancel = () => complete(cancelledValue);
+    const isCurrent = () =>
+      !editor.isDestroyed() && !signal?.aborted && editor.buffer.getLanguageMode() === languageMode;
+
+    subscriptions.add(editor.onDidDestroy(cancel));
+    subscriptions.add(
+      editor.buffer.onDidChangeLanguageMode((newLanguageMode) => {
+        if (newLanguageMode !== languageMode) cancel();
+      }),
+    );
+    signal?.addEventListener?.("abort", cancel, { once: true });
+    if (!isCurrent()) {
+      cancel();
+      return;
+    }
+
+    let result;
+    try {
+      result = operation();
+    } catch (error) {
+      if (isCurrent()) fail(error);
+      else cancel();
+      return;
+    }
+    Promise.resolve(result).then(
+      (value) => {
+        if (isCurrent()) complete(value);
+        else cancel();
+      },
+      (error) => {
+        if (isCurrent()) fail(error);
+        else cancel();
+      },
+    );
+  });
+}
+
 /**
  * @public
  * @status essential
@@ -5422,6 +5479,82 @@ module.exports = class TextEditor {
   }
 
   /**
+   * @public
+   * @status extended
+   *
+   * Wait for the current grammar to finish its initial parse and any pending
+   * transaction, including injected language layers.
+   *
+   * Returns `false` when the editor is destroyed, the grammar changes, the
+   * optional signal is aborted, or parsing the current transaction fails. A
+   * parser-loading failure rejects the returned promise.
+   *
+   * @param {Object} [options]
+   * @param {AbortSignal} [options.signal] - Cancels this wait when aborted.
+   * @returns {Promise} A promise that resolves to whether the current grammar settled successfully.
+   */
+  whenGrammarSettled({ signal } = {}) {
+    if (this.isDestroyed() || signal?.aborted) return Promise.resolve(false);
+
+    const languageMode = this.buffer.getLanguageMode();
+    const ready = languageMode.ready;
+    const atTransactionEnd = languageMode.atTransactionEnd;
+    if (!ready?.then && typeof atTransactionEnd !== "function") {
+      return Promise.resolve(true);
+    }
+
+    return new Promise((resolve, reject) => {
+      let completed = false;
+      const subscriptions = new CompositeDisposable();
+
+      const cleanup = () => {
+        subscriptions.dispose();
+        signal?.removeEventListener?.("abort", cancel);
+      };
+      const finish = (callback) => {
+        if (completed) return;
+        completed = true;
+        cleanup();
+        callback();
+      };
+      const complete = (value) => finish(() => resolve(value));
+      const fail = (error) => finish(() => reject(error));
+      const cancel = () => complete(false);
+      const isCurrent = () =>
+        !this.isDestroyed() && !signal?.aborted && this.buffer.getLanguageMode() === languageMode;
+
+      subscriptions.add(this.onDidDestroy(cancel));
+      subscriptions.add(
+        this.buffer.onDidChangeLanguageMode((newLanguageMode) => {
+          if (newLanguageMode !== languageMode) cancel();
+        }),
+      );
+      signal?.addEventListener?.("abort", cancel, { once: true });
+      if (!isCurrent()) {
+        cancel();
+        return;
+      }
+
+      (async () => {
+        try {
+          if (ready?.then) await ready;
+          if (!isCurrent()) return cancel();
+
+          const transaction =
+            typeof atTransactionEnd === "function"
+              ? await atTransactionEnd.call(languageMode)
+              : null;
+          if (!isCurrent()) return cancel();
+          complete(!transaction?.parseError);
+        } catch (error) {
+          if (!isCurrent()) cancel();
+          else fail(error);
+        }
+      })();
+    });
+  }
+
+  /**
    * @category Managing Syntax Scopes
    */
 
@@ -5501,6 +5634,62 @@ module.exports = class TextEditor {
   getSyntaxNodeAtBufferPosition(bufferPosition, where) {
     const languageMode = this.buffer.getLanguageMode();
     return languageMode.getSyntaxNodeAtPosition?.(bufferPosition, where) ?? null;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Determine whether the current root grammar or an active injected grammar
+   * declares a query of the given type.
+   *
+   * This checks declarations only; it does not load or compile the query.
+   *
+   * @param {String} queryType - The grammar query property to inspect, such as `tagsQuery`.
+   * @returns {Boolean} Whether the query is declared by a current language layer.
+   */
+  hasGrammarQuery(queryType) {
+    const languageMode = this.buffer.getLanguageMode();
+    return typeof languageMode.hasQuery === "function" ? languageMode.hasQuery(queryType) : false;
+  }
+
+  /**
+   * @public
+   * @status extended
+   *
+   * Run a grammar query against the current root syntax tree and all active
+   * injected language layers.
+   *
+   * The returned groups contain each matching grammar and its captures after
+   * Tree-sitter predicates and scope adjustments are applied. Returns an empty
+   * array when the query is absent, parsing is cancelled or unsuccessful, the
+   * grammar changes, or the editor is destroyed.
+   *
+   * Captures contain syntax nodes from the current parse snapshot. Do not
+   * retain them after the buffer changes or the grammar reparses. Parser-loading
+   * and query-execution failures reject the returned promise.
+   *
+   * @param {String} queryType - The grammar query property to run, such as `tagsQuery`.
+   * @param {Object} [options]
+   * @param {AbortSignal} [options.signal] - Cancels this query when aborted.
+   * @returns {Promise} A promise resolving to `{grammar, captures}` groups for current language layers.
+   */
+  async getGrammarQueryCaptureGroups(queryType, { signal } = {}) {
+    const languageMode = this.buffer.getLanguageMode();
+    if (!(await this.whenGrammarSettled({ signal }))) return [];
+    if (
+      this.isDestroyed() ||
+      signal?.aborted ||
+      this.buffer.getLanguageMode() !== languageMode ||
+      typeof languageMode.getQueryCaptureGroups !== "function"
+    ) {
+      return [];
+    }
+
+    const groups = await runCancellableGrammarOperation(this, languageMode, signal, [], () =>
+      languageMode.getQueryCaptureGroups(queryType, { signal }),
+    );
+    return groups ?? [];
   }
 
   /**
