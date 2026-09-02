@@ -4742,6 +4742,28 @@ describe("TreeSitterLanguageMode", () => {
       expect(buffer.getText()).toEqual(originalText);
     });
 
+    it("honors refuted indentation predicates", async () => {
+      jasmine.useRealClock();
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest(
+        "indentsQuery",
+        scm`
+        ("if" @indent
+          (#is-not? indent.matchesComparisonRow startPosition))
+      `,
+      );
+      buffer.setText("if (foo)");
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+
+      editor.setCursorBufferPosition([0, 8]);
+      editor.insertText("\n", { autoIndent: true, autoIndentNewline: true });
+      await languageMode.atTransactionEnd();
+
+      expect(editor.getLastCursor().getBufferPosition()).toEqual([1, 0]);
+    });
+
     it("allows @dedents to cancel out @indents when appropriate", async () => {
       jasmine.useRealClock();
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);

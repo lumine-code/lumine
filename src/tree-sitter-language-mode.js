@@ -5325,7 +5325,7 @@ class IndentResolver {
       // recovery, but we'll allow them if the query file explicitly tells us
       // to.
       let allowEmpty = this.getProperty(capture, "allowEmpty", "boolean", false);
-      if (node.text === "" && !allowEmpty) {
+      if (node.startIndex === node.endIndex && !allowEmpty) {
         continue;
       }
 
@@ -5610,7 +5610,7 @@ class IndentResolver {
         // indentation of whatever row that node starts on.
         if (name === "match") {
           let matchIndentLevel = this.resolveMatch(capture, {
-            row,
+            currentRow: row,
             comparisonRow,
             tabLength,
             indentationLevels: options.indentationLevels,
@@ -5986,12 +5986,12 @@ class IndentResolver {
       if (
         !controllingLayer.treeIsDirty ||
         options.forceTreeParse ||
-        !this.useAsyncIndent ||
-        !this.useAsyncParsing
+        !languageMode.useAsyncIndent ||
+        !languageMode.useAsyncParsing
       ) {
         indentTree = controllingLayer.getOrParseTree();
       } else {
-        return this.atTransactionEnd().then(({ changeCount }) => {
+        return languageMode.atTransactionEnd().then(({ changeCount }) => {
           if (changeCount > 1) {
             // Unlike `suggestedIndentForBufferRow`, we should not return
             // `undefined` here and implicitly tell `TextEditor` to handle the
@@ -6250,7 +6250,7 @@ class IndentResolver {
       if (asserted[fullName]) {
         passed = test(node, asserted[fullName], meta);
       } else if (refuted[fullName]) {
-        passed = !test(node, asserted[fullName], meta);
+        passed = !test(node, refuted[fullName], meta);
       }
       if (!passed) return false;
     }
