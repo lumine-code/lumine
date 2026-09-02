@@ -118,6 +118,14 @@ const UI_VARIABLES_EXTENDED = [
   "button-text-color-selected",
   "button-border-color-selected",
   "checkbox-background-color",
+  "data-grid-text-color",
+  "data-grid-muted-color",
+  "data-grid-null-color",
+  "data-grid-border-color",
+  "data-grid-header-color",
+  "data-grid-accent-color",
+  "data-grid-highlight-color",
+  "data-grid-current-highlight-color",
   "input-background-color-focus",
   "input-selection-color",
   "input-selection-color-focus",
@@ -146,6 +154,8 @@ const UI_VARIABLES_EXTENDED = [
   "ui-padding-icon",
   "ui-line-height",
   "ui-tab-height",
+  "data-grid-row-height",
+  "data-grid-header-height",
 ];
 
 const SYNTAX_VARIABLES = [

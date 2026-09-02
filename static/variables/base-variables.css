@@ -141,6 +141,14 @@
   --button-text-color-selected: var(--accent-bg-text-color);
   --button-border-color-selected: var(--base-border-color);
   --checkbox-background-color: rgb(from var(--accent-bg-color) r g b / 33%);
+  --data-grid-text-color: var(--text-color);
+  --data-grid-muted-color: var(--text-color-subtle);
+  --data-grid-null-color: var(--text-color-subtle);
+  --data-grid-border-color: var(--base-border-color);
+  --data-grid-header-color: var(--background-color-highlight);
+  --data-grid-accent-color: var(--accent-color);
+  --data-grid-highlight-color: var(--accent-color);
+  --data-grid-current-highlight-color: var(--accent-color);
   --input-background-color-focus: color-mix(
     in srgb,
     var(--accent-bg-color) 10%,
@@ -189,6 +197,8 @@
   --ui-padding-icon: calc(var(--ui-padding) / 3.3);
   --ui-line-height: calc(var(--ui-size) * 2);
   --ui-tab-height: calc(var(--ui-size) * 2.5);
+  --data-grid-row-height: 24px;
+  --data-grid-header-height: 24px;
 
   /* --- syntax: general --- */
   --syntax-text-color: #333;

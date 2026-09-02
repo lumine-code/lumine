@@ -58,6 +58,19 @@ describe("the theme variable contract", () => {
     expect(duplicates).toEqual([]);
   });
 
+  it("exposes shared data-grid tokens as derived UI variables", () => {
+    expect(UI_VARIABLES_EXTENDED).toEqual(
+      jasmine.arrayContaining([
+        "data-grid-text-color",
+        "data-grid-border-color",
+        "data-grid-header-color",
+        "data-grid-accent-color",
+        "data-grid-row-height",
+        "data-grid-header-height",
+      ]),
+    );
+  });
+
   it("keeps package-owned variables out of the global theme contract", () => {
     const manifestNames = [...UI_VARIABLES, ...UI_VARIABLES_EXTENDED, ...SYNTAX_VARIABLES];
     const cssNames = cssCustomPropertyNames("base-variables.css");
