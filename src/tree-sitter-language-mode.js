@@ -278,6 +278,7 @@ class TreeSitterLanguageMode {
 
     this.emitter = new Emitter();
     this.isFoldableCache = [];
+    this.foldRangeIndex = null;
     this.pendingDirtyHighlightRanges = new TreeSitterRangeList();
     this.dirtyHighlightPromise = null;
 
@@ -455,6 +456,7 @@ class TreeSitterLanguageMode {
     }
 
     let { oldRange, newRange, oldText, newText } = change;
+    this.foldRangeIndex = null;
 
     const startIndex = this.buffer.characterIndexForPosition(change.newRange.start);
 
@@ -565,6 +567,7 @@ class TreeSitterLanguageMode {
   // range, but this method allows us to invalidate parts of the fold cache
   // without affecting syntax highlighting.
   emitFoldUpdate(range) {
+    this.foldRangeIndex = null;
     const startRow = range.start.row;
     const endRow = range.end.row;
     for (let row = startRow; row < endRow; row++) {
@@ -1322,15 +1325,52 @@ class TreeSitterLanguageMode {
       }
     }
 
-    // Move backwards until we find a fold range containing this row.
-    for (let row = point.row - 1; row >= 0; row--) {
-      let range = this.getFoldRangeForRow(row);
-      if (range && range.containsPoint(point)) {
-        return range;
+    const entries = this.foldRangeIndex ?? (this.foldRangeIndex = this.buildFoldRangeIndex());
+    let low = 0;
+    let high = entries.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      if (entries[middle].range.start.row < point.row) {
+        low = middle + 1;
+      } else {
+        high = middle;
       }
     }
 
-    return null;
+    let best = null;
+    for (let i = low - 1; i >= 0; i--) {
+      const entry = entries[i];
+      if (entry.greatestEndThroughHere.isLessThan(point)) break;
+      if (!entry.range.containsPoint(point)) continue;
+      if (
+        !best ||
+        entry.range.start.row > best.range.start.row ||
+        (entry.range.start.row === best.range.start.row && entry.depth > best.depth)
+      ) {
+        best = entry;
+      }
+      if (best && i > 0 && entries[i - 1].range.start.row < best.range.start.row) break;
+    }
+    return best?.range ?? null;
+  }
+
+  buildFoldRangeIndex() {
+    const entries = [];
+    for (const layer of this.getAllLanguageLayers()) {
+      for (const range of layer.foldResolver.getAllFoldRanges()) {
+        entries.push({ range, depth: layer.depth });
+      }
+    }
+    entries.sort((a, b) => {
+      return a.range.start.compare(b.range.start) || b.depth - a.depth;
+    });
+
+    let greatestEnd = Point.ZERO;
+    for (const entry of entries) {
+      greatestEnd = Point.max(greatestEnd, entry.range.end);
+      entry.greatestEndThroughHere = greatestEnd;
+    }
+    return entries;
   }
 
   getFoldableRanges() {
@@ -1924,7 +1964,7 @@ class FoldResolver {
     this.layer = layer;
 
     this.boundaries = null;
-    this.boundariesStartingPosition = null;
+    this.dividedFoldEndsByStartNodeId = new Map();
   }
 
   // Retrieve the first valid fold range for this row in this language layer —
@@ -2026,6 +2066,7 @@ class FoldResolver {
   reset() {
     this.boundaries = null;
     this.boundariesRange = null;
+    this.dividedFoldEndsByStartNodeId.clear();
   }
 
   canReuseBoundaries(start, end) {
@@ -2126,49 +2167,40 @@ class FoldResolver {
     scopeResolver.reset();
 
     this.boundaries = boundaries;
+    this.indexDividedFoldPairs(boundaries);
     // The widened range, so the neighbors this pass read for can reuse it.
     this.boundariesRange = new Range(queryStart, queryEnd);
 
     return boundaries.ge(start);
   }
 
+  indexDividedFoldPairs(boundaries) {
+    this.dividedFoldEndsByStartNodeId.clear();
+    const starts = [];
+    const iterator = boundaries.begin;
+    while (iterator.key) {
+      const capture = iterator.value;
+      if (capture.name === "fold.start") {
+        starts.push(capture);
+      } else if (capture.name === "fold.end" && starts.length > 0) {
+        const start = starts.pop();
+        this.dividedFoldEndsByStartNodeId.set(start.node.id, capture);
+      }
+      iterator.next();
+    }
+  }
+
   // Given a `@fold.start` capture, queries the rest of the layer's extent to
   // find a matching `@fold.end`.
   resolveRangeForDividedFold(capture) {
     let { name } = capture;
-    let key = this.keyForDividedFold(capture);
     if (name !== "fold.start") {
       return null;
     }
 
     let extent = this.layer.getExtent();
-
-    let iterator = this.getOrCreateBoundariesIterator(
-      this.layer.tree.rootNode,
-      key.position,
-      extent.end,
-    );
-
-    let depth = 0;
-    let matchedEndCapture = null;
-
-    while (iterator.key && comparePoints(iterator.key.position, extent.end) <= 0) {
-      let { name, node } = iterator.value;
-      let isSelf = node.id === capture.node.id;
-      if (name === "fold.end" && !isSelf) {
-        if (depth === 0) {
-          matchedEndCapture = iterator.value;
-          break;
-        } else {
-          depth--;
-        }
-      } else if (name === "fold.start" && !isSelf) {
-        // A later `fold.start` has occurred, so the next `fold.end` will pair
-        // with it, not with ours.
-        depth++;
-      }
-      iterator.next();
-    }
+    this.getOrCreateBoundariesIterator(this.layer.tree.rootNode, extent.start, extent.end);
+    const matchedEndCapture = this.dividedFoldEndsByStartNodeId.get(capture.node.id);
 
     // There's no guarantee that a matching `@fold.end` will even appear, so if
     // it doesn't, then this row does not contain a valid fold.

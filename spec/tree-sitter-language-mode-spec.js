@@ -2587,6 +2587,21 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe("folding", () => {
+    it("finds a containing fold without querying every preceding row", async () => {
+      const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      await grammar.setQueryForTest("foldsQuery", "(statement_block) @fold");
+      buffer.setText(
+        Array.from({ length: 2000 }, (_, index) => `const x${index} = ${index};`).join("\n"),
+      );
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      spyOn(languageMode, "getFoldRangeForRow").and.callThrough();
+
+      expect(languageMode.getFoldableRangeContainingPoint(new Point(1999, 0))).toBeNull();
+      expect(languageMode.getFoldRangeForRow).not.toHaveBeenCalled();
+    });
+
     it("can fold nodes that start and end with specified tokens", async () => {
       const grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
 
