@@ -75,7 +75,7 @@
     "language-git": "github:lumine-code/language-git#74fec6637b8360aad5506f4297b0f9cad6b5fcb2",
     "language-html": "github:lumine-code/language-html#e445a34ba7cff97d138439b29239bf5e9e0a82f3",
     "language-hyperlink": "github:lumine-code/language-hyperlink#929e29239785ae2e04232115c967a28c6476e489",
-    "language-ipython": "github:lumine-code/language-ipython#aff6500a1b6b6ea33761d00b0712aaf9651042d5",
+    "language-ipython": "github:lumine-code/language-ipython#b651aefb6cb6903e753195668a03d8c6b3b65a46",
     "language-javascript": "github:lumine-code/language-javascript#509b020a646de7e4d2c17a51db58b9cce2b78b54",
     "language-json": "github:lumine-code/language-json#2856c16a2ba8d8d12ae0b76bf7f396abcb542715",
     "language-log": "github:lumine-code/language-log#6b9e5b84d210092e73fe427b6208b6ef1e89a523",
