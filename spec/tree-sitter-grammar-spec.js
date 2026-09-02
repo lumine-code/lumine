@@ -190,6 +190,24 @@ describe("TreeSitterGrammar", () => {
       expect(query.delete).toHaveBeenCalledTimes(1);
       expect(grammar.internalQueryCache.size).toBe(0);
     });
+
+    it("re-reads query files after the same grammar object is reactivated", async () => {
+      const queryPath = writeQueryFile("highlights.scm", "(identifier) @variable");
+      const grammar = makeGrammar({ highlightsQuery: path.basename(queryPath) });
+      grammar.activate();
+      await grammar.getLanguage();
+      const firstSubscriptions = grammar.subscriptions;
+      expect(grammar.highlightsQuery).toContain("@variable");
+
+      grammar.deactivate();
+      fs.writeFileSync(queryPath, "(identifier) @constant");
+      grammar.activate();
+      await grammar.getLanguage();
+
+      expect(grammar.subscriptions).not.toBe(firstSubscriptions);
+      expect(grammar.highlightsQuery).toContain("@constant");
+      grammar.deactivate();
+    });
   });
 
   describe("query error descriptors", () => {

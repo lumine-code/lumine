@@ -151,6 +151,7 @@ module.exports = class TreeSitterGrammar {
     this.promisesForQueryFiles = new Map();
     this.promisesForQueries = new Map();
     this.reportedQueryErrors = new Set();
+    this.queryLoadGeneration = 0;
 
     this.fileTypes = params.fileTypes || [];
 
@@ -329,6 +330,7 @@ module.exports = class TreeSitterGrammar {
 
     let promises = [];
     let dirName = path.dirname(grammarPath);
+    const generation = this.queryLoadGeneration;
 
     for (let [key, name] of Object.entries(queryPaths)) {
       if (!key.endsWith("Query")) {
@@ -349,6 +351,7 @@ module.exports = class TreeSitterGrammar {
     }
 
     const loadPromise = Promise.all(promises).then(() => {
+      if (generation !== this.queryLoadGeneration) return;
       this._queryFilesLoaded = true;
       this.emitter.emit("did-load-query-files", this);
     });
@@ -370,6 +373,7 @@ module.exports = class TreeSitterGrammar {
     if (existingPromise) {
       return existingPromise;
     }
+    const generation = this.queryLoadGeneration;
 
     let readFilePromises = paths.map((path) => {
       return fs.promises.readFile(path, "utf-8").then((contents) => {
@@ -379,6 +383,7 @@ module.exports = class TreeSitterGrammar {
 
     let promise = Promise.all(readFilePromises)
       .then((allResults) => {
+        if (generation !== this.queryLoadGeneration) return false;
         let output = "";
         let sourceMap = [];
         for (let result of allResults) {
@@ -421,10 +426,14 @@ module.exports = class TreeSitterGrammar {
               this.reportedQueryErrors.delete(reportedKey);
             }
           }
+          return true;
         }
+        return false;
       })
       .finally(() => {
-        this.promisesForQueryFiles.delete(key);
+        if (this.promisesForQueryFiles.get(key) === promise) {
+          this.promisesForQueryFiles.delete(key);
+        }
       });
 
     this.promisesForQueryFiles.set(key, promise);
@@ -714,7 +723,8 @@ module.exports = class TreeSitterGrammar {
         let existingQuery = this[queryType];
         // When any one of the file paths changes, we have to re-concatenate
         // the whole set.
-        this.loadQueryFile(filePaths, queryType).then(async () => {
+        this.loadQueryFile(filePaths, queryType).then(async (changed) => {
+          if (!changed) return;
           // Sanity-check the language for errors before we let the buffers know
           // about this change.
           try {
@@ -828,12 +838,20 @@ module.exports = class TreeSitterGrammar {
   }
 
   activate() {
+    this.subscriptions ??= new CompositeDisposable();
     this.registration = this.registry.addGrammar(this);
   }
 
   deactivate() {
     this.registration?.dispose();
+    this.registration = null;
     this.subscriptions?.dispose();
+    this.subscriptions = null;
+    this.queryLoadGeneration++;
+    this._queryFilesLoaded = false;
+    this._loadQueryFilesPromise = null;
+    this.promisesForQueryFiles.clear();
+    this.promisesForQueries.clear();
     // A new query object gets instantiated for each kind of query every time a
     // grammar activates. WASM queries need explicit cleanup; native queries
     // are garbage-collected and do not expose `delete`.
