@@ -86,6 +86,51 @@ describe("TreeSitterLanguageMode", () => {
     });
   });
 
+  describe("query reload lifecycle", () => {
+    async function buildLanguageLayer() {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      return languageMode.rootLanguageLayer;
+    }
+
+    it("unsubscribes a destroyed layer from grammar query changes", async () => {
+      const layer = await buildLanguageLayer();
+      spyOn(layer, "reloadGrammarQuery").and.resolveTo();
+
+      layer.destroy();
+      grammar.emitter.emit("did-change-query", { queryType: "highlightsQuery" });
+
+      expect(layer.reloadGrammarQuery).not.toHaveBeenCalled();
+    });
+
+    it("serializes distinct query reloads without dropping either one", async () => {
+      const layer = await buildLanguageLayer();
+      let releaseFirstReload;
+      spyOn(layer, "reloadGrammarQuery").and.callFake((queryType) => {
+        if (queryType === "highlightsQuery") {
+          return new Promise((resolve) => {
+            releaseFirstReload = resolve;
+          });
+        }
+        return Promise.resolve();
+      });
+
+      grammar.emitter.emit("did-change-query", { queryType: "highlightsQuery" });
+      grammar.emitter.emit("did-change-query", { queryType: "foldsQuery" });
+      expect(layer.reloadGrammarQuery.calls.allArgs()).toEqual([["highlightsQuery"]]);
+
+      releaseFirstReload();
+      await layer.queryReloadPromise;
+
+      expect(layer.reloadGrammarQuery.calls.allArgs()).toEqual([
+        ["highlightsQuery"],
+        ["foldsQuery"],
+      ]);
+    });
+  });
+
   describe("highlighting", () => {
     it("applies the most specific scope mapping to each node in the syntax tree", async () => {
       jasmine.useRealClock();

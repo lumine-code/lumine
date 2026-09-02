@@ -147,7 +147,10 @@ module.exports = class TreeSitterGrammar {
     this.commentMetadata = params.comments;
 
     this.shouldObserveQueryFiles = lumine.window.isDevMode() && !lumine.window.isSpecMode();
-    this.getLanguage();
+    // Warm the language eagerly, but leave error propagation to an actual
+    // consumer. The constructor has nobody to await this promise, so an eager
+    // load failure must not become an unhandled rejection.
+    this.getLanguage().catch(() => {});
 
     for (const injectionPoint of params.injectionPoints ?? []) {
       this.addInjectionPoint(injectionPoint);
@@ -311,35 +314,40 @@ module.exports = class TreeSitterGrammar {
       return this._loadQueryFilesPromise;
     }
 
-    this._loadQueryFilesPromise = new Promise((resolve) => {
-      let promises = [];
-      let dirName = path.dirname(grammarPath);
+    let promises = [];
+    let dirName = path.dirname(grammarPath);
 
-      for (let [key, name] of Object.entries(queryPaths)) {
-        if (!key.endsWith("Query")) {
-          continue;
-        }
-
-        // Every `fooQuery` path can contain either a single file name or an
-        // array of file names. If the latter, each is concatenated together in
-        // order.
-        let paths = Array.isArray(name) ? name : [name];
-        let filePaths = paths.map((p) => path.join(dirName, p));
-
-        promises.push(this.loadQueryFile(filePaths, key));
-
-        if (this.shouldObserveQueryFiles && !this._queryFilesLoaded) {
-          this.observeQueryFile(filePaths, key);
-        }
+    for (let [key, name] of Object.entries(queryPaths)) {
+      if (!key.endsWith("Query")) {
+        continue;
       }
-      return Promise.all(promises).then(() => resolve());
-    }).then(() => {
+
+      // Every `fooQuery` path can contain either a single file name or an
+      // array of file names. If the latter, each is concatenated together in
+      // order.
+      let paths = Array.isArray(name) ? name : [name];
+      let filePaths = paths.map((p) => path.join(dirName, p));
+
+      promises.push(this.loadQueryFile(filePaths, key));
+
+      if (this.shouldObserveQueryFiles && !this._queryFilesLoaded) {
+        this.observeQueryFile(filePaths, key);
+      }
+    }
+
+    const loadPromise = Promise.all(promises).then(() => {
       this._queryFilesLoaded = true;
-      this._loadQueryFilesPromise = null;
       this.emitter.emit("did-load-query-files", this);
     });
+    this._loadQueryFilesPromise = loadPromise;
 
-    return this._loadQueryFilesPromise;
+    try {
+      return await loadPromise;
+    } finally {
+      if (this._loadQueryFilesPromise === loadPromise) {
+        this._loadQueryFilesPromise = null;
+      }
+    }
   }
 
   loadQueryFile(paths, queryType) {

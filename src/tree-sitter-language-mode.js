@@ -2951,6 +2951,8 @@ class LanguageLayer {
     this.injectionPointVersion = 0;
     this.pendingInjectionPopulationRequests = [];
     this.injectionPopulationDrainPromise = null;
+    this.pendingQueryReloadTypes = new Set();
+    this.queryReloadPromise = null;
 
     const handleInjectionPointChanges = () => {
       // When we add or remove injection points on this grammar, this language
@@ -3123,6 +3125,7 @@ class LanguageLayer {
     this.destroyed = true;
     this.injectionPointVersion++;
     this.pendingInjectionPopulationRequests.length = 0;
+    this.pendingQueryReloadTypes.clear();
 
     // Clean up all Tree-sitter trees.
     let temporaryTrees = this.temporaryTrees ?? [];
@@ -3162,6 +3165,7 @@ class LanguageLayer {
     let originalQuery = this.queries[queryType];
     try {
       let query = await this.grammar.getQuery(queryType);
+      if (this.destroyed) return;
       this.queries[queryType] = query;
 
       // Force a re-highlight of this layer's entire region.
@@ -3184,16 +3188,42 @@ class LanguageLayer {
   // It can also happen if an installed package uses an API on
   // {@link TreeSitterGrammar} to modify a query after initial load.
   observeQueryChanges() {
-    this.grammar.onDidChangeQuery(async ({ queryType }) => {
-      if (this._pendingQueryFileChange) {
-        return;
-      }
-      // Debounce the reloading. Sometimes multiple callbacks fire when a query
-      // file is saved.
-      this._pendingQueryFileChange = true;
+    this.subscriptions.add(
+      this.grammar.onDidChangeQuery(({ queryType }) => this.scheduleQueryReload(queryType)),
+    );
+  }
+
+  scheduleQueryReload(queryType) {
+    if (this.destroyed) return null;
+    this.pendingQueryReloadTypes.add(queryType);
+    if (this.queryReloadPromise) return this.queryReloadPromise;
+
+    const reloadPromise = this.drainQueryReloads();
+    this.queryReloadPromise = reloadPromise;
+    reloadPromise.then(
+      () => this.finishQueryReload(reloadPromise),
+      (error) => {
+        console.error(`Error reloading Tree-sitter queries for ${this.grammar.scopeName}`, error);
+        this.finishQueryReload(reloadPromise);
+      },
+    );
+    return reloadPromise;
+  }
+
+  async drainQueryReloads() {
+    while (!this.destroyed && this.pendingQueryReloadTypes.size > 0) {
+      const queryType = this.pendingQueryReloadTypes.values().next().value;
+      this.pendingQueryReloadTypes.delete(queryType);
       await this.reloadGrammarQuery(queryType);
-      this._pendingQueryFileChange = false;
-    });
+    }
+  }
+
+  finishQueryReload(reloadPromise) {
+    if (this.queryReloadPromise !== reloadPromise) return;
+    this.queryReloadPromise = null;
+    if (!this.destroyed && this.pendingQueryReloadTypes.size > 0) {
+      this.scheduleQueryReload(this.pendingQueryReloadTypes.values().next().value);
+    }
   }
 
   getExtent() {

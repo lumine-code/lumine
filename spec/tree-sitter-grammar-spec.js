@@ -151,6 +151,18 @@ describe("TreeSitterGrammar", () => {
       expect(load).toHaveBeenCalledTimes(1);
     });
 
+    it("rejects a missing query file and allows the load to be retried", async () => {
+      const grammar = makeGrammar({ highlightsQuery: "missing.scm" });
+
+      await expectAsync(grammar.getLanguage()).toBeRejectedWithError(/ENOENT/);
+
+      writeQueryFile("missing.scm", "(identifier) @variable");
+      await expectAsync(grammar.getLanguage()).toBeResolved();
+      await expectAsync(grammar.getQuery("highlightsQuery")).toBeResolved();
+
+      grammar.deactivate();
+    });
+
     it("shares internal queries and deletes them when the grammar deactivates", async () => {
       const grammar = makeGrammar();
       await grammar.getLanguage();
