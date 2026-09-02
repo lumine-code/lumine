@@ -137,6 +137,18 @@ describe("TreeSitterGrammar", () => {
   });
 
   describe("WASM runtime", () => {
+    it("keeps a registered grammar lazy until its language is requested", async () => {
+      const load = spyOn(WebLanguage, "load").and.callThrough();
+      const grammar = makeGrammar();
+
+      await Promise.resolve();
+      expect(load).not.toHaveBeenCalled();
+
+      await grammar.getLanguage();
+      expect(load).toHaveBeenCalledTimes(1);
+      grammar.deactivate();
+    });
+
     it("shares one in-flight language load between grammars using the same Wasm", async () => {
       const originalLoad = WebLanguage.load;
       const load = spyOn(WebLanguage, "load").and.callFake(async (input) => {

@@ -12,9 +12,23 @@ const { normalizeDelimiters } = require("./comment-utils.js");
 // browser code path (process.type === "renderer"), and `fetch` of a `file://`
 // URL is blocked on macOS and Linux, so the parser would never initialize.
 const webTreeSitterWasmPath = require.resolve("web-tree-sitter/web-tree-sitter.wasm");
-const parserInitPromise = WebParser.init({
-  wasmBinary: fs.readFileSync(webTreeSitterWasmPath),
-});
+let parserInitPromise = null;
+
+function initializeWebParser() {
+  if (!parserInitPromise) {
+    const pendingInitialization = fs.promises
+      .readFile(webTreeSitterWasmPath)
+      .then((wasmBinary) => WebParser.init({ wasmBinary }));
+    const guardedInitialization = pendingInitialization.catch((error) => {
+      if (parserInitPromise === guardedInitialization) {
+        parserInitPromise = null;
+      }
+      throw error;
+    });
+    parserInitPromise = guardedInitialization;
+  }
+  return parserInitPromise;
+}
 
 // `QueryError.kind` values from `web-tree-sitter`. (The `QueryError` class
 // itself is not exported, so we duck-type it and translate its `kind` here.)
@@ -55,21 +69,26 @@ module.exports = class TreeSitterGrammar {
     }
     // Read the grammar Wasm ourselves and hand `Language.load` the bytes; a bare
     // path would make it `fetch` a `file://` URL, which fails in Electron's
-    // renderer on macOS and Linux (see `parserInitPromise` above).
-    let input = typeof grammarPath === "string" ? fs.readFileSync(grammarPath) : grammarPath;
-    let loadPromise = WebLanguage.load(input).then(
-      (language) => {
-        this.LANGUAGE_CACHE.set(grammarPath, language);
-        return language;
-      },
-      (error) => {
-        // A transient load failure must not poison every later attempt.
-        if (this.LANGUAGE_CACHE.get(grammarPath) === loadPromise) {
-          this.LANGUAGE_CACHE.delete(grammarPath);
-        }
-        throw error;
-      },
-    );
+    // renderer on macOS and Linux. Include the read in the shared promise so
+    // simultaneous consumers neither block the renderer nor duplicate I/O.
+    let loadPromise = Promise.resolve()
+      .then(() =>
+        typeof grammarPath === "string" ? fs.promises.readFile(grammarPath) : grammarPath,
+      )
+      .then((input) => WebLanguage.load(input))
+      .then(
+        (language) => {
+          this.LANGUAGE_CACHE.set(grammarPath, language);
+          return language;
+        },
+        (error) => {
+          // A transient load failure must not poison every later attempt.
+          if (this.LANGUAGE_CACHE.get(grammarPath) === loadPromise) {
+            this.LANGUAGE_CACHE.delete(grammarPath);
+          }
+          throw error;
+        },
+      );
     // Cache before awaiting so constructors created in the same turn share the
     // in-flight WebAssembly compilation rather than racing duplicate loads.
     this.LANGUAGE_CACHE.set(grammarPath, loadPromise);
@@ -147,11 +166,6 @@ module.exports = class TreeSitterGrammar {
     this.commentMetadata = params.comments;
 
     this.shouldObserveQueryFiles = lumine.window.isDevMode() && !lumine.window.isSpecMode();
-    // Warm the language eagerly, but leave error propagation to an actual
-    // consumer. The constructor has nobody to await this promise, so an eager
-    // load failure must not become an unhandled rejection.
-    this.getLanguage().catch(() => {});
-
     for (const injectionPoint of params.injectionPoints ?? []) {
       this.addInjectionPoint(injectionPoint);
     }
@@ -288,7 +302,7 @@ module.exports = class TreeSitterGrammar {
    */
   async getLanguage() {
     if (this.treeSitterRuntime === "wasm") {
-      await parserInitPromise;
+      await initializeWebParser();
     }
     if (!this._language) {
       try {
