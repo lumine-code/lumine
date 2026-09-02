@@ -13,7 +13,8 @@ const TreeSitterGrammar = require("../src/tree-sitter-grammar");
 // here with the offending grammar, query type, file, and line — including for
 // language packages that have no spec suite of their own.
 
-const EXPECTED_GRAMMAR_COUNT = 33;
+const EXPECTED_GRAMMAR_COUNT = 43;
+const legacyBundledGrammarConfigs = [];
 
 const repoRoot = path.resolve(__dirname, "..");
 // The bundled set is defined by src/bundled-packages.js — every dependency
@@ -58,7 +59,10 @@ function collectConfigsInPackage(packageDir, bundled) {
     } catch {
       continue;
     }
-    if (config.type !== "tree-sitter") continue;
+    if (config.type !== "tree-sitter") {
+      if (bundled) legacyBundledGrammarConfigs.push(`${packageName}/${fileName}`);
+      continue;
+    }
     configs.push({ packageName, fileName, configPath, config, bundled });
   }
   return configs;
@@ -102,6 +106,10 @@ describe("bundled Tree-sitter grammars", () => {
     expect(
       bundledGrammarConfigs.map((entry) => `${entry.packageName}/${entry.fileName}`).sort().length,
     ).toBe(EXPECTED_GRAMMAR_COUNT);
+  });
+
+  it("ships no legacy grammar descriptors", () => {
+    expect(legacyBundledGrammarConfigs.sort()).toEqual([]);
   });
 
   for (let { packageName, fileName, configPath, config, bundled } of grammarConfigs) {
