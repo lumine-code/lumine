@@ -1663,6 +1663,264 @@ describe("TreeSitterLanguageMode", () => {
         });
       });
 
+      describe("routing buffer changes to injection layers", () => {
+        async function startTemplateLanguageMode(text) {
+          jasmine.useRealClock();
+          lumine.grammars.addGrammar(jsGrammar);
+          lumine.grammars.addGrammar(htmlGrammar);
+          grammar = jsGrammar;
+          buffer.setText(text);
+          const languageMode = new TreeSitterLanguageMode({
+            grammar: jsGrammar,
+            buffer,
+            config: lumine.config,
+            grammars: lumine.grammars,
+          });
+          buffer.setLanguageMode(languageMode);
+          await languageMode.ready;
+          return languageMode;
+        }
+
+        function htmlLayers(languageMode) {
+          return languageMode
+            .getAllInjectionLayers()
+            .filter((layer) => layer.grammar === htmlGrammar)
+            .sort((a, b) => a.getExtent().compare(b.getExtent()));
+        }
+
+        function rangeSnapshot(layer) {
+          return layer.getCurrentRanges().map((range) => ({
+            start: [range.start.row, range.start.column],
+            end: [range.end.row, range.end.column],
+          }));
+        }
+
+        function sortedRangeMarkers(layer) {
+          return layer.currentRangesLayer
+            .getMarkers()
+            .sort((a, b) => a.getRange().compare(b.getRange()));
+        }
+
+        it("skips an injection entirely when a suffix edit starts after its outer marker", async () => {
+          const languageMode = await startTemplateLanguageMode(
+            "const value = html `<div>text</div>`; const suffix = tailValue;",
+          );
+          const [htmlLayer] = htmlLayers(languageMode);
+          const originalTree = htmlLayer.tree;
+          const originalRanges = htmlLayer.getCurrentRanges();
+          const cachedBoundaries = { cached: true };
+          const cachedBoundaryRange = htmlLayer.getExtent();
+          htmlLayer.foldResolver.boundaries = cachedBoundaries;
+          htmlLayer.foldResolver.boundariesRange = cachedBoundaryRange;
+          htmlLayer.foldResolver.dividedFoldEndsByStartNodeId.set(7, [new Point(0, 0)]);
+
+          spyOn(htmlLayer, "handleTextChange").and.callThrough();
+          spyOn(originalTree, "edit").and.callThrough();
+          spyOn(htmlLayer.foldResolver, "reset").and.callThrough();
+
+          buffer.setTextInRange(buffer.findSync("tailValue"), "tailValues");
+          await languageMode.atTransactionEnd();
+
+          expect(htmlLayer.handleTextChange).not.toHaveBeenCalled();
+          expect(originalTree.edit).not.toHaveBeenCalled();
+          expect(htmlLayer.foldResolver.reset).not.toHaveBeenCalled();
+          expect(htmlLayer.tree).toBe(originalTree);
+          expect(htmlLayer.getCurrentRanges()).toBe(originalRanges);
+          expect(htmlLayer.foldResolver.boundaries).toBe(cachedBoundaries);
+          expect(htmlLayer.foldResolver.boundariesRange).toBe(cachedBoundaryRange);
+          expect(htmlLayer.foldResolver.dividedFoldEndsByStartNodeId.get(7)).toEqual([
+            new Point(0, 0),
+          ]);
+        });
+
+        it("skips an earlier sibling but translates a later sibling", async () => {
+          const languageMode = await startTemplateLanguageMode(
+            "const first = html `<a></a>`; const middle = between; const second = html `<b></b>`;",
+          );
+          const [firstLayer, secondLayer] = htmlLayers(languageMode);
+          const firstTree = firstLayer.tree;
+          const secondTree = secondLayer.tree;
+          const firstRanges = firstLayer.getCurrentRanges();
+          const secondRangesBefore = rangeSnapshot(secondLayer);
+          const firstRootStartIndex = firstTree.rootNode.startIndex;
+          const secondRootStartIndex = secondTree.rootNode.startIndex;
+          const replacement = "betweenValue";
+          const delta = replacement.length - "between".length;
+
+          spyOn(firstLayer, "handleTextChange").and.callThrough();
+          spyOn(secondLayer, "handleTextChange").and.callThrough();
+          spyOn(firstTree, "edit").and.callThrough();
+          spyOn(secondTree, "edit").and.callThrough();
+
+          buffer.setTextInRange(buffer.findSync("between"), replacement);
+          await languageMode.atTransactionEnd();
+
+          expect(firstLayer.handleTextChange).not.toHaveBeenCalled();
+          expect(firstTree.edit).not.toHaveBeenCalled();
+          expect(firstLayer.tree).toBe(firstTree);
+          expect(firstTree.rootNode.startIndex).toBe(firstRootStartIndex);
+          expect(firstLayer.getCurrentRanges()).toBe(firstRanges);
+
+          expect(secondLayer.handleTextChange).toHaveBeenCalledTimes(1);
+          expect(secondTree.edit).toHaveBeenCalledTimes(1);
+          expect(secondLayer.tree).toBe(secondTree);
+          expect(secondTree.rootNode.startIndex).toBe(secondRootStartIndex + delta);
+          expect(rangeSnapshot(secondLayer)).toEqual(
+            secondRangesBefore.map((range) => ({
+              start: [range.start[0], range.start[1] + delta],
+              end: [range.end[0], range.end[1] + delta],
+            })),
+          );
+        });
+
+        it("translates an injection when text is inserted before it", async () => {
+          const languageMode = await startTemplateLanguageMode("const value = html `<a></a>`;");
+          const [htmlLayer] = htmlLayers(languageMode);
+          const originalTree = htmlLayer.tree;
+          const rootStartIndex = originalTree.rootNode.startIndex;
+          const rootStartPosition = originalTree.rootNode.startPosition;
+          const rangesBefore = rangeSnapshot(htmlLayer);
+
+          spyOn(htmlLayer, "handleTextChange").and.callThrough();
+          spyOn(originalTree, "edit").and.callThrough();
+
+          buffer.insert([0, 0], "\n");
+          await languageMode.atTransactionEnd();
+
+          expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
+          expect(originalTree.edit).toHaveBeenCalledTimes(1);
+          expect(htmlLayer.tree).toBe(originalTree);
+          expect(originalTree.rootNode.startIndex).toBe(rootStartIndex + 1);
+          expect(originalTree.rootNode.startPosition).toEqual({
+            row: rootStartPosition.row + 1,
+            column: rootStartPosition.column,
+          });
+          expect(rangeSnapshot(htmlLayer)).toEqual(
+            rangesBefore.map((range) => ({
+              start: [range.start[0] + 1, range.start[1]],
+              end: [range.end[0] + 1, range.end[1]],
+            })),
+          );
+        });
+
+        it("keeps the full update path for an edit inside an injection", async () => {
+          const languageMode = await startTemplateLanguageMode("const value = html `<a>text</a>`;");
+          const [htmlLayer] = htmlLayers(languageMode);
+          const originalTree = htmlLayer.tree;
+
+          spyOn(htmlLayer, "handleTextChange").and.callThrough();
+          spyOn(originalTree, "edit").and.callThrough();
+          spyOn(htmlLayer.foldResolver, "reset").and.callThrough();
+          spyOn(htmlLayer, "update").and.callThrough();
+
+          buffer.setTextInRange(buffer.findSync("<a>"), "<i>");
+          await languageMode.atTransactionEnd();
+
+          expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
+          expect(originalTree.edit).toHaveBeenCalledTimes(1);
+          expect(htmlLayer.foldResolver.reset).toHaveBeenCalled();
+          expect(htmlLayer.update).toHaveBeenCalledTimes(1);
+          expect(htmlLayers(languageMode)).toContain(htmlLayer);
+          expect(
+            htmlLayer
+              .getCurrentRanges()
+              .map((range) => buffer.getTextInRange(range))
+              .join(""),
+          ).toContain("<i>");
+        });
+
+        it("updates disjoint included ranges when an edit lands in their gap", async () => {
+          const languageMode = await startTemplateLanguageMode(
+            "const value = html `<b>${name}</b>`;",
+          );
+          const [htmlLayer] = htmlLayers(languageMode);
+          const originalTree = htmlLayer.tree;
+          const originalMarkers = sortedRangeMarkers(htmlLayer);
+          const rangesBefore = rangeSnapshot(htmlLayer);
+          const replacement = "longName";
+          const delta = replacement.length - "name".length;
+          expect(originalMarkers.length).toBe(2);
+
+          spyOn(htmlLayer, "handleTextChange").and.callThrough();
+          spyOn(originalTree, "edit").and.callThrough();
+          spyOn(htmlLayer, "update").and.callThrough();
+
+          buffer.setTextInRange(buffer.findSync("name"), replacement);
+          await languageMode.atTransactionEnd();
+
+          expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
+          expect(originalTree.edit).toHaveBeenCalledTimes(1);
+          expect(htmlLayer.update).toHaveBeenCalledTimes(1);
+          expect(sortedRangeMarkers(htmlLayer)).toEqual(originalMarkers);
+          expect(rangeSnapshot(htmlLayer)).toEqual([
+            rangesBefore[0],
+            {
+              start: [rangesBefore[1].start[0], rangesBefore[1].start[1] + delta],
+              end: [rangesBefore[1].end[0], rangesBefore[1].end[1] + delta],
+            },
+          ]);
+        });
+
+        it("does not skip insertions that touch injection boundaries", async () => {
+          const languageMode = await startTemplateLanguageMode(
+            "const first = html `<a></a>`; const second = html `<b></b>`;",
+          );
+          const [firstLayer, secondLayer] = htmlLayers(languageMode);
+          const firstTree = firstLayer.tree;
+          const secondTree = secondLayer.tree;
+
+          spyOn(firstLayer, "handleTextChange").and.callThrough();
+          spyOn(secondLayer, "handleTextChange").and.callThrough();
+          spyOn(firstTree, "edit").and.callThrough();
+          spyOn(secondTree, "edit").and.callThrough();
+
+          buffer.transact(() => {
+            buffer.insert(firstLayer.getExtent().start, " ");
+            buffer.insert(secondLayer.getExtent().end, " ");
+          });
+
+          expect(firstLayer.handleTextChange).toHaveBeenCalledTimes(1);
+          expect(firstTree.edit).toHaveBeenCalledTimes(1);
+          expect(secondLayer.handleTextChange).toHaveBeenCalledTimes(2);
+          expect(secondTree.edit).toHaveBeenCalledTimes(2);
+          await languageMode.atTransactionEnd();
+        });
+
+        it("keeps an earlier dirty edit when a later suffix edit is skipped", async () => {
+          const languageMode = await startTemplateLanguageMode(
+            "const value = html `<a>text</a>`; const suffix = tailValue;",
+          );
+          const [htmlLayer] = htmlLayers(languageMode);
+          const originalTree = htmlLayer.tree;
+
+          spyOn(htmlLayer, "handleTextChange").and.callThrough();
+          spyOn(originalTree, "edit").and.callThrough();
+          spyOn(htmlLayer.foldResolver, "reset").and.callThrough();
+          spyOn(htmlLayer, "update").and.callThrough();
+
+          buffer.transact(() => {
+            buffer.setTextInRange(buffer.findSync("<a>"), "<b>");
+            buffer.setTextInRange(buffer.findSync("tailValue"), "tailValues");
+          });
+
+          expect(htmlLayer.handleTextChange).toHaveBeenCalledTimes(1);
+          expect(originalTree.edit).toHaveBeenCalledTimes(1);
+          expect(htmlLayer.foldResolver.reset).toHaveBeenCalled();
+          await languageMode.atTransactionEnd();
+
+          expect(htmlLayer.update).toHaveBeenCalledTimes(1);
+          expect(htmlLayers(languageMode)).toContain(htmlLayer);
+          expect(htmlLayer.treeIsDirty).toBe(false);
+          expect(htmlLayer.editedRange).toBeNull();
+          expect(
+            htmlLayer
+              .getCurrentRanges()
+              .map((range) => buffer.getTextInRange(range))
+              .join(""),
+          ).toContain("<b>");
+        });
+      });
+
       it("orders coterminous injection layers from deepest to shallowest", async () => {
         buffer.setText("abc");
         const languageMode = new TreeSitterLanguageMode({

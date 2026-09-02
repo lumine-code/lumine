@@ -30,6 +30,16 @@ function percentile(samples, fraction) {
   return sorted[Math.min(sorted.length - 1, Math.ceil(sorted.length * fraction) - 1)];
 }
 
+function summarize(samples) {
+  return {
+    medianMs: percentile(samples, 0.5),
+    p95Ms: percentile(samples, 0.95),
+    minMs: Math.min(...samples),
+    maxMs: Math.max(...samples),
+    samplesMs: samples,
+  };
+}
+
 async function measure(run) {
   for (let i = 0; i < WARMUPS; i++) await run(i);
   const samples = [];
@@ -38,12 +48,21 @@ async function measure(run) {
     await run(i + WARMUPS);
     samples.push(performance.now() - start);
   }
+  return summarize(samples);
+}
+
+async function measureWithObservation(run) {
+  for (let i = 0; i < WARMUPS; i++) await run(i);
+  const totalSamples = [];
+  const observedSamples = [];
+  for (let i = 0; i < RUNS; i++) {
+    const start = performance.now();
+    observedSamples.push(await run(i + WARMUPS));
+    totalSamples.push(performance.now() - start);
+  }
   return {
-    medianMs: percentile(samples, 0.5),
-    p95Ms: percentile(samples, 0.95),
-    minMs: Math.min(...samples),
-    maxMs: Math.max(...samples),
-    samplesMs: samples,
+    total: summarize(totalSamples),
+    observed: summarize(observedSamples),
   };
 }
 
@@ -80,7 +99,6 @@ function drainHighlightIterator(languageMode) {
 describe("Tree-sitter benchmark", () => {
   it("measures parse, incremental update, injection reuse, and highlighting", async () => {
     jasmine.useRealClock();
-    jasmine.DEFAULT_TIMEOUT_INTERVAL = 120000;
 
     const grammars = new GrammarRegistry({ config: lumine.config });
     const jsConfig = { ...CSON.readFileSync(jsGrammarPath), injectionNames: ["javascript"] };
@@ -130,6 +148,12 @@ describe("Tree-sitter benchmark", () => {
     const layerSource = Array.from({ length: INJECTION_LAYERS }, (_, index) => `v${index};`).join(
       "",
     );
+    const layerRoutingPrefix = "/*head-x*/";
+    const layerRoutingSuffix = "/*tail-x*/";
+    const layerRoutingSource = `${layerRoutingPrefix}${layerSource}${layerRoutingSuffix}`;
+    const headEditColumn = layerRoutingPrefix.indexOf("x");
+    const tailEditColumn =
+      layerRoutingPrefix.length + layerSource.length + layerRoutingSuffix.indexOf("x");
     const initialParse = await measure(async () => {
       const mode = await createMode(jsSource, jsGrammar, grammars);
       expect(mode.languageMode.tree.rootNode.hasError).toBe(false);
@@ -192,6 +216,90 @@ describe("Tree-sitter benchmark", () => {
       destroyMode(mode);
     });
 
+    const routingProbe = await createMode(layerRoutingSource, layerGrammar, grammars);
+    const routingProbeLayers = routingProbe.languageMode.getAllInjectionLayers();
+    const handleTextChangeSpies = routingProbeLayers.map((layer) =>
+      spyOn(layer, "handleTextChange").and.callThrough(),
+    );
+    const childTreeEditSpies = routingProbeLayers.map((layer) =>
+      spyOn(layer.tree, "edit").and.callThrough(),
+    );
+
+    routingProbe.buffer.setTextInRange(
+      [
+        [0, tailEditColumn],
+        [0, tailEditColumn + 1],
+      ],
+      "y",
+    );
+    await routingProbe.languageMode.atTransactionEnd();
+    expect(handleTextChangeSpies.reduce((count, spy) => count + spy.calls.count(), 0)).toBe(0);
+    expect(childTreeEditSpies.reduce((count, spy) => count + spy.calls.count(), 0)).toBe(0);
+
+    for (const spy of [...handleTextChangeSpies, ...childTreeEditSpies]) spy.calls.reset();
+    routingProbe.buffer.setTextInRange(
+      [
+        [0, headEditColumn],
+        [0, headEditColumn + 1],
+      ],
+      "y",
+    );
+    await routingProbe.languageMode.atTransactionEnd();
+    expect(handleTextChangeSpies.reduce((count, spy) => count + spy.calls.count(), 0)).toBe(
+      INJECTION_LAYERS,
+    );
+    expect(childTreeEditSpies.reduce((count, spy) => count + spy.calls.count(), 0)).toBe(
+      INJECTION_LAYERS,
+    );
+    destroyMode(routingProbe);
+
+    const layerRoutingMode = await createMode(layerRoutingSource, layerGrammar, grammars);
+    let lastRoutingDuration = 0;
+    const routeBufferChange = layerRoutingMode.languageMode.bufferDidChange.bind(
+      layerRoutingMode.languageMode,
+    );
+    layerRoutingMode.languageMode.bufferDidChange = (change) => {
+      const start = performance.now();
+      try {
+        return routeBufferChange(change);
+      } finally {
+        lastRoutingDuration = performance.now() - start;
+      }
+    };
+    let trailingRoutingToggle = false;
+    const trailingSiblingInjectionMeasurement = await measureWithObservation(async () => {
+      trailingRoutingToggle = !trailingRoutingToggle;
+      layerRoutingMode.buffer.setTextInRange(
+        [
+          [0, tailEditColumn],
+          [0, tailEditColumn + 1],
+        ],
+        trailingRoutingToggle ? "y" : "x",
+      );
+      await layerRoutingMode.languageMode.atTransactionEnd();
+      expect(layerRoutingMode.languageMode.getAllInjectionLayers().length).toBe(INJECTION_LAYERS);
+      return lastRoutingDuration;
+    });
+
+    let leadingRoutingToggle = false;
+    const leadingSiblingInjectionMeasurement = await measureWithObservation(async () => {
+      leadingRoutingToggle = !leadingRoutingToggle;
+      layerRoutingMode.buffer.setTextInRange(
+        [
+          [0, headEditColumn],
+          [0, headEditColumn + 1],
+        ],
+        leadingRoutingToggle ? "y" : "x",
+      );
+      await layerRoutingMode.languageMode.atTransactionEnd();
+      expect(layerRoutingMode.languageMode.getAllInjectionLayers().length).toBe(INJECTION_LAYERS);
+      return lastRoutingDuration;
+    });
+    const trailingSiblingInjectionEdit = trailingSiblingInjectionMeasurement.total;
+    const trailingSiblingInjectionRouting = trailingSiblingInjectionMeasurement.observed;
+    const leadingSiblingInjectionEdit = leadingSiblingInjectionMeasurement.total;
+    const leadingSiblingInjectionRouting = leadingSiblingInjectionMeasurement.observed;
+
     console.log(
       `TREE_SITTER_BENCHMARK=${JSON.stringify({
         runtime: {
@@ -206,6 +314,7 @@ describe("Tree-sitter benchmark", () => {
           candidateBytes: Buffer.byteLength(candidateSource),
           injectionLayers: INJECTION_LAYERS,
           injectionLayerBytes: Buffer.byteLength(layerSource),
+          injectionRoutingBytes: Buffer.byteLength(layerRoutingSource),
           runs: RUNS,
           warmups: WARMUPS,
         },
@@ -216,6 +325,10 @@ describe("Tree-sitter benchmark", () => {
           injectionEdit,
           denseInjectionPipeline,
           denseInjectionLayers,
+          trailingSiblingInjectionEdit,
+          trailingSiblingInjectionRouting,
+          leadingSiblingInjectionEdit,
+          leadingSiblingInjectionRouting,
           highlighting,
         },
       })}`,
@@ -224,11 +337,12 @@ describe("Tree-sitter benchmark", () => {
     destroyMode(incrementalMode);
     destroyMode(injectionMode);
     destroyMode(highlightMode);
+    destroyMode(layerRoutingMode);
     for (const registration of registrations) registration.dispose();
     jsGrammar.deactivate();
     candidateGrammar.deactivate();
     layerGrammar.deactivate();
     htmlGrammar.deactivate();
     grammars.clear();
-  });
+  }, 120000);
 });

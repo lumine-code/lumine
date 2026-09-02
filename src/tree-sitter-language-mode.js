@@ -649,6 +649,13 @@ class TreeSitterLanguageMode {
     this.rootLanguageLayer.handleTextChange(edit, oldText, newText);
 
     for (const marker of this.injectionsMarkerLayer.getMarkers()) {
+      // Marker layers have already incorporated this buffer splice. If an
+      // injection still ends strictly before the edit starts, neither its
+      // contents nor any absolute position in its tree can have changed. A
+      // boundary touch is deliberately not skipped: injection markers are
+      // non-exclusive by default, so an insertion at either edge may become
+      // part of the injection.
+      if (marker.getRange().end.isLessThan(edit.startPosition)) continue;
       marker.languageLayer.handleTextChange(edit, oldText, newText);
     }
   }
