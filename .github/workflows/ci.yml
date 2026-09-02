@@ -215,10 +215,37 @@ jobs:
             pkg="${d#packages/}"
             pkg="${pkg#node_modules/}"
             pkg="${pkg%/spec}"
+            package_dir="${d%/spec}"
             echo "::group::$pkg"
+            # A bundled package can still have integration specs for packages
+            # installed on demand. Honour the same `specPackages` contract as
+            # the package's own CI, with a private home for this Electron run.
+            spec_packages=$(node -e '
+              const fs = require("fs"), path = require("path");
+              const manifest = JSON.parse(fs.readFileSync(path.join(process.argv[1], "package.json"), "utf8"));
+              process.stdout.write((manifest.specPackages || []).join(" "));
+            ' "$package_dir")
+            spec_home="$RUNNER_TEMP/lumine-bundled-specs/$pkg"
+            if [ -n "$spec_packages" ]; then
+              if ! node script/install-spec-packages.js --package "$package_dir" --home "$spec_home"; then
+                echo "::error::Spec package installation failed: $pkg"
+                failed="$failed $pkg"
+                status=1
+                echo "::endgroup::"
+                continue
+              fi
+            fi
             # Run once. A failure here is a real regression or a flaky spec;
             # flaky specs get fixed at the source rather than retried away.
-            if ! $guard $prefix npm start -- --test "$d"; then
+            if ! (
+              if [ -n "$spec_packages" ]; then
+                export LUMINE_HOME="$spec_home"
+                export LUMINE_TEST_PACKAGES="$spec_packages"
+              else
+                unset LUMINE_HOME LUMINE_TEST_PACKAGES
+              fi
+              $guard $prefix npm start -- --test "$d"
+            ); then
               echo "::error::Package specs failed: $pkg"
               failed="$failed $pkg"
               status=1
