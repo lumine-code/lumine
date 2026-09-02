@@ -73,10 +73,6 @@ lumine-dock {
       visibility: hidden;
     }
 
-    > .lumine-dock-toggle-button {
-      pointer-events: all;
-    }
-
     > .lumine-dock-toggle-button.left {
       margin-left: -8px;
     }
@@ -142,8 +138,10 @@ lumine-dock {
 
   position: absolute;
   overflow: hidden; /* Mask half of the circle. */
+  /* The wrapper never blocks content beneath its transparent area. */
+  pointer-events: none;
 
-  /* Must be > .scrollbar-content and inactive lumine-dock */
+  /* Must be > .scrollbar-content, inactive lumine-dock, and pane resize handles. */
   z-index: 11;
 
   /* Position the toggle button target at the edge of the dock. It's important
@@ -192,6 +190,12 @@ lumine-dock {
     }
     &.left {
       right: 0;
+    }
+  }
+
+  &.lumine-dock-toggle-button-visible {
+    .lumine-dock-toggle-button-inner {
+      pointer-events: auto;
     }
   }
 
@@ -246,9 +250,6 @@ lumine-dock {
   }
 
   &:not(.lumine-dock-toggle-button-visible) {
-    /* Don't contribute to mouseenter/drag events when not visible. */
-    pointer-events: none;
-
     .lumine-dock-toggle-button-inner {
       transition: transform 0.2s ease-out 0.1s; /* outro */
     }

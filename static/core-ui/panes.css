@@ -20,7 +20,8 @@ lumine-pane-container {
       &:before {
         content: "";
         position: absolute;
-        z-index: 11;
+        /* Stay above pane contents and below both inactive docks and their toggle buttons. */
+        z-index: 9;
       }
     }
   }

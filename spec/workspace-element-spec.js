@@ -734,6 +734,67 @@ describe("WorkspaceElement", () => {
       expectToggleButtonVisible(bottomDock, "icon-chevron-down");
     });
 
+    for (const location of ["left", "right", "bottom"]) {
+      it(`switches hit testing between the ${location} dock toggle and an intersecting pane resize handle`, async () => {
+        const pane = lumine.workspace.getActivePane();
+        if (location === "bottom") pane.splitRight();
+        else pane.splitDown();
+
+        await lumine.workspace.open({
+          element: document.createElement("div"),
+          getDefaultLocation() {
+            return location;
+          },
+          getPreferredWidth() {
+            return 150;
+          },
+          getPreferredHeight() {
+            return 100;
+          },
+        });
+
+        const dock = lumine.workspace[`get${location[0].toUpperCase()}${location.slice(1)}Dock`]();
+        dock.hide();
+        advanceClock(100);
+        await waitForFrames(() => true, { frames: 2, description: "dock hide render" });
+
+        const toggleButton = dock.refs.toggleButton.element;
+        const toggleButtonInner = dock.refs.toggleButton.refs.innerElement;
+        toggleButtonInner.style.transition = "none";
+        const toggleButtonBounds = toggleButton.getBoundingClientRect();
+        const resizeHandle = workspaceElement.querySelector(
+          `lumine-pane-axis.${location === "bottom" ? "horizontal" : "vertical"} > lumine-pane-resize-handle`,
+        );
+        const resizeHandleBounds = resizeHandle.getBoundingClientRect();
+        const point = {
+          x:
+            location === "bottom"
+              ? resizeHandleBounds.left + resizeHandleBounds.width / 2
+              : toggleButtonBounds.left + toggleButtonBounds.width / 2,
+          y:
+            location === "bottom"
+              ? toggleButtonBounds.top + toggleButtonBounds.height / 2
+              : resizeHandleBounds.top + resizeHandleBounds.height / 2,
+        };
+
+        expect(document.elementFromPoint(point.x, point.y)).toBe(resizeHandle);
+
+        dock.setHovered(true);
+        advanceClock(100);
+        await waitForFrames(() => true, { frames: 2, description: "dock hover render" });
+        const target = document.elementFromPoint(point.x, point.y);
+
+        expect(Number(getComputedStyle(toggleButton).zIndex)).toBeGreaterThan(
+          Number(getComputedStyle(resizeHandle, "::before").zIndex),
+        );
+        expect(toggleButtonInner.contains(target) || target === toggleButtonInner).toBe(true);
+        expect(getComputedStyle(target).cursor).toBe("default");
+
+        target.click();
+        expect(dock.isVisible()).toBe(true);
+      });
+    }
+
     // Coordinates below are relative to the workspace element, not to the
     // viewport. `pointWithinHoverArea` compares against
     // `getBoundingClientRect()`, so passing raw viewport pixels only works
