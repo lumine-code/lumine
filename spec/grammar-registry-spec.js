@@ -788,6 +788,16 @@ describe("GrammarRegistry", () => {
       expect(grammar.injectionPointsByType["some_node_type"]).toContain(injectionPoint);
     });
 
+    it("removes an injection point from an already loaded grammar when disposed", async () => {
+      await lumine.packages.activatePackage("language-javascript");
+      const registration = lumine.grammars.addInjectionPoint("source.js", injectionPoint);
+      const grammar = lumine.grammars.grammarForId("source.js");
+
+      registration.dispose();
+
+      expect(grammar.injectionPointsByType["some_node_type"]).toBeUndefined();
+    });
+
     it("fires the onDidUpdateGrammar callback", async () => {
       await lumine.packages.activatePackage("language-javascript");
       lumine.grammars.onDidUpdateGrammar((grammar) => {
@@ -820,6 +830,16 @@ describe("GrammarRegistry", () => {
         expect(grammar.injectionPointsByType["some_node_type"]).toContain(injectionPoint);
         expect(updateCallbackFired).toBe(false);
         expect(addCallbackFired).toBe(true);
+      });
+
+      it("does not add an injection point disposed before the grammar loads", async () => {
+        const registration = lumine.grammars.addInjectionPoint("source.js", injectionPoint);
+        registration.dispose();
+
+        await lumine.packages.activatePackage("language-javascript");
+        const grammar = lumine.grammars.grammarForId("source.js");
+
+        expect(grammar.injectionPointsByType["some_node_type"]).toBeUndefined();
       });
     });
   });

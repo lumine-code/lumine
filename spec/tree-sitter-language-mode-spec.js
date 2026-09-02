@@ -1011,6 +1011,33 @@ describe("TreeSitterLanguageMode", () => {
         htmlGrammar.addInjectionPoint(SCRIPT_TAG_INJECTION_POINT);
       });
 
+      it("orders coterminous injection layers from deepest to shallowest", async () => {
+        buffer.setText("abc");
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        const shallowLayer = { depth: 1, destroy() {} };
+        const deepLayer = { depth: 2, destroy() {} };
+        const shallowMarker = languageMode.injectionsMarkerLayer.markRange([
+          [0, 0],
+          [0, 3],
+        ]);
+        const deepMarker = languageMode.injectionsMarkerLayer.markRange([
+          [0, 0],
+          [0, 3],
+        ]);
+        shallowMarker.languageLayer = shallowLayer;
+        deepMarker.languageLayer = deepLayer;
+
+        expect(languageMode.injectionLayersAtPoint([0, 1])).toEqual([deepLayer, shallowLayer]);
+      });
+
       it("yields while collecting injection candidates without losing or duplicating nodes", async () => {
         jasmine.useRealClock();
         const seen = [];
@@ -1127,6 +1154,68 @@ describe("TreeSitterLanguageMode", () => {
         expect(language).not.toHaveBeenCalled();
         expect(rootLanguageLayer.destroyed).toBe(true);
         expect(rootLanguageLayer.childLayerMarkers.size).toBe(0);
+      });
+
+      it("keeps coterminous injection points distinct while reusing their layers", async () => {
+        jasmine.useRealClock();
+        const firstInjectionPoint = {
+          type: "template_string",
+          language: () => "html",
+          content: (node) => node,
+          includeChildren: true,
+          languageScope: null,
+        };
+        const secondInjectionPoint = {
+          type: "template_string",
+          language: () => "html",
+          content: (node) => node,
+          includeChildren: true,
+          languageScope: "source.html.secondary",
+          coverShallowerScopes: true,
+        };
+        jsGrammar.addInjectionPoint(firstInjectionPoint);
+        jsGrammar.addInjectionPoint(secondInjectionPoint);
+
+        lumine.grammars.addGrammar(jsGrammar);
+        lumine.grammars.addGrammar(htmlGrammar);
+        buffer.setText("const value = `<b>x</b>`;");
+
+        const languageMode = new TreeSitterLanguageMode({
+          grammar: jsGrammar,
+          buffer,
+          config: lumine.config,
+          grammars: lumine.grammars,
+        });
+        buffer.setLanguageMode(languageMode);
+        await languageMode.ready;
+
+        const layersForInjectionPoints = () =>
+          languageMode
+            .getAllInjectionLayers()
+            .filter((layer) =>
+              [firstInjectionPoint, secondInjectionPoint].includes(layer.injectionPoint),
+            );
+        const originalLayers = layersForInjectionPoints();
+        expect(originalLayers.length).toBe(2);
+        const firstLayer = originalLayers.find(
+          (layer) => layer.injectionPoint === firstInjectionPoint,
+        );
+        const secondLayer = originalLayers.find(
+          (layer) => layer.injectionPoint === secondInjectionPoint,
+        );
+        expect(firstLayer.grammar).toBe(htmlGrammar);
+        expect(secondLayer.grammar).toBe(htmlGrammar);
+        expect(firstLayer.getExtent()).toEqual(secondLayer.getExtent());
+        expect(firstLayer.languageScope).toBeNull();
+        expect(secondLayer.languageScope).toBe("source.html.secondary");
+
+        buffer.setTextInRange(buffer.findSync("x"), "xy");
+        await languageMode.atTransactionEnd();
+
+        const updatedLayers = layersForInjectionPoints();
+        expect(updatedLayers.length).toBe(2);
+        expect(updatedLayers).toContain(firstLayer);
+        expect(updatedLayers).toContain(secondLayer);
       });
 
       it("highlights code inside of injection points", async () => {

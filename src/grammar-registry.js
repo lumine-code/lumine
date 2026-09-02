@@ -499,31 +499,39 @@ module.exports = class GrammarRegistry {
    * @returns {Disposable} A disposable that removes the injection point.
    */
   addInjectionPoint(grammarId, injectionPoint) {
-    let grammarsToDispose = [];
-    const addOrCreateInjectionPoint = (table, grammarId) => {
-      let grammar = table[grammarId];
-      if (grammar) {
-        if (grammar.addInjectionPoint) {
-          grammar.addInjectionPoint(injectionPoint);
+    const table = this.treeSitterGrammarsById;
+    const grammar = table[grammarId];
+    if (grammar) {
+      if (grammar.addInjectionPoint) {
+        grammar.addInjectionPoint(injectionPoint);
 
-          // This is a grammar that's already loaded — not just a stub. Editors
-          // that already use this grammar will want to know that we added an
-          // injection.
-          this.emitter.emit("did-update-grammar", grammar);
-        } else {
-          grammar.injectionPoints.push(injectionPoint);
-        }
-        grammarsToDispose.push(grammar);
+        // This is a grammar that's already loaded — not just a stub. Editors
+        // that already use this grammar will want to know that we added an
+        // injection.
+        this.emitter.emit("did-update-grammar", grammar);
       } else {
-        table[grammarId] = { injectionPoints: [injectionPoint] };
+        grammar.injectionPoints.push(injectionPoint);
       }
-    };
-
-    addOrCreateInjectionPoint(this.treeSitterGrammarsById, grammarId);
+    } else {
+      table[grammarId] = { injectionPoints: [injectionPoint] };
+    }
 
     return new Disposable(() => {
-      for (let grammar of grammarsToDispose) {
-        grammar.removeInjectionPoint(injectionPoint);
+      const entry = table[grammarId];
+      if (entry?.removeInjectionPoint) {
+        const injectionPoints = entry.injectionPointsByType[injectionPoint.type];
+        if (injectionPoints?.includes(injectionPoint)) {
+          entry.removeInjectionPoint(injectionPoint);
+        }
+        return;
+      }
+
+      const injectionPoints = entry?.injectionPoints;
+      const index = injectionPoints?.indexOf(injectionPoint) ?? -1;
+      if (index === -1) return;
+      injectionPoints.splice(index, 1);
+      if (injectionPoints.length === 0 && table[grammarId] === entry) {
+        delete table[grammarId];
       }
     });
   }

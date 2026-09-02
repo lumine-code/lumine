@@ -1760,6 +1760,7 @@ class TreeSitterLanguageMode {
   // single contiguous {@link Range} that includes all of its content ranges. To
   // return only layers with a content range that spans the given point, pass
   // `{ exact: true }` as the second argument.
+  // Layers with the same extent are ordered from deepest to shallowest.
   //
   // * point - A {@link Point} representing a buffer position.
   // * options - An `Object` containing these keys:
@@ -1772,7 +1773,7 @@ class TreeSitterLanguageMode {
     });
 
     injectionMarkers.sort((a, b) => {
-      return a.getRange().compare(b.getRange()) || b.depth - a.depth;
+      return a.getRange().compare(b.getRange()) || b.languageLayer.depth - a.languageLayer.depth;
     });
 
     let results = injectionMarkers.map((m) => m.languageLayer);
@@ -4414,7 +4415,6 @@ class LanguageLayer {
     const markersToUpdate = new Map();
 
     let existingInjectionMarkerIndex = 0;
-    let newLanguageLayers = 0;
     for (const node of nodes) {
       // A given node can be the basis for an arbitrary number of injection
       // points, but first it has to pass our gauntlet of tests:
@@ -4483,14 +4483,17 @@ class LanguageLayer {
             // either; so we should give up and create a new one.
             break;
           } else if (comparison === 0) {
-            // Luckily, the range matches up exactly, so this is almost
-            // certainly a previous version of the same intended injection. It
-            // also means that any markers before this point in the list have
-            // either already matched with candidate injection points or cannot
-            // possibly match up; thus we can ignore them for the rest of the
-            // matching process.
-            existingInjectionMarkerIndex = i;
-            if (existingMarker.languageLayer.grammar === grammar) {
+            // A range can host several injections into the same grammar. Reuse
+            // this marker only when it belongs to this exact registered
+            // injection point and has not already been claimed by another
+            // coterminous candidate. Keep the scan index before the whole run
+            // of equal ranges so subsequent candidates can find their own
+            // markers regardless of the order in which those markers compare.
+            if (
+              !markersToUpdate.has(existingMarker) &&
+              existingMarker.languageLayer.grammar === grammar &&
+              existingMarker.languageLayer.injectionPoint === injectionPoint
+            ) {
               marker = existingMarker;
               break;
             }
@@ -4525,15 +4528,12 @@ class LanguageLayer {
           marker.languageString = languageName;
 
           this.childLayerMarkers.add(marker);
-          // eslint-disable-next-line no-unused-vars
-          newLanguageLayers++;
         }
 
         markersToUpdate.set(marker, new NodeRangeSet(nodeRangeSet, injectionNodes, injectionPoint));
       }
     }
 
-    let staleLanguageLayers = 0;
     for (const marker of existingInjectionMarkers) {
       // Any markers that didn't get matched up with injection points are now
       // stale and should be destroyed.
@@ -4541,8 +4541,6 @@ class LanguageLayer {
         this.languageMode.emitRangeUpdate(marker.getRange());
         this.childLayerMarkers.delete(marker);
         marker.languageLayer.destroy();
-        // eslint-disable-next-line no-unused-vars
-        staleLanguageLayers++;
       }
     }
 
