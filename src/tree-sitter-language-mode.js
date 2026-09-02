@@ -279,6 +279,7 @@ class TreeSitterLanguageMode {
     this.emitter = new Emitter();
     this.isFoldableCache = [];
     this.foldRangeIndex = null;
+    this.scopeDescriptorCache = null;
     this.pendingDirtyHighlightRanges = new TreeSitterRangeList();
     this.dirtyHighlightPromise = null;
 
@@ -457,6 +458,7 @@ class TreeSitterLanguageMode {
 
     let { oldRange, newRange, oldText, newText } = change;
     this.foldRangeIndex = null;
+    this.scopeDescriptorCache = null;
 
     const startIndex = this.buffer.characterIndexForPosition(change.newRange.start);
 
@@ -585,6 +587,7 @@ class TreeSitterLanguageMode {
   }
 
   emitRangeUpdate(range) {
+    this.scopeDescriptorCache = null;
     this.emitFoldUpdate(range);
     this.emitter.emit("did-change-highlighting", range);
   }
@@ -887,6 +890,9 @@ class TreeSitterLanguageMode {
       return new ScopeDescriptor({ scopes: [this.grammar.scopeName, "text"] });
     }
     point = this.normalizePointForPositionQuery(point);
+    if (this.scopeDescriptorCache?.point.isEqual(point)) {
+      return this.scopeDescriptorCache.descriptor;
+    }
 
     // The most accurate way to do this is to reconstruct the results from the
     // highlight iterator itself.
@@ -912,7 +918,9 @@ class TreeSitterLanguageMode {
     if (scopes.length === 0 || scopes[0] !== this.grammar.scopeName) {
       scopes.unshift(this.grammar.scopeName);
     }
-    return new ScopeDescriptor({ scopes });
+    const descriptor = new ScopeDescriptor({ scopes });
+    this.scopeDescriptorCache = { point: point.freeze(), descriptor };
+    return descriptor;
   }
 
   normalizePointForPositionQuery(point) {

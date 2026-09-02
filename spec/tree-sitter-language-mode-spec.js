@@ -181,6 +181,31 @@ describe("TreeSitterLanguageMode", () => {
   });
 
   describe("highlighting", () => {
+    it("reuses a scope descriptor at the same point until highlighting changes", async () => {
+      grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
+      buffer.setText("const value = 1;");
+      const languageMode = new TreeSitterLanguageMode({ grammar, buffer });
+      buffer.setLanguageMode(languageMode);
+      await languageMode.ready;
+      spyOn(languageMode, "buildHighlightIterator").and.callThrough();
+
+      const first = languageMode.scopeDescriptorForPosition([0, 7]);
+      const second = languageMode.scopeDescriptorForPosition([0, 7]);
+      expect(second).toBe(first);
+      expect(languageMode.buildHighlightIterator).toHaveBeenCalledTimes(1);
+
+      buffer.setTextInRange(
+        [
+          [0, 6],
+          [0, 11],
+        ],
+        "other",
+      );
+      await languageMode.atTransactionEnd();
+      languageMode.scopeDescriptorForPosition([0, 7]);
+      expect(languageMode.buildHighlightIterator).toHaveBeenCalledTimes(2);
+    });
+
     it("applies the most specific scope mapping to each node in the syntax tree", async () => {
       jasmine.useRealClock();
       grammar = new TreeSitterGrammar(lumine.grammars, jsGrammarPath, jsConfig);
