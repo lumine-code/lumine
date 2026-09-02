@@ -2517,7 +2517,7 @@ module.exports = class TextEditor {
     if (!this.ensureWritable("collapseBlankLines", options)) return;
     this.transact(() => {
       this.backwardsScanInBufferRange(
-        /(?:\r\n|\n|\r){3,}/g,
+        /(?:\r\n|\n|\r(?!\n)){3,}/g,
         this.buffer.getRange(),
         ({ replace }) => replace("\n\n"),
       );

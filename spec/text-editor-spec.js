@@ -9164,6 +9164,21 @@ describe("TextEditor", () => {
       editor.undo();
       expect(buffer.getText()).toBe("one\r\n\r\n\r\n\r\ntwo\r\n\r\n\r\nthree\r\n");
     });
+
+    it("does not rewrite a single blank CRLF line or move its cursor", () => {
+      buffer.setText("one\r\n\r\ntwo\r\n");
+      buffer.clearUndoStack();
+      editor.setCursorBufferPosition([1, 0]);
+      const changes = [];
+      buffer.onDidChange(({ changes: eventChanges }) => changes.push(...eventChanges));
+
+      editor.collapseBlankLines();
+
+      expect(buffer.getText()).toBe("one\r\n\r\ntwo\r\n");
+      expect(editor.getCursorBufferPosition()).toEqual([1, 0]);
+      expect(changes).toEqual([]);
+      expect(buffer.undo()).toBe(false);
+    });
   });
 
   describe(".collapseContentSpaces()", () => {
