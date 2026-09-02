@@ -111,4 +111,23 @@ describe("destroying a buffer during an async parse", () => {
     expect(languageMode.getOrCreateParserForLanguage(language)).not.toBe(staleParser);
     tree.delete();
   });
+
+  it("also replaces a stale parser before a synchronous parse", async () => {
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+    buffer.setLanguageMode(languageMode);
+    await languageMode.ready;
+
+    const language = grammar.getLanguageSync();
+    const staleParser = languageMode.getOrCreateParserForLanguage(language);
+    spyOn(staleParser, "reset").and.throwError(
+      new WebAssembly.RuntimeError("memory access out of bounds"),
+    );
+
+    const tree = languageMode.parse(language, null, undefined, { scopeName: "source.js" });
+
+    expect(tree.rootNode.type).toBe("program");
+    expect(languageMode.getOrCreateParserForLanguage(language)).not.toBe(staleParser);
+    tree.delete();
+  });
 });

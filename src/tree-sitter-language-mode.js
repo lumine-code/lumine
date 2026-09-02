@@ -1033,7 +1033,11 @@ class TreeSitterLanguageMode {
   parse(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
     let devMode = lumine.window.isDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
-    parser.reset();
+    try {
+      parser = this.resetParserForLanguage(language, parser, scopeName);
+    } catch (error) {
+      throw this.describeParseFailure(error, { scopeName, includedRanges });
+    }
 
     let callback = (index, _, endIndex) => {
       return this.buffer.getText().slice(index, endIndex);
