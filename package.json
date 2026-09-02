@@ -118,7 +118,7 @@
     "title-bar": "github:lumine-code/title-bar#c4e25e4b8722f52be5c176625d27a72be1460b18",
     "tree-sitter": "0.25.1",
     "tree-view": "github:lumine-code/tree-view#8de23fe8435ef2c0bcd2b045b06b7a75506aa6a3",
-    "web-tree-sitter": "0.26.13",
+    "web-tree-sitter": "0.27.0",
     "whitespace": "github:lumine-code/whitespace#d506f58f7ae8b7618b313572a33e454511a1df6c",
     "winattr": "^3.0.0",
     "window-title": "github:lumine-code/window-title#8191d8c88ef7383ecf72ea38af86982b49740aa1"

@@ -54,6 +54,12 @@ const FOLD_WINDOW_ROWS_AHEAD = 300;
 // order; nodes spanning a window boundary are deduplicated below.
 const INJECTION_CANDIDATE_CHUNK_ROWS = 1000;
 const PARSERS_IN_USE = new Set();
+// web-tree-sitter 0.27 finalizes unreachable parsers automatically. A parser
+// whose Wasm handle already faults cannot be deleted or finalized safely, so
+// keep that rare object alive for the renderer's remaining lifetime. This is a
+// controlled leak in the exceptional recovery path, chosen over a later unhandled
+// call into the same invalid pointer from FinalizationRegistry.
+const QUARANTINED_WASM_PARSERS = new Set();
 
 const FUNCTION_TRUE = () => true;
 
@@ -403,13 +409,14 @@ class TreeSitterLanguageMode {
     return parser;
   }
 
-  discardParserForLanguage(language, parser) {
+  quarantineParserForLanguage(language, parser) {
     const pool = this.parsersByLanguage.get(language);
     if (!pool) return;
     const index = pool.indexOf(parser);
     if (index !== -1) pool.splice(index, 1);
     if (pool.length === 0) this.parsersByLanguage.delete(language);
     PARSERS_IN_USE.delete(parser);
+    QUARANTINED_WASM_PARSERS.add(parser);
   }
 
   resetParserForLanguage(language, parser, scopeName) {
@@ -426,9 +433,8 @@ class TreeSitterLanguageMode {
 
       // A parser can outlive the Wasm state behind it during a live grammar
       // reload. Calling into that stale handle faults before parsing starts,
-      // so remove it from the pool without invoking `delete` on the same bad
-      // pointer and retry with a fresh parser for the cached language.
-      this.discardParserForLanguage(language, parser);
+      // so quarantine it and retry with a fresh parser for the cached language.
+      this.quarantineParserForLanguage(language, parser);
       if (lumine.window.isDevMode()) {
         console.warn(`Replacing a stale Tree-sitter parser for '${scopeName ?? "unknown"}'`, error);
       }
@@ -916,9 +922,17 @@ class TreeSitterLanguageMode {
     return wrapped;
   }
 
+  compatibleOldTreeForLanguage(language, oldTree) {
+    if (!oldTree) return null;
+    const grammar = this.grammarsByLanguage.get(language);
+    if (grammar?.treeSitterRuntime === "wasm" && oldTree.language !== language) return null;
+    return oldTree;
+  }
+
   parseAsync(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
     let devMode = lumine.window.isDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
+    oldTree = this.compatibleOldTreeForLanguage(language, oldTree);
     let timeoutMicros = oldTree ? this.syncTimeoutMicros : INITIAL_PARSE_JOB_LIMIT_MICROS;
     // Async batches of an initial parse get their own, smaller budget; an
     // incremental parse keeps its configured slice so a zero-budget test
@@ -1038,6 +1052,7 @@ class TreeSitterLanguageMode {
   parse(language, oldTree, includedRanges, { tag = null, scopeName = null } = {}) {
     let devMode = lumine.window.isDevMode();
     let parser = this.getOrCreateParserForLanguage(language);
+    oldTree = this.compatibleOldTreeForLanguage(language, oldTree);
     try {
       parser = this.resetParserForLanguage(language, parser, scopeName);
     } catch (error) {

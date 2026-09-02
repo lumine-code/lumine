@@ -162,4 +162,28 @@ describe("destroying a buffer during an async parse", () => {
     ).toThrowError(/unexpected reset failure/);
     expect(languageMode.getOrCreateParserForLanguage(language)).toBe(parser);
   });
+
+  it("drops an old Wasm tree from another language instance", async () => {
+    buffer = new TextBuffer("const value = 1;");
+    languageMode = new TreeSitterLanguageMode({ buffer, grammar });
+    buffer.setLanguageMode(languageMode);
+    await languageMode.ready;
+
+    const language = grammar.getLanguageSync();
+    const incompatibleOldTree = { language: {} };
+    const synchronousTree = languageMode.parse(language, incompatibleOldTree, undefined, {
+      scopeName: "source.js",
+    });
+    expect(synchronousTree.rootNode.type).toBe("program");
+    synchronousTree.delete();
+
+    const asynchronousTree = await languageMode.parseAsync(
+      language,
+      incompatibleOldTree,
+      undefined,
+      { scopeName: "source.js" },
+    );
+    expect(asynchronousTree.rootNode.type).toBe("program");
+    asynchronousTree.delete();
+  });
 });
