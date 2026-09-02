@@ -47,6 +47,13 @@ describe("watchFile", function () {
     return filePath;
   }
 
+  it("rejects a missing path at the API boundary", function () {
+    expect(() => watchFile(undefined)).toThrowError(
+      TypeError,
+      'The "filePath" argument to watchFile must be a non-empty string. Received undefined',
+    );
+  });
+
   it("reports an external write to a file named by its real path", async function () {
     const file = seed(path.join(root, "target.json"));
     const { handle, changes } = watching(file);

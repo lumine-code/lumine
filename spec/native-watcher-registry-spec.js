@@ -94,6 +94,13 @@ describe("NativeWatcherRegistry", function () {
     expect(watcher.native).toBe(NATIVE);
   });
 
+  it("rejects a watcher whose normalized path is missing", async function () {
+    await expectAsync(registry.attach(new MockWatcher(undefined))).toBeRejectedWithError(
+      TypeError,
+      "A watcher's normalized path must be a non-empty string. Received undefined",
+    );
+  });
+
   it("reuses an existing NativeWatcher on the same directory", async function () {
     const EXISTING = new MockNative("existing");
     const existingPath = absolute("existing", "path");

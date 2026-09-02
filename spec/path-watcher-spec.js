@@ -111,6 +111,25 @@ describe("NativeWatcher", function () {
 });
 
 describe("PathWatcherManager", function () {
+  it("rejects and disposes a logical watcher when registry attachment fails", async function () {
+    const attachError = new Error("cannot attach watcher");
+    let logicalWatcher;
+    const registry = {
+      attach(watcher) {
+        logicalWatcher = watcher;
+        return Promise.reject(attachError);
+      },
+      detach: jasmine.createSpy("detach"),
+    };
+    const manager = new PathWatcherManager();
+    manager.nativeRegistry = registry;
+
+    await expectAsync(manager.createWatcher("/missing", () => {}, {})).toBeRejectedWith(
+      attachError,
+    );
+    expect(registry.detach).toHaveBeenCalledWith(logicalWatcher);
+  });
+
   it("rejects and disposes a logical watcher when its native watcher cannot start", async function () {
     const startError = new Error("cannot watch path");
     class FailingNativeWatcher extends NativeWatcher {
@@ -189,6 +208,13 @@ describe("watchPath", function () {
       });
     });
   }
+
+  it("rejects a missing path at the API boundary", function () {
+    expect(() => watchPath(undefined, {}, () => {})).toThrowError(
+      TypeError,
+      'The "rootPath" argument to watchPath must be a non-empty string. Received undefined',
+    );
+  });
 
   // `@lumine-code/watcher` is the only watcher backend.
   const WATCHER_IMPLEMENTATIONS = ["parcel"];

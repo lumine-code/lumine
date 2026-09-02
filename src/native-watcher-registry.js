@@ -516,6 +516,11 @@ class NativeWatcherRegistry {
    */
   async attach(watcher) {
     const normalizedDirectory = await watcher.getNormalizedPathPromise();
+    if (typeof normalizedDirectory !== "string" || normalizedDirectory.length === 0) {
+      throw new TypeError(
+        `A watcher's normalized path must be a non-empty string. Received ${String(normalizedDirectory)}`,
+      );
+    }
     const pathSegments = normalizedDirectory
       .split(path.sep)
       .filter((segment) => segment.length > 0);

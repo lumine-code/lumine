@@ -788,10 +788,18 @@ class PathWatcher {
       const sub = this.native.onDidChange((events) => this.onNativeEvents(events, callback));
       this.changeCallbacks.set(callback, sub);
     } else {
-      // Attach to a new native listener and retry
-      this.nativeWatcherRegistry.attach(this).then(() => {
-        this.onDidChange(callback);
-      });
+      // Attach to a new native listener and retry. An attachment failure must
+      // reject the public start promise; otherwise it escapes from this
+      // detached promise chain as an unhandled rejection while createWatcher()
+      // waits forever for a start that can never happen.
+      this.nativeWatcherRegistry.attach(this).then(
+        () => {
+          this.onDidChange(callback);
+        },
+        (error) => {
+          this.rejectStartPromise(error);
+        },
+      );
     }
 
     return new Disposable(() => {
@@ -1164,7 +1172,16 @@ class PathWatcherManager {
  * @returns {Promise<PathWatcher>} A promise resolving to the started watcher. Every watcher is also a `Disposable`.
  */
 function watchPath(rootPath, options, eventCallback) {
+  assertPathArgument(rootPath, "rootPath", "watchPath");
   return PathWatcherManager.active().createWatcher(rootPath, eventCallback, options);
+}
+
+function assertPathArgument(value, argumentName, functionName) {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new TypeError(
+      `The "${argumentName}" argument to ${functionName} must be a non-empty string. Received ${String(value)}`,
+    );
+  }
 }
 
 /**
@@ -1193,6 +1210,7 @@ function watchPath(rootPath, options, eventCallback) {
  * @returns {Object} with:
  */
 function watchFile(filePath) {
+  assertPathArgument(filePath, "filePath", "watchFile");
   const emitter = new Emitter();
   // The path currently being watched. Updated when the file is renamed so the
   // watcher follows it (like the old `File`) and `getPath()` stays accurate.
