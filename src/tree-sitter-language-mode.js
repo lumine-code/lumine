@@ -1091,8 +1091,8 @@ class TreeSitterLanguageMode {
     }
 
     let layersAtStart = this.languageLayersAtPoint(range.start, { exact: true });
-    let layersAtEnd = this.languageLayersAtPoint(range.end, { exact: true });
-    let sharedLayers = layersAtStart.filter((layer) => layersAtEnd.includes(layer));
+    let layersAtEnd = new Set(this.languageLayersAtPoint(range.end, { exact: true }));
+    let sharedLayers = layersAtStart.filter((layer) => layersAtEnd.has(layer));
     let indexStart = this.buffer.characterIndexForPosition(range.start);
     let indexEnd = this.buffer.characterIndexForPosition(range.end);
     let rangeBreadth = indexEnd - indexStart;
@@ -1106,7 +1106,7 @@ class TreeSitterLanguageMode {
       let { grammar, depth } = layer;
       let rootNode = layer.tree.rootNode;
 
-      if (!rootNode.range.containsRange(range)) {
+      if (rootNode.startIndex > indexStart || rootNode.endIndex < indexEnd) {
         // There's often a difference between (a) the areas that we consider to
         // be our canonical content ranges for a layer and (b) the range
         // covered by the layer's root node. Root tree nodes usually ignore any
@@ -1121,28 +1121,14 @@ class TreeSitterLanguageMode {
         continue;
       }
 
-      let node = this.getSyntaxNodeAtPosition(range.start, (node, nodeGrammar) => {
-        // This node can touch either of our boundaries, but it must be
-        // bigger than we are.
-        //
-        // We aren't checking against the predicate yet because passing the
-        // predicate won't end our search. Users will reasonably expect that
-        // returning `true` from the predicate will mean that the predicate
-        // won't run any more. Since the predicate can have side effects, we
-        // should keep this contract. That means throwing all nodes into the
-        // bucket and not sifting through them until later.
-        //
-        // TODO: If we need to optimize performance here, we could compromise
-        // by re-running the predicate at the end even though we already know
-        // it's going to match.
+      let node = rootNode.descendantForIndex(indexStart);
+      while (node) {
         let breadth = node.endIndex - node.startIndex;
-        return (
-          node.startIndex <= indexEnd &&
-          node.endIndex >= indexEnd &&
-          breadth > rangeBreadth &&
-          nodeGrammar === grammar
-        );
-      });
+        const qualifies =
+          node.startIndex <= indexEnd && node.endIndex >= indexEnd && breadth > rangeBreadth;
+        if (qualifies) break;
+        node = node.parent;
+      }
 
       if (node) {
         results.push({ node, grammar, depth });
@@ -1183,6 +1169,29 @@ class TreeSitterLanguageMode {
       return null;
     }
     let allLayers = this.languageLayersAtPoint(position);
+    const index = this.buffer.characterIndexForPosition(position);
+
+    if (where === FUNCTION_TRUE) {
+      let bestNode = null;
+      let bestBreadth = Infinity;
+      let bestDepth = -Infinity;
+      for (let i = allLayers.length - 1; i >= 0; i--) {
+        const layer = allLayers[i];
+        if (!layer.tree) continue;
+        const rootNode = layer.tree.rootNode;
+        const node =
+          rootNode.startIndex <= index && rootNode.endIndex >= index
+            ? rootNode.descendantForIndex(index)
+            : rootNode;
+        const breadth = nodeBreadth(node);
+        if (breadth < bestBreadth || (breadth === bestBreadth && layer.depth > bestDepth)) {
+          bestNode = node;
+          bestBreadth = breadth;
+          bestDepth = layer.depth;
+        }
+      }
+      return bestNode;
+    }
 
     // We start with the deepest layer and move outward.
     //
@@ -1197,7 +1206,7 @@ class TreeSitterLanguageMode {
       }
       let { depth, grammar } = layer;
       let rootNode = layer.tree.rootNode;
-      if (!rootNode.range.containsPoint(position)) {
+      if (rootNode.startIndex > index || rootNode.endIndex < index) {
         // There's often a difference between (a) the areas that we consider to
         // be our canonical content ranges for a layer and (b) the range
         // covered by the layer's root node. Root tree nodes usually ignore any
@@ -1208,13 +1217,10 @@ class TreeSitterLanguageMode {
         // If we've gotten this far, we've already decided that this layer
         // includes this point. So let's just pretend that the root node covers
         // this area.
-        if (where(rootNode, grammar)) {
-          results.push({ node: rootNode, depth, grammar });
-        }
+        results.push({ node: rootNode, depth, grammar });
         continue;
       }
 
-      let index = this.buffer.characterIndexForPosition(position);
       let node = rootNode.descendantForIndex(index);
       while (node) {
         // We aren't checking against the predicate yet because passing the
