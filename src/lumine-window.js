@@ -109,6 +109,11 @@ module.exports = class LumineWindow extends EventEmitter {
     const BrowserWindowConstructor = settings.browserWindowConstructor || BrowserWindow;
     this.browserWindow = new BrowserWindowConstructor(options);
     if (this.offscreen) {
+      // Linux does not drive the offscreen compositor without a paint
+      // subscriber. The bitmap itself is intentionally ignored: the window
+      // exists to give renderer specs a live layout and animation-frame source,
+      // not to capture screenshots.
+      this.browserWindow.webContents.on("paint", () => {});
       this.browserWindow.webContents.setFrameRate(60);
       this.browserWindow.webContents.startPainting();
     }
