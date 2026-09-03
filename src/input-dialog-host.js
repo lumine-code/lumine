@@ -1,6 +1,7 @@
 "use strict";
 
 const { CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
+const { createFocusTrap } = require("focus-trap");
 
 const HOST_OPTIONS = new Set(["item", "crumb", "visible", "restoreFocus", "priority", "className"]);
 const INTERACTIVE_SELECTOR =
@@ -26,6 +27,7 @@ class InputDialogHost {
     this.disposables = new CompositeDisposable();
     this.panelDisposables = null;
     this.panel = null;
+    this.focusTrap = null;
     this.destroyed = false;
     this.destroyPromise = null;
     this.hidingSelf = false;
@@ -53,6 +55,8 @@ class InputDialogHost {
       model.onDidRequestDisposition(({ disposition }) => {
         if (disposition === "close") this.hide();
       }),
+      model.onDidStartAction(() => this.pauseFocusTrap()),
+      model.onDidFinishAction(() => this.resumeFocusTrap()),
     );
   }
 
@@ -86,11 +90,11 @@ class InputDialogHost {
       restoreFocus: this.options.restoreFocus,
       priority: this.options.priority,
       className: this.options.className,
-      autoFocus: this.model.getQueryEditor().getElement(),
     });
     this.panel = panel;
     this.panelDisposables = new CompositeDisposable(
       panel.onWillShow(() => this.willShowPanel()),
+      panel.onWillHide(() => this.willHidePanel()),
       panel.onDidChangeVisible((visible) => this.didChangePanelVisible(visible)),
       panel.onDidEndModalFlow((reason) => this.didEndModalFlow(reason)),
       panel.onDidDestroy(() => {
@@ -415,6 +419,7 @@ class InputDialogHost {
     };
     attempt(() => this.services.actionService?.release(this));
     attempt(() => this.finalizeSession("host-destroyed"));
+    attempt(() => this.focusTrap?.deactivate());
     attempt(() => this.disposables.dispose());
     attempt(() => this.panelDisposables?.dispose());
     this.panelDisposables = null;
@@ -460,6 +465,10 @@ class InputDialogHost {
     if (!this.suspendedByFlow) this.pendingOpenerElement = document.activeElement;
   }
 
+  willHidePanel() {
+    this.focusTrap?.deactivate();
+  }
+
   didShowPanel(generation) {
     const resuming = this.suspendedByFlow;
     this.suspendedByFlow = false;
@@ -476,6 +485,7 @@ class InputDialogHost {
       if (!this.isCurrentPanelLifecycle(generation, true)) return;
       this.model.refreshItemActionsIndicator();
       if (this.selectOpeningQuery !== false) this.model.selectQuery();
+      this.activateFocusTrap();
       this.focus();
       if (!this.isCurrentPanelLifecycle(generation, true)) return;
       this.sourcePromise = resuming ? this.model.resumeSource() : this.model.openSource();
@@ -531,16 +541,39 @@ class InputDialogHost {
 
   installFocusPolicy() {
     const element = this.panel.getElement();
+    this.focusTrap = createFocusTrap(element, {
+      fallbackFocus: element,
+      initialFocus: this.model.getQueryEditor().getElement(),
+      escapeDeactivates: false,
+      delayInitialFocus: false,
+      returnFocusOnDeactivate: false,
+    });
     const didLoseFocus = (event) => this.didLoseFocus(event);
     const didMouseDown = (event) => this.didMouseDownOnElement(event);
     element.addEventListener("focusout", didLoseFocus);
     element.addEventListener("mousedown", didMouseDown);
-    this.panelDisposables.add({
-      dispose() {
-        element.removeEventListener("focusout", didLoseFocus);
-        element.removeEventListener("mousedown", didMouseDown);
+    this.panelDisposables.add(
+      {
+        dispose() {
+          element.removeEventListener("focusout", didLoseFocus);
+          element.removeEventListener("mousedown", didMouseDown);
+        },
       },
-    });
+      { dispose: () => this.focusTrap?.deactivate() },
+    );
+  }
+
+  activateFocusTrap() {
+    this.focusTrap?.activate();
+    if (this.model.isActionPending()) this.focusTrap?.pause();
+  }
+
+  pauseFocusTrap() {
+    if (this.isVisible()) this.focusTrap?.pause();
+  }
+
+  resumeFocusTrap() {
+    if (this.isVisible() && !this.model.isActionPending()) this.focusTrap?.unpause();
   }
 
   didLoseFocus(event) {
@@ -555,6 +588,7 @@ class InputDialogHost {
     const generation = this.panelLifecycleGeneration;
     requestAnimationFrame(() => {
       if (!document.hasFocus() || !this.isCurrentPanelLifecycle(generation, true)) return;
+      if (this.model.isActionPending()) return;
       this.cancel("focus-lost");
     });
   }

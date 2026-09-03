@@ -691,6 +691,31 @@ describe("InputDialog", () => {
       expect(host.isVisible()).toBe(false);
     });
 
+    it("lets a closing action move focus outside before the modal is hidden", async () => {
+      const destination = document.createElement("button");
+      lumine.workspace.getElement().appendChild(destination);
+      createHostedInputDialog({
+        commands: {
+          "spec:focus-destination": () => destination.focus(),
+        },
+        actions: [
+          {
+            command: "spec:focus-destination",
+            context: "dialog",
+            primary: true,
+            disposition: "close",
+          },
+        ],
+      });
+      host.show();
+
+      await view.confirm();
+
+      expect(host.isVisible()).toBe(false);
+      expect(document.activeElement).toBe(destination);
+      destination.remove();
+    });
+
     it("reports the reason when a primary action is disabled", async () => {
       view = createInputDialog({
         commands: { "spec:disabled": () => {} },
