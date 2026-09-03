@@ -3,7 +3,7 @@
 const fs = require("fs");
 const path = require("path");
 
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 const API_STATUS_VALUES = new Map([
   ["essential", "Essential"],
   ["extended", "Extended"],
@@ -632,6 +632,9 @@ function parseFile(filePath, sourceInput, options) {
       const sourcePath = path.relative(sourceInput.root, filePath).replaceAll("\\", "/");
       classes.push({
         name,
+        superClass: node.superClass
+          ? source.slice(node.superClass.start, node.superClass.end).trim()
+          : null,
         visibility: classDoc?.visibility || inferredVisibility(members),
         description: classDoc?.description || (isDirective(own) ? "" : own),
         summary: classDoc?.summary || firstParagraph(isDirective(own) ? "" : own),

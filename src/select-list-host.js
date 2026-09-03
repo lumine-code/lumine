@@ -6,7 +6,9 @@ const InputDialogHost = require("./input-dialog-host");
  * @public
  * @status experimental
  *
- * Modal host for a detached {@link SelectList} model.
+ * Modal host for a detached {@link SelectList} model. It inherits the complete
+ * visibility, focus, modal-flow and session lifecycle of
+ * {@link InputDialogHost} while narrowing {@link #getModel} to SelectList.
  */
 module.exports = class SelectListHost extends InputDialogHost {
   /**

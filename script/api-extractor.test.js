@@ -135,6 +135,18 @@ test("normalizes CRLF input", (context) => {
   assert.equal(api.memberCount, 7);
 });
 
+test("records a documented class's superclass", (context) => {
+  const source = fs
+    .readFileSync(fixturePath, "utf8")
+    .replace("class FixtureService {", "class FixtureService extends Environment {");
+  const root = editorFixture(source);
+  context.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const api = extractApi({ editorRoot: root, parser });
+
+  assert.equal(api.classes.find(({ name }) => name === "FixtureService").superClass, "Environment");
+  assert.equal(api.classes.find(({ name }) => name === "Environment").superClass, null);
+});
+
 test("requires the canonical API source registry", (context) => {
   const root = editorFixture();
   context.after(() => fs.rmSync(root, { recursive: true, force: true }));
