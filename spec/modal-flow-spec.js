@@ -249,7 +249,20 @@ describe("modal flow", () => {
       expect(stripLabels()).toEqual(["Branches", "Create from"]);
       const crumbs = strip().querySelectorAll(".modal-breadcrumb");
       expect(crumbs[1].classList.contains("current")).toBe(true);
+      expect(crumbs[1].getAttribute("aria-current")).toBe("step");
       expect(crumbs[0].classList.contains("current")).toBe(false);
+      expect(crumbs[0].hasAttribute("aria-current")).toBe(false);
+    });
+
+    it("does not repeat breadcrumb labels in title attributes", () => {
+      const root = addModal({ crumb: "Branches" });
+      const step = addModal();
+      root.show();
+
+      step.show({ crumb: "Create from" });
+
+      const crumbs = strip().querySelectorAll(".modal-breadcrumb");
+      expect(Array.from(crumbs).every((crumb) => !crumb.hasAttribute("title"))).toBe(true);
     });
 
     it("navigates back when an earlier crumb is clicked, without stealing focus", () => {

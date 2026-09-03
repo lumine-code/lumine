@@ -248,9 +248,9 @@ module.exports = class ModalFlow {
       const crumb = document.createElement("span");
       crumb.classList.add("modal-breadcrumb");
       crumb.textContent = label;
-      crumb.title = label;
       if (index === this.stack.length - 1) {
         crumb.classList.add("current");
+        crumb.setAttribute("aria-current", "step");
       } else {
         // preventDefault keeps the click from stealing focus off the modal —
         // a focus loss would cancel the dialog and destroy the very trail the
