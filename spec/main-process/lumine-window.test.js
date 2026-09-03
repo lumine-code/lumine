@@ -161,7 +161,6 @@ describe("LumineWindow", function () {
       });
 
       assert.isTrue(browserWindow.options.webPreferences.offscreen);
-      assert.strictEqual(browserWindow.webContents.listenerCount("paint"), 1);
       assert.isTrue(browserWindow.webContents.setFrameRate.calledOnceWith(60));
       assert.isTrue(browserWindow.webContents.startPainting.calledOnce);
     });

@@ -1646,7 +1646,7 @@ describe("LumineApplication", function () {
       assert.isFalse(app.createWindow.called);
     });
 
-    it("renders only local command-line test windows offscreen", function () {
+    it("renders only local Windows command-line test windows offscreen", function () {
       const originalCI = process.env.CI;
       const options = {
         headless: true,
@@ -1658,7 +1658,10 @@ describe("LumineApplication", function () {
       try {
         delete process.env.CI;
         app.runTests(options);
-        assert.isTrue(app.createWindow.lastCall.args[0].offscreen);
+        assert.strictEqual(
+          app.createWindow.lastCall.args[0].offscreen,
+          process.platform === "win32",
+        );
 
         process.env.CI = "true";
         app.runTests(options);

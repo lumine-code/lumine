@@ -2229,11 +2229,12 @@ module.exports = class LumineApplication extends EventEmitter {
 
     const devMode = true;
     const isSpec = true;
-    // Local command-line runs must not cover the developer's workspace with a
-    // native window. CI still uses a visible, focused window so specs that
-    // assert real focus behaviour retain their coverage there; the interactive
-    // runner remains visible because it passes `headless: false`.
-    const offscreen = Boolean(headless && !process.env.CI);
+    // Local command-line runs on Windows must not cover the developer's
+    // workspace with a native window. Electron's Linux offscreen compositor
+    // does not deliver animation frames reliably, so other platforms retain
+    // showInactive(). CI still uses a visible, focused window so specs that
+    // assert real focus behaviour keep their coverage there.
+    const offscreen = Boolean(headless && !process.env.CI && process.platform === "win32");
     if (safeMode == null) {
       safeMode = false;
     }

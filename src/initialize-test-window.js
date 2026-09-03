@@ -90,12 +90,12 @@ module.exports = async function ({ blobStore }) {
       console.log = (...args) => process.stdout.write(`${util.format(...args)}\n`);
       console.error = (...args) => process.stderr.write(`${util.format(...args)}\n`);
 
-      // Electron's offscreen compositor keeps local command-line specs rendering
-      // without displaying a native window. CI deliberately stays on the normal
-      // compositor and takes focus: since Electron 43.2 an inactive window's
-      // document no longer reports itself focused, and without it every
-      // focus-dependent spec fails on the Linux and Windows runners. The
-      // interactive runner also stays visible through the non-headless branch.
+      // Electron's offscreen compositor keeps local Windows command-line specs
+      // rendering without displaying a native window. CI deliberately stays on
+      // the normal compositor and takes focus: since Electron 43.2 an inactive
+      // window's document no longer reports itself focused, and without it
+      // every focus-dependent spec fails on the Linux and Windows runners. The
+      // interactive runner and other local platforms retain showInactive().
       if (!offscreen) {
         if (process.env.CI) {
           await ipcRenderer.invoke("lumine:window", "show");
