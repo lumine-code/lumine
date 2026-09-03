@@ -81,6 +81,11 @@ module.exports = class Panel {
     return this.emitter.on("did-change-visible", callback);
   }
 
+  /** @private */
+  onWillShow(callback) {
+    return this.emitter.on("will-show", callback);
+  }
+
   /**
    * @public
    * @status public
@@ -184,6 +189,7 @@ module.exports = class Panel {
       }
     }
     let wasVisible = this.visible;
+    if (!wasVisible) this.emitter.emit("will-show", this);
     this.visible = true;
     if (this.element) this.element.style.display = null;
     if (!wasVisible) this.emitter.emit("did-change-visible", this.visible);

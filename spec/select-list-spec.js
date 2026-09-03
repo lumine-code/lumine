@@ -3,10 +3,25 @@ const { Disposable } = require("@lumine-code/event-kit");
 const SelectList = require("../src/select-list");
 
 describe("SelectList", () => {
-  let view;
+  let view, host;
 
   function createSelectList(props) {
-    return lumine.workspace.buildSelectList(props);
+    const list = lumine.workspace.buildSelectList(props);
+    list.getElement();
+    return list;
+  }
+
+  function addHost(options = {}) {
+    host = lumine.workspace.addSelectList(view, options);
+    return host;
+  }
+
+  function listElement() {
+    return view.getElement();
+  }
+
+  function find(selector) {
+    return listElement().querySelector(selector);
   }
 
   function textItemView(props = {}) {
@@ -22,7 +37,7 @@ describe("SelectList", () => {
   }
 
   function listTexts() {
-    return Array.from(view.element.querySelectorAll("li"), (li) => li.textContent);
+    return Array.from(listElement().querySelectorAll("li"), (li) => li.textContent);
   }
 
   async function nextUpdate() {
@@ -30,14 +45,33 @@ describe("SelectList", () => {
   }
 
   beforeEach(() => {
+    host = null;
     jasmine.attachToDOM(lumine.views.getView(lumine.workspace));
   });
 
   describe("public model API", () => {
+    it("materializes its DOM lazily and stays out of the editor registry while detached", () => {
+      view = lumine.workspace.buildSelectList({
+        items: ["one"],
+        renderItem: (item) => ({ primary: item }),
+      });
+      const queryEditor = view.getQueryEditor();
+
+      expect(view.component).toBeNull();
+      expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
+
+      const element = view.getElement();
+
+      expect(element.getModel()).toBe(view);
+      expect(element.isConnected).toBe(false);
+      expect(view.component).not.toBeNull();
+      expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
+    });
+
     it("exposes source, filtered, displayed, and selected state through methods", async () => {
       view = textItemView();
 
-      expect(view.getElement()).toBe(view.element);
+      expect(view.getElement().getModel()).toBe(view);
       expect(view.getItems()).toEqual(["one", "two", "three"]);
       expect(view.getFilteredItems()).toEqual(["one", "two", "three"]);
       expect(view.getDisplayedItems()).toEqual(["one", "two", "three"]);
@@ -48,9 +82,11 @@ describe("SelectList", () => {
       expect(view.getSelectedIndex()).toBe(0);
       const listbox = view.getElement().querySelector('[role="listbox"]');
       const selected = listbox.querySelector('[role="option"]');
-      expect(view.getQueryEditor().element.getAttribute("aria-controls")).toBe(listbox.id);
-      expect(view.getQueryEditor().element.getAttribute("aria-expanded")).toBe("false");
-      expect(view.getQueryEditor().element.getAttribute("aria-activedescendant")).toBe(selected.id);
+      expect(view.getQueryEditor().getElement().getAttribute("aria-controls")).toBe(listbox.id);
+      expect(view.getQueryEditor().getElement().getAttribute("aria-expanded")).toBe("false");
+      expect(view.getQueryEditor().getElement().getAttribute("aria-activedescendant")).toBe(
+        selected.id,
+      );
       expect(selected.getAttribute("aria-selected")).toBe("true");
 
       view.getQueryEditor().setText("tw");
@@ -61,11 +97,11 @@ describe("SelectList", () => {
 
     it("keeps combobox relationships aligned with an empty or visible listbox", async () => {
       view = textItemView({ items: [], emptyMessage: "Nothing" });
-      const editorElement = view.getQueryEditor().element;
+      const editorElement = view.getQueryEditor().getElement();
       expect(editorElement.getAttribute("aria-controls")).toBeNull();
       expect(editorElement.getAttribute("aria-expanded")).toBe("false");
 
-      view.show();
+      addHost().show();
       await view.setItems(["one"]);
       expect(editorElement.getAttribute("aria-controls")).toBe(
         view.getElement().querySelector('[role="listbox"]').id,
@@ -139,7 +175,7 @@ describe("SelectList", () => {
       expect(view.getSelectedItem()).toBe(replacement);
       expect(view.getSelectedItemId()).toBe("two");
       expect(view.getSelectedIndex()).toBe(0);
-      expect(view.element.querySelector("li.selected").textContent).toBe("Two, refreshed");
+      expect(find("li.selected").textContent).toBe("Two, refreshed");
     });
 
     it("uses the new getItemId, search, and renderItem contract", async () => {
@@ -161,7 +197,7 @@ describe("SelectList", () => {
       view.getQueryEditor().setText("alp");
       await nextUpdate();
       expect(view.getFilteredItems()).toEqual([items[0]]);
-      expect(view.element.querySelector(".character-match").textContent).toBe("Alp");
+      expect(find(".character-match").textContent).toBe("Alp");
     });
 
     it("keeps an initial query consistent across the editor, model, and rows", async () => {
@@ -171,7 +207,7 @@ describe("SelectList", () => {
       expect(view.getDisplayedItems()).toEqual(["two"]);
       expect(listTexts()).toEqual(["two"]);
 
-      await view.show();
+      await addHost().show();
       expect(view.getQuery()).toBe("");
       expect(view.getDisplayedItems()).toEqual(["one", "two", "three"]);
     });
@@ -216,14 +252,14 @@ describe("SelectList", () => {
 
       expect(view.getItems().map(({ id }) => id)).toEqual(["z", "a", "b", "m"]);
       expect(view.getFilteredItems().map(({ id }) => id)).toEqual(["a", "z", "b", "m"]);
-      expect(view.element.querySelectorAll(".select-list-separator").length).toBe(1);
+      expect(listElement().querySelectorAll(".select-list-separator").length).toBe(1);
 
       view.getQueryEditor().setText("a");
       await nextUpdate();
 
       expect(view.getFilteredItems().map(({ id }) => id)).toEqual(["a", "b"]);
       expect(view.getDisplayedItems().map(({ id }) => id)).toEqual(["a", "b"]);
-      expect(view.element.querySelector(".select-list-separator")).toBeNull();
+      expect(find(".select-list-separator")).toBeNull();
     });
 
     it("runs the applicable primary action with a stable item context", async () => {
@@ -318,7 +354,7 @@ describe("SelectList", () => {
         },
       });
 
-      await view.show({ query: "alpha:12" });
+      await addHost().show({ query: "alpha:12" });
 
       expect(requests).toEqual([
         {
@@ -512,18 +548,22 @@ describe("SelectList", () => {
           },
         ],
       });
-      view.show();
+      addHost().show();
 
       const result = await view.confirm();
 
       expect(result.status).toBe("success");
       expect(opened).toHaveBeenCalled();
-      expect(view.isVisible()).toBe(false);
+      expect(host.isVisible()).toBe(false);
       expect(view.getStatus()).toEqual({ type: "error", message: "History is read-only" });
     });
   });
 
   afterEach(async () => {
+    if (host) {
+      await host.destroy();
+      host = null;
+    }
     if (view) {
       await view.destroy();
       view = null;
@@ -572,7 +612,7 @@ describe("SelectList", () => {
         ],
       });
 
-      let separator = view.element.querySelector(".select-list-separator");
+      let separator = find(".select-list-separator");
       expect(separator.tagName).toBe("LI");
       expect(separator.getAttribute("role")).toBe("separator");
       expect(separator.previousElementSibling.textContent).toBe("one");
@@ -581,13 +621,13 @@ describe("SelectList", () => {
 
       await view.selectNext();
       expect(view.getSelectedItem()).toBe("two");
-      expect(view.element.querySelector("li.selected").textContent).toBe("two");
+      expect(find("li.selected").textContent).toBe("two");
 
       await view.setSections([
         { id: "first", items: ["one", "two"] },
         { id: "second", items: ["three"] },
       ]);
-      separator = view.element.querySelector(".select-list-separator");
+      separator = find(".select-list-separator");
       expect(separator.previousElementSibling.textContent).toBe("two");
       expect(separator.nextElementSibling.textContent).toBe("three");
     });
@@ -604,7 +644,7 @@ describe("SelectList", () => {
         renderItem: (item) => ({ primary: item.name }),
       });
 
-      const separator = view.element.querySelector(".select-list-separator");
+      const separator = find(".select-list-separator");
       expect(separator.previousElementSibling.textContent).toBe("alpha");
       expect(separator.nextElementSibling.textContent).toBe("beta");
     });
@@ -621,7 +661,7 @@ describe("SelectList", () => {
       view = textItemView({ emptyMessage: "nothing here" });
       view.getQueryEditor().setText("zzz");
       await nextUpdate();
-      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(find(".empty-message").textContent).toBe("nothing here");
     });
 
     it("renders two-line items from {primary, secondary} descriptors", () => {
@@ -629,7 +669,7 @@ describe("SelectList", () => {
         items: ["item"],
         renderItem: (item) => ({ primary: item, secondary: "detail" }),
       });
-      const li = view.element.querySelector("li");
+      const li = find("li");
       expect(li.classList.contains("two-lines")).toBe(true);
       expect(li.querySelector(".primary-line").textContent).toBe("item");
       expect(li.querySelector(".secondary-line").textContent).toBe("detail");
@@ -649,7 +689,7 @@ describe("SelectList", () => {
 
       view.getQueryEditor().setText("ac");
       await nextUpdate();
-      const matches = view.element.querySelectorAll(".character-match");
+      const matches = listElement().querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["a", "c"]);
     });
 
@@ -669,7 +709,7 @@ describe("SelectList", () => {
       await nextUpdate();
       expect(rendered.length).toBe(2);
       expect(rendered[0].tagName).toBe("LI");
-      expect(Array.from(view.element.querySelectorAll("li"), (li) => li.dataset.item)).toEqual([
+      expect(Array.from(listElement().querySelectorAll("li"), (li) => li.dataset.item)).toEqual([
         "one",
         "two",
       ]);
@@ -719,11 +759,11 @@ describe("SelectList", () => {
 
       await view.selectNext();
 
-      expect(Array.from(view.element.querySelectorAll("li"), (item) => item.textContent)).toEqual([
+      expect(Array.from(listElement().querySelectorAll("li"), (item) => item.textContent)).toEqual([
         "one",
         "two",
       ]);
-      expect(view.element.querySelector("li.selected").textContent).toBe("two");
+      expect(find("li.selected").textContent).toBe("two");
     });
 
     it("passes a highlight function bound to the item's own match indices", async () => {
@@ -738,7 +778,7 @@ describe("SelectList", () => {
 
       view.getQueryEditor().setText("ac");
       await nextUpdate();
-      const matches = view.element.querySelectorAll(".character-match");
+      const matches = listElement().querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["a", "c"]);
     });
 
@@ -753,7 +793,7 @@ describe("SelectList", () => {
       });
 
       await nextUpdate();
-      const matches = view.element.querySelectorAll(".character-match");
+      const matches = listElement().querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["a", "c"]);
     });
 
@@ -786,7 +826,7 @@ describe("SelectList", () => {
       view.getQueryEditor().setText("ab");
       await nextUpdate();
       await view.selectIndex(1);
-      const matches = view.element.querySelectorAll("li .character-match");
+      const matches = listElement().querySelectorAll("li .character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["ab", "ab"]);
     });
   });
@@ -856,7 +896,7 @@ describe("SelectList", () => {
       view.onDidChangeSelection(({ item }) => selections.push(item));
 
       await view.selectNext();
-      expect(view.element.querySelector("li.selected").textContent).toBe("two");
+      expect(find("li.selected").textContent).toBe("two");
       expect(selections[selections.length - 1]).toBe("two");
     });
 
@@ -864,7 +904,7 @@ describe("SelectList", () => {
       const confirmed = [];
       view = textItemView();
       view.onDidConfirmSelection(({ item }) => confirmed.push(item));
-      const secondItem = view.element.querySelectorAll("li")[1];
+      const secondItem = listElement().querySelectorAll("li")[1];
       const event = new MouseEvent("mousedown", {
         bubbles: true,
         button: 1,
@@ -895,71 +935,92 @@ describe("SelectList", () => {
       expect(confirmedEmpty).toBe(true);
     });
 
-    it("emits onDidCancel when cancelled", () => {
+    it("lets its host publish cancellation", () => {
       let cancelled = false;
       view = textItemView();
-      view.onDidCancel(() => (cancelled = true));
-      view.cancelSelection();
+      addHost().onDidCancel(() => (cancelled = true));
+      host.show();
+      host.cancel();
       expect(cancelled).toBe(true);
     });
   });
 
   describe("panel management", () => {
+    it("registers the query editor only after the lazy host materializes its panel", async () => {
+      view = textItemView();
+      const queryEditor = view.getQueryEditor();
+      addHost();
+
+      expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
+
+      host.getPanel();
+      expect(lumine.textEditors.roleFor(queryEditor)).toBe("fragment");
+
+      await host.destroy();
+      host = null;
+      expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
+    });
+
     it("shows and hides a modal panel and focuses the query editor", () => {
       view = textItemView();
-      expect(view.isVisible()).toBe(false);
+      addHost();
+      expect(host.isVisible()).toBe(false);
 
-      view.show();
-      expect(view.isVisible()).toBe(true);
-      expect(lumine.workspace.getModalPanels()).toContain(view.getPanel());
-      expect(view.element.contains(document.activeElement)).toBe(true);
+      host.show();
+      expect(host.isVisible()).toBe(true);
+      expect(lumine.workspace.getModalPanels()).toContain(host.getPanel());
+      expect(listElement().contains(document.activeElement)).toBe(true);
 
-      view.hide();
-      expect(view.isVisible()).toBe(false);
+      host.hide();
+      expect(host.isVisible()).toBe(false);
 
-      view.toggle();
-      expect(view.isVisible()).toBe(true);
+      host.toggle();
+      expect(host.isVisible()).toBe(true);
     });
 
     it("creates the panel hidden on getPanel() and reuses it on show()", () => {
       view = textItemView();
-      const panel = view.getPanel();
+      addHost();
+      const panel = host.getPanel();
       expect(panel.isVisible()).toBe(false);
       expect(lumine.workspace.getModalPanels()).toContain(panel);
 
-      view.show();
-      expect(view.getPanel()).toBe(panel);
+      host.show();
+      expect(host.getPanel()).toBe(panel);
       expect(panel.isVisible()).toBe(true);
     });
 
     it("uses the full list model as the panel item", () => {
       view = textItemView();
-      expect(view.getPanel().getItem()).toBe(view);
+      addHost();
+      expect(host.getPanel().getItem()).toBe(view);
     });
 
     it("emits a fresh-open event whenever a hidden panel is shown", () => {
       let openCalls = 0;
       view = textItemView();
-      view.onDidOpen(() => openCalls++);
-      view.show();
+      addHost().onDidOpen(() => openCalls++);
+      host.show();
       expect(openCalls).toBe(1);
 
       // Showing while already visible does not re-run it.
-      view.show();
+      host.show();
       expect(openCalls).toBe(1);
 
       // The panel being shown from outside the model is still a fresh open.
-      view.hide();
-      view.getPanel().show();
+      host.hide();
+      host.getPanel().show();
       expect(openCalls).toBe(2);
     });
 
-    it("destroys its panel on destroy", async () => {
+    it("destroys its panel when the host is destroyed", async () => {
       view = textItemView();
-      const panel = view.getPanel();
-      await view.destroy();
-      view = null;
+      addHost();
+      const panel = host.getPanel();
+      await host.destroy();
+      host = null;
       expect(lumine.workspace.getModalPanels()).not.toContain(panel);
+      expect(view.isDestroyed()).toBe(false);
     });
   });
 
@@ -980,16 +1041,16 @@ describe("SelectList", () => {
         infoMessage: "fyi",
         loadingMessage: "wait",
       });
-      expect(view.component.refs.loadingMessage.textContent).toBe("wait");
-      expect(view.component.refs.statusMessage).toBeUndefined();
-      expect(view.component.refs.infoMessage).toBeUndefined();
+      expect(find(".loading-message").textContent).toBe("wait");
+      expect(find(".status-message")).toBeNull();
+      expect(find(".info-message")).toBeNull();
 
       await view.update({ loadingMessage: null });
-      expect(view.component.refs.statusMessage.textContent).toBe("boom");
-      expect(view.component.refs.infoMessage).toBeUndefined();
+      expect(find(".status-message").textContent).toBe("boom");
+      expect(find(".info-message")).toBeNull();
 
       await view.update({ status: null });
-      expect(view.component.refs.infoMessage.textContent).toBe("fyi");
+      expect(find(".info-message").textContent).toBe("fyi");
     });
 
     it("leaves model, query, DOM, and events unchanged when an atomic update fails", async () => {
@@ -1022,7 +1083,7 @@ describe("SelectList", () => {
       expect(view.getItems().map(({ id }) => id)).toEqual(["one", "two"]);
       expect(view.getSelectedItemId()).toBe("two");
       expect(view.getRecentItemIds()).toEqual([]);
-      expect(Array.from(view.element.querySelectorAll("li"), (row) => row.textContent)).toEqual([
+      expect(Array.from(listElement().querySelectorAll("li"), (row) => row.textContent)).toEqual([
         "One",
         "Two",
       ]);
@@ -1068,22 +1129,22 @@ describe("SelectList", () => {
       view = textItemView();
 
       await view.update({ status: { message: "plain" } });
-      expect(view.component.refs.statusMessage.classList.contains("text-info")).toBe(true);
-      expect(view.component.refs.statusMessage.getAttribute("role")).toBe("status");
+      expect(find(".status-message").classList.contains("text-info")).toBe(true);
+      expect(find(".status-message").getAttribute("role")).toBe("status");
 
       await view.update({ status: { type: "warning", message: "careful" } });
-      expect(view.component.refs.statusMessage.classList.contains("text-warning")).toBe(true);
+      expect(find(".status-message").classList.contains("text-warning")).toBe(true);
 
       await view.update({ status: { type: "error", message: "broken" } });
-      expect(view.component.refs.statusMessage.classList.contains("text-error")).toBe(true);
-      expect(view.component.refs.statusMessage.getAttribute("role")).toBe("alert");
+      expect(find(".status-message").classList.contains("text-error")).toBe(true);
+      expect(find(".status-message").getAttribute("role")).toBe("alert");
     });
 
     it("renders a spinner beside every loading message", async () => {
       view = textItemView();
       await view.update({ loadingMessage: "Indexing…", loadingBadge: 7 });
-      expect(view.element.querySelector(".loading .loading-spinner-tiny")).not.toBeNull();
-      expect(view.component.refs.loadingBadge.textContent).toBe("7");
+      expect(find(".loading .loading-spinner-tiny")).not.toBeNull();
+      expect(find(".loading .badge").textContent).toBe("7");
     });
 
     it("clears a status on the next query change, but keeps a sticky one", async () => {
@@ -1093,28 +1154,28 @@ describe("SelectList", () => {
       view.getQueryEditor().setText("o");
       // Polled rather than awaiting the next update: the render may already
       // have flushed by the time we ask, leaving no next update to wait for.
-      await conditionPromise(() => !view.component.refs.statusMessage);
+      await conditionPromise(() => !find(".status-message"));
       // Clearing the overlay uncovers the resting line; nothing had to save it.
-      expect(view.component.refs.infoMessage.textContent).toBe("resting");
+      expect(find(".info-message").textContent).toBe("resting");
 
       await view.update({ status: { type: "error", message: "background", sticky: true } });
       view.getQueryEditor().setText("on");
       // A sticky status is expected not to move, so there is nothing to poll
       // for; flush with an update of our own instead.
       await view.update({});
-      expect(view.component.refs.statusMessage.textContent).toBe("background");
+      expect(find(".status-message").textContent).toBe("background");
     });
 
     it("expires a status after its duration", async () => {
       view = textItemView({ infoMessage: "resting" });
 
       await view.update({ status: { message: "Copied", duration: 2000 } });
-      expect(view.component.refs.statusMessage.textContent).toBe("Copied");
+      expect(find(".status-message").textContent).toBe("Copied");
 
       advanceClock(2000);
       expect(view.getStatus()).toBeNull();
-      await conditionPromise(() => Boolean(view.component.refs.infoMessage));
-      expect(view.component.refs.statusMessage).toBeUndefined();
+      await conditionPromise(() => Boolean(find(".info-message")));
+      expect(find(".status-message")).toBeNull();
     });
 
     it("cancels a pending expiry when the status is superseded", async () => {
@@ -1126,7 +1187,7 @@ describe("SelectList", () => {
       // The first message's timer must not wipe the one that replaced it.
       advanceClock(2000);
       expect(view.getStatus().message).toBe("second");
-      expect(view.component.refs.statusMessage.textContent).toBe("second");
+      expect(find(".status-message").textContent).toBe("second");
     });
 
     it("cancels a pending expiry when the view is destroyed", async () => {
@@ -1143,18 +1204,18 @@ describe("SelectList", () => {
       view = textItemView({ emptyMessage: "nothing here" });
       view.getQueryEditor().setText("zzz");
       await nextUpdate();
-      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(find(".empty-message").textContent).toBe("nothing here");
 
       // A failure and an empty result are the same fact; reporting both twice
       // is what stacking used to do.
       await view.update({ status: { type: "error", message: "Load failed." } });
-      expect(view.component.refs.emptyMessage).toBeUndefined();
+      expect(find(".empty-message")).toBeNull();
 
       await view.update({ status: null, loadingMessage: "Reloading…" });
-      expect(view.component.refs.emptyMessage).toBeUndefined();
+      expect(find(".empty-message")).toBeNull();
 
       await view.update({ loadingMessage: null });
-      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(find(".empty-message").textContent).toBe("nothing here");
     });
 
     it("keeps the resting info line alongside an empty list", async () => {
@@ -1162,8 +1223,8 @@ describe("SelectList", () => {
       view = textItemView({ emptyMessage: "nothing here", infoMessage: "3 items" });
       view.getQueryEditor().setText("zzz");
       await nextUpdate();
-      expect(view.component.refs.infoMessage.textContent).toBe("3 items");
-      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(find(".info-message").textContent).toBe("3 items");
+      expect(find(".empty-message").textContent).toBe("nothing here");
     });
   });
 
@@ -1172,16 +1233,16 @@ describe("SelectList", () => {
       const content = document.createElement("div");
       content.className = "custom-content";
       view = textItemView({ contentElement: content });
-      expect(view.element.contains(content)).toBe(true);
+      expect(listElement().contains(content)).toBe(true);
 
       view.getQueryEditor().setText("tw");
       await nextUpdate();
-      expect(view.element.contains(content)).toBe(true);
+      expect(listElement().contains(content)).toBe(true);
 
       const replacement = document.createElement("div");
       await view.update({ contentElement: replacement });
-      expect(view.element.contains(content)).toBe(false);
-      expect(view.element.contains(replacement)).toBe(true);
+      expect(listElement().contains(content)).toBe(false);
+      expect(listElement().contains(replacement)).toBe(true);
     });
 
     it("supports dialog-style views with no items", () => {
@@ -1193,8 +1254,8 @@ describe("SelectList", () => {
         contentElement: content,
       });
       view.onDidConfirmEmptySelection(() => (confirmedEmpty = true));
-      expect(view.element.contains(content)).toBe(true);
-      expect(view.element.querySelector("li")).toBeNull();
+      expect(listElement().contains(content)).toBe(true);
+      expect(find("li")).toBeNull();
 
       view.confirmSelection();
       expect(confirmedEmpty).toBe(true);
@@ -1211,7 +1272,7 @@ describe("SelectList", () => {
 
     it("caps the list at 99 by default and ends it with the Show more row", () => {
       view = bigListView();
-      const rows = view.element.querySelectorAll("li");
+      const rows = listElement().querySelectorAll("li");
       expect(rows.length).toBe(100);
       expect(rows[99].textContent).toBe("Show more…");
       expect(rows[99].classList.contains("show-more-item")).toBe(true);
@@ -1219,31 +1280,31 @@ describe("SelectList", () => {
 
     it("keeps the Show more row to one line when items reserve an active marker", () => {
       view = bigListView(250, { itemsClassList: ["mark-active"] });
-      view.show();
+      addHost().show();
 
-      const item = view.element.querySelector("li:not(.show-more-item)");
-      const showMore = view.element.querySelector("li.show-more-item");
+      const item = find("li:not(.show-more-item)");
+      const showMore = find("li.show-more-item");
       expect(showMore.offsetHeight).toBe(item.offsetHeight);
     });
 
     it("renders no Show more row when everything fits", () => {
       view = bigListView(99);
-      const rows = view.element.querySelectorAll("li");
+      const rows = listElement().querySelectorAll("li");
       expect(rows.length).toBe(99);
-      expect(view.element.querySelector(".show-more-item")).toBeNull();
+      expect(find(".show-more-item")).toBeNull();
     });
 
     it("reveals successive pages rather than dropping the remaining matches", async () => {
       view = bigListView(250);
-      expect(view.element.querySelectorAll("li").length).toBe(100);
+      expect(listElement().querySelectorAll("li").length).toBe(100);
 
       await view.showMore();
-      expect(view.element.querySelectorAll("li").length).toBe(199);
+      expect(listElement().querySelectorAll("li").length).toBe(199);
 
       await view.showMore();
-      const rows = view.element.querySelectorAll("li");
+      const rows = listElement().querySelectorAll("li");
       expect(rows.length).toBe(250);
-      expect(view.element.querySelector(".show-more-item")).toBeNull();
+      expect(find(".show-more-item")).toBeNull();
     });
 
     it("moves an off-page selection into view when results are collapsed", async () => {
@@ -1256,7 +1317,9 @@ describe("SelectList", () => {
       expect(view.getDisplayedItems().length).toBe(99);
       expect(view.getSelectedItem()).toBe("item-000");
       expect(view.getSelectedIndex()).toBe(0);
-      expect(view.getQueryEditor().element.getAttribute("aria-activedescendant")).not.toBeNull();
+      expect(
+        view.getQueryEditor().getElement().getAttribute("aria-activedescendant"),
+      ).not.toBeNull();
     });
 
     it("expands on confirm and selects the first newly revealed item", async () => {
@@ -1291,7 +1354,7 @@ describe("SelectList", () => {
       await view.selectNext();
 
       expect(confirmed).toEqual([]);
-      expect(view.element.querySelectorAll("li").length).toBe(101);
+      expect(listElement().querySelectorAll("li").length).toBe(101);
       expect(view.getSelectedItem()).toBe("item-099");
     });
 
@@ -1314,13 +1377,13 @@ describe("SelectList", () => {
       // Wrapping upward from the first item lands on the row: expand instead.
       await view.selectPrevious();
       expect(view.getSelectedItem()).toBe("item-099");
-      expect(view.element.querySelectorAll("li").length).toBe(199);
+      expect(listElement().querySelectorAll("li").length).toBe(199);
 
       // Select-last touches the new row: one more batch, no chain.
       await view.selectLast();
       expect(view.getSelectedItem()).toBe("item-198");
-      expect(view.element.querySelectorAll("li").length).toBe(250);
-      expect(view.element.querySelector(".show-more-item")).toBeNull();
+      expect(listElement().querySelectorAll("li").length).toBe(250);
+      expect(find(".show-more-item")).toBeNull();
     });
 
     it("expands the rest of the matches before it empties the selection", async () => {
@@ -1343,20 +1406,20 @@ describe("SelectList", () => {
     it("starts from the base cap again when the query changes", async () => {
       view = bigListView();
       await view.showMore();
-      expect(view.element.querySelectorAll("li").length).toBe(199);
+      expect(listElement().querySelectorAll("li").length).toBe(199);
 
       view.getQueryEditor().setText("item-0");
       await nextUpdate();
 
       // 100 matches (item-000 … item-099) cap back to 99 plus the row.
-      expect(view.element.querySelectorAll("li").length).toBe(100);
-      expect(view.element.querySelector(".show-more-item")).not.toBeNull();
+      expect(listElement().querySelectorAll("li").length).toBe(100);
+      expect(find(".show-more-item")).not.toBeNull();
     });
 
     it("keeps the scroll position when the row is clicked", async () => {
       view = bigListView();
-      view.show();
-      const scroller = view.component.refs.items;
+      addHost().show();
+      const scroller = find("ol.list-group");
       scroller.style.maxHeight = "100px";
       scroller.style.overflowY = "auto";
       scroller.scrollTop = scroller.scrollHeight;
@@ -1366,14 +1429,14 @@ describe("SelectList", () => {
       view.didClickItem(view.getDisplayedItems().length);
       await etch.getScheduler().getNextUpdatePromise();
 
-      expect(view.component.refs.items).toBe(scroller);
+      expect(find("ol.list-group")).toBe(scroller);
       expect(scroller.scrollTop).toBe(before);
     });
 
     it("scrolls the viewport to the selection when keyboard navigation expands from afar", async () => {
       view = bigListView();
-      view.show();
-      const scroller = view.component.refs.items;
+      addHost().show();
+      const scroller = find("ol.list-group");
       scroller.style.maxHeight = "100px";
       scroller.style.overflowY = "auto";
       scroller.scrollTop = 0;
@@ -1383,7 +1446,7 @@ describe("SelectList", () => {
 
       expect(view.getSelectedItem()).toBe("item-099");
       expect(scroller.scrollTop).toBeGreaterThan(0);
-      const selected = view.element.querySelector("li.selected");
+      const selected = find("li.selected");
       const selRect = selected.getBoundingClientRect();
       const scrRect = scroller.getBoundingClientRect();
       expect(selRect.top).not.toBeLessThan(scrRect.top - 1);
@@ -1411,21 +1474,56 @@ describe("SelectList", () => {
 
       expect(rendered.some((item) => item.showMoreSentinel)).toBe(false);
       expect(keyed.some((item) => item.showMoreSentinel)).toBe(false);
-      expect(view.element.querySelector(".show-more-item")).not.toBeNull();
+      expect(find(".show-more-item")).not.toBeNull();
+    });
+  });
+
+  describe("hosted actions", () => {
+    it("keeps a selected danger action in the error colour", async () => {
+      view = textItemView({
+        commands: {
+          "spec:remove-item": {
+            description: "Remove the selected item.",
+            didDispatch() {},
+          },
+        },
+        actions: [
+          {
+            command: "spec:remove-item",
+            context: "item",
+            disposition: "stay",
+            tone: "danger",
+          },
+        ],
+      });
+      addHost({ crumb: "Items" }).show();
+
+      await host.showActions();
+
+      const selectedAction = lumine.workspace
+        .getElement()
+        .querySelector(".select-list-actions [role='option'].selected");
+      expect(selectedAction.classList.contains("text-error")).toBe(true);
+
+      const errorText = document.createElement("span");
+      errorText.className = "text-error";
+      lumine.workspace.getElement().appendChild(errorText);
+      expect(getComputedStyle(selectedAction).color).toBe(getComputedStyle(errorText).color);
+      errorText.remove();
     });
   });
 
   describe("the query", () => {
     it("clears the query on every show, and remembers what it cleared", () => {
       view = textItemView();
-      view.show();
+      addHost().show();
       view.getQueryEditor().setText("tw");
-      view.hide();
+      host.hide();
 
-      view.show();
+      host.show();
       expect(view.getQuery()).toBe("");
 
-      expect(view.restoreQuery()).toBe(true);
+      expect(host.restoreQuery()).toBe(true);
       expect(view.getQuery()).toBe("tw");
       // Selected, so the next keystroke replaces it rather than appending.
       expect(view.getQueryEditor().getSelectedText()).toBe("tw");
@@ -1433,29 +1531,27 @@ describe("SelectList", () => {
 
     it("has nothing to restore before the first close", () => {
       view = textItemView();
-      view.show();
+      addHost().show();
       view.getQueryEditor().setText("tw");
 
-      expect(view.restoreQuery()).toBe(false);
+      expect(host.restoreQuery()).toBe(false);
       expect(view.getQuery()).toBe("tw");
     });
 
     it("clears before the fresh-open event", () => {
       const queries = [];
       view = textItemView();
-      view.onDidOpen(() => queries.push(view.getQuery()));
-      view.show();
+      addHost().onDidOpen(() => queries.push(view.getQuery()));
+      host.show();
       view.getQueryEditor().setText("tw");
-      view.hide();
-      view.show();
+      host.hide();
+      host.show();
 
       expect(queries).toEqual(["", ""]);
     });
 
     it("keeps the query across a flow round trip rather than treating it as an open", async () => {
       view = textItemView({
-        className: "spec-query",
-        crumb: "Files",
         commands: {
           "spec:some-action": { description: "Do something.", didDispatch() {} },
         },
@@ -1467,23 +1563,21 @@ describe("SelectList", () => {
           },
         ],
       });
-      view.show();
+      addHost({ crumb: "Files", className: "spec-query" }).show();
       view.getQueryEditor().setText("tw");
 
-      await view.showActions();
-      expect(view.isVisible()).toBe(false);
+      await host.showActions();
+      expect(host.isVisible()).toBe(false);
       lumine.workspace.popModal();
 
       // Returning from the actions list is a resume: the query the action was
       // chosen under is still there.
-      expect(view.isVisible()).toBe(true);
+      expect(host.isVisible()).toBe(true);
       expect(view.getQuery()).toBe("tw");
     });
 
     it("does not carry an abandoned suspension into the next open", async () => {
       view = textItemView({
-        className: "spec-query",
-        crumb: "Files",
         commands: {
           "spec:some-action": { description: "Do something.", didDispatch() {} },
         },
@@ -1495,16 +1589,14 @@ describe("SelectList", () => {
           },
         ],
       });
-      view.show();
+      addHost({ crumb: "Files", className: "spec-query" }).show();
       view.getQueryEditor().setText("tw");
 
-      // Shift-F10, then dismiss the actions list instead of coming back: the master
-      // is left suspended with nothing on screen, and the next open is an
-      // open, not a resume.
-      await view.showActions();
-      const actionList = lumine.workspace.getElement().querySelector(".select-list-actions");
-      await lumine.commands.dispatch(actionList, "core:cancel");
-      view.show();
+      // Shift-F10, then cancel the owner instead of returning through the
+      // breadcrumb: the next show is a fresh open, not a resume.
+      await host.showActions();
+      host.cancel("action-picker");
+      host.show();
 
       expect(view.getQuery()).toBe("");
     });

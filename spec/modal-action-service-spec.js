@@ -2,19 +2,12 @@ const { Disposable, Emitter } = require("@lumine-code/event-kit");
 const ModalActionService = require("../src/modal-action-service");
 
 describe("ModalActionService", () => {
-  let service, picker, commandRegistry, keymapManager, workspace, createSelectList;
+  let service, picker, pickerHost, commandRegistry, keymapManager, workspace, createSelectListHost;
 
   class FakePicker {
     constructor(options) {
       this.options = options;
       this.element = {};
-      this.emitter = new Emitter();
-      this.panelEmitter = new Emitter();
-      this.panel = {
-        flowTransition: false,
-        onDidChangeVisible: (callback) => this.panelEmitter.on("did-change-visible", callback),
-      };
-      this.visible = false;
       this.updates = [];
       this.statuses = [];
     }
@@ -26,27 +19,8 @@ describe("ModalActionService", () => {
 
     reset() {}
 
-    show(options) {
-      this.visible = true;
-      this.showOptions = options;
-    }
-
-    hide() {
-      this.visible = false;
-      this.panelEmitter.emit("did-change-visible", false);
-      this.emitter.emit("did-hide");
-    }
-
-    isVisible() {
-      return this.visible;
-    }
-
     getElement() {
       return this.element;
-    }
-
-    getPanel() {
-      return this.panel;
     }
 
     isDestroyed() {
@@ -58,31 +32,71 @@ describe("ModalActionService", () => {
       return Promise.resolve();
     }
 
-    onDidConfirmSelection(callback) {
-      return this.emitter.on("did-confirm-selection", callback);
+    destroy() {
+      this.destroyed = true;
+      return Promise.resolve();
+    }
+  }
+
+  class FakePickerHost {
+    constructor(options) {
+      this.model = new FakePicker(options);
+      this.emitter = new Emitter();
+      this.visible = false;
+      this.suspendedByFlow = false;
+    }
+
+    getModel() {
+      return this.model;
+    }
+
+    show(options) {
+      this.visible = true;
+      this.showOptions = options;
+    }
+
+    hide() {
+      if (!this.visible) return false;
+      this.visible = false;
+      this.emitter.emit("did-change-visible", { visible: false });
+      return true;
+    }
+
+    isVisible() {
+      return this.visible;
     }
 
     onDidCancel(callback) {
       return this.emitter.on("did-cancel", callback);
     }
 
-    onDidHide(callback) {
-      return this.emitter.on("did-hide", callback);
+    onDidChangeVisible(callback) {
+      return this.emitter.on("did-change-visible", callback);
+    }
+
+    onDidDestroy(callback) {
+      return this.emitter.on("did-destroy", callback);
     }
 
     destroy() {
+      if (this.destroyed) return Promise.resolve();
       this.destroyed = true;
+      this.visible = false;
+      this.emitter.emit("did-destroy");
       this.emitter.dispose();
-      this.panelEmitter.dispose();
-      return Promise.resolve();
+      return this.model.destroy();
     }
   }
 
   beforeEach(() => {
-    createSelectList = jasmine.createSpy("createSelectList").and.callFake((options) => {
-      picker = new FakePicker(options);
-      return picker;
-    });
+    createSelectListHost = jasmine
+      .createSpy("createSelectListHost")
+      .and.callFake((options, hostOptions) => {
+        pickerHost = new FakePickerHost(options);
+        pickerHost.hostOptions = hostOptions;
+        picker = pickerHost.getModel();
+        return pickerHost;
+      });
     commandRegistry = {
       add: jasmine.createSpy("add").and.callFake((element, listeners) => {
         commandRegistry.element = element;
@@ -103,7 +117,7 @@ describe("ModalActionService", () => {
     };
     workspace = { popModal: jasmine.createSpy("popModal").and.returnValue(true) };
     service = new ModalActionService({
-      createSelectList,
+      createSelectListHost,
       commandRegistry,
       keymapManager,
       workspace,
@@ -138,21 +152,48 @@ describe("ModalActionService", () => {
     await service.show({ owner, actions, context: { itemId: "one" } });
     await service.show({ owner, actions: actions.slice(0, 1), context: { itemId: "two" } });
 
-    expect(createSelectList).toHaveBeenCalledTimes(1);
-    expect(picker.options.className).toBe("select-list-actions");
-    expect(picker.options.className).not.toContain("owner");
+    expect(createSelectListHost).toHaveBeenCalledTimes(1);
+    expect(picker.options.className).toBeUndefined();
+    expect(pickerHost.hostOptions).toEqual({ className: "select-list-actions" });
     expect(picker.updates[0].sections.map(({ label }) => label)).toEqual(["Open", "Copy"]);
     expect(
       picker.updates[0].sections.map(({ items }) => items.map(({ command }) => command)),
     ).toEqual([["spec:open", "spec:split"], ["spec:copy"]]);
-    expect(picker.showOptions).toEqual({ crumb: "Actions" });
+    expect(pickerHost.showOptions).toEqual({ crumb: "Actions" });
+  });
+
+  it("uses the model for data and the host for modal lifecycle", async () => {
+    await service.show({
+      owner: { runAction() {} },
+      actions: [action("spec:open")],
+      context: {},
+    });
+
+    expect(commandRegistry.element).toBe(picker.getElement());
+    expect(pickerHost.isVisible()).toBe(true);
+    expect(picker.isVisible).toBeUndefined();
+    expect(picker.show).toBeUndefined();
+  });
+
+  it("recreates the shared picker after its host is destroyed externally", async () => {
+    const owner = { runAction() {} };
+    const actions = [action("spec:open")];
+    await service.show({ owner, actions, context: {} });
+    const firstHost = pickerHost;
+
+    await firstHost.destroy();
+    await service.show({ owner, actions, context: {} });
+
+    expect(createSelectListHost).toHaveBeenCalledTimes(2);
+    expect(pickerHost).not.toBe(firstHost);
+    expect(pickerHost.isVisible()).toBe(true);
   });
 
   it("returns to the owner and runs an enabled action with its captured context", async () => {
     const result = Promise.resolve({ status: "success" });
     const owner = {
       runAction: jasmine.createSpy("runAction").and.returnValue(result),
-      getPanel: () => ({ show() {} }),
+      getPanel: () => ({ show: jasmine.createSpy("show") }),
     };
     const context = { itemId: "one", query: "kept" };
     await service.show({ owner, actions: [action("spec:open")], context });
@@ -167,6 +208,21 @@ describe("ModalActionService", () => {
     expect(options.context).toEqual(context);
     await expectAsync(returned).toBeResolvedTo({ status: "success" });
     expect(commandRegistry.listeners).toBeNull();
+  });
+
+  it("falls back to the owner host when the modal trail cannot be popped", async () => {
+    workspace.popModal.and.returnValue(false);
+    const panel = { show: jasmine.createSpy("show") };
+    const owner = {
+      runAction: jasmine.createSpy("runAction").and.resolveTo({ status: "success" }),
+      getPanel: () => panel,
+    };
+    await service.show({ owner, actions: [action("spec:open")], context: {} });
+
+    await service.confirmAction(picker.updates[0].sections[0].items[0]);
+
+    expect(pickerHost.isVisible()).toBe(false);
+    expect(panel.show).toHaveBeenCalled();
   });
 
   it("keeps a disabled action open and reports its reason", async () => {
@@ -261,15 +317,15 @@ describe("ModalActionService", () => {
     };
     await service.show({ owner, actions: [action("spec:open")], context: {} });
 
-    picker.panel.flowTransition = true;
-    picker.panelEmitter.emit("did-change-visible", false);
+    pickerHost.suspendedByFlow = true;
+    pickerHost.emitter.emit("did-change-visible", { visible: false });
     expect(commandRegistry.listeners).toBeNull();
     expect(owner.setActionsExpanded).toHaveBeenCalledWith(false);
     expect(picker.updates.at(-1).sections).toEqual([]);
 
-    picker.panel.flowTransition = false;
+    pickerHost.suspendedByFlow = false;
     await service.show({ owner, actions: [action("spec:open")], context: {} });
-    picker.emitter.emit("did-cancel");
+    pickerHost.emitter.emit("did-cancel");
     expect(owner.cancel).toHaveBeenCalledWith("action-picker");
   });
 
@@ -319,7 +375,7 @@ describe("ModalActionService", () => {
     finishUpdates.forEach((finish) => finish());
 
     await expectAsync(showing).toBeResolvedTo(false);
-    expect(picker.isVisible()).toBe(false);
+    expect(pickerHost.isVisible()).toBe(false);
     expect(commandRegistry.listeners).toBeUndefined();
   });
 
@@ -333,6 +389,7 @@ describe("ModalActionService", () => {
     await service.destroy();
     await service.destroy();
 
+    expect(pickerHost.destroyed).toBe(true);
     expect(picker.destroyed).toBe(true);
     await expectAsync(
       service.show({ owner: {}, actions: [action("spec:late")], context: {} }),

@@ -260,6 +260,125 @@ describe("DialogSource", () => {
     expect(seen).toEqual(["initial", "changed"]);
   });
 
+  it("performs one explicit load while detached and remains closed afterwards", async () => {
+    const seen = [];
+    build({
+      mode: "query",
+      load({ query: requestedQuery }) {
+        seen.push(requestedQuery);
+        return requestedQuery;
+      },
+    });
+
+    expect(source.queryChanged()).toBe(false);
+    await source.reload();
+    expect(seen).toEqual(["initial"]);
+    expect(applied).toEqual(["initial"]);
+
+    query = "ignored while detached";
+    expect(source.queryChanged()).toBe(false);
+    advanceClock(1000);
+    expect(seen).toEqual(["initial"]);
+
+    query = "explicit reload";
+    await source.reload();
+    expect(seen).toEqual(["initial", "explicit reload"]);
+  });
+
+  it("does not turn a detached reload into an automatic query session", async () => {
+    const load = deferred();
+    const seen = [];
+    build({
+      mode: "query",
+      debounceMs: 0,
+      load({ query: requestedQuery }) {
+        seen.push(requestedQuery);
+        return load.promise;
+      },
+    });
+
+    const reloading = source.reload();
+    query = "changed during reload";
+
+    expect(source.queryChanged()).toBe(false);
+    expect(seen).toEqual(["initial"]);
+    load.resolve("done");
+    await reloading;
+    expect(seen).toEqual(["initial"]);
+  });
+
+  it("coalesces query changes while suspended into one load on resume", async () => {
+    const seen = [];
+    build({
+      mode: "query",
+      load({ query: requestedQuery }) {
+        seen.push(requestedQuery);
+        return requestedQuery;
+      },
+    });
+    await source.open();
+    applied.length = 0;
+    loading.length = 0;
+
+    expect(source.suspend()).toBe(true);
+    expect(source.suspend()).toBe(false);
+    query = "first";
+    expect(source.queryChanged()).toBe(true);
+    query = "latest";
+    expect(source.queryChanged()).toBe(true);
+    advanceClock(1000);
+
+    expect(seen).toEqual(["initial"]);
+    expect(source.isLoading()).toBe(false);
+    await source.resume();
+    expect(seen).toEqual(["initial", "latest"]);
+    expect(applied).toEqual(["latest"]);
+    expect(loading).toEqual([true, false]);
+
+    await source.resume();
+    expect(seen).toEqual(["initial", "latest"]);
+  });
+
+  it("moves a pending query debounce into the suspended resume load", async () => {
+    const seen = [];
+    build({
+      mode: "query",
+      load({ query: requestedQuery }) {
+        seen.push(requestedQuery);
+        return requestedQuery;
+      },
+    });
+    await source.open();
+    loading.length = 0;
+
+    query = "pending";
+    source.queryChanged();
+    expect(source.isLoading()).toBe(true);
+    source.suspend();
+    expect(source.isLoading()).toBe(false);
+    advanceClock(1000);
+    expect(seen).toEqual(["initial"]);
+
+    await source.resume();
+    expect(seen).toEqual(["initial", "pending"]);
+    expect(loading).toEqual([true, false, true, false]);
+  });
+
+  it("defers a source replacement while suspended until resume", async () => {
+    const initial = jasmine.createSpy("initial").and.returnValue("old");
+    const replacement = jasmine.createSpy("replacement").and.returnValue("new");
+    build({ mode: "snapshot", load: initial });
+    await source.open();
+
+    source.suspend();
+    await source.setSource({ mode: "snapshot", load: replacement });
+    expect(replacement).not.toHaveBeenCalled();
+
+    await source.resume();
+    expect(replacement).toHaveBeenCalledTimes(1);
+    expect(applied).toEqual(["old", "new"]);
+  });
+
   it("replaces an open source immediately and leaves a closed replacement idle", async () => {
     const old = deferred();
     let oldRequest;

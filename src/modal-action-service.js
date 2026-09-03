@@ -6,23 +6,23 @@ const { humanizeKeystroke } = require("@lumine-code/underscore-plus");
 /**
  * Owns the single action picker used by every modal model in one workspace.
  *
- * SelectList construction is injected so this service never imports the public
- * model and cannot create an InputDialog/SelectList module cycle.
+ * SelectList host construction is injected so this service never imports the
+ * public model or host classes and cannot create a module cycle.
  * @private
  */
 module.exports = class ModalActionService {
-  constructor({ createSelectList, commandRegistry, keymapManager, workspace }) {
-    if (typeof createSelectList !== "function") {
-      throw new TypeError("ModalActionService requires a createSelectList callback.");
+  constructor({ createSelectListHost, commandRegistry, keymapManager, workspace }) {
+    if (typeof createSelectListHost !== "function") {
+      throw new TypeError("ModalActionService requires a createSelectListHost callback.");
     }
     if (!keymapManager || typeof keymapManager.add !== "function") {
       throw new TypeError("ModalActionService requires a keymap manager.");
     }
-    this.createSelectList = createSelectList;
+    this.createSelectListHost = createSelectListHost;
     this.commandRegistry = commandRegistry;
     this.keymapManager = keymapManager;
     this.workspace = workspace;
-    this.disposables = new CompositeDisposable();
+    this.pickerDisposables = null;
     this.forwardersDisposable = null;
     this.owner = null;
     this.context = null;
@@ -96,7 +96,7 @@ module.exports = class ModalActionService {
     }
     this.forwardersDisposable = new CompositeDisposable(...registrations);
     try {
-      picker.show({ crumb: "Actions" });
+      this.pickerHost.show({ crumb: "Actions" });
     } catch (error) {
       this.disposeForwarders();
       throw error;
@@ -144,63 +144,84 @@ module.exports = class ModalActionService {
   }
 
   getPicker() {
-    if (this.picker) return this.picker;
+    if (this.picker && !this.picker.isDestroyed?.() && !this.pickerHost?.isDestroyed?.()) {
+      return this.picker;
+    }
+    this.pickerDisposables?.dispose();
+    this.pickerDisposables = null;
+    this.pickerHost = null;
+    this.picker = null;
 
-    this.picker = this.createSelectList({
-      className: "select-list-actions",
-      internalActionPalette: true,
-      items: [],
-      commands: {
-        "select-list:confirm-action-picker": {
-          description: "Run the selected dialog action.",
-          hiddenInCommandPalette: true,
-          didDispatch: (event) => this.confirmAction(event.detail.item),
+    this.pickerHost = this.createSelectListHost(
+      {
+        internalActionPalette: true,
+        items: [],
+        commands: {
+          "select-list:confirm-action-picker": {
+            description: "Run the selected dialog action.",
+            hiddenInCommandPalette: true,
+            didDispatch: (event) => this.confirmAction(event.detail.item),
+          },
         },
+        actions: [
+          {
+            command: "select-list:confirm-action-picker",
+            context: "item",
+            disposition: "stay",
+            primary: true,
+          },
+        ],
+        getItemId: (action) => action.command,
+        search: {
+          getFilterText: (action) => `${action.name} ${action.description ?? ""}`,
+        },
+        renderItem: (action, { highlight }) => ({
+          className: [
+            action.enabled === false && "disabled",
+            action.pending && "pending",
+            action.tone === "danger" && "text-error",
+          ].filter(Boolean),
+          primary: highlight(action.name),
+          secondary: action.pending
+            ? "In progress…"
+            : action.enabled === false
+              ? action.disabledReason || action.description
+              : action.description,
+          trailing: (action.keystrokes ?? []).map((keystrokes) => ({
+            text: humanizeKeystroke(keystrokes),
+            className: "key-binding",
+          })),
+          didRender: (element) => {
+            if (action.enabled === false) element.setAttribute("aria-disabled", "true");
+            if (action.pending) element.setAttribute("aria-busy", "true");
+          },
+        }),
       },
-      actions: [
-        {
-          command: "select-list:confirm-action-picker",
-          context: "item",
-          disposition: "stay",
-          primary: true,
-        },
-      ],
-      getItemId: (action) => action.command,
-      search: {
-        getFilterText: (action) => `${action.name} ${action.description ?? ""}`,
-      },
-      renderItem: (action, { highlight }) => ({
-        className: [
-          action.enabled === false && "disabled",
-          action.pending && "pending",
-          action.tone === "danger" && "text-error",
-        ].filter(Boolean),
-        primary: highlight(action.name),
-        secondary: action.pending
-          ? "In progress…"
-          : action.enabled === false
-            ? action.disabledReason || action.description
-            : action.description,
-        trailing: (action.keystrokes ?? []).map((keystrokes) => ({
-          text: humanizeKeystroke(keystrokes),
-          className: "key-binding",
-        })),
-        didRender: (element) => {
-          if (action.enabled === false) element.setAttribute("aria-disabled", "true");
-          if (action.pending) element.setAttribute("aria-busy", "true");
-        },
-      }),
-    });
-    this.disposables.add(
-      this.picker.onDidCancel(() => this.cancelOwner()),
-      this.picker.getPanel().onDidChangeVisible((visible) => {
-        if (!visible && this.picker.getPanel().flowTransition) {
+      { className: "select-list-actions" },
+    );
+    this.picker = this.pickerHost.getModel();
+    const pickerHost = this.pickerHost;
+    this.pickerDisposables = new CompositeDisposable(
+      pickerHost.onDidCancel(() => this.cancelOwner()),
+      pickerHost.onDidChangeVisible(({ visible }) => {
+        if (!visible && pickerHost.suspendedByFlow) {
           this.cancelPendingShow();
           this.disposeForwarders();
         }
       }),
+      pickerHost.onDidDestroy(() => this.didDestroyPicker(pickerHost)),
     );
     return this.picker;
+  }
+
+  didDestroyPicker(pickerHost) {
+    if (this.pickerHost !== pickerHost) return;
+    this.cancelPendingShow();
+    this.disposeForwarders({ clearPicker: false });
+    this.pickerDisposables?.dispose();
+    this.pickerDisposables = null;
+    this.pickerHost = null;
+    this.picker = null;
   }
 
   async confirmAction(action) {
@@ -230,7 +251,7 @@ module.exports = class ModalActionService {
     }
 
     if (!this.workspace.popModal()) {
-      this.picker.hide();
+      this.pickerHost.hide();
       owner.getPanel().show();
     }
     this.disposeForwarders();
@@ -245,21 +266,21 @@ module.exports = class ModalActionService {
   }
 
   hide() {
-    const wasActive = Boolean(this.pendingOwner || this.picker?.isVisible());
+    const wasActive = Boolean(this.pendingOwner || this.pickerHost?.isVisible());
     this.cancelPendingShow();
-    if (this.picker?.isVisible()) this.picker.hide();
+    if (this.pickerHost?.isVisible()) this.pickerHost.hide();
     this.disposeForwarders();
     return wasActive;
   }
 
   isVisible() {
-    return Boolean(this.picker?.isVisible());
+    return Boolean(this.pickerHost?.isVisible());
   }
 
   release(owner) {
     if (this.owner !== owner && this.pendingOwner !== owner) return false;
     this.cancelPendingShow(owner);
-    if (this.picker?.isVisible()) this.picker.hide();
+    if (this.pickerHost?.isVisible()) this.pickerHost.hide();
     this.disposeForwarders();
     return true;
   }
@@ -294,10 +315,11 @@ module.exports = class ModalActionService {
     this.showGeneration++;
     this.pendingOwner = null;
     this.disposeForwarders({ clearPicker: false });
-    this.disposables.dispose();
-    if (this.picker) {
-      await this.picker.destroy();
-      this.picker = null;
-    }
+    this.pickerDisposables?.dispose();
+    this.pickerDisposables = null;
+    const pickerHost = this.pickerHost;
+    this.pickerHost = null;
+    this.picker = null;
+    if (pickerHost) await pickerHost.destroy();
   }
 };

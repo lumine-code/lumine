@@ -15,8 +15,8 @@ const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
-// Builds the full modal UI models returned by ::buildSelectList and
-// ::buildInputDialog with this window's services.
+// Builds detached dialog models and their optional modal hosts with this
+// window's services.
 const ModalDialogFactory = require("./modal-dialog-factory");
 const FileState = require("./file-state");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
@@ -1818,17 +1818,18 @@ module.exports = class Workspace extends Model {
    * @public
    * @status essential
    *
-   * Create a full fuzzy-searchable {@link SelectList} model.
+   * Create a detached fuzzy-searchable {@link SelectList} model.
    *
-   * Like {@link #buildTextEditor}, this returns the complete model rather than a
-   * UI facade. Its items, selection, query, source, actions, recents, pagination,
-   * element and panel are available through the model's named methods and events;
-   * only its Etch component and caches are private.
+   * Like {@link #buildTextEditor}, this returns the complete model rather than
+   * a UI facade. It creates its mini TextEditor model immediately, but lazily
+   * creates its private renderer and detached element on the first
+   * `getElement()` call. The query editor is registered with the window only
+   * while that element is connected to the DOM.
    *
-   * The list owns its panel. Do not call {@link #addModalPanel} for it — `show()`,
-   * `hide()` and `toggle()` manage a hidden-until-shown modal panel created on
-   * first use, and `getPanel()` returns it.
-   *
+   * The model owns data and behavior: items, sections, selection, query,
+   * source, actions, recents, pagination and confirmation. It has no panel or
+   * modal lifecycle. Pass it to {@link #addSelectList}, or let that method build
+   * an owned model, when it should appear as a modal.
    *
    * The list shows one message at a time above the rows, from three props in
    * precedence order — `loadingMessage` (rendered with a spinner, and with
@@ -1857,30 +1858,78 @@ module.exports = class Workspace extends Model {
    * @public
    * @status essential
    *
-   * Create a full {@link InputDialog} model whose query editor is the value.
+   * Create a lazy {@link SelectListHost}. Passing model options creates a model
+   * owned by the host; passing a model from {@link #buildSelectList} borrows it.
+   * Destroying an owned host destroys its model, while a borrowed model remains
+   * available and may be hosted again. A model can have only one live host.
    *
-   * The base of {@link #buildSelectList} without the list: a modal panel with a mini
-   * editor, for prompts and save dialogs where the typed text is the answer.
-   * Extra DOM goes above the editor via `headerElement` and below it via
-   * `contentElement`.
+   * Construction creates neither a Panel nor DOM. `host.show()` creates and
+   * opens the modal; `host.getPanel()` explicitly materializes it. The default
+   * panel item is the model. A custom `item` must expose a view containing the
+   * model element.
    *
-   * Panel ownership is the same as {@link #buildSelectList} — the dialog creates and
-   * owns its own modal panel.
+   * @param {SelectList|Object} [modelOrOptions] - A detached model or its construction options.
+   * @param {Object} [hostOptions] - Options belonging to the modal host only.
+   * @param {*} [hostOptions.item] - Panel item; defaults to the model.
+   * @param {String} [hostOptions.crumb] - Declared modal-flow label.
+   * @param {Boolean} [hostOptions.visible=false] - Show when the host is first materialized.
+   * @param {Boolean} [hostOptions.restoreFocus=true] - Restore focus after hiding.
+   * @param {Number} [hostOptions.priority=100] - Panel ordering priority.
+   * @param {String} [hostOptions.className] - Class names for the panel element.
+   * @returns {SelectListHost}
+   */
+  addSelectList(modelOrOptions, hostOptions) {
+    return this.modalDialogFactory.addSelectList(modelOrOptions, hostOptions);
+  }
+
+  /**
+   * @public
+   * @status essential
    *
+   * Create a detached {@link InputDialog} model whose query editor is the value.
+   *
+   * This is the base of {@link #buildSelectList} without list semantics, for
+   * prompts and save dialogs where the typed text is the answer. Extra DOM goes
+   * above the editor through `headerElement` and below it through
+   * `contentElement`. Its renderer and detached element are created lazily by
+   * `getElement()`; it has no panel or modal lifecycle.
    *
    * The message line works exactly as in {@link #buildSelectList}, minus
    * `emptyMessage`: a validation failure is `status: {type: 'error', message}`,
    * and the dialog clears it on the next keystroke by itself.
    *
-   * The model owns its element and panel, publishes lifecycle/query events, and
-   * supports the same declared commands, actions, messages and asynchronous
-   * source contract as SelectList. Confirmation is normally a primary action.
+   * The model publishes query and confirmation events and supports the same
+   * declared commands, actions, messages and asynchronous source contract as
+   * SelectList. Confirmation is normally a primary action.
    *
    * @param options - The initial InputDialog options.
    * @returns {InputDialog}
    */
   buildInputDialog(options) {
     return this.modalDialogFactory.buildInputDialog(options);
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Create a lazy {@link InputDialogHost}. Passing options creates an owned
+   * model; passing a model from {@link #buildInputDialog} borrows it. Ownership,
+   * one-host enforcement and lazy Panel/DOM materialization match
+   * {@link #addSelectList}.
+   *
+   * @param {InputDialog|Object} [modelOrOptions] - A detached model or its construction options.
+   * @param {Object} [hostOptions] - Options belonging to the modal host only.
+   * @param {*} [hostOptions.item] - Panel item; defaults to the model.
+   * @param {String} [hostOptions.crumb] - Declared modal-flow label.
+   * @param {Boolean} [hostOptions.visible=false] - Show when the host is first materialized.
+   * @param {Boolean} [hostOptions.restoreFocus=true] - Restore focus after hiding.
+   * @param {Number} [hostOptions.priority=100] - Panel ordering priority.
+   * @param {String} [hostOptions.className] - Class names for the panel element.
+   * @returns {InputDialogHost}
+   */
+  addInputDialog(modelOrOptions, hostOptions) {
+    return this.modalDialogFactory.addInputDialog(modelOrOptions, hostOptions);
   }
 
   /**

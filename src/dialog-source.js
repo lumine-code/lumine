@@ -68,6 +68,8 @@ module.exports = class DialogSource {
     this._operation = null;
     this._debounceTimer = null;
     this._opened = false;
+    this._suspended = false;
+    this._dirtyWhileSuspended = false;
     this._loading = false;
     this._destroyed = false;
   }
@@ -81,9 +83,10 @@ module.exports = class DialogSource {
   setSource(source) {
     this._assertAlive();
     const normalized = normalizeSource(source);
-    const shouldReload = this._opened && normalized !== null;
+    const shouldReload = this._opened && !this._suspended && normalized !== null;
     this._invalidate("source-changed", { keepLoading: shouldReload });
     this._source = normalized;
+    if (this._opened && this._suspended) this._dirtyWhileSuspended = normalized !== null;
     return shouldReload ? this._startLoad("source-changed") : Promise.resolve();
   }
 
@@ -98,7 +101,31 @@ module.exports = class DialogSource {
   open() {
     this._assertAlive();
     this._opened = true;
+    this._suspended = false;
+    this._dirtyWhileSuspended = false;
     return this._startLoad("open");
+  }
+
+  suspend() {
+    this._assertAlive();
+    if (!this._opened || this._suspended) return false;
+    this._suspended = true;
+    if (this._debounceTimer != null) {
+      clearTimeout(this._debounceTimer);
+      this._debounceTimer = null;
+      this._dirtyWhileSuspended = true;
+      this._updateLoading(false);
+    }
+    return true;
+  }
+
+  resume() {
+    this._assertAlive();
+    if (!this._opened || !this._suspended) return Promise.resolve();
+    this._suspended = false;
+    const shouldReload = this._dirtyWhileSuspended;
+    this._dirtyWhileSuspended = false;
+    return shouldReload ? this._startLoad("resume") : Promise.resolve();
   }
 
   /**
@@ -109,6 +136,10 @@ module.exports = class DialogSource {
   queryChanged() {
     this._assertAlive();
     if (!this._opened || this._source?.mode !== "query") return false;
+    if (this._suspended) {
+      this._dirtyWhileSuspended = true;
+      return true;
+    }
 
     this._invalidate("query-changed", { keepLoading: true });
     this._updateLoading(true);
@@ -124,6 +155,7 @@ module.exports = class DialogSource {
       if (
         this._destroyed ||
         !this._opened ||
+        this._suspended ||
         this._source?.mode !== "query" ||
         this._generation !== scheduledGeneration
       ) {
@@ -134,11 +166,11 @@ module.exports = class DialogSource {
     return true;
   }
 
-  /** Reloads the current source immediately while the dialog is open. */
+  /** Reloads immediately, including for a detached or closed dialog model. */
   reload() {
     this._assertAlive();
-    if (!this._opened) return Promise.resolve();
-    return this._startLoad("reload");
+    if (this._opened) return this._startLoad("reload");
+    return this._startLoad("reload", { detached: true });
   }
 
   /**
@@ -150,6 +182,8 @@ module.exports = class DialogSource {
     if (this._destroyed) return false;
     const wasOpened = this._opened;
     this._opened = false;
+    this._suspended = false;
+    this._dirtyWhileSuspended = false;
     this._invalidate(reason);
     return wasOpened;
   }
@@ -162,13 +196,14 @@ module.exports = class DialogSource {
   destroy() {
     if (this._destroyed) return;
     this._opened = false;
+    this._suspended = false;
     this._invalidate("destroyed");
     this._destroyed = true;
     this._source = null;
   }
 
-  _startLoad(reason) {
-    if (!this._opened || this._source == null) {
+  _startLoad(reason, { detached = false } = {}) {
+    if ((!this._opened && !detached) || this._source == null) {
       this._invalidate(reason);
       return Promise.resolve();
     }
@@ -178,6 +213,7 @@ module.exports = class DialogSource {
       generation: this._generation,
       controller: new AbortController(),
       source: this._source,
+      detached,
       publications: Promise.resolve(),
     };
     this._operation = operation;
@@ -227,7 +263,7 @@ module.exports = class DialogSource {
   _isCurrent(operation) {
     return (
       !this._destroyed &&
-      this._opened &&
+      (this._opened || operation.detached) &&
       this._operation === operation &&
       this._generation === operation.generation &&
       !operation.controller.signal.aborted

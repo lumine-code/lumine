@@ -2233,7 +2233,7 @@ describe("Workspace", () => {
     });
   });
 
-  describe("::buildSelectList(props)", () => {
+  describe("::buildSelectList(options)", () => {
     let lists;
 
     beforeEach(() => {
@@ -2258,35 +2258,27 @@ describe("Workspace", () => {
       return list;
     }
 
-    it("returns a usable list that renders its items", () => {
+    it("returns a detached model without registering a modal panel", () => {
+      const panelCount = lumine.workspace.getModalPanels().length;
       const list = build();
 
+      expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
+      expect(list.getElement().isConnected).toBe(false);
       expect(list.getElement().classList.contains("select-list")).toBe(true);
       expect(Array.from(list.getElement().querySelectorAll("li"), (li) => li.textContent)).toEqual([
         "alpha",
         "beta",
       ]);
       expect(list.getSelectedItem()).toBe("alpha");
+      expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
     });
 
-    it("gives every caller its own list and its own modal panel", () => {
+    it("gives every caller its own model", () => {
       const first = build();
       const second = build();
 
       expect(first).not.toBe(second);
-      expect(first.getPanel()).not.toBe(second.getPanel());
-      expect(lumine.workspace.getModalPanels()).toContain(first.getPanel());
-      expect(lumine.workspace.getModalPanels()).toContain(second.getPanel());
-    });
-
-    it("owns the panel across show and hide", () => {
-      const list = build();
-
-      expect(list.isVisible()).toBe(false);
-      list.show();
-      expect(list.isVisible()).toBe(true);
-      list.hide();
-      expect(list.isVisible()).toBe(false);
+      expect(first.getQueryEditor()).not.toBe(second.getQueryEditor());
     });
 
     it("hands renderItem a highlight function bound to the item", async () => {
@@ -2297,11 +2289,12 @@ describe("Workspace", () => {
           return li;
         },
       });
+      const element = list.getElement();
 
       list.getQueryEditor().setText("al");
       await etch.getScheduler().getNextUpdatePromise();
 
-      const matches = list.getElement().querySelectorAll(".character-match");
+      const matches = element.querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["al"]);
     });
 
@@ -2315,13 +2308,139 @@ describe("Workspace", () => {
       expect(li.querySelector(".primary-line").textContent).toBe("alpha");
       expect(li.querySelector(".secondary-line").textContent).toBe("detail");
     });
+  });
 
-    it("chains lists into the modal breadcrumb trail via show({crumb})", () => {
+  describe("::addSelectList(modelOrOptions, hostOptions)", () => {
+    let hosts;
+    let lists;
+
+    beforeEach(() => {
+      hosts = [];
+      lists = [];
+    });
+
+    afterEach(async () => {
+      await Promise.all(hosts.map((host) => host.destroy()));
+      await Promise.all(lists.map((list) => list.destroy()));
+    });
+
+    function listOptions() {
+      return {
+        items: ["alpha", "beta"],
+        renderItem: (item) => ({ primary: item }),
+      };
+    }
+
+    function build() {
+      const list = lumine.workspace.buildSelectList(listOptions());
+      lists.push(list);
+      return list;
+    }
+
+    function add(modelOrOptions, hostOptions) {
+      const host = lumine.workspace.addSelectList(modelOrOptions, hostOptions);
+      hosts.push(host);
+      return host;
+    }
+
+    it("returns a lazy host for a detached model", async () => {
+      const panelCount = lumine.workspace.getModalPanels().length;
+      const list = build();
+      const host = add(list);
+
+      expect(host.getModel()).toBe(list);
+      expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
+
+      await host.show();
+
+      expect(lumine.workspace.getModalPanels()).toContain(host.getPanel());
+      expect(host.getPanel().getItem()).toBe(list);
+      expect(host.isVisible()).toBe(true);
+    });
+
+    it("does not own a model supplied by the caller", async () => {
+      const list = build();
+      const host = add(list);
+
+      await host.destroy();
+
+      expect(host.isDestroyed()).toBe(true);
+      expect(list.isDestroyed()).toBe(false);
+    });
+
+    it("owns a model built from options", async () => {
+      const host = add(listOptions());
+      const list = host.getModel();
+      lists.push(list);
+
+      await host.destroy();
+
+      expect(host.isDestroyed()).toBe(true);
+      expect(list.isDestroyed()).toBe(true);
+    });
+
+    it("allows only one live host for a model", () => {
+      const list = build();
+      add(list);
+
+      expect(() => lumine.workspace.addSelectList(list)).toThrowError(
+        "This dialog model already has a modal host.",
+      );
+    });
+
+    it("rejects an input-dialog model instead of treating it as list options", async () => {
+      const dialog = lumine.workspace.buildInputDialog();
+      try {
+        expect(() => lumine.workspace.addSelectList(dialog)).toThrowError(
+          TypeError,
+          /requires a SelectList model/,
+        );
+      } finally {
+        await dialog.destroy();
+      }
+    });
+
+    it("allows a borrowed model to be hosted again after its host is destroyed", async () => {
+      const list = build();
+      const first = add(list);
+      await first.destroy();
+
+      const second = add(list);
+      await second.show();
+
+      expect(second.getModel()).toBe(list);
+      expect(second.isVisible()).toBe(true);
+    });
+
+    it("destroys the live host when its model is destroyed directly", async () => {
+      const list = build();
+      const host = add(list);
+      const panel = host.getPanel();
+
+      await list.destroy();
+
+      expect(host.isDestroyed()).toBe(true);
+      expect(lumine.workspace.getModalPanels()).not.toContain(panel);
+    });
+
+    it("destroys an owned model when its panel is destroyed directly", async () => {
+      const host = add(listOptions());
+      const list = host.getModel();
+      lists.push(list);
+
+      host.getPanel().destroy();
+      await conditionPromise(() => host.isDestroyed() && list.isDestroyed());
+
+      expect(host.isDestroyed()).toBe(true);
+      expect(list.isDestroyed()).toBe(true);
+    });
+
+    it("chains hosts into the modal breadcrumb trail via show({crumb})", () => {
       jasmine.attachToDOM(lumine.workspace.getElement());
       let cancelled = false;
-      const root = build({ crumb: "Root" });
+      const root = add(listOptions(), { crumb: "Root" });
+      const step = add(listOptions());
       root.onDidCancel(() => (cancelled = true));
-      const step = build();
 
       root.show();
       step.show({ crumb: "Step" });
@@ -2337,7 +2456,7 @@ describe("Workspace", () => {
     });
   });
 
-  describe("::buildInputDialog(props)", () => {
+  describe("::buildInputDialog(options)", () => {
     let dialogs;
 
     beforeEach(() => {
@@ -2354,13 +2473,17 @@ describe("Workspace", () => {
       return dialog;
     }
 
-    it("returns a dialog with a query editor and no list", () => {
+    it("returns a detached dialog model with a query editor and no list", () => {
+      const panelCount = lumine.workspace.getModalPanels().length;
       const dialog = build({ placeholderText: "Name" });
 
+      expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
+      expect(dialog.getElement().isConnected).toBe(false);
       expect(dialog.getElement().classList.contains("input-dialog")).toBe(true);
       expect(dialog.getElement().classList.contains("select-list")).toBe(false);
       expect(dialog.getElement().querySelector("ol.list-group")).toBeNull();
       expect(dialog.getQuery()).toBe("");
+      expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
     });
 
     it("reports the typed query through onDidConfirm", () => {
@@ -2374,12 +2497,119 @@ describe("Workspace", () => {
       expect(confirmed).toBe("a-name");
     });
 
-    it("gives every caller its own dialog and its own modal panel", () => {
+    it("gives every caller its own dialog model", () => {
       const first = build();
       const second = build();
 
       expect(first).not.toBe(second);
-      expect(first.getPanel()).not.toBe(second.getPanel());
+      expect(first.getQueryEditor()).not.toBe(second.getQueryEditor());
+    });
+  });
+
+  describe("::addInputDialog(modelOrOptions, hostOptions)", () => {
+    let hosts;
+    let dialogs;
+
+    beforeEach(() => {
+      hosts = [];
+      dialogs = [];
+    });
+
+    afterEach(async () => {
+      await Promise.all(hosts.map((host) => host.destroy()));
+      await Promise.all(dialogs.map((dialog) => dialog.destroy()));
+    });
+
+    function build() {
+      const dialog = lumine.workspace.buildInputDialog({ placeholderText: "Name" });
+      dialogs.push(dialog);
+      return dialog;
+    }
+
+    function add(modelOrOptions, hostOptions) {
+      const host = lumine.workspace.addInputDialog(modelOrOptions, hostOptions);
+      hosts.push(host);
+      return host;
+    }
+
+    it("returns a lazy host for a detached model", async () => {
+      const panelCount = lumine.workspace.getModalPanels().length;
+      const dialog = build();
+      const host = add(dialog);
+
+      expect(host.getModel()).toBe(dialog);
+      expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
+
+      await host.show({ query: "a-name" });
+
+      expect(host.getPanel().getItem()).toBe(dialog);
+      expect(host.isVisible()).toBe(true);
+      expect(dialog.getQuery()).toBe("a-name");
+    });
+
+    it("does not own a model supplied by the caller", async () => {
+      const dialog = build();
+      const host = add(dialog);
+
+      await host.destroy();
+
+      expect(host.isDestroyed()).toBe(true);
+      expect(dialog.isDestroyed()).toBe(false);
+    });
+
+    it("owns a model built from options", async () => {
+      const host = add({ placeholderText: "Name" });
+      const dialog = host.getModel();
+      dialogs.push(dialog);
+
+      await host.destroy();
+
+      expect(host.isDestroyed()).toBe(true);
+      expect(dialog.isDestroyed()).toBe(true);
+    });
+
+    it("allows only one live host for a model", () => {
+      const dialog = build();
+      add(dialog);
+
+      expect(() => lumine.workspace.addInputDialog(dialog)).toThrowError(
+        "This dialog model already has a modal host.",
+      );
+    });
+
+    it("rejects a select-list model instead of treating it as dialog options", async () => {
+      const list = lumine.workspace.buildSelectList({ items: [] });
+      try {
+        expect(() => lumine.workspace.addInputDialog(list)).toThrowError(
+          TypeError,
+          /requires an InputDialog model/,
+        );
+      } finally {
+        await list.destroy();
+      }
+    });
+
+    it("defers visible: true until explicit panel materialization", () => {
+      const panelCount = lumine.workspace.getModalPanels().length;
+      const host = add({ placeholderText: "Name" }, { visible: true });
+
+      expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
+      expect(host.getModel().component).toBeNull();
+      expect(host.isVisible()).toBe(false);
+
+      expect(host.getPanel().isVisible()).toBe(true);
+      expect(host.isVisible()).toBe(true);
+    });
+
+    it("does not destroy a borrowed model when its panel is destroyed directly", async () => {
+      const dialog = build();
+      const host = add(dialog);
+
+      host.getPanel().destroy();
+      await conditionPromise(() => host.isDestroyed());
+
+      expect(host.isDestroyed()).toBe(true);
+      expect(dialog.isDestroyed()).toBe(false);
     });
   });
 

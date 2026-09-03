@@ -27,9 +27,10 @@ let nextSelectListId = 1;
  * @public
  * @status experimental
  *
- * Fuzzy-searchable select list. Extends InputDialog — which owns the
- * modal panel, query editor, focus handling, and confirm/cancel commands —
- * with items, filtering, selection, and list rendering.
+ * Detached fuzzy-searchable select-list model. Extends InputDialog with items,
+ * filtering, selection and list rendering. Call {@link InputDialog#getElement} to lazily
+ * create its unmounted surface, or use {@link Workspace#addSelectList} to give
+ * it a modal host.
  */
 class SelectList extends InputDialog {
   createComponent() {
@@ -269,23 +270,14 @@ class SelectList extends InputDialog {
 
   didInitializeElement() {
     super.didInitializeElement();
-    this.component.refs.queryEditor.element.setAttribute("role", "combobox");
-    this.component.refs.queryEditor.element.setAttribute("aria-autocomplete", "list");
+    this.queryEditor.getElement().setAttribute("role", "combobox");
+    this.queryEditor.getElement().setAttribute("aria-autocomplete", "list");
     this.updateComboboxAttributes();
     this.updateActiveDescendant();
   }
 
-  didShowPanel() {
-    super.didShowPanel();
-    this.updateComboboxAttributes();
-  }
-
-  didHidePanel(options) {
-    super.didHidePanel(options);
-    this.updateComboboxAttributes();
-  }
-
-  didSuspendPanel() {
+  didChangeHostVisible(visible) {
+    super.didChangeHostVisible(visible);
     this.updateComboboxAttributes();
   }
 
@@ -296,11 +288,14 @@ class SelectList extends InputDialog {
    * Destroys the select list and cleans up resources.
    * @returns {Promise} Resolves when destruction is complete
    */
-  async destroy() {
+  async destroyNow() {
     this.filterMatcher = null;
     this.indexMatcher = null;
-    await super.destroy();
-    this.model = null;
+    try {
+      await super.destroyNow();
+    } finally {
+      this.model = null;
+    }
   }
 
   buildModelGetItemId(props) {
@@ -383,7 +378,7 @@ class SelectList extends InputDialog {
     this.resetRenderedItems();
     this.syncModelState();
     this.publishSelectionChange(previousSelection, "source");
-    const updatePromise = this.component.update();
+    const updatePromise = this.updateComponent();
     return Promise.all([sourcePromise, updatePromise]).then(() => undefined);
   }
 
@@ -416,12 +411,12 @@ class SelectList extends InputDialog {
   }
 
   updateComboboxAttributes() {
-    const editorElement = this.component?.refs?.queryEditor?.element;
+    const editorElement = this.queryEditor?.component?.element;
     if (!editorElement) return;
     const hasListbox = (this.items?.length ?? 0) > 0;
     if (hasListbox) editorElement.setAttribute("aria-controls", this.listBoxId);
     else editorElement.removeAttribute("aria-controls");
-    editorElement.setAttribute("aria-expanded", String(this.isVisible() && hasListbox));
+    editorElement.setAttribute("aria-expanded", String(this.hostVisible && hasListbox));
   }
 
   domIdForIndex(index) {
@@ -444,7 +439,7 @@ class SelectList extends InputDialog {
   }
 
   updateActiveDescendant() {
-    const editorElement = this.component?.refs?.queryEditor?.element;
+    const editorElement = this.queryEditor?.component?.element;
     if (!editorElement) return;
     const activeId = this.selectionIndex == null ? null : this.domIdForIndex(this.selectionIndex);
     if (activeId) editorElement.setAttribute("aria-activedescendant", activeId);
@@ -480,10 +475,6 @@ class SelectList extends InputDialog {
 
   confirm() {
     return this.confirmSelection();
-  }
-
-  cancel(reason) {
-    return this.cancelSelection(reason);
   }
 
   getActionContext(source = "api") {
@@ -828,7 +819,7 @@ class SelectList extends InputDialog {
     }
     super.didChangeQuery();
     if (previousSelection) this.publishSelectionChange(previousSelection, "query");
-    if (this.model) this.component.update();
+    if (this.model) void this.updateComponent();
   }
 
   didClickItem(itemIndex) {
@@ -838,9 +829,10 @@ class SelectList extends InputDialog {
 
   didContextMenuItem(itemIndex) {
     this.selectIndex(itemIndex);
+    if (!this.host) return false;
     const available = this.hasAvailableActions(this.getActionContext("context-menu"));
     if (!available) return false;
-    this.consumeUiAction(this.showActions());
+    this.requestActions();
     return true;
   }
 
@@ -866,7 +858,7 @@ class SelectList extends InputDialog {
     if (!this.model.hasMore()) return false;
     const previousSelection = this.selectionSnapshot();
     const revealIndex = this.model.getDisplayedCount();
-    const scroller = this.component.refs.items;
+    const scroller = this.component?.refs?.items;
     const scrollTop = scroller ? scroller.scrollTop : 0;
 
     this.model.showMore();
@@ -875,12 +867,12 @@ class SelectList extends InputDialog {
     this.resetRenderedItems();
     this.syncModelState();
     this.publishSelectionChange(previousSelection, "pagination");
-    await this.component.update();
+    await this.updateComponent();
 
     // The ol persists across the update, and the selection's own
     // scroll-into-view runs inside it; putting the viewport back last is what
     // makes the pressed-button paths stable.
-    if (!followSelection && this.component.refs.items) {
+    if (!followSelection && this.component?.refs?.items) {
       this.component.refs.items.scrollTop = scrollTop;
     }
     return true;
@@ -1215,7 +1207,7 @@ class SelectList extends InputDialog {
         if (this.selectionIndex >= 0) this.renderItemAtIndex(this.selectionIndex);
         return etch.getScheduler().getNextUpdatePromise();
       } else {
-        return this.component.update();
+        return this.updateComponent();
       }
     } else {
       return Promise.resolve();
@@ -1238,7 +1230,7 @@ class SelectList extends InputDialog {
     this.refreshItemActionsIndicator();
     if (this.model.getDisplayedCount() !== previousDisplayedCount || !this.listItems) {
       this.resetRenderedItems();
-      return this.component.update();
+      return this.updateComponent();
     }
     if (previous.uiIndex >= 0) this.renderItemAtIndex(previous.uiIndex);
     if (this.selectionIndex >= 0) this.renderItemAtIndex(this.selectionIndex);
@@ -1265,7 +1257,7 @@ class SelectList extends InputDialog {
    * Return the list viewport's vertical scroll offset.
    */
   getScrollTop() {
-    return this.component.refs.items?.scrollTop ?? 0;
+    return this.component?.refs?.items?.scrollTop ?? 0;
   }
 
   /**
@@ -1275,7 +1267,7 @@ class SelectList extends InputDialog {
    * Set the list viewport's vertical scroll offset.
    */
   setScrollTop(scrollTop) {
-    if (this.component.refs.items) this.component.refs.items.scrollTop = scrollTop;
+    if (this.component?.refs?.items) this.component.refs.items.scrollTop = scrollTop;
   }
 
   /**
@@ -1339,7 +1331,7 @@ class SelectList extends InputDialog {
     this.resetRenderedItems();
     this.syncModelState();
     this.publishSelectionChange(previousSelection, "pagination");
-    return this.component.update();
+    return this.updateComponent();
   }
 
   /**
@@ -1494,21 +1486,6 @@ class SelectList extends InputDialog {
    */
   onDidConfirmEmptySelection(callback) {
     return this.emitter.on("did-confirm-empty-selection", callback);
-  }
-
-  /**
-   * @public
-   * @status experimental
-   *
-   * Cancels the selection, hides the list, and emits `onDidCancel`.
-   */
-  cancelSelection(reason = "api") {
-    if (this.canceling || this.destroyed) return;
-    this.canceling = true;
-    this.hide();
-    this.finalizeSuspendedHide();
-    this.emitter.emit("did-cancel", { dialog: this, reason });
-    this.canceling = false;
   }
 }
 
