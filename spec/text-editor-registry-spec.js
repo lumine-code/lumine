@@ -684,7 +684,7 @@ describe("TextEditorRegistry", function () {
 function getSubscriptionCount(editor) {
   return (
     editor.emitter.getTotalListenerCount() +
-    editor.tokenizedBuffer.emitter.getTotalListenerCount() +
+    editor.languageMode.emitter.getTotalListenerCount() +
     editor.buffer.emitter.getTotalListenerCount() +
     editor.displayLayer.emitter.getTotalListenerCount()
   );

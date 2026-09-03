@@ -1148,7 +1148,7 @@ module.exports = class Project extends Model {
     }
   }
 
-  // Still needed when deserializing a tokenized buffer
+  // Still needed when synchronously deserializing an editor or in specs.
   buildBufferSync(absoluteFilePath) {
     let buffer;
     if (absoluteFilePath != null) {

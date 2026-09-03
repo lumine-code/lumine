@@ -153,6 +153,21 @@ describe("TextEditor", () => {
 
       expect(editor2).toBeNull();
     });
+
+    it("ignores serialized editors without a buffer ID", () => {
+      const state = editor.serialize();
+      delete state.bufferId;
+      const project = { bufferForIdSync: jasmine.createSpy("bufferForIdSync") };
+
+      expect(
+        TextEditor.deserialize(state, {
+          assert: lumine.assert,
+          textEditors: lumine.textEditors,
+          project,
+        }),
+      ).toBeNull();
+      expect(project.bufferForIdSync).not.toHaveBeenCalled();
+    });
   });
 
   describe(".copy()", () => {

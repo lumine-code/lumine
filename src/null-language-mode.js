@@ -14,7 +14,6 @@ module.exports = class NullLanguageMode {
     this.grammar = grammar;
     this.emitter = new Emitter();
     this.rootScopeDescriptor = new ScopeDescriptor({ scopes: [grammar.scopeName] });
-    this.fullyTokenized = true;
     this.tokenized = true;
   }
 

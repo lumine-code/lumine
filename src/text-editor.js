@@ -170,8 +170,9 @@ module.exports = class TextEditor {
 
   static deserialize(state, lumineEnvironment) {
     if (state.version !== SERIALIZATION_VERSION) return null;
+    if (state.bufferId == null) return null;
 
-    let bufferId = state.tokenizedBuffer ? state.tokenizedBuffer.bufferId : state.bufferId;
+    const bufferId = state.bufferId;
 
     try {
       state.buffer = lumineEnvironment.project.bufferForIdSync(bufferId);
@@ -383,10 +384,6 @@ module.exports = class TextEditor {
   }
 
   get languageMode() {
-    return this.buffer.getLanguageMode();
-  }
-
-  get tokenizedBuffer() {
     return this.buffer.getLanguageMode();
   }
 
