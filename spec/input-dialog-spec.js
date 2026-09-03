@@ -1,12 +1,11 @@
-const etch = require("@lumine-code/etch");
-const InputDialogView = require("../src/input-dialog-view");
-const SelectListView = require("../src/select-list-view");
+const InputDialog = require("../src/input-dialog");
+const SelectList = require("../src/select-list");
 
-describe("InputDialogView", () => {
+describe("InputDialog", () => {
   let view;
 
   function createInputDialog(props) {
-    return new InputDialogView(props, lumine.workspace.selectListServices);
+    return lumine.workspace.buildInputDialog(props);
   }
 
   beforeEach(() => {
@@ -18,6 +17,69 @@ describe("InputDialogView", () => {
       await view.destroy();
       view = null;
     }
+  });
+
+  describe("public model API", () => {
+    it("exposes its element, panel, query editor, and destruction state", async () => {
+      view = createInputDialog({});
+
+      expect(view.getElement()).toBe(view.element);
+      expect(view.getPanel()).toBeDefined();
+      expect(view.getPanelItem()).toBe(view);
+      expect(view.getQueryEditor()).toBeDefined();
+      expect(view.isDestroyed()).toBe(false);
+
+      await view.destroy();
+      expect(view.isDestroyed()).toBe(true);
+      view = null;
+    });
+
+    it("publishes query changes through a Disposable event", () => {
+      view = createInputDialog({});
+      const changes = [];
+      const subscription = view.onDidChangeQuery((change) => changes.push(change));
+
+      view.getQueryEditor().setText("alpha");
+
+      expect(changes.length).toBe(1);
+      expect(changes[0].query).toBe("alpha");
+      expect(changes[0].dialog).toBe(view);
+      subscription.dispose();
+    });
+
+    it("owns cancellation instead of requiring a callback to hide it", () => {
+      view = createInputDialog({});
+      const cancellations = [];
+      view.onDidCancel((event) => cancellations.push(event));
+      view.show();
+
+      view.cancel("escape");
+
+      expect(view.isVisible()).toBe(false);
+      expect(cancellations).toEqual([{ dialog: view, reason: "escape" }]);
+    });
+
+    it("offers named getters and setters for presentation state", async () => {
+      const header = document.createElement("div");
+      const content = document.createElement("div");
+      view = createInputDialog({});
+
+      await view.setStatus({ type: "warning", message: "Careful" });
+      await view.setInfoMessage("Info");
+      await view.setLoadingState({ message: "Loading", badge: 2 });
+      await view.setPlaceholderText("Search");
+      await view.setHeaderElement(header);
+      await view.setContentElement(content);
+      await view.setCrumb("Step");
+
+      expect(view.getStatus()).toEqual({ type: "warning", message: "Careful" });
+      expect(view.getInfoMessage()).toBe("Info");
+      expect(view.getLoadingState()).toEqual({ message: "Loading", badge: 2 });
+      expect(view.getPlaceholderText()).toBe("Search");
+      expect(view.getHeaderElement()).toBe(header);
+      expect(view.getContentElement()).toBe(content);
+      expect(view.getCrumb()).toBe("Step");
+    });
   });
 
   describe("rendering", () => {
@@ -52,17 +114,17 @@ describe("InputDialogView", () => {
         infoMessage: "fyi",
         loadingMessage: "wait",
       });
-      expect(view.refs.loadingMessage.textContent).toBe("wait");
-      expect(view.refs.statusMessage).toBeUndefined();
-      expect(view.refs.infoMessage).toBeUndefined();
+      expect(view.component.refs.loadingMessage.textContent).toBe("wait");
+      expect(view.component.refs.statusMessage).toBeUndefined();
+      expect(view.component.refs.infoMessage).toBeUndefined();
 
       await view.update({ loadingMessage: null });
-      expect(view.refs.statusMessage.textContent).toBe("boom");
-      expect(view.refs.statusMessage.classList.contains("text-error")).toBe(true);
+      expect(view.component.refs.statusMessage.textContent).toBe("boom");
+      expect(view.component.refs.statusMessage.classList.contains("text-error")).toBe(true);
 
       // Clearing the overlay uncovers the resting line the dialog never lost.
       await view.update({ status: null });
-      expect(view.refs.infoMessage.textContent).toBe("fyi");
+      expect(view.component.refs.infoMessage.textContent).toBe("fyi");
     });
 
     it("clears a status on the next keystroke unless it is sticky", async () => {
@@ -74,14 +136,14 @@ describe("InputDialogView", () => {
       // rather than awaiting the next update: the render may already have
       // flushed by the time we ask, and then there is no next update to wait
       // for.
-      await conditionPromise(() => !view.refs.statusMessage);
+      await conditionPromise(() => !view.component.refs.statusMessage);
 
       await view.update({ status: { message: "background", sticky: true } });
       view.getQueryEditor().setText("ab");
       // Nothing to poll for here — a sticky status is expected not to move —
       // so flush with an update of our own and then assert.
       await view.update({});
-      expect(view.refs.statusMessage.textContent).toBe("background");
+      expect(view.component.refs.statusMessage.textContent).toBe("background");
     });
 
     it("renders a header element above the query editor", () => {
@@ -95,63 +157,6 @@ describe("InputDialogView", () => {
       );
       expect(headerIndex).toBe(0);
       expect(headerIndex).toBeLessThan(editorIndex);
-    });
-  });
-
-  describe("checkboxes", () => {
-    const CONFIG_KEY = "input-dialog-spec.flag";
-
-    afterEach(() => {
-      lumine.config.unset(CONFIG_KEY);
-    });
-
-    it("reflects the bound config value and updates it on toggle", () => {
-      lumine.config.set(CONFIG_KEY, true);
-      view = createInputDialog({
-        checkboxes: [{ label: "Do the thing", config: CONFIG_KEY }],
-      });
-      const input = view.element.querySelector(".input-checkbox");
-      expect(input.checked).toBe(true);
-      expect(view.element.querySelector(".input-label-text").textContent).toBe("Do the thing");
-
-      input.checked = false;
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      expect(lumine.config.get(CONFIG_KEY)).toBe(false);
-    });
-
-    it("re-renders when the bound config changes externally", async () => {
-      lumine.config.set(CONFIG_KEY, false);
-      view = createInputDialog({
-        checkboxes: [{ label: "Flag", config: CONFIG_KEY }],
-      });
-      expect(view.element.querySelector(".input-checkbox").checked).toBe(false);
-
-      lumine.config.set(CONFIG_KEY, true);
-      await etch.getScheduler().getNextUpdatePromise();
-      expect(view.element.querySelector(".input-checkbox").checked).toBe(true);
-    });
-
-    it("keeps local state and calls onChange for unbound checkboxes", () => {
-      const changes = [];
-      view = createInputDialog({
-        checkboxes: [{ label: "Local", checked: false, onChange: (c) => changes.push(c) }],
-      });
-      const input = view.element.querySelector(".input-checkbox");
-      expect(input.checked).toBe(false);
-
-      input.checked = true;
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      expect(changes).toEqual([true]);
-      expect(view.localCheckboxState.get(0)).toBe(true);
-    });
-
-    it("returns focus to the query editor after a toggle so Enter still confirms", () => {
-      view = createInputDialog({ checkboxes: [{ label: "Flag", checked: false }] });
-      view.show();
-      const input = view.element.querySelector(".input-checkbox");
-      input.checked = true;
-      input.dispatchEvent(new Event("change", { bubbles: true }));
-      expect(view.getQueryEditor().element.contains(document.activeElement)).toBe(true);
     });
   });
 
@@ -310,6 +315,117 @@ describe("InputDialogView", () => {
     });
   });
 
+  describe("explicit actions", () => {
+    it("uses a primary command as confirmation and applies its disposition", async () => {
+      let context;
+      view = createInputDialog({
+        commands: {
+          "spec:accept-input": {
+            description: "Accept the entered value.",
+            didDispatch: (event) => (context = event.detail),
+          },
+        },
+        actions: [
+          {
+            command: "spec:accept-input",
+            context: "dialog",
+            primary: true,
+            disposition: "close",
+          },
+        ],
+      });
+      view.show({ query: "a value" });
+
+      await view.confirm();
+
+      expect(context.query).toBe("a value");
+      expect(context.dialog).toBe(view);
+      expect(view.isVisible()).toBe(false);
+    });
+
+    it("supports dynamic action registration on the full model", () => {
+      view = createInputDialog({});
+      const registration = view.addAction({
+        command: "spec:temporary",
+        context: "dialog",
+        disposition: "stay",
+      });
+
+      expect(view.getActions().map(({ command }) => command)).toEqual(["spec:temporary"]);
+      registration.dispose();
+      expect(view.getActions()).toEqual([]);
+    });
+
+    it("resolves workspace action metadata while the dialog is detached", () => {
+      const registration = lumine.commands.add(lumine.workspace.getElement(), {
+        "spec:workspace-action": {
+          description: "Run against the whole workspace.",
+          didDispatch() {},
+        },
+      });
+      view = createInputDialog({
+        actions: [
+          {
+            command: "spec:workspace-action",
+            context: "dialog",
+            disposition: "stay",
+            dispatch: "workspace",
+          },
+        ],
+      });
+
+      expect(view.getAvailableActions()[0].description).toBe("Run against the whole workspace.");
+      registration.dispose();
+    });
+
+    it("uses the workspace action service without exposing a nested list", async () => {
+      const dispatches = [];
+      view = createInputDialog({
+        className: "owner-dialog",
+        commands: {
+          "spec:stay": (event) => dispatches.push(event.detail.query),
+        },
+        actions: [
+          {
+            command: "spec:stay",
+            context: "dialog",
+            disposition: "stay",
+          },
+        ],
+      });
+      await view.show({ query: "kept" });
+
+      expect(await view.showActions()).toBe(true);
+      const actionList = lumine.workspace.getElement().querySelector(".select-list-actions");
+      expect(actionList).not.toBeNull();
+      expect(actionList.classList.contains("owner-dialog")).toBe(false);
+      expect(view.itemActionsList).toBeUndefined();
+
+      await lumine.commands.dispatch(actionList, "core:confirm");
+
+      expect(dispatches).toEqual(["kept"]);
+      expect(view.isVisible()).toBe(true);
+    });
+  });
+
+  describe("data sources", () => {
+    it("loads a snapshot on a fresh show and applies its publication", async () => {
+      const load = jasmine.createSpy("load").and.callFake(({ query, parsedQuery, signal }) => {
+        expect(query).toBe("seed");
+        expect(parsedQuery).toEqual({ text: "seed", data: null });
+        expect(signal).toEqual(jasmine.any(AbortSignal));
+        return { infoMessage: "Loaded" };
+      });
+      view = createInputDialog({ source: { mode: "snapshot", load } });
+
+      await view.show({ query: "seed" });
+
+      expect(load).toHaveBeenCalledTimes(1);
+      expect(view.getInfoMessage()).toBe("Loaded");
+      expect(view.isLoading()).toBe(false);
+    });
+  });
+
   describe("focus policy", () => {
     it("keeps focus in the query editor when pressing non-interactive content", () => {
       const content = document.createElement("div");
@@ -363,8 +479,8 @@ describe("InputDialogView", () => {
   });
 
   describe("class hierarchy", () => {
-    it("is the base class of SelectListView", () => {
-      expect(Object.getPrototypeOf(SelectListView)).toBe(InputDialogView);
+    it("is the base class of SelectList", () => {
+      expect(Object.getPrototypeOf(SelectList)).toBe(InputDialog);
     });
   });
 });

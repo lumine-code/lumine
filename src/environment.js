@@ -242,7 +242,7 @@ class Environment {
      *
      * @type {CommandRegistry}
      */
-    this.commands = new CommandRegistry();
+    this.commands = new CommandRegistry({ keymapManager: this.keymaps });
 
     /**
      * @public

@@ -1,13 +1,13 @@
 const { CompositeDisposable } = require("lumine");
 const etch = require("@lumine-code/etch");
 const { humanizeKeystroke } = require("@lumine-code/underscore-plus");
-const SelectListView = require("../src/select-list-view");
+const SelectList = require("../src/select-list");
 
-describe("SelectListView", () => {
+describe("SelectList", () => {
   let view;
 
   function createSelectList(props) {
-    return new SelectListView(props, lumine.workspace.selectListServices);
+    return lumine.workspace.buildSelectList(props);
   }
 
   function textItemView(props = {}) {
@@ -32,6 +32,286 @@ describe("SelectListView", () => {
 
   beforeEach(() => {
     jasmine.attachToDOM(lumine.views.getView(lumine.workspace));
+  });
+
+  describe("public model API", () => {
+    it("exposes source, filtered, displayed, and selected state through methods", async () => {
+      view = textItemView();
+
+      expect(view.getElement()).toBe(view.element);
+      expect(view.getItems()).toEqual(["one", "two", "three"]);
+      expect(view.getFilteredItems()).toEqual(["one", "two", "three"]);
+      expect(view.getDisplayedItems()).toEqual(["one", "two", "three"]);
+      expect(view.getItemCount()).toBe(3);
+      expect(view.getMatchCount()).toBe(3);
+      expect(view.getSelectedItem()).toBe("one");
+      expect(view.getSelectedItemId()).toBe("one");
+      expect(view.getSelectedIndex()).toBe(0);
+      const listbox = view.getElement().querySelector('[role="listbox"]');
+      const selected = listbox.querySelector('[role="option"]');
+      expect(view.getQueryEditor().element.getAttribute("aria-controls")).toBe(listbox.id);
+      expect(view.getQueryEditor().element.getAttribute("aria-activedescendant")).toBe(selected.id);
+      expect(selected.getAttribute("aria-selected")).toBe("true");
+
+      view.getQueryEditor().setText("tw");
+      await nextUpdate();
+      expect(view.getFilteredItems()).toEqual(["two"]);
+      expect(view.getDisplayedItems()).toEqual(["two"]);
+    });
+
+    it("publishes item, selection, and recent changes", async () => {
+      view = textItemView();
+      const itemChanges = [];
+      const selectionChanges = [];
+      const recentChanges = [];
+      view.onDidChangeItems((event) => itemChanges.push(event.items));
+      view.onDidChangeSelection((event) => selectionChanges.push(event));
+      view.onDidChangeRecentItemIds((event) => recentChanges.push(event.recentItemIds));
+
+      await view.setItems(["one", "four"]);
+      await view.selectItemById("four");
+      await view.recordRecentItem("four");
+
+      expect(itemChanges).toEqual([["one", "four"]]);
+      expect(selectionChanges.at(-1).item).toBe("four");
+      expect(selectionChanges.at(-1).itemId).toBe("four");
+      expect(recentChanges).toEqual([["four"]]);
+    });
+
+    it("exposes pagination without leaking the Show more row as an item", async () => {
+      view = textItemView({ items: Array.from({ length: 101 }, (_, index) => `item-${index}`) });
+
+      expect(view.hasMoreItems()).toBe(true);
+      expect(view.getItems().length).toBe(101);
+      expect(view.getDisplayedItems().length).toBe(99);
+      expect(view.getRemainingItemCount()).toBe(2);
+      expect(view.getItems().some((item) => item?.showMoreSentinel)).toBe(false);
+      expect(view.getFilteredItems().some((item) => item?.showMoreSentinel)).toBe(false);
+      expect(view.getDisplayedItems().some((item) => item?.showMoreSentinel)).toBe(false);
+
+      // The UI may select its private row, but no public model or action API
+      // can mistake that chrome for a package item.
+      await view.selectIndex(99);
+      expect(view.getSelectedItem()).toBeNull();
+      expect(view.getSelectedItemId()).toBeNull();
+      expect(view.getSelectedIndex()).toBeNull();
+      expect(view.getActionContext("spec").item).toBeNull();
+
+      await view.showMore();
+      expect(view.hasMoreItems()).toBe(false);
+      expect(view.getDisplayedItems().length).toBe(101);
+      expect(view.getSelectedItem()).toBe("item-99");
+    });
+
+    it("preserves selection by stable ID when source objects are replaced", async () => {
+      const original = [
+        { id: "one", label: "One" },
+        { id: "two", label: "Two" },
+      ];
+      view = createSelectList({
+        items: original,
+        search: { getFilterText: (item) => item.label },
+        renderItem: (item, { highlight }) => ({ primary: highlight(item.label) }),
+      });
+      await view.selectItemById("two");
+
+      const replacement = { id: "two", label: "Two, refreshed" };
+      await view.update({ items: [replacement, { id: "one", label: "One, refreshed" }] });
+
+      expect(view.getSelectedItem()).toBe(replacement);
+      expect(view.getSelectedItemId()).toBe("two");
+      expect(view.getSelectedIndex()).toBe(0);
+      expect(view.element.querySelector("li.selected").textContent).toBe("Two, refreshed");
+    });
+
+    it("uses the new getItemId, search, and renderItem contract", async () => {
+      const items = [
+        { key: "alpha", title: "Alpha" },
+        { key: "beta", title: "Beta" },
+      ];
+      view = createSelectList({
+        items,
+        getItemId: (item) => item.key,
+        search: { getFilterText: (item) => item.title },
+        renderItem: (item, { highlight }) => ({ primary: highlight(item.title) }),
+      });
+
+      await view.selectItemById("beta");
+      expect(view.getSelectedItem()).toBe(items[1]);
+      expect(view.getSelectedItemId()).toBe("beta");
+
+      view.getQueryEditor().setText("alp");
+      await nextUpdate();
+      expect(view.getFilteredItems()).toEqual([items[0]]);
+      expect(view.element.querySelector(".character-match").textContent).toBe("Alp");
+    });
+
+    it("renders sections at rest and flattens them into one queried result set", async () => {
+      view = createSelectList({
+        sections: [
+          {
+            id: "first",
+            items: [
+              { id: "z", label: "Zulu" },
+              { id: "a", label: "Alpha" },
+            ],
+          },
+          {
+            id: "second",
+            items: [
+              { id: "b", label: "Bravo" },
+              { id: "m", label: "Mike" },
+            ],
+          },
+        ],
+        search: {
+          getFilterText: (item) => item.label,
+          filter: (items, query, { getFilterText }) =>
+            items.filter((item) => getFilterText(item).toLowerCase().includes(query)),
+          sort: (left, right) => left.label.localeCompare(right.label),
+        },
+        renderItem: (item, { highlight }) => ({ primary: highlight(item.label) }),
+      });
+
+      expect(view.getItems().map(({ id }) => id)).toEqual(["z", "a", "b", "m"]);
+      expect(view.getFilteredItems().map(({ id }) => id)).toEqual(["a", "z", "b", "m"]);
+      expect(view.element.querySelectorAll(".select-list-separator").length).toBe(1);
+
+      view.getQueryEditor().setText("a");
+      await nextUpdate();
+
+      expect(view.getFilteredItems().map(({ id }) => id)).toEqual(["a", "b"]);
+      expect(view.getDisplayedItems().map(({ id }) => id)).toEqual(["a", "b"]);
+      expect(view.element.querySelector(".select-list-separator")).toBeNull();
+    });
+
+    it("runs the applicable primary action with a stable item context", async () => {
+      const contexts = [];
+      view = createSelectList({
+        items: [{ id: "one", label: "One" }],
+        idForItem: (item) => item.id,
+        filterKeyForItem: (item) => item.label,
+        elementForItem: (item) => ({ primary: item.label }),
+        commands: {
+          "spec:open-item": {
+            description: "Open the selected item.",
+            didDispatch: (event) => contexts.push(event.detail),
+          },
+        },
+        actions: [
+          {
+            command: "spec:open-item",
+            context: "item",
+            primary: true,
+            disposition: "stay",
+          },
+        ],
+      });
+
+      await view.confirmSelection();
+
+      expect(contexts.length).toBe(1);
+      expect(contexts[0].item.id).toBe("one");
+      expect(contexts[0].itemId).toBe("one");
+      expect(view.getAvailableActions()[0].description).toBe("Open the selected item.");
+    });
+
+    it("revalidates action snapshots by ID and never retargets a missing item", async () => {
+      const selected = { id: "same", version: 1 };
+      const replacement = { id: "same", version: 2 };
+      const seen = [];
+      view = createSelectList({
+        items: [selected],
+        idForItem: (item) => item.id,
+        filterKeyForItem: (item) => item.id,
+        elementForItem: (item) => ({ primary: item.id }),
+        commands: {
+          "spec:inspect-item": (event) => seen.push(event.detail.item),
+        },
+        actions: [
+          {
+            command: "spec:inspect-item",
+            context: "item",
+            disposition: "stay",
+          },
+        ],
+      });
+      const context = view.getActionContext("spec");
+
+      await view.update({ items: [replacement] });
+      await view.runAction("spec:inspect-item", { context });
+      expect(seen).toEqual([replacement]);
+
+      const missingContext = view.getActionContext("spec");
+      await view.update({ items: [] });
+      const result = await view.runAction("spec:inspect-item", { context: missingContext });
+      expect(result.status).toBe("unavailable");
+      expect(seen).toEqual([replacement]);
+    });
+
+    it("lets a query source own filtering and receives parsed query metadata", async () => {
+      const requests = [];
+      view = createSelectList({
+        items: [],
+        getItemId: (item) => item.id,
+        search: {
+          getFilterText: (item) => item.label,
+          parseQuery: (query) => ({
+            text: query.split(":")[0],
+            data: { suffix: query.split(":")[1] },
+          }),
+        },
+        renderItem: (item) => ({ primary: item.label }),
+        source: {
+          mode: "query",
+          debounceMs: 0,
+          load({ query, parsedQuery }) {
+            requests.push({ query, parsedQuery });
+            return [{ id: query, label: `Provider result for ${query}` }];
+          },
+        },
+      });
+
+      await view.show({ query: "alpha:12" });
+
+      expect(requests).toEqual([
+        {
+          query: "alpha:12",
+          parsedQuery: { text: "alpha", data: { suffix: "12" } },
+        },
+      ]);
+      expect(view.getDisplayedItems().map(({ id }) => id)).toEqual(["alpha:12"]);
+      expect(view.getParsedQuery()).toEqual({ text: "alpha", data: { suffix: "12" } });
+    });
+
+    it("owns recents ordering, persistence, limits, and standard actions", async () => {
+      const save = jasmine.createSpy("save").and.resolveTo();
+      view = textItemView({
+        recents: {
+          limit: 2,
+          adapter: {
+            load: () => ["three", "one"],
+            save,
+          },
+        },
+      });
+
+      expect(view.getRecentItemIds()).toEqual(["three", "one"]);
+      expect(view.getFilteredItems()).toEqual(["three", "one", "two"]);
+      expect(view.getActions().map(({ command }) => command)).toEqual([
+        "select-list:remove-recent",
+        "select-list:clear-recents",
+      ]);
+
+      await view.recordRecentItem("two");
+      expect(view.getRecentItemIds()).toEqual(["two", "three"]);
+      expect(save).toHaveBeenCalledWith(["two", "three"]);
+
+      await view.selectItemById("two");
+      await view.runAction("select-list:remove-recent");
+      expect(view.getRecentItemIds()).toEqual(["three"]);
+      expect(view.getSelectedItem()).toBe("two");
+    });
   });
 
   afterEach(async () => {
@@ -115,7 +395,7 @@ describe("SelectListView", () => {
       view = textItemView({ emptyMessage: "nothing here" });
       view.getQueryEditor().setText("zzz");
       await nextUpdate();
-      expect(view.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
     });
 
     it("renders two-line items from {primary, secondary} descriptors", () => {
@@ -169,6 +449,32 @@ describe("SelectListView", () => {
       ]);
     });
 
+    it("disposes descriptor decorations and custom row views when rows are replaced", async () => {
+      const descriptorDispose = jasmine.createSpy("descriptorDispose");
+      const rowDestroy = jasmine.createSpy("rowDestroy");
+      view = createSelectList({
+        items: ["descriptor"],
+        renderItem: (item) => {
+          if (item === "descriptor") {
+            return {
+              primary: item,
+              didRender: () => ({ dispose: descriptorDispose }),
+            };
+          }
+          const element = document.createElement("li");
+          element.textContent = item;
+          return { element, destroy: rowDestroy };
+        },
+      });
+
+      await view.setItems(["custom"]);
+      expect(descriptorDispose).toHaveBeenCalledTimes(1);
+
+      await view.destroy();
+      view = null;
+      expect(rowDestroy).toHaveBeenCalledTimes(1);
+    });
+
     it("passes a highlight function bound to the item's own match indices", async () => {
       view = createSelectList({
         items: ["abc", "xyz"],
@@ -201,10 +507,7 @@ describe("SelectListView", () => {
     });
 
     it("does not compute match indices unless highlight is called without them", async () => {
-      const getMatchIndicesSpy = spyOn(
-        SelectListView.prototype,
-        "getMatchIndices",
-      ).and.callThrough();
+      const getMatchIndicesSpy = spyOn(SelectList.prototype, "getMatchIndices").and.callThrough();
 
       view = createSelectList({
         items: ["abc"],
@@ -221,9 +524,6 @@ describe("SelectListView", () => {
 
     it("provides highlight on the re-render path as well", async () => {
       view = createSelectList({
-        // Forces the IntersectionObserver path, so re-rendering a row goes
-        // through renderItemAtIndex rather than a full renderItems pass.
-        initiallyVisibleItemCount: 1,
         items: ["abc", "abd"],
         elementForItem: (item, { highlight }) => {
           const li = document.createElement("li");
@@ -415,57 +715,6 @@ describe("SelectListView", () => {
     });
   });
 
-  describe("initiallyVisibleItemCount", () => {
-    it("renders items beyond the count with visible: false", () => {
-      const items = [];
-      for (let i = 0; i < 10; i++) items.push(`item-${i}`);
-
-      view = createSelectList({
-        items,
-        initiallyVisibleItemCount: 4,
-        elementForItem: (item, { visible }) => {
-          const li = document.createElement("li");
-          if (visible) li.textContent = item;
-          return li;
-        },
-      });
-
-      const texts = listTexts();
-      expect(texts.length).toBe(10);
-      expect(texts.slice(0, 4)).toEqual(["item-0", "item-1", "item-2", "item-3"]);
-      expect(texts.slice(4).every((text) => text === "")).toBe(true);
-    });
-
-    it("re-renders an item with visible: true when selected", async () => {
-      const items = ["a", "b", "c"];
-      view = createSelectList({
-        items,
-        initiallyVisibleItemCount: 1,
-        elementForItem: (item, { visible }) => {
-          const li = document.createElement("li");
-          if (visible) li.textContent = item;
-          return li;
-        },
-      });
-      expect(listTexts()).toEqual(["a", "", ""]);
-
-      await view.selectNext();
-      expect(listTexts()).toEqual(["a", "b", ""]);
-    });
-
-    it("always reports visible: true when the feature is off", () => {
-      const seen = [];
-      view = createSelectList({
-        items: ["x"],
-        elementForItem: (item, { visible }) => {
-          seen.push(visible);
-          return document.createElement("li");
-        },
-      });
-      expect(seen).toEqual([true]);
-    });
-  });
-
   describe("update()", () => {
     it("replaces items, query and messages", async () => {
       view = textItemView();
@@ -483,16 +732,54 @@ describe("SelectListView", () => {
         infoMessage: "fyi",
         loadingMessage: "wait",
       });
-      expect(view.refs.loadingMessage.textContent).toBe("wait");
-      expect(view.refs.statusMessage).toBeUndefined();
-      expect(view.refs.infoMessage).toBeUndefined();
+      expect(view.component.refs.loadingMessage.textContent).toBe("wait");
+      expect(view.component.refs.statusMessage).toBeUndefined();
+      expect(view.component.refs.infoMessage).toBeUndefined();
 
       await view.update({ loadingMessage: null });
-      expect(view.refs.statusMessage.textContent).toBe("boom");
-      expect(view.refs.infoMessage).toBeUndefined();
+      expect(view.component.refs.statusMessage.textContent).toBe("boom");
+      expect(view.component.refs.infoMessage).toBeUndefined();
 
       await view.update({ status: null });
-      expect(view.refs.infoMessage.textContent).toBe("fyi");
+      expect(view.component.refs.infoMessage.textContent).toBe("fyi");
+    });
+
+    it("leaves model, query, DOM, and events unchanged when an atomic update fails", async () => {
+      view = createSelectList({
+        items: [
+          { id: "one", label: "One" },
+          { id: "two", label: "Two" },
+        ],
+        search: { getFilterText: (item) => item.label },
+        renderItem: (item) => ({ primary: item.label }),
+      });
+      await view.selectItemById("two");
+      const itemChanges = jasmine.createSpy("itemChanges");
+      const selectionChanges = jasmine.createSpy("selectionChanges");
+      view.onDidChangeItems(itemChanges);
+      view.onDidChangeSelection(selectionChanges);
+
+      expect(() =>
+        view.update({
+          items: [
+            { id: "duplicate", label: "First" },
+            { id: "duplicate", label: "Second" },
+          ],
+          query: "broken",
+          recentItemIds: ["duplicate"],
+        }),
+      ).toThrowError(/Duplicate item ID/);
+
+      expect(view.getQuery()).toBe("");
+      expect(view.getItems().map(({ id }) => id)).toEqual(["one", "two"]);
+      expect(view.getSelectedItemId()).toBe("two");
+      expect(view.getRecentItemIds()).toEqual([]);
+      expect(Array.from(view.element.querySelectorAll("li"), (row) => row.textContent)).toEqual([
+        "One",
+        "Two",
+      ]);
+      expect(itemChanges).not.toHaveBeenCalled();
+      expect(selectionChanges).not.toHaveBeenCalled();
     });
   });
 
@@ -501,22 +788,22 @@ describe("SelectListView", () => {
       view = textItemView();
 
       await view.update({ status: { message: "plain" } });
-      expect(view.refs.statusMessage.classList.contains("text-info")).toBe(true);
-      expect(view.refs.statusMessage.getAttribute("role")).toBe("status");
+      expect(view.component.refs.statusMessage.classList.contains("text-info")).toBe(true);
+      expect(view.component.refs.statusMessage.getAttribute("role")).toBe("status");
 
       await view.update({ status: { type: "warning", message: "careful" } });
-      expect(view.refs.statusMessage.classList.contains("text-warning")).toBe(true);
+      expect(view.component.refs.statusMessage.classList.contains("text-warning")).toBe(true);
 
       await view.update({ status: { type: "error", message: "broken" } });
-      expect(view.refs.statusMessage.classList.contains("text-error")).toBe(true);
-      expect(view.refs.statusMessage.getAttribute("role")).toBe("alert");
+      expect(view.component.refs.statusMessage.classList.contains("text-error")).toBe(true);
+      expect(view.component.refs.statusMessage.getAttribute("role")).toBe("alert");
     });
 
     it("renders a spinner beside every loading message", async () => {
       view = textItemView();
       await view.update({ loadingMessage: "Indexing…", loadingBadge: 7 });
       expect(view.element.querySelector(".loading .loading-spinner-tiny")).not.toBeNull();
-      expect(view.refs.loadingBadge.textContent).toBe("7");
+      expect(view.component.refs.loadingBadge.textContent).toBe("7");
     });
 
     it("clears a status on the next query change, but keeps a sticky one", async () => {
@@ -526,28 +813,28 @@ describe("SelectListView", () => {
       view.getQueryEditor().setText("o");
       // Polled rather than awaiting the next update: the render may already
       // have flushed by the time we ask, leaving no next update to wait for.
-      await conditionPromise(() => !view.refs.statusMessage);
+      await conditionPromise(() => !view.component.refs.statusMessage);
       // Clearing the overlay uncovers the resting line; nothing had to save it.
-      expect(view.refs.infoMessage.textContent).toBe("resting");
+      expect(view.component.refs.infoMessage.textContent).toBe("resting");
 
       await view.update({ status: { type: "error", message: "background", sticky: true } });
       view.getQueryEditor().setText("on");
       // A sticky status is expected not to move, so there is nothing to poll
       // for; flush with an update of our own instead.
       await view.update({});
-      expect(view.refs.statusMessage.textContent).toBe("background");
+      expect(view.component.refs.statusMessage.textContent).toBe("background");
     });
 
     it("expires a status after its duration", async () => {
       view = textItemView({ infoMessage: "resting" });
 
       await view.update({ status: { message: "Copied", duration: 2000 } });
-      expect(view.refs.statusMessage.textContent).toBe("Copied");
+      expect(view.component.refs.statusMessage.textContent).toBe("Copied");
 
       advanceClock(2000);
       expect(view.props.status).toBeNull();
-      await conditionPromise(() => Boolean(view.refs.infoMessage));
-      expect(view.refs.statusMessage).toBeUndefined();
+      await conditionPromise(() => Boolean(view.component.refs.infoMessage));
+      expect(view.component.refs.statusMessage).toBeUndefined();
     });
 
     it("cancels a pending expiry when the status is superseded", async () => {
@@ -559,7 +846,7 @@ describe("SelectListView", () => {
       // The first message's timer must not wipe the one that replaced it.
       advanceClock(2000);
       expect(view.props.status.message).toBe("second");
-      expect(view.refs.statusMessage.textContent).toBe("second");
+      expect(view.component.refs.statusMessage.textContent).toBe("second");
     });
 
     it("cancels a pending expiry when the view is destroyed", async () => {
@@ -576,18 +863,18 @@ describe("SelectListView", () => {
       view = textItemView({ emptyMessage: "nothing here" });
       view.getQueryEditor().setText("zzz");
       await nextUpdate();
-      expect(view.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
 
       // A failure and an empty result are the same fact; reporting both twice
       // is what stacking used to do.
       await view.update({ status: { type: "error", message: "Load failed." } });
-      expect(view.refs.emptyMessage).toBeUndefined();
+      expect(view.component.refs.emptyMessage).toBeUndefined();
 
       await view.update({ status: null, loadingMessage: "Reloading…" });
-      expect(view.refs.emptyMessage).toBeUndefined();
+      expect(view.component.refs.emptyMessage).toBeUndefined();
 
       await view.update({ loadingMessage: null });
-      expect(view.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
     });
 
     it("keeps the resting info line alongside an empty list", async () => {
@@ -595,8 +882,8 @@ describe("SelectListView", () => {
       view = textItemView({ emptyMessage: "nothing here", infoMessage: "3 items" });
       view.getQueryEditor().setText("zzz");
       await nextUpdate();
-      expect(view.refs.infoMessage.textContent).toBe("3 items");
-      expect(view.refs.emptyMessage.textContent).toBe("nothing here");
+      expect(view.component.refs.infoMessage.textContent).toBe("3 items");
+      expect(view.component.refs.emptyMessage.textContent).toBe("nothing here");
     });
   });
 
@@ -768,7 +1055,7 @@ describe("SelectListView", () => {
     it("keeps the scroll position when the row is clicked", async () => {
       view = bigListView();
       view.show();
-      const scroller = view.refs.items;
+      const scroller = view.component.refs.items;
       scroller.style.maxHeight = "100px";
       scroller.style.overflowY = "auto";
       scroller.scrollTop = scroller.scrollHeight;
@@ -778,14 +1065,14 @@ describe("SelectListView", () => {
       view.didClickItem(view.items.length - 1);
       await etch.getScheduler().getNextUpdatePromise();
 
-      expect(view.refs.items).toBe(scroller);
+      expect(view.component.refs.items).toBe(scroller);
       expect(scroller.scrollTop).toBe(before);
     });
 
     it("scrolls the viewport to the selection when keyboard navigation expands from afar", async () => {
       view = bigListView();
       view.show();
-      const scroller = view.refs.items;
+      const scroller = view.component.refs.items;
       scroller.style.maxHeight = "100px";
       scroller.style.overflowY = "auto";
       scroller.scrollTop = 0;
@@ -1027,11 +1314,11 @@ describe("SelectListView", () => {
       view.getQueryEditor().setCursorBufferPosition([0, 200]);
       await nextUpdate();
 
-      const indicator = view.refs.itemActionsIndicator;
+      const indicator = view.component.refs.itemActionsIndicator;
       expect(indicator.hidden).toBe(false);
       expect(indicator.classList.contains("icon-ellipsis")).toBe(true);
       expect(indicator.getAttribute("aria-label")).toBe("Actions");
-      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(true);
+      expect(view.component.refs.queryRow.classList.contains("has-item-actions")).toBe(true);
 
       const [tooltip] = lumine.tooltips.tooltips.get(indicator);
       expect(tooltip.options.keyBindingCommand).toBe("select-list:actions");
@@ -1050,7 +1337,7 @@ describe("SelectListView", () => {
 
     it("opens the actions list from the query-editor indicator", async () => {
       view.show();
-      const indicator = view.refs.itemActionsIndicator;
+      const indicator = view.component.refs.itemActionsIndicator;
       const mouseDown = new MouseEvent("mousedown", { bubbles: true, cancelable: true });
       const click = new MouseEvent("click", { bubbles: true, cancelable: true });
 
@@ -1068,16 +1355,16 @@ describe("SelectListView", () => {
       view.props.actionsFilter = () => view.getSelectedItem() === "two";
       view.show();
 
-      expect(view.refs.itemActionsIndicator.hidden).toBe(true);
-      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
+      expect(view.component.refs.itemActionsIndicator.hidden).toBe(true);
+      expect(view.component.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
 
       await view.selectItem("two");
-      expect(view.refs.itemActionsIndicator.hidden).toBe(false);
-      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(true);
+      expect(view.component.refs.itemActionsIndicator.hidden).toBe(false);
+      expect(view.component.refs.queryRow.classList.contains("has-item-actions")).toBe(true);
 
       await view.selectItem("one");
-      expect(view.refs.itemActionsIndicator.hidden).toBe(true);
-      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
+      expect(view.component.refs.itemActionsIndicator.hidden).toBe(true);
+      expect(view.component.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
     });
 
     it("derives the rows from the dialog's own commands and keymaps", async () => {
@@ -1514,7 +1801,7 @@ describe("SelectListView", () => {
       view.show();
       await view.showItemActions();
       expect(view.itemActionsList.isVisible()).toBeTruthy();
-      expect(view.itemActionsList.refs.itemActionsIndicator).toBeUndefined();
+      expect(view.itemActionsList.component.refs.itemActionsIndicator).toBeUndefined();
 
       lumine.commands.dispatch(view.itemActionsList.element, "select-list:actions");
 
@@ -1538,8 +1825,8 @@ describe("SelectListView", () => {
       view.show();
       await view.showItemActions();
       expect(view.itemActionsList).toBeUndefined();
-      expect(view.refs.itemActionsIndicator.hidden).toBe(true);
-      expect(view.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
+      expect(view.component.refs.itemActionsIndicator.hidden).toBe(true);
+      expect(view.component.refs.queryRow.classList.contains("has-item-actions")).toBe(false);
     });
   });
 });

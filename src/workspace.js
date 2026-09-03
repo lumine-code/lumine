@@ -15,10 +15,9 @@ const Task = require("./task");
 const WorkspaceCenter = require("./workspace-center");
 const { createWorkspaceElement } = require("./workspace-element");
 const layoutDrag = require("./layout-drag");
-// Provided to packages through ::buildSelectList and ::buildInputDialog, so
-// that the editor owns the list toolkit and every window holds one implementation.
-const SelectListView = require("./select-list-view");
-const InputDialogView = require("./input-dialog-view");
+// Builds the full modal UI models returned by ::buildSelectList and
+// ::buildInputDialog with this window's services.
+const ModalDialogFactory = require("./modal-dialog-factory");
 const FileState = require("./file-state");
 const { AlwaysIgnoredNames, compile, merge } = require("./ignored-names");
 
@@ -273,14 +272,16 @@ module.exports = class Workspace extends Model {
     this.project = params.project;
     this.notificationManager = params.notificationManager;
     this.viewRegistry = params.viewRegistry;
-    this.selectListServices = Object.freeze({
+    this.modalDialogServices = {
       workspace: this,
       config: params.config,
       commandRegistry: params.commandRegistry,
       keymapManager: params.keymapManager,
       tooltipManager: params.tooltipManager,
       textEditorRegistry: params.textEditorRegistry,
-    });
+      applicationDelegate: params.applicationDelegate,
+    };
+    this.modalDialogFactory = new ModalDialogFactory(this.modalDialogServices);
     this.grammarRegistry = params.grammarRegistry;
     this.applicationDelegate = params.applicationDelegate;
     this.assert = params.assert;
@@ -391,6 +392,8 @@ module.exports = class Workspace extends Model {
 
   reset(packageManager) {
     this.packageManager = packageManager;
+    void this.modalDialogFactory.destroy();
+    this.modalDialogFactory = new ModalDialogFactory(this.modalDialogServices);
     this.emitter.dispose();
     this.emitter = new Emitter();
 
@@ -1840,10 +1843,10 @@ module.exports = class Workspace extends Model {
    * @param props - An `Object` describing the list. The two that matter most:
    * @param props.items - An `Array` of the objects to show.
    * @param props.elementForItem - A `Function` called as `(item, options)` to render a row. Return an `HTMLElement`, or an `Object` with `primary` and an optional `secondary`, `icon`, `className` and `trailing` to have a row built for you. `options` carries `selected`, `index`, `filterKey`, `visible`, a lazily computed `matchIndices`, and `highlight(text, indices)` — which wraps the matched characters of `text` in `span.character-match`, defaulting to this item's own indices.
-   * @returns {SelectListView}
+   * @returns {SelectList}
    */
   buildSelectList(props) {
-    return new SelectListView(props, this.selectListServices);
+    return this.modalDialogFactory.buildSelectList(props);
   }
 
   /**
@@ -1854,8 +1857,8 @@ module.exports = class Workspace extends Model {
    *
    * The base of {@link #buildSelectList} without the list: a modal panel with a mini
    * editor, for prompts and save dialogs where the typed text is the answer.
-   * Extra DOM goes above the editor via `headerElement`, below it via
-   * `contentElement`, and a `checkboxes` row can bind straight to `lumine.config`.
+   * Extra DOM goes above the editor via `headerElement` and below it via
+   * `contentElement`.
    *
    * Panel ownership is the same as {@link #buildSelectList} — the dialog creates and
    * owns its own modal panel.
@@ -1866,10 +1869,10 @@ module.exports = class Workspace extends Model {
    * and the dialog clears it on the next keystroke by itself.
    *
    * @param props - An `Object` describing the dialog, including `didConfirm(query)`, `didCancel()` and `didChangeQuery(query)`.
-   * @returns {InputDialogView}
+   * @returns {InputDialog}
    */
   buildInputDialog(props) {
-    return new InputDialogView(props, this.selectListServices);
+    return this.modalDialogFactory.buildInputDialog(props);
   }
 
   /**

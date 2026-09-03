@@ -52,8 +52,9 @@ let SequenceCount = 0;
  * ```
  */
 module.exports = class CommandRegistry {
-  constructor() {
+  constructor({ keymapManager = null } = {}) {
     this.handleCommandEvent = this.handleCommandEvent.bind(this);
+    this.keymapManager = keymapManager;
     this.rootNode = null;
     this.clear();
   }
@@ -256,6 +257,39 @@ module.exports = class CommandRegistry {
     }
 
     return commands;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the display metadata and effective keybindings for one command at a
+   * target. This is the shared presentation used by command pickers and modal
+   * action lists.
+   *
+   * @param {String} commandName - Command to describe.
+   * @param {Object} options
+   * @param {Element} options.target - Element from which the command would be dispatched.
+   * @param {Element} [options.bindingTarget=options.target] - Element where displayed keybindings resolve.
+   * @returns {Object|null} The command descriptor with `keystrokes`, or null when unavailable.
+   */
+  getCommandPresentation(commandName, { target, bindingTarget = target }) {
+    const descriptor = this.findCommands({ target }).find(({ name }) => name === commandName);
+    if (!descriptor) return null;
+
+    const seen = new Set();
+    const keystrokes = [];
+    if (this.keymapManager) {
+      for (const binding of this.keymapManager.findKeyBindings({
+        command: commandName,
+        target: bindingTarget,
+      })) {
+        if (seen.has(binding.keystrokes)) continue;
+        seen.add(binding.keystrokes);
+        keystrokes.push(binding.keystrokes);
+      }
+    }
+    return Object.freeze({ ...descriptor, keystrokes: Object.freeze(keystrokes) });
   }
 
   /**

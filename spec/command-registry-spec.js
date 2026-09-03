@@ -349,6 +349,49 @@ describe("CommandRegistry", () => {
     });
   });
 
+  describe("::getCommandPresentation(commandName, {target})", () => {
+    it("combines command metadata with deduplicated effective keybindings", () => {
+      const keymapManager = {
+        findKeyBindings: jasmine
+          .createSpy("findKeyBindings")
+          .and.returnValue([
+            { keystrokes: "ctrl-x" },
+            { keystrokes: "ctrl-x" },
+            { keystrokes: "alt-x" },
+          ]),
+      };
+      registry.destroy();
+      registry = new CommandRegistry({ keymapManager });
+      registry.attach(parent);
+      registry.add(grandchild, "namespace:command", {
+        displayName: "A Command",
+        description: "Does one thing.",
+        didDispatch() {},
+      });
+
+      const presentation = registry.getCommandPresentation("namespace:command", {
+        target: grandchild,
+        bindingTarget: child,
+      });
+
+      expect(presentation).toEqual({
+        name: "namespace:command",
+        displayName: "A Command",
+        description: "Does one thing.",
+        keystrokes: ["ctrl-x", "alt-x"],
+      });
+      expect(Object.isFrozen(presentation)).toBe(true);
+      expect(Object.isFrozen(presentation.keystrokes)).toBe(true);
+      expect(keymapManager.findKeyBindings).toHaveBeenCalledWith({
+        command: "namespace:command",
+        target: child,
+      });
+      expect(
+        registry.getCommandPresentation("namespace:missing", { target: grandchild }),
+      ).toBeNull();
+    });
+  });
+
   describe("::dispatch(target, commandName)", () => {
     it("simulates invocation of the given command ", () => {
       let called = false;
