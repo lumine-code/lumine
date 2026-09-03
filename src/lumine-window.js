@@ -38,6 +38,7 @@ module.exports = class LumineWindow extends EventEmitter {
     this.fileRecoveryService = fileRecoveryService;
     this.isSpec = settings.isSpec;
     this.headless = settings.headless;
+    this.offscreen = settings.offscreen;
     this.safeMode = settings.safeMode;
     this.devMode = settings.devMode;
     this.resourcePath = settings.resourcePath;
@@ -62,6 +63,11 @@ module.exports = class LumineWindow extends EventEmitter {
         // local development experience when running specs through the UI (which
         // now won't pause when e.g. minimizing the window).
         backgroundThrottling: !this.isSpec,
+        // Chromium throttles a normally hidden window's animation frames even
+        // when background throttling is disabled. Electron's offscreen
+        // compositor supplies its own frame source, allowing local command-line
+        // specs to render without putting a native window on the desktop.
+        offscreen: this.offscreen,
         // Disable the `auxclick` feature so that `click` events are triggered in
         // response to a middle-click.
         // (Ref: https://github.com/atom/atom/pull/12696#issuecomment-290496960)
@@ -102,6 +108,10 @@ module.exports = class LumineWindow extends EventEmitter {
 
     const BrowserWindowConstructor = settings.browserWindowConstructor || BrowserWindow;
     this.browserWindow = new BrowserWindowConstructor(options);
+    if (this.offscreen) {
+      this.browserWindow.webContents.setFrameRate(60);
+      this.browserWindow.webContents.startPainting();
+    }
     this.lumineApplication.registerLumineWindow?.(this);
 
     this.handleEvents();

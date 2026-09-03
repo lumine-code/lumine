@@ -144,6 +144,16 @@ jobs:
         run: node ./node_modules/electron/install.js
       - name: Rebuild native modules for Electron
         run: npm run build
+      # The full CI suites use a visible, focused window so focus-dependent
+      # specs retain their coverage. Exercise the local-only offscreen path once
+      # on every platform with CI cleared, including its animation-frame guard.
+      - name: Test offscreen spec window
+        shell: bash
+        timeout-minutes: 5
+        run: |
+          prefix=""
+          if [ "$RUNNER_OS" = "Linux" ]; then prefix="xvfb-run --auto-servernum"; fi
+          env CI= $prefix npm run test:only -- spec/spec-window-rendering-spec.js
       # A single full-suite Electron session, capped so a wedged session cannot
       # hang the job. No retries and no per-file fallback: a failure here is a
       # real regression or a flaky spec, and flaky specs get fixed rather than

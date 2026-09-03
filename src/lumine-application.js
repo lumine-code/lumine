@@ -2229,6 +2229,11 @@ module.exports = class LumineApplication extends EventEmitter {
 
     const devMode = true;
     const isSpec = true;
+    // Local command-line runs must not cover the developer's workspace with a
+    // native window. CI still uses a visible, focused window so specs that
+    // assert real focus behaviour retain their coverage there; the interactive
+    // runner remains visible because it passes `headless: false`.
+    const offscreen = Boolean(headless && !process.env.CI);
     if (safeMode == null) {
       safeMode = false;
     }
@@ -2236,6 +2241,7 @@ module.exports = class LumineApplication extends EventEmitter {
       windowInitializationScript,
       resourcePath,
       headless,
+      offscreen,
       isSpec,
       devMode,
       testRunnerPath,

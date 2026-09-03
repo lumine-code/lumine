@@ -152,6 +152,19 @@ describe("LumineWindow", function () {
       assert.isFalse(w1.options.frame);
     });
 
+    it("drives offscreen spec windows at a normal animation frame rate", function () {
+      const { browserWindow } = new LumineWindow(app, service, {
+        browserWindowConstructor: StubBrowserWindow,
+        isSpec: true,
+        headless: true,
+        offscreen: true,
+      });
+
+      assert.isTrue(browserWindow.options.webPreferences.offscreen);
+      assert.isTrue(browserWindow.webContents.setFrameRate.calledOnceWith(60));
+      assert.isTrue(browserWindow.webContents.startPainting.calledOnce);
+    });
+
     it("opens initial locations", async function () {
       const locationsToOpen = [
         {
@@ -734,6 +747,8 @@ class StubBrowserWindow extends EventEmitter {
 
     this.webContents = new EventEmitter();
     this.webContents.setVisualZoomLevelLimits = () => {};
+    this.webContents.setFrameRate = sandbox.spy();
+    this.webContents.startPainting = sandbox.spy();
     this.webContents.isDestroyed = () => this.destroyed;
     this.webContents.send = (...args) => {
       this.sent.push(args);

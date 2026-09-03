@@ -48,7 +48,7 @@ module.exports = async function ({ blobStore }) {
 
     ipcRenderer.on("environment", (event, env) => updateProcessEnv(env));
 
-    const { testRunnerPath, legacyTestRunnerPath, headless, logFile, testPaths, env } =
+    const { testRunnerPath, legacyTestRunnerPath, headless, offscreen, logFile, testPaths, env } =
       getWindowLoadSettings();
     if (headless) {
       // Install console functions that output to stdout and stderr.
@@ -90,22 +90,19 @@ module.exports = async function ({ blobStore }) {
       console.log = (...args) => process.stdout.write(`${util.format(...args)}\n`);
       console.error = (...args) => process.stderr.write(`${util.format(...args)}\n`);
 
-      // The window must still be shown: this Chromium serves a natively hidden
-      // window's requestAnimationFrame from a ~1 Hz synthetic tick source
-      // (regardless of `backgroundThrottling: false`), which starves specs that
-      // await real animation frames. On CI there is no user to disturb, so take
-      // focus: since Electron 43.2 an inactive window's document no longer
-      // reports itself focused, and without it every focus-dependent spec fails
-      // on the Linux and Windows runners. Locally, show without stealing focus
-      // from whatever the developer is doing; the specs that genuinely need it
-      // are declared with `jasmine.itWithDocumentFocus`/`describeWithDocumentFocus`
-      // and report themselves pending instead of failing (see
-      // spec/helpers/document-focus.js).
-      if (process.env.CI) {
-        await ipcRenderer.invoke("lumine:window", "show");
-        await focusTestWindow();
-      } else {
-        await ipcRenderer.invoke("lumine:window", "showInactive");
+      // Electron's offscreen compositor keeps local command-line specs rendering
+      // without displaying a native window. CI deliberately stays on the normal
+      // compositor and takes focus: since Electron 43.2 an inactive window's
+      // document no longer reports itself focused, and without it every
+      // focus-dependent spec fails on the Linux and Windows runners. The
+      // interactive runner also stays visible through the non-headless branch.
+      if (!offscreen) {
+        if (process.env.CI) {
+          await ipcRenderer.invoke("lumine:window", "show");
+          await focusTestWindow();
+        } else {
+          await ipcRenderer.invoke("lumine:window", "showInactive");
+        }
       }
     } else {
       // Show window synchronously so a focusout doesn't fire on input elements

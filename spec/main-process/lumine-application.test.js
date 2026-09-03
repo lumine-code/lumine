@@ -1646,6 +1646,32 @@ describe("LumineApplication", function () {
       assert.isFalse(app.createWindow.called);
     });
 
+    it("renders only local command-line test windows offscreen", function () {
+      const originalCI = process.env.CI;
+      const options = {
+        headless: true,
+        resourcePath: app.resourcePath,
+        executedFrom: process.cwd(),
+        pathsToOpen: [path.resolve(__dirname, "../../spec")],
+      };
+
+      try {
+        delete process.env.CI;
+        app.runTests(options);
+        assert.isTrue(app.createWindow.lastCall.args[0].offscreen);
+
+        process.env.CI = "true";
+        app.runTests(options);
+        assert.isFalse(app.createWindow.lastCall.args[0].offscreen);
+      } finally {
+        if (originalCI == null) {
+          delete process.env.CI;
+        } else {
+          process.env.CI = originalCI;
+        }
+      }
+    });
+
     it("resolves the default runner for a package that declares none", function () {
       const runnerPath = app.resolveTestRunnerPath(path.resolve(__dirname, "../../spec"));
 
