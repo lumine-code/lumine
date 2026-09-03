@@ -175,6 +175,10 @@ let options = {
     // git-utils ships source build inputs so script-suppressed CI installs can
     // rebuild it for Electron; the application needs only its JS facade and addon.
     "!node_modules/@lumine-code/git-utils/binding.gyp",
+    "!node_modules/@lumine-code/git-utils/bin",
+    "!node_modules/@lumine-code/git-utils/build/*.mk",
+    "!node_modules/@lumine-code/git-utils/build/*.vcxproj*",
+    "!node_modules/@lumine-code/git-utils/build/Release/*.{a,exp,lib,pdb}",
     "!node_modules/@lumine-code/git-utils/scripts",
     "!**/node_modules/spellchecker/vendor/hunspell/.*",
     "!**/get-parameter-names/node_modules/testla",
