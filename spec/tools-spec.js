@@ -1,6 +1,7 @@
 const dedent = require("dedent");
 const path = require("path");
 const { pathToFileURL } = require("url");
+const TextEditor = require("../src/text-editor");
 
 describe("Renders Markdown", () => {
   describe("properly when given no opts", () => {
@@ -175,6 +176,8 @@ describe("Renders Markdown", () => {
 
 describe("Highlights markdown code blocks", () => {
   let container;
+  const codeSource = "const first = 1;\nconst second = 2;";
+  const fencedCode = `\`\`\`js\n${codeSource}\n\`\`\``;
 
   beforeEach(() => {
     container = document.createElement("div");
@@ -202,10 +205,26 @@ describe("Highlights markdown code blocks", () => {
     return container.querySelector("lumine-text-editor");
   }
 
+  function startFullRender(markdown = fencedCode, { attach = true, ...options } = {}) {
+    const fragment = lumine.tools.markdown.convertToDOM(lumine.tools.markdown.render(markdown));
+    const preElement = fragment.querySelector("pre");
+    const promise = lumine.tools.markdown.applySyntaxHighlighting(fragment, {
+      renderMode: "full",
+      ...options,
+    });
+    if (attach) container.appendChild(fragment);
+    return {
+      fragment,
+      preElement,
+      promise,
+    };
+  }
+
   it("swaps each fence for an editor that renders no caret", async () => {
     const element = await render("```js\nconst answer = 42;\n```");
     expect(container.querySelector("pre")).toBeNull();
     expect(element.getModel().getText()).toBe("const answer = 42;");
+    expect(element.getModel().isReadOnly()).toBe(true);
     expect(element.classList.contains("non-interactive")).toBe(true);
     expect(getComputedStyle(element.querySelector(".cursors")).display).toBe("none");
   });
@@ -218,6 +237,160 @@ describe("Highlights markdown code blocks", () => {
     // Without a width of its own the block fills a container that is itself
     // waiting on the block, and the whole box collapses to nothing.
     expect(container.getBoundingClientRect().width).toBeGreaterThan(100);
+  });
+
+  it("waits for a cold grammar, copies the ready rendering, and destroys its editor", async () => {
+    let editor;
+    let grammarSignal;
+    let settleGrammar;
+    spyOn(TextEditor.prototype, "whenGrammarSettled").and.callFake(function ({ signal } = {}) {
+      editor = this;
+      grammarSignal = signal;
+      return new Promise((resolve) => {
+        settleGrammar = resolve;
+      });
+    });
+
+    const { fragment, preElement, promise } = startFullRender();
+    await conditionPromise(() => Boolean(settleGrammar));
+
+    expect(grammarSignal.aborted).toBe(false);
+    expect(preElement.querySelector("code").textContent).toBe(`${codeSource}\n`);
+    expect(preElement.hidden).toBe(true);
+    expect(fragment.querySelector("lumine-text-editor")).toBeNull();
+
+    settleGrammar(true);
+    await promise;
+
+    expect(Array.from(preElement.children, (line) => line.textContent)).toEqual([
+      "const first = 1;",
+      "const second = 2;",
+    ]);
+    expect(preElement.querySelector("code")).toBeNull();
+    expect(preElement.hidden).toBe(false);
+    expect(editor.isDestroyed()).toBe(true);
+    expect(grammarSignal.aborted).toBe(true);
+  });
+
+  it("renders full mode before its document fragment is attached", async () => {
+    await lumine.packages.activatePackage("language-javascript");
+    const whenGrammarSettled = TextEditor.prototype.whenGrammarSettled;
+    let editor;
+    spyOn(TextEditor.prototype, "whenGrammarSettled").and.callFake(function (options) {
+      editor = this;
+      return whenGrammarSettled.call(this, options);
+    });
+    const { fragment, preElement, promise } = startFullRender(fencedCode, {
+      attach: false,
+      syntaxScopeNameFunc: () => "source.js",
+    });
+
+    await promise;
+
+    expect(fragment.isConnected).toBe(false);
+    expect(Array.from(preElement.children, (line) => line.textContent)).toEqual([
+      "const first = 1;",
+      "const second = 2;",
+    ]);
+    expect(preElement.querySelector(".syntax--storage.syntax--type")).not.toBeNull();
+    expect(preElement.querySelector(".syntax--constant.syntax--numeric")).not.toBeNull();
+    expect(fragment.querySelector("lumine-text-editor")).toBeNull();
+    expect(editor.isDestroyed()).toBe(true);
+
+    container.appendChild(fragment);
+    expect(preElement.hidden).toBe(false);
+  });
+
+  it("keeps a long physical line intact in full mode", async () => {
+    const source = "x".repeat(600);
+    const { preElement, promise } = startFullRender(`\`\`\`text\n${source}\n\`\`\``, {
+      attach: false,
+    });
+
+    await promise;
+
+    expect(preElement.querySelectorAll(".line").length).toBe(1);
+    expect(preElement.textContent).toBe(source);
+  });
+
+  it("preserves the source and finishes when grammar settlement reports failure", async () => {
+    let editor;
+    const waitForGrammar = spyOn(TextEditor.prototype, "whenGrammarSettled").and.callFake(
+      function () {
+        editor = this;
+        return Promise.resolve(false);
+      },
+    );
+
+    const { fragment, preElement, promise } = startFullRender();
+    await promise;
+
+    expect(waitForGrammar).toHaveBeenCalledTimes(1);
+    expect(preElement.querySelector("code").textContent).toBe(`${codeSource}\n`);
+    expect(preElement.hidden).toBe(false);
+    expect(preElement.querySelectorAll(".line").length).toBe(0);
+    expect(fragment.querySelector("lumine-text-editor")).toBeNull();
+    expect(editor.isDestroyed()).toBe(true);
+  });
+
+  it("preserves the source and finishes when grammar settlement rejects", async () => {
+    let editor;
+    spyOn(TextEditor.prototype, "whenGrammarSettled").and.callFake(function () {
+      editor = this;
+      return Promise.reject(new Error("parser load failed"));
+    });
+
+    const { fragment, preElement, promise } = startFullRender();
+    await promise;
+
+    expect(preElement.querySelector("code").textContent).toBe(`${codeSource}\n`);
+    expect(preElement.querySelectorAll(".line").length).toBe(0);
+    expect(fragment.querySelector("lumine-text-editor")).toBeNull();
+    expect(editor.isDestroyed()).toBe(true);
+  });
+
+  it("aborts and finishes when its temporary editor is destroyed", async () => {
+    let editor;
+    let grammarSignal;
+    spyOn(TextEditor.prototype, "whenGrammarSettled").and.callFake(function ({ signal } = {}) {
+      editor = this;
+      grammarSignal = signal;
+      return new Promise(() => {});
+    });
+
+    const { fragment, preElement, promise } = startFullRender();
+    await conditionPromise(() => Boolean(grammarSignal));
+    editor.destroy();
+    await promise;
+
+    expect(grammarSignal.aborted).toBe(true);
+    expect(preElement.querySelector("code").textContent).toBe(`${codeSource}\n`);
+    expect(fragment.querySelector("lumine-text-editor")).toBeNull();
+  });
+
+  it("finishes only once when grammar settlement races editor destruction", async () => {
+    let editor;
+    let settleGrammar;
+    spyOn(TextEditor.prototype, "whenGrammarSettled").and.callFake(function () {
+      editor = this;
+      return new Promise((resolve) => {
+        settleGrammar = resolve;
+      });
+    });
+
+    const { preElement, promise } = startFullRender();
+    let completionCount = 0;
+    promise.then(() => completionCount++);
+    await conditionPromise(() => Boolean(settleGrammar));
+
+    editor.destroy();
+    settleGrammar(true);
+    await promise;
+    await Promise.resolve();
+
+    expect(completionCount).toBe(1);
+    expect(preElement.children.length).toBe(1);
+    expect(preElement.querySelector("code").textContent).toBe(`${codeSource}\n`);
   });
 });
 

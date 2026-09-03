@@ -510,14 +510,7 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
     }
   }
 
-  let editorCallback;
-
-  if (opts.renderMode === "fragment") {
-    editorCallback = makeLumineEditorNonInteractive;
-  } else {
-    // Captures full and defaults
-    editorCallback = convertLumineEditorToStandardElement;
-  }
+  const renderAsEditor = opts.renderMode === "fragment";
 
   const promises = [];
   for (const preElement of content.querySelectorAll("pre")) {
@@ -526,21 +519,25 @@ function applySyntaxHighlighting(content, givenOpts = {}) {
     const fenceName = className != null ? className.replace(/^language-/, "") : defaultLanguage;
 
     const editor = new TextEditor({
-      readonly: true,
+      readOnly: true,
       keyboardInputEnabled: false,
       autoWidth: opts.autoWidth,
+      maxScreenLineLength: renderAsEditor ? undefined : Infinity,
     });
-    const editorElement = editor.getElement();
 
     preElement.classList.add("editor-colors", `lang-${fenceName}`);
-    editorElement.setUpdatedSynchronously(true);
-    preElement.innerHTML = "";
-    preElement.parentNode.insertBefore(editorElement, preElement);
-    editor.setText(codeBlock.textContent.replace(/\r?\n$/, ""));
+    editor.setText(codeBlock.textContent.replace(/\r?\n$/, ""), { bypassReadOnly: true });
     lumine.grammars.assignLanguageMode(editor, scopeForFenceName(fenceName));
     editor.setVisible(true);
 
-    promises.push(editorCallback(editorElement, preElement));
+    if (renderAsEditor) {
+      const editorElement = editor.getElement();
+      editorElement.setUpdatedSynchronously(true);
+      preElement.parentNode.insertBefore(editorElement, preElement);
+      promises.push(makeLumineEditorNonInteractive(editorElement, preElement));
+    } else {
+      promises.push(convertLumineEditorToStandardElement(editor, preElement));
+    }
   }
   return Promise.all(promises);
 }
@@ -582,26 +579,83 @@ function makeLumineEditorNonInteractive(editorElement, preElement) {
   }
 }
 
-function convertLumineEditorToStandardElement(editorElement, preElement) {
-  return new Promise(function (resolve) {
-    const editor = editorElement.getModel();
-    const done = () =>
-      editor.component.getNextUpdatePromise().then(function () {
-        for (const line of editorElement.querySelectorAll(".line:not(.dummy)")) {
-          const line2 = document.createElement("div");
-          line2.className = "line";
-          line2.innerHTML = line.firstChild.innerHTML;
-          preElement.appendChild(line2);
+function convertLumineEditorToStandardElement(editor, preElement) {
+  return new Promise((resolve) => {
+    const controller = new AbortController();
+    const preWasHidden = preElement.hidden;
+    let destroySubscription;
+    let finished = false;
+    preElement.hidden = true;
+
+    const finish = (copyLines) => {
+      // Grammar settlement and editor destruction can race. Exactly one path
+      // owns the DOM replacement and the temporary editor's cleanup.
+      if (finished) return;
+      finished = true;
+      destroySubscription?.dispose();
+      controller.abort();
+
+      try {
+        if (copyLines && !editor.isDestroyed()) {
+          // Build from the display model rather than the editor DOM. A public
+          // HTMLFragment may still be detached, in which case the component
+          // deliberately does not render.
+          editor.displayLayer.clearSpatialIndex();
+          const replacement = document.createDocumentFragment();
+          for (let row = 0; row < editor.getScreenLineCount(); row++) {
+            const line = document.createElement("div");
+            line.className = "line";
+            const openScopes = [];
+            const scopeElements = [line];
+
+            for (const token of editor.tokensForScreenRow(row)) {
+              let sharedScopeCount = 0;
+              while (
+                sharedScopeCount < openScopes.length &&
+                sharedScopeCount < token.scopes.length &&
+                openScopes[sharedScopeCount] === token.scopes[sharedScopeCount]
+              ) {
+                sharedScopeCount++;
+              }
+              openScopes.length = sharedScopeCount;
+              scopeElements.length = sharedScopeCount + 1;
+
+              for (let index = sharedScopeCount; index < token.scopes.length; index++) {
+                const span = document.createElement("span");
+                span.className = token.scopes[index];
+                scopeElements[scopeElements.length - 1].appendChild(span);
+                openScopes.push(token.scopes[index]);
+                scopeElements.push(span);
+              }
+              scopeElements[scopeElements.length - 1].appendChild(
+                document.createTextNode(token.text),
+              );
+            }
+            replacement.appendChild(line);
+          }
+          preElement.replaceChildren(replacement);
         }
-        editorElement.remove();
-        resolve();
-      });
-    const languageMode = editor.getBuffer().getLanguageMode();
-    if (languageMode.fullyTokenized || languageMode.tree) {
-      done();
-    } else {
-      editor.onDidTokenize(done);
-    }
+      } catch {
+        // Keep the Markdown renderer's original code element when parsing,
+        // rendering, or extracting rendered lines fails.
+      }
+
+      preElement.hidden = preWasHidden;
+      try {
+        if (!editor.isDestroyed()) editor.destroy();
+      } catch {
+        // The source code is already preserved in the original pre element.
+      }
+      resolve();
+    };
+
+    destroySubscription = editor.onDidDestroy(() => finish(false));
+    Promise.resolve()
+      .then(() => editor.whenGrammarSettled({ signal: controller.signal }))
+      .then(
+        (settled) => finish(settled),
+        () => finish(false),
+      );
   });
 }
 
