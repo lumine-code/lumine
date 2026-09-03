@@ -2733,9 +2733,7 @@ describe("TreeSitterLanguageMode", () => {
         ]);
 
         lumine.grammars.addGrammar(htmlGrammar);
-        await languageMode.nextTransaction;
-        // TODO: Still need a `wait(0)` here and I'm not sure why.
-        await wait(0);
+        await languageMode.atGrammarSettlement();
         expectTokensToEqual(editor, [
           [
             { text: "node.", scopes: [] },
@@ -2858,9 +2856,7 @@ describe("TreeSitterLanguageMode", () => {
         );
 
         lumine.grammars.addGrammar(ejsGrammar);
-        await languageMode.nextTransaction;
-        // TODO: Still need a `wait(0)` here and I'm not sure why.
-        await wait(0);
+        await languageMode.atGrammarSettlement();
 
         expect(languageMode.rootLanguageLayer._populateInjections).not.toHaveBeenCalled();
       });
@@ -3619,9 +3615,10 @@ describe("TreeSitterLanguageMode", () => {
           .withContext(`Seed: ${seed}`)
           .toEqual(languageModeB.tree.rootNode.toString());
 
-        // TODO: `wait(0)` works here when awaiting the next transaction
-        // doesn't. Not sure why.
-        await wait(0);
+        await Promise.all([
+          languageModeA.atGrammarSettlement(),
+          languageModeB.atGrammarSettlement(),
+        ]);
 
         for (let j = 0, n = editor.getScreenLineCount(); j < n; j++) {
           const tokens1 = editor.tokensForScreenRow(j);
