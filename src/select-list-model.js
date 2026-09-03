@@ -143,6 +143,35 @@ module.exports = class SelectListModel {
     return this._records.map((record) => record.item);
   }
 
+  getItemId(item) {
+    const record = this._recordByItem.get(item);
+    if (record) return record.id;
+    return this._resolveItemId(item, {
+      index: -1,
+      section: null,
+      sectionId: null,
+      sectionIndex: -1,
+      itemIndex: -1,
+    });
+  }
+
+  getItemById(id) {
+    return this._recordById.get(id)?.item ?? null;
+  }
+
+  getFilterText(item) {
+    const record = this._recordForValue(item, {
+      recordByItem: this._recordByItem,
+      recordById: this._recordById,
+      getItemId: this._getItemId,
+    });
+    if (!record) return null;
+    return this._filterTextForRecord(record, {
+      search: this._search,
+      filterTextCache: this._filterTextCache,
+    });
+  }
+
   /** Returns items after filtering, sorting, and unqueried recents ordering. */
   getFilteredItems() {
     return this._filteredRecords.map((record) => record.item);
@@ -297,6 +326,15 @@ module.exports = class SelectListModel {
     return true;
   }
 
+  resetDisplayLimit() {
+    this._displayLimit = this._pageSize;
+    const selectedIndex = this.getSelectedIndex();
+    if (selectedIndex >= this._displayLimit) {
+      this._selectedId = this._defaultSelectionId(this._filteredRecords, this._allowEmptySelection);
+    }
+    return this.hasMore();
+  }
+
   /**
    * Atomically applies any combination of source, query, search, recents, and
    * selection-policy changes. If validation or a search callback throws, the
@@ -383,7 +421,34 @@ module.exports = class SelectListModel {
     const filteredIndexById = new Map(filteredRecords.map((record, index) => [record.id, index]));
 
     let selectedId;
-    if (initial || queryChanged) {
+    if (hasOwn(changes, "initialSelection")) {
+      const requestedSelection = changes.initialSelection;
+      if (
+        !requestedSelection ||
+        typeof requestedSelection !== "object" ||
+        Array.isArray(requestedSelection)
+      ) {
+        throw new TypeError("initialSelection must be {mode: 'first'|'none'} or {id}.");
+      }
+      const hasMode = hasOwn(requestedSelection, "mode");
+      const hasId = hasOwn(requestedSelection, "id");
+      if (hasMode === hasId) {
+        throw new TypeError("initialSelection must declare exactly one of mode or id.");
+      }
+      if (hasMode && requestedSelection.mode === "none") {
+        selectedId = NO_SELECTION;
+      } else if (hasMode && requestedSelection.mode === "first") {
+        selectedId = filteredRecords[0]?.id ?? NO_SELECTION;
+      } else if (hasMode) {
+        throw new TypeError("initialSelection mode must be 'first' or 'none'.");
+      } else {
+        const requestedId = assertStableId(requestedSelection.id, "Initial selection ID");
+        if (!filteredIndexById.has(requestedId)) {
+          throw new RangeError(`No filtered item has ID ${String(requestedId)}`);
+        }
+        selectedId = requestedId;
+      }
+    } else if (initial || queryChanged) {
       selectedId = this._defaultSelectionId(filteredRecords, allowEmptySelection);
     } else if (this._selectedId !== NO_SELECTION && filteredIndexById.has(this._selectedId)) {
       selectedId = this._selectedId;

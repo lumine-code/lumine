@@ -189,7 +189,21 @@
     &[hidden] {
       display: none;
     }
+
+    .action-pending-spinner {
+      width: 14px;
+      height: 14px;
+    }
   }
+}
+
+.select-list-actions [role="option"][aria-disabled="true"] {
+  color: var(--text-color-subtle);
+  opacity: 0.65;
+}
+
+.select-list-actions [role="option"].text-error.selected {
+  color: var(--text-color-error);
 }
 
 /* The message line

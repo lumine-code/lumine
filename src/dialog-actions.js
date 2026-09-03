@@ -4,6 +4,8 @@ const { Disposable, Emitter } = require("@lumine-code/event-kit");
 
 const ACTION_CONTEXTS = new Set(["item", "dialog"]);
 const DISPOSITIONS = new Set(["close", "stay", "push"]);
+const DISPATCH_TARGETS = new Set(["local", "workspace", "opener"]);
+const TONES = new Set(["normal", "danger"]);
 const DEFAULT_GROUP = Symbol("default-dialog-action-group");
 
 /**
@@ -58,17 +60,28 @@ class DialogActions {
    */
   set(actions) {
     this.assertAlive();
-    const entries = actionEntries(actions);
-    const commands = new Set();
-    const records = entries.map(([command, descriptor], declaration) => {
-      if (commands.has(command)) throw new Error(`Dialog action '${command}' is duplicated.`);
-      commands.add(command);
-      return this.normalize(command, descriptor, declaration);
-    });
+    const records = this.prepare(actions);
 
     this.actionsByCommand = new Map(records.map((record) => [record.action.command, record]));
     this.nextDeclaration = records.length;
     return this;
+  }
+
+  /** Validates a replacement catalogue without changing the active one. */
+  validate(actions) {
+    this.assertAlive();
+    this.prepare(actions);
+    return true;
+  }
+
+  prepare(actions) {
+    const entries = actionEntries(actions);
+    const commands = new Set();
+    return entries.map(([command, descriptor], declaration) => {
+      if (commands.has(command)) throw new Error(`Dialog action '${command}' is duplicated.`);
+      commands.add(command);
+      return this.normalize(command, descriptor, declaration);
+    });
   }
 
   /**
@@ -148,6 +161,42 @@ class DialogActions {
     return this.getAvailable(context).find((action) => action.primary) ?? null;
   }
 
+  async getAvailability(command, context = {}) {
+    if (this.destroyed) return Object.freeze({ command, status: "destroyed" });
+    const record = this.actionsByCommand.get(command);
+    if (!record) {
+      return Object.freeze({ command, status: "unavailable", reason: "removed" });
+    }
+    if (this.isPending(command)) {
+      return Object.freeze({ command, status: "pending", action: record.action });
+    }
+    const signal = new AbortController().signal;
+    const snapshot = this.snapshot(context);
+    const current = await this.revalidate(record.action, snapshot, signal);
+    if (!current) {
+      return Object.freeze({ command, status: "unavailable", reason: "missing-item" });
+    }
+    const evaluated = this.evaluatedRecord(record, current);
+    if (!evaluated) {
+      return Object.freeze({ command, status: "unavailable", reason: "when", context: current });
+    }
+    if (!evaluated.view.enabled) {
+      return Object.freeze({
+        command,
+        status: "disabled",
+        reason: evaluated.view.disabledReason,
+        action: evaluated.view,
+        context: current,
+      });
+    }
+    return Object.freeze({
+      command,
+      status: "available",
+      action: evaluated.view,
+      context: current,
+    });
+  }
+
   /**
    * Runs an action. A second invocation of the same command while it is in
    * flight receives the original promise and cannot dispatch it twice.
@@ -163,13 +212,16 @@ class DialogActions {
     if (!record) throw new Error(`Unknown dialog action '${command}'.`);
 
     const pending = this.pendingRuns.get(command);
-    if (pending) return pending.promise;
+    if (pending && !pending.finished) return pending.promise;
+    if (pending) this.pendingRuns.delete(command);
 
     const state = {
       command,
       record,
       controller: new AbortController(),
       snapshot: this.snapshot(context),
+      finished: false,
+      finishEvent: null,
       promise: null,
     };
     // Start in a microtask so the pending record exists before `did-start` can
@@ -189,8 +241,11 @@ class DialogActions {
    * @returns {Boolean} Whether a matching run is pending
    */
   isPending(command) {
-    if (command == null) return this.pendingRuns.size > 0;
-    return this.pendingRuns.has(command);
+    if (command == null) {
+      return Array.from(this.pendingRuns.values()).some((state) => !state.finished);
+    }
+    const state = this.pendingRuns.get(command);
+    return Boolean(state && !state.finished);
   }
 
   onDidStart(callback) {
@@ -243,6 +298,16 @@ class DialogActions {
         `Dialog action '${command}' must declare disposition 'close', 'stay', or 'push'.`,
       );
     }
+    const dispatch = descriptor.dispatch ?? "local";
+    if (!DISPATCH_TARGETS.has(dispatch)) {
+      throw new Error(
+        `Dialog action '${command}' dispatch must be 'local', 'workspace', or 'opener'.`,
+      );
+    }
+    const tone = descriptor.tone ?? "normal";
+    if (!TONES.has(tone)) {
+      throw new Error(`Dialog action '${command}' tone must be 'normal' or 'danger'.`);
+    }
     for (const name of ["when", "enabled", "primary", "recordsRecent"]) {
       const value = descriptor[name];
       if (value != null && typeof value !== "boolean" && typeof value !== "function") {
@@ -264,11 +329,23 @@ class DialogActions {
     if (descriptor.order != null && !Number.isFinite(descriptor.order)) {
       throw new TypeError(`Dialog action '${command}' order must be a finite number.`);
     }
+    if (
+      descriptor.confirm != null &&
+      typeof descriptor.confirm !== "boolean" &&
+      typeof descriptor.confirm !== "function" &&
+      (typeof descriptor.confirm !== "object" || Array.isArray(descriptor.confirm))
+    ) {
+      throw new TypeError(
+        `Dialog action '${command}' confirm must be a boolean, object, or function.`,
+      );
+    }
 
     return Object.freeze({
       action: Object.freeze({
         ...descriptor,
         command,
+        dispatch,
+        tone,
         group: descriptor.group ?? null,
         order: descriptor.order ?? 0,
       }),
@@ -317,7 +394,13 @@ class DialogActions {
       }
       return {
         record,
-        view: Object.freeze({ ...action, primary, enabled, disabledReason }),
+        view: Object.freeze({
+          ...action,
+          primary,
+          enabled,
+          disabledReason,
+          pending: this.isPending(action.command),
+        }),
       };
     });
   }
@@ -342,12 +425,12 @@ class DialogActions {
   async performRun(state) {
     const { command, record, controller, snapshot } = state;
     const { signal } = controller;
-    this.emitter.emit(
-      "did-start",
-      Object.freeze({ command, action: record.action, context: snapshot, signal }),
-    );
 
     try {
+      this.emitter.emit(
+        "did-start",
+        Object.freeze({ command, action: record.action, context: snapshot, signal }),
+      );
       let context = await this.revalidate(record.action, snapshot, signal);
       if (!context) return this.finish(state, "unavailable", { reason: "missing-item" });
       let evaluated = this.evaluatedRecord(record, context);
@@ -419,6 +502,7 @@ class DialogActions {
 
       return this.finish(state, "success", { context, value });
     } catch (error) {
+      if (state.finished) throw error;
       if (signal.aborted || error?.name === "AbortError") {
         return this.finish(state, "aborted", { reason: signal.reason });
       }
@@ -449,6 +533,8 @@ class DialogActions {
   }
 
   finish(state, status, details = {}) {
+    if (state.finishEvent) return state.finishEvent;
+    state.finished = true;
     const event = Object.freeze({
       command: state.command,
       action: state.record.action,
@@ -459,6 +545,7 @@ class DialogActions {
       ...(details.value !== undefined ? { value: details.value } : {}),
       ...(details.error !== undefined ? { error: details.error } : {}),
     });
+    state.finishEvent = event;
     this.emitter.emit("did-finish", event);
     return event;
   }

@@ -1,16 +1,12 @@
 "use strict";
 
 const { Disposable, CompositeDisposable, Emitter } = require("@lumine-code/event-kit");
-const { humanizeKeystroke } = require("@lumine-code/underscore-plus");
 const etch = require("@lumine-code/etch");
 const TextEditor = require("./text-editor");
 const DialogActions = require("./dialog-actions");
 const DialogSource = require("./dialog-source");
 const InputDialogComponent = require("./input-dialog-component");
 const $ = etch.dom;
-
-// The dialog's own chrome commands never appear in the item-actions list.
-const UNLISTED_ACTIONS = new Set(["select-list:actions", "select-list:restore-query"]);
 
 // A status is coloured with the theme's existing text utilities rather than
 // with colours of its own, so it matches every other severity in the editor.
@@ -50,8 +46,7 @@ const INTERACTIVE_SELECTOR =
  * The query is the dialog's own state, not the caller's: it is cleared on
  * every fresh show, kept across a modal-flow round trip, remembered when the
  * dialog closes, and put back on demand by `select-list:restore-query` (F11).
- * `preserveQuery` opts out of the clearing. A dialog therefore never needs to
- * call `reset()` before `show()`.
+ * A dialog therefore never needs to call `reset()` before `show()`.
  */
 class InputDialog {
   constructor(props, services) {
@@ -61,11 +56,14 @@ class InputDialog {
     this.statusTimer = null;
     this.destroyed = false;
     this.itemActionsAvailable = false;
+    this.actionsExpanded = false;
+    this.pendingActionCommands = new Set();
     // The query the dialog was last closed with, and whether the dialog is
     // coming back from a flow step rather than being opened afresh. See
     // {@link #didShowPanel}.
     this.lastQuery = "";
     this.suspendedByFlow = false;
+    this.panelLifecycleGeneration = 0;
     this.openerElement = null;
     this.dispatchedActionCommand = null;
     this.actionCommandsDisposable = null;
@@ -95,6 +93,11 @@ class InputDialog {
     this.component = this.createComponent();
     this.element = this.component.element;
     this.element.getModel = () => this;
+    if (Object.prototype.hasOwnProperty.call(this.props, "query")) {
+      this.component.refs.queryEditor.setText(
+        this.props.query == null ? "" : String(this.props.query),
+      );
+    }
     this.disposables.add(
       this.services.textEditorRegistry.add(this.component.refs.queryEditor, { role: "fragment" }),
       this.services.textEditorRegistry.maintainConfig(this.component.refs.queryEditor),
@@ -124,8 +127,16 @@ class InputDialog {
     this.disposables.add(this.registerCommands());
     this.registerActionCommands(this.props.commands);
     this.disposables.add(
-      this.dialogActions.onDidStart((event) => this.emitter.emit("did-start-action", event)),
-      this.dialogActions.onDidFinish((event) => this.emitter.emit("did-finish-action", event)),
+      this.dialogActions.onDidStart((event) => {
+        this.pendingActionCommands.add(event.command);
+        this.updateActionPendingState();
+        this.emitter.emit("did-start-action", event);
+      }),
+      this.dialogActions.onDidFinish((event) => {
+        this.pendingActionCommands.delete(event.command);
+        this.updateActionPendingState();
+        this.emitter.emit("did-finish-action", event);
+      }),
     );
     const didLoseFocus = this.didLoseFocus.bind(this);
     const didMouseDownOnElement = this.didMouseDownOnElement.bind(this);
@@ -152,6 +163,8 @@ class InputDialog {
   }
 
   didInitializeElement() {}
+
+  didSuspendPanel() {}
 
   /**
    * CSS classes applied to the root element. Subclasses override to replace
@@ -195,34 +208,82 @@ class InputDialog {
     return this.destroyed;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when the query changes.
+   */
   onDidChangeQuery(callback) {
     return this.emitter.on("did-change-query", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when modal visibility changes.
+   */
   onDidChangeVisible(callback) {
     return this.emitter.on("did-change-visible", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback after a fresh dialog open.
+   */
   onDidOpen(callback) {
     return this.emitter.on("did-open", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when a modal-flow step resumes.
+   */
   onDidResume(callback) {
     return this.emitter.on("did-resume", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback after the dialog is hidden.
+   */
   onDidHide(callback) {
     return this.emitter.on("did-hide", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when confirmation has no primary action.
+   */
   onDidConfirm(callback) {
     return this.emitter.on("did-confirm", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback after the dialog is cancelled.
+   */
   onDidCancel(callback) {
     return this.emitter.on("did-cancel", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback immediately before the dialog is destroyed.
+   */
   onDidDestroy(callback) {
     return this.emitter.on("did-destroy", callback);
   }
@@ -310,16 +371,8 @@ class InputDialog {
     this.clearStatusTimer();
     this.disposables.dispose();
     this.services.actionService?.release(this);
-    if (this.itemActionsDisposables) {
-      this.itemActionsDisposables.dispose();
-      this.itemActionsDisposables = null;
-    }
     await this.dialogActions.destroy();
     this.dialogSource.destroy();
-    if (this.itemActionsList) {
-      await this.itemActionsList.destroy();
-      this.itemActionsList = null;
-    }
     if (this.panel) {
       this.panel.destroy();
       this.panel = null;
@@ -338,7 +391,7 @@ class InputDialog {
    * Shows the dialog as a modal panel.
    *
    * The dialog reacts to its panel becoming visible — whoever shows it — so
-   * the show side effects (willShow, select-all, focus) also run
+   * the show side effects (open/resume events, select-all, focus) also run
    * when the panel is shown from outside, e.g. by the modal flow re-showing
    * this dialog on a back navigation.
    *
@@ -356,7 +409,6 @@ class InputDialog {
     // whose trail was abandoned (Shift+F10, then Escape) from surviving into the
     // next time the dialog is opened.
     this.suspendedByFlow = false;
-    this.openerElement = document.activeElement;
     const panelOptions = { ...(options ?? {}) };
     this.openingQueryProvided = Object.prototype.hasOwnProperty.call(panelOptions, "query");
     this.selectOpeningQuery = panelOptions.selectQuery !== false;
@@ -379,30 +431,32 @@ class InputDialog {
    * A dialog opens on an empty query. The one exception is a dialog coming
    * back from a flow step — Shift+F10 into the actions list and back — which is a
    * resume, not an opening: clearing there would throw away the query the
-   * action was about to act on. `preserveQuery` opts a dialog out entirely and
-   * carries the query across ordinary opens too; {@link #restoreQuery} (F11)
-   * is the on-demand version of the same thing.
+   * action was about to act on. {@link #restoreQuery} (F11) is the on-demand
+   * way to recover the query from the previous completed open.
    * @private
    */
-  didShowPanel() {
+  didShowPanel(generation = this.panelLifecycleGeneration) {
     const resuming = this.suspendedByFlow;
     this.suspendedByFlow = false;
-    if (!resuming && !this.openingQueryProvided && !this.props.preserveQuery) {
-      this.reset();
-    }
+    if (!resuming) this.openerElement = document.activeElement;
+    if (!resuming) this.sourcePromise = null;
+    try {
+      this.emitter.emit("did-change-visible", { dialog: this, visible: true });
+      if (!this.isCurrentPanelLifecycle(generation, true)) return;
+      if (!resuming && !this.openingQueryProvided) this.reset();
+      if (!this.isCurrentPanelLifecycle(generation, true)) return;
 
-    if (this.props.willShow) {
-      this.props.willShow();
+      this.refreshItemActionsIndicator();
+      if (this.selectOpeningQuery !== false) this.component.refs.queryEditor.selectAll();
+      this.focus();
+      if (!this.isCurrentPanelLifecycle(generation, true)) return;
+      if (!resuming) this.sourcePromise = this.dialogSource.open();
+      if (!this.isCurrentPanelLifecycle(generation, true)) return;
+      this.emitter.emit(resuming ? "did-resume" : "did-open", { dialog: this });
+    } finally {
+      this.openingQueryProvided = false;
+      this.selectOpeningQuery = true;
     }
-
-    this.refreshItemActionsIndicator();
-    if (this.selectOpeningQuery !== false) this.component.refs.queryEditor.selectAll();
-    this.focus();
-    this.emitter.emit(resuming ? "did-resume" : "did-open", { dialog: this });
-    this.emitter.emit("did-change-visible", { dialog: this, visible: true });
-    if (!resuming) this.sourcePromise = this.dialogSource.open();
-    this.openingQueryProvided = false;
-    this.selectOpeningQuery = true;
   }
 
   /**
@@ -411,11 +465,22 @@ class InputDialog {
    * through here: the dialog is suspended, not closed.
    * @private
    */
-  didHidePanel() {
+  didHidePanel({ visibilityChanged = true, generation = this.panelLifecycleGeneration } = {}) {
     this.lastQuery = this.getQuery();
     this.dialogSource.cancel("dialog-hidden");
+    if (visibilityChanged) {
+      this.emitter.emit("did-change-visible", { dialog: this, visible: false });
+    }
+    if (!this.isCurrentPanelLifecycle(generation, false)) return;
     this.emitter.emit("did-hide", { dialog: this });
-    this.emitter.emit("did-change-visible", { dialog: this, visible: false });
+  }
+
+  isCurrentPanelLifecycle(generation, visible) {
+    return (
+      !this.destroyed &&
+      this.panelLifecycleGeneration === generation &&
+      this.isVisible() === visible
+    );
   }
 
   /**
@@ -423,8 +488,8 @@ class InputDialog {
    * @status experimental
    *
    * Returns the modal panel that hosts the dialog, creating it (hidden) on
-   * first access. The panel's item is `props.panelItem` when provided,
-   * otherwise the dialog itself. The panel carries the dialog's `crumb` prop
+   * first access. The panel item is `options.panelItem` when one was supplied,
+   * otherwise the dialog model itself. The panel carries the dialog's `crumb`
    * as its declared breadcrumb label.
    * @returns {Panel} The modal panel
    */
@@ -444,8 +509,9 @@ class InputDialog {
       // come back to.
       this.disposables.add(
         this.panel.onDidChangeVisible((visible) => {
+          const generation = ++this.panelLifecycleGeneration;
           if (visible) {
-            this.didShowPanel();
+            this.didShowPanel(generation);
             return;
           }
           if (this.panel.flowTransition) {
@@ -453,34 +519,77 @@ class InputDialog {
             // closed: it keeps its query for the return trip and records
             // nothing, since it was never left.
             this.suspendedByFlow = true;
+            this.didSuspendPanel();
+            this.emitter.emit("did-change-visible", { dialog: this, visible: false });
             return;
           }
-          this.didHidePanel();
+          this.didHidePanel({ generation });
           if (this.hidingSelf) return;
           this.cancel();
+        }),
+        this.panel.onDidEndModalFlow((reason) => {
+          if (!this.suspendedByFlow || this.destroyed) return;
+          if (reason === "back") this.finalizeSuspendedHide();
+          else this.cancel("modal-flow");
         }),
       );
     }
     return this.panel;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the item owned by the dialog's modal panel.
+   */
   getPanelItem() {
     return this.getPanel().getItem();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the configured asynchronous source, or null.
+   */
   getSource() {
     return this.props.source ?? null;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace the asynchronous source and reload it when open.
+   */
   setSource(source) {
+    const previousSource = this.props.source;
     this.props.source = source;
-    return this.dialogSource.setSource(source);
+    try {
+      return this.dialogSource.setSource(source);
+    } catch (error) {
+      this.props.source = previousSource;
+      throw error;
+    }
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Reload the configured source immediately.
+   */
   reload() {
     return this.dialogSource.reload();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return whether source work or its debounce is pending.
+   */
   isLoading() {
     return this.dialogSource.isLoading();
   }
@@ -522,7 +631,9 @@ class InputDialog {
    * workspace's modal panel focus restoration.
    */
   hide() {
+    const releasedActionPicker = this.services.actionService?.release(this) ?? false;
     if (!this.isVisible()) {
+      if (releasedActionPicker) this.finalizeSuspendedHide();
       return;
     }
 
@@ -563,13 +674,26 @@ class InputDialog {
   }
 
   registerActionCommands(commands) {
-    if (this.actionCommandsDisposable) {
-      this.disposables.remove(this.actionCommandsDisposable);
-      this.actionCommandsDisposable.dispose();
-      this.actionCommandsDisposable = null;
+    const listeners = this.prepareActionCommandListeners(commands);
+    const nextDisposable =
+      Object.keys(listeners).length > 0
+        ? this.services.commandRegistry.add(this.element, listeners)
+        : null;
+    const previousDisposable = this.actionCommandsDisposable;
+    if (previousDisposable) {
+      this.disposables.remove(previousDisposable);
+      previousDisposable.dispose();
     }
-    if (!commands || Object.keys(commands).length === 0) return;
+    this.actionCommandsDisposable = nextDisposable;
+    if (nextDisposable) this.disposables.add(nextDisposable);
+  }
 
+  prepareActionCommandListeners(commands) {
+    commands = this.commandsForRegistration(commands);
+    if (commands == null) return {};
+    if (typeof commands !== "object" || Array.isArray(commands)) {
+      throw new TypeError("Dialog commands must be a command-keyed object.");
+    }
     const listeners = {};
     for (const [command, listener] of Object.entries(commands)) {
       const descriptor = typeof listener === "function" ? {} : { ...listener };
@@ -585,13 +709,15 @@ class InputDialog {
           if (this.dispatchedActionCommand === command || !this.dialogActions.has(command)) {
             return didDispatch(event);
           }
-          return this.runAction(command, { source: "command" });
+          return this.consumeUiAction(this.runAction(command, { source: "command" }));
         },
       };
     }
+    return listeners;
+  }
 
-    this.actionCommandsDisposable = this.services.commandRegistry.add(this.element, listeners);
-    this.disposables.add(this.actionCommandsDisposable);
+  commandsForRegistration(commands) {
+    return commands;
   }
 
   getActionContext(source = "api") {
@@ -617,17 +743,39 @@ class InputDialog {
 
   recordActionRecent() {}
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the complete declared action catalogue.
+   */
   getActions() {
     return this.dialogActions.getAll();
   }
 
+  actionsForCatalog(actions) {
+    return actions;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace the action catalogue.
+   */
   setActions(actions) {
-    this.dialogActions.set(actions);
+    this.dialogActions.set(this.actionsForCatalog(actions));
     this.props.actions = actions;
     this.refreshItemActionsIndicator();
     return this;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Add an action and return a Disposable that removes it.
+   */
   addAction(action) {
     const disposable = this.dialogActions.add(action);
     this.refreshItemActionsIndicator();
@@ -637,14 +785,40 @@ class InputDialog {
     });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return whether an action applies to the current context.
+   */
   hasAvailableActions(context = this.getActionContext()) {
     return this.dialogActions.hasAvailable(context);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return evaluated actions for the current context.
+   */
   getAvailableActions(context = this.getActionContext()) {
     return this.dialogActions
       .getAvailable(context)
       .map((action) => this.describeDialogAction(action, context));
+  }
+
+  getActionAvailability(command, context = this.getActionContext()) {
+    return this.dialogActions.getAvailability(command, context);
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return whether any action, or one named action, is currently running.
+   */
+  isActionPending(command) {
+    return this.dialogActions.isPending(command);
   }
 
   describeDialogAction(action, context) {
@@ -656,6 +830,7 @@ class InputDialog {
       target,
       bindingTarget,
     });
+    const commandKeystrokes = Object.freeze([...(descriptor?.keystrokes ?? [])]);
     const keystrokes = [];
     const seenKeystrokes = new Set();
     const bindingCommands = action.primary ? ["core:confirm", action.command] : [action.command];
@@ -674,6 +849,7 @@ class InputDialog {
       ...action,
       name: (descriptor?.displayName ?? action.command).replace(/^[^:]+:\s*/, ""),
       description: descriptor?.description,
+      commandKeystrokes,
       keystrokes,
     });
   }
@@ -683,26 +859,29 @@ class InputDialog {
     if (action.dispatch === "workspace") target = this.services.workspace.getElement();
     if (action.dispatch === "opener") target = context.opener ?? this.element;
 
+    const previousDispatchedActionCommand = this.dispatchedActionCommand;
     this.dispatchedActionCommand = action.command;
+    let result;
     try {
-      const result = this.services.commandRegistry.dispatch(target, action.command, {
+      result = this.services.commandRegistry.dispatch(target, action.command, {
         ...context,
         signal,
       });
-      if (!result) throw new Error(`Dialog action command '${action.command}' is not registered.`);
-      return await result;
     } finally {
-      this.dispatchedActionCommand = null;
+      this.dispatchedActionCommand = previousDispatchedActionCommand;
     }
+    if (!result) throw new Error(`Dialog action command '${action.command}' is not registered.`);
+    return await result;
   }
 
-  async confirmDialogAction({ confirmation, context }) {
+  async confirmDialogAction({ confirmation, context, signal }) {
     const options =
       typeof confirmation === "function"
-        ? confirmation(context)
+        ? await confirmation(context, signal)
         : confirmation === true
           ? {}
           : confirmation;
+    if (signal.aborted || this.destroyed) return false;
     const message = options?.message ?? "Perform this action?";
     const confirmText = options?.confirmText ?? "Confirm";
     const cancelText = options?.cancelText ?? "Cancel";
@@ -711,12 +890,34 @@ class InputDialog {
       detail: options?.detail,
       buttons: [confirmText, cancelText],
     });
+    if (signal.aborted || this.destroyed) return false;
     return response === 0;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Run a declared action through the shared action runner.
+   */
   runAction(command, { source = "api", context = null } = {}) {
     return this.dialogActions
       .run(command, context ?? this.getActionContext(source))
+      .then((result) => {
+        if (this.destroyed) return result;
+        if (result.status === "disabled") {
+          this.setStatus({
+            type: "warning",
+            message: result.reason ? String(result.reason) : "This action is unavailable.",
+          });
+        } else if (result.status === "unavailable") {
+          this.setStatus({
+            type: "warning",
+            message: "This action is no longer available.",
+          });
+        }
+        return result;
+      })
       .catch((error) => {
         if (error?.name !== "AbortError") {
           this.setStatus({ type: "error", message: error?.message ?? String(error) });
@@ -725,16 +926,45 @@ class InputDialog {
       });
   }
 
-  showActions() {
-    return this.showItemActions();
+  setActionsExpanded(expanded) {
+    this.actionsExpanded = Boolean(expanded);
+    this.component?.refs?.itemActionsIndicator?.setAttribute(
+      "aria-expanded",
+      String(this.actionsExpanded),
+    );
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when an action starts.
+   */
   onDidStartAction(callback) {
     return this.emitter.on("did-start-action", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when an action finishes.
+   */
   onDidFinishAction(callback) {
     return this.emitter.on("did-finish-action", callback);
+  }
+
+  consumeUiAction(result) {
+    if (!result || typeof result.then !== "function") return result;
+    return result.catch(() => undefined);
+  }
+
+  updateActionPendingState() {
+    if (this.destroyed || !this.component) return;
+    const pending = this.pendingActionCommands.size > 0;
+    if (pending) this.element.setAttribute("aria-busy", "true");
+    else this.element.removeAttribute("aria-busy");
+    void this.component.update().catch(() => {});
   }
 
   /**
@@ -746,7 +976,7 @@ class InputDialog {
   commandsForElement() {
     return {
       "core:confirm": (event) => {
-        const result = this.confirm();
+        const result = this.consumeUiAction(this.confirm());
         event.stopPropagation();
         return result;
       },
@@ -755,12 +985,12 @@ class InputDialog {
         event.stopPropagation();
       },
       "select-list:actions": (event) => {
-        if (this.props.skipItemActions || this.props.internalActionPalette) {
+        if (this.props.internalActionPalette) {
           // Shift+F10 toggles: pressed in the actions list itself, it goes back to
           // the dialog it belongs to.
           this.services.workspace.popModal();
         } else {
-          this.showItemActions();
+          this.consumeUiAction(this.showActions());
         }
         event.stopPropagation();
       },
@@ -776,8 +1006,8 @@ class InputDialog {
    * @status experimental
    *
    * Puts back the query the dialog was last closed with, selected so the next
-   * keystroke replaces it. The counterpart of `preserveQuery`: the query is
-   * cleared on every fresh show, and this is how it is asked for again.
+   * keystroke replaces it. A fresh show clears the query; this is how it is
+   * asked for again.
    * @returns {boolean} Whether there was a query to restore
    */
   restoreQuery() {
@@ -788,150 +1018,20 @@ class InputDialog {
   }
 
   /**
-   * The item actions this dialog offers: the commands it contributes itself —
-   * those reachable from its root element but not from the panel's host — and
-   * any reachable host commands named by `additionalActionCommands`, each
-   * with the label, description, and keybindings it carries in the registry,
-   * the same sources the command palette reads. Packages register their
-   * actions in their own namespace (`fuzzy-files:open`); the dialog's chrome
-   * (`core:*`, `select-list:*` built-ins) stays out, always. An
-   * `actionsFilter(descriptor)` prop narrows what is left of that, so an
-   * action that only applies to some rows is listed only while one of them
-   * is selected — the list is rebuilt on every Shift+F10, with the selection
-   * already made, so the predicate may read it.
+   * @public
+   * @status experimental
    *
-   * Each action is either about the **selected row** or about the **list** —
-   * "open this file in a split" against "index the project again". A package
-   * says which by putting `actionScope: "list"` on the registration; `"item"`
-   * is the default, since most actions are. The registry keeps any key it
-   * does not recognise, so this costs nothing but the word.
-   * @returns {Array} Action descriptors: {name, description, command, keystrokes, scope}
-   * @private
+   * Opens the explicitly declared actions in the workspace's shared action
+   * picker, preserving this dialog as the previous modal-flow step.
+   * @returns {Promise<boolean>} Whether an action picker was opened
    */
-  itemActions() {
-    if (this.dialogActions.getAll().length > 0) {
-      return this.getAvailableActions();
-    }
-
-    // Anchor on the dialog root, not the query editor: from the editor the
-    // difference would also sweep in every selector-based editor command.
-    // From the root it holds exactly what the dialog contributes — packages
-    // register their actions inline on this element.
-    const host = this.getPanel().getElement().parentNode ?? this.services.workspace.getElement();
-    const above = new Set(
-      this.services.commandRegistry
-        .findCommands({ target: host })
-        .map((descriptor) => descriptor.name),
-    );
-    const available = this.services.commandRegistry.findCommands({ target: this.element });
-    const descriptorsByName = new Map(available.map((descriptor) => [descriptor.name, descriptor]));
-    const descriptors = [];
-    const seenCommands = new Set();
-    for (const descriptor of available) {
-      if (above.has(descriptor.name) || seenCommands.has(descriptor.name)) continue;
-      descriptors.push(descriptor);
-      seenCommands.add(descriptor.name);
-    }
-    for (const command of this.props.additionalActionCommands ?? []) {
-      const descriptor = descriptorsByName.get(command);
-      if (!descriptor || seenCommands.has(command)) continue;
-      descriptors.push(descriptor);
-      seenCommands.add(command);
-    }
-
-    // A SelectList supplies these methods; a plain InputDialog has no
-    // selected-row semantics and keeps every action it contributes.
-    const hasSelection = typeof this.getSelectedItem === "function";
-    const selected = hasSelection ? (this.getSelectedItem() ?? null) : null;
-    const confirmAction =
-      typeof this.confirmActionForItem === "function" ? this.confirmActionForItem(selected) : null;
-    // The chrome exclusions are built in and hold whatever the
-    // caller says. An item action needs a selected item; `actionsFilter` only
-    // narrows what survives those built-in rules.
-    const filter = (descriptor) =>
-      !descriptor.name.startsWith("core:") &&
-      !UNLISTED_ACTIONS.has(descriptor.name) &&
-      (!hasSelection || selected != null || descriptor.actionScope === "list") &&
-      (this.props.actionsFilter?.(descriptor) ?? true);
-    // Keybindings resolve against the query editor, where dialog keymaps point.
-    const bindingTarget = this.component.refs.queryEditor.element;
-    return descriptors.filter(filter).map((descriptor) => {
-      const bindingCommands =
-        descriptor.name === confirmAction ? ["core:confirm", descriptor.name] : [descriptor.name];
-      const seenKeystrokes = new Set();
-      const keystrokes = [];
-      for (const command of bindingCommands) {
-        for (const binding of this.services.keymapManager.findKeyBindings({
-          command,
-          target: bindingTarget,
-        })) {
-          if (seenKeystrokes.has(binding.keystrokes)) continue;
-          seenKeystrokes.add(binding.keystrokes);
-          keystrokes.push(binding.keystrokes);
-        }
-      }
-      return {
-        // In a dialog that belongs to one package, the namespace is noise.
-        name: descriptor.displayName.replace(/^[^:]+:\s*/, ""),
-        description: descriptor.description,
-        command: descriptor.name,
-        scope: descriptor.actionScope === "list" ? "list" : "item",
-        keystrokes,
-      };
-    });
-  }
-
-  /**
-   * The actions in the order the list shows them — everything about the
-   * selected row first, then everything about the list — with the identifier
-   * of the row the group separator goes above. Nothing separates a list that
-   * is all one scope.
-   * @param {Array} actions - Descriptors from {@link #itemActions}
-   * @returns {Object} `{items, separatorIds}` for the actions list
-   * @private
-   */
-  groupItemActions(actions) {
-    if (actions.some((action) => action.group)) {
-      const separatorIds = [];
-      let previousGroup = null;
-      actions.forEach((action, index) => {
-        const group = action.group ?? "";
-        if (index > 0 && group !== previousGroup) separatorIds.push(action.command);
-        previousGroup = group;
-      });
-      return { items: actions, separatorIds };
-    }
-
-    const contextFor = (action) =>
-      action.context ?? (action.scope === "list" ? "dialog" : action.scope);
-    const items = [
-      ...actions.filter((action) => contextFor(action) !== "dialog"),
-      ...actions.filter((action) => contextFor(action) === "dialog"),
-    ];
-    const boundary = items.findIndex((action) => contextFor(action) === "dialog");
-    return { items, separatorIds: boundary > 0 ? [items[boundary].command] : [] };
-  }
-
-  /**
-   * Shows the item-actions list — every command the dialog offers, with its
-   * keybinding — as a step of the modal flow. Bound to Shift+F10 as
-   * `select-list:actions`; Shift+F10 in the actions list itself goes back.
-   * Confirming an action (or pressing its keybinding right in the actions
-   * list) returns here first and then runs the command, exactly as if it was
-   * pressed in this dialog.
-   *
-   * The rows are grouped: what acts on the selected item, then a separator,
-   * then what acts on the list — see {@link #itemActions} for how a package
-   * declares which is which.
-   * @private
-   */
-  async showItemActions() {
-    if (this.props.skipItemActions) return false;
-    const actions = this.itemActions();
-    if (actions.length === 0) return false;
-
-    if (this.dialogActions.getAll().length > 0 && this.services.actionService) {
+  async showActions() {
+    try {
+      if (this.props.internalActionPalette) return false;
       const context = this.getActionContext("actions");
+      const actions = this.getAvailableActions(context);
+      if (actions.length === 0) return false;
+
       const selected = typeof this.getSelectedItem === "function" ? this.getSelectedItem() : null;
       const info =
         selected != null && typeof this.getFilterKey === "function"
@@ -943,163 +1043,27 @@ class InputDialog {
         context,
         infoMessage: info,
       });
-      if (opened) {
-        this.component.refs?.itemActionsIndicator?.setAttribute("aria-expanded", "true");
-      }
+      if (opened) this.setActionsExpanded(true);
       return opened;
-    }
-
-    if (!this.itemActionsList) {
-      // Lazy: select-list.js requires this module while it is still loading,
-      // so the class is only reachable after both modules are initialized.
-      const SelectList = require("./select-list");
-      this.itemActionsList = new SelectList(
-        {
-          // The actions list wears the master's classes, so the package's own
-          // keymap applies inside it untouched — an action keystroke resolves
-          // there exactly as it does in the master. Packages bind actions in
-          // their own namespace and leave the chrome keys (enter, escape,
-          // navigation, Shift+F10) alone, so the base bindings keep working here.
-          className: ["select-list-actions", this.props.className].filter(Boolean).join(" "),
-          // An actions list of an actions list would only find the forwarders.
-          skipItemActions: true,
-          items: [],
-          filterKeyForItem: (item) => `${item.name} ${item.description ?? ""}`,
-          // The row/list divider means something only while the registration
-          // order is on screen. Under a query the two groups interleave by
-          // score, and a line drawn anywhere in that would be a lie.
-          idForItem: (item) => (this.itemActionsList.getQuery() === "" ? item.command : null),
-          elementForItem: (item, { highlight }) => ({
-            className: [!item.enabled && "disabled", item.tone === "danger" && "text-error"].filter(
-              Boolean,
-            ),
-            primary: highlight(item.name),
-            secondary:
-              item.enabled === false ? item.disabledReason || item.description : item.description,
-            // Rendered the way the command palette writes keystrokes
-            // (Alt+Enter); the raw form stays on the item for dispatching.
-            trailing: item.keystrokes.map((keystrokes) => ({
-              text: humanizeKeystroke(keystrokes),
-              className: "key-binding",
-            })),
-          }),
-          didConfirmSelection: (item) => {
-            if (item.enabled === false) {
-              return this.itemActionsList.setStatus({
-                type: "warning",
-                message: item.disabledReason || "This action is unavailable.",
-              });
-            }
-            return this.runItemAction(item.command);
-          },
-          didCancelSelection: () => this.itemActionsList.hide(),
-        },
-        this.services,
-      );
-    }
-
-    // Command listeners live on this dialog's element, so a keystroke
-    // resolved inside the actions list needs a forwarder to reach them.
-    // Disposed when the actions list hides, so a stale action set never
-    // lingers.
-    if (this.itemActionsDisposables) this.itemActionsDisposables.dispose();
-    const forwarders = {};
-    for (const action of actions) {
-      forwarders[action.command] = (event) => {
-        this.runItemAction(action.command);
-        event.stopPropagation();
-      };
-    }
-    this.itemActionsDisposables = new CompositeDisposable(
-      this.services.commandRegistry.add(this.itemActionsList.element, forwarders),
-      this.itemActionsList.getPanel().onDidChangeVisible((visible) => {
-        this.component.refs?.itemActionsIndicator?.setAttribute("aria-expanded", String(visible));
-        if (visible) return;
-        this.itemActionsDisposables?.dispose();
-        this.itemActionsDisposables = null;
-      }),
-    );
-
-    // A select list names the selected item; a plain dialog has no selection.
-    const selected = typeof this.getSelectedItem === "function" ? this.getSelectedItem() : null;
-    const info =
-      selected != null && typeof this.getFilterKey === "function"
-        ? this.getFilterKey(selected)
-        : null;
-    this.itemActionsList.reset();
-    await this.itemActionsList.update({
-      ...this.groupItemActions(actions),
-      infoMessage: info,
-    });
-    this.itemActionsList.show({ crumb: "Actions" });
-    this.component.refs?.itemActionsIndicator?.setAttribute("aria-expanded", "true");
-    return true;
-  }
-
-  /**
-   * Runs an item action: returns to this dialog first — so the handler sees
-   * it visible and focused, with its state intact — then dispatches the
-   * command on the query editor, exactly like the keystroke it stands for.
-   *
-   * Returning re-shows the dialog, which runs its `willShow` again, and a
-   * `willShow` that reloads the items resets the selection with them. That
-   * would hand the action a different item than the one it was chosen for —
-   * silently, since the fallback is a real item — so the selection is put
-   * back before the command runs. Only if the item is still in the list: a
-   * refresh that dropped it has genuinely unselected it. A refresh may rebuild
-   * the same logical row as a new object, so identity wins first and a stable
-   * `getIdForItem` match is the fallback.
-   * @param {string} command - The command name to dispatch
-   * @private
-   */
-  runItemAction(command) {
-    if (this.dialogActions.has(command)) {
-      const context = this.getActionContext("actions");
-      if (!this.services.workspace.popModal()) {
-        this.itemActionsList.hide();
-        this.show();
+    } catch (error) {
+      if (!this.destroyed && error?.name !== "AbortError") {
+        await this.setStatus({ type: "error", message: error?.message ?? String(error) });
       }
-      return this.runAction(command, { source: "actions", context });
+      throw error;
     }
-
-    const selected = typeof this.getSelectedItem === "function" ? this.getSelectedItem() : null;
-    const selectedId =
-      selected != null && typeof this.getIdForItem === "function"
-        ? this.getIdForItem(selected)
-        : null;
-
-    if (!this.services.workspace.popModal()) {
-      // The trail is gone (the actions list was somehow orphaned); recover by
-      // swapping the panels directly.
-      this.itemActionsList.hide();
-      this.show();
-    }
-
-    if (selected != null && this.items) {
-      let restored = this.items.includes(selected) ? selected : null;
-      if (restored == null && selectedId != null && typeof this.getIdForItem === "function") {
-        restored = this.items.find((item) => this.getIdForItem(item) === selectedId) ?? null;
-      }
-      if (restored != null) this.selectItem(restored);
-    }
-
-    this.services.commandRegistry.dispatch(this.component.refs.queryEditor.element, command);
   }
 
   /**
    * @public
    * @status experimental
    *
-   * Confirms the dialog with the current query.
-   * Calls the didConfirm callback with the raw query text.
+   * Confirms the dialog with the current query through its primary action, or
+   * emits `onDidConfirm` when no primary action is declared.
    */
   confirm() {
     const primary = this.dialogActions.getPrimary(this.getActionContext("primary"));
     if (primary) return this.runAction(primary.command, { source: "primary" });
     const query = this.getQuery();
-    if (this.props.didConfirm) {
-      this.props.didConfirm(query);
-    }
     this.emitter.emit("did-confirm", { dialog: this, query });
   }
 
@@ -1107,48 +1071,115 @@ class InputDialog {
    * @public
    * @status experimental
    *
-   * Cancels the dialog and calls the didCancel callback if provided.
+   * Cancels and hides the dialog, then emits `onDidCancel`.
    */
   cancel(reason = "api") {
     if (this.canceling || this.destroyed) return;
     this.canceling = true;
     this.hide();
-    if (this.props.didCancel) this.props.didCancel();
+    this.finalizeSuspendedHide();
     this.emitter.emit("did-cancel", { dialog: this, reason });
     this.canceling = false;
   }
 
+  finalizeSuspendedHide() {
+    if (!this.suspendedByFlow || this.isVisible()) return false;
+    this.suspendedByFlow = false;
+    this.didHidePanel({ visibilityChanged: false });
+    return true;
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Update one or more documented dialog options.
+   */
   update(props = {}) {
+    this.validateUpdateProps(props);
     this.updateProps(props);
     this.refreshItemActionsIndicator();
     return this.component.update();
   }
 
+  validateUpdateProps(props) {
+    if (!props || typeof props !== "object" || Array.isArray(props)) {
+      throw new TypeError("Dialog updates must be objects.");
+    }
+    if ("actions" in props) {
+      this.dialogActions.validate(this.actionsForCatalog(props.actions ?? []));
+    }
+    if ("commands" in props) this.prepareActionCommandListeners(props.commands);
+    if ("source" in props) this.dialogSource.validate(props.source ?? null);
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the current episodic status.
+   */
   getStatus() {
     return this.props.status ?? null;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the episodic status.
+   */
   setStatus(status) {
     return this.update({ status });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Clear the episodic status.
+   */
   clearStatus() {
     return this.setStatus(null);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the resting information message.
+   */
   getInfoMessage() {
     return this.props.infoMessage ?? null;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the resting information message.
+   */
   setInfoMessage(infoMessage) {
     return this.update({ infoMessage });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the current loading message and badge.
+   */
   getLoadingState() {
     if (!this.props.loadingMessage) return null;
     return { message: this.props.loadingMessage, badge: this.props.loadingBadge ?? null };
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the current loading message and badge.
+   */
   setLoadingState(loading) {
     return this.update({
       loadingMessage: loading?.message ?? null,
@@ -1156,38 +1187,92 @@ class InputDialog {
     });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Clear the current loading state.
+   */
   clearLoadingState() {
     return this.setLoadingState(null);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the query editor placeholder.
+   */
   getPlaceholderText() {
     return this.props.placeholderText ?? "";
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the query editor placeholder.
+   */
   setPlaceholderText(placeholderText) {
     return this.update({ placeholderText });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the caller-owned header element.
+   */
   getHeaderElement() {
     return this.props.headerElement ?? null;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace the caller-owned header element.
+   */
   setHeaderElement(headerElement) {
     return this.update({ headerElement });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the caller-owned content element.
+   */
   getContentElement() {
     return this.props.contentElement ?? null;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace the caller-owned content element.
+   */
   setContentElement(contentElement) {
     return this.update({ contentElement });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the declared modal breadcrumb label.
+   */
   getCrumb() {
     return this.props.crumb ?? null;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the modal breadcrumb label.
+   */
   setCrumb(crumb) {
     return this.update({ crumb });
   }
@@ -1200,7 +1285,7 @@ class InputDialog {
    */
   updateProps(props) {
     if ("query" in props) {
-      this.component.refs.queryEditor.setText(props.query);
+      this.component.refs.queryEditor.setText(props.query == null ? "" : String(props.query));
       // setText triggers didChangeQuery, so derived state refreshes itself
     }
 
@@ -1240,14 +1325,6 @@ class InputDialog {
     if ("placeholderText" in props) {
       this.props.placeholderText = props.placeholderText;
       this.component.refs.queryEditor.setPlaceholderText(props.placeholderText || "");
-    }
-
-    if ("preserveQuery" in props) {
-      this.props.preserveQuery = props.preserveQuery;
-    }
-
-    if ("additionalActionCommands" in props) {
-      this.props.additionalActionCommands = props.additionalActionCommands;
     }
 
     if ("actions" in props) {
@@ -1351,59 +1428,63 @@ class InputDialog {
   }
 
   renderQueryRow() {
+    const actionPending = this.pendingActionCommands.size > 0;
     return $.div(
       {
         ref: "queryRow",
         className: `query-row${this.itemActionsAvailable ? " has-item-actions" : ""}`,
       },
       $(TextEditor, { ref: "queryEditor", mini: true }),
-      this.props.skipItemActions || this.props.internalActionPalette
+      this.props.internalActionPalette
         ? ""
-        : $.button({
-            ref: "itemActionsIndicator",
-            className: "item-actions-indicator icon icon-ellipsis",
-            type: "button",
-            tabIndex: -1,
-            hidden: !this.itemActionsAvailable,
-            attributes: {
-              "aria-label": "Actions",
-              "aria-haspopup": "listbox",
-              "aria-expanded": "false",
-            },
-            on: {
-              mousedown: (event) => {
-                // The button opens another modal step immediately. Keep the
-                // query editor focused until that transition starts, rather
-                // than briefly moving focus (and the caret) into the button.
-                event.preventDefault();
-                event.stopPropagation();
+        : $.button(
+            {
+              ref: "itemActionsIndicator",
+              className: `item-actions-indicator${
+                actionPending ? " is-pending" : " icon icon-ellipsis"
+              }`,
+              type: "button",
+              tabIndex: -1,
+              hidden: !this.itemActionsAvailable,
+              attributes: {
+                "aria-label": actionPending ? "Action in progress" : "Actions",
+                "aria-haspopup": "listbox",
+                "aria-expanded": String(this.actionsExpanded),
+                "aria-busy": String(actionPending),
               },
-              click: (event) => {
-                event.preventDefault();
-                event.stopPropagation();
-                this.showItemActions();
+              on: {
+                mousedown: (event) => {
+                  // The button opens another modal step immediately. Keep the
+                  // query editor focused until that transition starts, rather
+                  // than briefly moving focus (and the caret) into the button.
+                  event.preventDefault();
+                  event.stopPropagation();
+                },
+                click: (event) => {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  this.consumeUiAction(this.showActions());
+                },
               },
             },
-          }),
+            actionPending
+              ? $.span({ className: "action-pending-spinner loading-spinner-tiny" })
+              : "",
+          ),
     );
   }
 
   /**
    * Shows the query-row affordance exactly while this visible dialog offers
-   * at least one item action. `actionsFilter` may depend on the query or the
-   * selected row, so callers refresh this after either changes. This is an
+   * at least one applicable declared action. This is an
    * imperative toggle rather than a component update: moving through a list
    * already re-renders only the two affected rows, and the indicator should
    * not turn that into a full list render.
    * @private
    */
   refreshItemActionsIndicator() {
-    if (!this.component.refs?.itemActionsIndicator) return;
-    const available =
-      this.isVisible() &&
-      (this.dialogActions.getAll().length > 0
-        ? this.hasAvailableActions()
-        : this.itemActions().length > 0);
+    if (!this.component?.refs?.itemActionsIndicator) return;
+    const available = this.isVisible() && this.hasAvailableActions();
     this.itemActionsAvailable = available;
     this.component.refs.itemActionsIndicator.hidden = !available;
     this.component.refs.queryRow.classList.toggle("has-item-actions", available);
@@ -1459,6 +1540,12 @@ class InputDialog {
     return "";
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the raw query editor text.
+   */
   getQuery() {
     if (this.component?.refs?.queryEditor) {
       return this.component.refs.queryEditor.getText();
@@ -1467,30 +1554,62 @@ class InputDialog {
     }
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the query text and optionally select it.
+   */
   setQuery(query, { select = false } = {}) {
     return this.update({ query, selectQuery: select });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Clear the query text.
+   */
   clearQuery() {
     return this.setQuery("");
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select the complete query.
+   */
   selectQuery() {
     this.component.refs.queryEditor.selectAll();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the full TextEditor model used for the query.
+   */
   getQueryEditor() {
     return this.component.refs.queryEditor;
   }
 
-  getFilterQuery() {
-    return this.props.filterQuery ? this.props.filterQuery(this.getQuery()) : this.getQuery();
-  }
-
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the parsed query text and metadata.
+   */
   getParsedQuery() {
-    return Object.freeze({ text: this.getFilterQuery(), data: null });
+    return Object.freeze({ text: this.getQuery(), data: null });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Use the active editor's single-line selection as the query.
+   */
   setQueryFromSelection() {
     const editor = this.services.workspace.getActiveTextEditor();
     if (!editor) return false;
@@ -1512,13 +1631,10 @@ class InputDialog {
       this.props.status = null;
       this.component.update();
     }
-    if (this.props.didChangeQuery) {
-      this.props.didChangeQuery(this.getFilterQuery());
-    }
     this.emitter.emit("did-change-query", {
       dialog: this,
       query: this.getQuery(),
-      filterQuery: this.getFilterQuery(),
+      parsedQuery: this.getParsedQuery(),
     });
     this.dialogSource.queryChanged();
     this.refreshItemActionsIndicator();

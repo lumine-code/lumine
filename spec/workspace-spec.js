@@ -2247,7 +2247,7 @@ describe("Workspace", () => {
     function build(props = {}) {
       const list = lumine.workspace.buildSelectList({
         items: ["alpha", "beta"],
-        elementForItem: (item) => {
+        renderItem: (item) => {
           const li = document.createElement("li");
           li.textContent = item;
           return li;
@@ -2261,8 +2261,8 @@ describe("Workspace", () => {
     it("returns a usable list that renders its items", () => {
       const list = build();
 
-      expect(list.element.classList.contains("select-list")).toBe(true);
-      expect(Array.from(list.element.querySelectorAll("li"), (li) => li.textContent)).toEqual([
+      expect(list.getElement().classList.contains("select-list")).toBe(true);
+      expect(Array.from(list.getElement().querySelectorAll("li"), (li) => li.textContent)).toEqual([
         "alpha",
         "beta",
       ]);
@@ -2289,9 +2289,9 @@ describe("Workspace", () => {
       expect(list.isVisible()).toBe(false);
     });
 
-    it("hands elementForItem a highlight function bound to the item", async () => {
+    it("hands renderItem a highlight function bound to the item", async () => {
       const list = build({
-        elementForItem: (item, { highlight }) => {
+        renderItem: (item, { highlight }) => {
           const li = document.createElement("li");
           li.appendChild(highlight(item));
           return li;
@@ -2301,16 +2301,16 @@ describe("Workspace", () => {
       list.getQueryEditor().setText("al");
       await etch.getScheduler().getNextUpdatePromise();
 
-      const matches = list.element.querySelectorAll(".character-match");
+      const matches = list.getElement().querySelectorAll(".character-match");
       expect(Array.from(matches, (m) => m.textContent)).toEqual(["al"]);
     });
 
-    it("builds a two-line row when elementForItem returns a descriptor", () => {
+    it("builds a two-line row when renderItem returns a descriptor", () => {
       const list = build({
-        elementForItem: (item) => ({ primary: item, secondary: "detail" }),
+        renderItem: (item) => ({ primary: item, secondary: "detail" }),
       });
 
-      const li = list.element.querySelector("li");
+      const li = list.getElement().querySelector("li");
       expect(li.classList.contains("two-lines")).toBe(true);
       expect(li.querySelector(".primary-line").textContent).toBe("alpha");
       expect(li.querySelector(".secondary-line").textContent).toBe("detail");
@@ -2319,7 +2319,8 @@ describe("Workspace", () => {
     it("chains lists into the modal breadcrumb trail via show({crumb})", () => {
       jasmine.attachToDOM(lumine.workspace.getElement());
       let cancelled = false;
-      const root = build({ crumb: "Root", didCancelSelection: () => (cancelled = true) });
+      const root = build({ crumb: "Root" });
+      root.onDidCancel(() => (cancelled = true));
       const step = build();
 
       root.show();
@@ -2356,15 +2357,16 @@ describe("Workspace", () => {
     it("returns a dialog with a query editor and no list", () => {
       const dialog = build({ placeholderText: "Name" });
 
-      expect(dialog.element.classList.contains("input-dialog")).toBe(true);
-      expect(dialog.element.classList.contains("select-list")).toBe(false);
-      expect(dialog.element.querySelector("ol.list-group")).toBeNull();
+      expect(dialog.getElement().classList.contains("input-dialog")).toBe(true);
+      expect(dialog.getElement().classList.contains("select-list")).toBe(false);
+      expect(dialog.getElement().querySelector("ol.list-group")).toBeNull();
       expect(dialog.getQuery()).toBe("");
     });
 
-    it("reports the typed query to didConfirm", () => {
+    it("reports the typed query through onDidConfirm", () => {
       let confirmed = null;
-      const dialog = build({ didConfirm: (query) => (confirmed = query) });
+      const dialog = build();
+      dialog.onDidConfirm(({ query }) => (confirmed = query));
 
       dialog.getQueryEditor().setText("a-name");
       dialog.confirm();

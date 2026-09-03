@@ -2,13 +2,18 @@ const { Disposable, Emitter } = require("@lumine-code/event-kit");
 const ModalActionService = require("../src/modal-action-service");
 
 describe("ModalActionService", () => {
-  let service, picker, commandRegistry, workspace, createSelectList;
+  let service, picker, commandRegistry, keymapManager, workspace, createSelectList;
 
   class FakePicker {
     constructor(options) {
       this.options = options;
       this.element = {};
       this.emitter = new Emitter();
+      this.panelEmitter = new Emitter();
+      this.panel = {
+        flowTransition: false,
+        onDidChangeVisible: (callback) => this.panelEmitter.on("did-change-visible", callback),
+      };
       this.visible = false;
       this.updates = [];
       this.statuses = [];
@@ -28,6 +33,7 @@ describe("ModalActionService", () => {
 
     hide() {
       this.visible = false;
+      this.panelEmitter.emit("did-change-visible", false);
       this.emitter.emit("did-hide");
     }
 
@@ -37,6 +43,14 @@ describe("ModalActionService", () => {
 
     getElement() {
       return this.element;
+    }
+
+    getPanel() {
+      return this.panel;
+    }
+
+    isDestroyed() {
+      return Boolean(this.destroyed);
     }
 
     setStatus(status) {
@@ -59,6 +73,7 @@ describe("ModalActionService", () => {
     destroy() {
       this.destroyed = true;
       this.emitter.dispose();
+      this.panelEmitter.dispose();
       return Promise.resolve();
     }
   }
@@ -77,8 +92,22 @@ describe("ModalActionService", () => {
         });
       }),
     };
+    keymapManager = {
+      add: jasmine.createSpy("add").and.callFake((source, bindings) => {
+        keymapManager.source = source;
+        keymapManager.bindings = bindings;
+        return new Disposable(() => {
+          keymapManager.bindings = null;
+        });
+      }),
+    };
     workspace = { popModal: jasmine.createSpy("popModal").and.returnValue(true) };
-    service = new ModalActionService({ createSelectList, commandRegistry, workspace });
+    service = new ModalActionService({
+      createSelectList,
+      commandRegistry,
+      keymapManager,
+      workspace,
+    });
   });
 
   afterEach(async () => {
@@ -93,6 +122,7 @@ describe("ModalActionService", () => {
       disposition: "stay",
       enabled: true,
       keystrokes: [],
+      commandKeystrokes: [],
       ...options,
     };
   }
@@ -111,7 +141,10 @@ describe("ModalActionService", () => {
     expect(createSelectList).toHaveBeenCalledTimes(1);
     expect(picker.options.className).toBe("select-list-actions");
     expect(picker.options.className).not.toContain("owner");
-    expect(picker.updates[0].separatorIds).toEqual(["spec:copy"]);
+    expect(picker.updates[0].sections.map(({ label }) => label)).toEqual(["Open", "Copy"]);
+    expect(
+      picker.updates[0].sections.map(({ items }) => items.map(({ command }) => command)),
+    ).toEqual([["spec:open", "spec:split"], ["spec:copy"]]);
     expect(picker.showOptions).toEqual({ crumb: "Actions" });
   });
 
@@ -124,7 +157,7 @@ describe("ModalActionService", () => {
     const context = { itemId: "one", query: "kept" };
     await service.show({ owner, actions: [action("spec:open")], context });
 
-    const returned = service.confirmAction(picker.updates[0].items[0]);
+    const returned = service.confirmAction(picker.updates[0].sections[0].items[0]);
 
     expect(workspace.popModal).toHaveBeenCalled();
     expect(owner.runAction).toHaveBeenCalled();
@@ -150,6 +183,41 @@ describe("ModalActionService", () => {
     expect(workspace.popModal).not.toHaveBeenCalled();
   });
 
+  it("revalidates both directions of enabled state before leaving the picker", async () => {
+    const owner = {
+      getActionAvailability: jasmine
+        .createSpy("getActionAvailability")
+        .and.resolveTo({ status: "available" }),
+      runAction: jasmine.createSpy("runAction").and.resolveTo({ status: "success" }),
+      getPanel: () => ({ show() {} }),
+    };
+    const formerlyDisabled = action("spec:open", {
+      enabled: false,
+      disabledReason: "Old reason",
+    });
+    await service.show({ owner, actions: [formerlyDisabled], context: {} });
+
+    await service.confirmAction(formerlyDisabled);
+
+    expect(owner.runAction.calls.mostRecent().args[0]).toBe("spec:open");
+    expect(owner.runAction.calls.mostRecent().args[1].source).toBe("actions");
+    expect(workspace.popModal).toHaveBeenCalled();
+
+    workspace.popModal.calls.reset();
+    owner.runAction.calls.reset();
+    owner.getActionAvailability.and.resolveTo({
+      status: "disabled",
+      reason: "Current reason",
+    });
+    const formerlyEnabled = action("spec:open");
+    await service.show({ owner, actions: [formerlyEnabled], context: {} });
+
+    expect(await service.confirmAction(formerlyEnabled)).toBe(false);
+    expect(picker.statuses.at(-1)).toEqual({ type: "warning", message: "Current reason" });
+    expect(owner.runAction).not.toHaveBeenCalled();
+    expect(workspace.popModal).not.toHaveBeenCalled();
+  });
+
   it("forwards action commands only while the picker is open", async () => {
     const owner = {
       runAction: jasmine.createSpy("runAction").and.resolveTo({ status: "success" }),
@@ -164,6 +232,95 @@ describe("ModalActionService", () => {
     expect(event.stopPropagation).toHaveBeenCalled();
     expect(owner.runAction).toHaveBeenCalledTimes(1);
     expect(commandRegistry.listeners).toBeNull();
+  });
+
+  it("bridges owner command keystrokes into the neutral picker", async () => {
+    const owner = { runAction: jasmine.createSpy("runAction") };
+    await service.show({
+      owner,
+      actions: [
+        action("spec:open", {
+          keystrokes: ["enter", "ctrl-o"],
+          commandKeystrokes: ["ctrl-o"],
+        }),
+      ],
+      context: {},
+    });
+
+    expect(keymapManager.bindings).toEqual({
+      ".select-list-actions lumine-text-editor[mini]": { "ctrl-o": "spec:open" },
+    });
+  });
+
+  it("cleans up a flow return and cancels the owner on picker cancellation", async () => {
+    const owner = {
+      cancel: jasmine.createSpy("cancel"),
+      isDestroyed: () => false,
+      runAction() {},
+      setActionsExpanded: jasmine.createSpy("setActionsExpanded"),
+    };
+    await service.show({ owner, actions: [action("spec:open")], context: {} });
+
+    picker.panel.flowTransition = true;
+    picker.panelEmitter.emit("did-change-visible", false);
+    expect(commandRegistry.listeners).toBeNull();
+    expect(owner.setActionsExpanded).toHaveBeenCalledWith(false);
+    expect(picker.updates.at(-1).sections).toEqual([]);
+
+    picker.panel.flowTransition = false;
+    await service.show({ owner, actions: [action("spec:open")], context: {} });
+    picker.emitter.emit("did-cancel");
+    expect(owner.cancel).toHaveBeenCalledWith("action-picker");
+  });
+
+  it("ignores a stale show after a newer owner wins the shared picker", async () => {
+    picker = service.getPicker();
+    let resolveFirstUpdate;
+    const firstUpdate = new Promise((resolve) => (resolveFirstUpdate = resolve));
+    let updateCount = 0;
+    picker.update = jasmine.createSpy("update").and.callFake(() => {
+      updateCount++;
+      return updateCount === 1 ? firstUpdate : Promise.resolve();
+    });
+    const firstOwner = { runAction() {} };
+    const secondOwner = { runAction() {} };
+
+    const firstShow = service.show({
+      owner: firstOwner,
+      actions: [action("spec:first")],
+      context: { owner: "first" },
+    });
+    const secondShow = service.show({
+      owner: secondOwner,
+      actions: [action("spec:second")],
+      context: { owner: "second" },
+    });
+
+    await expectAsync(secondShow).toBeResolvedTo(true);
+    resolveFirstUpdate();
+    await expectAsync(firstShow).toBeResolvedTo(false);
+    expect(service.owner).toBe(secondOwner);
+    expect(commandRegistry.listeners["spec:second"]).toEqual(jasmine.any(Function));
+    expect(commandRegistry.listeners["spec:first"]).toBeUndefined();
+  });
+
+  it("does not open after the pending owner is released", async () => {
+    picker = service.getPicker();
+    const finishUpdates = [];
+    picker.update = () => new Promise((resolve) => finishUpdates.push(resolve));
+    const owner = { runAction() {} };
+    const showing = service.show({
+      owner,
+      actions: [action("spec:open")],
+      context: {},
+    });
+
+    expect(service.release(owner)).toBe(true);
+    finishUpdates.forEach((finish) => finish());
+
+    await expectAsync(showing).toBeResolvedTo(false);
+    expect(picker.isVisible()).toBe(false);
+    expect(commandRegistry.listeners).toBeUndefined();
   });
 
   it("destroys the shared picker and rejects later shows", async () => {

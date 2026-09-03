@@ -2,10 +2,10 @@
 
 const fuzzyMatcher = require("./fuzzy-matcher");
 
-// Internal render helpers. Packages reach this behavior through the view:
-// `highlightMatches` through the `highlight` function on the `elementForItem`
-// options, and `createTwoLineItem` by returning a descriptor object from
-// `elementForItem` rather than an element.
+// Internal render helpers. Packages reach this behavior through the model:
+// `highlightMatches` through the `highlight` function in the `renderItem`
+// context, and `createTwoLineItem` by returning a descriptor object from
+// `renderItem` rather than an element.
 
 /**
  * Computes fuzzy match indices for a text against a query.

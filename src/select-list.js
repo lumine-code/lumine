@@ -11,7 +11,8 @@ const $ = etch.dom;
 
 // Rendering hundreds of rows costs real time and nobody scans them; the list
 // caps itself and ends with a "Show more…" row that reveals the next batch.
-// `maxResults` changes the batch size, it no longer means "drop the rest".
+// The page size is an implementation policy rather than a package-facing
+// matcher knob.
 const DEFAULT_MAX_RESULTS = SelectListModel.DEFAULT_PAGE_SIZE;
 
 // The component's own last row when matches exceed the cap. Never handed to the
@@ -36,8 +37,6 @@ class SelectList extends InputDialog {
   }
 
   initializeState() {
-    this.legacyItemIds = new WeakMap();
-    this.legacyItemIdSequence = 0;
     this.showMoreSelected = false;
     this.listBoxId = `select-list-${nextSelectListId++}`;
     this.itemDomIds = new Map();
@@ -47,15 +46,22 @@ class SelectList extends InputDialog {
     this.filterMatcherGeneration = null;
     this.indexMatcher = null;
     this.indexMatcherIgnoresDiacritics = null;
+    this.recentRevision = 0;
+    this.recentLoadGeneration = 0;
+    this.recentSaveQueue = null;
+    this.recentActionDescriptors = [];
+    this.recentCommandDescriptors = {};
     this.recentConfiguration = this.normalizeRecents(this.props.recents);
 
     let configuredRecentIds = [];
     if (this.recentConfiguration) {
       const loaded = this.recentConfiguration.adapter.load();
       if (loaded && typeof loaded.then === "function") {
-        this.recentsReady = Promise.resolve(loaded).then((recentIds) =>
-          this.setRecentItemIds(recentIds ?? [], { persist: false }),
-        );
+        const revision = this.recentRevision;
+        const generation = ++this.recentLoadGeneration;
+        this.recentsReady = Promise.resolve(loaded)
+          .then((recentIds) => this.applyLoadedRecentItemIds(recentIds, revision, generation))
+          .catch((error) => this.didFailRecents(error));
       } else {
         if (loaded != null && !Array.isArray(loaded)) {
           throw new TypeError("recents.adapter.load() must return an array or Promise.");
@@ -69,11 +75,23 @@ class SelectList extends InputDialog {
         this.disposables.add(
           this.recentConfiguration.adapter.onDidChange((recentIds) => {
             if (recentIds === undefined) {
-              Promise.resolve(this.recentConfiguration.adapter.load()).then((loadedIds) =>
-                this.setRecentItemIds(loadedIds ?? [], { persist: false }),
-              );
+              const revision = this.recentRevision;
+              const generation = ++this.recentLoadGeneration;
+              let loadedIds;
+              try {
+                loadedIds = this.recentConfiguration.adapter.load();
+              } catch (error) {
+                this.didFailRecents(error);
+                return;
+              }
+              Promise.resolve(loadedIds)
+                .then((ids) => this.applyLoadedRecentItemIds(ids, revision, generation))
+                .catch((error) => this.didFailRecents(error));
             } else {
-              this.setRecentItemIds(recentIds, { persist: false });
+              this.recentLoadGeneration++;
+              this.setRecentItemIds(recentIds, { persist: false }).catch((error) =>
+                this.didFailRecents(error),
+              );
             }
           }),
         );
@@ -83,6 +101,7 @@ class SelectList extends InputDialog {
 
     this.modelGetItemId = this.buildModelGetItemId(this.props);
     this.modelSearch = this.buildModelSearch(this.props);
+    const selection = this.normalizeSelection(this.props.selection);
     const source = Object.prototype.hasOwnProperty.call(this.props, "sections")
       ? { sections: this.props.sections }
       : { items: this.props.items ?? [] };
@@ -91,26 +110,11 @@ class SelectList extends InputDialog {
       getItemId: this.modelGetItemId,
       search: this.modelSearch,
       query: this.modelQuery(this.props.query ?? "", this.props),
-      recentIds: this.props.recentItemIds ?? this.props.recentIds ?? configuredRecentIds,
-      allowEmptySelection:
-        this.props.selection?.allowEmpty === true || this.props.allowEmptySelection === true,
-      pageSize: this.props.pageSize ?? this.props.maxResults ?? DEFAULT_MAX_RESULTS,
+      recentIds: this.props.recentItemIds ?? configuredRecentIds,
+      allowEmptySelection: selection.allowEmpty,
+      pageSize: DEFAULT_MAX_RESULTS,
+      ...(selection.initial !== undefined ? { initialSelection: selection.initial } : {}),
     });
-
-    if (this.props.selection?.initial === "none") {
-      this.model.selectNone();
-    } else if (
-      this.props.selection?.initial !== undefined &&
-      this.props.selection.initial !== "first"
-    ) {
-      this.model.selectId(this.props.selection.initial);
-    } else if (Object.prototype.hasOwnProperty.call(this.props, "initialSelectionIndex")) {
-      if (this.props.initialSelectionIndex === undefined) {
-        this.model.selectNone();
-      } else if (this.model.getDisplayedItems().length > 0) {
-        this.model.selectIndex(this.props.initialSelectionIndex);
-      }
-    }
 
     this.props.items = this.model.getItems();
     this.syncModelState();
@@ -135,9 +139,23 @@ class SelectList extends InputDialog {
     return { adapter, limit };
   }
 
+  normalizeSelection(selection) {
+    if (selection == null) return { allowEmpty: false, initial: undefined };
+    if (typeof selection !== "object" || Array.isArray(selection)) {
+      throw new TypeError("selection must be an object.");
+    }
+    const initial = selection.initial;
+    if (initial === undefined) {
+      return { allowEmpty: selection.allowEmpty === true, initial: undefined };
+    }
+    if (!initial || typeof initial !== "object" || Array.isArray(initial)) {
+      throw new TypeError("selection.initial must be {mode: 'first'|'none'} or {id}.");
+    }
+    return { allowEmpty: selection.allowEmpty === true, initial };
+  }
+
   installRecentActions() {
-    const commands = {
-      ...(this.props.commands ?? {}),
+    this.recentCommandDescriptors = {
       "select-list:remove-recent": {
         description: "Remove the selected item from the recent section.",
         didDispatch: (event) => this.removeRecentItem(event.detail.item),
@@ -147,8 +165,7 @@ class SelectList extends InputDialog {
         didDispatch: () => this.clearRecentItems(),
       },
     };
-    const actions = [
-      ...(this.props.actions ?? []),
+    this.recentActionDescriptors = [
       {
         command: "select-list:remove-recent",
         context: "item",
@@ -164,9 +181,81 @@ class SelectList extends InputDialog {
         when: () => this.getRecentItemIds().length > 0,
       },
     ];
-    this.props.commands = commands;
-    this.props.actions = actions;
-    this.dialogActions.set(actions);
+    this.dialogActions.set(this.actionsForCatalog(this.props.actions ?? []));
+  }
+
+  actionsForCatalog(actions) {
+    if (this.recentActionDescriptors.length === 0) return actions;
+    let entries;
+    if (actions == null) entries = [];
+    else if (Array.isArray(actions)) entries = actions.slice();
+    else if (typeof actions === "object") {
+      entries = Object.prototype.hasOwnProperty.call(actions, "command")
+        ? [actions]
+        : Object.entries(actions);
+    } else {
+      entries = [actions];
+    }
+    const providerCommands = new Set(this.recentActionDescriptors.map(({ command }) => command));
+    entries = entries.filter((entry) => {
+      const command = Array.isArray(entry) ? entry[0] : entry?.command;
+      return !providerCommands.has(command);
+    });
+    return [...entries, ...this.recentActionDescriptors];
+  }
+
+  commandsForRegistration(commands) {
+    if (this.recentActionDescriptors.length === 0) return commands;
+    if (commands != null && (typeof commands !== "object" || Array.isArray(commands))) {
+      return commands;
+    }
+    for (const command of Object.keys(this.recentCommandDescriptors)) {
+      if (Object.prototype.hasOwnProperty.call(commands ?? {}, command)) {
+        throw new Error(`Dialog command '${command}' is reserved by the recents provider.`);
+      }
+    }
+    return { ...(commands ?? {}), ...this.recentCommandDescriptors };
+  }
+
+  applyLoadedRecentItemIds(recentIds, revision, generation) {
+    if (
+      this.destroyed ||
+      revision !== this.recentRevision ||
+      generation !== this.recentLoadGeneration
+    ) {
+      return this;
+    }
+    return this.setRecentItemIds(recentIds ?? [], { persist: false });
+  }
+
+  didFailRecents(error) {
+    if (this.destroyed) return this;
+    const report = () => {
+      if (!this.destroyed) {
+        void this.setStatus({ type: "error", message: error?.message ?? String(error) });
+      }
+      return this;
+    };
+    return this.component ? report() : Promise.resolve().then(report);
+  }
+
+  saveRecentItemIds(recentIds) {
+    const save = () => {
+      try {
+        return Promise.resolve(this.recentConfiguration.adapter.save(recentIds));
+      } catch (error) {
+        return Promise.reject(error);
+      }
+    };
+    const operation = this.recentSaveQueue
+      ? this.recentSaveQueue.catch(() => {}).then(save)
+      : save();
+    this.recentSaveQueue = operation;
+    const clear = () => {
+      if (this.recentSaveQueue === operation) this.recentSaveQueue = null;
+    };
+    operation.then(clear, clear);
+    return operation;
   }
 
   // A select list *is* an input dialog with a list in it, so it carries both
@@ -182,8 +271,22 @@ class SelectList extends InputDialog {
     super.didInitializeElement();
     this.component.refs.queryEditor.element.setAttribute("role", "combobox");
     this.component.refs.queryEditor.element.setAttribute("aria-autocomplete", "list");
-    this.component.refs.queryEditor.element.setAttribute("aria-controls", this.listBoxId);
+    this.updateComboboxAttributes();
     this.updateActiveDescendant();
+  }
+
+  didShowPanel() {
+    super.didShowPanel();
+    this.updateComboboxAttributes();
+  }
+
+  didHidePanel(options) {
+    super.didHidePanel(options);
+    this.updateComboboxAttributes();
+  }
+
+  didSuspendPanel() {
+    this.updateComboboxAttributes();
   }
 
   /**
@@ -201,59 +304,25 @@ class SelectList extends InputDialog {
   }
 
   buildModelGetItemId(props) {
-    const getItemId = props.getItemId;
-    const idForItem = props.idForItem;
-    const permitsLegacyObjectIdentity = !getItemId && Boolean(props.elementForItem);
-    return (item, context) => {
-      if (getItemId) return getItemId(item, context);
-      if (idForItem) {
-        const id = idForItem(item);
-        if (id !== null && id !== undefined) return id;
-      }
-      if (item !== null && (typeof item === "object" || typeof item === "function")) {
-        if (item.id !== null && item.id !== undefined) return item.id;
-        // Temporary compatibility for packages still using elementForItem with
-        // anonymous object rows. New renderItem users get the model's strict
-        // stable-ID contract instead.
-        if (permitsLegacyObjectIdentity) {
-          let id = this.legacyItemIds.get(item);
-          if (!id) {
-            id = Symbol(`legacy-select-list-item-${++this.legacyItemIdSequence}`);
-            this.legacyItemIds.set(item, id);
-          }
-          return id;
-        }
-      }
-      return item;
-    };
+    if (props.getItemId != null && typeof props.getItemId !== "function") {
+      throw new TypeError("getItemId must be a function.");
+    }
+    return props.getItemId ?? null;
   }
 
   buildModelSearch(props) {
-    const explicit = typeof props.search === "function" ? { matcher: props.search } : props.search;
-    const getFilterText =
-      explicit && Object.prototype.hasOwnProperty.call(explicit, "getFilterText")
-        ? explicit.getFilterText
-        : props.filterKeyForItem;
-    const filter =
-      explicit && Object.prototype.hasOwnProperty.call(explicit, "filter")
-        ? explicit.filter
-        : props.filter;
-    const sort =
-      explicit && Object.prototype.hasOwnProperty.call(explicit, "sort")
-        ? explicit.sort
-        : props.order;
-    let matcher =
-      explicit && Object.prototype.hasOwnProperty.call(explicit, "matcher")
-        ? explicit.matcher
-        : null;
+    const search = props.search ?? {};
+    if (!search || typeof search !== "object" || Array.isArray(search)) {
+      throw new TypeError("search must be an object.");
+    }
+    const { getFilterText = null, filter = null, sort = null } = search;
+    let { matcher = null } = search;
 
     if (!filter && !matcher) {
       const options = {
-        algorithm: explicit?.algorithm ?? props.algorithm,
-        removeDiacritics: explicit?.ignoreDiacritics ?? props.removeDiacritics,
-        numThreads: props.numThreads,
-        maxGap: props.maxGap,
-        filterScoreModifier: explicit?.scoreModifier ?? props.filterScoreModifier,
+        algorithm: search.algorithm,
+        ignoreDiacritics: search.ignoreDiacritics,
+        scoreModifier: search.scoreModifier,
       };
       matcher = (candidates, query, context) =>
         this.matchCandidates(candidates, query, context, options);
@@ -267,18 +336,12 @@ class SelectList extends InputDialog {
     };
   }
 
-  filterQuery(query, props = this.props) {
-    return this.parseQuery(query, props).text;
-  }
-
   parseQuery(query, props = this.props) {
     const raw = query == null ? "" : String(query);
     const parser = props.search?.parseQuery;
     let parsed;
     if (parser) {
       parsed = parser(raw);
-    } else if (props.filterQuery) {
-      parsed = props.filterQuery(raw);
     } else {
       parsed = raw;
     }
@@ -289,16 +352,43 @@ class SelectList extends InputDialog {
     return Object.freeze({ text: parsed.text, data: parsed.data ?? null });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the parsed search text and package metadata.
+   */
   getParsedQuery() {
     return this.parseQuery(this.getQuery());
   }
 
-  getFilterQuery() {
-    return this.getParsedQuery().text;
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace the asynchronous source and keep local filtering aligned with its
+   * mode. Query sources own filtering; snapshot sources and a null source use
+   * the list's current parsed query.
+   */
+  setSource(source) {
+    const previousSelection = this.model ? this.selectionSnapshot() : null;
+    const sourcePromise = super.setSource(source);
+    if (!this.model || this.suppressModelQueryUpdate) return sourcePromise;
+
+    const query = this.modelQuery(this.getQuery(), this.props);
+    if (query === this.model.getQuery()) return sourcePromise;
+
+    this.model.update({ query });
+    this.showMoreSelected = false;
+    this.resetRenderedItems();
+    this.syncModelState();
+    this.publishSelectionChange(previousSelection, "source");
+    const updatePromise = this.component.update();
+    return Promise.all([sourcePromise, updatePromise]).then(() => undefined);
   }
 
   modelQuery(query, props = this.props) {
-    return props.source?.mode === "query" ? "" : this.filterQuery(query, props);
+    return props.source?.mode === "query" ? "" : this.parseQuery(query, props).text;
   }
 
   syncModelState() {
@@ -321,7 +411,17 @@ class SelectList extends InputDialog {
     while (recentCount < allRecords.length && allRecords[recentCount].recent) recentCount++;
     this.recentBoundaryIndex =
       recentCount > 0 && recentCount < this.displayedRecords.length ? recentCount : -1;
+    this.updateComboboxAttributes();
     this.updateActiveDescendant();
+  }
+
+  updateComboboxAttributes() {
+    const editorElement = this.component?.refs?.queryEditor?.element;
+    if (!editorElement) return;
+    const hasListbox = (this.items?.length ?? 0) > 0;
+    if (hasListbox) editorElement.setAttribute("aria-controls", this.listBoxId);
+    else editorElement.removeAttribute("aria-controls");
+    editorElement.setAttribute("aria-expanded", String(this.isVisible() && hasListbox));
   }
 
   domIdForIndex(index) {
@@ -379,27 +479,11 @@ class SelectList extends InputDialog {
   }
 
   confirm() {
-    this.confirmSelection();
+    return this.confirmSelection();
   }
 
-  cancel() {
-    this.cancelSelection();
-  }
-
-  /**
-   * Resolves the semantic action represented by core:confirm for the current
-   * item. This is display metadata for the item-actions list only: Enter keeps
-   * dispatching core:confirm, including inside the actions list itself.
-   * @param {*} item - The selected item, or null when the selection is empty
-   * @returns {string|null} The package command whose row should display Enter
-   * @private
-   */
-  confirmActionForItem(item) {
-    if (this.selectedItemRaw() === SHOW_MORE_ITEM) return null;
-    const confirmAction = this.props.confirmAction;
-    if (typeof confirmAction === "function") return confirmAction(item) ?? null;
-    if (typeof confirmAction === "string" && item != null) return confirmAction;
-    return null;
+  cancel(reason) {
+    return this.cancelSelection(reason);
   }
 
   getActionContext(source = "api") {
@@ -415,16 +499,17 @@ class SelectList extends InputDialog {
   }
 
   getActionItemId(item) {
-    return this.getIdForItem(item);
+    return this.getItemId(item);
   }
 
   resolveActionItemById(id) {
-    const record = this.model?._recordById.get(id);
-    return record?.item ?? null;
+    return this.model?.getItemById(id) ?? null;
   }
 
   recordActionRecent({ item }) {
-    if (item != null) return this.recordRecentItem(item);
+    if (item != null) {
+      return this.recordRecentItem(item).catch((error) => this.didFailRecents(error));
+    }
   }
 
   updateProps(props) {
@@ -432,19 +517,9 @@ class SelectList extends InputDialog {
     const nextProps = { ...this.props, ...props };
     const modelChanges = {};
     const itemsChanged = "items" in props || "sections" in props;
-    const recentItemIdsChanged = "recentIds" in props || "recentItemIds" in props;
-    const identityChanged = "getItemId" in props || "idForItem" in props;
-    const searchChanged = [
-      "search",
-      "filterKeyForItem",
-      "filter",
-      "order",
-      "algorithm",
-      "removeDiacritics",
-      "filterScoreModifier",
-      "numThreads",
-      "maxGap",
-    ].some((key) => key in props);
+    const recentItemIdsChanged = "recentItemIds" in props;
+    const identityChanged = "getItemId" in props;
+    const searchChanged = "search" in props;
 
     if ("items" in props) modelChanges.items = props.items;
     if ("sections" in props) modelChanges.sections = props.sections;
@@ -462,18 +537,18 @@ class SelectList extends InputDialog {
     }
 
     if (recentItemIdsChanged) {
-      modelChanges.recentIds = "recentItemIds" in props ? props.recentItemIds : props.recentIds;
-    }
-    if ("allowEmptySelection" in props) {
-      modelChanges.allowEmptySelection = props.allowEmptySelection;
+      this.recentRevision++;
+      modelChanges.recentIds = props.recentItemIds;
     }
     if ("selection" in props) {
-      modelChanges.allowEmptySelection = props.selection?.allowEmpty === true;
+      const selection = this.normalizeSelection(props.selection);
+      modelChanges.allowEmptySelection = selection.allowEmpty;
+      if (selection.initial !== undefined) modelChanges.initialSelection = selection.initial;
     }
-    if ("pageSize" in props || "maxResults" in props) {
-      modelChanges.pageSize = nextProps.pageSize ?? nextProps.maxResults ?? DEFAULT_MAX_RESULTS;
+    if (!("selection" in props) && props.itemUpdateOptions?.selection != null) {
+      modelChanges.initialSelection = props.itemUpdateOptions.selection;
     }
-    if ("query" in props || "filterQuery" in props || "source" in props) {
+    if ("query" in props || searchChanged || "source" in props) {
       const query = "query" in props ? props.query : this.getQuery();
       modelChanges.query = this.modelQuery(query == null ? "" : String(query), nextProps);
     }
@@ -481,47 +556,16 @@ class SelectList extends InputDialog {
     const changesModel = Object.keys(modelChanges).length > 0;
     if (changesModel) this.model.update(modelChanges);
 
-    if ("initialSelectionIndex" in props) {
-      this.applyInitialSelection(props.initialSelectionIndex);
-    } else if ("selection" in props && props.selection?.initial !== undefined) {
-      if (props.selection.initial === "first") this.model.selectFirst();
-      else if (props.selection.initial === "none") this.model.selectNone();
-      else this.model.selectId(props.selection.initial);
-    } else if (props.itemUpdateOptions?.selection === "first") {
-      this.model.selectFirst();
-    } else if (props.itemUpdateOptions?.selection === "none") {
-      this.model.selectNone();
-    }
-
     const listProps = [
       "items",
       "sections",
       "getItemId",
-      "idForItem",
       "search",
       "renderItem",
-      "elementForItem",
-      "filterKeyForItem",
-      "filter",
-      "filterQuery",
-      "filterScoreModifier",
-      "order",
-      "algorithm",
-      "removeDiacritics",
-      "numThreads",
-      "maxGap",
-      "pageSize",
-      "maxResults",
-      "recentIds",
       "recentItemIds",
-      "initialSelectionIndex",
-      "allowEmptySelection",
       "selection",
       "emptyMessage",
       "itemsClassList",
-      "separatorIds",
-      "confirmAction",
-      "itemUpdateOptions",
     ];
     for (const key of listProps) {
       if (key in props) this.props[key] = props[key];
@@ -531,7 +575,6 @@ class SelectList extends InputDialog {
     if (itemsChanged) this.props.items = this.model.getItems();
     if (recentItemIdsChanged) {
       const recentIds = this.model.getRecentIds();
-      this.props.recentIds = recentIds;
       this.props.recentItemIds = recentIds;
     }
     this.modelGetItemId = nextGetItemId;
@@ -544,7 +587,7 @@ class SelectList extends InputDialog {
       this.suppressModelQueryUpdate = false;
     }
 
-    if (changesModel || "initialSelectionIndex" in props || props.itemUpdateOptions) {
+    if (changesModel || "selection" in props || props.itemUpdateOptions) {
       this.showMoreSelected = false;
       this.resetRenderedItems();
       this.syncModelState();
@@ -566,38 +609,102 @@ class SelectList extends InputDialog {
     return this.renderItems();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return a snapshot of all source items.
+   */
   getItems() {
     return this.model.getItems();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return all items in current filtered order.
+   */
   getFilteredItems() {
     return this.model.getFilteredItems();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the currently displayed page without UI rows.
+   */
   getDisplayedItems() {
     return this.model.getDisplayedItems();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the number of source items.
+   */
   getItemCount() {
     return this.model.getItems().length;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the number of filtered matches.
+   */
   getMatchCount() {
     return this.model.getFilteredItems().length;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when source items change.
+   */
   onDidChangeItems(callback) {
     return this.emitter.on("did-change-items", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when the logical selection changes.
+   */
   onDidChangeSelection(callback) {
     return this.emitter.on("did-change-selection", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace a flat item source while preserving selection by default.
+   */
   setItems(items, options = {}) {
     return this.update({ items, itemUpdateOptions: options });
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace the source with explicitly grouped sections.
+   */
+  setSections(sections, options = {}) {
+    return this.update({ sections, itemUpdateOptions: options });
+  }
+
+  /**
+   * @public
+   * @status experimental
+   *
+   * Re-render the current source after items changed in place.
+   */
   refresh(options = {}) {
     return "sections" in this.props
       ? this.update({ sections: this.props.sections, itemUpdateOptions: options })
@@ -608,37 +715,13 @@ class SelectList extends InputDialog {
    * @public
    * @status experimental
    *
-   * Returns the stable identifier used by separatorIds for an item. Object
+   * Returns the stable identifier used by the model for an item. Object
    * items default to their `id` property; primitive items identify themselves.
    * @param {*} item - The item to identify
    * @returns {*} The item's identifier
    */
-  getIdForItem(item) {
-    const record = this.model?._recordByItem.get(item);
-    if (record) return record.id;
-    return this.modelGetItemId(item, {
-      index: -1,
-      section: null,
-      sectionId: null,
-      sectionIndex: -1,
-      itemIndex: -1,
-    });
-  }
-
-  /**
-   * Returns whether a standalone separator should be rendered immediately
-   * before an item.
-   * @param {*} item - The item about to render
-   * @returns {boolean} Whether to insert a separator
-   * @private
-   */
-  hasSeparatorBefore(item) {
-    if (item === SHOW_MORE_ITEM || !Array.isArray(this.props.separatorIds)) return false;
-    // Legacy idForItem predicates sometimes return null under a query solely
-    // to suppress their separator. Keep that presentation behavior separate
-    // from the model's stable identity.
-    const id = this.props.idForItem ? this.props.idForItem(item) : this.getIdForItem(item);
-    return this.props.separatorIds.includes(id);
+  getItemId(item) {
+    return this.model.getItemId(item);
   }
 
   hasSectionSeparatorBefore(index) {
@@ -647,18 +730,6 @@ class SelectList extends InputDialog {
     const previous = this.displayedRecords[index - 1];
     if (current.recent || previous.recent) return false;
     return current.sectionId != null && current.sectionId !== previous.sectionId;
-  }
-
-  applyInitialSelection(index) {
-    if (index === undefined || this.model.getDisplayedItems().length === 0) {
-      this.model.selectNone();
-      return;
-    }
-    const itemCount = this.model.getDisplayedItems().length;
-    let target = index;
-    if (target >= itemCount) target = 0;
-    if (target < 0) target = itemCount - 1;
-    this.model.selectIndex(target);
   }
 
   selectionSnapshot() {
@@ -675,9 +746,6 @@ class SelectList extends InputDialog {
     const item = this.getSelectedItem();
     const itemId = this.getSelectedItemId();
     const changed = !Object.is(previous.id, itemId) || previous.showMore !== this.showMoreSelected;
-    if (this.selectionIndex !== undefined && this.props.didChangeSelection) {
-      this.props.didChangeSelection(item);
-    }
     if (changed) {
       this.emitter.emit("did-change-selection", {
         list: this,
@@ -720,16 +788,14 @@ class SelectList extends InputDialog {
 
       const children = [];
       for (let index = 0; index < this.items.length; index++) {
-        // The recent boundary is the list's own rule and needs no `separatorIds`
-        // entry; a caller that names the same row anyway still gets one line.
+        // Recents and declared sections own their boundaries; they disappear
+        // automatically while a query flattens the result set.
         const key =
           index === this.recentBoundaryIndex
             ? "separator:recent"
             : this.hasSectionSeparatorBefore(index)
               ? `separator:section:${String(this.displayedRecords[index].sectionId)}:${index}`
-              : this.hasSeparatorBefore(this.items[index])
-                ? `separator:${String(this.getIdForItem(this.items[index]))}`
-                : null;
+              : null;
         if (key !== null) {
           children.push(
             $.li({
@@ -767,45 +833,15 @@ class SelectList extends InputDialog {
 
   didClickItem(itemIndex) {
     this.selectIndex(itemIndex);
-    this.confirmSelection();
+    this.consumeUiAction(this.confirmSelection());
   }
 
   didContextMenuItem(itemIndex) {
     this.selectIndex(itemIndex);
-    const available =
-      this.dialogActions.getAll().length > 0
-        ? this.hasAvailableActions(this.getActionContext("context-menu"))
-        : this.itemActions().length > 0;
+    const available = this.hasAvailableActions(this.getActionContext("context-menu"));
     if (!available) return false;
-    this.showItemActions();
+    this.consumeUiAction(this.showActions());
     return true;
-  }
-
-  /**
-   * Filters items based on current query.
-   * Called on query change (uses existing candidates).
-   * @param {boolean} [updateComponent] - Whether to render the result
-   * @param {number} [selectionIndex] - The index to select afterwards;
-   *   defaults to the configured initial selection
-   * @private
-   */
-  filterItems(updateComponent, selectionIndex) {
-    const previousSelection = this.selectionSnapshot();
-    // Re-supplying recentIds resets the page while keeping this operation
-    // inside the model's single atomic update.
-    this.model.update({
-      query: this.modelQuery(this.getQuery()),
-      recentIds: this.model.getRecentIds(),
-    });
-    if (arguments.length > 1) {
-      if (selectionIndex === undefined) this.model.selectNone();
-      else this.applyInitialSelection(selectionIndex);
-    }
-    this.showMoreSelected = false;
-    this.resetRenderedItems();
-    this.syncModelState();
-    this.publishSelectionChange(previousSelection, "filter");
-    return updateComponent === false ? Promise.resolve() : this.component.update();
   }
 
   /**
@@ -854,7 +890,7 @@ class SelectList extends InputDialog {
     const filterTexts = candidates.map((candidate) => candidate.filterText);
     if (this.filterMatcherGeneration !== context.generation) {
       this.filterMatcher = fuzzyMatcher.setCandidates(filterTexts, {
-        ignoreDiacritics: !!options.removeDiacritics,
+        ignoreDiacritics: !!options.ignoreDiacritics,
       });
       this.filterMatcherGeneration = context.generation;
     }
@@ -862,10 +898,8 @@ class SelectList extends InputDialog {
       recordMatchIndexes: false,
     };
     if (options.algorithm) matchOptions.algorithm = options.algorithm;
-    if (options.numThreads) matchOptions.numThreads = options.numThreads;
-    if (options.maxGap !== undefined) matchOptions.maxGap = options.maxGap;
     const results = this.filterMatcher.match(query, matchOptions);
-    const modifyScore = options.filterScoreModifier;
+    const modifyScore = options.scoreModifier;
     const scoredCandidates = [];
     for (const result of results) {
       const candidate = candidates[result.id];
@@ -895,12 +929,7 @@ class SelectList extends InputDialog {
     // The sentinel never matches a query and has no consumer-facing key.
     if (item === SHOW_MORE_ITEM) return null;
 
-    const record = this.model._recordByItem.get(item);
-    if (!record) return null;
-    return this.model._filterTextForRecord(record, {
-      search: this.model._search,
-      filterTextCache: this.model._filterTextCache,
-    });
+    return this.model.getFilterText(item);
   }
 
   /**
@@ -911,11 +940,11 @@ class SelectList extends InputDialog {
    * Match indices indicate which characters in the filter key matched the query.
    * @param {*} item - The item to get match indices for
    * @param {string} [filterKey] - Optional filter key override. If not provided,
-   *   uses the stored filterKey from fuzzyFilter or computes from filterKeyForItem.
+   *   uses the filter text cached by the list model.
    * @returns {number[]|null} Array of character indices that matched, or null
    */
   getMatchIndices(item, filterKey) {
-    const itemId = this.getIdForItem(item);
+    const itemId = this.getItemId(item);
     const cached = this.matchIndicesMap?.get(itemId);
     if (cached !== undefined) return cached;
 
@@ -924,13 +953,14 @@ class SelectList extends InputDialog {
       filterKey = this.getFilterKey(item);
     }
 
-    if (!filterKey || !this.processedQuery) {
+    const matchQuery = this.getParsedQuery().text;
+    if (!filterKey || !matchQuery) {
       return null;
     }
 
     // Use reusable matcher for index computation. It folds diacritics the same
     // way as the filter matcher so indexes map back to the original filterKey.
-    const ignoreDiacritics = !!this.props.removeDiacritics;
+    const ignoreDiacritics = !!this.props.search?.ignoreDiacritics;
     if (!this.indexMatcher || this.indexMatcherIgnoresDiacritics !== ignoreDiacritics) {
       this.indexMatcher = fuzzyMatcher.setCandidates([filterKey], {
         ignoreDiacritics,
@@ -944,24 +974,41 @@ class SelectList extends InputDialog {
       maxResults: 1,
       recordMatchIndexes: true,
     };
-    if (this.props.algorithm) indexMatchOptions.algorithm = this.props.algorithm;
-    if (this.props.maxGap !== undefined) indexMatchOptions.maxGap = this.props.maxGap;
+    if (this.props.search?.algorithm) indexMatchOptions.algorithm = this.props.search.algorithm;
 
-    const results = this.indexMatcher.match(this.processedQuery, indexMatchOptions);
+    const results = this.indexMatcher.match(matchQuery, indexMatchOptions);
 
     const indexes = results.length > 0 ? results[0].matchIndexes : null;
     this.matchIndicesMap?.set(itemId, indexes);
     return indexes;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the selected package item, or null.
+   */
   getSelectedItem() {
     return this.showMoreSelected ? null : this.model.getSelectedItem();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the stable ID of the selected item, or null.
+   */
   getSelectedItemId() {
     return this.showMoreSelected ? null : this.model.getSelectedId();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the selected filtered index, or null.
+   */
   getSelectedIndex() {
     if (this.showMoreSelected) return null;
     const index = this.model.getSelectedIndex();
@@ -975,12 +1022,12 @@ class SelectList extends InputDialog {
 
   /**
    * Resolves the element for an item.
-   * If elementForItem returns an HTML element, uses it directly.
+   * If renderItem returns an HTML element, uses it directly.
    * If it returns a descriptor object, builds the row from it and hands the
    * result to the descriptor's `didRender`, so a caller can decorate a row it
    * did not build — apply an icon, set a dataset key — without owning the markup.
    * @param {*} item - The item to get an element for
-   * @param {Object} opts - Options passed to elementForItem
+   * @param {Object} opts - Options passed to renderItem
    * @returns {HTMLElement} The resolved element
    * @private
    */
@@ -990,7 +1037,7 @@ class SelectList extends InputDialog {
     if (item === SHOW_MORE_ITEM) {
       return createTwoLineItem({ primary: "Show more…", className: "show-more-item" });
     }
-    const renderItem = this.props.renderItem ?? this.props.elementForItem;
+    const renderItem = this.props.renderItem;
     const result = renderItem
       ? renderItem(item, opts)
       : { primary: opts.highlight(opts.filterKey) };
@@ -1039,19 +1086,32 @@ class SelectList extends InputDialog {
     });
   }
 
-  // With `allowEmptySelection`, the empty selection sits between the two ends
+  // With an allowed empty selection, that state sits between the two ends
   // of the cycle: stepping off either end returns to it, and stepping again
   // enters the list at the far end. Without it the ends wrap straight into
   // each other, since there is no empty state to pass through. Only these two
   // route through the empty selection — `selectFirst`/`selectLast` are asked
   // for an end by name, and give it.
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select the previous item, respecting the optional empty state.
+   */
   selectPrevious() {
     if (this.selectionIndex === undefined) return this.selectLast();
     if (this.allowsEmptySelectionAt(0)) return this.selectNone();
     return this.selectIndexOrShowMore(this.selectionIndex - 1);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select the next item, revealing another page when needed.
+   */
   selectNext() {
+    if (this.showMoreSelected) return this.showMore({ followSelection: true });
     if (this.selectionIndex === undefined) return this.selectFirst();
     if (this.allowsEmptySelectionAt(this.items.length - 1)) return this.selectNone();
     return this.selectIndexOrShowMore(this.selectionIndex + 1);
@@ -1067,15 +1127,28 @@ class SelectList extends InputDialog {
    */
   allowsEmptySelectionAt(edge) {
     return (
-      (this.props.selection?.allowEmpty === true || this.props.allowEmptySelection === true) &&
+      !this.showMoreSelected &&
+      this.props.selection?.allowEmpty === true &&
       this.selectionIndex === edge
     );
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select the first matching item.
+   */
   selectFirst() {
     return this.selectIndexOrShowMore(0);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select the last item in the displayed page.
+   */
   selectLast() {
     return this.selectIndexOrShowMore(this.items.length - 1);
   }
@@ -1098,10 +1171,22 @@ class SelectList extends InputDialog {
     return this.selectIndex(index);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Clear the logical selection.
+   */
   selectNone() {
     return this.selectIndex(undefined);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select an item by its displayed index.
+   */
   selectIndex(index, updateComponent = true, reason = "programmatic") {
     const previous = this.selectionSnapshot();
     if (this.items.length === 0 || index === undefined) {
@@ -1137,6 +1222,12 @@ class SelectList extends InputDialog {
     }
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select an item by value or object identity.
+   */
   selectItem(item) {
     const previous = this.selectionSnapshot();
     const previousDisplayedCount = this.model.getDisplayedCount();
@@ -1154,44 +1245,96 @@ class SelectList extends InputDialog {
     return etch.getScheduler().getNextUpdatePromise();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select an item by stable ID.
+   */
   selectItemById(id) {
-    const record = this.model._recordById.get(id);
-    if (!record) throw new Error("Cannot select the specified item because its id does not exist.");
-    return this.selectItem(record.item);
+    const item = this.model.getItemById(id);
+    if (item == null)
+      throw new Error("Cannot select the specified item because its id does not exist.");
+    return this.selectItem(item);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the list viewport's vertical scroll offset.
+   */
   getScrollTop() {
     return this.component.refs.items?.scrollTop ?? 0;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the list viewport's vertical scroll offset.
+   */
   setScrollTop(scrollTop) {
     if (this.component.refs.items) this.component.refs.items.scrollTop = scrollTop;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Select and reveal an item or stable ID.
+   */
   scrollToItem(itemOrId) {
-    const record = this.model._recordByItem.get(itemOrId) ?? this.model._recordById.get(itemOrId);
-    if (!record || !this.model._filteredIndexById.has(record.id)) return false;
-    this.selectItem(record.item);
-    return true;
+    try {
+      if (this.model.getItems().includes(itemOrId)) this.selectItem(itemOrId);
+      else this.selectItemById(itemOrId);
+      return true;
+    } catch {
+      return false;
+    }
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Reveal the currently selected row.
+   */
   scrollToSelectedItem() {
     if (this.selectionIndex == null || !this.listItems?.[this.selectionIndex]) return false;
     this.listItems[this.selectionIndex].component.scrollIntoViewIfNeeded();
     return true;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return whether another result page remains.
+   */
   hasMoreItems() {
     return this.model.hasMore();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the number of matches beyond the displayed page.
+   */
   getRemainingItemCount() {
     return Math.max(0, this.getMatchCount() - this.getDisplayedItems().length);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Collapse displayed results to the first page.
+   */
   resetDisplayedItemLimit() {
     const previousSelection = this.selectionSnapshot();
-    this.model.update({ recentIds: this.model.getRecentIds() });
+    this.model.resetDisplayLimit();
     this.showMoreSelected = false;
     this.resetRenderedItems();
     this.syncModelState();
@@ -1199,25 +1342,49 @@ class SelectList extends InputDialog {
     return this.component.update();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return recent item IDs in most-recent-first order.
+   */
   getRecentItemIds() {
     return this.model.getRecentIds();
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Replace and optionally persist recent item IDs.
+   */
   async setRecentItemIds(recentIds, { persist = true } = {}) {
     if (!Array.isArray(recentIds)) throw new TypeError("Recent item IDs must be an array.");
     const limit = this.getRecentLimit();
     const normalized = Array.from(new Set(recentIds)).slice(0, limit);
-    await this.update({ recentIds: normalized });
-    if (persist && this.recentConfiguration) {
-      await this.recentConfiguration.adapter.save(this.getRecentItemIds());
-    }
+    const update = this.update({ recentItemIds: normalized });
+    const save =
+      persist && this.recentConfiguration ? this.saveRecentItemIds(normalized) : Promise.resolve();
+    await Promise.all([update, save]);
     return this;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return the configured maximum recent item count.
+   */
   getRecentLimit() {
     return this.recentConfiguration?.limit ?? Infinity;
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Set the maximum recent item count and trim persisted state.
+   */
   setRecentLimit(limit) {
     if (limit !== Infinity && (!Number.isInteger(limit) || limit < 0)) {
       throw new RangeError("The recent item limit must be a non-negative integer.");
@@ -1229,29 +1396,57 @@ class SelectList extends InputDialog {
     return this.setRecentItemIds(this.getRecentItemIds());
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Return whether an item or stable ID is recent.
+   */
   isRecentItem(itemOrId) {
-    const record = this.model._recordByItem.get(itemOrId);
-    const id = record ? record.id : itemOrId;
+    const id = this.model.getItems().includes(itemOrId) ? this.model.getItemId(itemOrId) : itemOrId;
     return this.getRecentItemIds().includes(id);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Move an item to the front of the recent section.
+   */
   recordRecentItem(item) {
-    const id = this.getIdForItem(item);
+    const id = this.getItemId(item);
     const recentIds = this.getRecentItemIds().filter((candidate) => candidate !== id);
     recentIds.unshift(id);
     return this.setRecentItemIds(recentIds);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Remove an item from the recent section.
+   */
   removeRecentItem(itemOrId) {
-    const record = this.model._recordByItem.get(itemOrId);
-    const id = record ? record.id : itemOrId;
+    const id = this.model.getItems().includes(itemOrId) ? this.model.getItemId(itemOrId) : itemOrId;
     return this.setRecentItemIds(this.getRecentItemIds().filter((candidate) => candidate !== id));
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Clear the recent section.
+   */
   clearRecentItems() {
     return this.setRecentItemIds([]);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when recent item IDs change.
+   */
   onDidChangeRecentItemIds(callback) {
     return this.emitter.on("did-change-recent-item-ids", callback);
   }
@@ -1260,38 +1455,43 @@ class SelectList extends InputDialog {
    * @public
    * @status experimental
    *
-   * Confirms the current selection.
-   * Calls didConfirmSelection with the selected item, or didConfirmEmptySelection if none.
+   * Confirms the current selection through the applicable primary action, or
+   * emits the corresponding confirmation event when none is declared.
    */
   confirmSelection() {
     if (this.selectedItemRaw() === SHOW_MORE_ITEM) {
-      this.showMore();
-      return;
+      return this.showMore();
     }
     const selectedItem = this.getSelectedItem();
     const primary = this.dialogActions.getPrimary(this.getActionContext("primary"));
     if (primary) return this.runAction(primary.command, { source: "primary" });
     if (selectedItem != null) {
-      if (this.props.didConfirmSelection) {
-        this.props.didConfirmSelection(selectedItem);
-      }
       this.emitter.emit("did-confirm-selection", {
         list: this,
         item: selectedItem,
-        itemId: this.getIdForItem(selectedItem),
+        itemId: this.getItemId(selectedItem),
       });
     } else {
-      if (this.props.didConfirmEmptySelection) {
-        this.props.didConfirmEmptySelection();
-      }
       this.emitter.emit("did-confirm-empty-selection", { list: this });
     }
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when confirmation has no primary item action.
+   */
   onDidConfirmSelection(callback) {
     return this.emitter.on("did-confirm-selection", callback);
   }
 
+  /**
+   * @public
+   * @status experimental
+   *
+   * Invoke a callback when an empty selection is confirmed.
+   */
   onDidConfirmEmptySelection(callback) {
     return this.emitter.on("did-confirm-empty-selection", callback);
   }
@@ -1300,13 +1500,13 @@ class SelectList extends InputDialog {
    * @public
    * @status experimental
    *
-   * Cancels the selection and calls the didCancelSelection callback if provided.
+   * Cancels the selection, hides the list, and emits `onDidCancel`.
    */
   cancelSelection(reason = "api") {
     if (this.canceling || this.destroyed) return;
     this.canceling = true;
     this.hide();
-    if (this.props.didCancelSelection) this.props.didCancelSelection();
+    this.finalizeSuspendedHide();
     this.emitter.emit("did-cancel", { dialog: this, reason });
     this.canceling = false;
   }
@@ -1369,14 +1569,21 @@ class ListItemView {
   }
 
   update(props) {
+    const previousElement = this.element;
+    const parent = previousElement.parentNode;
+    const nextSibling = previousElement.nextSibling;
     this.element.removeEventListener("mousedown", this.mouseDown);
     this.element.removeEventListener("mouseup", this.mouseUp);
     this.element.removeEventListener("click", this.didClick);
     this.element.removeEventListener("contextmenu", this.didContextMenu);
 
     this.releaseElement();
-    if (this.element.parentNode) {
-      this.element.parentNode.replaceChild(props.element, this.element);
+    if (parent) {
+      if (previousElement.parentNode === parent) {
+        parent.replaceChild(props.element, previousElement);
+      } else {
+        parent.insertBefore(props.element, nextSibling?.parentNode === parent ? nextSibling : null);
+      }
     }
     this.element = props.element;
     this.element.addEventListener("mousedown", this.mouseDown);

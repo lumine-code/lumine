@@ -17,6 +17,7 @@ module.exports = class ModalDialogFactory {
     this.actionService = new ModalActionService({
       createSelectList: (options) => new SelectList(options, this.services),
       commandRegistry: services.commandRegistry,
+      keymapManager: services.keymapManager,
       workspace: services.workspace,
     });
     this.services = Object.freeze({ ...services, actionService: this.actionService });

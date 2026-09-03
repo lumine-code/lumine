@@ -98,6 +98,12 @@ describe("DialogActions", () => {
       expect(() =>
         actions.add(dialogAction("spec:bad-order", { order: Number.POSITIVE_INFINITY })),
       ).toThrowError(/finite number/);
+      expect(() =>
+        actions.add(dialogAction("spec:bad-dispatch", { dispatch: "pane" })),
+      ).toThrowError(/dispatch must be/);
+      expect(() => actions.add(dialogAction("spec:bad-tone", { tone: "loud" }))).toThrowError(
+        /tone must be/,
+      );
     });
 
     it("keeps groups in first-declaration order and actions in order/declaration order", () => {
@@ -363,6 +369,37 @@ describe("DialogActions", () => {
       expect(duplicate).toBe(original);
       expect(result.status).toBe("success");
       expect(dispatch.calls.count()).toBe(1);
+    });
+
+    it("finishes and clears pending state when a did-start listener throws", async () => {
+      const error = new Error("start listener failed");
+      const finishes = [];
+      actions.set([dialogAction("spec:start-error")]);
+      actions.onDidStart(() => {
+        throw error;
+      });
+      actions.onDidFinish((event) => finishes.push(event));
+
+      await expectAsync(actions.run("spec:start-error")).toBeRejectedWith(error);
+
+      expect(finishes.length).toBe(1);
+      expect(finishes[0].status).toBe("error");
+      expect(actions.isPending()).toBe(false);
+      expect(dispatch).not.toHaveBeenCalled();
+    });
+
+    it("allows a finished action to be restarted from onDidFinish", async () => {
+      actions.set([dialogAction("spec:repeat")]);
+      let repeated;
+      actions.onDidFinish(() => {
+        if (dispatch.calls.count() === 1) repeated = actions.run("spec:repeat");
+      });
+
+      await actions.run("spec:repeat");
+      await repeated;
+
+      expect(dispatch.calls.count()).toBe(2);
+      expect(actions.isPending()).toBe(false);
     });
 
     it("emits one start and finish event and rethrows dispatch errors", async () => {

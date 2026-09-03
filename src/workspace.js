@@ -1818,12 +1818,12 @@ module.exports = class Workspace extends Model {
    * @public
    * @status essential
    *
-   * Create a fuzzy-searchable list shown in a modal panel.
+   * Create a full fuzzy-searchable {@link SelectList} model.
    *
-   * The editor ships the implementation, so a package neither depends on it nor
-   * pins it, and a window holds exactly one copy of it. This is a factory, not a
-   * shared instance: every call returns a list that owns its own panel, so a
-   * renderer that throws takes down one package's list rather than all of them.
+   * Like {@link #buildTextEditor}, this returns the complete model rather than a
+   * UI facade. Its items, selection, query, source, actions, recents, pagination,
+   * element and panel are available through the model's named methods and events;
+   * only its Etch component and caches are private.
    *
    * The list owns its panel. Do not call {@link #addModalPanel} for it — `show()`,
    * `hide()` and `toggle()` manage a hidden-until-shown modal panel created on
@@ -1840,20 +1840,24 @@ module.exports = class Workspace extends Model {
    * back. `emptyMessage` stands in for the rows when there are none, and stands
    * down while a loading or status message is showing.
    *
-   * @param props - An `Object` describing the list. The two that matter most:
-   * @param props.items - An `Array` of the objects to show.
-   * @param props.elementForItem - A `Function` called as `(item, options)` to render a row. Return an `HTMLElement`, or an `Object` with `primary` and an optional `secondary`, `icon`, `className` and `trailing` to have a row built for you. `options` carries `selected`, `index`, `filterKey`, `visible`, a lazily computed `matchIndices`, and `highlight(text, indices)` — which wraps the matched characters of `text` in `span.character-match`, defaulting to this item's own indices.
+   * Data may be supplied as `items`, explicit `sections`, or an asynchronous
+   * `source`. `getItemId` defines stable identity, `search` defines matching and
+   * query parsing, and `renderItem(item, context)` returns an `HTMLElement`, a
+   * managed row view, or a standard row descriptor. `commands` and `actions`
+   * declare the operations available through Enter, Shift-F10 and right click.
+   *
+   * @param options - The initial SelectList options.
    * @returns {SelectList}
    */
-  buildSelectList(props) {
-    return this.modalDialogFactory.buildSelectList(props);
+  buildSelectList(options) {
+    return this.modalDialogFactory.buildSelectList(options);
   }
 
   /**
    * @public
    * @status essential
    *
-   * Create a modal dialog whose query editor is the value.
+   * Create a full {@link InputDialog} model whose query editor is the value.
    *
    * The base of {@link #buildSelectList} without the list: a modal panel with a mini
    * editor, for prompts and save dialogs where the typed text is the answer.
@@ -1868,11 +1872,15 @@ module.exports = class Workspace extends Model {
    * `emptyMessage`: a validation failure is `status: {type: 'error', message}`,
    * and the dialog clears it on the next keystroke by itself.
    *
-   * @param props - An `Object` describing the dialog, including `didConfirm(query)`, `didCancel()` and `didChangeQuery(query)`.
+   * The model owns its element and panel, publishes lifecycle/query events, and
+   * supports the same declared commands, actions, messages and asynchronous
+   * source contract as SelectList. Confirmation is normally a primary action.
+   *
+   * @param options - The initial InputDialog options.
    * @returns {InputDialog}
    */
-  buildInputDialog(props) {
-    return this.modalDialogFactory.buildInputDialog(props);
+  buildInputDialog(options) {
+    return this.modalDialogFactory.buildInputDialog(options);
   }
 
   /**
@@ -2418,6 +2426,7 @@ module.exports = class Workspace extends Model {
   // Called by Model superclass when destroyed
   destroyed() {
     this.closeStateStore();
+    void this.modalDialogFactory.destroy();
     this.paneContainers.center.destroy();
     this.paneContainers.left.destroy();
     this.paneContainers.right.destroy();

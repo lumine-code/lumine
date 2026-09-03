@@ -392,6 +392,41 @@ describe("CommandRegistry", () => {
     });
   });
 
+  describe("::getCommandPresentations({target})", () => {
+    it("scans commands and keybindings once for a complete frozen catalogue", () => {
+      const keymapManager = {
+        findKeyBindings: jasmine.createSpy("findKeyBindings").and.returnValue([
+          { command: "namespace:first", keystrokes: "ctrl-x" },
+          { command: "namespace:first", keystrokes: "ctrl-x" },
+          { command: "namespace:second", keystrokes: "alt-y" },
+        ]),
+      };
+      registry.destroy();
+      registry = new CommandRegistry({ keymapManager });
+      registry.attach(parent);
+      registry.add(grandchild, {
+        "namespace:first": { displayName: "First", didDispatch() {} },
+        "namespace:second": { displayName: "Second", didDispatch() {} },
+      });
+      spyOn(registry, "findCommands").and.callThrough();
+
+      const presentations = registry.getCommandPresentations({
+        target: grandchild,
+        bindingTarget: child,
+      });
+
+      expect(presentations).toEqual([
+        { name: "namespace:first", displayName: "First", keystrokes: ["ctrl-x"] },
+        { name: "namespace:second", displayName: "Second", keystrokes: ["alt-y"] },
+      ]);
+      expect(registry.findCommands).toHaveBeenCalledTimes(1);
+      expect(keymapManager.findKeyBindings).toHaveBeenCalledOnceWith({ target: child });
+      expect(Object.isFrozen(presentations)).toBe(true);
+      expect(presentations.every(Object.isFrozen)).toBe(true);
+      expect(presentations.every(({ keystrokes }) => Object.isFrozen(keystrokes))).toBe(true);
+    });
+  });
+
   describe("::dispatch(target, commandName)", () => {
     it("simulates invocation of the given command ", () => {
       let called = false;

@@ -33,10 +33,12 @@ module.exports = class ModalFlow {
       // longer be trusted, so degrade to a fresh single-entry trail. The panel
       // container hides whatever else is visible, with regular cancel
       // semantics — that modal really is being taken over.
+      const removed = this.stack;
       this.stack = [{ panel, label: this.labelFor(panel, label) }];
       panel.show();
       this.ensureSubscriptions();
       this.didChange();
+      this.endSteps(removed, "cancel");
       return;
     }
 
@@ -95,6 +97,7 @@ module.exports = class ModalFlow {
     if (!Number.isInteger(index) || index < 0 || index >= this.stack.length - 1) {
       return false;
     }
+    const removed = this.stack.slice(index + 1);
     this.transitioning = true;
     try {
       const { panel } = this.stack[this.stack.length - 1];
@@ -114,6 +117,7 @@ module.exports = class ModalFlow {
       this.transitioning = false;
     }
     this.didChange();
+    this.endSteps(removed, "back");
     return true;
   }
 
@@ -143,12 +147,18 @@ module.exports = class ModalFlow {
 
   clear() {
     if (this.stack.length === 0) return;
+    const removed = this.stack;
     this.stack = [];
     if (this.subscriptions) {
       this.subscriptions.dispose();
       this.subscriptions = null;
     }
     this.didChange();
+    this.endSteps(removed, "cancel");
+  }
+
+  endSteps(entries, reason) {
+    for (const { panel } of entries) panel.didEndModalFlow(reason);
   }
 
   // A step change swaps one panel for another while the modal surface

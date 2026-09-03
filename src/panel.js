@@ -95,6 +95,16 @@ module.exports = class Panel {
     return this.emitter.once("did-destroy", callback);
   }
 
+  /** @private */
+  onDidEndModalFlow(callback) {
+    return this.emitter.on("did-end-modal-flow", callback);
+  }
+
+  /** @private */
+  didEndModalFlow(reason) {
+    this.emitter.emit("did-end-modal-flow", reason);
+  }
+
   /**
    * @category Panel Details
    */

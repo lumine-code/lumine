@@ -294,6 +294,47 @@ module.exports = class CommandRegistry {
 
   /**
    * @public
+   * @status experimental
+   *
+   * Return presentation metadata for every effective command at a target.
+   * Commands and keybindings are each scanned once, making this the preferred
+   * path for command pickers and other complete catalogues.
+   *
+   * @param {Object} options
+   * @param {Element} options.target - Element from which commands would be dispatched.
+   * @param {Element} [options.bindingTarget=options.target] - Element where displayed keybindings resolve.
+   * @returns {Array<Object>} One frozen descriptor per command, each with frozen `keystrokes`.
+   */
+  getCommandPresentations({ target, bindingTarget = target }) {
+    const keystrokesByCommand = new Map();
+    if (this.keymapManager) {
+      for (const binding of this.keymapManager.findKeyBindings({ target: bindingTarget })) {
+        let state = keystrokesByCommand.get(binding.command);
+        if (!state) {
+          state = { seen: new Set(), keystrokes: [] };
+          keystrokesByCommand.set(binding.command, state);
+        }
+        if (state.seen.has(binding.keystrokes)) continue;
+        state.seen.add(binding.keystrokes);
+        state.keystrokes.push(binding.keystrokes);
+      }
+    }
+
+    const seenCommands = new Set();
+    const presentations = [];
+    for (const descriptor of this.findCommands({ target })) {
+      if (seenCommands.has(descriptor.name)) continue;
+      seenCommands.add(descriptor.name);
+      const keystrokes = Object.freeze([
+        ...(keystrokesByCommand.get(descriptor.name)?.keystrokes ?? []),
+      ]);
+      presentations.push(Object.freeze({ ...descriptor, keystrokes }));
+    }
+    return Object.freeze(presentations);
+  }
+
+  /**
+   * @public
    * @status public
    *
    * Simulate the dispatch of a command on a DOM node.

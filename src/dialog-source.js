@@ -87,6 +87,13 @@ module.exports = class DialogSource {
     return shouldReload ? this._startLoad("source-changed") : Promise.resolve();
   }
 
+  /** Validates a replacement source without changing the active one. */
+  validate(source) {
+    this._assertAlive();
+    normalizeSource(source);
+    return true;
+  }
+
   /** Starts an opening load immediately, regardless of the query debounce. */
   open() {
     this._assertAlive();
