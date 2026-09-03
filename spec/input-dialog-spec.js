@@ -535,6 +535,55 @@ describe("InputDialog", () => {
       }
     });
 
+    it("lets a breadcrumb navigate while the current dialog traps focus", async () => {
+      let rootCancellations = 0;
+      let stepCancellations = 0;
+      createHostedInputDialog({}, { crumb: "Root" });
+      host.onDidCancel(() => rootCancellations++);
+      const stepHost = lumine.workspace.addInputDialog({});
+      stepHost.onDidCancel(() => stepCancellations++);
+      try {
+        host.show();
+        stepHost.show({ crumb: "Step" });
+        const breadcrumbs = lumine.workspace.getElement().querySelector(".modal-breadcrumbs");
+        const rootCrumb = breadcrumbs.querySelector(".modal-breadcrumb:not(.current)");
+        const currentCrumb = breadcrumbs.querySelector(".modal-breadcrumb.current");
+
+        const currentMouseDown = new MouseEvent("mousedown", {
+          bubbles: true,
+          button: 0,
+          cancelable: true,
+        });
+        currentCrumb.dispatchEvent(currentMouseDown);
+        currentCrumb.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, button: 0, cancelable: true }),
+        );
+        await new Promise(requestAnimationFrame);
+
+        expect(currentMouseDown.defaultPrevented).toBe(true);
+        expect(stepHost.isVisible()).toBe(true);
+        expect(lumine.workspace.getModalTrail()).toEqual(["Root", "Step"]);
+        expect(rootCancellations).toBe(0);
+        expect(stepCancellations).toBe(0);
+
+        rootCrumb.dispatchEvent(
+          new MouseEvent("mousedown", { bubbles: true, button: 0, cancelable: true }),
+        );
+        rootCrumb.dispatchEvent(
+          new MouseEvent("click", { bubbles: true, button: 0, cancelable: true }),
+        );
+        await new Promise(requestAnimationFrame);
+
+        expect(host.isVisible()).toBe(true);
+        expect(stepHost.isVisible()).toBe(false);
+        expect(lumine.workspace.getModalTrail()).toEqual(["Root"]);
+        expect(rootCancellations).toBe(0);
+        expect(stepCancellations).toBe(0);
+      } finally {
+        await stepHost.destroy();
+      }
+    });
+
     it("offers its declared actions through the shared action service", async () => {
       createHostedInputDialog(
         {
@@ -1099,6 +1148,97 @@ describe("InputDialog", () => {
   });
 
   describe("focus policy", () => {
+    function panelRect() {
+      return {
+        x: 100,
+        y: 50,
+        left: 100,
+        top: 50,
+        right: 300,
+        bottom: 150,
+        width: 200,
+        height: 100,
+        toJSON() {},
+      };
+    }
+
+    it("lets an outside mousedown through and cancels after the event", async () => {
+      spyOn(document, "hasFocus").and.returnValue(true);
+      const cancellations = [];
+      const click = jasmine.createSpy("click");
+      const outside = document.createElement("div");
+      outside.addEventListener("click", click);
+      lumine.workspace.getElement().appendChild(outside);
+      createHostedInputDialog({});
+      host.onDidCancel(({ reason }) => cancellations.push(reason));
+      host.show();
+      const event = new MouseEvent("mousedown", {
+        bubbles: true,
+        button: 0,
+        cancelable: true,
+      });
+
+      outside.dispatchEvent(event);
+      outside.dispatchEvent(
+        new MouseEvent("click", { bubbles: true, button: 0, cancelable: true }),
+      );
+      await new Promise(requestAnimationFrame);
+
+      expect(event.defaultPrevented).toBe(false);
+      expect(click).toHaveBeenCalled();
+      expect(cancellations).toEqual(["click-outside"]);
+      expect(host.isVisible()).toBe(false);
+      outside.remove();
+    });
+
+    it("treats the panel's backdrop pseudo-element as an outside click", async () => {
+      spyOn(document, "hasFocus").and.returnValue(true);
+      const cancellations = [];
+      createHostedInputDialog({});
+      host.onDidCancel(({ reason }) => cancellations.push(reason));
+      host.show();
+      const panelElement = host.getPanel().getElement();
+      spyOn(panelElement, "getBoundingClientRect").and.returnValue(panelRect());
+
+      panelElement.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          button: 0,
+          cancelable: true,
+          clientX: 20,
+          clientY: 200,
+        }),
+      );
+      await new Promise(requestAnimationFrame);
+
+      expect(cancellations).toEqual(["click-outside"]);
+      expect(host.isVisible()).toBe(false);
+    });
+
+    it("keeps a panel pseudo-element click inside the panel rectangle", async () => {
+      spyOn(document, "hasFocus").and.returnValue(true);
+      const cancellations = [];
+      createHostedInputDialog({});
+      host.onDidCancel(({ reason }) => cancellations.push(reason));
+      host.show();
+      const panelElement = host.getPanel().getElement();
+      spyOn(panelElement, "getBoundingClientRect").and.returnValue(panelRect());
+
+      panelElement.dispatchEvent(
+        new MouseEvent("mousedown", {
+          bubbles: true,
+          button: 0,
+          cancelable: true,
+          clientX: 150,
+          clientY: 100,
+        }),
+      );
+      await new Promise(requestAnimationFrame);
+
+      expect(cancellations).toEqual([]);
+      expect(host.isVisible()).toBe(true);
+    });
+
     it("keeps focus in the query editor when pressing non-interactive content", () => {
       const content = document.createElement("div");
       content.textContent = "static";

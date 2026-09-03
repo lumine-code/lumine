@@ -126,6 +126,12 @@ module.exports = class ModalFlow {
     return this.stack.map(({ label }) => label);
   }
 
+  // The breadcrumb strip is rendered outside every panel, but remains part of
+  // the current modal surface for focus and click-away purposes.
+  containsElement(element) {
+    return Boolean(element && this.strip?.contains(element));
+  }
+
   onDidChangeTrail(callback) {
     return this.emitter.on("did-change-trail", callback);
   }
@@ -262,10 +268,6 @@ module.exports = class ModalFlow {
         crumb.classList.add("current");
         crumb.setAttribute("aria-current", "step");
       } else {
-        // preventDefault keeps the click from stealing focus off the modal —
-        // a focus loss would cancel the dialog and destroy the very trail the
-        // crumb navigates.
-        crumb.addEventListener("mousedown", (event) => event.preventDefault());
         crumb.addEventListener("click", () => this.popTo(index));
       }
       strip.appendChild(crumb);
@@ -279,6 +281,10 @@ module.exports = class ModalFlow {
       this.strip = document.createElement("div");
       this.strip.classList.add("modal-breadcrumbs");
       this.strip.style.display = "none";
+      // Every crumb belongs to the active modal surface, including the current
+      // (non-clickable) one. Keep a press anywhere on the strip from blurring
+      // the dialog before a previous crumb can navigate the flow.
+      this.strip.addEventListener("mousedown", (event) => event.preventDefault());
       window.addEventListener("resize", this.positionStrip);
     }
     if (!this.strip.isConnected) {

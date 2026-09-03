@@ -28,6 +28,8 @@ class InputDialogHost {
     this.panelDisposables = null;
     this.panel = null;
     this.focusTrap = null;
+    this.pointerPolicyActive = false;
+    this.boundPointerDown = (event) => this.didPointerDown(event);
     this.destroyed = false;
     this.destroyPromise = null;
     this.hidingSelf = false;
@@ -419,7 +421,7 @@ class InputDialogHost {
     };
     attempt(() => this.services.actionService?.release(this));
     attempt(() => this.finalizeSession("host-destroyed"));
-    attempt(() => this.focusTrap?.deactivate());
+    attempt(() => this.deactivateFocusPolicy());
     attempt(() => this.disposables.dispose());
     attempt(() => this.panelDisposables?.dispose());
     this.panelDisposables = null;
@@ -466,7 +468,7 @@ class InputDialogHost {
   }
 
   willHidePanel() {
-    this.focusTrap?.deactivate();
+    this.deactivateFocusPolicy();
   }
 
   didShowPanel(generation) {
@@ -547,6 +549,8 @@ class InputDialogHost {
       fallbackFocus: element,
       initialFocus: this.model.getQueryEditor().getElement(),
       escapeDeactivates: false,
+      clickOutsideDeactivates: (event) => this.isPointerOutsidePanelSurface(event),
+      allowOutsideClick: (event) => this.isModalFlowTarget(event.target),
       delayInitialFocus: false,
       returnFocusOnDeactivate: false,
     });
@@ -561,13 +565,26 @@ class InputDialogHost {
           element.removeEventListener("mousedown", didMouseDown);
         },
       },
-      { dispose: () => this.focusTrap?.deactivate() },
+      { dispose: () => this.deactivateFocusPolicy() },
     );
   }
 
   activateFocusTrap() {
+    if (!this.pointerPolicyActive) {
+      document.addEventListener("mousedown", this.boundPointerDown, true);
+      document.addEventListener("touchstart", this.boundPointerDown, true);
+      this.pointerPolicyActive = true;
+    }
     this.focusTrap?.activate();
     if (this.model.isActionPending()) this.focusTrap?.pause();
+  }
+
+  deactivateFocusPolicy() {
+    this.focusTrap?.deactivate();
+    if (!this.pointerPolicyActive) return;
+    document.removeEventListener("mousedown", this.boundPointerDown, true);
+    document.removeEventListener("touchstart", this.boundPointerDown, true);
+    this.pointerPolicyActive = false;
   }
 
   pauseFocusTrap() {
@@ -596,10 +613,54 @@ class InputDialogHost {
   }
 
   didMouseDownOnElement(event) {
+    // ::before paints the card and ::after paints its full-window backdrop,
+    // but events from both pseudo-elements target the panel itself. The
+    // document-level hit test distinguishes them by the panel's border box.
+    if (this.isPointerOutsidePanelSurface(event)) return;
     const queryElement = this.model.getQueryEditor().getElement();
     if (queryElement.contains(event.target) || this.isInteractiveTarget(event.target)) return;
     event.preventDefault();
     queryElement.focus();
+  }
+
+  didPointerDown(event) {
+    if (!this.isVisible() || !this.isPointerOutsidePanelSurface(event)) return;
+    const generation = this.panelLifecycleGeneration;
+    // Let the click reach the surface behind the backdrop before dismissing
+    // the dialog. A modal-flow transition caused by that click changes the
+    // generation and makes this callback a no-op.
+    requestAnimationFrame(() => {
+      if (!this.isCurrentPanelLifecycle(generation, true)) return;
+      this.cancel("click-outside");
+    });
+  }
+
+  isPointerOutsidePanelSurface(event) {
+    if (this.isModalFlowTarget(event.target)) return false;
+    const element = this.panel?.getElement();
+    if (!element || !element.contains(event.target)) return true;
+    if (event.target !== element) return false;
+
+    const point = event.touches?.[0] ?? event.changedTouches?.[0] ?? event;
+    const rect = element.getBoundingClientRect();
+    if (
+      !Number.isFinite(point.clientX) ||
+      !Number.isFinite(point.clientY) ||
+      rect.width <= 0 ||
+      rect.height <= 0
+    ) {
+      return false;
+    }
+    return (
+      point.clientX < rect.left ||
+      point.clientX > rect.right ||
+      point.clientY < rect.top ||
+      point.clientY > rect.bottom
+    );
+  }
+
+  isModalFlowTarget(node) {
+    return Boolean(this.panel?.flowKeeper?.containsElement(node));
   }
 
   isInteractiveTarget(node) {
