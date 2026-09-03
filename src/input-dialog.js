@@ -294,6 +294,11 @@ class InputDialog {
     this.queryEditor.setText("");
   }
 
+  /** @private */
+  resetForNewSession({ resetQuery = true } = {}) {
+    if (resetQuery) this.reset();
+  }
+
   /**
    * @public
    * @status experimental

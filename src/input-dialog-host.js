@@ -481,7 +481,9 @@ class InputDialogHost {
       this.model.didChangeHostVisible(true);
       this.emitter.emit("did-change-visible", { host: this, model: this.model, visible: true });
       if (!this.isCurrentPanelLifecycle(generation, true)) return;
-      if (!resuming && !this.openingQueryProvided) this.model.reset();
+      if (!resuming) {
+        this.model.resetForNewSession({ resetQuery: !this.openingQueryProvided });
+      }
       if (!this.isCurrentPanelLifecycle(generation, true)) return;
       this.model.refreshItemActionsIndicator();
       if (this.selectOpeningQuery !== false) this.model.selectQuery();

@@ -978,6 +978,116 @@ describe("SelectList", () => {
       expect(host.isVisible()).toBe(true);
     });
 
+    it("resets selection to the first item on every fresh show", async () => {
+      view = textItemView();
+      addHost().show();
+      await view.selectLast();
+      expect(view.getSelectedItem()).toBe("three");
+      host.hide();
+
+      host.show();
+
+      expect(view.getQuery()).toBe("");
+      expect(view.getSelectedItem()).toBe("one");
+      expect(view.getSelectedIndex()).toBe(0);
+    });
+
+    it("resets selection when a fresh show supplies the same query", async () => {
+      view = textItemView();
+      addHost().show({ query: "t" });
+      await view.selectLast();
+      expect(view.getSelectedItem()).toBe("three");
+      host.hide();
+
+      host.show({ query: "t" });
+
+      expect(view.getSelectedItem()).toBe("two");
+      expect(view.getSelectedIndex()).toBe(0);
+    });
+
+    it("reapplies an explicit initial selection on a fresh show", async () => {
+      view = textItemView({ selection: { initial: { id: "two" } } });
+      addHost().show();
+      await view.selectLast();
+      expect(view.getSelectedItem()).toBe("three");
+      host.hide();
+
+      host.show();
+
+      expect(view.getSelectedItem()).toBe("two");
+    });
+
+    it("keeps an explicitly empty initial selection on a fresh show", async () => {
+      view = textItemView({ selection: { allowEmpty: true, initial: { mode: "none" } } });
+      addHost().show();
+      await view.selectLast();
+      expect(view.getSelectedItem()).toBe("three");
+      host.hide();
+
+      host.show();
+
+      expect(view.getSelectedItem()).toBeNull();
+    });
+
+    it("selects the first item from a reordered snapshot source on fresh show", async () => {
+      const snapshots = [
+        ["one", "two", "three"],
+        ["three", "one", "two"],
+      ];
+      view = textItemView({
+        source: {
+          mode: "snapshot",
+          load: () => Promise.resolve(snapshots.shift()),
+        },
+      });
+      addHost();
+      await host.show();
+      await view.selectItemById("two");
+      host.hide();
+
+      await host.show();
+
+      expect(view.getItems()).toEqual(["three", "one", "two"]);
+      expect(view.getSelectedItem()).toBe("three");
+      expect(view.getSelectedIndex()).toBe(0);
+    });
+
+    it("lets a source publication override the fresh-session selection", async () => {
+      view = textItemView({
+        source: {
+          mode: "snapshot",
+          load: () => ({
+            items: ["three", "two", "one"],
+            selection: { initial: { id: "two" } },
+          }),
+        },
+      });
+      addHost();
+
+      await host.show();
+
+      expect(view.getItems()).toEqual(["three", "two", "one"]);
+      expect(view.getSelectedItem()).toBe("two");
+    });
+
+    it("waits through an empty progressive publication for the first source item", async () => {
+      view = textItemView({
+        source: {
+          mode: "snapshot",
+          async load({ publish }) {
+            await publish([]);
+            return ["three", "one", "two"];
+          },
+        },
+      });
+      addHost();
+
+      await host.show();
+
+      expect(view.getSelectedItem()).toBe("three");
+      expect(view.getSelectedIndex()).toBe(0);
+    });
+
     it("creates the panel hidden on getPanel() and reuses it on show()", () => {
       view = textItemView();
       addHost();
@@ -996,7 +1106,7 @@ describe("SelectList", () => {
       expect(host.getPanel().getItem()).toBe(view);
     });
 
-    it("emits a fresh-open event whenever a hidden panel is shown", () => {
+    it("emits a fresh-open event whenever a hidden panel is shown", async () => {
       let openCalls = 0;
       view = textItemView();
       addHost().onDidOpen(() => openCalls++);
@@ -1008,9 +1118,12 @@ describe("SelectList", () => {
       expect(openCalls).toBe(1);
 
       // The panel being shown from outside the model is still a fresh open.
+      await view.selectLast();
+      expect(view.getSelectedItem()).toBe("three");
       host.hide();
       host.getPanel().show();
       expect(openCalls).toBe(2);
+      expect(view.getSelectedItem()).toBe("one");
     });
 
     it("destroys its panel when the host is destroyed", async () => {
@@ -1574,6 +1687,29 @@ describe("SelectList", () => {
       // chosen under is still there.
       expect(host.isVisible()).toBe(true);
       expect(view.getQuery()).toBe("tw");
+    });
+
+    it("keeps selection across a modal-flow resume", async () => {
+      view = textItemView({
+        commands: {
+          "spec:some-action": { description: "Do something.", didDispatch() {} },
+        },
+        actions: [
+          {
+            command: "spec:some-action",
+            context: "item",
+            disposition: "stay",
+          },
+        ],
+      });
+      addHost({ crumb: "Files" }).show();
+      await view.selectLast();
+
+      await host.showActions();
+      lumine.workspace.popModal();
+
+      expect(host.isVisible()).toBe(true);
+      expect(view.getSelectedItem()).toBe("three");
     });
 
     it("does not carry an abandoned suspension into the next open", async () => {

@@ -38,6 +38,8 @@ class SelectList extends InputDialog {
   }
 
   initializeState() {
+    this.sessionSelectionGeneration = 0;
+    this.pendingSourceSelectionGeneration = null;
     this.showMoreSelected = false;
     this.listBoxId = `select-list-${nextSelectListId++}`;
     this.itemDomIds = new Map();
@@ -279,6 +281,94 @@ class SelectList extends InputDialog {
   didChangeHostVisible(visible) {
     super.didChangeHostVisible(visible);
     this.updateComboboxAttributes();
+  }
+
+  /** @private */
+  resetForNewSession(options) {
+    const generation = ++this.sessionSelectionGeneration;
+    this.pendingSourceSelectionGeneration = this.getSource() ? generation : null;
+    super.resetForNewSession(options);
+    const previousSelection = this.selectionSnapshot();
+    const initialSelection = this.initialSelectionForSession();
+    this.model.resetDisplayLimit();
+    this.model.update({ initialSelection });
+    this.showMoreSelected = false;
+    this.resetRenderedItems();
+    this.syncModelState();
+    this.publishSelectionChange(previousSelection, "session");
+    this.refreshItemActionsIndicator();
+    void this.updateComponent();
+  }
+
+  initialSelectionForSession() {
+    const selection = this.normalizeSelection(this.props.selection);
+    return selection.initial ?? { mode: selection.allowEmpty ? "none" : "first" };
+  }
+
+  applySourcePublication(publication) {
+    const generation = this.pendingSourceSelectionGeneration;
+    if (generation == null) return super.applySourcePublication(publication);
+
+    if (Array.isArray(publication)) {
+      if (publication.length === 0) return super.applySourcePublication(publication);
+      this.pendingSourceSelectionGeneration = null;
+      return this.setItems(publication, { selection: this.initialSelectionForSession() });
+    }
+
+    const hasItems = Array.isArray(publication?.items);
+    const hasSections = Array.isArray(publication?.sections);
+    const hasExplicitSelection =
+      Object.prototype.hasOwnProperty.call(publication ?? {}, "selection") ||
+      publication?.itemUpdateOptions?.selection != null;
+    const hasNonEmptyItems =
+      (hasItems && publication.items.length > 0) ||
+      (hasSections && publication.sections.some((section) => section?.items?.length > 0));
+    if ((!hasItems && !hasSections) || (!hasExplicitSelection && !hasNonEmptyItems)) {
+      return super.applySourcePublication(publication);
+    }
+
+    this.pendingSourceSelectionGeneration = null;
+    if (hasExplicitSelection) return super.applySourcePublication(publication);
+    return super.applySourcePublication({
+      ...publication,
+      itemUpdateOptions: {
+        ...(publication.itemUpdateOptions ?? {}),
+        selection: this.initialSelectionForSession(),
+      },
+    });
+  }
+
+  openSource() {
+    const generation = this.pendingSourceSelectionGeneration;
+    let operation;
+    try {
+      operation = super.openSource();
+    } catch (error) {
+      if (this.pendingSourceSelectionGeneration === generation) {
+        this.pendingSourceSelectionGeneration = null;
+      }
+      throw error;
+    }
+    const finish = () => {
+      if (this.pendingSourceSelectionGeneration === generation) {
+        this.pendingSourceSelectionGeneration = null;
+      }
+    };
+    return Promise.resolve(operation).then(
+      (value) => {
+        finish();
+        return value;
+      },
+      (error) => {
+        finish();
+        throw error;
+      },
+    );
+  }
+
+  cancelSource(reason) {
+    this.pendingSourceSelectionGeneration = null;
+    return super.cancelSource(reason);
   }
 
   /**

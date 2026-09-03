@@ -1868,6 +1868,11 @@ module.exports = class Workspace extends Model {
    * panel item is the model. A custom `item` must expose a view containing the
    * model element.
    *
+   * Every fresh show clears the query unless one is supplied and reapplies the
+   * list's `selection.initial`, defaulting to the first result unless empty
+   * selection is enabled. Returning from a modal-flow step is a resume and
+   * preserves both query and selection.
+   *
    * @param {SelectList|Object} [modelOrOptions] - A detached model or its construction options.
    * @param {Object} [hostOptions] - Options belonging to the modal host only.
    * @param {*} [hostOptions.item] - Panel item; defaults to the model.
