@@ -234,6 +234,7 @@ module.exports = class TextEditorComponent {
       highlights: [],
       cursors: new Map(),
     };
+    this.renderedBlockDecorationElements = new Set();
     this.textDecorationsByMarker = new Map();
     this.textDecorationBoundaries = [];
     this.pendingScrollTopRow = this.props.initialScrollTopRow;
@@ -1509,6 +1510,9 @@ module.exports = class TextEditorComponent {
   }
 
   queryDecorationsToRender() {
+    const previouslyRenderedBlockDecorationElements = this.renderedBlockDecorationElements;
+    this.renderedBlockDecorationElements = new Set();
+    this.blockDecorationSelectionRanges = null;
     this.decorationsToRender.lineNumbers.clear();
     this.decorationsToRender.lines = [];
     this.decorationsToRender.overlays.length = 0;
@@ -1534,6 +1538,12 @@ module.exports = class TextEditorComponent {
         this.addDecorationToRender(decoration.type, decoration, marker, screenRange, reversed);
       }
     });
+
+    for (const element of previouslyRenderedBlockDecorationElements) {
+      if (!this.renderedBlockDecorationElements.has(element)) {
+        element.removeAttribute("data-block-decoration-selected");
+      }
+    }
 
     // Overlays contend for the sides of a line, so the order they are resolved
     // in has to be decided rather than inherited: the markers arrive in spatial
@@ -1743,6 +1753,12 @@ module.exports = class TextEditorComponent {
 
     const tileStartRow = this.tileStartRowForRow(row);
     const screenLine = this.renderedScreenLines[row - this.getRenderedStartRow()];
+    const element = TextEditor.viewForItem(decoration.item);
+    element.toggleAttribute(
+      "data-block-decoration-selected",
+      this.isBlockDecorationSelected(decoration, row, screenLine.lineText.length),
+    );
+    this.renderedBlockDecorationElements.add(element);
 
     let decorationsByScreenLine = this.decorationsToRender.blocks.get(tileStartRow);
     if (!decorationsByScreenLine) {
@@ -1760,6 +1776,61 @@ module.exports = class TextEditorComponent {
     // Order block decorations by increasing values of their "order" property. Break ties with "id", which mirrors
     // their creation sequence.
     decorations.sort((a, b) => (a.order !== b.order ? a.order - b.order : a.id - b.id));
+  }
+
+  isBlockDecorationSelected(decoration, screenRow, lineLength) {
+    const after = decoration.position === "after";
+    const boundary = Point(screenRow, after ? lineLength : 0);
+    const ranges = this.getBlockDecorationSelectionRanges();
+
+    // A "before" block is immediately before the row-start position, whereas
+    // an "after" block is immediately after the row-end position. The strict
+    // side of each comparison keeps a selection beginning or ending on the
+    // far side of that block from claiming it.
+    let low = 0;
+    let high = ranges.length;
+    while (low < high) {
+      const middle = (low + high) >>> 1;
+      const comparison = ranges[middle].start.compare(boundary);
+      if (comparison < 0 || (after && comparison === 0)) {
+        low = middle + 1;
+      } else {
+        high = middle;
+      }
+    }
+
+    const range = ranges[low - 1];
+    if (!range) return false;
+    const endComparison = range.end.compare(boundary);
+    return endComparison > 0 || (!after && endComparison === 0);
+  }
+
+  getBlockDecorationSelectionRanges() {
+    if (this.blockDecorationSelectionRanges) return this.blockDecorationSelectionRanges;
+
+    const ranges = [];
+    for (const selection of this.props.model.getSelections()) {
+      if (!selection.isEmpty()) ranges.push(selection.getScreenRange());
+    }
+    ranges.sort(
+      (rangeA, rangeB) =>
+        rangeA.start.compare(rangeB.start) || rangeA.end.compare(rangeB.end),
+    );
+
+    const mergedRanges = [];
+    for (const range of ranges) {
+      const previousRange = mergedRanges[mergedRanges.length - 1];
+      if (previousRange && range.start.compare(previousRange.end) <= 0) {
+        if (range.end.compare(previousRange.end) > 0) {
+          mergedRanges[mergedRanges.length - 1] = new Range(previousRange.start, range.end);
+        }
+      } else {
+        mergedRanges.push(range);
+      }
+    }
+
+    this.blockDecorationSelectionRanges = mergedRanges;
+    return mergedRanges;
   }
 
   addTextDecorationToRender(decoration, screenRange, marker) {
@@ -4245,6 +4316,7 @@ module.exports = class TextEditorComponent {
         const isValid = marker.isValid();
         if (wasValid && !isValid) {
           wasValid = false;
+          element.removeAttribute("data-block-decoration-selected");
           this.blockDecorationsToMeasure.delete(decoration);
           this.heightsByBlockDecoration.delete(decoration);
           this.blockDecorationsByElement.delete(element);
@@ -4265,6 +4337,7 @@ module.exports = class TextEditorComponent {
       const didDestroyDisposable = decoration.onDidDestroy(() => {
         didUpdateDisposable.dispose();
         didDestroyDisposable.dispose();
+        element.removeAttribute("data-block-decoration-selected");
 
         if (wasValid) {
           wasValid = false;

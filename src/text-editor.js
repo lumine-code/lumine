@@ -3232,6 +3232,8 @@ module.exports = class TextEditor {
    * * __block__: Positions the view associated with the given item before or
    *     after the row of the given {@link DisplayMarker}, depending on the `position` property.
    *     Block decorations at the same screen row are ordered by their `order` property.
+   *     A block item takes the editor's selection background whenever its visual position
+   *     before or after that row lies within a non-empty selection.
    * * __cursor__: Render a cursor at the head of the {@link DisplayMarker}. If multiple cursor decorations
    *     are created for the same marker, their class strings and style objects are combined
    *     into a single cursor. This decoration type may be used to style existing cursors

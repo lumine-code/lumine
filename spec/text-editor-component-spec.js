@@ -4301,6 +4301,195 @@ describe("TextEditorComponent", () => {
   });
 
   describe("block decorations", () => {
+    describe("selection", () => {
+      it("selects decorations whose visual positions lie within a selection", async () => {
+        const { component, element, editor } = buildComponent({
+          text: "zero\none\ntwo\nthree\n",
+        });
+        element.style.setProperty("--syntax-selection-color", "rgb(1, 2, 3)");
+
+        const { item: beforeRow1 } = createBlockDecorationAtScreenRow(editor, 1, {
+          height: 10,
+          position: "before",
+        });
+        const { item: afterRow1 } = createBlockDecorationAtScreenRow(editor, 1, {
+          height: 10,
+          position: "after",
+        });
+        const { item: beforeRow2 } = createBlockDecorationAtScreenRow(editor, 2, {
+          height: 10,
+          position: "before",
+        });
+        const { item: afterRow2 } = createBlockDecorationAtScreenRow(editor, 2, {
+          height: 10,
+          position: "after",
+        });
+        afterRow1.style.backgroundColor = "rgb(4, 5, 6)";
+
+        editor.setSelectedBufferRange([
+          [1, 2],
+          [2, 1],
+        ]);
+        await component.getNextUpdatePromise();
+
+        expect(beforeRow1.hasAttribute("data-block-decoration-selected")).toBe(false);
+        expect(afterRow1.hasAttribute("data-block-decoration-selected")).toBe(true);
+        expect(beforeRow2.hasAttribute("data-block-decoration-selected")).toBe(true);
+        expect(afterRow2.hasAttribute("data-block-decoration-selected")).toBe(false);
+        expect(getComputedStyle(afterRow1).backgroundColor).toBe("rgb(1, 2, 3)");
+
+        editor.setSelectedBufferRange([
+          [2, 0],
+          [3, 0],
+        ]);
+        await component.getNextUpdatePromise();
+
+        expect(beforeRow1.hasAttribute("data-block-decoration-selected")).toBe(false);
+        expect(afterRow1.hasAttribute("data-block-decoration-selected")).toBe(false);
+        expect(beforeRow2.hasAttribute("data-block-decoration-selected")).toBe(false);
+        expect(afterRow2.hasAttribute("data-block-decoration-selected")).toBe(true);
+        expect(getComputedStyle(afterRow1).backgroundColor).toBe("rgb(4, 5, 6)");
+
+        editor.setCursorBufferPosition([2, 0]);
+        await component.getNextUpdatePromise();
+        expect(afterRow2.hasAttribute("data-block-decoration-selected")).toBe(false);
+      });
+
+      it("uses any selection and follows visual positions through soft wrapping", async () => {
+        const { component, editor } = buildComponent({
+          text: "abcdefghij\nsecond\nthird\n",
+          autoHeight: false,
+        });
+        const item = document.createElement("div");
+        item.style.height = "10px";
+        editor.decorateMarker(editor.markBufferPosition([0, Infinity]), {
+          type: "block",
+          position: "after",
+          item,
+        });
+
+        editor.setSoftWrapped(true);
+        await component.getNextUpdatePromise();
+        await setEditorWidthInCharacters(component, 4);
+        expect(editor.screenRangeForBufferRange([[0, 0], [0, Infinity]]).end.row).toBeGreaterThan(0);
+
+        editor.setSelectedBufferRanges([
+          [
+            [2, 1],
+            [2, 3],
+          ],
+          [
+            [0, 5],
+            [1, 1],
+          ],
+        ]);
+        await component.getNextUpdatePromise();
+        expect(item.hasAttribute("data-block-decoration-selected")).toBe(true);
+
+        editor.setSelectedBufferRange([
+          [0, 2],
+          [0, 8],
+        ]);
+        await component.getNextUpdatePromise();
+        expect(item.hasAttribute("data-block-decoration-selected")).toBe(false);
+      });
+
+      it("indexes selection ranges once per render regardless of the block count", async () => {
+        const { component, editor } = buildComponent({ text: "row\n".repeat(24) });
+        editor.setSelectedBufferRanges([
+          [
+            [1, 1],
+            [4, 1],
+          ],
+          [
+            [8, 1],
+            [12, 1],
+          ],
+        ]);
+        await component.getNextUpdatePromise();
+        const rangeSpies = editor
+          .getSelections()
+          .map((selection) => spyOn(selection, "getScreenRange").and.callThrough());
+
+        for (let row = 0; row < 20; row++) {
+          createBlockDecorationAtScreenRow(editor, row, {
+            height: 1,
+            position: row % 2 === 0 ? "before" : "after",
+          });
+        }
+        await component.getNextUpdatePromise();
+
+        for (const rangeSpy of rangeSpies) {
+          expect(rangeSpy).toHaveBeenCalledTimes(1);
+        }
+      });
+
+      it("respects document boundaries and cleans up on destruction", async () => {
+        const { component, editor } = buildComponent({ text: "one\ntwo" });
+        const beforeFirstItem = document.createElement("div");
+        beforeFirstItem.style.height = "10px";
+        editor.decorateMarker(editor.markBufferPosition([0, 0]), {
+          type: "block",
+          position: "before",
+          item: beforeFirstItem,
+        });
+        const afterLastItem = document.createElement("div");
+        afterLastItem.style.height = "10px";
+        editor.decorateMarker(editor.markBufferPosition([1, Infinity]), {
+          type: "block",
+          position: "after",
+          item: afterLastItem,
+        });
+
+        editor.setSelectedBufferRange([
+          [0, 0],
+          [1, Infinity],
+        ]);
+        await component.getNextUpdatePromise();
+        expect(beforeFirstItem.hasAttribute("data-block-decoration-selected")).toBe(false);
+        expect(afterLastItem.hasAttribute("data-block-decoration-selected")).toBe(false);
+
+        const selectedItem = document.createElement("div");
+        selectedItem.style.height = "10px";
+        const selectedDecoration = editor.decorateMarker(editor.markBufferPosition([0, Infinity]), {
+          type: "block",
+          position: "after",
+          item: selectedItem,
+        });
+        editor.setSelectedBufferRange([
+          [0, 1],
+          [1, 0],
+        ]);
+        await component.getNextUpdatePromise();
+        expect(selectedItem.hasAttribute("data-block-decoration-selected")).toBe(true);
+
+        selectedDecoration.destroy();
+        expect(selectedItem.hasAttribute("data-block-decoration-selected")).toBe(false);
+      });
+
+      it("clears selection state when a decoration leaves the rendered rows", async () => {
+        const { component, element, editor } = buildComponent({
+          text: "row\n".repeat(20),
+          autoHeight: false,
+          rowsPerTile: 2,
+        });
+        await setEditorHeightInLines(component, 2);
+        const { item } = createBlockDecorationAtScreenRow(editor, 1, {
+          height: 10,
+          position: "after",
+        });
+        editor.setSelectedBufferRange(
+          editor.bufferRangeForBufferRow(1, { includeNewline: true }),
+        );
+        await component.getNextUpdatePromise();
+        expect(item.hasAttribute("data-block-decoration-selected")).toBe(true);
+
+        await setScrollTop(component, 12 * component.getLineHeight());
+        expect(element.contains(item)).toBe(false);
+        expect(item.hasAttribute("data-block-decoration-selected")).toBe(false);
+      });
+    });
+
     it("renders visible block decorations between the appropriate lines, refreshing and measuring them as needed", async () => {
       const editor = buildEditor({ autoHeight: false });
       const { item: item1, decoration: decoration1 } = createBlockDecorationAtScreenRow(editor, 0, {

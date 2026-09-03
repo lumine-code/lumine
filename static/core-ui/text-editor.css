@@ -136,6 +136,10 @@ lumine-text-editor {
     background-color: var(--syntax-selection-color);
   }
 
+  [data-block-decoration-selected] {
+    background-color: var(--syntax-selection-color) !important;
+  }
+
   .line {
     white-space: pre;
     contain: layout paint style; /* contain_except_size */
