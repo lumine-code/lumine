@@ -23,10 +23,15 @@ for (const level of ["log", "warn", "error"]) {
 }
 
 process.on("uncaughtException", (error) => {
+  const exit = () => process.exit(1); // eslint-disable-line n/no-process-exit
   try {
-    process.send({ event: "console:error", args: [error.message, error.stack] });
+    if (process.connected) {
+      process.send({ event: "console:error", args: [error.message, error.stack] }, exit);
+    } else {
+      exit();
+    }
   } catch {
-    // Nothing more we can do from a dying worker.
+    exit();
   }
 });
 

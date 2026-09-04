@@ -1565,14 +1565,11 @@ module.exports = class RepositoryRegistry {
 
   reportRefreshFailure(repository, error) {
     if (repository.isDestroyed?.()) return;
-    // GitRepository owns the once-per-repository reporting policy for native
-    // snapshot failures. Route post-operation failures through the same gate so
-    // simultaneous status+refs refreshes cannot produce duplicate warnings.
-    if (
-      String(error?.code || "").startsWith("ERR_GIT_NATIVE_") &&
-      typeof repository.reportNativeSnapshotError === "function"
-    ) {
-      repository.reportNativeSnapshotError(error);
+    // GitRepository owns the backend-neutral, once-per-repository reporting
+    // policy. Route post-operation failures through the same gate so a hybrid
+    // status+refs refresh cannot produce duplicate warnings.
+    if (typeof repository.reportBackgroundSnapshotError === "function") {
+      repository.reportBackgroundSnapshotError(error);
       return;
     }
     // The Git command has already succeeded. Never report it as failed (and

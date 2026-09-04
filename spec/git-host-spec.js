@@ -1,5 +1,6 @@
 const EventEmitter = require("events");
 const GitHost = require("../src/git-host");
+const { GIT_HOST_PROTOCOL_VERSION } = require("../src/git-host-protocol");
 
 // A stand-in for the forked child process so the transport (id correlation,
 // crash-restart, cancellation, error revival) can be driven deterministically
@@ -28,11 +29,18 @@ describe("GitHost transport", () => {
   let host;
   let children;
   const current = () => children[children.length - 1];
+  const ready = () =>
+    current().emit("message", {
+      event: "git:ready",
+      protocolVersion: GIT_HOST_PROTOCOL_VERSION,
+      backends: { cli: { state: "ready" }, "git-utils": { state: "uninitialized" } },
+    });
 
   beforeEach(() => {
     GitHost.reset();
     children = [];
     GitHost.setForkModeForTesting(true);
+    GitHost.setBackendPolicyForTesting(null);
     GitHost.setChildFactoryForTesting(() => {
       const child = new FakeChild();
       children.push(child);
@@ -44,29 +52,30 @@ describe("GitHost transport", () => {
   afterEach(() => {
     GitHost.setForkModeForTesting(null);
     GitHost.setChildFactoryForTesting(null);
+    GitHost.setBackendPolicyForTesting(null);
     GitHost.reset();
   });
 
   it("forks lazily, awaits git:ready, and correlates a reply to its request", async () => {
-    const pending = host.request("status", { workingDirectory: "/repo", options: {} });
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
     expect(children.length).toBe(1);
 
-    current().emit("message", { event: "git:ready" });
+    ready();
     await flush();
 
     expect(current().sent.length).toBe(1);
     const sent = current().sent[0];
     expect(sent.event).toBe("git:request");
-    expect(sent.op).toBe("status");
-    expect(sent.payload).toEqual({ workingDirectory: "/repo", options: {} });
+    expect(sent.op).toBe("snapshot");
+    expect(sent.payload).toEqual({ descriptor: { gitDirectory: "/repo/.git" } });
 
     current().emit("message", { event: "git:reply", id: sent.id, result: "PORCELAIN" });
     expect(await pending).toBe("PORCELAIN");
   });
 
   it("revives a reply error with its code/exitCode/stderr", async () => {
-    const pending = host.request("diffPatch", { workingDirectory: "/repo" });
-    current().emit("message", { event: "git:ready" });
+    const pending = host.request("diff", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -87,9 +96,9 @@ describe("GitHost transport", () => {
     expect(error.stderr).toBe("bad");
   });
 
-  it("preserves native libgit2 error metadata across IPC", async () => {
+  it("normalizes native codes while preserving libgit2 metadata across IPC", async () => {
     const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    current().emit("message", { event: "git:ready" });
+    ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -111,16 +120,41 @@ describe("GitHost transport", () => {
     } catch (caught) {
       error = caught;
     }
+    expect(error.code).toBe("ERR_GIT_SNAPSHOT");
+    expect(error.backend).toBe("git-utils");
+    expect(error.backendCode).toBe("ERR_GIT_NATIVE_SNAPSHOT");
     expect(error.operation).toBe("snapshot");
     expect(error.libgit2Code).toBe(-1);
     expect(error.libgit2Class).toBe(10);
     expect(error.libgit2Message).toBe("index corrupt");
   });
 
-  it("keeps native initialization failure non-retriable without re-forking", async () => {
-    const first = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+  it("records lazy backend readiness for diagnostics", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
     current().emit("message", {
-      event: "git:init-error",
+      event: "git:backend-status",
+      backend: "git-utils",
+      state: "ready",
+      versions: { gitUtils: "10.0.0", libgit2: "1.9.6", napi: 10 },
+    });
+    expect(host.backendStatus["git-utils"].state).toBe("ready");
+    expect(host.nativeVersions.libgit2).toBe("1.9.6");
+
+    const { id } = current().sent[0];
+    current().emit("message", { event: "git:reply", id, result: {} });
+    await pending;
+  });
+
+  it("keeps CLI operations usable after a native initialization failure", async () => {
+    const first = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
+    const firstRequest = current().sent[0];
+    current().emit("message", {
+      event: "git:reply",
+      id: firstRequest.id,
       error: {
         message: "wrong libgit2",
         code: "ERR_GIT_NATIVE_INIT",
@@ -135,16 +169,18 @@ describe("GitHost transport", () => {
     } catch (caught) {
       firstError = caught;
     }
-    expect(firstError.code).toBe("ERR_GIT_NATIVE_INIT");
+    expect(firstError.code).toBe("ERR_GIT_INIT");
+    expect(firstError.backendCode).toBe("ERR_GIT_NATIVE_INIT");
     expect(firstError.retriable).toBe(false);
 
-    let secondError;
-    try {
-      await host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    } catch (caught) {
-      secondError = caught;
-    }
-    expect(secondError).toBe(firstError);
+    const second = host.request("exec", {
+      workingDirectory: "/repo",
+      args: ["status"],
+    });
+    await flush();
+    const secondRequest = current().sent[1];
+    current().emit("message", { event: "git:reply", id: secondRequest.id, result: "OK" });
+    expect(await second).toBe("OK");
     expect(children.length).toBe(1);
   });
 
@@ -153,7 +189,7 @@ describe("GitHost transport", () => {
       workingDirectory: "/repo",
       args: ["checkout", "missing"],
     });
-    current().emit("message", { event: "git:ready" });
+    ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", {
@@ -184,8 +220,8 @@ describe("GitHost transport", () => {
   });
 
   it("rejects pending requests with a retriable error on crash and re-forks on the next request", async () => {
-    const first = host.request("status", { workingDirectory: "/repo", options: {} });
-    current().emit("message", { event: "git:ready" });
+    const first = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
     await flush();
 
     current().emit("exit");
@@ -198,9 +234,9 @@ describe("GitHost transport", () => {
     expect(error.code).toBe("ERR_GIT_HOST_RESTART");
     expect(error.retriable).toBe(true);
 
-    const second = host.request("status", { workingDirectory: "/repo", options: {} });
+    const second = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
     expect(children.length).toBe(2);
-    current().emit("message", { event: "git:ready" });
+    ready();
     await flush();
     const { id } = current().sent[0];
     current().emit("message", { event: "git:reply", id, result: "OK" });
@@ -212,8 +248,8 @@ describe("GitHost transport", () => {
     // so requests are still in flight when `unloadEditorWindow` resets the
     // host. Rejecting them there only lands as "Uncaught (in promise)" noise in
     // a context that is already gone.
-    const pending = host.request("status", { workingDirectory: "/repo", options: {} });
-    current().emit("message", { event: "git:ready" });
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
     await flush();
 
     const settled = jasmine.createSpy("settled");
@@ -226,7 +262,9 @@ describe("GitHost transport", () => {
       expect(settled).not.toHaveBeenCalled();
 
       // A request started during unload is abandoned too, without forking.
-      host.request("status", { workingDirectory: "/repo", options: {} }).then(settled, settled);
+      host
+        .request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } })
+        .then(settled, settled);
       await flush();
       expect(settled).not.toHaveBeenCalled();
       expect(children.length).toBe(1);
@@ -236,8 +274,8 @@ describe("GitHost transport", () => {
   });
 
   it("abandons pending requests when the worker exits while the window is unloading", async () => {
-    const pending = host.request("status", { workingDirectory: "/repo", options: {} });
-    current().emit("message", { event: "git:ready" });
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
     await flush();
 
     const settled = jasmine.createSpy("settled");
@@ -260,7 +298,7 @@ describe("GitHost transport", () => {
       { workingDirectory: "/repo" },
       { signal: controller.signal },
     );
-    current().emit("message", { event: "git:ready" });
+    ready();
     await flush();
     const request = current().sent[0];
 
@@ -279,12 +317,60 @@ describe("GitHost transport", () => {
     expect(error.name).toBe("AbortError");
   });
 
+  it("does not dispatch a request aborted while the worker is starting", async () => {
+    const controller = new AbortController();
+    const pending = host.request(
+      "blame",
+      { descriptor: { gitDirectory: "/repo/.git" } },
+      { signal: controller.signal },
+    );
+
+    controller.abort();
+    ready();
+
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.name).toBe("AbortError");
+    expect(current().sent).toEqual([]);
+  });
+
+  it("rejects a mismatched worker protocol before dispatching", async () => {
+    const pending = host.request("exec", { workingDirectory: "/repo", args: ["status"] });
+    current().emit("message", { event: "git:ready", protocolVersion: 999 });
+
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_HOST_PROTOCOL");
+    expect(error.retriable).toBe(false);
+    expect(current().sent).toEqual([]);
+  });
+
+  it("rejects unknown protocol operations without starting a worker", async () => {
+    await expectAsync(host.request("obsolete", {})).toBeRejectedWithError(
+      Error,
+      "Unknown git-host op: obsolete",
+    );
+    expect(children.length).toBe(0);
+  });
+
   it("rejects immediately for an already-aborted signal without forking", async () => {
     const controller = new AbortController();
     controller.abort();
     let error;
     try {
-      await host.request("status", { workingDirectory: "/repo" }, { signal: controller.signal });
+      await host.request(
+        "snapshot",
+        { descriptor: { gitDirectory: "/repo/.git" } },
+        { signal: controller.signal },
+      );
     } catch (e) {
       error = e;
     }

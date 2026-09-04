@@ -1,5 +1,6 @@
 const GitRunner = require("../src/git-runner");
 const createGitHostOps = require("../src/git-host-ops");
+const { GitHostOperations } = require("../src/git-host-protocol");
 
 describe("git-host ops", () => {
   let cliCalls;
@@ -26,8 +27,6 @@ describe("git-host ops", () => {
       readConfig: record("readConfig", {}),
       fileMode: record("fileMode", null),
       submodulePaths: record("submodulePaths", []),
-      lineDiff: record("lineDiff", []),
-      mutate: record("mutate", true),
       ...overrides,
     };
   }
@@ -45,21 +44,19 @@ describe("git-host ops", () => {
   }
 
   const descriptor = { gitDirectory: "/repo/.git", workingDirectory: "/repo" };
-  const submoduleDescriptor = {
-    ...descriptor,
-    hasSubmodules: true,
-    submodulePaths: ["vendor/library"],
-  };
 
-  it("routes combined snapshots to git-utils without spawning Git", async () => {
+  it("implements every operation in the shared protocol registry", () => {
+    expect(Object.keys(createOps()).sort()).toEqual(Object.keys(GitHostOperations).sort());
+  });
+
+  it("routes refs-only snapshots to git-utils without spawning Git", async () => {
     const value = {
-      status: { fingerprint: "abc", unchanged: true },
       refs: { fingerprint: "def", unchanged: true },
     };
     const ops = createOps({ native: { snapshot: async () => value } });
     const controller = new AbortController();
     const result = await ops.snapshot(
-      { descriptor, request: { status: true, refs: true } },
+      { descriptor, request: { status: false, refs: true } },
       { signal: controller.signal },
     );
 
@@ -67,7 +64,7 @@ describe("git-host ops", () => {
     expect(cliCalls).toEqual([]);
   });
 
-  it("routes submodule status to CLI while reading refs natively in parallel", async () => {
+  it("routes status to CLI while reading refs natively in parallel", async () => {
     const oid = "a".repeat(40);
     const statusOutput = `# branch.oid ${oid}\0# branch.head main\0? untracked.txt\0`;
     let nativeRequest;
@@ -76,7 +73,7 @@ describe("git-host ops", () => {
       cliResult: { stdout: statusOutput },
       native: {
         snapshot: async (receivedDescriptor, request) => {
-          expect(receivedDescriptor).toEqual(submoduleDescriptor);
+          expect(receivedDescriptor).toEqual(descriptor);
           nativeRequest = request;
           return { refs };
         },
@@ -85,7 +82,7 @@ describe("git-host ops", () => {
     const controller = new AbortController();
     const result = await ops.snapshot(
       {
-        descriptor: submoduleDescriptor,
+        descriptor,
         request: {
           status: true,
           refs: true,
@@ -112,7 +109,7 @@ describe("git-host ops", () => {
 
     const unchanged = await ops.snapshot(
       {
-        descriptor: submoduleDescriptor,
+        descriptor,
         request: {
           status: true,
           refs: false,
@@ -127,6 +124,63 @@ describe("git-host ops", () => {
       fingerprint: result.status.fingerprint,
       unchanged: true,
     });
+  });
+
+  it("returns a successful CLI status section when native refs fail", async () => {
+    const oid = "a".repeat(40);
+    const nativeError = Object.assign(new Error("refs failed"), {
+      code: "ERR_GIT_NATIVE_SNAPSHOT",
+    });
+    const ops = createOps({
+      cliResult: {
+        stdout: `# branch.oid ${oid}\0# branch.head main\0? untracked.txt\0`,
+      },
+      native: { snapshot: async () => Promise.reject(nativeError) },
+    });
+
+    const result = await ops.snapshot(
+      {
+        descriptor,
+        request: { status: true, refs: true, generations: { status: 1, refs: 1 } },
+      },
+      {},
+    );
+
+    expect(result.status.value.files[0].path).toBe("untracked.txt");
+    expect(result.refs).toBeUndefined();
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0].section).toBe("refs");
+    expect(result.errors[0].backend).toBe("git-utils");
+    expect(result.errors[0].error.code).toBe("ERR_GIT_SNAPSHOT");
+    expect(result.errors[0].error.backendCode).toBe("ERR_GIT_NATIVE_SNAPSHOT");
+  });
+
+  it("returns successful native refs when CLI status fails", async () => {
+    cliCalls = [];
+    nativeCalls = [];
+    const cliError = Object.assign(new Error("status failed"), {
+      code: "ERR_GIT_COMMAND_FAILED",
+    });
+    const refs = { fingerprint: "refs", unchanged: true };
+    const ops = createGitHostOps(new GitRunner({ execute: () => Promise.reject(cliError) }), {
+      nativeBackend: nativeBackend({ snapshot: async () => ({ refs }) }),
+    });
+
+    const result = await ops.snapshot(
+      {
+        descriptor,
+        request: { status: true, refs: true },
+      },
+      {},
+    );
+
+    expect(result.refs).toBe(refs);
+    expect(result.status).toBeUndefined();
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0].section).toBe("status");
+    expect(result.errors[0].backend).toBe("cli");
+    expect(result.errors[0].error.code).toBe("ERR_GIT_SNAPSHOT");
+    expect(result.errors[0].error.backendCode).toBe("ERR_GIT_COMMAND_FAILED");
   });
 
   it("routes structured diffs to git-utils and enforces maxBytes", async () => {
@@ -155,7 +209,7 @@ describe("git-host ops", () => {
     expect(error.code).toBe("ERR_GIT_DIFF_TOO_LARGE");
   });
 
-  it("routes worktree diffs in submodule repositories to CLI with requested formatting", async () => {
+  it("routes worktree diffs to CLI with requested formatting", async () => {
     const rawPatch = [
       "diff --git a/file.txt b/file.txt",
       "index 1111111..2222222 100644",
@@ -177,7 +231,7 @@ describe("git-host ops", () => {
 
     const structured = await ops.diff(
       {
-        descriptor: submoduleDescriptor,
+        descriptor,
         request: {
           from: { type: "index" },
           to: { type: "worktree" },
@@ -188,7 +242,7 @@ describe("git-host ops", () => {
     );
     const patch = await ops.diff(
       {
-        descriptor: submoduleDescriptor,
+        descriptor,
         request: {
           from: { type: "commit", revision: "HEAD" },
           to: { type: "worktree" },
@@ -199,7 +253,7 @@ describe("git-host ops", () => {
     );
     const both = await ops.diff(
       {
-        descriptor: submoduleDescriptor,
+        descriptor,
         request: {
           from: { type: "index" },
           to: { type: "worktree" },
@@ -219,7 +273,7 @@ describe("git-host ops", () => {
     expect(cliCalls.every((call) => call.args.includes("diff"))).toBe(true);
   });
 
-  it("never broadens the submodule exception after a native diff failure", async () => {
+  it("never broadens the CLI worktree route after a native diff failure", async () => {
     const nativeError = new Error("native commit diff failed");
     nativeError.code = "ERR_GIT_NATIVE_DIFF";
     const ops = createOps({
@@ -230,7 +284,7 @@ describe("git-host ops", () => {
     try {
       await ops.diff(
         {
-          descriptor: submoduleDescriptor,
+          descriptor,
           request: {
             from: { type: "commit", revision: "HEAD~1" },
             to: { type: "commit", revision: "HEAD" },
@@ -246,6 +300,49 @@ describe("git-host ops", () => {
     expect(cliCalls).toEqual([]);
   });
 
+  it("keeps statically CLI-routed operations independent from native initialization", async () => {
+    const oid = "a".repeat(40);
+    const execute = jasmine.createSpy("execute").and.callFake((args) =>
+      Promise.resolve({
+        exitCode: 0,
+        stdout: args.includes("status")
+          ? `# branch.oid ${oid}\0# branch.head main\0? untracked.txt\0`
+          : "CLI",
+        stderr: "",
+      }),
+    );
+    const nativeError = Object.assign(new Error("native unavailable"), {
+      code: "ERR_GIT_NATIVE_INIT",
+      retriable: false,
+    });
+    const getNativeBackend = jasmine.createSpy("get native backend").and.callFake(() => {
+      throw nativeError;
+    });
+    const ops = createGitHostOps(new GitRunner({ execute }), { getNativeBackend });
+
+    expect(
+      await ops.exec({ workingDirectory: "/repo", args: ["version"], options: {} }, {}),
+    ).toEqual({ exitCode: 0, stdout: "CLI", stderr: "" });
+    const snapshot = await ops.snapshot(
+      {
+        descriptor,
+        request: { status: true, refs: false, generations: { status: 1 } },
+      },
+      {},
+    );
+    expect(snapshot.status.value.files[0].path).toBe("untracked.txt");
+    expect(getNativeBackend).not.toHaveBeenCalled();
+
+    let historyError;
+    try {
+      await ops.history({ descriptor, request: { revision: "HEAD" } }, {});
+    } catch (error) {
+      historyError = error;
+    }
+    expect(historyError).toBe(nativeError);
+    expect(getNativeBackend.calls.count()).toBe(1);
+  });
+
   it("never falls back to Git when a native operation fails", async () => {
     const nativeError = new Error("native failed");
     nativeError.code = "ERR_GIT_NATIVE_SNAPSHOT";
@@ -253,7 +350,7 @@ describe("git-host ops", () => {
 
     let error;
     try {
-      await ops.snapshot({ descriptor, request: { status: true } }, {});
+      await ops.snapshot({ descriptor, request: { status: false, refs: true } }, {});
     } catch (caught) {
       error = caught;
     }
@@ -261,7 +358,7 @@ describe("git-host ops", () => {
     expect(cliCalls).toEqual([]);
   });
 
-  it("does not fall back across native read, diff, config, blame, or mutation categories", async () => {
+  it("does not fall back across native read, diff, config, or blame categories", async () => {
     const categories = [
       {
         nativeName: "diff",
@@ -288,15 +385,6 @@ describe("git-host ops", () => {
         op: "blame",
         run: (ops) => ops.blame({ descriptor, request: { path: "a.txt" } }, {}),
       },
-      {
-        nativeName: "mutate",
-        op: "mutate",
-        run: (ops) =>
-          ops.mutate(
-            { descriptor, request: { operation: "setConfig", key: "user.name", value: "X" } },
-            {},
-          ),
-      },
     ];
 
     for (const category of categories) {
@@ -314,6 +402,45 @@ describe("git-host ops", () => {
       expect(error).toBe(nativeError);
       expect(cliCalls).toEqual([]);
     }
+  });
+
+  it("normalizes native and CLI failures to the same operation code", async () => {
+    const nativeFailure = Object.assign(new Error("native history failed"), {
+      code: "ERR_GIT_NATIVE_HISTORY",
+    });
+    const nativeOps = createOps({
+      native: { history: async () => Promise.reject(nativeFailure) },
+    });
+    let nativeResult;
+    try {
+      await nativeOps.history({ descriptor, request: { revision: "HEAD" } }, {});
+    } catch (error) {
+      nativeResult = error;
+    }
+
+    const cliOps = createGitHostOps(
+      new GitRunner({
+        execute: async () => ({
+          exitCode: 128,
+          stdout: "",
+          stderr: "fatal: bad object HEAD",
+        }),
+      }),
+      { backendOverrides: { history: "cli" } },
+    );
+    let cliResult;
+    try {
+      await cliOps.history({ descriptor, request: { revision: "HEAD" } }, {});
+    } catch (error) {
+      cliResult = error;
+    }
+
+    expect(nativeResult.code).toBe("ERR_GIT_HISTORY");
+    expect(nativeResult.backend).toBe("git-utils");
+    expect(nativeResult.backendCode).toBe("ERR_GIT_NATIVE_HISTORY");
+    expect(cliResult.code).toBe("ERR_GIT_HISTORY");
+    expect(cliResult.backend).toBe("cli");
+    expect(cliResult.backendCode).toBe("ERR_GIT_COMMAND_FAILED");
   });
 
   it("passes readObjects cancellation as the third options argument", async () => {
@@ -337,26 +464,19 @@ describe("git-host ops", () => {
     expect(cliCalls).toEqual([]);
   });
 
-  it("batches native config reads and safe mutations", async () => {
+  it("batches native config reads", async () => {
     const config = { "remote.origin.url": "https://example.invalid/repo.git" };
     const ops = createOps({
       native: {
         readConfig: async () => config,
-        mutate: async () => true,
       },
     });
 
     expect(await ops.readConfig({ descriptor, keys: ["remote.origin.url"] }, {})).toEqual(config);
-    expect(
-      await ops.mutate(
-        { descriptor, request: { operation: "setConfig", key: "user.name", value: "Lumine" } },
-        {},
-      ),
-    ).toBe(true);
     expect(cliCalls).toEqual([]);
   });
 
-  it("caches a native HEAD blob and line-diffs subsequent buffer text natively", async () => {
+  it("caches a native HEAD blob and line-diffs subsequent buffer text in JS", async () => {
     let objectReads = 0;
     const ops = createOps({
       native: {
@@ -364,7 +484,6 @@ describe("git-host ops", () => {
           objectReads++;
           return [{ oid: "blob", type: "blob", size: 4, content: Buffer.from("a\nb\n") }];
         },
-        lineDiff: async () => [{ oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 }],
       },
     });
     const payload = {

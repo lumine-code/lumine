@@ -6,49 +6,47 @@
 
 const GitRunner = require("./git-runner");
 const createGitHostOps = require("./git-host-ops");
-const { configureNativeBackend, loadNativeBackend } = require("./git-native-backend");
+const { createNativeBackendCapability } = require("./git-native-backend");
+const {
+  ALL_CLI_BACKEND_OVERRIDES,
+  GIT_HOST_PROTOCOL_VERSION,
+  assertKnownOperation,
+  serializeError,
+} = require("./git-host-protocol");
 
 // git.trustAllRepositories is passed in the fork environment; trust unless
 // it was explicitly disabled ("0").
 const runner = new GitRunner({ trustAllRepositories: process.env.LUMINE_GIT_TRUST_ALL !== "0" });
-let ops = null;
-let nativeVersions = null;
-let initializationFailure = null;
-try {
-  const loaded = loadNativeBackend();
-  configureNativeBackend(loaded, {
-    trustAllRepositories: process.env.LUMINE_GIT_TRUST_ALL !== "0",
+const nativeCapability = createNativeBackendCapability({
+  trustAllRepositories: process.env.LUMINE_GIT_TRUST_ALL !== "0",
+});
+
+function reportNativeStatus() {
+  if (!process.connected) return;
+  const status = nativeCapability.status();
+  process.send({
+    event: "git:backend-status",
+    backend: "git-utils",
+    state: status.state,
+    versions: status.versions,
+    error: status.error ? serializeError(status.error) : null,
   });
-  nativeVersions = loaded.versions;
-  ops = createGitHostOps(runner, { nativeBackend: loaded.nativeBackend });
-} catch (error) {
-  initializationFailure = error;
 }
+
+const ops = createGitHostOps(runner, {
+  getNativeBackend: () => {
+    try {
+      return nativeCapability.get();
+    } finally {
+      reportNativeStatus();
+    }
+  },
+  backendOverrides:
+    process.env.LUMINE_TEST_GIT_BACKEND_POLICY === "cli" ? ALL_CLI_BACKEND_OVERRIDES : {},
+});
 
 // id -> AbortController for the in-flight request, so git:cancel can abort it.
 const inflight = new Map();
-
-function serializeError(error) {
-  if (!error) return { message: "Unknown git-host error" };
-  return {
-    message: error.message ?? String(error),
-    name: error.name,
-    code: error.code,
-    exitCode: error.exitCode,
-    stderr: error.stderr != null ? String(error.stderr) : undefined,
-    stdout: error.stdout != null ? String(error.stdout) : undefined,
-    command: error.command,
-    gitError: error.gitError,
-    operation: error.operation,
-    libgit2Code: error.libgit2Code,
-    libgit2Class: error.libgit2Class,
-    libgit2Message: error.libgit2Message,
-    retriable: error.retriable,
-    maxBytes: error.maxBytes,
-    structuredBytes: error.structuredBytes,
-    patchBytes: error.patchBytes,
-  };
-}
 
 function reply(id, result) {
   // The renderer may have gone away while the request ran; sending on a
@@ -62,14 +60,11 @@ function replyError(id, error) {
 }
 
 async function handleRequest({ id, op, payload }) {
-  if (initializationFailure) {
-    replyError(id, initializationFailure);
-    return;
-  }
-  const run = ops[op];
-  if (!run) {
-    const error = new Error(`Unknown git-host op: ${op}`);
-    error.code = "ERR_GIT_HOST_UNKNOWN_OP";
+  let run;
+  try {
+    assertKnownOperation(op);
+    run = ops[op];
+  } catch (error) {
     replyError(id, error);
     return;
   }
@@ -98,11 +93,14 @@ process.on("message", (message) => {
 // Exit cleanly when the renderer goes away so no orphan worker lingers.
 process.on("disconnect", () => process.exit(0));
 
-// Signal readiness only after the native ABI/version gate has passed. A failed
-// load is reported without exiting, so the renderer retains one stable,
-// non-retriable initialization error instead of entering a fork/restart loop.
-if (initializationFailure) {
-  process.send({ event: "git:init-error", error: serializeError(initializationFailure) });
-} else {
-  process.send({ event: "git:ready", versions: nativeVersions });
-}
+// CLI is ready immediately. git-utils is initialized lazily only after the
+// static router selects it, so an addon load/ABI failure cannot disable
+// commands owned by system Git.
+process.send({
+  event: "git:ready",
+  protocolVersion: GIT_HOST_PROTOCOL_VERSION,
+  backends: {
+    cli: { state: "ready" },
+    "git-utils": { state: "uninitialized" },
+  },
+});

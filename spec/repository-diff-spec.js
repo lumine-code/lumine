@@ -86,6 +86,22 @@ describe("repository diff", () => {
       expect(files[1].newPath).toBeNull();
     });
 
+    it("retains diff-header paths for empty files without marker headers", () => {
+      const patch = [
+        "diff --git a/empty name.txt b/empty name.txt",
+        "deleted file mode 100644",
+        "index e69de29..0000000",
+        "",
+      ].join("\n");
+
+      const { files } = parseDiffPatch(patch);
+      expect(files.length).toBe(1);
+      expect(files[0].oldPath).toBe("empty name.txt");
+      expect(files[0].newPath).toBeNull();
+      expect(files[0].status).toBe("deleted");
+      expect(files[0].oldMode).toBe("100644");
+    });
+
     it("parses renames and copies including paths with spaces", () => {
       const patch = [
         "diff --git a/old name.txt b/new name.txt",
@@ -194,7 +210,13 @@ describe("repository diff", () => {
       provider = new GitRepositoryDiffProvider({
         execute: async (args, workingDirectory, options) => {
           calls.push({ args: args.slice(COLOR_CONFIG_ARGUMENT_COUNT), workingDirectory, options });
-          return { exitCode: options.__exitCode ?? 0, stdout: "", stderr: "" };
+          return {
+            exitCode: options.__exitCode ?? 0,
+            stdout: args.includes("hash-object")
+              ? "4b825dc642cb6eb9a060e54bf8d69288fbee4904\n"
+              : "",
+            stderr: "",
+          };
         },
       });
     });
@@ -216,6 +238,10 @@ describe("repository diff", () => {
         from: { type: "empty" },
         to: { type: "file", path: "untracked.txt" },
       });
+      await provider.getDiffPatch("/repo", {
+        from: { type: "empty" },
+        to: { type: "index" },
+      });
 
       expect(calls[0].args.slice(2)).toEqual([
         "diff",
@@ -233,6 +259,14 @@ describe("repository diff", () => {
       expect(calls[2].args.slice(-4)).toEqual(["abc", "def", "--", "src"]);
       expect(calls[2].args).toContain("--ignore-all-space");
       expect(calls[3].args.slice(-4)).toEqual(["--no-index", "--", NULL_DEVICE, "untracked.txt"]);
+      expect(calls[4].args).toContain("rev-parse");
+      expect(calls[5].args).toContain("hash-object");
+      expect(calls[6].args).toContain("--cached");
+      expect(calls[6].args).toContain("4b825dc642cb6eb9a060e54bf8d69288fbee4904");
+      expect(calls[5].options.env.GIT_OBJECT_DIRECTORY).toBe(
+        calls[6].options.env.GIT_OBJECT_DIRECTORY,
+      );
+      expect(fs.existsSync(calls[5].options.env.GIT_OBJECT_DIRECTORY)).toBe(false);
     });
 
     it("disables rename detection when detectRenames is false", async () => {
@@ -254,17 +288,28 @@ describe("repository diff", () => {
       expect(calls[0].args).toContain("--diff-filter=u");
     });
 
-    it("rejects unsupported endpoint pairs and malformed endpoints", async () => {
+    it("supports reverse and identical endpoints and rejects invalid pairs", async () => {
+      await provider.getDiffPatch("/repo", {
+        from: { type: "worktree" },
+        to: { type: "index" },
+      });
+      expect(calls[0].args).toContain("--reverse");
+      expect(
+        await provider.getDiffPatch("/repo", {
+          from: { type: "empty" },
+          to: { type: "empty" },
+        }),
+      ).toBe("");
       await expectAsyncTypeError(() =>
-        provider.getDiffPatch("/repo", { from: { type: "worktree" }, to: { type: "index" } }),
-      );
-      await expectAsyncTypeError(() =>
-        provider.getDiffPatch("/repo", { from: { type: "empty" }, to: { type: "empty" } }),
+        provider.getDiffPatch("/repo", {
+          from: { type: "file", path: "file.txt" },
+          to: { type: "index" },
+        }),
       );
       await expectAsyncTypeError(() =>
         provider.getDiffPatch("/repo", { from: { type: "commit" }, to: { type: "worktree" } }),
       );
-      expect(calls.length).toBe(0);
+      expect(calls.length).toBe(1);
 
       async function expectAsyncTypeError(operation) {
         let error = null;
@@ -275,6 +320,54 @@ describe("repository diff", () => {
         }
         expect(error instanceof TypeError).toBe(true);
       }
+    });
+
+    it("keeps empty-tree reads out of the repository object database", async () => {
+      const operationProvider = new GitRepositoryOperationProvider();
+      const workingDirectory = temp.mkdirSync("empty-tree-read-only-diff");
+      await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
+      fs.writeFileSync(path.join(workingDirectory, "staged.txt"), "staged\n");
+      const operations = operationProvider.createRepositoryOperations({ workingDirectory });
+      await operations.stageFiles(["staged.txt"]);
+      const emptyOid = (
+        await operationProvider.run(["hash-object", "-t", "tree", "--stdin"], workingDirectory, {
+          stdin: "",
+        })
+      ).trim();
+      const repositoryObject = path.join(
+        workingDirectory,
+        ".git",
+        "objects",
+        emptyOid.slice(0, 2),
+        emptyOid.slice(2),
+      );
+      expect(fs.existsSync(repositoryObject)).toBe(false);
+
+      const realProvider = new GitRepositoryDiffProvider();
+      const patch = await realProvider.getDiffPatch(workingDirectory, {
+        from: { type: "empty" },
+        to: { type: "index" },
+      });
+      expect(patch).toContain("staged.txt");
+      expect(fs.existsSync(repositoryObject)).toBe(false);
+    });
+
+    it("does not replace a diff result when temporary ODB cleanup fails", async () => {
+      const remove = fs.promises.rm.bind(fs.promises);
+      const warning = spyOn(console, "warn");
+      spyOn(fs.promises, "rm").and.rejectWith(new Error("temporary directory is locked"));
+
+      expect(
+        await provider.getDiffPatch("/repo", {
+          from: { type: "empty" },
+          to: { type: "index" },
+        }),
+      ).toBe("");
+      expect(warning).toHaveBeenCalled();
+
+      const temporaryObjects = calls.find((call) => call.args.includes("hash-object")).options.env
+        .GIT_OBJECT_DIRECTORY;
+      await remove(temporaryObjects, { recursive: true, force: true });
     });
   });
 

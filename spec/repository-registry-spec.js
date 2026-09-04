@@ -583,23 +583,23 @@ describe("RepositoryRegistry", () => {
     expect(warnings.length).toBe(1);
   });
 
-  it("routes native post-operation refresh failures through the repository dedupe gate", async () => {
+  it("routes post-operation refresh failures through the repository dedupe gate", async () => {
     const warnings = [];
-    const nativeReports = [];
-    const workdir = temp.mkdirSync("failed-native-operation-refresh");
+    const reports = [];
+    const workdir = temp.mkdirSync("failed-operation-refresh");
     const repository = new FakeRepository(workdir);
     repositories.push(repository);
     registry.setProjectRoots([directoryFor(workdir)]);
     registry.notificationManager = { addWarning: (...args) => warnings.push(args) };
-    const nativeError = new Error("native snapshot failed");
-    nativeError.code = "ERR_GIT_NATIVE_SNAPSHOT";
-    repository.refreshStatusSnapshot = async () => Promise.reject(nativeError);
-    repository.refreshRefsSnapshot = async () => Promise.reject(nativeError);
+    const refreshError = new Error("snapshot failed");
+    refreshError.code = "ERR_GIT_COMMAND_FAILED";
+    repository.refreshStatusSnapshot = async () => Promise.reject(refreshError);
+    repository.refreshRefsSnapshot = async () => Promise.reject(refreshError);
     let reported = false;
-    repository.reportNativeSnapshotError = (error) => {
+    repository.reportBackgroundSnapshotError = (error) => {
       if (reported) return;
       reported = true;
-      nativeReports.push(error);
+      reports.push(error);
     };
     registry.addOperationProvider({
       createRepositoryOperations() {
@@ -610,7 +610,7 @@ describe("RepositoryRegistry", () => {
     expect(await repository.getOperations().commit("Subject")).toBe("created-commit");
     await Promise.resolve();
     await Promise.resolve();
-    expect(nativeReports).toEqual([nativeError]);
+    expect(reports).toEqual([refreshError]);
     expect(warnings).toEqual([]);
   });
 

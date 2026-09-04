@@ -90,8 +90,6 @@ describe("GitRepository native facade", () => {
     expect(calls[0].descriptor).toEqual({
       gitDirectory: repo.getPath(),
       workingDirectory: repo.getWorkingDirectory(),
-      hasSubmodules: false,
-      submodulePaths: [],
     });
     expect(Object.isFrozen(status)).toBe(true);
     expect(Object.isFrozen(refs)).toBe(true);
@@ -108,20 +106,23 @@ describe("GitRepository native facade", () => {
     expect(refsChanged.calls.count()).toBe(1);
   });
 
-  it("exposes declared submodules in every RPC descriptor", () => {
+  it("refreshes declared submodules without leaking routing data into RPC descriptors", () => {
     const workingDirectory = copyRepository();
+    repo = new GitRepository(workingDirectory);
+    expect(repo.isSubmodule("vendor/library")).toBe(false);
+
     fs.writeFileSync(
       path.join(workingDirectory, ".gitmodules"),
       '[submodule "library"]\n\tpath = vendor/library\n\turl = ../library.git\n',
     );
-    repo = new GitRepository(workingDirectory);
-
-    expect(repo.getNativeDescriptor()).toEqual({
+    expect(repo.isSubmodule("vendor/library")).toBe(true);
+    expect(repo.getHostDescriptor()).toEqual({
       gitDirectory: repo.getPath(),
       workingDirectory: repo.getWorkingDirectory(),
-      hasSubmodules: true,
-      submodulePaths: ["vendor/library"],
     });
+
+    fs.removeSync(path.join(workingDirectory, ".gitmodules"));
+    expect(repo.isSubmodule("vendor/library")).toBe(false);
   });
 
   it("batches config keys and fills omitted values with null", async () => {
@@ -141,10 +142,43 @@ describe("GitRepository native facade", () => {
 
     expect(await repo.getIndexFile("nested/staged.txt")).toBe("staged contents\n");
     expect(getIndexFile.calls.argsFor(0)).toEqual([
-      repo.getNativeDescriptor(),
+      repo.getHostDescriptor(),
       "nested/staged.txt",
       { encoding: "utf8", signal: undefined },
     ]);
+  });
+
+  it("expresses all-ref history without leaking a Git CLI flag", async () => {
+    const getHistory = jasmine.createSpy("get history").and.resolveTo([]);
+    repo = new GitRepository(copyRepository(), { historyProvider: { getHistory } });
+
+    await repo.getCommits({ allRefs: true, limit: 25 });
+    expect(getHistory.calls.argsFor(0)[1]).toEqual({
+      revision: "HEAD",
+      allRefs: true,
+      limit: 26,
+      skip: 0,
+    });
+    await expectAsync(repo.getCommits({ revision: "--all" })).toBeRejectedWithError(
+      TypeError,
+      "revision must be a non-empty Git revision, not a command-line option",
+    );
+  });
+
+  it("rejects command-line options in every public revision position", async () => {
+    repo = new GitRepository(copyRepository());
+
+    await expectAsync(repo.getCommit("--all")).toBeRejectedWithError(TypeError);
+    await expectAsync(
+      repo.getDiff({
+        from: { type: "commit", revision: "--stat" },
+        to: { type: "worktree" },
+      }),
+    ).toBeRejectedWithError(TypeError);
+    await expectAsync(repo.getBlame("a.txt", { revision: "--reverse" })).toBeRejectedWithError(
+      TypeError,
+    );
+    expect(() => repo.getBranchesContaining("--all")).toThrowError(TypeError);
   });
 
   it("forwards empty-to-index and empty-to-commit diffs in every result format", async () => {
@@ -208,16 +242,134 @@ describe("GitRepository native facade", () => {
     expect(repo.getStatusSnapshot()).toBe(good);
   });
 
-  it("shows at most one warning for repeated native snapshot failures", () => {
-    repo = new GitRepository(copyRepository());
+  it("applies a valid hybrid snapshot section before rejecting its invalid sibling", async () => {
+    for (const successfulKind of ["status", "refs"]) {
+      const snapshotProvider = {
+        async getSnapshot(descriptor, request) {
+          return successfulKind === "status"
+            ? {
+                status: {
+                  fingerprint: "valid-status",
+                  unchanged: false,
+                  value: statusValue(request.generations.status),
+                },
+              }
+            : {
+                refs: {
+                  fingerprint: "valid-refs",
+                  unchanged: false,
+                  value: refsValue(request.generations.refs),
+                },
+              };
+        },
+      };
+      repo = new GitRepository(copyRepository(), { snapshotProvider });
+
+      await expectAsync(
+        Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]),
+      ).toBeRejectedWithError(/omitted the requested/);
+      expect(repo.getStatusSnapshot().initialized).toBe(successfulKind === "status");
+      expect(repo.getRefsSnapshot().initialized).toBe(successfulKind === "refs");
+      repo.destroy();
+    }
+  });
+
+  it("applies successful hybrid sections before surfacing their backend errors", async () => {
+    const snapshotProvider = {
+      async getSnapshot(descriptor, request) {
+        return {
+          refs: {
+            fingerprint: "valid-refs",
+            unchanged: false,
+            value: refsValue(request.generations.refs),
+          },
+          errors: [
+            {
+              section: "status",
+              backend: "cli",
+              error: {
+                message: "Git status failed",
+                code: "ERR_GIT_COMMAND_FAILED",
+                operation: "status",
+              },
+            },
+          ],
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { snapshotProvider });
+
+    let error;
+    try {
+      await Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_COMMAND_FAILED");
+    expect(error.backend).toBe("cli");
+    expect(error.snapshotErrors).toEqual([
+      {
+        message: "Git status failed",
+        code: "ERR_GIT_COMMAND_FAILED",
+        operation: "status",
+        backend: "cli",
+      },
+    ]);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+    expect(repo.getRefsSnapshot().initialized).toBe(true);
+  });
+
+  it("retains backend diagnostics when another snapshot section is malformed", async () => {
+    repo = new GitRepository(copyRepository(), {
+      snapshotProvider: {
+        async getSnapshot() {
+          return {
+            status: { fingerprint: "invalid", unchanged: false, value: {} },
+            errors: [
+              {
+                section: "refs",
+                backend: "git-utils",
+                error: { message: "refs failed", code: "ERR_GIT_NATIVE_SNAPSHOT" },
+              },
+            ],
+          };
+        },
+      },
+    });
+
+    let error;
+    try {
+      await Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]);
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_SNAPSHOT");
+    expect(error.snapshotErrors).toEqual([
+      {
+        message: "refs failed",
+        code: "ERR_GIT_SNAPSHOT",
+        operation: undefined,
+        backend: "git-utils",
+      },
+    ]);
+  });
+
+  it("reports every background snapshot backend with at most one warning per repository", () => {
     const warning = spyOn(lumine.notifications, "addWarning");
-    spyOn(console, "error");
-    const error = new Error("native snapshot failed");
-    error.code = "ERR_GIT_NATIVE_SNAPSHOT";
+    const diagnostic = spyOn(console, "error");
+    const codes = ["ERR_GIT_NATIVE_SNAPSHOT", "ERR_GIT_COMMAND_FAILED", "ERR_GIT_HOST_RESTART"];
 
-    repo.reportNativeSnapshotError(error);
-    repo.reportNativeSnapshotError(error);
+    for (const code of codes) {
+      repo = new GitRepository(copyRepository());
+      const error = new Error(`${code} snapshot failed`);
+      error.code = code;
+      repo.reportBackgroundSnapshotError(error);
+      repo.reportBackgroundSnapshotError(error);
+      repo.destroy();
+    }
 
-    expect(warning.calls.count()).toBe(1);
+    expect(warning.calls.count()).toBe(codes.length);
+    expect(diagnostic.calls.count()).toBe(codes.length * 2);
+    expect(warning.calls.argsFor(0)[0]).toBe("Git repository data could not be refreshed");
   });
 });

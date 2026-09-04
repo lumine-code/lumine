@@ -451,17 +451,15 @@ describe("GitRepositoryOperationProvider", () => {
     expect(hint("mergeFile", "ours", "base", "theirs", outside)).toBe("none");
   });
 
-  it("supports injected CLI configuration and native merge-file labels", async () => {
+  it("supports injected configuration, cleanup modes, and merge-file labels", async () => {
     const calls = [];
-    const nativeCalls = [];
     const provider = new GitRepositoryOperationProvider({
       exec: async (args, workingDirectory, options) => {
         calls.push({ args, workingDirectory, options });
+        if (args.includes("merge-file")) {
+          return { exitCode: 1, stdout: "<<<<<<< current\n", stderr: "" };
+        }
         return { exitCode: 0, stdout: "", stderr: "" };
-      },
-      mutate: async (descriptor, request) => {
-        nativeCalls.push({ descriptor, request });
-        return request.operation === "mergeFile" ? 1 : true;
       },
     });
     const workingDirectory = temp.mkdirSync("git-option-mapping");
@@ -480,74 +478,64 @@ describe("GitRepositoryOperationProvider", () => {
         labels: ["current", "after discard", "before discard"],
       },
     );
+    await operations.stageFileSymlinkChange("link.txt");
 
     // The per-command `-c` config is passed through in options and applied by the
     // worker's GitRunner, not baked into the argument vector here.
     expect(calls[0].args).toEqual(["commit", "--file=-", "--cleanup=strip"]);
     expect(calls[0].options.config).toEqual({ "gpg.program": "/tmp/wrapper.sh" });
-    expect(calls.length).toBe(1);
-    expect(nativeCalls[0].request).toEqual({
-      operation: "mergeFile",
-      oursPath: "ours.txt",
-      basePath: "base.txt",
-      theirsPath: "theirs.txt",
-      resultPath: "out.txt",
-      labels: ["current", "after discard", "before discard"],
-    });
+    expect(calls[1].args).toEqual([
+      "merge-file",
+      "--stdout",
+      "-L",
+      "current",
+      "-L",
+      "after discard",
+      "-L",
+      "before discard",
+      "ours.txt",
+      "base.txt",
+      "theirs.txt",
+    ]);
+    expect(calls[1].options.encoding).toBe("buffer");
+    expect(calls[2].args).toEqual(["rm", "--cached", "--force", "--", "link.txt"]);
     expect(conflictCode).toBe(1);
+    expect(fs.readFileSync(path.join(workingDirectory, "out.txt"), "utf8")).toBe(
+      "<<<<<<< current\n",
+    );
   });
 
-  it("routes safe primitives to git-utils without invoking the CLI transport", async () => {
-    const nativeCalls = [];
-    const workingDirectory = path.join(temp.mkdirSync("git-native-mutations"), "repo");
-    const gitDirectory = path.join(workingDirectory, ".git-worktree");
-    const provider = new GitRepositoryOperationProvider({
-      exec: async () => {
-        throw new Error("CLI transport must not run for a native primitive");
-      },
-      mutate: async (descriptor, request) => {
-        nativeCalls.push({ descriptor, request });
-        if (request.operation === "createBlob") return "a".repeat(40);
-        if (request.operation === "mergeFile") return 1;
-        if (request.operation === "expandBlobToFile") return request.path;
-        return true;
-      },
+  it("maps only a missing createBlob source to the public race error", async () => {
+    const missing = Object.assign(new Error("missing"), {
+      code: "ERR_GIT_COMMAND_FAILED",
+      exitCode: 128,
+      stderr: "fatal: could not open 'gone.txt' for reading: No such file or directory",
     });
-    const operations = provider.createRepositoryOperations({ workingDirectory, gitDirectory });
+    const permission = Object.assign(new Error("denied"), {
+      code: "ERR_GIT_COMMAND_FAILED",
+      exitCode: 128,
+      stderr: "fatal: unable to write object: Permission denied",
+    });
+    let failure = missing;
+    const provider = new GitRepositoryOperationProvider({
+      exec: async () => Promise.reject(failure),
+    });
+    const operations = provider.createRepositoryOperations({ workingDirectory: "/repo" });
 
-    await operations.stageFileModeChange("mode.txt", "100755");
-    await operations.stageFileSymlinkChange("link.txt");
-    await operations.setConfig("user.name", "Lumine");
-    await operations.unsetConfig("user.email", { all: true });
-    await operations.addRemote("origin", "https://example.invalid/repo.git");
-    await operations.removeRemote("old");
-    await operations.setRemoteUrl("origin", "ssh://example.invalid/repo.git");
-    await operations.deleteRef("refs/heads/old");
-    expect(await operations.createBlob({ stdin: "contents" })).toBe("a".repeat(40));
-    await operations.expandBlobToFile("restored.txt", "b".repeat(40));
-    expect(await operations.mergeFile("ours", "base", "theirs", "result")).toBe(1);
-    await operations.writeMergeConflictToIndex(
-      "conflict.txt",
-      null,
-      "c".repeat(40),
-      "d".repeat(40),
+    let missingResult;
+    try {
+      await operations.createBlob({ filePath: "gone.txt" });
+    } catch (error) {
+      missingResult = error;
+    }
+    expect(missingResult.code).toBe("ERR_GIT_CREATE_BLOB");
+    expect(missingResult.backend).toBe("cli");
+    expect(missingResult.backendCode).toBe("ERR_GIT_COMMAND_FAILED");
+
+    failure = permission;
+    await expectAsync(operations.createBlob({ filePath: "protected.txt" })).toBeRejectedWith(
+      permission,
     );
-
-    expect(nativeCalls.every((call) => call.descriptor.gitDirectory === gitDirectory)).toBe(true);
-    expect(nativeCalls.map((call) => call.request.operation)).toEqual([
-      "stageFileModeChange",
-      "stageFileSymlinkChange",
-      "setConfig",
-      "unsetConfig",
-      "addRemote",
-      "removeRemote",
-      "setRemoteUrl",
-      "deleteRef",
-      "createBlob",
-      "expandBlobToFile",
-      "mergeFile",
-      "writeMergeConflictToIndex",
-    ]);
   });
 
   it("writes merge conflict stages to the index for a tracked file", async () => {

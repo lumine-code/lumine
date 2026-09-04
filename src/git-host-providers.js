@@ -1,8 +1,8 @@
 const GitHost = require("./git-host");
 
-// Renderer-side clients for the native operations owned by git-host. Repository
+// Renderer-side clients for operations owned by git-host. Repository
 // descriptors are already discovered in the renderer and are sent verbatim;
-// the worker never searches upward for a repository a second time.
+// adapters never search upward for a repository a second time.
 
 function splitSignal(options = {}) {
   const { signal, ...rest } = options;
@@ -152,13 +152,6 @@ class GitHostHistoryProvider {
   }
 }
 
-class GitHostMutationProvider {
-  mutate(descriptor, request, options = {}) {
-    const { signal } = splitSignal(options);
-    return GitHost.instance().request("mutate", { descriptor, request }, { signal });
-  }
-}
-
 module.exports = {
   GitHostSnapshotProvider,
   GitHostStatusProvider,
@@ -166,5 +159,4 @@ module.exports = {
   GitHostConfigProvider,
   GitHostDiffProvider,
   GitHostHistoryProvider,
-  GitHostMutationProvider,
 };

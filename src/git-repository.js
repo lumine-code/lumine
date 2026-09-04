@@ -19,6 +19,9 @@ const {
 const { EMPTY_STATUS_SNAPSHOT, parseStatusSnapshot } = require("./repository-status-snapshot");
 const { EMPTY_REFS_SNAPSHOT, parseRefsSnapshot } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
+const { reviveError } = require("./git-host-protocol");
+const { normalizeGitBackendError } = require("./git-error");
+const { assertGitRevision } = require("./git-revision");
 
 let nextId = 0;
 
@@ -98,14 +101,7 @@ function summaryFromStatusEntry(entry) {
  */
 module.exports = class GitRepository {
   static exists(path) {
-    let git;
-    try {
-      git = this.open(path);
-    } catch {
-      // A dubious-ownership rejection (or any other open failure) means we
-      // cannot vouch for a repository here; treat it as absent.
-      return false;
-    }
+    const git = this.open(path);
     if (git) {
       git.destroy();
       return true;
@@ -136,12 +132,7 @@ module.exports = class GitRepository {
     }
     try {
       return new GitRepository(path, options);
-    } catch (error) {
-      // Surface a dubious-ownership rejection so the caller can offer a bypass;
-      // every other failure just means "no repository here".
-      if (error && error.code === "DubiousOwnership") {
-        throw error;
-      }
+    } catch {
       return null;
     }
   }
@@ -150,7 +141,7 @@ module.exports = class GitRepository {
     this.id = nextId++;
     this.emitter = new Emitter();
     this.subscriptions = new CompositeDisposable();
-    this.descriptor = discoverRepositoryDescriptor(path);
+    this.descriptor = options.descriptor || discoverRepositoryDescriptor(path);
     if (this.descriptor == null) {
       throw new Error(`No Git repository found searching path: ${path}`);
     }
@@ -163,8 +154,8 @@ module.exports = class GitRepository {
     this.caseInsensitiveFs = this.descriptor.caseInsensitiveFs === true;
 
     this.snapshotProvider = options.snapshotProvider || new GitHostSnapshotProvider();
-    this.nativeStatusSnapshots = options.statusSnapshotProvider == null;
-    this.nativeRefsSnapshots = options.refsSnapshotProvider == null;
+    this.usesCombinedStatusSnapshots = options.statusSnapshotProvider == null;
+    this.usesCombinedRefsSnapshots = options.refsSnapshotProvider == null;
     this.statusSnapshotProvider = options.statusSnapshotProvider || new GitHostStatusProvider();
     this.statusSnapshot = EMPTY_STATUS_SNAPSHOT;
     this.statusSnapshotCacheKey = null;
@@ -187,10 +178,10 @@ module.exports = class GitRepository {
     this.refsSnapshotDebounceMs = options.refsSnapshotDebounceMs ?? 150;
     this.refsSnapshotRefreshTimer = null;
     this.refsRefreshCoalescer = { flight: null, trailing: null };
-    this.nativeSnapshotRefreshCoalescer = { flight: null, trailing: null };
-    this.nativeSnapshotRefreshTimer = null;
-    this.nativeSnapshotScheduledKinds = new Set();
-    this.nativeSnapshotWarningShown = false;
+    this.combinedSnapshotRefreshCoalescer = { flight: null, trailing: null };
+    this.combinedSnapshotRefreshTimer = null;
+    this.combinedSnapshotScheduledKinds = new Set();
+    this.backgroundSnapshotWarningShown = false;
     this.diffProvider = options.diffProvider || new GitHostDiffProvider();
     this.historyProvider = options.historyProvider || new GitHostHistoryProvider();
     this.configProvider = options.configProvider || new GitHostConfigProvider();
@@ -244,11 +235,11 @@ module.exports = class GitRepository {
       clearTimeout(this.refsSnapshotRefreshTimer);
       this.refsSnapshotRefreshTimer = null;
     }
-    if (this.nativeSnapshotRefreshTimer != null) {
-      clearTimeout(this.nativeSnapshotRefreshTimer);
-      this.nativeSnapshotRefreshTimer = null;
+    if (this.combinedSnapshotRefreshTimer != null) {
+      clearTimeout(this.combinedSnapshotRefreshTimer);
+      this.combinedSnapshotRefreshTimer = null;
     }
-    this.nativeSnapshotScheduledKinds.clear();
+    this.combinedSnapshotScheduledKinds.clear();
 
     if (this.emitter) {
       this.emitter.emit("did-destroy");
@@ -445,18 +436,15 @@ module.exports = class GitRepository {
     return this.workingDirectoryPath;
   }
 
-  // Structured-clone-safe descriptor consumed by git-utils in git-host. The
+  // Structured-clone-safe descriptor consumed by the selected git-host backend. The
   // renderer has already resolved worktree, submodule, symlink, and bare-repo
-  // semantics, so the native backend opens exactly this repository and never
+  // semantics, so a backend opens exactly this repository and never
   // performs its own upward discovery.
-  getNativeDescriptor() {
+  getHostDescriptor() {
     if (this.isDestroyed()) throw new Error("Repository has been destroyed");
-    const submodulePaths = Object.freeze([...this.descriptor.getSubmodulePaths()]);
     return Object.freeze({
       gitDirectory: this.getPath(),
       workingDirectory: this.getWorkingDirectory(),
-      hasSubmodules: submodulePaths.length > 0,
-      submodulePaths,
     });
   }
 
@@ -585,8 +573,8 @@ module.exports = class GitRepository {
    * @status public
    *
    * Asynchronously read a git configuration value via the git-host
-   * worker (`git config --get`), the off-thread replacement for the synchronous
-   * libgit2 config lookup. Resolves to the value or `null` when unset.
+   * worker, without exposing the selected backend. Resolves to the value or
+   * `null` when unset.
    *
    * @param {String} key - The configuration key to look up.
    * @returns {Promise<String|null>} The configured value.
@@ -600,8 +588,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * Read several effective Git configuration values in one native repository
-   * pass. Every requested key is present on the resolved plain object and maps
+   * Read several effective Git configuration values in one repository pass.
+   * Every requested key is present on the resolved plain object and maps
    * to a `String` value or `null` when unset.
    *
    * @param {Array<String>} keys - Configuration keys to read.
@@ -614,7 +602,7 @@ module.exports = class GitRepository {
       return Promise.resolve(Object.fromEntries(requested.map((key) => [key, null])));
     }
     return this.configProvider
-      .getConfigValues(this.getNativeDescriptor(), requested)
+      .getConfigValues(this.getHostDescriptor(), requested)
       .then((values) =>
         Object.fromEntries(
           requested.map((key) => [key, Object.hasOwn(values || {}, key) ? values[key] : null]),
@@ -803,10 +791,10 @@ module.exports = class GitRepository {
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
     if (
-      this.nativeStatusSnapshots &&
-      this.nativeSnapshotRefreshCoalescer.flight?.mask.has("status")
+      this.usesCombinedStatusSnapshots &&
+      this.combinedSnapshotRefreshCoalescer.flight?.mask.has("status")
     ) {
-      return this.nativeSnapshotRefreshCoalescer.flight.promise.then(() => this.statusSnapshot);
+      return this.combinedSnapshotRefreshCoalescer.flight.promise.then(() => this.statusSnapshot);
     }
     if (this.statusRefreshCoalescer.flight) return this.statusRefreshCoalescer.flight;
     return this.refreshStatusSnapshot(options);
@@ -817,8 +805,8 @@ module.exports = class GitRepository {
   // repeated calls, so a continuous event stream cannot starve the refresh.
   scheduleStatusSnapshotRefresh() {
     if (this.isDestroyed() || this.statusSnapshotSubscriberCount === 0) return;
-    if (this.nativeStatusSnapshots) {
-      this.scheduleNativeSnapshotRefresh("status", this.statusSnapshotDebounceMs);
+    if (this.usesCombinedStatusSnapshots) {
+      this.scheduleCombinedSnapshotRefresh("status", this.statusSnapshotDebounceMs);
       return;
     }
     if (this.statusSnapshotRefreshTimer != null) return;
@@ -827,7 +815,7 @@ module.exports = class GitRepository {
       if (this.isDestroyed()) return;
       // Background refreshes must never surface as unhandled rejections; the
       // stale-suppression counter and cache key keep failed runs harmless.
-      this.refreshStatusSnapshot().catch((error) => this.reportNativeSnapshotError(error));
+      this.refreshStatusSnapshot().catch((error) => this.reportBackgroundSnapshotError(error));
     }, this.statusSnapshotDebounceMs);
   }
 
@@ -890,13 +878,13 @@ module.exports = class GitRepository {
     return state.trailing.promise;
   }
 
-  // Merge native status and refs refreshes through one single-flight-plus-
+  // Merge status and refs refreshes through one single-flight-plus-
   // trailing coordinator. Synchronous callers share a microtask-sized dispatch
   // window, which lets status and refs requests issued together become one
-  // libgit2 snapshot. Once native work has started, later callers join one
+  // backend snapshot. Once work has started, later callers join one
   // trailing request whose mask is the union of everything that arrived.
-  coalesceNativeSnapshotRefresh(kind, options = {}) {
-    const state = this.nativeSnapshotRefreshCoalescer;
+  coalesceCombinedSnapshotRefresh(kind, options = {}) {
+    const state = this.combinedSnapshotRefreshCoalescer;
 
     const merge = (request, requestedKind, requestedOptions) => {
       request.mask.add(requestedKind);
@@ -918,7 +906,7 @@ module.exports = class GitRepository {
       flight.promise = Promise.resolve()
         .then(() => {
           flight.started = true;
-          return this.executeNativeSnapshotRefresh(flight.mask, flight.options);
+          return this.executeCombinedSnapshotRefresh(flight.mask, flight.options);
         })
         .finally(() => {
           state.flight = null;
@@ -969,22 +957,22 @@ module.exports = class GitRepository {
     );
   }
 
-  scheduleNativeSnapshotRefresh(kind, debounceMs) {
-    this.nativeSnapshotScheduledKinds.add(kind);
-    if (this.nativeSnapshotRefreshTimer != null) return;
-    this.nativeSnapshotRefreshTimer = setTimeout(() => {
-      this.nativeSnapshotRefreshTimer = null;
+  scheduleCombinedSnapshotRefresh(kind, debounceMs) {
+    this.combinedSnapshotScheduledKinds.add(kind);
+    if (this.combinedSnapshotRefreshTimer != null) return;
+    this.combinedSnapshotRefreshTimer = setTimeout(() => {
+      this.combinedSnapshotRefreshTimer = null;
       if (this.isDestroyed()) return;
-      const kinds = this.nativeSnapshotScheduledKinds;
-      this.nativeSnapshotScheduledKinds = new Set();
+      const kinds = this.combinedSnapshotScheduledKinds;
+      this.combinedSnapshotScheduledKinds = new Set();
       const refreshes = [];
       if (kinds.has("status")) refreshes.push(this.refreshStatusSnapshot());
       if (kinds.has("refs")) refreshes.push(this.refreshRefsSnapshot());
-      Promise.all(refreshes).catch((error) => this.reportNativeSnapshotError(error));
+      Promise.all(refreshes).catch((error) => this.reportBackgroundSnapshotError(error));
     }, debounceMs);
   }
 
-  async executeNativeSnapshotRefresh(mask, options = {}) {
+  async executeCombinedSnapshotRefresh(mask, options = {}) {
     const provider = this.snapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
@@ -995,7 +983,7 @@ module.exports = class GitRepository {
     const includeIgnored = options.includeIgnored !== false;
 
     const result = await provider.getSnapshot(
-      this.getNativeDescriptor(),
+      this.getHostDescriptor(),
       {
         status: statusRequested,
         refs: refsRequested,
@@ -1019,35 +1007,65 @@ module.exports = class GitRepository {
     if (this.isDestroyed()) {
       return { status: this.statusSnapshot, refs: this.refsSnapshot };
     }
-    if (statusRequested) {
-      if (!result?.status) throw this.invalidNativeSnapshotResponse("status");
-      if (statusRefreshCount === this.statusSnapshotRefreshCount) {
-        this.applyNativeStatusSnapshot(result.status);
+    // Apply every valid section even if its sibling is missing or malformed.
+    // Hybrid snapshots use independent backends, so one successful half still
+    // advances its cache before the shared request reports the other failure.
+    let responseError = null;
+    const backendErrors = Array.isArray(result?.errors) ? result.errors : [];
+    const failedSections = new Set(backendErrors.map(({ section }) => section));
+    if (statusRequested && statusRefreshCount === this.statusSnapshotRefreshCount) {
+      try {
+        if (result?.status) this.applyStatusSnapshotSection(result.status);
+        else if (!failedSections.has("status")) throw this.invalidSnapshotResponse("status");
+      } catch (error) {
+        responseError = error;
       }
     }
-    if (refsRequested) {
-      if (!result?.refs) throw this.invalidNativeSnapshotResponse("refs");
-      if (refsRefreshCount === this.refsSnapshotRefreshCount) {
-        this.applyNativeRefsSnapshot(result.refs);
+    if (refsRequested && refsRefreshCount === this.refsSnapshotRefreshCount) {
+      try {
+        if (result?.refs) this.applyRefsSnapshotSection(result.refs);
+        else if (!failedSections.has("refs")) throw this.invalidSnapshotResponse("refs");
+      } catch (error) {
+        responseError ||= error;
       }
     }
+    if (backendErrors.length > 0) {
+      const errors = backendErrors.map(({ backend, error }) => {
+        const revived = normalizeGitBackendError(reviveError(error));
+        revived.backend ||= backend;
+        return revived;
+      });
+      const snapshotErrors = errors.map((error) => ({
+        message: error.message,
+        code: error.code,
+        operation: error.operation,
+        backend: error.backend,
+      }));
+      if (responseError) {
+        responseError.snapshotErrors = [...(responseError.snapshotErrors || []), ...snapshotErrors];
+      } else {
+        errors[0].snapshotErrors = snapshotErrors;
+        responseError = errors[0];
+      }
+    }
+    if (responseError) throw responseError;
     return { status: this.statusSnapshot, refs: this.refsSnapshot };
   }
 
-  invalidNativeSnapshotResponse(section) {
-    const error = new Error(`git-utils snapshot omitted the requested ${section} section`);
-    error.code = "ERR_GIT_NATIVE_SNAPSHOT";
+  invalidSnapshotResponse(section) {
+    const error = new Error(`Git snapshot backend omitted the requested ${section} section`);
+    error.code = "ERR_GIT_SNAPSHOT";
     error.operation = "snapshot";
     return error;
   }
 
-  applyNativeStatusSnapshot(section) {
+  applyStatusSnapshotSection(section) {
     if (section.unchanged) {
       this.statusSnapshotFingerprint = section.fingerprint;
       return this.statusSnapshot;
     }
     if (!section.value || section.value.schemaVersion !== 1 || !section.value.initialized) {
-      throw this.invalidNativeSnapshotResponse("status value");
+      throw this.invalidSnapshotResponse("status value");
     }
     const snapshot = deepFreeze(section.value);
     this.statusSnapshotFingerprint = section.fingerprint;
@@ -1062,13 +1080,13 @@ module.exports = class GitRepository {
     return snapshot;
   }
 
-  applyNativeRefsSnapshot(section) {
+  applyRefsSnapshotSection(section) {
     if (section.unchanged) {
       this.refsSnapshotFingerprint = section.fingerprint;
       return this.refsSnapshot;
     }
     if (!section.value || section.value.schemaVersion !== 1 || !section.value.initialized) {
-      throw this.invalidNativeSnapshotResponse("refs value");
+      throw this.invalidSnapshotResponse("refs value");
     }
     const snapshot = deepFreeze(section.value);
     this.refsSnapshotFingerprint = section.fingerprint;
@@ -1078,12 +1096,12 @@ module.exports = class GitRepository {
     return snapshot;
   }
 
-  reportNativeSnapshotError(error) {
-    if (!String(error?.code || "").startsWith("ERR_GIT_NATIVE_")) return;
-    console.error("Native Git snapshot refresh failed", error);
-    if (this.nativeSnapshotWarningShown) return;
-    this.nativeSnapshotWarningShown = true;
-    globalThis.lumine?.notifications?.addWarning?.("Git status could not be refreshed", {
+  reportBackgroundSnapshotError(error) {
+    if (this.isDestroyed()) return;
+    console.error("Git snapshot refresh failed", error);
+    if (this.backgroundSnapshotWarningShown) return;
+    this.backgroundSnapshotWarningShown = true;
+    globalThis.lumine?.notifications?.addWarning?.("Git repository data could not be refreshed", {
       detail: error.message,
       dismissable: true,
     });
@@ -1098,8 +1116,8 @@ module.exports = class GitRepository {
    * subprocess; see `coalesceSnapshotRefresh`.
    */
   refreshStatusSnapshot(options = {}) {
-    if (this.nativeStatusSnapshots) {
-      return this.coalesceNativeSnapshotRefresh("status", options);
+    if (this.usesCombinedStatusSnapshots) {
+      return this.coalesceCombinedSnapshotRefresh("status", options);
     }
     return this.coalesceSnapshotRefresh(this.statusRefreshCoalescer, options, (runOptions) =>
       this.executeStatusSnapshotRefresh(runOptions),
@@ -1107,8 +1125,7 @@ module.exports = class GitRepository {
   }
 
   // The actual status snapshot refresh. This is intentionally independent from
-  // the synchronous git-utils cache so hot path coloring never waits for a Git
-  // subprocess.
+  // the synchronous legacy cache so hot path coloring never waits for Git work.
   async executeStatusSnapshotRefresh(options = {}) {
     const provider = this.statusSnapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
@@ -1258,8 +1275,11 @@ module.exports = class GitRepository {
     if (this.refsSnapshot.initialized) return this.refsSnapshot;
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
-    if (this.nativeRefsSnapshots && this.nativeSnapshotRefreshCoalescer.flight?.mask.has("refs")) {
-      return this.nativeSnapshotRefreshCoalescer.flight.promise.then(() => this.refsSnapshot);
+    if (
+      this.usesCombinedRefsSnapshots &&
+      this.combinedSnapshotRefreshCoalescer.flight?.mask.has("refs")
+    ) {
+      return this.combinedSnapshotRefreshCoalescer.flight.promise.then(() => this.refsSnapshot);
     }
     if (this.refsRefreshCoalescer.flight) return this.refsRefreshCoalescer.flight;
     return this.refreshRefsSnapshot(options);
@@ -1269,15 +1289,15 @@ module.exports = class GitRepository {
   // {@link #scheduleStatusSnapshotRefresh}.
   scheduleRefsSnapshotRefresh() {
     if (this.isDestroyed() || this.refsSnapshotSubscriberCount === 0) return;
-    if (this.nativeRefsSnapshots) {
-      this.scheduleNativeSnapshotRefresh("refs", this.refsSnapshotDebounceMs);
+    if (this.usesCombinedRefsSnapshots) {
+      this.scheduleCombinedSnapshotRefresh("refs", this.refsSnapshotDebounceMs);
       return;
     }
     if (this.refsSnapshotRefreshTimer != null) return;
     this.refsSnapshotRefreshTimer = setTimeout(() => {
       this.refsSnapshotRefreshTimer = null;
       if (this.isDestroyed()) return;
-      this.refreshRefsSnapshot().catch((error) => this.reportNativeSnapshotError(error));
+      this.refreshRefsSnapshot().catch((error) => this.reportBackgroundSnapshotError(error));
     }, this.refsSnapshotDebounceMs);
   }
 
@@ -1290,8 +1310,8 @@ module.exports = class GitRepository {
    * `coalesceSnapshotRefresh`.
    */
   refreshRefsSnapshot(options = {}) {
-    if (this.nativeRefsSnapshots) {
-      return this.coalesceNativeSnapshotRefresh("refs", options);
+    if (this.usesCombinedRefsSnapshots) {
+      return this.coalesceCombinedSnapshotRefresh("refs", options);
     }
     return this.coalesceSnapshotRefresh(this.refsRefreshCoalescer, options, (runOptions) =>
       this.executeRefsSnapshotRefresh(runOptions),
@@ -1368,6 +1388,9 @@ module.exports = class GitRepository {
     const provider = this.diffProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
+    if (from?.type === "commit") assertGitRevision(from.revision);
+    if (to?.type === "commit") assertGitRevision(to.revision);
+
     if (!new Set(["structured", "patch", "both"]).has(format)) {
       throw new TypeError(`Unsupported diff format: ${format}`);
     }
@@ -1375,19 +1398,19 @@ module.exports = class GitRepository {
     try {
       if (typeof provider.getDiff === "function") {
         const result = await provider.getDiff(
-          this.getNativeDescriptor(),
+          this.getHostDescriptor(),
           { from, to, paths, context, ignoreWhitespace, detectRenames, diffFilter, format },
           { maxBytes, signal },
         );
         if (result?.schemaVersion !== 1 || !Array.isArray(result.files)) {
-          const error = new Error("git-utils returned an invalid structured diff");
-          error.code = "ERR_GIT_NATIVE_DIFF";
+          const error = new Error("Git backend returned an invalid structured diff");
+          error.code = "ERR_GIT_DIFF";
           error.operation = "diff";
           throw error;
         }
         if (format !== "structured" && typeof result.rawPatch !== "string") {
-          const error = new Error("git-utils omitted the requested raw diff patch");
-          error.code = "ERR_GIT_NATIVE_DIFF";
+          const error = new Error("Git backend omitted the requested raw diff patch");
+          error.code = "ERR_GIT_DIFF";
           error.operation = "diff";
           throw error;
         }
@@ -1446,6 +1469,7 @@ module.exports = class GitRepository {
    *
    * @param {Object} [options] - History options.
    * @param {String} [options.revision="HEAD"] - Starting revision.
+   * @param {Boolean} [options.allRefs=false] - Walk every local/remote branch and tag instead of one starting revision.
    * @param {String} [options.path] - Limit history to one path and follow renames.
    * @param {Number} [options.limit=50] - Page size.
    * @param {Object} [options.cursor] - The `nextCursor` from a previous page.
@@ -1454,6 +1478,7 @@ module.exports = class GitRepository {
    */
   async getCommits({
     revision = "HEAD",
+    allRefs = false,
     path: pathOption = null,
     limit = 50,
     cursor = null,
@@ -1461,10 +1486,14 @@ module.exports = class GitRepository {
   } = {}) {
     const provider = this.requireHistoryProvider();
     const effectiveRevision = cursor?.revision ?? revision;
+    const effectiveAllRefs = cursor?.allRefs ?? allRefs;
     const skip = cursor?.skip ?? 0;
+
+    if (!effectiveAllRefs) assertGitRevision(effectiveRevision);
 
     const params = {
       revision: effectiveRevision,
+      allRefs: effectiveAllRefs,
       path: pathOption ? this.posixRelativePath(pathOption) : null,
       limit: limit + 1,
       skip,
@@ -1472,12 +1501,17 @@ module.exports = class GitRepository {
     let records;
     if (params.path && typeof provider.getLogFollow === "function") {
       records = parseCommitRecords(
-        await provider.getLogFollow(this.getNativeDescriptor(), params, { signal }),
+        await provider.getLogFollow(this.getHostDescriptor(), params, { signal }),
       );
     } else if (!params.path && typeof provider.getHistory === "function") {
       records = await provider.getHistory(
-        this.getNativeDescriptor(),
-        { revision: params.revision, limit: params.limit, skip: params.skip },
+        this.getHostDescriptor(),
+        {
+          revision: params.revision,
+          allRefs: params.allRefs,
+          limit: params.limit,
+          skip: params.skip,
+        },
         { signal },
       );
     } else {
@@ -1493,7 +1527,11 @@ module.exports = class GitRepository {
       commits,
       hasMore,
       nextCursor: hasMore
-        ? Object.freeze({ revision: effectiveRevision, skip: skip + limit })
+        ? Object.freeze({
+            revision: effectiveRevision,
+            ...(effectiveAllRefs ? { allRefs: true } : {}),
+            skip: skip + limit,
+          })
         : null,
     });
   }
@@ -1508,9 +1546,10 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to the commit object extended with `changedFiles`: `[{path, originalPath, status, similarity}]`.
    */
   async getCommit(sha, { signal } = {}) {
+    assertGitRevision(sha, { label: "commit" });
     const provider = this.requireHistoryProvider();
     if (typeof provider.getCommit === "function") {
-      const result = await provider.getCommit(this.getNativeDescriptor(), sha, { signal });
+      const result = await provider.getCommit(this.getHostDescriptor(), sha, { signal });
       if (!result) return null;
       const { files, changedFiles, ...commit } = result;
       return deepFreeze({ ...commit, changedFiles: changedFiles || files || [] });
@@ -1545,10 +1584,11 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to the contents, or `null` when the path does not exist at that revision.
    */
   getFileAtRevision(filePath, revision, { encoding = "utf8", signal } = {}) {
+    assertGitRevision(revision);
     const provider = this.requireHistoryProvider();
     return provider.getFileAtRevision(
       typeof provider.readObjects === "function"
-        ? this.getNativeDescriptor()
+        ? this.getHostDescriptor()
         : this.getWorkingDirectory(),
       this.posixRelativePath(filePath),
       revision,
@@ -1574,11 +1614,11 @@ module.exports = class GitRepository {
     const provider = this.requireHistoryProvider();
     if (typeof provider.getIndexFile !== "function") {
       const error = new Error("The history provider cannot read index objects");
-      error.code = "ERR_GIT_NATIVE_READ_OBJECTS";
+      error.code = "ERR_GIT_READ_OBJECTS";
       error.operation = "readObjects";
       return Promise.reject(error);
     }
-    return provider.getIndexFile(this.getNativeDescriptor(), this.posixRelativePath(filePath), {
+    return provider.getIndexFile(this.getHostDescriptor(), this.posixRelativePath(filePath), {
       encoding: encoding === "buffer" ? "buffer" : encoding,
       signal,
     });
@@ -1601,7 +1641,7 @@ module.exports = class GitRepository {
     const provider = this.requireHistoryProvider();
     return provider.getBlob(
       typeof provider.readObjects === "function"
-        ? this.getNativeDescriptor()
+        ? this.getHostDescriptor()
         : this.getWorkingDirectory(),
       oid,
       {
@@ -1622,7 +1662,7 @@ module.exports = class GitRepository {
   getDescription() {
     const provider = this.refsSnapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getDescription(this.getNativeDescriptor());
+    return provider.getDescription(this.getHostDescriptor());
   }
 
   /**
@@ -1640,9 +1680,10 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to an `Array` of refname `Strings`.
    */
   getBranchesContaining(commit, { showLocal = false, showRemote = false, pattern = null } = {}) {
+    assertGitRevision(commit, { label: "commit" });
     const provider = this.refsSnapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getBranchesContaining(this.getNativeDescriptor(), commit, {
+    return provider.getBranchesContaining(this.getHostDescriptor(), commit, {
       showLocal,
       showRemote,
       pattern,
@@ -1661,7 +1702,7 @@ module.exports = class GitRepository {
   getFileMode(filePath) {
     const provider = this.statusSnapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getFileMode(this.getNativeDescriptor(), this.posixRelativePath(filePath));
+    return provider.getFileMode(this.getHostDescriptor(), this.posixRelativePath(filePath));
   }
 
   /**
@@ -1676,7 +1717,7 @@ module.exports = class GitRepository {
   getSubmodulePaths() {
     const provider = this.statusSnapshotProvider;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getSubmodulePaths(this.getNativeDescriptor());
+    return provider.getSubmodulePaths(this.getHostDescriptor());
   }
 
   /**
@@ -1693,10 +1734,11 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to a frozen `{revision, lines}` object where each line has `line`, `originalLine`, `sha`, `author`, `summary`.
    */
   async getBlame(filePath, { revision = null, ignoreWhitespace = false, signal } = {}) {
+    assertGitRevision(revision, { allowNull: true });
     const provider = this.requireHistoryProvider();
     const output = await provider.getBlame(
       typeof provider.readObjects === "function"
-        ? this.getNativeDescriptor()
+        ? this.getHostDescriptor()
         : this.getWorkingDirectory(),
       this.posixRelativePath(filePath),
       { revision, ignoreWhitespace },
@@ -1717,8 +1759,8 @@ module.exports = class GitRepository {
    * @status public
    *
    * Computes gutter line diffs off the renderer thread via the
-   * git-host worker (fetching and caching the HEAD blob, then diffing with
-   * git-utils) without blocking the renderer.
+   * git-host worker (fetching and caching the HEAD blob, then diffing with the
+   * selected backend) without blocking the renderer.
    *
    * @param filePath - The `String` path relative to the repository.
    * @param text - The `String` to compare against the `HEAD` contents.
@@ -1731,7 +1773,7 @@ module.exports = class GitRepository {
     // produces a fresh key. Files inside submodules are owned by their own
     // repository, so this repository always keys against its own HEAD.
     const headOid = this.statusSnapshot?.head?.oid ?? null;
-    return this.diffProvider.getLineDiffs(this.getNativeDescriptor(), {
+    return this.diffProvider.getLineDiffs(this.getHostDescriptor(), {
       relativePosixPath,
       headOid,
       text,

@@ -195,6 +195,20 @@ describe("repository history", () => {
       ]);
     });
 
+    it("walks all refs through a backend-neutral option", async () => {
+      await operationProvider.run(["checkout", "-b", "side"], workingDirectory);
+      fs.writeFileSync(path.join(workingDirectory, "side.txt"), "side\n");
+      await operations.stageFiles(["side.txt"]);
+      await operations.commit("side only");
+      await operationProvider.run(["checkout", "main"], workingDirectory);
+
+      const first = await repo.getCommits({ allRefs: true, limit: 1 });
+      expect(first.commits[0].subject).toBe("side only");
+      expect(first.nextCursor).toEqual({ revision: "HEAD", allRefs: true, skip: 1 });
+      const rest = await repo.getCommits({ limit: 10, cursor: first.nextCursor });
+      expect(rest.commits.map((commit) => commit.subject)).toContain("rename");
+    });
+
     it("reads a commit with its changed-file summary and multiline body", async () => {
       const { commits } = await repo.getCommits();
       const renameCommit = await repo.getCommit(commits[0].sha);

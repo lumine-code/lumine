@@ -15,8 +15,6 @@ const REQUIRED_EXPORTS = [
   "readConfig",
   "fileMode",
   "submodulePaths",
-  "lineDiff",
-  "mutate",
 ];
 
 function initializationError(message, cause) {
@@ -77,10 +75,48 @@ function configureNativeBackend(loaded, { trustAllRepositories }) {
   });
 }
 
+// Keep git-utils behind a lazy capability boundary. System-Git operations can
+// start and remain usable without loading the addon; the first operation whose
+// static route selects git-utils performs the ABI/version handshake. A failed
+// handshake is memoized so native requests fail consistently without retrying
+// or affecting CLI-only operations.
+function createNativeBackendCapability({ trustAllRepositories, nativeBackend } = {}) {
+  let loaded = null;
+  let failure = null;
+
+  return Object.freeze({
+    get() {
+      if (failure) throw failure;
+      if (!loaded) {
+        try {
+          loaded = nativeBackend ? validateNativeBackend(nativeBackend) : loadNativeBackend();
+          configureNativeBackend(loaded, { trustAllRepositories });
+        } catch (error) {
+          failure =
+            error?.code === "ERR_GIT_NATIVE_INIT"
+              ? error
+              : initializationError("Unable to initialize @lumine-code/git-utils", error);
+          throw failure;
+        }
+      }
+      return loaded.nativeBackend;
+    },
+
+    status() {
+      return Object.freeze({
+        state: loaded ? "ready" : failure ? "failed" : "uninitialized",
+        versions: loaded?.versions || null,
+        error: failure || null,
+      });
+    },
+  });
+}
+
 module.exports = {
   REQUIRED_GIT_UTILS_MAJOR,
   REQUIRED_LIBGIT2_VERSION,
   configureNativeBackend,
+  createNativeBackendCapability,
   loadNativeBackend,
   validateNativeBackend,
 };

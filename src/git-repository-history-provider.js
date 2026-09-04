@@ -17,13 +17,13 @@ module.exports = class GitRepositoryHistoryProvider {
 
   async getLog(
     workingDirectory,
-    { revision = "HEAD", path = null, limit, skip = 0 },
+    { revision = "HEAD", allRefs = false, path = null, limit, skip = 0 },
     options = {},
   ) {
     const args = ["log", "-z", `--format=${LOG_FORMAT}`];
     if (limit != null) args.push(`--max-count=${limit}`);
     if (skip > 0) args.push(`--skip=${skip}`);
-    args.push(revision);
+    args.push(allRefs ? "--all" : revision);
     if (path) args.push("--follow", "--", path);
 
     const result = await this.runner.runResult(args, workingDirectory, {

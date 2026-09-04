@@ -1,4 +1,10 @@
 const ChildProcess = require("child_process");
+const {
+  GIT_HOST_PROTOCOL_VERSION,
+  assertKnownOperation,
+  reviveError,
+} = require("./git-host-protocol");
+const { normalizeGitBackendError } = require("./git-error");
 
 // Renderer-side transport for the git-host worker: one long-lived forked process
 // per window that runs every Git `git` command and its output off the
@@ -41,28 +47,6 @@ function abandonedRequest() {
 // Rebuild a real Error from the fields the worker serialized, preserving the
 // `code`/`exitCode`/`stderr` that callers branch on (e.g. GitRepository.getDiff
 // maps ERR_CHILD_PROCESS_STDIO_MAXBUFFER -> ERR_GIT_DIFF_TOO_LARGE).
-function reviveError(serialized) {
-  const error = new Error(serialized.message);
-  if (serialized.name) error.name = serialized.name;
-  if (serialized.code !== undefined) error.code = serialized.code;
-  if (serialized.exitCode !== undefined) error.exitCode = serialized.exitCode;
-  if (serialized.stderr !== undefined) error.stderr = serialized.stderr;
-  if (serialized.stdout !== undefined) error.stdout = serialized.stdout;
-  if (serialized.command !== undefined) error.command = serialized.command;
-  if (serialized.gitError !== undefined) error.gitError = serialized.gitError;
-  if (serialized.operation !== undefined) error.operation = serialized.operation;
-  if (serialized.libgit2Code !== undefined) error.libgit2Code = serialized.libgit2Code;
-  if (serialized.libgit2Class !== undefined) error.libgit2Class = serialized.libgit2Class;
-  if (serialized.libgit2Message !== undefined) error.libgit2Message = serialized.libgit2Message;
-  if (serialized.retriable !== undefined) error.retriable = serialized.retriable;
-  if (serialized.maxBytes !== undefined) error.maxBytes = serialized.maxBytes;
-  if (serialized.structuredBytes !== undefined) {
-    error.structuredBytes = serialized.structuredBytes;
-  }
-  if (serialized.patchBytes !== undefined) error.patchBytes = serialized.patchBytes;
-  return error;
-}
-
 let singleton = null;
 
 // null = auto (fork in production, run in-process under specs so package tests
@@ -73,6 +57,7 @@ let forkModeOverride = null;
 // Test seam: replaces ChildProcess.fork so the transport (correlation, crash,
 // cancel) can be driven deterministically with a fake child.
 let childFactoryOverride = null;
+let backendPolicyOverride = null;
 
 class GitHost {
   // Per-window singleton. Consumers (the git-host client providers) always go
@@ -102,6 +87,10 @@ class GitHost {
     childFactoryOverride = factory;
   }
 
+  static setBackendPolicyForTesting(policy) {
+    backendPolicyOverride = policy;
+  }
+
   constructor() {
     this.child = null;
     this.readyPromise = null;
@@ -111,6 +100,7 @@ class GitHost {
     this.nextId = 0;
     this.inProcessOps = null; // op table when running without a forked worker
     this.nativeVersions = null;
+    this.backendStatus = null;
     this.fatalError = null;
   }
 
@@ -142,6 +132,7 @@ class GitHost {
       LUMINE_COMPILE_CACHE_PATH: compileCachePath,
       LUMINE_GIT_TRUST_ALL: this.trustAllRepositories() ? "1" : "0",
       LUMINE_GIT_PATH: this.gitPath(),
+      ...(backendPolicyOverride ? { LUMINE_TEST_GIT_BACKEND_POLICY: backendPolicyOverride } : {}),
     });
   }
 
@@ -152,13 +143,33 @@ class GitHost {
       try {
         const GitRunner = require("./git-runner");
         const createGitHostOps = require("./git-host-ops");
-        const { configureNativeBackend, loadNativeBackend } = require("./git-native-backend");
-        const loaded = loadNativeBackend();
-        configureNativeBackend(loaded, { trustAllRepositories: this.trustAllRepositories() });
-        this.nativeVersions = loaded.versions;
+        const { ALL_CLI_BACKEND_OVERRIDES } = require("./git-host-protocol");
+        const { createNativeBackendCapability } = require("./git-native-backend");
+        const nativeCapability = createNativeBackendCapability({
+          trustAllRepositories: this.trustAllRepositories(),
+        });
+        const getNativeBackend = () => {
+          try {
+            return nativeCapability.get();
+          } finally {
+            const status = nativeCapability.status();
+            this.nativeVersions = status.versions;
+            this.backendStatus = {
+              cli: { state: "ready" },
+              "git-utils": { state: status.state },
+            };
+          }
+        };
+        this.backendStatus = {
+          cli: { state: "ready" },
+          "git-utils": { state: "uninitialized" },
+        };
         this.inProcessOps = createGitHostOps(
           new GitRunner({ trustAllRepositories: this.trustAllRepositories() }),
-          { nativeBackend: loaded.nativeBackend },
+          {
+            getNativeBackend,
+            backendOverrides: backendPolicyOverride === "cli" ? ALL_CLI_BACKEND_OVERRIDES : {},
+          },
         );
         this.readyPromise = Promise.resolve();
       } catch (error) {
@@ -195,25 +206,41 @@ class GitHost {
     if (!message) return;
     switch (message.event) {
       case "git:ready":
+        if (message.protocolVersion !== GIT_HOST_PROTOCOL_VERSION) {
+          const error = new Error(
+            `git-host protocol mismatch: expected ${GIT_HOST_PROTOCOL_VERSION}, received ${message.protocolVersion ?? "unknown"}`,
+          );
+          error.code = "ERR_GIT_HOST_PROTOCOL";
+          error.retriable = false;
+          this.fatalError = error;
+          this.rejectReady?.(error);
+          this.resolveReady = null;
+          this.rejectReady = null;
+          return;
+        }
         this.nativeVersions = message.versions || null;
+        this.backendStatus = message.backends || null;
         this.resolveReady?.();
         this.resolveReady = null;
         this.rejectReady = null;
         return;
-      case "git:init-error":
-        this.fatalError = reviveError(
-          message.error || { message: "git-utils initialization failed" },
-        );
-        this.rejectReady?.(this.fatalError);
-        this.resolveReady = null;
-        this.rejectReady = null;
+      case "git:backend-status":
+        this.backendStatus = {
+          ...(this.backendStatus || {}),
+          [message.backend]: {
+            state: message.state,
+            versions: message.versions || null,
+            error: message.error ? reviveError(message.error) : null,
+          },
+        };
+        if (message.backend === "git-utils") this.nativeVersions = message.versions || null;
         return;
       case "git:reply": {
         const entry = this.pending.get(message.id);
         if (!entry) return;
         this.pending.delete(message.id);
         this.detachAbort(entry);
-        if (message.error) entry.reject(reviveError(message.error));
+        if (message.error) entry.reject(normalizeGitBackendError(reviveError(message.error)));
         else entry.resolve(message.result);
         return;
       }
@@ -266,10 +293,16 @@ class GitHost {
   }
 
   async request(op, payload, { signal } = {}) {
+    assertKnownOperation(op);
     if (signal?.aborted) throw abortError();
     if (isUnloading()) return abandonedRequest();
 
     await this.ensureStarted();
+    // AbortSignal does not replay an abort event to a listener attached after
+    // it fired. Recheck after startup so cancellation during the ready
+    // handshake cannot accidentally execute the operation.
+    if (signal?.aborted) throw abortError();
+    if (isUnloading()) return abandonedRequest();
     if (this.fatalError) throw this.fatalError;
 
     // In-process mode (spec harness): run the op directly, translating the
@@ -286,6 +319,8 @@ class GitHost {
       if (signal) signal.addEventListener("abort", onAbort, { once: true });
       try {
         return await run(payload, { signal: controller.signal });
+      } catch (error) {
+        throw normalizeGitBackendError(error);
       } finally {
         if (signal) signal.removeEventListener("abort", onAbort);
       }
@@ -340,6 +375,7 @@ class GitHost {
     this.rejectReady = null;
     this.inProcessOps = null;
     this.nativeVersions = null;
+    this.backendStatus = null;
     this.fatalError = null;
   }
 }

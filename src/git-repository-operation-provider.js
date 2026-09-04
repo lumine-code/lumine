@@ -3,7 +3,6 @@ const path = require("path");
 const { resolveGitPath } = require("./git-binary");
 
 const GitHost = require("./git-host");
-const { GitHostMutationProvider } = require("./git-host-providers");
 const GitRunner = require("./git-runner");
 const { GitOperationError } = GitRunner;
 
@@ -119,25 +118,14 @@ const OPERATION_REFRESH_HINTS = {
 };
 
 class GitRepositoryOperations {
-  constructor(provider, workingDirectory, repository = null, gitDirectory = null) {
+  constructor(provider, workingDirectory, repository = null) {
     this.provider = provider;
     this.workingDirectory = workingDirectory;
     this.repository = repository;
-    this.nativeDescriptor = repository?.getNativeDescriptor?.() || {
-      // Service consumers normally pass the exact repository path. The
-      // conventional `.git` fallback is only for direct construction (not
-      // discovery) and keeps the standalone operations facade useful in specs.
-      gitDirectory: gitDirectory || (workingDirectory ? path.join(workingDirectory, ".git") : null),
-      workingDirectory,
-    };
   }
 
   run(args, options) {
     return this.provider.run(args, this.workingDirectory, options);
-  }
-
-  mutate(operation, payload = {}, options = {}) {
-    return this.provider.mutate(this.nativeDescriptor, { operation, ...payload }, options);
   }
 
   getOperationRefreshHint(operationName, args = []) {
@@ -170,12 +158,15 @@ class GitRepositoryOperations {
     return this.run(["reset", "--", ...filePaths], options);
   }
 
-  stageFileModeChange(filePath, mode, options = {}) {
-    return this.mutate("stageFileModeChange", { path: filePath, mode }, options);
+  async stageFileModeChange(filePath, mode, options = {}) {
+    const indexEntry = await this.run(["ls-files", "-s", "--", filePath], options);
+    const match = /^(\d+)\s+([0-9a-f]+)\s+\d+\t/.exec(indexEntry);
+    if (!match) throw new Error(`No index entry found for: ${filePath}`);
+    return this.run(["update-index", "--cacheinfo", `${mode},${match[2]},${filePath}`], options);
   }
 
   stageFileSymlinkChange(filePath, options = {}) {
-    return this.mutate("stageFileSymlinkChange", { path: filePath }, options);
+    return this.run(["rm", "--cached", "--force", "--", filePath], options);
   }
 
   applyPatch(patch, options = {}) {
@@ -366,7 +357,7 @@ class GitRepositoryOperations {
   }
 
   deleteRef(reference, options = {}) {
-    return this.mutate("deleteRef", { reference }, options);
+    return this.run(["update-ref", "-d", reference], options);
   }
 
   updateSubmodules(paths, options = {}) {
@@ -433,73 +424,112 @@ class GitRepositoryOperations {
   }
 
   setConfig(key, value, options = {}) {
-    return this.mutate(
-      "setConfig",
-      {
-        key,
-        value: String(value),
-        scope: options.global ? "global" : "local",
-        add: options.add === true,
-        replaceAll: options.replaceAll === true,
-      },
-      options,
-    );
+    const args = ["config"];
+    if (options.global) args.push("--global");
+    else if (options.local !== false) args.push("--local");
+    if (options.add) args.push("--add");
+    else if (options.replaceAll) args.push("--replace-all");
+    args.push(key, String(value));
+    return this.run(args, options);
   }
 
   unsetConfig(key, options = {}) {
-    return this.mutate(
-      "unsetConfig",
-      { key, scope: options.global ? "global" : "local", all: options.all === true },
-      options,
-    );
+    const args = ["config"];
+    if (options.global) args.push("--global");
+    else if (options.local !== false) args.push("--local");
+    args.push(options.all ? "--unset-all" : "--unset", key);
+    return this.run(args, options);
   }
 
   addRemote(name, url, options = {}) {
-    return this.mutate("addRemote", { name, url }, options);
+    return this.run(["remote", "add", name, url], options);
   }
 
   removeRemote(name, options = {}) {
-    return this.mutate("removeRemote", { name }, options);
+    return this.run(["remote", "remove", name], options);
   }
 
   setRemoteUrl(name, url, options = {}) {
-    return this.mutate("setRemoteUrl", { name, url }, options);
+    return this.run(["remote", "set-url", name, url], options);
   }
 
   createBlob(options = {}) {
-    return this.mutate(
-      "createBlob",
-      options.filePath
-        ? { filePath: options.filePath }
-        : { content: options.stdin == null ? "" : options.stdin },
-      options,
-    );
+    const args = ["hash-object", "-w"];
+    const executionOptions = { ...options };
+    if (options.filePath) args.push("--", options.filePath);
+    else {
+      args.push("--stdin");
+      executionOptions.stdin = options.stdin || "";
+    }
+    return this.run(args, executionOptions)
+      .then((stdout) => stdout.trim())
+      .catch((error) => {
+        const missingSource =
+          options.filePath &&
+          error?.code === "ERR_GIT_COMMAND_FAILED" &&
+          /(?:no such file|does not exist|cannot find|could not open.*for reading)/i.test(
+            String(error.stderr || error.message),
+          );
+        if (missingSource) {
+          error.backend = "cli";
+          error.backendCode = error.code;
+          error.code = "ERR_GIT_CREATE_BLOB";
+          error.operation = "createBlob";
+        }
+        throw error;
+      });
   }
 
-  expandBlobToFile(filePath, sha, options = {}) {
-    return this.mutate("expandBlobToFile", { path: filePath, oid: sha }, options);
+  async expandBlobToFile(filePath, sha, options = {}) {
+    const contents = await this.provider.runResult(
+      ["cat-file", "blob", sha],
+      this.workingDirectory,
+      { ...options, encoding: "buffer" },
+    );
+    await fs.promises.writeFile(path.resolve(this.workingDirectory, filePath), contents.stdout);
+    return filePath;
   }
 
-  mergeFile(oursPath, basePath, theirsPath, resultPath, options = {}) {
-    return this.mutate(
-      "mergeFile",
-      { oursPath, basePath, theirsPath, resultPath, labels: options.labels || [] },
-      options,
-    );
+  async mergeFile(oursPath, basePath, theirsPath, resultPath, options = {}) {
+    const args = ["merge-file", "--stdout"];
+    for (const label of options.labels || []) args.push("-L", label);
+    args.push(oursPath, basePath, theirsPath);
+    const result = await this.provider.runResult(args, this.workingDirectory, {
+      ...options,
+      encoding: "buffer",
+      allowedExitCodes: [0, 1],
+    });
+    await fs.promises.writeFile(path.resolve(this.workingDirectory, resultPath), result.stdout);
+    return result.exitCode;
   }
 
-  writeMergeConflictToIndex(filePath, baseSha, oursSha, theirsSha, options = {}) {
-    return this.mutate(
-      "writeMergeConflictToIndex",
-      {
-        path: filePath,
-        baseOid: baseSha || null,
-        oursOid: oursSha || null,
-        theirsOid: theirsSha || null,
-        ...(options.mode ? { mode: options.mode } : {}),
-      },
-      options,
-    );
+  async writeMergeConflictToIndex(filePath, baseSha, oursSha, theirsSha, options = {}) {
+    const entries = await this.run(["ls-files", "-s", "--", filePath], options);
+    const modes = new Map();
+    for (const line of entries.split(/\r?\n/)) {
+      const match = /^(\d+)\s+[0-9a-f]+\s+(\d)\t/.exec(line);
+      if (match) modes.set(Number(match[2]), match[1]);
+    }
+    const fallbackMode = options.mode || modes.get(2) || modes.get(3) || modes.get(1) || "100644";
+    const sampleOid = baseSha || oursSha || theirsSha;
+    let oidLength = sampleOid?.length;
+    if (!oidLength) {
+      const format = (await this.run(["rev-parse", "--show-object-format"], options)).trim();
+      oidLength = format === "sha256" ? 64 : 40;
+    }
+    const lines = [`0 ${"0".repeat(oidLength)}\t${filePath}`];
+    const stages = [
+      [baseSha, 1],
+      [oursSha, 2],
+      [theirsSha, 3],
+    ];
+    for (const [sha, stage] of stages) {
+      if (sha) lines.push(`${modes.get(stage) || fallbackMode} ${sha} ${stage}\t${filePath}`);
+    }
+    return this.run(["update-index", "--index-info"], {
+      ...options,
+      stdin: `${lines.join("\n")}\n`,
+    });
   }
 }
 
@@ -507,18 +537,9 @@ module.exports = class GitRepositoryOperationProvider {
   // `exec(args, workingDirectory, options, raw)` runs a git command and resolves
   // to a `{exitCode, stdout, stderr}` result. It defaults to the git-host
   // worker; specs inject a fake to assert on the argument vector.
-  constructor({ exec, mutate, authBroker } = {}) {
+  constructor({ exec, authBroker } = {}) {
     this.exec = exec || workerExec;
-    this.nativeMutationProvider = new GitHostMutationProvider();
-    this.nativeMutate =
-      mutate ||
-      ((descriptor, request, options) =>
-        this.nativeMutationProvider.mutate(descriptor, request, options));
     this.authBroker = authBroker || null;
-  }
-
-  mutate(descriptor, request, options = {}) {
-    return this.nativeMutate(descriptor, request, options);
   }
 
   // Merge the auth broker's askpass environment into a remote operation's
@@ -578,8 +599,8 @@ module.exports = class GitRepositoryOperationProvider {
     return resolveGitPath(globalThis.lumine?.config?.get("git.path") || "");
   }
 
-  createRepositoryOperations({ workingDirectory, repository, gitDirectory }) {
-    return new GitRepositoryOperations(this, workingDirectory, repository, gitDirectory);
+  createRepositoryOperations({ workingDirectory, repository }) {
+    return new GitRepositoryOperations(this, workingDirectory, repository);
   }
 
   async initializeRepository(directoryPath, options = {}) {

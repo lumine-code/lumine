@@ -1,4 +1,8 @@
-const { configureNativeBackend, validateNativeBackend } = require("../src/git-native-backend");
+const {
+  configureNativeBackend,
+  createNativeBackendCapability,
+  validateNativeBackend,
+} = require("../src/git-native-backend");
 
 function backend(versions = { gitUtils: "10.0.0", napi: 10, libgit2: "1.9.6" }) {
   const resolved = () => Promise.resolve(null);
@@ -16,8 +20,6 @@ function backend(versions = { gitUtils: "10.0.0", napi: 10, libgit2: "1.9.6" }) 
     readConfig: resolved,
     fileMode: resolved,
     submodulePaths: resolved,
-    lineDiff: resolved,
-    mutate: resolved,
   };
 }
 
@@ -62,5 +64,46 @@ describe("git-utils native backend gate", () => {
     }
     expect(error.code).toBe("ERR_GIT_NATIVE_INIT");
     expect(error.message).toContain("1.9.6");
+  });
+
+  it("loads and configures an injected backend only on first use", () => {
+    const configurations = [];
+    const native = backend();
+    native.configure = (options) => configurations.push(options);
+    const capability = createNativeBackendCapability({
+      nativeBackend: native,
+      trustAllRepositories: true,
+    });
+
+    expect(capability.status().state).toBe("uninitialized");
+    expect(configurations).toEqual([]);
+    expect(capability.get()).toBe(native);
+    expect(capability.get()).toBe(native);
+    expect(capability.status().state).toBe("ready");
+    expect(capability.status().versions.libgit2).toBe("1.9.6");
+    expect(configurations).toEqual([{ validateOwnership: false }]);
+  });
+
+  it("memoizes a native initialization failure", () => {
+    const native = backend({ gitUtils: "9.0.0", napi: 10, libgit2: "1.9.6" });
+    const versions = spyOn(native, "versions").and.callThrough();
+    const capability = createNativeBackendCapability({ nativeBackend: native });
+
+    let first;
+    let second;
+    try {
+      capability.get();
+    } catch (error) {
+      first = error;
+    }
+    try {
+      capability.get();
+    } catch (error) {
+      second = error;
+    }
+
+    expect(second).toBe(first);
+    expect(versions.calls.count()).toBe(1);
+    expect(capability.status().state).toBe("failed");
   });
 });

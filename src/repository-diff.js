@@ -37,6 +37,27 @@ function headerPath(rawPath, prefix) {
   return value;
 }
 
+function splitDiffHeaderPaths(header) {
+  const value = header.slice("diff --git ".length);
+  if (value.startsWith('"')) {
+    let escaped = false;
+    for (let index = 1; index < value.length; index++) {
+      const character = value[index];
+      if (character === '"' && !escaped) {
+        return [value.slice(0, index + 1), value.slice(index + 1).trimStart()];
+      }
+      escaped = character === "\\" && !escaped;
+      if (character !== "\\") escaped = false;
+    }
+  }
+
+  // With core.quotePath=false, ordinary spaces remain literal. The second
+  // synthetic path is still introduced by the final ` b/` delimiter.
+  const separator = value.lastIndexOf(" b/");
+  if (separator === -1) return [null, null];
+  return [value.slice(0, separator), value.slice(separator + 1)];
+}
+
 function createFile() {
   return {
     oldPath: null,
@@ -99,6 +120,9 @@ function parseDiffPatch(patchText) {
     if (line.startsWith("diff --git ")) {
       finish();
       file = createFile();
+      const [oldPath, newPath] = splitDiffHeaderPaths(line);
+      if (oldPath != null) file.oldPath = headerPath(oldPath, "a/");
+      if (newPath != null) file.newPath = headerPath(newPath, "b/");
       continue;
     }
     if (!file) continue;
