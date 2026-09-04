@@ -3,8 +3,13 @@ const { GitOperationError } = GitRunner;
 
 const LOG_FORMAT = "%H%x00%P%x00%an%x00%ae%x00%aI%x00%cn%x00%ce%x00%cI%x00%s%x00%b";
 
-function isUnbornOrEmptyHistory(stderr) {
-  return /does not have any commits yet|bad default revision|unknown revision/.test(String(stderr));
+function isUnbornOrEmptyHistory(stderr, revision) {
+  const message = String(stderr);
+  if (/does not have any commits yet|bad default revision|unknown revision/.test(message)) {
+    return true;
+  }
+  const fullOid = /^(?:[0-9a-f]{40}|[0-9a-f]{64})$/i.test(String(revision));
+  return fullOid && /\bbad object\b/i.test(message);
 }
 
 // Read-side history commands. Every format is machine-stable: NUL-delimited
@@ -31,13 +36,23 @@ module.exports = class GitRepositoryHistoryProvider {
       allowedExitCodes: [0, 128],
     });
     if (result.exitCode === 0) return result.stdout;
-    if (isUnbornOrEmptyHistory(result.stderr)) return "";
+    if (isUnbornOrEmptyHistory(result.stderr, revision)) return "";
     throw new GitOperationError("log", result);
   }
 
-  getNameStatus(workingDirectory, sha, options = {}) {
+  getNameStatus(workingDirectory, sha, { parent = null, ...options } = {}) {
+    const endpoints = parent ? [parent, sha] : ["--root", sha];
     return this.runner.run(
-      ["diff-tree", "--root", "--no-commit-id", "--name-status", "-z", "-r", "--find-renames", sha],
+      [
+        "diff-tree",
+        "--no-commit-id",
+        "--name-status",
+        "-z",
+        "-r",
+        "--find-renames",
+        "--find-copies",
+        ...endpoints,
+      ],
       workingDirectory,
       options,
     );

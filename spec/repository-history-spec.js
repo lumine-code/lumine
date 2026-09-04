@@ -136,6 +136,24 @@ describe("repository history", () => {
       expect(lines[2].sha).toBe(sha2);
       expect(lines[2].summary).toBe("second commit");
     });
+
+    it("accepts SHA-256 object ids", () => {
+      const sha = "a".repeat(64);
+      const lines = parseBlamePorcelain(
+        [
+          `${sha} 1 1 1`,
+          "author SHA-256 Author",
+          "author-mail <sha256@example.com>",
+          "author-time 1752652800",
+          "summary sha256 commit",
+          "\tline one",
+        ].join("\n"),
+      );
+
+      expect(lines.length).toBe(1);
+      expect(lines[0].sha).toBe(sha);
+      expect(lines[0].author.name).toBe("SHA-256 Author");
+    });
   });
 
   describe("GitRepository history APIs", () => {
@@ -236,6 +254,39 @@ describe("repository history", () => {
       expect(rootCommit.changedFiles).toEqual([
         { path: "file.txt", originalPath: null, status: "added", similarity: null },
       ]);
+    });
+
+    it("compares merge commits with their first parent", async () => {
+      await operationProvider.run(["checkout", "-b", "feature"], workingDirectory);
+      fs.writeFileSync(path.join(workingDirectory, "feature.txt"), "feature\n");
+      await operations.stageFiles(["feature.txt"]);
+      await operations.commit("feature");
+
+      await operationProvider.run(["checkout", "main"], workingDirectory);
+      fs.writeFileSync(path.join(workingDirectory, "main.txt"), "main\n");
+      await operations.stageFiles(["main.txt"]);
+      await operations.commit("main");
+      await operationProvider.run(
+        ["merge", "--no-ff", "feature", "-m", "merge feature"],
+        workingDirectory,
+      );
+
+      const merge = await repo.getCommit("HEAD");
+      expect(merge.parents.length).toBe(2);
+      expect(merge.changedFiles).toContain({
+        path: "feature.txt",
+        originalPath: null,
+        status: "added",
+        similarity: null,
+      });
+      expect(merge.changedFiles.some((file) => file.path === "main.txt")).toBe(false);
+    });
+
+    it("returns empty results for unknown full object ids", async () => {
+      expect(await repo.getCommit("f".repeat(40))).toBeNull();
+      expect(await repo.getCommit("f".repeat(64))).toBeNull();
+      expect((await repo.getCommits({ revision: "e".repeat(40) })).commits).toEqual([]);
+      expect((await repo.getCommits({ revision: "e".repeat(64) })).commits).toEqual([]);
     });
 
     it("reads file contents at arbitrary revisions", async () => {

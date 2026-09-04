@@ -224,6 +224,7 @@ module.exports = class GitCliBackend {
     const nameStatusOutput = await this.historyProvider.getNameStatus(workingDirectory, revision, {
       ...options,
       signal,
+      parent: commit.parents[0] || null,
     });
     return { ...commit, files: parseNameStatusTokens(nameStatusOutput) };
   }

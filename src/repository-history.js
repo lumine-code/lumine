@@ -126,7 +126,9 @@ function parseBlamePorcelain(output) {
       continue;
     }
 
-    const header = /^([0-9a-f]{40}) (\d+) (\d+)(?: \d+)?$/.exec(line);
+    // Git emits a full object id here. Do not assume SHA-1: repositories using
+    // the SHA-256 object format emit 64 hexadecimal characters.
+    const header = /^([0-9a-f]+) (\d+) (\d+)(?: \d+)?$/.exec(line);
     if (header) {
       current = {
         sha: header[1],

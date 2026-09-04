@@ -345,6 +345,14 @@ describe("repository refs snapshot", () => {
       );
       expect(featureWorktree).toBeDefined();
 
+      // A user-supplied branch pattern is an operand even when it resembles a
+      // command-line option.
+      expect(
+        await refsProvider.getBranchesContaining(workingDirectory, snapshot.head.oid, {
+          pattern: "--format=oops",
+        }),
+      ).toEqual([]);
+
       // A detached checkout is reported as detached, not as a branch head.
       await operationProvider.run(["checkout", "--detach"], workingDirectory);
       const detachedSnapshot = parseRefsSnapshot(await refsProvider.getRefs(workingDirectory));

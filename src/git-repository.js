@@ -1528,13 +1528,17 @@ module.exports = class GitRepository {
     }
 
     const workingDirectory = this.getWorkingDirectory();
-    const [logOutput, nameStatusOutput] = await Promise.all([
-      provider.getLog(workingDirectory, { revision: sha, limit: 1 }, { signal }),
-      provider.getNameStatus(workingDirectory, sha, { signal }),
-    ]);
-
+    const logOutput = await provider.getLog(
+      workingDirectory,
+      { revision: sha, limit: 1 },
+      { signal },
+    );
     const [commit] = parseCommitRecords(logOutput);
     if (!commit) return null;
+    const nameStatusOutput = await provider.getNameStatus(workingDirectory, sha, {
+      signal,
+      parent: commit.parents[0] || null,
+    });
     return Object.freeze({
       ...commit,
       changedFiles: Object.freeze(parseNameStatusTokens(nameStatusOutput)),

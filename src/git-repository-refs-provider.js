@@ -86,7 +86,7 @@ module.exports = class GitRepositoryRefsProvider {
     const args = ["branch", "--format=%(refname)", "--contains", commit];
     if (showLocal && showRemote) args.splice(1, 0, "--all");
     else if (showRemote) args.splice(1, 0, "--remotes");
-    if (pattern) args.push(pattern);
+    if (pattern) args.push("--", pattern);
     const output = await this.runner.run(args, workingDirectory, options);
     return output.trim() === "" ? [] : output.trim().split("\n");
   }

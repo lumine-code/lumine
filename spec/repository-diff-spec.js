@@ -247,8 +247,10 @@ describe("repository diff", () => {
         "diff",
         "--patch",
         "--no-ext-diff",
+        "--no-textconv",
         "--no-color",
         "--find-renames",
+        "--find-copies",
         "--src-prefix=a/",
         "--dst-prefix=b/",
         "--unified=3",
@@ -277,6 +279,7 @@ describe("repository diff", () => {
       });
       expect(calls[0].args).toContain("--no-renames");
       expect(calls[0].args).not.toContain("--find-renames");
+      expect(calls[0].args).not.toContain("--find-copies");
     });
 
     it("passes a diff filter through when requested", async () => {
@@ -477,6 +480,24 @@ describe("repository diff", () => {
       expect(renamed.files[0].status).toBe("renamed");
       expect(renamed.files[0].oldPath).toBe("file.txt");
       expect(renamed.files[0].newPath).toBe("moved.txt");
+    });
+
+    it("detects copies from changed source files", async () => {
+      fs.copyFileSync(
+        path.join(workingDirectory, "file.txt"),
+        path.join(workingDirectory, "copy.txt"),
+      );
+      fs.appendFileSync(path.join(workingDirectory, "file.txt"), "source changed\n");
+      await operations.stageFiles(["file.txt", "copy.txt"]);
+
+      const result = await repo.getDiff({
+        from: { type: "commit", revision: "HEAD" },
+        to: { type: "index" },
+      });
+      const copied = result.files.find((file) => file.status === "copied");
+      expect(copied).toBeDefined();
+      expect(copied.oldPath).toBe("file.txt");
+      expect(copied.newPath).toBe("copy.txt");
     });
 
     it("rejects oversized diffs with ERR_GIT_DIFF_TOO_LARGE", async () => {
