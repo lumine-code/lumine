@@ -4415,7 +4415,12 @@ describe("TextEditorComponent", () => {
         editor.setSoftWrapped(true);
         await component.getNextUpdatePromise();
         await setEditorWidthInCharacters(component, 4);
-        expect(editor.screenRangeForBufferRange([[0, 0], [0, Infinity]]).end.row).toBeGreaterThan(0);
+        expect(
+          editor.screenRangeForBufferRange([
+            [0, 0],
+            [0, Infinity],
+          ]).end.row,
+        ).toBeGreaterThan(0);
 
         editor.setSelectedBufferRanges([
           [
@@ -4522,9 +4527,7 @@ describe("TextEditorComponent", () => {
           height: 10,
           position: "after",
         });
-        editor.setSelectedBufferRange(
-          editor.bufferRangeForBufferRow(1, { includeNewline: true }),
-        );
+        editor.setSelectedBufferRange(editor.bufferRangeForBufferRow(1, { includeNewline: true }));
         await component.getNextUpdatePromise();
         expect(item.hasAttribute("data-block-decoration-selected")).toBe(true);
 

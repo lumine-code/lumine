@@ -1813,8 +1813,7 @@ module.exports = class TextEditorComponent {
       if (!selection.isEmpty()) ranges.push(selection.getScreenRange());
     }
     ranges.sort(
-      (rangeA, rangeB) =>
-        rangeA.start.compare(rangeB.start) || rangeA.end.compare(rangeB.end),
+      (rangeA, rangeB) => rangeA.start.compare(rangeB.start) || rangeA.end.compare(rangeB.end),
     );
 
     const mergedRanges = [];
