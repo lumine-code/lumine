@@ -174,10 +174,10 @@ async function resolveLineUnsafeObjectExpression(runner, expression, workingDire
   return result.exitCode === 0 ? String(result.stdout).trim() : null;
 }
 
-// System-Git adapter. It owns all command construction and parsing inside
+// System Git service. It owns all command construction and parsing inside
 // git-host, so GitRepository and packages consume domain structures rather
 // than CLI output.
-module.exports = class GitCliBackend {
+module.exports = class SystemGitService {
   constructor({ runner }) {
     this.runner = runner;
     this.statusProvider = new GitRepositoryStatusProvider({ runner });

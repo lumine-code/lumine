@@ -3,7 +3,7 @@ const { GitHostOperations } = require("../src/git-host-protocol");
 
 describe("git-host ops", () => {
   const descriptor = { gitDirectory: "/repo/.git", workingDirectory: "/repo" };
-  let backend;
+  let service;
   let ops;
 
   function method(name, result) {
@@ -15,7 +15,7 @@ describe("git-host ops", () => {
   }
 
   beforeEach(() => {
-    backend = {
+    service = {
       snapshot: method("snapshot", { status: { fingerprint: "status", unchanged: true } }),
       diff: method("diff", { schemaVersion: 1, files: [] }),
       history: method("history", []),
@@ -31,7 +31,7 @@ describe("git-host ops", () => {
       lineDiff: method("lineDiff", []),
       exec: method("exec", { exitCode: 0, stdout: "", stderr: "" }),
     };
-    ops = createGitHostOps(null, { cliBackend: backend });
+    ops = createGitHostOps(null, { systemGitService: service });
   });
 
   it("implements every operation in the shared protocol registry", () => {
@@ -53,13 +53,13 @@ describe("git-host ops", () => {
     );
 
     expect(result.status.unchanged).toBe(true);
-    expect(backend.snapshot).toHaveBeenCalledWith(descriptor, request, {
+    expect(service.snapshot).toHaveBeenCalledWith(descriptor, request, {
       priority: "interactive",
       signal: controller.signal,
     });
   });
 
-  it("passes every repository read through the CLI adapter", async () => {
+  it("passes every repository read through the system Git service", async () => {
     const context = { signal: new AbortController().signal };
     const request = { revision: "HEAD" };
     const calls = [
@@ -93,12 +93,12 @@ describe("git-host ops", () => {
 
     for (const [operation, payload, expectedArgs] of calls) {
       await ops[operation](payload, context);
-      expect(backend[operation]).toHaveBeenCalledWith(...expectedArgs);
+      expect(service[operation]).toHaveBeenCalledWith(...expectedArgs);
     }
   });
 
   it("enforces the structured and patch size limit after a diff", async () => {
-    backend.diff.and.resolveTo({
+    service.diff.and.resolveTo({
       schemaVersion: 1,
       files: [{ oldPath: "a", newPath: "a", hunks: [{ lines: [{ text: "changed" }] }] }],
     });
@@ -106,7 +106,7 @@ describe("git-host ops", () => {
 
     const result = await ops.diff({ descriptor, request, maxBytes: 1024 }, {});
     expect(result.files.length).toBe(1);
-    expect(backend.diff).toHaveBeenCalledWith(descriptor, request, {
+    expect(service.diff).toHaveBeenCalledWith(descriptor, request, {
       maxBytes: 1024,
       signal: undefined,
     });
@@ -120,7 +120,7 @@ describe("git-host ops", () => {
     const failure = Object.assign(new Error("history failed"), {
       code: "ERR_GIT_COMMAND_FAILED",
     });
-    backend.history.and.rejectWith(failure);
+    service.history.and.rejectWith(failure);
 
     let error;
     try {
@@ -137,10 +137,10 @@ describe("git-host ops", () => {
   });
 
   it("caches a HEAD blob and line-diffs subsequent buffer text", async () => {
-    backend.readObjects.and.resolveTo([
+    service.readObjects.and.resolveTo([
       { oid: "blob", type: "blob", size: 4, content: Buffer.from("a\nb\n") },
     ]);
-    backend.lineDiff.and.resolveTo([{ oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 }]);
+    service.lineDiff.and.resolveTo([{ oldStart: 2, oldLines: 1, newStart: 2, newLines: 1 }]);
     const payload = {
       descriptor,
       relativePosixPath: "f.txt",
@@ -154,9 +154,9 @@ describe("git-host ops", () => {
     ]);
     await ops.lineDiff({ ...payload, text: "a\nC\n" }, {});
 
-    expect(backend.readObjects.calls.count()).toBe(1);
-    expect(backend.lineDiff.calls.count()).toBe(2);
-    expect(backend.lineDiff.calls.argsFor(1)[1]).toBe("a\nC\n");
+    expect(service.readObjects.calls.count()).toBe(1);
+    expect(service.lineDiff.calls.count()).toBe(2);
+    expect(service.lineDiff.calls.argsFor(1)[1]).toBe("a\nC\n");
   });
 
   it("keeps raw command results and errors intact", async () => {
@@ -166,13 +166,13 @@ describe("git-host ops", () => {
       options: { stdin: "message" },
     };
     expect(await ops.exec(payload, {})).toEqual({ exitCode: 0, stdout: "", stderr: "" });
-    expect(backend.exec).toHaveBeenCalledWith(payload, {});
+    expect(service.exec).toHaveBeenCalledWith(payload, {});
 
     const failure = Object.assign(new Error("commit failed"), {
       code: "ERR_GIT_COMMAND_FAILED",
       command: "commit",
     });
-    backend.exec.and.rejectWith(failure);
+    service.exec.and.rejectWith(failure);
     await expectAsync(ops.exec(payload, {})).toBeRejectedWith(failure);
   });
 });

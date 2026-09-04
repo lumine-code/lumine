@@ -1,7 +1,7 @@
-const GitCliBackend = require("../src/git-cli-backend");
-const { canonicalConfigKey, parseBatchObjects } = GitCliBackend;
+const SystemGitService = require("../src/system-git-service");
+const { canonicalConfigKey, parseBatchObjects } = SystemGitService;
 
-describe("GitCliBackend", () => {
+describe("SystemGitService", () => {
   it("parses binary cat-file batches and missing objects", () => {
     const content = Buffer.from([0, 10, 255]);
     const output = Buffer.concat([
@@ -21,13 +21,13 @@ describe("GitCliBackend", () => {
     expect(canonicalConfigKey("Remote.Origin.URL")).toBe("remote.Origin.url");
     expect(canonicalConfigKey("remote.origin.url")).toBe("remote.origin.url");
 
-    const backend = new GitCliBackend({
+    const service = new SystemGitService({
       runner: {
         run: async () => "remote.Origin.url\nupper\0remote.origin.url\nlower\0",
       },
     });
     expect(
-      await backend.readConfig({ gitDirectory: "/repo/.git", workingDirectory: "/repo" }, [
+      await service.readConfig({ gitDirectory: "/repo/.git", workingDirectory: "/repo" }, [
         "REMOTE.Origin.URL",
         "remote.origin.url",
         "missing.value",
@@ -42,8 +42,8 @@ describe("GitCliBackend", () => {
   it("uses the resolved commit id when reading changed files", async () => {
     const resolved = "a".repeat(40);
     const parent = "b".repeat(40);
-    const backend = new GitCliBackend({ runner: {} });
-    backend.historyProvider = {
+    const service = new SystemGitService({ runner: {} });
+    service.historyProvider = {
       getLog: jasmine
         .createSpy("getLog")
         .and.resolveTo(
@@ -64,14 +64,14 @@ describe("GitCliBackend", () => {
       getNameStatus: jasmine.createSpy("getNameStatus").and.resolveTo(""),
     };
 
-    await backend.commit(
+    await service.commit(
       { gitDirectory: "/repo/.git", workingDirectory: "/repo" },
       { revision: "HEAD" },
       {},
     );
 
     const [workingDirectory, revision, options] =
-      backend.historyProvider.getNameStatus.calls.mostRecent().args;
+      service.historyProvider.getNameStatus.calls.mostRecent().args;
     expect(workingDirectory).toBe("/repo");
     expect(revision).toBe(resolved);
     expect(options.parent).toBe(parent);
@@ -84,9 +84,9 @@ describe("GitCliBackend", () => {
         stdout: Buffer.from("abc blob 3\nraw\n"),
       }),
     };
-    const backend = new GitCliBackend({ runner });
+    const service = new SystemGitService({ runner });
 
-    const [object] = await backend.readObjects(
+    const [object] = await service.readObjects(
       { gitDirectory: "/repo.git", workingDirectory: null },
       [{ oid: "abc" }],
       {},
@@ -104,9 +104,9 @@ describe("GitCliBackend", () => {
         stdout: Buffer.from("abc blob 3\nraw\n"),
       }),
     };
-    const backend = new GitCliBackend({ runner });
+    const service = new SystemGitService({ runner });
 
-    await backend.readObjects(
+    await service.readObjects(
       { gitDirectory: "/repo.git", workingDirectory: "/repo" },
       [{ source: "index", path: "1:file.txt" }],
       {},
