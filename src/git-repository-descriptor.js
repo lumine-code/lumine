@@ -200,7 +200,6 @@ async function computeWorkingDirectoryAsync(gitDir) {
 function discoverGitDirectory(startPath) {
   if (!startPath) return null;
   let current = path.resolve(startPath);
-  if (!statOrNull(current)) return null;
 
   while (true) {
     const dotGit = path.join(current, ".git");
@@ -223,7 +222,6 @@ function discoverGitDirectory(startPath) {
 async function discoverGitDirectoryAsync(startPath) {
   if (!startPath) return null;
   let current = path.resolve(startPath);
-  if (!(await statOrNullAsync(current))) return null;
 
   while (true) {
     const dotGit = path.join(current, ".git");

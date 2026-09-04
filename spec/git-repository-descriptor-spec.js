@@ -48,6 +48,19 @@ describe("git repository descriptor", () => {
     expect(real(descriptor.getPath())).toBe(real(path.join(workingDir, ".git")));
   });
 
+  it("discovers sync and async from a missing nested path", async () => {
+    const workingDir = copyFixture("working-dir");
+    const missingPath = path.join(workingDir, "missing", "b#", "file#hash.md");
+
+    const synchronous = discoverRepositoryDescriptor(missingPath);
+    const asynchronous = await discoverRepositoryDescriptorAsync(missingPath);
+
+    expect(real(synchronous.getWorkingDirectory())).toBe(real(workingDir));
+    expect(real(asynchronous.getWorkingDirectory())).toBe(real(workingDir));
+    expect(real(synchronous.getPath())).toBe(real(path.join(workingDir, ".git")));
+    expect(asynchronous.getPath()).toBe(synchronous.getPath());
+  });
+
   it("walks up into a bare-style git directory", () => {
     const descriptor = discoverRepositoryDescriptor(fixturePath("master.git", "objects"));
 
