@@ -141,7 +141,6 @@ module.exports = class GitRepository {
     this.gitHostClient = options.gitHostClient || new GitHostClient();
     this.statusSnapshot = EMPTY_STATUS_SNAPSHOT;
     this.statusSnapshotFingerprint = null;
-    this.statusSnapshotRefreshCount = 0;
     this.statusEntriesByPath = new Map();
     this.directoryStatusAggregates = new Map();
     this.ignoredFileKeys = new Set();
@@ -150,12 +149,11 @@ module.exports = class GitRepository {
     this.statusSnapshotDebounceMs = options.statusSnapshotDebounceMs ?? 150;
     this.refsSnapshot = EMPTY_REFS_SNAPSHOT;
     this.refsSnapshotFingerprint = null;
-    this.refsSnapshotRefreshCount = 0;
     this.refsSnapshotSubscriberCount = 0;
     this.refsSnapshotDebounceMs = options.refsSnapshotDebounceMs ?? 150;
-    this.combinedSnapshotRefreshCoalescer = { flight: null, trailing: null };
-    this.combinedSnapshotRefreshTimer = null;
-    this.combinedSnapshotScheduledKinds = new Set();
+    this.snapshotRefreshCoalescer = { flight: null, trailing: null };
+    this.snapshotRefreshTimer = null;
+    this.scheduledSnapshotKinds = new Set();
     this.backgroundSnapshotWarningShown = false;
     this.upstream = { ahead: 0, behind: 0 };
 
@@ -188,18 +186,16 @@ module.exports = class GitRepository {
    * This method is idempotent.
    */
   destroy() {
-    this.statusSnapshotRefreshCount++;
-    this.refsSnapshotRefreshCount++;
     this.descriptor = null;
     this.operations = null;
     this.gitHostClient = null;
     this.statusEntriesByPath.clear();
     this.directoryStatusAggregates.clear();
-    if (this.combinedSnapshotRefreshTimer != null) {
-      clearTimeout(this.combinedSnapshotRefreshTimer);
-      this.combinedSnapshotRefreshTimer = null;
+    if (this.snapshotRefreshTimer != null) {
+      clearTimeout(this.snapshotRefreshTimer);
+      this.snapshotRefreshTimer = null;
     }
-    this.combinedSnapshotScheduledKinds.clear();
+    this.scheduledSnapshotKinds.clear();
 
     if (this.emitter) {
       this.emitter.emit("did-destroy");
@@ -748,8 +744,8 @@ module.exports = class GitRepository {
     if (this.statusSnapshot.initialized) return this.statusSnapshot;
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
-    if (this.combinedSnapshotRefreshCoalescer.flight?.mask.has("status")) {
-      return this.combinedSnapshotRefreshCoalescer.flight.promise.then(() => this.statusSnapshot);
+    if (this.snapshotRefreshCoalescer.flight?.mask.has("status")) {
+      return this.snapshotRefreshCoalescer.flight.promise.then(() => this.statusSnapshot);
     }
     return this.refreshStatusSnapshot(options);
   }
@@ -759,7 +755,7 @@ module.exports = class GitRepository {
   // repeated calls, so a continuous event stream cannot starve the refresh.
   scheduleStatusSnapshotRefresh() {
     if (this.isDestroyed() || this.statusSnapshotSubscriberCount === 0) return;
-    this.scheduleCombinedSnapshotRefresh("status", this.statusSnapshotDebounceMs);
+    this.scheduleSnapshotRefresh("status", this.statusSnapshotDebounceMs);
   }
 
   /**
@@ -780,8 +776,8 @@ module.exports = class GitRepository {
   // which lets status and refs requests issued together become one snapshot.
   // Once work has started, later callers join one trailing request whose mask
   // is the union of everything that arrived.
-  coalesceCombinedSnapshotRefresh(kind, options = {}) {
-    const state = this.combinedSnapshotRefreshCoalescer;
+  coalesceSnapshotRefresh(kind, options = {}) {
+    const state = this.snapshotRefreshCoalescer;
 
     const merge = (request, requestedKind, requestedOptions) => {
       request.mask.add(requestedKind);
@@ -803,7 +799,7 @@ module.exports = class GitRepository {
       flight.promise = Promise.resolve()
         .then(() => {
           flight.started = true;
-          return this.executeCombinedSnapshotRefresh(flight.mask, flight.options);
+          return this.executeSnapshotRefresh(flight.mask, flight.options);
         })
         .finally(() => {
           state.flight = null;
@@ -854,14 +850,14 @@ module.exports = class GitRepository {
     );
   }
 
-  scheduleCombinedSnapshotRefresh(kind, debounceMs) {
-    this.combinedSnapshotScheduledKinds.add(kind);
-    if (this.combinedSnapshotRefreshTimer != null) return;
-    this.combinedSnapshotRefreshTimer = setTimeout(() => {
-      this.combinedSnapshotRefreshTimer = null;
+  scheduleSnapshotRefresh(kind, debounceMs) {
+    this.scheduledSnapshotKinds.add(kind);
+    if (this.snapshotRefreshTimer != null) return;
+    this.snapshotRefreshTimer = setTimeout(() => {
+      this.snapshotRefreshTimer = null;
       if (this.isDestroyed()) return;
-      const kinds = this.combinedSnapshotScheduledKinds;
-      this.combinedSnapshotScheduledKinds = new Set();
+      const kinds = this.scheduledSnapshotKinds;
+      this.scheduledSnapshotKinds = new Set();
       const refreshes = [];
       if (kinds.has("status")) refreshes.push(this.refreshStatusSnapshot());
       if (kinds.has("refs")) refreshes.push(this.refreshRefsSnapshot());
@@ -869,13 +865,11 @@ module.exports = class GitRepository {
     }, debounceMs);
   }
 
-  async executeCombinedSnapshotRefresh(mask, options = {}) {
+  async executeSnapshotRefresh(mask, options = {}) {
     if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     const statusRequested = mask.has("status");
     const refsRequested = mask.has("refs");
-    const statusRefreshCount = statusRequested ? ++this.statusSnapshotRefreshCount : null;
-    const refsRefreshCount = refsRequested ? ++this.refsSnapshotRefreshCount : null;
     const includeIgnored = options.includeIgnored !== false;
 
     const result = await this.gitHostClient.getSnapshot(
@@ -905,7 +899,7 @@ module.exports = class GitRepository {
     }
     // Apply every valid section before reporting a missing or malformed sibling.
     let responseError = null;
-    if (statusRequested && statusRefreshCount === this.statusSnapshotRefreshCount) {
+    if (statusRequested) {
       try {
         if (result?.status) this.applyStatusSnapshotSection(result.status);
         else throw this.invalidSnapshotResponse("status");
@@ -913,7 +907,7 @@ module.exports = class GitRepository {
         responseError = error;
       }
     }
-    if (refsRequested && refsRefreshCount === this.refsSnapshotRefreshCount) {
+    if (refsRequested) {
       try {
         if (result?.refs) this.applyRefsSnapshotSection(result.refs);
         else throw this.invalidSnapshotResponse("refs");
@@ -987,7 +981,7 @@ module.exports = class GitRepository {
    * worker request.
    */
   refreshStatusSnapshot(options = {}) {
-    return this.coalesceCombinedSnapshotRefresh("status", options);
+    return this.coalesceSnapshotRefresh("status", options);
   }
 
   // Index the snapshot's ignored entries for O(1) `isPathIgnoredCached` lookups.
@@ -1103,8 +1097,8 @@ module.exports = class GitRepository {
     if (this.refsSnapshot.initialized) return this.refsSnapshot;
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
-    if (this.combinedSnapshotRefreshCoalescer.flight?.mask.has("refs")) {
-      return this.combinedSnapshotRefreshCoalescer.flight.promise.then(() => this.refsSnapshot);
+    if (this.snapshotRefreshCoalescer.flight?.mask.has("refs")) {
+      return this.snapshotRefreshCoalescer.flight.promise.then(() => this.refsSnapshot);
     }
     return this.refreshRefsSnapshot(options);
   }
@@ -1113,7 +1107,7 @@ module.exports = class GitRepository {
   // {@link #scheduleStatusSnapshotRefresh}.
   scheduleRefsSnapshotRefresh() {
     if (this.isDestroyed() || this.refsSnapshotSubscriberCount === 0) return;
-    this.scheduleCombinedSnapshotRefresh("refs", this.refsSnapshotDebounceMs);
+    this.scheduleSnapshotRefresh("refs", this.refsSnapshotDebounceMs);
   }
 
   /**
@@ -1124,7 +1118,7 @@ module.exports = class GitRepository {
    * at most one in-flight and one trailing worker request.
    */
   refreshRefsSnapshot(options = {}) {
-    return this.coalesceCombinedSnapshotRefresh("refs", options);
+    return this.coalesceSnapshotRefresh("refs", options);
   }
 
   /**

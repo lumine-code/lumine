@@ -483,7 +483,7 @@ describe("GitRepository", () => {
       });
       scheduled.onDidChangeStatusSnapshot(() => {});
       scheduled.destroy();
-      expect(scheduled.combinedSnapshotRefreshTimer).toBeNull();
+      expect(scheduled.snapshotRefreshTimer).toBeNull();
     });
   });
 
@@ -607,7 +607,7 @@ describe("GitRepository", () => {
       });
       scheduled.onDidChangeRefsSnapshot(() => {});
       scheduled.destroy();
-      expect(scheduled.combinedSnapshotRefreshTimer).toBeNull();
+      expect(scheduled.snapshotRefreshTimer).toBeNull();
     });
   });
 
