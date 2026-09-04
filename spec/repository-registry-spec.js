@@ -226,6 +226,19 @@ describe("RepositoryRegistry", () => {
     expect(registry.getForPath(path.join(rootPath, "src", "main.js"))).toBe(repositories[0]);
   });
 
+  it("registers and routes a bare repository by its Git directory", () => {
+    const gitDirectory = temp.mkdirSync("bare-repository");
+    const repository = new FakeRepository(null, gitDirectory);
+
+    const entry = registry.register(repository);
+
+    expect(entry.workingDirectory).toBe(gitDirectory);
+    expect(registry.getRepositories()).toEqual([repository]);
+    expect(registry.getForPath(path.join(gitDirectory, "objects", "ab", "object"))).toBe(
+      repository,
+    );
+  });
+
   it("routes a path to the nearest nested repository", () => {
     const outerPath = temp.mkdirSync("outer-repository");
     const nestedPath = path.join(outerPath, "packages", "nested");

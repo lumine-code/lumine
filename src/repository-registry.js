@@ -524,7 +524,7 @@ module.exports = class RepositoryRegistry {
   ) {
     const normalized = repository && !repository.isDestroyed?.() ? repository : null;
     const nextWorkingDirectory = normalized
-      ? normalized.getWorkingDirectory()
+      ? this.entryByRepository.get(normalized)?.workingDirectory || normalized.getWorkingDirectory()
       : workingDirectory || null;
     const nextPinned = normalized ? pinned : false;
     const repositoryChanged = normalized !== this.activeRepository;
@@ -2210,10 +2210,12 @@ module.exports = class RepositoryRegistry {
     const known = this.entryByRepository.get(repository);
     if (known) return known;
 
-    const workingDirectory = repository.getWorkingDirectory();
+    const repositoryWorkingDirectory = repository.getWorkingDirectory();
     const openedWorkingDirectory = repository.openedWorkingDirectoryPath;
     const gitDirectory = repository.getPath?.() || null;
-    const id = this.repositoryId(repository, workingDirectory);
+    const workingDirectory = repositoryWorkingDirectory || gitDirectory;
+    if (!workingDirectory) return null;
+    const id = this.repositoryId(repository, repositoryWorkingDirectory);
     const existing = this.entriesById.get(id);
     if (existing) return existing;
 
@@ -2292,7 +2294,7 @@ module.exports = class RepositoryRegistry {
       // The provider has already validated the repository. Keep the resolved
       // path if a transient filesystem race prevents canonicalization.
     }
-    return `${normalizePath(workingDirectory)}\0${normalizePath(gitDirectory)}`;
+    return `${normalizePath(workingDirectory || gitDirectory)}\0${normalizePath(gitDirectory)}`;
   }
 
   repositoryRelatesToRoot(entry, rootPath) {
