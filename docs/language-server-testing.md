@@ -64,10 +64,13 @@ A request check accepts these fields:
 | `document`   | `false` to suppress automatic `textDocument: { uri }` insertion for a `textDocument/*` method. |
 | `paramsFrom` | Values copied from earlier results into this request.                                          |
 | `expect`     | Assertions applied to the result.                                                              |
+| `retry`      | `true` or `{timeout, interval}` to repeat a safe read until `expect` passes.                   |
 
 Use `kind: "diagnostics"` to wait for pushed diagnostics in the client, with an optional `minLength`. Test pull diagnostics with a normal `textDocument/diagnostic` request. Use `kind: "restart"` to replace the active session and wait for its successor to reach `running`.
 
 An expectation may select `path`, where `*` expands an array or object's values. It may then assert `exists`, `truthy`, `type`, `minLength`, `equals`, `includes`, or a regular-expression `matches` with optional `flags`. Prefer stable semantic values over whole-response snapshots; server ordering and extra protocol fields may change without changing the feature.
+
+Use `retry` only when a server reports `running` before an asynchronous index or configuration pass makes a read result ready. The runner permits it only for known non-mutating protocol requests, requires an `expect` condition, and retries both transient request errors and results that do not satisfy that condition. Never warm a matrix with arbitrary delays or repeat rename and command execution: those are mutations, and a second attempt is a second action.
 
 `paramsFrom` makes dependent protocol flows testable without copying opaque server data:
 

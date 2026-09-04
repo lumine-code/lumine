@@ -2,6 +2,48 @@ const fs = require("fs");
 const path = require("path");
 
 const ROOT_VALUE = "$";
+const RETRYABLE_METHODS = new Set([
+  "textDocument/completion",
+  "completionItem/resolve",
+  "textDocument/hover",
+  "textDocument/signatureHelp",
+  "textDocument/declaration",
+  "textDocument/definition",
+  "textDocument/typeDefinition",
+  "textDocument/implementation",
+  "textDocument/references",
+  "textDocument/documentHighlight",
+  "textDocument/documentSymbol",
+  "workspace/symbol",
+  "textDocument/documentLink",
+  "documentLink/resolve",
+  "textDocument/documentColor",
+  "textDocument/colorPresentation",
+  "textDocument/foldingRange",
+  "textDocument/selectionRange",
+  "textDocument/linkedEditingRange",
+  "textDocument/prepareRename",
+  "textDocument/codeAction",
+  "codeAction/resolve",
+  "textDocument/codeLens",
+  "codeLens/resolve",
+  "textDocument/diagnostic",
+  "workspace/diagnostic",
+  "textDocument/formatting",
+  "textDocument/rangeFormatting",
+  "textDocument/onTypeFormatting",
+  "textDocument/inlayHint",
+  "inlayHint/resolve",
+  "textDocument/semanticTokens/full",
+  "textDocument/semanticTokens/full/delta",
+  "textDocument/semanticTokens/range",
+  "textDocument/prepareCallHierarchy",
+  "callHierarchy/incomingCalls",
+  "callHierarchy/outgoingCalls",
+  "textDocument/prepareTypeHierarchy",
+  "typeHierarchy/supertypes",
+  "typeHierarchy/subtypes",
+]);
 
 function count(value) {
   if (typeof value === "string" || Array.isArray(value)) return value.length;
@@ -92,6 +134,23 @@ function normalizeManifest(manifest, manifestPath) {
     if (names.has(check.name)) throw new Error(`duplicate check name: ${check.name}`);
     names.add(check.name);
     if (!check.kind && !check.method) throw new Error(`${check.name} needs a method or kind`);
+    if (check.retry) {
+      if (check.kind || !RETRYABLE_METHODS.has(check.method)) {
+        throw new Error(`${check.name} retries a method that is not a safe read`);
+      }
+      if (!check.expect || typeof check.expect !== "object") {
+        throw new Error(`${check.name} needs an expectation to decide when its retry is ready`);
+      }
+      const retry = check.retry === true ? {} : check.retry;
+      if (!retry || typeof retry !== "object" || Array.isArray(retry)) {
+        throw new Error(`${check.name} retry must be true or an object`);
+      }
+      for (const key of ["timeout", "interval"]) {
+        if (retry[key] !== undefined && (!Number.isFinite(retry[key]) || retry[key] < 0)) {
+          throw new Error(`${check.name} retry ${key} must be a non-negative number`);
+        }
+      }
+    }
   }
   const directory = path.dirname(path.resolve(manifestPath));
   return {
@@ -171,6 +230,61 @@ async function runInRenderer(manifest) {
     const owner = segments.reduce((item, segment) => (item[segment] ||= {}), target);
     owner[property] = structuredClone(value);
   };
+  const expectationMatches = (value, expectation = {}) => {
+    const select = (input, selector = "$") => {
+      if (!selector || selector === "$") return input;
+      let values = [input];
+      let expanded = false;
+      for (const segment of selector.split(".")) {
+        if (segment === "*") {
+          expanded = true;
+          values = values.flatMap((item) =>
+            Array.isArray(item)
+              ? item
+              : item && typeof item === "object"
+                ? Object.values(item)
+                : [],
+          );
+        } else {
+          values = values.map((item) => item?.[segment]);
+        }
+      }
+      return expanded ? values : values[0];
+    };
+    const selected = select(value, expectation.path);
+    const size = (input) => {
+      if (typeof input === "string" || Array.isArray(input)) return input.length;
+      if (input && typeof input === "object") return Object.keys(input).length;
+      return 0;
+    };
+    const same = (left, right) => JSON.stringify(left) === JSON.stringify(right);
+    if (expectation.exists === true && selected === undefined) return false;
+    if (expectation.truthy === true && !selected) return false;
+    if (expectation.type) {
+      const actual = Array.isArray(selected)
+        ? "array"
+        : selected === null
+          ? "null"
+          : typeof selected;
+      if (actual !== expectation.type) return false;
+    }
+    if (expectation.minLength !== undefined && size(selected) < expectation.minLength) return false;
+    if (Object.hasOwn(expectation, "equals") && !same(selected, expectation.equals)) return false;
+    if (Object.hasOwn(expectation, "includes")) {
+      const included =
+        typeof selected === "string"
+          ? selected.includes(String(expectation.includes))
+          : Array.isArray(selected) &&
+            selected.some((candidate) => same(candidate, expectation.includes));
+      if (!included) return false;
+    }
+    if (expectation.matches) {
+      const pattern = new RegExp(expectation.matches, expectation.flags || "");
+      const candidates = Array.isArray(selected) ? selected : [selected];
+      if (!candidates.some((candidate) => pattern.test(String(candidate)))) return false;
+    }
+    return true;
+  };
   const readReferencedValue = (source, checkName) => {
     let value = readPath(resultValues.get(source.check), source.path);
     if (source.find) {
@@ -239,7 +353,30 @@ async function runInRenderer(manifest) {
       if (check.position) {
         params.position = { line: check.position[0], character: check.position[1] };
       }
-      value = await session.request(check.method, params);
+      const request = () => session.request(check.method, params);
+      if (check.retry) {
+        const options = check.retry === true ? {} : check.retry;
+        const timeout = options.timeout ?? manifest.timeout;
+        const interval = options.interval ?? 100;
+        const until = Date.now() + timeout;
+        let lastError;
+        do {
+          try {
+            value = await request();
+            lastError = null;
+            if (expectationMatches(value, check.expect)) break;
+          } catch (error) {
+            lastError = error;
+          }
+          if (Date.now() >= until) {
+            const detail = lastError ? `: ${lastError.message}` : "";
+            throw new Error(`${check.name} did not become ready within ${timeout}ms${detail}`);
+          }
+          await delay(interval);
+        } while (true);
+      } else {
+        value = await request();
+      }
     }
     results.push({ name: check.name, value });
     resultValues.set(check.name, value);

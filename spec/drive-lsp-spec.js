@@ -41,6 +41,34 @@ describe("drive LSP conformance support", () => {
     ).toThrowError(/duplicate check name/);
   });
 
+  it("allows explicit retries only for safe read requests with expectations", () => {
+    const valid = normalizeManifest(
+      {
+        adapter: "ide-example",
+        checks: [
+          {
+            name: "completion",
+            method: "textDocument/completion",
+            retry: { timeout: 2000, interval: 25 },
+            expect: { path: "items.*.label", includes: "ready" },
+          },
+        ],
+      },
+      manifestPath,
+    );
+    expect(valid.checks[0].retry).toEqual({ timeout: 2000, interval: 25 });
+
+    for (const check of [
+      { name: "mutation", method: "workspace/executeCommand", retry: true, expect: {} },
+      { name: "no expectation", method: "textDocument/hover", retry: true },
+      { name: "bad timeout", method: "textDocument/hover", retry: { timeout: -1 }, expect: {} },
+    ]) {
+      expect(() =>
+        normalizeManifest({ adapter: "ide-example", checks: [check] }, manifestPath),
+      ).toThrow();
+    }
+  });
+
   it("reads ordinary and wildcard result paths", () => {
     const value = { items: [{ label: "one" }, { label: "two" }] };
     expect(valuesAtPath(value, "items.0.label")).toBe("one");
@@ -72,6 +100,8 @@ describe("drive LSP conformance support", () => {
         {
           name: "resolve",
           method: "completionItem/resolve",
+          retry: true,
+          expect: { path: "label", equals: "RUN" },
           paramsFrom: {
             $: {
               check: "completion",
@@ -89,6 +119,8 @@ describe("drive LSP conformance support", () => {
     expect(expression).toContain('"ide-example.features.hover":true');
     expect(expression).toContain('"find":{"path":"label","equals":"RUN"}');
     expect(expression).toContain('"select":"command"');
+    expect(expression).toContain("expectationMatches");
+    expect(expression).toContain('"retry":true');
   });
 
   it("reads diagnostics through the manager's canonical URI lookup", () => {
