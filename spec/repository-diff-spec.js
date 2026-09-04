@@ -102,6 +102,20 @@ describe("repository diff", () => {
       expect(files[0].oldMode).toBe("100644");
     });
 
+    it("does not confuse delimiter-looking text inside ordinary paths", () => {
+      const patch = [
+        "diff --git a/x b/foo.bin b/x b/foo.bin",
+        "index 1111111..2222222 100644",
+        "Binary files a/x b/foo.bin and b/x b/foo.bin differ",
+        "",
+      ].join("\n");
+
+      const { files } = parseDiffPatch(patch);
+      expect(files[0].oldPath).toBe("x b/foo.bin");
+      expect(files[0].newPath).toBe("x b/foo.bin");
+      expect(files[0].binary).toBe(true);
+    });
+
     it("parses renames and copies including paths with spaces", () => {
       const patch = [
         "diff --git a/old name.txt b/new name.txt",
@@ -498,6 +512,21 @@ describe("repository diff", () => {
       expect(copied).toBeDefined();
       expect(copied.oldPath).toBe("file.txt");
       expect(copied.newPath).toBe("copy.txt");
+    });
+
+    it("preserves binary paths containing the diff-header delimiter", async () => {
+      const relativePath = "x b/foo.bin";
+      fs.mkdirSync(path.join(workingDirectory, "x b"));
+      fs.writeFileSync(path.join(workingDirectory, relativePath), Buffer.from([0, 1, 2]));
+      await operations.stageFiles([relativePath]);
+      await operations.commit("binary path");
+      fs.writeFileSync(path.join(workingDirectory, relativePath), Buffer.from([0, 1, 3]));
+
+      const result = await repo.getDiff();
+      const binary = result.files.find((file) => file.newPath === relativePath);
+      expect(binary).toBeDefined();
+      expect(binary.oldPath).toBe(relativePath);
+      expect(binary.binary).toBe(true);
     });
 
     it("rejects oversized diffs with ERR_GIT_DIFF_TOO_LARGE", async () => {

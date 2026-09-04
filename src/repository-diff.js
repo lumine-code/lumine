@@ -51,11 +51,20 @@ function splitDiffHeaderPaths(header) {
     }
   }
 
-  // With core.quotePath=false, ordinary spaces remain literal. The second
-  // synthetic path is still introduced by the final ` b/` delimiter.
-  const separator = value.lastIndexOf(" b/");
-  if (separator === -1) return [null, null];
-  return [value.slice(0, separator), value.slice(separator + 1)];
+  // With core.quotePath=false, ordinary spaces remain literal, including the
+  // delimiter-looking substring ` b/` inside a path. Ordinary additions,
+  // deletions, modifications, binary files, and mode changes repeat the same
+  // repository path on both sides, so select the split whose stripped paths
+  // agree. Renames and copies carry authoritative `rename/copy from/to` lines
+  // later in the patch and may use the fallback candidate.
+  const candidates = [];
+  for (let separator = value.indexOf(" b/"); separator !== -1;) {
+    const candidate = [value.slice(0, separator), value.slice(separator + 1)];
+    candidates.push(candidate);
+    if (headerPath(candidate[0], "a/") === headerPath(candidate[1], "b/")) return candidate;
+    separator = value.indexOf(" b/", separator + 1);
+  }
+  return candidates.at(-1) || [null, null];
 }
 
 function createFile() {
@@ -170,9 +179,9 @@ function parseDiffPatch(patchText) {
         if (file.newMode == null) file.newMode = modeMatch[1];
       }
     } else if (line.startsWith("--- ")) {
-      if (file.oldPath == null) file.oldPath = headerPath(line.slice(4), "a/");
+      file.oldPath = headerPath(line.slice(4), "a/");
     } else if (line.startsWith("+++ ")) {
-      if (file.newPath == null) file.newPath = headerPath(line.slice(4), "b/");
+      file.newPath = headerPath(line.slice(4), "b/");
     } else if (line.startsWith("Binary files ") || line === "GIT binary patch") {
       file.binary = true;
     }
