@@ -172,19 +172,10 @@ let options = {
     "!**/node_modules/native-mate",
     // node_modules of the fuzzy-native package are only required for building it
     "!node_modules/@lumine-code/fuzzy-native/node_modules",
-    // git-utils ships source build inputs so script-suppressed CI installs can
-    // rebuild it for Electron; the application needs only its JS facade and addon.
-    "!node_modules/@lumine-code/git-utils/binding.gyp",
-    "!node_modules/@lumine-code/git-utils/bin",
-    "!node_modules/@lumine-code/git-utils/build/*.mk",
-    "!node_modules/@lumine-code/git-utils/build/*.vcxproj*",
-    "!node_modules/@lumine-code/git-utils/build/Release/*.{a,exp,lib,pdb}",
-    "!node_modules/@lumine-code/git-utils/scripts",
     "!**/node_modules/spellchecker/vendor/hunspell/.*",
     "!**/get-parameter-names/node_modules/testla",
     "!**/get-parameter-names/node_modules/.bin/testla",
     "!**/jasmine-reporters/ext",
-    "!**/deps/libgit2",
     // Exclusions borrowed from `node-prune`
     // - Files
     "!**/{Jenkinsfile}",
@@ -386,7 +377,6 @@ let options = {
     "**/node_modules/spellchecker/**", // Matching upstream glob
     "**/node_modules/@vscode/ripgrep*/**", // rg binary must be spawnable outside asar
     "node_modules/symbol-ctags/vendor/**", // ctags binaries must be spawnable outside asar
-    "node_modules/@lumine-code/git-utils/build/Release/git.node", // native git-host backend
   ],
 };
 
