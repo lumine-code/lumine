@@ -203,10 +203,14 @@ describe("repository history", () => {
       await operationProvider.run(["checkout", "main"], workingDirectory);
 
       const first = await repo.getCommits({ allRefs: true, limit: 1 });
-      expect(first.commits[0].subject).toBe("side only");
+      // Commits created within the same second have no defined relative order
+      // in `git log --all`, so either branch tip may begin the first page.
+      expect(["side only", "rename"]).toContain(first.commits[0].subject);
       expect(first.nextCursor).toEqual({ revision: "HEAD", allRefs: true, skip: 1 });
       const rest = await repo.getCommits({ limit: 10, cursor: first.nextCursor });
-      expect(rest.commits.map((commit) => commit.subject)).toContain("rename");
+      const subjects = [first.commits[0], ...rest.commits].map((commit) => commit.subject);
+      expect(subjects).toContain("side only");
+      expect(subjects).toContain("rename");
     });
 
     it("reads a commit with its changed-file summary and multiline body", async () => {
