@@ -70,7 +70,7 @@ Use `kind: "diagnostics"` to wait for pushed diagnostics in the client, with an 
 
 An expectation may select `path`, where `*` expands an array or object's values. It may then assert `exists`, `truthy`, `type`, `minLength`, `equals`, `includes`, or a regular-expression `matches` with optional `flags`. Prefer stable semantic values over whole-response snapshots; server ordering and extra protocol fields may change without changing the feature.
 
-Use `retry` only when a server reports `running` before an asynchronous index or configuration pass makes a read result ready. The runner permits it only for known non-mutating protocol requests, requires an `expect` condition, and retries both transient request errors and results that do not satisfy that condition. Never warm a matrix with arbitrary delays or repeat rename and command execution: those are mutations, and a second attempt is a second action.
+Use `retry` only when a server reports `running` before an asynchronous index or configuration pass makes a read result ready. The runner permits it only for known non-mutating protocol requests, requires an `expect` condition, and retries both transient request errors and results that do not satisfy that condition. Its timeout covers requests and intervals together; an in-flight attempt is cancelled at the deadline and a late result is never accepted. Never warm a matrix with arbitrary delays or repeat rename and command execution: those are mutations, and a second attempt is a second action.
 
 `paramsFrom` makes dependent protocol flows testable without copying opaque server data:
 

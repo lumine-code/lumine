@@ -121,6 +121,9 @@ describe("drive LSP conformance support", () => {
     expect(expression).toContain('"select":"command"');
     expect(expression).toContain("expectationMatches");
     expect(expression).toContain('"retry":true');
+    expect(expression).toContain("new AbortController()");
+    expect(expression).toContain("request({ signal: controller.signal })");
+    expect(expression).toContain("Math.min(interval, wait)");
   });
 
   it("reads diagnostics through the manager's canonical URI lookup", () => {

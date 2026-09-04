@@ -112,7 +112,12 @@ function assertExpectation(name, value, expectation = {}) {
   if (expectation.matches) {
     const pattern = new RegExp(expectation.matches, expectation.flags || "");
     const candidates = Array.isArray(selected) ? selected : [selected];
-    if (!candidates.some((candidate) => pattern.test(String(candidate)))) {
+    if (
+      !candidates.some((candidate) => {
+        pattern.lastIndex = 0;
+        return pattern.test(String(candidate));
+      })
+    ) {
       throw new Error(`${description} does not match /${expectation.matches}/`);
     }
   }
@@ -281,7 +286,13 @@ async function runInRenderer(manifest) {
     if (expectation.matches) {
       const pattern = new RegExp(expectation.matches, expectation.flags || "");
       const candidates = Array.isArray(selected) ? selected : [selected];
-      if (!candidates.some((candidate) => pattern.test(String(candidate)))) return false;
+      if (
+        !candidates.some((candidate) => {
+          pattern.lastIndex = 0;
+          return pattern.test(String(candidate));
+        })
+      )
+        return false;
     }
     return true;
   };
@@ -353,26 +364,39 @@ async function runInRenderer(manifest) {
       if (check.position) {
         params.position = { line: check.position[0], character: check.position[1] };
       }
-      const request = () => session.request(check.method, params);
+      const request = (options) => session.request(check.method, params, options);
       if (check.retry) {
         const options = check.retry === true ? {} : check.retry;
         const timeout = options.timeout ?? manifest.timeout;
         const interval = options.interval ?? 100;
         const until = Date.now() + timeout;
         let lastError;
+        let firstAttempt = true;
+        const timeoutError = () => {
+          const detail = lastError ? `: ${lastError.message}` : "";
+          return new Error(`${check.name} did not become ready within ${timeout}ms${detail}`);
+        };
         do {
+          const remaining = until - Date.now();
+          if (!firstAttempt && remaining <= 0) throw timeoutError();
+          firstAttempt = false;
+          const controller = new AbortController();
+          const timer = setTimeout(
+            () => controller.abort(),
+            Math.max(0, Math.min(remaining, 0x7fffffff)),
+          );
           try {
-            value = await request();
+            value = await request({ signal: controller.signal });
             lastError = null;
-            if (expectationMatches(value, check.expect)) break;
+            if (Date.now() <= until && expectationMatches(value, check.expect)) break;
           } catch (error) {
             lastError = error;
+          } finally {
+            clearTimeout(timer);
           }
-          if (Date.now() >= until) {
-            const detail = lastError ? `: ${lastError.message}` : "";
-            throw new Error(`${check.name} did not become ready within ${timeout}ms${detail}`);
-          }
-          await delay(interval);
+          const wait = until - Date.now();
+          if (wait <= 0) throw timeoutError();
+          await delay(Math.min(interval, wait));
         } while (true);
       } else {
         value = await request();
