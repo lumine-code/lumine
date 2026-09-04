@@ -31,6 +31,16 @@ describe("drive LSP conformance support", () => {
       normalizeManifest(
         {
           adapter: "ide-example",
+          timeout: -1,
+          checks: [{ name: "hover", method: "textDocument/hover" }],
+        },
+        manifestPath,
+      ),
+    ).toThrowError(/timeout must be a non-negative number/);
+    expect(() =>
+      normalizeManifest(
+        {
+          adapter: "ide-example",
           checks: [
             { name: "same", kind: "restart" },
             { name: "same", method: "textDocument/hover" },

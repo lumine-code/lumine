@@ -133,6 +133,12 @@ function normalizeManifest(manifest, manifestPath) {
   if (!Array.isArray(manifest.checks) || manifest.checks.length === 0) {
     throw new Error("the LSP conformance manifest needs at least one check");
   }
+  if (
+    manifest.timeout !== undefined &&
+    (!Number.isFinite(manifest.timeout) || manifest.timeout < 0)
+  ) {
+    throw new Error("the LSP conformance manifest timeout must be a non-negative number");
+  }
   const names = new Set();
   for (const check of manifest.checks) {
     if (!check.name || typeof check.name !== "string") throw new Error("every check needs a name");
