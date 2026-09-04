@@ -207,8 +207,9 @@ module.exports = class GitRepository {
    *
    * Destroy this {@link GitRepository} object.
    *
-   * This destroys any tasks and subscriptions. Native operations are stateless
-   * and hold no repository handle in the renderer. This method is idempotent.
+   * This destroys any tasks and subscriptions. Repository operations run in the
+   * git-host process and hold no Git process or repository state in the renderer.
+   * This method is idempotent.
    */
   destroy() {
     this.statusSnapshotRefreshCount++;

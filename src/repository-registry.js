@@ -2171,7 +2171,7 @@ module.exports = class RepositoryRegistry {
       if (previousEntry) {
         previousEntry.bufferOwners.delete(buffer);
         // A repository also listens to buffer path changes. Let every listener
-        // finish before releasing the old native handle.
+        // finish before releasing the previous repository lease.
         queueMicrotask(() => this.prune(previousEntry));
       }
     };
@@ -2186,7 +2186,7 @@ module.exports = class RepositoryRegistry {
         this.bufferOwners.delete(buffer);
 
         // Other buffer-destroy listeners (including GitRepository itself) must
-        // finish before releasing the repository's native handle.
+        // finish before releasing the repository lease.
         if (entry) queueMicrotask(() => this.prune(entry));
       }) || new Disposable(),
     );
