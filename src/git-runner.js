@@ -160,7 +160,6 @@ class GitRunner {
         maxBuffer: options.maxBuffer,
         signal: options.signal,
         killSignal: options.killSignal,
-        processCallback: options.processCallback,
       });
     // Interactive/credential operations may block for a long time; keep them out
     // of the shared read budget so a hung prompt cannot starve status refreshes.

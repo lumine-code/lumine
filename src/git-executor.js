@@ -5,8 +5,8 @@ const { spawn } = require("child_process");
 // options)` resolves to `{exitCode, stdout, stderr}` and rejects with an
 // `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`-coded error when stdout exceeds `maxBuffer`
 // (GitRepository.getDiff maps that to ERR_GIT_DIFF_TOO_LARGE). Supported options:
-// env, stdin, encoding ("buffer" for a Buffer stdout), maxBuffer, signal,
-// killSignal, processCallback.
+// env, stdin, encoding ("buffer" for a Buffer stdout), maxBuffer, signal, and
+// killSignal.
 
 const MAX_BUFFER_EXCEEDED_CODE = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
@@ -44,8 +44,6 @@ function createGitExec(gitPath) {
       const cleanup = () => {
         if (options.signal) options.signal.removeEventListener("abort", onAbort);
       };
-
-      if (typeof options.processCallback === "function") options.processCallback(child);
 
       child.stdout.on("data", (chunk) => {
         stdoutLength += chunk.length;

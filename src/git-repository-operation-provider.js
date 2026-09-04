@@ -8,11 +8,10 @@ const { GitOperationError } = GitRunner;
 
 // Send a git command to the git-host worker's `exec` op. The renderer builds the
 // argument vector (in GitRepositoryOperations) but the command runs off the
-// renderer thread. `signal` becomes the transport's cancel channel and
-// `processCallback` (streaming progress) cannot cross IPC yet, so both are
-// stripped; everything else is structured-clone-safe.
+// renderer thread. `signal` becomes the transport's cancel channel; everything
+// sent in the payload must be structured-clone-safe.
 function workerExec(args, workingDirectory, options = {}, raw = false) {
-  const { signal, processCallback, ...rest } = options; // eslint-disable-line no-unused-vars
+  const { signal, ...rest } = options;
   return GitHost.instance().request(
     "exec",
     { workingDirectory, args, options: rest, raw },
