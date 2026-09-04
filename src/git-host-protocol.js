@@ -1,6 +1,4 @@
-// Version 2 is the system-Git-only protocol. Version 1 advertised and routed
-// multiple backends and must not be paired with this worker implementation.
-const GIT_HOST_PROTOCOL_VERSION = 2;
+const GIT_HOST_PROTOCOL_VERSION = 1;
 
 // The single registry of operations accepted by git-host. Implementations live
 // behind the worker boundary, so renderers and packages share one stable facade.
