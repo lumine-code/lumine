@@ -221,11 +221,15 @@ module.exports = class GitCliBackend {
     );
     const [commit] = parseCommitRecords(logOutput);
     if (!commit) return null;
-    const nameStatusOutput = await this.historyProvider.getNameStatus(workingDirectory, revision, {
-      ...options,
-      signal,
-      parent: commit.parents[0] || null,
-    });
+    const nameStatusOutput = await this.historyProvider.getNameStatus(
+      workingDirectory,
+      commit.sha,
+      {
+        ...options,
+        signal,
+        parent: commit.parents[0] || null,
+      },
+    );
     return { ...commit, files: parseNameStatusTokens(nameStatusOutput) };
   }
 

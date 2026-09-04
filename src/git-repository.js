@@ -490,8 +490,8 @@ module.exports = class GitRepository {
    * Retrieves a shortened version of the HEAD reference value.
    *
    * This removes the leading segments of `refs/heads`, `refs/tags`, or
-   * `refs/remotes`.  It also shortens the SHA-1 of a detached `HEAD` to 7
-   * characters.
+   * `refs/remotes`. It also shortens the object id of a detached `HEAD` to 7
+   * characters, independent of the repository's object format.
    *
    * @returns {String} The shortened `HEAD` reference.
    */
@@ -1535,7 +1535,7 @@ module.exports = class GitRepository {
     );
     const [commit] = parseCommitRecords(logOutput);
     if (!commit) return null;
-    const nameStatusOutput = await provider.getNameStatus(workingDirectory, sha, {
+    const nameStatusOutput = await provider.getNameStatus(workingDirectory, commit.sha, {
       signal,
       parent: commit.parents[0] || null,
     });
