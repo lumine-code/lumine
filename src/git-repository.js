@@ -1685,8 +1685,7 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * The repository-relative paths of the repository's submodules
-   * (`git submodule status`).
+   * The repository-relative paths declared in `.gitmodules`.
    *
    * @returns {Promise} resolving to an `Array` of path `Strings`.
    */

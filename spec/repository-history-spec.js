@@ -343,6 +343,12 @@ describe("repository history", () => {
       expect(await repo.getFileMode("moved.txt")).toBe("100644");
       expect(await repo.getFileMode("does-not-exist.txt")).toBeNull();
       expect(await repo.getSubmodulePaths()).toEqual([]);
+
+      fs.writeFileSync(
+        path.join(workingDirectory, ".gitmodules"),
+        '[submodule "spaced"]\n\tpath = vendor/dir with space/żółć\n\turl = ../module.git\n',
+      );
+      expect(await repo.getSubmodulePaths()).toEqual(["vendor/dir with space/żółć"]);
     });
 
     it("attributes blame lines to the right commits and authors", async () => {

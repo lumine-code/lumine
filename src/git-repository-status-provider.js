@@ -33,14 +33,22 @@ module.exports = class GitRepositoryStatusProvider {
     return space === -1 ? null : output.slice(0, space);
   }
 
-  // The paths of the repository's submodules (`git submodule status`).
+  // Read declared paths through Git's config parser so quoted, escaped,
+  // whitespace, and Unicode values round-trip without parsing display output.
   async getSubmodulePaths(workingDirectory, options = {}) {
-    const output = await this.runner.run(["submodule", "status"], workingDirectory, options);
-    if (output.trim() === "") return [];
-    return output
-      .trim()
-      .split("\n")
-      .map((line) => line.trim().split(/\s+/)[1])
+    const result = await this.runner.runResult(
+      ["config", "--null", "--file", ".gitmodules", "--get-regexp", "^submodule\\..*\\.path$"],
+      workingDirectory,
+      { ...options, allowedExitCodes: [0, 1] },
+    );
+    if (result.exitCode === 1) return [];
+    return String(result.stdout)
+      .split("\0")
+      .filter(Boolean)
+      .map((record) => {
+        const separator = record.indexOf("\n");
+        return separator === -1 ? null : record.slice(separator + 1);
+      })
       .filter(Boolean);
   }
 };
