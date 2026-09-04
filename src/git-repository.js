@@ -10,7 +10,7 @@ const {
   GitHostDiffProvider,
   GitHostHistoryProvider,
 } = require("./git-host-providers");
-const { parseDiffPatch } = require("./repository-diff");
+const { applyFileEndpointPaths, parseDiffPatch } = require("./repository-diff");
 const {
   parseCommitRecords,
   parseNameStatusTokens,
@@ -1400,7 +1400,7 @@ module.exports = class GitRepository {
         { from, to, paths, context, ignoreWhitespace, detectRenames, diffFilter },
         { maxBuffer: maxBytes, signal },
       );
-      const { files } = parseDiffPatch(rawPatch);
+      const files = applyFileEndpointPaths(parseDiffPatch(rawPatch).files, { from, to });
       return deepFreeze({
         schemaVersion: 1,
         files: format === "patch" ? [] : files,

@@ -99,6 +99,24 @@ function finalizeFile(file) {
   return Object.freeze(file);
 }
 
+function applyFileEndpointPaths(files, { from, to }) {
+  const endpointTypes = [from?.type, to?.type];
+  if (
+    files.length !== 1 ||
+    !endpointTypes.every((type) => type === "file" || type === "empty") ||
+    !endpointTypes.includes("file")
+  ) {
+    return files;
+  }
+  return Object.freeze([
+    Object.freeze({
+      ...files[0],
+      oldPath: from.type === "file" ? from.path : null,
+      newPath: to.type === "file" ? to.path : null,
+    }),
+  ]);
+}
+
 // Parse `git diff --patch` output into structured files, hunks, and lines.
 // Header lines have CR stripped; hunk body text is kept verbatim minus the
 // leading marker character.
@@ -191,4 +209,4 @@ function parseDiffPatch(patchText) {
   return Object.freeze({ files: Object.freeze(files) });
 }
 
-module.exports = { parseDiffPatch };
+module.exports = { applyFileEndpointPaths, parseDiffPatch };

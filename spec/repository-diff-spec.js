@@ -529,6 +529,25 @@ describe("repository diff", () => {
       expect(binary.binary).toBe(true);
     });
 
+    it("uses authoritative endpoints for binary file-to-file diffs", async () => {
+      const oldPath = path.join(temp.mkdirSync("old-binary-endpoint-"), "old b", "one.bin");
+      const newPath = path.join(temp.mkdirSync("new-binary-endpoint-"), "new b", "two.bin");
+      fs.mkdirSync(path.dirname(oldPath));
+      fs.mkdirSync(path.dirname(newPath));
+      fs.writeFileSync(oldPath, Buffer.from([0, 1, 2]));
+      fs.writeFileSync(newPath, Buffer.from([0, 1, 3]));
+
+      const result = await repo.getDiff({
+        from: { type: "file", path: oldPath },
+        to: { type: "file", path: newPath },
+      });
+
+      expect(result.files.length).toBe(1);
+      expect(result.files[0].oldPath).toBe(oldPath);
+      expect(result.files[0].newPath).toBe(newPath);
+      expect(result.files[0].binary).toBe(true);
+    });
+
     it("rejects oversized diffs with ERR_GIT_DIFF_TOO_LARGE", async () => {
       let error = null;
       try {

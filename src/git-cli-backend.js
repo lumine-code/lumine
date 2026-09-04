@@ -4,7 +4,7 @@ const GitRepositoryStatusProvider = require("./git-repository-status-provider");
 const GitRepositoryRefsProvider = require("./git-repository-refs-provider");
 const GitRepositoryDiffProvider = require("./git-repository-diff-provider");
 const GitRepositoryHistoryProvider = require("./git-repository-history-provider");
-const { parseDiffPatch } = require("./repository-diff");
+const { applyFileEndpointPaths, parseDiffPatch } = require("./repository-diff");
 const {
   parseBlamePorcelain,
   parseCommitRecords,
@@ -240,7 +240,8 @@ module.exports = class GitCliBackend {
     );
     const result = {
       schemaVersion: 1,
-      files: format === "patch" ? [] : parseDiffPatch(rawPatch).files,
+      files:
+        format === "patch" ? [] : applyFileEndpointPaths(parseDiffPatch(rawPatch).files, request),
       ...(format === "structured" ? {} : { rawPatch }),
     };
     return assertDiffWithinLimit(result, maxBytes);
