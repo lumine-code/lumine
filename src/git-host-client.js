@@ -9,12 +9,6 @@ function splitSignal(options = {}) {
   return { signal, rest };
 }
 
-function contentWithEncoding(content, encoding) {
-  if (content == null) return null;
-  const buffer = Buffer.isBuffer(content) ? content : Buffer.from(content);
-  return encoding === "buffer" ? buffer : buffer.toString(encoding || "utf8");
-}
-
 module.exports = class GitHostClient {
   constructor(host = null) {
     this.host = host;
@@ -85,8 +79,12 @@ module.exports = class GitHostClient {
   }
 
   readObjects(descriptor, requests, options = {}) {
-    const { signal } = splitSignal(options);
-    return this.request("readObjects", { descriptor, requests }, { signal });
+    const { signal, rest } = splitSignal(options);
+    return this.request(
+      "readObjects",
+      { descriptor, requests, encoding: rest.encoding || "buffer" },
+      { signal },
+    );
   }
 
   async getFileAtRevision(
@@ -95,26 +93,25 @@ module.exports = class GitHostClient {
     revision,
     { encoding = "utf8", ...options } = {},
   ) {
-    const [object] = await this.readObjects(
-      descriptor,
-      [{ revision, path: relativePosixPath }],
-      options,
-    );
-    return contentWithEncoding(object?.content, encoding);
+    const [object] = await this.readObjects(descriptor, [{ revision, path: relativePosixPath }], {
+      ...options,
+      encoding,
+    });
+    return object?.content ?? null;
   }
 
   async getIndexFile(descriptor, relativePosixPath, { encoding = "utf8", ...options } = {}) {
     const [object] = await this.readObjects(
       descriptor,
       [{ source: "index", path: relativePosixPath }],
-      options,
+      { ...options, encoding },
     );
-    return contentWithEncoding(object?.content, encoding);
+    return object?.content ?? null;
   }
 
   async getBlob(descriptor, oid, { encoding = "utf8", ...options } = {}) {
-    const [object] = await this.readObjects(descriptor, [{ oid }], options);
-    return contentWithEncoding(object?.content, encoding);
+    const [object] = await this.readObjects(descriptor, [{ oid }], { ...options, encoding });
+    return object?.content ?? null;
   }
 
   getBlame(descriptor, relativePosixPath, params = {}, options = {}) {

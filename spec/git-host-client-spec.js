@@ -26,4 +26,21 @@ describe("GitHostClient", () => {
       { signal: undefined },
     );
   });
+
+  it("asks the worker to decode object contents", async () => {
+    const host = {
+      request: jasmine
+        .createSpy("request")
+        .and.resolveTo([{ oid: "abc", type: "blob", size: 4, content: "text" }]),
+    };
+    const client = new GitHostClient(host);
+    const descriptor = { gitDirectory: "repo/.git", workingDirectory: "repo" };
+
+    expect(await client.getBlob(descriptor, "abc", { encoding: "utf16le" })).toBe("text");
+    expect(host.request).toHaveBeenCalledWith(
+      "readObjects",
+      { descriptor, requests: [{ oid: "abc" }], encoding: "utf16le" },
+      { signal: undefined },
+    );
+  });
 });

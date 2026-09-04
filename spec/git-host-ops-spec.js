@@ -152,6 +152,19 @@ describe("git-host ops", () => {
     expect(service.lineDiff.calls.argsFor(1)[1]).toBe("a\nC\n");
   });
 
+  it("decodes requested object contents before crossing IPC", async () => {
+    service.readObjects.and.resolveTo([
+      { oid: "blob", type: "blob", size: 5, content: Buffer.from("tekst") },
+    ]);
+
+    const [object] = await ops.readObjects(
+      { descriptor, requests: [{ oid: "blob" }], encoding: "utf8" },
+      {},
+    );
+
+    expect(object.content).toBe("tekst");
+  });
+
   it("keeps raw command results and errors intact", async () => {
     const payload = {
       workingDirectory: "/repo",

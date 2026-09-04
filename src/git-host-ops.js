@@ -53,9 +53,13 @@ module.exports = function createGitHostOps(
       invoke("submodulePaths", (service) => service.submodulePaths(payload.descriptor, context)),
 
     readObjects: (payload, context) =>
-      invoke("readObjects", (service) =>
-        service.readObjects(payload.descriptor, payload.requests, context),
-      ),
+      invoke("readObjects", async (service) => {
+        const objects = await service.readObjects(payload.descriptor, payload.requests, context);
+        if (!payload.encoding || payload.encoding === "buffer") return objects;
+        return objects.map((object) =>
+          object ? { ...object, content: object.content.toString(payload.encoding) } : null,
+        );
+      }),
 
     blame: (payload, context) =>
       invoke("blame", (service) => service.blame(payload.descriptor, payload.request, context)),
