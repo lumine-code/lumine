@@ -327,6 +327,11 @@ const handleWindowAction = async (event, action, ...args) => {
       });
       return canceled || filePaths.length === 0 ? null : filePaths;
     }
+    case "showOpenDialog":
+      if (!args[0] || typeof args[0] !== "object" || Array.isArray(args[0])) {
+        throw new TypeError("Open dialog options must be an object");
+      }
+      return dialog.showOpenDialog(window, args[0]);
     case "showSaveDialog":
       if (!args[0] || typeof args[0] !== "object" || Array.isArray(args[0])) {
         throw new TypeError("Save dialog options must be an object");

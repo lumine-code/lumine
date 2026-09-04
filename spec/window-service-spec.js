@@ -54,6 +54,7 @@ describe("WindowService", () => {
     await service.setFullScreen(true);
     await service.toggleFullScreen();
     await service.pickFolder();
+    await service.showOpenDialog({ title: "Open" });
     await service.showSaveDialog({ title: "Save" });
     await service.downloadURL("https://example.test/file");
     await service.getPrimaryDisplayWorkAreaSize();
@@ -84,6 +85,7 @@ describe("WindowService", () => {
       ["isFullScreen"],
       ["setFullScreen", true],
       ["pickFolder"],
+      ["showOpenDialog", { title: "Open" }],
       ["showSaveDialog", { title: "Save" }],
       ["downloadURL", "https://example.test/file"],
       ["getPrimaryDisplayWorkAreaSize"],

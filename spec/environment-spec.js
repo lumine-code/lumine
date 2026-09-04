@@ -43,6 +43,7 @@ describe("Environment", () => {
         "beep",
         "confirm",
         "pickFolder",
+        "showOpenDialog",
         "showSaveDialog",
         "downloadURL",
         "getPrimaryDisplayWorkAreaSize",

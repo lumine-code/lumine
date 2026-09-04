@@ -366,6 +366,19 @@ class WindowService {
    * @public
    * @status public
    *
+   * Show an open dialog owned by the current window.
+   *
+   * @param options - Serializable Electron open-dialog options.
+   * @returns {Promise<Object>} resolving to Electron's serializable open-dialog result.
+   */
+  showOpenDialog(options = {}) {
+    return this.applicationDelegate.invokeWindow("showOpenDialog", options);
+  }
+
+  /**
+   * @public
+   * @status public
+   *
    * Show a save dialog owned by the current window.
    *
    * @param options - Serializable Electron save-dialog options.

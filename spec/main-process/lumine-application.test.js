@@ -1041,6 +1041,35 @@ describe("LumineApplication", function () {
       );
     });
 
+    it("shows an open dialog owned by the originating window", async function () {
+      const defaultPath = scenario.convertRootPath("a");
+      const options = {
+        title: "Open FEM Source",
+        defaultPath,
+        properties: ["openFile"],
+      };
+      const result = {
+        canceled: false,
+        filePaths: [path.join(defaultPath, "model.cdb")],
+      };
+      const showOpenDialog = sinon.stub(electron.dialog, "showOpenDialog").resolves(result);
+      const event = { sender: w1.browserWindow.webContents };
+
+      assert.deepEqual(
+        await LumineApplication.handleWindowAction(event, "showOpenDialog", options),
+        result,
+      );
+      assert.isTrue(showOpenDialog.calledOnceWithExactly(w1.browserWindow, options));
+
+      for (const invalidOptions of [undefined, null, [], "open"]) {
+        await assert.rejects(
+          LumineApplication.handleWindowAction(event, "showOpenDialog", invalidOptions),
+          /Open dialog options must be an object/,
+        );
+      }
+      assert.isTrue(showOpenDialog.calledOnce);
+    });
+
     it("strictly validates and routes macOS application-menu updates", async function () {
       const originalApplicationMenu = app.applicationMenu;
       const applicationMenu = { update: sinon.spy() };
