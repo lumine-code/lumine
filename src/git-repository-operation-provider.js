@@ -470,8 +470,7 @@ class GitRepositoryOperations {
             String(error.stderr || error.message),
           );
         if (missingSource) {
-          error.backend = "cli";
-          error.backendCode = error.code;
+          error.gitCode = error.code;
           error.code = "ERR_GIT_CREATE_BLOB";
           error.operation = "createBlob";
         }

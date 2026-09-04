@@ -247,22 +247,12 @@ module.exports = class SystemGitService {
     return assertDiffWithinLimit(result, maxBytes);
   }
 
-  logFollow(descriptor, request, { signal, ...options } = {}) {
-    if (!request.allRefs) assertGitRevision(request.revision);
-    return this.historyProvider.getLog(
-      workingDirectoryFor(descriptor),
-      { ...request, path: request.path },
-      { ...options, signal },
-    );
-  }
-
   async history(descriptor, request, { signal, ...options } = {}) {
     if (!request.allRefs) assertGitRevision(request.revision);
-    const output = await this.historyProvider.getLog(
-      workingDirectoryFor(descriptor),
-      { ...request, path: null },
-      { ...options, signal },
-    );
+    const output = await this.historyProvider.getLog(workingDirectoryFor(descriptor), request, {
+      ...options,
+      signal,
+    });
     return parseCommitRecords(output);
   }
 

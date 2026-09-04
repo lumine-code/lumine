@@ -74,19 +74,9 @@ module.exports = class GitHostClient {
     return this.request("readConfig", { descriptor, keys }, { signal });
   }
 
-  async getConfigValue(descriptor, key, options = {}) {
-    const values = await this.getConfigValues(descriptor, [key], options);
-    return Object.hasOwn(values, key) ? values[key] : null;
-  }
-
   getHistory(descriptor, params, options = {}) {
     const { signal } = splitSignal(options);
     return this.request("history", { descriptor, request: params }, { signal });
-  }
-
-  getLogFollow(descriptor, params, options = {}) {
-    const { signal, rest } = splitSignal(options);
-    return this.request("logFollow", { descriptor, request: params, options: rest }, { signal });
   }
 
   getCommit(descriptor, revision, options = {}) {

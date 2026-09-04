@@ -4,6 +4,48 @@ const temp = require("@lumine-code/temp").track();
 const GitRepository = require("../src/git-repository");
 const Project = require("../src/project");
 const RepositoryRegistry = require("../src/repository-registry");
+const { parseRefsSnapshot } = require("../src/repository-refs-snapshot");
+const { parseStatusSnapshot } = require("../src/repository-status-snapshot");
+
+function snapshotClient({ statusSnapshotProvider, refsSnapshotProvider } = {}) {
+  return {
+    async getSnapshot(descriptor, request, options = {}) {
+      const result = {};
+      if (request.status) {
+        const includeIgnored = request.includeIgnored === true;
+        const output = await statusSnapshotProvider.getStatus(descriptor.workingDirectory, {
+          ...options,
+          includeIgnored,
+        });
+        const fingerprint = `${includeIgnored}\0${output}`;
+        result.status =
+          request.knownFingerprints?.status === fingerprint
+            ? { fingerprint, unchanged: true }
+            : {
+                fingerprint,
+                unchanged: false,
+                value: parseStatusSnapshot(output, {
+                  generation: request.generations.status,
+                  includesIgnored: includeIgnored,
+                }),
+              };
+      }
+      if (request.refs) {
+        const output = await refsSnapshotProvider.getRefs(descriptor.workingDirectory, options);
+        const fingerprint = JSON.stringify(output);
+        result.refs =
+          request.knownFingerprints?.refs === fingerprint
+            ? { fingerprint, unchanged: true }
+            : {
+                fingerprint,
+                unchanged: false,
+                value: parseRefsSnapshot(output, { generation: request.generations.refs }),
+              };
+      }
+      return result;
+    },
+  };
+}
 
 describe("GitRepository", () => {
   let repo;
@@ -208,7 +250,7 @@ describe("GitRepository", () => {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(workingDirectory, {
-        statusSnapshotProvider,
+        gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
     });
 
@@ -272,6 +314,7 @@ describe("GitRepository", () => {
       );
 
       const flight = repo.refreshStatusSnapshot();
+      await Promise.resolve();
       const trailingA = repo.refreshStatusSnapshot();
       const trailingB = repo.refreshStatusSnapshot();
       // Requests during the flight join one queued trailing run; nothing else
@@ -302,6 +345,7 @@ describe("GitRepository", () => {
       });
 
       const flight = repo.refreshStatusSnapshot({ includeIgnored: false });
+      await Promise.resolve();
       const trailingA = repo.refreshStatusSnapshot({ includeIgnored: false, signal: {} });
       const trailingB = repo.refreshStatusSnapshot({ priority: "interactive" });
 
@@ -337,7 +381,7 @@ describe("GitRepository", () => {
       };
       repo = new GitRepository(copyRepository(), {
         statusSnapshotDebounceMs: 0,
-        statusSnapshotProvider,
+        gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
     });
 
@@ -415,6 +459,7 @@ describe("GitRepository", () => {
 
       const firstEnsure = repo.ensureStatusSnapshot();
       const secondEnsure = repo.ensureStatusSnapshot();
+      await Promise.resolve();
       resolvers[0](output);
 
       const snapshot = await firstEnsure;
@@ -434,11 +479,11 @@ describe("GitRepository", () => {
 
       const scheduled = new GitRepository(copyRepository(), {
         statusSnapshotDebounceMs: 1000,
-        statusSnapshotProvider,
+        gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
       scheduled.onDidChangeStatusSnapshot(() => {});
       scheduled.destroy();
-      expect(scheduled.statusSnapshotRefreshTimer).toBeNull();
+      expect(scheduled.combinedSnapshotRefreshTimer).toBeNull();
     });
   });
 
@@ -465,7 +510,7 @@ describe("GitRepository", () => {
       };
       repo = new GitRepository(copyRepository(), {
         refsSnapshotDebounceMs: 0,
-        refsSnapshotProvider,
+        gitHostClient: snapshotClient({ refsSnapshotProvider }),
       });
     });
 
@@ -506,6 +551,7 @@ describe("GitRepository", () => {
       );
 
       const flight = repo.refreshRefsSnapshot();
+      await Promise.resolve();
       const trailingA = repo.refreshRefsSnapshot();
       const trailingB = repo.refreshRefsSnapshot();
       expect(refsSnapshotProvider.getRefs.calls.count()).toBe(1);
@@ -544,6 +590,7 @@ describe("GitRepository", () => {
 
       const firstEnsure = repo.ensureRefsSnapshot();
       const secondEnsure = repo.ensureRefsSnapshot();
+      await Promise.resolve();
       resolvers[0](refsOutputs);
 
       const snapshot = await firstEnsure;
@@ -556,11 +603,11 @@ describe("GitRepository", () => {
     it("clears the pending refresh timer on destroy", () => {
       const scheduled = new GitRepository(copyRepository(), {
         refsSnapshotDebounceMs: 1000,
-        refsSnapshotProvider,
+        gitHostClient: snapshotClient({ refsSnapshotProvider }),
       });
       scheduled.onDidChangeRefsSnapshot(() => {});
       scheduled.destroy();
-      expect(scheduled.refsSnapshotRefreshTimer).toBeNull();
+      expect(scheduled.combinedSnapshotRefreshTimer).toBeNull();
     });
   });
 
@@ -587,7 +634,7 @@ describe("GitRepository", () => {
           }),
       };
       repoWithRefs = new GitRepository(copyRepository(), {
-        refsSnapshotProvider,
+        gitHostClient: snapshotClient({ refsSnapshotProvider }),
       });
       await repoWithRefs.refreshRefsSnapshot();
     });
@@ -633,7 +680,7 @@ describe("GitRepository", () => {
         getStatus: jasmine.createSpy("getStatus").and.callFake(() => Promise.resolve(output)),
       };
       repo = new GitRepository(workingDirectory, {
-        statusSnapshotProvider,
+        gitHostClient: snapshotClient({ statusSnapshotProvider }),
       });
     });
 

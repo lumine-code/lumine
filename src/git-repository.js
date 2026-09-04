@@ -3,14 +3,8 @@ const fs = require("@lumine-code/fs-plus");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const { discoverRepositoryDescriptor } = require("./git-repository-descriptor");
 const GitHostClient = require("./git-host-client");
-const { applyFileEndpointPaths, parseDiffPatch } = require("./repository-diff");
-const {
-  parseCommitRecords,
-  parseNameStatusTokens,
-  parseBlamePorcelain,
-} = require("./repository-history");
-const { EMPTY_STATUS_SNAPSHOT, parseStatusSnapshot } = require("./repository-status-snapshot");
-const { EMPTY_REFS_SNAPSHOT, parseRefsSnapshot } = require("./repository-refs-snapshot");
+const { EMPTY_STATUS_SNAPSHOT } = require("./repository-status-snapshot");
+const { EMPTY_REFS_SNAPSHOT } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
 const { assertGitRevision } = require("./git-revision");
 
@@ -142,16 +136,10 @@ module.exports = class GitRepository {
     this.openedWorkingDirectoryPath = this.descriptor.openedWorkingDirectory || null;
     this.caseInsensitiveFs = this.descriptor.caseInsensitiveFs === true;
 
-    // Production reads use one renderer-to-worker contract. The category
-    // overrides remain temporarily for focused legacy-provider specs while the
-    // old raw-output parsers and independent schedulers are removed.
+    // Every read uses one renderer-to-worker contract. Git process creation,
+    // parsing, fingerprinting, and line-diff computation stay off the renderer.
     this.gitHostClient = options.gitHostClient || new GitHostClient();
-    this.snapshotProviderOverride = options.snapshotProvider || null;
-    this.usesCombinedStatusSnapshots = options.statusSnapshotProvider == null;
-    this.usesCombinedRefsSnapshots = options.refsSnapshotProvider == null;
-    this.statusSnapshotProviderOverride = options.statusSnapshotProvider || null;
     this.statusSnapshot = EMPTY_STATUS_SNAPSHOT;
-    this.statusSnapshotCacheKey = null;
     this.statusSnapshotFingerprint = null;
     this.statusSnapshotRefreshCount = 0;
     this.statusEntriesByPath = new Map();
@@ -160,24 +148,15 @@ module.exports = class GitRepository {
     this.ignoredDirKeys = [];
     this.statusSnapshotSubscriberCount = 0;
     this.statusSnapshotDebounceMs = options.statusSnapshotDebounceMs ?? 150;
-    this.statusSnapshotRefreshTimer = null;
-    this.statusRefreshCoalescer = { flight: null, trailing: null };
-    this.refsSnapshotProviderOverride = options.refsSnapshotProvider || null;
     this.refsSnapshot = EMPTY_REFS_SNAPSHOT;
-    this.refsSnapshotCacheKey = null;
     this.refsSnapshotFingerprint = null;
     this.refsSnapshotRefreshCount = 0;
     this.refsSnapshotSubscriberCount = 0;
     this.refsSnapshotDebounceMs = options.refsSnapshotDebounceMs ?? 150;
-    this.refsSnapshotRefreshTimer = null;
-    this.refsRefreshCoalescer = { flight: null, trailing: null };
     this.combinedSnapshotRefreshCoalescer = { flight: null, trailing: null };
     this.combinedSnapshotRefreshTimer = null;
     this.combinedSnapshotScheduledKinds = new Set();
     this.backgroundSnapshotWarningShown = false;
-    this.diffProviderOverride = options.diffProvider || null;
-    this.historyProviderOverride = options.historyProvider || null;
-    this.configProviderOverride = options.configProvider || null;
     this.upstream = { ahead: 0, behind: 0 };
 
     this.project = options.project;
@@ -214,22 +193,8 @@ module.exports = class GitRepository {
     this.descriptor = null;
     this.operations = null;
     this.gitHostClient = null;
-    this.statusSnapshotProviderOverride = null;
-    this.snapshotProviderOverride = null;
-    this.refsSnapshotProviderOverride = null;
-    this.diffProviderOverride = null;
-    this.historyProviderOverride = null;
-    this.configProviderOverride = null;
     this.statusEntriesByPath.clear();
     this.directoryStatusAggregates.clear();
-    if (this.statusSnapshotRefreshTimer != null) {
-      clearTimeout(this.statusSnapshotRefreshTimer);
-      this.statusSnapshotRefreshTimer = null;
-    }
-    if (this.refsSnapshotRefreshTimer != null) {
-      clearTimeout(this.refsSnapshotRefreshTimer);
-      this.refsSnapshotRefreshTimer = null;
-    }
     if (this.combinedSnapshotRefreshTimer != null) {
       clearTimeout(this.combinedSnapshotRefreshTimer);
       this.combinedSnapshotRefreshTimer = null;
@@ -594,7 +559,7 @@ module.exports = class GitRepository {
     if (this.isDestroyed()) {
       return Promise.resolve(Object.fromEntries(requested.map((key) => [key, null])));
     }
-    return (this.configProviderOverride || this.gitHostClient)
+    return this.gitHostClient
       .getConfigValues(this.getHostDescriptor(), requested)
       .then((values) =>
         Object.fromEntries(
@@ -783,13 +748,9 @@ module.exports = class GitRepository {
     if (this.statusSnapshot.initialized) return this.statusSnapshot;
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
-    if (
-      this.usesCombinedStatusSnapshots &&
-      this.combinedSnapshotRefreshCoalescer.flight?.mask.has("status")
-    ) {
+    if (this.combinedSnapshotRefreshCoalescer.flight?.mask.has("status")) {
       return this.combinedSnapshotRefreshCoalescer.flight.promise.then(() => this.statusSnapshot);
     }
-    if (this.statusRefreshCoalescer.flight) return this.statusRefreshCoalescer.flight;
     return this.refreshStatusSnapshot(options);
   }
 
@@ -798,18 +759,7 @@ module.exports = class GitRepository {
   // repeated calls, so a continuous event stream cannot starve the refresh.
   scheduleStatusSnapshotRefresh() {
     if (this.isDestroyed() || this.statusSnapshotSubscriberCount === 0) return;
-    if (this.usesCombinedStatusSnapshots) {
-      this.scheduleCombinedSnapshotRefresh("status", this.statusSnapshotDebounceMs);
-      return;
-    }
-    if (this.statusSnapshotRefreshTimer != null) return;
-    this.statusSnapshotRefreshTimer = setTimeout(() => {
-      this.statusSnapshotRefreshTimer = null;
-      if (this.isDestroyed()) return;
-      // Background refreshes must never surface as unhandled rejections; the
-      // stale-suppression counter and cache key keep failed runs harmless.
-      this.refreshStatusSnapshot().catch((error) => this.reportBackgroundSnapshotError(error));
-    }, this.statusSnapshotDebounceMs);
+    this.scheduleCombinedSnapshotRefresh("status", this.statusSnapshotDebounceMs);
   }
 
   /**
@@ -823,52 +773,6 @@ module.exports = class GitRepository {
     const inputPath = String(filePath);
     const relativePath = path.isAbsolute(inputPath) ? this.relativize(inputPath) : inputPath;
     return this.statusEntriesByPath.get(statusPathKey(relativePath)) || null;
-  }
-
-  // Shared single-flight-plus-trailing scheduler for both snapshot refreshes.
-  // A request arriving while a run is in flight never joins that run — its git
-  // process may have started before the state the caller wants captured — but
-  // joins (or creates) one trailing run that starts after the flight settles.
-  // This guarantees the run backing a returned promise starts at or after the
-  // request, which is the freshness the post-operation contract needs, while
-  // bounding each snapshot to one running and one queued subprocess per repo.
-  coalesceSnapshotRefresh(state, options, execute) {
-    const begin = (runOptions) => {
-      const promise = execute(runOptions).finally(() => {
-        state.flight = null;
-        const trailing = state.trailing;
-        if (trailing) {
-          state.trailing = null;
-          // Promote synchronously so no request can slip in between the
-          // flight settling and the trailing run becoming the new flight.
-          trailing.begin();
-        }
-      });
-      state.flight = promise;
-      return promise;
-    };
-
-    if (!state.flight) return begin(options);
-
-    if (!state.trailing) {
-      // The trailing run is shared by every requester that piggybacks on it,
-      // so no single requester's AbortSignal may cancel it.
-      const trailingOptions = { ...options };
-      delete trailingOptions.signal;
-      const trailing = { options: trailingOptions };
-      trailing.promise = new Promise((resolve, reject) => {
-        trailing.begin = () => begin(trailing.options).then(resolve, reject);
-      });
-      state.trailing = trailing;
-      return trailing.promise;
-    }
-
-    const merged = state.trailing.options;
-    // Ignored entries are included unless every requester opted out, and one
-    // interactive requester makes the shared run interactive.
-    if (options.includeIgnored !== false) delete merged.includeIgnored;
-    if (options.priority === "interactive") merged.priority = "interactive";
-    return state.trailing.promise;
   }
 
   // Merge status and refs refreshes through one single-flight-plus-trailing
@@ -966,8 +870,7 @@ module.exports = class GitRepository {
   }
 
   async executeCombinedSnapshotRefresh(mask, options = {}) {
-    const provider = this.snapshotProviderOverride || this.gitHostClient;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
+    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     const statusRequested = mask.has("status");
     const refsRequested = mask.has("refs");
@@ -975,7 +878,7 @@ module.exports = class GitRepository {
     const refsRefreshCount = refsRequested ? ++this.refsSnapshotRefreshCount : null;
     const includeIgnored = options.includeIgnored !== false;
 
-    const result = await provider.getSnapshot(
+    const result = await this.gitHostClient.getSnapshot(
       this.getHostDescriptor(),
       {
         status: statusRequested,
@@ -1040,7 +943,6 @@ module.exports = class GitRepository {
     const snapshot = deepFreeze(section.value);
     this.statusSnapshotFingerprint = section.fingerprint;
     this.statusSnapshot = snapshot;
-    this.statusSnapshotCacheKey = null;
     this.statusEntriesByPath = new Map(
       snapshot.files.map((entry) => [statusPathKey(entry.path), entry]),
     );
@@ -1061,7 +963,6 @@ module.exports = class GitRepository {
     const snapshot = deepFreeze(section.value);
     this.refsSnapshotFingerprint = section.fingerprint;
     this.refsSnapshot = snapshot;
-    this.refsSnapshotCacheKey = null;
     this.emitter.emit("did-change-refs-snapshot", snapshot);
     return snapshot;
   }
@@ -1083,53 +984,10 @@ module.exports = class GitRepository {
    *
    * Refresh the detailed branch and file status snapshot with Git.
    * Concurrent calls coalesce into at most one in-flight and one trailing
-   * subprocess; see `coalesceSnapshotRefresh`.
+   * worker request.
    */
   refreshStatusSnapshot(options = {}) {
-    if (this.usesCombinedStatusSnapshots) {
-      return this.coalesceCombinedSnapshotRefresh("status", options);
-    }
-    return this.coalesceSnapshotRefresh(this.statusRefreshCoalescer, options, (runOptions) =>
-      this.executeStatusSnapshotRefresh(runOptions),
-    );
-  }
-
-  // The actual status snapshot refresh. This is intentionally independent from
-  // the synchronous legacy cache so hot path coloring never waits for Git work.
-  async executeStatusSnapshotRefresh(options = {}) {
-    const provider = this.statusSnapshotProviderOverride;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-
-    const refreshCount = ++this.statusSnapshotRefreshCount;
-    // Ignored entries are included by default so tree-view/tabs can resolve
-    // ignore state synchronously from the snapshot ({@link #isPathIgnoredCached}).
-    // Pass `includeIgnored: false` explicitly to opt out.
-    const includeIgnored = options.includeIgnored !== false;
-    const output = await provider.getStatus(this.getWorkingDirectory(), {
-      ...options,
-      includeIgnored,
-    });
-
-    if (this.isDestroyed() || refreshCount !== this.statusSnapshotRefreshCount) {
-      return this.statusSnapshot;
-    }
-
-    const cacheKey = `${includeIgnored ? "ignored" : "tracked"}\0${output}`;
-    if (cacheKey === this.statusSnapshotCacheKey) return this.statusSnapshot;
-
-    const snapshot = parseStatusSnapshot(output, {
-      generation: this.statusSnapshot.generation + 1,
-      includesIgnored: includeIgnored,
-    });
-    this.statusSnapshot = snapshot;
-    this.statusSnapshotCacheKey = cacheKey;
-    this.statusEntriesByPath = new Map(
-      snapshot.files.map((entry) => [statusPathKey(entry.path), entry]),
-    );
-    this.directoryStatusAggregates = this.buildDirectoryStatusAggregates(snapshot);
-    this.rebuildIgnoredIndex(snapshot);
-    this.emitter.emit("did-change-status-snapshot", snapshot);
-    return snapshot;
+    return this.coalesceCombinedSnapshotRefresh("status", options);
   }
 
   // Index the snapshot's ignored entries for O(1) `isPathIgnoredCached` lookups.
@@ -1245,13 +1103,9 @@ module.exports = class GitRepository {
     if (this.refsSnapshot.initialized) return this.refsSnapshot;
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
-    if (
-      this.usesCombinedRefsSnapshots &&
-      this.combinedSnapshotRefreshCoalescer.flight?.mask.has("refs")
-    ) {
+    if (this.combinedSnapshotRefreshCoalescer.flight?.mask.has("refs")) {
       return this.combinedSnapshotRefreshCoalescer.flight.promise.then(() => this.refsSnapshot);
     }
-    if (this.refsRefreshCoalescer.flight) return this.refsRefreshCoalescer.flight;
     return this.refreshRefsSnapshot(options);
   }
 
@@ -1259,16 +1113,7 @@ module.exports = class GitRepository {
   // {@link #scheduleStatusSnapshotRefresh}.
   scheduleRefsSnapshotRefresh() {
     if (this.isDestroyed() || this.refsSnapshotSubscriberCount === 0) return;
-    if (this.usesCombinedRefsSnapshots) {
-      this.scheduleCombinedSnapshotRefresh("refs", this.refsSnapshotDebounceMs);
-      return;
-    }
-    if (this.refsSnapshotRefreshTimer != null) return;
-    this.refsSnapshotRefreshTimer = setTimeout(() => {
-      this.refsSnapshotRefreshTimer = null;
-      if (this.isDestroyed()) return;
-      this.refreshRefsSnapshot().catch((error) => this.reportBackgroundSnapshotError(error));
-    }, this.refsSnapshotDebounceMs);
+    this.scheduleCombinedSnapshotRefresh("refs", this.refsSnapshotDebounceMs);
   }
 
   /**
@@ -1276,49 +1121,10 @@ module.exports = class GitRepository {
    * @status public
    *
    * Refresh the refs snapshot with Git. Concurrent calls coalesce into
-   * at most one in-flight and one trailing refresh; see
-   * `coalesceSnapshotRefresh`.
+   * at most one in-flight and one trailing worker request.
    */
   refreshRefsSnapshot(options = {}) {
-    if (this.usesCombinedRefsSnapshots) {
-      return this.coalesceCombinedSnapshotRefresh("refs", options);
-    }
-    return this.coalesceSnapshotRefresh(this.refsRefreshCoalescer, options, (runOptions) =>
-      this.executeRefsSnapshotRefresh(runOptions),
-    );
-  }
-
-  // The actual refs snapshot refresh. Reads branches, tags, remotes,
-  // worktrees, and the exact HEAD state in one pass; stale out-of-order
-  // responses are discarded and identical raw output does not emit a change
-  // event.
-  async executeRefsSnapshotRefresh(options = {}) {
-    const provider = this.refsSnapshotProviderOverride;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-
-    const refreshCount = ++this.refsSnapshotRefreshCount;
-    const outputs = await provider.getRefs(this.getWorkingDirectory(), options);
-
-    if (this.isDestroyed() || refreshCount !== this.refsSnapshotRefreshCount) {
-      return this.refsSnapshot;
-    }
-
-    const cacheKey = [
-      outputs.forEachRef,
-      outputs.remotes,
-      outputs.worktrees,
-      outputs.symbolicHead,
-      outputs.headOid,
-    ].join("\0");
-    if (cacheKey === this.refsSnapshotCacheKey) return this.refsSnapshot;
-
-    const snapshot = parseRefsSnapshot(outputs, {
-      generation: this.refsSnapshot.generation + 1,
-    });
-    this.refsSnapshot = snapshot;
-    this.refsSnapshotCacheKey = cacheKey;
-    this.emitter.emit("did-change-refs-snapshot", snapshot);
-    return snapshot;
+    return this.coalesceCombinedSnapshotRefresh("refs", options);
   }
 
   /**
@@ -1355,8 +1161,7 @@ module.exports = class GitRepository {
     maxBytes = 10 * 1024 * 1024,
     signal,
   } = {}) {
-    const provider = this.diffProviderOverride || this.gitHostClient;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
+    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     if (from?.type === "commit") assertGitRevision(from.revision);
     if (to?.type === "commit") assertGitRevision(to.revision);
@@ -1365,56 +1170,28 @@ module.exports = class GitRepository {
       throw new TypeError(`Unsupported diff format: ${format}`);
     }
 
-    try {
-      if (typeof provider.getDiff === "function") {
-        const result = await provider.getDiff(
-          this.getHostDescriptor(),
-          { from, to, paths, context, ignoreWhitespace, detectRenames, diffFilter, format },
-          { maxBytes, signal },
-        );
-        if (result?.schemaVersion !== 1 || !Array.isArray(result.files)) {
-          const error = new Error("Git host returned an invalid structured diff");
-          error.code = "ERR_GIT_DIFF";
-          error.operation = "diff";
-          throw error;
-        }
-        if (format !== "structured" && typeof result.rawPatch !== "string") {
-          const error = new Error("Git host omitted the requested raw diff patch");
-          error.code = "ERR_GIT_DIFF";
-          error.operation = "diff";
-          throw error;
-        }
-        return deepFreeze({
-          schemaVersion: 1,
-          files: format === "patch" ? [] : result.files,
-          ...(format === "structured" ? {} : { rawPatch: result.rawPatch }),
-        });
-      }
-
-      // Direct provider injection is retained as a test seam. Production
-      // providers implement getDiff() and never parse CLI patch text.
-      const rawPatch = await provider.getDiffPatch(
-        this.getWorkingDirectory(),
-        { from, to, paths, context, ignoreWhitespace, detectRenames, diffFilter },
-        { maxBuffer: maxBytes, signal },
-      );
-      const files = applyFileEndpointPaths(parseDiffPatch(rawPatch).files, { from, to });
-      return deepFreeze({
-        schemaVersion: 1,
-        files: format === "patch" ? [] : files,
-        ...(format === "structured" ? {} : { rawPatch }),
-      });
-    } catch (error) {
-      if (error?.code === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-        const tooLarge = new Error(
-          `Git diff output exceeded the ${maxBytes} byte limit; raise maxBytes or narrow paths`,
-        );
-        tooLarge.code = "ERR_GIT_DIFF_TOO_LARGE";
-        tooLarge.cause = error;
-        throw tooLarge;
-      }
+    const result = await this.gitHostClient.getDiff(
+      this.getHostDescriptor(),
+      { from, to, paths, context, ignoreWhitespace, detectRenames, diffFilter, format },
+      { maxBytes, signal },
+    );
+    if (result?.schemaVersion !== 1 || !Array.isArray(result.files)) {
+      const error = new Error("Git host returned an invalid structured diff");
+      error.code = "ERR_GIT_DIFF";
+      error.operation = "diff";
       throw error;
     }
+    if (format !== "structured" && typeof result.rawPatch !== "string") {
+      const error = new Error("Git host omitted the requested raw diff patch");
+      error.code = "ERR_GIT_DIFF";
+      error.operation = "diff";
+      throw error;
+    }
+    return deepFreeze({
+      schemaVersion: 1,
+      files: format === "patch" ? [] : result.files,
+      ...(format === "structured" ? {} : { rawPatch: result.rawPatch }),
+    });
   }
 
   // Turn an absolute or repository-relative path into the forward-slash
@@ -1425,10 +1202,9 @@ module.exports = class GitRepository {
     return relativePath.split(path.sep).join("/");
   }
 
-  requireHistoryProvider() {
-    const provider = this.historyProviderOverride || this.gitHostClient;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider;
+  requireGitHostClient() {
+    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
+    return this.gitHostClient;
   }
 
   /**
@@ -1454,7 +1230,7 @@ module.exports = class GitRepository {
     cursor = null,
     signal,
   } = {}) {
-    const provider = this.requireHistoryProvider();
+    const client = this.requireGitHostClient();
     const effectiveRevision = cursor?.revision ?? revision;
     const effectiveAllRefs = cursor?.allRefs ?? allRefs;
     const skip = cursor?.skip ?? 0;
@@ -1468,29 +1244,7 @@ module.exports = class GitRepository {
       limit: limit + 1,
       skip,
     };
-    let records;
-    if (params.path && typeof provider.getLogFollow === "function") {
-      records = parseCommitRecords(
-        await provider.getLogFollow(this.getHostDescriptor(), params, { signal }),
-      );
-    } else if (!params.path && typeof provider.getHistory === "function") {
-      records = await provider.getHistory(
-        this.getHostDescriptor(),
-        {
-          revision: params.revision,
-          allRefs: params.allRefs,
-          limit: params.limit,
-          skip: params.skip,
-        },
-        { signal },
-      );
-    } else {
-      // Direct legacy provider injection remains a test seam. The production
-      // provider statically routes only path-limited history to Git CLI.
-      records = parseCommitRecords(
-        await provider.getLog(this.getWorkingDirectory(), params, { signal }),
-      );
-    }
+    const records = await client.getHistory(this.getHostDescriptor(), params, { signal });
     const hasMore = records.length > limit;
     const commits = deepFreeze(records.slice(0, limit));
     return Object.freeze({
@@ -1517,30 +1271,12 @@ module.exports = class GitRepository {
    */
   async getCommit(sha, { signal } = {}) {
     assertGitRevision(sha, { label: "commit" });
-    const provider = this.requireHistoryProvider();
-    if (typeof provider.getCommit === "function") {
-      const result = await provider.getCommit(this.getHostDescriptor(), sha, { signal });
-      if (!result) return null;
-      const { files, changedFiles, ...commit } = result;
-      return deepFreeze({ ...commit, changedFiles: changedFiles || files || [] });
-    }
-
-    const workingDirectory = this.getWorkingDirectory();
-    const logOutput = await provider.getLog(
-      workingDirectory,
-      { revision: sha, limit: 1 },
-      { signal },
-    );
-    const [commit] = parseCommitRecords(logOutput);
-    if (!commit) return null;
-    const nameStatusOutput = await provider.getNameStatus(workingDirectory, commit.sha, {
+    const result = await this.requireGitHostClient().getCommit(this.getHostDescriptor(), sha, {
       signal,
-      parent: commit.parents[0] || null,
     });
-    return Object.freeze({
-      ...commit,
-      changedFiles: Object.freeze(parseNameStatusTokens(nameStatusOutput)),
-    });
+    if (!result) return null;
+    const { files, changedFiles, ...commit } = result;
+    return deepFreeze({ ...commit, changedFiles: changedFiles || files || [] });
   }
 
   /**
@@ -1559,11 +1295,8 @@ module.exports = class GitRepository {
    */
   getFileAtRevision(filePath, revision, { encoding = "utf8", signal } = {}) {
     assertGitRevision(revision);
-    const provider = this.requireHistoryProvider();
-    return provider.getFileAtRevision(
-      typeof provider.readObjects === "function"
-        ? this.getHostDescriptor()
-        : this.getWorkingDirectory(),
+    return this.requireGitHostClient().getFileAtRevision(
+      this.getHostDescriptor(),
       this.posixRelativePath(filePath),
       revision,
       { encoding: encoding === "buffer" ? "buffer" : encoding, signal },
@@ -1585,17 +1318,14 @@ module.exports = class GitRepository {
    *   path has no stage-0 index entry.
    */
   getIndexFile(filePath, { encoding = "utf8", signal } = {}) {
-    const provider = this.requireHistoryProvider();
-    if (typeof provider.getIndexFile !== "function") {
-      const error = new Error("The history provider cannot read index objects");
-      error.code = "ERR_GIT_READ_OBJECTS";
-      error.operation = "readObjects";
-      return Promise.reject(error);
-    }
-    return provider.getIndexFile(this.getHostDescriptor(), this.posixRelativePath(filePath), {
-      encoding: encoding === "buffer" ? "buffer" : encoding,
-      signal,
-    });
+    return this.requireGitHostClient().getIndexFile(
+      this.getHostDescriptor(),
+      this.posixRelativePath(filePath),
+      {
+        encoding: encoding === "buffer" ? "buffer" : encoding,
+        signal,
+      },
+    );
   }
 
   /**
@@ -1612,17 +1342,10 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to the contents, or `null` when the oid does not name an object.
    */
   getBlob(oid, { encoding = "utf8", signal } = {}) {
-    const provider = this.requireHistoryProvider();
-    return provider.getBlob(
-      typeof provider.readObjects === "function"
-        ? this.getHostDescriptor()
-        : this.getWorkingDirectory(),
-      oid,
-      {
-        encoding: encoding === "buffer" ? "buffer" : encoding,
-        signal,
-      },
-    );
+    return this.requireGitHostClient().getBlob(this.getHostDescriptor(), oid, {
+      encoding: encoding === "buffer" ? "buffer" : encoding,
+      signal,
+    });
   }
 
   /**
@@ -1634,9 +1357,7 @@ module.exports = class GitRepository {
    * `""` when the branch is unborn.
    */
   getDescription() {
-    const provider = this.refsSnapshotProviderOverride || this.gitHostClient;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getDescription(this.getHostDescriptor());
+    return this.requireGitHostClient().getDescription(this.getHostDescriptor());
   }
 
   /**
@@ -1655,9 +1376,7 @@ module.exports = class GitRepository {
    */
   getBranchesContaining(commit, { showLocal = false, showRemote = false, pattern = null } = {}) {
     assertGitRevision(commit, { label: "commit" });
-    const provider = this.refsSnapshotProviderOverride || this.gitHostClient;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getBranchesContaining(this.getHostDescriptor(), commit, {
+    return this.requireGitHostClient().getBranchesContaining(this.getHostDescriptor(), commit, {
       showLocal,
       showRemote,
       pattern,
@@ -1674,9 +1393,10 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to the `String` mode (e.g. `"100644"`), or `null` when the path is not tracked.
    */
   getFileMode(filePath) {
-    const provider = this.statusSnapshotProviderOverride || this.gitHostClient;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getFileMode(this.getHostDescriptor(), this.posixRelativePath(filePath));
+    return this.requireGitHostClient().getFileMode(
+      this.getHostDescriptor(),
+      this.posixRelativePath(filePath),
+    );
   }
 
   /**
@@ -1688,9 +1408,7 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to an `Array` of path `Strings`.
    */
   getSubmodulePaths() {
-    const provider = this.statusSnapshotProviderOverride || this.gitHostClient;
-    if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return provider.getSubmodulePaths(this.getHostDescriptor());
+    return this.requireGitHostClient().getSubmodulePaths(this.getHostDescriptor());
   }
 
   /**
@@ -1708,18 +1426,15 @@ module.exports = class GitRepository {
    */
   async getBlame(filePath, { revision = null, ignoreWhitespace = false, signal } = {}) {
     assertGitRevision(revision, { allowNull: true });
-    const provider = this.requireHistoryProvider();
-    const output = await provider.getBlame(
-      typeof provider.readObjects === "function"
-        ? this.getHostDescriptor()
-        : this.getWorkingDirectory(),
+    const lines = await this.requireGitHostClient().getBlame(
+      this.getHostDescriptor(),
       this.posixRelativePath(filePath),
       { revision, ignoreWhitespace },
       { signal },
     );
     return deepFreeze({
       revision,
-      lines: Array.isArray(output) ? output : parseBlamePorcelain(output),
+      lines,
     });
   }
 
@@ -1745,15 +1460,12 @@ module.exports = class GitRepository {
     // produces a fresh key. Files inside submodules are owned by their own
     // repository, so this repository always keys against its own HEAD.
     const headOid = this.statusSnapshot?.head?.oid ?? null;
-    return (this.diffProviderOverride || this.gitHostClient).getLineDiffs(
-      this.getHostDescriptor(),
-      {
-        relativePosixPath,
-        headOid,
-        text,
-        ignoreEolWhitespace: process.platform === "win32",
-      },
-    );
+    return this.gitHostClient.getLineDiffs(this.getHostDescriptor(), {
+      relativePosixPath,
+      headOid,
+      text,
+      ignoreEolWhitespace: process.platform === "win32",
+    });
   }
 
   /**

@@ -14,7 +14,7 @@ module.exports = function createGitHostOps(
     try {
       return await callback(systemGitService);
     } catch (error) {
-      throw normalizeGitOperationError(error, { operation, backend: "cli" });
+      throw normalizeGitOperationError(error, { operation });
     }
   };
 
@@ -36,14 +36,6 @@ module.exports = function createGitHostOps(
     commit: (payload, context) =>
       invoke("commit", (service) =>
         service.commit(payload.descriptor, { revision: payload.revision }, context),
-      ),
-
-    logFollow: (payload, context) =>
-      invoke("logFollow", (service) =>
-        service.logFollow(payload.descriptor, payload.request, {
-          ...payload.options,
-          ...context,
-        }),
       ),
 
     describe: (payload, context) =>

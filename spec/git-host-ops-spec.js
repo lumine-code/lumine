@@ -20,7 +20,6 @@ describe("git-host ops", () => {
       diff: method("diff", { schemaVersion: 1, files: [] }),
       history: method("history", []),
       commit: method("commit", null),
-      logFollow: method("logFollow", "log"),
       describe: method("describe", "main"),
       branchesContaining: method("branchesContaining", []),
       fileMode: method("fileMode", "100644"),
@@ -65,11 +64,6 @@ describe("git-host ops", () => {
     const calls = [
       ["history", { descriptor, request }, [descriptor, request, context]],
       ["commit", { descriptor, revision: "HEAD" }, [descriptor, { revision: "HEAD" }, context]],
-      [
-        "logFollow",
-        { descriptor, request, options: { priority: "interactive" } },
-        [descriptor, request, { priority: "interactive", signal: context.signal }],
-      ],
       ["describe", { descriptor }, [descriptor, context]],
       [
         "branchesContaining",
@@ -131,8 +125,7 @@ describe("git-host ops", () => {
 
     expect(error).toBe(failure);
     expect(error.code).toBe("ERR_GIT_HISTORY");
-    expect(error.backend).toBe("cli");
-    expect(error.backendCode).toBe("ERR_GIT_COMMAND_FAILED");
+    expect(error.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
     expect(error.operation).toBe("history");
   });
 

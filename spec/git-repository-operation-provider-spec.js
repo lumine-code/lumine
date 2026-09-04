@@ -529,8 +529,7 @@ describe("GitRepositoryOperationProvider", () => {
       missingResult = error;
     }
     expect(missingResult.code).toBe("ERR_GIT_CREATE_BLOB");
-    expect(missingResult.backend).toBe("cli");
-    expect(missingResult.backendCode).toBe("ERR_GIT_COMMAND_FAILED");
+    expect(missingResult.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
 
     failure = permission;
     await expectAsync(operations.createBlob({ filePath: "protected.txt" })).toBeRejectedWith(

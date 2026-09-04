@@ -213,7 +213,7 @@ describe("repository history", () => {
       ]);
     });
 
-    it("walks all refs through a backend-neutral option", async () => {
+    it("walks all refs through a structured repository option", async () => {
       await operationProvider.run(["checkout", "-b", "side"], workingDirectory);
       fs.writeFileSync(path.join(workingDirectory, "side.txt"), "side\n");
       await operations.stageFiles(["side.txt"]);

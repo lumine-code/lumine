@@ -94,15 +94,14 @@ describe("git-host CLI contract", () => {
       await ops.blame({ descriptor, request: { path: "a.txt", revision: "HEAD" } }, {}),
     ).toEqual([]);
     expect(
-      await ops.logFollow(
+      await ops.history(
         {
           descriptor,
           request: { revision: "HEAD", path: "a.txt", limit: 10, skip: 0 },
-          options: {},
         },
         {},
       ),
-    ).toEqual(jasmine.any(String));
+    ).toEqual(jasmine.any(Array));
     expect(
       await ops.lineDiff(
         {

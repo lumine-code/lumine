@@ -23,16 +23,14 @@ class LargeRepoError extends Error {
 // operation-level repository facade. Preserve the original code as diagnostic
 // metadata while exposing a stable code for each public operation.
 function operationErrorCode(operation) {
-  const publicOperation = operation === "logFollow" ? "history" : operation;
-  return `ERR_GIT_${String(publicOperation)
+  return `ERR_GIT_${String(operation)
     .replace(/([a-z])([A-Z])/g, "$1_$2")
     .toUpperCase()}`;
 }
 
-function normalizeGitOperationError(error, { operation = null, backend = null } = {}) {
+function normalizeGitOperationError(error, { operation = null } = {}) {
   if (!error || typeof error !== "object") return error;
   const originalCode = String(error.code || "");
-  if (backend) error.backend ||= backend;
 
   if (error.name === "AbortError" || originalCode === "ABORT_ERR") return error;
 
@@ -47,16 +45,16 @@ function normalizeGitOperationError(error, { operation = null, backend = null } 
   }
 
   if (operation === "diff" && originalCode === "ERR_CHILD_PROCESS_STDIO_MAXBUFFER") {
-    error.backendCode ||= originalCode;
+    error.gitCode ||= originalCode;
     error.code = "ERR_GIT_DIFF_TOO_LARGE";
     error.operation ||= "diff";
     return error;
   }
 
   const code = operationErrorCode(operation);
-  if (originalCode && originalCode !== code) error.backendCode ||= originalCode;
+  if (originalCode && originalCode !== code) error.gitCode ||= originalCode;
   error.code = code;
-  error.operation ||= operation === "logFollow" ? "history" : operation;
+  error.operation ||= operation;
   return error;
 }
 

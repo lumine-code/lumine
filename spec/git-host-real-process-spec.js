@@ -79,7 +79,6 @@ describe("git-host real process", () => {
       error = caught;
     }
     expect(error.code).toBe("ERR_GIT_DIFF");
-    expect(error.backend).toBe("cli");
-    expect(error.backendCode).toBe("ERR_GIT_COMMAND_FAILED");
+    expect(error.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
   });
 });

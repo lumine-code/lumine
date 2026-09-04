@@ -156,6 +156,7 @@ describe("GitRepository host facade", () => {
     expect(getHistory.calls.argsFor(0)[1]).toEqual({
       revision: "HEAD",
       allRefs: true,
+      path: null,
       limit: 26,
       skip: 0,
     });

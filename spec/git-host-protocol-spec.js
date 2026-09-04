@@ -18,7 +18,6 @@ describe("git-host protocol", () => {
         "fileMode",
         "history",
         "lineDiff",
-        "logFollow",
         "readConfig",
         "readObjects",
         "snapshot",
@@ -37,16 +36,14 @@ describe("git-host protocol", () => {
     const error = Object.assign(new Error("Git diff failed"), {
       code: "ERR_GIT_DIFF",
       operation: "diff",
-      backend: "cli",
-      backendCode: "ERR_GIT_COMMAND_FAILED",
+      gitCode: "ERR_GIT_COMMAND_FAILED",
       cause,
     });
 
     const revived = reviveError(serializeError(error));
     expect(revived.message).toBe("Git diff failed");
     expect(revived.code).toBe("ERR_GIT_DIFF");
-    expect(revived.backend).toBe("cli");
-    expect(revived.backendCode).toBe("ERR_GIT_COMMAND_FAILED");
+    expect(revived.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
     expect(revived.cause.message).toBe("spawn detail");
     expect(revived.cause.command).toBe("git");
   });

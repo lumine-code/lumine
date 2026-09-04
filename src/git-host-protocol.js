@@ -7,7 +7,6 @@ const GitHostOperations = Object.freeze({
   diff: true,
   history: true,
   commit: true,
-  logFollow: true,
   describe: true,
   branchesContaining: true,
   fileMode: true,
@@ -27,14 +26,12 @@ const SERIALIZED_ERROR_FIELDS = Object.freeze([
   "stderr",
   "stdout",
   "command",
-  "gitError",
   "operation",
   "retriable",
   "maxBytes",
   "structuredBytes",
   "patchBytes",
-  "backend",
-  "backendCode",
+  "gitCode",
 ]);
 
 function unknownOperationError(operation) {
