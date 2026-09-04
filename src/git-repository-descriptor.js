@@ -1,7 +1,7 @@
 const crypto = require("crypto");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
-const { normalizePath, pathsAreEqual } = require("./repository-paths");
+const { normalizePath, pathsAreEqual, realpathRecursive } = require("./repository-paths");
 
 const IS_WINDOWS = process.platform === "win32";
 
@@ -246,9 +246,10 @@ async function discoverGitDirectoryAsync(startPath) {
 // symlink still route.
 function computeOpenedWorkingDirectory(startPath, workingDirectory, caseInsensitive) {
   if (!workingDirectory) return null;
-  if (realpath(startPath) === startPath) return null;
+  const normalizedStartPath = normalizePath(startPath, false);
+  if (realpathRecursive(startPath) === normalizedStartPath) return null;
 
-  let candidate = normalizePath(startPath, false);
+  let candidate = normalizedStartPath;
   while (!isRootPath(candidate)) {
     if (pathsAreEqual(candidate, workingDirectory, caseInsensitive)) return candidate;
     candidate = path.resolve(candidate, "..");
@@ -258,9 +259,10 @@ function computeOpenedWorkingDirectory(startPath, workingDirectory, caseInsensit
 
 async function computeOpenedWorkingDirectoryAsync(startPath, workingDirectory, caseInsensitive) {
   if (!workingDirectory) return null;
-  if ((await realpathAsync(startPath)) === startPath) return null;
+  const normalizedStartPath = normalizePath(startPath, false);
+  if (realpathRecursive(startPath) === normalizedStartPath) return null;
 
-  let candidate = normalizePath(startPath, false);
+  let candidate = normalizedStartPath;
   while (!isRootPath(candidate)) {
     if (pathsAreEqual(candidate, workingDirectory, caseInsensitive)) return candidate;
     candidate = path.resolve(candidate, "..");

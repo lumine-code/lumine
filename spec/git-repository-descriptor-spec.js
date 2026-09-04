@@ -61,6 +61,20 @@ describe("git repository descriptor", () => {
     expect(asynchronous.getPath()).toBe(synchronous.getPath());
   });
 
+  it("retains a symlink alias for a missing descendant", async () => {
+    const workingDir = copyFixture("working-dir");
+    const aliasRoot = temp.mkdirSync("descriptor-alias-");
+    const alias = path.join(aliasRoot, "repo-link");
+    fs.symlinkSync(workingDir, alias, process.platform === "win32" ? "junction" : "dir");
+    const missingPath = path.join(alias, "missing", "file.txt");
+
+    const synchronous = discoverRepositoryDescriptor(missingPath);
+    const asynchronous = await discoverRepositoryDescriptorAsync(missingPath);
+
+    expect(path.resolve(synchronous.openedWorkingDirectory)).toBe(path.resolve(alias));
+    expect(path.resolve(asynchronous.openedWorkingDirectory)).toBe(path.resolve(alias));
+  });
+
   it("walks up into a bare-style git directory", () => {
     const descriptor = discoverRepositoryDescriptor(fixturePath("master.git", "objects"));
 
