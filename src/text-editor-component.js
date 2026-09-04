@@ -3275,6 +3275,7 @@ module.exports = class TextEditorComponent {
         screenRangeBottom,
         options.zone,
         verticalScrollMargin,
+        options.reversed !== false,
       );
       return false;
     }
@@ -3317,26 +3318,30 @@ module.exports = class TextEditorComponent {
   // the viewport and leaves the most room ahead of it. Equal, there is no band
   // left and the range is pinned to that one spot.
   //
-  // A percentage measures the travel the range has between the two autoscroll
-  // margins, so 0 rests it against the top margin and 100 against the bottom
-  // one whatever its height; a range too tall to fit between them has no travel
-  // left and simply rests at the top margin. Both ends are compared against the
-  // range's own top, which is what makes the band an exact generalization of
-  // what the editor already did: `[0, 100]` scrolls precisely when the default
-  // would and to the same place, and `50` matches `center`.
+  // A percentage measures the signed travel the range has between the two
+  // autoscroll margins, so 0 rests its start against the top margin and 100
+  // rests its end against the bottom one. When the range is taller than that
+  // space, the travel is negative and no resting band can contain it; the
+  // active end then chooses which landing percentage wins. This makes
+  // `[0, 100]` precisely the default behaviour and `50` precisely `center` for
+  // ranges of every height.
   autoscrollVerticallyIntoZone(
     rangeTop,
     rangeBottom,
     [afterLeavingTop, afterLeavingBottom],
     margin,
+    reversed,
   ) {
-    const travel = Math.max(
-      0,
-      this.getScrollContainerClientHeight() - 2 * margin - (rangeBottom - rangeTop),
-    );
+    const travel = this.getScrollContainerClientHeight() - 2 * margin - (rangeBottom - rangeTop);
     const offsetForPercentage = (percentage) => margin + travel * (percentage / 100);
     const topOffset = offsetForPercentage(afterLeavingTop);
     const bottomOffset = offsetForPercentage(afterLeavingBottom);
+
+    if (travel < 0) {
+      this.setScrollTop(rangeTop - (reversed ? topOffset : bottomOffset));
+      return;
+    }
+
     const relativeTop = rangeTop - this.getScrollTop();
 
     if (relativeTop < Math.min(topOffset, bottomOffset)) {

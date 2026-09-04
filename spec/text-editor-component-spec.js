@@ -1690,6 +1690,28 @@ describe("TextEditorComponent", () => {
         expect(byZone.component.getScrollTop()).toBeNear(byDefault.component.getScrollTop());
       });
 
+      for (const [reversed, activeEnd] of [
+        [true, "start"],
+        [false, "end"],
+      ]) {
+        it(`reproduces the default vertical autoscroll for a range taller than the viewport with its ${activeEnd} active`, async () => {
+          const range = [
+            [8, 0],
+            [30, 0],
+          ];
+
+          const byDefault = await buildZoneComponent();
+          byDefault.editor.scrollToScreenRange(range, { reversed });
+          await byDefault.component.getNextUpdatePromise();
+
+          const byZone = await buildZoneComponent();
+          byZone.editor.scrollToScreenRange(range, { reversed, zone: [0, 100] });
+          await byZone.component.getNextUpdatePromise();
+
+          expect(byZone.component.getScrollTop()).toBeNear(byDefault.component.getScrollTop());
+        });
+      }
+
       it("reproduces the `center` option with `50`", async () => {
         const range = [
           [12, 0],
@@ -1706,6 +1728,28 @@ describe("TextEditorComponent", () => {
 
         expect(byZone.component.getScrollTop()).toBeNear(byCenter.component.getScrollTop());
       });
+
+      for (const [reversed, activeEnd] of [
+        [true, "start"],
+        [false, "end"],
+      ]) {
+        it(`reproduces the \`center\` option for a range taller than the viewport with its ${activeEnd} active`, async () => {
+          const range = [
+            [8, 0],
+            [30, 0],
+          ];
+
+          const byCenter = await buildZoneComponent();
+          byCenter.editor.scrollToScreenRange(range, { center: true, reversed });
+          await byCenter.component.getNextUpdatePromise();
+
+          const byZone = await buildZoneComponent();
+          byZone.editor.scrollToScreenRange(range, { reversed, zone: 50 });
+          await byZone.component.getNextUpdatePromise();
+
+          expect(byZone.component.getScrollTop()).toBeNear(byCenter.component.getScrollTop());
+        });
+      }
 
       it("lands on the opposite edge when the pair is inverted", async () => {
         const { component, editor } = await buildZoneComponent();
@@ -1738,7 +1782,7 @@ describe("TextEditorComponent", () => {
         );
       });
 
-      it("rests a range too tall to fit against the top margin", async () => {
+      it("rests the active end of a range too tall to fit against the bottom margin with `100`", async () => {
         const { component, editor } = await buildZoneComponent();
         const lineHeight = component.getLineHeight();
 
@@ -1747,11 +1791,11 @@ describe("TextEditorComponent", () => {
             [8, 0],
             [30, 0],
           ],
-          { zone: 100 },
+          { reversed: false, zone: 100 },
         );
         await component.getNextUpdatePromise();
-        expect(component.getScrollTop()).toBeNear(
-          8 * lineHeight - component.getVerticalAutoscrollMargin(),
+        expect(component.getScrollBottom()).toBeNear(
+          (30 + 1) * lineHeight + component.getVerticalAutoscrollMargin(),
         );
       });
 

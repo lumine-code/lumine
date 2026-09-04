@@ -6379,15 +6379,19 @@ module.exports = class TextEditor {
    * off-screen.
    *
    * @param {Object} [options]
-   * @param options.center - Center the editor around the cursor if possible. (default: true when an options object is given at all, false otherwise — the bare call is the one the editor's own movement commands make, and they scroll only as far as they must)
+   * @param options.center - Center the editor around the cursor if possible. (default: false)
    * @param options.zone - Land the cursor inside a band of the viewport, instead of centering it. See {@link #scrollToScreenRange}.
    */
   scrollToCursorPosition(options) {
     const zone = options && options.zone;
-    this.getLastCursor().autoscroll({
-      zone,
-      center: zone == null && options && options.center !== false,
-    });
+    const autoscrollOptions = {};
+    if (zone != null) {
+      autoscrollOptions.zone = zone;
+      autoscrollOptions.center = false;
+    } else if (options && Object.hasOwn(options, "center")) {
+      autoscrollOptions.center = options.center === true;
+    }
+    this.getLastCursor().autoscroll(autoscrollOptions);
   }
 
   /**
