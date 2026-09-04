@@ -5,9 +5,9 @@ describe("GitCliBackend", () => {
   it("parses binary cat-file batches and missing objects", () => {
     const content = Buffer.from([0, 10, 255]);
     const output = Buffer.concat([
-      Buffer.from("abc blob 3\0"),
+      Buffer.from("abc blob 3\n"),
       content,
-      Buffer.from("\0missing missing\0"),
+      Buffer.from("\nmissing missing\n"),
     ]);
 
     const objects = parseBatchObjects(output, 2);
@@ -75,5 +75,43 @@ describe("GitCliBackend", () => {
     expect(workingDirectory).toBe("/repo");
     expect(revision).toBe(resolved);
     expect(options.parent).toBe(parent);
+  });
+
+  it("uses the portable line-delimited batch protocol", async () => {
+    const runner = {
+      runResult: jasmine.createSpy("runResult").and.resolveTo({
+        exitCode: 0,
+        stdout: Buffer.from("abc blob 3\nraw\n"),
+      }),
+    };
+    const backend = new GitCliBackend({ runner });
+
+    const [object] = await backend.readObjects(
+      { gitDirectory: "/repo.git", workingDirectory: null },
+      [{ oid: "abc" }],
+      {},
+    );
+
+    expect(object.content.toString()).toBe("raw");
+    expect(runner.runResult.calls.mostRecent().args[0]).toEqual(["cat-file", "--batch"]);
+    expect(runner.runResult.calls.mostRecent().args[2].stdin).toBe("abc\n");
+  });
+
+  it("spells stage zero explicitly for index paths", async () => {
+    const runner = {
+      runResult: jasmine.createSpy("runResult").and.resolveTo({
+        exitCode: 0,
+        stdout: Buffer.from("abc blob 3\nraw\n"),
+      }),
+    };
+    const backend = new GitCliBackend({ runner });
+
+    await backend.readObjects(
+      { gitDirectory: "/repo.git", workingDirectory: "/repo" },
+      [{ source: "index", path: "1:file.txt" }],
+      {},
+    );
+
+    expect(runner.runResult.calls.mostRecent().args[2].stdin).toBe(":0:1:file.txt\n");
   });
 });

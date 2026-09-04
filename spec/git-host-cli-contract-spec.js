@@ -122,4 +122,40 @@ describe("git-host CLI contract", () => {
     );
     expect(execution.exitCode).toBe(0);
   });
+
+  it("reads refs and an empty status from a bare repository", async () => {
+    const gitDirectory = temp.mkdirSync("git-host-bare-");
+    const runner = new GitRunner({ trustAllRepositories: true });
+    await runner.run(["init", "--bare", "--initial-branch=main"], gitDirectory);
+    const bareOps = createGitHostOps(runner);
+    const bareDescriptor = { gitDirectory: fs.realpathSync(gitDirectory), workingDirectory: null };
+
+    const snapshot = await bareOps.snapshot(
+      {
+        descriptor: bareDescriptor,
+        request: {
+          status: true,
+          refs: true,
+          generations: { status: 3, refs: 4 },
+        },
+      },
+      {},
+    );
+
+    expect(snapshot.status.value).toEqual(
+      jasmine.objectContaining({
+        generation: 3,
+        initialized: true,
+        files: [],
+        head: jasmine.objectContaining({ name: "main", unborn: true }),
+      }),
+    );
+    expect(snapshot.refs.value).toEqual(
+      jasmine.objectContaining({
+        generation: 4,
+        initialized: true,
+        head: jasmine.objectContaining({ name: "main", unborn: true }),
+      }),
+    );
+  });
 });

@@ -57,6 +57,40 @@ function canonicalRefsSnapshot(snapshot) {
   });
 }
 
+function bareStatusSnapshot(refs, { generation, includesIgnored }) {
+  const currentBranch = refs.branches.find((branch) => branch.isHead);
+  return Object.freeze({
+    schemaVersion: 1,
+    generation,
+    initialized: true,
+    includesIgnored,
+    head: refs.head
+      ? Object.freeze({
+          oid: refs.head.oid,
+          name: refs.head.name,
+          detached: refs.head.detached,
+          unborn: refs.head.unborn,
+        })
+      : null,
+    upstream: currentBranch?.upstream
+      ? Object.freeze({
+          name: currentBranch.upstream.name,
+          ahead: currentBranch.upstream.ahead,
+          behind: currentBranch.upstream.behind,
+        })
+      : null,
+    files: Object.freeze([]),
+    counts: Object.freeze({
+      total: 0,
+      staged: 0,
+      unstaged: 0,
+      conflicted: 0,
+      untracked: 0,
+      ignored: 0,
+    }),
+  });
+}
+
 function diffResultBytes(result) {
   let structured = 0;
   let patch = 0;
@@ -86,7 +120,9 @@ function assertDiffWithinLimit(result, maxBytes) {
 }
 
 function objectExpression(request) {
-  if (request.source === "index") return `:${request.path}`;
+  // Spell stage 0 explicitly. Without it, a path beginning with `1:`, `2:`,
+  // or `3:` is parsed as a conflict-stage selector rather than path text.
+  if (request.source === "index") return `:0:${request.path}`;
   if (request.oid) return request.oid;
   return `${request.revision || "HEAD"}:${request.path}`;
 }
@@ -103,7 +139,7 @@ function parseBatchObjects(output, expectedCount) {
   const objects = [];
   let cursor = 0;
   while (objects.length < expectedCount) {
-    const headerEnd = output.indexOf(0, cursor);
+    const headerEnd = output.indexOf(0x0a, cursor);
     if (headerEnd === -1) throw new Error("Git cat-file returned an invalid batch header");
     const header = output.subarray(cursor, headerEnd).toString("utf8");
     cursor = headerEnd + 1;
@@ -115,7 +151,7 @@ function parseBatchObjects(output, expectedCount) {
     const match = /^([^ ]+) ([^ ]+) (\d+)$/.exec(header);
     if (!match) throw new Error(`Git cat-file returned an invalid batch header: ${header}`);
     const size = Number(match[3]);
-    if (output.length < cursor + size + 1 || output[cursor + size] !== 0) {
+    if (output.length < cursor + size + 1 || output[cursor + size] !== 0x0a) {
       throw new Error("Git cat-file returned a truncated object");
     }
     objects.push({
@@ -127,6 +163,15 @@ function parseBatchObjects(output, expectedCount) {
     cursor += size + 1;
   }
   return objects;
+}
+
+async function resolveLineUnsafeObjectExpression(runner, expression, workingDirectory, options) {
+  const result = await runner.runResult(
+    ["rev-parse", "--verify", "--end-of-options", expression],
+    workingDirectory,
+    { ...options, allowedExitCodes: [0, 128] },
+  );
+  return result.exitCode === 0 ? String(result.stdout).trim() : null;
 }
 
 // System-Git adapter. It owns all command construction and parsing inside
@@ -143,36 +188,45 @@ module.exports = class GitCliBackend {
 
   async snapshot(descriptor, request, { signal, ...options } = {}) {
     const workingDirectory = workingDirectoryFor(descriptor);
+    const bare = descriptor.workingDirectory == null;
     const statusRequested = request.status !== false;
     const refsRequested = request.refs !== false;
+    const refsNeeded = refsRequested || (bare && statusRequested);
     const includeIgnored = request.includeIgnored === true;
     const [statusOutput, refsOutput] = await Promise.all([
-      statusRequested
+      statusRequested && !bare
         ? this.statusProvider.getStatus(workingDirectory, {
             ...options,
             includeIgnored,
             signal,
           })
         : null,
-      refsRequested ? this.refsProvider.getRefs(workingDirectory, { ...options, signal }) : null,
+      refsNeeded ? this.refsProvider.getRefs(workingDirectory, { ...options, signal }) : null,
     ]);
+    const refsValue = refsNeeded
+      ? canonicalRefsSnapshot(
+          parseRefsSnapshot(refsOutput, {
+            generation: request.generations?.refs ?? 1,
+          }),
+        )
+      : null;
     const result = {};
     if (statusRequested) {
       const value = canonicalStatusSnapshot(
-        parseStatusSnapshot(statusOutput, {
-          generation: request.generations?.status ?? 1,
-          includesIgnored: includeIgnored,
-        }),
+        bare
+          ? bareStatusSnapshot(refsValue, {
+              generation: request.generations?.status ?? 1,
+              includesIgnored: includeIgnored,
+            })
+          : parseStatusSnapshot(statusOutput, {
+              generation: request.generations?.status ?? 1,
+              includesIgnored: includeIgnored,
+            }),
       );
       result.status = snapshotSection(value, request.knownFingerprints?.status);
     }
     if (refsRequested) {
-      const value = canonicalRefsSnapshot(
-        parseRefsSnapshot(refsOutput, {
-          generation: request.generations?.refs ?? 1,
-        }),
-      );
-      result.refs = snapshotSection(value, request.knownFingerprints?.refs);
+      result.refs = snapshotSection(refsValue, request.knownFingerprints?.refs);
     }
     return result;
   }
@@ -279,14 +333,35 @@ module.exports = class GitCliBackend {
   async readObjects(descriptor, requests, { signal, ...options } = {}) {
     if (requests.length === 0) return [];
     const workingDirectory = workingDirectoryFor(descriptor);
-    const result = await this.runner.runResult(["cat-file", "--batch", "-Z"], workingDirectory, {
+    // Plain --batch is supported by the older system Git versions still
+    // shipped by macOS and long-term-support Linux distributions. Its protocol
+    // is LF-delimited, so resolve the rare CR/LF-bearing object expression via
+    // argv first, then batch the resulting hexadecimal oid.
+    const expressions = await Promise.all(
+      requests.map((request) => {
+        const expression = objectExpression(request);
+        return /[\r\n]/.test(expression)
+          ? resolveLineUnsafeObjectExpression(this.runner, expression, workingDirectory, {
+              ...options,
+              signal,
+            })
+          : expression;
+      }),
+    );
+    const batchExpressions = expressions.filter((expression) => expression != null);
+    if (batchExpressions.length === 0) return requests.map(() => null);
+    const result = await this.runner.runResult(["cat-file", "--batch"], workingDirectory, {
       ...options,
       signal,
-      stdin: `${requests.map(objectExpression).join("\0")}\0`,
+      stdin: `${batchExpressions.join("\n")}\n`,
       encoding: "buffer",
       maxBuffer: options.maxBuffer ?? MAX_OBJECT_BYTES,
     });
-    return parseBatchObjects(result.stdout, requests.length);
+    const batchObjects = parseBatchObjects(result.stdout, batchExpressions.length);
+    let batchIndex = 0;
+    return expressions.map((expression) =>
+      expression == null ? null : batchObjects[batchIndex++],
+    );
   }
 
   async readConfig(descriptor, keys, { signal, ...options } = {}) {
