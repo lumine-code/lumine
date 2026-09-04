@@ -2,14 +2,7 @@ const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
 const { discoverRepositoryDescriptor } = require("./git-repository-descriptor");
-const {
-  GitHostSnapshotProvider,
-  GitHostStatusProvider,
-  GitHostRefsProvider,
-  GitHostConfigProvider,
-  GitHostDiffProvider,
-  GitHostHistoryProvider,
-} = require("./git-host-providers");
+const GitHostClient = require("./git-host-client");
 const { applyFileEndpointPaths, parseDiffPatch } = require("./repository-diff");
 const {
   parseCommitRecords,
@@ -149,10 +142,14 @@ module.exports = class GitRepository {
     this.openedWorkingDirectoryPath = this.descriptor.openedWorkingDirectory || null;
     this.caseInsensitiveFs = this.descriptor.caseInsensitiveFs === true;
 
-    this.snapshotProvider = options.snapshotProvider || new GitHostSnapshotProvider();
+    // Production reads use one renderer-to-worker contract. The category
+    // overrides remain temporarily for focused legacy-provider specs while the
+    // old raw-output parsers and independent schedulers are removed.
+    this.gitHostClient = options.gitHostClient || new GitHostClient();
+    this.snapshotProviderOverride = options.snapshotProvider || null;
     this.usesCombinedStatusSnapshots = options.statusSnapshotProvider == null;
     this.usesCombinedRefsSnapshots = options.refsSnapshotProvider == null;
-    this.statusSnapshotProvider = options.statusSnapshotProvider || new GitHostStatusProvider();
+    this.statusSnapshotProviderOverride = options.statusSnapshotProvider || null;
     this.statusSnapshot = EMPTY_STATUS_SNAPSHOT;
     this.statusSnapshotCacheKey = null;
     this.statusSnapshotFingerprint = null;
@@ -165,7 +162,7 @@ module.exports = class GitRepository {
     this.statusSnapshotDebounceMs = options.statusSnapshotDebounceMs ?? 150;
     this.statusSnapshotRefreshTimer = null;
     this.statusRefreshCoalescer = { flight: null, trailing: null };
-    this.refsSnapshotProvider = options.refsSnapshotProvider || new GitHostRefsProvider();
+    this.refsSnapshotProviderOverride = options.refsSnapshotProvider || null;
     this.refsSnapshot = EMPTY_REFS_SNAPSHOT;
     this.refsSnapshotCacheKey = null;
     this.refsSnapshotFingerprint = null;
@@ -178,9 +175,9 @@ module.exports = class GitRepository {
     this.combinedSnapshotRefreshTimer = null;
     this.combinedSnapshotScheduledKinds = new Set();
     this.backgroundSnapshotWarningShown = false;
-    this.diffProvider = options.diffProvider || new GitHostDiffProvider();
-    this.historyProvider = options.historyProvider || new GitHostHistoryProvider();
-    this.configProvider = options.configProvider || new GitHostConfigProvider();
+    this.diffProviderOverride = options.diffProvider || null;
+    this.historyProviderOverride = options.historyProvider || null;
+    this.configProviderOverride = options.configProvider || null;
     this.upstream = { ahead: 0, behind: 0 };
 
     this.project = options.project;
@@ -216,12 +213,13 @@ module.exports = class GitRepository {
     this.refsSnapshotRefreshCount++;
     this.descriptor = null;
     this.operations = null;
-    this.statusSnapshotProvider = null;
-    this.snapshotProvider = null;
-    this.refsSnapshotProvider = null;
-    this.diffProvider = null;
-    this.historyProvider = null;
-    this.configProvider = null;
+    this.gitHostClient = null;
+    this.statusSnapshotProviderOverride = null;
+    this.snapshotProviderOverride = null;
+    this.refsSnapshotProviderOverride = null;
+    this.diffProviderOverride = null;
+    this.historyProviderOverride = null;
+    this.configProviderOverride = null;
     this.statusEntriesByPath.clear();
     this.directoryStatusAggregates.clear();
     if (this.statusSnapshotRefreshTimer != null) {
@@ -593,10 +591,10 @@ module.exports = class GitRepository {
   getConfigValuesAsync(keys) {
     const requested = Array.from(keys || [], String);
     if (requested.length === 0) return Promise.resolve({});
-    if (!this.configProvider || this.isDestroyed()) {
+    if (this.isDestroyed()) {
       return Promise.resolve(Object.fromEntries(requested.map((key) => [key, null])));
     }
-    return this.configProvider
+    return (this.configProviderOverride || this.gitHostClient)
       .getConfigValues(this.getHostDescriptor(), requested)
       .then((values) =>
         Object.fromEntries(
@@ -968,7 +966,7 @@ module.exports = class GitRepository {
   }
 
   async executeCombinedSnapshotRefresh(mask, options = {}) {
-    const provider = this.snapshotProvider;
+    const provider = this.snapshotProviderOverride || this.gitHostClient;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     const statusRequested = mask.has("status");
@@ -1099,7 +1097,7 @@ module.exports = class GitRepository {
   // The actual status snapshot refresh. This is intentionally independent from
   // the synchronous legacy cache so hot path coloring never waits for Git work.
   async executeStatusSnapshotRefresh(options = {}) {
-    const provider = this.statusSnapshotProvider;
+    const provider = this.statusSnapshotProviderOverride;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     const refreshCount = ++this.statusSnapshotRefreshCount;
@@ -1295,7 +1293,7 @@ module.exports = class GitRepository {
   // responses are discarded and identical raw output does not emit a change
   // event.
   async executeRefsSnapshotRefresh(options = {}) {
-    const provider = this.refsSnapshotProvider;
+    const provider = this.refsSnapshotProviderOverride;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     const refreshCount = ++this.refsSnapshotRefreshCount;
@@ -1357,7 +1355,7 @@ module.exports = class GitRepository {
     maxBytes = 10 * 1024 * 1024,
     signal,
   } = {}) {
-    const provider = this.diffProvider;
+    const provider = this.diffProviderOverride || this.gitHostClient;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     if (from?.type === "commit") assertGitRevision(from.revision);
@@ -1428,7 +1426,7 @@ module.exports = class GitRepository {
   }
 
   requireHistoryProvider() {
-    const provider = this.historyProvider;
+    const provider = this.historyProviderOverride || this.gitHostClient;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
     return provider;
   }
@@ -1636,7 +1634,7 @@ module.exports = class GitRepository {
    * `""` when the branch is unborn.
    */
   getDescription() {
-    const provider = this.refsSnapshotProvider;
+    const provider = this.refsSnapshotProviderOverride || this.gitHostClient;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
     return provider.getDescription(this.getHostDescriptor());
   }
@@ -1657,7 +1655,7 @@ module.exports = class GitRepository {
    */
   getBranchesContaining(commit, { showLocal = false, showRemote = false, pattern = null } = {}) {
     assertGitRevision(commit, { label: "commit" });
-    const provider = this.refsSnapshotProvider;
+    const provider = this.refsSnapshotProviderOverride || this.gitHostClient;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
     return provider.getBranchesContaining(this.getHostDescriptor(), commit, {
       showLocal,
@@ -1676,7 +1674,7 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to the `String` mode (e.g. `"100644"`), or `null` when the path is not tracked.
    */
   getFileMode(filePath) {
-    const provider = this.statusSnapshotProvider;
+    const provider = this.statusSnapshotProviderOverride || this.gitHostClient;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
     return provider.getFileMode(this.getHostDescriptor(), this.posixRelativePath(filePath));
   }
@@ -1690,7 +1688,7 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to an `Array` of path `Strings`.
    */
   getSubmodulePaths() {
-    const provider = this.statusSnapshotProvider;
+    const provider = this.statusSnapshotProviderOverride || this.gitHostClient;
     if (!provider || this.isDestroyed()) throw new Error("Repository has been destroyed");
     return provider.getSubmodulePaths(this.getHostDescriptor());
   }
@@ -1747,12 +1745,15 @@ module.exports = class GitRepository {
     // produces a fresh key. Files inside submodules are owned by their own
     // repository, so this repository always keys against its own HEAD.
     const headOid = this.statusSnapshot?.head?.oid ?? null;
-    return this.diffProvider.getLineDiffs(this.getHostDescriptor(), {
-      relativePosixPath,
-      headOid,
-      text,
-      ignoreEolWhitespace: process.platform === "win32",
-    });
+    return (this.diffProviderOverride || this.gitHostClient).getLineDiffs(
+      this.getHostDescriptor(),
+      {
+        relativePosixPath,
+        headOid,
+        text,
+        ignoreEolWhitespace: process.platform === "win32",
+      },
+    );
   }
 
   /**

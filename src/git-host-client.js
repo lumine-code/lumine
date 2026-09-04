@@ -1,8 +1,8 @@
 const GitHost = require("./git-host");
 
-// Renderer-side clients for operations owned by git-host. Repository
-// descriptors are already discovered in the renderer and are sent verbatim;
-// adapters never search upward for a repository a second time.
+// Renderer-side client for every read operation owned by git-host. Repository
+// descriptors are discovered before they reach this boundary and are sent
+// verbatim; the client never searches upward for a repository a second time.
 
 function splitSignal(options = {}) {
   const { signal, ...rest } = options;
@@ -15,103 +15,88 @@ function contentWithEncoding(content, encoding) {
   return encoding === "buffer" ? buffer : buffer.toString(encoding || "utf8");
 }
 
-class GitHostSnapshotProvider {
+module.exports = class GitHostClient {
+  constructor(host = null) {
+    this.host = host;
+  }
+
+  request(operation, payload, options) {
+    // GitHost.reset() deliberately replaces the singleton when git.path or
+    // trust settings change. Resolve it per request so repositories that were
+    // already open cannot revive the retired worker.
+    return (this.host || GitHost.instance()).request(operation, payload, options);
+  }
+
   getSnapshot(descriptor, request = {}, options = {}) {
     const { signal, rest } = splitSignal(options);
-    return GitHost.instance().request(
-      "snapshot",
-      { descriptor, request, options: rest },
-      { signal },
-    );
+    return this.request("snapshot", { descriptor, request, options: rest }, { signal });
   }
-}
 
-class GitHostStatusProvider {
   getFileMode(descriptor, relativePosixPath, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request(
-      "fileMode",
-      { descriptor, path: relativePosixPath },
-      { signal },
-    );
+    return this.request("fileMode", { descriptor, path: relativePosixPath }, { signal });
   }
 
   getSubmodulePaths(descriptor, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request("submodulePaths", { descriptor }, { signal });
+    return this.request("submodulePaths", { descriptor }, { signal });
   }
-}
 
-class GitHostRefsProvider {
   getDescription(descriptor, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request("describe", { descriptor }, { signal });
+    return this.request("describe", { descriptor }, { signal });
   }
 
   getBranchesContaining(descriptor, commit, params = {}, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request(
+    return this.request(
       "branchesContaining",
       { descriptor, request: { commit, ...params } },
       { signal },
     );
   }
-}
 
-class GitHostDiffProvider {
   getDiff(descriptor, request, options = {}) {
     const { signal, rest } = splitSignal(options);
-    return GitHost.instance().request(
-      "diff",
-      { descriptor, request, maxBytes: rest.maxBytes },
-      { signal },
-    );
+    return this.request("diff", { descriptor, request, maxBytes: rest.maxBytes }, { signal });
   }
 
   getLineDiffs(descriptor, { relativePosixPath, headOid, text, ignoreEolWhitespace, signal }) {
-    return GitHost.instance().request(
+    return this.request(
       "lineDiff",
       { descriptor, relativePosixPath, headOid, text, ignoreEolWhitespace },
       { signal },
     );
   }
-}
 
-class GitHostConfigProvider {
   getConfigValues(descriptor, keys, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request("readConfig", { descriptor, keys }, { signal });
+    return this.request("readConfig", { descriptor, keys }, { signal });
   }
 
   async getConfigValue(descriptor, key, options = {}) {
     const values = await this.getConfigValues(descriptor, [key], options);
     return Object.hasOwn(values, key) ? values[key] : null;
   }
-}
 
-class GitHostHistoryProvider {
   getHistory(descriptor, params, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request("history", { descriptor, request: params }, { signal });
+    return this.request("history", { descriptor, request: params }, { signal });
   }
 
   getLogFollow(descriptor, params, options = {}) {
     const { signal, rest } = splitSignal(options);
-    return GitHost.instance().request(
-      "logFollow",
-      { descriptor, request: params, options: rest },
-      { signal },
-    );
+    return this.request("logFollow", { descriptor, request: params, options: rest }, { signal });
   }
 
   getCommit(descriptor, revision, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request("commit", { descriptor, revision }, { signal });
+    return this.request("commit", { descriptor, revision }, { signal });
   }
 
   readObjects(descriptor, requests, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request("readObjects", { descriptor, requests }, { signal });
+    return this.request("readObjects", { descriptor, requests }, { signal });
   }
 
   async getFileAtRevision(
@@ -144,19 +129,10 @@ class GitHostHistoryProvider {
 
   getBlame(descriptor, relativePosixPath, params = {}, options = {}) {
     const { signal } = splitSignal(options);
-    return GitHost.instance().request(
+    return this.request(
       "blame",
       { descriptor, request: { path: relativePosixPath, ...params } },
       { signal },
     );
   }
-}
-
-module.exports = {
-  GitHostSnapshotProvider,
-  GitHostStatusProvider,
-  GitHostRefsProvider,
-  GitHostConfigProvider,
-  GitHostDiffProvider,
-  GitHostHistoryProvider,
 };

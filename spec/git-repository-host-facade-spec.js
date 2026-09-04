@@ -48,7 +48,7 @@ describe("GitRepository host facade", () => {
 
   it("combines status and refs requests and reuses fingerprints", async () => {
     const calls = [];
-    const snapshotProvider = {
+    const gitHostClient = {
       async getSnapshot(descriptor, request) {
         calls.push({ descriptor, request });
         const result = {};
@@ -73,7 +73,7 @@ describe("GitRepository host facade", () => {
         return result;
       },
     };
-    repo = new GitRepository(copyRepository(), { snapshotProvider });
+    repo = new GitRepository(copyRepository(), { gitHostClient });
     const statusChanged = jasmine.createSpy("status changed");
     const refsChanged = jasmine.createSpy("refs changed");
     repo.onDidChangeStatusSnapshot(statusChanged);
@@ -129,7 +129,7 @@ describe("GitRepository host facade", () => {
     const getConfigValues = jasmine
       .createSpy("get config values")
       .and.resolveTo({ "user.name": "Lumine" });
-    repo = new GitRepository(copyRepository(), { configProvider: { getConfigValues } });
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
 
     const values = await repo.getConfigValuesAsync(["user.name", "user.email"]);
     expect(values).toEqual({ "user.name": "Lumine", "user.email": null });
@@ -138,7 +138,7 @@ describe("GitRepository host facade", () => {
 
   it("reads an explicit stage-0 index object through the history provider", async () => {
     const getIndexFile = jasmine.createSpy("get index file").and.resolveTo("staged contents\n");
-    repo = new GitRepository(copyRepository(), { historyProvider: { getIndexFile } });
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getIndexFile } });
 
     expect(await repo.getIndexFile("nested/staged.txt")).toBe("staged contents\n");
     expect(getIndexFile.calls.argsFor(0)).toEqual([
@@ -150,7 +150,7 @@ describe("GitRepository host facade", () => {
 
   it("expresses all-ref history without leaking a Git CLI flag", async () => {
     const getHistory = jasmine.createSpy("get history").and.resolveTo([]);
-    repo = new GitRepository(copyRepository(), { historyProvider: { getHistory } });
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getHistory } });
 
     await repo.getCommits({ allRefs: true, limit: 25 });
     expect(getHistory.calls.argsFor(0)[1]).toEqual({
@@ -183,7 +183,7 @@ describe("GitRepository host facade", () => {
 
   it("forwards empty-to-index and empty-to-commit diffs in every result format", async () => {
     const requests = [];
-    const diffProvider = {
+    const gitHostClient = {
       async getDiff(descriptor, request) {
         requests.push(request);
         return {
@@ -193,7 +193,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { diffProvider });
+    repo = new GitRepository(copyRepository(), { gitHostClient });
 
     await repo.getDiff({ from: { type: "empty" }, to: { type: "index" } });
     await repo.getDiff({
@@ -218,7 +218,7 @@ describe("GitRepository host facade", () => {
 
   it("keeps the last good snapshots when a refresh rejects", async () => {
     let fail = false;
-    const snapshotProvider = {
+    const gitHostClient = {
       async getSnapshot(descriptor, request) {
         if (fail) {
           const error = new Error("index is corrupt");
@@ -234,7 +234,7 @@ describe("GitRepository host facade", () => {
         };
       },
     };
-    repo = new GitRepository(copyRepository(), { snapshotProvider });
+    repo = new GitRepository(copyRepository(), { gitHostClient });
     const good = await repo.refreshStatusSnapshot();
     fail = true;
 
@@ -244,7 +244,7 @@ describe("GitRepository host facade", () => {
 
   it("applies a valid combined snapshot section before rejecting its invalid sibling", async () => {
     for (const successfulKind of ["status", "refs"]) {
-      const snapshotProvider = {
+      const gitHostClient = {
         async getSnapshot(descriptor, request) {
           return successfulKind === "status"
             ? {
@@ -263,7 +263,7 @@ describe("GitRepository host facade", () => {
               };
         },
       };
-      repo = new GitRepository(copyRepository(), { snapshotProvider });
+      repo = new GitRepository(copyRepository(), { gitHostClient });
 
       await expectAsync(
         Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]),
