@@ -36,6 +36,13 @@
         margin-left: var(--component-padding);
       }
 
+      /* An icon belongs to the primary line, so the secondary line begins
+         under the primary text rather than under the icon. This also covers
+         icons applied by a renderer's didRender hook. */
+      > .primary-line.icon + .secondary-line {
+        padding-inline-start: calc(var(--component-icon-size) + var(--component-icon-padding));
+      }
+
       /* Hover is a translucent layer over the row rather than a background
          colour, so it composes with whatever the list's owner paints. Packages
          mark rows by giving them a background-color — command-palette tints
@@ -99,10 +106,26 @@
     &.mark-active {
       --active-icon-size: 14px;
 
+      /* The marker is generated on the row, while descriptor rows put their
+         text in a block-level .primary-line. Give both their own grid columns
+         so the marker cannot create an anonymous line above the text. Raw
+         custom rows keep their inline layout; a descriptor's secondary line
+         follows underneath in the same text column. */
+      > li:not(.select-list-separator, .show-more-item):has(> .primary-line) {
+        display: grid;
+        grid-template-columns: auto minmax(0, 1fr);
+
+        > .primary-line,
+        > .secondary-line {
+          grid-column: 2;
+          min-width: 0;
+        }
+      }
+
       /* Reserve the same icon carrier for active and inactive rows. The Show
          more row is list chrome with a block child; giving it an inline
          carrier creates an empty line above its label. */
-      li:not(.select-list-separator, .show-more-item)::before {
+      > li:not(.select-list-separator, .show-more-item)::before {
         content: "";
         background-color: transparent;
         position: static;
@@ -115,13 +138,16 @@
         line-height: var(--component-icon-size);
         text-align: center;
         vertical-align: text-bottom;
+        grid-column: 1;
+        grid-row: 1;
+        align-self: center;
       }
 
       > li:not(.active, .select-list-separator, .show-more-item)::before {
         margin-right: var(--ui-padding-icon);
       }
 
-      li.active::before {
+      > li.active::before {
         font-family: "Octicons Regular";
         font-weight: normal;
         font-style: normal;

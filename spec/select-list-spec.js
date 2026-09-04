@@ -675,6 +675,25 @@ describe("SelectList", () => {
       expect(li.querySelector(".secondary-line").textContent).toBe("detail");
     });
 
+    it("aligns a descriptor's secondary line with primary text after an icon", () => {
+      view = createSelectList({
+        items: ["item"],
+        renderItem: (item) => ({
+          icon: ["icon-file-text"],
+          primary: item,
+          secondary: "detail",
+        }),
+      });
+      addHost().show();
+
+      const primaryText = find(".primary-text").getBoundingClientRect();
+      const secondaryText = document.createRange();
+      secondaryText.selectNodeContents(find(".secondary-line"));
+      expect(
+        Math.abs(secondaryText.getBoundingClientRect().left - primaryText.left),
+      ).toBeLessThanOrEqual(1);
+    });
+
     it("passes matchIndices aligned with the filter key to renderItem", async () => {
       view = createSelectList({
         items: ["abc", "xyz"],
@@ -1391,13 +1410,36 @@ describe("SelectList", () => {
       expect(rows[99].classList.contains("show-more-item")).toBe(true);
     });
 
-    it("keeps the Show more row to one line when items reserve an active marker", () => {
+    it("keeps raw rows and Show more to one line when reserving an active marker", () => {
       view = bigListView(250, { itemsClassList: ["mark-active"] });
       addHost().show();
 
       const item = find("li:not(.show-more-item)");
       const showMore = find("li.show-more-item");
       expect(showMore.offsetHeight).toBe(item.offsetHeight);
+    });
+
+    it("keeps descriptor rows to one line when reserving an active marker", async () => {
+      view = bigListView(250, {
+        itemsClassList: ["mark-active"],
+        renderItem: (item) => ({
+          className: item === "item-000" ? "active" : null,
+          primary: item,
+        }),
+      });
+      addHost().show();
+
+      const activeItem = find("li.active");
+      const inactiveItem = find("li:not(.active, .show-more-item)");
+      const showMore = find("li.show-more-item");
+      expect(activeItem.querySelector(".primary-line").textContent).toBe("item-000");
+      expect(activeItem.offsetHeight).toBe(showMore.offsetHeight);
+      expect(inactiveItem.offsetHeight).toBe(showMore.offsetHeight);
+
+      await view.selectIndex(1);
+      const rerenderedShowMore = find("li.show-more-item");
+      expect(find("li.active:not(.selected)").offsetHeight).toBe(rerenderedShowMore.offsetHeight);
+      expect(find("li.selected:not(.active)").offsetHeight).toBe(rerenderedShowMore.offsetHeight);
     });
 
     it("renders no Show more row when everything fits", () => {
