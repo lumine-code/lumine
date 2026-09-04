@@ -3,11 +3,8 @@ const path = require("path");
 
 const IS_WINDOWS = process.platform === "win32";
 
-// Pure-JS reimplementation of the path helpers libgit2's git-utils exposed, so
-// GitRepository can relativize paths and answer working-directory queries
-// without a native call. Kept byte-for-byte compatible with git-utils
-// (realpath resolution, Windows 8.3 short-name handling, case-insensitive
-// filesystems, symlinked working directories) and gated by a parity spec.
+// Repository path helpers handle realpath resolution, Windows 8.3 short names,
+// case-insensitive filesystems, and symlinked working directories consistently.
 
 // Resolving a path is a filesystem round trip, and the git integration asks
 // about the same handful of paths relentlessly: every open editor's path
@@ -138,9 +135,8 @@ function pathsAreEqual(pathA, pathB, caseInsensitive = false, useRealpath = true
   return statA.ino === statB.ino && statA.dev === statB.dev;
 }
 
-// Make `filePath` relative to the repository working directory. Mirrors
-// git-utils Repository.prototype.relativize: returns "" for the working
-// directory itself and passes through paths outside it unchanged.
+// Make `filePath` relative to the repository working directory. Return "" for
+// the working directory itself and pass paths outside it through unchanged.
 function relativize(filePath, workingDirectory, openedWorkingDirectory, caseInsensitive) {
   if (!filePath) return filePath;
   filePath = realpathRecursive(filePath);

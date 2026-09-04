@@ -33,14 +33,12 @@ describe("GitHost transport", () => {
     current().emit("message", {
       event: "git:ready",
       protocolVersion: GIT_HOST_PROTOCOL_VERSION,
-      backends: { cli: { state: "ready" }, "git-utils": { state: "uninitialized" } },
     });
 
   beforeEach(() => {
     GitHost.reset();
     children = [];
     GitHost.setForkModeForTesting(true);
-    GitHost.setBackendPolicyForTesting(null);
     GitHost.setChildFactoryForTesting(() => {
       const child = new FakeChild();
       children.push(child);
@@ -52,7 +50,6 @@ describe("GitHost transport", () => {
   afterEach(() => {
     GitHost.setForkModeForTesting(null);
     GitHost.setChildFactoryForTesting(null);
-    GitHost.setBackendPolicyForTesting(null);
     GitHost.reset();
   });
 
@@ -94,94 +91,6 @@ describe("GitHost transport", () => {
     expect(error.code).toBe("ERR_X");
     expect(error.exitCode).toBe(1);
     expect(error.stderr).toBe("bad");
-  });
-
-  it("normalizes native codes while preserving libgit2 metadata across IPC", async () => {
-    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
-    await flush();
-    const { id } = current().sent[0];
-    current().emit("message", {
-      event: "git:reply",
-      id,
-      error: {
-        message: "cannot read index",
-        code: "ERR_GIT_NATIVE_SNAPSHOT",
-        operation: "snapshot",
-        libgit2Code: -1,
-        libgit2Class: 10,
-        libgit2Message: "index corrupt",
-      },
-    });
-
-    let error;
-    try {
-      await pending;
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error.code).toBe("ERR_GIT_SNAPSHOT");
-    expect(error.backend).toBe("git-utils");
-    expect(error.backendCode).toBe("ERR_GIT_NATIVE_SNAPSHOT");
-    expect(error.operation).toBe("snapshot");
-    expect(error.libgit2Code).toBe(-1);
-    expect(error.libgit2Class).toBe(10);
-    expect(error.libgit2Message).toBe("index corrupt");
-  });
-
-  it("records lazy backend readiness for diagnostics", async () => {
-    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
-    await flush();
-    current().emit("message", {
-      event: "git:backend-status",
-      backend: "git-utils",
-      state: "ready",
-      versions: { gitUtils: "10.0.0", libgit2: "1.9.6", napi: 10 },
-    });
-    expect(host.backendStatus["git-utils"].state).toBe("ready");
-    expect(host.nativeVersions.libgit2).toBe("1.9.6");
-
-    const { id } = current().sent[0];
-    current().emit("message", { event: "git:reply", id, result: {} });
-    await pending;
-  });
-
-  it("keeps CLI operations usable after a native initialization failure", async () => {
-    const first = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
-    ready();
-    await flush();
-    const firstRequest = current().sent[0];
-    current().emit("message", {
-      event: "git:reply",
-      id: firstRequest.id,
-      error: {
-        message: "wrong libgit2",
-        code: "ERR_GIT_NATIVE_INIT",
-        operation: "initialize",
-        retriable: false,
-      },
-    });
-
-    let firstError;
-    try {
-      await first;
-    } catch (caught) {
-      firstError = caught;
-    }
-    expect(firstError.code).toBe("ERR_GIT_INIT");
-    expect(firstError.backendCode).toBe("ERR_GIT_NATIVE_INIT");
-    expect(firstError.retriable).toBe(false);
-
-    const second = host.request("exec", {
-      workingDirectory: "/repo",
-      args: ["status"],
-    });
-    await flush();
-    const secondRequest = current().sent[1];
-    current().emit("message", { event: "git:reply", id: secondRequest.id, result: "OK" });
-    expect(await second).toBe("OK");
-    expect(children.length).toBe(1);
   });
 
   it("revives an exec GitOperationError with its command and stdout", async () => {

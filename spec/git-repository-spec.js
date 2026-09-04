@@ -596,7 +596,7 @@ describe("GitRepository", () => {
       if (repoWithRefs && !repoWithRefs.isDestroyed()) repoWithRefs.destroy();
     });
 
-    it("resolves reference targets from the snapshot without libgit2", () => {
+    it("resolves reference targets from the refs snapshot", () => {
       expect(repoWithRefs.getReferenceTarget("HEAD")).toBe("aaaa1111");
       expect(repoWithRefs.getReferenceTarget("refs/heads/main")).toBe("aaaa1111");
       expect(repoWithRefs.getReferenceTarget("refs/remotes/origin/main")).toBe("bbbb2222");

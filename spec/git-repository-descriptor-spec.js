@@ -7,10 +7,8 @@ const {
   discoverGitDirectory,
 } = require("../src/git-repository-descriptor");
 
-// The descriptor replaces the libgit2 handle GitRepository used for identity and
-// path routing. Its discovery and working-directory computation were validated
-// against live git-utils while that dependency existed; these specs pin the same
-// behavior against the real filesystem so it cannot silently drift.
+// Pin repository discovery and working-directory computation against the real
+// filesystem so identity and path routing cannot silently drift.
 describe("git repository descriptor", () => {
   const fixturePath = (...segments) => path.join(__dirname, "fixtures", "git", ...segments);
   const real = (p) => fs.realpathSync.native(p);
@@ -50,7 +48,7 @@ describe("git repository descriptor", () => {
     expect(real(descriptor.getPath())).toBe(real(path.join(workingDir, ".git")));
   });
 
-  it("walks up into a bare-style git directory like libgit2 discovery", () => {
+  it("walks up into a bare-style git directory", () => {
     const descriptor = discoverRepositoryDescriptor(fixturePath("master.git", "objects"));
 
     expect(real(descriptor.getPath())).toBe(real(fixturePath("master.git")));

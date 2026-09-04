@@ -19,10 +19,9 @@ class LargeRepoError extends Error {
   }
 }
 
-// Native error codes are useful inside git-host, but packages consume the
-// backend-neutral repository facade. Preserve the original code and backend as
-// diagnostic metadata while exposing the same operation code regardless of
-// which implementation was selected.
+// GitRunner error codes are useful inside git-host, but packages consume the
+// operation-level repository facade. Preserve the original code as diagnostic
+// metadata while exposing a stable code for each public operation.
 function operationErrorCode(operation) {
   const publicOperation = operation === "logFollow" ? "history" : operation;
   return `ERR_GIT_${String(publicOperation)
@@ -30,32 +29,20 @@ function operationErrorCode(operation) {
     .toUpperCase()}`;
 }
 
-function normalizeGitBackendError(error, { operation = null, backend = null } = {}) {
+function normalizeGitOperationError(error, { operation = null, backend = null } = {}) {
   if (!error || typeof error !== "object") return error;
   const originalCode = String(error.code || "");
-  if (!backend && originalCode.startsWith("ERR_GIT_NATIVE_")) backend = "git-utils";
   if (backend) error.backend ||= backend;
 
   if (error.name === "AbortError" || originalCode === "ABORT_ERR") return error;
 
-  if (!operation) {
-    if (!originalCode.startsWith("ERR_GIT_NATIVE_")) return error;
-    error.backendCode ||= originalCode;
-    error.code = `ERR_GIT_${originalCode.slice("ERR_GIT_NATIVE_".length)}`;
-    return error;
-  }
+  if (!operation) return error;
 
   if (
     originalCode === "ERR_GIT_DIFF_TOO_LARGE" ||
-    originalCode === "ERR_GIT_NATIVE_DIFF_TOO_LARGE" ||
     originalCode === "ERR_GIT_CREATE_BLOB" ||
-    originalCode.startsWith("ERR_GIT_HOST_") ||
-    originalCode === "ERR_GIT_BACKEND_CAPABILITY"
+    originalCode.startsWith("ERR_GIT_HOST_")
   ) {
-    if (originalCode.startsWith("ERR_GIT_NATIVE_")) {
-      error.backendCode ||= originalCode;
-      error.code = `ERR_GIT_${originalCode.slice("ERR_GIT_NATIVE_".length)}`;
-    }
     return error;
   }
 
@@ -76,6 +63,6 @@ function normalizeGitBackendError(error, { operation = null, backend = null } = 
 module.exports = {
   GitError,
   LargeRepoError,
-  normalizeGitBackendError,
+  normalizeGitOperationError,
   operationErrorCode,
 };

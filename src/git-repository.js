@@ -19,8 +19,6 @@ const {
 const { EMPTY_STATUS_SNAPSHOT, parseStatusSnapshot } = require("./repository-status-snapshot");
 const { EMPTY_REFS_SNAPSHOT, parseRefsSnapshot } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
-const { reviveError } = require("./git-host-protocol");
-const { normalizeGitBackendError } = require("./git-error");
 const { assertGitRevision } = require("./git-revision");
 
 let nextId = 0;
@@ -43,10 +41,8 @@ function statusPathKey(filePath) {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
-// Classify a snapshot entry the way the legacy git-utils status bits were
-// classified by consumers (modified beats added, matching the old
-// isStatusModified-first checks) so hybrid rendering never flickers when the
-// snapshot supersedes the synchronous cache.
+// Classify a snapshot entry using the public repository precedence: modified
+// beats added, matching the existing isStatusModified-first checks.
 function summaryFromStatusEntry(entry) {
   const conflicted = entry.conflicted;
   const modified =
@@ -436,10 +432,9 @@ module.exports = class GitRepository {
     return this.workingDirectoryPath;
   }
 
-  // Structured-clone-safe descriptor consumed by the selected git-host backend. The
-  // renderer has already resolved worktree, submodule, symlink, and bare-repo
-  // semantics, so a backend opens exactly this repository and never
-  // performs its own upward discovery.
+  // Structured-clone-safe descriptor consumed by git-host. The renderer has
+  // already resolved worktree, submodule, symlink, and bare-repository semantics,
+  // so the worker targets exactly this repository without upward discovery.
   getHostDescriptor() {
     if (this.isDestroyed()) throw new Error("Repository has been destroyed");
     return Object.freeze({
@@ -572,9 +567,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * Asynchronously read a git configuration value via the git-host
-   * worker, without exposing the selected backend. Resolves to the value or
-   * `null` when unset.
+   * Asynchronously read a git configuration value via the git-host worker.
+   * Resolves to the value or `null` when unset.
    *
    * @param {String} key - The configuration key to look up.
    * @returns {Promise<String|null>} The configured value.
@@ -878,11 +872,11 @@ module.exports = class GitRepository {
     return state.trailing.promise;
   }
 
-  // Merge status and refs refreshes through one single-flight-plus-
-  // trailing coordinator. Synchronous callers share a microtask-sized dispatch
-  // window, which lets status and refs requests issued together become one
-  // backend snapshot. Once work has started, later callers join one
-  // trailing request whose mask is the union of everything that arrived.
+  // Merge status and refs refreshes through one single-flight-plus-trailing
+  // coordinator. Synchronous callers share a microtask-sized dispatch window,
+  // which lets status and refs requests issued together become one snapshot.
+  // Once work has started, later callers join one trailing request whose mask
+  // is the union of everything that arrived.
   coalesceCombinedSnapshotRefresh(kind, options = {}) {
     const state = this.combinedSnapshotRefreshCoalescer;
 
@@ -1007,16 +1001,12 @@ module.exports = class GitRepository {
     if (this.isDestroyed()) {
       return { status: this.statusSnapshot, refs: this.refsSnapshot };
     }
-    // Apply every valid section even if its sibling is missing or malformed.
-    // Hybrid snapshots use independent backends, so one successful half still
-    // advances its cache before the shared request reports the other failure.
+    // Apply every valid section before reporting a missing or malformed sibling.
     let responseError = null;
-    const backendErrors = Array.isArray(result?.errors) ? result.errors : [];
-    const failedSections = new Set(backendErrors.map(({ section }) => section));
     if (statusRequested && statusRefreshCount === this.statusSnapshotRefreshCount) {
       try {
         if (result?.status) this.applyStatusSnapshotSection(result.status);
-        else if (!failedSections.has("status")) throw this.invalidSnapshotResponse("status");
+        else throw this.invalidSnapshotResponse("status");
       } catch (error) {
         responseError = error;
       }
@@ -1024,28 +1014,9 @@ module.exports = class GitRepository {
     if (refsRequested && refsRefreshCount === this.refsSnapshotRefreshCount) {
       try {
         if (result?.refs) this.applyRefsSnapshotSection(result.refs);
-        else if (!failedSections.has("refs")) throw this.invalidSnapshotResponse("refs");
+        else throw this.invalidSnapshotResponse("refs");
       } catch (error) {
         responseError ||= error;
-      }
-    }
-    if (backendErrors.length > 0) {
-      const errors = backendErrors.map(({ backend, error }) => {
-        const revived = normalizeGitBackendError(reviveError(error));
-        revived.backend ||= backend;
-        return revived;
-      });
-      const snapshotErrors = errors.map((error) => ({
-        message: error.message,
-        code: error.code,
-        operation: error.operation,
-        backend: error.backend,
-      }));
-      if (responseError) {
-        responseError.snapshotErrors = [...(responseError.snapshotErrors || []), ...snapshotErrors];
-      } else {
-        errors[0].snapshotErrors = snapshotErrors;
-        responseError = errors[0];
       }
     }
     if (responseError) throw responseError;
@@ -1053,7 +1024,7 @@ module.exports = class GitRepository {
   }
 
   invalidSnapshotResponse(section) {
-    const error = new Error(`Git snapshot backend omitted the requested ${section} section`);
+    const error = new Error(`Git snapshot omitted the requested ${section} section`);
     error.code = "ERR_GIT_SNAPSHOT";
     error.operation = "snapshot";
     return error;
@@ -1403,13 +1374,13 @@ module.exports = class GitRepository {
           { maxBytes, signal },
         );
         if (result?.schemaVersion !== 1 || !Array.isArray(result.files)) {
-          const error = new Error("Git backend returned an invalid structured diff");
+          const error = new Error("Git host returned an invalid structured diff");
           error.code = "ERR_GIT_DIFF";
           error.operation = "diff";
           throw error;
         }
         if (format !== "structured" && typeof result.rawPatch !== "string") {
-          const error = new Error("Git backend omitted the requested raw diff patch");
+          const error = new Error("Git host omitted the requested raw diff patch");
           error.code = "ERR_GIT_DIFF";
           error.operation = "diff";
           throw error;
@@ -1758,9 +1729,8 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * Computes gutter line diffs off the renderer thread via the
-   * git-host worker (fetching and caching the HEAD blob, then diffing with the
-   * selected backend) without blocking the renderer.
+   * Computes gutter line diffs off the renderer thread via the git-host worker,
+   * fetching and caching the HEAD blob before comparing it with the buffer.
    *
    * @param filePath - The `String` path relative to the repository.
    * @param text - The `String` to compare against the `HEAD` contents.
@@ -1837,9 +1807,8 @@ module.exports = class GitRepository {
   subscribeToBuffer(buffer) {
     // Every repository hears about every buffer in the window, but only a save
     // inside this repository's own working tree can change its status.
-    // relativize mirrors git-utils and hands a path outside the working tree
-    // back unchanged — still absolute — so "no longer absolute" is the
-    // containment test.
+    // relativize hands a path outside the working tree back unchanged — still
+    // absolute — so "no longer absolute" is the containment test.
     const refreshStatusForBuffer = () => {
       if (this.isDestroyed()) return;
       const bufferPath = buffer.getPath();

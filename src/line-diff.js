@@ -1,13 +1,11 @@
 const Diff = require("diff");
 
-// Compute libgit2-compatible line-diff hunks between the HEAD blob text and the
-// buffer text, matching the shape git-utils `getLineDiffs` produced: context-0
-// hunks of `{oldStart, oldLines, newStart, newLines}`. jsdiff is Myers-based
-// (like libgit2's xdiff) so hunk boundaries line up; the one adjustment is for
-// pure deletions, where jsdiff reports the new-side start one line later than
-// git's unified-diff convention. git-diff-view anchors the "removed" marker to
-// the preceding line via that convention (its `newStart - 1`), so deletions are
-// corrected here to match.
+// Compute context-free line-diff hunks between the HEAD blob and buffer text as
+// `{oldStart, oldLines, newStart, newLines}`. jsdiff's Myers algorithm gives the
+// expected hunk boundaries; pure deletions need one adjustment because jsdiff
+// reports the new-side start one line later than Git's unified-diff convention.
+// git-diff-view anchors its removed marker to the preceding line using that
+// convention, so deletion starts are corrected here.
 //
 // * `oldText` The HEAD blob contents, or null when the path is absent at HEAD.
 // * `newText` The current buffer contents.

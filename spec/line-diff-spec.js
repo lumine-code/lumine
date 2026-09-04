@@ -1,8 +1,8 @@
 const { computeLineDiffHunks } = require("../src/line-diff");
 
 // Hunks feed git-diff-view, which reads {newStart, oldLines, newLines} to place
-// added/modified/removed gutter marks. These assertions pin the libgit2-parity
-// shape git-utils produced, including the deletion new-start anchoring.
+// added/modified/removed gutter marks. These assertions pin Git's deletion
+// new-start convention so removed markers remain correctly anchored.
 describe("computeLineDiffHunks", () => {
   it("reports a modified line", () => {
     expect(computeLineDiffHunks("a\nb\nc\n", "a\nB\nc\n")).toEqual([

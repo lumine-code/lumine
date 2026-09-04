@@ -1,56 +1,23 @@
 const GIT_HOST_PROTOCOL_VERSION = 1;
 
-const GitBackend = Object.freeze({
-  CLI: "cli",
-  GIT_UTILS: "git-utils",
-  HYBRID: "hybrid",
-});
-
-const BOTH_BACKENDS = Object.freeze([GitBackend.CLI, GitBackend.GIT_UTILS]);
-const CLI_ONLY = Object.freeze([GitBackend.CLI]);
-// This is the single registry of operations accepted by git-host. `backend`
-// names the default owner; routed operations make their static choice from the
-// request before any work starts. A selected backend is never replaced in a
-// catch handler.
+// The single registry of operations accepted by git-host. Implementations live
+// behind the worker boundary, so renderers and packages share one stable facade.
 const GitHostOperations = Object.freeze({
-  snapshot: Object.freeze({ backend: "routed", supportedBackends: BOTH_BACKENDS }),
-  diff: Object.freeze({ backend: "routed", supportedBackends: BOTH_BACKENDS }),
-  history: Object.freeze({ backend: GitBackend.GIT_UTILS, supportedBackends: BOTH_BACKENDS }),
-  commit: Object.freeze({ backend: GitBackend.GIT_UTILS, supportedBackends: BOTH_BACKENDS }),
-  logFollow: Object.freeze({ backend: GitBackend.CLI, supportedBackends: CLI_ONLY }),
-  describe: Object.freeze({ backend: GitBackend.GIT_UTILS, supportedBackends: BOTH_BACKENDS }),
-  branchesContaining: Object.freeze({
-    backend: GitBackend.GIT_UTILS,
-    supportedBackends: BOTH_BACKENDS,
-  }),
-  fileMode: Object.freeze({ backend: GitBackend.GIT_UTILS, supportedBackends: BOTH_BACKENDS }),
-  submodulePaths: Object.freeze({
-    backend: GitBackend.GIT_UTILS,
-    supportedBackends: BOTH_BACKENDS,
-  }),
-  readObjects: Object.freeze({
-    backend: GitBackend.GIT_UTILS,
-    supportedBackends: BOTH_BACKENDS,
-  }),
-  blame: Object.freeze({ backend: GitBackend.GIT_UTILS, supportedBackends: BOTH_BACKENDS }),
-  readConfig: Object.freeze({
-    backend: GitBackend.GIT_UTILS,
-    supportedBackends: BOTH_BACKENDS,
-  }),
-  lineDiff: Object.freeze({
-    backend: GitBackend.CLI,
-    supportedBackends: CLI_ONLY,
-  }),
-  exec: Object.freeze({ backend: GitBackend.CLI, supportedBackends: CLI_ONLY }),
+  snapshot: true,
+  diff: true,
+  history: true,
+  commit: true,
+  logFollow: true,
+  describe: true,
+  branchesContaining: true,
+  fileMode: true,
+  submodulePaths: true,
+  readObjects: true,
+  blame: true,
+  readConfig: true,
+  lineDiff: true,
+  exec: true,
 });
-
-// A complete reference policy used by conformance tests and by a future
-// git-utils removal. Selecting it is a startup decision, not an error fallback.
-const ALL_CLI_BACKEND_OVERRIDES = Object.freeze(
-  Object.fromEntries(
-    Object.keys(GitHostOperations).map((operation) => [operation, GitBackend.CLI]),
-  ),
-);
 
 const SERIALIZED_ERROR_FIELDS = Object.freeze([
   "name",
@@ -62,9 +29,6 @@ const SERIALIZED_ERROR_FIELDS = Object.freeze([
   "command",
   "gitError",
   "operation",
-  "libgit2Code",
-  "libgit2Class",
-  "libgit2Message",
   "retriable",
   "maxBytes",
   "structuredBytes",
@@ -72,41 +36,6 @@ const SERIALIZED_ERROR_FIELDS = Object.freeze([
   "backend",
   "backendCode",
 ]);
-
-function usesCliWorktreeDiff(request) {
-  const from = request?.from?.type;
-  const to = request?.to?.type;
-  return to === "worktree" && (from === "index" || from === "commit");
-}
-
-function backendForOperation(operation, payload = {}, { backendOverrides = {} } = {}) {
-  const definition = GitHostOperations[operation];
-  if (!definition) return null;
-  const override = backendOverrides[operation];
-  if (override != null) {
-    if (!definition.supportedBackends.includes(override)) {
-      const error = new Error(`Git backend ${override} does not implement ${operation}`);
-      error.code = "ERR_GIT_BACKEND_CAPABILITY";
-      error.operation = operation;
-      error.backend = override;
-      throw error;
-    }
-    return override;
-  }
-  if (definition.backend !== "routed") return definition.backend;
-
-  if (operation === "snapshot") {
-    const usesCliStatus = payload.request?.status !== false;
-    if (!usesCliStatus) return GitBackend.GIT_UTILS;
-    return payload.request?.refs === false ? GitBackend.CLI : GitBackend.HYBRID;
-  }
-
-  if (operation === "diff") {
-    return usesCliWorktreeDiff(payload.request) ? GitBackend.CLI : GitBackend.GIT_UTILS;
-  }
-
-  return null;
-}
 
 function unknownOperationError(operation) {
   const error = new Error(`Unknown git-host op: ${operation}`);
@@ -143,14 +72,10 @@ function reviveError(serialized) {
 }
 
 module.exports = {
-  ALL_CLI_BACKEND_OVERRIDES,
   GIT_HOST_PROTOCOL_VERSION,
-  GitBackend,
   GitHostOperations,
   assertKnownOperation,
-  backendForOperation,
   reviveError,
   serializeError,
   unknownOperationError,
-  usesCliWorktreeDiff,
 };

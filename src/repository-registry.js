@@ -1565,9 +1565,9 @@ module.exports = class RepositoryRegistry {
 
   reportRefreshFailure(repository, error) {
     if (repository.isDestroyed?.()) return;
-    // GitRepository owns the backend-neutral, once-per-repository reporting
-    // policy. Route post-operation failures through the same gate so a hybrid
-    // status+refs refresh cannot produce duplicate warnings.
+    // GitRepository owns the once-per-repository reporting policy. Route
+    // post-operation failures through the same gate so a combined status+refs
+    // refresh cannot produce duplicate warnings.
     if (typeof repository.reportBackgroundSnapshotError === "function") {
       repository.reportBackgroundSnapshotError(error);
       return;

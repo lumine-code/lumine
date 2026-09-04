@@ -4,7 +4,7 @@ const temp = require("@lumine-code/temp").track();
 const GitRepository = require("../src/git-repository");
 
 function copyRepository() {
-  const workingDirectory = temp.mkdirSync("lumine-native-snapshot-spec");
+  const workingDirectory = temp.mkdirSync("lumine-host-facade-spec");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
   fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
   return workingDirectory;
@@ -39,14 +39,14 @@ const refsValue = (generation) => ({
   worktrees: [],
 });
 
-describe("GitRepository native facade", () => {
+describe("GitRepository host facade", () => {
   let repo;
 
   afterEach(() => {
     if (repo && !repo.isDestroyed()) repo.destroy();
   });
 
-  it("combines status and refs requests and reuses native fingerprints", async () => {
+  it("combines status and refs requests and reuses fingerprints", async () => {
     const calls = [];
     const snapshotProvider = {
       async getSnapshot(descriptor, request) {
@@ -136,7 +136,7 @@ describe("GitRepository native facade", () => {
     expect(getConfigValues.calls.argsFor(0)[1]).toEqual(["user.name", "user.email"]);
   });
 
-  it("reads an explicit stage-0 index object through the native history provider", async () => {
+  it("reads an explicit stage-0 index object through the history provider", async () => {
     const getIndexFile = jasmine.createSpy("get index file").and.resolveTo("staged contents\n");
     repo = new GitRepository(copyRepository(), { historyProvider: { getIndexFile } });
 
@@ -216,13 +216,13 @@ describe("GitRepository native facade", () => {
     expect(patch.rawPatch).toContain("diff --git");
   });
 
-  it("keeps the last good snapshots when a native refresh rejects", async () => {
+  it("keeps the last good snapshots when a refresh rejects", async () => {
     let fail = false;
     const snapshotProvider = {
       async getSnapshot(descriptor, request) {
         if (fail) {
           const error = new Error("index is corrupt");
-          error.code = "ERR_GIT_NATIVE_SNAPSHOT";
+          error.code = "ERR_GIT_SNAPSHOT";
           throw error;
         }
         return {
@@ -242,7 +242,7 @@ describe("GitRepository native facade", () => {
     expect(repo.getStatusSnapshot()).toBe(good);
   });
 
-  it("applies a valid hybrid snapshot section before rejecting its invalid sibling", async () => {
+  it("applies a valid combined snapshot section before rejecting its invalid sibling", async () => {
     for (const successfulKind of ["status", "refs"]) {
       const snapshotProvider = {
         async getSnapshot(descriptor, request) {
@@ -274,90 +274,10 @@ describe("GitRepository native facade", () => {
     }
   });
 
-  it("applies successful hybrid sections before surfacing their backend errors", async () => {
-    const snapshotProvider = {
-      async getSnapshot(descriptor, request) {
-        return {
-          refs: {
-            fingerprint: "valid-refs",
-            unchanged: false,
-            value: refsValue(request.generations.refs),
-          },
-          errors: [
-            {
-              section: "status",
-              backend: "cli",
-              error: {
-                message: "Git status failed",
-                code: "ERR_GIT_COMMAND_FAILED",
-                operation: "status",
-              },
-            },
-          ],
-        };
-      },
-    };
-    repo = new GitRepository(copyRepository(), { snapshotProvider });
-
-    let error;
-    try {
-      await Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error.code).toBe("ERR_GIT_COMMAND_FAILED");
-    expect(error.backend).toBe("cli");
-    expect(error.snapshotErrors).toEqual([
-      {
-        message: "Git status failed",
-        code: "ERR_GIT_COMMAND_FAILED",
-        operation: "status",
-        backend: "cli",
-      },
-    ]);
-    expect(repo.getStatusSnapshot().initialized).toBe(false);
-    expect(repo.getRefsSnapshot().initialized).toBe(true);
-  });
-
-  it("retains backend diagnostics when another snapshot section is malformed", async () => {
-    repo = new GitRepository(copyRepository(), {
-      snapshotProvider: {
-        async getSnapshot() {
-          return {
-            status: { fingerprint: "invalid", unchanged: false, value: {} },
-            errors: [
-              {
-                section: "refs",
-                backend: "git-utils",
-                error: { message: "refs failed", code: "ERR_GIT_NATIVE_SNAPSHOT" },
-              },
-            ],
-          };
-        },
-      },
-    });
-
-    let error;
-    try {
-      await Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]);
-    } catch (caught) {
-      error = caught;
-    }
-    expect(error.code).toBe("ERR_GIT_SNAPSHOT");
-    expect(error.snapshotErrors).toEqual([
-      {
-        message: "refs failed",
-        code: "ERR_GIT_SNAPSHOT",
-        operation: undefined,
-        backend: "git-utils",
-      },
-    ]);
-  });
-
-  it("reports every background snapshot backend with at most one warning per repository", () => {
+  it("reports background snapshot failures with at most one warning per repository", () => {
     const warning = spyOn(lumine.notifications, "addWarning");
     const diagnostic = spyOn(console, "error");
-    const codes = ["ERR_GIT_NATIVE_SNAPSHOT", "ERR_GIT_COMMAND_FAILED", "ERR_GIT_HOST_RESTART"];
+    const codes = ["ERR_GIT_SNAPSHOT", "ERR_GIT_COMMAND_FAILED", "ERR_GIT_HOST_RESTART"];
 
     for (const code of codes) {
       repo = new GitRepository(copyRepository());

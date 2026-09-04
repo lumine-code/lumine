@@ -129,11 +129,9 @@ function parseBatchObjects(output, expectedCount) {
   return objects;
 }
 
-// System-Git adapter. It returns the same domain structures as git-utils and
-// owns all CLI parsing inside git-host, so GitRepository and packages never
-// need to know which backend produced a result. The first refactor slice only
-// exposes capabilities that are statically assigned to CLI today; the adapter
-// can be completed operation-by-operation without changing its consumers.
+// System-Git adapter. It owns all command construction and parsing inside
+// git-host, so GitRepository and packages consume domain structures rather
+// than CLI output.
 module.exports = class GitCliBackend {
   constructor({ runner }) {
     this.runner = runner;

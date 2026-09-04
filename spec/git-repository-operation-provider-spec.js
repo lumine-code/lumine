@@ -671,7 +671,7 @@ describe("GitRepositoryOperationProvider", () => {
     expect(error.stderr.length).toBeGreaterThan(0);
   });
 
-  it("drives the public repository API with Git writes and git-utils reads", async () => {
+  it("drives the public repository API through git-host", async () => {
     const workingDirectory = temp.mkdirSync("git-public-repository-api");
     const repository = await lumine.repositories.initialize(workingDirectory, {
       initialBranch: "main",

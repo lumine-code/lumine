@@ -5,14 +5,10 @@ const { normalizePath, pathsAreEqual } = require("./repository-paths");
 
 const IS_WINDOWS = process.platform === "win32";
 
-// Pure-JS replacement for the libgit2-backed repository handle git-utils
-// returned from `open()`. Given any path inside (or at) a Git repository it
-// discovers the Git directory, the working directory, filesystem case
-// sensitivity, and the configured submodule paths — everything GitRepository
-// needs for identity and path routing, without a native module. It intentionally
-// mirrors git-utils/libgit2 semantics (realpath resolution, Windows short names,
-// worktree/submodule/bare working directories) and is covered by a parity spec
-// that compares it against live git-utils.
+// Given any path inside (or at) a Git repository, discover the Git directory,
+// working directory, filesystem case sensitivity, and configured submodule
+// paths needed for repository identity and routing. This handles real paths,
+// Windows short names, worktrees, submodules, and bare repositories directly.
 
 function realpath(unrealPath) {
   try {
@@ -52,9 +48,8 @@ async function statOrNullAsync(candidate) {
   }
 }
 
-// libgit2's valid-repository heuristic (valid_repository_path): a directory is a
-// Git directory when it has a HEAD file plus objects/ and refs/ directories,
-// following the `commondir` pointer used by linked worktrees. Matching libgit2,
+// A directory is a Git directory when it has a HEAD file plus objects/ and refs/
+// directories, following the `commondir` pointer used by linked worktrees.
 // objects/ and refs/ must be directories — a bare file of the same name (as in
 // the "invalid repository" specs) does not qualify.
 function isGitDirectory(directory) {
@@ -122,8 +117,7 @@ async function resolveGitFileAsync(gitFilePath, baseDirectory) {
 
 // Shallow parse of the repository's own config for the handful of `core` keys
 // that determine the working directory. These keys only ever live in the
-// repository config (never global/system), so reading `<gitDir>/config`
-// directly matches libgit2.
+// repository config (never global/system), so `<gitDir>/config` is authoritative.
 function parseCoreConfig(text) {
   const core = {};
   let inCore = false;
@@ -162,9 +156,9 @@ function parseGitBoolean(value) {
   return value != null && /^(true|yes|on|1)$/i.test(String(value).trim());
 }
 
-// Compute libgit2's `git_repository_workdir` for a Git directory: null for a bare
-// repository, `core.worktree` when set, the pointed-at working tree for a linked
-// worktree, and otherwise the directory that contains the Git directory.
+// Compute the working directory: null for a bare repository, `core.worktree`
+// when set, the pointed-at tree for a linked worktree, and otherwise the
+// directory that contains the Git directory.
 function computeWorkingDirectory(gitDir) {
   const core = readCoreConfig(gitDir);
   if (parseGitBoolean(core.bare)) return null;
@@ -202,8 +196,7 @@ async function computeWorkingDirectoryAsync(gitDir) {
   return path.dirname(gitDir);
 }
 
-// Walk up from a starting path to the nearest Git directory the way
-// `git_repository_discover` (and git-utils `open(path, search=true)`) does.
+// Walk up from a starting path to the nearest Git directory.
 function discoverGitDirectory(startPath) {
   if (!startPath) return null;
   let current = path.resolve(startPath);
@@ -250,9 +243,9 @@ async function discoverGitDirectoryAsync(startPath) {
   }
 }
 
-// Replicates git-utils openRepository's symlink handling: when the opened path is
-// reached through a symlink, remember the un-resolved directory that maps to the
-// working directory so paths arriving through that symlink still route.
+// When the opened path is reached through a symlink, remember the unresolved
+// directory that maps to the working directory so paths arriving through that
+// symlink still route.
 function computeOpenedWorkingDirectory(startPath, workingDirectory, caseInsensitive) {
   if (!workingDirectory) return null;
   if (realpath(startPath) === startPath) return null;
@@ -305,7 +298,7 @@ class GitRepositoryDescriptor {
     };
   }
 
-  // The Git directory path, matching git-utils getPath().
+  // The repository's Git directory path.
   getPath() {
     return this.gitDir;
   }

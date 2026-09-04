@@ -4,7 +4,7 @@ const {
   assertKnownOperation,
   reviveError,
 } = require("./git-host-protocol");
-const { normalizeGitBackendError } = require("./git-error");
+const { normalizeGitOperationError } = require("./git-error");
 
 // Renderer-side transport for the git-host worker: one long-lived forked process
 // per window that runs every Git `git` command and its output off the
@@ -57,7 +57,6 @@ let forkModeOverride = null;
 // Test seam: replaces ChildProcess.fork so the transport (correlation, crash,
 // cancel) can be driven deterministically with a fake child.
 let childFactoryOverride = null;
-let backendPolicyOverride = null;
 
 class GitHost {
   // Per-window singleton. Consumers (the git-host client providers) always go
@@ -87,10 +86,6 @@ class GitHost {
     childFactoryOverride = factory;
   }
 
-  static setBackendPolicyForTesting(policy) {
-    backendPolicyOverride = policy;
-  }
-
   constructor() {
     this.child = null;
     this.readyPromise = null;
@@ -99,8 +94,6 @@ class GitHost {
     this.pending = new Map(); // id -> { resolve, reject, signal, onAbort }
     this.nextId = 0;
     this.inProcessOps = null; // op table when running without a forked worker
-    this.nativeVersions = null;
-    this.backendStatus = null;
     this.fatalError = null;
   }
 
@@ -132,7 +125,6 @@ class GitHost {
       LUMINE_COMPILE_CACHE_PATH: compileCachePath,
       LUMINE_GIT_TRUST_ALL: this.trustAllRepositories() ? "1" : "0",
       LUMINE_GIT_PATH: this.gitPath(),
-      ...(backendPolicyOverride ? { LUMINE_TEST_GIT_BACKEND_POLICY: backendPolicyOverride } : {}),
     });
   }
 
@@ -143,33 +135,8 @@ class GitHost {
       try {
         const GitRunner = require("./git-runner");
         const createGitHostOps = require("./git-host-ops");
-        const { ALL_CLI_BACKEND_OVERRIDES } = require("./git-host-protocol");
-        const { createNativeBackendCapability } = require("./git-native-backend");
-        const nativeCapability = createNativeBackendCapability({
-          trustAllRepositories: this.trustAllRepositories(),
-        });
-        const getNativeBackend = () => {
-          try {
-            return nativeCapability.get();
-          } finally {
-            const status = nativeCapability.status();
-            this.nativeVersions = status.versions;
-            this.backendStatus = {
-              cli: { state: "ready" },
-              "git-utils": { state: status.state },
-            };
-          }
-        };
-        this.backendStatus = {
-          cli: { state: "ready" },
-          "git-utils": { state: "uninitialized" },
-        };
         this.inProcessOps = createGitHostOps(
           new GitRunner({ trustAllRepositories: this.trustAllRepositories() }),
-          {
-            getNativeBackend,
-            backendOverrides: backendPolicyOverride === "cli" ? ALL_CLI_BACKEND_OVERRIDES : {},
-          },
         );
         this.readyPromise = Promise.resolve();
       } catch (error) {
@@ -218,29 +185,16 @@ class GitHost {
           this.rejectReady = null;
           return;
         }
-        this.nativeVersions = message.versions || null;
-        this.backendStatus = message.backends || null;
         this.resolveReady?.();
         this.resolveReady = null;
         this.rejectReady = null;
-        return;
-      case "git:backend-status":
-        this.backendStatus = {
-          ...(this.backendStatus || {}),
-          [message.backend]: {
-            state: message.state,
-            versions: message.versions || null,
-            error: message.error ? reviveError(message.error) : null,
-          },
-        };
-        if (message.backend === "git-utils") this.nativeVersions = message.versions || null;
         return;
       case "git:reply": {
         const entry = this.pending.get(message.id);
         if (!entry) return;
         this.pending.delete(message.id);
         this.detachAbort(entry);
-        if (message.error) entry.reject(normalizeGitBackendError(reviveError(message.error)));
+        if (message.error) entry.reject(normalizeGitOperationError(reviveError(message.error)));
         else entry.resolve(message.result);
         return;
       }
@@ -320,7 +274,7 @@ class GitHost {
       try {
         return await run(payload, { signal: controller.signal });
       } catch (error) {
-        throw normalizeGitBackendError(error);
+        throw normalizeGitOperationError(error);
       } finally {
         if (signal) signal.removeEventListener("abort", onAbort);
       }
@@ -374,8 +328,6 @@ class GitHost {
     this.resolveReady = null;
     this.rejectReady = null;
     this.inProcessOps = null;
-    this.nativeVersions = null;
-    this.backendStatus = null;
     this.fatalError = null;
   }
 }
