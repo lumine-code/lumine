@@ -57,7 +57,6 @@
     "diff": "^9.0.0",
     "dompurify": "^3.4.14",
     "encoding-selector": "github:lumine-code/encoding-selector#8e5c86d31d16489183053e810f7aa3bc212f4899",
-    "file-operations": "github:lumine-code/file-operations#2f09048a7a6d43c378b95a2f2b1d7aea97cbb805",
     "focus-trap": "8.2.2",
     "git-diff": "github:lumine-code/git-diff#575e963f244075c13f4929d7929b695e88269a52",
     "go-to-line": "github:lumine-code/go-to-line#786b810c7bc168c7004d173974fcdaec92af98d3",
