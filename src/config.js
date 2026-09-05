@@ -503,7 +503,6 @@ class Config {
     this.transactDepth = 0;
     this.pendingOperations = [];
     this.pendingChangeRecords = [];
-    this.legacyScopeAliases = new Map();
     this.requestSave = _.debounce(() => this.save(), 1);
   }
 
@@ -730,21 +729,8 @@ class Config {
     }
 
     if (scope != null) {
-      let legacyScopeDescriptor;
       const scopeDescriptor = ScopeDescriptor.fromObject(scope);
       result = this.scopedSettingsStore.getAll(scopeDescriptor.getScopeChain(), keyPath, options);
-      legacyScopeDescriptor = this.getLegacyScopeDescriptorForNewScopeDescriptor(scopeDescriptor);
-      if (legacyScopeDescriptor) {
-        result.push(
-          ...Array.from(
-            this.scopedSettingsStore.getAll(
-              legacyScopeDescriptor.getScopeChain(),
-              keyPath,
-              options,
-            ) || [],
-          ),
-        );
-      }
     } else {
       result = [];
     }
@@ -1072,10 +1058,6 @@ class Config {
     } finally {
       this.endTransaction();
     }
-  }
-
-  getLegacyScopeDescriptorForNewScopeDescriptor(_scopeDescriptor) {
-    return null;
   }
 
   /**
@@ -1624,17 +1606,7 @@ class Config {
       options,
     );
 
-    const legacyScopeDescriptor =
-      this.getLegacyScopeDescriptorForNewScopeDescriptor(scopeDescriptor);
-    if (result != null) {
-      return result;
-    } else if (legacyScopeDescriptor) {
-      return this.scopedSettingsStore.getPropertyValue(
-        legacyScopeDescriptor.getScopeChain(),
-        keyPath,
-        options,
-      );
-    }
+    return result;
   }
 
   observeScopedKeyPath(scope, keyPath, options, callback) {

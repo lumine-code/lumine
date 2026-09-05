@@ -910,12 +910,6 @@ class TreeSitterLanguageMode {
       // another grammar to use it for injection.
       return;
     }
-    if (grammar.type !== "tree-sitter") {
-      // Only other `TreeSitterGrammar`s can be injected into this language
-      // mode.
-      return;
-    }
-
     // Now we'll visit every layer in the document in turn and see if any of
     // them might be affected by the addition of this grammar. We keep a cache
     // to cut down on redundant lookups.
@@ -1988,10 +1982,6 @@ class TreeSitterLanguageMode {
     };
     if (declaresQuery(this.grammar)) return true;
     return this.getAllLanguageLayers((layer) => declaresQuery(layer?.grammar)).length > 0;
-  }
-
-  isTokenized() {
-    return this.tokenized;
   }
 
   async getQueryCaptureGroups(queryType, { signal } = {}) {
