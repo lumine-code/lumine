@@ -1116,6 +1116,94 @@ describe("Environment", () => {
     });
   });
 
+  describe("::startEditorWindow()", () => {
+    let environment;
+
+    const buildEnvironment = ({ initialProjectRoots, state = null }) => {
+      const loadSettings = {
+        ...lumine.applicationDelegate.getWindowLoadSettings(),
+        initialProjectRoots,
+        safeMode: true,
+      };
+      spyOn(lumine.applicationDelegate, "getWindowLoadSettings").and.returnValue(loadSettings);
+
+      environment = new Environment({
+        applicationDelegate: lumine.applicationDelegate,
+        enablePersistence: false,
+        updateProcessEnv: () => Promise.resolve(),
+      });
+      environment.initialize({
+        window,
+        document: document.implementation.createHTMLDocument(),
+      });
+      spyOn(environment, "loadState").and.returnValue(Promise.resolve(state));
+      spyOn(environment, "displayWindow").and.returnValue(Promise.resolve());
+      spyOn(environment.packages, "loadPackages");
+      spyOn(environment.history, "loadState").and.returnValue(Promise.resolve());
+      spyOn(environment, "openInitialEmptyEditorIfNecessary");
+      return environment;
+    };
+
+    afterEach(() => environment?.destroy());
+
+    it("adds launch roots before packages activate and does not announce them twice", async () => {
+      const projectRoot = temp.mkdirSync("startup-project-");
+      const env = buildEnvironment({ initialProjectRoots: [projectRoot] });
+      spyOn(env.packages, "activate").and.callFake(() => {
+        expect(env.project.getPaths()).toEqual([projectRoot]);
+        return Promise.resolve();
+      });
+
+      await env.startEditorWindow();
+
+      const didChangePaths = jasmine.createSpy("didChangePaths");
+      const subscription = env.project.onDidChangePaths(didChangePaths);
+      await env.openLocations([{ pathToOpen: projectRoot, isDirectory: true }]);
+      subscription.dispose();
+
+      expect(env.packages.activate).toHaveBeenCalled();
+      expect(didChangePaths).not.toHaveBeenCalled();
+    });
+
+    it("preserves deserialized root order and appends launch roots missing from state", async () => {
+      const firstRestoredRoot = temp.mkdirSync("startup-restored-first-");
+      const secondRestoredRoot = temp.mkdirSync("startup-restored-second-");
+      const addedRoot = temp.mkdirSync("startup-added-");
+      const env = buildEnvironment({
+        initialProjectRoots: [secondRestoredRoot, addedRoot, firstRestoredRoot],
+        state: {
+          project: {
+            buffers: [],
+            paths: [firstRestoredRoot, secondRestoredRoot],
+          },
+        },
+      });
+      spyOn(env.packages, "activate").and.callFake(() => {
+        expect(env.project.getPaths()).toEqual([firstRestoredRoot, secondRestoredRoot, addedRoot]);
+        return Promise.resolve();
+      });
+
+      await env.startEditorWindow();
+
+      expect(env.packages.activate).toHaveBeenCalled();
+    });
+
+    it("ignores a missing launch root without opening its parent or aborting startup", async () => {
+      const parent = temp.mkdirSync("startup-missing-parent-");
+      const missingRoot = path.join(parent, "missing");
+      const env = buildEnvironment({ initialProjectRoots: [missingRoot] });
+      spyOn(env.packages, "activate").and.callFake(() => {
+        expect(env.project.getPaths()).toEqual([]);
+        return Promise.resolve();
+      });
+
+      await env.startEditorWindow();
+
+      expect(env.packages.activate).toHaveBeenCalled();
+      expect(env.project.getPaths()).toEqual([]);
+    });
+  });
+
   describe("::destroy()", () => {
     it("does not throw exceptions when unsubscribing from ipc events (regression)", async () => {
       jasmine.useRealClock();

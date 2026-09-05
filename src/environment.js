@@ -1017,6 +1017,12 @@ class Environment {
       await this.deserialize(state);
       this.deserializeTimings.lumine = Date.now() - startTime;
 
+      // The main process already classified the folders supplied at launch,
+      // but open-locations is delivered only after the renderer reports that
+      // it has loaded. Seed those roots now so packages see the real project
+      // during activation instead of briefly initializing against no roots.
+      this.project.addPaths(this.#getLoadSettings().initialProjectRoots ?? [], { exact: true });
+
       this.document.body.appendChild(this.workspace.getElement());
       if (this.backgroundStylesheet) this.backgroundStylesheet.remove();
 
