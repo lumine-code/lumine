@@ -52,6 +52,17 @@ describe("git executor", () => {
     expect(error.code).toBe("ERR_CHILD_PROCESS_STDIO_MAXBUFFER");
   });
 
+  it("also bounds stderr", async () => {
+    let error;
+    try {
+      await exec(["--definitely-invalid"], process.cwd(), { maxBuffer: 4 });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error).toBeTruthy();
+    expect(error.code).toBe("ERR_CHILD_PROCESS_STDIO_MAXBUFFER");
+  });
+
   it("surfaces a non-zero exit code without throwing", async () => {
     const result = await exec(["rev-parse", "--verify", "definitely-not-a-ref"], process.cwd());
     expect(result.exitCode).not.toBe(0);

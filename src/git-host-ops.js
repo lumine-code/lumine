@@ -1,7 +1,6 @@
 const SystemGitService = require("./system-git-service");
 const GitBlobCache = require("./git-blob-cache");
 const { normalizeGitOperationError } = require("./git-error");
-const { assertDiffWithinLimit } = SystemGitService;
 
 // The git-host worker's operation registry. This layer keeps system Git and its
 // output parsing outside the renderer while preserving GitRepository's payload
@@ -25,10 +24,7 @@ module.exports = function createGitHostOps(
       ),
 
     diff: ({ descriptor, request, maxBytes }, { signal }) =>
-      invoke("diff", async (service) => {
-        const result = await service.diff(descriptor, request, { maxBytes, signal });
-        return assertDiffWithinLimit(result, maxBytes);
-      }),
+      invoke("diff", (service) => service.diff(descriptor, request, { maxBytes, signal })),
 
     history: (payload, context) =>
       invoke("history", (service) => service.history(payload.descriptor, payload.request, context)),
@@ -107,7 +103,7 @@ module.exports = function createGitHostOps(
     // Keep raw command errors intact: callers use their command, exitCode,
     // stderr, and ERR_GIT_COMMAND_FAILED fields directly.
     exec: (payload, context) => systemGitService.exec(payload, context),
+
+    writeCommandOutput: (payload, context) => systemGitService.writeCommandOutput(payload, context),
   };
 };
-
-module.exports.assertDiffWithinLimit = assertDiffWithinLimit;

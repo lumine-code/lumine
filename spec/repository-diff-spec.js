@@ -6,7 +6,14 @@ const temp = require("@lumine-code/temp").track();
 const { parseDiffPatch } = require("../src/repository-diff");
 const GitRepositoryDiffProvider = require("../src/git-repository-diff-provider");
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
-const GitRepository = require("../src/git-repository");
+const CoreGitRepository = require("../src/git-repository");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+
+class GitRepository extends CoreGitRepository {
+  constructor(filePath, options) {
+    super(discoverRepositoryDescriptor(filePath), options);
+  }
+}
 
 const COLOR_CONFIG_ARGUMENT_COUNT = 8;
 const NULL_DEVICE = process.platform === "win32" ? "NUL" : "/dev/null";

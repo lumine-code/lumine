@@ -29,6 +29,7 @@ describe("git-host ops", () => {
       readConfig: method("readConfig", {}),
       lineDiff: method("lineDiff", []),
       exec: method("exec", { exitCode: 0, stdout: "", stderr: "" }),
+      writeCommandOutput: method("writeCommandOutput", { exitCode: 0, stderr: "" }),
     };
     ops = createGitHostOps(null, { systemGitService: service });
   });
@@ -91,7 +92,7 @@ describe("git-host ops", () => {
     }
   });
 
-  it("enforces the structured and patch size limit after a diff", async () => {
+  it("passes the diff size limit to the system Git service", async () => {
     service.diff.and.resolveTo({
       schemaVersion: 1,
       files: [{ oldPath: "a", newPath: "a", hunks: [{ lines: [{ text: "changed" }] }] }],
@@ -104,10 +105,6 @@ describe("git-host ops", () => {
       maxBytes: 1024,
       signal: undefined,
     });
-
-    await expectAsync(ops.diff({ descriptor, request, maxBytes: 4 }, {})).toBeRejectedWithError(
-      /exceeded the 4 byte limit/,
-    );
   });
 
   it("normalizes CLI read failures to stable operation codes", async () => {
@@ -180,5 +177,17 @@ describe("git-host ops", () => {
     });
     service.exec.and.rejectWith(failure);
     await expectAsync(ops.exec(payload, {})).toBeRejectedWith(failure);
+  });
+
+  it("writes command output inside the worker", async () => {
+    const payload = {
+      workingDirectory: "/repo",
+      args: ["cat-file", "blob", "abc"],
+      destinationPath: "/repo/file.txt",
+      options: {},
+    };
+
+    expect(await ops.writeCommandOutput(payload, {})).toEqual({ exitCode: 0, stderr: "" });
+    expect(service.writeCommandOutput).toHaveBeenCalledWith(payload, {});
   });
 });

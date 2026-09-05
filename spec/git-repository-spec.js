@@ -1,11 +1,18 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp").track();
-const GitRepository = require("../src/git-repository");
+const CoreGitRepository = require("../src/git-repository");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
 const Project = require("../src/project");
 const RepositoryRegistry = require("../src/repository-registry");
 const { parseRefsSnapshot } = require("../src/repository-refs-snapshot");
 const { parseStatusSnapshot } = require("../src/repository-status-snapshot");
+
+class GitRepository extends CoreGitRepository {
+  constructor(filePath, options) {
+    super(discoverRepositoryDescriptor(filePath), options);
+  }
+}
 
 function snapshotClient({ statusSnapshotProvider, refsSnapshotProvider } = {}) {
   return {
@@ -47,6 +54,14 @@ function snapshotClient({ statusSnapshotProvider, refsSnapshotProvider } = {}) {
   };
 }
 
+async function flushMicrotasks() {
+  for (let index = 0; index < 8; index++) await Promise.resolve();
+}
+
+function snapshotRefRecord(fields) {
+  return [...fields, ...Array(21 - fields.length).fill("")].join("\0");
+}
+
 describe("GitRepository", () => {
   let repo;
 
@@ -60,14 +75,24 @@ describe("GitRepository", () => {
   });
 
   describe("@open(path)", () => {
-    it("returns null when no repository is found", () => {
-      expect(GitRepository.open(path.join(temp.dir, "nogit.txt"))).toBeNull();
+    it("returns null when no repository is found", async () => {
+      expect(await GitRepository.open(path.join(temp.dir, "nogit.txt"))).toBeNull();
+    });
+
+    it("discovers repositories without synchronous filesystem calls", async () => {
+      const workingDirectory = copyRepository();
+      const realpathSync = spyOn(fs.realpathSync, "native").and.callThrough();
+
+      repo = await CoreGitRepository.open(path.join(workingDirectory, "a.txt"));
+
+      expect(repo).not.toBeNull();
+      expect(realpathSync).not.toHaveBeenCalled();
     });
   });
 
-  describe("new GitRepository(path)", () => {
-    it("throws an exception when no repository is found", () => {
-      expect(() => new GitRepository(path.join(temp.dir, "nogit.txt"))).toThrow();
+  describe("new GitRepository(descriptor)", () => {
+    it("requires an already-discovered descriptor", () => {
+      expect(() => new CoreGitRepository(null)).toThrowError(TypeError, /descriptor/);
     });
   });
 
@@ -96,6 +121,31 @@ describe("GitRepository", () => {
       );
       expect(repo.relativize(workingDirectory)).toBe("");
       expect(repo.relativize("")).toBe("");
+    });
+
+    it("performs cached path queries without filesystem access", () => {
+      const workingDirectory = copyRepository();
+      repo = new GitRepository(workingDirectory);
+      const realpathSync = spyOn(fs.realpathSync, "native").and.callThrough();
+
+      for (let index = 0; index < 1000; index++) {
+        repo.relativize(path.join(workingDirectory, "src", `file-${index}.js`));
+      }
+
+      expect(realpathSync).not.toHaveBeenCalled();
+    });
+
+    it("routes paths inside a bare repository through its Git directory", () => {
+      const bareDirectory = temp.mkdirSync("bare-routing-repository-");
+      fs.copySync(path.join(__dirname, "fixtures", "git", "master.git"), bareDirectory);
+      fs.writeFileSync(path.join(bareDirectory, "config"), "[core]\n\tbare = true\n");
+      const aliasPath = path.join(temp.mkdirSync("bare-routing-alias-parent-"), "bare-link");
+      fs.symlinkSync(bareDirectory, aliasPath, process.platform === "win32" ? "junction" : "dir");
+      repo = new GitRepository(path.join(aliasPath, "objects"));
+
+      expect(repo.getWorkingDirectory()).toBeNull();
+      expect(repo.getWorkingDirectoryAliases()).toContain(repo.getPath());
+      expect(repo.relativize(path.join(aliasPath, "objects"))).toBe("objects");
     });
   });
 
@@ -168,10 +218,10 @@ describe("GitRepository", () => {
   describe(".checkoutHead(path)", () => {
     let filePath;
 
-    beforeEach(() => {
+    beforeEach(async () => {
       const workingDirPath = copyRepository();
       lumine.project.setPaths([workingDirPath]);
-      repo = lumine.repositories.getRepositories()[0];
+      repo = await lumine.repositories.resolveForPath(workingDirPath);
       filePath = path.join(workingDirPath, "a.txt");
     });
 
@@ -198,7 +248,7 @@ describe("GitRepository", () => {
     beforeEach(async () => {
       const workingDirPath = copyRepository();
       lumine.project.setPaths([workingDirPath]);
-      repo = lumine.repositories.getRepositories()[0];
+      repo = await lumine.repositories.resolveForPath(workingDirPath);
       filePath = path.join(workingDirPath, "a.txt");
       fs.writeFileSync(filePath, "ch ch changes");
 
@@ -278,15 +328,19 @@ describe("GitRepository", () => {
       expect(changeHandler.calls.count()).toBe(2);
     });
 
-    it("forwards cancellation and ignored-file options", async () => {
-      const signal = {};
-      const snapshot = await repo.refreshStatusSnapshot({ includeIgnored: true, signal });
+    it("uses an owned cancellation signal and forwards ignored-file options", async () => {
+      const controller = new AbortController();
+      const snapshot = await repo.refreshStatusSnapshot({
+        includeIgnored: true,
+        signal: controller.signal,
+      });
 
       expect(snapshot.includesIgnored).toBe(true);
       const [statusPath, statusOptions] = statusSnapshotProvider.getStatus.calls.argsFor(0);
       expect(statusPath).toBe(repo.getWorkingDirectory());
       expect(statusOptions.includeIgnored).toBe(true);
-      expect(statusOptions.signal).toBe(signal);
+      expect(statusOptions.signal).not.toBe(controller.signal);
+      expect(statusOptions.signal.aborted).toBe(false);
     });
 
     it("resolves ignore state from the snapshot's ignored entries", async () => {
@@ -327,6 +381,7 @@ describe("GitRepository", () => {
 
       // The trailing run started only after the flight settled, so it captures
       // state changed while the flight was already running.
+      await flushMicrotasks();
       expect(statusSnapshotProvider.getStatus.calls.count()).toBe(2);
       resolvers[1]("# branch.oid newest\0# branch.head main\0? newest.txt\0");
       const trailingSnapshot = await trailingA;
@@ -346,21 +401,102 @@ describe("GitRepository", () => {
 
       const flight = repo.refreshStatusSnapshot({ includeIgnored: false });
       await Promise.resolve();
-      const trailingA = repo.refreshStatusSnapshot({ includeIgnored: false, signal: {} });
+      const trailingController = new AbortController();
+      const trailingA = repo.refreshStatusSnapshot({
+        includeIgnored: false,
+        signal: trailingController.signal,
+      });
       const trailingB = repo.refreshStatusSnapshot({ priority: "interactive" });
 
       resolvers[0](output);
       await flight;
+      await flushMicrotasks();
       resolvers[1](output);
       await Promise.all([trailingA, trailingB]);
 
       expect(optionsSeen[0].includeIgnored).toBe(false);
       // One requester wanted ignored entries (the default) and interactive
-      // priority, so the shared trailing run honors both — and drops the
-      // piggybacked signal, which must not be able to cancel a shared run.
+      // priority, so the shared trailing run honors both. It owns a signal that
+      // no individual requester can abort while another waiter remains.
       expect(optionsSeen[1].includeIgnored).toBe(true);
       expect(optionsSeen[1].priority).toBe("interactive");
-      expect(optionsSeen[1].signal).toBeUndefined();
+      expect(optionsSeen[1].signal.aborted).toBe(false);
+    });
+
+    it("rejects one aborted waiter without cancelling shared work", async () => {
+      const controller = new AbortController();
+      const resolvers = [];
+      const signals = [];
+      statusSnapshotProvider.getStatus.and.callFake((workingDir, statusOptions) => {
+        signals.push(statusOptions.signal);
+        return new Promise((resolve) => resolvers.push(resolve));
+      });
+
+      const aborted = repo.refreshStatusSnapshot({ signal: controller.signal });
+      const shared = repo.refreshStatusSnapshot();
+      await Promise.resolve();
+      controller.abort();
+
+      await expectAsync(aborted).toBeRejectedWithError(Error, /aborted/);
+      expect(signals[0].aborted).toBe(false);
+      resolvers[0](output);
+      expect((await shared).initialized).toBe(true);
+    });
+
+    it("cancels worker work when its only waiter aborts", async () => {
+      const controller = new AbortController();
+      let ownedSignal;
+      statusSnapshotProvider.getStatus.and.callFake((workingDir, statusOptions) => {
+        ownedSignal = statusOptions.signal;
+        return new Promise((resolve, reject) => {
+          ownedSignal.addEventListener(
+            "abort",
+            () => reject(Object.assign(new Error("worker aborted"), { name: "AbortError" })),
+            { once: true },
+          );
+        });
+      });
+
+      const pending = repo.refreshStatusSnapshot({ signal: controller.signal });
+      await Promise.resolve();
+      controller.abort();
+
+      await expectAsync(pending).toBeRejectedWithError(Error, /aborted/);
+      expect(ownedSignal.aborted).toBe(true);
+    });
+
+    it("does not start a trailing refresh after its only waiter aborts", async () => {
+      const controller = new AbortController();
+      const resolvers = [];
+      statusSnapshotProvider.getStatus.and.callFake(
+        () => new Promise((resolve) => resolvers.push(resolve)),
+      );
+
+      const flight = repo.refreshStatusSnapshot();
+      await Promise.resolve();
+      const trailing = repo.refreshStatusSnapshot({ signal: controller.signal });
+      controller.abort();
+
+      await expectAsync(trailing).toBeRejectedWithError(Error, /aborted/);
+      resolvers[0](output);
+      await flight;
+      for (let index = 0; index < 3; index++) await Promise.resolve();
+      expect(statusSnapshotProvider.getStatus.calls.count()).toBe(1);
+    });
+
+    it("aborts in-flight snapshot work when destroyed", async () => {
+      let ownedSignal;
+      statusSnapshotProvider.getStatus.and.callFake((workingDir, statusOptions) => {
+        ownedSignal = statusOptions.signal;
+        return new Promise(() => {});
+      });
+
+      const pending = repo.refreshStatusSnapshot();
+      await Promise.resolve();
+      repo.destroy();
+
+      expect(ownedSignal.aborted).toBe(true);
+      await expectAsync(pending).toBeRejectedWithError(Error, /aborted/);
     });
   });
 
@@ -496,7 +632,21 @@ describe("GitRepository", () => {
     };
 
     const makeOutputs = (branch) => ({
-      forEachRef: `refs/heads/${branch}\0${branch}\0aaaa\0commit\0\0\0\0\0\0\0\0*\0`,
+      forEachRef: snapshotRefRecord([
+        `refs/heads/${branch}`,
+        branch,
+        "aaaa",
+        "commit",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "",
+        "*",
+        "",
+      ]),
       remotes: "",
       worktrees: "",
       symbolicHead: `refs/heads/${branch}\n`,
@@ -562,6 +712,7 @@ describe("GitRepository", () => {
 
       // The trailing run starts after the flight settles and captures the
       // newer state; both piggybacked requesters share it.
+      await flushMicrotasks();
       expect(refsSnapshotProvider.getRefs.calls.count()).toBe(2);
       resolvers[1](makeOutputs("newest"));
       const trailingSnapshot = await trailingA;
@@ -617,9 +768,23 @@ describe("GitRepository", () => {
     beforeEach(async () => {
       const forEachRef = [
         // main branch, tracking origin/main, 2 ahead and 1 behind, is HEAD
-        "refs/heads/main\0main\0aaaa1111\0commit\0\0refs/remotes/origin/main\0origin/main\0ahead 2, behind 1\0\0\0\0*\0",
-        "refs/remotes/origin/main\0origin/main\0bbbb2222\0commit\0\0\0\0\0\0\0\0\0",
-        "refs/tags/v1\0v1\0cccc3333\0commit\0\0\0\0\0\0\0\0\0",
+        snapshotRefRecord([
+          "refs/heads/main",
+          "main",
+          "aaaa1111",
+          "commit",
+          "",
+          "refs/remotes/origin/main",
+          "origin/main",
+          "ahead 2, behind 1",
+          "",
+          "",
+          "",
+          "*",
+          "",
+        ]),
+        snapshotRefRecord(["refs/remotes/origin/main", "origin/main", "bbbb2222", "commit"]),
+        snapshotRefRecord(["refs/tags/v1", "v1", "cccc3333", "commit"]),
       ].join("\n");
       const refsSnapshotProvider = {
         getRefs: () =>
@@ -689,7 +854,7 @@ describe("GitRepository", () => {
       expect(repo.getDirectoryStatusSummary(workingDirectory)).toBeNull();
     });
 
-    it("pins the snapshot classification to the legacy modified-beats-added order", async () => {
+    it("pins the snapshot classification to the public modified-beats-added order", async () => {
       output = [
         "# branch.oid abc123",
         "# branch.head main",
@@ -779,7 +944,8 @@ describe("GitRepository", () => {
     beforeEach(async () => {
       lumine.project.setPaths([copyRepository()]);
       editor = await lumine.workspace.open("other.txt");
-      repository = lumine.repositories.getRepositories()[0];
+      repository = await lumine.repositories.resolveForPath(editor.getPath());
+      await flushMicrotasks();
     });
 
     it("schedules a status snapshot refresh when a buffer is saved", async () => {
@@ -796,14 +962,22 @@ describe("GitRepository", () => {
       expect(refresh).toHaveBeenCalled();
     });
 
-    it("schedules a status snapshot refresh when a buffer's path changes", () => {
+    it("schedules a status snapshot refresh when a buffer's path changes", async () => {
       const refresh = spyOn(repository, "scheduleStatusSnapshotRefresh");
-      editor.getBuffer().emitter.emit("did-change-path");
+      const owner = lumine.repositories.bufferOwners.get(editor.getBuffer());
+      expect(owner.entry.repository).toBe(repository);
+      editor.getBuffer().setPath(path.join(repository.getWorkingDirectory(), "renamed-buffer.txt"));
+      for (let attempt = 0; attempt < 50 && !refresh.calls.any(); attempt++) {
+        await fs.promises.stat(repository.getWorkingDirectory());
+      }
+      expect(owner.entry.repository).toBe(repository);
+      expect(owner.resolvingGeneration).toBeNull();
+      expect(owner.refreshGeneration).toBeNull();
       expect(refresh).toHaveBeenCalled();
     });
 
-    // A repository hears about every buffer in the window; without this guard
-    // one save fans out to a `git status` on every registered repository.
+    // The registry routes a buffer event only to its current owner; one save
+    // must not fan out to every registered repository.
     it("does not schedule a refresh when a saved buffer is outside the repository", async () => {
       const outsidePath = path.join(temp.mkdirSync("outside-any-repo"), "stray.txt");
       fs.writeFileSync(outsidePath, "elsewhere");
@@ -829,7 +1003,7 @@ describe("GitRepository", () => {
       if (repositoryRegistry2) repositoryRegistry2.destroy();
     });
 
-    it("subscribes to all the serialized buffers in the project", async () => {
+    it("tracks all serialized buffers through the repository registry", async () => {
       lumine.project.setPaths([copyRepository()]);
 
       await lumine.workspace.open("file.txt");
@@ -851,7 +1025,8 @@ describe("GitRepository", () => {
       buffer = project2.getBuffers()[0];
       buffer.append("changes");
 
-      const repository = repositoryRegistry2.getRepositories()[0];
+      const repository = await repositoryRegistry2.resolveForPath(buffer.getPath());
+      await flushMicrotasks();
       const refresh = spyOn(repository, "scheduleStatusSnapshotRefresh");
       await buffer.save();
 

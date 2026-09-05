@@ -22,6 +22,7 @@ const ReconcileDebounceMs = 2000;
 // process is both expensive and wrong, so the whole burst is dropped and the
 // root is re-crawled instead, which is cheaper AND exact. See `admitCreated`.
 const CreatedBurstLimit = 100;
+const CreatedAdmissionConcurrency = 8;
 
 // A safety valve, not a policy. No real project reaches this; a root pointed at
 // `C:\` or `/` does, and retaining that would take the window down.
@@ -400,6 +401,22 @@ module.exports = class FileIndex {
   handleFileEvents(events) {
     if (this.destroyed || this.entries.size === 0) return;
 
+    const repositoryBoundaryPaths = events.flatMap((event) =>
+      [event.path, event.oldPath].filter(
+        (eventPath) => eventPath && path.basename(eventPath) === ".git",
+      ),
+    );
+    if (repositoryBoundaryPaths.length > 0) {
+      // A sibling in this same watcher batch must not reuse the enclosing
+      // repository cached before a nested repository appeared (or vanished).
+      // Clearing is memory-only; each affected root is also reconciled by its
+      // authoritative crawl.
+      this.project.clearRepositoryPathCache?.();
+      for (const boundaryPath of repositoryBoundaryPaths) {
+        this.markRootsContainingPathDirty(boundaryPath);
+      }
+    }
+
     // Attribution and the ignore decision are both properties of the event's
     // directory, and a batch runs to thousands of events during an install or a
     // checkout — so classify each directory once and reuse it. This is what
@@ -525,39 +542,13 @@ module.exports = class FileIndex {
 
       const generation = entry.generation;
       const candidates = [];
-      let needsRecrawl = false;
       for (const indexPath of batch) {
-        let stats;
-        try {
-          stats = fs.lstatSync(indexPath);
-        } catch {
-          continue;
-        }
-        if (!stats.isFile()) continue;
-
-        // ripgrep always honors `.ignore` and `.rgignore`, independently of
-        // the VCS setting. Repository APIs cannot answer for those files, so
-        // retain exactness by letting the authoritative crawl decide.
-        if (this.hasNonVcsIgnoreFile(entry, indexPath)) {
-          needsRecrawl = true;
-          continue;
-        }
-
         const token = {};
         entry.pendingAdmissions.set(indexPath, token);
         candidates.push({ indexPath, token });
       }
 
-      if (needsRecrawl) this.markDirty(entry);
-      if (candidates.length === 0) continue;
-
-      this.findVcsIgnoredPaths(candidates.map(({ indexPath }) => indexPath))
-        .then((ignoredPaths) => {
-          for (const candidate of candidates) {
-            if (ignoredPaths.has(candidate.indexPath)) continue;
-            this.admitCreatedPath(entry, candidate, generation);
-          }
-        })
+      this.prepareAndAdmitCreatedPaths(entry, candidates, generation)
         .catch(() => {
           // A crawl remains the authority when repository discovery or Git
           // status fails; never turn unchecked paths into blind admissions.
@@ -573,20 +564,92 @@ module.exports = class FileIndex {
     }
   }
 
-  hasNonVcsIgnoreFile(entry, filePath) {
-    let directoryPath = path.dirname(filePath);
-    while (true) {
-      if (
-        fs.existsSync(path.join(directoryPath, ".ignore")) ||
-        fs.existsSync(path.join(directoryPath, ".rgignore"))
-      ) {
-        return true;
+  async prepareAndAdmitCreatedPaths(entry, candidates, generation) {
+    const ignoreFilesByDirectory = new Map();
+    let needsRecrawl = false;
+    const prepared = await this.mapWithConcurrency(
+      candidates,
+      CreatedAdmissionConcurrency,
+      async (candidate) => {
+        const { indexPath, token } = candidate;
+        let stats;
+        try {
+          stats = await fs.promises.lstat(indexPath);
+        } catch {
+          return null;
+        }
+        if (
+          !stats.isFile() ||
+          this.destroyed ||
+          entry.generation !== generation ||
+          entry.pendingAdmissions.get(indexPath) !== token
+        ) {
+          return null;
+        }
+
+        // ripgrep always honors `.ignore` and `.rgignore`, independently of the
+        // VCS setting. Repository APIs cannot answer for those files, so retain
+        // exactness by letting the authoritative crawl decide.
+        if (await this.hasNonVcsIgnoreFileAsync(entry, indexPath, ignoreFilesByDirectory)) {
+          needsRecrawl = true;
+          return null;
+        }
+        return candidate;
+      },
+    );
+    if (needsRecrawl && entry.generation === generation) this.markDirty(entry);
+
+    const admittedCandidates = prepared.filter(Boolean);
+    if (admittedCandidates.length === 0) return;
+    const ignoredPaths = await this.findVcsIgnoredPaths(
+      admittedCandidates.map(({ indexPath }) => indexPath),
+    );
+    await this.mapWithConcurrency(
+      admittedCandidates,
+      CreatedAdmissionConcurrency,
+      async (candidate) => {
+        if (ignoredPaths.has(candidate.indexPath)) return;
+        await this.admitCreatedPath(entry, candidate, generation);
+      },
+    );
+  }
+
+  async hasNonVcsIgnoreFileAsync(entry, filePath, cache) {
+    const checkDirectory = (directoryPath) => {
+      let result = cache.get(directoryPath);
+      if (result) return result;
+      result = Promise.all([
+        fs.promises.access(path.join(directoryPath, ".ignore")).then(
+          () => true,
+          () => false,
+        ),
+        fs.promises.access(path.join(directoryPath, ".rgignore")).then(
+          () => true,
+          () => false,
+        ),
+      ]).then(([hasIgnore, hasRgIgnore]) => {
+        if (hasIgnore || hasRgIgnore) return true;
+        if (fold(directoryPath) === entry.foldedRoot) return false;
+        const parentPath = path.dirname(directoryPath);
+        return parentPath === directoryPath ? false : checkDirectory(parentPath);
+      });
+      cache.set(directoryPath, result);
+      return result;
+    };
+    return checkDirectory(path.dirname(filePath));
+  }
+
+  async mapWithConcurrency(values, limit, callback) {
+    const results = new Array(values.length);
+    let nextIndex = 0;
+    const workers = Array.from({ length: Math.min(limit, values.length) }, async () => {
+      while (nextIndex < values.length) {
+        const index = nextIndex++;
+        results[index] = await callback(values[index], index);
       }
-      if (fold(directoryPath) === entry.foldedRoot) return false;
-      const parentPath = path.dirname(directoryPath);
-      if (parentPath === directoryPath) return false;
-      directoryPath = parentPath;
-    }
+    });
+    await Promise.all(workers);
+    return results;
   }
 
   async findVcsIgnoredPaths(filePaths) {
@@ -594,8 +657,22 @@ module.exports = class FileIndex {
     if (this.getConfig()?.get("core.excludeVcsIgnoredPaths") === false) return ignoredPaths;
 
     const pathsByRepository = new Map();
-    const resolved = await Promise.all(
-      filePaths.map(async (filePath) => [filePath, await this.project.repositoryForPath(filePath)]),
+    // Repository ownership is a directory property. Watcher bursts commonly
+    // contain dozens of siblings; resolving every filename independently
+    // repeats the same ancestor walk and floods libuv's filesystem pool.
+    const repositoryPromisesByDirectory = new Map();
+    const resolved = await this.mapWithConcurrency(
+      filePaths,
+      CreatedAdmissionConcurrency,
+      async (filePath) => {
+        const directoryPath = path.dirname(filePath);
+        let repositoryPromise = repositoryPromisesByDirectory.get(directoryPath);
+        if (!repositoryPromise) {
+          repositoryPromise = this.project.repositoryForPath(directoryPath, { refresh: false });
+          repositoryPromisesByDirectory.set(directoryPath, repositoryPromise);
+        }
+        return [filePath, await repositoryPromise];
+      },
     );
     for (const [filePath, repository] of resolved) {
       if (!repository || typeof repository.isPathIgnored !== "function") continue;
@@ -607,20 +684,22 @@ module.exports = class FileIndex {
       paths.push(filePath);
     }
 
-    await Promise.all(
-      Array.from(pathsByRepository, async ([repository, paths]) => {
+    await this.mapWithConcurrency(
+      Array.from(pathsByRepository),
+      CreatedAdmissionConcurrency,
+      async ([repository, paths]) => {
         // A previously loaded snapshot can predate this filesystem event.
         // Refresh once per repository and batch, then use its synchronous index.
         await repository.refreshStatusSnapshot?.({ includeIgnored: true });
         for (const filePath of paths) {
           if (await repository.isPathIgnored(filePath)) ignoredPaths.add(filePath);
         }
-      }),
+      },
     );
     return ignoredPaths;
   }
 
-  admitCreatedPath(entry, { indexPath, token }, generation) {
+  async admitCreatedPath(entry, { indexPath, token }, generation) {
     if (this.destroyed || entry.generation !== generation) return;
     if (entry.pendingAdmissions.get(indexPath) !== token) return;
 
@@ -628,11 +707,18 @@ module.exports = class FileIndex {
     // Re-check its kind at the point of mutation.
     let stats;
     try {
-      stats = fs.lstatSync(indexPath);
+      stats = await fs.promises.lstat(indexPath);
     } catch {
       return;
     }
-    if (!stats.isFile()) return;
+    if (
+      !stats.isFile() ||
+      this.destroyed ||
+      entry.generation !== generation ||
+      entry.pendingAdmissions.get(indexPath) !== token
+    ) {
+      return;
+    }
 
     this.addToRoot(entry, indexPath);
     if (entry.staging) {

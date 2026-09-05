@@ -85,6 +85,8 @@ class FakeProject {
   repositoryForPath() {
     return Promise.resolve(this.repository);
   }
+
+  clearRepositoryPathCache() {}
 }
 
 class FakeConfig {
@@ -156,6 +158,16 @@ describe("FileIndex", () => {
   const attach = async (paths = []) => {
     index.attachProject(project);
     await completeCrawl(paths);
+  };
+
+  const waitForPendingAdmissions = async () => {
+    for (let attempt = 0; attempt < 100; attempt++) {
+      if (Array.from(index.entries.values()).every((entry) => entry.pendingAdmissions.size === 0)) {
+        return;
+      }
+      await new Promise((resolve) => setImmediate(resolve));
+    }
+    throw new Error("Timed out waiting for created paths to be admitted");
   };
 
   describe("arming and teardown", () => {
@@ -424,7 +436,7 @@ describe("FileIndex", () => {
 
     const emit = async (events) => {
       project.emitFileEvents(events);
-      for (let i = 0; i < 5; i++) await Promise.resolve();
+      await waitForPendingAdmissions();
       advanceClock(200);
     };
 
@@ -549,6 +561,7 @@ describe("FileIndex", () => {
 
     it("checks every small-batch file against VCS before admitting it", async () => {
       const refreshStatusSnapshot = jasmine.createSpy("refresh status").and.resolveTo();
+      const repositoryForPath = spyOn(project, "repositoryForPath").and.callThrough();
       project.repository = {
         refreshStatusSnapshot,
         isPathIgnored: (filePath) => path.basename(filePath) === "ignored.js",
@@ -560,21 +573,22 @@ describe("FileIndex", () => {
         { action: "created", path: visible },
         { action: "created", path: ignored },
       ]);
-      for (let i = 0; i < 20 && index.entries.get(ROOT).pendingAdmissions.size > 0; i++) {
-        await Promise.resolve();
-      }
+      await waitForPendingAdmissions();
 
       expect(refreshStatusSnapshot.calls.count()).toBe(1);
+      expect(repositoryForPath.calls.count()).toBe(1);
+      expect(repositoryForPath).toHaveBeenCalledWith(path.dirname(visible), { refresh: false });
       expect(index.has(visible)).toBe(true);
       expect(index.has(ignored)).toBe(false);
     });
 
-    it("defers to a recrawl when a non-VCS ignore file can affect the path", () => {
+    it("defers to a recrawl when a non-VCS ignore file can affect the path", async () => {
       fs.writeFileSync(under(".ignore"), "generated.js\n");
       const generated = touch("generated.js");
       const before = project.crawls.length;
 
       project.emitFileEvents([{ action: "created", path: generated }]);
+      await waitForPendingAdmissions();
 
       expect(index.has(generated)).toBe(false);
       advanceClock(2500);
@@ -591,6 +605,17 @@ describe("FileIndex", () => {
     it("re-crawls when .git/info/exclude is written", () => {
       const before = project.crawls.length;
       project.emitFileEvents([{ action: "updated", path: under(".git", "info", "exclude") }]);
+      advanceClock(2500);
+      expect(project.crawls.length).toBe(before + 1);
+    });
+
+    it("invalidates repository discovery when a nested .git boundary changes", () => {
+      const clearRepositoryPathCache = spyOn(project, "clearRepositoryPathCache");
+      const before = project.crawls.length;
+
+      project.emitFileEvents([{ action: "created", path: under("nested", ".git") }]);
+
+      expect(clearRepositoryPathCache).toHaveBeenCalled();
       advanceClock(2500);
       expect(project.crawls.length).toBe(before + 1);
     });
@@ -656,7 +681,7 @@ describe("FileIndex", () => {
       touch("Deep", "File.JS");
 
       project.emitFileEvents([{ action: "created", path: path.join(realRoot, "Deep", "File.JS") }]);
-      for (let i = 0; i < 5; i++) await Promise.resolve();
+      await waitForPendingAdmissions();
       advanceClock(200);
 
       // Rewritten onto the registered root, and the tail keeps the case the

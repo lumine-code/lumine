@@ -1,23 +1,7 @@
 const fs = require("fs");
 const path = require("path");
-const { resolveGitPath } = require("./git-binary");
 
-const GitHost = require("./git-host");
-const GitRunner = require("./git-runner");
-const { GitOperationError } = GitRunner;
-
-// Send a git command to the git-host worker's `exec` op. The renderer builds the
-// argument vector (in GitRepositoryOperations) but the command runs off the
-// renderer thread. `signal` becomes the transport's cancel channel; everything
-// sent in the payload must be structured-clone-safe.
-function workerExec(args, workingDirectory, options = {}, raw = false) {
-  const { signal, ...rest } = options;
-  return GitHost.instance().request(
-    "exec",
-    { workingDirectory, args, options: rest, raw },
-    { signal },
-  );
-}
+const GitHostClient = require("./git-host-client");
 
 function pathsFrom(value) {
   if (value == null) return [];
@@ -117,10 +101,9 @@ const OPERATION_REFRESH_HINTS = {
 };
 
 class GitRepositoryOperations {
-  constructor(provider, workingDirectory, repository = null) {
+  constructor(provider, workingDirectory) {
     this.provider = provider;
     this.workingDirectory = workingDirectory;
-    this.repository = repository;
   }
 
   run(args, options) {
@@ -479,12 +462,12 @@ class GitRepositoryOperations {
   }
 
   async expandBlobToFile(filePath, sha, options = {}) {
-    const contents = await this.provider.runResult(
+    await this.provider.runToFile(
       ["cat-file", "blob", sha],
       this.workingDirectory,
-      { ...options, encoding: "buffer" },
+      path.resolve(this.workingDirectory, filePath),
+      options,
     );
-    await fs.promises.writeFile(path.resolve(this.workingDirectory, filePath), contents.stdout);
     return filePath;
   }
 
@@ -492,12 +475,12 @@ class GitRepositoryOperations {
     const args = ["merge-file", "--stdout"];
     for (const label of options.labels || []) args.push("-L", label);
     args.push(oursPath, basePath, theirsPath);
-    const result = await this.provider.runResult(args, this.workingDirectory, {
-      ...options,
-      encoding: "buffer",
-      allowedExitCodes: [0, 1],
-    });
-    await fs.promises.writeFile(path.resolve(this.workingDirectory, resultPath), result.stdout);
+    const result = await this.provider.runToFile(
+      args,
+      this.workingDirectory,
+      path.resolve(this.workingDirectory, resultPath),
+      { ...options, allowedExitCodes: [0, 1] },
+    );
     return result.exitCode;
   }
 
@@ -535,8 +518,20 @@ module.exports = class GitRepositoryOperationProvider {
   // `exec(args, workingDirectory, options, raw)` runs a git command and resolves
   // to a `{exitCode, stdout, stderr}` result. It defaults to the git-host
   // worker; specs inject a fake to assert on the argument vector.
-  constructor({ exec, authBroker } = {}) {
-    this.exec = exec || workerExec;
+  constructor({ exec, authBroker, gitHostClient = new GitHostClient() } = {}) {
+    this.exec = exec || gitHostClient.exec.bind(gitHostClient);
+    this.writeCommandOutput = exec
+      ? async (args, workingDirectory, destinationPath, options) => {
+          const result = await this.exec(
+            args,
+            workingDirectory,
+            { ...options, encoding: "buffer" },
+            false,
+          );
+          await fs.promises.writeFile(destinationPath, result.stdout);
+          return result;
+        }
+      : gitHostClient.writeCommandOutput.bind(gitHostClient);
     this.authBroker = authBroker || null;
   }
 
@@ -589,16 +584,19 @@ module.exports = class GitRepositoryOperationProvider {
     return this.runResult(args, workingDirectory, options).then((result) => result.stdout);
   }
 
+  runToFile(args, workingDirectory, destinationPath, options = {}) {
+    return this.writeCommandOutput(args, workingDirectory, destinationPath, {
+      priority: "interactive",
+      ...options,
+    });
+  }
+
   executeGit(args, workingDirectory, options = {}) {
-    return this.exec(args, workingDirectory, options, true);
+    return this.exec(args, workingDirectory, { priority: "interactive", ...options }, true);
   }
 
-  getGitExecutablePath() {
-    return resolveGitPath(globalThis.lumine?.config?.get("git.path") || "");
-  }
-
-  createRepositoryOperations({ workingDirectory, repository }) {
-    return new GitRepositoryOperations(this, workingDirectory, repository);
+  createRepositoryOperations({ workingDirectory }) {
+    return new GitRepositoryOperations(this, workingDirectory);
   }
 
   async initializeRepository(directoryPath, options = {}) {
@@ -624,6 +622,3 @@ module.exports = class GitRepositoryOperationProvider {
     return this.run(args, parent, await this.withAuthEnvironment(parent, options));
   }
 };
-
-module.exports.GitOperationError = GitOperationError;
-module.exports.GitRepositoryOperations = GitRepositoryOperations;

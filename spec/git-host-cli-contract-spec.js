@@ -14,7 +14,7 @@ function copyRepository() {
   };
 }
 
-describe("git-host CLI contract", () => {
+describe("git-host system Git contract", () => {
   let descriptor;
   let ops;
 

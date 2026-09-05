@@ -34,6 +34,7 @@ function createGitExec(gitPath) {
       const stdoutChunks = [];
       const stderrChunks = [];
       let stdoutLength = 0;
+      let stderrLength = 0;
       let maxBufferExceeded = false;
 
       const onAbort = () => child.kill(killSignal);
@@ -54,7 +55,15 @@ function createGitExec(gitPath) {
         }
         stdoutChunks.push(chunk);
       });
-      child.stderr.on("data", (chunk) => stderrChunks.push(chunk));
+      child.stderr.on("data", (chunk) => {
+        stderrLength += chunk.length;
+        if (stderrLength > maxBuffer) {
+          maxBufferExceeded = true;
+          child.kill(killSignal);
+          return;
+        }
+        stderrChunks.push(chunk);
+      });
 
       child.on("error", (error) => {
         if (settled) return;
@@ -91,4 +100,4 @@ function createGitExec(gitPath) {
   };
 }
 
-module.exports = { createGitExec, DEFAULT_MAX_BUFFER };
+module.exports = { createGitExec };

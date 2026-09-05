@@ -1,9 +1,16 @@
 const ChildProcess = require("child_process");
 const {
   GIT_HOST_PROTOCOL_VERSION,
+  GitHostMessageEvents,
   assertKnownOperation,
   reviveError,
 } = require("./git-host-protocol");
+const {
+  appendReplyChunk,
+  chunkLength,
+  initializeReplyStream,
+  validateStreamManifest,
+} = require("./git-host-stream");
 const { normalizeGitOperationError } = require("./git-error");
 
 // Renderer-side transport for the git-host worker: one long-lived forked process
@@ -27,6 +34,13 @@ function restartError() {
   const error = new Error("git-host worker exited before the request completed");
   error.code = "ERR_GIT_HOST_RESTART";
   error.retriable = true;
+  return error;
+}
+
+function protocolError(detail) {
+  const error = new Error(`Invalid git-host streaming reply: ${detail}`);
+  error.code = "ERR_GIT_HOST_PROTOCOL";
+  error.retriable = false;
   return error;
 }
 
@@ -59,8 +73,8 @@ let forkModeOverride = null;
 let childFactoryOverride = null;
 
 class GitHost {
-  // Per-window singleton. Consumers (the git-host client providers) always go
-  // through here so every repository shares one worker.
+  // Per-window singleton. GitHostClient always goes through here so every
+  // repository shares one worker.
   static instance() {
     if (!singleton) singleton = new GitHost();
     return singleton;
@@ -159,9 +173,9 @@ class GitHost {
       });
       this.child = child;
 
-      child.on("message", (message) => this.handleMessage(message));
-      child.on("exit", () => this.handleExit());
-      child.on("error", () => this.handleExit());
+      child.on("message", (message) => this.handleMessage(message, child));
+      child.on("exit", () => this.handleExit(child));
+      child.on("error", () => this.handleExit(child, { kill: true }));
       child.stdout?.on("data", (data) => console.log(String(data)));
       child.stderr?.on("data", (data) => console.error(String(data)));
     });
@@ -169,10 +183,10 @@ class GitHost {
     return this.readyPromise;
   }
 
-  handleMessage(message) {
-    if (!message) return;
+  handleMessage(message, sourceChild = this.child) {
+    if (!message || sourceChild !== this.child) return;
     switch (message.event) {
-      case "git:ready":
+      case GitHostMessageEvents.READY:
         if (message.protocolVersion !== GIT_HOST_PROTOCOL_VERSION) {
           const error = new Error(
             `git-host protocol mismatch: expected ${GIT_HOST_PROTOCOL_VERSION}, received ${message.protocolVersion ?? "unknown"}`,
@@ -183,21 +197,36 @@ class GitHost {
           this.rejectReady?.(error);
           this.resolveReady = null;
           this.rejectReady = null;
+          this.handleExit(sourceChild, { kill: true });
           return;
         }
         this.resolveReady?.();
         this.resolveReady = null;
         this.rejectReady = null;
         return;
-      case "git:reply": {
+      case GitHostMessageEvents.REPLY: {
         const entry = this.pending.get(message.id);
         if (!entry) return;
+        if (entry.stream && !message.error) {
+          this.failStreamingReply(message.id, entry, "received a full reply after reply-start");
+          return;
+        }
         this.pending.delete(message.id);
         this.detachAbort(entry);
+        entry.stream = null;
         if (message.error) entry.reject(normalizeGitOperationError(reviveError(message.error)));
         else entry.resolve(message.result);
         return;
       }
+      case GitHostMessageEvents.REPLY_START:
+        this.startStreamingReply(message);
+        return;
+      case GitHostMessageEvents.REPLY_CHUNK:
+        this.appendStreamingReply(message, sourceChild);
+        return;
+      case GitHostMessageEvents.REPLY_END:
+        this.finishStreamingReply(message);
+        return;
       case "console:log":
         console.log(...(message.args || []));
         return;
@@ -210,7 +239,205 @@ class GitHost {
     }
   }
 
-  handleExit() {
+  startStreamingReply(message) {
+    const entry = this.pending.get(message.id);
+    if (!entry) return;
+    if (entry.stream) {
+      this.failStreamingReply(message.id, entry, "received duplicate reply-start");
+      return;
+    }
+    if (
+      !Object.hasOwn(message, "result") ||
+      !Array.isArray(message.streams) ||
+      message.streams.length === 0
+    ) {
+      this.failStreamingReply(message.id, entry, "reply-start has no stream manifest");
+      return;
+    }
+
+    const descriptors = new Map();
+    const paths = new Set();
+    const arrayPaths = new Set();
+    let result = message.result;
+    try {
+      for (const descriptor of message.streams) {
+        const pathKey = JSON.stringify(descriptor?.path);
+        if (
+          !validateStreamManifest(descriptor) ||
+          descriptors.has(descriptor.name) ||
+          paths.has(pathKey)
+        ) {
+          throw protocolError("reply-start has an invalid stream manifest");
+        }
+        const initialized = initializeReplyStream(result, descriptor);
+        result = initialized.result;
+        if (!initialized.initialized) {
+          let hasArrayParent = false;
+          for (let length = descriptor.path.length - 1; length >= 0; length--) {
+            if (arrayPaths.has(JSON.stringify(descriptor.path.slice(0, length)))) {
+              hasArrayParent = true;
+              break;
+            }
+          }
+          if (!hasArrayParent) {
+            throw protocolError(`reply-start is missing the ${descriptor.name} target`);
+          }
+        }
+        descriptors.set(descriptor.name, { ...descriptor, initialized: initialized.initialized });
+        paths.add(pathKey);
+        if (descriptor.kind === "array") arrayPaths.add(pathKey);
+      }
+    } catch (error) {
+      this.failStreamingReply(message.id, entry, error);
+      return;
+    }
+
+    entry.stream = {
+      result,
+      descriptors,
+      received: new Map([...descriptors.keys()].map((name) => [name, 0])),
+      nextSequence: 0,
+      awaitingAck: false,
+      completionScheduled: false,
+    };
+  }
+
+  appendStreamingReply(message, sourceChild = this.child) {
+    const id = message.id;
+    const sequence = message.sequence;
+    // Do not ACK from the IPC callback's microtask checkpoint. One full event
+    // loop turn between chunks lets Chromium render and bounds deserialization
+    // plus collection assembly to one small batch per turn.
+    if (Number.isSafeInteger(sequence)) {
+      this.scheduleChunkAck(sourceChild, id, sequence, () => {
+        const activeStream = this.pending.get(id)?.stream;
+        if (activeStream?.nextSequence === sequence + 1) activeStream.awaitingAck = false;
+      });
+    }
+    const entry = this.pending.get(message.id);
+    if (!entry) return;
+    const stream = entry.stream;
+    if (!stream) {
+      this.failStreamingReply(message.id, entry, "received a chunk before reply-start");
+      return;
+    }
+    if (stream.completionScheduled || stream.awaitingAck) {
+      this.failStreamingReply(
+        message.id,
+        entry,
+        "received a chunk before acknowledging its predecessor",
+      );
+      return;
+    }
+    if (
+      !Number.isSafeInteger(message.sequence) ||
+      message.sequence !== stream.nextSequence ||
+      !stream.descriptors.has(message.stream) ||
+      !Number.isSafeInteger(message.offset) ||
+      !Object.hasOwn(message, "items")
+    ) {
+      this.failStreamingReply(message.id, entry, "received an invalid or out-of-order chunk");
+      return;
+    }
+
+    const descriptor = stream.descriptors.get(message.stream);
+    const itemCount = chunkLength(descriptor, message.items);
+    if (itemCount <= 0) {
+      this.failStreamingReply(message.id, entry, "received a chunk with invalid contents");
+      return;
+    }
+    const received = stream.received.get(message.stream);
+    if (message.offset !== received) {
+      this.failStreamingReply(message.id, entry, "received a chunk at an invalid offset");
+      return;
+    }
+    if (received + itemCount > descriptor.length) {
+      this.failStreamingReply(message.id, entry, "received more records than declared");
+      return;
+    }
+    try {
+      if (!descriptor.initialized) {
+        const initialized = initializeReplyStream(stream.result, descriptor);
+        if (!initialized.initialized) {
+          throw new Error(`git-host stream target ${descriptor.name} is missing`);
+        }
+        stream.result = initialized.result;
+        descriptor.initialized = true;
+      }
+      stream.result = appendReplyChunk(stream.result, descriptor, message.offset, message.items);
+    } catch (error) {
+      this.failStreamingReply(message.id, entry, error);
+      return;
+    }
+    stream.received.set(message.stream, received + itemCount);
+    stream.nextSequence++;
+    stream.awaitingAck = true;
+  }
+
+  scheduleChunkAck(sourceChild, id, sequence, beforeSend = null) {
+    setImmediate(() => {
+      beforeSend?.();
+      // A cancelled request still ACKs the chunk that was already in the pipe,
+      // releasing the worker's global chunk lane. A retired worker never gets
+      // an ACK intended for its replacement (or vice versa).
+      if (!sourceChild || this.child !== sourceChild || sourceChild.connected === false) return;
+      try {
+        sourceChild.send({ event: GitHostMessageEvents.CHUNK_ACK, id, sequence });
+      } catch {
+        this.handleExit(sourceChild, { kill: true });
+      }
+    });
+  }
+
+  finishStreamingReply(message) {
+    const entry = this.pending.get(message.id);
+    if (!entry) return;
+    const stream = entry.stream;
+    if (!stream || stream.awaitingAck || stream.completionScheduled) {
+      this.failStreamingReply(message.id, entry, "received reply-end at an invalid time");
+      return;
+    }
+    for (const [name, descriptor] of stream.descriptors) {
+      if (stream.received.get(name) !== descriptor.length) {
+        this.failStreamingReply(message.id, entry, `reply-end omitted records from ${name}`);
+        return;
+      }
+    }
+    stream.completionScheduled = true;
+
+    const id = message.id;
+    // Keep the final chunk's IPC turn separate from the first consumer work
+    // (notably GitRepository snapshot indexing/freezing).
+    setImmediate(() => {
+      const current = this.pending.get(id);
+      if (current !== entry || this.child !== entry.child || current.stream !== stream) return;
+      this.pending.delete(id);
+      this.detachAbort(entry);
+      const result = stream.result;
+      entry.stream = null;
+      entry.resolve(result);
+    });
+  }
+
+  failStreamingReply(id, entry, detail) {
+    if (this.pending.get(id) !== entry) return;
+    this.pending.delete(id);
+    this.detachAbort(entry);
+    entry.stream = null;
+    this.sendCancel(id, entry.child);
+    const error =
+      detail instanceof Error && detail.code
+        ? detail
+        : protocolError(detail instanceof Error ? detail.message : detail);
+    entry.reject(error);
+    // A malformed chunk may carry the wrong sequence, so an ACK cannot safely
+    // release the worker's pending send. Retire that worker instead of leaving
+    // its global chunk lane wedged for every later large response.
+    if (entry.child === this.child) this.terminate();
+  }
+
+  handleExit(sourceChild = this.child, { kill = false } = {}) {
+    if (sourceChild !== this.child) return;
     // Reject a start that never reached readiness, then fail every pending
     // request with a retriable error and drop state so the next request forks a
     // fresh worker. Background refreshes already swallow rejections; while the
@@ -223,6 +450,15 @@ class GitHost {
 
     if (this.child) {
       this.child.removeAllListeners();
+      this.child.stdout?.removeAllListeners();
+      this.child.stderr?.removeAllListeners();
+      if (kill) {
+        try {
+          this.child.kill();
+        } catch {
+          // The process may already have completed between error and cleanup.
+        }
+      }
       this.child = null;
     }
     if (!this.fatalError) this.readyPromise = null;
@@ -235,6 +471,7 @@ class GitHost {
     const abandon = isUnloading();
     for (const entry of this.pending.values()) {
       this.detachAbort(entry);
+      entry.stream = null;
       if (!abandon) entry.reject(restartError());
     }
     this.pending.clear();
@@ -285,13 +522,22 @@ class GitHost {
 
     const id = String(this.nextId++);
     return new Promise((resolve, reject) => {
-      const entry = { resolve, reject, signal, onAbort: null };
+      const entry = {
+        resolve,
+        reject,
+        signal,
+        onAbort: null,
+        child: this.child,
+        stream: null,
+      };
       if (signal) {
         entry.onAbort = () => {
-          if (!this.pending.has(id)) return;
+          if (this.pending.get(id) !== entry) return;
           this.pending.delete(id);
-          this.sendCancel(id);
+          this.detachAbort(entry);
+          entry.stream = null;
           reject(abortError());
+          this.sendCancel(id, entry.child);
         };
         signal.addEventListener("abort", entry.onAbort, { once: true });
       }
@@ -303,18 +549,31 @@ class GitHost {
         // (and any others) as retriable instead of throwing out of send.
         this.handleExit();
       } else {
-        this.child.send({ event: "git:request", id, op, payload });
+        try {
+          this.child.send({ event: GitHostMessageEvents.REQUEST, id, op, payload });
+        } catch {
+          this.handleExit(this.child, { kill: true });
+        }
       }
     });
   }
 
-  sendCancel(id) {
-    if (this.child && this.child.connected !== false) {
-      this.child.send({ event: "git:cancel", id });
+  sendCancel(id, child = this.child) {
+    if (child && child.connected !== false) {
+      try {
+        child.send({ event: GitHostMessageEvents.CANCEL, id });
+      } catch {
+        this.handleExit(child, { kill: true });
+      }
     }
   }
 
   terminate() {
+    // Requests waiting for the initial ready handshake are not in `pending`
+    // yet. A settings-driven reset must settle them before dropping the
+    // resolver; unload remains intentionally silent because its renderer is
+    // disappearing.
+    if (!isUnloading()) this.rejectReady?.(restartError());
     this.clearPending();
 
     if (this.child) {

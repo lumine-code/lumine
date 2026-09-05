@@ -1,4 +1,5 @@
 const crypto = require("crypto");
+const fs = require("fs");
 const path = require("path");
 const GitRepositoryStatusProvider = require("./git-repository-status-provider");
 const GitRepositoryRefsProvider = require("./git-repository-refs-provider");
@@ -16,6 +17,8 @@ const { computeLineDiffHunks } = require("./line-diff");
 const { assertGitRevision } = require("./git-revision");
 
 const MAX_OBJECT_BYTES = 256 * 1024 * 1024;
+const MAX_SUBMODULE_CACHE_ENTRIES = 1000;
+const EMPTY_SUBMODULE_PATHS = Object.freeze([]);
 
 function workingDirectoryFor(descriptor) {
   return descriptor.workingDirectory || descriptor.gitDirectory;
@@ -42,6 +45,7 @@ function compareStatusEntries(left, right) {
 function canonicalStatusSnapshot(snapshot) {
   return Object.freeze({
     ...snapshot,
+    submodulePaths: Object.freeze([...snapshot.submodulePaths].sort()),
     files: Object.freeze([...snapshot.files].sort(compareStatusEntries)),
   });
 }
@@ -79,6 +83,7 @@ function bareStatusSnapshot(refs, { generation, includesIgnored }) {
           behind: currentBranch.upstream.behind,
         })
       : null,
+    submodulePaths: EMPTY_SUBMODULE_PATHS,
     files: Object.freeze([]),
     counts: Object.freeze({
       total: 0,
@@ -184,6 +189,33 @@ module.exports = class SystemGitService {
     this.refsProvider = new GitRepositoryRefsProvider({ runner });
     this.diffProvider = new GitRepositoryDiffProvider({ runner });
     this.historyProvider = new GitRepositoryHistoryProvider({ runner });
+    this.submodulePathsByWorkingDirectory = new Map();
+  }
+
+  async cachedSubmodulePaths(descriptor, options = {}) {
+    if (!descriptor.workingDirectory) return EMPTY_SUBMODULE_PATHS;
+    const workingDirectory = workingDirectoryFor(descriptor);
+    const manifestPath = path.join(workingDirectory, ".gitmodules");
+    let stat;
+    try {
+      stat = await fs.promises.stat(manifestPath, { bigint: true });
+    } catch {
+      this.submodulePathsByWorkingDirectory.delete(workingDirectory);
+      return EMPTY_SUBMODULE_PATHS;
+    }
+
+    const signature = `${stat.dev}\0${stat.ino}\0${stat.size}\0${stat.mtimeNs}\0${stat.ctimeNs}`;
+    const cached = this.submodulePathsByWorkingDirectory.get(workingDirectory);
+    if (cached?.signature === signature) return cached.paths;
+
+    const paths = Object.freeze(
+      [...(await this.statusProvider.getSubmodulePaths(workingDirectory, options))].sort(),
+    );
+    if (this.submodulePathsByWorkingDirectory.size >= MAX_SUBMODULE_CACHE_ENTRIES) {
+      this.submodulePathsByWorkingDirectory.clear();
+    }
+    this.submodulePathsByWorkingDirectory.set(workingDirectory, { signature, paths });
+    return paths;
   }
 
   async snapshot(descriptor, request, { signal, ...options } = {}) {
@@ -193,7 +225,7 @@ module.exports = class SystemGitService {
     const refsRequested = request.refs !== false;
     const refsNeeded = refsRequested || (bare && statusRequested);
     const includeIgnored = request.includeIgnored === true;
-    const [statusOutput, refsOutput] = await Promise.all([
+    const [statusOutput, refsOutput, submodulePaths] = await Promise.all([
       statusRequested && !bare
         ? this.statusProvider.getStatus(workingDirectory, {
             ...options,
@@ -202,6 +234,9 @@ module.exports = class SystemGitService {
           })
         : null,
       refsNeeded ? this.refsProvider.getRefs(workingDirectory, { ...options, signal }) : null,
+      statusRequested && !bare
+        ? this.cachedSubmodulePaths(descriptor, { ...options, signal })
+        : EMPTY_SUBMODULE_PATHS,
     ]);
     const refsValue = refsNeeded
       ? canonicalRefsSnapshot(
@@ -221,6 +256,7 @@ module.exports = class SystemGitService {
           : parseStatusSnapshot(statusOutput, {
               generation: request.generations?.status ?? 1,
               includesIgnored: includeIgnored,
+              submodulePaths,
             }),
       );
       result.status = snapshotSection(value, request.knownFingerprints?.status);
@@ -315,10 +351,7 @@ module.exports = class SystemGitService {
   }
 
   submodulePaths(descriptor, { signal, ...options } = {}) {
-    return this.statusProvider.getSubmodulePaths(workingDirectoryFor(descriptor), {
-      ...options,
-      signal,
-    });
+    return this.cachedSubmodulePaths(descriptor, { ...options, signal });
   }
 
   async readObjects(descriptor, requests, { signal, ...options } = {}) {
@@ -396,11 +429,51 @@ module.exports = class SystemGitService {
 
   exec({ workingDirectory, args, options = {}, raw }, { signal } = {}) {
     return raw
-      ? this.runner.execute(args, workingDirectory, { ...options, signal })
+      ? this.runner.runRawResult(args, workingDirectory, { ...options, signal })
       : this.runner.runResult(args, workingDirectory, { ...options, signal });
+  }
+
+  async writeCommandOutput(
+    { workingDirectory, args, options = {}, destinationPath },
+    { signal } = {},
+  ) {
+    const result = await this.runner.runResult(args, workingDirectory, {
+      ...options,
+      signal,
+      encoding: "buffer",
+    });
+    signal?.throwIfAborted();
+
+    // Never expose a partially-written blob or merge result. The temporary
+    // file lives beside the destination so the final rename stays on one
+    // filesystem and is atomic. Cancellation or any write error leaves the
+    // previous destination intact.
+    const temporaryPath = path.join(
+      path.dirname(destinationPath),
+      `.lumine-git-${process.pid}-${crypto.randomUUID()}.tmp`,
+    );
+    let replaced = false;
+    try {
+      let mode;
+      try {
+        mode = (await fs.promises.stat(destinationPath)).mode;
+      } catch {
+        // A new destination uses the process's normal creation mode.
+      }
+      await fs.promises.writeFile(temporaryPath, result.stdout, {
+        signal,
+        flag: "wx",
+        ...(mode == null ? {} : { mode }),
+      });
+      signal?.throwIfAborted();
+      await fs.promises.rename(temporaryPath, destinationPath);
+      replaced = true;
+      return { exitCode: result.exitCode, stderr: result.stderr };
+    } finally {
+      if (!replaced) await fs.promises.rm(temporaryPath, { force: true }).catch(() => {});
+    }
   }
 };
 
-module.exports.assertDiffWithinLimit = assertDiffWithinLimit;
 module.exports.canonicalConfigKey = canonicalConfigKey;
 module.exports.parseBatchObjects = parseBatchObjects;

@@ -25,6 +25,10 @@ async function flush() {
   for (let i = 0; i < 5; i++) await Promise.resolve();
 }
 
+function nextImmediate() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
 describe("GitHost transport", () => {
   let host;
   let children;
@@ -93,6 +97,285 @@ describe("GitHost transport", () => {
     expect(error.stderr).toBe("bad");
   });
 
+  it("assembles chunked snapshots and applies backpressure between renderer turns", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    const result = {
+      status: { fingerprint: "status", unchanged: false, value: { files: [] } },
+      refs: {
+        fingerprint: "refs",
+        unchanged: false,
+        value: { branches: [], remoteBranches: [], tags: [], remotes: [], worktrees: [] },
+      },
+    };
+
+    current().emit("message", {
+      event: "git:reply-start",
+      id,
+      result,
+      streams: [
+        {
+          name: "status.files",
+          path: ["status", "value", "files"],
+          kind: "array",
+          length: 2,
+        },
+        {
+          name: "refs.branches",
+          path: ["refs", "value", "branches"],
+          kind: "array",
+          length: 1,
+        },
+      ],
+    });
+    current().emit("message", {
+      event: "git:reply-chunk",
+      id,
+      sequence: 0,
+      stream: "status.files",
+      offset: 0,
+      items: [{ path: "a.txt" }, { path: "b.txt" }],
+    });
+
+    expect(current().sent.filter(({ event }) => event === "git:chunk-ack")).toEqual([]);
+    await nextImmediate();
+    expect(current().sent.filter(({ event }) => event === "git:chunk-ack")).toEqual([
+      { event: "git:chunk-ack", id, sequence: 0 },
+    ]);
+
+    current().emit("message", {
+      event: "git:reply-chunk",
+      id,
+      sequence: 1,
+      stream: "refs.branches",
+      offset: 0,
+      items: [{ name: "main" }],
+    });
+    await nextImmediate();
+
+    const settled = jasmine.createSpy("settled");
+    pending.then(settled);
+    current().emit("message", { event: "git:reply-end", id });
+    await flush();
+    expect(settled).not.toHaveBeenCalled();
+    await nextImmediate();
+
+    expect(await pending).toBe(result);
+    expect(result.status.value.files).toEqual([{ path: "a.txt" }, { path: "b.txt" }]);
+    expect(result.refs.value.branches).toEqual([{ name: "main" }]);
+    expect(settled).toHaveBeenCalledWith(result);
+  });
+
+  it("drops a streamed accumulator but ACKs its in-pipe chunk after cancellation", async () => {
+    const controller = new AbortController();
+    const pending = host.request(
+      "snapshot",
+      { descriptor: { gitDirectory: "/repo/.git" } },
+      { signal: controller.signal },
+    );
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", {
+      event: "git:reply-start",
+      id,
+      result: {
+        status: { fingerprint: "status", unchanged: false, value: { files: [] } },
+      },
+      streams: [
+        {
+          name: "status.files",
+          path: ["status", "value", "files"],
+          kind: "array",
+          length: 1,
+        },
+      ],
+    });
+    current().emit("message", {
+      event: "git:reply-chunk",
+      id,
+      sequence: 0,
+      stream: "status.files",
+      offset: 0,
+      items: [{ path: "late.txt" }],
+    });
+
+    controller.abort();
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.name).toBe("AbortError");
+    expect(current().sent).toContain({ event: "git:cancel", id });
+
+    await nextImmediate();
+    expect(current().sent).toContain({ event: "git:chunk-ack", id, sequence: 0 });
+    current().emit("message", { event: "git:reply-end", id });
+    expect(host.pending.size).toBe(0);
+  });
+
+  it("does not send a delayed stream ACK to a replacement worker after termination", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
+    const retiredChild = current();
+    const { id } = retiredChild.sent[0];
+    retiredChild.emit("message", {
+      event: "git:reply-start",
+      id,
+      result: {
+        status: { fingerprint: "status", unchanged: false, value: { files: [] } },
+      },
+      streams: [
+        {
+          name: "status.files",
+          path: ["status", "value", "files"],
+          kind: "array",
+          length: 1,
+        },
+      ],
+    });
+    retiredChild.emit("message", {
+      event: "git:reply-chunk",
+      id,
+      sequence: 0,
+      stream: "status.files",
+      offset: 0,
+      items: [{ path: "retired.txt" }],
+    });
+
+    host.terminate();
+    await expectAsync(pending).toBeRejected();
+    const replacement = host.request("snapshot", {
+      descriptor: { gitDirectory: "/replacement/.git" },
+    });
+    ready();
+    await flush();
+    await nextImmediate();
+    expect(current().sent.filter(({ event }) => event === "git:chunk-ack")).toEqual([]);
+
+    const replacementRequest = current().sent.find(({ event }) => event === "git:request");
+    current().emit("message", {
+      event: "git:reply",
+      id: replacementRequest.id,
+      result: "replacement",
+    });
+    expect(await replacement).toBe("replacement");
+  });
+
+  it("rejects an incomplete streamed reply as a protocol error", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", {
+      event: "git:reply-start",
+      id,
+      result: {
+        status: { fingerprint: "status", unchanged: false, value: { files: [] } },
+      },
+      streams: [
+        {
+          name: "status.files",
+          path: ["status", "value", "files"],
+          kind: "array",
+          length: 2,
+        },
+      ],
+    });
+    current().emit("message", { event: "git:reply-end", id });
+
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_HOST_PROTOCOL");
+    expect(error.retriable).toBe(false);
+    expect(current().sent).toContain({ event: "git:cancel", id });
+  });
+
+  it("rejects a nonempty stream skeleton", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", {
+      event: "git:reply-start",
+      id,
+      result: {
+        status: {
+          fingerprint: "status",
+          unchanged: false,
+          value: { files: [{ path: "already-present.txt" }] },
+        },
+      },
+      streams: [
+        {
+          name: "status.files",
+          path: ["status", "value", "files"],
+          kind: "array",
+          length: 1,
+        },
+      ],
+    });
+
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_HOST_PROTOCOL");
+  });
+
+  it("retires the worker after a malformed stream chunk", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", {
+      event: "git:reply-start",
+      id,
+      result: {
+        status: { fingerprint: "status", unchanged: false, value: { files: [] } },
+      },
+      streams: [
+        {
+          name: "status.files",
+          path: ["status", "value", "files"],
+          kind: "array",
+          length: 1,
+        },
+      ],
+    });
+    current().emit("message", {
+      event: "git:reply-chunk",
+      id,
+      sequence: 0,
+      stream: "status.files",
+      offset: 1,
+      items: [{ path: "wrong-offset.txt" }],
+    });
+
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_HOST_PROTOCOL");
+    await nextImmediate();
+    expect(children[0].sent).toContain({ event: "git:cancel", id });
+    expect(children[0].killed).toBe(true);
+    expect(children[0].sent).not.toContain({ event: "git:chunk-ack", id, sequence: 0 });
+  });
+
   it("revives an exec GitOperationError with its command and stdout", async () => {
     const pending = host.request("exec", {
       workingDirectory: "/repo",
@@ -150,6 +433,44 @@ describe("GitHost transport", () => {
     const { id } = current().sent[0];
     current().emit("message", { event: "git:reply", id, result: "OK" });
     expect(await second).toBe("OK");
+  });
+
+  it("kills a still-live worker after an IPC error", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    ready();
+    await flush();
+    const failedChild = current();
+
+    failedChild.emit("error", new Error("IPC failed"));
+
+    await expectAsync(pending).toBeRejectedWithError(/exited/);
+    expect(failedChild.killed).toBe(true);
+    const replacement = host.request("snapshot", {
+      descriptor: { gitDirectory: "/replacement/.git" },
+    });
+    expect(children.length).toBe(2);
+    ready();
+    await flush();
+    const { id } = current().sent[0];
+    current().emit("message", { event: "git:reply", id, result: "OK" });
+    expect(await replacement).toBe("OK");
+  });
+
+  it("rejects a request when reset interrupts the ready handshake", async () => {
+    const pending = host.request("snapshot", { descriptor: { gitDirectory: "/repo/.git" } });
+    expect(children.length).toBe(1);
+
+    host.terminate();
+
+    let error;
+    try {
+      await pending;
+    } catch (caught) {
+      error = caught;
+    }
+    expect(error.code).toBe("ERR_GIT_HOST_RESTART");
+    expect(error.retriable).toBe(true);
+    expect(current().killed).toBe(true);
   });
 
   it("abandons requests instead of rejecting them while the window is unloading", async () => {
@@ -260,6 +581,7 @@ describe("GitHost transport", () => {
     expect(error.code).toBe("ERR_GIT_HOST_PROTOCOL");
     expect(error.retriable).toBe(false);
     expect(current().sent).toEqual([]);
+    expect(current().killed).toBe(true);
   });
 
   it("rejects unknown protocol operations without starting a worker", async () => {

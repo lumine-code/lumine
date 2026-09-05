@@ -12,6 +12,13 @@ const Model = require("./model");
 const GitRepositoryProvider = require("./git-repository-provider");
 const { compile: compileIgnoredNames, merge: mergeIgnoredNames } = require("./ignored-names");
 
+const MAX_REPOSITORY_PATH_CACHE = 4096;
+
+function repositoryPathKey(filePath) {
+  const resolvedPath = path.resolve(filePath);
+  return process.platform === "win32" ? resolvedPath.toLowerCase() : resolvedPath;
+}
+
 /**
  * @public
  * @status extended
@@ -51,9 +58,19 @@ module.exports = class Project extends Model {
     this.directoryProviders = [];
     this.defaultDirectoryProvider = new DefaultDirectoryProvider();
     this.repositoryPromisesByPath = new Map();
-    this.repositoryProviders = [new GitRepositoryProvider(this, config)];
+    this.repositoriesByCachedPath = new Map();
+    this.repositoryPromiseKeysByRepository = new Map();
+    this.repositoryCacheObservedRepositories = new WeakSet();
+    this.repositoryProviderGeneration = 0;
+    this.pendingRepositoryDiscoveryCount = 0;
+    this.repositoryOrphanSweepScheduled = false;
     if (!repositoryRegistry) throw new Error("Project requires a RepositoryRegistry");
     this.repositoryRegistry = repositoryRegistry;
+    this.repositoryProviders = [
+      new GitRepositoryProvider({
+        isRegistered: (repository) => this.repositoryRegistry.hasRepository(repository),
+      }),
+    ];
     this.loadPromisesByPath = {};
     this.watcherPromisesByPath = {};
     this.retiredBufferIDs = new Set();
@@ -68,6 +85,7 @@ module.exports = class Project extends Model {
       buffer.destroy();
     }
     this.repositoryRegistry.detachProject(this);
+    this.clearRepositoryPathCache({ invalidateProviders: true });
     this.destroyFileIndex();
     for (let path in this.watcherPromisesByPath) {
       this.watcherPromisesByPath[path].then(
@@ -103,6 +121,7 @@ module.exports = class Project extends Model {
       if (buffer != null) buffer.destroy();
     }
     this.buffers = [];
+    this.clearRepositoryPathCache({ invalidateProviders: true });
     // Destroying detached this project from the repository registry, so
     // re-attach before any root or buffer bookkeeping runs (attaching also
     // resets the registry's project subscriptions against the fresh emitter).
@@ -321,7 +340,7 @@ module.exports = class Project extends Model {
    * @returns {Promise} that resolves with either: * {@link GitRepository} if a repository can be created for the given directory
    */
   repositoryForDirectory(directory) {
-    return this.repositoryRegistry.resolveDirectory(directory);
+    return this.repositoryRegistry.resolveForPath(directory?.getPath?.());
   }
 
   /**
@@ -332,54 +351,195 @@ module.exports = class Project extends Model {
    * asynchronously.
    *
    * This is a convenience over {@link #repositoryForDirectory} for callers that have
-   * a path `String` rather than a `Directory`. The path is resolved to its
-   * containing `Directory` (a file path resolves to its parent directory), so
-   * callers no longer need to construct a `Directory` themselves.
+   * a path `String` rather than a `Directory`. Providers receive the path
+   * directly and perform discovery asynchronously.
    *
    *
    * * `null` if no repository can be created for the given path.
    *
    * @param {String} filePath - path of a file or directory.
+   * @param {Object} [options] - Resolution options.
+   * @param {Boolean} [options.refresh=true] - Re-run providers instead of using an exact-path discovery cache entry.
    * @returns {Promise} that resolves with either: * {@link GitRepository} if a repository can be created for the given path
    */
-  repositoryForPath(filePath) {
+  repositoryForPath(filePath, options = {}) {
     if (!filePath) return Promise.resolve(null);
-    return this.repositoryForDirectory(this.getDirectoryForProjectPath(filePath));
+    return this.repositoryRegistry.resolveForPath(filePath, options);
   }
 
-  repositoryForDirectoryFromProviders(directory) {
-    const pathForDirectory = directory.getRealPathSync();
-    let promise = this.repositoryPromisesByPath.get(pathForDirectory);
+  repositoryForPathFromProviders(filePath, { refresh = false } = {}) {
+    if (this.isDestroyed()) return Promise.resolve(null);
+    const pathKey = repositoryPathKey(filePath);
+    if (refresh) {
+      this.repositoryPromisesByPath.delete(pathKey);
+      this.repositoriesByCachedPath.delete(pathKey);
+    }
+    let promise = this.repositoryPromisesByPath.get(pathKey);
     if (!promise) {
-      const promises = this.repositoryProviders.map((provider) =>
-        provider.repositoryForDirectory(directory),
-      );
-      promise = Promise.all(promises).then((repositories) => {
-        const repo = repositories.find((repo) => repo != null) || null;
-
-        // If no repository is found, remove the entry for the directory in
-        // @repositoryPromisesByPath in case some other RepositoryProvider is
-        // registered in the future that could supply a Repository for the
-        // directory.
-        if (repo == null) this.repositoryPromisesByPath.delete(pathForDirectory);
-
-        if (repo && repo.onDidDestroy) {
-          repo.onDidDestroy(() => this.repositoryPromisesByPath.delete(pathForDirectory));
-        }
-
-        return repo;
+      if (this.repositoryPromisesByPath.size >= MAX_REPOSITORY_PATH_CACHE) {
+        this.clearRepositoryPathCache();
+      }
+      const providerGeneration = this.repositoryProviderGeneration;
+      const providers = this.repositoryProviders.slice();
+      const promises = providers.map((provider) => provider.repositoryForPath(filePath));
+      let discoveryAccepted = false;
+      this.pendingRepositoryDiscoveryCount++;
+      Promise.allSettled(promises).then((results) => {
+        queueMicrotask(() => {
+          try {
+            if (!discoveryAccepted) {
+              for (let index = 0; index < results.length; index++) {
+                if (results[index].status === "fulfilled" && results[index].value) {
+                  providers[index].abandonRepositoryForPath?.(results[index].value, filePath);
+                }
+              }
+            }
+          } finally {
+            this.pendingRepositoryDiscoveryCount--;
+            this.scheduleRepositoryOrphanSweep();
+          }
+        });
       });
-      this.repositoryPromisesByPath.set(pathForDirectory, promise);
+      promise = Promise.all(promises)
+        .then((repositories) => {
+          if (providerGeneration !== this.repositoryProviderGeneration) {
+            if (this.repositoryPromisesByPath.get(pathKey) === promise) {
+              this.repositoryPromisesByPath.delete(pathKey);
+              this.repositoriesByCachedPath.delete(pathKey);
+            }
+            return null;
+          }
+          discoveryAccepted = true;
+          const repo = repositories.find((repo) => repo != null) || null;
+
+          // If no repository is found, remove the entry for the directory in
+          // @repositoryPromisesByPath in case some other RepositoryProvider is
+          // registered in the future that could supply a Repository for the
+          // directory.
+          if (repo == null && this.repositoryPromisesByPath.get(pathKey) === promise) {
+            this.repositoryPromisesByPath.delete(pathKey);
+            this.repositoriesByCachedPath.delete(pathKey);
+          }
+
+          if (repo && this.repositoryPromisesByPath.get(pathKey) === promise) {
+            this.repositoriesByCachedPath.set(pathKey, repo);
+          }
+          if (repo?.onDidDestroy && this.repositoryPromisesByPath.get(pathKey) === promise) {
+            let keys = this.repositoryPromiseKeysByRepository.get(repo);
+            if (!keys) {
+              keys = new Map();
+              this.repositoryPromiseKeysByRepository.set(repo, keys);
+            }
+            if (!this.repositoryCacheObservedRepositories.has(repo)) {
+              this.repositoryCacheObservedRepositories.add(repo);
+              repo.onDidDestroy(() => {
+                for (const [key, cachedPromise] of this.repositoryPromiseKeysByRepository.get(
+                  repo,
+                ) || []) {
+                  if (this.repositoryPromisesByPath.get(key) === cachedPromise) {
+                    this.repositoryPromisesByPath.delete(key);
+                    this.repositoriesByCachedPath.delete(key);
+                  }
+                }
+                this.repositoryPromiseKeysByRepository.delete(repo);
+              });
+            }
+            keys.set(pathKey, promise);
+          }
+
+          return repo;
+        })
+        .catch((error) => {
+          if (this.repositoryPromisesByPath.get(pathKey) === promise) {
+            this.repositoryPromisesByPath.delete(pathKey);
+            this.repositoriesByCachedPath.delete(pathKey);
+          }
+          throw error;
+        });
+      this.repositoryPromisesByPath.set(pathKey, promise);
     }
     return promise;
   }
 
-  repositoryForDirectoryFromProvidersSync(directory) {
+  repositoryForPathFromProvidersCached(filePath) {
     for (const provider of this.repositoryProviders) {
-      const repository = provider.repositoryForDirectorySync?.(directory);
+      const repository = provider.getRepositoryForPath?.(filePath);
       if (repository) return repository;
     }
     return null;
+  }
+
+  commitRepositoryForPath(repository, filePath) {
+    for (const provider of this.repositoryProviders) {
+      provider.commitRepositoryForPath?.(repository, filePath);
+    }
+  }
+
+  abandonRepositoryForPath(repository, filePath) {
+    let abandoned = false;
+    for (const provider of this.repositoryProviders) {
+      abandoned = provider.abandonRepositoryForPath?.(repository, filePath) === true || abandoned;
+    }
+    if (!abandoned) return;
+    const pathKey = repositoryPathKey(filePath);
+    this.repositoryPromisesByPath.delete(pathKey);
+    this.repositoriesByCachedPath.delete(pathKey);
+    for (const keys of this.repositoryPromiseKeysByRepository.values()) keys.delete(pathKey);
+  }
+
+  clearRepositoryPathCache({ invalidateProviders = false } = {}) {
+    if (invalidateProviders) this.repositoryProviderGeneration++;
+    this.repositoryPromisesByPath.clear();
+    this.repositoriesByCachedPath.clear();
+    for (const keys of this.repositoryPromiseKeysByRepository.values()) keys.clear();
+    this.repositoryPromiseKeysByRepository.clear();
+  }
+
+  invalidateRepositoryPathCache(prefixes) {
+    const normalizedPrefixes = (prefixes || []).filter(Boolean).map((prefix) => {
+      const resolved = path.resolve(prefix);
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    });
+    if (normalizedPrefixes.length === 0) return;
+
+    const invalidated = [];
+    for (const cachePath of this.repositoryPromisesByPath.keys()) {
+      const normalizedPath = process.platform === "win32" ? cachePath.toLowerCase() : cachePath;
+      if (
+        normalizedPrefixes.some(
+          (prefix) =>
+            normalizedPath === prefix ||
+            normalizedPath.startsWith(prefix.endsWith(path.sep) ? prefix : `${prefix}${path.sep}`),
+        )
+      ) {
+        const cachedRepository = this.repositoriesByCachedPath.get(cachePath);
+        if (
+          cachedRepository &&
+          this.repositoryRegistry.getForPath(cachePath) === cachedRepository
+        ) {
+          continue;
+        }
+        this.repositoryPromisesByPath.delete(cachePath);
+        this.repositoriesByCachedPath.delete(cachePath);
+        invalidated.push(cachePath);
+      }
+    }
+    if (invalidated.length === 0) return;
+    for (const keys of this.repositoryPromiseKeysByRepository.values()) {
+      for (const cachePath of invalidated) keys.delete(cachePath);
+    }
+  }
+
+  scheduleRepositoryOrphanSweep() {
+    if (this.repositoryOrphanSweepScheduled || this.pendingRepositoryDiscoveryCount > 0) return;
+    this.repositoryOrphanSweepScheduled = true;
+    setImmediate(() => {
+      this.repositoryOrphanSweepScheduled = false;
+      if (this.pendingRepositoryDiscoveryCount > 0) return;
+      for (const provider of this.repositoryProviders) {
+        provider.sweepUnregisteredRepositories?.();
+      }
+    });
   }
 
   /**
@@ -1069,11 +1229,14 @@ module.exports = class Project extends Model {
     });
 
     return serviceHub.consume("project.repository-provider", "^1.0.0", (provider) => {
+      if (typeof provider?.repositoryForPath !== "function") {
+        throw new TypeError("Repository providers must implement repositoryForPath(path)");
+      }
       this.repositoryProviders.unshift(provider);
-      this.repositoryPromisesByPath.clear();
+      this.clearRepositoryPathCache({ invalidateProviders: true });
       this.repositoryRegistry.rescan();
       return new Disposable(() => {
-        this.repositoryPromisesByPath.clear();
+        this.clearRepositoryPathCache({ invalidateProviders: true });
         return this.repositoryProviders.splice(this.repositoryProviders.indexOf(provider), 1);
       });
     });

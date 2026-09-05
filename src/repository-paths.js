@@ -67,6 +67,11 @@ function normalizePath(filePath, useRealpath = true) {
   return filePath.replace(/\\/g, "/");
 }
 
+function normalizeLexicalPath(filePath) {
+  const resolved = path.resolve(filePath);
+  return IS_WINDOWS ? resolved.replace(/\\/g, "/") : resolved;
+}
+
 // Resolve a (possibly non-existent) path to its real path by walking up to the
 // first existing ancestor and reattaching the remainder.
 function realpathRecursive(unrealPath) {
@@ -137,22 +142,37 @@ function pathsAreEqual(pathA, pathB, caseInsensitive = false, useRealpath = true
 
 // Make `filePath` relative to the repository working directory. Return "" for
 // the working directory itself and pass paths outside it through unchanged.
-function relativize(filePath, workingDirectory, openedWorkingDirectory, caseInsensitive) {
+function relativize(filePath, workingDirectories, caseInsensitive) {
   if (!filePath) return filePath;
-  filePath = realpathRecursive(filePath);
+  if (!path.isAbsolute(filePath)) return filePath;
+  filePath = normalizeLexicalPath(filePath);
 
-  if (!IS_WINDOWS && filePath[0] !== "/") return filePath;
-
-  for (const directory of [workingDirectory, openedWorkingDirectory]) {
+  let bestMatch = null;
+  for (let directory of workingDirectories) {
     if (!directory) continue;
-    if (pathStartsWith(filePath, directory, caseInsensitive, false)) {
-      return filePath.substring(directory.length + 1);
-    } else if (pathsAreEqual(filePath, directory, caseInsensitive, false)) {
-      return "";
+    directory = normalizeLexicalPath(directory);
+    let comparablePath = filePath;
+    let comparableDirectory = directory;
+    if (IS_WINDOWS || caseInsensitive) {
+      comparablePath = comparablePath.toLowerCase();
+      comparableDirectory = comparableDirectory.toLowerCase();
+    }
+    const directoryPrefix = directory.endsWith("/") ? directory : `${directory}/`;
+    const comparablePrefix = comparableDirectory.endsWith("/")
+      ? comparableDirectory
+      : `${comparableDirectory}/`;
+    const relativePath =
+      comparablePath === comparableDirectory
+        ? ""
+        : comparablePath.startsWith(comparablePrefix)
+          ? filePath.slice(directoryPrefix.length)
+          : null;
+    if (relativePath != null && (!bestMatch || directory.length > bestMatch.directoryLength)) {
+      bestMatch = { directoryLength: directory.length, relativePath };
     }
   }
 
-  return filePath;
+  return bestMatch?.relativePath ?? filePath;
 }
 
 module.exports = {

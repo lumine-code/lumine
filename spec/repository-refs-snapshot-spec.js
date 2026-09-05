@@ -158,12 +158,51 @@ describe("repository refs snapshot", () => {
         jasmine.objectContaining({
           ref: "refs/remotes/fork/feature",
           name: "fork/feature",
-          ahead: 3,
-          behind: 0,
-          gone: false,
         }),
       );
+      expect(branches[1].push.ahead).toBeUndefined();
       expect(branches[3].push).toBeNull();
+    });
+
+    it("derives auxiliary ref names with Git lstrip semantics", () => {
+      const forEachRef = refRecord({
+        ref: "refs/heads/main",
+        shortName: "main",
+        headMarker: "*",
+      });
+      const upstreamRefs = [
+        "refs/heads/main",
+        "1111111111111111111111111111111111111111",
+        "refs/custom",
+        "",
+      ].join("\0");
+      const pushRefs = [
+        "refs/heads/main",
+        "1111111111111111111111111111111111111111",
+        "refs/remotes/origin/main",
+      ].join("\0");
+
+      const { branches } = parseRefsSnapshot(rawBundle({ forEachRef, upstreamRefs, pushRefs }));
+
+      expect(branches[0].upstream.name).toBe("");
+      expect(branches[0].push.name).toBe("origin/main");
+
+      const staleUpstreamRefs = upstreamRefs.replace(
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222",
+      );
+      const stale = parseRefsSnapshot(
+        rawBundle({ forEachRef, upstreamRefs: staleUpstreamRefs, pushRefs }),
+      );
+      expect(stale.branches[0].upstream).toBeNull();
+      const stalePushRefs = pushRefs.replace(
+        "1111111111111111111111111111111111111111",
+        "2222222222222222222222222222222222222222",
+      );
+      const stalePush = parseRefsSnapshot(
+        rawBundle({ forEachRef, upstreamRefs, pushRefs: stalePushRefs }),
+      );
+      expect(stalePush.branches[0].push).toBeNull();
     });
 
     it("distinguishes annotated tags from lightweight tags", () => {
@@ -172,27 +211,53 @@ describe("repository refs snapshot", () => {
           ref: "refs/tags/v1",
           shortName: "v1",
           oid: "2222222222222222222222222222222222222222",
-          objectType: "tag",
-          peeledOid: "3333333333333333333333333333333333333333",
-          peeledParents: "1111111111111111111111111111111111111111",
-          authorName: "Release Bot",
-          peeledAuthorName: "Commit Author",
-          committerDate: "1700000000",
-          peeledCommitterDate: "1710000000",
-          subject: "Annotated tag message",
-          peeledSubject: "Release commit",
         }),
         refRecord({
           ref: "refs/tags/lightweight",
           shortName: "lightweight",
           oid: "4444444444444444444444444444444444444444",
-          authorName: "Commit Author",
-          committerDate: "1720000000",
-          subject: "Lightweight release commit",
         }),
       ].join("\n");
+      const tagObjects = [
+        [
+          "2222222222222222222222222222222222222222",
+          "tag",
+          "raw:2222222222222222222222222222222222222222",
+        ].join("\t"),
+        [
+          "3333333333333333333333333333333333333333",
+          "commit",
+          "peeled:2222222222222222222222222222222222222222",
+        ].join("\t"),
+        [
+          "4444444444444444444444444444444444444444",
+          "commit",
+          "raw:4444444444444444444444444444444444444444",
+        ].join("\t"),
+        [
+          "4444444444444444444444444444444444444444",
+          "commit",
+          "peeled:4444444444444444444444444444444444444444",
+        ].join("\t"),
+      ].join("\n");
+      const commitMetadata = [
+        [
+          "3333333333333333333333333333333333333333",
+          "1111111111111111111111111111111111111111",
+          "Commit Author",
+          "1710000000",
+          "Release commit",
+        ].join("\0"),
+        [
+          "4444444444444444444444444444444444444444",
+          "",
+          "Commit Author",
+          "1720000000",
+          "Lightweight release commit",
+        ].join("\0"),
+      ].join("\n");
 
-      const { tags } = parseRefsSnapshot(rawBundle({ forEachRef }));
+      const { tags } = parseRefsSnapshot(rawBundle({ forEachRef, tagObjects, commitMetadata }));
 
       expect(tags[0].annotated).toBe(true);
       expect(tags[0].targetOid).toBe("3333333333333333333333333333333333333333");
@@ -285,6 +350,180 @@ describe("repository refs snapshot", () => {
   });
 
   describe("GitRepositoryRefsProvider", () => {
+    it("keeps branch routing atoms out of the all-ref metadata scan", async () => {
+      const calls = [];
+      const refsProvider = new GitRepositoryRefsProvider({
+        execute: async (args) => {
+          calls.push(args);
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      });
+
+      await refsProvider.getRefs("repository");
+
+      const forEachRefArgs = calls.find((args) => args.includes("for-each-ref"));
+      const format = forEachRefArgs.find((argument) => argument.startsWith("--format="));
+      expect(format).toContain("%(refname)");
+      expect(format).not.toContain("%(upstream)");
+      expect(format).not.toContain("%(push)");
+      expect(format).not.toContain(":short)");
+      const refCalls = calls.filter((args) => args.includes("for-each-ref"));
+      expect(refCalls.length).toBe(1);
+      expect(format).not.toContain("%(objecttype)");
+      expect(format).not.toContain("%(parent)");
+    });
+
+    it("batches commit metadata and tag peeling by unique object id", async () => {
+      const oid = "1111111111111111111111111111111111111111";
+      const baseOutput = [
+        refRecord({ ref: "refs/heads/main", oid }),
+        refRecord({ ref: "refs/tags/v1", oid }),
+      ].join("\n");
+      const calls = [];
+      const refsProvider = new GitRepositoryRefsProvider({
+        execute: async (args, _workingDirectory, options) => {
+          calls.push({ args, stdin: options.stdin });
+          const format = args.find((argument) => argument.startsWith("--format=")) || "";
+          const isBaseScan =
+            args.includes("for-each-ref") &&
+            format.includes("%(HEAD)") &&
+            args.includes("refs/remotes");
+          return { exitCode: 0, stdout: isBaseScan ? baseOutput : "", stderr: "" };
+        },
+      });
+
+      await refsProvider.getRefs("repository");
+
+      const logCall = calls.find(({ args }) => args.includes("log"));
+      expect(logCall.stdin).toBe(`${oid}\n`);
+      expect(logCall.args).toContain("--ignore-missing");
+      expect(logCall.args).toContain("--no-show-signature");
+      expect(logCall.args).toContain("--no-decorate");
+      expect(logCall.args).toContain("--no-use-mailmap");
+      expect(logCall.args).toContain("--encoding=UTF-8");
+      const catFileCall = calls.find(({ args }) => args.includes("cat-file"));
+      expect(catFileCall.stdin).toBe(`${oid} raw:${oid}\n${oid}^{} peeled:${oid}\n`);
+    });
+
+    it("queries configured upstreams and possible push targets separately", async () => {
+      const calls = [];
+      const refsProvider = new GitRepositoryRefsProvider({
+        execute: async (args, _workingDirectory, options) => {
+          calls.push({ args, stdin: options.stdin });
+          const command = args.find((argument) =>
+            ["config", "remote", "for-each-ref"].includes(argument),
+          );
+          if (command === "config") {
+            return {
+              exitCode: 0,
+              stdout:
+                "branch.topic.with.dots.remote\0branch.topic.with.dots.merge\0" +
+                "remote.origin.url\0",
+              stderr: "",
+            };
+          }
+          if (command === "remote") {
+            return {
+              exitCode: 0,
+              stdout: "origin\thttps://example.test/repo.git (push)\n",
+              stderr: "",
+            };
+          }
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      });
+
+      await refsProvider.getRefs("repository");
+
+      const refCalls = calls.filter(({ args }) => args.includes("for-each-ref"));
+      expect(refCalls.length).toBe(3);
+      const upstreamCall = refCalls.find(({ args }) =>
+        args.some(
+          (argument) =>
+            argument.startsWith("--format=") && argument.includes("%(upstream:track,nobracket)"),
+        ),
+      );
+      expect(upstreamCall.stdin).toBeUndefined();
+      expect(upstreamCall.args).toContain("refs/heads/topic.with.dots");
+      expect(upstreamCall.args).not.toContain("--stdin");
+      expect(upstreamCall.args.join(" ")).toContain("%(upstream:track,nobracket)");
+      const pushCall = refCalls.find(({ args }) =>
+        args.some((argument) => argument.startsWith("--format=") && argument.includes("%(push)")),
+      );
+      expect(pushCall.args.join(" ")).toContain("%(push)");
+      expect(pushCall.args.join(" ")).not.toContain("%(push:track");
+    });
+
+    it("skips all-branch push resolution when push.default is nothing", async () => {
+      const calls = [];
+      const refsProvider = new GitRepositoryRefsProvider({
+        execute: async (args) => {
+          calls.push(args);
+          if (args.includes("config")) {
+            return {
+              exitCode: 0,
+              stdout: "push.default\nnothing\0remote.origin.url\nhttps://example.test/repo.git\0",
+              stderr: "",
+            };
+          }
+          if (args.includes("remote")) {
+            return {
+              exitCode: 0,
+              stdout: "origin\thttps://example.test/repo.git (push)\n",
+              stderr: "",
+            };
+          }
+          return { exitCode: 0, stdout: "", stderr: "" };
+        },
+      });
+
+      await refsProvider.getRefs("repository");
+
+      expect(
+        calls.some(
+          (args) =>
+            args.includes("for-each-ref") &&
+            args.some(
+              (argument) => argument.startsWith("--format=") && argument.includes("%(push)"),
+            ),
+        ),
+      ).toBe(false);
+    });
+
+    it("falls back to one heads scan before configured upstream arguments grow too large", async () => {
+      const branchNames = Array.from(
+        { length: 400 },
+        (_, index) => `branch-${index}-${"x".repeat(32)}`,
+      );
+      const configuration = branchNames
+        .flatMap((branch) => [`branch.${branch}.remote`, `branch.${branch}.merge`])
+        .join("\0");
+      const calls = [];
+      const refsProvider = new GitRepositoryRefsProvider({
+        execute: async (args) => {
+          calls.push(args);
+          return {
+            exitCode: 0,
+            stdout: args.includes("config") ? `${configuration}\0` : "",
+            stderr: "",
+          };
+        },
+      });
+
+      await refsProvider.getRefs("repository");
+
+      const upstreamCall = calls.find(
+        (args) =>
+          args.includes("for-each-ref") &&
+          args.some(
+            (argument) =>
+              argument.startsWith("--format=") && argument.includes("%(upstream:track,nobracket)"),
+          ),
+      );
+      expect(upstreamCall.filter((argument) => argument === "refs/heads")).toEqual(["refs/heads"]);
+      expect(upstreamCall).not.toContain(`refs/heads/${branchNames[0]}`);
+    });
+
     it("reads refs, remotes, worktrees, and head state from a real repository", async () => {
       const operationProvider = new GitRepositoryOperationProvider();
       const workingDirectory = temp.mkdirSync("refs-provider-repo");
@@ -296,11 +535,31 @@ describe("repository refs snapshot", () => {
       await operations.setConfig("user.email", "specs@lumine.invalid");
       fs.writeFileSync(path.join(workingDirectory, "file.txt"), "content\n");
       await operations.stageFiles(["file.txt"]);
-      await operations.commit("Initial commit");
+      await operations.commit("Initial café");
+      await operations.setConfig("i18n.logOutputEncoding", "ISO-8859-1");
+      await operations.setConfig("log.showSignature", "true");
+      const blobOid = (
+        await operationProvider.run(["rev-parse", "HEAD:file.txt"], workingDirectory)
+      ).trim();
       await operationProvider.run(["branch", "feature"], workingDirectory);
       await operationProvider.run(["tag", "-a", "v1", "-m", "release"], workingDirectory);
+      await operationProvider.run(
+        ["tag", "-a", "blob-v1", blobOid, "-m", "blob release"],
+        workingDirectory,
+      );
       await operationProvider.run(["tag", "lightweight"], workingDirectory);
+      await operationProvider.run(["tag", "feature"], workingDirectory);
       await operations.addRemote("origin", "https://example.com/repo.git");
+      await operationProvider.run(
+        ["update-ref", "refs/remotes/origin/main", "HEAD"],
+        workingDirectory,
+      );
+      await operations.setConfig("branch.main.remote", "origin");
+      await operations.setConfig("branch.main.merge", "refs/heads/main");
+      await operations.setConfig("branch.feature.remote", ".");
+      await operations.setConfig("branch.feature.merge", "refs/heads/main");
+      await operations.setConfig("branch.feature.pushRemote", "origin");
+      await operations.setConfig("push.default", "current");
       await operationProvider.run(["worktree", "add", worktreePath, "feature"], workingDirectory);
 
       const refsProvider = new GitRepositoryRefsProvider();
@@ -313,7 +572,44 @@ describe("repository refs snapshot", () => {
 
       const branchNames = snapshot.branches.map((branch) => branch.name).sort();
       expect(branchNames).toEqual(["feature", "main"]);
-      expect(snapshot.branches.find((branch) => branch.name === "main").isHead).toBe(true);
+      const mainBranch = snapshot.branches.find((branch) => branch.ref === "refs/heads/main");
+      const featureBranch = snapshot.branches.find((branch) => branch.ref === "refs/heads/feature");
+      expect(mainBranch.isHead).toBe(true);
+      expect(mainBranch.upstream).toEqual(
+        jasmine.objectContaining({
+          ref: "refs/remotes/origin/main",
+          name: "origin/main",
+          ahead: 0,
+          behind: 0,
+          gone: false,
+        }),
+      );
+      expect(mainBranch.push).toEqual(
+        jasmine.objectContaining({ ref: "refs/remotes/origin/main", name: "origin/main" }),
+      );
+      expect(featureBranch.upstream).toEqual(
+        jasmine.objectContaining({
+          ref: "refs/heads/main",
+          name: "main",
+          ahead: 0,
+          behind: 0,
+          gone: false,
+        }),
+      );
+      expect(featureBranch.push).toEqual(
+        jasmine.objectContaining({
+          ref: "refs/remotes/origin/feature",
+          name: "origin/feature",
+        }),
+      );
+      expect(featureBranch.push.gone).toBeUndefined();
+
+      // The full ref is the stable identity. A branch and tag with the same
+      // display name remain distinct without Git's quadratic ambiguity scan.
+      const featureTag = snapshot.tags.find((tag) => tag.ref === "refs/tags/feature");
+      expect(featureBranch.name).toBe("feature");
+      expect(featureTag.name).toBe("feature");
+      expect(featureBranch.ref).not.toBe(featureTag.ref);
 
       const annotated = snapshot.tags.find((tag) => tag.name === "v1");
       expect(annotated.annotated).toBe(true);
@@ -321,15 +617,18 @@ describe("repository refs snapshot", () => {
       expect(annotated.oid).not.toBe(annotated.targetOid);
       expect(annotated.lastCommit.oid).toBe(snapshot.head.oid);
       expect(annotated.lastCommit.authorName).toBe("Lumine Specs");
-      expect(annotated.lastCommit.subject).toBe("Initial commit");
+      expect(annotated.lastCommit.subject).toBe("Initial café");
       expect(annotated.lastCommit.committerDate instanceof Date).toBe(true);
       const lightweight = snapshot.tags.find((tag) => tag.name === "lightweight");
       expect(lightweight.annotated).toBe(false);
       expect(lightweight.targetOid).toBe(snapshot.head.oid);
       expect(lightweight.lastCommit.oid).toBe(snapshot.head.oid);
+      const blobTag = snapshot.tags.find((tag) => tag.name === "blob-v1");
+      expect(blobTag.annotated).toBe(true);
+      expect(blobTag.targetOid).toBe(blobOid);
+      expect(blobTag.lastCommit).toBeNull();
 
-      const main = snapshot.branches.find((branch) => branch.name === "main");
-      expect(main.lastCommit.subject).toBe("Initial commit");
+      expect(mainBranch.lastCommit.subject).toBe("Initial café");
 
       expect(snapshot.remotes).toEqual([
         {

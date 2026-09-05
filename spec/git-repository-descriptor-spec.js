@@ -40,6 +40,18 @@ describe("git repository descriptor", () => {
     expect(asynchronous.caseInsensitiveFs).toBe(synchronous.caseInsensitiveFs);
   });
 
+  it("does not fall back to synchronous realpath calls during asynchronous discovery", async () => {
+    const workingDir = copyFixture("working-dir");
+    const realpathSync = spyOn(fs.realpathSync, "native").and.callThrough();
+
+    const descriptor = await discoverRepositoryDescriptorAsync(
+      path.join(workingDir, "missing", "file.txt"),
+    );
+
+    expect(descriptor).not.toBeNull();
+    expect(realpathSync).not.toHaveBeenCalled();
+  });
+
   it("discovers the repository from a nested path", () => {
     const workingDir = copyFixture("working-dir");
     const descriptor = discoverRepositoryDescriptor(path.join(workingDir, "a.txt"));
@@ -73,6 +85,11 @@ describe("git repository descriptor", () => {
 
     expect(path.resolve(synchronous.openedWorkingDirectory)).toBe(path.resolve(alias));
     expect(path.resolve(asynchronous.openedWorkingDirectory)).toBe(path.resolve(alias));
+    expect(
+      asynchronous
+        .getGitDirectoryAliases()
+        .some((gitDirectory) => path.resolve(gitDirectory) === path.resolve(alias, ".git")),
+    ).toBe(true);
   });
 
   it("walks up into a bare-style git directory", () => {
@@ -82,44 +99,6 @@ describe("git repository descriptor", () => {
     // master.git declares core.bare = false, so its working directory is the
     // directory that contains it.
     expect(real(descriptor.getWorkingDirectory())).toBe(real(fixturePath()));
-  });
-
-  it("reads submodule paths from .gitmodules", () => {
-    const repoDir = copyFixture("repo-with-submodules");
-    const descriptor = discoverRepositoryDescriptor(repoDir);
-
-    expect([...descriptor.getSubmodulePaths()].sort()).toEqual(["You-Dont-Need-jQuery", "jstips"]);
-    expect(descriptor.isSubmodule("jstips")).toBe(true);
-    expect(descriptor.isSubmodule("You-Dont-Need-jQuery")).toBe(true);
-    expect(descriptor.isSubmodule("README")).toBe(false);
-  });
-
-  it("refreshes cached submodule paths when .gitmodules is added, changed, or removed", () => {
-    const repoDir = copyFixture("working-dir");
-    const descriptor = discoverRepositoryDescriptor(repoDir);
-    const manifestPath = path.join(repoDir, ".gitmodules");
-
-    // Prime the missing-file cache before simulating a checkout to a branch
-    // that declares a submodule.
-    expect(descriptor.getSubmodulePaths()).toEqual([]);
-    fs.writeFileSync(
-      manifestPath,
-      '[submodule "first"]\n\tpath = vendor/first\n\turl = ../first.git\n',
-    );
-    expect(descriptor.getSubmodulePaths()).toEqual(["vendor/first"]);
-    expect(descriptor.isSubmodule("vendor/first")).toBe(true);
-
-    fs.writeFileSync(
-      manifestPath,
-      '[submodule "replacement-with-a-longer-name"]\n\tpath = dependencies/replacement\n\turl = ../replacement.git\n',
-    );
-    expect(descriptor.getSubmodulePaths()).toEqual(["dependencies/replacement"]);
-    expect(descriptor.isSubmodule("vendor/first")).toBe(false);
-    expect(descriptor.isSubmodule("dependencies/replacement")).toBe(true);
-
-    fs.removeSync(manifestPath);
-    expect(descriptor.getSubmodulePaths()).toEqual([]);
-    expect(descriptor.isSubmodule("dependencies/replacement")).toBe(false);
   });
 
   it("returns null outside a repository", () => {

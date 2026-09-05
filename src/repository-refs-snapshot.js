@@ -10,7 +10,6 @@ const EMPTY_REFS_SNAPSHOT = Object.freeze({
   worktrees: Object.freeze([]),
 });
 
-const LEGACY_FOR_EACH_REF_FIELD_COUNT = 13;
 const FOR_EACH_REF_FIELD_COUNT = 21;
 
 function parseLastCommit({
@@ -53,18 +52,113 @@ function parseUpstreamTrack(track) {
   };
 }
 
-function parseForEachRef(output) {
+function shortRefName(ref) {
+  const components = String(ref).split("/");
+  return components.slice(2).join("/");
+}
+
+function parseUpstreamRefs(output) {
+  const upstreams = new Map();
+  for (const record of String(output).split("\n")) {
+    if (!record) continue;
+    const fields = record.split("\0");
+    if (fields.length !== 4) throw new Error(`Invalid Git upstream record: ${record}`);
+    const [ref, oid, upstreamRef, track] = fields;
+    if (!upstreamRef) continue;
+    upstreams.set(
+      ref,
+      Object.freeze({
+        oid,
+        value: Object.freeze({
+          ref: upstreamRef,
+          name: shortRefName(upstreamRef),
+          ...parseUpstreamTrack(track),
+        }),
+      }),
+    );
+  }
+  return upstreams;
+}
+
+function parsePushRefs(output) {
+  const pushes = new Map();
+  for (const record of String(output).split("\n")) {
+    if (!record) continue;
+    const fields = record.split("\0");
+    if (fields.length !== 3) throw new Error(`Invalid Git push record: ${record}`);
+    const [ref, oid, pushRef] = fields;
+    if (!pushRef) continue;
+    pushes.set(
+      ref,
+      Object.freeze({
+        oid,
+        value: Object.freeze({ ref: pushRef, name: shortRefName(pushRef) }),
+      }),
+    );
+  }
+  return pushes;
+}
+
+function parseTagObjects(output) {
+  const tags = new Map();
+  for (const record of String(output).split("\n")) {
+    if (!record) continue;
+    const fields = record.split("\t");
+    if (fields.length !== 3) throw new Error(`Invalid Git tag object record: ${record}`);
+    const [resolvedOid, objectType, label] = fields;
+    const separator = label.indexOf(":");
+    const kind = label.slice(0, separator);
+    const inputOid = label.slice(separator + 1);
+    if (separator === -1 || (kind !== "raw" && kind !== "peeled") || !inputOid) {
+      throw new Error(`Invalid Git tag object label: ${label}`);
+    }
+    let detail = tags.get(inputOid);
+    if (!detail) tags.set(inputOid, (detail = {}));
+    if (kind === "raw") detail.objectType = objectType;
+    else detail.peeledOid = resolvedOid;
+  }
+  return tags;
+}
+
+function parseCommitMetadata(output) {
+  const commits = new Map();
+  for (const record of String(output).split("\n")) {
+    if (!record) continue;
+    const fields = record.split("\0");
+    if (fields.length !== 5) throw new Error(`Invalid Git commit metadata record: ${record}`);
+    const [oid, parents, authorName, committerDate, subject] = fields;
+    const date = new Date(Number(committerDate) * 1000);
+    if (!oid || Number.isNaN(date.getTime())) continue;
+    commits.set(
+      oid,
+      Object.freeze({
+        oid,
+        parents: Object.freeze(parents ? parents.split(" ") : []),
+        authorName: authorName || null,
+        committerDate: date,
+        subject: subject || "",
+      }),
+    );
+  }
+  return commits;
+}
+
+function parseForEachRef(
+  output,
+  { tagObjects = "", commitMetadata = "", upstreamRefs = "", pushRefs = "" } = {},
+) {
   const branches = [];
   const remoteBranches = [];
   const tags = [];
+  const detailsByTagObject = parseTagObjects(tagObjects);
+  const commitsByOid = parseCommitMetadata(commitMetadata);
+  const upstreams = parseUpstreamRefs(upstreamRefs);
+  const pushes = parsePushRefs(pushRefs);
 
   for (const record of String(output).split("\n")) {
     if (!record) continue;
     const fields = record.split("\0");
-    if (
-      fields.length !== FOR_EACH_REF_FIELD_COUNT &&
-      fields.length !== LEGACY_FOR_EACH_REF_FIELD_COUNT
-    ) {
+    if (fields.length !== FOR_EACH_REF_FIELD_COUNT) {
       throw new Error(`Invalid Git for-each-ref record: ${record}`);
     }
     const [
@@ -78,7 +172,7 @@ function parseForEachRef(output) {
       upstreamTrack,
       pushRef,
       pushShort,
-      pushTrack,
+      ,
       headMarker,
       symref,
       parents = "",
@@ -90,47 +184,59 @@ function parseForEachRef(output) {
       subject = "",
       peeledSubject = "",
     ] = fields;
-    const lastCommit = parseLastCommit({
-      oid,
-      peeledOid,
-      parents,
-      peeledParents,
-      authorName,
-      peeledAuthorName,
-      committerDate,
-      peeledCommitterDate,
-      subject,
-      peeledSubject,
-    });
+    const tagDetail = detailsByTagObject.get(oid);
+    const resolvedObjectType = tagDetail?.objectType || objectType;
+    const resolvedPeeledOid = tagDetail?.peeledOid || peeledOid;
+    const lastCommit =
+      commitsByOid.get(resolvedPeeledOid || oid) ||
+      parseLastCommit({
+        oid,
+        peeledOid: resolvedPeeledOid,
+        parents,
+        peeledParents,
+        authorName,
+        peeledAuthorName,
+        committerDate,
+        peeledCommitterDate,
+        subject,
+        peeledSubject,
+      });
 
     if (ref.startsWith("refs/heads/")) {
+      const auxiliaryUpstream = upstreams.get(ref);
+      const upstream =
+        (auxiliaryUpstream?.oid === oid ? auxiliaryUpstream.value : null) ||
+        (upstreamRef
+          ? Object.freeze({
+              ref: upstreamRef,
+              name: upstreamShort || shortRefName(upstreamRef),
+              ...parseUpstreamTrack(upstreamTrack),
+            })
+          : null);
+      const auxiliaryPush = pushes.get(ref);
+      const push =
+        (auxiliaryPush?.oid === oid ? auxiliaryPush.value : null) ||
+        (pushRef
+          ? Object.freeze({
+              ref: pushRef,
+              name: pushShort || shortRefName(pushRef),
+            })
+          : null);
       branches.push(
         Object.freeze({
-          name: shortName,
+          name: shortName || shortRefName(ref),
           ref,
           oid,
           isHead: headMarker === "*",
-          upstream: upstreamRef
-            ? Object.freeze({
-                ref: upstreamRef,
-                name: upstreamShort,
-                ...parseUpstreamTrack(upstreamTrack),
-              })
-            : null,
-          push: pushRef
-            ? Object.freeze({
-                ref: pushRef,
-                name: pushShort,
-                ...parseUpstreamTrack(pushTrack),
-              })
-            : null,
+          upstream,
+          push,
           lastCommit,
         }),
       );
     } else if (ref.startsWith("refs/remotes/")) {
       remoteBranches.push(
         Object.freeze({
-          name: shortName,
+          name: shortName || shortRefName(ref),
           ref,
           oid,
           remoteName: ref.split("/")[2],
@@ -141,11 +247,11 @@ function parseForEachRef(output) {
     } else if (ref.startsWith("refs/tags/")) {
       tags.push(
         Object.freeze({
-          name: shortName,
+          name: shortName || shortRefName(ref),
           ref,
           oid,
-          targetOid: peeledOid || oid,
-          annotated: objectType === "tag",
+          targetOid: resolvedPeeledOid || oid,
+          annotated: resolvedObjectType === "tag",
           lastCommit,
         }),
       );
@@ -230,10 +336,25 @@ function parseHead(symbolicHead, headOid) {
 }
 
 function parseRefsSnapshot(
-  { forEachRef, remotes, worktrees, symbolicHead, headOid },
+  {
+    forEachRef,
+    tagObjects,
+    commitMetadata,
+    upstreamRefs,
+    pushRefs,
+    remotes,
+    worktrees,
+    symbolicHead,
+    headOid,
+  },
   { generation = 1 } = {},
 ) {
-  const refs = parseForEachRef(forEachRef);
+  const refs = parseForEachRef(forEachRef, {
+    tagObjects,
+    commitMetadata,
+    upstreamRefs,
+    pushRefs,
+  });
   return Object.freeze({
     schemaVersion: 1,
     generation,

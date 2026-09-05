@@ -1,14 +1,11 @@
 const path = require("path");
-const fs = require("@lumine-code/fs-plus");
-const { Emitter, Disposable, CompositeDisposable } = require("@lumine-code/event-kit");
-const { discoverRepositoryDescriptor } = require("./git-repository-descriptor");
+const { Emitter, Disposable } = require("@lumine-code/event-kit");
+const { discoverRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 const GitHostClient = require("./git-host-client");
 const { EMPTY_STATUS_SNAPSHOT } = require("./repository-status-snapshot");
 const { EMPTY_REFS_SNAPSHOT } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
 const { assertGitRevision } = require("./git-revision");
-
-let nextId = 0;
 
 function deepFreeze(value) {
   if (
@@ -28,8 +25,75 @@ function statusPathKey(filePath) {
   return process.platform === "win32" ? normalized.toLowerCase() : normalized;
 }
 
+function snapshotAbortError() {
+  const error = new Error("The Git snapshot refresh was aborted");
+  error.name = "AbortError";
+  error.code = "ABORT_ERR";
+  return error;
+}
+
+function yieldToRenderer() {
+  return new Promise((resolve) => setImmediate(resolve));
+}
+
+// Leave enough of a 60 Hz frame for input, layout, and paint even when a Git
+// snapshot contains tens of thousands of paths or refs. The checkpoint returns
+// null on the hot path so callers only create/await a Promise when the budget is
+// actually exhausted.
+const SNAPSHOT_RENDERER_SLICE_BUDGET_MS = 2;
+
+function createSnapshotRendererCheckpoint(repository, signal) {
+  let sliceStartedAt = performance.now();
+  return () => {
+    if (performance.now() - sliceStartedAt < SNAPSHOT_RENDERER_SLICE_BUDGET_MS) return null;
+    return yieldToRenderer().then(() => {
+      if (signal?.aborted) throw snapshotAbortError();
+      if (repository.isDestroyed()) return false;
+      sliceStartedAt = performance.now();
+      return true;
+    });
+  };
+}
+
+function freezeStatusEntry(entry) {
+  if (Object.isFrozen(entry)) return entry;
+  if (entry.submodule && typeof entry.submodule === "object") Object.freeze(entry.submodule);
+  return Object.freeze(entry);
+}
+
+function freezeRefEntry(entry) {
+  if (entry == null || typeof entry !== "object" || Object.isFrozen(entry)) return;
+  if (entry.upstream && typeof entry.upstream === "object") Object.freeze(entry.upstream);
+  if (entry.push && typeof entry.push === "object") Object.freeze(entry.push);
+  if (entry.lastCommit && typeof entry.lastCommit === "object") {
+    if (Array.isArray(entry.lastCommit.parents)) Object.freeze(entry.lastCommit.parents);
+    if (entry.lastCommit.committerDate && typeof entry.lastCommit.committerDate === "object") {
+      Object.freeze(entry.lastCommit.committerDate);
+    }
+    Object.freeze(entry.lastCommit);
+  }
+  Object.freeze(entry);
+}
+
+const REFS_SNAPSHOT_COLLECTIONS = ["branches", "remoteBranches", "tags", "remotes", "worktrees"];
+
+async function freezeRefsSnapshotInRendererSlices(snapshot, checkpoint) {
+  freezeRefEntry(snapshot.head);
+  for (const collectionName of REFS_SNAPSHOT_COLLECTIONS) {
+    const entries = snapshot[collectionName];
+    for (let index = 0; index < entries.length; index++) {
+      freezeRefEntry(entries[index]);
+      const pendingYield = checkpoint();
+      if (pendingYield && !(await pendingYield)) return false;
+    }
+    Object.freeze(entries);
+  }
+  deepFreeze(snapshot);
+  return true;
+}
+
 // Classify a snapshot entry using the public repository precedence: modified
-// beats added, matching the existing isStatusModified-first checks.
+// beats added.
 function summaryFromStatusEntry(entry) {
   const conflicted = entry.conflicted;
   const modified =
@@ -55,18 +119,6 @@ function summaryFromStatusEntry(entry) {
  * `lumine.repositories` and calling `getRepositories()` or `getForPath()`. It is
  * independent from project roots and may represent containing or nested repos.
  *
- * This class handles submodules automatically by taking a `path` argument to many
- * of the methods.  This `path` argument will determine which underlying
- * repository is used.
- *
- * For a repository with submodules this would have the following outcome:
- *
- * ```js
- * const repo = lumine.repositories.getRepositories()[0]
- * repo.getShortHead() // 'master'
- * repo.getShortHead('vendor/path/to/a/submodule') // 'dead1234'
- * ```
- *
  * ## Examples
  *
  * ### Logging the URL of the origin remote
@@ -83,16 +135,6 @@ function summaryFromStatusEntry(entry) {
  * ```
  */
 module.exports = class GitRepository {
-  static exists(path) {
-    const git = this.open(path);
-    if (git) {
-      git.destroy();
-      return true;
-    } else {
-      return false;
-    }
-  }
-
   /**
    * @category Construction and Destruction
    */
@@ -105,35 +147,40 @@ module.exports = class GitRepository {
    *
    * @param path - The `String` path to the Git repository to open.
    * @param options - An optional `Object` with the following keys:
-   * @param options.project - A {@link Project} whose buffer saves keep this repository's status snapshot fresh.
-   * @param options.config - The config consulted for Git settings.
-   * @returns {GitRepository} instance or `null` if the repository could not be opened.
+   * @returns {Promise<GitRepository|null>} resolving to an instance or `null` if the repository could not be opened.
    */
-  static open(path, options) {
-    if (!path) {
-      return null;
-    }
+  static async open(path, options = {}) {
+    if (!path) return null;
     try {
-      return new GitRepository(path, options);
+      const descriptor = options.descriptor || (await discoverRepositoryDescriptorAsync(path));
+      return descriptor ? new GitRepository(descriptor, options) : null;
     } catch {
       return null;
     }
   }
 
-  constructor(path, options = {}) {
-    this.id = nextId++;
+  constructor(descriptor, options = {}) {
     this.emitter = new Emitter();
-    this.subscriptions = new CompositeDisposable();
-    this.descriptor = options.descriptor || discoverRepositoryDescriptor(path);
-    if (this.descriptor == null) {
-      throw new Error(`No Git repository found searching path: ${path}`);
+    if (!descriptor?.getPath || !descriptor?.getWorkingDirectory) {
+      throw new TypeError("GitRepository requires a discovered repository descriptor");
     }
+    this.descriptor = descriptor;
 
     // Cache the working directory and filesystem traits once so path routing
     // (getWorkingDirectory/relativize) needs no filesystem walk per query. These
     // are fixed for the repository's lifetime.
     this.workingDirectoryPath = this.descriptor.getWorkingDirectory();
     this.openedWorkingDirectoryPath = this.descriptor.openedWorkingDirectory || null;
+    const gitDirectoryAliases = this.descriptor.getGitDirectoryAliases?.() || [
+      this.descriptor.getPath(),
+    ];
+    this.workingDirectoryAliases = new Set(
+      (this.workingDirectoryPath
+        ? [this.workingDirectoryPath, this.openedWorkingDirectoryPath]
+        : gitDirectoryAliases
+      ).filter(Boolean),
+    );
+    this.gitDirectoryAliases = new Set(gitDirectoryAliases);
     this.caseInsensitiveFs = this.descriptor.caseInsensitiveFs === true;
 
     // Every read uses one renderer-to-worker contract. Git process creation,
@@ -145,6 +192,7 @@ module.exports = class GitRepository {
     this.directoryStatusAggregates = new Map();
     this.ignoredFileKeys = new Set();
     this.ignoredDirKeys = [];
+    this.submodulePathKeys = new Set();
     this.statusSnapshotSubscriberCount = 0;
     this.statusSnapshotDebounceMs = options.statusSnapshotDebounceMs ?? 150;
     this.refsSnapshot = EMPTY_REFS_SNAPSHOT;
@@ -155,10 +203,7 @@ module.exports = class GitRepository {
     this.snapshotRefreshTimer = null;
     this.scheduledSnapshotKinds = new Set();
     this.backgroundSnapshotWarningShown = false;
-    this.upstream = { ahead: 0, behind: 0 };
 
-    this.project = options.project;
-    this.config = options.config;
     this.operations = null;
 
     // Window-focus freshness is the registry's job (RepositoryRegistry
@@ -166,13 +211,6 @@ module.exports = class GitRepository {
     // already keeps fresh and which one is on screen. A listener here would
     // put every registered repository on every focus event — one hundred
     // `git status` runs per alt-tab in a many-repository workspace.
-
-    if (this.project != null) {
-      this.project.getBuffers().forEach((buffer) => this.subscribeToBuffer(buffer));
-      this.subscriptions.add(
-        this.project.onDidAddBuffer((buffer) => this.subscribeToBuffer(buffer)),
-      );
-    }
   }
 
   /**
@@ -186,11 +224,14 @@ module.exports = class GitRepository {
    * This method is idempotent.
    */
   destroy() {
+    this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.flight);
+    this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.trailing);
     this.descriptor = null;
     this.operations = null;
     this.gitHostClient = null;
     this.statusEntriesByPath.clear();
     this.directoryStatusAggregates.clear();
+    this.submodulePathKeys.clear();
     if (this.snapshotRefreshTimer != null) {
       clearTimeout(this.snapshotRefreshTimer);
       this.snapshotRefreshTimer = null;
@@ -202,11 +243,6 @@ module.exports = class GitRepository {
       this.emitter.dispose();
       this.emitter = null;
     }
-
-    if (this.subscriptions) {
-      this.subscriptions.dispose();
-      this.subscriptions = null;
-    }
   }
 
   /**
@@ -217,16 +253,6 @@ module.exports = class GitRepository {
    */
   isDestroyed() {
     return this.descriptor == null;
-  }
-
-  /**
-   * @public
-   * @status public
-   *
-   * @returns {Boolean} whether this repository's Git directory still exists.
-   */
-  isPresent() {
-    return !this.isDestroyed() && fs.existsSync(this.path || this.getPath());
   }
 
   /**
@@ -260,43 +286,6 @@ module.exports = class GitRepository {
   /**
    * @category Event Subscription
    */
-
-  /**
-   * @public
-   * @status public
-   *
-   * Invoke the given callback when a specific file's status has
-   * changed. When a file is updated, reloaded, etc, and the status changes, this
-   * will be fired.
-   *
-   *
-   * Note: prefer {@link #onDidChangeStatusSnapshot}, which fires for every status
-   * change; this legacy per-path event is retained for API compatibility.
-   *
-   * @param {Function} callback
-   * @param {Object} callback.event
-   * @param {String} callback.event.path - the path whose status changed
-   * @param {Number} callback.event.pathStatus - representing the status.
-   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   */
-  onDidChangeStatus(callback) {
-    return this.emitter.on("did-change-status", callback);
-  }
-
-  /**
-   * @public
-   * @status public
-   *
-   * Invoke the given callback when multiple files' statuses have
-   * changed. Prefer {@link #onDidChangeStatusSnapshot}; this legacy event is retained
-   * for API compatibility.
-   *
-   * @param {Function} callback
-   * @returns {Disposable} on which `.dispose()` can be called to unsubscribe.
-   */
-  onDidChangeStatuses(callback) {
-    return this.emitter.on("did-change-statuses", callback);
-  }
 
   /**
    * @public
@@ -377,7 +366,7 @@ module.exports = class GitRepository {
   getPath() {
     if (this.path == null) {
       if (this.isDestroyed()) throw new Error("Repository has been destroyed");
-      this.path = fs.absolute(this.descriptor.getPath());
+      this.path = path.resolve(this.descriptor.getPath());
     }
     return this.path;
   }
@@ -407,29 +396,64 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @returns {Boolean} true if at the root, false if in a subfolder of the repository.
-   */
-  isProjectAtRoot() {
-    if (this.projectAtRoot == null) {
-      this.projectAtRoot =
-        this.project && this.project.relativize(this.getWorkingDirectory()) === "";
-    }
-    return this.projectAtRoot;
-  }
-
-  /**
-   * @public
-   * @status public
-   *
    * Makes a path relative to the repository's working directory.
    */
   relativize(path) {
-    return relativizePath(
-      path,
-      this.workingDirectoryPath,
-      this.openedWorkingDirectoryPath,
-      this.caseInsensitiveFs,
-    );
+    return relativizePath(path, this.workingDirectoryAliases, this.caseInsensitiveFs);
+  }
+
+  addWorkingDirectoryAlias(directoryPath) {
+    if (directoryPath) this.workingDirectoryAliases.add(directoryPath);
+  }
+
+  removeWorkingDirectoryAlias(directoryPath) {
+    if (!directoryPath) return;
+    const normalize = (candidate) => {
+      const resolved = path.resolve(candidate);
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    };
+    const target = normalize(directoryPath);
+    const primary = this.workingDirectoryPath ? normalize(this.workingDirectoryPath) : null;
+    if (target === primary) return;
+    for (const alias of this.workingDirectoryAliases) {
+      if (normalize(alias) === target) this.workingDirectoryAliases.delete(alias);
+    }
+    if (this.openedWorkingDirectoryPath && normalize(this.openedWorkingDirectoryPath) === target) {
+      this.openedWorkingDirectoryPath = null;
+    }
+  }
+
+  getWorkingDirectoryAliases() {
+    return Array.from(this.workingDirectoryAliases);
+  }
+
+  addGitDirectoryAlias(directoryPath) {
+    if (!directoryPath) return;
+    this.gitDirectoryAliases.add(directoryPath);
+    if (!this.workingDirectoryPath) this.workingDirectoryAliases.add(directoryPath);
+  }
+
+  removeGitDirectoryAlias(directoryPath) {
+    if (!directoryPath) return;
+    const normalize = (candidate) => {
+      const resolved = path.resolve(candidate);
+      return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+    };
+    const target = normalize(directoryPath);
+    const primary = normalize(this.getPath());
+    if (target === primary) return;
+    for (const alias of this.gitDirectoryAliases) {
+      if (normalize(alias) === target) this.gitDirectoryAliases.delete(alias);
+    }
+    if (!this.workingDirectoryPath) {
+      for (const alias of this.workingDirectoryAliases) {
+        if (normalize(alias) === target) this.workingDirectoryAliases.delete(alias);
+      }
+    }
+  }
+
+  getGitDirectoryAliases() {
+    return Array.from(this.gitDirectoryAliases);
   }
 
   /**
@@ -481,7 +505,7 @@ module.exports = class GitRepository {
    */
   isSubmodule(filePath) {
     if (!filePath || this.isDestroyed()) return false;
-    return this.descriptor.isSubmodule(this.relativize(filePath));
+    return this.submodulePathKeys.has(statusPathKey(this.relativize(filePath)));
   }
 
   /**
@@ -520,7 +544,7 @@ module.exports = class GitRepository {
         return { ahead: branch.upstream.ahead, behind: branch.upstream.behind };
       }
     }
-    return this.upstream;
+    return { ahead: 0, behind: 0 };
   }
 
   /**
@@ -725,7 +749,7 @@ module.exports = class GitRepository {
    * @public
    * @status public
    *
-   * @returns {Object} latest immutable detailed status snapshot. It contains `head`, `upstream`, per-file staged/unstaged/conflict state, aggregate `counts`, and a monotonic `generation`. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeStatusSnapshot} or call {@link #ensureStatusSnapshot} to load it.
+   * @returns {Object} latest immutable detailed status snapshot. It contains `head`, `upstream`, `submodulePaths`, per-file staged/unstaged/conflict state, aggregate `counts`, and a monotonic `generation`. The initial snapshot has `initialized: false`; subscribe with {@link #onDidChangeStatusSnapshot} or call {@link #ensureStatusSnapshot} to load it.
    */
   getStatusSnapshot() {
     return this.statusSnapshot;
@@ -744,8 +768,9 @@ module.exports = class GitRepository {
     if (this.statusSnapshot.initialized) return this.statusSnapshot;
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
-    if (this.snapshotRefreshCoalescer.flight?.mask.has("status")) {
-      return this.snapshotRefreshCoalescer.flight.promise.then(() => this.statusSnapshot);
+    const flight = this.snapshotRefreshCoalescer.flight;
+    if (flight?.mask.has("status") && !flight.controller.signal.aborted) {
+      return this.waitForSnapshotRequest(flight, "status", options.signal);
     }
     return this.refreshStatusSnapshot(options);
   }
@@ -781,8 +806,6 @@ module.exports = class GitRepository {
 
     const merge = (request, requestedKind, requestedOptions) => {
       request.mask.add(requestedKind);
-      // Once a flight is shared, no one requester's signal may cancel it.
-      delete request.options.signal;
       if (requestedKind === "status") {
         const includeIgnored = requestedOptions.includeIgnored !== false;
         request.statusIncludeIgnored =
@@ -795,59 +818,107 @@ module.exports = class GitRepository {
     };
 
     const begin = (request) => {
-      const flight = { ...request, started: false, promise: null };
-      flight.promise = Promise.resolve()
+      state.flight = request;
+      request.promise = Promise.resolve()
         .then(() => {
-          flight.started = true;
-          return this.executeSnapshotRefresh(flight.mask, flight.options);
+          request.started = true;
+          if (request.waiters.size === 0) return;
+          return this.executeSnapshotRefresh(request.mask, {
+            ...request.options,
+            signal: request.controller.signal,
+          });
         })
+        .then(
+          () => this.settleSnapshotRequest(request),
+          (error) => this.settleSnapshotRequest(request, error),
+        )
         .finally(() => {
-          state.flight = null;
+          if (state.flight === request) state.flight = null;
           const trailing = state.trailing;
           if (trailing) {
             state.trailing = null;
-            trailing.begin();
+            begin(trailing);
           }
-        });
-      state.flight = flight;
-      return flight.promise;
+        })
+        .catch((error) => console.error("Git snapshot coordinator failed", error));
     };
 
     if (!state.flight) {
       const requestOptions = { ...options };
-      return begin({
+      delete requestOptions.signal;
+      const request = {
         mask: new Set([kind]),
         options: requestOptions,
         statusIncludeIgnored: kind === "status" ? options.includeIgnored !== false : null,
-      }).then(() => (kind === "status" ? this.statusSnapshot : this.refsSnapshot));
+        controller: new AbortController(),
+        waiters: new Set(),
+        started: false,
+        promise: null,
+      };
+      const result = this.waitForSnapshotRequest(request, kind, options.signal);
+      begin(request);
+      return result;
     }
 
     if (!state.flight.started) {
       merge(state.flight, kind, options);
-      return state.flight.promise.then(() =>
-        kind === "status" ? this.statusSnapshot : this.refsSnapshot,
-      );
+      return this.waitForSnapshotRequest(state.flight, kind, options.signal);
     }
 
     if (!state.trailing) {
       const trailingOptions = { ...options };
       delete trailingOptions.signal;
-      const trailing = {
+      state.trailing = {
         mask: new Set([kind]),
         options: trailingOptions,
         statusIncludeIgnored: kind === "status" ? options.includeIgnored !== false : null,
+        controller: new AbortController(),
+        waiters: new Set(),
+        started: false,
+        promise: null,
       };
-      trailing.promise = new Promise((resolve, reject) => {
-        trailing.begin = () => begin(trailing).then(resolve, reject);
-      });
-      state.trailing = trailing;
     } else {
       merge(state.trailing, kind, options);
     }
 
-    return state.trailing.promise.then(() =>
-      kind === "status" ? this.statusSnapshot : this.refsSnapshot,
-    );
+    return this.waitForSnapshotRequest(state.trailing, kind, options.signal);
+  }
+
+  waitForSnapshotRequest(request, kind, signal) {
+    if (signal?.aborted) return Promise.reject(snapshotAbortError());
+    return new Promise((resolve, reject) => {
+      const waiter = { kind, signal, resolve, reject, onAbort: null };
+      waiter.onAbort = () => {
+        if (!request.waiters.delete(waiter)) return;
+        signal.removeEventListener("abort", waiter.onAbort);
+        reject(snapshotAbortError());
+        if (request.started && request.waiters.size === 0) request.controller.abort();
+      };
+      if (signal) signal.addEventListener("abort", waiter.onAbort, { once: true });
+      request.waiters.add(waiter);
+    });
+  }
+
+  settleSnapshotRequest(request, error = null) {
+    for (const waiter of request.waiters) {
+      if (waiter.signal) waiter.signal.removeEventListener("abort", waiter.onAbort);
+      if (error) waiter.reject(error);
+      else waiter.resolve(waiter.kind === "status" ? this.statusSnapshot : this.refsSnapshot);
+    }
+    request.waiters.clear();
+  }
+
+  cancelSnapshotRequest(request) {
+    if (!request) return;
+    request.controller.abort();
+    if (globalThis.window?.lumine?.unloading) {
+      for (const waiter of request.waiters) {
+        if (waiter.signal) waiter.signal.removeEventListener("abort", waiter.onAbort);
+      }
+      request.waiters.clear();
+      return;
+    }
+    this.settleSnapshotRequest(request, snapshotAbortError());
   }
 
   scheduleSnapshotRefresh(kind, debounceMs) {
@@ -898,19 +969,51 @@ module.exports = class GitRepository {
       return { status: this.statusSnapshot, refs: this.refsSnapshot };
     }
     // Apply every valid section before reporting a missing or malformed sibling.
+    const deferCombinedCommit = statusRequested && refsRequested;
+    let preparedStatus = null;
+    let preparedRefs = null;
     let responseError = null;
     if (statusRequested) {
       try {
-        if (result?.status) this.applyStatusSnapshotSection(result.status);
-        else throw this.invalidSnapshotResponse("status");
+        if (!result?.status) throw this.invalidSnapshotResponse("status");
+        const applied = await this.applyStatusSnapshotSection(result.status, options.signal, {
+          deferCommit: deferCombinedCommit,
+        });
+        if (deferCombinedCommit && applied?.commit) preparedStatus = applied;
       } catch (error) {
         responseError = error;
       }
     }
+    // A combined request must be all-or-cancelled. In particular, an abort
+    // observed at a renderer yield while indexing status must not let the refs
+    // sibling update state after every waiter has gone away.
+    if (options.signal?.aborted) throw responseError || snapshotAbortError();
+    if (this.isDestroyed()) {
+      return { status: this.statusSnapshot, refs: this.refsSnapshot };
+    }
     if (refsRequested) {
       try {
-        if (result?.refs) this.applyRefsSnapshotSection(result.refs);
-        else throw this.invalidSnapshotResponse("refs");
+        if (!result?.refs) throw this.invalidSnapshotResponse("refs");
+        const applied = await this.applyRefsSnapshotSection(result.refs, options.signal, {
+          deferCommit: deferCombinedCommit,
+        });
+        if (deferCombinedCommit && applied?.commit) preparedRefs = applied;
+      } catch (error) {
+        responseError ||= error;
+      }
+    }
+    if (options.signal?.aborted) throw responseError || snapshotAbortError();
+    if (this.isDestroyed()) {
+      return { status: this.statusSnapshot, refs: this.refsSnapshot };
+    }
+    // Publish both state objects before either event fires, so every observer
+    // sees one coherent combined snapshot. Listener failures cannot prevent
+    // the sibling event from being delivered.
+    preparedStatus?.commit();
+    preparedRefs?.commit();
+    for (const prepared of [preparedStatus, preparedRefs]) {
+      try {
+        prepared?.emit();
       } catch (error) {
         responseError ||= error;
       }
@@ -926,39 +1029,137 @@ module.exports = class GitRepository {
     return error;
   }
 
-  applyStatusSnapshotSection(section) {
+  async applyStatusSnapshotSection(section, signal, { deferCommit = false } = {}) {
+    if (signal?.aborted) throw snapshotAbortError();
     if (section.unchanged) {
-      this.statusSnapshotFingerprint = section.fingerprint;
-      return this.statusSnapshot;
+      const prepared = {
+        commit: () => {
+          this.statusSnapshotFingerprint = section.fingerprint;
+        },
+        emit: () => {},
+        value: this.statusSnapshot,
+      };
+      if (deferCommit) return prepared;
+      prepared.commit();
+      return prepared.value;
     }
     if (!section.value || section.value.schemaVersion !== 1 || !section.value.initialized) {
       throw this.invalidSnapshotResponse("status value");
     }
-    const snapshot = deepFreeze(section.value);
-    this.statusSnapshotFingerprint = section.fingerprint;
-    this.statusSnapshot = snapshot;
-    this.statusEntriesByPath = new Map(
-      snapshot.files.map((entry) => [statusPathKey(entry.path), entry]),
-    );
-    this.directoryStatusAggregates = this.buildDirectoryStatusAggregates(snapshot);
-    this.rebuildIgnoredIndex(snapshot);
-    this.emitter.emit("did-change-status-snapshot", snapshot);
-    return snapshot;
+    const snapshot = section.value;
+    const statusEntriesByPath = new Map();
+    const directoryStatusAggregates = new Map();
+    const ignoredFileKeys = new Set();
+    const ignoredDirKeys = [];
+    const checkpoint = createSnapshotRendererCheckpoint(this, signal);
+    const submodulePaths = snapshot.submodulePaths || [];
+    const submodulePathKeys = new Set();
+
+    for (const submodulePath of submodulePaths) {
+      submodulePathKeys.add(statusPathKey(submodulePath));
+      const pendingYield = checkpoint();
+      if (pendingYield && !(await pendingYield)) return this.statusSnapshot;
+    }
+
+    for (let index = 0; index < snapshot.files.length; index++) {
+      const entry = freezeStatusEntry(snapshot.files[index]);
+      const entryKey = statusPathKey(entry.path);
+      statusEntriesByPath.set(entryKey, entry);
+
+      if (entry.ignored) {
+        if (entry.path.endsWith("/")) ignoredDirKeys.push(statusPathKey(entry.path.slice(0, -1)));
+        else ignoredFileKeys.add(entryKey);
+      } else {
+        const conflicted = entry.conflicted;
+        const modified =
+          !conflicted &&
+          ((entry.indexStatus != null && entry.indexStatus !== "A") ||
+            entry.worktreeStatus != null);
+        const added = !conflicted && !modified && (entry.untracked || entry.indexStatus === "A");
+        if (conflicted || modified || added) {
+          let separatorIndex = entryKey.length;
+          do {
+            separatorIndex = entryKey.lastIndexOf("/", separatorIndex - 1);
+            const key = separatorIndex === -1 ? "" : entryKey.slice(0, separatorIndex);
+            let aggregate = directoryStatusAggregates.get(key);
+            if (!aggregate) {
+              aggregate = { conflicted: false, modified: false, added: false };
+              directoryStatusAggregates.set(key, aggregate);
+            }
+            aggregate.conflicted ||= conflicted;
+            aggregate.modified ||= modified;
+            aggregate.added ||= added;
+
+            const pendingYield = checkpoint();
+            if (pendingYield && !(await pendingYield)) return this.statusSnapshot;
+          } while (separatorIndex > 0);
+        }
+      }
+
+      const pendingYield = checkpoint();
+      if (pendingYield && !(await pendingYield)) return this.statusSnapshot;
+    }
+
+    Object.freeze(snapshot.files);
+    Object.freeze(submodulePaths);
+    deepFreeze(snapshot);
+    if (signal?.aborted) throw snapshotAbortError();
+    if (this.isDestroyed()) return this.statusSnapshot;
+    const prepared = {
+      commit: () => {
+        this.statusSnapshotFingerprint = section.fingerprint;
+        this.statusSnapshot = snapshot;
+        this.statusEntriesByPath = statusEntriesByPath;
+        this.directoryStatusAggregates = directoryStatusAggregates;
+        this.ignoredFileKeys = ignoredFileKeys;
+        this.ignoredDirKeys = ignoredDirKeys;
+        this.submodulePathKeys = submodulePathKeys;
+      },
+      emit: () => this.emitter.emit("did-change-status-snapshot", snapshot),
+      value: snapshot,
+    };
+    if (deferCommit) return prepared;
+    prepared.commit();
+    prepared.emit();
+    return prepared.value;
   }
 
-  applyRefsSnapshotSection(section) {
+  async applyRefsSnapshotSection(section, signal, { deferCommit = false } = {}) {
+    if (signal?.aborted) throw snapshotAbortError();
     if (section.unchanged) {
-      this.refsSnapshotFingerprint = section.fingerprint;
-      return this.refsSnapshot;
+      const prepared = {
+        commit: () => {
+          this.refsSnapshotFingerprint = section.fingerprint;
+        },
+        emit: () => {},
+        value: this.refsSnapshot,
+      };
+      if (deferCommit) return prepared;
+      prepared.commit();
+      return prepared.value;
     }
     if (!section.value || section.value.schemaVersion !== 1 || !section.value.initialized) {
       throw this.invalidSnapshotResponse("refs value");
     }
-    const snapshot = deepFreeze(section.value);
-    this.refsSnapshotFingerprint = section.fingerprint;
-    this.refsSnapshot = snapshot;
-    this.emitter.emit("did-change-refs-snapshot", snapshot);
-    return snapshot;
+    const snapshot = section.value;
+    const checkpoint = createSnapshotRendererCheckpoint(this, signal);
+    if (!(await freezeRefsSnapshotInRendererSlices(snapshot, checkpoint))) {
+      return this.refsSnapshot;
+    }
+    if (signal?.aborted) throw snapshotAbortError();
+    if (this.isDestroyed()) return this.refsSnapshot;
+    const prepared = {
+      commit: () => {
+        this.refsSnapshotFingerprint = section.fingerprint;
+        this.refsSnapshot = snapshot;
+      },
+      emit: () => this.emitter.emit("did-change-refs-snapshot", snapshot),
+      value: snapshot,
+    };
+    if (deferCommit) return prepared;
+    prepared.commit();
+    prepared.emit();
+    return prepared.value;
   }
 
   reportBackgroundSnapshotError(error) {
@@ -982,52 +1183,6 @@ module.exports = class GitRepository {
    */
   refreshStatusSnapshot(options = {}) {
     return this.coalesceSnapshotRefresh("status", options);
-  }
-
-  // Index the snapshot's ignored entries for O(1) `isPathIgnoredCached` lookups.
-  // `git status --ignored=matching` collapses a fully-ignored directory to a
-  // single `path/` entry, so those are kept as directory prefixes and everything
-  // beneath them counts as ignored; individually-ignored files are exact keys.
-  rebuildIgnoredIndex(snapshot) {
-    const ignoredFileKeys = new Set();
-    const ignoredDirKeys = [];
-    for (const entry of snapshot.files) {
-      if (!entry.ignored) continue;
-      if (entry.path.endsWith("/")) {
-        ignoredDirKeys.push(statusPathKey(entry.path.slice(0, -1)));
-      } else {
-        ignoredFileKeys.add(statusPathKey(entry.path));
-      }
-    }
-    this.ignoredFileKeys = ignoredFileKeys;
-    this.ignoredDirKeys = ignoredDirKeys;
-  }
-
-  // One pass over the snapshot's changed files, OR-ing each file's
-  // classification into every ancestor directory ("" is the repository root),
-  // so directory queries never rescan the file list.
-  buildDirectoryStatusAggregates(snapshot) {
-    const aggregates = new Map();
-    for (const entry of snapshot.files) {
-      if (entry.ignored) continue;
-      const summary = summaryFromStatusEntry(entry);
-      if (!summary.conflicted && !summary.modified && !summary.added) continue;
-
-      let key = statusPathKey(entry.path);
-      do {
-        const separatorIndex = key.lastIndexOf("/");
-        key = separatorIndex === -1 ? "" : key.slice(0, separatorIndex);
-        let aggregate = aggregates.get(key);
-        if (!aggregate) {
-          aggregate = { conflicted: false, modified: false, added: false };
-          aggregates.set(key, aggregate);
-        }
-        aggregate.conflicted = aggregate.conflicted || summary.conflicted;
-        aggregate.modified = aggregate.modified || summary.modified;
-        aggregate.added = aggregate.added || summary.added;
-      } while (key !== "");
-    }
-    return aggregates;
   }
 
   /**
@@ -1097,8 +1252,9 @@ module.exports = class GitRepository {
     if (this.refsSnapshot.initialized) return this.refsSnapshot;
     // Any initialized snapshot satisfies an ensure, so the in-flight run is
     // shared instead of queueing a trailing one behind it.
-    if (this.snapshotRefreshCoalescer.flight?.mask.has("refs")) {
-      return this.snapshotRefreshCoalescer.flight.promise.then(() => this.refsSnapshot);
+    const flight = this.snapshotRefreshCoalescer.flight;
+    if (flight?.mask.has("refs") && !flight.controller.signal.aborted) {
+      return this.waitForSnapshotRequest(flight, "refs", options.signal);
     }
     return this.refreshRefsSnapshot(options);
   }
@@ -1181,9 +1337,9 @@ module.exports = class GitRepository {
       error.operation = "diff";
       throw error;
     }
-    return deepFreeze({
+    return Object.freeze({
       schemaVersion: 1,
-      files: format === "patch" ? [] : result.files,
+      files: Object.freeze(format === "patch" ? [] : result.files),
       ...(format === "structured" ? {} : { rawPatch: result.rawPatch }),
     });
   }
@@ -1240,7 +1396,7 @@ module.exports = class GitRepository {
     };
     const records = await client.getHistory(this.getHostDescriptor(), params, { signal });
     const hasMore = records.length > limit;
-    const commits = deepFreeze(records.slice(0, limit));
+    const commits = Object.freeze(records.slice(0, limit));
     return Object.freeze({
       commits,
       hasMore,
@@ -1270,7 +1426,10 @@ module.exports = class GitRepository {
     });
     if (!result) return null;
     const { files, changedFiles, ...commit } = result;
-    return deepFreeze({ ...commit, changedFiles: changedFiles || files || [] });
+    return Object.freeze({
+      ...commit,
+      changedFiles: Object.freeze(changedFiles || files || []),
+    });
   }
 
   /**
@@ -1399,10 +1558,17 @@ module.exports = class GitRepository {
    *
    * The repository-relative paths declared in `.gitmodules`.
    *
+   * @param {Object} [options] - Read options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to an `Array` of path `Strings`.
    */
-  getSubmodulePaths() {
-    return this.requireGitHostClient().getSubmodulePaths(this.getHostDescriptor());
+  async getSubmodulePaths(options = {}) {
+    if (this.isDestroyed()) return [];
+    const paths = Object.freeze(
+      await this.requireGitHostClient().getSubmodulePaths(this.getHostDescriptor(), options),
+    );
+    this.submodulePathKeys = new Set(paths.map((submodulePath) => statusPathKey(submodulePath)));
+    return paths;
   }
 
   /**
@@ -1426,9 +1592,9 @@ module.exports = class GitRepository {
       { revision, ignoreWhitespace },
       { signal },
     );
-    return deepFreeze({
+    return Object.freeze({
       revision,
-      lines,
+      lines: Object.freeze(lines),
     });
   }
 
@@ -1445,9 +1611,11 @@ module.exports = class GitRepository {
    *
    * @param filePath - The `String` path relative to the repository.
    * @param text - The `String` to compare against the `HEAD` contents.
+   * @param {Object} [options] - Diff options.
+   * @param {AbortSignal} [options.signal] - Cancellation signal.
    * @returns {Promise} resolving to an `Array` of hunk `Objects`, each with `oldStart`, `newStart`, `oldLines`, and `newLines`.
    */
-  getLineDiffsAsync(filePath, text) {
+  getLineDiffsAsync(filePath, text, { signal } = {}) {
     if (this.isDestroyed()) return Promise.resolve([]);
     const relativePosixPath = this.relativize(filePath).split(path.sep).join("/");
     // The status snapshot's head oid keys the worker's blob cache; a HEAD move
@@ -1459,6 +1627,7 @@ module.exports = class GitRepository {
       headOid,
       text,
       ignoreEolWhitespace: process.platform === "win32",
+      signal,
     });
   }
 
@@ -1513,34 +1682,6 @@ module.exports = class GitRepository {
   /**
    * @category Private
    */
-
-  // Subscribes to buffer events.
-  subscribeToBuffer(buffer) {
-    // Every repository hears about every buffer in the window, but only a save
-    // inside this repository's own working tree can change its status.
-    // relativize hands a path outside the working tree back unchanged — still
-    // absolute — so "no longer absolute" is the containment test.
-    const refreshStatusForBuffer = () => {
-      if (this.isDestroyed()) return;
-      const bufferPath = buffer.getPath();
-      if (!bufferPath) return;
-      const relativePath = this.relativize(bufferPath);
-      if (relativePath == null || path.isAbsolute(relativePath)) return;
-      this.scheduleStatusSnapshotRefresh();
-    };
-
-    const bufferSubscriptions = new CompositeDisposable();
-    bufferSubscriptions.add(buffer.onDidSave(refreshStatusForBuffer));
-    bufferSubscriptions.add(buffer.onDidReload(refreshStatusForBuffer));
-    bufferSubscriptions.add(buffer.onDidChangePath(refreshStatusForBuffer));
-    bufferSubscriptions.add(
-      buffer.onDidDestroy(() => {
-        bufferSubscriptions.dispose();
-        return this.subscriptions.remove(bufferSubscriptions);
-      }),
-    );
-    this.subscriptions.add(bufferSubscriptions);
-  }
 
   // Subscribes to editor view event.
   async checkoutHeadForEditor(editor) {

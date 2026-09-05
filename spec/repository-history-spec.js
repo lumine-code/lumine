@@ -9,7 +9,14 @@ const {
   parseBlamePorcelain,
 } = require("../src/repository-history");
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
-const GitRepository = require("../src/git-repository");
+const CoreGitRepository = require("../src/git-repository");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+
+class GitRepository extends CoreGitRepository {
+  constructor(filePath, options) {
+    super(discoverRepositoryDescriptor(filePath), options);
+  }
+}
 
 function logRecord({
   sha,

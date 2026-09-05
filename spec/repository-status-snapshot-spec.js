@@ -30,6 +30,7 @@ describe("Repository status snapshots", () => {
     const snapshot = parseStatusSnapshot(output, {
       generation: 4,
       includesIgnored: true,
+      submodulePaths: ["vendor/module"],
     });
 
     expect(snapshot.generation).toBe(4);
@@ -42,6 +43,8 @@ describe("Repository status snapshots", () => {
       unborn: false,
     });
     expect(snapshot.upstream).toEqual({ name: "origin/main", ahead: 2, behind: 3 });
+    expect(snapshot.submodulePaths).toEqual(["vendor/module"]);
+    expect(Object.isFrozen(snapshot.submodulePaths)).toBe(true);
     expect(snapshot.counts).toEqual({
       total: 6,
       staged: 3,

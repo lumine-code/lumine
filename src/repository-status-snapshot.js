@@ -21,6 +21,7 @@ const EMPTY_STATUS_SNAPSHOT = Object.freeze({
   includesIgnored: false,
   head: null,
   upstream: null,
+  submodulePaths: Object.freeze([]),
   files: Object.freeze([]),
   counts: EMPTY_COUNTS,
 });
@@ -169,7 +170,10 @@ function countEntries(files) {
   return Object.freeze(counts);
 }
 
-function parseStatusSnapshot(output, { generation = 1, includesIgnored = false } = {}) {
+function parseStatusSnapshot(
+  output,
+  { generation = 1, includesIgnored = false, submodulePaths = [] } = {},
+) {
   const records = String(output).split("\0");
   const headers = new Map();
   const files = [];
@@ -216,6 +220,7 @@ function parseStatusSnapshot(output, { generation = 1, includesIgnored = false }
     includesIgnored,
     head: parseHead(headers),
     upstream: parseUpstream(headers),
+    submodulePaths: Object.freeze([...submodulePaths]),
     files: Object.freeze(files),
     counts: countEntries(files),
   });

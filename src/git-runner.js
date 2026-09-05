@@ -11,13 +11,33 @@ function defaultGitExec(args, workingDirectory, options) {
   return sharedGitExec(args, workingDirectory, options);
 }
 
-// Bound the number of concurrent `git` child processes across the whole
-// renderer. Opening a project with many repositories otherwise fires a burst of
+// Bound the number of concurrent `git` child processes across the worker.
+// Opening a project with many repositories otherwise fires a burst of
 // status/refs refreshes — the refs provider alone spawns five `git` processes
 // per repository — flooding the OS with dozens of simultaneous spawns at
 // startup. A shared FIFO semaphore flattens that burst into a bounded pipeline
 // without changing any provider's observable behavior.
 const DEFAULT_MAX_CONCURRENT_GIT = 6;
+const MAX_GIT_ERROR_DETAIL_BYTES = 64 * 1024;
+const TRUNCATED_DIAGNOSTIC_SUFFIX = "\n… [truncated by git-host]";
+
+function abortError() {
+  const error = new Error("The Git operation was aborted");
+  error.name = "AbortError";
+  error.code = "ABORT_ERR";
+  return error;
+}
+
+function boundedErrorDetail(value) {
+  const text = String(value).trim();
+  if (Buffer.byteLength(text) <= MAX_GIT_ERROR_DETAIL_BYTES) return text;
+  const suffixBytes = Buffer.byteLength(TRUNCATED_DIAGNOSTIC_SUFFIX);
+  return (
+    Buffer.from(text)
+      .subarray(0, MAX_GIT_ERROR_DETAIL_BYTES - suffixBytes)
+      .toString("utf8") + TRUNCATED_DIAGNOSTIC_SUFFIX
+  );
+}
 
 // Two lanes, so a user-initiated command (a stage, a commit) never waits out a
 // long backlog of background refreshes. Interactive waiters are admitted
@@ -38,7 +58,8 @@ class Semaphore {
     return this.activeInteractive + this.activeBackground;
   }
 
-  async acquire(priority = "background") {
+  async acquire(priority = "background", signal) {
+    if (signal?.aborted) throw abortError();
     const interactive = priority === "interactive";
     const belowLimit = interactive
       ? this.active < this.max
@@ -48,8 +69,18 @@ class Semaphore {
       else this.activeBackground++;
       return;
     }
-    await new Promise((resolve) => {
-      (interactive ? this.interactiveQueue : this.backgroundQueue).push(resolve);
+    const queue = interactive ? this.interactiveQueue : this.backgroundQueue;
+    await new Promise((resolve, reject) => {
+      const waiter = { resolve, reject, signal, onAbort: null };
+      waiter.onAbort = () => {
+        const index = queue.indexOf(waiter);
+        if (index === -1) return;
+        queue.splice(index, 1);
+        signal.removeEventListener("abort", waiter.onAbort);
+        reject(abortError());
+      };
+      if (signal) signal.addEventListener("abort", waiter.onAbort, { once: true });
+      queue.push(waiter);
     });
   }
 
@@ -63,22 +94,35 @@ class Semaphore {
   // so a concurrently arriving acquire() can never slip past the limits.
   admit() {
     while (this.interactiveQueue.length > 0 && this.active < this.max) {
+      const waiter = this.interactiveQueue.shift();
+      waiter.signal?.removeEventListener("abort", waiter.onAbort);
+      if (waiter.signal?.aborted) {
+        waiter.reject(abortError());
+        continue;
+      }
       this.activeInteractive++;
-      this.interactiveQueue.shift()();
+      waiter.resolve();
     }
     while (
       this.backgroundQueue.length > 0 &&
       this.active < this.max &&
       this.activeBackground < this.backgroundMax
     ) {
+      const waiter = this.backgroundQueue.shift();
+      waiter.signal?.removeEventListener("abort", waiter.onAbort);
+      if (waiter.signal?.aborted) {
+        waiter.reject(abortError());
+        continue;
+      }
       this.activeBackground++;
-      this.backgroundQueue.shift()();
+      waiter.resolve();
     }
   }
 
-  async run(fn, priority = "background") {
-    await this.acquire(priority);
+  async run(fn, priority = "background", signal) {
+    await this.acquire(priority, signal);
     try {
+      if (signal?.aborted) throw abortError();
       return await fn();
     } finally {
       this.release(priority);
@@ -105,7 +149,9 @@ class GitOperationError extends Error {
   constructor(command, result) {
     const stderr = String(result.stderr);
     const stdout = String(result.stdout);
-    const detail = stderr.trim() || stdout.trim() || `exit code ${result.exitCode}`;
+    const detail = boundedErrorDetail(
+      stderr.trim() || stdout.trim() || `exit code ${result.exitCode}`,
+    );
     super(`Git ${command} failed: ${detail}`);
     this.name = "GitOperationError";
     this.code = "ERR_GIT_COMMAND_FAILED";
@@ -131,7 +177,7 @@ class GitRunner {
     return result.stdout;
   }
 
-  async runResult(args, workingDirectory, options = {}) {
+  async executeResult(args, workingDirectory, options = {}, { includeColorConfig = true } = {}) {
     const priority = options.priority === "interactive" ? "interactive" : "background";
     const environment = {
       GIT_TERMINAL_PROMPT: options.allowPrompt ? "1" : "0",
@@ -153,29 +199,40 @@ class GitRunner {
       configArguments.push("-c", `${key}=${value}`);
     }
     const runExec = () =>
-      this.execute([...COLOR_CONFIG, ...configArguments, ...args], workingDirectory, {
-        env: environment,
-        stdin: options.stdin,
-        encoding: options.encoding,
-        maxBuffer: options.maxBuffer,
-        signal: options.signal,
-        killSignal: options.killSignal,
-      });
+      this.execute(
+        [...(includeColorConfig ? COLOR_CONFIG : []), ...configArguments, ...args],
+        workingDirectory,
+        {
+          env: environment,
+          stdin: options.stdin,
+          encoding: options.encoding,
+          maxBuffer: options.maxBuffer,
+          signal: options.signal,
+          killSignal: options.killSignal,
+        },
+      );
     // Interactive/credential operations may block for a long time; keep them out
     // of the shared read budget so a hung prompt cannot starve status refreshes.
-    const result = options.allowPrompt
+    if (options.signal?.aborted) throw abortError();
+    return options.allowPrompt
       ? await runExec()
-      : await this.limiter.run(runExec, priority);
+      : await this.limiter.run(runExec, priority, options.signal);
+  }
+
+  async runResult(args, workingDirectory, options = {}) {
+    const result = await this.executeResult(args, workingDirectory, options);
     const allowedExitCodes = options.allowedExitCodes || [0];
     if (!allowedExitCodes.includes(result.exitCode)) {
       throw new GitOperationError(args[0], result);
     }
     return result;
   }
+
+  runRawResult(args, workingDirectory, options = {}) {
+    return this.executeResult(args, workingDirectory, options, { includeColorConfig: false });
+  }
 }
 
 module.exports = GitRunner;
 module.exports.GitOperationError = GitOperationError;
 module.exports.Semaphore = Semaphore;
-module.exports.sharedGitLimiter = sharedGitLimiter;
-module.exports.DEFAULT_MAX_CONCURRENT_GIT = DEFAULT_MAX_CONCURRENT_GIT;

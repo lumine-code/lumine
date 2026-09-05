@@ -1,6 +1,6 @@
 # project.repository-provider
 
-Supplies a `Repository` for a project directory, so a version-control system other than Git can drive the editor's VCS features.
+Supplies a `Repository` for a filesystem path, so a version-control system other than Git can drive the editor's VCS features.
 
 |             |                                                           |
 | ----------- | --------------------------------------------------------- |
@@ -29,15 +29,15 @@ In your `package.json`:
 
 ```ts
 type RepositoryProvider = {
-  repositoryForDirectory(directory: Directory): Promise<Repository | null>;
-  repositoryForDirectorySync?(directory: Directory): Repository | null;
+  repositoryForPath(path: string): Promise<Repository | null>;
+  getRepositoryForPath?(path: string): Repository | null;
 };
 ```
 
-| Member                                  | Description                                                                             |
-| --------------------------------------- | --------------------------------------------------------------------------------------- |
-| `repositoryForDirectory(directory)`     | Required. Resolves to a `Repository` for a directory you claim, or `null`.              |
-| `repositoryForDirectorySync(directory)` | Optional. The synchronous form, used where core cannot await. Returning `null` is fine. |
+| Member                       | Description                                                                                                                                                  |
+| ---------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `repositoryForPath(path)`    | Required. Resolves to the nearest `Repository` that claims a path, or `null`. Filesystem work must be asynchronous.                                          |
+| `getRepositoryForPath(path)` | Optional cache-only lookup used while project roots are reconciled. It must return immediately and must never read the filesystem; returning `null` is fine. |
 
 The returned repository should implement `onDidDestroy` — core uses it to drop its cache entry when the repository goes away.
 
@@ -47,13 +47,12 @@ The returned repository should implement `onDidDestroy` — core uses it to drop
 module.exports = {
   provideProjectRepositoryProvider() {
     return {
-      async repositoryForDirectory(directory) {
-        const root = await findMyVcsRoot(directory.getPath());
+      async repositoryForPath(path) {
+        const root = await findMyVcsRoot(path);
         return root ? new MyRepository(root) : null;
       },
-      repositoryForDirectorySync(directory) {
-        const root = findMyVcsRootSync(directory.getPath());
-        return root ? new MyRepository(root) : null;
+      getRepositoryForPath(path) {
+        return findCachedRepository(path);
       },
     };
   },
@@ -64,9 +63,9 @@ module.exports = {
 
 Providers are consulted in **reverse registration order**, so a package that registers later is asked before core's built-in Git provider — which is what lets a package take over a directory Git would also have claimed.
 
-The async path asks **every** provider at once and takes the first non-`null` result, so a slow provider delays the answer for that directory even when another has already answered. The sync path stops at the first non-`null`.
+The async path asks **every** provider at once and takes the first non-`null` result, so a slow provider delays the answer even when another has already answered. Core never performs synchronous repository discovery in the renderer.
 
-Results are cached per real path. When every provider returns `null` the cache entry is dropped, so a provider registered later still gets a chance at that directory.
+Results are cached per normalized lexical path. When every provider returns `null` the cache entry is dropped, so a provider registered later still gets a chance at that path.
 
 Registering a provider clears the cache and triggers a rescan, so repositories resolved before your package activated are re-resolved.
 

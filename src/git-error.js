@@ -62,5 +62,4 @@ module.exports = {
   GitError,
   LargeRepoError,
   normalizeGitOperationError,
-  operationErrorCode,
 };

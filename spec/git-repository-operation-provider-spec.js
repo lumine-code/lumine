@@ -6,6 +6,34 @@ const temp = require("@lumine-code/temp").track();
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
 
 describe("GitRepositoryOperationProvider", () => {
+  it("routes commands and output files through one GitHostClient", async () => {
+    const gitHostClient = {
+      exec: jasmine.createSpy("exec").and.resolveTo({ exitCode: 0, stdout: "ok", stderr: "" }),
+      writeCommandOutput: jasmine
+        .createSpy("writeCommandOutput")
+        .and.resolveTo({ exitCode: 0, stderr: "" }),
+    };
+    const provider = new GitRepositoryOperationProvider({ gitHostClient });
+    const workingDirectory = temp.mkdirSync("git-client-transport");
+
+    await provider.executeGit(["status"], workingDirectory);
+    const operations = provider.createRepositoryOperations({ workingDirectory });
+    await operations.expandBlobToFile("output.txt", "abc");
+
+    expect(gitHostClient.exec).toHaveBeenCalledWith(
+      ["status"],
+      workingDirectory,
+      { priority: "interactive" },
+      true,
+    );
+    const [args, cwd, destinationPath, options] =
+      gitHostClient.writeCommandOutput.calls.mostRecent().args;
+    expect(args).toEqual(["cat-file", "blob", "abc"]);
+    expect(cwd).toBe(workingDirectory);
+    expect(destinationPath).toBe(path.join(workingDirectory, "output.txt"));
+    expect(options.priority).toBe("interactive");
+  });
+
   it("exposes the embedded Git transport", async () => {
     const calls = [];
     const provider = new GitRepositoryOperationProvider({
@@ -23,11 +51,10 @@ describe("GitRepositoryOperationProvider", () => {
       {
         args: ["--version"],
         workingDirectory,
-        options: { env: { A: "B" } },
+        options: { priority: "interactive", env: { A: "B" } },
         raw: true,
       },
     ]);
-    expect(path.isAbsolute(provider.getGitExecutablePath())).toBe(true);
   });
 
   it("injects the auth broker environment into remote operations only", async () => {

@@ -122,4 +122,18 @@ module.exports = class GitHostClient {
       { signal },
     );
   }
+
+  exec(args, workingDirectory, options = {}, raw = false) {
+    const { signal, rest } = splitSignal(options);
+    return this.request("exec", { workingDirectory, args, options: rest, raw }, { signal });
+  }
+
+  writeCommandOutput(args, workingDirectory, destinationPath, options = {}) {
+    const { signal, rest } = splitSignal(options);
+    return this.request(
+      "writeCommandOutput",
+      { workingDirectory, args, destinationPath, options: rest },
+      { signal },
+    );
+  }
 };

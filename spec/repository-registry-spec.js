@@ -25,6 +25,8 @@ class FakeRepository {
     this.scheduledRefsSnapshotRefreshCount = 0;
     this.statusSnapshot = { initialized: true };
     this.refsSnapshot = { initialized: true };
+    this.workingDirectoryAliases = new Set();
+    this.extraGitDirectoryAliases = new Set();
   }
 
   getStatusSnapshot() {
@@ -53,6 +55,46 @@ class FakeRepository {
 
   getWorkingDirectory() {
     return this.workingDirectory;
+  }
+
+  addWorkingDirectoryAlias(directoryPath) {
+    this.workingDirectoryAliases.add(directoryPath);
+  }
+
+  removeWorkingDirectoryAlias(directoryPath) {
+    const normalized = normalize(directoryPath);
+    for (const alias of this.workingDirectoryAliases) {
+      if (normalize(alias) === normalized) this.workingDirectoryAliases.delete(alias);
+    }
+    if (
+      this.openedWorkingDirectoryPath &&
+      normalize(this.openedWorkingDirectoryPath) === normalized
+    ) {
+      this.openedWorkingDirectoryPath = null;
+    }
+  }
+
+  getWorkingDirectoryAliases() {
+    return [
+      this.workingDirectory || this.gitDirectory,
+      this.openedWorkingDirectoryPath,
+      ...this.workingDirectoryAliases,
+    ].filter(Boolean);
+  }
+
+  addGitDirectoryAlias(directoryPath) {
+    this.extraGitDirectoryAliases.add(directoryPath);
+  }
+
+  removeGitDirectoryAlias(directoryPath) {
+    const normalized = normalize(directoryPath);
+    for (const alias of this.extraGitDirectoryAliases) {
+      if (normalize(alias) === normalized) this.extraGitDirectoryAliases.delete(alias);
+    }
+  }
+
+  getGitDirectoryAliases() {
+    return [this.gitDirectory, ...this.extraGitDirectoryAliases];
   }
 
   getPath() {
@@ -132,19 +174,19 @@ class FakeProject {
     return directoryFor(filePath);
   }
 
-  repositoryForDirectoryFromProvidersSync(directory) {
-    const directoryPath = directory.getPath();
+  repositoryForPathFromProvidersCached(filePath) {
     return (
       this.repositories
-        .filter((repository) => contains(repository.getWorkingDirectory(), directoryPath))
+        .filter((repository) => contains(repository.getWorkingDirectory(), filePath))
         .sort(
           (left, right) => right.getWorkingDirectory().length - left.getWorkingDirectory().length,
         )[0] || null
     );
   }
 
-  async repositoryForDirectoryFromProviders(directory) {
-    return this.repositoryForDirectoryFromProvidersSync(directory);
+  async repositoryForPathFromProviders(filePath) {
+    const repository = this.repositoryForPathFromProvidersCached(filePath);
+    return repository && fs.existsSync(repository.getPath()) ? repository : null;
   }
 }
 
@@ -188,8 +230,20 @@ function bufferFor(filePath) {
     onDidChangePath(callback) {
       return emitter.on("did-change-path", callback);
     },
+    onDidSave(callback) {
+      return emitter.on("did-save", callback);
+    },
+    onDidReload(callback) {
+      return emitter.on("did-reload", callback);
+    },
     onDidDestroy(callback) {
       return emitter.once("did-destroy", callback);
+    },
+    save() {
+      emitter.emit("did-save");
+    },
+    reload() {
+      emitter.emit("did-reload");
     },
     destroy() {
       emitter.emit("did-destroy");
@@ -214,6 +268,13 @@ describe("RepositoryRegistry", () => {
   });
 
   afterEach(() => registry.destroy());
+
+  it("treats the filesystem root as containing its descendants", () => {
+    const rootPath = path.parse(process.cwd()).root;
+    expect(
+      RepositoryRegistry.pathContains(rootPath, path.join(rootPath, "nested", "file.txt")),
+    ).toBe(true);
+  });
 
   it("finds a repository containing a project root", () => {
     const workdir = temp.mkdirSync("containing-repository");
@@ -247,10 +308,26 @@ describe("RepositoryRegistry", () => {
     repositories.push(outer, nested);
 
     registry.setProjectRoots([directoryFor(outerPath)]);
-    registry.resolveForPathSync(path.join(nestedPath, "src", "main.js"));
+    registry.register(nested);
 
     expect(registry.getForPath(path.join(outerPath, "README.md"))).toBe(outer);
     expect(registry.getForPath(path.join(nestedPath, "src", "main.js"))).toBe(nested);
+  });
+
+  it("prefers a deeper registered repository over a stale provider cache result", async () => {
+    const outerPath = temp.mkdirSync("cached-outer-repository");
+    const nestedPath = path.join(outerPath, "nested");
+    const outer = new FakeRepository(outerPath);
+    const nested = new FakeRepository(nestedPath);
+    registry.register(outer);
+    registry.register(nested);
+    project.repositoryForPathFromProviders = async () => outer;
+
+    expect(
+      await registry.resolveForPath(path.join(nestedPath, "src", "main.js"), {
+        refresh: false,
+      }),
+    ).toBe(nested);
   });
 
   it("routes cached paths without filesystem calls", () => {
@@ -279,14 +356,20 @@ describe("RepositoryRegistry", () => {
     registry.onDidChange((change) => changes.push(change));
 
     const entry = registry.register(repository);
-    expect(changes[0].routingChangedPrefixes).toEqual(entry.routingDirectories);
+    expect(changes[0].routingChangedPrefixes).toEqual([
+      ...entry.routingDirectories,
+      ...entry.gitDirectoryAliases,
+    ]);
     const normalizedAlias = path.resolve(repository.openedWorkingDirectoryPath);
     expect(entry.routingDirectories).toContain(
       process.platform === "win32" ? normalizedAlias.toLowerCase() : normalizedAlias,
     );
 
     repository.destroy();
-    expect(changes.at(-1).routingChangedPrefixes).toEqual(entry.routingDirectories);
+    expect(changes.at(-1).routingChangedPrefixes).toEqual([
+      ...entry.routingDirectories,
+      ...entry.gitDirectoryAliases,
+    ]);
   });
 
   it("does not remove and re-add a repository when roots are replaced inside it", () => {
@@ -305,6 +388,94 @@ describe("RepositoryRegistry", () => {
     expect(changes.length).toBe(1);
     expect(changes[0].added).toEqual([]);
     expect(changes[0].removed).toEqual([]);
+  });
+
+  it("adds a newly discovered alias to an existing routing entry", () => {
+    const workdir = temp.mkdirSync("late-routing-alias-repository");
+    const aliasPath = path.join(path.dirname(workdir), "late-routing-alias");
+    const repository = new FakeRepository(workdir);
+    registry.register(repository);
+    expect(registry.getForPath(path.join(aliasPath, "file.txt"))).toBeNull();
+
+    repository.addWorkingDirectoryAlias(aliasPath);
+    registry.register(repository);
+
+    expect(registry.getForPath(path.join(aliasPath, "file.txt"))).toBe(repository);
+  });
+
+  it("classifies ref changes through a newly discovered Git-directory alias", () => {
+    const workdir = temp.mkdirSync("late-git-directory-alias");
+    const aliasPath = path.join(temp.mkdirSync("late-git-alias-parent"), "repository-link");
+    const repository = new FakeRepository(workdir);
+    registry.register(repository);
+    repository.addWorkingDirectoryAlias(aliasPath);
+    repository.addGitDirectoryAlias(path.join(aliasPath, ".git"));
+    registry.register(repository);
+    const changedPath = path.join(aliasPath, ".git", "refs", "heads", "main");
+
+    expect(registry.changeContextsFor(changedPath, path.dirname(changedPath))).toEqual([
+      { repository, gitRelativeDirectory: "refs/heads" },
+    ]);
+  });
+
+  it("transfers a retargeted alias to its newly discovered repository", () => {
+    const first = new FakeRepository(temp.mkdirSync("retargeted-alias-first"));
+    const second = new FakeRepository(temp.mkdirSync("retargeted-alias-second"));
+    const aliasPath = path.join(temp.mkdirSync("retargeted-alias-parent"), "repository-link");
+    registry.register(first);
+    registry.register(second);
+    const firstHold = registry.retain(first);
+    const secondHold = registry.retain(second);
+    first.addWorkingDirectoryAlias(aliasPath);
+    registry.register(first);
+    expect(registry.getForPath(path.join(aliasPath, "file.txt"))).toBe(first);
+
+    second.addWorkingDirectoryAlias(aliasPath);
+    registry.register(second);
+
+    expect(registry.getForPath(path.join(aliasPath, "file.txt"))).toBe(second);
+    expect(first.getWorkingDirectoryAliases()).not.toContain(aliasPath);
+    firstHold.dispose();
+    secondHold.dispose();
+  });
+
+  it("keeps root ownership while an asynchronous scan resolves a replacement alias", async () => {
+    const workdir = temp.mkdirSync("aliased-root-repository");
+    const aliasParent = temp.mkdirSync("aliased-root-parent");
+    const aliasPath = path.join(aliasParent, "repository-link");
+    fs.symlinkSync(workdir, aliasPath, process.platform === "win32" ? "junction" : "dir");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    const changes = [];
+    registry.onDidChange((change) => changes.push(change));
+    project.repositoryForPathFromProviders = async (filePath) =>
+      contains(aliasPath, filePath) ? repository : null;
+
+    registry.setProjectRoots([directoryFor(aliasPath)]);
+    expect(repository.isDestroyed()).toBe(false);
+    expect(registry.getRepositories()).toEqual([repository]);
+
+    project.directories = [directoryFor(aliasPath)];
+    await registry.rescan();
+    expect(repository.isDestroyed()).toBe(false);
+    expect(registry.getRepositories()).toEqual([repository]);
+    expect(changes.flatMap(({ added }) => added)).not.toContain(repository);
+    expect(changes.flatMap(({ removed }) => removed)).not.toContain(repository);
+  });
+
+  it("releases a pending root reconciliation lease when the project detaches", () => {
+    const workdir = temp.mkdirSync("detached-root-reconciliation");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+
+    registry.setProjectRoots([directoryFor(temp.mkdirSync("replacement-root"))]);
+    expect(registry.entryByRepository.get(repository).pendingRootReconciliation).toBe(true);
+    registry.detachProject(project);
+
+    expect(repository.isDestroyed()).toBe(true);
+    expect(registry.getRepositories()).toEqual([]);
   });
 
   it("keeps a repository until its last root owner is removed", () => {
@@ -550,7 +721,16 @@ describe("RepositoryRegistry", () => {
     repositories.push(repository);
     registry.setProjectRoots([directoryFor(workdir)]);
     let releaseRefs;
-    repository.refreshRefsSnapshot = () => new Promise((resolve) => (releaseRefs = resolve));
+    let statusStarted = false;
+    repository.refreshStatusSnapshot = () =>
+      Promise.resolve().then(() => {
+        statusStarted = true;
+        repository.refreshStatusSnapshotCount++;
+      });
+    repository.refreshRefsSnapshot = () => {
+      expect(statusStarted).toBe(true);
+      return new Promise((resolve) => (releaseRefs = resolve));
+    };
     registry.addOperationProvider({
       createRepositoryOperations() {
         return { commit: async () => "created-commit" };
@@ -563,6 +743,32 @@ describe("RepositoryRegistry", () => {
     expect(repository.refreshStatusSnapshotCount).toBe(1);
     expect(typeof releaseRefs).toBe("function");
     releaseRefs();
+  });
+
+  it("does not merge refs into a pending post-operation status refresh", async () => {
+    const workdir = temp.mkdirSync("pending-status-refresh");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    let releaseStatus;
+    repository.refreshStatusSnapshot = () =>
+      new Promise((resolve) => {
+        releaseStatus = resolve;
+      });
+    repository.refreshRefsSnapshot = jasmine.createSpy("refreshRefsSnapshot").and.resolveTo();
+    registry.addOperationProvider({
+      createRepositoryOperations() {
+        return { commit: async () => "created-commit" };
+      },
+    });
+
+    const operation = repository.getOperations().commit("Subject");
+    await flushMicrotasks();
+    expect(repository.refreshRefsSnapshot).not.toHaveBeenCalled();
+
+    releaseStatus();
+    expect(await operation).toBe("created-commit");
+    expect(repository.refreshRefsSnapshot).toHaveBeenCalled();
   });
 
   it("warns when the detached refs refresh fails, unless the repository is gone", async () => {
@@ -909,14 +1115,10 @@ describe("RepositoryRegistry", () => {
         calls.push({ args, workingDirectory, options });
         return Promise.resolve({ exitCode: 0, stdout: "ok", stderr: "" });
       },
-      getGitExecutablePath() {
-        return "/embedded/git";
-      },
     });
     const workingDirectory = temp.mkdirSync("raw-git-transport");
 
     expect(registry.canExecuteGitCommands()).toBe(true);
-    expect(registry.getGitExecutablePath()).toBe("/embedded/git");
     expect(await registry.executeGit(["status"], workingDirectory, { stdin: "input" })).toEqual({
       exitCode: 0,
       stdout: "ok",
@@ -1063,6 +1265,80 @@ describe("RepositoryRegistry", () => {
       expect(registry.getActiveRepository()).toBe(repoA);
     });
 
+    it("moves the active context when a deeper repository is registered", () => {
+      const nestedPath = path.join(workdirA, "nested");
+      const nested = new FakeRepository(nestedPath);
+      registry.attachWorkspace(workspace);
+      workspace.setActiveItem(itemFor(path.join(nestedPath, "file.txt")));
+      expect(registry.getActiveRepository()).toBe(repoA);
+
+      repositories.push(nested);
+      registry.register(nested);
+
+      expect(registry.getActiveRepository()).toBe(nested);
+    });
+
+    it("ignores an asynchronous repository result for a stale active item", async () => {
+      const firstPath = path.join(temp.mkdirSync("stale-active-first"), "file.txt");
+      const secondPath = path.join(temp.mkdirSync("stale-active-second"), "file.txt");
+      const firstRepository = new FakeRepository(path.dirname(firstPath));
+      const secondRepository = new FakeRepository(path.dirname(secondPath));
+      const resolvers = new Map();
+      project.repositoryForPathFromProviders = (filePath) =>
+        new Promise((resolve) => resolvers.set(filePath, resolve));
+      registry.attachWorkspace(workspace);
+
+      workspace.setActiveItem(itemFor(firstPath));
+      workspace.setActiveItem(itemFor(secondPath));
+      resolvers.get(firstPath)(firstRepository);
+      await flushMicrotasks();
+
+      expect(registry.getActiveRepository()).toBeNull();
+      expect(registry.getRepositories()).not.toContain(firstRepository);
+
+      resolvers.get(secondPath)(secondRepository);
+      await flushMicrotasks();
+      expect(registry.getActiveRepository()).toBe(secondRepository);
+    });
+
+    it("does not destroy a shared repository returned by stale and current discovery", async () => {
+      const firstPath = path.join(temp.mkdirSync("shared-active-first"), "file.txt");
+      const secondPath = path.join(temp.mkdirSync("shared-active-second"), "file.txt");
+      const sharedRepository = new FakeRepository(path.dirname(secondPath));
+      const resolvers = new Map();
+      project.repositoryForPathFromProviders = (filePath) =>
+        new Promise((resolve) => resolvers.set(filePath, resolve));
+      registry.attachWorkspace(workspace);
+
+      workspace.setActiveItem(itemFor(firstPath));
+      workspace.setActiveItem(itemFor(secondPath));
+      resolvers.get(firstPath)(sharedRepository);
+      await flushMicrotasks();
+      expect(sharedRepository.isDestroyed()).toBe(false);
+
+      resolvers.get(secondPath)(sharedRepository);
+      await flushMicrotasks();
+      expect(registry.getActiveRepository()).toBe(sharedRepository);
+      expect(sharedRepository.isDestroyed()).toBe(false);
+    });
+
+    it("ignores an asynchronous repository result after the project is detached", async () => {
+      const filePath = path.join(temp.mkdirSync("detached-active-project"), "file.txt");
+      const repository = new FakeRepository(path.dirname(filePath));
+      let resolveRepository;
+      project.repositoryForPathFromProviders = () =>
+        new Promise((resolve) => (resolveRepository = resolve));
+      registry.attachWorkspace(workspace);
+
+      workspace.setActiveItem(itemFor(filePath));
+      registry.detachProject(project);
+      resolveRepository(repository);
+      await flushMicrotasks();
+
+      expect(registry.getRepositories()).toEqual([]);
+      expect(registry.getActiveRepository()).toBeNull();
+    });
+
     it("keeps a null-repository context on the focused item when its repository is removed", async () => {
       const events = [];
       registry.attachWorkspace(workspace);
@@ -1116,6 +1392,7 @@ describe("RepositoryRegistry", () => {
       registry.attachWorkspace(workspace);
       const bareRoot = temp.mkdirSync("active-initialize-root");
       registry.setProjectRoots([directoryFor(bareRoot)]);
+      await registry.scanProjectRoots({ depth: 0, generation: registry.scanGeneration });
       await flushMicrotasks();
 
       expect(registry.getActiveRepository()).toBeNull();
@@ -1138,7 +1415,7 @@ describe("RepositoryRegistry", () => {
       const workdirC = temp.mkdirSync("active-repository-c");
       const repoC = new FakeRepository(workdirC);
       repositories.push(repoC);
-      registry.resolveForPathSync(path.join(workdirC, "file.txt"));
+      registry.register(repoC);
 
       registry.setActiveRepository(repoC, { pin: true });
       expect(registry.getRepositories()).toContain(repoC);
@@ -1215,6 +1492,100 @@ describe("RepositoryRegistry", () => {
     await Promise.resolve();
     expect(registry.getRepositories()).toEqual([]);
     expect(repository.isDestroyed()).toBe(true);
+  });
+
+  it("subscribes once per buffer and refreshes only its current owner", async () => {
+    const ownerPath = temp.mkdirSync("buffer-refresh-owner");
+    const nextOwnerPath = temp.mkdirSync("buffer-refresh-next-owner");
+    const ownerRepository = new FakeRepository(ownerPath);
+    const nextOwnerRepository = new FakeRepository(nextOwnerPath);
+    repositories.push(ownerRepository, nextOwnerRepository);
+
+    // Registered repositories do not add listeners of their own. Listener
+    // count stays constant as this collection grows; the registry alone owns
+    // one subscription for each buffer event.
+    for (let index = 0; index < 20; index++) {
+      const unrelatedPath = temp.mkdirSync(`buffer-refresh-unrelated-${index}`);
+      repositories.push(new FakeRepository(unrelatedPath));
+    }
+    for (const repository of repositories) registry.register(repository);
+
+    const buffer = bufferFor(path.join(ownerPath, "file.txt"));
+    spyOn(buffer, "onDidSave").and.callThrough();
+    spyOn(buffer, "onDidReload").and.callThrough();
+    spyOn(buffer, "onDidChangePath").and.callThrough();
+    project.addBuffer(buffer);
+    for (let index = 0; index < 8; index++) await Promise.resolve();
+
+    expect(buffer.onDidSave.calls.count()).toBe(1);
+    expect(buffer.onDidReload.calls.count()).toBe(1);
+    expect(buffer.onDidChangePath.calls.count()).toBe(1);
+
+    buffer.save();
+    buffer.reload();
+    expect(ownerRepository.scheduledStatusSnapshotRefreshCount).toBe(2);
+    expect(nextOwnerRepository.scheduledStatusSnapshotRefreshCount).toBe(0);
+    for (const repository of repositories.slice(2)) {
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+    }
+
+    buffer.setPath(path.join(nextOwnerPath, "moved.txt"));
+    for (let index = 0; index < 8; index++) await Promise.resolve();
+
+    expect(ownerRepository.scheduledStatusSnapshotRefreshCount).toBe(2);
+    expect(nextOwnerRepository.scheduledStatusSnapshotRefreshCount).toBe(1);
+    for (const repository of repositories.slice(2)) {
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+    }
+  });
+
+  it("moves an existing buffer owner when a deeper repository is registered", async () => {
+    const outerPath = temp.mkdirSync("buffer-routing-outer");
+    const nestedPath = path.join(outerPath, "nested");
+    const outer = new FakeRepository(outerPath);
+    const nested = new FakeRepository(nestedPath);
+    repositories.push(outer);
+    registry.setProjectRoots([directoryFor(outerPath)]);
+    const buffer = bufferFor(path.join(nestedPath, "file.txt"));
+    project.addBuffer(buffer);
+    for (let index = 0; index < 8; index++) await Promise.resolve();
+    expect(registry.bufferOwners.get(buffer).entry.repository).toBe(outer);
+
+    repositories.push(nested);
+    registry.register(nested);
+    expect(registry.bufferOwners.get(buffer).entry.repository).toBe(nested);
+
+    buffer.save();
+    expect(nested.scheduledStatusSnapshotRefreshCount).toBe(1);
+    expect(outer.scheduledStatusSnapshotRefreshCount).toBe(0);
+  });
+
+  it("does not refresh a stale owner after rapid buffer path changes", async () => {
+    const firstPath = temp.mkdirSync("stale-buffer-refresh-first");
+    const secondPath = temp.mkdirSync("stale-buffer-refresh-second");
+    const firstRepository = new FakeRepository(firstPath);
+    const secondRepository = new FakeRepository(secondPath);
+    registry.register(firstRepository);
+    registry.register(secondRepository);
+
+    const resolvers = new Map();
+    project.repositoryForPathFromProviders = (filePath) =>
+      new Promise((resolve) => resolvers.set(filePath, resolve));
+    const firstFile = path.join(firstPath, "first.txt");
+    const secondFile = path.join(secondPath, "second.txt");
+    const buffer = bufferFor(firstFile);
+    project.addBuffer(buffer);
+    buffer.setPath(secondFile);
+
+    resolvers.get(firstFile)(firstRepository);
+    for (let index = 0; index < 8; index++) await Promise.resolve();
+    expect(firstRepository.scheduledStatusSnapshotRefreshCount).toBe(0);
+    expect(secondRepository.scheduledStatusSnapshotRefreshCount).toBe(0);
+
+    resolvers.get(secondFile)(secondRepository);
+    for (let index = 0; index < 8; index++) await Promise.resolve();
+    expect(firstRepository.scheduledStatusSnapshotRefreshCount).toBe(0);
+    expect(secondRepository.scheduledStatusSnapshotRefreshCount).toBe(1);
   });
 
   it("releases an old buffer repository after all path listeners run", async () => {
@@ -1322,7 +1693,7 @@ describe("RepositoryRegistry", () => {
     expect(repository.refreshRefsSnapshotCount).toBe(0);
   });
 
-  it("optionally detects repositories added and removed below a root", () => {
+  it("optionally detects repositories added and removed below a root", async () => {
     registry.destroy();
     registry = new RepositoryRegistry({
       project,
@@ -1338,11 +1709,11 @@ describe("RepositoryRegistry", () => {
 
     const repository = new FakeRepository(nestedPath);
     repositories.push(repository);
-    project.emitFileChanges([{ path: repository.getPath() }]);
+    await registry.discoverRepositoriesForFileChanges([{ path: repository.getPath() }]);
     expect(registry.getForPath(nestedPath)).toBe(repository);
 
     fs.rmSync(repository.getPath(), { recursive: true });
-    project.emitFileChanges([{ path: repository.getPath() }]);
+    await registry.discoverRepositoriesForFileChanges([{ path: repository.getPath() }]);
     expect(registry.getForPath(nestedPath)).toBeNull();
     expect(repository.isDestroyed()).toBe(true);
   });
@@ -1352,7 +1723,7 @@ describe("RepositoryRegistry", () => {
   // macOS /var against /private/var. The removal branch compared the two
   // lexically and matched nothing, so a deleted `.git` left its repository
   // registered and neither the tree view nor the Git panel was ever told.
-  it("removes a repository whose .git disappears under an aliased spelling", () => {
+  it("removes a repository whose .git disappears under an aliased spelling", async () => {
     registry.destroy();
     registry = new RepositoryRegistry({
       project,
@@ -1367,7 +1738,9 @@ describe("RepositoryRegistry", () => {
     expect(registry.getRepositories()).toEqual([repository]);
 
     fs.rmSync(repository.getPath(), { recursive: true, maxRetries: 10, retryDelay: 50 });
-    project.emitFileChanges([{ action: "deleted", path: path.join(rawPath, ".git") }]);
+    await registry.discoverRepositoriesForFileChanges([
+      { action: "deleted", path: path.join(rawPath, ".git") },
+    ]);
 
     expect(registry.getRepositories()).toEqual([]);
     expect(repository.isDestroyed()).toBe(true);
@@ -1554,8 +1927,8 @@ describe("RepositoryRegistry", () => {
       const idle = new FakeRepository(path.join(rootPath, "idle"));
       repositories.push(active, idle);
       registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
-      registry.resolveForPathSync(path.join(active.getWorkingDirectory(), "file.js"));
-      registry.resolveForPathSync(path.join(idle.getWorkingDirectory(), "file.js"));
+      registry.register(active);
+      registry.register(idle);
       registry.setActiveRepository(active);
       resetCounts(active, idle);
 
@@ -1573,8 +1946,8 @@ describe("RepositoryRegistry", () => {
       const outside = new FakeRepository(temp.mkdirSync("focus-outside"));
       repositories.push(covered, outside);
       registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
-      registry.resolveForPathSync(path.join(covered.getWorkingDirectory(), "file.js"));
-      registry.resolveForPathSync(path.join(outside.getWorkingDirectory(), "file.js"));
+      registry.register(covered);
+      registry.register(outside);
       registry.setActiveRepository(covered);
       resetCounts(covered, outside);
 
@@ -1596,8 +1969,8 @@ describe("RepositoryRegistry", () => {
       );
       repositories.push(covered, worktree);
       registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
-      registry.resolveForPathSync(path.join(covered.getWorkingDirectory(), "file.js"));
-      registry.resolveForPathSync(path.join(worktree.getWorkingDirectory(), "file.js"));
+      registry.register(covered);
+      registry.register(worktree);
       registry.setActiveRepository(covered);
       resetCounts(covered, worktree);
 

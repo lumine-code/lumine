@@ -116,6 +116,3 @@ module.exports = class GitBlobCache {
     this.bytes = 0;
   }
 };
-
-module.exports.DEFAULT_MAX_BYTES = DEFAULT_MAX_BYTES;
-module.exports.DEFAULT_MAX_ENTRIES = DEFAULT_MAX_ENTRIES;

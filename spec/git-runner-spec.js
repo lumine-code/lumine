@@ -124,6 +124,30 @@ describe("GitRunner priority lanes", () => {
     expect(state.peak).toBe(2);
   });
 
+  it("removes an aborted command from the queue before it can spawn", async () => {
+    const { execute, state } = trackingExecute();
+    const limiter = new Semaphore(1);
+    const runner = new GitRunner({ execute, limiter });
+    const first = runner.run(["status", "running"], "/repo");
+    await flush();
+    const controller = new AbortController();
+    const cancelled = runner.run(["status", "cancelled"], "/repo", {
+      signal: controller.signal,
+    });
+    await flush();
+
+    controller.abort();
+    await expectAsync(cancelled).toBeRejectedWithError(Error, /aborted/);
+    state.resolvers.shift()();
+    await first;
+    await flush();
+
+    expect(state.peak).toBe(1);
+    expect(state.active).toBe(0);
+    expect(state.resolvers).toEqual([]);
+    expect(limiter.backgroundQueue).toEqual([]);
+  });
+
   it("routes only priority 'interactive' into the interactive lane", async () => {
     const priorities = [];
     const limiter = {
@@ -210,5 +234,51 @@ describe("GitRunner repository trust", () => {
     await runner.run(["status"], "/repo");
 
     expect(calls[0]).not.toContain("safe.directory=*");
+  });
+
+  it("applies trust, config, and environment to raw results without forcing success", async () => {
+    const calls = [];
+    const runner = new GitRunner({
+      trustAllRepositories: true,
+      execute: async (args, cwd, options) => {
+        calls.push({ args, cwd, options });
+        return { exitCode: 7, stdout: "raw", stderr: "failure" };
+      },
+    });
+
+    const result = await runner.runRawResult(["status"], "/repo", {
+      config: { "test.value": "yes" },
+      env: { TEST_ENV: "present" },
+      priority: "interactive",
+    });
+
+    expect(result.exitCode).toBe(7);
+    expect(calls[0].args).toContain("safe.directory=*");
+    expect(calls[0].args).toContain("test.value=yes");
+    expect(calls[0].args).not.toContain("color.diff=false");
+    expect(calls[0].options.env.TEST_ENV).toBe("present");
+    expect(calls[0].options.env.GIT_EDITOR).toBe("true");
+  });
+});
+
+describe("GitRunner errors", () => {
+  it("bounds the diagnostic copied into an error message", async () => {
+    const runner = new GitRunner({
+      execute: async () => ({
+        exitCode: 1,
+        stdout: "",
+        stderr: "failure".repeat(20000),
+      }),
+    });
+
+    let error;
+    try {
+      await runner.run(["status"], "/repo");
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(Buffer.byteLength(error.message)).toBeLessThan(66 * 1024);
+    expect(error.message).toContain("[truncated by git-host]");
   });
 });

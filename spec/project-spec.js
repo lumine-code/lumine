@@ -392,18 +392,18 @@ describe("Project", () => {
         },
       };
       fakeRepositoryProvider = {
-        repositoryForDirectory(directory) {
-          fakeRepository.workingDirectory = directory.getPath();
+        repositoryForPath(filePath) {
+          fakeRepository.workingDirectory = filePath;
           return Promise.resolve(fakeRepository);
         },
-        repositoryForDirectorySync(directory) {
-          fakeRepository.workingDirectory = directory.getPath();
+        getRepositoryForPath(filePath) {
+          fakeRepository.workingDirectory = filePath;
           return fakeRepository;
         },
       };
     });
 
-    it("uses it to create repositories for any directories that need one", () => {
+    it("uses it to create repositories for any paths that need one", async () => {
       const projectPath = temp.mkdirSync("lumine-project");
       lumine.project.setPaths([projectPath]);
       expect(lumine.repositories.getForPath(projectPath)).toBeNull();
@@ -413,12 +413,12 @@ describe("Project", () => {
         "1.0.0",
         fakeRepositoryProvider,
       );
-      expect(lumine.repositories.resolveForPathSync(projectPath)).toBe(fakeRepository);
+      expect(await lumine.repositories.resolveForPath(projectPath)).toBe(fakeRepository);
     });
 
-    it("allows a newly provided repository to become the nearest repository", () => {
+    it("allows a newly provided repository to become the nearest repository", async () => {
       const projectPath = lumine.project.getPaths()[0];
-      const repository = lumine.repositories.getForPath(projectPath);
+      const repository = await lumine.repositories.resolveForPath(projectPath);
       expect(repository).toBeTruthy();
 
       lumine.packages.serviceHub.provide(
@@ -426,7 +426,7 @@ describe("Project", () => {
         "1.0.0",
         fakeRepositoryProvider,
       );
-      expect(lumine.repositories.getForPath(projectPath)).toBe(fakeRepository);
+      expect(await lumine.repositories.resolveForPath(projectPath)).toBe(fakeRepository);
       expect(repository.isDestroyed()).toBe(false);
     });
 
@@ -443,6 +443,31 @@ describe("Project", () => {
       const projectPath = temp.mkdirSync("lumine-project");
       lumine.project.addPath(projectPath);
       expect(lumine.repositories.getForPath(projectPath)).toBeNull();
+    });
+
+    it("discards an in-flight result from a provider that was removed", async () => {
+      lumine.project.setPaths([]);
+      const projectPath = temp.mkdirSync("removed-repository-provider");
+      let resolveRepository;
+      const disposable = lumine.packages.serviceHub.provide(
+        "project.repository-provider",
+        "1.0.0",
+        {
+          repositoryForPath: () =>
+            new Promise((resolve) => {
+              resolveRepository = resolve;
+            }),
+        },
+      );
+
+      const pending = lumine.repositories.resolveForPath(projectPath);
+      await Promise.resolve();
+      disposable.dispose();
+      resolveRepository(fakeRepository);
+
+      expect(await pending).toBeNull();
+      await Promise.resolve();
+      expect(lumine.repositories.getRepositories()).not.toContain(fakeRepository);
     });
   });
 
@@ -654,7 +679,9 @@ describe("Project", () => {
 
       expect(result).toBeNull();
       expect(lumine.project.repositoryProviders.length).toBeGreaterThan(0);
-      expect(lumine.project.repositoryPromisesByPath.size).toBe(0);
+      expect(lumine.project.repositoryPromisesByPath.has(path.resolve(directory.getPath()))).toBe(
+        false,
+      );
     });
 
     it("resolves to a GitRepository and is cached when the given directory is a Git repo", async () => {
@@ -688,6 +715,22 @@ describe("Project", () => {
   });
 
   describe(".repositoryForPath(filePath)", () => {
+    const projectWithRepositoryProviders = (repositoryProviders) => {
+      const project = Object.create(Project.prototype);
+      Object.assign(project, {
+        alive: true,
+        repositoryProviders,
+        repositoryPromisesByPath: new Map(),
+        repositoriesByCachedPath: new Map(),
+        repositoryPromiseKeysByRepository: new Map(),
+        repositoryCacheObservedRepositories: new WeakSet(),
+        repositoryProviderGeneration: 0,
+        pendingRepositoryDiscoveryCount: 0,
+        repositoryOrphanSweepScheduled: false,
+      });
+      return project;
+    };
+
     it("resolves to null for a falsy path", async () => {
       expect(await lumine.project.repositoryForPath("")).toBeNull();
       expect(await lumine.project.repositoryForPath(null)).toBeNull();
@@ -707,6 +750,76 @@ describe("Project", () => {
       expect(result).toEqual(jasmine.any(GitRepository));
       const dirPath = new ProjectDirectory(path.join(__dirname, "..")).getRealPathSync();
       expect(result.getPath()).toBe(path.join(dirPath, ".git"));
+    });
+
+    it("does not construct a Directory on the built-in asynchronous path", async () => {
+      spyOn(lumine.project, "getDirectoryForProjectPath").and.throwError(
+        "synchronous directory lookup",
+      );
+
+      const result = await lumine.project.repositoryForPath(
+        path.join(__dirname, "project-spec.js"),
+      );
+
+      expect(result).toEqual(jasmine.any(GitRepository));
+      expect(lumine.project.getDirectoryForProjectPath).not.toHaveBeenCalled();
+    });
+
+    it("waits for every provider before sweeping unregistered built-in results", async () => {
+      let resolveSlowProvider;
+      const repository = {};
+      const fastProvider = {
+        repositoryForPath: async () => repository,
+        sweepUnregisteredRepositories: jasmine.createSpy("sweep unregistered repositories"),
+      };
+      const slowProvider = {
+        repositoryForPath: () =>
+          new Promise((resolve) => {
+            resolveSlowProvider = resolve;
+          }),
+      };
+      const project = projectWithRepositoryProviders([slowProvider, fastProvider]);
+      const pending = project.repositoryForPathFromProviders(
+        path.join(temp.mkdirSync("provider-aggregate"), "file.txt"),
+        { refresh: true },
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(fastProvider.sweepUnregisteredRepositories).not.toHaveBeenCalled();
+
+      resolveSlowProvider(null);
+      expect(await pending).toBe(repository);
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(fastProvider.sweepUnregisteredRepositories).toHaveBeenCalled();
+    });
+
+    it("waits for slower discovery before sweeping after another provider rejects", async () => {
+      let resolveSlowProvider;
+      const sweepingProvider = {
+        repositoryForPath: () =>
+          new Promise((resolve) => {
+            resolveSlowProvider = resolve;
+          }),
+        sweepUnregisteredRepositories: jasmine.createSpy("sweep unregistered repositories"),
+      };
+      const rejectingProvider = {
+        repositoryForPath: async () => {
+          throw new Error("provider failed");
+        },
+      };
+      const project = projectWithRepositoryProviders([rejectingProvider, sweepingProvider]);
+      const pending = project.repositoryForPathFromProviders(
+        path.join(temp.mkdirSync("rejecting-provider-aggregate"), "file.txt"),
+        { refresh: true },
+      );
+      await expectAsync(pending).toBeRejectedWithError(/provider failed/);
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(sweepingProvider.sweepUnregisteredRepositories).not.toHaveBeenCalled();
+
+      resolveSlowProvider({});
+      await new Promise((resolve) => setImmediate(resolve));
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(sweepingProvider.sweepUnregisteredRepositories).toHaveBeenCalled();
     });
   });
 
@@ -733,8 +846,10 @@ describe("Project", () => {
         lumine.project.setPaths([directory1, directory2, directory3]);
 
         const repo1 = lumine.repositories.getForPath(directory1);
-        const repo2 = lumine.repositories.getForPath(directory2);
-        const repo3 = lumine.repositories.getForPath(directory3);
+        const [repo2, repo3] = await Promise.all([
+          lumine.repositories.resolveForPath(directory2),
+          lumine.repositories.resolveForPath(directory3),
+        ]);
         expect(repo1).toBeNull();
         // The short head is read from the refs snapshot, loaded on demand.
         await repo2.ensureRefsSnapshot();
@@ -913,11 +1028,13 @@ describe("Project", () => {
       expect(onDidChangePathsSpy).not.toHaveBeenCalled();
     });
 
-    it("doesn't destroy the repository if it is shared by another root directory", () => {
+    it("doesn't destroy the repository if it is shared by another root directory", async () => {
       lumine.project.setPaths([__dirname, path.join(__dirname, "..", "src")]);
+      const repository = await lumine.repositories.resolveForPath(__dirname);
       lumine.project.removePath(__dirname);
       expect(lumine.project.getPaths()).toEqual([path.join(__dirname, "..", "src")]);
-      expect(lumine.repositories.getRepositories()[0].isSubmodule("src")).toBe(false);
+      expect(repository.isDestroyed()).toBe(false);
+      expect(repository.isSubmodule("src")).toBe(false);
     });
 
     it("removes a path that is represented as a URI", () => {
@@ -1149,6 +1266,7 @@ describe("Project", () => {
       fs.copySync(gitDirPath2, path.join(directory2, ".git"));
 
       lumine.project.setPaths([directory1]);
+      await lumine.repositories.resolveForPath(directory1);
 
       const disposable = lumine.repositories.observeRepositories((repo) => observed.push(repo));
       const firstRepository = lumine.repositories.getForPath(directory1);
@@ -1159,7 +1277,7 @@ describe("Project", () => {
       );
 
       lumine.project.addPath(directory2);
-      const secondRepository = lumine.repositories.getForPath(directory2);
+      const secondRepository = await lumine.repositories.resolveForPath(directory2);
       expect(observed).toContain(secondRepository);
       await secondRepository.ensureRefsSnapshot();
       expect(secondRepository.getReferenceTarget("refs/heads/master")).toBe(
@@ -1180,11 +1298,10 @@ describe("Project", () => {
       fs.copySync(fixtureRepoPath, path.join(projectRootPath, ".git"));
 
       lumine.project.addPath(projectRootPath);
-      expect(observed.length).toBe(1);
-      await observed[0].ensureRefsSnapshot();
-      expect(observed[0].getOriginURL()).toEqual(
-        "https://github.com/example-user/example-repo.git",
-      );
+      const repository = await lumine.repositories.resolveForPath(projectRootPath);
+      expect(observed).toContain(repository);
+      await repository.ensureRefsSnapshot();
+      expect(repository.getOriginURL()).toEqual("https://github.com/example-user/example-repo.git");
 
       disposable.dispose();
     });
@@ -1201,21 +1318,24 @@ describe("Project", () => {
       fs.mkdirSync(projectSubDirPath);
 
       lumine.project.addPath(projectSubDirPath);
-      expect(observed.length).toBe(1);
-      await observed[0].ensureRefsSnapshot();
-      expect(observed[0].getOriginURL()).toEqual(
-        "https://github.com/example-user/example-repo.git",
-      );
+      const repository = await lumine.repositories.resolveForPath(projectSubDirPath);
+      expect(observed).toContain(repository);
+      await repository.ensureRefsSnapshot();
+      expect(repository.getOriginURL()).toEqual("https://github.com/example-user/example-repo.git");
 
       disposable.dispose();
     });
 
-    it("does not invoke callback when a path is added and the path is not part of a repository", () => {
+    it("does not invoke callback when a path is added and the path is not part of a repository", async () => {
       const observed = [];
       const disposable = lumine.repositories.onDidAddRepository((repo) => observed.push(repo));
 
-      lumine.project.addPath(temp.mkdirSync("not-a-repository"));
-      expect(observed.length).toBe(0);
+      const projectPath = temp.mkdirSync("not-a-repository");
+      lumine.project.addPath(projectPath);
+      expect(await lumine.repositories.resolveForPath(projectPath)).toBeNull();
+      expect(observed.some((repository) => repository.getWorkingDirectory() === projectPath)).toBe(
+        false,
+      );
 
       disposable.dispose();
     });
@@ -1369,14 +1489,14 @@ describe("Project", () => {
   });
 
   describe(".reset()", () => {
-    it("revives a destroyed project and re-attaches its repository registry", () => {
+    it("revives a destroyed project and re-attaches its repository registry", async () => {
       lumine.project.destroy();
       expect(lumine.project.isDestroyed()).toBe(true);
       expect(() => lumine.project.reset(lumine.packages)).not.toThrow();
       expect(lumine.project.isAlive()).toBe(true);
 
       lumine.project.setPaths([__dirname]);
-      expect(lumine.repositories.getForPath(__dirname)).toBeTruthy();
+      expect(await lumine.repositories.resolveForPath(__dirname)).toBeTruthy();
     });
   });
 

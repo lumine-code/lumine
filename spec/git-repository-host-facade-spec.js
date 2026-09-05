@@ -1,7 +1,14 @@
 const path = require("path");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp").track();
-const GitRepository = require("../src/git-repository");
+const CoreGitRepository = require("../src/git-repository");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+
+class GitRepository extends CoreGitRepository {
+  constructor(filePath, options) {
+    super(discoverRepositoryDescriptor(filePath), options);
+  }
+}
 
 function copyRepository() {
   const workingDirectory = temp.mkdirSync("lumine-host-facade-spec");
@@ -106,7 +113,46 @@ describe("GitRepository host facade", () => {
     expect(refsChanged.calls.count()).toBe(1);
   });
 
-  it("refreshes declared submodules without leaking routing data into RPC descriptors", () => {
+  it("queues a different snapshot kind behind an active request", async () => {
+    const calls = [];
+    const pending = [];
+    const gitHostClient = {
+      getSnapshot(descriptor, request) {
+        calls.push(request);
+        return new Promise((resolve) => pending.push({ request, resolve }));
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+
+    const status = repo.refreshStatusSnapshot();
+    await Promise.resolve();
+    const refs = repo.refreshRefsSnapshot();
+    expect(calls.length).toBe(1);
+    expect(calls[0]).toEqual(jasmine.objectContaining({ status: true, refs: false }));
+
+    pending[0].resolve({
+      status: {
+        fingerprint: "status",
+        unchanged: false,
+        value: statusValue(pending[0].request.generations.status),
+      },
+    });
+    await status;
+    for (let index = 0; index < 8; index++) await Promise.resolve();
+
+    expect(calls.length).toBe(2);
+    expect(calls[1]).toEqual(jasmine.objectContaining({ status: false, refs: true }));
+    pending[1].resolve({
+      refs: {
+        fingerprint: "refs",
+        unchanged: false,
+        value: refsValue(pending[1].request.generations.refs),
+      },
+    });
+    expect((await refs).initialized).toBe(true);
+  });
+
+  it("refreshes declared submodules in the worker without leaking routing data", async () => {
     const workingDirectory = copyRepository();
     repo = new GitRepository(workingDirectory);
     expect(repo.isSubmodule("vendor/library")).toBe(false);
@@ -115,6 +161,7 @@ describe("GitRepository host facade", () => {
       path.join(workingDirectory, ".gitmodules"),
       '[submodule "library"]\n\tpath = vendor/library\n\turl = ../library.git\n',
     );
+    await repo.getSubmodulePaths();
     expect(repo.isSubmodule("vendor/library")).toBe(true);
     expect(repo.getHostDescriptor()).toEqual({
       gitDirectory: repo.getPath(),
@@ -122,6 +169,7 @@ describe("GitRepository host facade", () => {
     });
 
     fs.removeSync(path.join(workingDirectory, ".gitmodules"));
+    await repo.getSubmodulePaths();
     expect(repo.isSubmodule("vendor/library")).toBe(false);
   });
 
@@ -136,7 +184,7 @@ describe("GitRepository host facade", () => {
     expect(getConfigValues.calls.argsFor(0)[1]).toEqual(["user.name", "user.email"]);
   });
 
-  it("reads an explicit stage-0 index object through the history provider", async () => {
+  it("reads an explicit stage-0 index object through the host client", async () => {
     const getIndexFile = jasmine.createSpy("get index file").and.resolveTo("staged contents\n");
     repo = new GitRepository(copyRepository(), { gitHostClient: { getIndexFile } });
 
@@ -243,6 +291,282 @@ describe("GitRepository host facade", () => {
     expect(repo.getStatusSnapshot()).toBe(good);
   });
 
+  it("yields and aborts while indexing a very large status snapshot", async () => {
+    const files = Array.from({ length: 4001 }, (_, index) => ({
+      path: `directory/file-${index}.txt`,
+      originalPath: null,
+      kind: "untracked",
+      indexStatus: null,
+      worktreeStatus: null,
+      staged: false,
+      unstaged: true,
+      conflicted: false,
+      untracked: true,
+      ignored: false,
+      similarity: null,
+      submodule: {
+        isSubmodule: false,
+        commitChanged: false,
+        modified: false,
+        hasUntrackedChanges: false,
+      },
+    }));
+    const gitHostClient = {
+      async getSnapshot(descriptor, request) {
+        return {
+          status: {
+            fingerprint: "large",
+            unchanged: false,
+            value: {
+              ...statusValue(request.generations.status),
+              files,
+              counts: {
+                total: files.length,
+                staged: 0,
+                unstaged: files.length,
+                conflicted: 0,
+                untracked: files.length,
+                ignored: 0,
+              },
+            },
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    const controller = new AbortController();
+
+    const pending = repo.refreshStatusSnapshot({ signal: controller.signal });
+    setImmediate(() => controller.abort());
+
+    await expectAsync(pending).toBeRejectedWithError(Error, /aborted/);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+  });
+
+  it("yields and aborts while indexing the ancestors of one deeply nested status path", async () => {
+    const file = {
+      path: `${Array.from({ length: 10000 }, () => "nested").join("/")}/file.txt`,
+      originalPath: null,
+      kind: "untracked",
+      indexStatus: null,
+      worktreeStatus: null,
+      staged: false,
+      unstaged: true,
+      conflicted: false,
+      untracked: true,
+      ignored: false,
+      similarity: null,
+      submodule: {
+        isSubmodule: false,
+        commitChanged: false,
+        modified: false,
+        hasUntrackedChanges: false,
+      },
+    };
+    const gitHostClient = {
+      async getSnapshot(descriptor, request) {
+        return {
+          status: {
+            fingerprint: "deep",
+            unchanged: false,
+            value: {
+              ...statusValue(request.generations.status),
+              files: [file],
+              counts: {
+                total: 1,
+                staged: 0,
+                unstaged: 1,
+                conflicted: 0,
+                untracked: 1,
+                ignored: 0,
+              },
+            },
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    const controller = new AbortController();
+
+    const pending = repo.refreshStatusSnapshot({ signal: controller.signal });
+    setImmediate(() => controller.abort());
+
+    await expectAsync(pending).toBeRejectedWithError(Error, /aborted/);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+  });
+
+  it("yields and aborts while freezing a very large refs snapshot", async () => {
+    const branches = Array.from({ length: 20000 }, (_, index) => ({
+      name: `branch-${index}`,
+      ref: `refs/heads/branch-${index}`,
+      oid: index.toString(16).padStart(40, "0"),
+      isHead: index === 0,
+      upstream: null,
+      push: null,
+      lastCommit: {
+        oid: index.toString(16).padStart(40, "0"),
+        parents: [],
+        authorName: "Lumine",
+        committerDate: new Date(0),
+        subject: `Commit ${index}`,
+      },
+    }));
+    const gitHostClient = {
+      async getSnapshot(descriptor, request) {
+        return {
+          refs: {
+            fingerprint: "large-refs",
+            unchanged: false,
+            value: { ...refsValue(request.generations.refs), branches },
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    const controller = new AbortController();
+
+    const pending = repo.refreshRefsSnapshot({ signal: controller.signal });
+    setImmediate(() => controller.abort());
+
+    await expectAsync(pending).toBeRejectedWithError(Error, /aborted/);
+    expect(repo.getRefsSnapshot().initialized).toBe(false);
+  });
+
+  it("publishes deeply frozen refs after time-sliced processing completes", async () => {
+    const branch = {
+      name: "main",
+      ref: "refs/heads/main",
+      oid: "a".repeat(40),
+      isHead: true,
+      upstream: {
+        ref: "refs/remotes/origin/main",
+        name: "origin/main",
+        ahead: 0,
+        behind: 0,
+        gone: false,
+      },
+      push: null,
+      lastCommit: {
+        oid: "a".repeat(40),
+        parents: ["b".repeat(40)],
+        authorName: "Lumine",
+        committerDate: new Date(0),
+        subject: "Initial commit",
+      },
+    };
+    const gitHostClient = {
+      async getSnapshot(descriptor, request) {
+        return {
+          refs: {
+            fingerprint: "frozen-refs",
+            unchanged: false,
+            value: { ...refsValue(request.generations.refs), branches: [branch] },
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+
+    const snapshot = await repo.refreshRefsSnapshot();
+
+    expect(Object.isFrozen(snapshot)).toBe(true);
+    expect(Object.isFrozen(snapshot.branches)).toBe(true);
+    expect(Object.isFrozen(snapshot.branches[0])).toBe(true);
+    expect(Object.isFrozen(snapshot.branches[0].upstream)).toBe(true);
+    expect(Object.isFrozen(snapshot.branches[0].lastCommit)).toBe(true);
+    expect(Object.isFrozen(snapshot.branches[0].lastCommit.parents)).toBe(true);
+  });
+
+  it("does not apply refs after aborting a combined snapshot while status is indexing", async () => {
+    const files = Array.from({ length: 4001 }, (_, index) => ({
+      path: `directory/file-${index}.txt`,
+      originalPath: null,
+      kind: "untracked",
+      indexStatus: null,
+      worktreeStatus: null,
+      staged: false,
+      unstaged: true,
+      conflicted: false,
+      untracked: true,
+      ignored: false,
+      similarity: null,
+      submodule: {
+        isSubmodule: false,
+        commitChanged: false,
+        modified: false,
+        hasUntrackedChanges: false,
+      },
+    }));
+    const gitHostClient = {
+      async getSnapshot(descriptor, request) {
+        return {
+          status: {
+            fingerprint: "large",
+            unchanged: false,
+            value: { ...statusValue(request.generations.status), files },
+          },
+          refs: {
+            fingerprint: "refs",
+            unchanged: false,
+            value: refsValue(request.generations.refs),
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    const controller = new AbortController();
+
+    const status = repo.refreshStatusSnapshot({ signal: controller.signal });
+    const refs = repo.refreshRefsSnapshot({ signal: controller.signal });
+    setImmediate(() => controller.abort());
+
+    const results = await Promise.allSettled([status, refs]);
+    expect(results.map(({ status: resultStatus }) => resultStatus)).toEqual([
+      "rejected",
+      "rejected",
+    ]);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+    expect(repo.getRefsSnapshot().initialized).toBe(false);
+  });
+
+  it("does not apply status after aborting a combined snapshot while refs are indexing", async () => {
+    const remoteBranches = Array.from({ length: 20000 }, (_, index) => ({
+      name: `origin/branch-${index}`,
+      ref: `refs/remotes/origin/branch-${index}`,
+      oid: index.toString(16).padStart(40, "0"),
+      remoteName: "origin",
+      symrefTarget: null,
+      lastCommit: null,
+    }));
+    const gitHostClient = {
+      async getSnapshot(descriptor, request) {
+        return {
+          status: {
+            fingerprint: "status",
+            unchanged: false,
+            value: statusValue(request.generations.status),
+          },
+          refs: {
+            fingerprint: "large-refs",
+            unchanged: false,
+            value: { ...refsValue(request.generations.refs), remoteBranches },
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    const controller = new AbortController();
+
+    const status = repo.refreshStatusSnapshot({ signal: controller.signal });
+    const refs = repo.refreshRefsSnapshot({ signal: controller.signal });
+    setImmediate(() => controller.abort());
+
+    const results = await Promise.allSettled([status, refs]);
+    expect(results.every(({ status: resultStatus }) => resultStatus === "rejected")).toBe(true);
+    expect(repo.getStatusSnapshot().initialized).toBe(false);
+    expect(repo.getRefsSnapshot().initialized).toBe(false);
+  });
+
   it("applies a valid combined snapshot section before rejecting its invalid sibling", async () => {
     for (const successfulKind of ["status", "refs"]) {
       const gitHostClient = {
@@ -273,6 +597,39 @@ describe("GitRepository host facade", () => {
       expect(repo.getRefsSnapshot().initialized).toBe(successfulKind === "refs");
       repo.destroy();
     }
+  });
+
+  it("publishes both combined states before emitting either snapshot event", async () => {
+    const gitHostClient = {
+      async getSnapshot(descriptor, request) {
+        return {
+          status: {
+            fingerprint: "status",
+            unchanged: false,
+            value: statusValue(request.generations.status),
+          },
+          refs: {
+            fingerprint: "refs",
+            unchanged: false,
+            value: refsValue(request.generations.refs),
+          },
+        };
+      },
+    };
+    repo = new GitRepository(copyRepository(), { gitHostClient });
+    const refsChanged = jasmine.createSpy("refs changed");
+    repo.onDidChangeStatusSnapshot(() => {
+      expect(repo.getRefsSnapshot().initialized).toBe(true);
+      throw new Error("status listener failed");
+    });
+    repo.onDidChangeRefsSnapshot(refsChanged);
+
+    await expectAsync(
+      Promise.all([repo.refreshStatusSnapshot(), repo.refreshRefsSnapshot()]),
+    ).toBeRejectedWithError(/status listener failed/);
+    expect(repo.getStatusSnapshot().initialized).toBe(true);
+    expect(repo.getRefsSnapshot().initialized).toBe(true);
+    expect(refsChanged).toHaveBeenCalled();
   });
 
   it("reports background snapshot failures with at most one warning per repository", () => {

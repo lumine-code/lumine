@@ -396,6 +396,10 @@ class Environment {
       // the workspace.
       restoreState: (projectPaths) => this.restoreProjectState(projectPaths),
     });
+    // A Git window will need the worker for its first snapshot. Fork it only
+    // after a repository exists and the renderer is idle, so neither a
+    // repository-free window nor the first interactive refresh pays startup.
+    this.disposables.add(this.repositories.onDidAddRepository(() => this.scheduleGitHostWarmup()));
     this.icons.attachProject(this.project);
     this.#commandInstaller = new CommandInstaller(this.applicationDelegate);
     this.#protocolHandlerInstaller = new ProtocolHandlerInstaller();
@@ -681,8 +685,49 @@ class Environment {
     // so restart it when they change; the next Git command lazily re-forks with
     // the new values.
     this.disposables.add(
-      this.config.onDidChange("git.trustAllRepositories", () => GitHost.reset()),
-      this.config.onDidChange("git.path", () => GitHost.reset()),
+      this.config.onDidChange("git.trustAllRepositories", () => {
+        GitHost.reset();
+        this.gitHostWarmupComplete = false;
+        this.scheduleGitHostWarmup();
+      }),
+      this.config.onDidChange("git.path", () => {
+        GitHost.reset();
+        this.gitHostWarmupComplete = false;
+        this.scheduleGitHostWarmup();
+      }),
+    );
+  }
+
+  scheduleGitHostWarmup() {
+    if (
+      this.unloading ||
+      this.window.isSpecMode() ||
+      this.gitHostWarmupComplete ||
+      this.gitHostWarmupPending ||
+      this.repositories.getRepositories().length === 0
+    ) {
+      return;
+    }
+
+    const start = () => {
+      this.gitHostWarmupPending = null;
+      if (this.unloading || this.repositories.getRepositories().length === 0) return;
+      this.gitHostWarmupComplete = true;
+      GitHost.instance()
+        .ensureStarted()
+        .catch((error) => {
+          this.gitHostWarmupComplete = false;
+          console.error("Unable to warm the Git worker", error);
+        });
+    };
+    const idleId = this.domWindow.requestIdleCallback(start, { timeout: 1000 });
+    this.gitHostWarmupPending = { idleId };
+    this.disposables.add(
+      new Disposable(() => {
+        if (this.gitHostWarmupPending?.idleId !== idleId) return;
+        this.domWindow.cancelIdleCallback(idleId);
+        this.gitHostWarmupPending = null;
+      }),
     );
   }
 

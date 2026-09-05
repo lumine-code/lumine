@@ -43,4 +43,25 @@ describe("GitHostClient", () => {
       { signal: undefined },
     );
   });
+
+  it("sends output-to-file commands without a renderer buffer", async () => {
+    const host = { request: jasmine.createSpy("request").and.resolveTo({ exitCode: 0 }) };
+    const client = new GitHostClient(host);
+
+    await client.writeCommandOutput(["cat-file", "blob", "abc"], "/repo", "/repo/file.txt", {
+      signal: "signal",
+      allowedExitCodes: [0, 1],
+    });
+
+    expect(host.request).toHaveBeenCalledWith(
+      "writeCommandOutput",
+      {
+        workingDirectory: "/repo",
+        args: ["cat-file", "blob", "abc"],
+        destinationPath: "/repo/file.txt",
+        options: { allowedExitCodes: [0, 1] },
+      },
+      { signal: "signal" },
+    );
+  });
 });

@@ -1,9 +1,13 @@
-const crypto = require("crypto");
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
 const { normalizePath, pathsAreEqual, realpathRecursive } = require("./repository-paths");
 
 const IS_WINDOWS = process.platform === "win32";
+
+function normalizeLexicalPath(filePath) {
+  const resolved = path.resolve(filePath);
+  return IS_WINDOWS ? resolved.replace(/\\/g, "/") : resolved;
+}
 
 // Given any path inside (or at) a Git repository, discover the Git directory,
 // working directory, filesystem case sensitivity, and configured submodule
@@ -28,6 +32,48 @@ async function realpathAsync(unrealPath) {
   }
 }
 
+async function normalizePathAsync(unrealPath, useRealpath = true) {
+  let normalized = unrealPath;
+  if (useRealpath || IS_WINDOWS) normalized = await realpathAsync(unrealPath);
+  return IS_WINDOWS ? normalized.replace(/\\/g, "/") : normalized;
+}
+
+// Resolve a possibly missing path without performing any synchronous
+// filesystem work on the renderer. The first existing ancestor is resolved
+// and the missing suffix is reattached, matching realpathRecursive().
+async function realpathRecursiveAsync(unrealPath) {
+  if (!path.isAbsolute(unrealPath)) return normalizePathAsync(unrealPath);
+
+  let currentPath = unrealPath;
+  let resolvedPath = unrealPath;
+  let remainder = "";
+  while (!isRootPath(currentPath)) {
+    try {
+      resolvedPath = await fs.promises.realpath(currentPath);
+      break;
+    } catch (error) {
+      if (error.code !== "ENOENT") return normalizePathAsync(unrealPath, false);
+      currentPath = path.resolve(currentPath, "..");
+      remainder = path.relative(currentPath, unrealPath);
+    }
+  }
+  if (isRootPath(currentPath)) return normalizePathAsync(unrealPath, false);
+
+  return normalizePathAsync(path.join(resolvedPath, remainder), false);
+}
+
+function normalizedPathsAreEqual(pathA, pathB, caseInsensitive) {
+  if (IS_WINDOWS) {
+    pathA = pathA.replace(/\\/g, "/");
+    pathB = pathB.replace(/\\/g, "/");
+  }
+  if (IS_WINDOWS || caseInsensitive) {
+    pathA = pathA.toLowerCase();
+    pathB = pathB.toLowerCase();
+  }
+  return pathA === pathB;
+}
+
 function isRootPath(candidate) {
   return IS_WINDOWS ? /^[a-zA-Z]+:[\\/]$/.test(candidate) : candidate === path.sep;
 }
@@ -46,6 +92,25 @@ async function statOrNullAsync(candidate) {
   } catch {
     return null;
   }
+}
+
+let caseInsensitiveFsPromise = null;
+
+function isCaseInsensitiveAsync() {
+  if (!caseInsensitiveFsPromise) {
+    caseInsensitiveFsPromise = Promise.all([
+      statOrNullAsync(process.execPath.toLowerCase()),
+      statOrNullAsync(process.execPath.toUpperCase()),
+    ]).then(([lowerCaseStat, upperCaseStat]) =>
+      Boolean(
+        lowerCaseStat &&
+        upperCaseStat &&
+        lowerCaseStat.dev === upperCaseStat.dev &&
+        lowerCaseStat.ino === upperCaseStat.ino,
+      ),
+    );
+  }
+  return caseInsensitiveFsPromise;
 }
 
 // A directory is a Git directory when it has a HEAD file plus objects/ and refs/
@@ -246,7 +311,7 @@ async function discoverGitDirectoryAsync(startPath) {
 // symlink still route.
 function computeOpenedWorkingDirectory(startPath, workingDirectory, caseInsensitive) {
   if (!workingDirectory) return null;
-  const normalizedStartPath = normalizePath(startPath, false);
+  const normalizedStartPath = normalizeLexicalPath(startPath);
   if (realpathRecursive(startPath) === normalizedStartPath) return null;
 
   let candidate = normalizedStartPath;
@@ -259,12 +324,28 @@ function computeOpenedWorkingDirectory(startPath, workingDirectory, caseInsensit
 
 async function computeOpenedWorkingDirectoryAsync(startPath, workingDirectory, caseInsensitive) {
   if (!workingDirectory) return null;
-  const normalizedStartPath = normalizePath(startPath, false);
-  if (realpathRecursive(startPath) === normalizedStartPath) return null;
+  const normalizedStartPath = normalizeLexicalPath(startPath);
+  if (
+    normalizedPathsAreEqual(
+      await realpathRecursiveAsync(startPath),
+      normalizedStartPath,
+      caseInsensitive,
+    )
+  ) {
+    return null;
+  }
 
   let candidate = normalizedStartPath;
   while (!isRootPath(candidate)) {
-    if (pathsAreEqual(candidate, workingDirectory, caseInsensitive)) return candidate;
+    if (
+      normalizedPathsAreEqual(
+        await realpathRecursiveAsync(candidate),
+        workingDirectory,
+        caseInsensitive,
+      )
+    ) {
+      return candidate;
+    }
     candidate = path.resolve(candidate, "..");
   }
   return null;
@@ -273,6 +354,7 @@ async function computeOpenedWorkingDirectoryAsync(startPath, workingDirectory, c
 class GitRepositoryDescriptor {
   constructor(gitDir, startPath, resolved = null) {
     this.gitDir = resolved ? resolved.gitDir : realpath(gitDir);
+    this.gitDirectoryAliases = new Set([this.gitDir, normalizeLexicalPath(gitDir)]);
 
     if (resolved) {
       this.workingDirectory = resolved.workingDirectory;
@@ -290,12 +372,6 @@ class GitRepositoryDescriptor {
         this.caseInsensitiveFs,
       );
     }
-
-    this._submoduleCache = {
-      signature: null,
-      hash: null,
-      paths: Object.freeze([]),
-    };
   }
 
   // The repository's Git directory path.
@@ -307,80 +383,8 @@ class GitRepositoryDescriptor {
     return this.workingDirectory;
   }
 
-  // Configured submodule working-tree paths (POSIX, relative to the working
-  // directory), read from `.gitmodules`. The manifest may change when a branch
-  // is checked out, so cache it by file metadata and content rather than for the
-  // lifetime of this descriptor.
-  getSubmodulePaths() {
-    if (!this.workingDirectory) return this._submoduleCache.paths;
-
-    const manifestPath = path.join(this.workingDirectory, ".gitmodules");
-    let stat;
-    try {
-      stat = fs.statSync(manifestPath);
-    } catch {
-      if (this._submoduleCache.signature !== "missing") {
-        this._submoduleCache = {
-          signature: "missing",
-          hash: null,
-          paths: Object.freeze([]),
-        };
-      }
-      return this._submoduleCache.paths;
-    }
-
-    const signature = `${stat.mtimeMs}\0${stat.ctimeMs}\0${stat.size}`;
-    if (signature === this._submoduleCache.signature) return this._submoduleCache.paths;
-
-    let text;
-    try {
-      text = fs.readFileSync(manifestPath, "utf8");
-    } catch {
-      // An atomic checkout may replace the file between stat and read. Do not
-      // retain the old branch's paths; the next query will retry the read.
-      this._submoduleCache = {
-        signature: null,
-        hash: null,
-        paths: Object.freeze([]),
-      };
-      return this._submoduleCache.paths;
-    }
-
-    const hash = crypto.createHash("sha256").update(text).digest("hex");
-    if (hash === this._submoduleCache.hash) {
-      this._submoduleCache.signature = signature;
-      return this._submoduleCache.paths;
-    }
-
-    const paths = [];
-    let inSubmodule = false;
-    for (const rawLine of text.split(/\r?\n/)) {
-      const line = rawLine.trim();
-      if (/^\[submodule\b/i.test(line)) {
-        inSubmodule = true;
-        continue;
-      }
-      if (line.startsWith("[")) {
-        inSubmodule = false;
-        continue;
-      }
-      if (!inSubmodule) continue;
-      const match = /^path\s*=\s*(.+)$/.exec(line);
-      if (match) paths.push(match[1].trim());
-    }
-    this._submoduleCache = {
-      signature,
-      hash,
-      paths: Object.freeze(paths),
-    };
-    return this._submoduleCache.paths;
-  }
-
-  // Whether a repository-relative path is a configured submodule.
-  isSubmodule(relativePath) {
-    if (!relativePath) return false;
-    const normalized = relativePath.split(path.sep).join("/");
-    return this.getSubmodulePaths().includes(normalized);
+  getGitDirectoryAliases() {
+    return Array.from(this.gitDirectoryAliases);
   }
 }
 
@@ -399,9 +403,9 @@ async function discoverRepositoryDescriptorAsync(startPath) {
   const gitDir = await realpathAsync(discoveredGitDir);
   const rawWorkingDirectory = await computeWorkingDirectoryAsync(gitDir);
   const workingDirectory = rawWorkingDirectory
-    ? normalizePath(rawWorkingDirectory, true).replace(/\/$/, "")
+    ? (await normalizePathAsync(rawWorkingDirectory)).replace(/\/$/, "")
     : null;
-  const caseInsensitiveFs = fs.isCaseInsensitive();
+  const caseInsensitiveFs = await isCaseInsensitiveAsync();
   const openedWorkingDirectory = await computeOpenedWorkingDirectoryAsync(
     startPath ?? discoveredGitDir,
     workingDirectory,
@@ -416,11 +420,7 @@ async function discoverRepositoryDescriptorAsync(startPath) {
 }
 
 module.exports = {
-  GitRepositoryDescriptor,
   discoverRepositoryDescriptor,
   discoverRepositoryDescriptorAsync,
   discoverGitDirectory,
-  discoverGitDirectoryAsync,
-  computeWorkingDirectory,
-  computeWorkingDirectoryAsync,
 };
