@@ -2283,9 +2283,9 @@ describe("TextEditorComponent", () => {
       expect(component.scrollAnimator.isAnimating()).toBe(false);
     });
 
-    it("follows the global setting for editors no TextEditorRegistry configures", () => {
-      // Editors embedded in package views (for example diff views) are never
-      // registered with lumine.textEditors, so their params stay unset.
+    it("follows the global setting for editors no TextEditorFactory configures", () => {
+      // Directly constructed editors bypass Workspace#buildTextEditor, so
+      // their scoped configuration parameters stay unset.
       const { component } = buildSmoothComponent({ smoothScrolling: undefined });
 
       lumine.config.set("editor.smoothScrolling", true);

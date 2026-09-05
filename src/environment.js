@@ -51,6 +51,7 @@ const TextEditor = require("./text-editor");
 const TextBuffer = require("./text-buffer");
 const FileState = require("./file-state");
 const TextEditorRegistry = require("./text-editor-registry");
+const TextEditorFactory = require("./text-editor-factory");
 const PasteProviderRegistry = require("./paste-provider-registry");
 const StartupTime = require("./startup-time");
 const Tools = require("./tools");
@@ -410,9 +411,9 @@ class Environment {
      *
      * @type {TextEditorRegistry}
      */
-    this.textEditors = new TextEditorRegistry({
+    this.textEditors = new TextEditorRegistry();
+    this.textEditorFactory = new TextEditorFactory({
       config: this.config,
-      grammarRegistry: this.grammars,
       assert: this.assert.bind(this),
       packageManager: this.packages,
     });
@@ -445,6 +446,7 @@ class Environment {
       viewRegistry: this.views,
       assert: this.assert.bind(this),
       textEditorRegistry: this.textEditors,
+      textEditorFactory: this.textEditorFactory,
       styleManager: this.styles,
       enablePersistence: this.enablePersistence,
     });
@@ -776,6 +778,7 @@ class Environment {
     this.icons.clear();
     this.icons.attachProject(this.project);
     this.grammars.clear();
+    this.textEditorFactory.clear();
     this.textEditors.clear();
     this.pasteProviders.clear();
     this.views.clear();
@@ -800,6 +803,10 @@ class Environment {
     this.workspaceDrops = null;
     if (this.workspace) this.workspace.destroy();
     this.workspace = null;
+    if (this.textEditorFactory) this.textEditorFactory.destroy();
+    this.textEditorFactory = null;
+    if (this.textEditors) this.textEditors.destroy();
+    this.textEditors = null;
     if (this.project) this.project.destroy();
     this.project = null;
     if (this.repositories) this.repositories.destroy();

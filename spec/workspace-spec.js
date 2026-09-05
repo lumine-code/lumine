@@ -81,6 +81,7 @@ describe("Workspace", () => {
       viewRegistry: lumine.views,
       assert: lumine.assert.bind(lumine),
       textEditorRegistry: lumine.textEditors,
+      textEditorFactory: lumine.textEditorFactory,
     });
     workspace.initialize({ configDirPath: lumine.getConfigDirPath() });
     workspace.deserialize(workspaceState, lumine.deserializers);
@@ -88,6 +89,19 @@ describe("Workspace", () => {
 
   describe("serialization", () => {
     describe("when the workspace contains text editors", () => {
+      it("registers every restored pane editor exactly once", async () => {
+        await workspace.open("a");
+        await workspace.open("b");
+        const additions = [];
+        const subscription = lumine.textEditors.observe((editor) => additions.push(editor));
+        additions.length = 0;
+
+        await simulateReload();
+
+        expect(additions).toEqual(workspace.getTextEditors());
+        subscription.dispose();
+      });
+
       it("constructs the view with the same panes", async () => {
         const pane1 = lumine.workspace.getActivePane();
         const pane2 = pane1.splitRight({ copyActiveItem: true });
@@ -1687,6 +1701,56 @@ describe("Workspace", () => {
     });
   });
 
+  describe("::getTextEditorForElement()", () => {
+    it("resolves an unregistered editor structurally from a descendant", () => {
+      const editor = workspace.buildTextEditor();
+      const descendant = document.createElement("span");
+      editor.getElement().appendChild(descendant);
+
+      expect(workspace.getTextEditorForElement(descendant)).toBe(editor);
+      expect(workspace.getTextEditorForElement(document)).toBeNull();
+      expect(workspace.getTextEditorForElement(null)).toBeNull();
+      editor.destroy();
+    });
+
+    it("can exclude mini editors", () => {
+      const mini = workspace.buildTextEditor({ mini: true });
+      expect(workspace.getTextEditorForElement(mini.getElement())).toBe(mini);
+      expect(
+        workspace.getTextEditorForElement(mini.getElement(), { includeMini: false }),
+      ).toBeNull();
+      mini.destroy();
+    });
+
+    it("returns the innermost qualifying editor", () => {
+      const outer = workspace.buildTextEditor();
+      const inner = workspace.buildTextEditor();
+      const target = document.createElement("span");
+      inner.getElement().appendChild(target);
+      outer.getElement().appendChild(inner.getElement());
+
+      expect(workspace.getTextEditorForElement(target)).toBe(inner);
+      inner.destroy();
+      outer.destroy();
+    });
+  });
+
+  describe("::getFocusedTextEditor()", () => {
+    it("resolves DOM focus without materializing other registered editors", () => {
+      const unrelated = workspace.buildTextEditor();
+      lumine.textEditors.add(unrelated, { role: "viewer" });
+      const focused = workspace.buildTextEditor({ mini: true });
+      jasmine.attachToDOM(focused.getElement());
+      focused.getElement().focus();
+
+      expect(workspace.getFocusedTextEditor()).toBe(focused);
+      expect(workspace.getFocusedTextEditor({ includeMini: false })).toBeNull();
+      expect(unrelated.component).toBeUndefined();
+      focused.destroy();
+      unrelated.destroy();
+    });
+  });
+
   describe("::observeTextEditors()", () => {
     it("invokes the observer with current and future text editors", async () => {
       const observed = [];
@@ -1903,7 +1967,7 @@ describe("Workspace", () => {
   });
 
   describe("when an editor is copied because its pane is split", () => {
-    it("sets up the new editor to be configured by the text editor registry", async () => {
+    it("sets up the new editor to be configured by the text editor factory", async () => {
       await lumine.packages.activatePackage("language-javascript");
 
       const editor = await workspace.open("a");

@@ -196,14 +196,7 @@ module.exports = class TextEditor {
     // Indent guides moved from the editor core to the indent-guide package.
     delete state.showIndentGuide;
 
-    const editor = new TextEditor(state);
-    if (state.registered) {
-      // `registered` serializes the registry role; older states stored `true`.
-      const role = state.registered === true ? "document" : state.registered;
-      const disposable = lumineEnvironment.textEditors.add(editor, { role });
-      editor.onDidDestroy(() => disposable.dispose());
-    }
-    return editor;
+    return new TextEditor(state);
   }
 
   constructor(params = {}) {
@@ -237,8 +230,8 @@ module.exports = class TextEditor {
     this.scrollSensitivity = params.scrollSensitivity != null ? params.scrollSensitivity : 40;
     // Raw default is false so directly-constructed editors (specs, embedders)
     // scroll instantly; the config default of true reaches workspace editors
-    // via the TextEditorRegistry.
-    // null means "not managed": editors that no TextEditorRegistry configures
+    // via the TextEditorFactory.
+    // null means "not managed": editors that no TextEditorFactory configures
     // (for example editors embedded in package views) follow the global
     // smooth-scrolling settings instead of silently disabling the feature.
     this.smoothScrolling = params.smoothScrolling != null ? params.smoothScrolling : null;
@@ -282,7 +275,6 @@ module.exports = class TextEditor {
     this.defaultCharWidth = null;
     this.height = null;
     this.width = null;
-    this.registered = false;
     this.atomicSoftTabs = true;
     this.emitter = new Emitter();
     this.disposables = new CompositeDisposable();
@@ -850,7 +842,6 @@ module.exports = class TextEditor {
       editorWidthInChars: this.editorWidthInChars,
       width: this.width,
       maxScreenLineLength: this.maxScreenLineLength,
-      registered: this.registered,
       invisibles: this.invisibles,
       showInvisibles: this.showInvisibles,
       autoHeight: this.autoHeight,

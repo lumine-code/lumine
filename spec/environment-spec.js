@@ -634,7 +634,7 @@ describe("Environment", () => {
       });
     });
 
-    it("serializes the text editor registry", async () => {
+    it("serializes assigned language modes", async () => {
       await lumine.packages.activatePackage("language-javascript");
       const editor = await lumine.workspace.open("sample.js");
       expect(lumine.grammars.assignLanguageMode(editor, "source.js")).toBe(true);

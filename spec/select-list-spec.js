@@ -973,7 +973,7 @@ describe("SelectList", () => {
       expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
 
       host.getPanel();
-      expect(lumine.textEditors.roleFor(queryEditor)).toBe("fragment");
+      expect(lumine.textEditors.roleFor(queryEditor)).toBe("input");
 
       await host.destroy();
       host = null;

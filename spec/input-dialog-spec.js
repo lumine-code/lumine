@@ -46,20 +46,20 @@ describe("InputDialog", () => {
 
       expect(view.component).toBeNull();
       expect(view.element).toBeUndefined();
-      expect(queryEditor.registered).toBe(false);
+      expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
       expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
 
       const element = view.getElement();
       expect(view.getElement()).toBe(element);
       expect(view.component).not.toBeNull();
       expect(element.isConnected).toBe(false);
-      expect(queryEditor.registered).toBe(false);
+      expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
       expect(lumine.workspace.getModalPanels().length).toBe(panelCount);
 
       lumine.workspace.getElement().appendChild(element);
-      expect(queryEditor.registered).toBe("fragment");
+      expect(lumine.textEditors.roleFor(queryEditor)).toBe("input");
       element.remove();
-      expect(queryEditor.registered).toBe(false);
+      expect(lumine.textEditors.roleFor(queryEditor)).toBeNull();
 
       expect(view.isDestroyed()).toBe(false);
 
@@ -298,7 +298,7 @@ describe("InputDialog", () => {
       expect(host.isVisible()).toBe(true);
       expect(lumine.workspace.getModalPanels()).toContain(host.getPanel());
       expect(view.getElement().contains(document.activeElement)).toBe(true);
-      expect(view.getQueryEditor().registered).toBe("fragment");
+      expect(lumine.textEditors.roleFor(view.getQueryEditor())).toBe("input");
 
       host.hide();
       expect(host.isVisible()).toBe(false);

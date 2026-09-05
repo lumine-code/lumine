@@ -1,4 +1,5 @@
 const TextEditorRegistry = require("../src/text-editor-registry");
+const TextEditorFactory = require("../src/text-editor-factory");
 const TextEditor = require("../src/text-editor");
 const TextBuffer = require("../src/text-buffer");
 const { Point, Range } = TextBuffer;
@@ -13,15 +14,15 @@ function setupLanguageMode(editor) {
 }
 
 describe("TextEditorRegistry", function () {
-  let registry, editor, initialPackageActivation;
+  let registry, factory, editor, initialPackageActivation;
 
   beforeEach(function () {
     initialPackageActivation = Promise.resolve();
 
-    registry = new TextEditorRegistry({
+    registry = new TextEditorRegistry();
+    factory = new TextEditorFactory({
       assert: lumine.assert,
       config: lumine.config,
-      grammarRegistry: lumine.grammars,
       packageManager: {
         getActivatePromise() {
           return initialPackageActivation;
@@ -35,12 +36,12 @@ describe("TextEditorRegistry", function () {
 
   afterEach(function () {
     registry.destroy();
+    factory.destroy();
   });
 
   describe(".add", function () {
-    it("adds an editor to the list of registered editors with the document role", function () {
-      registry.add(editor);
-      expect(editor.registered).toBe("document");
+    it("adds an editor with an explicit role", function () {
+      registry.add(editor, { role: "document" });
       expect(registry.roleFor(editor)).toBe("document");
       expect(registry.editors.size).toBe(1);
       expect(registry.editors.has(editor)).toBe(true);
@@ -48,121 +49,130 @@ describe("TextEditorRegistry", function () {
 
     it("registers an editor with an explicit role", function () {
       registry.add(editor, { role: "fragment" });
-      expect(editor.registered).toBe("fragment");
       expect(registry.roleFor(editor)).toBe("fragment");
     });
 
-    it("rejects unknown roles", function () {
+    it("rejects missing and unknown roles", function () {
+      expect(() => registry.add(editor)).toThrowError(TypeError);
       expect(() => registry.add(editor, { role: "sidekick" })).toThrowError(TypeError);
     });
 
+    it("rejects values that are not live TextEditors", function () {
+      expect(() => registry.add({}, { role: "document" })).toThrowError(TypeError);
+      const destroyed = new TextEditor();
+      destroyed.destroy();
+      expect(() => registry.add(destroyed, { role: "document" })).toThrowError(TypeError);
+    });
+
     it("returns a Disposable that can unregister the editor", function () {
-      const disposable = registry.add(editor);
+      const disposable = registry.add(editor, { role: "document" });
       expect(registry.editors.size).toBe(1);
       disposable.dispose();
       expect(registry.editors.size).toBe(0);
-      expect(editor.registered).toBe(false);
       expect(registry.roleFor(editor)).toBe(null);
-      expect(retainedEditorCount(registry)).toBe(0);
     });
 
     it("emits did-remove-editor when an editor is unregistered", function () {
       const spy = jasmine.createSpy();
       registry.onDidRemoveEditor(spy);
-      const disposable = registry.add(editor);
+      const disposable = registry.add(editor, { role: "document" });
       disposable.dispose();
       expect(spy.calls.count()).toBe(1);
       expect(spy.calls.argsFor(0)[0]).toBe(editor);
-      // Removing an unregistered editor emits nothing
-      registry.remove(editor);
+      disposable.dispose();
       expect(spy.calls.count()).toBe(1);
+    });
+
+    it("leases one logical registration to multiple owners", function () {
+      const added = jasmine.createSpy();
+      const removed = jasmine.createSpy();
+      registry.observe(added);
+      registry.onDidRemoveEditor(removed);
+
+      const first = registry.add(editor, { role: "fragment" });
+      const second = registry.add(editor, { role: "fragment" });
+      expect(added.calls.count()).toBe(1);
+      expect(registry.getEditors()).toEqual([editor]);
+
+      first.dispose();
+      expect(registry.roleFor(editor)).toBe("fragment");
+      expect(removed).not.toHaveBeenCalled();
+      second.dispose();
+      expect(registry.roleFor(editor)).toBeNull();
+      expect(removed.calls.count()).toBe(1);
+    });
+
+    it("rejects conflicting roles for the same editor", function () {
+      registry.add(editor, { role: "document" });
+      expect(() => registry.add(editor, { role: "viewer" })).toThrowError(/already registered/);
+      expect(registry.roleFor(editor)).toBe("document");
+    });
+
+    it("unregisters an editor destroyed synchronously by an observer", function () {
+      const removed = jasmine.createSpy();
+      registry.onDidRemoveEditor(removed);
+      registry.observe((added) => added.destroy());
+
+      const lease = registry.add(editor, { role: "viewer" });
+
+      expect(registry.getEditors()).toEqual([]);
+      expect(removed).toHaveBeenCalledWith(editor);
+      expect(() => lease.dispose()).not.toThrow();
+    });
+
+    it("makes leases from before clear harmless to later registrations", function () {
+      const stale = registry.add(editor, { role: "input" });
+      registry.clear();
+      const current = registry.add(editor, { role: "fragment" });
+
+      stale.dispose();
+      expect(registry.roleFor(editor)).toBe("fragment");
+      current.dispose();
+    });
+
+    it("releases entries and refuses new registrations after destroy", function () {
+      const lease = registry.add(editor, { role: "document" });
+      registry.destroy();
+
+      expect(registry.getEditors()).toEqual([]);
+      expect(() => lease.dispose()).not.toThrow();
+      expect(() => registry.add(editor, { role: "document" })).toThrowError(/destroyed/);
     });
   });
 
   describe(".getEditors", function () {
     it("returns all registered editors", function () {
       const other = new TextEditor({ autoHeight: false });
-      registry.add(editor);
+      registry.add(editor, { role: "document" });
       registry.add(other, { role: "fragment" });
       expect(registry.getEditors()).toEqual([editor, other]);
       other.destroy();
     });
   });
 
-  describe(".getActiveTextEditor", function () {
-    it("returns the registered editor containing the DOM focus", function () {
-      registry.add(editor);
-      const element = editor.getElement();
-      jasmine.attachToDOM(element);
-      element.focus();
-      expect(registry.getActiveTextEditor()).toBe(editor);
-    });
-
-    it("returns null when the focused editor is not registered", function () {
-      const other = new TextEditor({ autoHeight: false });
-      const element = other.getElement();
-      jasmine.attachToDOM(element);
-      element.focus();
-      expect(registry.getActiveTextEditor()).toBe(null);
-      other.destroy();
-    });
-
-    it("does not instantiate views of other registered editors", function () {
-      registry.add(editor); // never given an element
-      expect(editor.component).toBeUndefined();
-      registry.getActiveTextEditor();
-      expect(editor.component).toBeUndefined();
-    });
-  });
-
-  describe(".getTextEditorForElement", function () {
-    it("resolves a registered editor from a descendant", function () {
-      const element = editor.getElement();
-      const descendant = document.createElement("span");
-      element.appendChild(descendant);
-      registry.add(editor);
-
-      expect(registry.getTextEditorForElement(descendant)).toBe(editor);
-    });
-
-    it("rejects non-elements and editors outside the registry", function () {
-      const element = editor.getElement();
-      expect(registry.getTextEditorForElement(element)).toBeNull();
-      expect(registry.getTextEditorForElement(document)).toBeNull();
-      expect(registry.getTextEditorForElement(null)).toBeNull();
-    });
-
-    it("can exclude registered mini editors", function () {
-      const mini = new TextEditor({ mini: true });
-      const element = mini.getElement();
-      registry.add(mini);
-
-      expect(registry.getTextEditorForElement(element)).toBe(mini);
-      expect(registry.getTextEditorForElement(element, { includeMini: false })).toBeNull();
-      mini.destroy();
-    });
-  });
-
   describe(".observe", function () {
     it("calls the callback for current and future editors until unsubscribed", function () {
       const spy = jasmine.createSpy();
-      const [editor1, editor2, editor3] = [{}, {}, {}];
-      registry.add(editor1);
+      const [editor1, editor2, editor3] = [new TextEditor(), new TextEditor(), new TextEditor()];
+      registry.add(editor1, { role: "document" });
       const subscription = registry.observe(spy);
       expect(spy.calls.count()).toBe(1);
 
-      registry.add(editor2);
+      registry.add(editor2, { role: "viewer" });
       expect(spy.calls.count()).toBe(2);
       expect(spy.calls.argsFor(0)[0]).toBe(editor1);
       expect(spy.calls.argsFor(1)[0]).toBe(editor2);
       subscription.dispose();
 
-      registry.add(editor3);
+      registry.add(editor3, { role: "input" });
       expect(spy.calls.count()).toBe(2);
+      editor1.destroy();
+      editor2.destroy();
+      editor3.destroy();
     });
   });
 
-  describe(".build", function () {
+  describe("TextEditorFactory.build", function () {
     it("constructs a TextEditor with the right parameters based on its path and text", function () {
       lumine.config.set("editor.tabLength", 8);
 
@@ -174,7 +184,7 @@ describe("TextEditorRegistry", function () {
       const buffer = new TextBuffer({ filePath: "test.js" });
       buffer.setLanguageMode(languageMode);
 
-      const editor = registry.build({
+      const editor = factory.build({
         buffer,
       });
 
@@ -184,7 +194,24 @@ describe("TextEditorRegistry", function () {
     });
   });
 
-  describe(".maintainConfig(editor)", function () {
+  describe("TextEditorFactory.maintainConfig(editor)", function () {
+    it("rejects values that are not live TextEditors", function () {
+      expect(() => factory.maintainConfig({})).toThrowError(TypeError);
+      const destroyed = new TextEditor();
+      destroyed.destroy();
+      expect(() => factory.maintainConfig(destroyed)).toThrowError(TypeError);
+    });
+
+    it("makes leases from before clear harmless to later maintenance", function () {
+      const stale = factory.maintainConfig(editor);
+      factory.clear();
+      const current = factory.maintainConfig(editor);
+
+      stale.dispose();
+      expect(factory.managedEditors.has(editor)).toBe(true);
+      current.dispose();
+    });
+
     it("does not update the editor when config settings change for unrelated scope selectors", async function () {
       await lumine.packages.activatePackage("language-javascript");
 
@@ -192,8 +219,8 @@ describe("TextEditorRegistry", function () {
 
       lumine.grammars.assignLanguageMode(editor2, "source.js");
 
-      registry.maintainConfig(editor);
-      registry.maintainConfig(editor2);
+      factory.maintainConfig(editor);
+      factory.maintainConfig(editor2);
       await initialPackageActivation;
 
       expect(editor.getRootScopeDescriptor().getScopesArray()).toEqual(["text.plain.null-grammar"]);
@@ -221,7 +248,7 @@ describe("TextEditorRegistry", function () {
 
       lumine.config.set("editor.fileEncoding", "utf16le");
 
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await Promise.resolve();
       expect(editor.getEncoding()).toBe("utf8");
 
@@ -237,7 +264,7 @@ describe("TextEditorRegistry", function () {
     it("updates the editor's settings when its grammar changes", async function () {
       await lumine.packages.activatePackage("language-javascript");
 
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
 
       lumine.config.set("editor.fileEncoding", "utf16be", {
@@ -267,7 +294,7 @@ describe("TextEditorRegistry", function () {
     it("preserves editor settings that haven't changed between previous and current language modes", async function () {
       await lumine.packages.activatePackage("language-javascript");
 
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
 
       expect(editor.getEncoding()).toBe("utf8");
@@ -287,7 +314,7 @@ describe("TextEditorRegistry", function () {
     it("updates editor settings that have changed between previous and current language modes", async function () {
       await lumine.packages.activatePackage("language-javascript");
 
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
 
       expect(editor.getEncoding()).toBe("utf8");
@@ -311,10 +338,10 @@ describe("TextEditorRegistry", function () {
       await lumine.packages.activatePackage("language-javascript");
 
       const previousSubscriptionCount = getSubscriptionCount(editor);
-      const disposable = registry.maintainConfig(editor);
+      const disposable = factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(getSubscriptionCount(editor)).toBeGreaterThan(previousSubscriptionCount);
-      expect(registry.editorsWithMaintainedConfig.size).toBe(1);
+      expect(factory.managedEditors.size).toBe(1);
 
       lumine.config.set("editor.fileEncoding", "utf16be");
       expect(editor.getEncoding()).toBe("utf16be");
@@ -326,7 +353,7 @@ describe("TextEditorRegistry", function () {
       lumine.config.set("editor.fileEncoding", "utf16be");
       expect(editor.getEncoding()).toBe("utf8");
       expect(getSubscriptionCount(editor)).toBe(previousSubscriptionCount);
-      expect(retainedEditorCount(registry)).toBe(0);
+      expect(retainedEditorCount(factory)).toBe(0);
     });
 
     it("sets the encoding based on the config", async function () {
@@ -334,7 +361,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getEncoding()).toBe("utf8");
 
       lumine.config.set("editor.fileEncoding", "utf16le");
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getEncoding()).toBe("utf16le");
 
@@ -347,7 +374,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getTabLength()).toBe(4);
 
       lumine.config.set("editor.tabLength", 8);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getTabLength()).toBe(8);
 
@@ -357,14 +384,14 @@ describe("TextEditorRegistry", function () {
 
     it('enables soft tabs when the tabType config setting is "soft"', async function () {
       lumine.config.set("editor.tabType", "soft");
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(true);
     });
 
     it('disables soft tabs when the tabType config setting is "hard"', async function () {
       lumine.config.set("editor.tabType", "hard");
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(false);
     });
@@ -384,7 +411,7 @@ describe("TextEditorRegistry", function () {
             hello;
           }
         `);
-        let disposable = registry.maintainConfig(editor);
+        let disposable = factory.maintainConfig(editor);
         expect(editor.getSoftTabs()).toBe(true);
 
         editor.setText(dedent`
@@ -394,7 +421,7 @@ describe("TextEditorRegistry", function () {
         `);
 
         disposable.dispose();
-        disposable = registry.maintainConfig(editor);
+        disposable = factory.maintainConfig(editor);
         expect(editor.getSoftTabs()).toBe(false);
 
         editor.setTextInBufferRange(
@@ -406,7 +433,7 @@ describe("TextEditorRegistry", function () {
         ` + "\n",
         );
         disposable.dispose();
-        disposable = registry.maintainConfig(editor);
+        disposable = factory.maintainConfig(editor);
         expect(editor.getSoftTabs()).toBe(false);
 
         editor.setText(dedent`
@@ -420,7 +447,7 @@ describe("TextEditorRegistry", function () {
         `);
 
         disposable.dispose();
-        disposable = registry.maintainConfig(editor);
+        disposable = factory.maintainConfig(editor);
         expect(editor.getSoftTabs()).toBe(false);
 
         editor.setText(dedent`
@@ -433,14 +460,14 @@ describe("TextEditorRegistry", function () {
           }
         `);
         disposable.dispose();
-        registry.maintainConfig(editor);
+        factory.maintainConfig(editor);
         expect(editor.getSoftTabs()).toBe(true);
       });
     });
 
     describe('when "tabType" is "auto" and "softTabs" supplies the fallback', function () {
       it('enables or disables soft tabs based on the "softTabs" config setting', async function () {
-        registry.maintainConfig(editor);
+        factory.maintainConfig(editor);
         await initialPackageActivation;
 
         editor.setText("abc\ndef");
@@ -458,7 +485,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getSoftTabs()).toBe(true);
 
       lumine.config.set("editor.tabType", "hard");
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftTabs()).toBe(false);
 
@@ -475,7 +502,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.hasAtomicSoftTabs()).toBe(true);
 
       lumine.config.set("editor.atomicSoftTabs", false);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.hasAtomicSoftTabs()).toBe(false);
 
@@ -488,7 +515,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.showLineNumbers).toBe(true);
 
       lumine.config.set("editor.showLineNumbers", false);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.showLineNumbers).toBe(false);
 
@@ -508,7 +535,7 @@ describe("TextEditorRegistry", function () {
 
       lumine.config.set("editor.showInvisibles", true);
       lumine.config.set("editor.invisibles", invisibles2);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getInvisibles()).toEqual(invisibles2);
 
@@ -524,7 +551,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.isSoftWrapped()).toBe(true);
 
       lumine.config.set("editor.softWrap", false);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.isSoftWrapped()).toBe(false);
 
@@ -537,7 +564,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getSoftWrapHangingIndentLength()).toBe(4);
 
       lumine.config.set("editor.softWrapHangingIndent", 2);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapHangingIndentLength()).toBe(2);
 
@@ -557,7 +584,7 @@ describe("TextEditorRegistry", function () {
 
       lumine.config.set("editor.softWrap", true);
       lumine.config.set("editor.softWrapAtPreferredLineLength", false);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapColumn()).toBe(120);
 
@@ -575,7 +602,7 @@ describe("TextEditorRegistry", function () {
 
       lumine.config.set("editor.softWrap", false);
       lumine.config.set("editor.maxScreenLineLength", 500);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getSoftWrapColumn()).toBe(500);
     });
@@ -585,7 +612,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getPreferredLineLength()).toBe(80);
 
       lumine.config.set("editor.preferredLineLength", 110);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getPreferredLineLength()).toBe(110);
 
@@ -598,7 +625,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.shouldAutoIndent()).toBe(true);
 
       lumine.config.set("editor.autoIndent", false);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.shouldAutoIndent()).toBe(false);
 
@@ -611,7 +638,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.shouldAutoIndentOnPaste()).toBe(true);
 
       lumine.config.set("editor.autoIndentOnPaste", false);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.shouldAutoIndentOnPaste()).toBe(false);
 
@@ -624,7 +651,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getScrollPastEnd()).toBe(true);
 
       lumine.config.set("editor.scrollPastEnd", false);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getScrollPastEnd()).toBe(false);
 
@@ -637,7 +664,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getUndoGroupingInterval()).toBe(300);
 
       lumine.config.set("editor.undoGroupingInterval", 600);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getUndoGroupingInterval()).toBe(600);
 
@@ -650,7 +677,7 @@ describe("TextEditorRegistry", function () {
       expect(editor.getScrollSensitivity()).toBe(50);
 
       lumine.config.set("editor.scrollSensitivity", 60);
-      registry.maintainConfig(editor);
+      factory.maintainConfig(editor);
       await initialPackageActivation;
       expect(editor.getScrollSensitivity()).toBe(60);
 
@@ -662,8 +689,8 @@ describe("TextEditorRegistry", function () {
       it("does nothing the second time", async function () {
         editor.update({ scrollSensitivity: 50 });
 
-        const disposable1 = registry.maintainConfig(editor);
-        const disposable2 = registry.maintainConfig(editor);
+        const disposable1 = factory.maintainConfig(editor);
+        const disposable2 = factory.maintainConfig(editor);
         await initialPackageActivation;
 
         lumine.config.set("editor.scrollSensitivity", 60);
@@ -690,11 +717,6 @@ function getSubscriptionCount(editor) {
   );
 }
 
-function retainedEditorCount(registry) {
-  const editors = new Set();
-  for (const e of registry.editors.keys()) {
-    editors.add(e);
-  }
-  registry.editorsWithMaintainedConfig.forEach((e) => editors.add(e));
-  return editors.size;
+function retainedEditorCount(factory) {
+  return factory.managedEditors.size;
 }

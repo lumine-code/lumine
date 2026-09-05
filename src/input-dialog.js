@@ -80,8 +80,8 @@ class InputDialog {
     this.disposables = new CompositeDisposable();
     this.materializedDisposables = null;
     this.queryEditorRegistration = null;
-    this.queryEditor = this.services.textEditorRegistry.build({ mini: true });
-    this.disposables.add(this.services.textEditorRegistry.maintainConfig(this.queryEditor));
+    this.queryEditor = this.services.textEditorFactory.build({ mini: true });
+    this.disposables.add(this.services.textEditorFactory.maintainConfig(this.queryEditor));
     if (Object.prototype.hasOwnProperty.call(this.props, "query")) {
       this.queryEditor.setText(this.props.query == null ? "" : String(this.props.query));
     }
@@ -139,7 +139,7 @@ class InputDialog {
   didAttachElement() {
     if (!this.queryEditorRegistration) {
       this.queryEditorRegistration = this.services.textEditorRegistry.add(this.queryEditor, {
-        role: "fragment",
+        role: "input",
       });
     }
   }

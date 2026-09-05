@@ -279,6 +279,7 @@ module.exports = class Workspace extends Model {
       keymapManager: params.keymapManager,
       tooltipManager: params.tooltipManager,
       textEditorRegistry: params.textEditorRegistry,
+      textEditorFactory: params.textEditorFactory,
       applicationDelegate: params.applicationDelegate,
     };
     this.modalDialogFactory = new ModalDialogFactory(this.modalDialogServices);
@@ -287,6 +288,7 @@ module.exports = class Workspace extends Model {
     this.assert = params.assert;
     this.deserializerManager = params.deserializerManager;
     this.textEditorRegistry = params.textEditorRegistry;
+    this.textEditorFactory = params.textEditorFactory;
     this.styleManager = params.styleManager;
     this.draggingItem = false;
     this.itemLocationStore = new StateStore("LuminePreviousItemLocations", 1);
@@ -816,8 +818,8 @@ module.exports = class Workspace extends Model {
 
       if (item instanceof TextEditor) {
         const subscriptions = new CompositeDisposable(
-          this.textEditorRegistry.add(item),
-          this.textEditorRegistry.maintainConfig(item),
+          this.textEditorRegistry.add(item, { role: "document" }),
+          this.textEditorFactory.maintainConfig(item),
           // Both of this editor's contributions to every long title: that it
           // is open at all, and which directory it sits in.
           item.onDidChangePath(() => this.invalidateLongTitles()),
@@ -1777,7 +1779,7 @@ module.exports = class Workspace extends Model {
     }
 
     const buffer = await this.project.bufferForPath(filePath, options);
-    return this.textEditorRegistry.build(Object.assign({ buffer, autoHeight: false }, options));
+    return this.textEditorFactory.build(Object.assign({ buffer, autoHeight: false }, options));
   }
 
   handleGrammarUsed(grammar) {
@@ -1808,8 +1810,8 @@ module.exports = class Workspace extends Model {
    * @returns {TextEditor}
    */
   buildTextEditor(params) {
-    const editor = this.textEditorRegistry.build(params);
-    const subscription = this.textEditorRegistry.maintainConfig(editor);
+    const editor = this.textEditorFactory.build(params);
+    const subscription = this.textEditorFactory.maintainConfig(editor);
     editor.onDidDestroy(() => subscription.dispose());
     return editor;
   }
@@ -2145,6 +2147,48 @@ module.exports = class Workspace extends Model {
     if (activeItem instanceof TextEditor) {
       return activeItem;
     }
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Resolve the innermost text editor containing a DOM target.
+   *
+   * Unlike the registry, this is a structural lookup: an editor element is
+   * enough, even when its owner has not registered the model for observation.
+   * It never scans or materializes any other editor views.
+   *
+   * @param {Element} target - An element inside a text editor.
+   * @param {Object} [options]
+   * @param {Boolean} [options.includeMini=true] - Whether mini editors qualify.
+   * @returns {TextEditor|null} The containing editor, or `null`.
+   */
+  getTextEditorForElement(target, { includeMini = true } = {}) {
+    let element = target?.nodeType === 1 ? target.closest?.("lumine-text-editor") : null;
+    while (element) {
+      const editor = typeof element.getModel === "function" ? element.getModel() : null;
+      if (editor instanceof TextEditor && (includeMini || !editor.isMini())) return editor;
+      element = element.parentElement?.closest?.("lumine-text-editor");
+    }
+    return null;
+  }
+
+  /**
+   * @public
+   * @status essential
+   *
+   * Get the text editor containing DOM focus, including embedded editors.
+   *
+   * This differs from {@link #getActiveTextEditor}, which returns the active
+   * workspace-center pane item and deliberately ignores focus in package UI.
+   *
+   * @param {Object} [options]
+   * @param {Boolean} [options.includeMini=true] - Whether mini editors qualify.
+   * @returns {TextEditor|null} The focused editor, or `null`.
+   */
+  getFocusedTextEditor(options) {
+    return this.getTextEditorForElement(document.activeElement, options);
   }
 
   /**

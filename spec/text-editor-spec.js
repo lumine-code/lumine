@@ -76,7 +76,6 @@ describe("TextEditor", () => {
       const buffer2 = await TextBuffer.deserialize(editor.buffer.serialize());
       const editor2 = TextEditor.deserialize(editor.serialize(), {
         assert: lumine.assert,
-        textEditors: lumine.textEditors,
         project: {
           bufferForIdSync() {
             return buffer2;
@@ -119,7 +118,6 @@ describe("TextEditor", () => {
       const buffer2 = await TextBuffer.deserialize(editor.buffer.serialize());
       const editor2 = TextEditor.deserialize(editor.serialize(), {
         assert: lumine.assert,
-        textEditors: lumine.textEditors,
         project: {
           bufferForIdSync() {
             return buffer2;
@@ -143,7 +141,6 @@ describe("TextEditor", () => {
     it("ignores buffers with retired IDs", () => {
       const editor2 = TextEditor.deserialize(editor.serialize(), {
         assert: lumine.assert,
-        textEditors: lumine.textEditors,
         project: {
           bufferForIdSync() {
             return null;
@@ -162,7 +159,6 @@ describe("TextEditor", () => {
       expect(
         TextEditor.deserialize(state, {
           assert: lumine.assert,
-          textEditors: lumine.textEditors,
           project,
         }),
       ).toBeNull();
