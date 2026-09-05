@@ -131,6 +131,51 @@ describe("HTML menu UI", () => {
     expect(popup.element.querySelectorAll(".menu-item")[1].classList).toContain("selected");
   });
 
+  it("places a right-opening submenu against the parent menu edge", () => {
+    const popup = showMenuPopup(contextViews, {
+      anchor: target,
+      template: [{ label: "Parent", submenu: [{ label: "Child" }] }],
+    });
+    const parent = popup.rootList.items[0];
+    const submenu = popup.openSubmenu(parent);
+    spyOn(popup.rootList.element, "getBoundingClientRect").and.returnValue({
+      left: 100,
+      right: 300,
+    });
+    spyOn(parent.element, "getBoundingClientRect").and.returnValue({ top: 100 });
+    spyOn(submenu.element, "getBoundingClientRect").and.returnValue({
+      width: 120,
+      height: 80,
+    });
+
+    popup.positionSubmenu(submenu, parent);
+
+    expect(submenu.element.style.left).toBe("299px");
+  });
+
+  it("places a left-opening submenu against the parent menu edge", () => {
+    const popup = showMenuPopup(contextViews, {
+      anchor: target,
+      template: [{ label: "Parent", submenu: [{ label: "Child" }] }],
+    });
+    const parent = popup.rootList.items[0];
+    const submenu = popup.openSubmenu(parent);
+    const parentLeft = window.innerWidth - 208;
+    spyOn(popup.rootList.element, "getBoundingClientRect").and.returnValue({
+      left: parentLeft,
+      right: window.innerWidth - 8,
+    });
+    spyOn(parent.element, "getBoundingClientRect").and.returnValue({ top: 100 });
+    spyOn(submenu.element, "getBoundingClientRect").and.returnValue({
+      width: 120,
+      height: 80,
+    });
+
+    popup.positionSubmenu(submenu, parent);
+
+    expect(submenu.element.style.left).toBe(`${parentLeft - 119}px`);
+  });
+
   it("delays pointer selection while crossing toward an open submenu", () => {
     const popup = showMenuPopup(contextViews, {
       anchor: target,

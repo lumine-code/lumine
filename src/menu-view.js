@@ -534,11 +534,13 @@ class MenuPopup {
 
   positionSubmenu(list, item) {
     const edgePadding = 8;
+    const borderOverlap = 1;
     const itemRect = item.element.getBoundingClientRect();
+    const parentMenuRect = item.list.element.getBoundingClientRect();
     const menuRect = list.element.getBoundingClientRect();
-    let left = itemRect.right - 1;
+    let left = parentMenuRect.right - borderOverlap;
     if (left + menuRect.width > this.window.innerWidth - edgePadding) {
-      left = itemRect.left - menuRect.width + 1;
+      left = parentMenuRect.left - menuRect.width + borderOverlap;
     }
     left = Math.max(edgePadding, left);
     let top = itemRect.top - 6;
