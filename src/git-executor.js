@@ -1,4 +1,5 @@
 const { spawn } = require("child_process");
+const fs = require("fs");
 
 // Runs the system git binary via child_process for GitRunner. The exec contract
 // keeps the rest of the git stack unchanged: `exec(args, workingDirectory,
@@ -10,6 +11,36 @@ const { spawn } = require("child_process");
 
 const MAX_BUFFER_EXCEEDED_CODE = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
+
+async function pathIsMissing(filePath, { directory = false } = {}) {
+  if (!filePath) return false;
+  try {
+    const stat = await fs.promises.stat(filePath);
+    return directory && !stat.isDirectory();
+  } catch (error) {
+    return error.code === "ENOENT" || error.code === "ENOTDIR";
+  }
+}
+
+async function classifySpawnError(error, gitPath, workingDirectory) {
+  if (error?.code !== "ENOENT") return error;
+
+  if (await pathIsMissing(workingDirectory, { directory: true })) {
+    error.code = "ERR_GIT_WORKING_DIRECTORY_NOT_FOUND";
+    error.workingDirectory = workingDirectory;
+    error.message = `Git working directory no longer exists: ${workingDirectory}`;
+    return error;
+  }
+
+  // Node reports ENOENT for an absent command, a missing shebang interpreter,
+  // and other failures to load the executable. Once cwd is known to exist,
+  // all of them are actionable as an unusable Git executable; stat(gitPath)
+  // cannot distinguish those cases.
+  error.code = "ERR_GIT_EXECUTABLE_NOT_FOUND";
+  error.gitPath = gitPath;
+  error.message = `Git executable could not be started: ${gitPath || "git"}`;
+  return error;
+}
 
 function createGitExec(gitPath) {
   return function exec(args, workingDirectory, options = {}) {
@@ -26,7 +57,7 @@ function createGitExec(gitPath) {
           windowsHide: true,
         });
       } catch (error) {
-        reject(error);
+        classifySpawnError(error, gitPath, workingDirectory).then(reject, reject);
         return;
       }
 
@@ -69,7 +100,7 @@ function createGitExec(gitPath) {
         if (settled) return;
         settled = true;
         cleanup();
-        reject(error);
+        classifySpawnError(error, gitPath, workingDirectory).then(reject, reject);
       });
 
       child.on("close", (code) => {

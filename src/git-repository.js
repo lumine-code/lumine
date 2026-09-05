@@ -7,6 +7,11 @@ const { EMPTY_REFS_SNAPSHOT } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
 const { assertGitRevision } = require("./git-revision");
 
+// A missing executable is shared by every repository in a window. Key the
+// warning by its NotificationManager so one broken git.path does not produce a
+// notification storm as each repository's background refresh fails.
+const gitExecutableWarningsByManager = new WeakMap();
+
 function deepFreeze(value) {
   if (
     value == null ||
@@ -281,6 +286,13 @@ module.exports = class GitRepository {
    */
   onDidDestroy(callback) {
     return this.emitter.once("did-destroy", callback);
+  }
+
+  // Internal lifecycle event consumed by RepositoryRegistry. A missing working
+  // directory means the checkout was moved, renamed, or deleted; it is not a
+  // Git failure and must remove the stale routing entry without notifying.
+  onDidBecomeUnavailable(callback) {
+    return this.emitter.on("did-become-unavailable", callback);
   }
 
   /**
@@ -1164,7 +1176,27 @@ module.exports = class GitRepository {
 
   reportBackgroundSnapshotError(error) {
     if (this.isDestroyed()) return;
+    const diagnosticCode = error?.gitCode || error?.code;
+    if (diagnosticCode === "ERR_GIT_WORKING_DIRECTORY_NOT_FOUND") {
+      this.emitter.emit("did-become-unavailable", Object.freeze({ repository: this, error }));
+      return;
+    }
     console.error("Git snapshot refresh failed", error);
+    if (diagnosticCode === "ERR_GIT_EXECUTABLE_NOT_FOUND") {
+      const notifications = globalThis.lumine?.notifications;
+      if (
+        notifications &&
+        (typeof notifications === "object" || typeof notifications === "function") &&
+        gitExecutableWarningsByManager.get(notifications) !== error.message
+      ) {
+        gitExecutableWarningsByManager.set(notifications, error.message);
+        notifications.addWarning?.("Git executable could not be started", {
+          detail: error.message,
+          dismissable: true,
+        });
+      }
+      return;
+    }
     if (this.backgroundSnapshotWarningShown) return;
     this.backgroundSnapshotWarningShown = true;
     globalThis.lumine?.notifications?.addWarning?.("Git repository data could not be refreshed", {

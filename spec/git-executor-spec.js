@@ -1,5 +1,7 @@
 const { resolveGitPath, which } = require("../src/git-binary");
 const { createGitExec } = require("../src/git-executor");
+const path = require("path");
+const temp = require("@lumine-code/temp").track();
 
 describe("git binary resolution", () => {
   it("finds git on PATH", () => {
@@ -66,6 +68,35 @@ describe("git executor", () => {
   it("surfaces a non-zero exit code without throwing", async () => {
     const result = await exec(["rev-parse", "--verify", "definitely-not-a-ref"], process.cwd());
     expect(result.exitCode).not.toBe(0);
+  });
+
+  it("distinguishes a missing working directory from a missing Git executable", async () => {
+    const missingDirectory = path.join(temp.dir, "moved-repository");
+    let error;
+    try {
+      await exec(["--version"], missingDirectory);
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error.code).toBe("ERR_GIT_WORKING_DIRECTORY_NOT_FOUND");
+    expect(error.workingDirectory).toBe(missingDirectory);
+    expect(error.message).toContain(missingDirectory);
+  });
+
+  it("reports a missing Git executable when the working directory exists", async () => {
+    const missingGit = path.join(temp.dir, "missing-git-executable");
+    const missingGitExec = createGitExec(missingGit);
+    let error;
+    try {
+      await missingGitExec(["--version"], process.cwd());
+    } catch (caught) {
+      error = caught;
+    }
+
+    expect(error.code).toBe("ERR_GIT_EXECUTABLE_NOT_FOUND");
+    expect(error.gitPath).toBe(missingGit);
+    expect(error.message).toContain(missingGit);
   });
 
   it("kills the process when the abort signal fires", async () => {

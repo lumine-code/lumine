@@ -650,4 +650,42 @@ describe("GitRepository host facade", () => {
     expect(diagnostic.calls.count()).toBe(codes.length * 2);
     expect(warning.calls.argsFor(0)[0]).toBe("Git repository data could not be refreshed");
   });
+
+  it("treats a missing working directory as repository lifecycle, not a warning", () => {
+    repo = new GitRepository(copyRepository());
+    const warning = spyOn(lumine.notifications, "addWarning");
+    const diagnostic = spyOn(console, "error");
+    const unavailable = jasmine.createSpy("unavailable");
+    repo.onDidBecomeUnavailable(unavailable);
+    const error = new Error("Git working directory no longer exists");
+    error.code = "ERR_GIT_SNAPSHOT";
+    error.gitCode = "ERR_GIT_WORKING_DIRECTORY_NOT_FOUND";
+
+    repo.reportBackgroundSnapshotError(error);
+
+    expect(unavailable).toHaveBeenCalled();
+    const event = unavailable.calls.mostRecent().args[0];
+    expect(event.repository).toBe(repo);
+    expect(event.error).toBe(error);
+    expect(warning).not.toHaveBeenCalled();
+    expect(diagnostic).not.toHaveBeenCalled();
+  });
+
+  it("reports a missing shared Git executable only once per window", () => {
+    const warning = spyOn(lumine.notifications, "addWarning");
+    const diagnostic = spyOn(console, "error");
+    const error = new Error("Git executable could not be started");
+    error.code = "ERR_GIT_SNAPSHOT";
+    error.gitCode = "ERR_GIT_EXECUTABLE_NOT_FOUND";
+
+    for (let index = 0; index < 2; index++) {
+      repo = new GitRepository(copyRepository());
+      repo.reportBackgroundSnapshotError(error);
+      repo.destroy();
+    }
+
+    expect(warning.calls.count()).toBe(1);
+    expect(warning.calls.mostRecent().args[0]).toBe("Git executable could not be started");
+    expect(diagnostic.calls.count()).toBe(2);
+  });
 });

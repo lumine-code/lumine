@@ -129,6 +129,14 @@ class FakeRepository {
     return this.emitter.once("did-destroy", callback);
   }
 
+  onDidBecomeUnavailable(callback) {
+    return this.emitter.on("did-become-unavailable", callback);
+  }
+
+  becomeUnavailable(error = new Error("Repository unavailable")) {
+    this.emitter.emit("did-become-unavailable", { repository: this, error });
+  }
+
   destroy() {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -1746,6 +1754,107 @@ describe("RepositoryRegistry", () => {
     expect(repository.isDestroyed()).toBe(true);
   });
 
+  it("removes a moved repository even while roots, buffers, and a pin own it", async () => {
+    const workingDirectory = temp.mkdirSync("moved-watched-repository");
+    const movedDirectory = `${workingDirectory}-new-name`;
+    const repository = new FakeRepository(workingDirectory);
+    repositories.push(repository);
+    project.directories = [directoryFor(workingDirectory)];
+    registry.setProjectRoots([directoryFor(workingDirectory)], { scan: false });
+    const buffer = bufferFor(path.join(workingDirectory, "open.txt"));
+    project.addBuffer(buffer);
+    const pin = registry.retain(repository, "moved-repository-spec");
+    const removed = [];
+    registry.onDidRemoveRepository((removedRepository) => removed.push(removedRepository));
+
+    try {
+      fs.renameSync(workingDirectory, movedDirectory);
+      const removal = registry.handleProjectFileChanges([
+        { action: "deleted", path: path.join(workingDirectory, "condensed-child.txt") },
+      ]);
+      const laterUnrelatedBatch = registry.handleProjectFileChanges([
+        { action: "modified", path: path.join(temp.dir, "unrelated.txt") },
+      ]);
+      const sameRootRescan = registry.rescan();
+      await Promise.all([removal, laterUnrelatedBatch, sameRootRescan]);
+
+      expect(removed).toEqual([repository]);
+      expect(repository.isDestroyed()).toBe(true);
+      expect(registry.getRepositories()).toEqual([]);
+      expect(registry.getForPath(path.join(workingDirectory, "open.txt"))).toBeNull();
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+
+      registry.handleWindowFocus();
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    } finally {
+      pin.dispose();
+      if (fs.existsSync(movedDirectory)) fs.renameSync(movedDirectory, workingDirectory);
+    }
+  });
+
+  it("removes a nested repository from one condensed parent-directory event", async () => {
+    const rootPath = temp.mkdirSync("nested-parent-removal-root");
+    const parentPath = path.join(rootPath, "packages");
+    const movedParentPath = path.join(rootPath, "packages-moved");
+    const workingDirectory = path.join(parentPath, "nested-repository");
+    const repository = new FakeRepository(workingDirectory);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+    registry.register(repository);
+    const pin = registry.retain(repository, "nested-parent-removal-spec");
+
+    try {
+      fs.renameSync(parentPath, movedParentPath);
+      await registry.handleProjectFileChanges([{ action: "deleted", path: parentPath }]);
+
+      expect(repository.isDestroyed()).toBe(true);
+      expect(registry.getForPath(workingDirectory)).toBeNull();
+      expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
+      expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
+    } finally {
+      pin.dispose();
+      if (fs.existsSync(movedParentPath)) fs.renameSync(movedParentPath, parentPath);
+    }
+  });
+
+  it("removes a stale repository when its background refresh reports it unavailable", () => {
+    const workingDirectory = temp.mkdirSync("unavailable-repository");
+    const repository = new FakeRepository(workingDirectory);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workingDirectory)], { scan: false });
+
+    repository.becomeUnavailable();
+
+    expect(repository.isDestroyed()).toBe(true);
+    expect(registry.getRepositories()).toEqual([]);
+  });
+
+  it("validates a repository once for a large batch of deleted paths", async () => {
+    const workingDirectory = temp.mkdirSync("deleted-path-batch-repository");
+    const repository = new FakeRepository(workingDirectory);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workingDirectory)], { scan: false });
+    repository.scheduledStatusSnapshotRefreshCount = 0;
+    const stat = spyOn(fs.promises, "stat").and.callThrough();
+
+    await registry.handleProjectFileChanges(
+      Array.from({ length: 2000 }, (_, index) => ({
+        action: "deleted",
+        path: path.join(workingDirectory, `deleted-${index}.txt`),
+      })),
+    );
+
+    const repositoryStats = stat.calls
+      .allArgs()
+      .map(([filePath]) => filePath)
+      .filter((filePath) => contains(workingDirectory, filePath));
+    expect(repositoryStats).toEqual([workingDirectory, repository.getPath()]);
+    expect(repository.isDestroyed()).toBe(false);
+    expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
+  });
+
   // A repository refreshes on window focus, on a buffer save, and after its own
   // operations, so anything that changes the working tree from inside the window
   // without going through a buffer — a build, a `git` command in a terminal, a
@@ -1763,7 +1872,7 @@ describe("RepositoryRegistry", () => {
       repository.scheduledRefsSnapshotRefreshCount = 0;
     });
 
-    it("refreshes the status once for a batch of working-tree changes", () => {
+    it("refreshes the status once for a batch of working-tree changes", async () => {
       project.emitFileChanges([
         { action: "modified", path: path.join(workingDirectory, "one.txt") },
         { action: "modified", path: path.join(workingDirectory, "nested", "two.txt") },
@@ -1773,27 +1882,30 @@ describe("RepositoryRegistry", () => {
           oldPath: path.join(workingDirectory, "three.txt"),
         },
       ]);
+      await registry.fileChangeValidationTail;
 
       expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
     });
 
-    it("refreshes the status alone when the index moves", () => {
+    it("refreshes the status alone when the index moves", async () => {
       project.emitFileChanges([
         { action: "created", path: path.join(repository.getPath(), "index.lock") },
         { action: "modified", path: path.join(repository.getPath(), "index") },
         { action: "deleted", path: path.join(repository.getPath(), "index.lock") },
       ]);
+      await registry.fileChangeValidationTail;
 
       expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
     });
 
-    it("refreshes the refs too when a ref moves", () => {
+    it("refreshes the refs too when a ref moves", async () => {
       project.emitFileChanges([
         { action: "modified", path: path.join(repository.getPath(), "HEAD") },
         { action: "modified", path: path.join(repository.getPath(), "refs", "heads", "master") },
       ]);
+      await registry.fileChangeValidationTail;
 
       expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
@@ -1801,7 +1913,7 @@ describe("RepositoryRegistry", () => {
 
     // A fetch writes thousands of loose objects and every Git write pairs with
     // a lock file. Neither changes what a status or a ref reads.
-    it("ignores loose objects and lock files", () => {
+    it("ignores loose objects and lock files", async () => {
       project.emitFileChanges([
         { action: "created", path: path.join(repository.getPath(), "objects", "96", "7631210c04") },
         {
@@ -1813,14 +1925,16 @@ describe("RepositoryRegistry", () => {
           path: path.join(repository.getPath(), "refs", "heads", "master.lock"),
         },
       ]);
+      await registry.fileChangeValidationTail;
 
       expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
     });
 
-    it("ignores changes outside every repository", () => {
+    it("ignores changes outside every repository", async () => {
       const outsidePath = temp.mkdirSync("outside-every-repository");
       project.emitFileChanges([{ action: "modified", path: path.join(outsidePath, "one.txt") }]);
+      await registry.fileChangeValidationTail;
 
       expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
       expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
@@ -1844,10 +1958,11 @@ describe("RepositoryRegistry", () => {
         }
       });
 
-      it("routes a worktree HEAD move to the worktree, and its list to the main repository", () => {
+      it("routes a worktree HEAD move to the worktree, and its list to the main repository", async () => {
         project.emitFileChanges([
           { action: "modified", path: path.join(worktreeGitDirectory, "HEAD") },
         ]);
+        await registry.fileChangeValidationTail;
 
         expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
         expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(1);
@@ -1857,24 +1972,26 @@ describe("RepositoryRegistry", () => {
         expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
       });
 
-      it("refreshes the main repository's refs when a worktree is created", () => {
+      it("refreshes the main repository's refs when a worktree is created", async () => {
         project.emitFileChanges([
           {
             action: "created",
             path: path.join(repository.getPath(), "worktrees", "unopened"),
           },
         ]);
+        await registry.fileChangeValidationTail;
 
         expect(repository.scheduledStatusSnapshotRefreshCount).toBe(0);
         expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
         expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
       });
 
-      it("still routes each working tree to its own repository", () => {
+      it("still routes each working tree to its own repository", async () => {
         project.emitFileChanges([
           { action: "modified", path: path.join(worktreePath, "one.txt") },
           { action: "modified", path: path.join(workingDirectory, "two.txt") },
         ]);
+        await registry.fileChangeValidationTail;
 
         expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(1);
         expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
@@ -1883,25 +2000,62 @@ describe("RepositoryRegistry", () => {
       });
 
       // The lock file every Git write pairs with is still noise, wherever it is.
-      it("ignores lock files inside a worktree Git directory", () => {
+      it("ignores lock files inside a worktree Git directory", async () => {
         project.emitFileChanges([
           { action: "created", path: path.join(worktreeGitDirectory, "HEAD.lock") },
         ]);
+        await registry.fileChangeValidationTail;
 
         expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(0);
         expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
         expect(repository.scheduledRefsSnapshotRefreshCount).toBe(0);
       });
+
+      it("removes a linked worktree when its .git marker disappears", async () => {
+        const markerPath = path.join(worktreePath, ".git");
+        fs.writeFileSync(markerPath, `gitdir: ${worktreeGitDirectory}\n`);
+        worktree.getType = () => "git";
+        const pin = registry.retain(worktree, "missing-worktree-marker-spec");
+
+        fs.rmSync(markerPath);
+        await registry.handleProjectFileChanges([{ action: "deleted", path: markerPath }]);
+
+        expect(worktree.isDestroyed()).toBe(true);
+        expect(registry.getForPath(worktreePath)).toBeNull();
+        expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(0);
+        expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
+        pin.dispose();
+      });
+
+      it("removes a linked worktree when its separate Git directory disappears", async () => {
+        const markerPath = path.join(worktreePath, ".git");
+        fs.writeFileSync(markerPath, `gitdir: ${worktreeGitDirectory}\n`);
+        worktree.getType = () => "git";
+        const pin = registry.retain(worktree, "missing-worktree-gitdir-spec");
+
+        fs.rmSync(worktreeGitDirectory, { recursive: true });
+        await registry.handleProjectFileChanges([
+          { action: "deleted", path: worktreeGitDirectory },
+        ]);
+
+        expect(worktree.isDestroyed()).toBe(true);
+        expect(registry.getForPath(worktreePath)).toBeNull();
+        expect(worktree.scheduledStatusSnapshotRefreshCount).toBe(0);
+        expect(worktree.scheduledRefsSnapshotRefreshCount).toBe(0);
+        expect(repository.scheduledRefsSnapshotRefreshCount).toBe(1);
+        pin.dispose();
+      });
     });
 
     // Discovery is opt-in and expensive; keeping a window's colours honest is
     // neither, so it must not ride on the same switch.
-    it("does not depend on git.watchDiscovery", () => {
+    it("does not depend on git.watchDiscovery", async () => {
       expect(registry.config.get("git.watchDiscovery")).toBeFalsy();
 
       project.emitFileChanges([
         { action: "modified", path: path.join(workingDirectory, "one.txt") },
       ]);
+      await registry.fileChangeValidationTail;
 
       expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
     });

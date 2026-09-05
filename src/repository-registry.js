@@ -29,6 +29,16 @@ async function pathAliasesAsync(filePath) {
   return Array.from(aliases);
 }
 
+async function pathIsUnavailable(filePath, { directory = false } = {}) {
+  if (!filePath) return false;
+  try {
+    const stat = await fs.promises.stat(filePath);
+    return directory && !stat.isDirectory();
+  } catch (error) {
+    return error.code === "ENOENT" || error.code === "ENOTDIR";
+  }
+}
+
 function pathContains(parentPath, childPath) {
   return pathAliases(parentPath).some((parent) =>
     pathAliases(childPath).some((child) => pathContainsNormalized(parent, child)),
@@ -38,6 +48,16 @@ function pathContains(parentPath, childPath) {
 function pathContainsNormalized(parent, child) {
   const prefix = parent.endsWith(path.sep) ? parent : `${parent}${path.sep}`;
   return child === parent || child.startsWith(prefix);
+}
+
+function hasPathOrAncestor(paths, filePath) {
+  let candidate = filePath;
+  while (true) {
+    if (paths.has(candidate)) return true;
+    const parent = path.dirname(candidate);
+    if (parent === candidate) return false;
+    candidate = parent;
+  }
 }
 
 function pathDepth(relativePath) {
@@ -157,6 +177,8 @@ module.exports = class RepositoryRegistry {
     this.bufferOwners = new Map();
     this.rootPaths = [];
     this.scanGeneration = 0;
+    this.fileChangeGeneration = 0;
+    this.fileChangeValidationTail = Promise.resolve();
     this.version = 0;
     this.nextOperationId = 1;
     this.nextRescanId = 1;
@@ -213,6 +235,7 @@ module.exports = class RepositoryRegistry {
     if (this.project !== project) return;
 
     this.scanGeneration++;
+    this.fileChangeGeneration++;
     this.activeResolutionGeneration++;
     this.projectSubscriptions.dispose();
     this.projectSubscriptions = new CompositeDisposable();
@@ -623,6 +646,7 @@ module.exports = class RepositoryRegistry {
     if (this.destroyed) return;
     this.destroyed = true;
     this.scanGeneration++;
+    this.fileChangeGeneration++;
     this.activeResolutionGeneration++;
     this.subscriptions.dispose();
     this.serviceSubscription?.dispose();
@@ -642,6 +666,7 @@ module.exports = class RepositoryRegistry {
     this.gitDirectoryOwners.clear();
     for (const entry of entries) {
       entry.destroySubscription.dispose();
+      entry.unavailableSubscription.dispose();
       this.disposeOperationImplementations(entry, { force: true });
       entry.repository.setOperations?.(null);
       if (!entry.repository.isDestroyed?.()) entry.repository.destroy();
@@ -1705,6 +1730,7 @@ module.exports = class RepositoryRegistry {
     );
 
     this.scanGeneration++;
+    if (rootsAdded.length > 0 || rootsRemoved.length > 0) this.fileChangeGeneration++;
     this.rootPaths = newRoots;
 
     // Recompute root ownership for existing repositories first. This transfers
@@ -1991,10 +2017,66 @@ module.exports = class RepositoryRegistry {
   }
 
   handleProjectFileChanges(events) {
-    this.refreshRepositoriesForFileChanges(events);
-    this.discoverRepositoriesForFileChanges(events).catch((error) => {
+    const generation = this.fileChangeGeneration;
+    const work = this.fileChangeValidationTail.then(async () => {
+      if (this.destroyed || generation !== this.fileChangeGeneration) return;
+      // Earlier discovery may have transferred an alias to a different
+      // repository. Plan against routing as it exists when this batch reaches
+      // the front of the serialized lifecycle queue, not when it first arrived.
+      const refreshPlan = this.repositoryRefreshPlanForFileChanges(events);
+      await this.removeUnavailableRepositories(refreshPlan.deletedRepositories, generation);
+      if (this.destroyed || generation !== this.fileChangeGeneration) return;
+      this.scheduleRepositoryRefreshPlan(refreshPlan.pending);
+      await this.discoverRepositoriesForFileChanges(events);
+    });
+    const settled = work.catch((error) => {
       console.error("Unable to update repositories from filesystem changes", error);
     });
+    this.fileChangeValidationTail = settled;
+    return settled;
+  }
+
+  async removeUnavailableRepositories(repositories, generation) {
+    if (repositories.size === 0 || generation !== this.fileChangeGeneration) return;
+    const candidates = Array.from(repositories, (repository) =>
+      this.entryByRepository.get(repository),
+    ).filter(
+      (entry) =>
+        entry &&
+        !entry.missing &&
+        !entry.removing &&
+        !entry.repository.isDestroyed?.() &&
+        this.entriesById.get(entry.id) === entry,
+    );
+
+    await Promise.all(
+      candidates.map(async (entry) => {
+        const repository = entry.repository;
+        const workingDirectory = repository.getWorkingDirectory?.();
+        const requiredPaths = [
+          { path: workingDirectory, directory: true },
+          { path: repository.getPath?.(), directory: true },
+          ...(workingDirectory && repository.getType?.() === "git"
+            ? [{ path: path.join(workingDirectory, ".git"), directory: false }]
+            : []),
+        ].filter(({ path: requiredPath }) => Boolean(requiredPath));
+        const unavailable = (
+          await Promise.all(
+            requiredPaths.map(({ path: requiredPath, directory }) =>
+              pathIsUnavailable(requiredPath, { directory }),
+            ),
+          )
+        ).some(Boolean);
+        if (
+          unavailable &&
+          !this.destroyed &&
+          generation === this.fileChangeGeneration &&
+          this.entriesById.get(entry.id) === entry
+        ) {
+          this.removeUnavailableEntry(entry);
+        }
+      }),
+    );
   }
 
   // Refresh what window focus can actually have made stale.
@@ -2047,8 +2129,13 @@ module.exports = class RepositoryRegistry {
   // lets handleWindowFocus leave watcher-covered repositories alone. Both
   // schedulers debounce, coalesce, and no-op without a subscriber, so even a
   // noisy batch costs one snapshot request per repository at most.
-  refreshRepositoriesForFileChanges(events) {
-    if (this.destroyed || this.entriesById.size === 0) return;
+  repositoryRefreshPlanForFileChanges(events) {
+    const pending = new Map();
+    const deletedRepositories = new Set();
+    const deletedPaths = new Set();
+    if (this.destroyed || this.entriesById.size === 0) {
+      return { pending, deletedRepositories };
+    }
 
     // Batches run to thousands of events during an install or a checkout, and
     // the paths in one arrive in runs from the same directory. Everything the
@@ -2063,13 +2150,26 @@ module.exports = class RepositoryRegistry {
       return contextsByDirectory.get(directoryPath);
     };
 
-    const pending = new Map();
     for (const event of events) {
-      for (const changedPath of [event.path, event.oldPath]) {
+      for (const [changedPath, deleted] of [
+        [event.path, event.action === "deleted"],
+        [event.oldPath, Boolean(event.oldPath)],
+      ]) {
         if (!changedPath) continue;
 
         const name = path.basename(changedPath);
+        if (deleted) {
+          const normalizedChangedPath = normalizePath(changedPath);
+          deletedPaths.add(normalizedChangedPath);
+          for (const exactOwner of [
+            this.routingDirectoryOwners.get(normalizedChangedPath),
+            this.gitDirectoryOwners.get(normalizedChangedPath),
+          ]) {
+            if (exactOwner) deletedRepositories.add(exactOwner.repository);
+          }
+        }
         for (const context of contextsFor(changedPath)) {
+          if (deleted) deletedRepositories.add(context.repository);
           if (pending.get(context.repository) === "both") continue;
 
           const hint = refreshHintForChange(context.gitRelativeDirectory, name);
@@ -2079,7 +2179,35 @@ module.exports = class RepositoryRegistry {
       }
     }
 
+    // Recursive watchers may collapse a whole removed subtree into one event
+    // for its parent. Walk each registered alias toward the filesystem root and
+    // test membership in the deleted-path set, making this O(repositories ×
+    // path depth) rather than O(repositories × event count).
+    if (deletedPaths.size > 0) {
+      for (const owners of [this.routingDirectoryOwners, this.gitDirectoryOwners]) {
+        for (const [ownedPath, entry] of owners) {
+          if (hasPathOrAncestor(deletedPaths, ownedPath)) {
+            deletedRepositories.add(entry.repository);
+          }
+        }
+      }
+    }
+
+    return { pending, deletedRepositories };
+  }
+
+  scheduleRepositoryRefreshPlan(pending) {
     for (const [repository, hint] of pending) {
+      const entry = this.entryByRepository.get(repository);
+      if (
+        !entry ||
+        entry.missing ||
+        entry.removing ||
+        this.entriesById.get(entry.id) !== entry ||
+        repository.isDestroyed?.()
+      ) {
+        continue;
+      }
       if (hint !== "refs") repository.scheduleStatusSnapshotRefresh();
       // Re-reading the refs costs several Git processes, so it is reserved for
       // the entries that can actually have moved a ref or a worktree.
@@ -2472,6 +2600,7 @@ module.exports = class RepositoryRegistry {
       newlyRegistered: true,
       removing: false,
       destroySubscription: null,
+      unavailableSubscription: null,
     };
 
     for (const rootPath of this.rootPaths) {
@@ -2481,6 +2610,9 @@ module.exports = class RepositoryRegistry {
     entry.destroySubscription = repository.onDidDestroy(() => {
       if (!entry.removing) this.removeEntry(entry, { destroy: false });
     });
+    entry.unavailableSubscription =
+      repository.onDidBecomeUnavailable?.(() => this.removeUnavailableEntry(entry)) ||
+      new Disposable();
 
     this.entriesById.set(id, entry);
     this.entryByRepository.set(repository, entry);
@@ -2628,6 +2760,18 @@ module.exports = class RepositoryRegistry {
     this.removeEntry(entry, { destroy: true });
   }
 
+  removeUnavailableEntry(entry) {
+    if (!entry || entry.removing || this.entriesById.get(entry.id) !== entry) return;
+    entry.missing = true;
+    entry.rootOwners.clear();
+    entry.pendingRootReconciliation = false;
+    // Ownership keeps a valid repository alive across root changes. Once its
+    // storage itself has disappeared, every lease points at a stale descriptor,
+    // so remove it unconditionally and let normal discovery create a new entry
+    // if the checkout reappears elsewhere.
+    this.removeEntry(entry, { destroy: true });
+  }
+
   removeEntry(entry, { emit = true, destroy = false } = {}) {
     if (!entry || entry.removing || !this.entriesById.has(entry.id)) return;
     entry.removing = true;
@@ -2643,6 +2787,7 @@ module.exports = class RepositoryRegistry {
       }
     }
     entry.destroySubscription.dispose();
+    entry.unavailableSubscription.dispose();
     this.disposeOperationImplementations(entry);
     entry.repository.setOperations?.(null);
 

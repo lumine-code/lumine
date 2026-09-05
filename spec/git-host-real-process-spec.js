@@ -97,6 +97,30 @@ describe("git-host real process", () => {
     expect(error.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
   });
 
+  it("identifies a repository working directory that moved after discovery", async () => {
+    const descriptor = copyRepository();
+    const movedDirectory = `${descriptor.workingDirectory}-moved`;
+    const host = GitHost.instance();
+    let error;
+
+    fs.renameSync(descriptor.workingDirectory, movedDirectory);
+    try {
+      await host.request("snapshot", {
+        descriptor,
+        request: { status: true, refs: false, generations: { status: 1 } },
+        options: {},
+      });
+    } catch (caught) {
+      error = caught;
+    } finally {
+      fs.renameSync(movedDirectory, descriptor.workingDirectory);
+    }
+
+    expect(error.code).toBe("ERR_GIT_SNAPSHOT");
+    expect(error.gitCode).toBe("ERR_GIT_WORKING_DIRECTORY_NOT_FOUND");
+    expect(error.message).toContain(descriptor.workingDirectory);
+  });
+
   it("streams a large real status snapshot and preserves the public result", async () => {
     const descriptor = copyRepository();
     const host = GitHost.instance();
