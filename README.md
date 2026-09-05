@@ -27,10 +27,6 @@ Website: https://lumine-code.github.io
 - **Cross-platform**: builds and runs on Windows, macOS, and Linux.
 - ... and many more!
 
-## Installation
-
-See [Installing Lumine](https://lumine-code.github.io/docs.html#getting-started/installing-lumine).
-
 ## Contributing
 
 Got ideas to make this package better, found a bug, or want to help add new features? Just drop your thoughts on GitHub. Any feedback is welcome!
