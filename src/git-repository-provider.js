@@ -26,7 +26,11 @@ function filesystemIdentitiesMatch(current, expected) {
   return (
     !current ||
     !expected ||
-    (current.device === expected.device && current.inode === expected.inode)
+    (current.device === expected.device &&
+      current.inode === expected.inode &&
+      (current.birthtime == null ||
+        expected.birthtime == null ||
+        current.birthtime === expected.birthtime))
   );
 }
 

@@ -60,12 +60,24 @@ async function pathAliasesAsync(filePath) {
 }
 
 function filesystemIdentitiesEqual(left, right) {
-  return Boolean(left && right && left.device === right.device && left.inode === right.inode);
+  return Boolean(
+    left &&
+    right &&
+    left.device === right.device &&
+    left.inode === right.inode &&
+    (left.birthtime == null || right.birthtime == null || left.birthtime === right.birthtime),
+  );
 }
 
 function filesystemIdentity(stats) {
   const inode = String(stats.ino);
-  return inode === "0" ? null : { device: String(stats.dev), inode };
+  if (inode === "0") return null;
+  const birthtime = stats.birthtimeNs == null ? null : String(stats.birthtimeNs);
+  return {
+    device: String(stats.dev),
+    inode,
+    ...(birthtime && birthtime !== "0" ? { birthtime } : {}),
+  };
 }
 
 async function pathIsUnavailable(filePath, { directory = false } = {}) {

@@ -233,7 +233,11 @@ describe("git repository descriptor", () => {
     });
     const identity = (candidate) => {
       const stats = fs.statSync(candidate, { bigint: true });
-      return { device: String(stats.dev), inode: String(stats.ino) };
+      return {
+        device: String(stats.dev),
+        inode: String(stats.ino),
+        ...(String(stats.birthtimeNs) === "0" ? {} : { birthtime: String(stats.birthtimeNs) }),
+      };
     };
 
     expect(inspection).toEqual({

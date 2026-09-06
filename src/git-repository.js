@@ -459,7 +459,13 @@ module.exports = class GitRepository {
     const workingDirectoryIdentity = this.descriptor.getWorkingDirectoryIdentity?.() ?? null;
     const commonDirectoryIdentity = this.descriptor.getCommonDirectoryIdentity?.() ?? null;
     const cloneIdentity = (identity) =>
-      identity ? Object.freeze({ device: identity.device, inode: identity.inode }) : null;
+      identity
+        ? Object.freeze({
+            device: identity.device,
+            inode: identity.inode,
+            ...(identity.birthtime == null ? {} : { birthtime: identity.birthtime }),
+          })
+        : null;
     return Object.freeze({
       gitDirectory: this.getPath(),
       workingDirectory: this.getWorkingDirectory(),

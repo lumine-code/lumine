@@ -23,6 +23,9 @@ class FakeRepository {
         : {
             device: String(gitDirectoryStats.dev),
             inode: String(gitDirectoryStats.ino),
+            ...(String(gitDirectoryStats.birthtimeNs) === "0"
+              ? {}
+              : { birthtime: String(gitDirectoryStats.birthtimeNs) }),
           };
     let workingDirectoryStats = null;
     try {
@@ -38,6 +41,9 @@ class FakeRepository {
         : {
             device: String(workingDirectoryStats.dev),
             inode: String(workingDirectoryStats.ino),
+            ...(String(workingDirectoryStats.birthtimeNs) === "0"
+              ? {}
+              : { birthtime: String(workingDirectoryStats.birthtimeNs) }),
           };
     this.emitter = new Emitter();
     this.destroyed = false;

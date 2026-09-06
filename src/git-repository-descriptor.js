@@ -16,7 +16,12 @@ function filesystemIdentity(stats) {
   const device = String(stats.dev);
   const inode = String(stats.ino);
   if (inode === "0") return null;
-  return Object.freeze({ device, inode });
+  const birthtime = stats.birthtimeNs == null ? null : String(stats.birthtimeNs);
+  return Object.freeze({
+    device,
+    inode,
+    ...(birthtime && birthtime !== "0" ? { birthtime } : {}),
+  });
 }
 
 function commonDirectoryLocation(gitDirectory) {
@@ -1141,7 +1146,10 @@ function repositoryDescriptorParts(descriptor, { requireComplete = false } = {})
 function filesystemIdentityMatches(actual, expected) {
   return (
     !expected ||
-    (actual && actual.device === String(expected.device) && actual.inode === String(expected.inode))
+    (actual &&
+      actual.device === String(expected.device) &&
+      actual.inode === String(expected.inode) &&
+      (expected.birthtime == null || actual.birthtime === String(expected.birthtime)))
   );
 }
 
@@ -1192,7 +1200,10 @@ function directoryInspectionsMatch(left, right) {
     left.identity &&
     right.identity &&
     left.identity.device === right.identity.device &&
-    left.identity.inode === right.identity.inode,
+    left.identity.inode === right.identity.inode &&
+    (left.identity.birthtime == null ||
+      right.identity.birthtime == null ||
+      left.identity.birthtime === right.identity.birthtime),
   );
 }
 
