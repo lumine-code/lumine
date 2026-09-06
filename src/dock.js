@@ -112,6 +112,14 @@ module.exports = class Dock {
   }
 
   setDraggingItem(draggingItem) {
+    // A successful drop may remove the dragged tab from the DOM before Chromium
+    // dispatches `dragend`, so finishing the workspace drag is the authoritative
+    // cleanup signal. Otherwise a dock entered while hidden can retain
+    // `showDropTarget` forever and remain painted open after `hide()`.
+    if (draggingItem == null) {
+      this.draggedOut({ draggingItem });
+      return;
+    }
     if (draggingItem === this.state.draggingItem) return;
     this.setState({ draggingItem });
   }
@@ -349,8 +357,8 @@ module.exports = class Dock {
     this.draggedOut();
   }
 
-  draggedOut() {
-    this.setState({ showDropTarget: false });
+  draggedOut(state = {}) {
+    this.setState({ ...state, showDropTarget: false });
     window.removeEventListener("drag", this.handleDrag);
     window.removeEventListener("dragend", this.handleDragEnd);
   }

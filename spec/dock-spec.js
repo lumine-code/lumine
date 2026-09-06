@@ -549,6 +549,62 @@ describe("Dock", () => {
       expect(maskOf().style.width).toBe("0px");
     });
 
+    it("clears an empty dock's drop target when the drop finishes without dragend", async () => {
+      const workspaceElement = lumine.workspace.getElement();
+      jasmine.attachToDOM(workspaceElement);
+      const sourcePane = lumine.workspace.getLeftDock().getActivePane();
+      const targetDock = lumine.workspace.getRightDock();
+      const targetPane = targetDock.getActivePane();
+      const item = {
+        element: document.createElement("div"),
+        getDefaultLocation() {
+          return "right";
+        },
+      };
+      sourcePane.addItem(item);
+
+      const tab = document.createElement("div");
+      tab.setAttribute("is", "tabs-tab");
+      tab.item = item;
+      const dragEvent = new DragEvent("dragstart");
+      Object.defineProperty(dragEvent, "target", { value: tab });
+
+      workspaceElement.handleDragStart(dragEvent);
+      targetDock.handleToggleButtonDragEnter();
+      expect(targetDock.refs.innerElement).toHaveClass("lumine-dock-open");
+      expect(targetDock.isVisible()).toBe(false);
+
+      // Dropping a tab can detach its source element before `dragend` reaches
+      // window. The workspace's drop cleanup must therefore close the temporary
+      // target on its own.
+      workspaceElement.handleDrop(new DragEvent("drop"));
+      sourcePane.moveItemToPane(item, targetPane);
+      targetPane.activateItem(item);
+      targetPane.activate();
+      await getNextUpdatePromise();
+
+      expect(targetDock.state.draggingItem).toBeNull();
+      expect(targetDock.state.showDropTarget).toBe(false);
+      expect(targetDock.isVisible()).toBe(true);
+
+      targetDock.setHovered(true);
+      await getNextUpdatePromise();
+      targetDock.refs.toggleButton.refs.innerElement.click();
+      await getNextUpdatePromise();
+
+      expect(targetDock.isVisible()).toBe(false);
+      expect(targetDock.refs.innerElement).not.toHaveClass("lumine-dock-open");
+
+      targetDock.show();
+      await getNextUpdatePromise();
+      const itemViews = targetPane.getElement().querySelector(":scope > .item-views");
+      lumine.commands.dispatch(itemViews, "dock:hide");
+      await getNextUpdatePromise();
+
+      expect(targetDock.isVisible()).toBe(false);
+      expect(targetDock.refs.innerElement).not.toHaveClass("lumine-dock-open");
+    });
+
     it("gives an empty dock revealed as a drop target real layout space", async () => {
       jasmine.attachToDOM(lumine.workspace.getElement());
       const dock = lumine.workspace.getRightDock();
