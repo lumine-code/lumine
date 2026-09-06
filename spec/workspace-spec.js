@@ -2685,6 +2685,24 @@ describe("Workspace", () => {
         return lumine.workspace.scan(regex, { ...options, ripgrep }, iterator);
       }
 
+      async function removeTemporaryProject(projectPath) {
+        const watcherPromise = lumine.project.getWatcherPromise(projectPath).catch(() => null);
+        const buffers = lumine.project
+          .getBuffers()
+          .filter((buffer) => buffer.getPath()?.startsWith(projectPath + path.sep));
+
+        for (const buffer of buffers) buffer.destroy();
+        lumine.project.setPaths([]);
+
+        const watcher = await watcherPromise;
+        await Promise.all([
+          watcher?.getStopPromise?.(),
+          ...buffers.map((buffer) => buffer.fileWatcherTeardownPromise),
+        ]);
+
+        if (fs.existsSync(projectPath)) fs.removeSync(projectPath);
+      }
+
       describe("when called with a regex", () => {
         it("calls the callback with all regex results in all files in the project", async () => {
           const results = [];
@@ -3114,11 +3132,7 @@ describe("Workspace", () => {
             fs.writeFileSync(ignoredPath, "this match should not be included");
           });
 
-          afterEach(() => {
-            if (fs.existsSync(projectPath)) {
-              fs.removeSync(projectPath);
-            }
-          });
+          afterEach(async () => removeTemporaryProject(projectPath));
 
           it("excludes ignored files when core.excludeVcsIgnoredPaths is true", async () => {
             lumine.project.setPaths([projectPath]);
@@ -3191,11 +3205,7 @@ describe("Workspace", () => {
             );
           });
 
-          afterEach(() => {
-            if (fs.existsSync(projectPath)) {
-              fs.removeSync(projectPath);
-            }
-          });
+          afterEach(async () => removeTemporaryProject(projectPath));
 
           it("follows symlinks when core.followSymlinks is true", async () => {
             lumine.project.setPaths([projectPath]);
@@ -3233,11 +3243,7 @@ describe("Workspace", () => {
             fs.writeFileSync(path.join(projectPath, ".hidden"), "ccc");
           });
 
-          afterEach(() => {
-            if (fs.existsSync(projectPath)) {
-              fs.removeSync(projectPath);
-            }
-          });
+          afterEach(async () => removeTemporaryProject(projectPath));
 
           it("searches on hidden files", async () => {
             lumine.project.setPaths([projectPath]);
