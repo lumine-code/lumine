@@ -104,6 +104,9 @@ module.exports = function createGitHostOps(
     // stderr, and ERR_GIT_COMMAND_FAILED fields directly.
     exec: (payload, context) => systemGitService.exec(payload, context),
 
-    writeCommandOutput: (payload, context) => systemGitService.writeCommandOutput(payload, context),
+    execRepository: (payload, context) => systemGitService.execRepository(payload, context),
+
+    writeRepositoryCommandOutput: (payload, context) =>
+      systemGitService.writeRepositoryCommandOutput(payload, context),
   };
 };

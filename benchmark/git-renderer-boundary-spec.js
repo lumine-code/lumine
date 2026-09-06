@@ -382,6 +382,35 @@ describe("Git renderer boundary benchmark", () => {
         };
       }
 
+      const frameBudgetMeasurements = [
+        ["line diff", summarize(lineDiffSamples.map(({ maxEventLoopGapMs }) => maxEventLoopGapMs))],
+        ...Object.entries(statusMetrics).map(([count, metrics]) => [
+          `status ${count}`,
+          metrics.maxEventLoopGap,
+        ]),
+        ...Object.entries(deepStatusMetrics).map(([depth, metrics]) => [
+          `deep status ${depth}`,
+          metrics.maxEventLoopGap,
+        ]),
+        ...Object.entries(refsMetrics).map(([count, metrics]) => [
+          `refs ${count}`,
+          metrics.maxEventLoopGap,
+        ]),
+        ...Object.entries(ipcStatusMetrics).map(([count, metrics]) => [
+          `snapshot IPC ${count}`,
+          metrics.maxEventLoopGap,
+        ]),
+        ...Object.entries(objectIpcMetrics).map(([kind, metrics]) => [
+          `object IPC ${kind}`,
+          metrics.maxEventLoopGap,
+        ]),
+      ];
+      for (const [name, measurement] of frameBudgetMeasurements) {
+        expect(measurement.maxMs)
+          .withContext(`${name} exceeded the ${FRAME_BUDGET_MS} ms renderer frame budget`)
+          .toBeLessThanOrEqual(FRAME_BUDGET_MS);
+      }
+
       console.log(
         `GIT_RENDERER_BENCHMARK_JSON=${JSON.stringify({
           runtime: {

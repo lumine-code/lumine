@@ -47,20 +47,53 @@ describe("GitHostClient", () => {
   it("sends output-to-file commands without a renderer buffer", async () => {
     const host = { request: jasmine.createSpy("request").and.resolveTo({ exitCode: 0 }) };
     const client = new GitHostClient(host);
+    const descriptor = {
+      gitDirectory: "/repo/.git",
+      workingDirectory: "/repo",
+      worktreeGitMarker: { path: "/repo/.git", kind: "directory" },
+    };
 
-    await client.writeCommandOutput(["cat-file", "blob", "abc"], "/repo", "/repo/file.txt", {
-      signal: "signal",
-      allowedExitCodes: [0, 1],
-    });
+    await client.writeRepositoryCommandOutput(
+      descriptor,
+      ["cat-file", "blob", "abc"],
+      "/repo/file.txt",
+      {
+        signal: "signal",
+        allowedExitCodes: [0, 1],
+      },
+    );
 
     expect(host.request).toHaveBeenCalledWith(
-      "writeCommandOutput",
+      "writeRepositoryCommandOutput",
       {
-        workingDirectory: "/repo",
+        descriptor,
         args: ["cat-file", "blob", "abc"],
         destinationPath: "/repo/file.txt",
         options: { allowedExitCodes: [0, 1] },
       },
+      { signal: "signal" },
+    );
+  });
+
+  it("sends repository commands with their exact descriptor", async () => {
+    const host = {
+      request: jasmine.createSpy("request").and.resolveTo({ exitCode: 0, stdout: "", stderr: "" }),
+    };
+    const client = new GitHostClient(host);
+    const descriptor = {
+      gitDirectory: "/storage/repo.git",
+      workingDirectory: "/work/repo",
+      worktreeGitMarker: { path: "/work/repo/.git", kind: "gitfile" },
+    };
+
+    await client.execRepository(descriptor, ["status"], {
+      signal: "signal",
+      env: { EXAMPLE: "1" },
+    });
+
+    expect(host.request).toHaveBeenCalledWith(
+      "execRepository",
+      { descriptor, args: ["status"], options: { env: { EXAMPLE: "1" } } },
       { signal: "signal" },
     );
   });

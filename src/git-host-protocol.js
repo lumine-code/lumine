@@ -35,7 +35,8 @@ const GitHostOperations = Object.freeze({
   readConfig: true,
   lineDiff: true,
   exec: true,
-  writeCommandOutput: true,
+  execRepository: true,
+  writeRepositoryCommandOutput: true,
 });
 
 const SERIALIZED_ERROR_FIELDS = Object.freeze([
@@ -44,6 +45,9 @@ const SERIALIZED_ERROR_FIELDS = Object.freeze([
   "command",
   "operation",
   "gitCode",
+  "reason",
+  "gitDirectory",
+  "workingDirectory",
   "exitCode",
   "retriable",
   "maxBytes",
@@ -63,6 +67,9 @@ const SERIALIZED_ERROR_FIELDS = Object.freeze([
   "commandTruncated",
   "operationTruncated",
   "gitCodeTruncated",
+  "reasonTruncated",
+  "gitDirectoryTruncated",
+  "workingDirectoryTruncated",
 ]);
 
 const SERIALIZED_ERROR_TEXT_FIELDS = new Set([
@@ -74,6 +81,9 @@ const SERIALIZED_ERROR_TEXT_FIELDS = new Set([
   "command",
   "operation",
   "gitCode",
+  "reason",
+  "gitDirectory",
+  "workingDirectory",
 ]);
 
 function boundedErrorText(value, maxBytes = GIT_HOST_ERROR_TEXT_MAX_BYTES) {
@@ -163,6 +173,10 @@ function serializeError(error, state = null, depth = 0) {
   for (const field of SERIALIZED_ERROR_FIELDS) {
     const value = readErrorField(error, field);
     if (value === undefined) continue;
+    if (value === null) {
+      serialized[field] = null;
+      continue;
+    }
     if (SERIALIZED_ERROR_TEXT_FIELDS.has(field)) {
       const bounded = takeErrorText(value, state);
       serialized[field] = bounded.text;

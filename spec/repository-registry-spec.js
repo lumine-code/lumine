@@ -653,6 +653,33 @@ describe("RepositoryRegistry", () => {
     expect(repository.refreshRefsSnapshotCount).toBe(1);
   });
 
+  it("removes a stale entry when a manual mutation reports its descriptor unavailable", async () => {
+    const workdir = temp.mkdirSync("unavailable-operation-repository");
+    const repository = new FakeRepository(workdir);
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workdir)]);
+    const error = new Error("Git repository is unavailable");
+    error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
+    error.reason = "worktree-marker-missing";
+    const removed = jasmine.createSpy("removed");
+    registry.onDidRemoveRepository(removed);
+    registry.addOperationProvider({
+      createRepositoryOperations() {
+        return {
+          commit: async () => {
+            throw error;
+          },
+        };
+      },
+    });
+
+    await expectAsync(repository.getOperations().commit("Subject")).toBeRejectedWith(error);
+
+    expect(removed).toHaveBeenCalledOnceWith(repository);
+    expect(repository.isDestroyed()).toBe(true);
+    expect(registry.getRepositories()).toEqual([]);
+  });
+
   it("right-sizes the post-operation refresh from the implementation's hint", async () => {
     const workdir = temp.mkdirSync("operation-refresh-hints");
     const repository = new FakeRepository(workdir);
@@ -1794,6 +1821,145 @@ describe("RepositoryRegistry", () => {
     }
   });
 
+  it("replaces a repository moved within one watched project root", async () => {
+    registry.destroy();
+    const rootPath = temp.mkdirSync("moved-within-root");
+    const originalPath = path.join(rootPath, "original");
+    const movedPath = path.join(rootPath, "renamed");
+    fs.mkdirSync(originalPath);
+    const original = new FakeRepository(originalPath);
+    repositories.push(original);
+    registry = new RepositoryRegistry({
+      project,
+      config: config(),
+      notificationManager: { addWarning: jasmine.createSpy("warning") },
+    });
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+    registry.register(original);
+    const added = [];
+    const removed = [];
+    registry.onDidAddRepository((repository) => added.push(repository));
+    registry.onDidRemoveRepository((repository) => removed.push(repository));
+
+    fs.renameSync(originalPath, movedPath);
+    const moved = new FakeRepository(movedPath);
+    repositories.push(moved);
+    await registry.handleProjectFileChanges([
+      { action: "renamed", oldPath: originalPath, path: movedPath },
+    ]);
+
+    expect(removed).toEqual([original]);
+    expect(added).toEqual([moved]);
+    expect(original.isDestroyed()).toBe(true);
+    expect(moved.isDestroyed()).toBe(false);
+    expect(registry.getRepositories()).toEqual([moved]);
+    expect(registry.notificationManager.addWarning).not.toHaveBeenCalled();
+  });
+
+  it("rediscovers a moved markerless core.worktree from its known Git directory", async () => {
+    registry.destroy();
+    const rootPath = temp.mkdirSync("moved-configured-worktree-root");
+    const originalPath = path.join(rootPath, "original");
+    const movedPath = path.join(rootPath, "renamed");
+    const gitDirectory = temp.mkdirSync("moved-configured-worktree-gitdir");
+    fs.mkdirSync(originalPath);
+    const original = new FakeRepository(originalPath, gitDirectory);
+    repositories.push(original);
+    registry = new RepositoryRegistry({ project, config: config() });
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+    registry.register(original);
+
+    fs.renameSync(originalPath, movedPath);
+    const moved = new FakeRepository(movedPath, gitDirectory);
+    repositories.push(moved);
+    project.repositoryForPathFromProviders = async (filePath) =>
+      normalize(filePath) === normalize(gitDirectory) ? moved : null;
+    const added = jasmine.createSpy("added");
+    const removed = jasmine.createSpy("removed");
+    registry.onDidAddRepository(added);
+    registry.onDidRemoveRepository(removed);
+
+    await registry.handleProjectFileChanges([
+      { action: "renamed", oldPath: originalPath, path: movedPath },
+    ]);
+
+    expect(removed).toHaveBeenCalledOnceWith(original);
+    expect(added).toHaveBeenCalledOnceWith(moved);
+    expect(registry.getRepositories()).toEqual([moved]);
+  });
+
+  it("keeps discovery opt-in for an unknown renamed repository", async () => {
+    registry.destroy();
+    const rootPath = temp.mkdirSync("unknown-renamed-repository-root");
+    const originalPath = path.join(rootPath, "original");
+    const movedPath = path.join(rootPath, "renamed");
+    fs.mkdirSync(originalPath);
+    const unknown = new FakeRepository(originalPath);
+    repositories.push(unknown);
+    registry = new RepositoryRegistry({ project, config: config() });
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+
+    fs.renameSync(originalPath, movedPath);
+    const moved = new FakeRepository(movedPath);
+    repositories.push(moved);
+    await registry.handleProjectFileChanges([
+      { action: "renamed", oldPath: originalPath, path: movedPath },
+    ]);
+
+    expect(registry.getRepositories()).toEqual([]);
+  });
+
+  it("does not rediscover a Git directory renamed away from its .git marker", async () => {
+    registry.destroy();
+    const workingDirectory = temp.mkdirSync("renamed-marker-worktree");
+    const markerPath = path.join(workingDirectory, ".git");
+    const renamedMarkerPath = path.join(workingDirectory, ".git-old");
+    const original = new FakeRepository(workingDirectory);
+    repositories.push(original);
+    registry = new RepositoryRegistry({ project, config: config() });
+    registry.setProjectRoots([directoryFor(workingDirectory)], { scan: false });
+    registry.register(original);
+    const added = jasmine.createSpy("added");
+    registry.onDidAddRepository(added);
+
+    fs.writeFileSync(path.join(markerPath, "HEAD"), "ref: refs/heads/main\n");
+    fs.mkdirSync(path.join(markerPath, "objects"));
+    fs.mkdirSync(path.join(markerPath, "refs"));
+    fs.renameSync(markerPath, renamedMarkerPath);
+    const invalidReplacement = new FakeRepository(workingDirectory, renamedMarkerPath);
+    repositories.push(invalidReplacement);
+    project.repositoryForPathFromProviders = async (filePath) =>
+      normalize(filePath) === normalize(renamedMarkerPath) ? invalidReplacement : null;
+    await registry.handleProjectFileChanges([
+      { action: "renamed", oldPath: markerPath, path: renamedMarkerPath },
+    ]);
+
+    expect(original.isDestroyed()).toBe(true);
+    expect(registry.getRepositories()).toEqual([]);
+    expect(added).not.toHaveBeenCalled();
+  });
+
+  it("does not run repository discovery for an ordinary created directory", async () => {
+    registry.destroy();
+    const rootPath = temp.mkdirSync("ordinary-created-directory-root");
+    const repository = new FakeRepository(rootPath);
+    repositories.push(repository);
+    const discover = spyOn(project, "repositoryForPathFromProviders").and.callThrough();
+    registry = new RepositoryRegistry({
+      project,
+      config: config({ "git.watchDiscovery": true, "git.watchDepth": 1 }),
+    });
+    registry.setProjectRoots([directoryFor(rootPath)], { scan: false });
+    registry.register(repository);
+    discover.calls.reset();
+    const ordinaryDirectory = path.join(rootPath, "ordinary");
+    fs.mkdirSync(ordinaryDirectory);
+
+    await registry.handleProjectFileChanges([{ action: "created", path: ordinaryDirectory }]);
+
+    expect(discover).not.toHaveBeenCalled();
+  });
+
   it("removes a nested repository from one condensed parent-directory event", async () => {
     const rootPath = temp.mkdirSync("nested-parent-removal-root");
     const parentPath = path.join(rootPath, "packages");
@@ -1829,6 +1995,61 @@ describe("RepositoryRegistry", () => {
 
     expect(repository.isDestroyed()).toBe(true);
     expect(registry.getRepositories()).toEqual([]);
+  });
+
+  it("removes a repository when its gitfile marker is retargeted in place", async () => {
+    const workingDirectory = temp.mkdirSync("retargeted-marker-worktree");
+    const metadataRoot = temp.mkdirSync("retargeted-marker-metadata");
+    const gitDirectory = path.join(metadataRoot, "original.git");
+    const replacementGitDirectory = path.join(metadataRoot, "replacement.git");
+    const repository = new FakeRepository(workingDirectory, gitDirectory);
+    fs.mkdirSync(replacementGitDirectory);
+    const markerPath = path.join(workingDirectory, ".git");
+    fs.writeFileSync(markerPath, `gitdir: ${gitDirectory}\n`);
+    repository.getType = () => "git";
+    repository.getHostDescriptor = () => ({
+      gitDirectory,
+      workingDirectory,
+      worktreeGitMarker: { path: markerPath, kind: "gitfile" },
+    });
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workingDirectory)], { scan: false });
+    const pin = registry.retain(repository, "retargeted-marker-spec");
+
+    fs.writeFileSync(markerPath, `gitdir: ${replacementGitDirectory}\n`);
+    await registry.handleProjectFileChanges([{ action: "modified", path: markerPath }]);
+
+    expect(repository.isDestroyed()).toBe(true);
+    expect(registry.getRepositories()).toEqual([]);
+    pin.dispose();
+  });
+
+  it("keeps a valid markerless core.worktree repository", async () => {
+    const workingDirectory = temp.mkdirSync("configured-worktree");
+    const metadataRoot = temp.mkdirSync("configured-worktree-metadata");
+    const gitDirectory = path.join(metadataRoot, "repository.git");
+    const repository = new FakeRepository(workingDirectory, gitDirectory);
+    fs.writeFileSync(
+      path.join(gitDirectory, "config"),
+      `[core]\n\tbare = false\n\tworktree = ${JSON.stringify(workingDirectory)}\n`,
+    );
+    repository.getType = () => "git";
+    repository.getHostDescriptor = () => ({
+      gitDirectory,
+      workingDirectory,
+      worktreeGitMarker: null,
+    });
+    repositories.push(repository);
+    registry.setProjectRoots([directoryFor(workingDirectory)], { scan: false });
+    repository.scheduledStatusSnapshotRefreshCount = 0;
+
+    await registry.handleProjectFileChanges([
+      { action: "deleted", path: path.join(workingDirectory, "removed.txt") },
+    ]);
+
+    expect(repository.isDestroyed()).toBe(false);
+    expect(registry.getRepositories()).toEqual([repository]);
+    expect(repository.scheduledStatusSnapshotRefreshCount).toBe(1);
   });
 
   it("validates a repository once for a large batch of deleted paths", async () => {
@@ -2015,6 +2236,11 @@ describe("RepositoryRegistry", () => {
         const markerPath = path.join(worktreePath, ".git");
         fs.writeFileSync(markerPath, `gitdir: ${worktreeGitDirectory}\n`);
         worktree.getType = () => "git";
+        worktree.getHostDescriptor = () => ({
+          gitDirectory: worktreeGitDirectory,
+          workingDirectory: worktreePath,
+          worktreeGitMarker: { path: markerPath, kind: "gitfile" },
+        });
         const pin = registry.retain(worktree, "missing-worktree-marker-spec");
 
         fs.rmSync(markerPath);
@@ -2031,6 +2257,11 @@ describe("RepositoryRegistry", () => {
         const markerPath = path.join(worktreePath, ".git");
         fs.writeFileSync(markerPath, `gitdir: ${worktreeGitDirectory}\n`);
         worktree.getType = () => "git";
+        worktree.getHostDescriptor = () => ({
+          gitDirectory: worktreeGitDirectory,
+          workingDirectory: worktreePath,
+          worktreeGitMarker: { path: markerPath, kind: "gitfile" },
+        });
         const pin = registry.retain(worktree, "missing-worktree-gitdir-spec");
 
         fs.rmSync(worktreeGitDirectory, { recursive: true });

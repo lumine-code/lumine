@@ -70,6 +70,25 @@ describe("git executor", () => {
     expect(result.exitCode).not.toBe(0);
   });
 
+  it("can remove inherited variables from the child environment", async () => {
+    const name = "LUMINE_GIT_EXECUTOR_TEST";
+    const original = process.env[name];
+    process.env[name] = "inherited";
+    try {
+      const printEnvironment = `alias.print-environment=!printf '%s' "$${name}"`;
+      const inherited = await exec(["-c", printEnvironment, "print-environment"], process.cwd());
+      const removed = await exec(["-c", printEnvironment, "print-environment"], process.cwd(), {
+        unsetEnv: [name],
+      });
+
+      expect(inherited.stdout).toBe("inherited");
+      expect(removed.stdout).toBe("");
+    } finally {
+      if (original === undefined) delete process.env[name];
+      else process.env[name] = original;
+    }
+  });
+
   it("distinguishes a missing working directory from a missing Git executable", async () => {
     const missingDirectory = path.join(temp.dir, "moved-repository");
     let error;

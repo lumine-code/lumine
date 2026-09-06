@@ -4,20 +4,60 @@ const path = require("path");
 const temp = require("@lumine-code/temp").track();
 
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
+const GitRepository = require("../src/git-repository");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+
+function repositoryContext(workingDirectory, overrides = {}) {
+  const gitDirectory = overrides.gitDirectory || path.join(workingDirectory, ".git");
+  const descriptor = Object.freeze({
+    gitDirectory,
+    workingDirectory,
+    worktreeGitMarker:
+      overrides.worktreeGitMarker === undefined
+        ? { path: path.join(workingDirectory, ".git"), kind: "directory" }
+        : overrides.worktreeGitMarker,
+  });
+  return {
+    repository: { getHostDescriptor: () => descriptor },
+    gitDirectory,
+    workingDirectory,
+  };
+}
 
 describe("GitRepositoryOperationProvider", () => {
+  it("requires an exact descriptor even with an injected command transport", () => {
+    const provider = new GitRepositoryOperationProvider({
+      exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
+    });
+
+    expect(() =>
+      provider.createRepositoryOperations({
+        gitDirectory: "/repo/.git",
+        workingDirectory: "/repo",
+      }),
+    ).toThrowError(TypeError, "Repository operations require an exact repository descriptor");
+  });
+
   it("routes commands and output files through one GitHostClient", async () => {
     const gitHostClient = {
       exec: jasmine.createSpy("exec").and.resolveTo({ exitCode: 0, stdout: "ok", stderr: "" }),
-      writeCommandOutput: jasmine
-        .createSpy("writeCommandOutput")
+      execRepository: jasmine
+        .createSpy("execRepository")
+        .and.resolveTo({ exitCode: 0, stdout: "ok", stderr: "" }),
+      writeRepositoryCommandOutput: jasmine
+        .createSpy("writeRepositoryCommandOutput")
         .and.resolveTo({ exitCode: 0, stderr: "" }),
     };
     const provider = new GitRepositoryOperationProvider({ gitHostClient });
     const workingDirectory = temp.mkdirSync("git-client-transport");
+    const context = repositoryContext(workingDirectory, {
+      gitDirectory: path.join(workingDirectory, "storage.git"),
+      worktreeGitMarker: { path: path.join(workingDirectory, ".git"), kind: "gitfile" },
+    });
 
     await provider.executeGit(["status"], workingDirectory);
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(context);
+    await operations.stageFiles(["one.txt"]);
     await operations.expandBlobToFile("output.txt", "abc");
 
     expect(gitHostClient.exec).toHaveBeenCalledWith(
@@ -26,15 +66,41 @@ describe("GitRepositoryOperationProvider", () => {
       { priority: "interactive" },
       true,
     );
-    const [args, cwd, destinationPath, options] =
-      gitHostClient.writeCommandOutput.calls.mostRecent().args;
+    expect(gitHostClient.execRepository).toHaveBeenCalledWith(
+      context.repository.getHostDescriptor(),
+      ["add", "--", "one.txt"],
+      { priority: "interactive" },
+    );
+    const [descriptor, args, destinationPath, options] =
+      gitHostClient.writeRepositoryCommandOutput.calls.mostRecent().args;
+    expect(descriptor).toBe(context.repository.getHostDescriptor());
     expect(args).toEqual(["cat-file", "blob", "abc"]);
-    expect(cwd).toBe(workingDirectory);
     expect(destinationPath).toBe(path.join(workingDirectory, "output.txt"));
     expect(options.priority).toBe("interactive");
   });
 
-  it("exposes the embedded Git transport", async () => {
+  it("marks read phases of composite mutations for postvalidation", async () => {
+    const calls = [];
+    const provider = new GitRepositoryOperationProvider({
+      exec: async (args, workingDirectory, options) => {
+        calls.push({ args, workingDirectory, options });
+        return {
+          exitCode: 0,
+          stdout: args[0] === "ls-files" ? "100644 abc 0\tfile.txt\n" : "",
+          stderr: "",
+        };
+      },
+    });
+    const workingDirectory = temp.mkdirSync("git-composite-read");
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
+
+    await operations.stageFileModeChange("file.txt", "100755");
+
+    expect(calls[0].options.repositoryRead).toBe(true);
+    expect(calls[1].options.repositoryRead).toBeUndefined();
+  });
+
+  it("keeps executeGit, init, and clone on the unbound Git transport", async () => {
     const calls = [];
     const provider = new GitRepositoryOperationProvider({
       exec: async (args, workingDirectory, options, raw) => {
@@ -43,8 +109,12 @@ describe("GitRepositoryOperationProvider", () => {
       },
     });
     const workingDirectory = temp.mkdirSync("git-transport");
+    const initializedDirectory = path.join(workingDirectory, "initialized");
+    const clonedDirectory = path.join(workingDirectory, "cloned");
 
     const result = await provider.executeGit(["--version"], workingDirectory, { env: { A: "B" } });
+    await provider.initializeRepository(initializedDirectory, { initialBranch: "main" });
+    await provider.cloneRepository("https://example.test/repo.git", clonedDirectory);
 
     expect(result.stdout).toBe("git version test");
     expect(calls).toEqual([
@@ -53,6 +123,18 @@ describe("GitRepositoryOperationProvider", () => {
         workingDirectory,
         options: { priority: "interactive", env: { A: "B" } },
         raw: true,
+      },
+      {
+        args: ["init", "--initial-branch=main", "."],
+        workingDirectory: initializedDirectory,
+        options: { priority: "interactive", initialBranch: "main" },
+        raw: false,
+      },
+      {
+        args: ["clone", "--", "https://example.test/repo.git", clonedDirectory],
+        workingDirectory,
+        options: { priority: "interactive" },
+        raw: false,
       },
     ]);
   });
@@ -79,7 +161,7 @@ describe("GitRepositoryOperationProvider", () => {
       authBroker,
     });
     const workingDirectory = temp.mkdirSync("git-auth-env");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     await operations.fetch("origin", "main");
     await operations.push("origin", "refs/heads/main");
@@ -123,7 +205,7 @@ describe("GitRepositoryOperationProvider", () => {
       authBroker,
     });
     const workingDirectory = temp.mkdirSync("git-signing-env");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     lumine.config.set("git.promptForGpgPassphrase", true);
     try {
@@ -168,7 +250,7 @@ describe("GitRepositoryOperationProvider", () => {
       authBroker,
     });
     const workingDirectory = temp.mkdirSync("git-signing-off");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     lumine.config.set("git.promptForGpgPassphrase", false);
     await operations.commit("Subject");
@@ -206,7 +288,7 @@ describe("GitRepositoryOperationProvider", () => {
       authBroker,
     });
     const workingDirectory = temp.mkdirSync("git-pull-signing");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     // A pull fetches (needs credentials) and may sign a merge/rebase commit.
     lumine.config.set("git.promptForGpgPassphrase", false);
@@ -239,7 +321,7 @@ describe("GitRepositoryOperationProvider", () => {
       },
     });
     const workingDirectory = path.join(temp.mkdirSync("git-command-mapping"), "repo");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     await operations.stageFiles(["one.txt", "two.txt"]);
     await operations.commit("Subject", {
@@ -292,7 +374,7 @@ describe("GitRepositoryOperationProvider", () => {
       },
     });
     const workingDirectory = path.join(temp.mkdirSync("git-worktree-mapping"), "repo");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     await operations.worktreeAdd("../feature");
     await operations.worktreeAdd("../feature", { branch: "feature", commitish: "origin/main" });
@@ -356,7 +438,7 @@ describe("GitRepositoryOperationProvider", () => {
       },
     });
     const workingDirectory = path.join(temp.mkdirSync("git-checkout-track"), "repo");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     await operations.checkout("pr-123/owner/feature", {
       createNew: true,
@@ -385,7 +467,7 @@ describe("GitRepositoryOperationProvider", () => {
       },
     });
     const workingDirectory = path.join(temp.mkdirSync("git-unstage-shape"), "repo");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     await operations.unstageFiles(["one.txt"]);
     await operations.unstageFiles(["two.txt"], { reference: "HEAD~" });
@@ -403,7 +485,7 @@ describe("GitRepositoryOperationProvider", () => {
     const provider = new GitRepositoryOperationProvider();
     const workingDirectory = temp.mkdirSync("git-unstage-unborn");
     await provider.initializeRepository(workingDirectory, { initialBranch: "main" });
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
     const filePath = path.join(workingDirectory, "report.log");
 
     fs.writeFileSync(filePath, "staged\n");
@@ -426,7 +508,7 @@ describe("GitRepositoryOperationProvider", () => {
       exec: async () => ({ exitCode: 0, stdout: "", stderr: "" }),
     });
     const workingDirectory = temp.mkdirSync("git-refresh-hints");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
     const hint = (name, ...args) => operations.getOperationRefreshHint(name, args);
 
     expect(hint("stageFiles", ["a.txt"])).toBe("status");
@@ -490,7 +572,7 @@ describe("GitRepositoryOperationProvider", () => {
       },
     });
     const workingDirectory = temp.mkdirSync("git-option-mapping");
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
 
     await operations.commit("Subject", {
       cleanup: "strip",
@@ -547,7 +629,7 @@ describe("GitRepositoryOperationProvider", () => {
     const provider = new GitRepositoryOperationProvider({
       exec: async () => Promise.reject(failure),
     });
-    const operations = provider.createRepositoryOperations({ workingDirectory: "/repo" });
+    const operations = provider.createRepositoryOperations(repositoryContext("/repo"));
 
     let missingResult;
     try {
@@ -568,7 +650,7 @@ describe("GitRepositoryOperationProvider", () => {
     const provider = new GitRepositoryOperationProvider();
     const workingDirectory = temp.mkdirSync("git-conflict-index");
     await provider.initializeRepository(workingDirectory, { initialBranch: "main" });
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
     await operations.setConfig("user.name", "Lumine Specs");
     await operations.setConfig("user.email", "specs@lumine.invalid");
     fs.writeFileSync(path.join(workingDirectory, "conflict.txt"), "committed\n");
@@ -594,7 +676,7 @@ describe("GitRepositoryOperationProvider", () => {
     const workingDirectory = temp.mkdirSync("git-real-repository");
 
     await provider.initializeRepository(workingDirectory, { initialBranch: "main" });
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
     await operations.setConfig("user.name", "Lumine Specs");
     await operations.setConfig("user.email", "specs@lumine.invalid");
     fs.writeFileSync(path.join(workingDirectory, "README.md"), "# Test\n");
@@ -620,7 +702,7 @@ describe("GitRepositoryOperationProvider", () => {
     const worktreePath = path.join(temp.mkdirSync("git-real-worktrees-linked"), "feature");
 
     await provider.initializeRepository(workingDirectory, { initialBranch: "main" });
-    const operations = provider.createRepositoryOperations({ workingDirectory });
+    const operations = provider.createRepositoryOperations(repositoryContext(workingDirectory));
     await operations.setConfig("user.name", "Lumine Specs");
     await operations.setConfig("user.email", "specs@lumine.invalid");
     fs.writeFileSync(path.join(workingDirectory, "README.md"), "# Test\n");
@@ -630,6 +712,15 @@ describe("GitRepositoryOperationProvider", () => {
     await operations.worktreeAdd(worktreePath, { branch: "feature" });
     expect(fs.existsSync(path.join(worktreePath, "README.md"))).toBe(true);
     expect((await provider.run(["branch", "--show-current"], worktreePath)).trim()).toBe("feature");
+    const linkedGitDirectory = discoverRepositoryDescriptor(worktreePath).getPath();
+    const linkedDescriptor = discoverRepositoryDescriptor(linkedGitDirectory);
+    const linkedRepository = new GitRepository(linkedDescriptor);
+    expect(linkedDescriptor.getWorkingDirectory()).toBe(
+      fs.realpathSync.native(worktreePath).replace(/\\/g, "/"),
+    );
+    expect(linkedDescriptor.getWorktreeGitMarker().kind).toBe("gitfile");
+    expect(await linkedRepository.getDescription()).toBe("feature");
+    linkedRepository.destroy();
 
     const listed = await provider.run(["worktree", "list", "--porcelain"], workingDirectory);
     expect(listed).toContain("branch refs/heads/feature");
@@ -657,13 +748,48 @@ describe("GitRepositoryOperationProvider", () => {
     ).not.toContain("refs/heads/feature");
   });
 
+  it("uses a moved --separate-git-dir worktree through its exact descriptor", async () => {
+    const provider = new GitRepositoryOperationProvider();
+    const rootDirectory = temp.mkdirSync("git-real-separate-dir");
+    const originalWorkingDirectory = path.join(rootDirectory, "original worktree");
+    const movedWorkingDirectory = path.join(rootDirectory, "moved worktree");
+    const gitDirectory = path.join(rootDirectory, "metadata.git");
+    fs.mkdirSync(originalWorkingDirectory);
+
+    const initialized = await provider.executeGit(
+      ["init", "--initial-branch=main", `--separate-git-dir=${gitDirectory}`, "."],
+      originalWorkingDirectory,
+    );
+    expect(initialized.exitCode).toBe(0);
+    fs.renameSync(originalWorkingDirectory, movedWorkingDirectory);
+    const descriptor = discoverRepositoryDescriptor(movedWorkingDirectory);
+    const repository = new GitRepository(descriptor);
+    const operations = provider.createRepositoryOperations({ repository });
+
+    expect(descriptor.getWorkingDirectory()).toBe(
+      fs.realpathSync.native(movedWorkingDirectory).replace(/\\/g, "/"),
+    );
+    expect(descriptor.getWorktreeGitMarker().kind).toBe("gitfile");
+    await operations.setConfig("user.name", "Lumine Specs");
+    await operations.setConfig("user.email", "specs@lumine.invalid");
+    fs.writeFileSync(path.join(movedWorkingDirectory, "README.md"), "# Separate\n");
+    await operations.stageFiles(["README.md"]);
+    await operations.commit("Separate Git directory");
+
+    expect(await repository.getDescription()).toBe("main");
+    expect((await repository.getCommits({ limit: 1 })).commits[0].subject).toBe(
+      "Separate Git directory",
+    );
+    repository.destroy();
+  });
+
   it("clones a local repository through the embedded Git distribution", async () => {
     const provider = new GitRepositoryOperationProvider();
     const sourcePath = temp.mkdirSync("git-clone-source");
     const destinationPath = path.join(temp.mkdirSync("git-clone-parent"), "destination");
 
     await provider.initializeRepository(sourcePath, { initialBranch: "main" });
-    const sourceOperations = provider.createRepositoryOperations({ workingDirectory: sourcePath });
+    const sourceOperations = provider.createRepositoryOperations(repositoryContext(sourcePath));
     await sourceOperations.setConfig("user.name", "Lumine Specs");
     await sourceOperations.setConfig("user.email", "specs@lumine.invalid");
     fs.writeFileSync(path.join(sourcePath, "file.txt"), "content\n");

@@ -351,7 +351,12 @@ describe("repository diff", () => {
       const workingDirectory = temp.mkdirSync("empty-tree-read-only-diff");
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
       fs.writeFileSync(path.join(workingDirectory, "staged.txt"), "staged\n");
-      const operations = operationProvider.createRepositoryOperations({ workingDirectory });
+      const repository = new GitRepository(workingDirectory);
+      const operations = operationProvider.createRepositoryOperations({
+        repository,
+        gitDirectory: repository.getPath(),
+        workingDirectory,
+      });
       await operations.stageFiles(["staged.txt"]);
       const emptyOid = (
         await operationProvider.run(["hash-object", "-t", "tree", "--stdin"], workingDirectory, {
@@ -374,6 +379,7 @@ describe("repository diff", () => {
       });
       expect(patch).toContain("staged.txt");
       expect(fs.existsSync(repositoryObject)).toBe(false);
+      repository.destroy();
     });
 
     it("does not replace a diff result when temporary ODB cleanup fails", async () => {
@@ -402,7 +408,12 @@ describe("repository diff", () => {
       operationProvider = new GitRepositoryOperationProvider();
       workingDirectory = temp.mkdirSync("repository-diff-repo");
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
-      operations = operationProvider.createRepositoryOperations({ workingDirectory });
+      repo = new GitRepository(workingDirectory);
+      operations = operationProvider.createRepositoryOperations({
+        repository: repo,
+        gitDirectory: repo.getPath(),
+        workingDirectory,
+      });
       await operations.setConfig("user.name", "Lumine Specs");
       await operations.setConfig("user.email", "specs@lumine.invalid");
 
@@ -415,8 +426,6 @@ describe("repository diff", () => {
 
       fs.appendFileSync(path.join(workingDirectory, "file.txt"), "three\n");
       fs.writeFileSync(path.join(workingDirectory, "untracked.txt"), "hey\n");
-
-      repo = new GitRepository(workingDirectory);
     });
 
     afterEach(() => {

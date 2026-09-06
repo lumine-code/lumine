@@ -1,5 +1,6 @@
 const { createGitExec } = require("./git-executor");
 const { resolveGitPath } = require("./git-binary");
+const path = require("path");
 
 // Lazily resolve the system git binary (honoring `git.path`, passed to the
 // worker as LUMINE_GIT_PATH) and build the shared executor once per process.
@@ -145,6 +146,26 @@ const COLOR_CONFIG = [
   "color.ui=false",
 ];
 
+// Repository operations are bound with command-line arguments instead of
+// Git's repository-discovery environment. Remove variables that could redirect
+// part of that binding while retaining object-directory overrides used by the
+// diff provider (GIT_OBJECT_DIRECTORY and GIT_ALTERNATE_OBJECT_DIRECTORIES).
+const REPOSITORY_ENVIRONMENT_VARIABLES = [
+  "GIT_DIR",
+  "GIT_WORK_TREE",
+  "GIT_COMMON_DIR",
+  "GIT_INDEX_FILE",
+];
+
+function repositoryArguments(descriptor) {
+  if (!descriptor) return [];
+  const args = ["--git-dir", path.resolve(descriptor.gitDirectory)];
+  if (descriptor.workingDirectory != null) {
+    args.push("--work-tree", path.resolve(descriptor.workingDirectory));
+  }
+  return args;
+}
+
 class GitOperationError extends Error {
   constructor(command, result) {
     const stderr = String(result.stderr);
@@ -191,6 +212,9 @@ class GitRunner {
       ...(priority === "background" && !options.allowPrompt ? { GIT_OPTIONAL_LOCKS: "0" } : {}),
       ...options.env,
     };
+    if (options.repositoryDescriptor) {
+      for (const name of REPOSITORY_ENVIRONMENT_VARIABLES) delete environment[name];
+    }
     const configArguments = [];
     if (this.trustAllRepositories) {
       configArguments.push("-c", "safe.directory=*");
@@ -198,12 +222,19 @@ class GitRunner {
     for (const [key, value] of Object.entries(options.config || {})) {
       configArguments.push("-c", `${key}=${value}`);
     }
+    const boundRepositoryArguments = repositoryArguments(options.repositoryDescriptor);
     const runExec = () =>
       this.execute(
-        [...(includeColorConfig ? COLOR_CONFIG : []), ...configArguments, ...args],
+        [
+          ...(includeColorConfig ? COLOR_CONFIG : []),
+          ...configArguments,
+          ...boundRepositoryArguments,
+          ...args,
+        ],
         workingDirectory,
         {
           env: environment,
+          unsetEnv: options.repositoryDescriptor ? REPOSITORY_ENVIRONMENT_VARIABLES : undefined,
           stdin: options.stdin,
           encoding: options.encoding,
           maxBuffer: options.maxBuffer,

@@ -128,11 +128,16 @@ module.exports = class GitHostClient {
     return this.request("exec", { workingDirectory, args, options: rest, raw }, { signal });
   }
 
-  writeCommandOutput(args, workingDirectory, destinationPath, options = {}) {
+  execRepository(descriptor, args, options = {}) {
+    const { signal, rest } = splitSignal(options);
+    return this.request("execRepository", { descriptor, args, options: rest }, { signal });
+  }
+
+  writeRepositoryCommandOutput(descriptor, args, destinationPath, options = {}) {
     const { signal, rest } = splitSignal(options);
     return this.request(
-      "writeCommandOutput",
-      { workingDirectory, args, destinationPath, options: rest },
+      "writeRepositoryCommandOutput",
+      { descriptor, args, destinationPath, options: rest },
       { signal },
     );
   }

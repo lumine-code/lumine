@@ -6,6 +6,7 @@ const { EMPTY_STATUS_SNAPSHOT } = require("./repository-status-snapshot");
 const { EMPTY_REFS_SNAPSHOT } = require("./repository-refs-snapshot");
 const { relativize: relativizePath } = require("./repository-paths");
 const { assertGitRevision } = require("./git-revision");
+const { isRepositoryUnavailableError } = require("./git-error");
 
 // A missing executable is shared by every repository in a window. Key the
 // warning by its NotificationManager so one broken git.path does not produce a
@@ -208,6 +209,7 @@ module.exports = class GitRepository {
     this.snapshotRefreshTimer = null;
     this.scheduledSnapshotKinds = new Set();
     this.backgroundSnapshotWarningShown = false;
+    this.repositoryUnavailableError = null;
 
     this.operations = null;
 
@@ -229,8 +231,9 @@ module.exports = class GitRepository {
    * This method is idempotent.
    */
   destroy() {
-    this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.flight);
-    this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.trailing);
+    const pendingError = this.repositoryUnavailableError || snapshotAbortError();
+    this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.flight, pendingError);
+    this.cancelSnapshotRequest(this.snapshotRefreshCoalescer.trailing, pendingError);
     this.descriptor = null;
     this.operations = null;
     this.gitHostClient = null;
@@ -293,6 +296,23 @@ module.exports = class GitRepository {
   // Git failure and must remove the stale routing entry without notifying.
   onDidBecomeUnavailable(callback) {
     return this.emitter.on("did-become-unavailable", callback);
+  }
+
+  signalRepositoryUnavailable(error) {
+    if (this.isDestroyed() || this.repositoryUnavailableError) return;
+    this.repositoryUnavailableError = error;
+    this.emitter.emit("did-become-unavailable", Object.freeze({ repository: this, error }));
+  }
+
+  async repositoryHostRequest(callback) {
+    if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
+    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
+    try {
+      return await callback(this.gitHostClient, this.getHostDescriptor());
+    } catch (error) {
+      if (isRepositoryUnavailableError(error)) this.signalRepositoryUnavailable(error);
+      throw error;
+    }
   }
 
   /**
@@ -398,9 +418,16 @@ module.exports = class GitRepository {
   // so the worker targets exactly this repository without upward discovery.
   getHostDescriptor() {
     if (this.isDestroyed()) throw new Error("Repository has been destroyed");
+    const worktreeGitMarker = this.descriptor.getWorktreeGitMarker?.() ?? null;
     return Object.freeze({
       gitDirectory: this.getPath(),
       workingDirectory: this.getWorkingDirectory(),
+      worktreeGitMarker: worktreeGitMarker
+        ? Object.freeze({
+            path: worktreeGitMarker.path,
+            kind: worktreeGitMarker.kind,
+          })
+        : null,
     });
   }
 
@@ -589,15 +616,16 @@ module.exports = class GitRepository {
     const requested = Array.from(keys || [], String);
     if (requested.length === 0) return Promise.resolve({});
     if (this.isDestroyed()) {
+      if (this.repositoryUnavailableError) return Promise.reject(this.repositoryUnavailableError);
       return Promise.resolve(Object.fromEntries(requested.map((key) => [key, null])));
     }
-    return this.gitHostClient
-      .getConfigValues(this.getHostDescriptor(), requested)
-      .then((values) =>
-        Object.fromEntries(
-          requested.map((key) => [key, Object.hasOwn(values || {}, key) ? values[key] : null]),
-        ),
-      );
+    return this.repositoryHostRequest((client, descriptor) =>
+      client.getConfigValues(descriptor, requested),
+    ).then((values) =>
+      Object.fromEntries(
+        requested.map((key) => [key, Object.hasOwn(values || {}, key) ? values[key] : null]),
+      ),
+    );
   }
 
   /**
@@ -920,7 +948,7 @@ module.exports = class GitRepository {
     request.waiters.clear();
   }
 
-  cancelSnapshotRequest(request) {
+  cancelSnapshotRequest(request, error = snapshotAbortError()) {
     if (!request) return;
     request.controller.abort();
     if (globalThis.window?.lumine?.unloading) {
@@ -930,7 +958,7 @@ module.exports = class GitRepository {
       request.waiters.clear();
       return;
     }
-    this.settleSnapshotRequest(request, snapshotAbortError());
+    this.settleSnapshotRequest(request, error);
   }
 
   scheduleSnapshotRefresh(kind, debounceMs) {
@@ -949,32 +977,35 @@ module.exports = class GitRepository {
   }
 
   async executeSnapshotRefresh(mask, options = {}) {
+    if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
     if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
 
     const statusRequested = mask.has("status");
     const refsRequested = mask.has("refs");
     const includeIgnored = options.includeIgnored !== false;
 
-    const result = await this.gitHostClient.getSnapshot(
-      this.getHostDescriptor(),
-      {
-        status: statusRequested,
-        refs: refsRequested,
-        includeIgnored,
-        knownFingerprints: {
-          ...(statusRequested && this.statusSnapshotFingerprint
-            ? { status: this.statusSnapshotFingerprint }
-            : {}),
-          ...(refsRequested && this.refsSnapshotFingerprint
-            ? { refs: this.refsSnapshotFingerprint }
-            : {}),
+    const result = await this.repositoryHostRequest((client, descriptor) =>
+      client.getSnapshot(
+        descriptor,
+        {
+          status: statusRequested,
+          refs: refsRequested,
+          includeIgnored,
+          knownFingerprints: {
+            ...(statusRequested && this.statusSnapshotFingerprint
+              ? { status: this.statusSnapshotFingerprint }
+              : {}),
+            ...(refsRequested && this.refsSnapshotFingerprint
+              ? { refs: this.refsSnapshotFingerprint }
+              : {}),
+          },
+          generations: {
+            status: this.statusSnapshot.generation + 1,
+            refs: this.refsSnapshot.generation + 1,
+          },
         },
-        generations: {
-          status: this.statusSnapshot.generation + 1,
-          refs: this.refsSnapshot.generation + 1,
-        },
-      },
-      options,
+        options,
+      ),
     );
 
     if (this.isDestroyed()) {
@@ -1177,8 +1208,8 @@ module.exports = class GitRepository {
   reportBackgroundSnapshotError(error) {
     if (this.isDestroyed()) return;
     const diagnosticCode = error?.gitCode || error?.code;
-    if (diagnosticCode === "ERR_GIT_WORKING_DIRECTORY_NOT_FOUND") {
-      this.emitter.emit("did-become-unavailable", Object.freeze({ repository: this, error }));
+    if (isRepositoryUnavailableError(error)) {
+      this.signalRepositoryUnavailable(error);
       return;
     }
     console.error("Git snapshot refresh failed", error);
@@ -1352,10 +1383,12 @@ module.exports = class GitRepository {
       throw new TypeError(`Unsupported diff format: ${format}`);
     }
 
-    const result = await this.gitHostClient.getDiff(
-      this.getHostDescriptor(),
-      { from, to, paths, context, ignoreWhitespace, detectRenames, diffFilter, format },
-      { maxBytes, signal },
+    const result = await this.repositoryHostRequest((client, descriptor) =>
+      client.getDiff(
+        descriptor,
+        { from, to, paths, context, ignoreWhitespace, detectRenames, diffFilter, format },
+        { maxBytes, signal },
+      ),
     );
     if (result?.schemaVersion !== 1 || !Array.isArray(result.files)) {
       const error = new Error("Git host returned an invalid structured diff");
@@ -1384,11 +1417,6 @@ module.exports = class GitRepository {
     return relativePath.split(path.sep).join("/");
   }
 
-  requireGitHostClient() {
-    if (!this.gitHostClient || this.isDestroyed()) throw new Error("Repository has been destroyed");
-    return this.gitHostClient;
-  }
-
   /**
    * @public
    * @status public
@@ -1412,7 +1440,6 @@ module.exports = class GitRepository {
     cursor = null,
     signal,
   } = {}) {
-    const client = this.requireGitHostClient();
     const effectiveRevision = cursor?.revision ?? revision;
     const effectiveAllRefs = cursor?.allRefs ?? allRefs;
     const skip = cursor?.skip ?? 0;
@@ -1426,7 +1453,9 @@ module.exports = class GitRepository {
       limit: limit + 1,
       skip,
     };
-    const records = await client.getHistory(this.getHostDescriptor(), params, { signal });
+    const records = await this.repositoryHostRequest((client, descriptor) =>
+      client.getHistory(descriptor, params, { signal }),
+    );
     const hasMore = records.length > limit;
     const commits = Object.freeze(records.slice(0, limit));
     return Object.freeze({
@@ -1453,9 +1482,9 @@ module.exports = class GitRepository {
    */
   async getCommit(sha, { signal } = {}) {
     assertGitRevision(sha, { label: "commit" });
-    const result = await this.requireGitHostClient().getCommit(this.getHostDescriptor(), sha, {
-      signal,
-    });
+    const result = await this.repositoryHostRequest((client, descriptor) =>
+      client.getCommit(descriptor, sha, { signal }),
+    );
     if (!result) return null;
     const { files, changedFiles, ...commit } = result;
     return Object.freeze({
@@ -1480,11 +1509,11 @@ module.exports = class GitRepository {
    */
   getFileAtRevision(filePath, revision, { encoding = "utf8", signal } = {}) {
     assertGitRevision(revision);
-    return this.requireGitHostClient().getFileAtRevision(
-      this.getHostDescriptor(),
-      this.posixRelativePath(filePath),
-      revision,
-      { encoding: encoding === "buffer" ? "buffer" : encoding, signal },
+    return this.repositoryHostRequest((client, descriptor) =>
+      client.getFileAtRevision(descriptor, this.posixRelativePath(filePath), revision, {
+        encoding: encoding === "buffer" ? "buffer" : encoding,
+        signal,
+      }),
     );
   }
 
@@ -1503,13 +1532,11 @@ module.exports = class GitRepository {
    *   path has no stage-0 index entry.
    */
   getIndexFile(filePath, { encoding = "utf8", signal } = {}) {
-    return this.requireGitHostClient().getIndexFile(
-      this.getHostDescriptor(),
-      this.posixRelativePath(filePath),
-      {
+    return this.repositoryHostRequest((client, descriptor) =>
+      client.getIndexFile(descriptor, this.posixRelativePath(filePath), {
         encoding: encoding === "buffer" ? "buffer" : encoding,
         signal,
-      },
+      }),
     );
   }
 
@@ -1527,10 +1554,12 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to the contents, or `null` when the oid does not name an object.
    */
   getBlob(oid, { encoding = "utf8", signal } = {}) {
-    return this.requireGitHostClient().getBlob(this.getHostDescriptor(), oid, {
-      encoding: encoding === "buffer" ? "buffer" : encoding,
-      signal,
-    });
+    return this.repositoryHostRequest((client, descriptor) =>
+      client.getBlob(descriptor, oid, {
+        encoding: encoding === "buffer" ? "buffer" : encoding,
+        signal,
+      }),
+    );
   }
 
   /**
@@ -1542,7 +1571,7 @@ module.exports = class GitRepository {
    * `""` when the branch is unborn.
    */
   getDescription() {
-    return this.requireGitHostClient().getDescription(this.getHostDescriptor());
+    return this.repositoryHostRequest((client, descriptor) => client.getDescription(descriptor));
   }
 
   /**
@@ -1561,11 +1590,9 @@ module.exports = class GitRepository {
    */
   getBranchesContaining(commit, { showLocal = false, showRemote = false, pattern = null } = {}) {
     assertGitRevision(commit, { label: "commit" });
-    return this.requireGitHostClient().getBranchesContaining(this.getHostDescriptor(), commit, {
-      showLocal,
-      showRemote,
-      pattern,
-    });
+    return this.repositoryHostRequest((client, descriptor) =>
+      client.getBranchesContaining(descriptor, commit, { showLocal, showRemote, pattern }),
+    );
   }
 
   /**
@@ -1578,9 +1605,8 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to the `String` mode (e.g. `"100644"`), or `null` when the path is not tracked.
    */
   getFileMode(filePath) {
-    return this.requireGitHostClient().getFileMode(
-      this.getHostDescriptor(),
-      this.posixRelativePath(filePath),
+    return this.repositoryHostRequest((client, descriptor) =>
+      client.getFileMode(descriptor, this.posixRelativePath(filePath)),
     );
   }
 
@@ -1595,9 +1621,14 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to an `Array` of path `Strings`.
    */
   async getSubmodulePaths(options = {}) {
-    if (this.isDestroyed()) return [];
+    if (this.isDestroyed()) {
+      if (this.repositoryUnavailableError) throw this.repositoryUnavailableError;
+      return [];
+    }
     const paths = Object.freeze(
-      await this.requireGitHostClient().getSubmodulePaths(this.getHostDescriptor(), options),
+      await this.repositoryHostRequest((client, descriptor) =>
+        client.getSubmodulePaths(descriptor, options),
+      ),
     );
     this.submodulePathKeys = new Set(paths.map((submodulePath) => statusPathKey(submodulePath)));
     return paths;
@@ -1618,11 +1649,13 @@ module.exports = class GitRepository {
    */
   async getBlame(filePath, { revision = null, ignoreWhitespace = false, signal } = {}) {
     assertGitRevision(revision, { allowNull: true });
-    const lines = await this.requireGitHostClient().getBlame(
-      this.getHostDescriptor(),
-      this.posixRelativePath(filePath),
-      { revision, ignoreWhitespace },
-      { signal },
+    const lines = await this.repositoryHostRequest((client, descriptor) =>
+      client.getBlame(
+        descriptor,
+        this.posixRelativePath(filePath),
+        { revision, ignoreWhitespace },
+        { signal },
+      ),
     );
     return Object.freeze({
       revision,
@@ -1648,19 +1681,25 @@ module.exports = class GitRepository {
    * @returns {Promise} resolving to an `Array` of hunk `Objects`, each with `oldStart`, `newStart`, `oldLines`, and `newLines`.
    */
   getLineDiffsAsync(filePath, text, { signal } = {}) {
-    if (this.isDestroyed()) return Promise.resolve([]);
+    if (this.isDestroyed()) {
+      return this.repositoryUnavailableError
+        ? Promise.reject(this.repositoryUnavailableError)
+        : Promise.resolve([]);
+    }
     const relativePosixPath = this.relativize(filePath).split(path.sep).join("/");
     // The status snapshot's head oid keys the worker's blob cache; a HEAD move
     // produces a fresh key. Files inside submodules are owned by their own
     // repository, so this repository always keys against its own HEAD.
     const headOid = this.statusSnapshot?.head?.oid ?? null;
-    return this.gitHostClient.getLineDiffs(this.getHostDescriptor(), {
-      relativePosixPath,
-      headOid,
-      text,
-      ignoreEolWhitespace: process.platform === "win32",
-      signal,
-    });
+    return this.repositoryHostRequest((client, descriptor) =>
+      client.getLineDiffs(descriptor, {
+        relativePosixPath,
+        headOid,
+        text,
+        ignoreEolWhitespace: process.platform === "win32",
+        signal,
+      }),
+    );
   }
 
   /**

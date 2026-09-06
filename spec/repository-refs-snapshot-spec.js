@@ -6,6 +6,8 @@ const temp = require("@lumine-code/temp").track();
 const { EMPTY_REFS_SNAPSHOT, parseRefsSnapshot } = require("../src/repository-refs-snapshot");
 const GitRepositoryRefsProvider = require("../src/git-repository-refs-provider");
 const GitRepositoryOperationProvider = require("../src/git-repository-operation-provider");
+const GitRepository = require("../src/git-repository");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
 
 function refRecord({
   ref,
@@ -530,7 +532,12 @@ describe("repository refs snapshot", () => {
       const worktreePath = path.join(temp.mkdirSync("refs-provider-worktrees"), "feature");
 
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
-      const operations = operationProvider.createRepositoryOperations({ workingDirectory });
+      const repository = new GitRepository(discoverRepositoryDescriptor(workingDirectory));
+      const operations = operationProvider.createRepositoryOperations({
+        repository,
+        gitDirectory: repository.getPath(),
+        workingDirectory,
+      });
       await operations.setConfig("user.name", "Lumine Specs");
       await operations.setConfig("user.email", "specs@lumine.invalid");
       fs.writeFileSync(path.join(workingDirectory, "file.txt"), "content\n");
@@ -658,6 +665,7 @@ describe("repository refs snapshot", () => {
       expect(detachedSnapshot.head.detached).toBe(true);
       expect(detachedSnapshot.head.name).toBeNull();
       expect(detachedSnapshot.head.oid).toBe(snapshot.head.oid);
+      repository.destroy();
     });
 
     it("reports an unborn branch in a freshly initialized repository", async () => {

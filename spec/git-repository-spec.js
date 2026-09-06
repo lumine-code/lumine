@@ -722,12 +722,22 @@ describe("GitRepository", () => {
     });
 
     it("refreshes refs again when scheduled while a subscriber exists", async () => {
-      repo.onDidChangeRefsSnapshot(() => {});
-      await runScheduler();
+      let resolveChange;
+      repo.onDidChangeRefsSnapshot((snapshot) => {
+        resolveChange?.(snapshot);
+        resolveChange = null;
+      });
+      const nextChange = () => new Promise((resolve) => (resolveChange = resolve));
+
+      const initialChange = nextChange();
+      advanceClock(1);
+      await initialChange;
 
       refsOutputs = makeOutputs("switched");
+      const switchedChange = nextChange();
       repo.scheduleRefsSnapshotRefresh();
-      await runScheduler();
+      advanceClock(1);
+      await switchedChange;
 
       expect(repo.getRefsSnapshot().head.name).toBe("switched");
       expect(refsSnapshotProvider.getRefs.calls.count()).toBe(2);

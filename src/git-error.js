@@ -19,6 +19,12 @@ class LargeRepoError extends Error {
   }
 }
 
+function isRepositoryUnavailableError(error) {
+  const code = error?.code;
+  const gitCode = error?.gitCode;
+  return code === "ERR_GIT_REPOSITORY_UNAVAILABLE" || gitCode === "ERR_GIT_REPOSITORY_UNAVAILABLE";
+}
+
 // GitRunner error codes are useful inside git-host, but packages consume the
 // operation-level repository facade. Preserve the original code as diagnostic
 // metadata while exposing a stable code for each public operation.
@@ -39,8 +45,10 @@ function normalizeGitOperationError(error, { operation = null } = {}) {
   if (
     originalCode === "ERR_GIT_DIFF_TOO_LARGE" ||
     originalCode === "ERR_GIT_CREATE_BLOB" ||
+    originalCode === "ERR_GIT_REPOSITORY_UNAVAILABLE" ||
     originalCode.startsWith("ERR_GIT_HOST_")
   ) {
+    error.operation ||= operation;
     return error;
   }
 
@@ -61,5 +69,6 @@ function normalizeGitOperationError(error, { operation = null } = {}) {
 module.exports = {
   GitError,
   LargeRepoError,
+  isRepositoryUnavailableError,
   normalizeGitOperationError,
 };

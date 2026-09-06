@@ -8,9 +8,11 @@ function copyRepository() {
   const workingDirectory = temp.mkdirSync("git-host-cli-contract-");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
   fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
+  const gitDirectory = fs.realpathSync(path.join(workingDirectory, ".git"));
   return {
-    gitDirectory: fs.realpathSync(path.join(workingDirectory, ".git")),
+    gitDirectory,
     workingDirectory: fs.realpathSync(workingDirectory),
+    worktreeGitMarker: { path: gitDirectory, kind: "directory" },
   };
 }
 
@@ -127,7 +129,11 @@ describe("git-host system Git contract", () => {
     const runner = new GitRunner({ trustAllRepositories: true });
     await runner.run(["init", "--bare", "--initial-branch=main"], gitDirectory);
     const bareOps = createGitHostOps(runner);
-    const bareDescriptor = { gitDirectory: fs.realpathSync(gitDirectory), workingDirectory: null };
+    const bareDescriptor = {
+      gitDirectory: fs.realpathSync(gitDirectory),
+      workingDirectory: null,
+      worktreeGitMarker: null,
+    };
 
     const snapshot = await bareOps.snapshot(
       {

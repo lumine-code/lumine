@@ -1,5 +1,6 @@
 const GitRunner = require("../src/git-runner");
 const { Semaphore } = GitRunner;
+const path = require("path");
 
 // Flush enough microtask turns for the semaphore's async acquire() handoffs to
 // settle before asserting on in-flight state.
@@ -258,6 +259,106 @@ describe("GitRunner repository trust", () => {
     expect(calls[0].args).not.toContain("color.diff=false");
     expect(calls[0].options.env.TEST_ENV).toBe("present");
     expect(calls[0].options.env.GIT_EDITOR).toBe("true");
+  });
+});
+
+describe("GitRunner repository binding", () => {
+  function capturingExecute() {
+    const calls = [];
+    const execute = (args, cwd, options) => {
+      calls.push({ args, cwd, options });
+      return Promise.resolve({ exitCode: 0, stdout: "", stderr: "" });
+    };
+    return { execute, calls };
+  }
+
+  it("adds an absolute git directory and work tree before the subcommand", async () => {
+    const { execute, calls } = capturingExecute();
+    const runner = new GitRunner({ execute });
+    const cwd = path.join("relative", "caller-cwd");
+    const descriptor = {
+      gitDirectory: path.join("relative", "repository.git"),
+      workingDirectory: path.join("relative", "worktree"),
+      worktreeGitMarker: null,
+    };
+
+    await runner.run(["status", "--short"], cwd, { repositoryDescriptor: descriptor });
+
+    const { args, cwd: actualCwd } = calls[0];
+    const commandIndex = args.indexOf("status");
+    const gitDirectoryIndex = args.indexOf("--git-dir");
+    const workTreeIndex = args.indexOf("--work-tree");
+    expect(args[gitDirectoryIndex + 1]).toBe(path.resolve(descriptor.gitDirectory));
+    expect(args[workTreeIndex + 1]).toBe(path.resolve(descriptor.workingDirectory));
+    expect(gitDirectoryIndex).toBeLessThan(commandIndex);
+    expect(workTreeIndex).toBeLessThan(commandIndex);
+    expect(actualCwd).toBe(cwd);
+  });
+
+  it("omits the work tree for a bare repository", async () => {
+    const { execute, calls } = capturingExecute();
+    const runner = new GitRunner({ execute });
+    const descriptor = {
+      gitDirectory: path.join("relative", "bare.git"),
+      workingDirectory: null,
+      worktreeGitMarker: null,
+    };
+
+    await runner.run(["show-ref"], descriptor.gitDirectory, {
+      repositoryDescriptor: descriptor,
+    });
+
+    expect(calls[0].args).toContain("--git-dir");
+    expect(calls[0].args).not.toContain("--work-tree");
+  });
+
+  it("removes repository-selection variables while preserving object overrides", async () => {
+    const { execute, calls } = capturingExecute();
+    const runner = new GitRunner({ execute });
+    const descriptor = {
+      gitDirectory: path.resolve("repository.git"),
+      workingDirectory: path.resolve("worktree"),
+      worktreeGitMarker: null,
+    };
+
+    await runner.run(["hash-object", "--stdin"], descriptor.workingDirectory, {
+      repositoryDescriptor: descriptor,
+      env: {
+        GIT_DIR: "wrong-git-dir",
+        GIT_WORK_TREE: "wrong-work-tree",
+        GIT_COMMON_DIR: "wrong-common-dir",
+        GIT_INDEX_FILE: "wrong-index",
+        GIT_OBJECT_DIRECTORY: "temporary-objects",
+        GIT_ALTERNATE_OBJECT_DIRECTORIES: "repository-objects",
+      },
+    });
+
+    expect(calls[0].options.unsetEnv).toEqual([
+      "GIT_DIR",
+      "GIT_WORK_TREE",
+      "GIT_COMMON_DIR",
+      "GIT_INDEX_FILE",
+    ]);
+    expect(calls[0].options.env.GIT_DIR).toBeUndefined();
+    expect(calls[0].options.env.GIT_WORK_TREE).toBeUndefined();
+    expect(calls[0].options.env.GIT_COMMON_DIR).toBeUndefined();
+    expect(calls[0].options.env.GIT_INDEX_FILE).toBeUndefined();
+    expect(calls[0].options.env.GIT_OBJECT_DIRECTORY).toBe("temporary-objects");
+    expect(calls[0].options.env.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe("repository-objects");
+  });
+
+  it("leaves unbound raw execution arguments and environment behavior unchanged", async () => {
+    const { execute, calls } = capturingExecute();
+    const runner = new GitRunner({ execute });
+
+    await runner.runRawResult(["init", "new-repository"], "caller-cwd", {
+      env: { GIT_DIR: "intentional-unbound-value" },
+    });
+
+    expect(calls[0].args).toEqual(["init", "new-repository"]);
+    expect(calls[0].cwd).toBe("caller-cwd");
+    expect(calls[0].options.unsetEnv).toBeUndefined();
+    expect(calls[0].options.env.GIT_DIR).toBe("intentional-unbound-value");
   });
 });
 

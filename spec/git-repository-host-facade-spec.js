@@ -97,6 +97,7 @@ describe("GitRepository host facade", () => {
     expect(calls[0].descriptor).toEqual({
       gitDirectory: repo.getPath(),
       workingDirectory: repo.getWorkingDirectory(),
+      worktreeGitMarker: repo.descriptor.getWorktreeGitMarker(),
     });
     expect(Object.isFrozen(status)).toBe(true);
     expect(Object.isFrozen(refs)).toBe(true);
@@ -166,6 +167,7 @@ describe("GitRepository host facade", () => {
     expect(repo.getHostDescriptor()).toEqual({
       gitDirectory: repo.getPath(),
       workingDirectory: repo.getWorkingDirectory(),
+      worktreeGitMarker: repo.descriptor.getWorktreeGitMarker(),
     });
 
     fs.removeSync(path.join(workingDirectory, ".gitmodules"));
@@ -651,15 +653,15 @@ describe("GitRepository host facade", () => {
     expect(warning.calls.argsFor(0)[0]).toBe("Git repository data could not be refreshed");
   });
 
-  it("treats a missing working directory as repository lifecycle, not a warning", () => {
+  it("treats an unavailable descriptor as repository lifecycle, not a warning", () => {
     repo = new GitRepository(copyRepository());
     const warning = spyOn(lumine.notifications, "addWarning");
     const diagnostic = spyOn(console, "error");
     const unavailable = jasmine.createSpy("unavailable");
     repo.onDidBecomeUnavailable(unavailable);
-    const error = new Error("Git working directory no longer exists");
-    error.code = "ERR_GIT_SNAPSHOT";
-    error.gitCode = "ERR_GIT_WORKING_DIRECTORY_NOT_FOUND";
+    const error = new Error("Git repository is unavailable");
+    error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
+    error.reason = "working-directory-missing";
 
     repo.reportBackgroundSnapshotError(error);
 
@@ -669,6 +671,38 @@ describe("GitRepository host facade", () => {
     expect(event.error).toBe(error);
     expect(warning).not.toHaveBeenCalled();
     expect(diagnostic).not.toHaveBeenCalled();
+  });
+
+  it("emits unavailable once and still rejects a manual request", async () => {
+    const error = new Error("Git repository is unavailable");
+    error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
+    error.reason = "worktree-marker-mismatch";
+    const getConfigValues = jasmine.createSpy("getConfigValues").and.rejectWith(error);
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    const unavailable = jasmine.createSpy("unavailable");
+    repo.onDidBecomeUnavailable(unavailable);
+    repo.onDidBecomeUnavailable(() => repo.destroy());
+
+    await expectAsync(repo.getConfigValuesAsync(["core.filemode"])).toBeRejectedWith(error);
+    await expectAsync(repo.getConfigValuesAsync(["core.filemode"])).toBeRejectedWith(error);
+
+    expect(unavailable).toHaveBeenCalledTimes(1);
+    expect(unavailable.calls.mostRecent().args[0]).toEqual({ repository: repo, error });
+    expect(getConfigValues).toHaveBeenCalledTimes(1);
+    expect(repo.isDestroyed()).toBe(true);
+  });
+
+  it("preserves the unavailable error when lifecycle removal destroys an active refresh", async () => {
+    const error = new Error("Git repository is unavailable");
+    error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
+    error.reason = "worktree-marker-missing";
+    repo = new GitRepository(copyRepository(), {
+      gitHostClient: { getSnapshot: jasmine.createSpy("getSnapshot").and.rejectWith(error) },
+    });
+    repo.onDidBecomeUnavailable(() => repo.destroy());
+
+    await expectAsync(repo.refreshStatusSnapshot()).toBeRejectedWith(error);
+    expect(repo.isDestroyed()).toBe(true);
   });
 
   it("reports a missing shared Git executable only once per window", () => {

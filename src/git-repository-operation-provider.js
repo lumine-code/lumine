@@ -101,13 +101,14 @@ const OPERATION_REFRESH_HINTS = {
 };
 
 class GitRepositoryOperations {
-  constructor(provider, workingDirectory) {
+  constructor(provider, repositoryDescriptor) {
     this.provider = provider;
-    this.workingDirectory = workingDirectory;
+    this.repositoryDescriptor = repositoryDescriptor;
+    this.workingDirectory = repositoryDescriptor.workingDirectory;
   }
 
   run(args, options) {
-    return this.provider.run(args, this.workingDirectory, options);
+    return this.provider.runRepository(args, this.repositoryDescriptor, options);
   }
 
   getOperationRefreshHint(operationName, args = []) {
@@ -141,7 +142,10 @@ class GitRepositoryOperations {
   }
 
   async stageFileModeChange(filePath, mode, options = {}) {
-    const indexEntry = await this.run(["ls-files", "-s", "--", filePath], options);
+    const indexEntry = await this.run(["ls-files", "-s", "--", filePath], {
+      ...options,
+      repositoryRead: true,
+    });
     const match = /^(\d+)\s+([0-9a-f]+)\s+\d+\t/.exec(indexEntry);
     if (!match) throw new Error(`No index entry found for: ${filePath}`);
     return this.run(["update-index", "--cacheinfo", `${mode},${match[2]},${filePath}`], options);
@@ -462,9 +466,9 @@ class GitRepositoryOperations {
   }
 
   async expandBlobToFile(filePath, sha, options = {}) {
-    await this.provider.runToFile(
+    await this.provider.runRepositoryToFile(
       ["cat-file", "blob", sha],
-      this.workingDirectory,
+      this.repositoryDescriptor,
       path.resolve(this.workingDirectory, filePath),
       options,
     );
@@ -475,9 +479,9 @@ class GitRepositoryOperations {
     const args = ["merge-file", "--stdout"];
     for (const label of options.labels || []) args.push("-L", label);
     args.push(oursPath, basePath, theirsPath);
-    const result = await this.provider.runToFile(
+    const result = await this.provider.runRepositoryToFile(
       args,
-      this.workingDirectory,
+      this.repositoryDescriptor,
       path.resolve(this.workingDirectory, resultPath),
       { ...options, allowedExitCodes: [0, 1] },
     );
@@ -485,7 +489,10 @@ class GitRepositoryOperations {
   }
 
   async writeMergeConflictToIndex(filePath, baseSha, oursSha, theirsSha, options = {}) {
-    const entries = await this.run(["ls-files", "-s", "--", filePath], options);
+    const entries = await this.run(["ls-files", "-s", "--", filePath], {
+      ...options,
+      repositoryRead: true,
+    });
     const modes = new Map();
     for (const line of entries.split(/\r?\n/)) {
       const match = /^(\d+)\s+[0-9a-f]+\s+(\d)\t/.exec(line);
@@ -495,7 +502,12 @@ class GitRepositoryOperations {
     const sampleOid = baseSha || oursSha || theirsSha;
     let oidLength = sampleOid?.length;
     if (!oidLength) {
-      const format = (await this.run(["rev-parse", "--show-object-format"], options)).trim();
+      const format = (
+        await this.run(["rev-parse", "--show-object-format"], {
+          ...options,
+          repositoryRead: true,
+        })
+      ).trim();
       oidLength = format === "sha256" ? 64 : 40;
     }
     const lines = [`0 ${"0".repeat(oidLength)}\t${filePath}`];
@@ -520,18 +532,19 @@ module.exports = class GitRepositoryOperationProvider {
   // worker; specs inject a fake to assert on the argument vector.
   constructor({ exec, authBroker, gitHostClient = new GitHostClient() } = {}) {
     this.exec = exec || gitHostClient.exec.bind(gitHostClient);
-    this.writeCommandOutput = exec
-      ? async (args, workingDirectory, destinationPath, options) => {
-          const result = await this.exec(
-            args,
-            workingDirectory,
-            { ...options, encoding: "buffer" },
-            false,
-          );
+    this.execRepository = exec
+      ? (descriptor, args, options) => this.exec(args, descriptor.workingDirectory, options, false)
+      : gitHostClient.execRepository.bind(gitHostClient);
+    this.writeRepositoryCommandOutput = exec
+      ? async (descriptor, args, destinationPath, options) => {
+          const result = await this.execRepository(descriptor, args, {
+            ...options,
+            encoding: "buffer",
+          });
           await fs.promises.writeFile(destinationPath, result.stdout);
           return result;
         }
-      : gitHostClient.writeCommandOutput.bind(gitHostClient);
+      : gitHostClient.writeRepositoryCommandOutput.bind(gitHostClient);
     this.authBroker = authBroker || null;
   }
 
@@ -584,8 +597,21 @@ module.exports = class GitRepositoryOperationProvider {
     return this.runResult(args, workingDirectory, options).then((result) => result.stdout);
   }
 
-  runToFile(args, workingDirectory, destinationPath, options = {}) {
-    return this.writeCommandOutput(args, workingDirectory, destinationPath, {
+  runRepositoryResult(args, repositoryDescriptor, options = {}) {
+    return this.execRepository(repositoryDescriptor, args, {
+      priority: "interactive",
+      ...options,
+    });
+  }
+
+  runRepository(args, repositoryDescriptor, options = {}) {
+    return this.runRepositoryResult(args, repositoryDescriptor, options).then(
+      (result) => result.stdout,
+    );
+  }
+
+  runRepositoryToFile(args, repositoryDescriptor, destinationPath, options = {}) {
+    return this.writeRepositoryCommandOutput(repositoryDescriptor, args, destinationPath, {
       priority: "interactive",
       ...options,
     });
@@ -595,8 +621,12 @@ module.exports = class GitRepositoryOperationProvider {
     return this.exec(args, workingDirectory, { priority: "interactive", ...options }, true);
   }
 
-  createRepositoryOperations({ workingDirectory }) {
-    return new GitRepositoryOperations(this, workingDirectory);
+  createRepositoryOperations({ repository }) {
+    const repositoryDescriptor = repository?.getHostDescriptor?.();
+    if (!repositoryDescriptor) {
+      throw new TypeError("Repository operations require an exact repository descriptor");
+    }
+    return new GitRepositoryOperations(this, repositoryDescriptor);
   }
 
   async initializeRepository(directoryPath, options = {}) {

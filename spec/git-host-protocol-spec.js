@@ -75,6 +75,7 @@ describe("git-host protocol", () => {
         "describe",
         "diff",
         "exec",
+        "execRepository",
         "fileMode",
         "history",
         "lineDiff",
@@ -82,7 +83,7 @@ describe("git-host protocol", () => {
         "readObjects",
         "snapshot",
         "submodulePaths",
-        "writeCommandOutput",
+        "writeRepositoryCommandOutput",
       ].sort(),
     );
     expect(assertKnownOperation("snapshot")).toBe("snapshot");
@@ -107,6 +108,28 @@ describe("git-host protocol", () => {
     expect(revived.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
     expect(revived.cause.message).toBe("spawn detail");
     expect(revived.cause.command).toBe("git");
+  });
+
+  it("preserves repository identity error fields, including a bare worktree", () => {
+    const error = Object.assign(new Error("Git repository is unavailable"), {
+      code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
+      operation: "snapshot",
+      reason: "git-directory-missing",
+      gitDirectory: "/repositories/project.git",
+      workingDirectory: null,
+    });
+
+    const revived = reviveError(serializeError(error));
+
+    expect(revived).toEqual(
+      jasmine.objectContaining({
+        code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
+        operation: "snapshot",
+        reason: "git-directory-missing",
+        gitDirectory: "/repositories/project.git",
+        workingDirectory: null,
+      }),
+    );
   });
 
   it("bounds error diagnostics before they cross IPC", () => {

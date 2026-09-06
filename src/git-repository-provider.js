@@ -16,27 +16,52 @@ function contains(parentPath, childPath) {
   return child === parent || child.startsWith(prefix);
 }
 
+function repositoryIdentity(gitDirectory, workingDirectory) {
+  return `${normalizePath(gitDirectory)}\0${
+    workingDirectory == null ? "<bare>" : normalizePath(workingDirectory)
+  }`;
+}
+
 // Provider that conforms to the project.repository-provider@1.0.0 service.
 // Discovery and validation have one owner: git-repository-descriptor. The
 // descriptor produced here is passed into GitRepository instead of making the
 // facade repeat the same filesystem walk.
 module.exports = class GitRepositoryProvider {
-  constructor({ isRegistered = () => true } = {}) {
-    // Keys are canonical real paths that end in `.git`; values are the
-    // corresponding GitRepository objects.
+  constructor({ isRegistered = () => true, maxPendingDescriptors = MAX_PENDING_DESCRIPTORS } = {}) {
+    // Repository identity is the exact (git directory, working directory)
+    // pair. A single Git directory may temporarily have both the old and new
+    // worktree object while a move discovery passes the caller's generation
+    // and path guards.
     this.pathToRepository = {};
+    this.repositoriesByGitDirectory = new Map();
+    this.repositoryState = new WeakMap();
     this.pendingDescriptorsByPath = new Map();
     this.isRegistered = isRegistered;
+    this.maxPendingDescriptors = maxPendingDescriptors;
   }
 
   async repositoryForPath(filePath) {
     const descriptor = await discoverRepositoryDescriptorAsync(filePath);
+    if (descriptor) {
+      if (this.pendingDescriptorsByPath.size >= this.maxPendingDescriptors) {
+        const abandonedRepositories = new Set(
+          Array.from(this.pendingDescriptorsByPath.values(), ({ repository }) => repository),
+        );
+        this.pendingDescriptorsByPath.clear();
+        for (const abandonedRepository of abandonedRepositories) {
+          this.releaseAbandonedRepository(abandonedRepository);
+        }
+      }
+    }
     const repository = this.repositoryForDescriptor(descriptor);
     if (repository && descriptor) {
-      if (this.pendingDescriptorsByPath.size >= MAX_PENDING_DESCRIPTORS) {
-        this.pendingDescriptorsByPath.clear();
+      const key = normalizePath(filePath);
+      const previous = this.pendingDescriptorsByPath.get(key);
+      if (previous && previous.repository !== repository) {
+        this.pendingDescriptorsByPath.delete(key);
+        this.releaseAbandonedRepository(previous.repository);
       }
-      this.pendingDescriptorsByPath.set(normalizePath(filePath), { repository, descriptor });
+      this.pendingDescriptorsByPath.set(key, { repository, descriptor });
     }
     return repository;
   }
@@ -46,9 +71,30 @@ module.exports = class GitRepositoryProvider {
     const pending = this.pendingDescriptorsByPath.get(key);
     if (!pending || pending.repository !== repository) return;
     this.pendingDescriptorsByPath.delete(key);
+    if (repository.isDestroyed()) return;
     repository.addWorkingDirectoryAlias?.(pending.descriptor.openedWorkingDirectory);
     for (const alias of pending.descriptor.getGitDirectoryAliases?.() || []) {
       repository.addGitDirectoryAlias?.(alias);
+    }
+
+    const state = this.repositoryState.get(repository);
+    if (!state || state.committed) return;
+    state.committed = true;
+
+    // The new identity has now passed the registry's generation/path guards.
+    // Only at this point may it supersede the previous worktree object for the
+    // same Git directory.
+    for (const staleRepository of Array.from(
+      this.repositoriesByGitDirectory.get(state.gitDirectoryKey) || [],
+    )) {
+      const staleState = this.repositoryState.get(staleRepository);
+      if (
+        staleRepository !== repository &&
+        staleState?.committed &&
+        !staleRepository.isDestroyed()
+      ) {
+        staleRepository.destroy();
+      }
     }
   }
 
@@ -57,7 +103,17 @@ module.exports = class GitRepositoryProvider {
     const pending = this.pendingDescriptorsByPath.get(key);
     if (pending?.repository !== repository) return false;
     this.pendingDescriptorsByPath.delete(key);
+    this.releaseAbandonedRepository(repository);
     return true;
+  }
+
+  releaseAbandonedRepository(repository) {
+    const state = this.repositoryState.get(repository);
+    if (!state || state.committed || repository.isDestroyed()) return;
+    for (const pending of this.pendingDescriptorsByPath.values()) {
+      if (pending.repository === repository) return;
+    }
+    if (!this.isRegistered(repository)) repository.destroy();
   }
 
   sweepUnregisteredRepositories() {
@@ -72,7 +128,9 @@ module.exports = class GitRepositoryProvider {
     let best = null;
     let bestLength = -1;
     for (const repository of Object.values(this.pathToRepository)) {
-      if (repository.isDestroyed()) continue;
+      if (repository.isDestroyed() || this.repositoryState.get(repository)?.committed !== true) {
+        continue;
+      }
       const directories = (
         repository.getWorkingDirectoryAliases?.() || [
           repository.getWorkingDirectory() || repository.getPath(),
@@ -92,7 +150,10 @@ module.exports = class GitRepositoryProvider {
   repositoryForDescriptor(descriptor) {
     if (!descriptor) return null;
 
-    const key = descriptor.getPath();
+    const gitDirectory = descriptor.getPath();
+    const workingDirectory = descriptor.getWorkingDirectory();
+    const gitDirectoryKey = normalizePath(gitDirectory);
+    const key = repositoryIdentity(gitDirectory, workingDirectory);
     let repository = this.pathToRepository[key];
     if (!repository) {
       repository = new GitRepository(descriptor);
@@ -101,18 +162,31 @@ module.exports = class GitRepositoryProvider {
       // stale discoveries must never mutate a cached repository.
       repository.removeWorkingDirectoryAlias?.(descriptor.openedWorkingDirectory);
       for (const alias of descriptor.getGitDirectoryAliases?.() || []) {
-        if (normalizePath(alias) !== normalizePath(key)) {
+        if (normalizePath(alias) !== normalizePath(gitDirectory)) {
           repository.removeGitDirectoryAlias?.(alias);
         }
       }
 
       repository.onDidDestroy(() => {
-        delete this.pathToRepository[key];
+        if (this.pathToRepository[key] === repository) delete this.pathToRepository[key];
+        const repositories = this.repositoriesByGitDirectory.get(gitDirectoryKey);
+        repositories?.delete(repository);
+        if (repositories?.size === 0) {
+          this.repositoriesByGitDirectory.delete(gitDirectoryKey);
+        }
         for (const [pathKey, pending] of this.pendingDescriptorsByPath) {
           if (pending.repository === repository) this.pendingDescriptorsByPath.delete(pathKey);
         }
+        this.repositoryState.delete(repository);
       });
       this.pathToRepository[key] = repository;
+      let repositories = this.repositoriesByGitDirectory.get(gitDirectoryKey);
+      if (!repositories) {
+        repositories = new Set();
+        this.repositoriesByGitDirectory.set(gitDirectoryKey, repositories);
+      }
+      repositories.add(repository);
+      this.repositoryState.set(repository, { key, gitDirectoryKey, committed: false });
       // Snapshot loading stays lazy and subscriber-driven, avoiding a status
       // burst for every repository discovered during startup.
     }

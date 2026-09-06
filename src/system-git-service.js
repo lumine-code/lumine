@@ -15,10 +15,15 @@ const { parseRefsSnapshot } = require("./repository-refs-snapshot");
 const { parseStatusSnapshot } = require("./repository-status-snapshot");
 const { computeLineDiffHunks } = require("./line-diff");
 const { assertGitRevision } = require("./git-revision");
+const {
+  assertRepositoryDescriptorAvailableAsync,
+  ERR_GIT_REPOSITORY_UNAVAILABLE,
+} = require("./git-repository-descriptor");
 
 const MAX_OBJECT_BYTES = 256 * 1024 * 1024;
 const MAX_SUBMODULE_CACHE_ENTRIES = 1000;
 const EMPTY_SUBMODULE_PATHS = Object.freeze([]);
+const VALIDATED_REPOSITORY_DESCRIPTOR = Symbol("validated-repository-descriptor");
 
 function workingDirectoryFor(descriptor) {
   return descriptor.workingDirectory || descriptor.gitDirectory;
@@ -183,13 +188,65 @@ async function resolveLineUnsafeObjectExpression(runner, expression, workingDire
 // git-host, so GitRepository and packages consume domain structures rather
 // than CLI output.
 module.exports = class SystemGitService {
-  constructor({ runner }) {
+  constructor({
+    runner,
+    assertRepositoryDescriptorAvailable = assertRepositoryDescriptorAvailableAsync,
+  }) {
     this.runner = runner;
+    this.assertRepositoryDescriptorAvailable = assertRepositoryDescriptorAvailable;
     this.statusProvider = new GitRepositoryStatusProvider({ runner });
     this.refsProvider = new GitRepositoryRefsProvider({ runner });
     this.diffProvider = new GitRepositoryDiffProvider({ runner });
     this.historyProvider = new GitRepositoryHistoryProvider({ runner });
     this.submodulePathsByWorkingDirectory = new Map();
+  }
+
+  async validatedRepositoryOptions(descriptor, operation, options) {
+    const validatedDescriptor = await this.assertRepositoryDescriptorAvailable(descriptor, {
+      operation,
+      signal: options.signal,
+    });
+    return {
+      ...options,
+      repositoryDescriptor: validatedDescriptor || descriptor,
+      [VALIDATED_REPOSITORY_DESCRIPTOR]: true,
+    };
+  }
+
+  async repositoryFailure(error, descriptor, operation) {
+    if (error?.code === ERR_GIT_REPOSITORY_UNAVAILABLE) return error;
+    try {
+      await this.assertRepositoryDescriptorAvailable(descriptor, {
+        operation,
+      });
+    } catch (validationError) {
+      if (validationError?.code === ERR_GIT_REPOSITORY_UNAVAILABLE) return validationError;
+    }
+    return error;
+  }
+
+  async readRepository(descriptor, operation, options, callback) {
+    const validatedOptions = await this.validatedRepositoryOptions(descriptor, operation, options);
+    let result;
+    try {
+      result = await callback(validatedOptions);
+    } catch (error) {
+      throw await this.repositoryFailure(error, descriptor, operation);
+    }
+    await this.assertRepositoryDescriptorAvailable(descriptor, {
+      operation,
+      signal: options.signal,
+    });
+    return result;
+  }
+
+  async mutateRepository(descriptor, operation, options, callback) {
+    const validatedOptions = await this.validatedRepositoryOptions(descriptor, operation, options);
+    try {
+      return await callback(validatedOptions);
+    } catch (error) {
+      throw await this.repositoryFailure(error, descriptor, operation);
+    }
   }
 
   async cachedSubmodulePaths(descriptor, options = {}) {
@@ -218,7 +275,13 @@ module.exports = class SystemGitService {
     return paths;
   }
 
-  async snapshot(descriptor, request, { signal, ...options } = {}) {
+  async snapshot(descriptor, request, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "snapshot", requestOptions, (validatedOptions) =>
+        this.snapshot(descriptor, request, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     const workingDirectory = workingDirectoryFor(descriptor);
     const bare = descriptor.workingDirectory == null;
     const statusRequested = request.status !== false;
@@ -267,12 +330,22 @@ module.exports = class SystemGitService {
     return result;
   }
 
-  async diff(descriptor, request, { signal, maxBytes } = {}) {
+  async diff(descriptor, request, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "diff", requestOptions, (validatedOptions) =>
+        this.diff(descriptor, request, validatedOptions),
+      );
+    }
+    const { signal, maxBytes } = requestOptions;
     const format = request.format || "structured";
     const rawPatch = await this.diffProvider.getDiffPatch(
       workingDirectoryFor(descriptor),
       request,
-      { signal, maxBuffer: maxBytes },
+      {
+        signal,
+        maxBuffer: maxBytes,
+        repositoryDescriptor: requestOptions.repositoryDescriptor,
+      },
     );
     const result = {
       schemaVersion: 1,
@@ -283,7 +356,13 @@ module.exports = class SystemGitService {
     return assertDiffWithinLimit(result, maxBytes);
   }
 
-  async history(descriptor, request, { signal, ...options } = {}) {
+  async history(descriptor, request, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "history", requestOptions, (validatedOptions) =>
+        this.history(descriptor, request, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     if (!request.allRefs) assertGitRevision(request.revision);
     const output = await this.historyProvider.getLog(workingDirectoryFor(descriptor), request, {
       ...options,
@@ -292,7 +371,13 @@ module.exports = class SystemGitService {
     return parseCommitRecords(output);
   }
 
-  async commit(descriptor, { revision }, { signal, ...options } = {}) {
+  async commit(descriptor, { revision }, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "commit", requestOptions, (validatedOptions) =>
+        this.commit(descriptor, { revision }, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     assertGitRevision(revision);
     const workingDirectory = workingDirectoryFor(descriptor);
     const logOutput = await this.historyProvider.getLog(
@@ -314,7 +399,13 @@ module.exports = class SystemGitService {
     return { ...commit, files: parseNameStatusTokens(nameStatusOutput) };
   }
 
-  async blame(descriptor, request, { signal, ...options } = {}) {
+  async blame(descriptor, request, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "blame", requestOptions, (validatedOptions) =>
+        this.blame(descriptor, request, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     assertGitRevision(request.revision, { allowNull: true });
     const output = await this.historyProvider.getBlame(
       workingDirectoryFor(descriptor),
@@ -325,14 +416,29 @@ module.exports = class SystemGitService {
     return parseBlamePorcelain(output);
   }
 
-  describe(descriptor, { signal, ...options } = {}) {
+  describe(descriptor, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "describe", requestOptions, (validatedOptions) =>
+        this.describe(descriptor, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     return this.refsProvider.getDescription(workingDirectoryFor(descriptor), {
       ...options,
       signal,
     });
   }
 
-  branchesContaining(descriptor, request, { signal, ...options } = {}) {
+  branchesContaining(descriptor, request, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(
+        descriptor,
+        "branchesContaining",
+        requestOptions,
+        (validatedOptions) => this.branchesContaining(descriptor, request, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     const { commit, ...params } = request;
     assertGitRevision(commit, { label: "commit" });
     return this.refsProvider.getBranchesContaining(
@@ -343,18 +449,36 @@ module.exports = class SystemGitService {
     );
   }
 
-  fileMode(descriptor, relativePosixPath, { signal, ...options } = {}) {
+  fileMode(descriptor, relativePosixPath, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "fileMode", requestOptions, (validatedOptions) =>
+        this.fileMode(descriptor, relativePosixPath, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     return this.statusProvider.getFileMode(workingDirectoryFor(descriptor), relativePosixPath, {
       ...options,
       signal,
     });
   }
 
-  submodulePaths(descriptor, { signal, ...options } = {}) {
+  submodulePaths(descriptor, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "submodulePaths", requestOptions, (validatedOptions) =>
+        this.submodulePaths(descriptor, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     return this.cachedSubmodulePaths(descriptor, { ...options, signal });
   }
 
-  async readObjects(descriptor, requests, { signal, ...options } = {}) {
+  async readObjects(descriptor, requests, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "readObjects", requestOptions, (validatedOptions) =>
+        this.readObjects(descriptor, requests, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     if (requests.length === 0) return [];
     const workingDirectory = workingDirectoryFor(descriptor);
     // Plain --batch is supported by the older system Git versions still
@@ -388,7 +512,13 @@ module.exports = class SystemGitService {
     );
   }
 
-  async readConfig(descriptor, keys, { signal, ...options } = {}) {
+  async readConfig(descriptor, keys, requestOptions = {}) {
+    if (!requestOptions[VALIDATED_REPOSITORY_DESCRIPTOR]) {
+      return this.readRepository(descriptor, "readConfig", requestOptions, (validatedOptions) =>
+        this.readConfig(descriptor, keys, validatedOptions),
+      );
+    }
+    const { signal, ...options } = requestOptions;
     const requested = new Map();
     for (const key of keys) {
       const original = String(key);
@@ -433,15 +563,50 @@ module.exports = class SystemGitService {
       : this.runner.runResult(args, workingDirectory, { ...options, signal });
   }
 
-  async writeCommandOutput(
-    { workingDirectory, args, options = {}, destinationPath },
+  execRepository({ descriptor, args, options = {} }, { signal } = {}) {
+    const { repositoryRead = false, ...commandOptions } = options;
+    const execute = repositoryRead
+      ? this.readRepository.bind(this)
+      : this.mutateRepository.bind(this);
+    return execute(
+      descriptor,
+      repositoryRead ? "repository-read-command" : "repository-command",
+      { ...commandOptions, signal },
+      (validatedOptions) =>
+        this.runner.runResult(args, workingDirectoryFor(descriptor), validatedOptions),
+    );
+  }
+
+  async writeRepositoryCommandOutput(
+    { descriptor, args, options = {}, destinationPath },
     { signal } = {},
   ) {
-    const result = await this.runner.runResult(args, workingDirectory, {
-      ...options,
-      signal,
-      encoding: "buffer",
-    });
+    const operation = "writeRepositoryCommandOutput";
+    const requestOptions = { ...options, signal };
+    const validatedOptions = await this.validatedRepositoryOptions(
+      descriptor,
+      operation,
+      requestOptions,
+    );
+    let result;
+    try {
+      result = await this.runner.runResult(args, workingDirectoryFor(descriptor), {
+        ...validatedOptions,
+        encoding: "buffer",
+      });
+    } catch (error) {
+      throw await this.repositoryFailure(error, descriptor, operation);
+    }
+    try {
+      return await this.replaceCommandOutput(result, destinationPath, signal, () =>
+        this.assertRepositoryDescriptorAvailable(descriptor, { operation, signal }),
+      );
+    } catch (error) {
+      throw await this.repositoryFailure(error, descriptor, operation);
+    }
+  }
+
+  async replaceCommandOutput(result, destinationPath, signal, beforeReplace = null) {
     signal?.throwIfAborted();
 
     // Never expose a partially-written blob or merge result. The temporary
@@ -465,6 +630,8 @@ module.exports = class SystemGitService {
         flag: "wx",
         ...(mode == null ? {} : { mode }),
       });
+      signal?.throwIfAborted();
+      await beforeReplace?.();
       signal?.throwIfAborted();
       await fs.promises.rename(temporaryPath, destinationPath);
       replaced = true;

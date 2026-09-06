@@ -3,6 +3,8 @@ const path = require("path");
 
 const { CompositeDisposable, Disposable, Emitter } = require("@lumine-code/event-kit");
 const RepositoryOperations = require("./repository-operations");
+const { isRepositoryUnavailableError } = require("./git-error");
+const { inspectRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 
 const DEFAULT_EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
 
@@ -37,6 +39,30 @@ async function pathIsUnavailable(filePath, { directory = false } = {}) {
   } catch (error) {
     return error.code === "ENOENT" || error.code === "ENOTDIR";
   }
+}
+
+async function repositoryMarkerExists(directoryPath) {
+  try {
+    const marker = await fs.promises.stat(path.join(directoryPath, ".git"));
+    if (marker.isDirectory() || marker.isFile()) return true;
+  } catch (error) {
+    if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+  }
+
+  const statOrNull = async (candidate) => {
+    try {
+      return await fs.promises.stat(candidate);
+    } catch (error) {
+      if (error.code === "ENOENT" || error.code === "ENOTDIR") return null;
+      throw error;
+    }
+  };
+  const [head, objects, refs] = await Promise.all([
+    statOrNull(path.join(directoryPath, "HEAD")),
+    statOrNull(path.join(directoryPath, "objects")),
+    statOrNull(path.join(directoryPath, "refs")),
+  ]);
+  return Boolean(head?.isFile() && objects?.isDirectory() && refs?.isDirectory());
 }
 
 function pathContains(parentPath, childPath) {
@@ -1475,6 +1501,7 @@ module.exports = class RepositoryRegistry {
           }
         } catch (error) {
           operationError = error;
+          if (isRepositoryUnavailableError(error)) this.removeUnavailableEntry(entry);
           throw error;
         } finally {
           entry.pendingOperations.delete(operation.id);
@@ -2027,7 +2054,9 @@ module.exports = class RepositoryRegistry {
       await this.removeUnavailableRepositories(refreshPlan.deletedRepositories, generation);
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
       this.scheduleRepositoryRefreshPlan(refreshPlan.pending);
-      await this.discoverRepositoriesForFileChanges(events);
+      await this.discoverRepositoriesForFileChanges(events, {
+        movedRepositories: refreshPlan.deletedRepositories,
+      });
     });
     const settled = work.catch((error) => {
       console.error("Unable to update repositories from filesystem changes", error);
@@ -2052,21 +2081,33 @@ module.exports = class RepositoryRegistry {
     await Promise.all(
       candidates.map(async (entry) => {
         const repository = entry.repository;
-        const workingDirectory = repository.getWorkingDirectory?.();
-        const requiredPaths = [
-          { path: workingDirectory, directory: true },
-          { path: repository.getPath?.(), directory: true },
-          ...(workingDirectory && repository.getType?.() === "git"
-            ? [{ path: path.join(workingDirectory, ".git"), directory: false }]
-            : []),
-        ].filter(({ path: requiredPath }) => Boolean(requiredPath));
-        const unavailable = (
-          await Promise.all(
-            requiredPaths.map(({ path: requiredPath, directory }) =>
-              pathIsUnavailable(requiredPath, { directory }),
-            ),
-          )
-        ).some(Boolean);
+        let unavailable = false;
+        if (repository.getType?.() === "git" && repository.getHostDescriptor) {
+          try {
+            const inspection = await inspectRepositoryDescriptorAsync(
+              repository.getHostDescriptor(),
+            );
+            unavailable = !inspection.available;
+          } catch (error) {
+            // Permissions and malformed repository contents are operational Git
+            // failures, not proof that this exact repository identity vanished.
+            // Leave the entry registered so its next foreground request can
+            // report the actionable error.
+            if (isRepositoryUnavailableError(error)) unavailable = true;
+          }
+        } else {
+          const requiredPaths = [
+            { path: repository.getWorkingDirectory?.(), directory: true },
+            { path: repository.getPath?.(), directory: true },
+          ].filter(({ path: requiredPath }) => Boolean(requiredPath));
+          unavailable = (
+            await Promise.all(
+              requiredPaths.map(({ path: requiredPath, directory }) =>
+                pathIsUnavailable(requiredPath, { directory }),
+              ),
+            )
+          ).some(Boolean);
+        }
         if (
           unavailable &&
           !this.destroyed &&
@@ -2170,6 +2211,11 @@ module.exports = class RepositoryRegistry {
         }
         for (const context of contextsFor(changedPath)) {
           if (deleted) deletedRepositories.add(context.repository);
+          // A `.git` marker can be rewritten in place to point at a different
+          // repository. Validate its exact descriptor on every marker event,
+          // not only deletion; a background snapshot may have no subscribers
+          // and therefore cannot be relied upon to notice the identity change.
+          if (name === ".git") deletedRepositories.add(context.repository);
           if (pending.get(context.repository) === "both") continue;
 
           const hint = refreshHintForChange(context.gitRelativeDirectory, name);
@@ -2272,21 +2318,89 @@ module.exports = class RepositoryRegistry {
     return matches;
   }
 
-  async discoverRepositoriesForFileChanges(events) {
-    if (!this.config?.get("git.watchDiscovery")) return;
+  async discoverRepositoriesForFileChanges(events, { movedRepositories = new Set() } = {}) {
+    const watchDiscovery = this.config?.get("git.watchDiscovery") === true;
+    const movedRepositoriesByPath = new Map();
+    for (const repository of movedRepositories) {
+      const identityPaths = [
+        ...(repository.getWorkingDirectoryAliases?.() || [repository.getWorkingDirectory?.()]),
+        ...(repository.getGitDirectoryAliases?.() || [repository.getPath?.()]),
+      ].filter(Boolean);
+      for (const identityPath of identityPaths) {
+        movedRepositoriesByPath.set(normalizePath(identityPath), repository);
+      }
+    }
+    const movedRepositoryFor = (event) => {
+      if (event.action !== "renamed" || !event.oldPath) return null;
+      return movedRepositoriesByPath.get(normalizePath(event.oldPath)) || null;
+    };
+    if (!watchDiscovery && !events.some((event) => movedRepositoryFor(event))) return;
 
     const generation = this.scanGeneration;
-    const watchDepth = this.config.get("git.watchDepth") ?? 1;
+    const watchDepth = this.config?.get("git.watchDepth") ?? 1;
     const seen = new Set();
     let rootAliasesPromise = null;
     for (const event of events) {
-      for (const candidatePath of [event.path, event.oldPath]) {
-        if (!candidatePath || path.basename(candidatePath) !== ".git") continue;
-        const candidateKey = normalizePath(candidatePath);
+      const movedRepository = movedRepositoryFor(event);
+      const candidates = watchDiscovery
+        ? [event.path, event.oldPath]
+            .filter((candidatePath) => candidatePath && path.basename(candidatePath) === ".git")
+            .map((candidatePath) => ({
+              candidatePath,
+              workingDirectory: path.dirname(candidatePath),
+              directoryEvent: false,
+              unboundedDepth: false,
+              replacement: false,
+            }))
+        : [];
+      if (
+        event.path &&
+        path.basename(event.path) !== ".git" &&
+        (movedRepository || (watchDiscovery && ["created", "renamed"].includes(event.action)))
+      ) {
+        let stats = null;
+        try {
+          stats = await fs.promises.stat(event.path);
+        } catch (error) {
+          if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+        }
+        if (stats?.isDirectory()) {
+          let discoveryPath = event.path;
+          let repositoryMarkerPresent = await repositoryMarkerExists(event.path);
+          if (!repositoryMarkerPresent && movedRepository?.getPath?.()) {
+            discoveryPath = movedRepository.getPath();
+            try {
+              repositoryMarkerPresent = (await fs.promises.stat(discoveryPath)).isDirectory();
+            } catch (error) {
+              if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+            }
+          }
+          if (!repositoryMarkerPresent) continue;
+          candidates.push({
+            candidatePath: event.path,
+            workingDirectory: event.path,
+            discoveryPath,
+            directoryEvent: true,
+            unboundedDepth: Boolean(movedRepository),
+            replacement: Boolean(movedRepository),
+          });
+        }
+      }
+
+      for (const {
+        candidatePath,
+        workingDirectory,
+        discoveryPath = workingDirectory,
+        directoryEvent,
+        unboundedDepth,
+        replacement,
+      } of candidates) {
+        const candidateKey = `${directoryEvent ? "directory" : "marker"}\0${normalizePath(
+          candidatePath,
+        )}`;
         if (seen.has(candidateKey)) continue;
         seen.add(candidateKey);
 
-        const workingDirectory = path.dirname(candidatePath);
         const workingDirectoryAliases = await pathAliasesAsync(workingDirectory);
         rootAliasesPromise ||= Promise.all(
           this.rootPaths.map(async (rootPath) => ({
@@ -2304,7 +2418,9 @@ module.exports = class RepositoryRegistry {
           aliases.some((rootAlias) =>
             workingDirectoryAliases.some((workingAlias) => {
               const relativePath = relativeToAny([rootAlias], workingAlias);
-              return relativePath != null && pathDepth(relativePath) <= watchDepth;
+              return (
+                relativePath != null && (unboundedDepth || pathDepth(relativePath) <= watchDepth)
+              );
             }),
           ),
         )?.rootPath;
@@ -2314,19 +2430,34 @@ module.exports = class RepositoryRegistry {
         try {
           await fs.promises.stat(candidatePath);
           present = true;
-        } catch {
-          // A removed repository is handled below.
+        } catch (error) {
+          if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
         }
         if (this.destroyed || generation !== this.scanGeneration) return;
 
         if (present) {
-          if (this.automaticRepositoryLimitReached()) continue;
-          const repository = await this.discoverForPath(workingDirectory, { refresh: true });
+          if (!replacement && this.automaticRepositoryLimitReached()) continue;
+          const repository = await this.discoverForPath(discoveryPath, { refresh: true });
           if (this.destroyed || generation !== this.scanGeneration) {
-            this.abandonDiscoveredRepository(repository, workingDirectory);
+            this.abandonDiscoveredRepository(repository, discoveryPath);
             return;
           }
-          this.commitDiscoveredRepository(repository, workingDirectory);
+          if (directoryEvent && repository) {
+            const identityPath =
+              repository.getWorkingDirectory?.() == null
+                ? repository.getPath?.()
+                : repository.getWorkingDirectory();
+            const identityAliases = identityPath ? await pathAliasesAsync(identityPath) : [];
+            if (!identityAliases.some((alias) => workingDirectoryAliases.includes(alias))) {
+              this.abandonDiscoveredRepository(repository, discoveryPath);
+              continue;
+            }
+          }
+          if (this.destroyed || generation !== this.scanGeneration) {
+            this.abandonDiscoveredRepository(repository, discoveryPath);
+            return;
+          }
+          this.commitDiscoveredRepository(repository, discoveryPath);
           const entry = this.register(repository);
           if (
             this.destroyed ||
@@ -2353,7 +2484,7 @@ module.exports = class RepositoryRegistry {
               });
             }
           }
-        } else {
+        } else if (!directoryEvent) {
           // Match the way routing does. A watcher reports whichever spelling the
           // OS handed it, and a registered repository knows its own — on Windows
           // an 8.3 alias against a long name, anywhere a symlinked root against

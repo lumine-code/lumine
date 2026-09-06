@@ -2,6 +2,7 @@
 	repositoryformatversion = 0
 	filemode = true
 	bare = false
+	worktree = ..
 	logallrefupdates = true
 	ignorecase = true
 [remote "origin"]

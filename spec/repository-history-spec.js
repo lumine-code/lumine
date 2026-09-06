@@ -170,7 +170,12 @@ describe("repository history", () => {
       operationProvider = new GitRepositoryOperationProvider();
       workingDirectory = temp.mkdirSync("repository-history-repo");
       await operationProvider.initializeRepository(workingDirectory, { initialBranch: "main" });
-      operations = operationProvider.createRepositoryOperations({ workingDirectory });
+      repo = new GitRepository(workingDirectory);
+      operations = operationProvider.createRepositoryOperations({
+        repository: repo,
+        gitDirectory: repo.getPath(),
+        workingDirectory,
+      });
       await operations.setConfig("user.name", "Author One");
       await operations.setConfig("user.email", "one@example.com");
 
@@ -188,8 +193,6 @@ describe("repository history", () => {
       fs.writeFileSync(path.join(workingDirectory, "bin.dat"), Buffer.from([0, 1, 2, 255]));
       await operations.stageFiles(["bin.dat"]);
       await operations.commit("rename");
-
-      repo = new GitRepository(workingDirectory);
     });
 
     afterEach(() => {

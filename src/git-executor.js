@@ -6,8 +6,8 @@ const fs = require("fs");
 // options)` resolves to `{exitCode, stdout, stderr}` and rejects with an
 // `ERR_CHILD_PROCESS_STDIO_MAXBUFFER`-coded error when stdout exceeds `maxBuffer`
 // (GitRepository.getDiff maps that to ERR_GIT_DIFF_TOO_LARGE). Supported options:
-// env, stdin, encoding ("buffer" for a Buffer stdout), maxBuffer, signal, and
-// killSignal.
+// env, unsetEnv, stdin, encoding ("buffer" for a Buffer stdout), maxBuffer,
+// signal, and killSignal.
 
 const MAX_BUFFER_EXCEEDED_CODE = "ERR_CHILD_PROCESS_STDIO_MAXBUFFER";
 const DEFAULT_MAX_BUFFER = 10 * 1024 * 1024;
@@ -42,6 +42,21 @@ async function classifySpawnError(error, gitPath, workingDirectory) {
   return error;
 }
 
+function childEnvironment(options) {
+  if (!options.env && !options.unsetEnv) return process.env;
+
+  const environment = { ...process.env, ...options.env };
+  if (options.unsetEnv) {
+    const canonicalName =
+      process.platform === "win32" ? (name) => name.toUpperCase() : (name) => name;
+    const namesToUnset = new Set(options.unsetEnv.map(canonicalName));
+    for (const name of Object.keys(environment)) {
+      if (namesToUnset.has(canonicalName(name))) delete environment[name];
+    }
+  }
+  return environment;
+}
+
 function createGitExec(gitPath) {
   return function exec(args, workingDirectory, options = {}) {
     return new Promise((resolve, reject) => {
@@ -53,7 +68,7 @@ function createGitExec(gitPath) {
       try {
         child = spawn(gitPath, args, {
           cwd: workingDirectory,
-          env: options.env ? { ...process.env, ...options.env } : process.env,
+          env: childEnvironment(options),
           windowsHide: true,
         });
       } catch (error) {

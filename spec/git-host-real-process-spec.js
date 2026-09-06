@@ -12,9 +12,11 @@ function copyRepository() {
   const workingDirectory = temp.mkdirSync("git-host-real-process-");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
   fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
+  const gitDirectory = path.join(workingDirectory, ".git");
   return {
-    gitDirectory: path.join(workingDirectory, ".git"),
+    gitDirectory,
     workingDirectory,
+    worktreeGitMarker: { path: gitDirectory, kind: "directory" },
   };
 }
 
@@ -51,8 +53,8 @@ describe("git-host real process", () => {
     expect(object.type).toBe("blob");
 
     const destinationPath = path.join(descriptor.workingDirectory, "copied.txt");
-    const writeResult = await host.request("writeCommandOutput", {
-      workingDirectory: descriptor.workingDirectory,
+    const writeResult = await host.request("writeRepositoryCommandOutput", {
+      descriptor,
       args: ["cat-file", "blob", "HEAD:file.txt"],
       destinationPath,
       options: {},
@@ -116,9 +118,41 @@ describe("git-host real process", () => {
       fs.renameSync(movedDirectory, descriptor.workingDirectory);
     }
 
-    expect(error.code).toBe("ERR_GIT_SNAPSHOT");
-    expect(error.gitCode).toBe("ERR_GIT_WORKING_DIRECTORY_NOT_FOUND");
-    expect(error.message).toContain(descriptor.workingDirectory);
+    expect(error.code).toBe("ERR_GIT_REPOSITORY_UNAVAILABLE");
+    expect(error.operation).toBe("snapshot");
+    expect(error.reason).toBe("working-directory-missing");
+    expect(error.gitDirectory).toBe(descriptor.gitDirectory.replace(/\\/g, "/"));
+    expect(error.workingDirectory).toBe(descriptor.workingDirectory.replace(/\\/g, "/"));
+  });
+
+  it("never reads a parent repository when a nested repository marker disappears", async () => {
+    const parent = copyRepository();
+    const workingDirectory = path.join(parent.workingDirectory, "nested-repository");
+    fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
+    fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
+    const gitDirectory = path.join(workingDirectory, ".git");
+    const descriptor = {
+      gitDirectory,
+      workingDirectory,
+      worktreeGitMarker: { path: gitDirectory, kind: "directory" },
+    };
+    fs.removeSync(gitDirectory);
+    fs.writeFileSync(path.join(workingDirectory, "now-owned-by-parent.txt"), "parent data\n");
+    const host = GitHost.instance();
+
+    await expectAsync(
+      host.request("snapshot", {
+        descriptor,
+        request: { status: true, refs: true, generations: { status: 1, refs: 1 } },
+        options: {},
+      }),
+    ).toBeRejectedWith(
+      jasmine.objectContaining({
+        code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
+        operation: "snapshot",
+        reason: "git-directory-missing",
+      }),
+    );
   });
 
   it("streams a large real status snapshot and preserves the public result", async () => {
