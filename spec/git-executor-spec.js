@@ -80,9 +80,14 @@ describe("git executor", () => {
       const removed = await exec(["-c", printEnvironment, "print-environment"], process.cwd(), {
         unsetEnv: [name],
       });
+      const overridden = await exec(["-c", printEnvironment, "print-environment"], process.cwd(), {
+        unsetEnv: [name],
+        env: { [name]: "explicit" },
+      });
 
       expect(inherited.stdout).toBe("inherited");
       expect(removed.stdout).toBe("");
+      expect(overridden.stdout).toBe("explicit");
     } finally {
       if (original === undefined) delete process.env[name];
       else process.env[name] = original;

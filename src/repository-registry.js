@@ -7,6 +7,10 @@ const { isRepositoryUnavailableError } = require("./git-error");
 const { inspectRepositoryDescriptorAsync } = require("./git-repository-descriptor");
 
 const DEFAULT_EXCLUDED_DIRECTORIES = new Set([".git", "node_modules"]);
+const REPOSITORY_MOVE_CORRELATION_MS = 30_000;
+const MAX_REPOSITORY_MOVE_TOMBSTONES = 128;
+const MAX_REPOSITORY_MOVE_CREATED_PATHS = 4096;
+const MAX_REPOSITORY_MOVE_DELETED_PATHS = 4096;
 
 // Valid answers from an operation implementation's getOperationRefreshHint():
 // which read snapshots the just-finished operation can have invalidated.
@@ -21,14 +25,47 @@ function pathAliases(filePath) {
   return [normalizePath(filePath)];
 }
 
+function isGitMarkerName(name) {
+  return process.platform === "win32" ? name.toLowerCase() === ".git" : name === ".git";
+}
+
+function gitMetadataName(filePath) {
+  const name = path.basename(filePath || "");
+  return process.platform === "win32" ? name.toLowerCase() : name;
+}
+
+function isGitMarkerPath(filePath) {
+  return Boolean(filePath) && isGitMarkerName(path.basename(filePath));
+}
+
 async function pathAliasesAsync(filePath) {
   const aliases = new Set(pathAliases(filePath));
   try {
     aliases.add(normalizePath(await fs.promises.realpath(filePath)));
-  } catch {
-    // Deleted and not-yet-created paths keep their lexical spelling.
+  } catch (error) {
+    if (error.code !== "ENOENT" && error.code !== "ENOTDIR") return Array.from(aliases);
+    let ancestor = path.dirname(filePath);
+    while (ancestor !== path.dirname(ancestor)) {
+      try {
+        const realAncestor = await fs.promises.realpath(ancestor);
+        aliases.add(normalizePath(path.join(realAncestor, path.relative(ancestor, filePath))));
+        break;
+      } catch (ancestorError) {
+        if (ancestorError.code !== "ENOENT" && ancestorError.code !== "ENOTDIR") break;
+        ancestor = path.dirname(ancestor);
+      }
+    }
   }
   return Array.from(aliases);
+}
+
+function filesystemIdentitiesEqual(left, right) {
+  return Boolean(left && right && left.device === right.device && left.inode === right.inode);
+}
+
+function filesystemIdentity(stats) {
+  const inode = String(stats.ino);
+  return inode === "0" ? null : { device: String(stats.dev), inode };
 }
 
 async function pathIsUnavailable(filePath, { directory = false } = {}) {
@@ -205,6 +242,12 @@ module.exports = class RepositoryRegistry {
     this.scanGeneration = 0;
     this.fileChangeGeneration = 0;
     this.fileChangeValidationTail = Promise.resolve();
+    this.repositoryMoveTombstones = [];
+    this.repositoryMoveCreatedPaths = new Map();
+    this.repositoryMoveDeletedPaths = new Map();
+    this.repositoryMoveDirectoryMappings = new Map();
+    this.repositoryMoveLedgerSequence = 0;
+    this.repositoryMoveReconciliationScheduled = false;
     this.version = 0;
     this.nextOperationId = 1;
     this.nextRescanId = 1;
@@ -1501,7 +1544,13 @@ module.exports = class RepositoryRegistry {
           }
         } catch (error) {
           operationError = error;
-          if (isRepositoryUnavailableError(error)) this.removeUnavailableEntry(entry);
+          if (isRepositoryUnavailableError(error)) {
+            if (typeof repository.signalRepositoryUnavailable === "function") {
+              repository.signalRepositoryUnavailable(error);
+            } else {
+              this.removeUnavailableEntry(entry);
+            }
+          }
           throw error;
         } finally {
           entry.pendingOperations.delete(operation.id);
@@ -1977,7 +2026,7 @@ module.exports = class RepositoryRegistry {
         continue;
       }
 
-      if (current.depth === 0 || children.some((child) => child.name === ".git")) {
+      if (current.depth === 0 || children.some((child) => isGitMarkerName(child.name))) {
         if (current.depth > 0 && this.automaticRepositoryLimitReached()) {
           return { repositories: discovered, complete: false };
         }
@@ -2043,20 +2092,450 @@ module.exports = class RepositoryRegistry {
     return true;
   }
 
+  pruneRepositoryMoveLedger(generation, now = Date.now()) {
+    const keep = (record) =>
+      record.generation === generation && now - record.recordedAt <= REPOSITORY_MOVE_CORRELATION_MS;
+    this.repositoryMoveTombstones = this.repositoryMoveTombstones.filter(keep);
+    for (const [key, record] of this.repositoryMoveCreatedPaths) {
+      if (!keep(record)) this.repositoryMoveCreatedPaths.delete(key);
+    }
+    for (const [key, record] of this.repositoryMoveDeletedPaths) {
+      if (!keep(record)) this.repositoryMoveDeletedPaths.delete(key);
+    }
+    for (const [key, record] of this.repositoryMoveDirectoryMappings) {
+      if (!keep(record)) this.repositoryMoveDirectoryMappings.delete(key);
+    }
+  }
+
+  async rememberRepositoryMoveCreatedPaths(events, generation) {
+    const recordedAt = Date.now();
+    this.pruneRepositoryMoveLedger(generation, recordedAt);
+    const candidates = [];
+    for (const event of events) {
+      if (!event?.path || !["created", "renamed"].includes(event.action)) continue;
+      let candidatePath = event.path;
+      if (isGitMarkerPath(candidatePath)) candidatePath = path.dirname(candidatePath);
+      if (event.kind && event.kind !== "directory" && !isGitMarkerPath(event.path)) {
+        continue;
+      }
+      candidates.push(candidatePath);
+    }
+    candidates.sort((left, right) => pathDepth(left) - pathDepth(right));
+    const newCandidates = new Map();
+    for (const candidatePath of candidates) {
+      const key = normalizePath(candidatePath);
+      if (this.repositoryMoveCreatedPaths.has(key)) {
+        this.repositoryMoveCreatedPaths.delete(key);
+        this.repositoryMoveCreatedPaths.set(key, {
+          key,
+          path: candidatePath,
+          generation,
+          recordedAt,
+          revision: ++this.repositoryMoveLedgerSequence,
+        });
+        continue;
+      }
+      newCandidates.set(key, { key, path: candidatePath });
+    }
+    const selectedCandidates = [...newCandidates.values()].slice(
+      0,
+      MAX_REPOSITORY_MOVE_CREATED_PATHS,
+    );
+    while (
+      this.repositoryMoveCreatedPaths.size + selectedCandidates.length >
+      MAX_REPOSITORY_MOVE_CREATED_PATHS
+    ) {
+      this.repositoryMoveCreatedPaths.delete(this.repositoryMoveCreatedPaths.keys().next().value);
+    }
+    for (const { key, path: candidatePath } of selectedCandidates) {
+      this.repositoryMoveCreatedPaths.set(key, {
+        key,
+        path: candidatePath,
+        generation,
+        recordedAt,
+        revision: ++this.repositoryMoveLedgerSequence,
+      });
+    }
+  }
+
+  rememberRepositoryMoveDeletedPaths(events, generation) {
+    const recordedAt = Date.now();
+    this.pruneRepositoryMoveLedger(generation, recordedAt);
+    const deletedPaths = [];
+    const knownRepositoryPaths = [
+      ...Array.from(this.entriesById.values()).flatMap((entry) => [
+        ...entry.routingDirectories,
+        ...entry.gitDirectoryAliases,
+      ]),
+      ...this.repositoryMoveTombstones.flatMap((tombstone) => [
+        ...tombstone.workingDirectoryAliases.map(normalizePath),
+        ...tombstone.gitDirectoryAliases.map(normalizePath),
+      ]),
+    ];
+    const recordsRepositoryMove = (eventPath, kind) => {
+      if (!eventPath) return false;
+      if (isGitMarkerPath(eventPath)) return true;
+      if (kind === "file") return false;
+      const normalized = normalizePath(eventPath);
+      return (
+        kind === "directory" ||
+        knownRepositoryPaths.some((repositoryPath) =>
+          pathContainsNormalized(normalized, repositoryPath),
+        )
+      );
+    };
+    for (const event of events) {
+      if (event?.action === "deleted" && recordsRepositoryMove(event.path, event.kind)) {
+        deletedPaths.push(event.path);
+      }
+      if (recordsRepositoryMove(event?.oldPath, event?.kind)) deletedPaths.push(event.oldPath);
+    }
+    deletedPaths.sort((left, right) => pathDepth(left) - pathDepth(right));
+    const newDeletedPaths = new Map();
+    for (const deletedPath of deletedPaths) {
+      const key = normalizePath(deletedPath);
+      if (this.repositoryMoveDeletedPaths.has(key)) {
+        this.repositoryMoveDeletedPaths.delete(key);
+        this.repositoryMoveDirectoryMappings.delete(key);
+      }
+      newDeletedPaths.set(key, {
+        key,
+        path: deletedPath,
+        revision: ++this.repositoryMoveLedgerSequence,
+      });
+    }
+    const selectedDeletedPaths = [...newDeletedPaths.values()].slice(
+      0,
+      MAX_REPOSITORY_MOVE_DELETED_PATHS,
+    );
+    while (
+      this.repositoryMoveDeletedPaths.size + selectedDeletedPaths.length >
+      MAX_REPOSITORY_MOVE_DELETED_PATHS
+    ) {
+      const key = this.repositoryMoveDeletedPaths.keys().next().value;
+      this.repositoryMoveDeletedPaths.delete(key);
+      this.repositoryMoveDirectoryMappings.delete(key);
+    }
+    for (const { key, path: deletedPath, revision } of selectedDeletedPaths) {
+      this.repositoryMoveDeletedPaths.set(key, {
+        key,
+        path: deletedPath,
+        generation,
+        recordedAt,
+        revision,
+      });
+    }
+  }
+
+  invalidateRepositoryMoveAttemptsForEvents(events) {
+    const relationshipNames = new Set([".git", "commondir", "config", "config.worktree", "gitdir"]);
+    for (const tombstone of this.repositoryMoveTombstones) {
+      const gitDirectories = [tombstone.gitDirectory, ...tombstone.gitDirectoryAliases].filter(
+        Boolean,
+      );
+      const relevant = events.some((event) =>
+        [event?.path, event?.oldPath].filter(Boolean).some((eventPath) => {
+          if (!isGitMarkerPath(eventPath) && !relationshipNames.has(gitMetadataName(eventPath))) {
+            return false;
+          }
+          if (gitDirectories.some((gitDirectory) => pathContains(gitDirectory, eventPath))) {
+            return true;
+          }
+          const parent = path.dirname(eventPath);
+          return [...this.repositoryMoveCreatedPaths.values()].some(
+            (created) =>
+              normalizePath(parent) === created.key ||
+              (isGitMarkerPath(parent) && normalizePath(path.dirname(parent)) === created.key),
+          );
+        }),
+      );
+      if (relevant) tombstone.reconciledThroughSequence = null;
+    }
+  }
+
+  async repositoryLifecycleEventAliases(events) {
+    const expanded = [...events];
+    for (const event of events) {
+      const lifecyclePath =
+        event.action === "deleted" && (event.kind === "directory" || isGitMarkerPath(event.path));
+      if (!lifecyclePath && !event.oldPath) continue;
+      if (event.path) {
+        for (const alias of await pathAliasesAsync(event.path)) {
+          if (normalizePath(event.path) !== alias) expanded.push({ ...event, path: alias });
+        }
+      }
+      if (event.oldPath) {
+        for (const alias of await pathAliasesAsync(event.oldPath)) {
+          if (normalizePath(event.oldPath) !== alias) expanded.push({ ...event, oldPath: alias });
+        }
+      }
+    }
+    return expanded;
+  }
+
+  repositoryMoveTombstone(entry, generation) {
+    const repository = entry.repository;
+    const workingDirectoryAliases = repository.getWorkingDirectoryAliases?.() || [];
+    return {
+      gitDirectory: repository.getPath?.() || null,
+      gitDirectoryAliases: repository.getGitDirectoryAliases?.() || [],
+      gitDirectoryIdentity: repository.getGitDirectoryIdentity?.() || null,
+      workingDirectory: repository.getWorkingDirectory?.() || null,
+      workingDirectoryIdentity: repository.getWorkingDirectoryIdentity?.() || null,
+      workingDirectoryAliases,
+      reconciledThroughSequence: null,
+      generation,
+      recordedAt: Date.now(),
+    };
+  }
+
+  repositoryMoveRelocations(tombstone) {
+    const relocations = new Map();
+    for (const deleted of this.repositoryMoveDeletedPaths.values()) {
+      for (const workingDirectory of tombstone.workingDirectoryAliases) {
+        const relativePath = relativeToAny([deleted.key], normalizePath(workingDirectory));
+        if (relativePath != null) {
+          relocations.set(`${deleted.key}\0${relativePath}`, {
+            deletedPath: deleted.key,
+            relativePath,
+          });
+        }
+      }
+    }
+    return Array.from(relocations.values());
+  }
+
+  rememberRepositoryMoveTombstone(entry) {
+    const tombstone = this.repositoryMoveTombstone(entry, this.fileChangeGeneration);
+    const samePath = (candidate) =>
+      candidate.generation === tombstone.generation &&
+      candidate.workingDirectory === tombstone.workingDirectory &&
+      candidate.gitDirectory === tombstone.gitDirectory;
+    this.repositoryMoveTombstones = this.repositoryMoveTombstones.filter(
+      (candidate) => !samePath(candidate),
+    );
+    this.repositoryMoveTombstones.push(tombstone);
+    if (this.repositoryMoveTombstones.length > MAX_REPOSITORY_MOVE_TOMBSTONES) {
+      this.repositoryMoveTombstones.splice(
+        0,
+        this.repositoryMoveTombstones.length - MAX_REPOSITORY_MOVE_TOMBSTONES,
+      );
+    }
+    return tombstone;
+  }
+
+  repositoryMatchesMoveTombstone(repository, tombstone) {
+    const currentPath = repository.getPath?.();
+    if (!currentPath) return false;
+    const currentIdentity = repository.getGitDirectoryIdentity?.() || null;
+    const samePath = [tombstone.gitDirectory, ...tombstone.gitDirectoryAliases]
+      .filter(Boolean)
+      .some((candidate) => normalizePath(candidate) === normalizePath(currentPath));
+    if (samePath) {
+      return (
+        !tombstone.gitDirectoryIdentity ||
+        !currentIdentity ||
+        filesystemIdentitiesEqual(currentIdentity, tombstone.gitDirectoryIdentity)
+      );
+    }
+    return filesystemIdentitiesEqual(currentIdentity, tombstone.gitDirectoryIdentity);
+  }
+
+  async reconcileMovedRepositories(generation) {
+    this.pruneRepositoryMoveLedger(generation);
+    if (this.repositoryMoveTombstones.length === 0 || this.repositoryMoveCreatedPaths.size === 0) {
+      return;
+    }
+    const reconciliationSequence = this.repositoryMoveLedgerSequence;
+    const pendingTombstones = this.repositoryMoveTombstones.filter(
+      (tombstone) => tombstone.reconciledThroughSequence !== reconciliationSequence,
+    );
+    if (pendingTombstones.length === 0) return;
+
+    const availableCreated = new Map();
+    for (const created of this.repositoryMoveCreatedPaths.values()) {
+      if (this.destroyed || generation !== this.fileChangeGeneration) return;
+      try {
+        const stats = await fs.promises.stat(created.path, { bigint: true });
+        if (!stats.isDirectory()) {
+          this.repositoryMoveCreatedPaths.delete(created.key);
+          continue;
+        }
+        availableCreated.set(created.key, { ...created, identity: filesystemIdentity(stats) });
+      } catch (error) {
+        if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
+        this.repositoryMoveCreatedPaths.delete(created.key);
+      }
+    }
+
+    let candidateChecks = 0;
+    for (const tombstone of pendingTombstones) {
+      if (this.destroyed || generation !== this.fileChangeGeneration) return;
+      const createdRecords = [...availableCreated.values()].sort(
+        (left, right) =>
+          Math.abs(left.recordedAt - tombstone.recordedAt) -
+          Math.abs(right.recordedAt - tombstone.recordedAt),
+      );
+      const candidates = new Map();
+      const relocations = this.repositoryMoveRelocations(tombstone);
+      const addCandidate = (created, relocation = null) => {
+        const candidatePath = relocation
+          ? path.join(created.path, relocation.relativePath)
+          : created.path;
+        const key = normalizePath(candidatePath);
+        let candidate = candidates.get(key);
+        if (!candidate) {
+          candidate = { key, path: candidatePath, created, relocations: [] };
+          candidates.set(key, candidate);
+        }
+        if (relocation) candidate.relocations.push(relocation);
+      };
+
+      if (relocations.length === 0) {
+        for (const created of createdRecords) addCandidate(created);
+      } else {
+        for (const relocation of relocations) {
+          const mapping = this.repositoryMoveDirectoryMappings.get(relocation.deletedPath);
+          const mappedCreated = mapping ? availableCreated.get(mapping.createdKey) : null;
+          if (mapping && !mappedCreated) {
+            this.repositoryMoveDirectoryMappings.delete(relocation.deletedPath);
+          }
+          for (const created of mappedCreated ? [mappedCreated] : createdRecords) {
+            addCandidate(created, relocation);
+          }
+        }
+      }
+
+      const expectedDirectoryIdentity =
+        tombstone.workingDirectory === null
+          ? tombstone.gitDirectoryIdentity
+          : tombstone.workingDirectoryIdentity;
+      let matched = false;
+      for (const candidate of candidates.values()) {
+        if (this.destroyed || generation !== this.fileChangeGeneration) return;
+        if (++candidateChecks % 64 === 0) {
+          await new Promise((resolve) => setImmediate(resolve));
+          if (this.destroyed || generation !== this.fileChangeGeneration) return;
+        }
+        const rootPath = this.rootPaths.find(
+          (root) => pathContains(root, candidate.path) || pathContains(candidate.path, root),
+        );
+        if (!rootPath) continue;
+
+        let candidateIdentity =
+          candidate.key === candidate.created.key ? candidate.created.identity : null;
+        if (candidate.key !== candidate.created.key) {
+          try {
+            const stats = await fs.promises.stat(candidate.path, { bigint: true });
+            if (!stats.isDirectory()) continue;
+            candidateIdentity = filesystemIdentity(stats);
+          } catch (error) {
+            if (error.code === "ENOENT" || error.code === "ENOTDIR") continue;
+            throw error;
+          }
+        }
+        if (
+          expectedDirectoryIdentity &&
+          candidateIdentity &&
+          !filesystemIdentitiesEqual(expectedDirectoryIdentity, candidateIdentity)
+        ) {
+          continue;
+        }
+
+        const candidateAliases = await pathAliasesAsync(candidate.path);
+        const markerPresent = await repositoryMarkerExists(candidate.path);
+        const discoveryPath = markerPresent ? candidate.path : tombstone.gitDirectory;
+        if (!discoveryPath) continue;
+        if (!markerPresent) {
+          try {
+            if (!(await fs.promises.stat(discoveryPath)).isDirectory()) continue;
+          } catch (error) {
+            if (error.code === "ENOENT" || error.code === "ENOTDIR") continue;
+            throw error;
+          }
+        }
+
+        const repository = await this.discoverForPath(discoveryPath, { refresh: true });
+        if (this.destroyed || generation !== this.fileChangeGeneration) {
+          this.abandonDiscoveredRepository(repository, discoveryPath);
+          return;
+        }
+        if (!repository || !this.repositoryMatchesMoveTombstone(repository, tombstone)) {
+          this.abandonDiscoveredRepository(repository, discoveryPath);
+          continue;
+        }
+        const identityPath = repository.getWorkingDirectory?.() ?? repository.getPath?.();
+        const identityAliases = identityPath ? pathAliases(identityPath) : [];
+        if (!identityAliases.some((alias) => candidateAliases.includes(alias))) {
+          this.abandonDiscoveredRepository(repository, discoveryPath);
+          continue;
+        }
+
+        this.commitDiscoveredRepository(repository, discoveryPath);
+        repository.addWorkingDirectoryAlias?.(candidate.path);
+        const entry = this.register(repository);
+        if (!entry) continue;
+        entry.rootOwners.add(rootPath);
+        const recordedAt = Date.now();
+        for (const relocation of candidate.relocations) {
+          this.repositoryMoveDirectoryMappings.set(relocation.deletedPath, {
+            createdKey: candidate.created.key,
+            generation,
+            recordedAt,
+          });
+        }
+        this.repositoryMoveTombstones = this.repositoryMoveTombstones.filter(
+          (current) => current !== tombstone,
+        );
+        matched = true;
+        break;
+      }
+
+      if (!matched) tombstone.reconciledThroughSequence = reconciliationSequence;
+    }
+    if (this.repositoryMoveTombstones.length === 0) {
+      this.repositoryMoveCreatedPaths.clear();
+      this.repositoryMoveDeletedPaths.clear();
+      this.repositoryMoveDirectoryMappings.clear();
+    }
+  }
+
+  scheduleRepositoryMoveReconciliation() {
+    if (this.destroyed || this.repositoryMoveReconciliationScheduled) return;
+    this.repositoryMoveReconciliationScheduled = true;
+    queueMicrotask(() => {
+      const generation = this.fileChangeGeneration;
+      const work = this.fileChangeValidationTail.then(async () => {
+        this.repositoryMoveReconciliationScheduled = false;
+        if (this.destroyed || generation !== this.fileChangeGeneration) return;
+        await this.reconcileMovedRepositories(generation);
+      });
+      const settled = work.catch((error) => {
+        this.repositoryMoveReconciliationScheduled = false;
+        console.error("Unable to reconcile a moved repository", error);
+      });
+      this.fileChangeValidationTail = settled;
+    });
+  }
+
   handleProjectFileChanges(events) {
     const generation = this.fileChangeGeneration;
     const work = this.fileChangeValidationTail.then(async () => {
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
+      await this.rememberRepositoryMoveCreatedPaths(events, generation);
+      const routingEvents = await this.repositoryLifecycleEventAliases(events);
+      this.rememberRepositoryMoveDeletedPaths(routingEvents, generation);
+      this.invalidateRepositoryMoveAttemptsForEvents(routingEvents);
       // Earlier discovery may have transferred an alias to a different
       // repository. Plan against routing as it exists when this batch reaches
       // the front of the serialized lifecycle queue, not when it first arrived.
-      const refreshPlan = this.repositoryRefreshPlanForFileChanges(events);
+      const refreshPlan = this.repositoryRefreshPlanForFileChanges(routingEvents);
       await this.removeUnavailableRepositories(refreshPlan.deletedRepositories, generation);
       if (this.destroyed || generation !== this.fileChangeGeneration) return;
+      await this.reconcileMovedRepositories(generation);
+      if (this.destroyed || generation !== this.fileChangeGeneration) return;
       this.scheduleRepositoryRefreshPlan(refreshPlan.pending);
-      await this.discoverRepositoriesForFileChanges(events, {
-        movedRepositories: refreshPlan.deletedRepositories,
-      });
+      await this.discoverRepositoriesForFileChanges(events);
     });
     const settled = work.catch((error) => {
       console.error("Unable to update repositories from filesystem changes", error);
@@ -2215,7 +2694,7 @@ module.exports = class RepositoryRegistry {
           // repository. Validate its exact descriptor on every marker event,
           // not only deletion; a background snapshot may have no subscribers
           // and therefore cannot be relied upon to notice the identity change.
-          if (name === ".git") deletedRepositories.add(context.repository);
+          if (isGitMarkerName(name)) deletedRepositories.add(context.repository);
           if (pending.get(context.repository) === "both") continue;
 
           const hint = refreshHintForChange(context.gitRelativeDirectory, name);
@@ -2318,45 +2797,27 @@ module.exports = class RepositoryRegistry {
     return matches;
   }
 
-  async discoverRepositoriesForFileChanges(events, { movedRepositories = new Set() } = {}) {
+  async discoverRepositoriesForFileChanges(events) {
     const watchDiscovery = this.config?.get("git.watchDiscovery") === true;
-    const movedRepositoriesByPath = new Map();
-    for (const repository of movedRepositories) {
-      const identityPaths = [
-        ...(repository.getWorkingDirectoryAliases?.() || [repository.getWorkingDirectory?.()]),
-        ...(repository.getGitDirectoryAliases?.() || [repository.getPath?.()]),
-      ].filter(Boolean);
-      for (const identityPath of identityPaths) {
-        movedRepositoriesByPath.set(normalizePath(identityPath), repository);
-      }
-    }
-    const movedRepositoryFor = (event) => {
-      if (event.action !== "renamed" || !event.oldPath) return null;
-      return movedRepositoriesByPath.get(normalizePath(event.oldPath)) || null;
-    };
-    if (!watchDiscovery && !events.some((event) => movedRepositoryFor(event))) return;
+    if (!watchDiscovery) return;
 
     const generation = this.scanGeneration;
     const watchDepth = this.config?.get("git.watchDepth") ?? 1;
     const seen = new Set();
     let rootAliasesPromise = null;
     for (const event of events) {
-      const movedRepository = movedRepositoryFor(event);
-      const candidates = watchDiscovery
-        ? [event.path, event.oldPath]
-            .filter((candidatePath) => candidatePath && path.basename(candidatePath) === ".git")
-            .map((candidatePath) => ({
-              candidatePath,
-              workingDirectory: path.dirname(candidatePath),
-              directoryEvent: false,
-              unboundedDepth: false,
-              replacement: false,
-            }))
-        : [];
+      const markerCandidates = [event.path, event.oldPath].filter((candidatePath) =>
+        isGitMarkerPath(candidatePath),
+      );
+      const candidates = markerCandidates.map((candidatePath) => ({
+        candidatePath,
+        workingDirectory: path.dirname(candidatePath),
+        directoryEvent: false,
+      }));
       if (
         event.path &&
-        path.basename(event.path) !== ".git" &&
-        (movedRepository || (watchDiscovery && ["created", "renamed"].includes(event.action)))
+        !isGitMarkerPath(event.path) &&
+        ["created", "renamed"].includes(event.action)
       ) {
         let stats = null;
         try {
@@ -2365,25 +2826,15 @@ module.exports = class RepositoryRegistry {
           if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
         }
         if (stats?.isDirectory()) {
-          let discoveryPath = event.path;
-          let repositoryMarkerPresent = await repositoryMarkerExists(event.path);
-          if (!repositoryMarkerPresent && movedRepository?.getPath?.()) {
-            discoveryPath = movedRepository.getPath();
-            try {
-              repositoryMarkerPresent = (await fs.promises.stat(discoveryPath)).isDirectory();
-            } catch (error) {
-              if (error.code !== "ENOENT" && error.code !== "ENOTDIR") throw error;
-            }
+          const repositoryMarkerPresent = await repositoryMarkerExists(event.path);
+          if (repositoryMarkerPresent) {
+            candidates.push({
+              candidatePath: event.path,
+              workingDirectory: event.path,
+              discoveryPath: event.path,
+              directoryEvent: true,
+            });
           }
-          if (!repositoryMarkerPresent) continue;
-          candidates.push({
-            candidatePath: event.path,
-            workingDirectory: event.path,
-            discoveryPath,
-            directoryEvent: true,
-            unboundedDepth: Boolean(movedRepository),
-            replacement: Boolean(movedRepository),
-          });
         }
       }
 
@@ -2392,12 +2843,10 @@ module.exports = class RepositoryRegistry {
         workingDirectory,
         discoveryPath = workingDirectory,
         directoryEvent,
-        unboundedDepth,
-        replacement,
       } of candidates) {
         const candidateKey = `${directoryEvent ? "directory" : "marker"}\0${normalizePath(
           candidatePath,
-        )}`;
+        )}\0${normalizePath(discoveryPath)}`;
         if (seen.has(candidateKey)) continue;
         seen.add(candidateKey);
 
@@ -2418,9 +2867,7 @@ module.exports = class RepositoryRegistry {
           aliases.some((rootAlias) =>
             workingDirectoryAliases.some((workingAlias) => {
               const relativePath = relativeToAny([rootAlias], workingAlias);
-              return (
-                relativePath != null && (unboundedDepth || pathDepth(relativePath) <= watchDepth)
-              );
+              return relativePath != null && pathDepth(relativePath) <= watchDepth;
             }),
           ),
         )?.rootPath;
@@ -2436,7 +2883,7 @@ module.exports = class RepositoryRegistry {
         if (this.destroyed || generation !== this.scanGeneration) return;
 
         if (present) {
-          if (!replacement && this.automaticRepositoryLimitReached()) continue;
+          if (this.automaticRepositoryLimitReached()) continue;
           const repository = await this.discoverForPath(discoveryPath, { refresh: true });
           if (this.destroyed || generation !== this.scanGeneration) {
             this.abandonDiscoveredRepository(repository, discoveryPath);
@@ -2893,6 +3340,8 @@ module.exports = class RepositoryRegistry {
 
   removeUnavailableEntry(entry) {
     if (!entry || entry.removing || this.entriesById.get(entry.id) !== entry) return;
+    this.rememberRepositoryMoveTombstone(entry);
+    this.scheduleRepositoryMoveReconciliation();
     entry.missing = true;
     entry.rootOwners.clear();
     entry.pendingRootReconciliation = false;
@@ -2931,18 +3380,30 @@ module.exports = class RepositoryRegistry {
       });
     }
 
-    if (destroy && !entry.repository.isDestroyed?.()) entry.repository.destroy();
-
-    if (emit && !this.destroyed) {
-      this.emitChange({
-        added: [],
-        removed: [entry.repository],
-        updated: [],
-        rootsAdded: [],
-        rootsRemoved: [],
-        routingChangedPrefixes: [...entry.routingDirectories, ...entry.gitDirectoryAliases],
-      });
+    let destroyError = null;
+    let emitError = null;
+    try {
+      if (destroy && !entry.repository.isDestroyed?.()) entry.repository.destroy();
+    } catch (error) {
+      destroyError = error;
+    } finally {
+      if (emit && !this.destroyed) {
+        try {
+          this.emitChange({
+            added: [],
+            removed: [entry.repository],
+            updated: [],
+            rootsAdded: [],
+            rootsRemoved: [],
+            routingChangedPrefixes: [...entry.routingDirectories, ...entry.gitDirectoryAliases],
+          });
+        } catch (error) {
+          emitError = error;
+        }
+      }
     }
+    if (destroyError) throw destroyError;
+    if (emitError) throw emitError;
   }
 
   emitChange(change) {

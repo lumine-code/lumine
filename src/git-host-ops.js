@@ -1,6 +1,15 @@
 const SystemGitService = require("./system-git-service");
 const GitBlobCache = require("./git-blob-cache");
 const { normalizeGitOperationError } = require("./git-error");
+const { DEFER_REPOSITORY_READ_POSTFLIGHT } = SystemGitService;
+
+function repositoryReadOptions(context = {}, options = {}) {
+  return {
+    ...options,
+    signal: context.signal,
+    [DEFER_REPOSITORY_READ_POSTFLIGHT]: context[DEFER_REPOSITORY_READ_POSTFLIGHT] === true,
+  };
+}
 
 // The git-host worker's operation registry. This layer keeps system Git and its
 // output parsing outside the renderer while preserving GitRepository's payload
@@ -18,13 +27,15 @@ module.exports = function createGitHostOps(
   };
 
   return {
-    snapshot: ({ descriptor, request, options = {} }, { signal }) =>
+    snapshot: ({ descriptor, request, options = {} }, context) =>
       invoke("snapshot", (service) =>
-        service.snapshot(descriptor, request, { ...options, signal }),
+        service.snapshot(descriptor, request, repositoryReadOptions(context, options)),
       ),
 
-    diff: ({ descriptor, request, maxBytes }, { signal }) =>
-      invoke("diff", (service) => service.diff(descriptor, request, { maxBytes, signal })),
+    diff: ({ descriptor, request, maxBytes }, context) =>
+      invoke("diff", (service) =>
+        service.diff(descriptor, request, repositoryReadOptions(context, { maxBytes })),
+      ),
 
     history: (payload, context) =>
       invoke("history", (service) => service.history(payload.descriptor, payload.request, context)),

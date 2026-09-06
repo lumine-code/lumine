@@ -98,6 +98,10 @@ describe("GitRepository host facade", () => {
       gitDirectory: repo.getPath(),
       workingDirectory: repo.getWorkingDirectory(),
       worktreeGitMarker: repo.descriptor.getWorktreeGitMarker(),
+      gitDirectoryIdentity: repo.descriptor.getGitDirectoryIdentity(),
+      workingDirectoryIdentity: repo.descriptor.getWorkingDirectoryIdentity(),
+      commonDirectory: repo.descriptor.getCommonDirectory(),
+      commonDirectoryIdentity: repo.descriptor.getCommonDirectoryIdentity(),
     });
     expect(Object.isFrozen(status)).toBe(true);
     expect(Object.isFrozen(refs)).toBe(true);
@@ -168,6 +172,10 @@ describe("GitRepository host facade", () => {
       gitDirectory: repo.getPath(),
       workingDirectory: repo.getWorkingDirectory(),
       worktreeGitMarker: repo.descriptor.getWorktreeGitMarker(),
+      gitDirectoryIdentity: repo.descriptor.getGitDirectoryIdentity(),
+      workingDirectoryIdentity: repo.descriptor.getWorkingDirectoryIdentity(),
+      commonDirectory: repo.descriptor.getCommonDirectory(),
+      commonDirectoryIdentity: repo.descriptor.getCommonDirectoryIdentity(),
     });
 
     fs.removeSync(path.join(workingDirectory, ".gitmodules"));
@@ -191,11 +199,10 @@ describe("GitRepository host facade", () => {
     repo = new GitRepository(copyRepository(), { gitHostClient: { getIndexFile } });
 
     expect(await repo.getIndexFile("nested/staged.txt")).toBe("staged contents\n");
-    expect(getIndexFile.calls.argsFor(0)).toEqual([
-      repo.getHostDescriptor(),
-      "nested/staged.txt",
-      { encoding: "utf8", signal: undefined },
-    ]);
+    const [descriptor, relativePath, options] = getIndexFile.calls.argsFor(0);
+    expect([descriptor, relativePath]).toEqual([repo.getHostDescriptor(), "nested/staged.txt"]);
+    expect(options.encoding).toBe("utf8");
+    expect(options.signal.aborted).toBe(false);
   });
 
   it("expresses all-ref history without leaking a Git CLI flag", async () => {
@@ -692,6 +699,44 @@ describe("GitRepository host facade", () => {
     expect(repo.isDestroyed()).toBe(true);
   });
 
+  it("preserves the unavailable error when its lifecycle listener throws", async () => {
+    const unavailableError = new Error("Git repository is unavailable");
+    unavailableError.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
+    unavailableError.reason = "worktree-marker-mismatch";
+    const listenerError = new Error("unavailable listener failed");
+    const getConfigValues = jasmine.createSpy("getConfigValues").and.rejectWith(unavailableError);
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    const unavailable = jasmine.createSpy("unavailable").and.callFake(() => {
+      throw listenerError;
+    });
+    repo.onDidBecomeUnavailable(unavailable);
+
+    await expectAsync(repo.getConfigValuesAsync(["core.filemode"])).toBeRejectedWith(
+      unavailableError,
+    );
+    await expectAsync(repo.getConfigValuesAsync(["core.filemode"])).toBeRejectedWith(
+      unavailableError,
+    );
+
+    expect(unavailable).toHaveBeenCalledTimes(1);
+    expect(getConfigValues).toHaveBeenCalledTimes(1);
+  });
+
+  it("finishes cleanup when an onDidDestroy listener throws", () => {
+    repo = new GitRepository(copyRepository());
+    const listenerError = new Error("destroy listener failed");
+    repo.onDidDestroy(() => {
+      throw listenerError;
+    });
+
+    expect(() => repo.destroy()).toThrow(listenerError);
+    expect(repo.isDestroyed()).toBe(true);
+    expect(repo.emitter).toBeNull();
+    expect(repo.gitHostClient).toBeNull();
+    expect(repo.repositoryReadControllers.size).toBe(0);
+    expect(() => repo.destroy()).not.toThrow();
+  });
+
   it("preserves the unavailable error when lifecycle removal destroys an active refresh", async () => {
     const error = new Error("Git repository is unavailable");
     error.code = "ERR_GIT_REPOSITORY_UNAVAILABLE";
@@ -702,6 +747,32 @@ describe("GitRepository host facade", () => {
     repo.onDidBecomeUnavailable(() => repo.destroy());
 
     await expectAsync(repo.refreshStatusSnapshot()).toBeRejectedWith(error);
+    expect(repo.isDestroyed()).toBe(true);
+  });
+
+  it("does not publish a manual read that finishes after the repository becomes unavailable", async () => {
+    let resolveConfig;
+    let hostSignal;
+    const getConfigValues = jasmine
+      .createSpy("getConfigValues")
+      .and.callFake((_descriptor, _keys, options) => {
+        hostSignal = options.signal;
+        return new Promise((resolve) => (resolveConfig = resolve));
+      });
+    const error = Object.assign(new Error("Git repository is unavailable"), {
+      code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
+      reason: "worktree-marker-mismatch",
+    });
+    repo = new GitRepository(copyRepository(), { gitHostClient: { getConfigValues } });
+    repo.onDidBecomeUnavailable(() => repo.destroy());
+
+    const read = repo.getConfigValuesAsync(["core.filemode"]);
+    await Promise.resolve();
+    repo.signalRepositoryUnavailable(error);
+    expect(hostSignal.aborted).toBe(true);
+    resolveConfig({ "core.filemode": "true" });
+
+    await expectAsync(read).toBeRejectedWith(error);
     expect(repo.isDestroyed()).toBe(true);
   });
 

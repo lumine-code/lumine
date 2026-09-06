@@ -1166,6 +1166,99 @@ describe("Project", () => {
       CHANGE_NOTIFICATION_DEADLINE,
     );
 
+    it(
+      "removes and rediscovers a real repository moved by the recursive watcher",
+      async () => {
+        jasmine.useRealClock();
+        const rootPath = temp.mkdirSync("lumine-real-repository-move");
+        const originalPath = path.join(rootPath, "packages", "original");
+        const movedPath = path.join(rootPath, "packages", "renamed");
+        fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), originalPath);
+        fs.renameSync(path.join(originalPath, "git.git"), path.join(originalPath, ".git"));
+        const previousWatchDiscovery = lumine.config.get("git.watchDiscovery");
+        const previousWatchDepth = lumine.config.get("git.watchDepth");
+
+        await stopAllWatchers();
+        lumine.project.setPaths([rootPath]);
+        await lumine.project.getWatcherPromise(rootPath);
+        const probeFile = path.join(rootPath, "probe.txt");
+        await new Promise((resolve) => {
+          let probeCount = 0;
+          let probeTimer;
+          checkCallback = () => {
+            if (events.some((event) => event.path === probeFile)) {
+              clearInterval(probeTimer);
+              resolve();
+            }
+          };
+          const probe = () => {
+            probeCount++;
+            fs.writeFileSync(probeFile, `probe ${probeCount}`);
+          };
+          probeTimer = setInterval(probe, 500);
+          probe();
+        });
+        events = [];
+
+        const original = await lumine.repositories.resolveForPath(originalPath, {
+          refresh: true,
+        });
+        const added = [];
+        const removed = [];
+        const addedSubscription = lumine.repositories.onDidAddRepository((repository) =>
+          added.push(repository),
+        );
+        const removedSubscription = lumine.repositories.onDidRemoveRepository((repository) =>
+          removed.push(repository),
+        );
+        lumine.config.set("git.watchDiscovery", false);
+        lumine.config.set("git.watchDepth", 1);
+        try {
+          fs.renameSync(originalPath, movedPath);
+          const moved = await new Promise((resolve, reject) => {
+            let poll;
+            const timeout = setTimeout(() => {
+              clearInterval(poll);
+              reject(
+                new Error(
+                  `Timed out waiting for moved repository discovery: ${JSON.stringify(events)}`,
+                ),
+              );
+            }, 20000);
+            poll = setInterval(() => {
+              const repository = lumine.repositories.getForPath(movedPath);
+              if (!original.isDestroyed() || !repository || repository === original) return;
+              clearTimeout(timeout);
+              clearInterval(poll);
+              resolve(repository);
+            }, 50);
+          });
+
+          expect(events).toContain(
+            jasmine.objectContaining({ action: "deleted", path: originalPath }),
+          );
+          expect(events).toContain(
+            jasmine.objectContaining({ action: "created", path: movedPath }),
+          );
+          expect(removed.filter((repository) => repository === original)).toHaveSize(1);
+          expect(added.filter((repository) => repository === moved)).toHaveSize(1);
+          expect(moved).toEqual(jasmine.any(GitRepository));
+          expect(fs.realpathSync.native(moved.getWorkingDirectory())).toBe(
+            fs.realpathSync.native(movedPath),
+          );
+        } finally {
+          addedSubscription.dispose();
+          removedSubscription.dispose();
+          lumine.project.setPaths([]);
+          if (previousWatchDiscovery === undefined) lumine.config.unset("git.watchDiscovery");
+          else lumine.config.set("git.watchDiscovery", previousWatchDiscovery);
+          if (previousWatchDepth === undefined) lumine.config.unset("git.watchDepth");
+          else lumine.config.set("git.watchDepth", previousWatchDepth);
+        }
+      },
+      CHANGE_NOTIFICATION_DEADLINE,
+    );
+
     // POSIX only: creating a symlink on Windows needs elevation or Developer
     // Mode, so the fixture cannot be built there reliably.
     if (process.platform !== "win32") {

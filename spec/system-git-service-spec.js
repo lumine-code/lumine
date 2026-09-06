@@ -6,16 +6,35 @@ const {
   assertRepositoryDescriptorAvailableAsync,
   ERR_GIT_REPOSITORY_UNAVAILABLE,
 } = require("../src/git-repository-descriptor");
-const { canonicalConfigKey, parseBatchObjects } = SystemGitService;
+const { canonicalConfigKey, parseBatchObjects, DEFER_REPOSITORY_READ_POSTFLIGHT } =
+  SystemGitService;
+
+function filesystemIdentity(filePath) {
+  const stats = fs.statSync(filePath, { bigint: true });
+  return { device: String(stats.dev), inode: String(stats.ino) };
+}
+
+function completeDescriptor(gitDirectory, workingDirectory, worktreeGitMarker) {
+  return {
+    gitDirectory,
+    workingDirectory,
+    worktreeGitMarker,
+    gitDirectoryIdentity: filesystemIdentity(gitDirectory),
+    workingDirectoryIdentity: workingDirectory ? filesystemIdentity(workingDirectory) : null,
+    commonDirectory: gitDirectory,
+    commonDirectoryIdentity: filesystemIdentity(gitDirectory),
+  };
+}
 
 function createDirectoryMarkerDescriptor(workingDirectory = temp.mkdirSync("git-service-repo-")) {
   const gitDirectory = path.join(workingDirectory, ".git");
   fs.mkdirSync(gitDirectory, { recursive: true });
-  return {
-    gitDirectory,
-    workingDirectory,
-    worktreeGitMarker: { path: gitDirectory, kind: "directory" },
-  };
+  workingDirectory = fs.realpathSync.native(workingDirectory);
+  const canonicalGitDirectory = fs.realpathSync.native(gitDirectory);
+  return completeDescriptor(canonicalGitDirectory, workingDirectory, {
+    path: path.join(workingDirectory, ".git"),
+    kind: "directory",
+  });
 }
 
 function createGitfileDescriptor() {
@@ -26,23 +45,22 @@ function createGitfileDescriptor() {
   fs.mkdirSync(workingDirectory);
   fs.mkdirSync(gitDirectory);
   fs.writeFileSync(markerPath, `gitdir: ${path.relative(workingDirectory, gitDirectory)}\n`);
+  const canonicalWorkingDirectory = fs.realpathSync.native(workingDirectory);
+  const canonicalGitDirectory = fs.realpathSync.native(gitDirectory);
+  const canonicalMarkerPath = path.join(canonicalWorkingDirectory, ".git");
   return {
-    descriptor: {
-      gitDirectory,
-      workingDirectory,
-      worktreeGitMarker: { path: markerPath, kind: "gitfile" },
-    },
-    markerPath,
-    rootDirectory,
+    descriptor: completeDescriptor(canonicalGitDirectory, canonicalWorkingDirectory, {
+      path: canonicalMarkerPath,
+      kind: "gitfile",
+    }),
+    markerPath: canonicalMarkerPath,
+    rootDirectory: fs.realpathSync.native(rootDirectory),
   };
 }
 
 function createBareDescriptor() {
-  return {
-    gitDirectory: temp.mkdirSync("git-service-bare-"),
-    workingDirectory: null,
-    worktreeGitMarker: null,
-  };
+  const gitDirectory = temp.mkdirSync("git-service-bare-");
+  return completeDescriptor(fs.realpathSync.native(gitDirectory), null, null);
 }
 
 describe("SystemGitService", () => {
@@ -234,6 +252,29 @@ describe("SystemGitService", () => {
     }
   });
 
+  it("lets git-host defer a read postflight without changing direct read validation", async () => {
+    const descriptor = createDirectoryMarkerDescriptor();
+    const assertRepositoryDescriptorAvailable = jasmine
+      .createSpy("assertRepositoryDescriptorAvailable")
+      .and.resolveTo(descriptor);
+    const runner = {
+      run: jasmine.createSpy("run").and.resolveTo("core.filemode\ntrue\0"),
+    };
+    const service = new SystemGitService({ runner, assertRepositoryDescriptorAvailable });
+
+    await service.readConfig(descriptor, ["core.filemode"], {
+      [DEFER_REPOSITORY_READ_POSTFLIGHT]: true,
+    });
+    expect(assertRepositoryDescriptorAvailable.calls.count())
+      .withContext("the worker owns the deferred publication postflight")
+      .toBe(1);
+
+    await service.readConfig(descriptor, ["core.filemode"]);
+    expect(assertRepositoryDescriptorAvailable.calls.count())
+      .withContext("direct service reads retain preflight and postflight")
+      .toBe(3);
+  });
+
   it("rejects a read when its gitfile is retargeted before publication", async () => {
     const { descriptor, markerPath, rootDirectory } = createGitfileDescriptor();
     const otherGitDirectory = path.join(rootDirectory, "other.git");
@@ -346,7 +387,7 @@ describe("SystemGitService", () => {
     ).toBeRejectedWith(
       jasmine.objectContaining({
         code: ERR_GIT_REPOSITORY_UNAVAILABLE,
-        operation: "repository-read-command",
+        operation: "execRepository",
       }),
     );
   });

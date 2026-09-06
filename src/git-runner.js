@@ -150,11 +150,16 @@ const COLOR_CONFIG = [
 // Git's repository-discovery environment. Remove variables that could redirect
 // part of that binding while retaining object-directory overrides used by the
 // diff provider (GIT_OBJECT_DIRECTORY and GIT_ALTERNATE_OBJECT_DIRECTORIES).
-const REPOSITORY_ENVIRONMENT_VARIABLES = [
+const REPOSITORY_SELECTION_ENVIRONMENT_VARIABLES = [
   "GIT_DIR",
   "GIT_WORK_TREE",
   "GIT_COMMON_DIR",
   "GIT_INDEX_FILE",
+];
+const REPOSITORY_ENVIRONMENT_VARIABLES = [
+  ...REPOSITORY_SELECTION_ENVIRONMENT_VARIABLES,
+  "GIT_OBJECT_DIRECTORY",
+  "GIT_ALTERNATE_OBJECT_DIRECTORIES",
 ];
 
 function repositoryArguments(descriptor) {
@@ -213,7 +218,15 @@ class GitRunner {
       ...options.env,
     };
     if (options.repositoryDescriptor) {
-      for (const name of REPOSITORY_ENVIRONMENT_VARIABLES) delete environment[name];
+      const selectionVariables = new Set(
+        REPOSITORY_SELECTION_ENVIRONMENT_VARIABLES.map((name) =>
+          process.platform === "win32" ? name.toUpperCase() : name,
+        ),
+      );
+      for (const name of Object.keys(environment)) {
+        const canonicalName = process.platform === "win32" ? name.toUpperCase() : name;
+        if (selectionVariables.has(canonicalName)) delete environment[name];
+      }
     }
     const configArguments = [];
     if (this.trustAllRepositories) {

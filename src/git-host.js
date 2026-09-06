@@ -9,6 +9,9 @@ const {
   appendReplyChunk,
   chunkLength,
   initializeReplyStream,
+  nextReplyChunk,
+  prepareRequestStream,
+  streamManifest,
   validateStreamManifest,
 } = require("./git-host-stream");
 const { normalizeGitOperationError } = require("./git-error");
@@ -37,10 +40,11 @@ function restartError() {
   return error;
 }
 
-function protocolError(detail) {
+function protocolError(detail, operation = null) {
   const error = new Error(`Invalid git-host streaming reply: ${detail}`);
   error.code = "ERR_GIT_HOST_PROTOCOL";
   error.retriable = false;
+  if (operation) error.operation = operation;
   return error;
 }
 
@@ -109,6 +113,7 @@ class GitHost {
     this.nextId = 0;
     this.inProcessOps = null; // op table when running without a forked worker
     this.fatalError = null;
+    this.requestChunkLane = Promise.resolve();
   }
 
   shouldFork() {
@@ -207,6 +212,17 @@ class GitHost {
       case GitHostMessageEvents.REPLY: {
         const entry = this.pending.get(message.id);
         if (!entry) return;
+        if (entry.outboundStream) {
+          if (!message.error) {
+            this.failOutboundRequest(
+              message.id,
+              entry,
+              "received a reply before request streaming completed",
+            );
+            return;
+          }
+          this.clearOutboundStream(entry);
+        }
         if (entry.stream && !message.error) {
           this.failStreamingReply(message.id, entry, "received a full reply after reply-start");
           return;
@@ -227,6 +243,9 @@ class GitHost {
       case GitHostMessageEvents.REPLY_END:
         this.finishStreamingReply(message);
         return;
+      case GitHostMessageEvents.REQUEST_CHUNK_ACK:
+        this.acknowledgeRequestChunk(message, sourceChild);
+        return;
       case "console:log":
         console.log(...(message.args || []));
         return;
@@ -242,6 +261,14 @@ class GitHost {
   startStreamingReply(message) {
     const entry = this.pending.get(message.id);
     if (!entry) return;
+    if (entry.outboundStream) {
+      this.failOutboundRequest(
+        message.id,
+        entry,
+        "received reply-start before request streaming completed",
+      );
+      return;
+    }
     if (entry.stream) {
       this.failStreamingReply(message.id, entry, "received duplicate reply-start");
       return;
@@ -428,7 +455,8 @@ class GitHost {
     const error =
       detail instanceof Error && detail.code
         ? detail
-        : protocolError(detail instanceof Error ? detail.message : detail);
+        : protocolError(detail instanceof Error ? detail.message : detail, entry.operation);
+    if (!error.operation) error.operation = entry.operation;
     entry.reject(error);
     // A malformed chunk may carry the wrong sequence, so an ACK cannot safely
     // release the worker's pending send. Retire that worker instead of leaving
@@ -472,6 +500,7 @@ class GitHost {
     for (const entry of this.pending.values()) {
       this.detachAbort(entry);
       entry.stream = null;
+      this.clearOutboundStream(entry);
       if (!abandon) entry.reject(restartError());
     }
     this.pending.clear();
@@ -481,6 +510,155 @@ class GitHost {
     if (entry.signal && entry.onAbort) {
       entry.signal.removeEventListener("abort", entry.onAbort);
     }
+  }
+
+  async withRequestChunkLane(callback) {
+    const previous = this.requestChunkLane;
+    let release;
+    this.requestChunkLane = new Promise((resolve) => {
+      release = resolve;
+    });
+    await previous;
+    try {
+      return await callback();
+    } finally {
+      release();
+    }
+  }
+
+  assertActiveOutboundRequest(id, entry, stream) {
+    if (
+      this.pending.get(id) !== entry ||
+      entry.outboundStream !== stream ||
+      this.child !== entry.child ||
+      entry.child?.connected === false
+    ) {
+      throw abortError();
+    }
+  }
+
+  sendRequestMessage(entry, message, onError = null) {
+    this.assertActiveOutboundRequest(message.id, entry, entry.outboundStream);
+    try {
+      entry.child.send(message, (error) => {
+        if (error) onError?.(error);
+      });
+      return true;
+    } catch (error) {
+      if (!onError) throw error;
+      onError(error);
+      return false;
+    }
+  }
+
+  clearOutboundStream(entry, error = abortError()) {
+    const stream = entry.outboundStream;
+    if (!stream) return;
+    stream.pendingAck?.reject(error);
+    stream.pendingAck = null;
+    if (stream.plan) {
+      for (const descriptor of stream.plan.streams) descriptor.value = null;
+      stream.plan = null;
+    }
+    entry.outboundStream = null;
+  }
+
+  async sendStreamingRequest(id, op, plan, entry) {
+    const streamState = entry.outboundStream;
+    await this.withRequestChunkLane(async () => {
+      this.assertActiveOutboundRequest(id, entry, streamState);
+      await new Promise((resolve) => setImmediate(resolve));
+      this.assertActiveOutboundRequest(id, entry, streamState);
+      if (
+        !this.sendRequestMessage(
+          entry,
+          {
+            event: GitHostMessageEvents.REQUEST_START,
+            id,
+            op,
+            payload: plan.payload,
+            streams: plan.streams.map(streamManifest),
+          },
+          () => this.handleExit(entry.child, { kill: true }),
+        )
+      ) {
+        return;
+      }
+
+      let sequence = 0;
+      for (const stream of plan.streams) {
+        for (let offset = 0; offset < stream.length;) {
+          // A complete renderer turn between bounded chunks gives Chromium a
+          // chance to paint and keeps several concurrent large requests from
+          // serializing in one frame.
+          await new Promise((resolve) => setImmediate(resolve));
+          this.assertActiveOutboundRequest(id, entry, streamState);
+          const chunk = nextReplyChunk(stream, offset);
+          const acknowledged = new Promise((resolve, reject) => {
+            streamState.pendingAck = { sequence, resolve, reject };
+          });
+          this.sendRequestMessage(
+            entry,
+            {
+              event: GitHostMessageEvents.REQUEST_CHUNK,
+              id,
+              sequence,
+              stream: stream.name,
+              offset,
+              items: chunk,
+            },
+            () => this.handleExit(entry.child, { kill: true }),
+          );
+          await acknowledged;
+          offset += chunk.length;
+          sequence++;
+        }
+      }
+
+      await new Promise((resolve) => setImmediate(resolve));
+      this.assertActiveOutboundRequest(id, entry, streamState);
+      if (
+        !this.sendRequestMessage(entry, { event: GitHostMessageEvents.REQUEST_END, id }, () =>
+          this.handleExit(entry.child, { kill: true }),
+        )
+      ) {
+        return;
+      }
+      this.clearOutboundStream(entry, null);
+    });
+  }
+
+  acknowledgeRequestChunk(message, sourceChild = this.child) {
+    const entry = this.pending.get(message.id);
+    if (!entry || entry.child !== sourceChild) return;
+    const stream = entry.outboundStream;
+    if (
+      !stream ||
+      !stream.pendingAck ||
+      !Number.isSafeInteger(message.sequence) ||
+      message.sequence !== stream.pendingAck.sequence
+    ) {
+      this.failOutboundRequest(message.id, entry, "received an invalid request chunk ACK");
+      return;
+    }
+    const { resolve } = stream.pendingAck;
+    stream.pendingAck = null;
+    resolve();
+  }
+
+  failOutboundRequest(id, entry, detail) {
+    if (this.pending.get(id) !== entry) return;
+    this.pending.delete(id);
+    this.detachAbort(entry);
+    this.clearOutboundStream(entry);
+    this.sendCancel(id, entry.child);
+    const error =
+      detail instanceof Error && detail.code
+        ? detail
+        : protocolError(detail instanceof Error ? detail.message : detail, entry.operation);
+    if (!error.operation) error.operation = entry.operation;
+    entry.reject(error);
+    if (entry.child === this.child) this.terminate();
   }
 
   async request(op, payload, { signal } = {}) {
@@ -520,6 +698,14 @@ class GitHost {
     // A crash during startup nulls the child; surface it as retriable.
     if (!this.child) throw restartError();
 
+    let requestStream;
+    try {
+      requestStream = prepareRequestStream(op, payload);
+    } catch (error) {
+      if (!error.operation) error.operation = op;
+      throw error;
+    }
+
     const id = String(this.nextId++);
     return new Promise((resolve, reject) => {
       const entry = {
@@ -528,7 +714,9 @@ class GitHost {
         signal,
         onAbort: null,
         child: this.child,
+        operation: op,
         stream: null,
+        outboundStream: requestStream ? { pendingAck: null, plan: requestStream } : null,
       };
       if (signal) {
         entry.onAbort = () => {
@@ -536,6 +724,7 @@ class GitHost {
           this.pending.delete(id);
           this.detachAbort(entry);
           entry.stream = null;
+          this.clearOutboundStream(entry);
           reject(abortError());
           this.sendCancel(id, entry.child);
         };
@@ -549,10 +738,17 @@ class GitHost {
         // (and any others) as retriable instead of throwing out of send.
         this.handleExit();
       } else {
-        try {
-          this.child.send({ event: GitHostMessageEvents.REQUEST, id, op, payload });
-        } catch {
-          this.handleExit(this.child, { kill: true });
+        if (requestStream) {
+          this.sendStreamingRequest(id, op, requestStream, entry).catch((error) => {
+            if (error?.name === "AbortError" && this.pending.get(id) !== entry) return;
+            this.failOutboundRequest(id, entry, error);
+          });
+        } else {
+          try {
+            this.child.send({ event: GitHostMessageEvents.REQUEST, id, op, payload });
+          } catch {
+            this.handleExit(this.child, { kill: true });
+          }
         }
       }
     });

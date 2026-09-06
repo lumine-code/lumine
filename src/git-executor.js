@@ -45,7 +45,7 @@ async function classifySpawnError(error, gitPath, workingDirectory) {
 function childEnvironment(options) {
   if (!options.env && !options.unsetEnv) return process.env;
 
-  const environment = { ...process.env, ...options.env };
+  const environment = { ...process.env };
   if (options.unsetEnv) {
     const canonicalName =
       process.platform === "win32" ? (name) => name.toUpperCase() : (name) => name;
@@ -54,6 +54,7 @@ function childEnvironment(options) {
       if (namesToUnset.has(canonicalName(name))) delete environment[name];
     }
   }
+  Object.assign(environment, options.env);
   return environment;
 }
 

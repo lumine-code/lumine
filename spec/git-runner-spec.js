@@ -330,6 +330,7 @@ describe("GitRunner repository binding", () => {
         GIT_INDEX_FILE: "wrong-index",
         GIT_OBJECT_DIRECTORY: "temporary-objects",
         GIT_ALTERNATE_OBJECT_DIRECTORIES: "repository-objects",
+        ...(process.platform === "win32" ? { git_dir: "wrong-lowercase-git-dir" } : {}),
       },
     });
 
@@ -338,11 +339,14 @@ describe("GitRunner repository binding", () => {
       "GIT_WORK_TREE",
       "GIT_COMMON_DIR",
       "GIT_INDEX_FILE",
+      "GIT_OBJECT_DIRECTORY",
+      "GIT_ALTERNATE_OBJECT_DIRECTORIES",
     ]);
     expect(calls[0].options.env.GIT_DIR).toBeUndefined();
     expect(calls[0].options.env.GIT_WORK_TREE).toBeUndefined();
     expect(calls[0].options.env.GIT_COMMON_DIR).toBeUndefined();
     expect(calls[0].options.env.GIT_INDEX_FILE).toBeUndefined();
+    if (process.platform === "win32") expect(calls[0].options.env.git_dir).toBeUndefined();
     expect(calls[0].options.env.GIT_OBJECT_DIRECTORY).toBe("temporary-objects");
     expect(calls[0].options.env.GIT_ALTERNATE_OBJECT_DIRECTORIES).toBe("repository-objects");
   });

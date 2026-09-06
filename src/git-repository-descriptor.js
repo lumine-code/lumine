@@ -1,5 +1,7 @@
 const fs = require("@lumine-code/fs-plus");
 const path = require("path");
+const os = require("os");
+const picomatch = require("picomatch");
 const { normalizePath, pathsAreEqual, realpathRecursive } = require("./repository-paths");
 
 const IS_WINDOWS = process.platform === "win32";
@@ -8,6 +10,45 @@ const MISSING_PATH_ERROR_CODES = new Set(["ENOENT", "ENOTDIR"]);
 
 function isMissingPathError(error) {
   return MISSING_PATH_ERROR_CODES.has(error?.code);
+}
+
+function filesystemIdentity(stats) {
+  const device = String(stats.dev);
+  const inode = String(stats.ino);
+  if (inode === "0") return null;
+  return Object.freeze({ device, inode });
+}
+
+function commonDirectoryLocation(gitDirectory) {
+  let commonDirectory = gitDirectory;
+  try {
+    const value = fs.readFileSync(path.join(gitDirectory, "commondir"), "utf8").trim();
+    if (value) commonDirectory = path.resolve(gitDirectory, value);
+  } catch (error) {
+    if (!isMissingPathError(error)) throw error;
+  }
+  const canonicalPath = trimTrailingSeparator(normalizeLexicalPath(realpath(commonDirectory)));
+  return {
+    path: canonicalPath,
+    identity: filesystemIdentity(fs.statSync(canonicalPath, { bigint: true })),
+  };
+}
+
+async function commonDirectoryLocationAsync(gitDirectory) {
+  let commonDirectory = gitDirectory;
+  try {
+    const value = (await fs.promises.readFile(path.join(gitDirectory, "commondir"), "utf8")).trim();
+    if (value) commonDirectory = path.resolve(gitDirectory, value);
+  } catch (error) {
+    if (!isMissingPathError(error)) throw error;
+  }
+  const canonicalPath = trimTrailingSeparator(
+    normalizeLexicalPath(await realpathAsync(commonDirectory)),
+  );
+  return {
+    path: canonicalPath,
+    identity: filesystemIdentity(await fs.promises.stat(canonicalPath, { bigint: true })),
+  };
 }
 
 function normalizeLexicalPath(filePath) {
@@ -80,7 +121,9 @@ async function realpathRecursiveAsync(unrealPath) {
       break;
     } catch (error) {
       if (error.code !== "ENOENT") return normalizePathAsync(unrealPath, false);
-      currentPath = path.resolve(currentPath, "..");
+      const parentPath = path.resolve(currentPath, "..");
+      if (parentPath === currentPath) return normalizePathAsync(unrealPath, false);
+      currentPath = parentPath;
       remainder = path.relative(currentPath, unrealPath);
     }
   }
@@ -102,12 +145,21 @@ function normalizedPathsAreEqual(pathA, pathB, caseInsensitive) {
 }
 
 function isRootPath(candidate) {
-  return IS_WINDOWS ? /^[a-zA-Z]+:[\\/]$/.test(candidate) : candidate === path.sep;
+  return path.dirname(candidate) === candidate;
 }
 
 function statForDiscovery(candidate) {
   try {
     return fs.statSync(candidate);
+  } catch (error) {
+    if (isMissingPathError(error)) return null;
+    throw error;
+  }
+}
+
+function lstatForDiscovery(candidate) {
+  try {
+    return fs.lstatSync(candidate);
   } catch (error) {
     if (isMissingPathError(error)) return null;
     throw error;
@@ -125,6 +177,15 @@ async function statOrNullAsync(candidate) {
 async function statForDiscoveryAsync(candidate) {
   try {
     return await fs.promises.stat(candidate);
+  } catch (error) {
+    if (isMissingPathError(error)) return null;
+    throw error;
+  }
+}
+
+async function lstatForDiscoveryAsync(candidate) {
+  try {
+    return await fs.promises.lstat(candidate);
   } catch (error) {
     if (isMissingPathError(error)) return null;
     throw error;
@@ -196,14 +257,16 @@ async function isGitDirectoryAsync(directory) {
   return Boolean(head?.isFile() && objects?.isDirectory() && refs?.isDirectory());
 }
 
-const GIT_FILE_REGEX = /^gitdir:\s*(.+)$/m;
+function parseGitFile(contents) {
+  const match = /^gitdir:[ \t]*(.*\S)[ \t]*(?:\r?\n)?$/.exec(contents);
+  return match ? match[1] : null;
+}
 
 // Resolve a `.git` file (`gitdir: <path>`) to the directory it points at.
 function resolveGitFile(gitFilePath, baseDirectory) {
   try {
-    const match = fs.readFileSync(gitFilePath, "utf8").match(GIT_FILE_REGEX);
-    if (!match) return null;
-    return path.resolve(baseDirectory, match[1].trim());
+    const target = parseGitFile(fs.readFileSync(gitFilePath, "utf8"));
+    return target ? path.resolve(baseDirectory, target) : null;
   } catch (error) {
     if (isMissingPathError(error)) return null;
     throw error;
@@ -212,8 +275,8 @@ function resolveGitFile(gitFilePath, baseDirectory) {
 
 async function resolveGitFileAsync(gitFilePath, baseDirectory) {
   try {
-    const match = (await fs.promises.readFile(gitFilePath, "utf8")).match(GIT_FILE_REGEX);
-    return match ? path.resolve(baseDirectory, match[1].trim()) : null;
+    const target = parseGitFile(await fs.promises.readFile(gitFilePath, "utf8"));
+    return target ? path.resolve(baseDirectory, target) : null;
   } catch (error) {
     if (isMissingPathError(error)) return null;
     throw error;
@@ -221,19 +284,23 @@ async function resolveGitFileAsync(gitFilePath, baseDirectory) {
 }
 
 function pathsResolveToSameLocation(pathA, pathB) {
-  return normalizedPathsAreEqual(
-    normalizeLexicalPath(realpath(pathA)),
-    normalizeLexicalPath(realpath(pathB)),
-    false,
-  );
+  const leftIdentity = filesystemIdentity(fs.statSync(pathA, { bigint: true }));
+  const rightIdentity = filesystemIdentity(fs.statSync(pathB, { bigint: true }));
+  return leftIdentity && rightIdentity
+    ? leftIdentity.device === rightIdentity.device && leftIdentity.inode === rightIdentity.inode
+    : normalizedPathsMatch(realpath(pathA), realpath(pathB));
 }
 
 async function pathsResolveToSameLocationAsync(pathA, pathB) {
-  return normalizedPathsAreEqual(
-    normalizeLexicalPath(await realpathAsync(pathA)),
-    normalizeLexicalPath(await realpathAsync(pathB)),
-    false,
-  );
+  const [leftStats, rightStats] = await Promise.all([
+    fs.promises.stat(pathA, { bigint: true }),
+    fs.promises.stat(pathB, { bigint: true }),
+  ]);
+  const leftIdentity = filesystemIdentity(leftStats);
+  const rightIdentity = filesystemIdentity(rightStats);
+  return leftIdentity && rightIdentity
+    ? leftIdentity.device === rightIdentity.device && leftIdentity.inode === rightIdentity.inode
+    : normalizedPathsMatch(await realpathAsync(pathA), await realpathAsync(pathB));
 }
 
 // A linked-worktree Git directory normally points back to the `.git` gitfile
@@ -279,68 +346,345 @@ async function linkedWorktreeMarkerAsync(gitDirectory) {
 // Shallow parse of the repository's own config for the handful of `core` keys
 // that determine the working directory. These keys only ever live in the
 // repository config (never global/system), so `<gitDir>/config` is authoritative.
-function parseCoreConfig(text) {
-  const core = {};
-  let inCore = false;
-  for (const rawLine of text.split(/\r?\n/)) {
-    const line = rawLine.trim();
-    if (!line || line.startsWith("#") || line.startsWith(";")) continue;
-    const section = /^\[([^\]]+)\]/.exec(line);
-    if (section) {
-      inCore = section[1].trim().toLowerCase() === "core";
+function invalidConfigError(configPath) {
+  const error = new SyntaxError(
+    `Invalid Git repository config${configPath ? `: ${configPath}` : ""}`,
+  );
+  error.code = "ERR_GIT_CONFIG_INVALID";
+  if (configPath) error.path = configPath;
+  return error;
+}
+
+function stripConfigComment(text, configPath) {
+  let quoted = false;
+  let escaped = false;
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (escaped) {
+      escaped = false;
       continue;
     }
-    if (!inCore) continue;
-    const kv = /^([A-Za-z0-9-]+)\s*=\s*(.*)$/.exec(line);
-    if (kv) core[kv[1].toLowerCase()] = kv[2].trim();
+    if (quoted && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && (character === "#" || character === ";")) {
+      return text.slice(0, index);
+    }
   }
-  return core;
+  if (quoted || escaped) throw invalidConfigError(configPath);
+  return text;
 }
 
-function readCoreConfig(gitDir) {
+function parseConfigValue(text, configPath) {
+  const characters = [];
+  let quoted = false;
+  for (let index = 0; index < text.length; index++) {
+    const character = text[index];
+    if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (quoted && character === "\\") {
+      const escaped = text[++index];
+      if (escaped == null || !['"', "\\", "n", "t", "b"].includes(escaped)) {
+        throw invalidConfigError(configPath);
+      }
+      const decoded = { n: "\n", t: "\t", b: "\b" }[escaped] ?? escaped;
+      characters.push({ character: decoded, quoted: true });
+      continue;
+    }
+    if (!quoted && character === "\\") throw invalidConfigError(configPath);
+    characters.push({ character, quoted });
+  }
+  if (quoted) throw invalidConfigError(configPath);
+  while (characters[0] && !characters[0].quoted && /\s/.test(characters[0].character)) {
+    characters.shift();
+  }
+  while (characters.at(-1) && !characters.at(-1).quoted && /\s/.test(characters.at(-1).character)) {
+    characters.pop();
+  }
+  return characters.map(({ character }) => character).join("");
+}
+
+function configLineContinues(line, initiallyQuoted) {
+  let quoted = initiallyQuoted;
+  let escaped = false;
+  for (let index = 0; index < line.length; index++) {
+    const character = line[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (quoted && character === "\\") {
+      escaped = true;
+      continue;
+    }
+    if (character === '"') {
+      quoted = !quoted;
+      continue;
+    }
+    if (!quoted && (character === "#" || character === ";")) {
+      return { continues: false, quoted };
+    }
+  }
+  const trailingBackslashes = /\\+$/.exec(line)?.[0].length || 0;
+  return { continues: trailingBackslashes % 2 === 1, quoted };
+}
+
+function parseRepositoryConfig(text, configPath = null) {
+  const entries = [];
+  let currentSection = null;
+  let currentSubsection = null;
+  const logicalLines = [];
+  let continuedLine = "";
+  let continuedQuoted = false;
+  for (const physicalLine of text.split(/\r?\n/)) {
+    continuedLine += physicalLine;
+    const continuation = configLineContinues(physicalLine, continuedQuoted);
+    if (continuation.continues) {
+      continuedLine = continuedLine.slice(0, -1);
+      continuedQuoted = continuation.quoted;
+      continue;
+    }
+    logicalLines.push(continuedLine);
+    continuedLine = "";
+    continuedQuoted = false;
+  }
+  if (continuedLine) throw invalidConfigError(configPath);
+
+  for (const rawLine of logicalLines) {
+    const line = stripConfigComment(rawLine, configPath).trim();
+    if (!line) continue;
+    const section = /^\[\s*([A-Za-z0-9.-]+)(?:\s+"((?:[^"\\]|\\.)*)")?\s*\]$/.exec(line);
+    if (section) {
+      currentSection = section[1].toLowerCase();
+      currentSubsection =
+        section[2] === undefined ? null : parseConfigValue(`"${section[2]}"`, configPath);
+      continue;
+    }
+    if (line.startsWith("[")) throw invalidConfigError(configPath);
+    const kv = /^([A-Za-z0-9-]+)(?:\s*=\s*(.*))?$/.exec(line);
+    if (!kv) throw invalidConfigError(configPath);
+    if (!currentSection) throw invalidConfigError(configPath);
+    entries.push({
+      section: currentSection,
+      subsection: currentSubsection,
+      key: kv[1].toLowerCase(),
+      value: kv[2] == null ? "true" : parseConfigValue(kv[2], configPath),
+    });
+  }
+  return entries;
+}
+
+function emptyRepositoryConfig() {
+  return { core: {}, extensions: {} };
+}
+
+function mergeRepositoryConfig(target, source) {
+  Object.assign(target.core, source.core);
+  Object.assign(target.extensions, source.extensions);
+}
+
+function repositoryConfigKey(configPath) {
+  const resolved = path.resolve(realpath(configPath));
+  return IS_WINDOWS ? resolved.toLowerCase() : resolved;
+}
+
+async function repositoryConfigKeyAsync(configPath) {
+  const resolved = path.resolve(await realpathAsync(configPath));
+  return IS_WINDOWS ? resolved.toLowerCase() : resolved;
+}
+
+function includeConditionMatches(condition, configPath, gitDirectory) {
+  if (!condition || !gitDirectory) return false;
+  const match = /^gitdir(\/i)?:([\s\S]*)$/i.exec(condition);
+  if (!match) return false;
+  let pattern = match[2].replace(/\\/g, "/");
+  if (pattern === "~") {
+    pattern = normalizeLexicalPath(os.homedir());
+  } else if (pattern.startsWith("~/")) {
+    pattern = normalizeLexicalPath(path.join(os.homedir(), pattern.slice(2)));
+  } else if (pattern.startsWith("./")) {
+    pattern = normalizeLexicalPath(path.resolve(path.dirname(configPath), pattern.slice(2)));
+  } else if (!path.isAbsolute(pattern) && !pattern.startsWith("**/")) {
+    pattern = `**/${pattern}`;
+  }
+  if (pattern.endsWith("/")) pattern += "**";
+  return picomatch.isMatch(normalizeLexicalPath(gitDirectory), pattern, {
+    dot: true,
+    nocase: Boolean(match[1]),
+  });
+}
+
+function readRepositoryConfig(configPath, { gitDirectory = null, stack = new Set() } = {}) {
+  let text;
   try {
-    return parseCoreConfig(fs.readFileSync(path.join(gitDir, "config"), "utf8"));
+    text = fs.readFileSync(configPath, "utf8");
   } catch (error) {
-    if (isMissingPathError(error)) return {};
+    if (isMissingPathError(error)) return emptyRepositoryConfig();
     throw error;
+  }
+  const key = repositoryConfigKey(configPath);
+  if (stack.has(key) || stack.size >= 10) throw invalidConfigError(configPath);
+  stack.add(key);
+  const config = emptyRepositoryConfig();
+  try {
+    for (const entry of parseRepositoryConfig(text, configPath)) {
+      if (
+        entry.subsection === null &&
+        (entry.section === "core" || entry.section === "extensions")
+      ) {
+        config[entry.section][entry.key] = entry.value;
+      } else if (entry.section === "include" && entry.subsection === null && entry.key === "path") {
+        mergeRepositoryConfig(
+          config,
+          readRepositoryConfig(resolveConfiguredPath(path.dirname(configPath), entry.value), {
+            gitDirectory,
+            stack,
+          }),
+        );
+      } else if (
+        entry.section === "includeif" &&
+        entry.subsection !== null &&
+        entry.key === "path" &&
+        includeConditionMatches(entry.subsection, configPath, gitDirectory)
+      ) {
+        mergeRepositoryConfig(
+          config,
+          readRepositoryConfig(resolveConfiguredPath(path.dirname(configPath), entry.value), {
+            gitDirectory,
+            stack,
+          }),
+        );
+      }
+    }
+    return config;
+  } finally {
+    stack.delete(key);
   }
 }
 
-async function readCoreConfigAsync(gitDir) {
+async function readRepositoryConfigAsync(
+  configPath,
+  { gitDirectory = null, stack = new Set() } = {},
+) {
+  let text;
   try {
-    return parseCoreConfig(await fs.promises.readFile(path.join(gitDir, "config"), "utf8"));
+    text = await fs.promises.readFile(configPath, "utf8");
   } catch (error) {
-    if (isMissingPathError(error)) return {};
+    if (isMissingPathError(error)) return emptyRepositoryConfig();
     throw error;
   }
+  const key = await repositoryConfigKeyAsync(configPath);
+  if (stack.has(key) || stack.size >= 10) throw invalidConfigError(configPath);
+  stack.add(key);
+  const config = emptyRepositoryConfig();
+  try {
+    for (const entry of parseRepositoryConfig(text, configPath)) {
+      if (
+        entry.subsection === null &&
+        (entry.section === "core" || entry.section === "extensions")
+      ) {
+        config[entry.section][entry.key] = entry.value;
+      } else if (entry.section === "include" && entry.subsection === null && entry.key === "path") {
+        mergeRepositoryConfig(
+          config,
+          await readRepositoryConfigAsync(
+            resolveConfiguredPath(path.dirname(configPath), entry.value),
+            { gitDirectory, stack },
+          ),
+        );
+      } else if (
+        entry.section === "includeif" &&
+        entry.subsection !== null &&
+        entry.key === "path" &&
+        includeConditionMatches(entry.subsection, configPath, gitDirectory)
+      ) {
+        mergeRepositoryConfig(
+          config,
+          await readRepositoryConfigAsync(
+            resolveConfiguredPath(path.dirname(configPath), entry.value),
+            { gitDirectory, stack },
+          ),
+        );
+      }
+    }
+    return config;
+  } finally {
+    stack.delete(key);
+  }
+}
+
+function readCoreConfig(gitDir, commonDirectory = gitDir) {
+  const config = readRepositoryConfig(path.join(commonDirectory, "config"), {
+    gitDirectory: gitDir,
+  });
+  if (parseConfiguredGitBoolean(config.extensions.worktreeconfig) !== true) return config.core;
+  return {
+    ...config.core,
+    ...readRepositoryConfig(path.join(gitDir, "config.worktree"), { gitDirectory: gitDir }).core,
+  };
+}
+
+async function readCoreConfigAsync(gitDir, commonDirectory = gitDir) {
+  const config = await readRepositoryConfigAsync(path.join(commonDirectory, "config"), {
+    gitDirectory: gitDir,
+  });
+  if (parseConfiguredGitBoolean(config.extensions.worktreeconfig) !== true) return config.core;
+  const worktreeConfig = await readRepositoryConfigAsync(path.join(gitDir, "config.worktree"), {
+    gitDirectory: gitDir,
+  });
+  return { ...config.core, ...worktreeConfig.core };
 }
 
 function parseConfiguredGitBoolean(value) {
   if (value == null) return null;
-  const normalized = unquoteConfigValue(String(value).trim()).toLowerCase();
+  const normalized = String(value).trim().toLowerCase();
   if (["true", "yes", "on", "1"].includes(normalized)) return true;
-  if (["false", "no", "off", "0"].includes(normalized)) return false;
+  if (["", "false", "no", "off", "0"].includes(normalized)) return false;
   return null;
+}
+
+function resolveConfiguredPath(baseDirectory, value) {
+  const configuredPath = String(value);
+  if (configuredPath === "~") return os.homedir();
+  if (configuredPath.startsWith(`~${path.sep}`) || configuredPath.startsWith("~/")) {
+    return path.join(os.homedir(), configuredPath.slice(2));
+  }
+  return path.resolve(baseDirectory, configuredPath);
 }
 
 // Compute the working directory from an authoritative relationship: null for
 // a bare repository, the marker that discovery actually found, or an explicit
 // core.worktree. A standalone non-bare Git directory does not prove which
 // working tree it belongs to.
-function computeWorkingDirectory(gitDir, discoveredWorkingDirectory = null) {
-  const core = readCoreConfig(gitDir);
+function computeWorkingDirectory(
+  gitDir,
+  discoveredWorkingDirectory = null,
+  commonDirectory = gitDir,
+) {
+  const core = readCoreConfig(gitDir, commonDirectory);
   if (parseConfiguredGitBoolean(core.bare) === true) return null;
   if (discoveredWorkingDirectory) return discoveredWorkingDirectory;
-  if (core.worktree) return path.resolve(gitDir, unquoteConfigValue(core.worktree));
+  if (core.worktree) return resolveConfiguredPath(gitDir, core.worktree);
 
   return undefined;
 }
 
-async function computeWorkingDirectoryAsync(gitDir, discoveredWorkingDirectory = null) {
-  const core = await readCoreConfigAsync(gitDir);
+async function computeWorkingDirectoryAsync(
+  gitDir,
+  discoveredWorkingDirectory = null,
+  commonDirectory = gitDir,
+) {
+  const core = await readCoreConfigAsync(gitDir, commonDirectory);
   if (parseConfiguredGitBoolean(core.bare) === true) return null;
   if (discoveredWorkingDirectory) return discoveredWorkingDirectory;
-  if (core.worktree) return path.resolve(gitDir, unquoteConfigValue(core.worktree));
+  if (core.worktree) return resolveConfiguredPath(gitDir, core.worktree);
 
   return undefined;
 }
@@ -355,8 +699,16 @@ function discoverRepositoryLocation(startPath) {
 
   while (true) {
     const dotGit = path.join(current, ".git");
-    const dotGitStat = statForDiscovery(dotGit);
-    if (dotGitStat) {
+    const dotGitEntry = lstatForDiscovery(dotGit);
+    if (dotGitEntry) {
+      let dotGitStat;
+      try {
+        dotGitStat = statForDiscovery(dotGit);
+      } catch (error) {
+        if (error.code === "ELOOP") return { invalidMarker: true };
+        throw error;
+      }
+      if (!dotGitStat) return { invalidMarker: true };
       if (dotGitStat.isDirectory() && isGitDirectory(dotGit)) {
         return {
           gitDirectory: dotGit,
@@ -374,6 +726,7 @@ function discoverRepositoryLocation(startPath) {
           };
         }
       }
+      return { invalidMarker: true };
     }
     if (isGitDirectory(current)) {
       if (
@@ -391,9 +744,6 @@ function discoverRepositoryLocation(startPath) {
       }
       const linkedMarker = linkedWorktreeMarker(current);
       if (linkedMarker) return { gitDirectory: current, ...linkedMarker };
-      if (statForDiscovery(path.join(current, "commondir"))?.isFile()) {
-        return { gitDirectory: current, unresolvedWorktree: true };
-      }
       return {
         gitDirectory: current,
         discoveredWorkingDirectory: null,
@@ -413,8 +763,16 @@ async function discoverRepositoryLocationAsync(startPath) {
 
   while (true) {
     const dotGit = path.join(current, ".git");
-    const dotGitStat = await statForDiscoveryAsync(dotGit);
-    if (dotGitStat) {
+    const dotGitEntry = await lstatForDiscoveryAsync(dotGit);
+    if (dotGitEntry) {
+      let dotGitStat;
+      try {
+        dotGitStat = await statForDiscoveryAsync(dotGit);
+      } catch (error) {
+        if (error.code === "ELOOP") return { invalidMarker: true };
+        throw error;
+      }
+      if (!dotGitStat) return { invalidMarker: true };
       if (dotGitStat.isDirectory() && (await isGitDirectoryAsync(dotGit))) {
         return {
           gitDirectory: dotGit,
@@ -432,6 +790,7 @@ async function discoverRepositoryLocationAsync(startPath) {
           };
         }
       }
+      return { invalidMarker: true };
     }
     if (await isGitDirectoryAsync(current)) {
       if (
@@ -449,9 +808,6 @@ async function discoverRepositoryLocationAsync(startPath) {
       }
       const linkedMarker = await linkedWorktreeMarkerAsync(current);
       if (linkedMarker) return { gitDirectory: current, ...linkedMarker };
-      if ((await statForDiscoveryAsync(path.join(current, "commondir")))?.isFile()) {
-        return { gitDirectory: current, unresolvedWorktree: true };
-      }
       return {
         gitDirectory: current,
         discoveredWorkingDirectory: null,
@@ -467,7 +823,7 @@ async function discoverRepositoryLocationAsync(startPath) {
 
 function discoverGitDirectory(startPath) {
   const location = discoverRepositoryLocation(startPath);
-  return location?.unresolvedWorktree ? null : (location?.gitDirectory ?? null);
+  return location?.invalidMarker ? null : (location?.gitDirectory ?? null);
 }
 
 // When the opened path is reached through a symlink, remember the unresolved
@@ -520,6 +876,10 @@ class GitRepositoryDescriptor {
     this.gitDir = resolved ? resolved.gitDir : realpath(gitDir);
     this.gitDirectoryAliases = new Set([this.gitDir, normalizeLexicalPath(gitDir)]);
     this.worktreeGitMarker = resolved?.worktreeGitMarker || null;
+    this.gitDirectoryIdentity = resolved?.gitDirectoryIdentity || null;
+    this.workingDirectoryIdentity = resolved?.workingDirectoryIdentity || null;
+    this.commonDirectory = resolved?.commonDirectory || this.gitDir;
+    this.commonDirectoryIdentity = resolved?.commonDirectoryIdentity || null;
 
     if (resolved) {
       this.workingDirectory = resolved.workingDirectory;
@@ -552,6 +912,22 @@ class GitRepositoryDescriptor {
     return this.worktreeGitMarker;
   }
 
+  getGitDirectoryIdentity() {
+    return this.gitDirectoryIdentity;
+  }
+
+  getWorkingDirectoryIdentity() {
+    return this.workingDirectoryIdentity;
+  }
+
+  getCommonDirectory() {
+    return this.commonDirectory;
+  }
+
+  getCommonDirectoryIdentity() {
+    return this.commonDirectoryIdentity;
+  }
+
   getGitDirectoryAliases() {
     return Array.from(this.gitDirectoryAliases);
   }
@@ -561,14 +937,31 @@ class GitRepositoryDescriptor {
 // when the path is not inside a repository.
 function discoverRepositoryDescriptor(startPath) {
   const location = discoverRepositoryLocation(startPath);
-  if (!location || location.unresolvedWorktree) return null;
+  if (!location || location.invalidMarker) return null;
 
   const gitDir = realpath(location.gitDirectory);
-  const rawWorkingDirectory = computeWorkingDirectory(gitDir, location.discoveredWorkingDirectory);
+  const gitDirectoryIdentity = filesystemIdentity(fs.statSync(gitDir, { bigint: true }));
+  const commonDirectory = commonDirectoryLocation(gitDir);
+  const rawWorkingDirectory = computeWorkingDirectory(
+    gitDir,
+    location.discoveredWorkingDirectory,
+    commonDirectory.path,
+  );
   if (rawWorkingDirectory === undefined) return null;
   const workingDirectory = rawWorkingDirectory
     ? trimTrailingSeparator(normalizePath(rawWorkingDirectory, true))
     : null;
+  let workingDirectoryIdentity = null;
+  if (workingDirectory) {
+    try {
+      workingDirectoryIdentity = filesystemIdentity(
+        fs.statSync(workingDirectory, { bigint: true }),
+      );
+    } catch (error) {
+      if (isMissingPathError(error)) return null;
+      throw error;
+    }
+  }
   const worktreeGitMarker =
     workingDirectory && location.worktreeGitMarker
       ? Object.freeze({
@@ -586,6 +979,10 @@ function discoverRepositoryDescriptor(startPath) {
     gitDir,
     workingDirectory,
     worktreeGitMarker,
+    gitDirectoryIdentity,
+    workingDirectoryIdentity,
+    commonDirectory: commonDirectory.path,
+    commonDirectoryIdentity: commonDirectory.identity,
     caseInsensitiveFs,
     openedWorkingDirectory,
   });
@@ -593,17 +990,31 @@ function discoverRepositoryDescriptor(startPath) {
 
 async function discoverRepositoryDescriptorAsync(startPath) {
   const location = await discoverRepositoryLocationAsync(startPath);
-  if (!location || location.unresolvedWorktree) return null;
+  if (!location || location.invalidMarker) return null;
 
   const gitDir = await realpathAsync(location.gitDirectory);
+  const gitDirectoryIdentity = filesystemIdentity(await fs.promises.stat(gitDir, { bigint: true }));
+  const commonDirectory = await commonDirectoryLocationAsync(gitDir);
   const rawWorkingDirectory = await computeWorkingDirectoryAsync(
     gitDir,
     location.discoveredWorkingDirectory,
+    commonDirectory.path,
   );
   if (rawWorkingDirectory === undefined) return null;
   const workingDirectory = rawWorkingDirectory
     ? trimTrailingSeparator(await normalizePathAsync(rawWorkingDirectory))
     : null;
+  let workingDirectoryIdentity = null;
+  if (workingDirectory) {
+    try {
+      workingDirectoryIdentity = filesystemIdentity(
+        await fs.promises.stat(workingDirectory, { bigint: true }),
+      );
+    } catch (error) {
+      if (isMissingPathError(error)) return null;
+      throw error;
+    }
+  }
   const worktreeGitMarker =
     workingDirectory && location.worktreeGitMarker
       ? Object.freeze({
@@ -621,6 +1032,10 @@ async function discoverRepositoryDescriptorAsync(startPath) {
     gitDir,
     workingDirectory,
     worktreeGitMarker,
+    gitDirectoryIdentity,
+    workingDirectoryIdentity,
+    commonDirectory: commonDirectory.path,
+    commonDirectoryIdentity: commonDirectory.identity,
     caseInsensitiveFs,
     openedWorkingDirectory,
   });
@@ -638,9 +1053,31 @@ function unavailableInspection(reason) {
   return Object.freeze({ available: false, reason });
 }
 
-function repositoryDescriptorParts(descriptor) {
+function repositoryDescriptorParts(descriptor, { requireComplete = false } = {}) {
   if (!descriptor || typeof descriptor !== "object") {
     throw new TypeError("A repository descriptor is required");
+  }
+
+  if (requireComplete) {
+    const requiredFields = [
+      ["gitDirectory", "getPath"],
+      ["workingDirectory", "getWorkingDirectory"],
+      ["worktreeGitMarker", "getWorktreeGitMarker"],
+      ["gitDirectoryIdentity", "getGitDirectoryIdentity"],
+      ["workingDirectoryIdentity", "getWorkingDirectoryIdentity"],
+      ["commonDirectory", "getCommonDirectory"],
+      ["commonDirectoryIdentity", "getCommonDirectoryIdentity"],
+    ];
+    const missing = requiredFields.find(
+      ([field, getter]) =>
+        !Object.prototype.hasOwnProperty.call(descriptor, field) &&
+        typeof descriptor[getter] !== "function",
+    );
+    if (missing) {
+      const error = new TypeError(`Repository descriptor is missing ${missing[0]}`);
+      error.code = "ERR_GIT_REPOSITORY_DESCRIPTOR";
+      throw error;
+    }
   }
 
   const gitDirectory = descriptor.gitDirectory ?? descriptor.gitDir ?? descriptor.getPath?.();
@@ -650,6 +1087,13 @@ function repositoryDescriptorParts(descriptor) {
   const worktreeGitMarker = Object.prototype.hasOwnProperty.call(descriptor, "worktreeGitMarker")
     ? descriptor.worktreeGitMarker
     : (descriptor.getWorktreeGitMarker?.() ?? null);
+  const gitDirectoryIdentity =
+    descriptor.gitDirectoryIdentity ?? descriptor.getGitDirectoryIdentity?.() ?? null;
+  const workingDirectoryIdentity =
+    descriptor.workingDirectoryIdentity ?? descriptor.getWorkingDirectoryIdentity?.() ?? null;
+  const commonDirectory = descriptor.commonDirectory ?? descriptor.getCommonDirectory?.() ?? null;
+  const commonDirectoryIdentity =
+    descriptor.commonDirectoryIdentity ?? descriptor.getCommonDirectoryIdentity?.() ?? null;
 
   if (typeof gitDirectory !== "string" || gitDirectory.length === 0) {
     throw new TypeError("Repository descriptor gitDirectory must be a path");
@@ -657,21 +1101,69 @@ function repositoryDescriptorParts(descriptor) {
   if (workingDirectory !== null && typeof workingDirectory !== "string") {
     throw new TypeError("Repository descriptor workingDirectory must be a path or null");
   }
+  if (
+    commonDirectory !== null &&
+    (typeof commonDirectory !== "string" || commonDirectory.length === 0)
+  ) {
+    throw new TypeError("Repository descriptor commonDirectory must be a path or null");
+  }
+  for (const [name, identity] of [
+    ["gitDirectoryIdentity", gitDirectoryIdentity],
+    ["workingDirectoryIdentity", workingDirectoryIdentity],
+    ["commonDirectoryIdentity", commonDirectoryIdentity],
+  ]) {
+    if (
+      identity !== null &&
+      (typeof identity !== "object" || identity.device == null || identity.inode == null)
+    ) {
+      const error = new TypeError(`Repository descriptor ${name} must be an identity or null`);
+      error.code = "ERR_GIT_REPOSITORY_DESCRIPTOR";
+      throw error;
+    }
+  }
+  if (requireComplete && commonDirectory === null) {
+    const error = new TypeError("Repository descriptor commonDirectory must be a path");
+    error.code = "ERR_GIT_REPOSITORY_DESCRIPTOR";
+    throw error;
+  }
 
-  return { gitDirectory, workingDirectory, worktreeGitMarker: worktreeGitMarker ?? null };
+  return {
+    gitDirectory,
+    workingDirectory,
+    worktreeGitMarker: worktreeGitMarker ?? null,
+    gitDirectoryIdentity,
+    workingDirectoryIdentity,
+    commonDirectory,
+    commonDirectoryIdentity,
+  };
+}
+
+function filesystemIdentityMatches(actual, expected) {
+  return (
+    !expected ||
+    (actual && actual.device === String(expected.device) && actual.inode === String(expected.inode))
+  );
 }
 
 function normalizedPathsMatch(pathA, pathB) {
-  return normalizedPathsAreEqual(pathA, pathB, false);
+  const normalizeForIdentity = (candidate) => {
+    let normalized = normalizeLexicalPath(candidate);
+    if (IS_WINDOWS && /^[A-Z]:/.test(normalized)) {
+      normalized = `${normalized[0].toLowerCase()}${normalized.slice(1)}`;
+    }
+    return normalized;
+  };
+  return normalizeForIdentity(pathA) === normalizeForIdentity(pathB);
 }
 
 async function inspectDirectoryAsync(candidate, missingReason, wrongTypeReason, signal) {
   throwIfAborted(signal);
   let stats;
   try {
-    stats = await fs.promises.stat(candidate);
+    stats = await fs.promises.stat(candidate, { bigint: true });
   } catch (error) {
     if (isMissingPathError(error)) return { reason: missingReason };
+    if (error.code === "ELOOP") return { reason: wrongTypeReason };
     throw error;
   }
   if (!stats.isDirectory()) return { reason: wrongTypeReason };
@@ -679,20 +1171,49 @@ async function inspectDirectoryAsync(candidate, missingReason, wrongTypeReason, 
   try {
     const canonicalPath = trimTrailingSeparator(await normalizeExistingPathAsync(candidate));
     throwIfAborted(signal);
-    return { path: canonicalPath };
+    stats = await fs.promises.stat(candidate, { bigint: true });
+    if (!stats.isDirectory()) return { reason: wrongTypeReason };
+    throwIfAborted(signal);
+    return {
+      path: canonicalPath,
+      identity: filesystemIdentity(stats),
+    };
   } catch (error) {
     if (isMissingPathError(error)) return { reason: missingReason };
+    if (error.code === "ELOOP") return { reason: wrongTypeReason };
     throw error;
   }
 }
 
-async function inspectCommonDirectoryAsync(gitDirectory, signal) {
+function directoryInspectionsMatch(left, right) {
+  if (!left?.path || !right?.path || !normalizedPathsMatch(left.path, right.path)) return false;
+  if (!left.identity && !right.identity) return true;
+  return Boolean(
+    left.identity &&
+    right.identity &&
+    left.identity.device === right.identity.device &&
+    left.identity.inode === right.identity.inode,
+  );
+}
+
+async function inspectCommonDirectoryAsync(gitDirectory, signal, gitDirectoryInspection = null) {
   const pointerPath = path.join(gitDirectory, "commondir");
   let pointerStats;
   try {
     pointerStats = await fs.promises.stat(pointerPath);
   } catch (error) {
-    if (isMissingPathError(error)) return { path: gitDirectory };
+    if (isMissingPathError(error)) {
+      return (
+        gitDirectoryInspection ||
+        inspectDirectoryAsync(
+          gitDirectory,
+          "git-directory-missing",
+          "git-directory-not-directory",
+          signal,
+        )
+      );
+    }
+    if (error.code === "ELOOP") return { reason: "common-directory-not-directory" };
     throw error;
   }
   if (!pointerStats.isFile()) return { reason: "common-directory-not-directory" };
@@ -707,35 +1228,13 @@ async function inspectCommonDirectoryAsync(gitDirectory, signal) {
   throwIfAborted(signal);
 
   const commonDirectory = path.resolve(gitDirectory, pointer);
-  return inspectDirectoryAsync(
+  const inspection = await inspectDirectoryAsync(
     commonDirectory,
     "common-directory-missing",
     "common-directory-not-directory",
     signal,
   );
-}
-
-async function readCoreConfigForInspectionAsync(commonDirectory) {
-  try {
-    return parseCoreConfig(
-      await fs.promises.readFile(path.join(commonDirectory, "config"), "utf8"),
-    );
-  } catch (error) {
-    if (isMissingPathError(error)) return {};
-    throw error;
-  }
-}
-
-function unquoteConfigValue(value) {
-  if (!value?.startsWith('"')) return value;
-  const match = /^"((?:[^"\\]|\\.)*)"/.exec(value);
-  if (!match) return value;
-  return match[1].replace(/\\([\\"]|n|t|b)/g, (_match, escaped) => {
-    if (escaped === "n") return "\n";
-    if (escaped === "t") return "\t";
-    if (escaped === "b") return "\b";
-    return escaped;
-  });
+  return inspection;
 }
 
 async function inspectWorktreeMarkerAsync(marker, gitDirectory, workingDirectory, signal) {
@@ -755,6 +1254,7 @@ async function inspectWorktreeMarkerAsync(marker, gitDirectory, workingDirectory
     );
   } catch (error) {
     if (isMissingPathError(error)) return { reason: "worktree-marker-missing" };
+    if (error.code === "ELOOP") return { reason: "worktree-marker-invalid" };
     throw error;
   }
   const markerPath = normalizeLexicalPath(path.join(markerParent, path.basename(marker.path)));
@@ -768,6 +1268,7 @@ async function inspectWorktreeMarkerAsync(marker, gitDirectory, workingDirectory
     markerStats = await fs.promises.stat(markerPath);
   } catch (error) {
     if (isMissingPathError(error)) return { reason: "worktree-marker-missing" };
+    if (error.code === "ELOOP") return { reason: "worktree-marker-invalid" };
     throw error;
   }
   const expectedTypeMatches =
@@ -781,6 +1282,7 @@ async function inspectWorktreeMarkerAsync(marker, gitDirectory, workingDirectory
       markerTarget = await normalizeExistingPathAsync(markerPath);
     } catch (error) {
       if (isMissingPathError(error)) return { reason: "worktree-marker-missing" };
+      if (error.code === "ELOOP") return { reason: "worktree-marker-invalid" };
       throw error;
     }
     return normalizedPathsMatch(markerTarget, gitDirectory)
@@ -795,10 +1297,10 @@ async function inspectWorktreeMarkerAsync(marker, gitDirectory, workingDirectory
     if (isMissingPathError(error)) return { reason: "worktree-marker-missing" };
     throw error;
   }
-  const match = /^gitdir:[ \t]*(.+?)[ \t]*(?:\r?\n)?$/.exec(markerContents);
-  if (!match) return { reason: "worktree-marker-invalid" };
+  const target = parseGitFile(markerContents);
+  if (!target) return { reason: "worktree-marker-invalid" };
 
-  const targetPath = path.resolve(path.dirname(markerPath), match[1]);
+  const targetPath = path.resolve(path.dirname(markerPath), target);
   let targetStats;
   let markerTarget;
   try {
@@ -808,6 +1310,7 @@ async function inspectWorktreeMarkerAsync(marker, gitDirectory, workingDirectory
     ]);
   } catch (error) {
     if (isMissingPathError(error)) return { reason: "worktree-marker-mismatch" };
+    if (error.code === "ELOOP") return { reason: "worktree-marker-invalid" };
     throw error;
   }
   if (!targetStats.isDirectory() || !normalizedPathsMatch(markerTarget, gitDirectory)) {
@@ -821,7 +1324,7 @@ async function configuredWorktreeMatchesAsync(core, gitDirectory, workingDirecto
   if (parseConfiguredGitBoolean(core.bare) === true) return false;
 
   if (core.worktree) {
-    const configuredPath = path.resolve(gitDirectory, unquoteConfigValue(core.worktree));
+    const configuredPath = resolveConfiguredPath(gitDirectory, core.worktree);
     const configuredDirectory = await inspectDirectoryAsync(
       configuredPath,
       "core-worktree-mismatch",
@@ -841,8 +1344,9 @@ async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
   throwIfAborted(signal);
 
   let workingDirectory = null;
+  let inspectedWorkingDirectory = null;
   if (parts.workingDirectory !== null) {
-    const inspectedWorkingDirectory = await inspectDirectoryAsync(
+    inspectedWorkingDirectory = await inspectDirectoryAsync(
       parts.workingDirectory,
       "working-directory-missing",
       "working-directory-not-directory",
@@ -850,6 +1354,15 @@ async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
     );
     if (!inspectedWorkingDirectory.path) {
       return unavailableInspection(inspectedWorkingDirectory.reason);
+    }
+    if (
+      !normalizedPathsMatch(
+        inspectedWorkingDirectory.path,
+        trimTrailingSeparator(normalizeLexicalPath(parts.workingDirectory)),
+      ) ||
+      !filesystemIdentityMatches(inspectedWorkingDirectory.identity, parts.workingDirectoryIdentity)
+    ) {
+      return unavailableInspection("working-directory-mismatch");
     }
     workingDirectory = inspectedWorkingDirectory.path;
   }
@@ -863,11 +1376,34 @@ async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
   if (!inspectedGitDirectory.path) {
     return unavailableInspection(inspectedGitDirectory.reason);
   }
+  if (
+    !normalizedPathsMatch(
+      inspectedGitDirectory.path,
+      trimTrailingSeparator(normalizeLexicalPath(parts.gitDirectory)),
+    ) ||
+    !filesystemIdentityMatches(inspectedGitDirectory.identity, parts.gitDirectoryIdentity)
+  ) {
+    return unavailableInspection("git-directory-mismatch");
+  }
   const gitDirectory = inspectedGitDirectory.path;
 
-  const inspectedCommonDirectory = await inspectCommonDirectoryAsync(gitDirectory, signal);
+  const inspectedCommonDirectory = await inspectCommonDirectoryAsync(
+    gitDirectory,
+    signal,
+    inspectedGitDirectory,
+  );
   if (!inspectedCommonDirectory.path) {
     return unavailableInspection(inspectedCommonDirectory.reason);
+  }
+  if (
+    (parts.commonDirectory &&
+      !normalizedPathsMatch(
+        inspectedCommonDirectory.path,
+        trimTrailingSeparator(normalizeLexicalPath(parts.commonDirectory)),
+      )) ||
+    !filesystemIdentityMatches(inspectedCommonDirectory.identity, parts.commonDirectoryIdentity)
+  ) {
+    return unavailableInspection("common-directory-mismatch");
   }
 
   let worktreeGitMarker = null;
@@ -881,7 +1417,7 @@ async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
     if (!inspectedMarker.marker) return unavailableInspection(inspectedMarker.reason);
     worktreeGitMarker = inspectedMarker.marker;
   } else {
-    const core = await readCoreConfigForInspectionAsync(inspectedCommonDirectory.path);
+    const core = await readCoreConfigAsync(gitDirectory, inspectedCommonDirectory.path);
     throwIfAborted(signal);
     if (workingDirectory === null) {
       if (core.worktree || parseConfiguredGitBoolean(core.bare) === false) {
@@ -894,16 +1430,88 @@ async function inspectRepositoryDescriptorAsync(descriptor, { signal } = {}) {
     }
   }
 
+  const finalWorkingDirectory = workingDirectory
+    ? await inspectDirectoryAsync(
+        parts.workingDirectory,
+        "working-directory-missing",
+        "working-directory-not-directory",
+        signal,
+      )
+    : null;
+  if (
+    workingDirectory &&
+    !directoryInspectionsMatch(inspectedWorkingDirectory, finalWorkingDirectory)
+  ) {
+    return unavailableInspection(
+      finalWorkingDirectory.path ? "working-directory-mismatch" : finalWorkingDirectory.reason,
+    );
+  }
+
+  const finalGitDirectory = await inspectDirectoryAsync(
+    parts.gitDirectory,
+    "git-directory-missing",
+    "git-directory-not-directory",
+    signal,
+  );
+  if (!directoryInspectionsMatch(inspectedGitDirectory, finalGitDirectory)) {
+    return unavailableInspection(
+      finalGitDirectory.path ? "git-directory-mismatch" : finalGitDirectory.reason,
+    );
+  }
+
+  const finalCommonDirectory = await inspectCommonDirectoryAsync(
+    finalGitDirectory.path,
+    signal,
+    finalGitDirectory,
+  );
+  if (!directoryInspectionsMatch(inspectedCommonDirectory, finalCommonDirectory)) {
+    return unavailableInspection(
+      finalCommonDirectory.path ? "common-directory-mismatch" : finalCommonDirectory.reason,
+    );
+  }
+
+  if (parts.worktreeGitMarker) {
+    const finalMarker = await inspectWorktreeMarkerAsync(
+      parts.worktreeGitMarker,
+      finalGitDirectory.path,
+      finalWorkingDirectory.path,
+      signal,
+    );
+    if (!finalMarker.marker) return unavailableInspection(finalMarker.reason);
+    worktreeGitMarker = finalMarker.marker;
+  } else {
+    const finalCore = await readCoreConfigAsync(finalGitDirectory.path, finalCommonDirectory.path);
+    throwIfAborted(signal);
+    if (finalWorkingDirectory === null) {
+      if (finalCore.worktree || parseConfiguredGitBoolean(finalCore.bare) === false) {
+        return unavailableInspection("core-worktree-mismatch");
+      }
+    } else if (
+      !(await configuredWorktreeMatchesAsync(
+        finalCore,
+        finalGitDirectory.path,
+        finalWorkingDirectory.path,
+        signal,
+      ))
+    ) {
+      return unavailableInspection("core-worktree-mismatch");
+    }
+  }
+
   const normalizedDescriptor = Object.freeze({
-    gitDirectory,
-    workingDirectory,
+    gitDirectory: finalGitDirectory.path,
+    workingDirectory: finalWorkingDirectory?.path ?? null,
     worktreeGitMarker,
+    gitDirectoryIdentity: finalGitDirectory.identity,
+    workingDirectoryIdentity: workingDirectory === null ? null : finalWorkingDirectory.identity,
+    commonDirectory: finalCommonDirectory.path,
+    commonDirectoryIdentity: finalCommonDirectory.identity,
   });
   return Object.freeze({ available: true, descriptor: normalizedDescriptor });
 }
 
 async function assertRepositoryDescriptorAvailableAsync(descriptor, { signal, operation } = {}) {
-  const parts = repositoryDescriptorParts(descriptor);
+  const parts = repositoryDescriptorParts(descriptor, { requireComplete: true });
   const inspection = await inspectRepositoryDescriptorAsync(descriptor, { signal });
   if (inspection.available) return inspection.descriptor;
 

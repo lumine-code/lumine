@@ -22,6 +22,27 @@ function repositoryIdentity(gitDirectory, workingDirectory) {
   }`;
 }
 
+function filesystemIdentitiesMatch(current, expected) {
+  return (
+    !current ||
+    !expected ||
+    (current.device === expected.device && current.inode === expected.inode)
+  );
+}
+
+function repositoryMatchesDescriptor(repository, descriptor) {
+  return (
+    filesystemIdentitiesMatch(
+      repository.getGitDirectoryIdentity?.(),
+      descriptor.getGitDirectoryIdentity?.(),
+    ) &&
+    filesystemIdentitiesMatch(
+      repository.getWorkingDirectoryIdentity?.(),
+      descriptor.getWorkingDirectoryIdentity?.(),
+    )
+  );
+}
+
 // Provider that conforms to the project.repository-provider@1.0.0 service.
 // Discovery and validation have one owner: git-repository-descriptor. The
 // descriptor produced here is passed into GitRepository instead of making the
@@ -117,8 +138,17 @@ module.exports = class GitRepositoryProvider {
   }
 
   sweepUnregisteredRepositories() {
+    const pendingRepositories = new Set(
+      Array.from(this.pendingDescriptorsByPath.values(), ({ repository }) => repository),
+    );
     for (const repository of Object.values(this.pathToRepository)) {
-      if (!this.isRegistered(repository) && !repository.isDestroyed()) repository.destroy();
+      if (
+        !pendingRepositories.has(repository) &&
+        !this.isRegistered(repository) &&
+        !repository.isDestroyed()
+      ) {
+        repository.destroy();
+      }
     }
   }
 
@@ -155,7 +185,9 @@ module.exports = class GitRepositoryProvider {
     const gitDirectoryKey = normalizePath(gitDirectory);
     const key = repositoryIdentity(gitDirectory, workingDirectory);
     let repository = this.pathToRepository[key];
-    if (!repository) {
+    const previousAtKey =
+      repository && !repositoryMatchesDescriptor(repository, descriptor) ? repository : null;
+    if (!repository || previousAtKey) {
       repository = new GitRepository(descriptor);
       // Aliases belong to the discovery request, not to repository identity.
       // The current consumer commits them after its generation/path guards;
@@ -167,8 +199,15 @@ module.exports = class GitRepositoryProvider {
         }
       }
 
+      let state = null;
       repository.onDidDestroy(() => {
-        if (this.pathToRepository[key] === repository) delete this.pathToRepository[key];
+        if (this.pathToRepository[key] === repository) {
+          if (state?.previousAtKey && !state.previousAtKey.isDestroyed()) {
+            this.pathToRepository[key] = state.previousAtKey;
+          } else {
+            delete this.pathToRepository[key];
+          }
+        }
         const repositories = this.repositoriesByGitDirectory.get(gitDirectoryKey);
         repositories?.delete(repository);
         if (repositories?.size === 0) {
@@ -186,7 +225,8 @@ module.exports = class GitRepositoryProvider {
         this.repositoriesByGitDirectory.set(gitDirectoryKey, repositories);
       }
       repositories.add(repository);
-      this.repositoryState.set(repository, { key, gitDirectoryKey, committed: false });
+      state = { key, gitDirectoryKey, committed: false, previousAtKey };
+      this.repositoryState.set(repository, state);
       // Snapshot loading stays lazy and subscriber-driven, avoiding a status
       // burst for every repository discovered during startup.
     }

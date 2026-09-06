@@ -9,6 +9,7 @@ const GIT_HOST_STREAM_MAX_RECORDS = 1000;
 const GIT_HOST_STREAM_INLINE_MAX_BYTES = 64 * 1024;
 const GIT_HOST_STREAM_INLINE_MAX_RECORDS = 250;
 const GIT_HOST_STREAM_MAX_STRING_BYTES = 16 * 1024 * 1024;
+const GIT_HOST_REQUEST_STREAM_MAX_LENGTH = 128 * 1024 * 1024;
 
 const StreamKind = Object.freeze({
   ARRAY: "array",
@@ -47,6 +48,14 @@ function resultTooLargeError(bytes, maxBytes) {
   error.code = "ERR_GIT_HOST_RESULT_TOO_LARGE";
   error.maxBytes = maxBytes;
   error.resultBytes = bytes;
+  return error;
+}
+
+function requestTooLargeError(length, maxLength) {
+  const error = new Error(`git-host request stream exceeded ${maxLength} units`);
+  error.code = "ERR_GIT_HOST_REQUEST_TOO_LARGE";
+  error.maxBytes = maxLength;
+  error.resultBytes = length;
   return error;
 }
 
@@ -403,6 +412,88 @@ function prepareReplyStream(operation, result) {
   return validateReplyPlan(plan);
 }
 
+const REQUEST_STREAM_PATHS = Object.freeze({
+  lineDiff: Object.freeze([["text"]]),
+  exec: Object.freeze([["options", "stdin"]]),
+  execRepository: Object.freeze([["options", "stdin"]]),
+  writeRepositoryCommandOutput: Object.freeze([["options", "stdin"]]),
+});
+
+function requestStreamName(operation, path) {
+  return `${operation}.${path.join(".")}`;
+}
+
+function shouldStreamRequestValue(value) {
+  if (Buffer.isBuffer(value)) return value.length > GIT_HOST_STREAM_INLINE_MAX_BYTES;
+  if (typeof value !== "string") return false;
+  // Avoid scanning a many-megabyte string with Buffer.byteLength on the
+  // renderer. UTF-16 structured clone can charge two bytes per code unit, so
+  // only measure strings that are already too short to threaten a frame.
+  if (value.length > Math.floor(GIT_HOST_STREAM_INLINE_MAX_BYTES / 2)) return true;
+  return serializedSize(value) > GIT_HOST_STREAM_INLINE_MAX_BYTES;
+}
+
+function requestStreamDescriptor(operation, path, value) {
+  const kind = streamKind(value);
+  if (kind !== StreamKind.STRING && kind !== StreamKind.BUFFER) return null;
+  if (value.length > GIT_HOST_REQUEST_STREAM_MAX_LENGTH) {
+    throw requestTooLargeError(value.length, GIT_HOST_REQUEST_STREAM_MAX_LENGTH);
+  }
+  return {
+    name: requestStreamName(operation, path),
+    path,
+    kind,
+    value,
+    length: value.length,
+  };
+}
+
+function prepareRequestStream(operation, payload) {
+  if (!payload || typeof payload !== "object") return null;
+  const paths = REQUEST_STREAM_PATHS[operation];
+  if (!paths) return null;
+
+  let skeleton = payload;
+  const streams = [];
+  for (const path of paths) {
+    const located = valueAtPath(payload, path);
+    if (!located.found || !shouldStreamRequestValue(located.value)) continue;
+    const stream = requestStreamDescriptor(operation, path, located.value);
+    if (!stream) continue;
+    streams.push(stream);
+    skeleton = cloneWithValueAtPath(skeleton, path, streamPlaceholder(stream.kind));
+  }
+  if (streams.length === 0) return null;
+
+  const plan = { payload: skeleton, streams };
+  const startMessage = {
+    event: "git:request-start",
+    id: "0000000000",
+    op: operation,
+    payload: plan.payload,
+    streams: plan.streams.map(streamManifest),
+  };
+  const bytes = serializedSize(startMessage);
+  if (bytes > GIT_HOST_STREAM_INLINE_MAX_BYTES) {
+    throw requestTooLargeError(bytes, GIT_HOST_STREAM_INLINE_MAX_BYTES);
+  }
+  return plan;
+}
+
+function validateRequestStreamManifest(operation, descriptor) {
+  if (!validateStreamManifest(descriptor)) return false;
+  if (descriptor.kind !== StreamKind.STRING && descriptor.kind !== StreamKind.BUFFER) return false;
+  if (descriptor.length > GIT_HOST_REQUEST_STREAM_MAX_LENGTH) return false;
+  const paths = REQUEST_STREAM_PATHS[operation];
+  if (!paths) return false;
+  return paths.some(
+    (path) =>
+      descriptor.name === requestStreamName(operation, path) &&
+      path.length === descriptor.path.length &&
+      path.every((part, index) => part === descriptor.path[index]),
+  );
+}
+
 function streamManifest(stream) {
   return {
     name: stream.name,
@@ -524,6 +615,7 @@ function chunkLength(descriptor, chunk) {
 }
 
 module.exports = {
+  GIT_HOST_REQUEST_STREAM_MAX_LENGTH,
   GIT_HOST_STREAM_INLINE_MAX_BYTES,
   GIT_HOST_STREAM_INLINE_MAX_RECORDS,
   GIT_HOST_STREAM_MAX_BYTES,
@@ -534,9 +626,11 @@ module.exports = {
   chunkLength,
   initializeReplyStream,
   nextReplyChunk,
+  prepareRequestStream,
   prepareDiffStream,
   prepareReplyStream,
   prepareSnapshotStream,
   streamManifest,
+  validateRequestStreamManifest,
   validateStreamManifest,
 };

@@ -24,6 +24,7 @@ const MAX_OBJECT_BYTES = 256 * 1024 * 1024;
 const MAX_SUBMODULE_CACHE_ENTRIES = 1000;
 const EMPTY_SUBMODULE_PATHS = Object.freeze([]);
 const VALIDATED_REPOSITORY_DESCRIPTOR = Symbol("validated-repository-descriptor");
+const DEFER_REPOSITORY_READ_POSTFLIGHT = Symbol("defer-repository-read-postflight");
 
 function workingDirectoryFor(descriptor) {
   return descriptor.workingDirectory || descriptor.gitDirectory;
@@ -233,10 +234,12 @@ module.exports = class SystemGitService {
     } catch (error) {
       throw await this.repositoryFailure(error, descriptor, operation);
     }
-    await this.assertRepositoryDescriptorAvailable(descriptor, {
-      operation,
-      signal: options.signal,
-    });
+    if (!options[DEFER_REPOSITORY_READ_POSTFLIGHT]) {
+      await this.assertRepositoryDescriptorAvailable(descriptor, {
+        operation,
+        signal: options.signal,
+      });
+    }
     return result;
   }
 
@@ -563,15 +566,20 @@ module.exports = class SystemGitService {
       : this.runner.runResult(args, workingDirectory, { ...options, signal });
   }
 
-  execRepository({ descriptor, args, options = {} }, { signal } = {}) {
+  execRepository({ descriptor, args, options = {} }, context = {}) {
+    const { signal } = context;
     const { repositoryRead = false, ...commandOptions } = options;
     const execute = repositoryRead
       ? this.readRepository.bind(this)
       : this.mutateRepository.bind(this);
     return execute(
       descriptor,
-      repositoryRead ? "repository-read-command" : "repository-command",
-      { ...commandOptions, signal },
+      repositoryRead ? "execRepository" : "repository-command",
+      {
+        ...commandOptions,
+        signal,
+        [DEFER_REPOSITORY_READ_POSTFLIGHT]: context[DEFER_REPOSITORY_READ_POSTFLIGHT] === true,
+      },
       (validatedOptions) =>
         this.runner.runResult(args, workingDirectoryFor(descriptor), validatedOptions),
     );
@@ -644,3 +652,4 @@ module.exports = class SystemGitService {
 
 module.exports.canonicalConfigKey = canonicalConfigKey;
 module.exports.parseBatchObjects = parseBatchObjects;
+module.exports.DEFER_REPOSITORY_READ_POSTFLIGHT = DEFER_REPOSITORY_READ_POSTFLIGHT;

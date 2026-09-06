@@ -1,5 +1,6 @@
 const v8 = require("v8");
 const {
+  GIT_HOST_REQUEST_STREAM_MAX_LENGTH,
   GIT_HOST_ERROR_MAX_CAUSE_DEPTH,
   GIT_HOST_ERROR_TEXT_MAX_BYTES,
   GIT_HOST_ERROR_TOTAL_MAX_BYTES,
@@ -17,9 +18,11 @@ const {
   appendReplyChunk,
   initializeReplyStream,
   nextReplyChunk,
+  prepareRequestStream,
   prepareReplyStream,
   prepareSnapshotStream,
   streamManifest,
+  validateRequestStreamManifest,
 } = require("../src/git-host-stream");
 
 function reassemble(plan) {
@@ -57,6 +60,10 @@ describe("git-host protocol", () => {
     expect(GIT_HOST_PROTOCOL_VERSION).toBe(1);
     expect(GitHostMessageEvents).toEqual(
       jasmine.objectContaining({
+        REQUEST_START: "git:request-start",
+        REQUEST_CHUNK: "git:request-chunk",
+        REQUEST_CHUNK_ACK: "git:request-chunk-ack",
+        REQUEST_END: "git:request-end",
         REPLY: "git:reply",
         REPLY_START: "git:reply-start",
         REPLY_CHUNK: "git:reply-chunk",
@@ -64,6 +71,88 @@ describe("git-host protocol", () => {
         REPLY_END: "git:reply-end",
       }),
     );
+  });
+
+  it("streams large line-diff text and command stdin without changing their payloads", () => {
+    const text = `first\n${"zażółć".repeat(GIT_HOST_STREAM_MAX_BYTES)}`;
+    const lineDiffPayload = {
+      descriptor: { gitDirectory: "/repo/.git", workingDirectory: "/repo" },
+      relativePosixPath: "large.txt",
+      headOid: "a".repeat(40),
+      text,
+    };
+    const textPlan = prepareRequestStream("lineDiff", lineDiffPayload);
+    expect(textPlan.payload.text).toBe("");
+    expect(lineDiffPayload.text).toBe(text);
+    expect(textPlan.streams.map(streamManifest)).toEqual([
+      {
+        name: "lineDiff.text",
+        path: ["text"],
+        kind: "string",
+        length: text.length,
+      },
+    ]);
+
+    const stdin = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 3 + 17, 0xab);
+    const execPayload = {
+      workingDirectory: "/repo",
+      args: ["hash-object", "--stdin"],
+      options: { stdin },
+    };
+    const stdinPlan = prepareRequestStream("exec", execPayload);
+    expect(stdinPlan.payload.options.stdin).toBeNull();
+    expect(execPayload.options.stdin).toBe(stdin);
+    expect(stdinPlan.streams[0]).toEqual(
+      jasmine.objectContaining({
+        name: "exec.options.stdin",
+        path: ["options", "stdin"],
+        kind: "buffer",
+        length: stdin.length,
+      }),
+    );
+
+    for (const plan of [textPlan, stdinPlan]) {
+      const descriptor = streamManifest(plan.streams[0]);
+      let reconstructed = initializeReplyStream(plan.payload, descriptor).result;
+      for (let offset = 0; offset < descriptor.length;) {
+        const chunk = nextReplyChunk(plan.streams[0], offset);
+        expect(v8.serialize(chunk).byteLength).toBeLessThanOrEqual(GIT_HOST_STREAM_MAX_BYTES);
+        reconstructed = appendReplyChunk(reconstructed, descriptor, offset, chunk);
+        offset += chunk.length;
+      }
+      const expected = plan === textPlan ? text : stdin;
+      const actual = plan === textPlan ? reconstructed.text : reconstructed.options.stdin;
+      expect(actual).toEqual(expected);
+    }
+  });
+
+  it("keeps ordinary requests inline and validates request stream manifests", () => {
+    expect(prepareRequestStream("lineDiff", { text: "small" })).toBeNull();
+    expect(prepareRequestStream("snapshot", { text: "x".repeat(100000) })).toBeNull();
+
+    const valid = {
+      name: "execRepository.options.stdin",
+      path: ["options", "stdin"],
+      kind: "string",
+      length: 10,
+    };
+    expect(validateRequestStreamManifest("execRepository", valid)).toBe(true);
+    expect(validateRequestStreamManifest("exec", valid)).toBe(false);
+    expect(validateRequestStreamManifest("execRepository", { ...valid, kind: "array" })).toBe(
+      false,
+    );
+    expect(
+      validateRequestStreamManifest("execRepository", {
+        ...valid,
+        path: ["options", "__proto__"],
+      }),
+    ).toBe(false);
+    expect(
+      validateRequestStreamManifest("execRepository", {
+        ...valid,
+        length: GIT_HOST_REQUEST_STREAM_MAX_LENGTH + 1,
+      }),
+    ).toBe(false);
   });
 
   it("keeps one explicit registry of supported operations", () => {

@@ -149,15 +149,70 @@ describe("GitRepositoryProvider", () => {
 
     it("releases a discovered repository that no registry claims", async () => {
       provider = new GitRepositoryProvider({ isRegistered: () => false });
-      const repository = await provider.repositoryForPath(
-        path.join(__dirname, "fixtures", "git", "master.git"),
-      );
+      const repositoryPath = path.join(__dirname, "fixtures", "git", "master.git");
+      const repository = await provider.repositoryForPath(repositoryPath);
+      provider.commitRepositoryForPath(repository, repositoryPath);
       expect(repository.isDestroyed()).toBe(false);
 
       provider.sweepUnregisteredRepositories();
 
       expect(repository.isDestroyed()).toBe(true);
       expect(Object.values(provider.pathToRepository)).not.toContain(repository);
+    });
+
+    it("does not destroy a pending repository before its caller can commit it", async () => {
+      let registeredRepository = null;
+      provider = new GitRepositoryProvider({
+        isRegistered: (repository) => repository === registeredRepository,
+      });
+      const repositoryPath = path.join(__dirname, "fixtures", "git", "master.git");
+      const repository = await provider.repositoryForPath(repositoryPath);
+      const destroy = spyOn(repository, "destroy").and.callThrough();
+
+      provider.sweepUnregisteredRepositories();
+
+      expect(destroy).not.toHaveBeenCalled();
+      expect(repository.isDestroyed()).toBe(false);
+      expect(Object.values(provider.pathToRepository)).toContain(repository);
+
+      registeredRepository = repository;
+      provider.commitRepositoryForPath(repository, repositoryPath);
+      provider.sweepUnregisteredRepositories();
+
+      expect(destroy).not.toHaveBeenCalled();
+      expect(repository.isDestroyed()).toBe(false);
+      expect(provider.getRepositoryForPath(repositoryPath)).toBe(repository);
+    });
+
+    it("does not reuse a cached repository after replacement at the same paths", async () => {
+      let registeredRepository = null;
+      provider = new GitRepositoryProvider({
+        isRegistered: (repository) => repository === registeredRepository,
+      });
+      const workingDirectory = copyWorkingRepository();
+      const gitDirectory = path.join(workingDirectory, ".git");
+      const original = await provider.repositoryForPath(workingDirectory);
+      provider.commitRepositoryForPath(original, workingDirectory);
+      registeredRepository = original;
+
+      fs.removeSync(gitDirectory);
+      fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir", "git.git"), gitDirectory);
+      const replacement = await provider.repositoryForPath(workingDirectory);
+
+      expect(replacement).not.toBe(original);
+      expect(original.isDestroyed()).toBe(false);
+      provider.abandonRepositoryForPath(replacement, workingDirectory);
+      expect(replacement.isDestroyed()).toBe(true);
+      expect(provider.getRepositoryForPath(workingDirectory)).toBe(original);
+
+      const committedReplacement = await provider.repositoryForPath(workingDirectory);
+      registeredRepository = committedReplacement;
+      provider.commitRepositoryForPath(committedReplacement, workingDirectory);
+
+      expect(committedReplacement).not.toBe(original);
+      expect(original.isDestroyed()).toBe(true);
+      expect(committedReplacement.isDestroyed()).toBe(false);
+      expect(provider.getRepositoryForPath(workingDirectory)).toBe(committedReplacement);
     });
 
     it("keys repositories by both Git directory and working directory", async () => {

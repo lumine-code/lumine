@@ -13,6 +13,19 @@ class GitRepository extends CoreGitRepository {
   }
 }
 
+function hostDescriptorForPath(filePath) {
+  const descriptor = discoverRepositoryDescriptor(filePath);
+  return {
+    gitDirectory: descriptor.getPath(),
+    workingDirectory: descriptor.getWorkingDirectory(),
+    worktreeGitMarker: descriptor.getWorktreeGitMarker(),
+    gitDirectoryIdentity: descriptor.getGitDirectoryIdentity(),
+    workingDirectoryIdentity: descriptor.getWorkingDirectoryIdentity(),
+    commonDirectory: descriptor.getCommonDirectory(),
+    commonDirectoryIdentity: descriptor.getCommonDirectoryIdentity(),
+  };
+}
+
 const RUNS = Number(process.env.LUMINE_GIT_RENDERER_BENCHMARK_RUNS || 3);
 const STATUS_SIZES = (process.env.LUMINE_GIT_RENDERER_STATUS_SIZES || "1000,10000,50000")
   .split(",")
@@ -32,6 +45,12 @@ const IPC_STATUS_SIZES = (process.env.LUMINE_GIT_RENDERER_IPC_STATUS_SIZES || "1
   .filter((value) => Number.isFinite(value) && value > 0)
   .sort((left, right) => left - right);
 const FRAME_BUDGET_MS = 16;
+const OUTBOUND_REQUEST_BYTES = Number(
+  process.env.LUMINE_GIT_RENDERER_OUTBOUND_BYTES || 32 * 1024 * 1024,
+);
+const OUTBOUND_LINE_DIFF_BYTES = Number(
+  process.env.LUMINE_GIT_RENDERER_OUTBOUND_LINE_DIFF_BYTES || 32 * 1024 * 1024,
+);
 
 function percentile(samples, fraction) {
   const sorted = [...samples].sort((left, right) => left - right);
@@ -196,7 +215,7 @@ function createIpcStatusFixture() {
   const emptyOid = runGitSync(workingDirectory, ["hash-object", "--stdin"], "");
   let entryCount = 0;
   return {
-    descriptor: discoverRepositoryDescriptor(workingDirectory),
+    descriptor: hostDescriptorForPath(workingDirectory),
     addEntries(targetCount) {
       const records = [];
       for (let index = entryCount; index < targetCount; index++) {
@@ -246,8 +265,39 @@ describe("Git renderer boundary benchmark", () => {
         );
       }
 
+      const outboundLineDiffText = "x".repeat(OUTBOUND_LINE_DIFF_BYTES);
+      await repository.getLineDiffsAsync(packagePath, outboundLineDiffText);
+      const outboundLineDiffSamples = [];
+      for (let run = 0; run < RUNS; run++) {
+        outboundLineDiffSamples.push(
+          await observeEventLoop(() =>
+            repository.getLineDiffsAsync(packagePath, outboundLineDiffText),
+          ),
+        );
+      }
+
+      const outboundInput = Buffer.alloc(OUTBOUND_REQUEST_BYTES, 0x5a);
+      const outboundRequest = () =>
+        GitHost.instance().request("exec", {
+          workingDirectory: process.cwd(),
+          args: ["hash-object", "--stdin"],
+          options: { stdin: outboundInput },
+          raw: false,
+        });
+      await outboundRequest();
+      const outboundRequestSamples = [];
+      let outboundOid = null;
+      for (let run = 0; run < RUNS; run++) {
+        outboundRequestSamples.push(
+          await observeEventLoop(async () => {
+            outboundOid = (await outboundRequest()).stdout.trim();
+          }),
+        );
+      }
+      expect(outboundOid).toMatch(/^[0-9a-f]{40,64}$/);
+
       const objectIpcMetrics = {};
-      const objectDescriptor = discoverRepositoryDescriptor(process.cwd());
+      const objectDescriptor = hostDescriptorForPath(process.cwd());
       for (const input of [
         {
           name: "buffer",
@@ -384,6 +434,14 @@ describe("Git renderer boundary benchmark", () => {
 
       const frameBudgetMeasurements = [
         ["line diff", summarize(lineDiffSamples.map(({ maxEventLoopGapMs }) => maxEventLoopGapMs))],
+        [
+          "outbound request",
+          summarize(outboundRequestSamples.map(({ maxEventLoopGapMs }) => maxEventLoopGapMs)),
+        ],
+        [
+          "outbound line diff",
+          summarize(outboundLineDiffSamples.map(({ maxEventLoopGapMs }) => maxEventLoopGapMs)),
+        ],
         ...Object.entries(statusMetrics).map(([count, metrics]) => [
           `status ${count}`,
           metrics.maxEventLoopGap,
@@ -422,6 +480,8 @@ describe("Git renderer boundary benchmark", () => {
           inputs: {
             runs: RUNS,
             lineDiffBytes: Buffer.byteLength(largeText),
+            outboundRequestBytes: OUTBOUND_REQUEST_BYTES,
+            outboundLineDiffBytes: OUTBOUND_LINE_DIFF_BYTES,
             statusEntries: STATUS_SIZES,
             deepStatusDepths: DEEP_STATUS_DEPTHS,
             refsEntries: REFS_SIZES,
@@ -432,6 +492,18 @@ describe("Git renderer boundary benchmark", () => {
               total: summarize(lineDiffSamples.map(({ totalMs }) => totalMs)),
               maxEventLoopGap: summarize(
                 lineDiffSamples.map(({ maxEventLoopGapMs }) => maxEventLoopGapMs),
+              ),
+            },
+            outboundRequest: {
+              total: summarize(outboundRequestSamples.map(({ totalMs }) => totalMs)),
+              maxEventLoopGap: summarize(
+                outboundRequestSamples.map(({ maxEventLoopGapMs }) => maxEventLoopGapMs),
+              ),
+            },
+            outboundLineDiff: {
+              total: summarize(outboundLineDiffSamples.map(({ totalMs }) => totalMs)),
+              maxEventLoopGap: summarize(
+                outboundLineDiffSamples.map(({ maxEventLoopGapMs }) => maxEventLoopGapMs),
               ),
             },
             statusIndexing: statusMetrics,

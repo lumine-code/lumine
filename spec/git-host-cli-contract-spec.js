@@ -3,17 +3,26 @@ const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp").track();
 const createGitHostOps = require("../src/git-host-ops");
 const GitRunner = require("../src/git-runner");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
+
+function hostDescriptorForPath(filePath) {
+  const descriptor = discoverRepositoryDescriptor(filePath);
+  return {
+    gitDirectory: descriptor.getPath(),
+    workingDirectory: descriptor.getWorkingDirectory(),
+    worktreeGitMarker: descriptor.getWorktreeGitMarker(),
+    gitDirectoryIdentity: descriptor.getGitDirectoryIdentity(),
+    workingDirectoryIdentity: descriptor.getWorkingDirectoryIdentity(),
+    commonDirectory: descriptor.getCommonDirectory(),
+    commonDirectoryIdentity: descriptor.getCommonDirectoryIdentity(),
+  };
+}
 
 function copyRepository() {
   const workingDirectory = temp.mkdirSync("git-host-cli-contract-");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
   fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
-  const gitDirectory = fs.realpathSync(path.join(workingDirectory, ".git"));
-  return {
-    gitDirectory,
-    workingDirectory: fs.realpathSync(workingDirectory),
-    worktreeGitMarker: { path: gitDirectory, kind: "directory" },
-  };
+  return hostDescriptorForPath(workingDirectory);
 }
 
 describe("git-host system Git contract", () => {
@@ -129,11 +138,7 @@ describe("git-host system Git contract", () => {
     const runner = new GitRunner({ trustAllRepositories: true });
     await runner.run(["init", "--bare", "--initial-branch=main"], gitDirectory);
     const bareOps = createGitHostOps(runner);
-    const bareDescriptor = {
-      gitDirectory: fs.realpathSync(gitDirectory),
-      workingDirectory: null,
-      worktreeGitMarker: null,
-    };
+    const bareDescriptor = hostDescriptorForPath(gitDirectory);
 
     const snapshot = await bareOps.snapshot(
       {

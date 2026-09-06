@@ -9,14 +9,36 @@ const { discoverRepositoryDescriptor } = require("../src/git-repository-descript
 
 function repositoryContext(workingDirectory, overrides = {}) {
   const gitDirectory = overrides.gitDirectory || path.join(workingDirectory, ".git");
-  const descriptor = Object.freeze({
-    gitDirectory,
-    workingDirectory,
-    worktreeGitMarker:
-      overrides.worktreeGitMarker === undefined
-        ? { path: path.join(workingDirectory, ".git"), kind: "directory" }
-        : overrides.worktreeGitMarker,
-  });
+  let discovered = null;
+  try {
+    discovered = discoverRepositoryDescriptor(workingDirectory);
+  } catch {
+    // Unit-only contexts may deliberately point at virtual paths.
+  }
+  const descriptor = Object.freeze(
+    discovered && !overrides.gitDirectory && overrides.worktreeGitMarker === undefined
+      ? {
+          gitDirectory: discovered.getPath(),
+          workingDirectory: discovered.getWorkingDirectory(),
+          worktreeGitMarker: discovered.getWorktreeGitMarker(),
+          gitDirectoryIdentity: discovered.getGitDirectoryIdentity(),
+          workingDirectoryIdentity: discovered.getWorkingDirectoryIdentity(),
+          commonDirectory: discovered.getCommonDirectory(),
+          commonDirectoryIdentity: discovered.getCommonDirectoryIdentity(),
+        }
+      : {
+          gitDirectory,
+          workingDirectory,
+          worktreeGitMarker:
+            overrides.worktreeGitMarker === undefined
+              ? { path: path.join(workingDirectory, ".git"), kind: "directory" }
+              : overrides.worktreeGitMarker,
+          gitDirectoryIdentity: overrides.gitDirectoryIdentity || null,
+          workingDirectoryIdentity: overrides.workingDirectoryIdentity || null,
+          commonDirectory: overrides.commonDirectory || gitDirectory,
+          commonDirectoryIdentity: overrides.commonDirectoryIdentity || null,
+        },
+  );
   return {
     repository: { getHostDescriptor: () => descriptor },
     gitDirectory,

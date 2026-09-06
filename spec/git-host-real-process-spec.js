@@ -1,22 +1,72 @@
 const path = require("path");
 const v8 = require("v8");
+const ChildProcess = require("child_process");
+const crypto = require("crypto");
 const fs = require("@lumine-code/fs-plus");
 const temp = require("@lumine-code/temp").track();
 const GitHost = require("../src/git-host");
+const { discoverRepositoryDescriptor } = require("../src/git-repository-descriptor");
 const {
   GIT_HOST_STREAM_MAX_BYTES,
   GIT_HOST_STREAM_MAX_RECORDS,
 } = require("../src/git-host-stream");
 
+function waitForChildMessage(child, predicate) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(
+      () => finish(new Error("Timed out waiting for git-host worker")),
+      5000,
+    );
+    const onMessage = (message) => {
+      if (predicate(message)) finish(null, message);
+    };
+    const onExit = () => finish(new Error("git-host worker exited during protocol test"));
+    const finish = (error, message) => {
+      clearTimeout(timeout);
+      child.removeListener("message", onMessage);
+      child.removeListener("exit", onExit);
+      if (error) reject(error);
+      else resolve(message);
+    };
+    child.on("message", onMessage);
+    child.once("exit", onExit);
+  });
+}
+
+function hostDescriptorForPath(filePath) {
+  const descriptor = discoverRepositoryDescriptor(filePath);
+  return {
+    gitDirectory: descriptor.getPath(),
+    workingDirectory: descriptor.getWorkingDirectory(),
+    worktreeGitMarker: descriptor.getWorktreeGitMarker(),
+    gitDirectoryIdentity: descriptor.getGitDirectoryIdentity(),
+    workingDirectoryIdentity: descriptor.getWorkingDirectoryIdentity(),
+    commonDirectory: descriptor.getCommonDirectory(),
+    commonDirectoryIdentity: descriptor.getCommonDirectoryIdentity(),
+  };
+}
+
 function copyRepository() {
   const workingDirectory = temp.mkdirSync("git-host-real-process-");
   fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
   fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
-  const gitDirectory = path.join(workingDirectory, ".git");
+  return hostDescriptorForPath(workingDirectory);
+}
+
+function copyGitfileRepository() {
+  const rootDirectory = temp.mkdirSync("git-host-real-gitfile-");
+  const workingDirectory = path.join(rootDirectory, "worktree");
+  const gitDirectory = path.join(rootDirectory, "metadata.git");
+  const otherGitDirectory = path.join(rootDirectory, "other.git");
+  fs.mkdirSync(workingDirectory);
+  fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir", "git.git"), gitDirectory);
+  fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir", "git.git"), otherGitDirectory);
+  const markerPath = path.join(workingDirectory, ".git");
+  fs.writeFileSync(markerPath, `gitdir: ${gitDirectory}\n`);
   return {
-    gitDirectory,
-    workingDirectory,
-    worktreeGitMarker: { path: gitDirectory, kind: "directory" },
+    descriptor: hostDescriptorForPath(workingDirectory),
+    markerPath,
+    otherGitDirectory,
   };
 }
 
@@ -99,6 +149,78 @@ describe("git-host real process", () => {
     expect(error.gitCode).toBe("ERR_GIT_COMMAND_FAILED");
   });
 
+  it("rejects malformed request stream manifests and sequences in the worker", async () => {
+    const transport = GitHost.instance();
+    const child = ChildProcess.fork(
+      require.resolve("../src/git-host-bootstrap"),
+      ["--no-deprecation"],
+      {
+        env: transport.childEnv(),
+        silent: true,
+        windowsHide: true,
+        serialization: "advanced",
+      },
+    );
+    try {
+      await waitForChildMessage(child, ({ event }) => event === "git:ready");
+
+      const invalidManifestReply = waitForChildMessage(
+        child,
+        ({ event, id }) => event === "git:reply" && id === "invalid-manifest",
+      );
+      child.send({
+        event: "git:request-start",
+        id: "invalid-manifest",
+        op: "lineDiff",
+        payload: { text: "" },
+        streams: [
+          {
+            name: "lineDiff.text",
+            path: ["options", "stdin"],
+            kind: "string",
+            length: 4,
+          },
+        ],
+      });
+      expect((await invalidManifestReply).error).toEqual(
+        jasmine.objectContaining({ code: "ERR_GIT_HOST_PROTOCOL", retriable: false }),
+      );
+
+      const invalidSequenceReply = waitForChildMessage(
+        child,
+        ({ event, id }) => event === "git:reply" && id === "invalid-sequence",
+      );
+      child.send({
+        event: "git:request-start",
+        id: "invalid-sequence",
+        op: "lineDiff",
+        payload: { text: "" },
+        streams: [
+          {
+            name: "lineDiff.text",
+            path: ["text"],
+            kind: "string",
+            length: 4,
+          },
+        ],
+      });
+      child.send({
+        event: "git:request-chunk",
+        id: "invalid-sequence",
+        sequence: 1,
+        stream: "lineDiff.text",
+        offset: 0,
+        items: "text",
+      });
+      expect((await invalidSequenceReply).error).toEqual(
+        jasmine.objectContaining({ code: "ERR_GIT_HOST_PROTOCOL", retriable: false }),
+      );
+    } finally {
+      if (child.connected) child.disconnect();
+      child.kill();
+    }
+  });
+
   it("identifies a repository working directory that moved after discovery", async () => {
     const descriptor = copyRepository();
     const movedDirectory = `${descriptor.workingDirectory}-moved`;
@@ -130,13 +252,8 @@ describe("git-host real process", () => {
     const workingDirectory = path.join(parent.workingDirectory, "nested-repository");
     fs.copySync(path.join(__dirname, "fixtures", "git", "working-dir"), workingDirectory);
     fs.renameSync(path.join(workingDirectory, "git.git"), path.join(workingDirectory, ".git"));
-    const gitDirectory = path.join(workingDirectory, ".git");
-    const descriptor = {
-      gitDirectory,
-      workingDirectory,
-      worktreeGitMarker: { path: gitDirectory, kind: "directory" },
-    };
-    fs.removeSync(gitDirectory);
+    const descriptor = hostDescriptorForPath(workingDirectory);
+    fs.removeSync(descriptor.gitDirectory);
     fs.writeFileSync(path.join(workingDirectory, "now-owned-by-parent.txt"), "parent data\n");
     const host = GitHost.instance();
 
@@ -322,6 +439,121 @@ describe("git-host real process", () => {
     expect(decoded.content).toBe(content.toString("utf8"));
     expect(manifests.map(({ kind }) => kind)).toContain("string");
     expect(chunks.filter(({ items }) => typeof items === "string").length).toBeGreaterThan(1);
+  });
+
+  it("streams 32 MiB command stdin out of the renderer in bounded messages", async () => {
+    const descriptor = copyRepository();
+    const host = GitHost.instance();
+    await host.ensureStarted();
+    const content = Buffer.alloc(32 * 1024 * 1024 + 137, 0x5a);
+    const expectedOid = crypto
+      .createHash("sha1")
+      .update(`blob ${content.length}\0`)
+      .update(content)
+      .digest("hex");
+    const messages = [];
+    const send = host.child.send.bind(host.child);
+    host.child.send = (message, ...args) => {
+      if (message?.event?.startsWith("git:request")) messages.push(message);
+      return send(message, ...args);
+    };
+
+    const result = await host.request("execRepository", {
+      descriptor,
+      args: ["hash-object", "-w", "--stdin"],
+      options: { stdin: content },
+    });
+
+    expect(result.stdout.trim()).toBe(expectedOid);
+    expect(messages[0]).toEqual(
+      jasmine.objectContaining({
+        event: "git:request-start",
+        op: "execRepository",
+        payload: jasmine.objectContaining({
+          options: jasmine.objectContaining({ stdin: null }),
+        }),
+      }),
+    );
+    const chunks = messages.filter(({ event }) => event === "git:request-chunk");
+    expect(chunks.length).toBeGreaterThan(100);
+    expect(messages.at(-1).event).toBe("git:request-end");
+    expect(messages.some(({ event }) => event === "git:request")).toBe(false);
+    for (const chunk of chunks) {
+      expect(v8.serialize(chunk.items).byteLength).toBeLessThanOrEqual(GIT_HOST_STREAM_MAX_BYTES);
+    }
+  });
+
+  it("rejects a streamed read when its descriptor changes before reply-end", async () => {
+    const { descriptor, markerPath, otherGitDirectory } = copyGitfileRepository();
+    const host = GitHost.instance();
+    const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 4 + 137, 0x78);
+    const sourcePath = path.join(descriptor.workingDirectory, "large.bin");
+    fs.writeFileSync(sourcePath, content);
+    const hashResult = await host.request("execRepository", {
+      descriptor,
+      args: ["hash-object", "-w", "--", "large.bin"],
+      options: {},
+    });
+    const oid = hashResult.stdout.trim();
+    const handleMessage = host.handleMessage.bind(host);
+    let retargeted = false;
+    host.handleMessage = (message, child) => {
+      if (!retargeted && message?.event === "git:reply-chunk") {
+        retargeted = true;
+        fs.writeFileSync(markerPath, `gitdir: ${otherGitDirectory}\n`);
+      }
+      return handleMessage(message, child);
+    };
+
+    await expectAsync(
+      host.request("readObjects", {
+        descriptor,
+        requests: [{ oid }],
+        encoding: "buffer",
+      }),
+    ).toBeRejectedWith(
+      jasmine.objectContaining({
+        code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
+        operation: "readObjects",
+        reason: "worktree-marker-mismatch",
+      }),
+    );
+    expect(retargeted).toBe(true);
+  });
+
+  it("postvalidates a streamed execRepository read with its stable operation", async () => {
+    const { descriptor, markerPath, otherGitDirectory } = copyGitfileRepository();
+    const host = GitHost.instance();
+    const content = Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 2 + 137, 0x79);
+    const hashResult = await host.request("execRepository", {
+      descriptor,
+      args: ["hash-object", "-w", "--stdin"],
+      options: { stdin: content },
+    });
+    const handleMessage = host.handleMessage.bind(host);
+    let retargeted = false;
+    host.handleMessage = (message, child) => {
+      if (!retargeted && message?.event === "git:reply-chunk") {
+        retargeted = true;
+        fs.writeFileSync(markerPath, `gitdir: ${otherGitDirectory}\n`);
+      }
+      return handleMessage(message, child);
+    };
+
+    await expectAsync(
+      host.request("execRepository", {
+        descriptor,
+        args: ["cat-file", "blob", hashResult.stdout.trim()],
+        options: { repositoryRead: true },
+      }),
+    ).toBeRejectedWith(
+      jasmine.objectContaining({
+        code: "ERR_GIT_REPOSITORY_UNAVAILABLE",
+        operation: "execRepository",
+        reason: "worktree-marker-mismatch",
+      }),
+    );
+    expect(retargeted).toBe(true);
   });
 
   it("streams a real minified diff line larger than one object chunk", async () => {

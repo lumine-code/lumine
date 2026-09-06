@@ -6,11 +6,17 @@ const GIT_HOST_ERROR_STRUCTURE_RESERVE_BYTES = 8 * 1024;
 const GIT_HOST_ERROR_FIELD_MAX_BYTES = 16 * 1024;
 const TRUNCATED_ERROR_TEXT_SUFFIX = "\n… [truncated by git-host]";
 
-// Message names are part of the internal v1 wire contract. Large snapshots use
-// START -> (CHUNK -> ACK)* -> END; ordinary and unchanged results use REPLY.
+// Message names are part of the internal v1 wire contract. Large requests and
+// replies use START -> (CHUNK -> ACK)* -> END; ordinary values use REQUEST or
+// REPLY. The two ACK events stay directional so simultaneous input and output
+// streams for one request cannot release each other's backpressure.
 const GitHostMessageEvents = Object.freeze({
   READY: "git:ready",
   REQUEST: "git:request",
+  REQUEST_START: "git:request-start",
+  REQUEST_CHUNK: "git:request-chunk",
+  REQUEST_CHUNK_ACK: "git:request-chunk-ack",
+  REQUEST_END: "git:request-end",
   CANCEL: "git:cancel",
   REPLY: "git:reply",
   REPLY_START: "git:reply-start",

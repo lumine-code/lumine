@@ -50,7 +50,7 @@ function clearRealpathCache() {
 }
 
 function isRootPath(candidate) {
-  return IS_WINDOWS ? /^[a-zA-Z]+:[\\/]$/.test(candidate) : candidate === path.sep;
+  return path.dirname(candidate) === candidate;
 }
 
 function trimPath(filePath) {
@@ -87,7 +87,9 @@ function realpathRecursive(unrealPath) {
       break;
     } catch (error) {
       if (error.code === "ENOENT") {
-        currentPath = path.resolve(currentPath, "..");
+        const parentPath = path.resolve(currentPath, "..");
+        if (parentPath === currentPath) return unrealPath;
+        currentPath = parentPath;
         remainder = path.relative(currentPath, unrealPath);
       } else {
         return unrealPath;

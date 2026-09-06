@@ -1,6 +1,8 @@
 const EventEmitter = require("events");
+const v8 = require("v8");
 const GitHost = require("../src/git-host");
 const { GIT_HOST_PROTOCOL_VERSION } = require("../src/git-host-protocol");
+const { GIT_HOST_STREAM_MAX_BYTES } = require("../src/git-host-stream");
 
 // A stand-in for the forked child process so the transport (id correlation,
 // crash-restart, cancellation, error revival) can be driven deterministically
@@ -27,6 +29,15 @@ async function flush() {
 
 function nextImmediate() {
   return new Promise((resolve) => setImmediate(resolve));
+}
+
+async function waitForSent(child, predicate) {
+  for (let turn = 0; turn < 20; turn++) {
+    const message = child.sent.find(predicate);
+    if (message) return message;
+    await nextImmediate();
+  }
+  throw new Error("Timed out waiting for a git-host test message");
 }
 
 describe("GitHost transport", () => {
@@ -72,6 +83,154 @@ describe("GitHost transport", () => {
 
     current().emit("message", { event: "git:reply", id: sent.id, result: "PORCELAIN" });
     expect(await pending).toBe("PORCELAIN");
+  });
+
+  it("streams large renderer requests with bounded chunks and worker backpressure", async () => {
+    const text = `header\n${"x".repeat(GIT_HOST_STREAM_MAX_BYTES * 2 + 137)}`;
+    const payload = {
+      descriptor: { gitDirectory: "/repo/.git", workingDirectory: "/repo" },
+      relativePosixPath: "large.txt",
+      headOid: "a".repeat(40),
+      text,
+    };
+    const pending = host.request("lineDiff", payload);
+    ready();
+    await flush();
+
+    const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
+    expect(start.op).toBe("lineDiff");
+    expect(start.payload.text).toBe("");
+    expect(start.streams).toHaveSize(1);
+    expect(start.streams[0]).toEqual(
+      jasmine.objectContaining({
+        name: "lineDiff.text",
+        path: ["text"],
+        kind: "string",
+        length: text.length,
+      }),
+    );
+    expect(current().sent.some(({ event }) => event === "git:request")).toBe(false);
+    expect(payload.text).toBe(text);
+
+    let received = 0;
+    let sequence = 0;
+    while (received < text.length) {
+      const chunk = await waitForSent(
+        current(),
+        (message) => message.event === "git:request-chunk" && message.sequence === sequence,
+      );
+      expect(chunk.offset).toBe(received);
+      expect(v8.serialize(chunk.items).byteLength).toBeLessThanOrEqual(GIT_HOST_STREAM_MAX_BYTES);
+      expect(
+        current().sent.some(
+          (message) => message.event === "git:request-chunk" && message.sequence === sequence + 1,
+        ),
+      ).toBe(false);
+      received += chunk.items.length;
+      current().emit("message", {
+        event: "git:request-chunk-ack",
+        id: start.id,
+        sequence,
+      });
+      sequence++;
+    }
+    await waitForSent(current(), ({ event }) => event === "git:request-end");
+    expect(sequence).toBeGreaterThan(1);
+
+    current().emit("message", { event: "git:reply", id: start.id, result: ["complete"] });
+    expect(await pending).toEqual(["complete"]);
+  });
+
+  it("cancels and cleans up a partially streamed renderer request", async () => {
+    const controller = new AbortController();
+    const pending = host.request(
+      "exec",
+      {
+        workingDirectory: "/repo",
+        args: ["hash-object", "--stdin"],
+        options: { stdin: Buffer.alloc(GIT_HOST_STREAM_MAX_BYTES * 2, 0xab) },
+      },
+      { signal: controller.signal },
+    );
+    ready();
+    await flush();
+    const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
+    await waitForSent(current(), ({ event }) => event === "git:request-chunk");
+
+    controller.abort();
+    await expectAsync(pending).toBeRejectedWithError(Error, /aborted/);
+    expect(current().sent).toContain({ event: "git:cancel", id: start.id });
+    await nextImmediate();
+    expect(current().sent.some(({ event }) => event === "git:request-end")).toBe(false);
+    expect(host.pending.size).toBe(0);
+  });
+
+  it("retires a worker that acknowledges an outbound request out of order", async () => {
+    const pending = host.request("lineDiff", {
+      text: "x".repeat(GIT_HOST_STREAM_MAX_BYTES),
+    });
+    ready();
+    await flush();
+    const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
+    await waitForSent(current(), ({ event }) => event === "git:request-chunk");
+
+    current().emit("message", {
+      event: "git:request-chunk-ack",
+      id: start.id,
+      sequence: 99,
+    });
+
+    await expectAsync(pending).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ERR_GIT_HOST_PROTOCOL", retriable: false }),
+    );
+    expect(current().killed).toBe(true);
+  });
+
+  it("rejects instead of hanging when request-end fails asynchronously", async () => {
+    const pending = host.request("lineDiff", {
+      text: "x".repeat(Math.floor(GIT_HOST_STREAM_MAX_BYTES / 4)),
+    });
+    ready();
+    await flush();
+    const child = current();
+    const start = await waitForSent(child, ({ event }) => event === "git:request-start");
+    const chunk = await waitForSent(child, ({ event }) => event === "git:request-chunk");
+    const send = child.send.bind(child);
+    child.send = (message, callback) => {
+      send(message);
+      if (message.event === "git:request-end") {
+        setImmediate(() => callback?.(new Error("request-end IPC failed")));
+      }
+    };
+    child.emit("message", {
+      event: "git:request-chunk-ack",
+      id: start.id,
+      sequence: chunk.sequence,
+    });
+
+    await expectAsync(pending).toBeRejectedWithError(/exited before the request completed/);
+    expect(child.killed).toBe(true);
+  });
+
+  it("rejects reply-start received before request streaming completes", async () => {
+    const pending = host.request("lineDiff", {
+      text: "x".repeat(GIT_HOST_STREAM_MAX_BYTES),
+    });
+    ready();
+    await flush();
+    const start = await waitForSent(current(), ({ event }) => event === "git:request-start");
+
+    current().emit("message", {
+      event: "git:reply-start",
+      id: start.id,
+      result: [],
+      streams: [{ name: "result", path: [], kind: "array", length: 1 }],
+    });
+
+    await expectAsync(pending).toBeRejectedWith(
+      jasmine.objectContaining({ code: "ERR_GIT_HOST_PROTOCOL", retriable: false }),
+    );
+    expect(current().killed).toBe(true);
   });
 
   it("revives a reply error with its code/exitCode/stderr", async () => {
