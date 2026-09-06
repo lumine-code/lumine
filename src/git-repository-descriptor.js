@@ -403,7 +403,12 @@ function parseConfigValue(text, configPath) {
       characters.push({ character: decoded, quoted: true });
       continue;
     }
-    if (!quoted && character === "\\") throw invalidConfigError(configPath);
+    if (!quoted && character === "\\") {
+      if (text[index + 1] !== "\\") throw invalidConfigError(configPath);
+      characters.push({ character: "\\", quoted: false });
+      index++;
+      continue;
+    }
     characters.push({ character, quoted });
   }
   if (quoted) throw invalidConfigError(configPath);

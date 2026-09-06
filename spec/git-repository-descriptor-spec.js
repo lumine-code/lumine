@@ -623,6 +623,25 @@ describe("git repository descriptor", () => {
     expect((await inspectRepositoryDescriptorAsync(descriptor)).available).toBe(true);
   });
 
+  if (process.platform === "win32") {
+    it("parses Git-for-Windows escaped unquoted paths", async () => {
+      const root = temp.mkdirSync("descriptor-windows-escaped-worktree-");
+      const gitDirectory = path.join(root, "configured.git");
+      const workingDirectory = path.join(root, "escaped-worktree");
+      copyGitDirectory(gitDirectory);
+      fs.mkdirSync(workingDirectory);
+      fs.writeFileSync(
+        path.join(gitDirectory, "config"),
+        `[core]\n\tbare = false\n\tworktree = ${workingDirectory.replace(/\\/g, "\\\\")}\n`,
+      );
+
+      const descriptor = await discoverRepositoryDescriptorAsync(gitDirectory);
+
+      expect(descriptor.getWorkingDirectory()).toBe(canonical(workingDirectory));
+      expect((await inspectRepositoryDescriptorAsync(descriptor)).available).toBe(true);
+    });
+  }
+
   it("accepts a linked worktree with a nonstandard commondir layout", async () => {
     const root = temp.mkdirSync("descriptor-arbitrary-common-");
     const commonDirectory = path.join(root, "object-store.git");
